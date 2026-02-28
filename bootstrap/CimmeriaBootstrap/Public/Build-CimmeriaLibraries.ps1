@@ -86,9 +86,28 @@ function Build-CimmeriaLibraries {
     }
 
     if (-not $opensslLibExists -and $script:PerlPath) {
-        Write-Status "Building OpenSSL (this may take 5-15 minutes)..." "White"
+        Write-Status "Building OpenSSL (this takes 5-15 minutes, two full nmake passes)..." "White"
 
-        $buildResult = Invoke-BatchScript (Join-Path $BootstrapDir "build-openssl.bat")
+        # Stream the build with progress — OpenSSL is slow and silent otherwise
+        $scriptPath = Join-Path $BootstrapDir "build-openssl.bat"
+        $workDir = Split-Path $scriptPath
+        $scriptName = Split-Path -Leaf $scriptPath
+        Write-Status "  Running $scriptName..." "DarkGray"
+
+        $lineCount = 0
+        $output = @()
+        cmd /c "cd /d `"$workDir`" && `"$scriptName`" < nul" 2>&1 | ForEach-Object {
+            $output += $_
+            $lineCount++
+            $line = "$_"
+            # Show key milestones and periodic progress
+            if ($line -match '===|Configure|Running nmake|copied to|ERROR|FAILED|Using Perl|Found Visual') {
+                Write-Status "  $_" "DarkGray"
+            } elseif ($lineCount % 250 -eq 0) {
+                Write-Status "  $lineCount lines processed..." "DarkGray"
+            }
+        }
+        $buildExitCode = $LASTEXITCODE
 
         $opensslLibExists = (Test-Path (Join-Path $opensslLibDir "libeay32MT.lib"))
         $opensslDbgExists = (Test-Path (Join-Path $opensslLibDir "libeay32MTd.lib"))
@@ -100,7 +119,7 @@ function Build-CimmeriaLibraries {
             Write-Status "OpenSSL: build successful ($($libs -join ', '))" "Green"
         } else {
             Write-Status "ERROR: OpenSSL build failed - no output libraries found" "Red"
-            $buildResult.Output | Select-Object -Last 10 | ForEach-Object { Write-Status "  $_" "DarkGray" }
+            $output | Select-Object -Last 10 | ForEach-Object { Write-Status "  $_" "DarkGray" }
             throw "OpenSSL build failed."
         }
     }
