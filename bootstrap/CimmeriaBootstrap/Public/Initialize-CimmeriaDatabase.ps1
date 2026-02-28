@@ -68,18 +68,16 @@ function Initialize-CimmeriaDatabase {
     } else {
         if ($PSCmdlet.ShouldProcess("PostgreSQL on port $Port", "Start database server")) {
             Write-Status "Starting PostgreSQL on port $Port..." "White"
-            # pg_ctl start spawns postgres which inherits stdout handles,
-            # blocking any pipe or -NoNewWindow -Wait. Launch in a hidden
-            # window so handles are isolated, then verify with pg_ctl status.
-            $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -w -o `"-p $Port`""
-            $pgCtlResult = Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs `
-                -WindowStyle Hidden -Wait -PassThru
-            if ($pgCtlResult.ExitCode -ne 0) {
-                Write-Status "PostgreSQL start failed (exit code $($pgCtlResult.ExitCode)). Check $pgLogFile" "Red"
+            # pg_ctl start spawns postgres which keeps handles open, blocking
+            # both pipes and Start-Process -Wait. Fire-and-forget, then poll.
+            $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
+            Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
+            if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
+                Write-Status "PostgreSQL failed to start. Check $pgLogFile" "Red"
                 if (Test-Path $pgLogFile) {
                     Get-Content $pgLogFile -Tail 5 | ForEach-Object { Write-Status "  $_" "Red" }
                 }
-                throw "pg_ctl start failed with exit code $($pgCtlResult.ExitCode)."
+                throw "PostgreSQL did not start within 15 seconds."
             }
             Write-Status "PostgreSQL started on port $Port." "Green"
         }
