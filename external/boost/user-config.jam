@@ -1,2 +1,2 @@
 using msvc : 14.5 : "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.50.35717\\bin\\Hostx64\\x64\\cl.exe" ;
-using python : 3.4 : : "..\\python\\include" : "..\\python\\lib64" : <address-model>64 ;
+using python : 3.4 : : "C:\\Users\\Steve\\source\\projects\\Cimmeria\\external\\python\\include" : "C:\\Users\\Steve\\source\\projects\\Cimmeria\\external\\python\\lib64" : <address-model>64 ;
