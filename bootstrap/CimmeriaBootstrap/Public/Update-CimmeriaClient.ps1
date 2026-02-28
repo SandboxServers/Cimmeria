@@ -66,8 +66,9 @@ function Update-CimmeriaClient {
         throw "Login.lua not found at: $loginLua"
     }
 
-    # Read current content
-    $content = Get-Content $loginLua -Raw
+    # Read current content preserving original encoding (game expects ASCII, not UTF-8 BOM)
+    $contentBytes = [System.IO.File]::ReadAllBytes($loginLua)
+    $content = [System.Text.Encoding]::ASCII.GetString($contentBytes)
     $authUrl = "$ServerUrl/SGWLogin/UserAuth"
 
     # Check if already patched
@@ -105,7 +106,8 @@ function Update-CimmeriaClient {
             return
         }
 
-        Set-Content -Path $loginLua -Value $patched -NoNewline
+        # Write back as ASCII to preserve original encoding (game Lua parser crashes on UTF-8 BOM)
+        [System.IO.File]::WriteAllBytes($loginLua, [System.Text.Encoding]::ASCII.GetBytes($patched))
         Write-Status "Login.lua patched: auth -> $authUrl" "Green"
     }
 
