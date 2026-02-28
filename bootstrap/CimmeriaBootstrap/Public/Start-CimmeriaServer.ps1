@@ -45,11 +45,14 @@ function Start-CimmeriaServer {
             if ($LASTEXITCODE -ne 0) {
                 Write-Status "Starting PostgreSQL..." "White"
                 $pgLogFile = Join-Path $paths.ServerDir "logs\postgresql.log"
-                New-Item -ItemType Directory -Path (Split-Path $pgLogFile) -Force | Out-Null
-                & $pgCtl start -D $pgDataDir -l $pgLogFile -w -o "-p $Port" 2>&1 | ForEach-Object {
+                $pgLogDir = Split-Path $pgLogFile
+                New-Item -ItemType Directory -Path $pgLogDir -Force | Out-Null
+                $pgCtlResult = Start-Process -FilePath $pgCtl -ArgumentList "start","-D",$pgDataDir,"-l",$pgLogFile,"-w","-o","-p $Port" `
+                    -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $pgLogDir "pgctl_stdout.log") -RedirectStandardError (Join-Path $pgLogDir "pgctl_stderr.log")
+                Get-Content (Join-Path $pgLogDir "pgctl_stdout.log") -ErrorAction SilentlyContinue | ForEach-Object {
                     Write-Status "  $_" "DarkGray"
                 }
-                if ($LASTEXITCODE -ne 0) {
+                if ($pgCtlResult.ExitCode -ne 0) {
                     throw "Failed to start PostgreSQL. Check $pgLogFile"
                 }
             } else {

@@ -68,12 +68,19 @@ function Initialize-CimmeriaDatabase {
     } else {
         if ($PSCmdlet.ShouldProcess("PostgreSQL on port $Port", "Start database server")) {
             Write-Status "Starting PostgreSQL on port $Port..." "White"
-            & $pgCtl start -D $pgDataDir -l $pgLogFile -w -o "-p $Port" 2>&1 | ForEach-Object {
+            # pg_ctl start spawns postgres as a child that can inherit stdout,
+            # keeping a pipe open forever. Use Start-Process to isolate it.
+            $pgCtlResult = Start-Process -FilePath $pgCtl -ArgumentList "start","-D",$pgDataDir,"-l",$pgLogFile,"-w","-o","-p $Port" `
+                -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $pgLogDir "pgctl_stdout.log") -RedirectStandardError (Join-Path $pgLogDir "pgctl_stderr.log")
+            Get-Content (Join-Path $pgLogDir "pgctl_stdout.log") -ErrorAction SilentlyContinue | ForEach-Object {
                 Write-Status "  $_" "DarkGray"
             }
-            if ($LASTEXITCODE -ne 0) {
+            if ($pgCtlResult.ExitCode -ne 0) {
+                Get-Content (Join-Path $pgLogDir "pgctl_stderr.log") -ErrorAction SilentlyContinue | ForEach-Object {
+                    Write-Status "  $_" "Red"
+                }
                 Write-Status "PostgreSQL start failed. Check $pgLogFile" "Red"
-                throw "pg_ctl start failed with exit code $LASTEXITCODE."
+                throw "pg_ctl start failed with exit code $($pgCtlResult.ExitCode)."
             }
             Write-Status "PostgreSQL started on port $Port." "Green"
         }
