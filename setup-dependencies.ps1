@@ -1,27 +1,39 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Downloads and sets up all external dependencies for the Cimmeria project.
+    Downloads, patches, and builds all external dependencies for the Cimmeria project.
     Replaces the need to store the 724MB external/ directory in git.
 
 .DESCRIPTION
-    This script downloads exact versions of all dependencies from official sources,
-    extracts them to the expected external/ directory structure, and builds
-    libraries that need compilation (Boost, OpenSSL, SOCI).
+    This script is the single entry point for bootstrapping a fresh Cimmeria build
+    environment. It performs these phases:
+
+    Phase 0:   Detect Visual Studio 2015+ (optionally install VS Community)
+    Phase 0.5: Detect Perl (for OpenSSL build)
+    Phase 1:   Download all dependency archives
+    Phase 2:   Extract and arrange into external/
+    Phase 3:   Apply VS2015+ compatibility patches from bootstrap/patches/
+    Phase 4:   Build libraries (Boost, OpenSSL, SOCI)
+    Phase 5:   Summary and verification
 
     Prerequisites:
     - PowerShell 7.0+ (pwsh)
-    - Visual Studio 2012 (v120 toolset) or compatible (for building)
-    - CMake (for SOCI build)
-    - Perl (for OpenSSL build - e.g. Strawberry Perl)
-    - Internet connection
-    - Linux only: tar, msiextract (from msitools package) for Python MSI extraction
+    - Windows 10/11 or Windows Server
+    - Internet connection (for downloads)
+    - ~2 GB free disk space
+
+    VS and Perl are detected automatically. Pass -InstallVS to install
+    VS Community if not found.
 
 .PARAMETER SkipDownload
     Skip downloading (use already-downloaded archives in external/_downloads/)
 
 .PARAMETER SkipBuild
-    Only download and extract; do not compile anything
+    Only download, extract, and patch; do not compile anything
+
+.PARAMETER InstallVS
+    If Visual Studio is not found, download and install VS Community with
+    the C++ Desktop workload. Requires a script restart after install.
 
 .PARAMETER BuildArch
     Architecture to build for: "x64" (default), "x86", or "both"
@@ -30,6 +42,7 @@
 param(
     [switch]$SkipDownload,
     [switch]$SkipBuild,
+    [switch]$InstallVS,
     [ValidateSet("x64", "x86", "both")]
     [string]$BuildArch = "x64"
 )
@@ -38,6 +51,9 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ExternalDir = Join-Path $ProjectRoot "external"
 $DownloadDir = Join-Path $ExternalDir "_downloads"
+$BootstrapDir = Join-Path $ProjectRoot "bootstrap"
+$PatchDir = Join-Path $BootstrapDir "patches"
+$TemplateDir = Join-Path $BootstrapDir "templates"
 
 # =============================================================================
 # Dependency Registry - exact versions matching the original project
@@ -64,7 +80,7 @@ $Dependencies = @{
         FileName     = "openssl-1.0.1e.tar.gz"
         Type         = "source+build"
         ExtractTo    = "openssl_src"
-        Notes        = "Needs Perl + VS2012 to build. Produces headers + .lib files."
+        Notes        = "Needs Perl + MSVC to build. Produces headers + .lib files."
         # Official source:
         # https://github.com/openssl/openssl/releases/tag/OpenSSL_1_0_1e
         # https://openssl-library.org/source/old/1.0.1/
@@ -107,7 +123,7 @@ Source for exact 9.2.3: https://ftp.postgresql.org/pub/source/v9.2.3/
         FileName     = "soci-3.2.1.tar.gz"
         Type         = "source"
         ExtractTo    = "soci"
-        Notes        = "Source tree used directly for headers. Libs built separately via CMake or vcxproj."
+        Notes        = "Source tree used directly for headers. Libs built separately via build-soci.bat."
         # Official sources:
         # https://github.com/SOCI/soci/tree/3.2.1
         # https://sourceforge.net/projects/soci/files/soci/soci-3.2.1/ (alt mirror)
@@ -252,7 +268,7 @@ Write-Host " Cimmeria Dependency Setup" -ForegroundColor Yellow
 Write-Host " Project: Stargate Worlds Emulator" -ForegroundColor Yellow
 Write-Host "=============================================" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "This script will download and set up all external dependencies."
+Write-Host "This script will download, patch, and build all external dependencies."
 Write-Host "Total download size: ~200 MB (vs 724 MB vendored)"
 Write-Host "Target directory: $ExternalDir"
 Write-Host ""
@@ -261,10 +277,168 @@ Write-Host ""
 New-Item -ItemType Directory -Path $DownloadDir -Force | Out-Null
 New-Item -ItemType Directory -Path $ExternalDir -Force | Out-Null
 
-# ---- STEP 1: Download all archives ----
+# =============================================================================
+# PHASE 0: Visual Studio Detection / Bootstrap
+# =============================================================================
+
+Write-Step "PHASE 0: VISUAL STUDIO DETECTION"
+
+$script:VSInstallPath = $null
+$script:VCToolsVersion = $null
+$script:ClExePath = $null
+
+if ($IsWindows -or (-not (Test-Path variable:IsWindows))) {
+    # Find vswhere.exe
+    $vswhereExe = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhereExe)) {
+        # Try alternate location
+        $vswhereExe = "$env:ProgramFiles\Microsoft Visual Studio\Installer\vswhere.exe"
+    }
+
+    if (Test-Path $vswhereExe) {
+        # Query for VS with C++ workload, version 15.0+ (VS2017+)
+        $vsInfo = & $vswhereExe -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
+        if ($vsInfo) {
+            $script:VSInstallPath = $vsInfo.Trim()
+        } else {
+            # Fall back to any VS installation
+            $vsInfo = & $vswhereExe -latest -property installationPath 2>$null
+            if ($vsInfo) {
+                $script:VSInstallPath = $vsInfo.Trim()
+                Write-Status "WARNING: VS found but C++ tools may not be installed" "Yellow"
+            }
+        }
+
+        if ($script:VSInstallPath) {
+            # Get VS display name and version
+            $vsName = & $vswhereExe -latest -property displayName 2>$null
+            $vsVersion = & $vswhereExe -latest -property installationVersion 2>$null
+            Write-Status "Found: $vsName (v$vsVersion)" "Green"
+            Write-Status "Path:  $script:VSInstallPath" "DarkGray"
+
+            # Find MSVC tools version
+            $vcToolsDir = Join-Path $script:VSInstallPath "VC\Tools\MSVC"
+            if (Test-Path $vcToolsDir) {
+                $script:VCToolsVersion = (Get-ChildItem $vcToolsDir -Directory | Sort-Object Name -Descending | Select-Object -First 1).Name
+                Write-Status "MSVC Tools: $script:VCToolsVersion" "DarkGray"
+
+                # Find cl.exe
+                $clPath = Join-Path $vcToolsDir "$script:VCToolsVersion\bin\Hostx64\x64\cl.exe"
+                if (Test-Path $clPath) {
+                    $script:ClExePath = $clPath
+                    Write-Status "cl.exe: $script:ClExePath" "DarkGray"
+                }
+            }
+        }
+    }
+
+    if (-not $script:VSInstallPath) {
+        if ($InstallVS) {
+            Write-Status "Visual Studio not found. Downloading VS Community installer..." "Yellow"
+            $vsInstallerUrl = "https://aka.ms/vs/18/release/vs_community.exe"
+            $vsInstallerPath = Join-Path $env:TEMP "vs_community.exe"
+
+            $prevPref = $ProgressPreference
+            $ProgressPreference = 'SilentlyContinue'
+            try {
+                Invoke-WebRequest -Uri $vsInstallerUrl -OutFile $vsInstallerPath -UseBasicParsing
+            } finally {
+                $ProgressPreference = $prevPref
+            }
+
+            Write-Status "Running VS Community installer (this may take 10-30 minutes)..." "Yellow"
+            Write-Status "Installing workloads: C++ Desktop Development" "DarkGray"
+
+            $vsArgs = @(
+                "--add", "Microsoft.VisualStudio.Workload.NativeDesktop",
+                "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100",
+                "--passive", "--norestart", "--wait"
+            )
+            $vsProc = Start-Process -FilePath $vsInstallerPath -ArgumentList $vsArgs -Wait -PassThru
+            if ($vsProc.ExitCode -ne 0 -and $vsProc.ExitCode -ne 3010) {
+                Write-Host ""
+                Write-Host "ERROR: VS installer exited with code $($vsProc.ExitCode)" -ForegroundColor Red
+                Write-Host "Check the installer log for details." -ForegroundColor Red
+                exit 1
+            }
+
+            Write-Host ""
+            Write-Host "Visual Studio Community installed successfully." -ForegroundColor Green
+            Write-Host "IMPORTANT: Restart your PowerShell session, then re-run this script." -ForegroundColor Yellow
+            Write-Host "  pwsh setup-dependencies.ps1" -ForegroundColor White
+            exit 0
+        } else {
+            Write-Host ""
+            Write-Host "ERROR: Visual Studio with C++ tools not found." -ForegroundColor Red
+            Write-Host ""
+            Write-Host "Options:" -ForegroundColor White
+            Write-Host "  1. Install manually from: https://visualstudio.microsoft.com/downloads/" -ForegroundColor Gray
+            Write-Host "     Select 'Desktop development with C++' workload" -ForegroundColor Gray
+            Write-Host ""
+            Write-Host "  2. Re-run this script with -InstallVS to auto-install VS Community:" -ForegroundColor Gray
+            Write-Host "     pwsh setup-dependencies.ps1 -InstallVS" -ForegroundColor White
+            exit 1
+        }
+    }
+} else {
+    Write-Status "Not running on Windows - skipping VS detection" "DarkGray"
+    Write-Status "Build steps will be skipped (download + extract + patch only)" "DarkGray"
+}
+
+# =============================================================================
+# PHASE 0.5: Perl Detection (needed for OpenSSL build)
+# =============================================================================
+
+Write-Step "PHASE 0.5: PERL DETECTION"
+
+$script:PerlPath = $null
+
+if ($IsWindows -or (-not (Test-Path variable:IsWindows))) {
+    # Check for standalone Perl first (e.g. Strawberry Perl)
+    $perlCandidates = Get-Command perl -ErrorAction SilentlyContinue -All
+    foreach ($candidate in $perlCandidates) {
+        if ($candidate.Source -notmatch '\\usr\\bin\\') {
+            $script:PerlPath = $candidate.Source
+            break
+        }
+    }
+
+    # Fall back to Git's bundled Perl
+    if (-not $script:PerlPath) {
+        $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+        if ($gitCmd) {
+            $gitDir = Split-Path (Split-Path $gitCmd.Source)
+            $gitPerl = Join-Path $gitDir "usr\bin\perl.exe"
+            if (Test-Path $gitPerl) {
+                $script:PerlPath = $gitPerl
+            }
+        }
+    }
+
+    if ($script:PerlPath) {
+        Write-Status "Found Perl: $script:PerlPath" "Green"
+    } else {
+        Write-Status "WARNING: Perl not found. OpenSSL build will fail." "Yellow"
+        Write-Status "  Install Git for Windows (bundles Perl) or Strawberry Perl." "Yellow"
+    }
+} else {
+    # Linux/macOS - perl is usually available
+    $perlCmd = Get-Command perl -ErrorAction SilentlyContinue
+    if ($perlCmd) {
+        $script:PerlPath = $perlCmd.Source
+        Write-Status "Found Perl: $script:PerlPath" "Green"
+    } else {
+        Write-Status "WARNING: Perl not found." "Yellow"
+    }
+}
+
+# =============================================================================
+# PHASE 1: Download all archives
+# =============================================================================
 
 if (-not $SkipDownload) {
-    Write-Step "DOWNLOADING DEPENDENCIES"
+    Write-Step "PHASE 1: DOWNLOADING DEPENDENCIES"
 
     # Boost
     Write-Host "`n[1/7] Boost $($Dependencies.Boost.Version)" -ForegroundColor White
@@ -300,9 +474,11 @@ if (-not $SkipDownload) {
     Download-File $Dependencies.Recast.Url (Join-Path $DownloadDir $Dependencies.Recast.FileName)
 }
 
-# ---- STEP 2: Extract and arrange ----
+# =============================================================================
+# PHASE 2: Extract and arrange
+# =============================================================================
 
-Write-Step "EXTRACTING AND ARRANGING"
+Write-Step "PHASE 2: EXTRACTING AND ARRANGING"
 
 # --- Boost ---
 $boostDir = Join-Path $ExternalDir "boost"
@@ -460,10 +636,10 @@ if (-not (Test-Path (Join-Path $pythonDir "include"))) {
     Write-Status "Python: already extracted" "DarkGray"
 }
 
-# --- OpenSSL (extract source, will need manual build) ---
+# --- OpenSSL (extract source, will be patched and built later) ---
 $opensslSrcDir = Join-Path $ExternalDir "openssl_src"
 $opensslDir = Join-Path $ExternalDir "openssl"
-if (-not (Test-Path (Join-Path $opensslDir "include"))) {
+if (-not (Test-Path (Join-Path $opensslSrcDir "Configure"))) {
     Write-Status "OpenSSL: extracting source..." "White"
     Extract-Archive (Join-Path $DownloadDir $Dependencies.OpenSSL.FileName) $ExternalDir
     $extracted = Join-Path $ExternalDir "openssl-OpenSSL_1_0_1e"
@@ -477,65 +653,293 @@ if (-not (Test-Path (Join-Path $opensslDir "include"))) {
     Write-Status "OpenSSL: already extracted" "DarkGray"
 }
 
-# ---- STEP 3: Build libraries (if not skipped) ----
+# =============================================================================
+# PHASE 3: Apply VS2015+ compatibility patches
+# =============================================================================
 
-if (-not $SkipBuild) {
-    Write-Step "BUILDING LIBRARIES"
-    Write-Host ""
-    Write-Host "NOTE: Building requires Visual Studio 2012 (v120 toolset)." -ForegroundColor Yellow
-    Write-Host "Open a VS2012 x64 Native Tools Command Prompt for these steps." -ForegroundColor Yellow
-    Write-Host ""
+Write-Step "PHASE 3: APPLYING COMPATIBILITY PATCHES"
 
-    # --- Build Boost ---
-    Write-Host "[Build 1/3] Boost" -ForegroundColor White
-    Write-Host "  Run the following from a VS2012 x64 command prompt:" -ForegroundColor Gray
-    Write-Host "    cd $boostDir" -ForegroundColor Gray
-    Write-Host "    cd tools\build\v2 && bootstrap && cd ..\..\..\" -ForegroundColor Gray
-    Write-Host '    b2 -j 4 --build-dir=../boost-lib64 --stagedir=./lib64 toolset=msvc-12.0 link=static threading=multi runtime-link=shared --build-type=minimal --with-date_time --with-math --with-python --with-system --with-thread address-model=64 stage' -ForegroundColor Gray
-    Write-Host ""
-
-    # --- Build OpenSSL ---
-    Write-Host "[Build 2/3] OpenSSL 1.0.1e" -ForegroundColor White
-    Write-Host "  Requires: Perl (Strawberry Perl recommended)" -ForegroundColor Gray
-    Write-Host "  Run from a VS2012 x64 command prompt:" -ForegroundColor Gray
-    Write-Host "    cd $opensslSrcDir" -ForegroundColor Gray
-    Write-Host "    perl Configure VC-WIN64A --prefix=$opensslDir" -ForegroundColor Gray
-    Write-Host "    ms\do_win64a" -ForegroundColor Gray
-    Write-Host "    nmake -f ms\nt.mak" -ForegroundColor Gray
-    Write-Host "    nmake -f ms\nt.mak install" -ForegroundColor Gray
-    Write-Host "  This produces:" -ForegroundColor Gray
-    Write-Host "    $opensslDir\include\openssl\*.h" -ForegroundColor Gray
-    Write-Host "    $opensslDir\lib64\libeay32MT.lib, ssleay32MT.lib" -ForegroundColor Gray
-    Write-Host ""
-
-    # --- Build SOCI ---
-    Write-Host "[Build 3/3] SOCI 3.2.1" -ForegroundColor White
-    Write-Host "  SOCI is compiled as part of the solution (UnifiedKernel references soci source directly)." -ForegroundColor Gray
-    Write-Host "  The source headers in external/soci/core/ and external/soci/backends/ are used at build time." -ForegroundColor Gray
-    Write-Host "  Pre-built .lib files go in lib64/ (produced by the solution build)." -ForegroundColor Gray
-    Write-Host ""
+# Patch mapping: source file in bootstrap/patches/ -> target in external/
+$patchMap = @{
+    "boost_auto_link.hpp"   = "boost\boost\config\auto_link.hpp"
+    "soci_platform.h"       = "soci\src\core\soci-platform.h"
+    "openssl_e_os.h"        = "openssl_src\e_os.h"
+    "openssl_e_padlock.c"   = "openssl_src\engines\e_padlock.c"
 }
 
-# ---- STEP 4: Cleanup downloads (optional) ----
+$patchDescriptions = @{
+    "boost_auto_link.hpp"   = "Add vc140/vc145 toolset entries for VS2015+ auto-linking"
+    "soci_platform.h"       = "Guard snprintf/strtoll macros for VS2013+ native CRT"
+    "openssl_e_os.h"        = "Skip stdin/stdout/stderr redefinition on VS2015+ UCRT"
+    "openssl_e_padlock.c"   = "Guard x86 inline asm with _M_IX86 for x64 builds"
+}
+
+$patchesApplied = 0
+foreach ($patchFile in $patchMap.Keys) {
+    $sourcePath = Join-Path $PatchDir $patchFile
+    $targetPath = Join-Path $ExternalDir $patchMap[$patchFile]
+
+    if (-not (Test-Path $sourcePath)) {
+        Write-Status "WARNING: Patch file not found: $sourcePath" "Yellow"
+        continue
+    }
+
+    if (-not (Test-Path $targetPath)) {
+        Write-Status "SKIP: Target not yet extracted: $($patchMap[$patchFile])" "DarkGray"
+        continue
+    }
+
+    # Check if patch is already applied by comparing file contents
+    $sourceHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash
+    $targetHash = (Get-FileHash $targetPath -Algorithm SHA256).Hash
+
+    if ($sourceHash -eq $targetHash) {
+        Write-Status "Already patched: $patchFile" "DarkGray"
+    } else {
+        Copy-Item -Path $sourcePath -Destination $targetPath -Force
+        Write-Status "Patched: $($patchMap[$patchFile])" "Green"
+        Write-Status "  -> $($patchDescriptions[$patchFile])" "DarkGray"
+        $patchesApplied++
+    }
+}
+
+Write-Status "$patchesApplied patch(es) applied" "White"
+
+# --- Generate user-config.jam for Boost ---
+Write-Status "" "White"
+Write-Status "Generating Boost user-config.jam..." "White"
+
+$userConfigPath = Join-Path $boostDir "user-config.jam"
+$templatePath = Join-Path $TemplateDir "user-config.jam.template"
+
+if ($script:ClExePath -and (Test-Path $templatePath)) {
+    # Determine MSVC toolset version for b2
+    # VCToolsVersion is like "14.50.35717" - we want "14.5" for b2
+    $toolsetVer = $script:VCToolsVersion
+    if ($toolsetVer -match '^(\d+)\.(\d+)') {
+        $major = $Matches[1]
+        $minor = $Matches[2]
+        # b2 toolset version: major.minor with trailing zeros stripped
+        # 14.50 -> 14.5, 14.30 -> 14.3, etc.
+        $minorTrimmed = $minor.TrimEnd('0')
+        if ($minorTrimmed -eq '') { $minorTrimmed = '0' }
+        $b2Toolset = "$major.$minorTrimmed"
+    } else {
+        $b2Toolset = "14.5"
+        Write-Status "WARNING: Could not parse VCToolsVersion, defaulting to 14.5" "Yellow"
+    }
+
+    $clPathEscaped = $script:ClExePath -replace '\\', '\\\\'
+    $template = Get-Content $templatePath -Raw
+    $generated = $template -replace '\{\{MSVC_TOOLSET_VERSION\}\}', $b2Toolset
+    $generated = $generated -replace '\{\{MSVC_CL_PATH\}\}', $clPathEscaped
+
+    Set-Content -Path $userConfigPath -Value $generated -NoNewline
+    Write-Status "Generated: $userConfigPath" "Green"
+    Write-Status "  MSVC toolset: msvc-$b2Toolset" "DarkGray"
+    Write-Status "  cl.exe: $script:ClExePath" "DarkGray"
+} elseif (Test-Path $userConfigPath) {
+    Write-Status "user-config.jam already exists, keeping current version" "DarkGray"
+} else {
+    Write-Status "WARNING: Cannot generate user-config.jam (no cl.exe found or template missing)" "Yellow"
+    Write-Status "  You will need to create external/boost/user-config.jam manually" "Yellow"
+}
+
+# =============================================================================
+# PHASE 4: Build libraries
+# =============================================================================
+
+if (-not $SkipBuild) {
+    Write-Step "PHASE 4: BUILDING LIBRARIES"
+
+    if (-not ($IsWindows -or (-not (Test-Path variable:IsWindows)))) {
+        Write-Status "Not running on Windows - skipping builds" "Yellow"
+        Write-Status "Build the libraries on Windows using the .bat scripts" "Yellow"
+    } else {
+        # --- Build 1/3: Boost ---
+        Write-Host ""
+        Write-Host "[Build 1/3] Boost $($Dependencies.Boost.Version)" -ForegroundColor White
+
+        $boostLibDir = Join-Path $boostDir "lib64\lib"
+        $boostLibExists = (Test-Path $boostLibDir) -and
+            ((Get-ChildItem $boostLibDir -Filter "libboost_system-*.lib" -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)
+
+        if ($boostLibExists) {
+            Write-Status "Boost: libraries already built, skipping" "DarkGray"
+            $boostLibCount = (Get-ChildItem $boostLibDir -Filter "*.lib" | Measure-Object).Count
+            Write-Status "  Found $boostLibCount .lib files in lib64/lib/" "DarkGray"
+        } else {
+            Write-Status "Building Boost (this may take several minutes)..." "White"
+            Write-Status "  Running init-boost.bat..." "DarkGray"
+
+            $initResult = cmd /c "cd /d `"$BootstrapDir`" && init-boost.bat < nul" 2>&1
+            $initExit = $LASTEXITCODE
+            if ($initExit -ne 0) {
+                Write-Status "WARNING: init-boost.bat returned exit code $initExit" "Yellow"
+                # Show last few lines of output for debugging
+                $initResult | Select-Object -Last 5 | ForEach-Object { Write-Status "  $_" "DarkGray" }
+            }
+
+            Write-Status "  Running build-boost.bat..." "DarkGray"
+            $buildResult = cmd /c "cd /d `"$BootstrapDir`" && build-boost.bat < nul" 2>&1
+            $buildExit = $LASTEXITCODE
+
+            # Verify output
+            $boostLibExists = (Test-Path $boostLibDir) -and
+                ((Get-ChildItem $boostLibDir -Filter "libboost_system-*.lib" -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)
+
+            if ($boostLibExists) {
+                $boostLibCount = (Get-ChildItem $boostLibDir -Filter "*.lib" | Measure-Object).Count
+                Write-Status "Boost: build successful ($boostLibCount .lib files)" "Green"
+            } else {
+                Write-Status "ERROR: Boost build failed - no output libraries found" "Red"
+                Write-Status "  Check build-boost.bat output for errors" "Red"
+                $buildResult | Select-Object -Last 10 | ForEach-Object { Write-Status "  $_" "DarkGray" }
+            }
+        }
+
+        # --- Build 2/3: OpenSSL ---
+        Write-Host ""
+        Write-Host "[Build 2/3] OpenSSL $($Dependencies.OpenSSL.Version)" -ForegroundColor White
+
+        $opensslLibDir = Join-Path $opensslDir "lib64"
+        $opensslLibExists = (Test-Path (Join-Path $opensslLibDir "libeay32MT.lib"))
+
+        if ($opensslLibExists) {
+            Write-Status "OpenSSL: libraries already built, skipping" "DarkGray"
+        } elseif (-not $script:PerlPath) {
+            Write-Status "OpenSSL: SKIPPED - Perl not found (required for Configure)" "Yellow"
+        } else {
+            Write-Status "Building OpenSSL (this may take 5-15 minutes)..." "White"
+            Write-Status "  Running build-openssl.bat..." "DarkGray"
+
+            $buildResult = cmd /c "cd /d `"$BootstrapDir`" && build-openssl.bat < nul" 2>&1
+            $buildExit = $LASTEXITCODE
+
+            # Verify output
+            $opensslLibExists = (Test-Path (Join-Path $opensslLibDir "libeay32MT.lib"))
+            $opensslDbgExists = (Test-Path (Join-Path $opensslLibDir "libeay32MTd.lib"))
+
+            if ($opensslLibExists) {
+                $libs = @()
+                if ($opensslLibExists) { $libs += "libeay32MT.lib" }
+                if ($opensslDbgExists) { $libs += "libeay32MTd.lib" }
+                Write-Status "OpenSSL: build successful ($($libs -join ', '))" "Green"
+            } else {
+                Write-Status "ERROR: OpenSSL build failed - no output libraries found" "Red"
+                $buildResult | Select-Object -Last 10 | ForEach-Object { Write-Status "  $_" "DarkGray" }
+            }
+        }
+
+        # --- Build 3/3: SOCI ---
+        Write-Host ""
+        Write-Host "[Build 3/3] SOCI $($Dependencies.SOCI.Version)" -ForegroundColor White
+
+        $sociDebugLib = Join-Path $ProjectRoot "lib64\debug\libsoci_core_3_2.lib"
+        $sociReleaseLib = Join-Path $ProjectRoot "lib64\release\libsoci_core_3_2.lib"
+        $sociLibExists = (Test-Path $sociDebugLib) -and (Test-Path $sociReleaseLib)
+
+        if ($sociLibExists) {
+            Write-Status "SOCI: libraries already built, skipping" "DarkGray"
+        } else {
+            Write-Status "Building SOCI (this should take about a minute)..." "White"
+            Write-Status "  Running build-soci.bat..." "DarkGray"
+
+            $buildResult = cmd /c "cd /d `"$BootstrapDir`" && build-soci.bat < nul" 2>&1
+            $buildExit = $LASTEXITCODE
+
+            # Verify output
+            $sociLibExists = (Test-Path $sociDebugLib) -and (Test-Path $sociReleaseLib)
+
+            if ($sociLibExists) {
+                Write-Status "SOCI: build successful" "Green"
+                Write-Status "  lib64/debug/libsoci_core_3_2.lib" "DarkGray"
+                Write-Status "  lib64/debug/libsoci_postgresql_3_2.lib" "DarkGray"
+                Write-Status "  lib64/release/libsoci_core_3_2.lib" "DarkGray"
+                Write-Status "  lib64/release/libsoci_postgresql_3_2.lib" "DarkGray"
+            } else {
+                Write-Status "ERROR: SOCI build failed - no output libraries found" "Red"
+                $buildResult | Select-Object -Last 10 | ForEach-Object { Write-Status "  $_" "DarkGray" }
+            }
+        }
+    }
+}
+
+# =============================================================================
+# PHASE 5: Summary and verification
+# =============================================================================
 
 Write-Host ""
-Write-Step "SUMMARY"
+Write-Step "PHASE 5: SUMMARY"
 $totalElapsed = (Get-Date) - $script:ScriptStartTime
 Write-Host ""
 Write-Host "Total time: $("{0:mm\:ss}" -f $totalElapsed)" -ForegroundColor White
 Write-Host ""
+
+# --- Verification checklist ---
+Write-Host "Verification checklist:" -ForegroundColor White
+Write-Host ""
+
+$checks = @(
+    @{ Name = "Boost headers";           Path = Join-Path $ExternalDir "boost\boost\config.hpp" }
+    @{ Name = "Boost auto_link patched"; Path = Join-Path $ExternalDir "boost\boost\config\auto_link.hpp" }
+    @{ Name = "Boost user-config.jam";   Path = Join-Path $ExternalDir "boost\user-config.jam" }
+    @{ Name = "Boost built libs";        Path = Join-Path $ExternalDir "boost\lib64\lib" }
+    @{ Name = "OpenSSL source";          Path = Join-Path $ExternalDir "openssl_src\Configure" }
+    @{ Name = "OpenSSL e_os.h patched";  Path = Join-Path $ExternalDir "openssl_src\e_os.h" }
+    @{ Name = "OpenSSL built libs";      Path = Join-Path $ExternalDir "openssl\lib64\libeay32MT.lib" }
+    @{ Name = "PostgreSQL headers";      Path = Join-Path $ExternalDir "postgresql\include\libpq-fe.h" }
+    @{ Name = "Python headers";          Path = Join-Path $ExternalDir "python\include\Python.h" }
+    @{ Name = "SOCI source";             Path = Join-Path $ExternalDir "soci\src\core\soci.h" }
+    @{ Name = "SOCI patched";            Path = Join-Path $ExternalDir "soci\src\core\soci-platform.h" }
+    @{ Name = "SOCI built libs";         Path = Join-Path $ExternalDir "..\lib64\release\libsoci_core_3_2.lib" }
+    @{ Name = "SDL headers";             Path = Join-Path $ExternalDir "SDL\include\SDL.h" }
+    @{ Name = "Recast source";           Path = Join-Path $ExternalDir "recast\Recast\Include\Recast.h" }
+)
+
+$passCount = 0
+$failCount = 0
+foreach ($check in $checks) {
+    $exists = Test-Path $check.Path
+    if ($exists) {
+        Write-Host "  [OK] $($check.Name)" -ForegroundColor Green
+        $passCount++
+    } else {
+        Write-Host "  [--] $($check.Name)" -ForegroundColor DarkGray
+        $failCount++
+    }
+}
+
+Write-Host ""
+Write-Host "  $passCount passed, $failCount not yet ready" -ForegroundColor White
+Write-Host ""
+
 Write-Host "Dependency layout:" -ForegroundColor White
 Write-Host "  external/" -ForegroundColor Gray
 Write-Host "    boost/          - Boost 1.55.0 source + built libs in lib64/lib/" -ForegroundColor Gray
-Write-Host "    openssl/        - OpenSSL 1.0.1e headers + libs" -ForegroundColor Gray
+Write-Host "    openssl_src/    - OpenSSL 1.0.1e patched source" -ForegroundColor Gray
+Write-Host "    openssl/        - OpenSSL 1.0.1e headers + built libs in lib64/" -ForegroundColor Gray
 Write-Host "    postgresql/     - PostgreSQL 9.2.24 headers + libpq.lib" -ForegroundColor Gray
 Write-Host "    python/         - Python 3.4.1 headers + import libs" -ForegroundColor Gray
-Write-Host "    soci/           - SOCI 3.2.1 source (headers used directly)" -ForegroundColor Gray
+Write-Host "    soci/           - SOCI 3.2.1 patched source" -ForegroundColor Gray
 Write-Host "    SDL/            - SDL 1.2.15 headers + libs" -ForegroundColor Gray
 Write-Host "    recast/         - Recast/Detour source (built by Recast.vcxproj)" -ForegroundColor Gray
 Write-Host "    _downloads/     - Cached archives (safe to delete)" -ForegroundColor Gray
 Write-Host ""
+Write-Host "  lib64/" -ForegroundColor Gray
+Write-Host "    debug/          - SOCI debug libraries" -ForegroundColor Gray
+Write-Host "    release/        - SOCI release libraries" -ForegroundColor Gray
+Write-Host ""
+
+if ($failCount -eq 0) {
+    Write-Host "All dependencies ready. Open W-NG.sln in Visual Studio and build!" -ForegroundColor Green
+} elseif ($SkipBuild) {
+    Write-Host "Extract and patch complete. Re-run without -SkipBuild to build libraries." -ForegroundColor Yellow
+} else {
+    Write-Host "Some dependencies are not ready. Check the warnings above." -ForegroundColor Yellow
+}
+
+Write-Host ""
 Write-Host "To clean up download cache:" -ForegroundColor DarkGray
 Write-Host "  Remove-Item '$DownloadDir' -Recurse" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "Done!" -ForegroundColor Green
