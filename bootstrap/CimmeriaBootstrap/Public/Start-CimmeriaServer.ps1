@@ -47,7 +47,8 @@ function Start-CimmeriaServer {
                 $pgLogFile = Join-Path $paths.ServerDir "logs\postgresql.log"
                 $pgLogDir = Split-Path $pgLogFile
                 New-Item -ItemType Directory -Path $pgLogDir -Force | Out-Null
-                $pgCtlResult = Start-Process -FilePath $pgCtl -ArgumentList "start","-D",$pgDataDir,"-l",$pgLogFile,"-w","-o","-p $Port" `
+                $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -w -o `"-p $Port`""
+                $pgCtlResult = Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs `
                     -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $pgLogDir "pgctl_stdout.log") -RedirectStandardError (Join-Path $pgLogDir "pgctl_stderr.log")
                 Get-Content (Join-Path $pgLogDir "pgctl_stdout.log") -ErrorAction SilentlyContinue | ForEach-Object {
                     Write-Status "  $_" "DarkGray"

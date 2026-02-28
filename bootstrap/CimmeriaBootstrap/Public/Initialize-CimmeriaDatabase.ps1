@@ -70,7 +70,8 @@ function Initialize-CimmeriaDatabase {
             Write-Status "Starting PostgreSQL on port $Port..." "White"
             # pg_ctl start spawns postgres as a child that can inherit stdout,
             # keeping a pipe open forever. Use Start-Process to isolate it.
-            $pgCtlResult = Start-Process -FilePath $pgCtl -ArgumentList "start","-D",$pgDataDir,"-l",$pgLogFile,"-w","-o","-p $Port" `
+            $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -w -o `"-p $Port`""
+            $pgCtlResult = Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs `
                 -NoNewWindow -Wait -PassThru -RedirectStandardOutput (Join-Path $pgLogDir "pgctl_stdout.log") -RedirectStandardError (Join-Path $pgLogDir "pgctl_stderr.log")
             Get-Content (Join-Path $pgLogDir "pgctl_stdout.log") -ErrorAction SilentlyContinue | ForEach-Object {
                 Write-Status "  $_" "DarkGray"
