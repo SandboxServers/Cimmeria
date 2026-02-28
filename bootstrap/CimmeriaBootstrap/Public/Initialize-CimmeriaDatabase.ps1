@@ -111,16 +111,20 @@ function Initialize-CimmeriaDatabase {
     if ($tableCheck -match '1') {
         Write-Status "Schemas already loaded (account table exists)." "DarkGray"
     } else {
-        Write-Status "Loading resources.sql (resource types and tables)..." "White"
+        Write-Status "Loading resources.sql (~126K lines, this may take a minute)..." "White"
+        $lineCount = 0
         & $psqlExe -p $Port -U "w-testing" -d sgw -v ON_ERROR_STOP=1 -f $resourcesSql 2>&1 | ForEach-Object {
+            $lineCount++
             if ($_ -match 'ERROR|FATAL') {
                 Write-Status "  $_" "Red"
+            } elseif ($lineCount % 10000 -eq 0) {
+                Write-Status "  $lineCount lines processed..." "DarkGray"
             }
         }
         if ($LASTEXITCODE -ne 0) {
             throw "resources.sql failed (exit code $LASTEXITCODE). Aborting - a partial schema is worse than none."
         }
-        Write-Status "resources.sql loaded." "Green"
+        Write-Status "resources.sql loaded ($lineCount statements)." "Green"
 
         Write-Status "Loading sgw.sql (game schema + test data)..." "White"
         & $psqlExe -p $Port -U "w-testing" -d sgw -v ON_ERROR_STOP=1 -f $sgwSql 2>&1 | ForEach-Object {
