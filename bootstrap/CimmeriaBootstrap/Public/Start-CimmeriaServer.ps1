@@ -30,7 +30,7 @@ function Start-CimmeriaServer {
     )
 
     $paths = Get-ProjectPaths
-    $binDir = Join-Path $paths.ProjectRoot "bin64\$($Configuration.ToLower())"
+    $binDir = Join-Path $paths.ProjectRoot "bin64"
 
     Write-Step "STARTING CIMMERIA SERVER"
 

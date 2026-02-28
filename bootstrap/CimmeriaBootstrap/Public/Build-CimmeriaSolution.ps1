@@ -78,7 +78,7 @@ function Build-CimmeriaSolution {
     }
 
     # Verify executables
-    $binDir = Join-Path $paths.ProjectRoot "bin64\$($Configuration.ToLower())"
+    $binDir = Join-Path $paths.ProjectRoot "bin64"
     $suffix = if ($Configuration -eq "Debug") { "_d" } else { "" }
 
     $expectedExes = @(

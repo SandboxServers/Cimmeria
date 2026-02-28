@@ -24,7 +24,7 @@ function Initialize-CimmeriaRuntime {
     )
 
     $paths = Get-ProjectPaths
-    $binDir = Join-Path $paths.ProjectRoot "bin64\$($Configuration.ToLower())"
+    $binDir = Join-Path $paths.ProjectRoot "bin64"
 
     if (-not (Test-Path $binDir)) {
         New-Item -ItemType Directory -Path $binDir -Force | Out-Null
