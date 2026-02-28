@@ -49,8 +49,8 @@ Configurations: Debug, Release, UnoptRelease, MinSizeRel
 Platforms: Win32, x64
 
 Bootstrap dependencies:
-1. `init-boost.bat` - Initialize Boost submodules
-2. `build-boost.bat` - Build Boost libraries
+1. `setup-dependencies.ps1` - Automated: download, patch, and build everything
+2. Or manually: `bootstrap/init-boost.bat`, `bootstrap/build-boost.bat`, `bootstrap/build-openssl.bat`, `bootstrap/build-soci.bat`
 
 ### Config Notes
 
@@ -185,13 +185,13 @@ Agents with deep expertise in the exact dependency versions currently in use.
 **Expertise:**
 - Visual Studio 2012 .sln/.vcxproj project structure
 - MSBuild configurations (Debug/Release/UnoptRelease/MinSizeRel x Win32/x64)
-- Boost bootstrap and build scripts (build-boost.bat, init-boost.bat)
+- Boost bootstrap and build scripts (bootstrap/build-boost.bat, bootstrap/init-boost.bat)
 - External dependency layout and linking (external/ directory structure)
 - Library output management (lib64/debug, lib64/release)
 - Static vs dynamic linking patterns in the project
 - Windows-specific build considerations
 
-**Key files:** `W-NG.sln`, `projects/**/*.vcxproj`, `build-boost.bat`, `init-boost.bat`
+**Key files:** `W-NG.sln`, `projects/**/*.vcxproj`, `bootstrap/build-boost.bat`, `bootstrap/init-boost.bat`
 
 **When to use:** Build failures, adding new projects/libraries, dependency updates, CI/CD setup, build configuration changes.
 
