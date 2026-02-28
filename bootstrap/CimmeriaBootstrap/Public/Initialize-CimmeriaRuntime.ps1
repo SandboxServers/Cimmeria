@@ -39,8 +39,8 @@ function Initialize-CimmeriaRuntime {
     $dlls = @(
         @{ Name = "python34.dll";    Source = Join-Path $pythonDir "python34.dll";            Desc = "Python 3.4 runtime (Boost.Python)" }
         @{ Name = "libpq.dll";       Source = Join-Path $pgServerBin "libpq.dll";             Desc = "PostgreSQL client library (SOCI)" }
-        @{ Name = "libintl.dll";     Source = Join-Path $pgServerBin "libintl.dll";           Desc = "libpq dependency" }
-        @{ Name = "libiconv-2.dll";  Source = Join-Path $pgServerBin "libiconv-2.dll";        Desc = "libpq dependency" }
+        @{ Name = "libintl-8.dll";   Source = Join-Path $pgServerBin "libintl-8.dll";          Desc = "libpq dependency" }
+        @{ Name = "iconv.dll";       Source = Join-Path $pgServerBin "iconv.dll";             Desc = "libpq dependency" }
         @{ Name = "ssleay32.dll";    Source = Join-Path $pgServerBin "ssleay32.dll";          Desc = "libpq dependency (PG OpenSSL)" }
         @{ Name = "libeay32.dll";    Source = Join-Path $pgServerBin "libeay32.dll";          Desc = "libpq dependency (PG OpenSSL)" }
     )
