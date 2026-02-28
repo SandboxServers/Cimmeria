@@ -342,19 +342,21 @@ function Install-CimmeriaDependencies {
     Write-Step "PHASE 3: APPLYING COMPATIBILITY PATCHES"
 
     $patchMap = @{
-        "boost_auto_link.hpp"    = "boost\boost\config\auto_link.hpp"
-        "soci_platform.h"        = "soci\src\core\soci-platform.h"
-        "soci_backends_config.h" = "soci\src\core\soci_backends_config.h"
-        "openssl_e_os.h"         = "openssl_src\e_os.h"
-        "openssl_e_padlock.c"    = "openssl_src\engines\e_padlock.c"
+        "boost_auto_link.hpp"              = "boost\boost\config\auto_link.hpp"
+        "soci_platform.h"                  = "soci\src\core\soci-platform.h"
+        "soci_backends_config.h"           = "soci\src\core\soci_backends_config.h"
+        "soci_postgresql_statement.cpp"    = "soci\src\backends\postgresql\statement.cpp"
+        "openssl_e_os.h"                   = "openssl_src\e_os.h"
+        "openssl_e_padlock.c"              = "openssl_src\engines\e_padlock.c"
     }
 
     $patchDescriptions = @{
-        "boost_auto_link.hpp"    = "Add vc140/vc145 toolset entries for VS2015+ auto-linking"
-        "soci_platform.h"        = "Guard snprintf/strtoll macros for VS2013+ native CRT"
-        "soci_backends_config.h" = "Generate CMake config header for static-link build"
-        "openssl_e_os.h"         = "Skip stdin/stdout/stderr redefinition on VS2015+ UCRT"
-        "openssl_e_padlock.c"    = "Guard x86 inline asm with _M_IX86 for x64 builds"
+        "boost_auto_link.hpp"              = "Add vc140/vc145 toolset entries for VS2015+ auto-linking"
+        "soci_platform.h"                  = "Guard snprintf/strtoll macros for VS2013+ native CRT"
+        "soci_backends_config.h"           = "Generate CMake config header for static-link build"
+        "soci_postgresql_statement.cpp"    = "Treat unknown PG types (custom enums) as strings instead of throwing"
+        "openssl_e_os.h"                   = "Skip stdin/stdout/stderr redefinition on VS2015+ UCRT"
+        "openssl_e_padlock.c"              = "Guard x86 inline asm with _M_IX86 for x64 builds"
     }
 
     $patchesApplied = 0
