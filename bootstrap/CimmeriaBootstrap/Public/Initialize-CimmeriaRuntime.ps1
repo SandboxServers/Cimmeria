@@ -80,5 +80,20 @@ function Initialize-CimmeriaRuntime {
         Write-Status "Run Install-CimmeriaDependencies to ensure all dependencies are extracted." "Yellow"
     }
 
+    # Stage Python standard library (embedded Python needs encodings, codecs, etc.)
+    $pythonLib = Join-Path $pythonDir "Lib"
+    $destLib = Join-Path $binDir "Lib"
+    if (Test-Path $pythonLib) {
+        if (-not (Test-Path (Join-Path $destLib "encodings"))) {
+            Write-Status "Staging Python standard library (Lib/)..." "White"
+            Copy-Item -Path $pythonLib -Destination $destLib -Recurse -Force
+            Write-Status "Staged: Lib/ - Python 3.4 standard library" "Green"
+        } else {
+            Write-Status "Already staged: Lib/" "DarkGray"
+        }
+    } else {
+        Write-Status "WARNING: Python Lib/ not found. Run Install-CimmeriaDependencies to extract." "Yellow"
+    }
+
     Write-Status "Initialize-CimmeriaRuntime complete." "Green"
 }

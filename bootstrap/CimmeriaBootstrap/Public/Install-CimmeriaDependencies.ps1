@@ -261,6 +261,17 @@ function Install-CimmeriaDependencies {
                     Write-Status "Python: WARNING - python34.dll not found in MSI extract" "Yellow"
                 }
 
+                # Extract standard library (needed for embedded Python to find encodings, etc.)
+                $libDir = Get-ChildItem $pyTempDir -Recurse -Directory -Filter "Lib" | Select-Object -First 1
+                if ($libDir) {
+                    $destLib = Join-Path $pythonDir "Lib"
+                    if (Test-Path $destLib) { Remove-Item $destLib -Recurse -Force }
+                    Copy-Item -Path $libDir.FullName -Destination $destLib -Recurse -Force
+                    Write-Status "Python: extracted standard library (Lib/)" "DarkGray"
+                } else {
+                    Write-Status "Python: WARNING - Lib/ directory not found in MSI extract" "Yellow"
+                }
+
                 Write-Status "Python: cleaning temp files..." "DarkGray"
                 Remove-Item $pyTempDir -Recurse -Force -ErrorAction SilentlyContinue
             }
