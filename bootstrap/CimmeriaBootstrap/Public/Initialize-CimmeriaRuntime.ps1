@@ -95,5 +95,20 @@ function Initialize-CimmeriaRuntime {
         Write-Status "WARNING: Python Lib/ not found. Run Install-CimmeriaDependencies to extract." "Yellow"
     }
 
+    # Stage Python compiled extension modules (_socket.pyd, _ssl.pyd, etc.)
+    $pythonDlls = Join-Path $pythonDir "DLLs"
+    $destDlls = Join-Path $binDir "DLLs"
+    if (Test-Path $pythonDlls) {
+        if (-not (Test-Path (Join-Path $destDlls "_socket.pyd"))) {
+            Write-Status "Staging Python extension modules (DLLs/)..." "White"
+            Copy-Item -Path $pythonDlls -Destination $destDlls -Recurse -Force
+            Write-Status "Staged: DLLs/ - Python 3.4 compiled extensions" "Green"
+        } else {
+            Write-Status "Already staged: DLLs/" "DarkGray"
+        }
+    } else {
+        Write-Status "WARNING: Python DLLs/ not found. Run Install-CimmeriaDependencies to extract." "Yellow"
+    }
+
     Write-Status "Initialize-CimmeriaRuntime complete." "Green"
 }

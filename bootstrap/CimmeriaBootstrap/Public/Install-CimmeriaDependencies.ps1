@@ -272,6 +272,17 @@ function Install-CimmeriaDependencies {
                     Write-Status "Python: WARNING - Lib/ directory not found in MSI extract" "Yellow"
                 }
 
+                # Extract compiled extension modules (_socket.pyd, _ssl.pyd, etc.)
+                $dllsDir = Get-ChildItem $pyTempDir -Recurse -Directory -Filter "DLLs" | Select-Object -First 1
+                if ($dllsDir) {
+                    $destDlls = Join-Path $pythonDir "DLLs"
+                    if (Test-Path $destDlls) { Remove-Item $destDlls -Recurse -Force }
+                    Copy-Item -Path $dllsDir.FullName -Destination $destDlls -Recurse -Force
+                    Write-Status "Python: extracted extension modules (DLLs/)" "DarkGray"
+                } else {
+                    Write-Status "Python: WARNING - DLLs/ directory not found in MSI extract" "Yellow"
+                }
+
                 Write-Status "Python: cleaning temp files..." "DarkGray"
                 Remove-Item $pyTempDir -Recurse -Force -ErrorAction SilentlyContinue
             }
