@@ -1,0 +1,286 @@
+<root>
+
+    <Properties>
+        <!-- list of who has detected me being in stealth -->
+        <entitiesDetectedStealth>
+            <Type>          PYTHON          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       {}              </Default>
+        </entitiesDetectedStealth>
+
+        <!-- timer for when to update stealth value when being detected -->
+        <stealthTimer>
+            <Type>          CONTROLLER_ID   </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       0               </Default>
+        </stealthTimer>
+
+        <!-- controller ID of default stealth detector -->
+        <stealthDefaultDetector>
+            <Type>          CONTROLLER_ID   </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       0               </Default>
+        </stealthDefaultDetector>
+
+        <!-- controller ID of default reveal detector -->
+        <revealDefaultDetector>
+            <Type>          CONTROLLER_ID   </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       0               </Default>
+        </revealDefaultDetector>
+
+        <Alignment>
+            <Type>          UINT8           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </Alignment>
+        
+        <faction>
+            <Type>          UINT8           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </faction>
+       
+        <Archetype>
+            <Type>          UINT8           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </Archetype>
+
+        <threatenedMobs>
+            <Type>          ARRAY <of> INT32 </of>   </Type>
+            <Flags>         CELL_PUBLIC              </Flags>
+        </threatenedMobs>
+
+        <!-- Timestamp of when an "enter combat" state was recieved: based on BigWorld.time() -->
+        <lastCombatTime>
+            <Type>          FLOAT           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </lastCombatTime>
+
+        <!-- Timestamp of the last time regen were pulsed: based on BigWorld.time() -->
+        <lastRegenTime>
+            <Type>          FLOAT           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </lastRegenTime>
+
+        <!-- Timer ID for the Health and Regen Pulse -->
+        <regenTimerID>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </regenTimerID>
+
+         <!-- IDs for all the cover set entities I am in -->
+         <NearCoverSetIDs>
+             <Type>          PYTHON          </Type>
+             <Default>       set()           </Default>
+             <Flags>         CELL_PRIVATE    </Flags>
+         </NearCoverSetIDs>
+        
+        <!-- Indicates how many successive shots have been made against the current target -->
+        <successiveShots>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </successiveShots>
+        
+        <!-- Indicates the target which the combatant currently has a successive shot bonus against -->
+        <successiveShotsTarget>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </successiveShotsTarget>
+        
+        <!-- Timestamp of when the last successive target attack was used: based on BigWorld.time() -->
+        <lastSuccessiveShotTime>
+            <Type>          FLOAT           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </lastSuccessiveShotTime>
+                
+        <!-- Turns on or off health/focus regen debug -->
+        <bHealDebug>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE      </Flags>
+        </bHealDebug>
+        
+        <!-- The following are the stat dictionaries, which contain any property that can be buffed/debuffed -->
+        <!-- These are cell public fixed dictionaries -->
+        <!-- These are contained in 6 different dictionaries: statsBaseMin, statsBaseCurrent, statsBaseMax, statsMin, statsCurrent, statsMax -->
+        <statsBaseMin>
+            <Type>          StatList                </Type>
+            <Default>       {}                      </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </statsBaseMin>
+        
+        <statsBaseCurrent>
+            <Type>          StatList                </Type>
+            <Default>       {}                      </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </statsBaseCurrent>
+        
+        <statsBaseMax>
+            <Type>          StatList                </Type>
+            <Default>       {}                      </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </statsBaseMax>
+        
+        <statsMin>
+            <Type>          StatList                </Type>
+            <Default>       {}                      </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </statsMin>
+        
+        <statsCurrent>
+            <Type>          StatList                </Type>
+            <Default>       {}                      </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </statsCurrent>
+        
+        <statsMax>
+            <Type>          StatList                </Type>
+            <Default>       {}                      </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </statsMax>
+
+        <reloadTimerId>
+            <Type>          CONTROLLER_ID           </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </reloadTimerId>
+        
+        <currentAmmoType>
+            <Type>          INT32                   </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </currentAmmoType>
+
+    </Properties>
+
+    <ClientMethods>
+        
+        <onStatUpdate>
+            <Arg> StatUpdateList <ArgName>Stats</ArgName></Arg>
+        </onStatUpdate>
+
+        <onStatBaseUpdate>
+            <Arg> StatUpdateList <ArgName>Stats</ArgName></Arg>
+        </onStatBaseUpdate>
+                
+        <onMeleeRangeUpdate>
+            <Arg>    INT32    <ArgName>range</ArgName></Arg>
+        </onMeleeRangeUpdate>
+
+        <onArchetypeUpdate>
+            <Arg>    INT32    <ArgName>archetype</ArgName></Arg>
+        </onArchetypeUpdate>
+        
+        <onAlignmentUpdate>
+            <Arg>    INT8     <ArgName>alignment</ArgName></Arg>
+        </onAlignmentUpdate>
+        
+        <onFactionUpdate>
+            <Arg>    INT8     <ArgName>faction</ArgName></Arg>
+        </onFactionUpdate>
+        
+    </ClientMethods>
+
+    <CellMethods>
+    
+        <onAttacked>
+            <Arg>       MAILBOX     </Arg>  <!-- Cell mailbox of the entity who attacked us -->
+            <Arg>       INT32       </Arg>  <!-- Health change -->
+            <Arg>       INT32       </Arg>  <!-- Focus change -->
+            <Arg>       UINT8       </Arg>  <!-- EDamageType -->
+        </onAttacked>
+
+        <!-- Called by a mob when combatant is added to their threat list -->
+        <onAddedToThreatList>
+            <Arg>           INT32            </Arg> <!-- the mob that has added this combatant to their threat list -->
+        </onAddedToThreatList>
+
+        <!-- Called by a mob when combatant is removed from their threat list -->
+        <onRemovedFromThreatList>
+            <Arg>           INT32            </Arg> <!-- the mob that has removed this combatant from their threat list -->
+        </onRemovedFromThreatList>
+
+        <!-- Called when an ability is invoked that causes threat to mobs that I have threatened -->
+        <invokeThreatFromAbility>
+            <Arg>           MAILBOX        </Arg> <!-- the target of the ability -->
+            <Arg>           INT32          </Arg> <!-- the ability type -->
+            <Arg>           INT32          </Arg> <!-- the ability threat level value -->
+            <Arg>           INT32          </Arg> <!-- the ability taunt adjustment -->
+            <Arg>           INT32          </Arg> <!-- the number of points (ie. health, focus, etc) -->
+        </invokeThreatFromAbility>
+
+        <!-- command to toggle crouch, this can be invoked by the player and its implementation should call onCrouchToggled for all clients -->
+        <setCrouched>
+            <Exposed/>
+            <Arg>            INT8    <ArgName>enabled</ArgName>          </Arg>
+        </setCrouched>
+        
+        <toggleHealDebug>
+          <Exposed/>
+        </toggleHealDebug>
+
+        <onStealthDetected>
+            <Arg>    INT32    </Arg> <!-- entity id of who detected combatant -->
+            <Arg>    INT32    </Arg> <!-- detection rating -->
+            <Arg>    INT8     </Arg> <!-- bool: true = detected, false = stopped detecting -->
+        </onStealthDetected>
+
+        <_addAoIException>
+            <Arg>    INT32    </Arg> <!-- entity id -->
+            <Arg>    INT32    </Arg> <!-- reason bit -->
+        </_addAoIException>
+        
+        <_removeAoIException>
+            <Arg>    INT32    </Arg> <!-- entity id -->
+            <Arg>    INT32    </Arg> <!-- reason bit -->
+        </_removeAoIException>
+        
+        <adjustStat>
+            <Arg>       STRING      </Arg>  <!-- Stat Name -->
+            <Arg>       INT32       </Arg>  <!-- damage type -->
+            <Arg>       INT32       </Arg>  <!-- Modifier to current -->
+            <Arg>       INT32       </Arg>  <!-- Modifier to min -->
+            <Arg>       INT32       </Arg>  <!-- Modifier to max -->
+            <Arg>       INT32       </Arg>  <!-- Modifier to baseCurrent -->
+            <Arg>       INT32       </Arg>  <!-- Modifier to baseMin -->
+            <Arg>       INT32       </Arg>  <!-- Modifier to baseMax -->
+            <Arg>       FLOAT       </Arg>  <!-- Mitigation if any -->
+            <Arg>       PYTHON       </Arg>  <!-- Runtime dictionary -->
+        </adjustStat>
+        
+        <adjustStats>
+            <Arg>       ARRAY <of> PYTHON</of>  </Arg>  <!-- Stat name, Amount, and Type to adjust to adjust -->
+            <Arg>       INT32                   </Arg>  <!-- ID of the source of this list of changes -->
+            <Arg>       INT32                   </Arg>  <!-- ID of the cause of this list of changes -->
+            <Arg>       INT32                   </Arg>  <!-- ID of the source of the cause of this list of changes -->
+            <Arg>       INT8                    </Arg>  <!-- enum with what kind of cause this was (hit, crit, etc) -->
+        </adjustStats>
+
+        <onEnterCoverSet>
+            <Arg>    INT32    </Arg> <!-- cover set entity id -->
+        </onEnterCoverSet>
+
+        <onLeaveCoverSet>
+            <Arg>    INT32    </Arg> <!-- cover set entity id -->
+        </onLeaveCoverSet>
+
+        <!-- Request to holster or unholster the active weapon -->
+        <requestHolsterWeapon>
+            <Exposed/>
+            <Arg>    INT8    <ArgName>aHolster</ArgName>  </Arg>
+        </requestHolsterWeapon>
+        
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+</root>

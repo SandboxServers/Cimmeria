@@ -1,0 +1,68 @@
+<root>
+
+    <Properties>
+
+        <!-- group authority groups -->
+        <authGroups>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         BASE            </Flags>
+        </authGroups>
+
+        <!-- ID of this GroupAuthority  -->
+        <authorityID>
+            <Type>          INT8            </Type>
+            <Default>       -1              </Default>
+            <Flags>         BASE            </Flags>
+        </authorityID>
+        
+        <!-- Object that allocates group ids. -->
+        <lastTempID>
+            <Type>          INT32           </Type>
+            <Flags>         BASE            </Flags>
+        </lastTempID>
+
+    </Properties>
+        
+    <CellMethods>
+    </CellMethods>
+
+    <BaseMethods>
+
+        <!-- Entities invoke this on the group authority to add themselves to a permanant group -->
+        <joinGroup>
+            <Arg>   WSTRING  </Arg>      <!-- Type of group to create -->
+            <Arg>   PYTHON  </Arg>      <!-- GroupID - can be None -->
+            <Arg>   MAILBOX </Arg>      <!-- Callers's Base Mailbox -->
+            <Arg>   PYTHON  </Arg>      <!-- name -->
+            <Arg>   PYTHON  </Arg>      <!-- dbID -->
+        </joinGroup>
+
+        <!-- Entities invoke this on the group authority to remove themselves from a group -->
+        <leaveGroup>
+            <Arg>   PYTHON  </Arg>      <!-- GroupID.  must be valid -->
+            <Arg>   MAILBOX </Arg>      <!-- Leaving entity's Base Mailbox -->
+            <Arg>   PYTHON  </Arg>      <!-- invoker dbID -->
+            <Arg>   MAILBOX </Arg>      <!-- Invoker of the leave -->
+            <Arg>   INT8    </Arg>      <!-- Why the caller is leaving -->
+        </leaveGroup>
+
+        <!-- Entities invoke this on the group authority to remove themselves from a group -->
+        <leaveGroupByName>
+            <Arg>   PYTHON  </Arg>      <!-- GroupID.  must be valid -->
+            <Arg>   WSTRING </Arg>       <!-- Leaving entity's name -->
+            <Arg>   PYTHON  </Arg>      <!-- invoker dbID -->
+            <Arg>   MAILBOX </Arg>      <!-- Invoker of the leave -->
+            <Arg>   INT8    </Arg>      <!-- Why the caller is leaving -->
+        </leaveGroupByName>
+        
+        <!-- Calls a method on the passed group -->
+        <callMethodOnGroup>
+            <Arg>   INT32   </Arg>      <!-- Id of a group we want to call a method on -->
+            <Arg>   STRING  </Arg>      <!-- Name of the method we want to call -->
+            <Arg>   PYTHON  </Arg>      <!-- List of arguments to pass to the method -->
+        </callMethodOnGroup>
+        
+    </BaseMethods>
+
+</root>

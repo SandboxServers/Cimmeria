@@ -1,0 +1,10 @@
+<?xml version="1.0" charset="UTF-8"?>
+<root>    
+    <!-- Persisted body component data -->
+    <DbBodyComponent> FIXED_DICT
+        <Properties>
+            <playerId><Type>INT32</Type></playerId>
+            <component><Key /><Type>WSTRING</Type></component>
+        </Properties>
+    </DbBodyComponent>
+</root>

@@ -1,0 +1,35 @@
+<root>
+    <ELogCategory>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>LC_Uncategorized</Name>  <Value>0</Value></Token> <!-- Uncategorized events -->
+            <Token><Name>LC_CharManagement</Name>  <Value>1</Value></Token> <!-- Character creation/deletion/selection -->
+            <Token><Name>LC_Resources</Name>  <Value>2</Value></Token> <!-- Cooked resources -->
+            <Token><Name>LC_Minigame</Name>  <Value>3</Value></Token> <!-- Minigame sessions -->
+            <Token><Name>LC_Chat</Name>  <Value>4</Value></Token> <!-- Chat messages/events -->
+            <Token><Name>LC_Stargate</Name>  <Value>5</Value></Token> <!-- Gate dialing and travel -->
+            <Token><Name>LC_Mail</Name>  <Value>6</Value></Token> <!-- Gate mail -->
+            <Token><Name>LC_Mission</Name>  <Value>7</Value></Token> <!-- Mission accept/complete/fail, status changes -->
+            <Token><Name>LC_Mob</Name>  <Value>8</Value></Token> <!-- Mob AI -->
+            <Token><Name>LC_Item</Name>  <Value>9</Value></Token> <!-- Gate mail -->
+            <Token><Name>LC_Location</Name>  <Value>10</Value></Token> <!-- Location change (teleport, ...) -->
+            <Token><Name>LC_Ability</Name>  <Value>11</Value></Token> <!-- Ability and effect system -->
+            <Token><Name>LC_Interact</Name>  <Value>12</Value></Token> <!-- Entity interaction -->
+            <Token><Name>LC_Cash</Name>  <Value>13</Value></Token> <!-- Cash receive/send, pickup, buy, sell -->
+            <Token><Name>LC_LogInOut</Name>  <Value>14</Value></Token> <!-- Player login, logout -->
+            <Token><Name>LC_Crafting</Name>  <Value>15</Value></Token> <!-- Disciplines, crafting, alloying, rev engineering -->
+			<Token><Name>LC_Event</Name>  <Value>16</Value></Token> <!-- Generation of custom events -->
+			<Token><Name>LC_Visuals</Name>  <Value>17</Value></Token> <!-- Kismet event sequences, appearance updates, ... -->
+        </Tokens>
+    </ELogCategory>
+	
+	<!-- Error conditions that we need to handle but don't have error codes in SGW -->
+	<ECustomError>
+        <Tokens>
+            <!-- Character name too short or already in use -->
+            <Token><Name>ERROR_InvalidCharacterName</Name> <Value>20001</Value></Token>
+            <!-- Failed to create a cell part for a base entity -->
+            <Token><Name>ERROR_CellLoginFailed</Name> <Value>20002</Value></Token>
+        </Tokens>
+    </ECustomError>
+</root>

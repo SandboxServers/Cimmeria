@@ -1,0 +1,106 @@
+<root>
+
+    <Implements>
+    </Implements>
+
+    <Volatile>
+    </Volatile>
+
+    <Properties>
+
+        <!-- contact list information -->
+        <contactLists>
+            <Type>       PYTHON         </Type>
+            <Flags>      CELL_PRIVATE   </Flags>
+            <Default>    {}             </Default>
+        </contactLists>
+
+    </Properties>
+
+    <ClientMethods>
+
+        <onContactListUpdate>
+            <Arg>  INT32    <ArgName>  aListId   </ArgName>  </Arg>
+            <Arg>  WSTRING  <ArgName>  aName     </ArgName>  </Arg>
+            <Arg>  UINT32   <ArgName>  aFlags    </ArgName>  </Arg>
+        </onContactListUpdate>
+
+        <onContactListDelete>
+            <Arg>  INT32   <ArgName>  aListId   </ArgName>  </Arg>
+        </onContactListDelete>
+
+        <onContactListAddMembers>
+            <Arg>  INT32                       <ArgName>  aListId       </ArgName>  </Arg>
+            <Arg>  ARRAY <of> WSTRING </of>    <ArgName>  aPlayerNames  </ArgName>  </Arg>
+        </onContactListAddMembers>
+
+        <onContactListRemoveMembers>
+            <Arg>  INT32                    <ArgName>  aListId       </ArgName>  </Arg>
+            <Arg>  ARRAY <of> WSTRING </of> <ArgName>  aPlayerNames  </ArgName>  </Arg>
+        </onContactListRemoveMembers>
+
+        <onContactListEvent>
+            <Arg>  WSTRING    <ArgName>  aPlayerName  </ArgName>  </Arg>
+            <Arg>  UINT32     <ArgName>  aEventId     </ArgName>  </Arg>
+            <Arg>  INT32      <ArgName>  aDataValue   </ArgName>  </Arg>
+        </onContactListEvent>
+
+    </ClientMethods>
+    
+    <CellMethods>   
+
+        <contactListCreate>
+            <Exposed/>
+            <Arg>  WSTRING  <ArgName>  aName   </ArgName>  </Arg>
+            <Arg>  UINT32   <ArgName>  aFlags  </ArgName>  </Arg>
+        </contactListCreate>
+
+        <contactListDelete>
+            <Exposed/>
+            <Arg>  INT32  <ArgName>  aListId  </ArgName>  </Arg>
+        </contactListDelete>
+
+        <contactListRename>
+            <Exposed/>
+            <Arg>  INT32    <ArgName>  aListId  </ArgName>  </Arg>
+            <Arg>  WSTRING  <ArgName>  aName   </ArgName>  </Arg>
+        </contactListRename>
+
+        <contactListFlagsUpdate>
+            <Exposed/>
+            <Arg>  INT32   <ArgName>  aListId  </ArgName>  </Arg>
+            <Arg>  UINT32  <ArgName>  aFlags   </ArgName>  </Arg>
+        </contactListFlagsUpdate>
+
+        <contactListAddMembers>
+            <Exposed/>
+            <Arg>  INT32                       <ArgName>  aListId       </ArgName>  </Arg>
+            <Arg>  ARRAY <of> WSTRING </of>    <ArgName>  aPlayerNames  </ArgName>  </Arg>
+        </contactListAddMembers>
+
+        <contactListRemoveMembers>
+            <Exposed/>
+            <Arg>  INT32                       <ArgName>  aListId       </ArgName>  </Arg>
+            <Arg>  ARRAY <of> WSTRING </of>    <ArgName>  aPlayerNames  </ArgName>  </Arg>
+        </contactListRemoveMembers>
+
+    </CellMethods>
+
+    <BaseMethods>
+
+        <sendEventToPlayers>
+            <Arg>  UINT32                      <ArgName>  aEventId      </ArgName>  </Arg>
+            <Arg>  INT32                       <ArgName>  aDataValue    </ArgName>  </Arg>
+            <Arg>  ARRAY <of> WSTRING </of>    <ArgName>  aPlayerNames  </ArgName>  </Arg>
+        </sendEventToPlayers>
+
+        <sendLoginStatusMessages>
+            <Arg>  ARRAY <of> WSTRING </of>    <ArgName>  aPlayerNames  </ArgName>  </Arg>
+        </sendLoginStatusMessages>
+
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

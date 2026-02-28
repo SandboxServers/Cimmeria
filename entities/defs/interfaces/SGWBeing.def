@@ -1,0 +1,303 @@
+<root>
+
+    <Implements>
+    </Implements>
+
+    <Volatile>
+        <yaw/>
+    </Volatile>
+
+    <Properties>
+
+        <!-- A non-unique name for this Being -->
+        <beingName>
+            <Type>          WSTRING			</Type>
+            <Flags>         CELL_PUBLIC     </Flags>
+            <Default>       An Individual   </Default>
+        </beingName>
+
+        <!-- This beings current level -->
+        <level>
+            <Type>          INT8            </Type>
+            <Flags>         CELL_PUBLIC     </Flags>
+            <Default>       1               </Default>
+        </level>
+
+        <visibilityID>   <!-- ID of the visibilty controller that lets vision systems see me -->
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </visibilityID>
+
+        <!-- Targetting Data -->
+        <targetID>
+            <Type>        INT32            </Type>
+            <Flags>       CELL_PUBLIC      </Flags>
+            <Default>     0                </Default>
+        </targetID>
+        
+        <!-- State Data Data -->
+        <bStateField>
+            <Type>        INT32            </Type>
+            <Flags>       CELL_PUBLIC      </Flags>
+            <Default>     0                </Default>
+        </bStateField>
+        
+        <primaryColorId>
+            <Type>      UINT32           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </primaryColorId>
+            
+        <secondaryColorId>
+            <Type>      UINT32           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </secondaryColorId>
+        
+        <skinColorId>
+            <Type>      UINT32           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </skinColorId>
+
+
+        <currentComponentList>
+            <Type>          ARRAY <of> WSTRING </of> </Type>
+            <Flags>         CELL_PUBLIC              </Flags>
+        </currentComponentList>
+
+        <disguiseEnabled>
+            <Type>          INT8           </Type>
+            <Default>       0              </Default>
+            <Flags>         CELL_PUBLIC    </Flags>
+        </disguiseEnabled>
+
+        <disguiseStaticMeshName>
+            <Type>          WSTRING			</Type>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </disguiseStaticMeshName>
+
+        <disguiseBodySet>
+            <Type>          WSTRING			</Type>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </disguiseBodySet>
+
+        <disguiseComponentList>
+            <Type>          ARRAY <of> WSTRING </of>  </Type>
+            <Flags>         CELL_PUBLIC              </Flags>
+        </disguiseComponentList>
+
+        <disguiseFaction>
+            <Type>          INT8           </Type>
+            <Default>       -1             </Default>
+            <Flags>         CELL_PUBLIC    </Flags>
+        </disguiseFaction>
+
+        <disguiseTimerId>
+            <Type>          CONTROLLER_ID  </Type>
+            <Default>       0              </Default>
+            <Flags>         CELL_PRIVATE   </Flags>
+        </disguiseTimerId>
+
+        <disguiseReduction>
+            <Type>          INT32          </Type>
+            <Default>       0              </Default>
+            <Flags>         CELL_PRIVATE   </Flags>
+        </disguiseReduction>
+
+        <disguiseVisionId>
+            <Type>          CONTROLLER_ID  </Type>
+            <Default>       0              </Default>
+            <Flags>         CELL_PRIVATE   </Flags>
+        </disguiseVisionId>
+
+        <petList>
+            <Type>       ARRAY <of> MAILBOX </of>    </Type>
+            <Flags>      CELL_PRIVATE                </Flags>
+        </petList>
+
+        <movementType>
+            <Type>    UINT8         </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+        </movementType>
+
+        <!-- active detectors on entity -->
+        <detectors>
+            <Type>      PYTHON         </Type>
+            <Flags>     CELL_PRIVATE   </Flags>
+            <Default>   {}             </Default>
+        </detectors>
+
+        <!-- callbacks to make when certain vision bits are changed -->
+        <visionChangeCallbacks>
+            <Type>      ARRAY <of> PYTHON </of>  </Type>
+            <Flags>     CELL_PRIVATE             </Flags>
+        </visionChangeCallbacks>
+
+        <!-- reasons why entities are in the AoI exception list -->
+        <visionExceptions>
+            <Type>     PYTHON          </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  {}              </Default>
+        </visionExceptions>
+
+        <deathAbilityId>
+            <Type>          INT32            </Type>
+            <Flags>         CELL_PRIVATE     </Flags>
+            <Default>       0                </Default>
+        </deathAbilityId>
+        
+    </Properties>
+    
+    <ClientMethods>
+            
+        <!-- TimerUpdate : Send any time an ability, item, or effect timer needs to be updated on the client -->
+        <onTimerUpdate>
+            <Arg>   INT32   <ArgName>ID</ArgName></Arg>                     <!-- ID:  Can be an abililty, item, or effect   -->
+            <Arg>   INT8    <ArgName>Type</ArgName></Arg>                   <!-- Type: Denotes which type of ID we are dealing with (ability, item, cooldown, etc) -->            
+            <Arg>   INT32   <ArgName>SourceID</ArgName></Arg>               <!-- SourceID:  The being that this timer is associated to  -->
+            <Arg>   INT32   <ArgName>SecondaryId</ArgName></Arg>            <!-- SecondaryId:  The instance of the ability/effect, etc  -->
+            <Arg>   FLOAT   <ArgName>TotalTime</ArgName></Arg>              <!-- TotalTime: Total duration of this cooldown or effect   -->
+            <Arg>   FLOAT   <ArgName>BigWorldTimeComplete</ArgName></Arg>   <!-- BigWorldTimeComplete: BigWorld time that this timer will complete  -->
+        </onTimerUpdate>
+        
+        <onEffectUserData>
+            <Arg>   INT32					<ArgName>InstanceId</ArgName></Arg>
+            <Arg>   ARRAY<of>WSTRING</of>	<ArgName>UserDataNames</ArgName></Arg>
+            <Arg>   ARRAY<of>WSTRING</of>	<ArgName>UserDataValues</ArgName></Arg>
+        </onEffectUserData>
+
+        <!-- ClientEffectResults: After each ability is executed, the effect ressults are gathered up and sent in this message -->
+        <onEffectResults>
+            <Arg>	INT32					<ArgName> SourceID				</ArgName></Arg><!-- ID of who launched the effect -->
+            <Arg>	INT32					<ArgName> AbilityID				</ArgName></Arg><!-- ID of the Ability that caused the effect -->
+            <Arg> 	INT32					<ArgName> EffectID				</ArgName></Arg><!-- ID of the effect -->
+            <Arg> 	INT32					<ArgName> TargetID				</ArgName></Arg><!-- ID of who got hit -->
+            <Arg>	UINT8					<ArgName> ResultCode			</ArgName></Arg><!-- How badly you got hit (normal, glancing, immune, Crit, etc) -->
+            <Arg> 	ClientEffectResultList 	<ArgName>ClientEffectResultList	</ArgName></Arg><!-- Custom dictionary specifying a single result  -->
+        </onEffectResults>
+        
+        <onLevelUpdate>
+            <Arg>   INT32   <ArgName>Level</ArgName>            </Arg>
+        </onLevelUpdate>
+        
+        <onTargetUpdate>
+            <Arg>   INT32   <ArgName>TargetId</ArgName>         </Arg>
+        </onTargetUpdate>
+        
+        <onBeingNameUpdate>
+            <Arg>   WSTRING  <ArgName>BeingName</ArgName>        </Arg>
+        </onBeingNameUpdate>
+
+        <onTopSpeedUpdate>
+            <Arg>   FLOAT   <ArgName>TopSpeed</ArgName>         </Arg>
+        </onTopSpeedUpdate>
+        
+        <onStateFieldUpdate>
+            <Arg>   INT32   <ArgName>bStateField</ArgName>         </Arg>
+        </onStateFieldUpdate>
+
+    </ClientMethods>
+    
+    <CellMethods>
+
+        <setTargetID>
+            <Exposed/>
+            <Arg>        INT32        <ArgName>aTargetID</ArgName></Arg>        <!-- The EntityID of the new target -->
+        </setTargetID>
+
+        <onPetSpawn>
+            <Arg>    INT32    </Arg> <!-- entity id of pet -->
+            <Arg>    MAILBOX  </Arg> <!-- Base mailbox of our pet -->
+        </onPetSpawn>
+
+        <onPetDeath>
+            <Arg>    INT32    </Arg> <!-- entity id of pet -->
+            <Arg>    MAILBOX  </Arg> <!-- Base mailbox of our pet -->
+        </onPetDeath>
+
+        <onPetDetection>
+            <Arg>    INT32    </Arg> <!-- entity id of pet -->
+            <Arg>    INT32    </Arg> <!-- detected entity id -->
+        </onPetDetection>
+
+        <setMovementType>
+            <Exposed/>
+            <Arg>    UINT8   <ArgName>aMovementType</ArgName>  </Arg> <!-- type of movement to switch to -->
+        </setMovementType>
+        
+        <toggleStateField>
+            <Arg>    INT32     </Arg> <!-- field to toggle -->
+        </toggleStateField>
+        
+        <setStateField>
+            <Arg>    INT32     </Arg> <!-- field to set -->
+            <Arg>    INT8      </Arg> <!-- True/False to set it to --> 
+        </setStateField>
+
+        <registerVisionChangeCallback>
+            <Arg>    MAILBOX  </Arg> <!-- entity base mailbox -->
+            <Arg>    INT32    </Arg> <!-- vision bits -->
+            <Arg>    STRING   </Arg> <!-- method name -->
+        </registerVisionChangeCallback>
+            
+        <unregisterVisionChangeCallback>
+            <Arg>    MAILBOX  </Arg> <!-- entity base mailbox -->
+            <Arg>    INT32    </Arg> <!-- vision bits -->
+            <Arg>    STRING   </Arg> <!-- method name -->
+        </unregisterVisionChangeCallback>
+            
+        <enableDisguise>
+            <Arg>    INT32   </Arg> <!-- entity id -->
+            <Arg>    INT8    </Arg> <!-- bool visuals -->
+            <Arg>    INT8    </Arg> <!-- bool faction -->
+            <Arg>    INT8    </Arg> <!-- bool inner self -->
+            <Arg>    INT8    </Arg> <!-- bool with items -->
+        </enableDisguise>
+        
+        <enableDisguiseByDef>
+            <Arg>   PYTHON   </Arg><!-- Mob Def -->
+        </enableDisguiseByDef>
+            
+        <reduceDisguiseRating>
+            <Arg>    INT32   </Arg> <!-- reduction amount -->
+        </reduceDisguiseRating>
+
+        <stopMovement>
+        </stopMovement>
+            
+        <restoreMovement>
+        </restoreMovement>
+
+	<addVisionExceptions>
+		<Arg>           ARRAY <of> INT32 </of> <ArgName>aVisibleEntities</ArgName> </Arg>
+	</addVisionExceptions>
+
+	<removeVisionExceptions>
+		<Arg>           ARRAY <of> INT32 </of> <ArgName>aVisibleEntities</ArgName> </Arg>
+	</removeVisionExceptions>
+
+            
+    </CellMethods>
+
+    <BaseMethods>
+
+        <onDeath/>
+
+        <onDespawn/>
+
+	<gmSummonCallback>
+		<Arg> MAILBOX <ArgName>cellMailbox</ArgName></Arg>
+		<Arg> WSTRING <ArgName>areaKey</ArgName></Arg>
+		<Arg> WSTRING <ArgName>areaName</ArgName></Arg>
+	        <Arg> VECTOR3 <ArgName>Location</ArgName></Arg>
+	        <Arg> VECTOR3 <ArgName>Direction</ArgName></Arg>
+	</gmSummonCallback>
+
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

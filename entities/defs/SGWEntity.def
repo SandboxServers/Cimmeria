@@ -1,0 +1,142 @@
+<root>
+
+    <ServerOnly />
+
+    <Implements>
+        <Interface>DistributionGroupMember</Interface>
+        <Interface>EventParticipant</Interface>
+    </Implements>
+
+    <Volatile>
+        <position/>
+	<yaw/> <!-- If any direction is specified, yaw is used. -->
+	<pitch/> <!-- If two are specified, yaw and pitch are used -->
+	<roll/> <!-- If three are specified, yaw, pitch, roll are used -->
+    </Volatile>
+
+    <Properties>
+        <!-- Database ID of this entity -->
+        <dbID>
+            <Type>          DBID            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </dbID>
+        
+        <!-- ID of the next request -->
+        <nextRequestID>
+            <Type>          INT32           </Type>
+            <Default>       1               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </nextRequestID>  
+        
+        <!-- Mapping of request ids to data -->
+        <pendingRequests>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </pendingRequests>
+        
+        <!-- Timer Data -->
+        <timers>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </timers>
+                
+        <createOnCell>
+            <Type>          MAILBOX         </Type>
+            <Flags>         BASE            </Flags>
+        </createOnCell>
+                
+    </Properties>
+    
+    <ClientMethods>
+    
+    </ClientMethods>
+    
+    <CellMethods>
+
+        <DespawnMe>
+        </DespawnMe>
+
+        <!-- Called by the Database module when a command this executed has been responded to.
+             Not meant for general use  -->
+        <onDatabaseResponse>
+            <Arg>           PYTHON          </Arg>              <!-- Results -->
+        </onDatabaseResponse>
+
+        <onShutdown>
+            <Arg>           INT8            </Arg>              <!-- How long until shutdown -->
+            <Arg>           INT8            </Arg>              <!-- Was this link death?  -->
+        </onShutdown>
+
+        <teleportTo>
+            <Arg>           MAILBOX         </Arg>              <!-- Cell mailbox of entity near target -->
+            <Arg>           VECTOR3         </Arg>              <!-- Target position -->
+            <Arg>           VECTOR3         </Arg>              <!-- Target orientation -->
+        </teleportTo>
+        
+        <onTargeted>
+            <Arg>           INT32           </Arg>              <!-- ID of entity that just targeted us -->
+            <Arg>           MAILBOX         </Arg>              <!-- Cell mailbox of entity that just targeted us -->
+        </onTargeted>
+        
+        <!-- Called by a witnessing entity, when this entity enters its AOI.
+             Not meant for general use  -->
+        <onWitnessAdded>
+            <Arg>           MAILBOX          </Arg>              <!-- witnessing entity -->
+            <Arg>           INT8             </Arg>              <!-- what AOI entity entered -->
+        </onWitnessAdded>
+        
+        <getInfo>
+            <Arg>           PYTHON          </Arg>              <!-- List of attributes to send back -->
+            <Arg>           PYTHON          </Arg>              <!-- Callback -->
+        </getInfo>
+
+		
+        <logEvent>
+            <Arg> INT32  </Arg><!--aEventID-->
+            <Arg> INT32  </Arg><!--aOtherID-->
+            <Arg> INT8   </Arg><!--aInteractionDirection-->
+            <Arg> WSTRING </Arg><!--aP1-->
+            <Arg> WSTRING </Arg><!--aP2-->
+            <Arg> WSTRING </Arg><!--aP3-->
+            <Arg> WSTRING </Arg><!--aP4-->
+            <Arg> WSTRING </Arg><!--aNotes-->
+        </logEvent>
+        
+        <logPetition>
+            <Arg>           WSTRING          </Arg>
+        </logPetition>
+        
+        <logChatSent>
+            <Arg> UINT8 </Arg><!--aChannel-->
+            <Arg> WSTRING </Arg><!--aChatText-->
+        </logChatSent>
+        
+        <logChatRecievedPrivate>
+            <Arg> PYTHON  </Arg><!--aSenderInfo-->
+            <Arg> WSTRING </Arg><!--aChatText-->
+        </logChatRecievedPrivate>
+        
+        <requestRunActions>
+            <Arg>   PYTHON  </Arg>
+            <Arg>   PYTHON  </Arg>
+            <Arg>   INT32   </Arg>
+            <Arg>   PYTHON  </Arg>
+        </requestRunActions>
+        
+    </CellMethods>
+
+    <BaseMethods>
+        <DespawnMe>
+        </DespawnMe>
+
+        <DespawnWhenFree>
+        </DespawnWhenFree>
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

@@ -1,0 +1,55 @@
+<root>
+	
+	<Parent>SGWEntity</Parent>
+	
+	<Implements>
+    </Implements>
+
+<!--	Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+	<ServerOnly />
+
+	<Properties>
+		<spaceCreatorBaseMB>
+	            <Type>          MAILBOX          </Type>
+	            <Flags>         BASE </Flags>
+		</spaceCreatorBaseMB>
+
+		<mobID>
+			<Type>	INT32 </Type>
+			<Default> 0 </Default>
+			<Flags> CELL_PRIVATE </Flags>
+		</mobID>
+
+
+		<visibilityID>
+			<Type>	INT32 </Type>
+			<Default> 0 </Default>
+			<Flags> CELL_PRIVATE </Flags>
+		</visibilityID>
+
+		<playerRespawnerDetection>
+			<Type>	INT32 </Type>
+			<Default> 0 </Default>
+			<Flags> CELL_PRIVATE </Flags>
+		</playerRespawnerDetection>
+
+	</Properties>
+	
+	<ClientMethods>
+	</ClientMethods>
+	
+	<CellMethods>   
+		<registerPlayerRespawner>
+			<Arg> MAILBOX <ArgName>aSpaceCreatorBaseMB</ArgName> </Arg>
+			<Arg> INT32 <ArgName>aRespawnerMobID</ArgName> </Arg>
+		</registerPlayerRespawner>
+	</CellMethods>
+
+	<BaseMethods> 
+	</BaseMethods>
+
+	<LoDLevels>
+	</LoDLevels>
+
+</root>

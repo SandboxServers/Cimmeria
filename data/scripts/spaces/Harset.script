@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Harset" Type="Level" NextId="22">
+	<Node Id="2" Ref="Event_EntityInteract" X="-170" Y="-64">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="HarsetRingLeftBottom"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Act_RingTransportDlg" X="51" Y="-55">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="4"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Event_EntityInteract" X="-147" Y="51">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="HarsetRingRightBottom"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="5" Ref="Act_RingTransportDlg" X="81" Y="51">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="5"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Node Id="8" Ref="Event_EntityInteract" X="-145" Y="161">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="HarsetRingLeft"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="9" Ref="Act_RingTransportDlg" X="69" Y="168">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="6"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Node Id="10" Ref="Event_EntityInteract" X="-143" Y="287">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="HarsetRingLeftTop"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="11" Ref="Act_RingTransportDlg" X="69" Y="282">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="7"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Node Id="12" Ref="Event_EntityInteract" X="-141" Y="393">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="HarsetRingRight"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="13" Ref="Act_RingTransportDlg" X="95" Y="395">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="8"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Node Id="14" Ref="Event_GenericRegion" X="363" Y="-49">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Tag" Value="Harset.CommandCenterTransition"/>
+		<Port Name="Entered" Flags="0"/>
+		<Port Name="Invoker" Flags="0"/>
+		<Port Name="Left" Flags="0"/>
+		<Port Name="Region Id" Flags="0"/>
+	</Node>
+	<Node Id="15" Ref="Act_Teleport" X="635" Y="-46">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="World Name" Value="Harset_CmdCenter"/>
+		<Port Name="Destination" Flags="2"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Target" Flags="2"/>
+		<Port Name="World Name" Flags="0"/>
+	</Node>
+	<Node Id="16" Ref="Var_Vec3" X="364" Y="73">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="0,0.355,-20"/>
+		<Property Name="Variable Name" Value=""/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Connection OutNode="2" OutPort="Out" InNode="3" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="3" InPort="Player"/>
+	<Connection OutNode="4" OutPort="Out" InNode="5" InPort="In"/>
+	<Connection OutNode="4" OutPort="Player" InNode="5" InPort="Player"/>
+	<Connection OutNode="8" OutPort="Out" InNode="9" InPort="In"/>
+	<Connection OutNode="8" OutPort="Player" InNode="9" InPort="Player"/>
+	<Connection OutNode="10" OutPort="Out" InNode="11" InPort="In"/>
+	<Connection OutNode="10" OutPort="Player" InNode="11" InPort="Player"/>
+	<Connection OutNode="12" OutPort="Out" InNode="13" InPort="In"/>
+	<Connection OutNode="12" OutPort="Player" InNode="13" InPort="Player"/>
+	<Connection OutNode="14" OutPort="Entered" InNode="15" InPort="In"/>
+	<Connection OutNode="16" OutPort="Value" InNode="15" InPort="Destination"/>
+	<Connection OutNode="14" OutPort="Invoker" InNode="15" InPort="Target"/>
+	<Comment Id="0" Text="Ring Transporters" X="-216" Y="-96" Width="503" Height="574" Color="5"/>
+	<Comment Id="0" Text="Harset -&gt; Command Center gate" X="308" Y="-95" Width="484" Height="275" Color="0"/>
+</Script>

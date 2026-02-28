@@ -1,0 +1,2849 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Nodes Version="1.2">
+	<!--
+						DATABASE REFERENCE TYPES
+	-->
+	
+	<!--
+		DatabaseRef-s are database lookup helpers.
+		Each ref has two subnodes:
+			FindByName: Should return two columns (an object ID and a name); {VALUE} is a substitution for the search term
+			FindById: Should return one column (object name); {VALUE} is a substitution for the object ID
+	-->
+	<DatabaseRef Ref="Ability" NullValue="0">
+		<FindByName>select ability_id, name from resources.abilities where name ilike '%{VALUE}%'</FindByName>
+		<FindById>select name from resources.abilities where ability_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="Dialog" NullValue="0">
+		<FindByName>
+			select dialog_id, string_agg(text, '; ')
+			from resources.dialogs
+			inner join resources.dialog_screens using (dialog_id)
+			where text ilike '%{VALUE}%'
+			group by dialog_id
+			limit 50
+		</FindByName>
+		<FindById>
+			select string_agg(text, '; ')
+			from resources.dialogs
+			inner join resources.dialog_screens using (dialog_id)
+			where dialog_id = {VALUE}
+		</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="DialogSetMap" NullValue="0">
+		<FindByName>
+			select dialog_set_map_id, topic_text ||
+			       coalesce(' - ' || (
+				       select string_agg(text, '; ')
+					   from resources.dialog_screens ds
+					   where ds.dialog_id = dsm.dialog_id), '')
+			from resources.dialog_set_maps dsm
+			where topic_text ilike '%{VALUE}%'
+			limit 50
+		</FindByName>
+		<FindById>
+			select topic_text ||
+			       coalesce(' - ' || (
+				       select string_agg(text, '; ')
+					   from resources.dialog_screens ds
+					   where ds.dialog_id = dsm.dialog_id), '')
+			from resources.dialog_set_maps dsm
+			where dialog_set_map_id = {VALUE}
+		</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="Effect" NullValue="0">
+		<FindByName>select effect_id, effect_desc from resources.effects where effect_desc ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select effect_desc from resources.effects where effect_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="EntityTemplate" NullValue="0">
+		<FindByName>select template_id, template_name from resources.entity_templates where template_name ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select template_name from resources.entity_templates where template_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="EventSet" NullValue="0">
+		<FindByName>select event_set_id, name from resources.event_sets where name ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select name from resources.event_sets where event_set_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="GenericRegion" NullValue="0">
+		<FindByName>select set_id, name from resources.point_sets where name ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select name from resources.point_sets where set_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="Item" NullValue="0">
+		<FindByName>select item_id, name from resources.items where name ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select name from resources.items where item_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="Mission" NullValue="0">
+		<FindByName>select mission_id, history_text from resources.missions where history_text ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select history_text from resources.missions where mission_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="MissionStep" NullValue="0">
+		<FindByName>select step_id, step_display_log_text from resources.mission_steps where step_display_log_text ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select step_display_log_text from resources.mission_steps where step_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="MissionObjective" NullValue="0">
+		<FindByName>select objective_id, display_log_text from resources.mission_objectives where display_log_text ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select display_log_text from resources.mission_objectives where objective_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="MissionTask" NullValue="0">
+		<FindByName>select task_id, task_id from resources.mission_tasks where task_id::varchar ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select task_id from resources.mission_tasks where task_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="RingTransportRegion" NullValue="0">
+		<FindByName>select region_id, tag from resources.ring_transport_regions where tag ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select tag from resources.ring_transport_regions where region_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="Sequence" NullValue="0">
+		<FindByName>select sequence_id, kismet_script_name from resources.sequences where kismet_script_name ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select kismet_script_name from resources.sequences where sequence_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="Stargate" NullValue="0">
+		<FindByName>select stargate_id, name from resources.stargates where name ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select name from resources.stargates where stargate_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="Text" NullValue="0">
+		<FindByName>select moniker_id, text from resources.texts where text ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select text from resources.texts where moniker_id = {VALUE}</FindById>
+	</DatabaseRef>
+	
+	<DatabaseRef Ref="World" NullValue="0">
+		<FindByName>select world_id, world from resources.worlds where world ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select world from resources.worlds where world_id = {VALUE}</FindById>
+	</DatabaseRef>
+
+
+
+	<!--
+	                   SCRIPT VARIABLE TYPES 
+	-->
+	
+	<!--
+		Each node is a placeable object in the editor.
+		Ref: Reference name (this is the one that gets saved in .script files)
+		Name: Name that appears when placing and displaying the node.
+		Type: One of four predefined types: Action, Condition, Variable, Event
+		Category: User defined custom category (empty string = no category), appears when placing a node
+		Description: Additional information about the node
+	-->
+	<Node Ref="Var_Bool" Name="Boolean Var" Type="Variable" Category="">
+		<Description>Logical (true/false) variable</Description>
+		<!--
+			Nodes have connection points (called ports).
+			Name: Display name of port
+			Type: Type of data sent/received. Only ports of the same type can be connected.
+			      The "Trigger" special type means that the port is an action trigger, not a data flow port.
+			Direction: in (receives signal from other ports) / out (emits signal to other ports).
+			DefaultHide: Hide the port by default, only show when it is connected or the user selects all ports.
+			Required: Is a connection to this port necessary for the proper operation of the node?
+			          This only raises a warning and is not enforced when generating scripts.
+					  
+			The optional contents of the element contains a script that is executed when the node is triggered.
+			(This is only available for Direction=in and Type=Trigger
+		-->
+		<Port Name="Set" Type="Boolean" Direction="in" DefaultHide="false" Required="false">
+			VAR.W{Value} = VAR.R{Set}
+			PROPAGATE{Value}
+		</Port>
+		<Port Name="Value" Type="Boolean" Direction="out" DefaultHide="false" Required="false" />
+		<!--
+			Properties are user settable values.
+			These can only be set when editing the script and not during execution (unlike variable ports).
+				Name: Displayed name of the property
+				Type: Either a built-in type (Integer, Float, String, Boolean, Entity) or an enum from Enumerations.xml
+				DefaultValue: Value assigned to the property when a new node is created or an old one is upgraded
+				DatabaseRef (optional): Which database ref should be used to browse the database for matches
+		-->
+		<Property Name="Variable Name" Type="String" DefaultValue="" />
+		<Property Name="Value" Type="Boolean" DefaultValue="false" />
+		<Property Name="Persistent" Type="Boolean" DefaultValue="false" />
+		<Property Name="Global Variable" Type="Boolean" DefaultValue="false" />
+		<!--
+			StaticInitScript: Executed when the script module is loaded by the Python runtime.
+			StaticTeardownScript: Executed when the script module is unloaded by the Python runtime.
+			PreInitScript: Executed before the script instance is initialized (before the init scripts).
+			InitScript: Executed when the script instance is initialized.
+			TeardownScript: Executed when the script instance is being destroyed.
+			
+			Scripts are Python code fragments. The editor modifies these fragments during compilation in two ways:
+			
+			1) Special references
+			References in the form KEYWORD{Name} are replaced when compiling. The following substitutions are supported:
+			 - PROPERTY{Property Name}: Value of the property
+			 - VAR.xxx{Variable Name}: Qualified variable (self.nodeid_var_varname)
+				"xxx" is the type of dependency (list of flag characters); possible values:
+				(none): Assumes (A)ccess (either read or write) dependency
+				     A: Access (read and/or write) dependency
+					 R: Read dependency (code elimination allowed)
+					 W: Write dependency (code elimination allowed)
+			 - LOCAL{Variable Name}: Qualified local variable (self.nodeid_lvar_varname)
+			 - PROPAGATE.xxx{Variable Name}: Propagates the current value of the variable/output port (updates all connected vars)
+				"xxx" is the propagation variant (list of flag characters); possible values:
+				(none): Generates inline code if propagating for less than 3 vars, generates a function call otherwise
+				     P: Same as above, except generates "pass" if no variables are connected
+					 I: Always generate inline propagation code
+					 F: Always generate function call code
+			 - TRIGGER.xxx{Trigger Port Name}: Calls the output trigger method for the port
+				"xxx" is the trigger variant (list of flag characters); possible values:
+				(none): Generates inline code if trigger code has less than 3 lines, generates a function call otherwise
+				     P: Same as above, except generates "pass" if no ports are connected
+					 I: Always generate inline trigger code
+					 F: Always generate function call code
+			 - NODEID{}: ID of the current node
+			 - NODENAME{}: Type name of current node
+			 
+			2) Preprocessor
+			Scripts can be conditionally compiled by using preprocessor instructions of the form #INSTRUCTION (optional args)
+			Instructions:
+				#IF CONNECTED(Port Name) - compiles the fragment if the specified port is connected
+				#IF PROPERTY(Property Name) == "value" - compiles the fragment if the string representation of the property is equal to the specified value
+				#IF DEBUG - compiles the fragment if debug mode is enabled or the Debug property of the node is true
+				(#IFN (If Not) supports the same conditions as #IF but negates them)
+				#ELSE - Else clause of conditional block
+				#ELSEIF(N) <condition> - Same as #ELSE #IF(N) <condition>
+				#ENDIF - End of conditional block
+		-->
+		<PreInitScript>
+			VAR.W{Value} = PROPERTY{Value}
+			PROPAGATE{Value}
+		</PreInitScript>
+		<!--
+			PersistScript: Executed when the script variables are being saved.
+		-->
+		<PersistScript>
+			#if PROPERTY(Persistent) == "true"
+			self.savedVars['NODEID{}'] = VAR.R{Value}
+			#endif
+		</PersistScript>
+		<!--
+			RestoreScript: Executed when the script variables are being restored from a save.
+		-->
+		<RestoreScript>
+			#if PROPERTY(Persistent) == "true"
+			if 'NODEID{}' in self.savedVars:
+				VAR.W{Value} = self.savedVars['NODEID{}']
+				PROPAGATE{Value}
+			#endif
+		</RestoreScript>
+		<!--
+			Method: Defines custom named methods in the script class
+			<Method Name="onEffectInit">
+				doSomething()
+			</Method>
+		-->
+		<!--
+			Import: Contains module import statements that are required by this node
+			eg. <Import>from cell import Item</Import>
+		-->
+		<!--
+			ScriptType: Contains the list of script types where this node can be used
+			eg. <ScriptType>Effect</ScriptType>
+		-->
+	</Node>
+	
+	<Node Ref="Var_Int" Name="Integer Var" Type="Variable" Category="">
+		<Port Name="Set" Type="Integer" Direction="in" DefaultHide="false" Required="false">
+			VAR.W{Value} = VAR.R{Set}
+			PROPAGATE{Value}
+		</Port>
+		<Port Name="Value" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Variable Name" Type="String" DefaultValue="" />
+		<Property Name="Value" Type="Integer" DefaultValue="0" />
+		<Property Name="Persistent" Type="Boolean" DefaultValue="false" />
+		<Property Name="Global Variable" Type="Boolean" DefaultValue="false" />
+		<PreInitScript>
+			VAR.W{Value} = PROPERTY{Value}
+			PROPAGATE{Value}
+		</PreInitScript>
+		<PersistScript>
+			#if PROPERTY(Persistent) == "true"
+			self.savedVars['NODEID{}'] = VAR.R{Value}
+			#endif
+		</PersistScript>
+		<RestoreScript>
+			#if PROPERTY(Persistent) == "true"
+			if 'NODEID{}' in self.savedVars:
+				VAR.W{Value} = self.savedVars['NODEID{}']
+				PROPAGATE{Value}
+			#endif
+		</RestoreScript>
+	</Node>
+	
+	<Node Ref="Var_Float" Name="Float Var" Type="Variable" Category="">
+		<Port Name="Set" Type="Float" Direction="in" DefaultHide="false" Required="false">
+			VAR.W{Value} = VAR.R{Set}
+			PROPAGATE{Value}
+		</Port>
+		<Port Name="Value" Type="Float" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Variable Name" Type="String" DefaultValue="" />
+		<Property Name="Value" Type="Float" DefaultValue="0" />
+		<Property Name="Persistent" Type="Boolean" DefaultValue="false" />
+		<Property Name="Global Variable" Type="Boolean" DefaultValue="false" />
+		<PreInitScript>
+			VAR.W{Value} = PROPERTY{Value}
+			PROPAGATE{Value}
+		</PreInitScript>
+		<PersistScript>
+			#if PROPERTY(Persistent) == "true"
+			self.savedVars['NODEID{}'] = VAR.R{Value}
+			#endif
+		</PersistScript>
+		<RestoreScript>
+			#if PROPERTY(Persistent) == "true"
+			if 'NODEID{}' in self.savedVars:
+				VAR.W{Value} = self.savedVars['NODEID{}']
+				PROPAGATE{Value}
+			#endif
+		</RestoreScript>
+	</Node>
+	
+	<Node Ref="Var_String" Name="String Var" Type="Variable" Category="">
+		<Port Name="Set" Type="String" Direction="in" DefaultHide="false" Required="false">
+			VAR.W{Value} = VAR.R{Set}
+			PROPAGATE{Value}
+		</Port>
+		<Port Name="Value" Type="String" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Variable Name" Type="String" DefaultValue="" />
+		<Property Name="Value" Type="String" DefaultValue="" />
+		<Property Name="Persistent" Type="Boolean" DefaultValue="false" />
+		<Property Name="Global Variable" Type="Boolean" DefaultValue="false" />
+		<PreInitScript>
+			VAR.W{Value} = PROPERTY{Value}
+			PROPAGATE{Value}
+		</PreInitScript>
+		<PersistScript>
+			#if PROPERTY(Persistent) == "true"
+			self.savedVars['NODEID{}'] = VAR.R{Value}
+			#endif
+		</PersistScript>
+		<RestoreScript>
+			#if PROPERTY(Persistent) == "true"
+			if 'NODEID{}' in self.savedVars:
+				VAR.W{Value} = self.savedVars['NODEID{}']
+				PROPAGATE{Value}
+			#endif
+		</RestoreScript>
+	</Node>
+	
+	<Node Ref="Var_Vec3" Name="Vector3 Var" Type="Variable" Category="">
+		<Port Name="Set" Type="Vector3" Direction="in" DefaultHide="false" Required="false">
+			VAR.W{Value} = VAR.R{Set}
+			PROPAGATE{Value}
+		</Port>
+		<Port Name="Value" Type="Vector3" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Variable Name" Type="String" DefaultValue="" />
+		<Property Name="Value" Type="Vector3" DefaultValue="0,0,0" />
+		<Property Name="Persistent" Type="Boolean" DefaultValue="false" />
+		<Property Name="Global Variable" Type="Boolean" DefaultValue="false" />
+		<PreInitScript>
+			VAR.W{Value} = self.str2vec(PROPERTY{Value})
+			PROPAGATE{Value}
+		</PreInitScript>
+		<PersistScript>
+			#if PROPERTY(Persistent) == "true"
+			self.savedVars['NODEID{}'] = VAR.R{Value}
+			#endif
+		</PersistScript>
+		<RestoreScript>
+			#if PROPERTY(Persistent) == "true"
+			if 'NODEID{}' in self.savedVars:
+				VAR.W{Value} = self.savedVars['NODEID{}']
+				PROPAGATE{Value}
+			#endif
+		</RestoreScript>
+	</Node>
+	
+	<Node Ref="Var_Entity" Name="Entity Var" Type="Variable" Category="">
+		<Port Name="Set" Type="Entity" Direction="in" DefaultHide="false" Required="false">
+			VAR.W{Value} = VAR.R{Set}
+			PROPAGATE{Value}
+		</Port>
+		<Port Name="Value" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Variable Name" Type="String" DefaultValue="" />
+		<Property Name="Global Variable" Type="Boolean" DefaultValue="false" />
+	</Node>
+	
+	<!-- TODO: This will create a circular ref; make all entities weakrefs? -->
+	<Node Ref="Var_Player" Name="Player" Type="Variable" Category="">
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<PreInitScript>
+			VAR.W{Player} = self.owner
+			PROPAGATE{Player}
+		</PreInitScript>
+	</Node>
+	
+	
+	<!--
+	                       EFFECT PARAMETERS
+	-->
+
+	
+	<Node Ref="EffectParam_Bool" Name="Effect Instance Param - Boolean" Type="Variable" Category="Effect">
+		<Name>Effect Param ({Parameter Name})</Name>
+		<Port Name="Value" Type="Boolean" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Parameter Name" Type="String" DefaultValue="" />
+		<PreInitScript>
+			VAR.W{Value} = bool(self.params.get(PROPERTY{Parameter Name}))
+			PROPAGATE{Value}
+		</PreInitScript>
+		<ScriptType>Effect</ScriptType>
+	</Node>
+	
+	<Node Ref="EffectParam_Int" Name="Effect Instance Param - Integer" Type="Variable" Category="Effect">
+		<Name>Effect Param ({Parameter Name})</Name>
+		<Port Name="Value" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Parameter Name" Type="String" DefaultValue="" />
+		<PreInitScript>
+			VAR.W{Value} = int(self.params.get(PROPERTY{Parameter Name}))
+			PROPAGATE{Value}
+		</PreInitScript>
+		<ScriptType>Effect</ScriptType>
+	</Node>
+	
+	<Node Ref="EffectParam_Float" Name="Effect Instance Param - Float" Type="Variable" Category="Effect">
+		<Name>Effect Param ({Parameter Name})</Name>
+		<Port Name="Value" Type="Float" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Parameter Name" Type="String" DefaultValue="" />
+		<PreInitScript>
+			VAR.W{Value} = float(self.params.get(PROPERTY{Parameter Name}))
+			PROPAGATE{Value}
+		</PreInitScript>
+		<ScriptType>Effect</ScriptType>
+	</Node>
+	
+	<Node Ref="EffectParam_Str" Name="Effect Instance Param - String" Type="Variable" Category="Effect">
+		<Name>Effect Param ({Parameter Name})</Name>
+		<Port Name="Value" Type="String" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Parameter Name" Type="String" DefaultValue="" />
+		<PreInitScript>
+			VAR.W{Value} = str(self.params.get(PROPERTY{Parameter Name}))
+			PROPAGATE{Value}
+		</PreInitScript>
+		<ScriptType>Effect</ScriptType>
+	</Node>
+	
+	<Node Ref="EffectParam_Vec3" Name="Effect Instance Param - Vector3" Type="Variable" Category="Effect">
+		<Name>Effect Param ({Parameter Name})</Name>
+		<Port Name="Value" Type="Vector3" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Parameter Name" Type="String" DefaultValue="" />
+		<PreInitScript>
+			VAR.W{Value} = self.params.get(PROPERTY{Parameter Name})
+			PROPAGATE{Value}
+		</PreInitScript>
+		<ScriptType>Effect</ScriptType>
+	</Node>
+	
+	<!--
+	                       EFFECT EVENTS
+	-->
+	<Node Ref="Event_Effect" Name="Effect Event" Type="Event" Category="Effect">
+		<Port Name="Effect Init" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Effect Removed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Pulse Begin" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Pulse End" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Method Name="onEffectInit">
+			#if CONNECTED(Effect Init)
+			TRIGGER{Effect Init}
+			#endif
+		</Method>
+		<Method Name="onEffectRemoved">
+			#if CONNECTED(Effect Removed)
+			TRIGGER{Effect Removed}
+			#endif
+		</Method>
+		<Method Name="onPulseBegin">
+			#if CONNECTED(Pulse Begin)
+			TRIGGER{Pulse Begin}
+			#endif
+		</Method>
+		<Method Name="onPulseEnd">
+			#if CONNECTED(Pulse End)
+			TRIGGER{Pulse End}
+			#endif
+		</Method>
+		<ScriptType>Effect</ScriptType>
+	</Node>
+	
+	<!--
+	                       MISSION EVENTS
+	-->
+	<Node Ref="Event_MissionUpdate" Name="Mission Update" Type="Event" Category="Mission">
+		<Description>Fired when the status of a mission was updated (the mission was accepted, completed, abandoned or failed).</Description>
+		<Port Name="Started" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Rewards Chosen" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			#if CONNECTED(Started)
+			def acceptedCb(args):
+				VAR.W{Player} = self.owner
+				PROPAGATE{Player}
+				TRIGGER{Started}
+				return PROPERTY{Stop Propagating Event}
+				
+			LOCAL{AcceptedId} = self.owner.subscribe("mission.accepted::" + str(PROPERTY{Mission Id}), acceptedCb, once = PROPERTY{Fire Only Once})
+			#endif
+			
+			#if CONNECTED(Completed)
+			def completedCb(args):
+				VAR.W{Player} = self.owner
+				PROPAGATE{Player}
+				TRIGGER{Completed}
+				return PROPERTY{Stop Propagating Event}
+				
+			LOCAL{CompletedId} = self.owner.subscribe("mission.completed::" + str(PROPERTY{Mission Id}), completedCb, once = PROPERTY{Fire Only Once})
+			#endif
+			
+			#if CONNECTED(Failed)
+			def failedCb(args):
+				VAR.W{Player} = self.owner
+				PROPAGATE{Player}
+				TRIGGER{Failed}
+				return PROPERTY{Stop Propagating Event}
+				
+			LOCAL{FailedId} = self.owner.subscribe("mission.failed::" + str(PROPERTY{Mission Id}), failedCb, once = PROPERTY{Fire Only Once})
+			#endif
+			
+			#if CONNECTED(Rewards Chosen)
+			def rewardsCb(args):
+				VAR.W{Player} = self.owner
+				PROPAGATE{Player}
+				TRIGGER{Rewards Chosen}
+				return PROPERTY{Stop Propagating Event}
+				
+			LOCAL{RewardsId} = self.owner.subscribe("mission.rewards_chosen::" + str(PROPERTY{Mission Id}), rewardsCb, once = PROPERTY{Fire Only Once})
+			#endif
+		</InitScript>
+		<TeardownScript>
+			#if CONNECTED(Started)
+			self.owner.unsubscribe(LOCAL{AcceptedId})
+			#endif
+			#if CONNECTED(Completed)
+			self.owner.unsubscribe(LOCAL{CompletedId})
+			#endif
+			#if CONNECTED(Failed)
+			self.owner.unsubscribe(LOCAL{FailedId})
+			#endif
+			#if CONNECTED(Rewards Chosen)
+			self.owner.unsubscribe(LOCAL{RewardsId})
+			#endif
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_MissionStepUpdate" Name="Mission Step Update" Type="Event" Category="Mission">
+		<Description>Fired when the status of a step was updated (the step was accepted, completed, abandoned or failed).</Description>
+		<Port Name="Started" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Step Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionStep" />
+	</Node>
+	
+	<Node Ref="Event_MissionObjectiveUpdate" Name="Mission Objective Update" Type="Event" Category="Mission">
+		<Description>Fired when the status of an objective was updated (the objective was accepted, completed, abandoned or failed).</Description>
+		<Port Name="Started" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Objective Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionObjective" />
+	</Node>
+	
+	<Node Ref="Event_MissionTaskUpdate" Name="Mission Task Update" Type="Event" Category="Mission">
+		<Description>Fired when the status of a task was updated (the task was accepted, completed, abandoned, failed or the progress counter was updated).</Description>
+		<Port Name="Started" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Progress Update" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Progress" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Task Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionTask" />
+	</Node>
+	
+	<!--
+		MISC EVENTS
+	-->
+	
+	<Node Ref="Event_Custom" Name="Custom Event" Type="Event" Category="Entity">
+		<Description>Triggered when a user defined event is fired from Python code.</Description>
+		<Port Name="Triggered" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Event Name" Type="String" DefaultValue="" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+		def cb(args):
+			TRIGGER.P{Triggered}
+			
+		LOCAL{EventId} = self.owner.subscribe(PROPERTY{Event Name}, cb, once = PROPERTY{Fire Only Once})
+		</InitScript>
+		<TeardownScript>
+		#if PROPERTY(Fire Only Once) == "false"
+		self.owner.unsubscribe(LOCAL{EventId})
+		#endif
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_Designer" Name="Designer" Type="Event" Category="">
+		<Description>Called when a designer event is invoked manually with the .debugevent command.</Description>
+		<Port Name="Triggered" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Event Invoker" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Event Name" Type="String" DefaultValue="" />
+		<InitScript>
+		def cb(args):
+			VAR{Event Invoker} = args['invoker']
+			PROPAGATE{Event Invoker}
+			TRIGGER.P{Triggered}
+			
+		LOCAL{EventId} = self.owner.subscribe('designer::' + PROPERTY{Event Name}, cb)
+		</InitScript>
+		<TeardownScript>
+		self.owner.unsubscribe(LOCAL{EventId})
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_Stargate" Name="Stargate" Type="Event" Category="Player">
+		<Port Name="Make Gate" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Make Gate Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Destroy Gate" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Gate Passage" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Stargate Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			#if CONNECTED(Make Gate)
+			def makeGateCb(args):
+				VAR.W{Stargate Id} = args['stargateId']
+				PROPAGATE{Stargate Id}
+				VAR.W{Entity} = self.owner
+				PROPAGATE{Entity}
+				TRIGGER{Make Gate}
+		
+			LOCAL{MakeGateSubscriptionId} = self.owner.subscribe("stargate::make", makeGateCb, once = PROPERTY{Fire Only Once})
+			#endif
+			
+			#if CONNECTED(Make Gate Failed)
+			def makeGateFailedCb(args):
+				VAR.W{Stargate Id} = args['stargateId']
+				PROPAGATE{Stargate Id}
+				VAR.W{Entity} = self.owner
+				PROPAGATE{Entity}
+				TRIGGER{Make Gate Failed}
+		
+			LOCAL{MakeGateFailedSubscriptionId} = self.owner.subscribe("stargate::makefailed", makeGateFailedCb, once = PROPERTY{Fire Only Once})
+			#endif
+			
+			#if CONNECTED(Destroy Gate)
+			def destroyGateCb(args):
+				VAR.W{Stargate Id} = args['stargateId']
+				PROPAGATE{Stargate Id}
+				VAR.W{Entity} = self.owner
+				PROPAGATE{Entity}
+				TRIGGER{Destroy Gate}
+		
+			LOCAL{DestroyGateSubscriptionId} = self.owner.subscribe("stargate::destroy", destroyGateCb, once = PROPERTY{Fire Only Once})
+			#endif
+			
+			#if CONNECTED(Gate Passage)
+			def gatePassageCb(args):
+				VAR.W{Stargate Id} = args['stargateId']
+				PROPAGATE{Stargate Id}
+				VAR.W{Entity} = self.owner
+				PROPAGATE{Entity}
+				TRIGGER{Gate Passage}
+		
+			LOCAL{GatePassageSubscriptionId} = self.owner.subscribe("stargate::passage", gatePassageCb, once = PROPERTY{Fire Only Once})
+			#endif
+		</InitScript>
+		<TeardownScript>
+			#if CONNECTED(Make Gate)
+			self.owner.unsubscribe(LOCAL{MakeGateSubscriptionId})
+			#endif
+			
+			#if CONNECTED(Make Gate Failed)
+			self.owner.unsubscribe(LOCAL{MakeGateFailedSubscriptionId})
+			#endif
+			
+			#if CONNECTED(Destroy Gate)
+			self.owner.unsubscribe(LOCAL{DestroyGateSubscriptionId})
+			#endif
+			
+			#if CONNECTED(Gate Passage)
+			self.owner.unsubscribe(LOCAL{GatePassageSubscriptionId})
+			#endif
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_Dialog" Name="Dialog Open" Type="Event" Category="Player">
+		<Description>Triggered when a dialog is displayed to the player.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Dialog Set Map Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Dialog Id" Type="Integer" DefaultValue="0" DatabaseRef="Dialog" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			def dialogCb(args):
+				VAR.W{Dialog Set Map Id} = args['dialogSetMapId']
+				PROPAGATE{Dialog Set Map Id}
+				VAR.W{Player} = args['player']
+				PROPAGATE{Player}
+				TRIGGER{Out}
+				return PROPERTY{Stop Propagating Event}
+		
+			LOCAL{SubscriptionId} = self.owner.subscribe("dialog.open::" + str(PROPERTY{Dialog Id}), dialogCb, once = PROPERTY{Fire Only Once})
+		</InitScript>
+		<TeardownScript>
+			self.owner.unsubscribe(LOCAL{SubscriptionId})
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_DialogSetMap" Name="Interaction Set Triggered" Type="Event" Category="Player">
+		<Description>Triggered when the player interacted with an entity via an interaction set map.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Target" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Dialog Set Map Id" Type="Integer" DefaultValue="0" DatabaseRef="DialogSetMap" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			def dialogSetCb(args):
+				VAR.W{Player} = args['player']
+				PROPAGATE{Player}
+				VAR.W{Target} = args['target']
+				PROPAGATE{Target}
+				TRIGGER{Out}
+				return PROPERTY{Stop Propagating Event}
+		
+			LOCAL{SubscriptionId} = self.owner.subscribe("dialog_set.open::" + str(PROPERTY{Dialog Set Map Id}), dialogSetCb, once = PROPERTY{Fire Only Once})
+		</InitScript>
+		<TeardownScript>
+			self.owner.unsubscribe(LOCAL{SubscriptionId})
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_DialogChoice" Name="Dialog Button Choice" Type="Event" Category="Player">
+		<Description>Triggered when the player selects one of the buttons in a dialog.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Button Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Dialog Id" Type="Integer" DefaultValue="0" DatabaseRef="Dialog" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			def dialogChoiceCb(args):
+				VAR.W{Button Id} = args['buttonId']
+				PROPAGATE{Button Id}
+				VAR.W{Player} = args['player']
+				PROPAGATE{Player}
+				TRIGGER{Out}
+				return PROPERTY{Stop Propagating Event}
+		
+			LOCAL{SubscriptionId} = self.owner.subscribe("dialog.choice::" + str(PROPERTY{Dialog Id}), dialogChoiceCb, once = PROPERTY{Fire Only Once})
+		</InitScript>
+		<TeardownScript>
+			self.owner.unsubscribe(LOCAL{SubscriptionId})
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_EntityInteract" Name="Interacted with Entity" Type="Event" Category="Entity">
+		<Description>Triggered when the player is trying the interact with an entity (right-clicking it ingame or via a script).</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Target" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Template Name" Type="String" DefaultValue="" />
+		<Property Name="Tag" Type="String" DefaultValue="" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			def interactCb(args):
+				VAR.W{Target} = args['target']
+				PROPAGATE{Target}
+				# TODO: Move this to a "Player Variable" node (Entity type)
+				VAR.W{Player} = self.owner
+				PROPAGATE{Player}
+				TRIGGER{Out}
+				return PROPERTY{Stop Propagating Event}
+		
+			#ifn PROPERTY(Template Name) == ""
+			LOCAL{TplSubscriptionId} = self.owner.subscribe("entity.interact.template::" + PROPERTY{Template Name}, interactCb, once = PROPERTY{Fire Only Once})
+			#endif
+			#ifn PROPERTY(Tag) == ""
+			LOCAL{TagSubscriptionId} = self.owner.subscribe("entity.interact.tag::" + PROPERTY{Tag}, interactCb, once = PROPERTY{Fire Only Once})
+			#endif
+		</InitScript>
+		<TeardownScript>
+			#ifn PROPERTY(Template Name) == ""
+			self.owner.unsubscribe(LOCAL{TplSubscriptionId})
+			#endif
+			#ifn PROPERTY(Tag) == ""
+			self.owner.unsubscribe(LOCAL{TagSubscriptionId})
+			#endif
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_Spawn" Name="Entity Spawned" Type="Event" Category="Entity">
+		<Description>Triggered when a new entity is spawned.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Template Name" Type="String" DefaultValue="" />
+		<Property Name="Tag" Type="String" DefaultValue="" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			def spawnedCb(args):
+				VAR.W{Entity} = args['entity']
+				PROPAGATE{Entity}
+				TRIGGER{Out}
+				return PROPERTY{Stop Propagating Event}
+		
+			#ifn PROPERTY(Template Name) == ""
+			LOCAL{TplSubscriptionId} = self.owner.space.subscribe("entity.spawned.template::" + PROPERTY{Template Name}, spawnedCb, once = PROPERTY{Fire Only Once})
+			#endif
+			#ifn PROPERTY(Tag) == ""
+			LOCAL{TagSubscriptionId} = self.owner.space.subscribe("entity.spawned.tag::" + PROPERTY{Tag}, spawnedCb, once = PROPERTY{Fire Only Once})
+			#endif
+		</InitScript>
+		<TeardownScript>
+			#ifn PROPERTY(Template Name) == ""
+			self.owner.space.unsubscribe(LOCAL{TplSubscriptionId})
+			#endif
+			#ifn PROPERTY(Tag) == ""
+			self.owner.space.unsubscribe(LOCAL{TagSubscriptionId})
+			#endif
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_Dead" Name="Entity Dead" Type="Event" Category="Entity">
+		<Description>Triggered when an entity dies.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<!-- TODO!
+			<Port Name="Instigator" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		-->
+		<Port Name="Entity" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Template Name" Type="String" DefaultValue="" />
+		<Property Name="Tag" Type="String" DefaultValue="" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			def deadCb(args):
+				VAR.W{Entity} = args['entity']
+				PROPAGATE{Entity}
+				TRIGGER{Out}
+				return PROPERTY{Stop Propagating Event}
+		
+			#ifn PROPERTY(Template Name) == ""
+			LOCAL{TplSubscriptionId} = self.owner.space.subscribe("entity.dead.template::" + PROPERTY{Template Name}, deadCb, once = PROPERTY{Fire Only Once})
+			#endif
+			#ifn PROPERTY(Tag) == ""
+			LOCAL{TagSubscriptionId} = self.owner.space.subscribe("entity.dead.tag::" + PROPERTY{Tag}, deadCb, once = PROPERTY{Fire Only Once})
+			#endif
+		</InitScript>
+		<TeardownScript>
+			#ifn PROPERTY(Template Name) == ""
+			self.owner.space.unsubscribe(LOCAL{TplSubscriptionId})
+			#endif
+			#ifn PROPERTY(Tag) == ""
+			self.owner.space.unsubscribe(LOCAL{TagSubscriptionId})
+			#endif
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_Stat" Name="Stat Monitor" Type="Event" Category="Entity">
+		<Port Name="Stat &gt; Value" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Stat == Value" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Stat &lt; Value" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Stat Id" Type="EStats" DefaultValue="7" />
+		<Property Name="Value" Type="Integer" DefaultValue="0" />
+		<Property Name="Type" Type="EStatType" DefaultValue="1" />
+	</Node>
+	
+	<Node Ref="Event_GenericRegion" Name="Client Hinted Generic Region" Type="Event" Category="Player">
+		<Description>Triggered when the player enters or exits a user defined box region.</Description>
+		<Port Name="Entered" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Left" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Invoker" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Region Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" DatabaseRef="GenericRegion" />
+		<Property Name="Tag" Type="String" DefaultValue="" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="false" />
+		<InitScript>
+			def regionCb(args):
+				VAR.W{Region Id} = args['regionId']
+				PROPAGATE{Region Id}
+				VAR.W{Invoker} = args['entity']
+				PROPAGATE{Invoker}
+				if args['entering']:
+					TRIGGER.P{Entered}
+				else:
+					TRIGGER.P{Left}
+		
+			LOCAL{SubscriptionId} = self.owner.subscribe("client_hinted_region::" + PROPERTY{Tag}, regionCb, once = PROPERTY{Fire Only Once})
+		</InitScript>
+		<TeardownScript>
+			if LOCAL{SubscriptionId}:
+				self.owner.unsubscribe(LOCAL{SubscriptionId})
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_ScriptLoaded" Name="Script Loaded" Type="Event" Category="">
+		<Description>Triggered when the script was initialized.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<InitScript>
+			VAR.W{Player} = self.owner
+			PROPAGATE{Player}
+			TRIGGER{Out}
+		</InitScript>
+	</Node>
+	
+	<Node Ref="Event_Loaded" Name="Player Loaded" Type="Event" Category="Player">
+		<Description>Triggered when the player entered the level.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<InitScript>
+			def loaded(args):
+				VAR.W{Player} = self.owner
+				PROPAGATE{Player}
+				TRIGGER{Out}
+		
+			LOCAL{SubscriptionId} = self.owner.subscribe("player.loaded", loaded)
+		</InitScript>
+		<TeardownScript>
+			self.owner.unsubscribe(LOCAL{SubscriptionId})
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_Item" Name="Item Interaction" Type="Event" Category="Player">
+		<Description>Triggered when an item is picked up, equipped/unequipped, used in the inventory or in combat.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="true" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Target" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Design" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Quantity" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Bag" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Slot" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Event" Type="EEvent" DefaultValue="1" />
+		<Property Name="Design Id" Type="Integer" DefaultValue="0" DatabaseRef="Item" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="true" />
+		<InitScript>
+			def itemCb(params):
+				VAR.W{Player} = params['player']
+				PROPAGATE{Player}
+				VAR.W{Bag} = params['bagId']
+				PROPAGATE{Bag}
+				VAR.W{Slot} = params.get('slotId')
+				PROPAGATE{Slot}
+				VAR.W{Quantity} = params['quantity']
+				PROPAGATE{Quantity}
+				VAR.W{Target} = params.get('target')
+				PROPAGATE{Target}
+				TRIGGER{Out}
+				return PROPERTY{Stop Propagating Event}
+		
+			#if PROPERTY(Event) == "1"
+			LOCAL{HandlerId} = self.owner.subscribe('item.pickup::' + str(PROPERTY{Design Id}), itemCb, once = PROPERTY{Fire Only Once})
+			#elseif PROPERTY(Event) == "2"
+			LOCAL{HandlerId} = self.owner.subscribe('item.equip::' + str(PROPERTY{Design Id}), itemCb, once = PROPERTY{Fire Only Once})
+			#elseif PROPERTY(Event) == "3"
+			LOCAL{HandlerId} = self.owner.subscribe('item.unequip::' + str(PROPERTY{Design Id}), itemCb, once = PROPERTY{Fire Only Once})
+			#elseif PROPERTY(Event) == "4"
+			LOCAL{HandlerId} = self.owner.subscribe('item.durabilityloss::' + str(PROPERTY{Design Id}), itemCb, once = PROPERTY{Fire Only Once})
+			#elseif PROPERTY(Event) == "5"
+			LOCAL{HandlerId} = self.owner.subscribe('item.use::' + str(PROPERTY{Design Id}), itemCb, once = PROPERTY{Fire Only Once})
+			#elseif PROPERTY(Event) == "6"
+			LOCAL{HandlerId} = self.owner.subscribe('item.melee::' + str(PROPERTY{Design Id}), itemCb, once = PROPERTY{Fire Only Once})
+			#elseif PROPERTY(Event) == "7"
+			LOCAL{HandlerId} = self.owner.subscribe('item.ranged::' + str(PROPERTY{Design Id}), itemCb, once = PROPERTY{Fire Only Once})
+			#endif
+		</InitScript>
+		<TeardownScript>
+			self.owner.unsubscribe(LOCAL{HandlerId})
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_Inventory" Name="Inventory Monitor" Type="Event" Category="Player">
+		<Description>Monitors the quantity of an item in the players inventory. When the quantity changes, the appropriate trigger output is called.</Description>
+		<Port Name="Quantity &gt; Value" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Quantity == Value" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Quantity &lt; Value" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Design" Type="Integer" DefaultValue="0" DatabaseRef="Item" />
+		<Property Name="Value" Type="Integer" DefaultValue="1" />
+		<Property Name="Bag" Type="EInventoryContainerId" DefaultValue="1" />
+	</Node>
+	
+	<Node Ref="Event_Teleport" Name="Teleport In" Type="Event" Category="Player">
+		<Description>Triggered when the player finished teleporting to a different location via ring transport.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Region Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Region Id" Type="Integer" DefaultValue="0" DatabaseRef="GenericRegion" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="true" />
+		<InitScript>
+			def teleportCb(args):
+				#ifn PROPERTY(Region Id) == "0"
+				if args['regionId'] != PROPERTY{Region Id}:
+					return False
+				#endif
+				
+				VAR.W{Region Id} = args['regionId']
+				PROPAGATE{Region Id}
+				VAR.W{Player} = self.owner
+				PROPAGATE{Player}
+				TRIGGER{Out}
+				
+				return PROPERTY{Stop Propagating Event}
+		
+			LOCAL{HandlerId} = self.owner.subscribe('teleport::in', teleportCb, once = PROPERTY{Fire Only Once})
+		</InitScript>
+		<TeardownScript>
+			self.owner.unsubscribe(LOCAL{HandlerId})
+		</TeardownScript>
+	</Node>
+	
+	<Node Ref="Event_TeleportOut" Name="Teleport Out" Type="Event" Category="Player">
+		<Description>Triggered when the player is teleporting to a different location via ring transport.</Description>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Src Region Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Dst Region Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Src Region Id" Type="Integer" DefaultValue="0" DatabaseRef="GenericRegion" />
+		<Property Name="Dst Region Id" Type="Integer" DefaultValue="0" DatabaseRef="GenericRegion" />
+		<Property Name="Stop Propagating Event" Type="Boolean" DefaultValue="true" />
+		<Property Name="Fire Only Once" Type="Boolean" DefaultValue="true" />
+		<InitScript>
+			def teleportCb(args):
+				#ifn PROPERTY(Src Region Id) == "0"
+				if args['regionId'] != PROPERTY{Src Region Id}:
+					return False
+				#endif
+				
+				#ifn PROPERTY(Dst Region Id) == "0"
+				if args['destinationRegionId'] != PROPERTY{Dst Region Id}:
+					return False
+				#endif
+				
+				VAR.W{Src Region Id} = args['regionId']
+				PROPAGATE{Src Region Id}
+				VAR.W{Dst Region Id} = args['destinationRegionId']
+				PROPAGATE{Dst Region Id}
+				VAR.W{Player} = self.owner
+				PROPAGATE{Player}
+				TRIGGER{Out}
+				
+				return PROPERTY{Stop Propagating Event}
+		
+			LOCAL{HandlerId} = self.owner.subscribe('teleport::out', teleportCb, once = PROPERTY{Fire Only Once})
+		</InitScript>
+		<TeardownScript>
+			self.owner.unsubscribe(LOCAL{HandlerId})
+		</TeardownScript>
+	</Node>
+	
+	<!--
+	                       COMPARATORS
+	-->
+	<Node Ref="Cmp_Bool" Name="Compare Bool" Type="Condition" Category="">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			#if CONNECTED(A == B)
+			if VAR.R{A} == VAR.R{B}:
+				TRIGGER.P{A == B}
+			#endif
+			#if CONNECTED(A != B)
+			if VAR.R{A} != VAR.R{B}:
+				TRIGGER.P{A != B}
+			#endif
+		</Port>
+		<Port Name="A == B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A != B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Boolean" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Boolean" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Cmp_Int" Name="Compare Int" Type="Condition" Category="">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			#if CONNECTED(A == B)
+			if VAR.R{A} == VAR.R{B}:
+				TRIGGER.P{A == B}
+			#endif
+			#if CONNECTED(A != B)
+			if VAR.R{A} != VAR.R{B}:
+				TRIGGER.P{A != B}
+			#endif
+			#if CONNECTED(A &lt; B)
+			if VAR.R{A} &lt; VAR.R{B}:
+				TRIGGER.P{A &lt; B}
+			#endif
+			#if CONNECTED(A &gt; B)
+			if VAR.R{A} &gt; VAR.R{B}:
+				TRIGGER.P{A &gt; B}
+			#endif
+		</Port>
+		<Port Name="A == B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A &lt; B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A &gt; B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A != B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Cmp_Float" Name="Compare Float" Type="Condition" Category="">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			#if CONNECTED(A == B)
+			if VAR.R{A} == VAR.R{B}:
+				TRIGGER.P{A == B}
+			#endif
+			#if CONNECTED(A != B)
+			if VAR.R{A} != VAR.R{B}:
+				TRIGGER.P{A != B}
+			#endif
+			#if CONNECTED(A &lt; B)
+			if VAR.R{A} &lt; VAR.R{B}:
+				TRIGGER.P{A &lt; B}
+			#endif
+			#if CONNECTED(A &gt; B)
+			if VAR.R{A} &gt; VAR.R{B}:
+				TRIGGER.P{A &gt; B}
+			#endif
+		</Port>
+		<Port Name="A == B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A &lt; B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A &gt; B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A != B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Float" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Float" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="Threshold" Type="Float" DefaultValue="0.001" />
+	</Node>
+	
+	<Node Ref="Cmp_Str" Name="Compare String" Type="Condition" Category="">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			#if CONNECTED(A == B)
+			if VAR.R{A} == VAR.R{B}:
+				TRIGGER.P{A == B}
+			#endif
+			#if CONNECTED(A != B)
+			if VAR.R{A} != VAR.R{B}:
+				TRIGGER.P{A != B}
+			#endif
+		</Port>
+		<Port Name="A == B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A != B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="String" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="String" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Cmp_Entity" Name="Compare Entity" Type="Condition" Category="">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			#if CONNECTED(A == B)
+			if VAR.R{A} == VAR.R{B}:
+				TRIGGER.P{A == B}
+			#endif
+			#if CONNECTED(A != B)
+			if VAR.R{A} != VAR.R{B}:
+				TRIGGER.P{A != B}
+			#endif
+		</Port>
+		<Port Name="A == B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A != B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Cmp_Vec3" Name="Compare Vector" Type="Condition" Category="">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			#if CONNECTED(A == B)
+			if VAR.R{A} == VAR.R{B}:
+				TRIGGER.P{A == B}
+			#endif
+			#if CONNECTED(A != B)
+			if VAR.R{A} != VAR.R{B}:
+				TRIGGER.P{A != B}
+			#endif
+		</Port>
+		<Port Name="A == B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A != B" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Vector3" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Vector3" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Counter_Int" Name="Counter Int" Type="Condition" Category="">
+		<Port Name="Set" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			LOCAL{Value} = VAR.R{Set Value}
+			a = VAR_OR_PROP{A}
+			#if CONNECTED(Value == A)
+			if LOCAL{Value} == a:
+				TRIGGER.P{Value == A}
+			#endif
+			#if CONNECTED(Value != A)
+			if LOCAL{Value} != a:
+				TRIGGER.P{Value != A}
+			#endif
+			#if CONNECTED(Value &lt; A)
+			if LOCAL{Value} &lt; a:
+				TRIGGER.P{Value &lt; A}
+			#endif
+			#if CONNECTED(Value &gt; A)
+			if LOCAL{Value} &gt; a:
+				TRIGGER.P{Value &gt; A}
+			#endif
+		</Port>
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			LOCAL{Value} += PROPERTY{Increment}
+			a = VAR_OR_PROP{A}
+			#if CONNECTED(Value == A)
+			if LOCAL{Value} == a:
+				TRIGGER.P{Value == A}
+			#endif
+			#if CONNECTED(Value != A)
+			if LOCAL{Value} != a:
+				TRIGGER.P{Value != A}
+			#endif
+			#if CONNECTED(Value &lt; A)
+			if LOCAL{Value} &lt; a:
+				TRIGGER.P{Value &lt; A}
+			#endif
+			#if CONNECTED(Value &gt; A)
+			if LOCAL{Value} &gt; a:
+				TRIGGER.P{Value &gt; A}
+			#endif
+		</Port>
+		<Port Name="Value == A" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Value &lt; A" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Value &gt; A" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Value != A" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Set Value" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Increment" Type="Integer" DefaultValue="1" />
+		<Property Name="Initial Value" Type="Integer" DefaultValue="0" />
+		<Property Name="A" Type="Integer" DefaultValue="0" />
+		<Property Name="Persistent" Type="Boolean" DefaultValue="false" />
+		<PreInitScript>
+			LOCAL{Value} = PROPERTY{Initial Value}
+		</PreInitScript>
+		<PersistScript>
+			#if PROPERTY(Persistent) == "true"
+			self.savedVars['NODEID{}'] = LOCAL{Value}
+			#endif
+		</PersistScript>
+		<RestoreScript>
+			#if PROPERTY(Persistent) == "true"
+			if 'NODEID{}' in self.savedVars:
+				LOCAL{Value} = self.savedVars['NODEID{}']
+			#endif
+		</RestoreScript>
+	</Node>
+	
+	<!--
+	                       EFFECT ACTIONS
+	-->
+	<Node Ref="Act_QRDamage" Name="Effect QR Damage" Type="Action" Category="Effect">
+		<Name>Effect QR Damage ({Stat Id})</Name>
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			result = self.effect.qrCombatDamage(VAR_OR_PROP{Stat Id}, VAR_OR_PROP{Damage Type}, VAR_OR_PROP{Base Damage}, VAR_OR_PROP{Ranged}, PROPERTY{Use Shared QR})
+			#if CONNECTED(Total Damage)
+			VAR.W{Total Damage} = result['total']
+			PROPAGATE{Total Damage}
+			#endif
+			#if CONNECTED(Remaining Damage)
+			VAR.W{Remaining Damage} = result['remaining']
+			PROPAGATE{Remaining Damage}
+			#endif
+			#if CONNECTED(Remaining Dmg Percent)
+			VAR.W{Remaining Dmg Percent} = result['remaining'] * 100 / result['total']
+			PROPAGATE{Remaining Dmg Percent}
+			#endif
+			#if CONNECTED(Result Code)
+			VAR.W{Result Code} = result['resultCode']
+			PROPAGATE{Result Code}
+			#endif
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Total Damage" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Remaining Damage" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Remaining Dmg Percent" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Result Code" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Stat Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Damage Type" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Base Damage" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Ranged" Type="Boolean" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Stat Id" Type="EStats" DefaultValue="7" />
+		<Property Name="Damage Type" Type="EDamageType" DefaultValue="13" />
+		<Property Name="Base Damage" Type="Integer" DefaultValue="0" />
+		<Property Name="Ranged" Type="Boolean" DefaultValue="true" />
+		<Property Name="Use Shared QR" Type="Boolean" DefaultValue="true" />
+		<ScriptType>Effect</ScriptType>
+	</Node>
+	
+	<Node Ref="Act_ChangeStat" Name="Effect Change Stat" Type="Action" Category="Effect">
+		<Name>Effect Change Stat ({Stat Id})</Name>
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			changed = self.effect.changeStat(VAR_OR_PROP{Stat Id}, VAR_OR_PROP{Change Type}, VAR_OR_PROP{Amount}, VAR_OR_PROP{Is Permanent})
+			VAR.W{Difference} = changed
+			PROPAGATE{Difference}
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Stat Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Change Type" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Amount" Type="Float" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Is Permanent" Type="Boolean" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Difference" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Stat Id" Type="EStats" DefaultValue="7" />
+		<Property Name="Change Type" Type="EStatChangeType" DefaultValue="0" />
+		<Property Name="Amount" Type="Float" DefaultValue="0" />
+		<Property Name="Is Permanent" Type="Boolean" DefaultValue="false" />
+		<ScriptType>Effect</ScriptType>
+	</Node>
+	
+	<!--
+	                       COMMON / MISC ACTIONS
+	-->
+	<Node Ref="Act_UniformRandom" Name="Uniform Random" Type="Action" Category="Misc">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.W{Value} = random.uniform(VAR_OR_PROP{Min Value}, VAR_OR_PROP{Max Value})
+			PROPAGATE{Value}
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Value" Type="Float" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Min Value" Type="Float" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Max Value" Type="Float" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Min Value" Type="Float" DefaultValue="0" />
+		<Property Name="Max Value" Type="Float" DefaultValue="1" />
+		<Import>import random</Import>
+	</Node>
+	
+	<Node Ref="Act_RandomRoll" Name="Random Roll" Type="Action" Category="Misc">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if random.uniform(0, 1) > VAR_OR_PROP{Probability %}:
+				TRIGGER.P{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Probability %" Type="Float" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Probability %" Type="Float" DefaultValue="50" />
+		<Import>import random</Import>
+	</Node>
+	
+	<Node Ref="Act_TriggerPlayerEvent" Name="Trigger Player Event" Type="Action" Category="Misc">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			self.owner.fire(VAR_OR_PROP{Event Name}, player = self.owner)
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Event Name" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Event Name" Type="String" DefaultValue="" />
+	</Node>
+	
+	<Node Ref="Act_TriggerSpaceEvent" Name="Trigger Space Event" Type="Action" Category="Misc">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			self.owner.space.fire(VAR_OR_PROP{Event Name}, player = self.owner)
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Event Name" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Event Name" Type="String" DefaultValue="" />
+	</Node>
+	
+	<Node Ref="Act_CheckMoniker" Name="Check Moniker" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity}.abilities.hasMoniker(zlib.crc32(VAR_OR_PROP{Moniker})):
+				TRIGGER.P{Found}
+			#if CONNECTED(Not Found)
+			else:
+				TRIGGER.P{Not Found}
+			#endif
+		</Port>
+		<Port Name="Found" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Not Found" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Moniker" Type="String" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="Moniker" Type="String" DefaultValue="" />
+		<Import>import zlib</Import>
+	</Node>
+	
+	<Node Ref="Act_CheckEffect" Name="Check Effect" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity}.abilities.hasEffect(VAR_OR_PROP{Effect Id}):
+				TRIGGER.P{Found}
+			#if CONNECTED(Not Found)
+			else:
+				TRIGGER.P{Not Found}
+			#endif
+		</Port>
+		<Port Name="Found" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Not Found" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Effect Id" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="Effect Id" Type="Integer" DefaultValue="0" DatabaseRef="Effect" />
+	</Node>
+	
+	<Node Ref="Act_RemoveMoniker" Name="Remove Moniker" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.R{Entity}.abilities.removeMoniker(zlib.crc32(VAR_OR_PROP{Moniker}))
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Moniker" Type="String" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="Moniker" Type="String" DefaultValue="" />
+		<Import>import zlib</Import>
+	</Node>
+	
+	<Node Ref="Act_AddEffect" Name="Add Effect" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			invoker = VAR.R{Invoker}
+			effect = DefMgr.get('effect', VAR_OR_PROP{Effect Id})
+			VAR.R{Entity}.abilities.addEffect(effect, invoker.entityId if invoker else 0)
+			TRIGGER.P{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Invoker" Type="Entity" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Effect Id" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="Effect Id" Type="Integer" DefaultValue="0" DatabaseRef="Effect" />
+		<Import>from common.defs.Def import DefMgr</Import>
+	</Node>
+	
+	<Node Ref="Act_RemoveEffect" Name="Remove Effect" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.R{Entity}.abilities.removeEffect(DefMgr.get('effect', VAR_OR_PROP{Effect Id}))
+			TRIGGER.P{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Effect Id" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="Effect Id" Type="Integer" DefaultValue="0" DatabaseRef="Effect" />
+		<Import>from common.defs.Def import DefMgr</Import>
+	</Node>
+	
+	
+	<Node Ref="Act_Spawn" Name="Spawn Entity" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			tpl = DefMgr.get('template', VAR_OR_PROP{Template Id})
+			if tpl and VAR.R{Location}:
+				entity = self.owner.space.createEntity(tpl, VAR.R{Location})
+				VAR.W{Entity} = entity
+				PROPAGATE{Entity}
+				TRIGGER{Spawned}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Spawned" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Location" Type="Vector3" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Template Id" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="Template Id" Type="Integer" DefaultValue="0" DatabaseRef="EntityTemplate" />
+		<Import>from common.defs.Def import DefMgr</Import>
+	</Node>
+	
+	<Node Ref="Act_Kill" Name="Kill Entity" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity}:
+				VAR.R{Entity}.getStat(Atrea.enums.health).setCurrent(0)
+				TRIGGER{Killed}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Killed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Import>import Atrea.enums</Import>
+	</Node>
+	
+	<Node Ref="Act_Despawn" Name="Despawn Entity" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity} is not None:
+				if Atrea.destroyCellEntity(VAR.R{Entity}.entityId):
+					TRIGGER.P{Despawned}
+			#if CONNECTED(Failed)
+				else:
+					TRIGGER.P{Failed}
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Despawned" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Import>import Atrea</Import>
+	</Node>
+	
+	<Node Ref="Act_MoveTo" Name="Move To" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity} is not None:
+				#if CONNECTED(Completed)
+				def waypointCb():
+					TRIGGER.P{Completed}
+				VAR.R{Entity}.addWaypoint(VAR.R{Position}, waypointCb)
+				#endif
+				#ifn CONNECTED(Completed)
+				VAR.R{Entity}.addWaypoint(VAR.R{Position}, lambda: None)
+				#endif
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Position" Type="Vector3" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_GetEntity" Name="Get Entity" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.W{Entity} = None
+			if VAR.R{Entity Id} is not None:
+				VAR.W{Entity} = Atrea.findEntityOnSpace(VAR.R{Entity Id}, self.owner.space.spaceId)
+			else:
+				tpl = VAR_OR_PROP{Template Tag}
+				tag = VAR_OR_PROP{Tag}
+				entities = Atrea.findEntities(self.owner.space.spaceId)
+				
+				if tag:
+					for entity in entities:
+						if entity.tag == tag:
+							VAR.W{Entity} = entity
+							break
+				elif tpl:
+					for entity in entities:
+						if entity.template is not None and entity.template.name == tpl:
+							VAR.W{Entity} = entity
+							break
+				else:
+					VAR.W{Entity} = None
+			PROPAGATE{Entity}
+			if VAR.R{Entity} is not None:
+				TRIGGER.P{Found}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Found" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Template Tag" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Tag" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Template Tag" Type="String" DefaultValue="" />
+		<Property Name="Tag" Type="String" DefaultValue="" />
+		<Import>import Atrea</Import>
+	</Node>
+	
+	<Node Ref="Act_UpdateProperty" Name="Update Entity Property" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			ent = VAR.R{Entity}
+			if ent is None:
+				TRIGGER{Failed}
+				return
+				
+			#if CONNECTED(Static Mesh)
+			if VAR.R{Static Mesh} is not None:
+				ent.setStaticMeshName(VAR.R{Static Mesh})
+			#endif
+				
+			#if CONNECTED(Body Set)
+			if VAR.R{Body Set} is not None:
+				ent.setBodySet(VAR.R{Body Set})
+			#endif
+				
+			#if CONNECTED(Name)
+			if VAR.R{Name} is not None:
+				ent.setName(VAR.R{Name})
+			#endif
+				
+			#if CONNECTED(Alignment)
+			if VAR.R{Alignment} is not None:
+				ent.setAlignment(VAR.R{Alignment})
+			#endif
+				
+			#if CONNECTED(Faction)
+			if VAR.R{Faction} is not None:
+				ent.setFaction(VAR.R{Faction})
+			#endif
+				
+			#if CONNECTED(Static Mesh)
+			if VAR.R{Archetype} is not None:
+				ent.setArchetype(VAR.R{Archetype})
+			#endif
+				
+			#if CONNECTED(Aggression)
+			if VAR.R{Aggression} is not None:
+				ent.setAggression(VAR.R{Aggression})
+			#endif
+				
+			#if CONNECTED(Level)
+			if VAR.R{Level} is not None:
+				ent.setLevel(VAR.R{Level})
+			#endif
+				
+			#if CONNECTED(Name Id)
+			if VAR.R{Name Id} is not None:
+				ent.setNameId(VAR.R{Name Id})
+			#endif
+				
+			#if CONNECTED(Event Set)
+			if VAR.R{Event Set} is not None:
+				ent.setEventSet(VAR.R{Event Set})
+			#endif
+				
+			#if CONNECTED(Interaction Type)
+			if VAR.R{Interaction Type} is not None:
+				ent.setInteractionType(VAR.R{Interaction Type})
+			#endif
+				
+			#if CONNECTED(Visible)
+			if VAR.R{Visible} is not None:
+				ent.setVisible(VAR.R{Visible})
+			#endif
+			
+			TRIGGER{Successful}
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Static Mesh" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Body Set" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Name" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Alignment" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Faction" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Archetype" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Aggression" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Level" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Name Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" DatabaseRef="Text" />
+		<Port Name="Event Set" Type="Integer" Direction="in" DefaultHide="false" Required="false" DatabaseRef="EventSet" />
+		<Port Name="Interaction Type" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Visible" Type="Boolean" Direction="in" DefaultHide="false" Required="false" />
+	</Node>
+	
+	<Node Ref="Act_UpdateInteraction" Name="Update Interaction Type" Type="Action" Category="Entity">
+		<Port Name="Set" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			entity = VAR.R{Entity}
+			if entity is None:
+				TRIGGER{Failed}
+				return
+			
+			entity.setInteractionType(entity.interactionType | VAR_OR_PROP{Interaction Type})
+			TRIGGER{Successful}
+		</Port>
+		<Port Name="Unset" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			entity = VAR.R{Entity}
+			if entity is None:
+				TRIGGER{Failed}
+				return
+				
+			entity.setInteractionType(entity.interactionType &amp; ~VAR_OR_PROP{Interaction Type})
+			TRIGGER{Successful}
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Interaction Type" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Interaction Type" Type="EInteractionNotificationType" DefaultValue="0" />
+	</Node>
+	
+	<Node Ref="Act_GetLocation" Name="Get Entity Location" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			entity = VAR.R{Entity}
+			if entity is not None:
+				#if CONNECTED(Position)
+				VAR.W{Position} = entity.position
+				PROPAGATE{Position}
+				#endif
+				
+				#if CONNECTED(Rotation)
+				VAR.W{Rotation} = entity.rotation
+				PROPAGATE{Rotation}
+				#endif
+				
+			TRIGGER.P{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Position" Type="Vector3" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Rotation" Type="Vector3" Direction="out" DefaultHide="false" Required="false" />
+	</Node>
+	
+	<Node Ref="Act_GetProperty" Name="Get Entity Property" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			entity = VAR.R{Entity}
+			#if CONNECTED(Failed)
+			if entity is None:
+				TRIGGER.P{Failed}
+			#endif
+			
+			if entity is not None:
+				#if CONNECTED(Static Mesh)
+				VAR.W{Static Mesh} = entity.staticMesh
+				PROPAGATE{Static Mesh}
+				#endif
+				
+				#if CONNECTED(Body Set)
+				VAR.W{Body Set} = entity.bodySet
+				PROPAGATE{Body Set}
+				#endif
+				
+				#if CONNECTED(Name)
+				VAR.W{Name} = entity.beingName
+				PROPAGATE{Name}
+				#endif
+				
+				#if CONNECTED(Tag)
+				if entity.tag is not None:
+					VAR.W{Tag} = entity.tag
+					PROPAGATE{Tag}
+				#endif
+				
+				#if CONNECTED(Alignment)
+				VAR.W{Alignment} = entity.alignment
+				PROPAGATE{Alignment}
+				#endif
+				
+				#if CONNECTED(Faction)
+				VAR.W{Faction} = entity.faction
+				PROPAGATE{Faction}
+				#endif
+				
+				#if CONNECTED(Archetype)
+				VAR.W{Archetype} = entity.archetype
+				PROPAGATE{Archetype}
+				#endif
+				
+				#if CONNECTED(Aggression)
+				VAR.W{Aggression} = entity.aggression
+				PROPAGATE{Aggression}
+				#endif
+				
+				#if CONNECTED(Level)
+				VAR.W{Level} = entity.level
+				PROPAGATE{Level}
+				#endif
+				
+				#if CONNECTED(Name Id)
+				VAR.W{Name Id} = entity.nameId
+				PROPAGATE{Name Id}
+				#endif
+				
+				#if CONNECTED(Event Set)
+				VAR.W{Event Set} = entity.kismetEventSetId
+				PROPAGATE{Event Set}
+				#endif
+				
+				#if CONNECTED(Item Event Set)
+				VAR.W{Item Event Set} = Constants.ARCHETYPE_ITEM_EVENT_SETS[entity.archetype]
+				PROPAGATE{Item Event Set}
+				#endif
+				
+				#if CONNECTED(Interaction Flags)
+				VAR.W{Interaction Flags} = entity.interactionFlags
+				PROPAGATE{Interaction Flags}
+				#endif
+				
+				#if CONNECTED(Visible)
+				VAR.W{Visible} = entity.visible
+				PROPAGATE{Visible}
+				#endif
+				
+				TRIGGER.P{Successful}
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Static Mesh" Type="String" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Body Set" Type="String" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Name" Type="String" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Tag" Type="String" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Alignment" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Faction" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Archetype" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Aggression" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Level" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Name Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Event Set" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Item Event Set" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Interaction Flags" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Visible" Type="Boolean" Direction="out" DefaultHide="false" Required="false" />
+		<Import>from common import Constants</Import>
+	</Node>
+	
+	<Node Ref="Act_GetStat" Name="Get Entity Stat" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity}:
+				stat = VAR.R{Entity}.getStat(VAR_OR_PROP{Stat Id})
+				#if CONNECTED(Min)
+				VAR.W{Min} = stat.min
+				PROPAGATE{Min}
+				#endif
+				#if CONNECTED(Current)
+				VAR.W{Current} = stat.cur
+				PROPAGATE{Current}
+				#endif
+				#if CONNECTED(Max)
+				VAR.W{Max} = stat.max
+				PROPAGATE{Max}
+				#endif
+				
+				#if CONNECTED(Base Min)
+				VAR.W{Base Min} = stat.baseMin
+				PROPAGATE{Base Min}
+				#endif
+				#if CONNECTED(Base Current)
+				VAR.W{Base Current} = stat.baseCur
+				PROPAGATE{Base Current}
+				#endif
+				#if CONNECTED(Base Max)
+				VAR.W{Base Max} = stat.baseMax
+				PROPAGATE{Base Max}
+				#endif
+				TRIGGER.P{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Stat Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Min" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Current" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Max" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Base Min" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Base" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Base Current" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Base Max" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Stat Id" Type="EStats" DefaultValue="7" />
+	</Node>
+	
+	<Node Ref="Act_SetStat" Name="Set Entity Stat" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity}:
+				stat = VAR.R{Entity}.getStat(VAR_OR_PROP{Stat Id})
+				#if CONNECTED(Min)
+				stat.setMin(VAR.R{Min})
+				#endif
+				#if CONNECTED(Current)
+				stat.setCurrent(VAR.R{Current})
+				#endif
+				#if CONNECTED(Max)
+				stat.setMax(VAR.R{Max})
+				#endif
+				VAR.R{Entity}.sendDirtyStats()
+				TRIGGER{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Stat Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Min" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Current" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Max" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Stat Id" Type="EStats" DefaultValue="7" />
+	</Node>
+	
+	<Node Ref="Act_GetDistance" Name="Get Distance" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			pos = VAR.R{Entity}.position
+			tpos = VAR.R{Target}.position
+			dv = Atrea.Vector3(pos.x - tpos.x, pos.y - tpos.y, pos.z - tpos.z)
+			VAR.W{Distance} = dv.length()
+			PROPAGATE{Distance}
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Distance" Type="Float" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Target" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_GetFacing" Name="Get Facing" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity} is not None and VAR.R{Target} is not None:
+				VAR.W{Facing} = VAR.R{Entity}.facing(VAR.R{Target})
+				PROPAGATE{Facing}
+				VAR.W{Facing Type} = VAR.R{Entity}.facingType(VAR.R{Target})
+				PROPAGATE{Facing Type}
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Facing" Type="Float" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Facing Type" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Target" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_AddComponent" Name="Attach Body Component" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity} and VAR_OR_PROP{Component}:
+				VAR.R{Entity}.addBodyComponent(VAR_OR_PROP{Component})
+				TRIGGER{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Component" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Component" Type="String" DefaultValue="" />
+	</Node>
+	
+	<Node Ref="Act_DelComponent" Name="Detach Body Component" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity} and VAR_OR_PROP{Component}:
+				VAR.R{Entity}.removeBodyComponent(VAR_OR_PROP{Component})
+				TRIGGER{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Component" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Component" Type="String" DefaultValue="" />
+	</Node>
+	
+	<Node Ref="Act_GenerateThreat" Name="Generate Threat" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			target = VAR.R{Target}
+			instigator = VAR.R{Instigator}
+			if target is not None and instigator is not None and hasattr(target, 'threatGenerated'):
+				target.threatGenerated(instigator.entityId, VAR_OR_PROP{Threat Level})
+				TRIGGER{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Target" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Instigator" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Threat Level" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Threat Level" Type="Integer" DefaultValue="0" />
+	</Node>
+	
+	<Node Ref="Act_DropLoot" Name="Drop Loot" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			entity = VAR.R{Entity}
+			if entity is not None and hasattr(entity, 'generateLoot'):
+				entity.generateLoot()
+				TRIGGER{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_GetCombatState" Name="Get Combatant State" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			if VAR.R{Entity}.getCombatantStateFlag(VAR_OR_PROP{State Flag}):
+				TRIGGER.P{Set}
+			#if CONNECTED(Not Set)
+			else:
+				TRIGGER.P{Not Set}
+			#endif
+		</Port>
+		<Port Name="Set" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Not Set" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="State Flag" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="State Flag" Type="ECombatantState" DefaultValue="1" />
+	</Node>
+	
+	<Node Ref="Act_SetCombatState" Name="Set Combatant State" Type="Action" Category="Entity">
+		<Port Name="Set" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Entity}.setCombatantStateFlag(VAR_OR_PROP{State Flag})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Unset" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Entity}.unsetCombatantStateFlag(VAR_OR_PROP{State Flag})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="State Flag" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="State Flag" Type="ECombatantState" DefaultValue="1" />
+	</Node>
+	
+	<Node Ref="Act_LockMovement" Name="Lock Movement" Type="Action" Category="Entity">
+		<Port Name="Lock" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Entity}.addMovementLock()
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Unlock" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Entity}.removeMovementLock()
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_Teleport" Name="Teleport" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			pos = VAR.R{Destination}
+			VAR.R{Target}.moveTo(pos.x, pos.y, pos.z, worldName = VAR_OR_PROP{World Name} or None)
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Target" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="World Name" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Destination" Type="Vector3" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="World Name" Type="String" DefaultValue="" />
+	</Node>
+	
+	<Node Ref="Act_Ability" Name="Launch Ability" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			id = VAR_OR_PROP{Ability Id}
+			ability = DefMgr.get('ability', id)
+			if ability and VAR.R{Actor} and VAR.R{Actor}.abilities.launchAbility(ability, targetId = VAR.R{Target}.entityId if VAR.R{Target} else None,
+				targetLoc = VAR.R{Target Location}, autoCycle = False, isEntityAbility = PROPERTY{Is Entity Ability}):
+				#if CONNECTED(Interrupted)
+				def interrupted(args):
+					TRIGGER.P{Interrupted}
+				LOCAL{InterruptedId} = self.owner.subscribe("ability.interrupted::" + str(id), interrupted, once = True)
+				#endif
+				#if CONNECTED(Finished)
+				def finished(args):
+					TRIGGER.P{Finished}
+				LOCAL{FinishedId} = self.owner.subscribe("ability.finished::" + str(id), finished, once = True)
+				#endif
+				TRIGGER.P{Launched}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Actor" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Ability Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Target" Type="Entity" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Target Location" Type="Vector3" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Event Set" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Launched" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Interrupted" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Finished" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Ability Id" Type="Integer" DefaultValue="0" DatabaseRef="Ability" />
+		<Property Name="Event Set" Type="Integer" DefaultValue="0" DatabaseRef="EventSet" />
+		<Property Name="Is Entity Ability" Type="Boolean" DefaultValue="false" />
+		<Import>from common.defs.Def import DefMgr</Import>
+	</Node>
+	
+	<Node Ref="Act_UpdateMission" Name="Update Mission" Type="Action" Category="Mission">
+		<Port Name="Accept" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Player}.missions.accept(VAR_OR_PROP{Mission Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Display Rewards" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Player}.missions.displayRewards(VAR_OR_PROP{Mission Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Complete" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Player}.missions.complete(VAR_OR_PROP{Mission Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Fail" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Player}.missions.fail(VAR_OR_PROP{Mission Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Abandon" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Player}.missions.abandon(VAR_OR_PROP{Mission Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<!--
+			Both "Mission Id" values are usable, but the port takes precedence over the property if it is not None.
+		-->
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+	</Node>
+	
+	<Node Ref="Act_UpdateMissionStep" Name="Update Mission Step" Type="Action" Category="Mission">
+		<Port Name="Start" Type="Trigger" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Complete" Type="Trigger" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Fail" Type="Trigger" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Step Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Step Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionStep" />
+	</Node>
+	
+	<Node Ref="Act_UpdateMissionObjective" Name="Update Mission Objective" Type="Action" Category="Mission">
+		<Port Name="Complete" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Player}.missions.completeObjective(VAR_OR_PROP{Mission Id}, VAR_OR_PROP{Objective Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Fail" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Player}.missions.failObjective(VAR_OR_PROP{Mission Id}, VAR_OR_PROP{Objective Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Objective Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Objective Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionObjective" />
+	</Node>
+	
+	<Node Ref="Act_AdvanceMission" Name="Advance Mission" Type="Action" Category="Mission">
+		<Port Name="Step" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			VAR.R{Player}.missions.advance(VAR_OR_PROP{Mission Id}, VAR_OR_PROP{Step Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Step Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Step Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionStep" />
+	</Node>
+	
+	<Node Ref="Act_GetMission" Name="Get Mission Status" Type="Action" Category="Mission">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			status = VAR.R{Player}.missions.getMissionStatus(VAR_OR_PROP{Mission Id})
+			#if CONNECTED(Not Accepted)
+			if status == Constants.MISSION_Not_Active:
+				TRIGGER.P{Not Accepted}
+			#endif
+			#if CONNECTED(Active)
+			if status == Constants.MISSION_Active:
+				TRIGGER.P{Active}
+			#endif
+			#if CONNECTED(Failed)
+			if status == Constants.MISSION_Failed:
+				TRIGGER.P{Failed}
+			#endif
+			#if CONNECTED(Completed)
+			if status == Constants.MISSION_Completed:
+				TRIGGER.P{Completed}
+			#endif
+		</Port>
+		<Port Name="Not Accepted" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Active" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Import>from common import Constants</Import>
+	</Node>
+	
+	<Node Ref="Act_GetMissionStep" Name="Get Mission Step Status" Type="Action" Category="Mission">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			status = VAR.R{Player}.missions.getStepStatus(VAR_OR_PROP{Mission Id}, VAR_OR_PROP{Step Id})
+			#if CONNECTED(Not Started)
+			if status == Constants.MISSION_Not_Active:
+				TRIGGER.P{Not Started}
+			#endif
+			#if CONNECTED(Active)
+			if status == Constants.MISSION_Active:
+				TRIGGER.P{Active}
+			#endif
+			#if CONNECTED(Completed)
+			if status == Constants.MISSION_Completed:
+				TRIGGER.P{Completed}
+			#endif
+		</Port>
+		<Port Name="Not Started" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Active" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Step Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Step Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionStep" />
+		<Import>from common import Constants</Import>
+	</Node>
+	
+	<Node Ref="Act_GetMissionObj" Name="Get Mission Objective Status" Type="Action" Category="Mission">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			status = VAR.R{Player}.missions.getObjectiveStatus(VAR_OR_PROP{Mission Id}, VAR_OR_PROP{Objective Id})
+			#if CONNECTED(Not Started)
+			if status == Constants.MISSION_Not_Active:
+				TRIGGER.P{Not Started}
+			#endif
+			#if CONNECTED(Pending)
+			if status == Constants.MISSION_Active:
+				TRIGGER.P{Pending}
+			#endif
+			#if CONNECTED(Completed)
+			if status == Constants.MISSION_Completed:
+				TRIGGER.P{Completed}
+			#endif
+			#if CONNECTED(Failed)
+			if status == Constants.MISSION_Failed:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Not Started" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Pending" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Objective Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Objective Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionObjective" />
+		<Import>from common import Constants</Import>
+	</Node>
+	
+	<!--
+	MISSION TASK STATUSES UNSUPPORTED FOR NOW!
+	
+	<Node Ref="Act_GetMissionTask" Name="Get Mission Task Status" Type="Action" Category="Mission">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Not Started" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Pending" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Completed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Task Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Task Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionTask" />
+	</Node>
+	
+	<Node Ref="Act_UpdateMissionTask" Name="Update Mission Task" Type="Action" Category="Mission">
+		<Port Name="Start" Type="Trigger" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Complete" Type="Trigger" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Fail" Type="Trigger" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Task Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Property Name="Task Id" Type="Integer" DefaultValue="0" DatabaseRef="MissionTask" />
+	</Node>
+	-->
+	
+	<Node Ref="Act_GiveItems" Name="Give Items to Player" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Player} is None or not VAR_OR_PROP{Design}:
+				TRIGGER{Failed}
+				return
+				
+			if not VAR_OR_PROP{Bag}:
+				added = VAR.R{Player}.inventory.pickedUpItem(VAR_OR_PROP{Design}, VAR_OR_PROP{Quantity} or 1)
+			else:
+				added = VAR.R{Player}.inventory.addItem(VAR_OR_PROP{Bag}, VAR_OR_PROP{Design}, VAR_OR_PROP{Quantity} or 1)
+			VAR.R{Player}.inventory.flushUpdates()
+				
+			if added:
+				TRIGGER.P{Added}
+			else:
+				TRIGGER.P{Failed}
+		</Port>
+		<Port Name="Added" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Design" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Quantity" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Bag" Type="Integer" Direction="in" DefaultHide="true" Required="false" />
+		<Property Name="Design" Type="Integer" DefaultValue="0" DatabaseRef="Item" />
+		<Property Name="Quantity" Type="Integer" DefaultValue="1" />
+		<Property Name="Bag" Type="EInventoryContainerId" DefaultValue="0" />
+	</Node>
+	
+	<Node Ref="Act_RemoveItems" Name="Remove Items from Player" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Player} and (VAR_OR_PROP{Design} or VAR.R{Item Id}):
+				removed = False
+				#if CONNECTED(Item Id)
+				if VAR.R{Item Id}:
+					removed = VAR.R{Player}.inventory.removeItem(VAR.R{Item Id}, VAR_OR_PROP{Quantity}, PROPERTY{Forced})
+				#endif
+				
+				if not removed and VAR_OR_PROP{Design}:
+					removed = VAR.R{Player}.inventory.removeItemByDesign(VAR_OR_PROP{Design}, VAR_OR_PROP{Quantity}, PROPERTY{Forced})
+				VAR.R{Player}.inventory.flushUpdates()
+				
+				if removed:
+					TRIGGER.P{Removed}
+				#if CONNECTED(Failed)
+				else:
+					TRIGGER.P{Failed}
+				#endif
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Removed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Item Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Design" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Quantity" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Bag" Type="Integer" Direction="in" DefaultHide="true" Required="false" />
+		<Property Name="Design" Type="Integer" DefaultValue="0" DatabaseRef="Item" />
+		<Property Name="Quantity" Type="Integer" DefaultValue="1" />
+		<Property Name="Bag" Type="EInventoryContainerId" DefaultValue="0" />
+		<Property Name="Forced" Type="Boolean" DefaultValue="false" />
+	</Node>
+	
+	<Node Ref="Act_FindItems" Name="Find Item on Player" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			item = VAR.R{Player}.inventory.findItem(VAR_OR_PROP{Design}, VAR_OR_PROP{Search Bag} or None, not PROPERTY{Search Equipment Bags})
+			if item is not None:
+				VAR.W{Bag} = item.bagId
+				PROPAGATE{Bag}
+				VAR.W{Slot} = item.slotId
+				PROPAGATE{Slot}
+				TRIGGER.P{Found}
+			else:
+				TRIGGER.P{Not Found}
+		</Port>
+		<Port Name="Found" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Not Found" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Bag" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Slot" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Design" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<!--
+			TODO: Currently not implemented!
+			<Port Name="Min Quantity" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		-->
+		<Port Name="Search Bag" Type="Integer" Direction="in" DefaultHide="true" Required="false" />
+		<Property Name="Design" Type="Integer" DefaultValue="0" DatabaseRef="Item" />
+		<Property Name="Search Bag" Type="EInventoryContainerId" DefaultValue="0" />
+		<Property Name="Search Equipment Bags" Type="Boolean" DefaultValue="false" />
+	</Node>
+	
+	<Node Ref="Act_GetActiveSlot" Name="Get Active Slot" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			bag = VAR.R{Player}.inventory.getBag(VAR_OR_PROP{Bag}) if VAR.R{Player} else None
+			slot = bag.activeSlotId if bag else None
+			if slot is not None:
+				VAR.W{Slot Id} = slot
+				PROPAGATE{Slot Id}
+				TRIGGER.P{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Slot Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Bag" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Bag" Type="EInventoryContainerId" DefaultValue="3" />
+	</Node>
+	
+	<Node Ref="Act_GetAmmoStat" Name="Get Current Ammo Stat" Type="Action" Category="Entity">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Entity} is not None:
+				VAR.W{Ammo Stat Id} = VAR.R{Entity}.getAmmoStat()
+				PROPAGATE{Ammo Stat Id}
+				TRIGGER.P{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Ammo Stat Id" Type="Integer" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_SetActiveSlot" Name="Set Active Slot" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Player} and VAR.R{Player}.inventory.updateActiveSlot(VAR_OR_PROP{Bag}, VAR_OR_PROP{Slot Id}):
+				VAR.R{Player}.inventory.flushUpdates()
+				TRIGGER.P{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Bag" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Slot Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Bag" Type="EInventoryContainerId" DefaultValue="3" />
+		<Property Name="Slot Id" Type="Integer" DefaultValue="0" />
+	</Node>
+	
+	<Node Ref="Act_UpdateItems" Name="Update Item" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Bag" Type="Integer" Direction="in" DefaultHide="true" Required="true" />
+		<Port Name="Slot" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Set Bound" Type="Boolean" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Set Charges" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Set Design" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+	</Node>
+	
+	<Node Ref="Act_StargateAddress" Name="Update Stargate Address" Type="Action" Category="Player">
+		<Port Name="Add" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Player}:
+				VAR.R{Player}.addStargateAddress(VAR_OR_PROP{Stargate Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Remove" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Player}:
+				VAR.R{Player}.removeStargateAddress(VAR_OR_PROP{Stargate Id})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Stargate Id" Type="Integer" Direction="in" DefaultHide="true" Required="false" />
+		<Property Name="Stargate Id" Type="Integer" DefaultValue="0" DatabaseRef="Stargate" />
+	</Node>
+	
+	<Node Ref="Act_PlayerMsg" Name="Player Communication" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Player}:
+				VAR.R{Player}.client.onPlayerCommunication(VAR_OR_PROP{Speaker}, VAR_OR_PROP{Speaker Flags}, VAR_OR_PROP{Channel}, VAR_OR_PROP{Text})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Speaker" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Speaker Flags" Type="ESpeakerFlags" Direction="in" DefaultHide="true" Required="false" />
+		<Port Name="Channel" Type="EChannel" Direction="in" DefaultHide="true" Required="false" />
+		<Port Name="Text" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Speaker" Type="String" DefaultValue="" />
+		<Property Name="Speaker Flags" Type="ESpeakerFlags" DefaultValue="0" />
+		<Property Name="Channel" Type="EChannel" DefaultValue="0" />
+		<Property Name="Text" Type="String" DefaultValue="" />
+	</Node>
+	
+	<Node Ref="Act_SysMsg" Name="System Communication" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Player}:
+				VAR.R{Player}.client.onSystemCommunication(VAR_OR_PROP{Text Type}, VAR_OR_PROP{String Id}, VAR_OR_PROP{Speaker}, [])
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Text Type" Type="ETextType" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="String Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Speaker" Type="String" Direction="in" DefaultHide="true" Required="false" />
+		<Property Name="Text Type" Type="ETextType" DefaultValue="31" />
+		<Property Name="String Id" Type="Integer" DefaultValue="0" DatabaseRef="Text" />
+		<Property Name="Speaker" Type="String" DefaultValue="" />
+	</Node>
+	
+	<Node Ref="Act_Dialog" Name="Initiate Dialog" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.R{Player}.displayDialog(VAR.R{NPC}, VAR_OR_PROP{Dialog Set})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="NPC" Type="Entity" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Dialog Set" Type="Integer" Direction="in" DefaultHide="true" Required="false" />
+		<Property Name="Dialog Set" Type="Integer" DefaultValue="0" DatabaseRef="Dialog" />
+	</Node>
+	
+	<Node Ref="Act_AddDialog" Name="Add Interaction" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			dialogSet = DefMgr.get('interaction_set_map', VAR_OR_PROP{Dialog Set Map})
+			if VAR.R{Player} is not None and dialogSet is not None and VAR.R{Player}.addDialog(VAR_OR_PROP{Entity Template}, dialogSet, VAR_OR_PROP{Mission Id} or None):
+				TRIGGER.P{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Entity Template" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Dialog Set Map" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Mission Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Entity Template" Type="Integer" DefaultValue="0" DatabaseRef="EntityTemplate" />
+		<Property Name="Dialog Set Map" Type="Integer" DefaultValue="0" DatabaseRef="DialogSetMap" />
+		<Property Name="Mission Id" Type="Integer" DefaultValue="0" DatabaseRef="Mission" />
+		<Import>from common.defs.Def import DefMgr</Import>
+	</Node>
+	
+	<Node Ref="Act_RemoveDialog" Name="Remove Interaction" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			dialogSet = DefMgr.get('interaction_set_map', VAR_OR_PROP{Dialog Set Map})
+			if VAR.R{Player} is not None and dialogSet is not None and VAR.R{Player}.removeDialog(VAR_OR_PROP{Entity Template}, dialogSet):
+				TRIGGER.P{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Entity Template" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Dialog Set Map" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Entity Template" Type="Integer" DefaultValue="0" DatabaseRef="EntityTemplate" />
+		<Property Name="Dialog Set Map" Type="Integer" DefaultValue="0" DatabaseRef="DialogSetMap" />
+		<Import>from common.defs.Def import DefMgr</Import>
+	</Node>
+	
+	<Node Ref="Act_DynUpdate" Name="Dynamic Update" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			def dynamicCallback(entity):
+				VAR.W{Updated Entity} = entity
+				PROPAGATE{Updated Entity}
+				TRIGGER.P{Update}
+			if VAR.R{Player} is not None and VAR.R{Entity} is not None:
+				VAR.R{Player}.requestDynamicUpdate(VAR.R{Entity}, dynamicCallback)
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Update" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Updated Entity" Type="Entity" Direction="out" DefaultHide="false" Required="true" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_UpdateLocalProperty" Name="Player-Only Property Update" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			def dynUpdateCb(ent):
+				#if CONNECTED(Static Mesh)
+				if VAR.R{Static Mesh} is not None:
+					ent.witnesses.onStaticMeshNameUpdate(VAR.R{Static Mesh}, ent.bodySet)
+				#endif
+					
+				#if CONNECTED(Body Set)
+				if VAR.R{Body Set} is not None:
+					if ent.staticMeshName:
+						ent.witnesses.onStaticMeshNameUpdate(ent.staticMeshName, VAR.R{Body Set})
+					else:
+						ent.witnesses.BeingAppearance(VAR.R{Body Set}, ent.components)
+				#endif
+					
+				#if CONNECTED(Name)
+				if VAR.R{Name} is not None:
+					ent.witnesses.onBeingNameUpdate(VAR.R{Name})
+				#endif
+					
+				#if CONNECTED(Alignment)
+				if VAR.R{Alignment} is not None:
+					ent.witnesses.onAlignmentUpdate(VAR.R{Alignment})
+				#endif
+					
+				#if CONNECTED(Faction)
+				if VAR.R{Faction} is not None:
+					ent.witnesses.onFactionUpdate(VAR.R{Faction})
+				#endif
+					
+				#if CONNECTED(Static Mesh)
+				if VAR.R{Archetype} is not None:
+					ent.witnesses.onArchetypeUpdate(VAR.R{Archetype})
+				#endif
+					
+				#if CONNECTED(Aggression)
+				if VAR.R{Aggression} is not None:
+					ent.witnesses.onEntityProperty(Atrea.enums.GENERICPROPERTY_MobAggression, VAR.R{Aggression})
+					ent.witnesses.onAggressionOverrideUpdate(VAR.R{Aggression})
+				#endif
+					
+				#if CONNECTED(Level)
+				if VAR.R{Level} is not None:
+					ent.witnesses.onLevelUpdate(VAR.R{Level})
+				#endif
+					
+				#if CONNECTED(Name Id)
+				if VAR.R{Name Id} is not None:
+					ent.witnesses.onBeingNameIDUpdate(VAR.R{Name Id})
+				#endif
+					
+				#if CONNECTED(Event Set)
+				if VAR.R{Event Set} is not None:
+					ent.witnesses.onKismetEventSetUpdate(VAR.R{Event Set})
+				#endif
+					
+				#if CONNECTED(Interaction Type)
+				if VAR.R{Interaction Type} is not None:
+					ent.witnesses.InteractionType(VAR.R{Interaction Type})
+				#endif
+					
+				#if CONNECTED(Visible)
+				if VAR.R{Visible} is not None:
+					if VAR.R{Visible}:
+						ent.witnesses.onVisible(1)
+					else:
+						ent.hide()
+				#endif
+				pass
+			
+			if VAR.R{Player} is not None and VAR.R{Entity} is not None:
+				VAR.R{Player}.requestDynamicUpdate(VAR.R{Entity}, dynUpdateCb)
+				TRIGGER{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Static Mesh" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Body Set" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Name" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Alignment" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Faction" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Archetype" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Aggression" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Level" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Name Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" DatabaseRef="Text" />
+		<Port Name="Event Set" Type="Integer" Direction="in" DefaultHide="false" Required="false" DatabaseRef="EventSet" />
+		<Port Name="Interaction Type" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Visible" Type="Boolean" Direction="in" DefaultHide="false" Required="false" />
+	</Node>
+	
+	<Node Ref="Act_Gate" Name="Gate" Type="Action" Category="Misc">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			#if CONNECTED(Out)
+			if VAR_OR_PROP{Active}:
+				TRIGGER.P{Out}
+			#endif
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Active" Type="Boolean" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Active" Type="Boolean" DefaultValue="true" />
+	</Node>
+	
+	<Node Ref="Act_Log" Name="Log" Type="Action" Category="Misc">
+		<Port Name="Message" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Integer" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Float" Type="Float" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Boolean" Type="Boolean" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Entity" Type="Entity" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="false">
+			self.owner.debug(VAR_OR_PROP{Message})
+			#if CONNECTED(Integer)
+			self.owner.debug(str(VAR.R{Integer}))
+			#endif
+			#if CONNECTED(Float)
+			self.owner.debug(str(VAR.R{Float}))
+			#endif
+			#if CONNECTED(Boolean)
+			self.owner.debug(str(VAR.R{Boolean}))
+			#endif
+			#if CONNECTED(Entity)
+			name = VAR.R{Entity}.getName() if VAR.R{Entity} else 'None'
+			entityId = str(VAR.R{Entity}.entityId) if VAR.R{Entity} else '0'
+			self.owner.debug("Entity " + entityId + ' &lt;' + name + '&gt;')
+			#endif
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Property Name="Message" Type="String" DefaultValue="" />
+		<!-- 
+		TODO!
+		<Property Name="Only In Debug Mode" Type="Boolean" DefaultValue="True" />
+		-->
+	</Node>
+	
+	<Node Ref="Act_Timer" Name="Timer" Type="Action" Category="Misc">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			#if CONNECTED(Expired)
+			# TODO: CancelTimer, avoid multiple In() calls and multiple parallel timers?
+			def timerCb():
+				TRIGGER.P{Expired}
+			Atrea.addTimer(Atrea.getGameTime() + VAR_OR_PROP{Timeout}, timerCb)
+			#endif
+		</Port>
+		<Port Name="Expired" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Timeout" Type="Float" Direction="in" DefaultHide="false" Required="true" />
+		<Property Name="Timeout" Type="Float" DefaultValue="0.0" />
+		<Import>import Atrea</Import>
+	</Node>
+	
+	<Node Ref="Act_Sequence" Name="Play Sequence" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			if VAR.R{Source} is not None and VAR_OR_PROP{Sequence Id} is not None:
+				target = VAR.R{Target}
+				targetId = target.entityId if target else None
+				VAR.R{Source}.playSequence(VAR_OR_PROP{Sequence Id}, targetId, VAR_OR_PROP{Primary Target},
+					VAR_OR_PROP{Impact Time}, viewType = PROPERTY{View Type}, instanceId = VAR_OR_PROP{Instance Id},
+					playOnSelf = PROPERTY{Visible to Source}, playOnWitnesses = PROPERTY{Visible to Witnesses})
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Source" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Sequence Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Target" Type="Entity" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Impact Time" Type="Float" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Primary Target" Type="Boolean" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Instance Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="View Type" Type="EKismetViewType" DefaultValue="0" />
+		<Property Name="Sequence Id" Type="Integer" DefaultValue="0" DatabaseRef="Sequence" />
+		<Property Name="Impact Time" Type="Float" DefaultValue="0.0" />
+		<Property Name="Instance Id" Type="Integer" DefaultValue="0" />
+		<Property Name="Primary Target" Type="Boolean" DefaultValue="true" />
+		<Property Name="Visible to Source" Type="Boolean" DefaultValue="true" />
+		<Property Name="Visible to Target" Type="Boolean" DefaultValue="true" />
+		<Property Name="Visible to Witnesses" Type="Boolean" DefaultValue="true" />
+	</Node>
+	
+	<Node Ref="Act_GetEventSetSeq" Name="Get Event Set Sequence" Type="Action" Category="Misc">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			eventSet = DefMgr.get('event_set', VAR_OR_PROP{Event Set Id})
+			seq = eventSet.getSequence(VAR_OR_PROP{Event Id}) if eventSet else None
+			if seq is not None:
+				VAR.W{Sequence Id} = seq.seqId
+				PROPAGATE{Sequence Id}
+				TRIGGER.P{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Sequence Id" Type="Integer" Direction="out" DefaultHide="false" Required="true" />
+		<Port Name="Event Set Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Event Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Event Set Id" Type="Integer" DefaultValue="0" DatabaseRef="EventSet" />
+		<Property Name="Event Id" Type="ESequenceEventType" DefaultValue="1000" />
+		<Import>from common.defs.Def import DefMgr</Import>
+	</Node>
+	
+	<Node Ref="Act_Minigame" Name="Play Minigame" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			def mgHandler(self, result):
+				if result == Constants.MINIGAME_RESULT_Victory:
+					TRIGGER.P{Won}
+				elif result == Constants.MINIGAME_RESULT_Defeat:
+					TRIGGER.P{Lost}
+				else:
+					TRIGGER.P{Failed}
+				
+			gameIds = [k for k, v in Config.MINIGAME_NAMES.items() if v == VAR_OR_PROP{Minigame}]
+			assert(len(gameIds) == 1)
+			minigame = Minigame(PROPERTY{Display Name}, VAR_OR_PROP{Difficulty}, gameIds[0], 1, 0xffff, lambda mg, rc: mgHandler(self, rc))
+			if not VAR.R{Player}.requestStartMinigame(minigame):
+				TRIGGER.P{Failed}
+		</Port>
+		<Port Name="Won" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Lost" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Minigame" Type="String" Direction="in" DefaultHide="false" Required="false" />
+		<Port Name="Difficulty" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Display Name" Type="String" DefaultValue="" />
+		<Property Name="Minigame" Type="String" DefaultValue="" />
+		<Property Name="Difficulty" Type="Integer" DefaultValue="1" />
+		<Import>from cell.Minigame import Minigame</Import>
+		<Import>from common import Constants</Import>
+		<Import>from common.Config import Config</Import>
+	</Node>
+	
+	<Node Ref="Act_RingTransportDlg" Name="Ring Transport Dialog" Type="Action" Category="Player">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			region = self.owner.space.transporters.get(VAR_OR_PROP{Region Id})
+			if region is not None:
+				region.interact(self.owner)
+				TRIGGER{Successful}
+			#if CONNECTED(Failed)
+			else:
+				TRIGGER.P{Failed}
+			#endif
+		</Port>
+		<Port Name="Successful" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Failed" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="Player" Type="Entity" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Region Id" Type="Integer" Direction="in" DefaultHide="false" Required="false" />
+		<Property Name="Region Id" Type="Integer" DefaultValue="0" DatabaseRef="RingTransportRegion" />
+	</Node>
+	
+	<Node Ref="Act_AddInt" Name="Add Integer" Type="Action" Category="Variables">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.W{Output} = VAR.R{A} + VAR.R{B}
+			PROPAGATE{Output}
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Output" Type="Integer" Direction="out" DefaultHide="true" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_SubInt" Name="Subtract Integer" Type="Action" Category="Variables">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.W{Output} = VAR.R{A} - VAR.R{B}
+			PROPAGATE{Output}
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Output" Type="Integer" Direction="out" DefaultHide="true" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_MulInt" Name="Multiply Integer" Type="Action" Category="Variables">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.W{Output} = VAR.R{A} * VAR.R{B}
+			PROPAGATE{Output}
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Output" Type="Integer" Direction="out" DefaultHide="true" Required="true" />
+	</Node>
+	
+	<Node Ref="Act_DivInt" Name="Divide Integer" Type="Action" Category="Variables">
+		<Port Name="In" Type="Trigger" Direction="in" DefaultHide="false" Required="true">
+			VAR.W{Output} = VAR.R{A} / VAR.R{B}
+			PROPAGATE{Output}
+			TRIGGER{Out}
+		</Port>
+		<Port Name="Out" Type="Trigger" Direction="out" DefaultHide="false" Required="false" />
+		<Port Name="A" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="B" Type="Integer" Direction="in" DefaultHide="false" Required="true" />
+		<Port Name="Output" Type="Integer" Direction="out" DefaultHide="true" Required="true" />
+	</Node>
+	
+</Nodes>

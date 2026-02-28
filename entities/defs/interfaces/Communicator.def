@@ -1,0 +1,247 @@
+<root>
+
+	<UnrealProperties>
+	</UnrealProperties>
+	
+	<Implements>
+	</Implements>
+
+	<Volatile>
+	</Volatile>
+
+	<Properties>
+		<!-- The list of players this player is ignoring. -->
+        <ignoredList>
+            <Type>          ARRAY <of>  WSTRING  </of> </Type>
+            <Flags>         BASE            </Flags>
+        </ignoredList>
+
+        <!-- -->
+        <channels>
+            <Type>          ARRAY <of>  PYTHON  </of> </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </channels>
+
+	<AFK>
+		<Type> UINT8 </Type>
+		<Flags> BASE </Flags>
+	</AFK>
+
+	<DND>
+		<Type> UINT8 </Type>
+		<Flags> BASE </Flags>
+	</DND>
+
+
+	</Properties>
+	
+	<ClientMethods>
+		<!-- Send system generated communications to the client -->	
+		<onSystemCommunication>
+			<Arg>	INT32	        <ArgName> TextType      </ArgName></Arg>
+			<Arg>	INT32	        <ArgName> StringId      </ArgName></Arg>
+			<Arg>	WSTRING			<ArgName> Speaker       </ArgName></Arg>    <!-- For NPC Speech -->
+			<Arg>   ARRAY <of> StringToken </of>    <ArgName>tokenList</ArgName> </Arg>
+		</onSystemCommunication>
+
+		<!-- Send player generated communications to the client  -->	
+		<onPlayerCommunication>
+			<Arg>	WSTRING			<ArgName> Speaker       </ArgName></Arg>
+            <Arg>   UINT8			<ArgName> SpeakerFlags  </ArgName></Arg><!-- ESpeakerFlags -->
+			<Arg>	UINT8			<ArgName> Channel       </ArgName></Arg><!-- EChannel -->
+			<Arg>	WSTRING	        <ArgName> Text          </ArgName></Arg>
+		</onPlayerCommunication>
+		
+		<!-- Send localized communications to the client  -->	
+		<onLocalizedCommunication>
+			<Arg>	WSTRING			<ArgName> Speaker       </ArgName></Arg>
+            <Arg>   UINT8			<ArgName> SpeakerFlags  </ArgName></Arg><!-- ESpeakerFlags -->
+			<Arg>	UINT8			<ArgName> Channel       </ArgName></Arg><!-- EChannel -->
+			<Arg>	WSTRING	        <ArgName> Text          </ArgName></Arg>
+			<Arg>   ARRAY <of> StringToken </of>    <ArgName>tokenList</ArgName> </Arg>
+		</onLocalizedCommunication>
+		
+	        <!-- Inform the client that its tell succeeded -->
+		<onTellSent>
+			<Arg>	WSTRING			<ArgName> aTarget        </ArgName></Arg>
+			<Arg>	WSTRING			<ArgName> aText          </ArgName></Arg>
+		</onTellSent>
+        
+		<!-- Invoked when this player has joined a chat channel -->
+		<!-- aChannelID will start at EChannel.CHAN_chat, since that is the last system channel -->
+		<onChatJoined>
+			<Arg>   WSTRING			<ArgName> ChannelName  </ArgName></Arg>   
+			<Arg>   UINT8			<ArgName> ChannelID    </ArgName></Arg><!-- EChannel -->
+		</onChatJoined>
+		<!-- aChannelID will start at EChannel.CHAN_chat, since that is the last system channel -->
+		<onChatLeft>
+			<Arg>   WSTRING			<ArgName> ChannelName  </ArgName></Arg>   
+		</onChatLeft>
+
+		<!-- Called by the server when a player gets a nickname added or removed -->
+		<onNickChanged>
+			<Arg>   WSTRING			<ArgName> aPlayerName </ArgName></Arg>
+			<Arg>   WSTRING			<ArgName> aPlayerNickname </ArgName></Arg>
+			<Arg>   UINT8		    <ArgName> aAddRemoveFlag </ArgName></Arg>
+		</onNickChanged>
+	</ClientMethods>
+	
+	<CellMethods>
+		<!-- Once the base app has verified that the speech attempt is legal
+		     this cell app function actually does the work. -->		
+	    <processPlayerCommunication>
+			<Arg>   WSTRING			</Arg>			<!-- Name of the person speaking -->
+            <Arg>   UINT8			</Arg>          <!-- Flags describing the speaker -->
+			<Arg>   WSTRING			</Arg>          <!-- Target of communication: player name -->
+			<Arg>	UINT8			</Arg>		    <!-- Channel to speak on -->
+			<Arg>	WSTRING	        </Arg>			<!-- Text to speak -->
+		</processPlayerCommunication>
+	</CellMethods>
+
+	<BaseMethods>
+	        <!-- The client invokes this to join a chat channel -->
+		<chatJoin>
+			<Exposed/>
+			<!-- The name of the channel to join -->
+			<Arg>   WSTRING			<ArgName> aChannelName  </ArgName></Arg>
+			<Arg>   WSTRING			<ArgName> aChannelPassword  </ArgName></Arg>
+		</chatJoin>
+
+		<!-- The cell invokes this to join a global channel (i.e. a region channel) -->
+		<chatJoinGlobal>
+			<Arg>   WSTRING			<ArgName> aChannelName </ArgName></Arg>
+		</chatJoinGlobal>
+		
+		<!-- The cell invokes this to join a global channel (i.e. a region channel) -->
+		<chatJoinGlobalRaw>
+			<Arg>   WSTRING			<ArgName> aChannelRealName </ArgName></Arg>
+			<Arg>   WSTRING			<ArgName> aChannelDisplayName </ArgName></Arg>
+		</chatJoinGlobalRaw>
+
+	        <!-- The client invokes this to leave a chat channel -->
+		<chatLeave>
+			<Exposed/>
+			<!-- The id of the channel to leave -->
+			<Arg>   UINT8			<ArgName> aChannelID    </ArgName></Arg>
+		</chatLeave>
+
+		<!-- The client can use this function to broadcast text on a channel -->		
+		<sendPlayerCommunication>
+			<Exposed/>
+			<!-- Type of speech + channel (say, tell, etc..) -->
+			<Arg>	UINT8			<ArgName> Channel       </ArgName></Arg>
+			<!-- Target (player or nothing) -->
+			<Arg>	WSTRING	        <ArgName> Target        </ArgName></Arg>
+			<!-- Text to speak -->
+			<Arg>	WSTRING	        <ArgName> Text          </ArgName></Arg>
+		</sendPlayerCommunication>
+
+		<chatSetAFKMessage>
+			<Exposed/>
+			<Arg> WSTRING <ArgName> aAFKMessage</ArgName></Arg>
+		</chatSetAFKMessage>
+
+		<chatSetDNDMessage>
+			<Exposed/>
+			<Arg> WSTRING <ArgName> aDNDMessage</ArgName></Arg>
+		</chatSetDNDMessage>
+
+		<chatIgnore>
+			<Exposed/>
+			<Arg> WSTRING <ArgName> aPlayerName</ArgName></Arg>
+			<Arg> UINT8 <ArgName> aFlag </ArgName></Arg>
+		</chatIgnore>
+
+		<chatFriend>
+			<Exposed/>
+			<Arg> WSTRING <ArgName> aPlayerName </ArgName></Arg>
+			<Arg> WSTRING <ArgName> aPlayerNick </ArgName></Arg>
+			<Arg> UINT8 <ArgName> aFlag </ArgName></Arg>
+		</chatFriend>
+
+		<chatList>
+			<Exposed/>
+			<Arg> UINT8 <ArgName> aChannelID</ArgName></Arg>
+		</chatList>
+
+		<chatMute>
+			<Exposed/>
+			<Arg> UINT8 <ArgName> aChannelID</ArgName></Arg>
+			<Arg> WSTRING <ArgName> aPlayerName</ArgName></Arg>
+			<Arg> UINT8 <ArgName> aFlag</ArgName></Arg>
+		</chatMute>
+
+		<chatKick>
+			<Exposed/>
+			<Arg> UINT8 <ArgName> aChannelID</ArgName></Arg>
+			<Arg> WSTRING <ArgName> aPlayerName</ArgName></Arg>
+		</chatKick>
+
+		<chatOp>
+			<Exposed/>
+			<Arg> UINT8 <ArgName> aChannelID</ArgName></Arg>
+			<Arg> WSTRING <ArgName> aPlayerName</ArgName></Arg>
+		</chatOp>
+
+		<chatBan>
+			<Exposed/>
+			<Arg> UINT8 <ArgName> aChannelID</ArgName></Arg>
+			<Arg> WSTRING <ArgName> aPlayerName</ArgName></Arg>
+			<Arg> UINT8 <ArgName> aFlag</ArgName></Arg>
+		</chatBan>
+
+		<chatPassword>
+			<Exposed/>
+			<Arg> UINT8 <ArgName> aChannelID</ArgName></Arg>
+			<Arg> WSTRING <ArgName> aChannelPassword</ArgName></Arg>
+		</chatPassword>
+		
+	    <petition>
+			<Exposed/>
+			<Arg> WSTRING <ArgName> aMessage</ArgName></Arg>
+		</petition>
+		
+		
+        <announcePetition>
+			<Exposed/>
+			<Arg> WSTRING <ArgName> aMessage</ArgName></Arg>
+		</announcePetition>
+		
+		<!-- Send a message to this Player's Client -->
+		<sendCommunicationToClient>
+			<Arg>	WSTRING	        </Arg>			<!-- Name of the speaker -->
+            <Arg>   UINT8			</Arg>          <!-- Flags describing the speaker -->
+			<Arg>	WSTRING	        </Arg>			<!-- Name of the target -->
+			<Arg>	UINT8			</Arg>			<!-- Channel to speak on -->
+			<Arg>	WSTRING	        </Arg>			<!-- Text to speak -->
+			<Arg>    PYTHON          </Arg>
+		</sendCommunicationToClient>
+        
+		<!-- Send a message to this Player's Client -->
+		<sendYellToClients>
+			<Arg>	INT32	        </Arg>			<!-- SpaceID to yell to -->
+            <Arg>   UINT8			</Arg>          <!-- Flags describing the speaker -->
+			<Arg>	WSTRING	        </Arg>			<!-- Text to speak -->
+		</sendYellToClients>
+
+		<hearGMShout>
+			<Arg> UINT8				<ArgName> Channel </ArgName></Arg> <!-- Where to say it -->
+			<Arg> UINT8				</Arg>          <!-- Flags describing the speaker -->
+			<Arg> WSTRING			<ArgName> Text </ArgName></Arg> <!-- What to say -->
+		</hearGMShout>
+		
+		<commTell>
+		  <Arg> WSTRING				<ArgName> aSpeakerName</ArgName></Arg> 
+          <Arg> UINT32				<ArgName> aSpeakerFlags</ArgName></Arg> 
+          <Arg> WSTRING				<ArgName> aTarget</ArgName></Arg> 
+          <Arg> UINT8				<ArgName> aChannel</ArgName></Arg> 
+          <Arg> WSTRING				<ArgName> aText</ArgName></Arg> 
+          <Arg> PYTHON				<ArgName> aSpeakerDataDict</ArgName></Arg> 
+		</commTell>
+
+	</BaseMethods>
+
+	<LoDLevels>
+	</LoDLevels>
+
+</root>

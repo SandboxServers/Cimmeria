@@ -1,0 +1,106 @@
+<?xml version="1.0"?>
+<root>
+
+    <!-- This is to allow it to use the player controller
+         This can be changed as necessary... -->
+    <UnrealProperties>
+        <Parent>GamePawn</Parent>
+    </UnrealProperties>
+    
+    <Implements>
+        <Interface>ClientCache</Interface>      <!-- This isn't really logically part of an account, but
+                                                      it needs to be here for technical reasons. -->
+    </Implements>
+    
+    <Properties>        
+        <!-- The list of characters associated with this account -->
+        <characterList>
+            <Type>          CharacterInfoList   </Type>
+            <Flags>         BASE                </Flags>
+            <Default>       []                  </Default>
+        </characterList>
+
+        <activePlayerID>
+            <Type>          INT32         </Type>
+            <Flags>         BASE          </Flags>
+            <Default>       0             </Default>
+        </activePlayerID>
+    </Properties>
+    
+    <ClientMethods>
+
+        <!-- The server uses this to inform the client about the list of characters available -->
+        <onCharacterList>
+            <Arg>   CharacterInfoList       <ArgName> CharacterList </ArgName> </Arg> 
+        </onCharacterList>
+
+        <!-- The server uses this to inform the client an error occured when trying to create a character -->
+        <onCharacterCreateFailed>
+            <Arg>   INT32                  <ArgName> ErrorID </ArgName> </Arg>
+        </onCharacterCreateFailed>
+        
+        <onCharacterVisuals>
+            <Arg>   INT32                   <ArgName> PlayerId      </ArgName></Arg>
+            <Arg>   WSTRING                  <ArgName> BodySet       </ArgName></Arg>
+            <Arg>   ARRAY <of> WSTRING  </of> <ArgName> Components    </ArgName></Arg>
+            <Arg>   UINT32                  <ArgName> primaryTint   </ArgName></Arg>
+            <Arg>   UINT32                  <ArgName> secondaryTint </ArgName></Arg>
+            <Arg>   UINT32                  <ArgName> skinTint      </ArgName></Arg>
+        </onCharacterVisuals>
+
+        <!-- the server uses this to inform the client that an error occured when trying to load a character -->
+        <onCharacterLoadFailed/>
+
+    </ClientMethods>
+    
+    <CellMethods>   
+    </CellMethods>
+
+    <BaseMethods>
+        <!-- Disconnect the client from this entity -->
+        <logOff>
+            <Exposed/>
+        </logOff>
+        
+        <logOffInternal>
+        </logOffInternal>
+
+        <!-- The client uses this to create a character with visuals-->
+        <createCharacter>
+            <Exposed/>
+            <Arg>   WSTRING                      <ArgName> Name              </ArgName></Arg>        <!-- character name to create -->
+            <Arg>   WSTRING                      <ArgName> ExtraName         </ArgName></Arg>        <!-- extra name of the character to create -->
+            <Arg>   INT32                       <ArgName> CharDefId         </ArgName></Arg>        <!-- character definition id -->
+            <Arg>   ARRAY <of>VisualChoices</of><ArgName> VisualChoiceList  </ArgName></Arg>        <!-- list of component names -->
+            <Arg>   INT32                       <ArgName> SkinTintColorID   </ArgName></Arg>        <!-- Index into Constants.py:SKIN_TINT_COLORS for skin tint color -->
+        </createCharacter>
+
+        <!-- The client uses this to choose a character -->
+        <playCharacter>
+            <Exposed/>
+            <Arg>   INT32                   <ArgName> PlayerId </ArgName></Arg>     <!-- Id of the character to start playing as -->
+        </playCharacter>
+
+        <!-- The client uses this to delete a character -->
+        <deleteCharacter>
+            <Exposed/>
+            <Arg>    INT32                  <ArgName> PlayerId </ArgName></Arg>     <!-- Id of the character to delete -->
+        </deleteCharacter>
+        
+        <requestCharacterVisuals>
+            <Exposed/>
+            <Arg>   INT32                   <ArgName> PlayerId </ArgName></Arg>     <!-- Id of the player to send visual data about -->
+        </requestCharacterVisuals>
+
+        <onPlayerFailedToLoad/>
+
+        <onClientVersion>
+			<Exposed/>
+			<Arg> INT32					<ArgName>VersionSeed</ArgName></Arg>
+			<Arg> WSTRING				<ArgName>ClientVersion</ArgName></Arg>
+            <Arg> INT32                 <ArgName>LanguageId</ArgName></Arg>
+        </onClientVersion>
+
+    </BaseMethods>
+
+</root>

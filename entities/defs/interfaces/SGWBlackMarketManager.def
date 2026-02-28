@@ -1,0 +1,114 @@
+<root>
+    
+    <Properties>
+    
+        <watchedItems>
+            <Type>  ARRAY<of>INT32</of></Type>
+            <Flags> CELL_PRIVATE    </Flags>
+            <Default>   []          </Default>
+        </watchedItems>
+    
+    </Properties>
+    
+    <ClientMethods>
+        
+        <onBMOpen>
+            <Arg>   INT32       <ArgName>entityId</ArgName>         </Arg>  <!-- Entity id who the player is interacting with -->
+        </onBMOpen>
+        
+        <onBMError>
+            <Arg>   INT32       <ArgName>errorId</ArgName>          </Arg>  <!-- Error id from EBlackMarketError -->
+        </onBMError>
+        
+        <onBMAuctions>
+            <Arg>   ARRAY <of> AuctionItem </of>    <ArgName>auctionItems</ArgName> </Arg>
+            <Arg>   INT32                           <ArgName>totalResults</ArgName> </Arg>
+            <Arg>   INT32                           <ArgName>clientKey</ArgName>    </Arg>
+        </onBMAuctions>
+        
+        <onBMAuctionRemove>
+            <Arg>   INT32       <ArgName>sequenceId</ArgName>       </Arg> <!-- Sequence id of the auction to remove -->
+        </onBMAuctionRemove>
+        
+        <onBMAuctionUpdate>
+            <Arg>   AuctionItem <ArgName>auctionItem</ArgName>      </Arg> <!-- Updated Auction Item for an auction the client might already know about -->
+        </onBMAuctionUpdate>
+        
+        <onBMWatchedItemsUpdate>
+            <Arg>   ARRAY<of>INT32</of> <ArgName>itemList</ArgName> </Arg> <!-- List of items currently being watched -->
+        </onBMWatchedItemsUpdate>
+        
+    </ClientMethods>
+    
+    <CellMethods>
+    
+        <BMSearch>
+            <Exposed/>
+            <Arg>   BMSearchOptions       <ArgName>searchOptions</ArgName>  </Arg>
+        </BMSearch>
+        
+        <BMCreateAuction>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>itemInstanceId</ArgName>   </Arg>  <!-- Item instance to put up for auction -->
+            <Arg>   INT32       <ArgName>buyoutPrice</ArgName>      </Arg>  <!-- Buyout price for this auction -->
+            <Arg>   UINT8       <ArgName>auctionLength</ArgName>    </Arg>  <!-- Length id for this auction -->
+            <Arg>   INT32       <ArgName>startingPrice</ArgName>    </Arg>  <!-- Starting price of the auction -->
+        </BMCreateAuction>
+        
+        <BMPlaceBid>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>sequenceId</ArgName>       </Arg>  <!-- SequenceId of the auction -->
+            <Arg>   INT32       <ArgName>bidAmount</ArgName>        </Arg>  <!-- Bid Amount -->               
+        </BMPlaceBid>
+        
+        <BMCancelAuction>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>sequenceId</ArgName>    </Arg>  <!-- Sequence Id of the auction to cancel -->
+        </BMCancelAuction>
+        
+        <BMStartWatchingItem>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>itemDefId</ArgName>    </Arg>  <!-- Item Id of the item to start watching for -->
+        </BMStartWatchingItem>
+        
+        <BMStopWatchingItem>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>itemDefId</ArgName>    </Arg>  <!-- Item Id of the item to stop watching for -->
+        </BMStopWatchingItem>
+    
+    </CellMethods>
+    
+    <BaseMethods>
+
+        <BMSearch>
+            <Arg>   BMSearchOptions  </Arg>
+        </BMSearch>
+        
+        <BMCreateAuction>
+            <Arg>   INT32   </Arg>  <!-- Item instance to put up for auction -->
+            <Arg>   INT32   </Arg>  <!-- Buyout price for this auction -->
+            <Arg>   UINT8   </Arg>  <!-- Length id for this auction -->
+            <Arg>   INT32   </Arg>  <!-- Starting price of the auction -->
+        </BMCreateAuction>
+        
+        <BMPlaceBid>
+            <Arg>   INT32   </Arg>  <!-- SequenceId of the auction -->
+            <Arg>   INT32   </Arg>  <!-- Bid Amount -->
+        </BMPlaceBid>
+        
+        <BMCancelAuction>
+            <Arg>   INT32   </Arg>  <!-- Sequence Id of the auction to cancel -->
+        </BMCancelAuction>
+        
+        <BMStartWatchingItem>
+            <Arg>   INT32   </Arg>  <!-- Item Id of the item to start watching for -->
+        </BMStartWatchingItem>
+        
+        <BMStopWatchingItem>
+            <Arg>   INT32   </Arg>  <!-- Item Id of the item to stop watching for -->
+        </BMStopWatchingItem>
+
+        
+    </BaseMethods>
+    
+</root>

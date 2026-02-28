@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Castle_CellBlock.Hallway02Controller" Type="Mission" NextId="5">
+	<Node Id="1" Ref="Event_Dead" X="-62" Y="0">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="Hallway02_Guard"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Comment Id="0" Text="Hallway 02" X="-98" Y="-56" Width="629" Height="325" Color="0"/>
+	<Node Id="2" Ref="Var_Player" X="-40" Y="122">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Player" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Act_GetMission" X="96" Y="14">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="683"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Accepted" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Node Id="4" Ref="Act_UpdateMission" X="315" Y="10">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="683"/>
+		<Port Name="Abandon" Flags="0"/>
+		<Port Name="Accept" Flags="0"/>
+		<Port Name="Complete" Flags="0"/>
+		<Port Name="Fail" Flags="0"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Connection OutNode="1" OutPort="Out" InNode="3" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="3" InPort="Player"/>
+	<Connection OutNode="3" OutPort="Active" InNode="4" InPort="Complete"/>
+	<Connection OutNode="2" OutPort="Player" InNode="4" InPort="Player"/>
+</Script>

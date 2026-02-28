@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Reload" Type="Effect" NextId="31">
+	<Node Id="1" Ref="Event_Effect" X="-1579" Y="-123">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Effect Init" Flags="0"/>
+		<Port Name="Effect Removed" Flags="0"/>
+		<Port Name="Pulse Begin" Flags="0"/>
+		<Port Name="Pulse End" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Var_Player" X="-1566" Y="-3">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Player" Flags="0"/>
+	</Node>
+	<Node Id="9" Ref="Act_GetStat" X="-1110" Y="-139">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Stat Id" Value="49"/>
+		<Port Name="Base" Flags="0"/>
+		<Port Name="Base Current" Flags="0"/>
+		<Port Name="Base Max" Flags="0"/>
+		<Port Name="Base Min" Flags="0"/>
+		<Port Name="Current" Flags="0"/>
+		<Port Name="Entity" Flags="2"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Max" Flags="0"/>
+		<Port Name="Min" Flags="0"/>
+		<Port Name="Stat Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Node Id="10" Ref="Act_SetStat" X="-909" Y="-142">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Stat Id" Value="49"/>
+		<Port Name="Current" Flags="0"/>
+		<Port Name="Entity" Flags="2"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Max" Flags="0"/>
+		<Port Name="Min" Flags="0"/>
+		<Port Name="Stat Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Node Id="20" Ref="Act_GetAmmoStat" X="-1371" Y="-114">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Ammo Stat Id" Flags="0"/>
+		<Port Name="Entity" Flags="2"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="9" OutPort="Successful" InNode="10" InPort="In"/>
+	<Connection OutNode="9" OutPort="Max" InNode="10" InPort="Current"/>
+	<Connection OutNode="3" OutPort="Player" InNode="9" InPort="Entity"/>
+	<Connection OutNode="3" OutPort="Player" InNode="10" InPort="Entity"/>
+	<Connection OutNode="20" OutPort="Successful" InNode="9" InPort="In"/>
+	<Connection OutNode="20" OutPort="Ammo Stat Id" InNode="9" InPort="Stat Id"/>
+	<Connection OutNode="3" OutPort="Player" InNode="20" InPort="Entity"/>
+	<Connection OutNode="1" OutPort="Effect Init" InNode="20" InPort="In"/>
+	<Connection OutNode="20" OutPort="Ammo Stat Id" InNode="10" InPort="Stat Id"/>
+</Script>

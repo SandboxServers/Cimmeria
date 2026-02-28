@@ -1,0 +1,2066 @@
+<root>
+	<!-- Locales we support from ref_language -->
+	<ELocales>ENUMERATION
+		<Type>UINT32</Type>
+		<Tokens>
+			<Token><Name>LCID_Default</Name><Value>1033</Value></Token>
+			<Token><Name>LCID_en_US</Name><Value>1033</Value></Token>
+			<Token><Name>LCID_af_ZA</Name><Value>12297</Value></Token>
+		</Tokens>
+	</ELocales>
+    <ETargetCollectionParams>ENUMERATION
+      <Type>INT32</Type>
+      <BW_TO_UE3_DIST_CONVERT/>
+      <Tokens>
+      <Token><Name>AE_RADIUS_Melee</Name><Value>2.5</Value></Token>
+      <Token><Name>AE_RADIUS_Short</Name><Value>5</Value></Token>
+      <Token><Name>AE_RADIUS_Medium</Name><Value>10</Value></Token>
+      <Token><Name>AE_RADIUS_Long</Name><Value>15</Value></Token>
+      <Token><Name>AE_RADIUS_Extreme</Name><Value>20</Value></Token>
+      <Token><Name>AE_CONE_Melee</Name><Value>5</Value></Token>
+      <Token><Name>AE_CONE_Short</Name><Value>20</Value></Token>
+      <Token><Name>AE_CONE_Medium</Name><Value>35</Value></Token>
+      <Token><Name>AE_CONE_Long</Name><Value>45</Value></Token>
+      <Token><Name>AE_CONE_Extreme</Name><Value>70</Value></Token>
+      <Token><Name>AE_ANGLES_Beam</Name><Value>5</Value></Token>
+      <Token><Name>AE_ANGLES_Narrow</Name><Value>20</Value></Token>
+      <Token><Name>AE_ANGLES_Medium</Name><Value>35</Value></Token>
+      <Token><Name>AE_ANGLES_Wide</Name><Value>45</Value></Token>
+      <Token><Name>AE_ANGLES_Extreme</Name><Value>70</Value></Token>
+      <Token><Name>AE_CONE_STARTSIZE</Name><Value>0.33</Value></Token>
+      </Tokens>
+    </ETargetCollectionParams>
+    <EAbilityFlags>ENUMERATION
+        <Type>UINT64</Type> <!-- bitfield -->
+        <Tokens>
+            <Token><Name>AbilityNone</Name>              <Value>    0</Value></Token>
+            <Token><Name>WeaponBar</Name>                <Value>    1</Value></Token>
+            <Token><Name>DeploymentBar</Name>            <Value>    2</Value></Token>
+            <Token><Name>UseWeaponRange</Name>           <Value>    4</Value></Token>
+            <Token><Name>Toggled</Name>                  <Value>    8</Value></Token>
+            <Token><Name>Response</Name>                 <Value>   16</Value></Token>
+            <Token><Name>PetToggled</Name>               <Value>   32</Value></Token>
+            <Token><Name>PetTrained</Name>               <Value>   64</Value></Token>
+            <Token><Name>UsableWithDisguise</Name>       <Value>  128</Value></Token>
+            <Token><Name>ForceStanding</Name>            <Value>  256</Value></Token>
+            <Token><Name>DoNotActivate_AutoCycle</Name>  <Value>  512</Value></Token>
+            <Token><Name>Deactivate_AutoCycle</Name>     <Value> 1024</Value></Token>
+            <Token><Name>SpeedGrenade</Name>             <Value> 2048</Value></Token>
+            <Token><Name>SpeedDeploy</Name>              <Value> 4096</Value></Token>
+            <Token><Name>SpeedAttack</Name>              <Value> 8192</Value></Token>
+            <Token><Name>SpeedPet</Name>                 <Value>16384</Value></Token>
+            <Token><Name>ForceTargetGround</Name>        <Value>32768</Value></Token>
+            <Token><Name>PetCommand</Name>               <Value>65536</Value></Token>
+        </Tokens>
+    </EAbilityFlags>
+    <EGender>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>GENDER_Male</Name><Value>1</Value></Token>
+            <Token><Name>GENDER_Female</Name><Value>2</Value></Token>
+            <Token><Name>GENDER_Other</Name><Value>3</Value></Token>
+        </Tokens>
+    </EGender>
+    <ETargetType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+        <Token><Name>TargetNONE</Name><Value>0</Value></Token>
+        <Token><Name>TargetSelf</Name><Value>1</Value></Token>
+        <Token><Name>TargetTarget</Name><Value>2</Value></Token>
+        <Token><Name>TargetGround</Name><Value>3</Value></Token>
+        </Tokens>
+    </ETargetType>
+    <EProxyMessages>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>MESSAGE_CacheData</Name><Value>0</Value></Token>
+        </Tokens>
+    </EProxyMessages>
+    <EWeaponState>
+        ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token>
+                <Name>WEAPON_STATE_Relaxed</Name>
+                <Value>0</Value>
+            </Token>
+            <Token>
+                <Name>WEAPON_STATE_OneHanded</Name>
+                <Value>1</Value>
+            </Token>
+            <Token>
+                <Name>WEAPON_STATE_TwoHanded</Name>
+                <Value>2</Value>
+            </Token>
+        </Tokens>
+    </EWeaponState>    
+    <ESide>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>SIDE_Dark</Name><Value>0</Value></Token>
+            <Token><Name>SIDE_Light</Name><Value>1</Value></Token>
+        </Tokens>
+    </ESide>
+    <EReasons>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>REAS_requested</Name><Value>0</Value></Token>
+            <Token><Name>REAS_kicked</Name><Value>1</Value></Token>
+            <Token><Name>REAS_disbanded</Name><Value>2</Value></Token>
+            <Token><Name>REAS_logout</Name><Value>3</Value></Token>
+        </Tokens>
+    </EReasons>
+    <EChannel>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>CHAN_say</Name><Value>0</Value></Token>
+            <Token><Name>CHAN_emote</Name><Value>1</Value></Token>
+            <Token><Name>CHAN_yell</Name><Value>2</Value></Token>
+            <Token><Name>CHAN_team</Name><Value>3</Value></Token>
+            <Token><Name>CHAN_squad</Name><Value>4</Value></Token>
+            <Token><Name>CHAN_command</Name><Value>5</Value></Token>
+            <Token><Name>CHAN_officer</Name><Value>6</Value></Token>
+            <Token><Name>CHAN_server</Name><Value>8</Value></Token>
+            <Token><Name>CHAN_feedback</Name><Value>9</Value></Token>
+            <Token><Name>CHAN_tell</Name><Value>10</Value></Token>
+            <Token><Name>CHAN_splash</Name><Value>11</Value></Token>
+            <Token><Name>CHAN_chat</Name><Value>12</Value></Token>
+            <!-- Anything starting at CHAN_chat is a user-created chat channel -->
+        </Tokens>
+    </EChannel>
+    <ESpeakerFlags>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+			<!-- This is used as a bitfield; the values should be powers of 2 -->
+            <Token><Name>SPEAKER_None</Name><Value>0</Value></Token>
+            <Token><Name>SPEAKER_GM</Name><Value>1</Value></Token>
+            <Token><Name>SPEAKER_Petition</Name><Value>2</Value></Token>
+            <Token><Name>SPEAKER_DND</Name><Value>4</Value></Token>
+		</Tokens>
+	</ESpeakerFlags>
+    <ECrystals>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>CRYS_Blank</Name><Value>0</Value></Token>
+            <Token><Name>CRYS_Green</Name><Value>1</Value></Token>
+            <Token><Name>CRYS_Yellow</Name><Value>2</Value></Token>
+            <Token><Name>CRYS_Locked</Name><Value>3</Value></Token>
+            <Token><Name>CRYS_Red</Name><Value>4</Value></Token>
+        </Tokens>
+    </ECrystals>
+    <ContextTypes>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>CONTEXT_None</Name><Value>0</Value></Token>
+            <Token><Name>CONTEXT_Talk</Name><Value>1</Value></Token>
+            <Token><Name>CONTEXT_Examine</Name><Value>2</Value></Token>
+            <Token><Name>CONTEXT_Kill</Name><Value>3</Value></Token>
+            <Token><Name>CONTEXT_Interact</Name><Value>4</Value></Token>
+        </Tokens>
+    </ContextTypes>
+    <EAmmoType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>AMMO_NONE</Name><Value>0</Value></Token>          
+            <Token><Name>Bullet_Default</Name><Value>1</Value></Token>          
+            <Token><Name>Bullet_Armor_Piercing</Name><Value>2</Value></Token>          
+            <Token><Name>Bullet_Hollow_Point</Name><Value>3</Value></Token>          
+            <Token><Name>Bullet_Incendiary</Name><Value>4</Value></Token>          
+            <Token><Name>Bullet_EMP</Name><Value>5</Value></Token>          
+            <Token><Name>Bullet_Explosive</Name><Value>6</Value></Token>          
+            <Token><Name>Dagger_Default</Name><Value>7</Value></Token>          
+            <Token><Name>Dagger_Metallic</Name><Value>8</Value></Token>          
+            <Token><Name>Dagger_Poison</Name><Value>9</Value></Token>          
+            <Token><Name>Dagger_Electrical</Name><Value>10</Value></Token>          
+            <Token><Name>Dagger_Disease</Name><Value>11</Value></Token>          
+            <Token><Name>Dagger_Plasma</Name><Value>12</Value></Token>          
+            <Token><Name>Dart_Default</Name><Value>13</Value></Token>          
+            <Token><Name>Dart_Poison</Name><Value>14</Value></Token>          
+            <Token><Name>Dart_Disease</Name><Value>15</Value></Token>          
+            <Token><Name>Dart_Tranquilizer</Name><Value>16</Value></Token>          
+            <Token><Name>Dart_EMP</Name><Value>17</Value></Token>          
+            <Token><Name>Dart_Radioactive</Name><Value>18</Value></Token>          
+            <Token><Name>Dart_Stim</Name><Value>19</Value></Token>          
+            <Token><Name>Dart_Coagulant</Name><Value>20</Value></Token>          
+            <Token><Name>Dart_Nanites</Name><Value>21</Value></Token>          
+            <Token><Name>Dart_Antidote</Name><Value>22</Value></Token>          
+            <Token><Name>Dart_Adrenaline</Name><Value>23</Value></Token>          
+        </Tokens>
+    </EAmmoType>
+    <EStance>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>STANCE_Undefined</Name><Value>0</Value></Token>
+            <Token><Name>STANCE_Defensive</Name><Value>1</Value></Token>
+            <Token><Name>STANCE_Conservative</Name><Value>2</Value></Token>
+            <Token><Name>STANCE_Aggressive</Name><Value>3</Value></Token>
+        </Tokens>
+    </EStance>
+    <EPetStance>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>PET_STANCE_Passive</Name>     <Value>0</Value></Token>
+            <Token><Name>PET_STANCE_Defensive</Name>   <Value>1</Value></Token>
+            <Token><Name>PET_STANCE_Aggressive</Name>  <Value>2</Value></Token>
+        </Tokens>
+    </EPetStance>
+    <ECoverQuality>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>QUALITY_Good</Name><Value>0</Value></Token>
+            <Token><Name>QUALITY_Better</Name><Value>1</Value></Token>
+            <Token><Name>QUALITY_Best</Name><Value>2</Value></Token>
+            <Token><Name>QUALITY_None</Name><Value>3</Value></Token>
+        </Tokens>
+    </ECoverQuality>
+    <ECoverHeight>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>        
+            <Token><Name>HEIGHT_Low</Name><Value>0</Value></Token>
+            <Token><Name>HEIGHT_Mid</Name><Value>1</Value></Token>      
+            <Token><Name>HEIGHT_High</Name><Value>2</Value></Token>
+            <Token><Name>HEIGHT_LOS</Name><Value>3</Value></Token>
+        </Tokens>
+    </ECoverHeight>
+    <Postures>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>POSTURE_Standing</Name><Value>0</Value></Token>
+            <Token><Name>POSTURE_Crouching</Name><Value>1</Value></Token>
+            <Token><Name>POSTURE_Prone</Name><Value>2</Value></Token>
+        </Tokens>
+    </Postures>
+    <WanderTypes>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>WANDER_None</Name><Value>0</Value></Token>
+            <Token><Name>WANDER_Calm</Name><Value>1</Value></Token>
+            <Token><Name>WANDER_Nervous</Name><Value>2</Value></Token>
+        </Tokens>
+    </WanderTypes> 
+    <EAbilityTypes>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>ABILITY_TYPE_Undefined</Name><Value>0</Value></Token>
+            <Token><Name>ABILITY_TYPE_Buff</Name><Value>1</Value></Token>
+            <Token><Name>ABILITY_TYPE_Debuff</Name><Value>2</Value></Token>
+            <Token><Name>ABILITY_TYPE_Heal</Name><Value>3</Value></Token>
+            <Token><Name>ABILITY_TYPE_DOT</Name><Value>4</Value></Token>
+            <Token><Name>ABILITY_TYPE_DD</Name><Value>5</Value></Token>
+        </Tokens>
+    </EAbilityTypes>
+    <EResultCode>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>RC_None</Name><Value>0</Value></Token>
+            <Token><Name>RC_Hit</Name><Value>1</Value></Token>
+            <Token><Name>RC_Miss</Name><Value>2</Value></Token>
+            <Token><Name>RC_Critical</Name><Value>3</Value></Token>
+            <Token><Name>RC_DoubleCritical</Name><Value>4</Value></Token>
+            <Token><Name>RC_Glancing</Name><Value>5</Value></Token>
+        </Tokens>
+    </EResultCode>
+    <EStatResultCode>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>SRC_None</Name><Value>0</Value></Token>
+            <Token><Name>SRC_Absorb</Name><Value>1</Value></Token>
+            <Token><Name>SRC_Immune</Name><Value>2</Value></Token>
+            <Token><Name>SRC_Mortal</Name><Value>3</Value></Token>
+        </Tokens>
+    </EStatResultCode>
+    <EDamageType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>DT_Untyped</Name><Value>13</Value></Token>
+            <Token><Name>DT_Energy</Name><Value>15</Value></Token>
+            <Token><Name>DT_Hazmat</Name><Value>16</Value></Token>
+            <Token><Name>DT_Physical</Name><Value>14</Value></Token>
+            <Token><Name>DT_Psionic</Name><Value>18</Value></Token>
+        </Tokens>
+    </EDamageType>
+    <EStatValueType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>SVT_BaseMin</Name><Value>0</Value></Token>
+            <Token><Name>SVT_BaseCurrent</Name><Value>1</Value></Token>
+            <Token><Name>SVT_BaseMax</Name><Value>2</Value></Token>
+            <Token><Name>SVT_Min</Name><Value>3</Value></Token>
+            <Token><Name>SVT_Current</Name><Value>4</Value></Token>
+            <Token><Name>SVT_Max</Name><Value>5</Value></Token>
+        </Tokens>
+    </EStatValueType>
+    <EStateField>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>BSF_Dead</Name>             <Value> 0</Value></Token>
+            <Token><Name>BSF_AutoCycling</Name>      <Value> 1</Value></Token>
+            <Token><Name>BSF_Crouching</Name>        <Value> 2</Value></Token>
+            <Token><Name>BSF_InCombat</Name>         <Value> 3</Value></Token>
+            <Token><Name>BSF_PlayingMinigame</Name>  <Value> 4</Value></Token>
+            <Token><Name>BSF_InStealth</Name>        <Value> 5</Value></Token>
+            <Token><Name>BSF_MovementLock</Name>     <Value> 6</Value></Token> <!-- This informs the movement system that we've hijacekd it and locked movement -->
+            <Token><Name>BSF_Walking</Name>          <Value> 7</Value></Token>
+            <Token><Name>BSF_Holster</Name>          <Value> 8</Value></Token>
+        </Tokens>
+    </EStateField>
+    <ETargetCollectionMethod>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>TCM_None</Name><Value>0</Value></Token>
+            <Token><Name>TCM_Single</Name><Value>1</Value></Token>
+            <Token><Name>TCM_AERadius</Name><Value>2</Value></Token>
+            <Token><Name>TCM_AECone</Name><Value>3</Value></Token>
+            <Token><Name>TCM_Group</Name><Value>4</Value></Token>
+            <Token><Name>TCM_Aura</Name><Value>5</Value></Token>
+            <Token><Name>TCM_RandomSingle</Name><Value>6</Value></Token>
+        </Tokens>
+    </ETargetCollectionMethod>
+    <ECooldownCategory>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>COOLDOWN_CATEGORY_SMG</Name><Value>0</Value></Token>
+            <Token><Name>COOLDOWN_CATEGORY_AR</Name><Value>1</Value></Token>
+            <Token><Name>COOLDOWN_CATEGORY_MG</Name><Value>2</Value></Token>
+            <Token><Name>COOLDOWN_CATEGORY_Pistols</Name><Value>3</Value></Token>
+            <Token><Name>COOLDOWN_CATEGORY_Staff</Name><Value>4</Value></Token>
+            <Token><Name>COOLDOWN_CATEGORY_Zat</Name><Value>5</Value></Token>
+            <Token><Name>COOLDOWN_CATEGORY_Item</Name><Value>6</Value></Token>
+        </Tokens>
+    </ECooldownCategory>
+    <EWeaponRange>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>WEAPON_RANGE_Invalid</Name><Value>0</Value></Token>
+            <Token><Name>WEAPON_RANGE_Pointblank</Name><Value>1</Value></Token>
+            <Token><Name>WEAPON_RANGE_Min</Name><Value>2</Value></Token>
+            <Token><Name>WEAPON_RANGE_Near</Name><Value>3</Value></Token>
+            <Token><Name>WEAPON_RANGE_Mid</Name><Value>4</Value></Token>
+            <Token><Name>WEAPON_RANGE_Far</Name><Value>5</Value></Token>
+            <Token><Name>WEAPON_RANGE_Melee</Name><Value>6</Value></Token>
+        </Tokens>
+    </EWeaponRange>
+    <EAlignment>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>ALIGNMENT_Undefined</Name> <Value> 0 </Value></Token>
+            <Token><Name>ALIGNMENT_Praxis</Name>    <Value> 1 </Value></Token>
+            <Token><Name>ALIGNMENT_SGU</Name>       <Value> 2 </Value></Token>
+            <Token><Name>ALIGNMENT_Side_01</Name>   <Value> 3 </Value></Token>
+            <Token><Name>ALIGNMENT_Side_02</Name>   <Value> 4 </Value></Token>
+            <Token><Name>ALIGNMENT_Side_03</Name>   <Value> 5 </Value></Token>
+            <Token><Name>ALIGNMENT_End</Name>       <Value> 6 </Value></Token> <!-- This one must be last -->
+        </Tokens>
+    </EAlignment>
+    <EArchetype>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>ARCHETYPE_Any</Name>           <Value> 0 </Value></Token>
+            <Token><Name>ARCHETYPE_Soldier</Name>       <Value> 1 </Value></Token>
+            <Token><Name>ARCHETYPE_Commando</Name>      <Value> 2 </Value></Token>
+            <Token><Name>ARCHETYPE_Scientist</Name>     <Value> 3 </Value></Token>
+            <Token><Name>ARCHETYPE_Archeologist</Name>  <Value> 4 </Value></Token>
+            <Token><Name>ARCHETYPE_Asgard</Name>        <Value> 5 </Value></Token>
+            <Token><Name>ARCHETYPE_Goauld</Name>        <Value> 6 </Value></Token>
+            <Token><Name>ARCHETYPE_Sholva</Name>        <Value> 7 </Value></Token>
+            <Token><Name>ARCHETYPE_Jaffa</Name>         <Value> 8 </Value></Token>
+        </Tokens>
+    </EArchetype>
+    <EAIState>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>AI_STATE_Spawning</Name><Value>0</Value></Token>
+            <Token><Name>AI_STATE_Idle</Name><Value>1</Value></Token>
+            <Token><Name>AI_STATE_Investigating</Name><Value>2</Value></Token>
+            <Token><Name>AI_STATE_Fighting</Name><Value>3</Value></Token>
+            <Token><Name>AI_STATE_Leashing</Name><Value>4</Value></Token>
+            <Token><Name>AI_STATE_Dead</Name><Value>5</Value></Token>
+            <Token><Name>AI_STATE_Despawning</Name><Value>6</Value></Token>
+            <Token><Name>AI_STATE_Follow</Name><Value>7</Value></Token>
+            <Token><Name>AI_STATE_Patrol</Name><Value>8</Value></Token>
+            <Token><Name>AI_STATE_Wander</Name><Value>9</Value></Token>
+            <Token><Name>AI_STATE_Submit</Name><Value>10</Value></Token>
+            <Token><Name>AI_STATE_Error</Name><Value>11</Value></Token>
+        </Tokens>
+    </EAIState>
+    <EEffectClass>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>EFFECT_CLASS_Event</Name><Value>0</Value></Token>
+            <Token><Name>EFFECT_CLASS_Stat</Name><Value>1</Value></Token>
+            <Token><Name>EFFECT_CLASS_Summon</Name><Value>2</Value></Token>
+            <Token><Name>EFFECT_CLASS_Script</Name><Value>3</Value></Token>
+        </Tokens>
+    </EEffectClass>
+    <EItemType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>ITEM_Misc</Name><Value>    0 </Value></Token>
+            <Token><Name>ITEM_Weapon</Name><Value>  1 </Value></Token>
+            <Token><Name>ITEM_Armor</Name><Value>   2 </Value></Token>
+            <Token><Name>ITEM_Quest</Name><Value>   3 </Value></Token>
+        </Tokens>
+    </EItemType>
+    <EMitigationType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>MITIGATION_Physical</Name><Value>            1 </Value></Token>
+            <Token><Name>MITIGATION_Physical_Impact</Name><Value>     2 </Value></Token>
+            <Token><Name>MITIGATION_Physical_Concussive</Name><Value> 3 </Value></Token>
+            <Token><Name>MITIGATION_Physical_Slashing</Name><Value>   4 </Value></Token>
+            <Token><Name>MITIGATION_Physical_Piercing</Name><Value>   5 </Value></Token>
+            
+            <Token><Name>MITIGATION_Energy</Name><Value>              6 </Value></Token>
+            <Token><Name>MITIGATION_Energy_Plasma</Name><Value>       7 </Value></Token>
+            <Token><Name>MITIGATION_Energy_Radiation</Name><Value>    8 </Value></Token>
+            <Token><Name>MITIGATION_Energy_Electrical</Name><Value>   9 </Value></Token>
+            <Token><Name>MITIGATION_Energy_Particle</Name><Value>    10 </Value></Token>
+            
+            <Token><Name>MITIGATION_Environmental</Name><Value>      11 </Value></Token>
+            <Token><Name>MITIGATION_Enviro_Biological</Name><Value>  12 </Value></Token>
+            <Token><Name>MITIGATION_Enviro_Chemical</Name><Value>    13 </Value></Token>
+            <Token><Name>MITIGATION_Enviro_Thermal</Name><Value>     14 </Value></Token>
+            <Token><Name>MITIGATION_Enviro_Cold</Name><Value>        15 </Value></Token>
+        </Tokens>
+    </EMitigationType>
+    <EWeaponType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>WEAPONTYPE_SMG</Name><Value>    1 </Value></Token>
+            <Token><Name>WEAPONTYPE_AR</Name><Value>     2 </Value></Token>
+            <Token><Name>WEAPONTYPE_MG</Name><Value>     3 </Value></Token>
+            <Token><Name>WEAPONTYPE_Pistol</Name><Value> 4 </Value></Token>
+            <Token><Name>WEAPONTYPE_Staff</Name><Value>  5 </Value></Token>
+            <Token><Name>WEAPONTYPE_Zat</Name><Value>    6 </Value></Token>
+        </Tokens>
+    </EWeaponType>
+    <EMobAggressionLevel>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>AGGRESSION_HOSTILE</Name><Value>       1 </Value></Token>
+            <Token><Name>AGGRESSION_SUSPICIOUS</Name><Value>    2 </Value></Token>
+            <Token><Name>AGGRESSION_NEUTRAL</Name><Value>       3 </Value></Token>
+            <Token><Name>AGGRESSION_FRIENDLY</Name><Value>      4 </Value></Token>
+            <Token><Name>AGGRESSION_DEFAULT</Name><Value>       5 </Value></Token>
+        </Tokens>
+    </EMobAggressionLevel>
+    <EMobRank>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>MOBRANK_Animal</Name><Value>           1 </Value></Token>
+            <Token><Name>MOBRANK_Standard</Name><Value>         2 </Value></Token>
+            <Token><Name>MOBRANK_EliteAnimal</Name><Value>      3 </Value></Token>
+            <Token><Name>MOBRANK_StandardElite</Name><Value>    4 </Value></Token>
+            <Token><Name>MOBRANK_NamedRare</Name><Value>        5 </Value></Token>
+            <Token><Name>MOBRANK_Boss</Name><Value>             6 </Value></Token>
+        </Tokens>
+    </EMobRank>
+    <ECASPosition>  ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>CAS_POSITION_FRONT</Name><Value>       0 </Value></Token>
+            <Token><Name>CAS_POSITION_FLANK</Name><Value>       1 </Value></Token>
+            <Token><Name>CAS_POSITION_REAR</Name><Value>        2 </Value></Token>
+            <Token><Name>CAS_POSITION_ABOVE</Name><Value>       3 </Value></Token>
+            <Token><Name>CAS_POSITION_BELOW</Name><Value>       4 </Value></Token>
+        </Tokens>
+    </ECASPosition>
+    <EStats>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>coordination</Name><Value>            0 </Value></Token>
+            <Token><Name>engagement</Name><Value>              1 </Value></Token>
+            <Token><Name>fortitude</Name><Value>               2 </Value></Token>
+            <Token><Name>morale</Name><Value>                  3 </Value></Token>
+            <Token><Name>perception</Name><Value>              4 </Value></Token>
+            <Token><Name>intelligence</Name><Value>            5 </Value></Token>
+            <Token><Name>movementSpeedMod</Name><Value>        6 </Value></Token>
+            <Token><Name>health</Name><Value>                  7 </Value></Token>
+            <Token><Name>focus</Name><Value>                   8 </Value></Token>
+            <Token><Name>healthRegen</Name><Value>             9 </Value></Token>
+            <Token><Name>focusRegen</Name><Value>             10 </Value></Token>
+            <Token><Name>accuracy</Name><Value>               11 </Value></Token>
+            <Token><Name>defense</Name><Value>                12 </Value></Token>
+            <Token><Name>qrMod</Name><Value>                  13 </Value></Token>
+            <Token><Name>physicalAF</Name><Value>             18 </Value></Token>
+            <Token><Name>energyAF</Name><Value>               23 </Value></Token>
+            <Token><Name>hazmatAF</Name><Value>               24 </Value></Token>
+            <Token><Name>psionicAF</Name><Value>              28 </Value></Token>
+            <Token><Name>kineticRes</Name><Value>             29 </Value></Token>
+            <Token><Name>mentalRes</Name><Value>              34 </Value></Token>
+            <Token><Name>healthRes</Name><Value>              40 </Value></Token>
+            <Token><Name>stealthRating</Name><Value>          46 </Value></Token>
+            <Token><Name>rangeModifier</Name><Value>          47 </Value></Token>
+            <Token><Name>coverQRModifier</Name><Value>        48 </Value></Token>
+            <Token><Name>ammoSlot1</Name><Value>              49 </Value></Token>
+            <Token><Name>ammoSlot2</Name><Value>              50 </Value></Token>
+            <Token><Name>ammoSlot3</Name><Value>              51 </Value></Token>
+            <Token><Name>ammoSlot4</Name><Value>              52 </Value></Token>
+            <Token><Name>ammoSlot5</Name><Value>              53 </Value></Token>
+            <Token><Name>deploymentBarAmmo</Name><Value>      54 </Value></Token>
+            <Token><Name>response</Name><Value>               55 </Value></Token>
+            <Token><Name>damage</Name><Value>                 56 </Value></Token>
+            <Token><Name>penetration</Name><Value>            57 </Value></Token>
+            <Token><Name>physicalDensity</Name><Value>        58 </Value></Token>
+            <Token><Name>energyDensity</Name><Value>          59 </Value></Token>
+            <Token><Name>hazmatDensity</Name><Value>          60 </Value></Token>
+            <Token><Name>psionicDensity</Name><Value>         61 </Value></Token>
+            <Token><Name>tracking</Name><Value>               62 </Value></Token>
+            <Token><Name>stabilization</Name><Value>          63 </Value></Token>
+            <Token><Name>awareness</Name><Value>              64 </Value></Token>
+            <Token><Name>interruptRes</Name><Value>           65 </Value></Token>
+            <Token><Name>coverAccuracy</Name><Value>          66 </Value></Token>
+            <Token><Name>coverDefense</Name><Value>           67 </Value></Token>
+            <Token><Name>crouchingAccuracy</Name><Value>      68 </Value></Token>
+            <Token><Name>crouchingDefense</Name><Value>       69 </Value></Token>
+            <Token><Name>stealthMovement</Name><Value>        70 </Value></Token>
+            <Token><Name>revealRating</Name><Value>           71 </Value></Token>
+            <Token><Name>negation</Name><Value>               72 </Value></Token>
+            <Token><Name>PhysicalDamagePercent</Name><Value>  73 </Value></Token>
+            <Token><Name>EnergyDamagePercent</Name><Value>    74 </Value></Token>
+            <Token><Name>HazmatDamagePercent</Name><Value>    75 </Value></Token>
+            <Token><Name>PsionicDamagePercent</Name><Value>   76 </Value></Token>
+            <Token><Name>UntypedDamagePercent</Name><Value>   77 </Value></Token>
+            <Token><Name>disguiseRating</Name><Value>         78 </Value></Token>
+            <Token><Name>disguiseDetection</Name><Value>      79 </Value></Token>
+            <Token><Name>mitigation</Name><Value>             80 </Value></Token>
+            <Token><Name>rotationSpeedMod</Name><Value>       81 </Value></Token>
+            <Token><Name>energy</Name><Value>                 82 </Value></Token>
+            <Token><Name>energyRegen</Name><Value>            83 </Value></Token>
+            <Token><Name>speedReload</Name><Value>           104 </Value></Token>
+            <Token><Name>speedGrenade</Name><Value>          105 </Value></Token>
+            <Token><Name>speedDeploy</Name><Value>           106 </Value></Token>
+            <Token><Name>speedAttack</Name><Value>           107 </Value></Token>
+            <Token><Name>recovery</Name><Value>              108 </Value></Token>
+            <Token><Name>restoration</Name><Value>           109 </Value></Token>
+            <Token><Name>subtlety</Name><Value>              110 </Value></Token>
+            <Token><Name>speedPet</Name><Value>              111 </Value></Token>
+            <Token><Name>absorbPhysical</Name><Value>         89 </Value></Token>
+            <Token><Name>absorbEnergy</Name><Value>           90 </Value></Token>
+            <Token><Name>absorbHazmat</Name><Value>           91 </Value></Token>
+            <Token><Name>absorbPsionic</Name><Value>          92 </Value></Token>
+            <Token><Name>absorbUntyped</Name><Value>          93 </Value></Token>
+            <Token><Name>absorbPhysicalItem</Name><Value>     94 </Value></Token>
+            <Token><Name>absorbEnergyItem</Name><Value>       95 </Value></Token>
+            <Token><Name>absorbHazmatItem</Name><Value>       96 </Value></Token>
+            <Token><Name>absorbPsionicItem</Name><Value>      97 </Value></Token>
+            <Token><Name>absorbUntypedItem</Name><Value>      98 </Value></Token>
+            <Token><Name>absorbPhysicalEnergy</Name><Value>   99 </Value></Token>
+            <Token><Name>absorbEnergyEnergy</Name><Value>    100 </Value></Token>
+            <Token><Name>absorbHazmatEnergy</Name><Value>    101 </Value></Token>
+            <Token><Name>absorbPsionicEnergy</Name><Value>   102 </Value></Token>
+            <Token><Name>absorbUntypedEnergy</Name><Value>   103 </Value></Token>
+        </Tokens>
+    </EStats>
+    <ECombatantState>ENUMERATION <!-- Bitfield -->
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>PLAYER_STATE_Blind</Name>       <Value> 1 </Value></Token>
+            <Token><Name>PLAYER_STATE_Confuse</Name>     <Value> 2 </Value></Token>
+            <Token><Name>PLAYER_STATE_DoT</Name>         <Value> 4 </Value></Token>
+            <Token><Name>PLAYER_STATE_Disease</Name>     <Value> 8 </Value></Token>
+            <Token><Name>PLAYER_STATE_Disorient</Name>   <Value> 16 </Value></Token>
+            <Token><Name>PLAYER_STATE_Fear</Name>        <Value> 32 </Value></Token>
+            <Token><Name>PLAYER_STATE_KnockBack</Name>  <Value> 64 </Value></Token>
+            <Token><Name>PLAYER_STATE_KnockDown</Name>  <Value> 128 </Value></Token>
+            <Token><Name>PLAYER_STATE_Slow</Name>        <Value> 256 </Value></Token>
+            <Token><Name>PLAYER_STATE_Snare</Name>       <Value> 512 </Value></Token>
+            <Token><Name>PLAYER_STATE_Stun</Name>        <Value> 1024 </Value></Token>
+            <Token><Name>PLAYER_STATE_Suppression</Name> <Value> 2048 </Value></Token>
+            <Token><Name>PLAYER_STATE_Alive</Name>       <Value> 4096 </Value></Token>
+            <Token><Name>PLAYER_STATE_Dead</Name>        <Value> 8192 </Value></Token>
+        </Tokens>
+    </ECombatantState>
+    <ERelationshipType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>Friend</Name><Value>    0</Value></Token>
+            <Token><Name>Foe</Name><Value>       1</Value></Token>
+            <Token><Name>Neutral</Name><Value>   2</Value></Token>
+        </Tokens>
+    </ERelationshipType>
+    <EUnitType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>Undefined</Name><Value>-1</Value></Token>
+            <Token><Name>AbilityUser</Name><Value>1</Value></Token>
+            <Token><Name>AbilityTarget</Name><Value>2</Value></Token>
+            <Token><Name>MissionGiver</Name><Value>3</Value></Token>
+            <Token><Name>MissionAccepter</Name><Value>4</Value></Token>
+            <Token><Name>EventTriggerer</Name><Value>5</Value></Token>
+            <Token><Name>BehaviorMob</Name><Value>6</Value></Token>
+            <Token><Name>DialogGiver</Name><Value>7</Value></Token>
+            <Token><Name>DialogReceiver</Name><Value>8</Value></Token>
+            <Token><Name>AbilitySecondaryTarget</Name><Value>9</Value></Token>
+            <Token><Name>BehaviorEventInvoker</Name><Value>10</Value></Token>
+            <Token><Name>PetOwner</Name><Value>11</Value></Token>
+            <Token><Name>MinigamePlayer</Name><Value>12</Value></Token>
+            <Token><Name>MinigameGiver</Name><Value>13</Value></Token>            
+            <Token><Name>SpawnRegion</Name><Value>14</Value></Token>            
+            <Token><Name>PetOwnerTarget</Name><Value>15</Value></Token>
+            <Token><Name>BehaviorEventMobTarget</Name><Value>16</Value></Token>
+        </Tokens>
+    </EUnitType>
+    <CAH_DebugLevel>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>NoDebug</Name><Value>0</Value></Token>
+            <Token><Name>Clients</Name><Value>1</Value></Token>
+            <Token><Name>Server</Name><Value>2</Value></Token>
+            <Token><Name>ClientsAndServer</Name><Value>3</Value></Token>
+        </Tokens>
+    </CAH_DebugLevel>
+    <EFaction>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>FACTION_None</Name><Value>1</Value></Token>
+            <Token><Name>FACTION_SGC</Name><Value>2</Value></Token>
+            <Token><Name>FACTION_Asgard</Name><Value>3</Value></Token>
+            <Token><Name>FACTION_Free_Jaffa</Name><Value>4</Value></Token>
+            <Token><Name>FACTION_New_Mind_Goauld</Name><Value>5</Value></Token>
+            <Token><Name>FACTION_Op_CORE</Name><Value>6</Value></Token>
+            <Token><Name>FACTION_Loyalist_Jaffa</Name><Value>7</Value></Token>
+            <Token><Name>FACTION_Ra_Jaffa</Name><Value>8</Value></Token>
+            <Token><Name>FACTION_Straegis</Name><Value>9</Value></Token>
+            <Token><Name>FACTION_Furling</Name><Value>10</Value></Token>
+            <Token><Name>FACTION_Burtonol</Name><Value>11</Value></Token>
+            <Token><Name>FACTION_TechCon_Group</Name><Value>12</Value></Token>
+            <Token><Name>FACTION_Tollan</Name><Value>13</Value></Token>
+            <Token><Name>FACTION_Svarog</Name><Value>14</Value></Token>
+            <Token><Name>FACTION_Lucia_Red</Name><Value>15</Value></Token>
+            <Token><Name>FACTION_Lucia_Blue</Name><Value>16</Value></Token>
+            <Token><Name>FACTION_Lucia_Green</Name><Value>17</Value></Token>
+            <Token><Name>FACTION_Lucia_Yellow</Name><Value>18</Value></Token>
+            <Token><Name>FACTION_Ancients</Name><Value>19</Value></Token>
+            <Token><Name>FACTION_Sha</Name><Value>20</Value></Token>
+            <Token><Name>FACTION_Bataur</Name><Value>21</Value></Token>
+            <Token><Name>FACTION_Wan_Lumin</Name><Value>22</Value></Token>
+            <Token><Name>FACTION_Sokar</Name><Value>23</Value></Token>
+            <Token><Name>FACTION_Nox</Name><Value>24</Value></Token>
+            <Token><Name>FACTION_Lord_Yu</Name><Value>25</Value></Token>
+            <Token><Name>FACTION_Anubis</Name><Value>26</Value></Token>
+            <Token><Name>FACTION_Vokos_Ancient</Name><Value>27</Value></Token>
+            <Token><Name>FACTION_Vokos_Furling</Name><Value>28</Value></Token>
+            <Token><Name>FACTION_Vokos_Nox</Name><Value>29</Value></Token>
+            <Token><Name>FACTION_Vokos_Asgard</Name><Value>30</Value></Token>
+            <Token><Name>FACTION_Pen_Lai_Barbarians</Name><Value>31</Value></Token>
+            <Token><Name>FACTION_Pen_Lai_Goauld</Name><Value>32</Value></Token>
+            <Token><Name>FACTION_Sokars_Jaffa_Goauld</Name><Value>33</Value></Token>
+            <Token><Name>FACTION_Kull_Tribesmen</Name><Value>34</Value></Token>
+        </Tokens>
+    </EFaction>
+    <EEvent>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>    <!--  Names and Values Must Matchup to ref_Item_Events table -->
+            <Token><Name>EVENT_ItemPickup</Name>         <Value>01</Value></Token>
+            <Token><Name>EVENT_ItemEquip</Name>          <Value>02</Value></Token>
+            <Token><Name>EVENT_ItemUnequip</Name>        <Value>03</Value></Token>
+            <Token><Name>EVENT_ItemDurabilityLoss</Name> <Value>04</Value></Token>
+            <Token><Name>EVENT_ItemUse</Name>            <Value>05</Value></Token>
+            <Token><Name>EVENT_ItemMelee</Name>          <Value>06</Value></Token>
+            <Token><Name>EVENT_ItemRanged</Name>         <Value>07</Value></Token>
+        </Tokens>
+    </EEvent>
+    <EThreatLevel>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>THREAT_LEVEL_Undefined</Name>  <Value>0</Value></Token>
+            <Token><Name>THREAT_LEVEL_None</Name>       <Value>1</Value></Token>
+            <Token><Name>THREAT_LEVEL_Low</Name>        <Value>2</Value></Token>
+            <Token><Name>THREAT_LEVEL_Medium</Name>     <Value>3</Value></Token>
+            <Token><Name>THREAT_LEVEL_High</Name>       <Value>4</Value></Token>
+        </Tokens>
+    </EThreatLevel>
+    <EGroupLootType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>GROUP_LOOT_RoundRobin</Name>   <Value>0</Value></Token>
+            <Token><Name>GROUP_LOOT_FreeForAll</Name>   <Value>1</Value></Token>
+        </Tokens>
+    </EGroupLootType>
+    <ETimerType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>MobBehavior</Name><Value>1</Value></Token>
+            <Token><Name>MobDespawn</Name><Value>2</Value></Token>
+            <Token><Name>SpawnRegionEvent</Name><Value>3</Value></Token>
+        </Tokens>
+    </ETimerType>
+    <EGateAddress>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>GATE_ADDRESS_Castle</Name><Value>1</Value></Token>
+            <Token><Name>GATE_ADDRESS_Tollana</Name><Value>2</Value></Token>
+            <Token><Name>GATE_ADDRESS_Lucia</Name><Value>3</Value></Token>
+            <Token><Name>GATE_ADDRESS_Agnos</Name><Value>4</Value></Token>
+            <Token><Name>GATE_ADDRESS_Anima_Vitrus</Name><Value>5</Value></Token>
+            <Token><Name>GATE_ADDRESS_CombatSim</Name><Value>6</Value></Token>
+        </Tokens>
+    </EGateAddress>
+    <ETimerUpdateType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>AbilityWarmup</Name><Value>1</Value></Token>
+            <Token><Name>AbilityCooldown</Name><Value>2</Value></Token>
+            <Token><Name>ItemCooldown</Name><Value>4</Value></Token>
+            <Token><Name>DurationEffect</Name><Value>5</Value></Token>
+            <Token><Name>DialogTimer</Name><Value>6</Value></Token>
+            <Token><Name>CategoryCooldown</Name><Value>8</Value></Token>
+            <Token><Name>MissionTimer</Name><Value>9</Value></Token>
+            <Token><Name>StepTimer</Name><Value>10</Value></Token>
+            <Token><Name>ObjectiveTimer</Name><Value>11</Value></Token>
+            <Token><Name>ReloadTimer</Name><Value>12</Value></Token>
+            <Token><Name>ReloadDeploymentTimer</Name><Value>13</Value></Token>
+            <Token><Name>DuelTimer</Name><Value>14</Value></Token>
+            <Token><Name>PvPTimer</Name><Value>15</Value></Token>
+            <Token><Name>CraftInductionTimer</Name><Value>16</Value></Token>
+        </Tokens>
+    </ETimerUpdateType>
+    
+    <EDialogType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>Converation</Name><Value>1</Value></Token>
+            <Token><Name>Trainer</Name><Value>2</Value></Token>
+            <Token><Name>Vendor</Name><Value>3</Value></Token>
+            <Token><Name>Mission</Name><Value>4</Value></Token>
+        </Tokens>
+    </EDialogType>
+    <!-- Ok, Those are not the dialog types used by dialogs...  So... -->
+    <EDialogDialogType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>DDT_Blurb</Name><Value>1</Value></Token>
+            <Token><Name>DDT_MoreInfo</Name><Value>2</Value></Token>
+            <Token><Name>DDT_Complete</Name><Value>3</Value></Token>
+            <Token><Name>DDT_Step1</Name><Value>4</Value></Token>
+            <Token><Name>DDT_Step2</Name><Value>5</Value></Token>
+            <Token><Name>DDT_Step3</Name><Value>6</Value></Token>
+            <Token><Name>DDT_Step4</Name><Value>7</Value></Token>
+            <Token><Name>DDT_Step5</Name><Value>8</Value></Token>
+            <Token><Name>DDT_Step6</Name><Value>9</Value></Token>
+            <Token><Name>DDT_Step7</Name><Value>10</Value></Token>
+            <Token><Name>DDT_Step8</Name><Value>11</Value></Token>
+            <Token><Name>DDT_Step9</Name><Value>12</Value></Token>
+            <Token><Name>DDT_Step10</Name><Value>13</Value></Token>
+            <Token><Name>DDT_Topic</Name><Value>14</Value></Token>
+            <Token><Name>DDT_Discussion</Name><Value>15</Value></Token>
+            <Token><Name>DDT_Tutorial</Name><Value>16</Value></Token>
+        </Tokens>
+    </EDialogDialogType>
+    <EDialogUIScreenType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>DUIST_None</Name><Value>0</Value></Token>
+            <Token><Name>DUIST_DefaultBlurb</Name><Value>1</Value></Token>
+            <Token><Name>DUIST_DefaultDialog</Name><Value>2</Value></Token>
+            <Token><Name>DUIST_DefaultTutorial</Name><Value>3</Value></Token>
+            <Token><Name>DUIST_DefaultRadio</Name><Value>4</Value></Token>
+            <Token><Name>DUIST_DefaultRealization</Name><Value>5</Value></Token>
+        </Tokens>
+    </EDialogUIScreenType>
+            
+    <ESequenceEventType>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>Ability_Begin</Name><Value>1000</Value></Token>
+            <Token><Name>Ability_End</Name><Value>1001</Value></Token>
+            <Token><Name>Ability_Interrupt</Name><Value>1002</Value></Token>
+            <Token><Name>Ability_Failed</Name><Value>1003</Value></Token>
+            <Token><Name>Ability_ChannelBegin</Name><Value>1004</Value></Token>
+            <Token><Name>Ability_ChannelFail</Name><Value>1006</Value></Token>
+            <Token><Name>Ability_ChannelEnd</Name><Value>1007</Value></Token>
+
+            <Token><Name>Effect_Init</Name><Value>2000</Value></Token>
+            <Token><Name>Effect_Removed</Name><Value>2001</Value></Token>
+            <Token><Name>Effect_Hit_Normal</Name><Value>2002</Value></Token>
+            <Token><Name>Effect_Hit_Crit</Name><Value>2003</Value></Token>
+            <Token><Name>Effect_Hit_Double_Crit</Name><Value>2004</Value></Token>
+            <Token><Name>Effect_Hit_Glancing</Name><Value>2005</Value></Token>
+            <Token><Name>Effect_Hit_Miss</Name><Value>2006</Value></Token>
+            <Token><Name>Effect_Pulse_Begin</Name><Value>2007</Value></Token>
+            <Token><Name>Effect_Pulse_End</Name><Value>2008</Value></Token>
+
+            <Token><Name>Entity_Spawn</Name><Value>5000</Value></Token>
+            <Token><Name>Entity_Death</Name><Value>5001</Value></Token>
+            <Token><Name>Entity_Despawn</Name><Value>5002</Value></Token>
+            <Token><Name>Entity_Alert</Name><Value>5003</Value></Token>
+            <Token><Name>Entity_CombatStateChanged</Name><Value>5005</Value></Token>
+            <Token><Name>Entity_HealthMonitor</Name><Value>5006</Value></Token>
+            <Token><Name>Entity_Mission_NewMission</Name><Value>5007</Value></Token> 
+            <Token><Name>Entity_Mission_StepAdvance</Name><Value>5008</Value></Token> 
+            <Token><Name>Entity_Mission_Completion</Name><Value>5009</Value></Token> 
+            <Token><Name>Entity_Mission_ObjectiveUnlocked</Name><Value>5010</Value></Token> 
+            <Token><Name>Entity_Mission_MissionComplete</Name><Value>5011</Value></Token>
+            <Token><Name>Entity_Enemy_Aggro</Name><Value>5012</Value></Token>
+            <Token><Name>Entity_Enemy_Leash</Name><Value>5013</Value></Token>
+            <Token><Name>Entity_Enemy_Death</Name><Value>5014</Value></Token> 
+            <Token><Name>Entity_Player_Level</Name><Value>5015</Value></Token>
+            <Token><Name>Entity_FocusMonitor</Name><Value>5016</Value></Token>
+            <Token><Name>Entity_Ally_Join</Name><Value>5017</Value></Token> 
+            <Token><Name>Entity_Ally_Leave</Name><Value>5018</Value></Token> 
+          
+            <Token><Name>Entity_Defensive_Enter</Name><Value>5100</Value></Token>
+            <Token><Name>Entity_Defensive_Exit</Name><Value>5101</Value></Token>
+            <Token><Name>Entity_Conservative_Enter</Name><Value>5102</Value></Token>
+            <Token><Name>Entity_Conservative_Exit</Name><Value>5103</Value></Token>
+            <Token><Name>Entity_Aggressive_Enter</Name><Value>5104</Value></Token>
+            <Token><Name>Entity_Aggressive_Exit</Name><Value>5105</Value></Token>
+
+            <Token><Name>Item_Equip</Name><Value>4000</Value></Token>
+            <Token><Name>Item_Unequip</Name><Value>4001</Value></Token>
+            <Token><Name>Item_Reload</Name><Value>4002</Value></Token>
+            <Token><Name>Item_Use</Name><Value>4003</Value></Token>
+            
+            <Token><Name>Designer_1</Name><Value>6000</Value></Token>
+            <Token><Name>Designer_2</Name><Value>6001</Value></Token>
+            <Token><Name>Designer_3</Name><Value>6002</Value></Token>
+            <Token><Name>Designer_4</Name><Value>6003</Value></Token>
+            <Token><Name>Designer_5</Name><Value>6004</Value></Token>
+            
+            <Token><Name>Stargate_MakeGate</Name><Value>6100</Value></Token>
+            <Token><Name>Stargate_MakeGateFull</Name><Value>6101</Value></Token>
+            <Token><Name>Stargate_MakeGateNow</Name><Value>6102</Value></Token>
+            <Token><Name>Stargate_DestroyGate</Name><Value>6103</Value></Token>
+            <Token><Name>Stargate_DestroyGateNow</Name><Value>6104</Value></Token>
+            <Token><Name>Stargate_DialFailure</Name><Value>6105</Value></Token>
+            <Token><Name>Stargate_DHD1</Name><Value>6106</Value></Token>
+            <Token><Name>Stargate_DHD2</Name><Value>6107</Value></Token>
+            <Token><Name>Stargate_DHD3</Name><Value>6108</Value></Token>
+            <Token><Name>Stargate_DHD4</Name><Value>6109</Value></Token>
+            <Token><Name>Stargate_DHD5</Name><Value>6110</Value></Token>
+            <Token><Name>Stargate_DHD6</Name><Value>6111</Value></Token>
+            <Token><Name>Stargate_DHD7</Name><Value>6112</Value></Token>
+            <Token><Name>Stargate_CrossGate</Name><Value>6113</Value></Token>
+
+            <Token><Name>Region_Teleport_Out</Name><Value>8000</Value></Token>
+            <Token><Name>Region_Teleport_In</Name><Value>8001</Value></Token>
+
+        </Tokens>
+    </ESequenceEventType>
+    
+    <!-- Map of the types of special interaction windows for SGWPlayer to keep track of who / what it is currently interacting with -->
+    <EInteractionType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>ItemVendor</Name>          <Value>1</Value></Token>
+            <Token><Name>AbilityTrainer</Name>      <Value>2</Value></Token>
+            <Token><Name>Conversation</Name>        <Value>3</Value></Token>
+            <Token><Name>InitialInteraction</Name>  <Value>4</Value></Token>
+            <Token><Name>Loot</Name>                <Value>5</Value></Token>
+            <Token><Name>MissionRewardList</Name>   <Value>6</Value></Token>
+            <Token><Name>RingTransporter</Name>     <Value>7</Value></Token>
+            <Token><Name>Banker</Name>              <Value>8</Value></Token>
+            <Token><Name>OrganizationCreation</Name><Value>9</Value></Token>
+            <Token><Name>Trade</Name>               <Value>10</Value></Token>
+            <Token><Name>TeamBanker</Name>          <Value>11</Value></Token>
+            <Token><Name>CommandBanker</Name>       <Value>12</Value></Token>
+        </Tokens>
+    </EInteractionType>
+
+    <EInteractionNotificationType>ENUMERATION
+        <Type>UINT64</Type>
+        <Tokens>       
+            <!-- 
+				static REF_DIALOG_CATEGORY_TYPE interactions 
+				these can be removed as soon as the minimap has been updated to use the new system
+			-->
+            <Token><Name>INT_Banker</Name>						<Value>2</Value></Token> <!-- 2**1 -->
+            <Token><Name>INT_Auction</Name>						<Value>4</Value></Token> <!-- 2**2 -->
+            <Token><Name>INT_Pvp</Name>							<Value>8</Value></Token> <!-- 2**3 -->
+            <Token><Name>INT_Dhd</Name>							<Value>16</Value></Token> <!-- 2**4 -->
+            <Token><Name>INT_RingNetwork</Name>					<Value>32</Value></Token> <!-- 2**5 -->
+            <Token><Name>INT_Organization</Name>				<Value>64</Value></Token> <!-- 2**6 -->
+            <Token><Name>INT_Trainer</Name>						<Value>128</Value></Token> <!-- 2**7 -->
+            <Token><Name>INT_MinigameLivewire</Name>			<Value>256</Value></Token> <!-- 2**8 -->
+            <Token><Name>INT_MinigameActivate</Name>			<Value>512</Value></Token> <!-- 2**9 -->
+            <Token><Name>INT_MinigameAnalyze</Name>				<Value>1024</Value></Token> <!-- 2**10 -->
+            <Token><Name>INT_MinigameBypass</Name>				<Value>2048</Value></Token> <!-- 2**11 -->
+            <Token><Name>INT_MinigameConverse</Name>			<Value>4096</Value></Token> <!-- 2**12 -->
+            <Token><Name>INT_VendorArmor</Name>					<Value>8192</Value></Token> <!-- 2**13 -->
+            <Token><Name>INT_VendorWeapons</Name>				<Value>16384</Value></Token> <!-- 2**14 -->
+            <Token><Name>INT_VendorConsumables</Name>			<Value>32768</Value></Token> <!-- 2**15 -->
+            <Token><Name>INT_VendorGeneral</Name>				<Value>65536</Value></Token> <!-- 2**16 -->
+            <Token><Name>INT_VendorMission</Name>				<Value>131072</Value></Token> <!-- 2**17 -->
+            <Token><Name>INT_VendorCraftBio</Name>				<Value>262144</Value></Token> <!-- 2**18 -->
+            <Token><Name>INT_VendorCraftPower</Name>			<Value>524288</Value></Token> <!-- 2**19 -->
+            <Token><Name>INT_VendorCraftMaterials</Name>		<Value>1048576</Value></Token> <!-- 2**20 -->
+            <Token><Name>INT_VendorCraftElectronics</Name>		<Value>2097152</Value></Token> <!-- 2**21 -->
+            <Token><Name>INT_AStoryMissionPending</Name>		<Value>4194304</Value></Token> <!-- 2**22 -->
+            <Token><Name>INT_AStoryMissionAvaliable</Name>		<Value>8388608</Value></Token> <!-- 2**23 -->
+            <Token><Name>INT_AStoryMissionActive</Name>			<Value>16777216</Value></Token> <!-- 2**24 -->
+            <Token><Name>INT_AStoryMissionTurnIn</Name>			<Value>33554432</Value></Token> <!-- 2**25 -->
+            <Token><Name>INT_NonAStoryMissionPending</Name>		<Value>67108864</Value></Token> <!-- 2**26 -->
+            <Token><Name>INT_NonAStoryMissionAvaliable</Name>	<Value>134217728</Value></Token> <!-- 2**27 -->
+            <Token><Name>INT_NonAStoryMissionActive</Name>		<Value>268435456</Value></Token> <!-- 2**28 -->
+            <Token><Name>INT_NonAStoryMissionTurnIn</Name>		<Value>536870912</Value></Token> <!-- 2**29 -->
+            <Token><Name>INT_MissionWorldObject</Name>			<Value>1073741824</Value></Token> <!-- 2**30 -->
+            <Token><Name>INT_MissionWaypoint</Name>				<Value>2147483648</Value></Token> <!-- 2**31 -->
+            <Token><Name>INT_DrossPile</Name>					<Value>4294967296</Value></Token> <!-- 2**32 -->
+			
+            <!-- non-static REF_DIALOG_CATEGORY_TYPE interactions -->
+            <Token><Name>INT_MissionLoot</Name>					<Value>9223372036854775808</Value></Token> <!-- 2**63 -->
+            <Token><Name>INT_NormalLoot</Name>					<Value>4611686018427387904</Value></Token> <!-- 2**62 -->
+            <Token><Name>INT_Attackable</Name>					<Value>2305843009213693952</Value></Token> <!-- 2**61 -->
+            <Token><Name>INT_Machine_Electronics</Name>			<Value>1152921504606846976</Value></Token> <!-- 2**60 -->
+            <Token><Name>INT_Machine_Materials</Name>			<Value>576460752303423488</Value></Token> <!-- 2**59 -->
+            <Token><Name>INT_Machine_Power</Name>				<Value>288230376151711744</Value></Token> <!-- 2**58 -->
+            <Token><Name>INT_Machine_Biomedical</Name>			<Value>144115188075855872</Value></Token> <!-- 2**57 -->
+            <Token><Name>INT_Machine_ReverseEng</Name>			<Value>72057594037927936</Value></Token> <!-- 2**56 -->
+            <Token><Name>INT_Attackable_In_Good_Cover</Name> <Value>36028797018963968</Value></Token> <!-- 2**55 -->
+            <Token><Name>INT_Attackable_In_Normal_Cover</Name> <Value>18014398509481984</Value></Token> <!-- 2**54 -->
+            <Token><Name>INT_Attackable_In_Poor_Cover</Name> <Value>9007199254740992</Value></Token> <!-- 2**53 -->
+
+        </Tokens>
+    </EInteractionNotificationType>
+    
+    <ELootType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>LOOT_Item</Name><Value>1</Value></Token>
+            <Token><Name>LOOT_Cash</Name><Value>2</Value></Token>
+        </Tokens>
+    </ELootType>
+
+    <!-- Inventory container ids -->
+    <EInventoryContainerId>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>INV_Main</Name><Value>1</Value></Token>
+            <Token><Name>INV_Mission</Name><Value>2</Value></Token>
+            <Token><Name>INV_Bandolier</Name><Value>3</Value></Token>
+            <Token><Name>INV_Head</Name><Value>4</Value></Token>
+            <Token><Name>INV_Face</Name><Value>5</Value></Token>
+            <Token><Name>INV_Neck</Name><Value>6</Value></Token>
+            <Token><Name>INV_Chest</Name><Value>7</Value></Token>
+            <Token><Name>INV_Hands</Name><Value>8</Value></Token>
+            <Token><Name>INV_Waist</Name><Value>9</Value></Token>
+            <Token><Name>INV_Back</Name><Value>10</Value></Token>
+            <Token><Name>INV_Legs</Name><Value>11</Value></Token>
+            <Token><Name>INV_Feet</Name><Value>12</Value></Token>
+            <Token><Name>INV_Artifact1</Name><Value>13</Value></Token>
+            <Token><Name>INV_Artifact2</Name><Value>14</Value></Token>
+            <Token><Name>INV_Crafting</Name><Value>15</Value></Token>
+            <Token><Name>INV_Buyback</Name><Value>16</Value></Token>
+            <Token><Name>INV_Bank</Name><Value>17</Value></Token>
+            <Token><Name>INV_Auction</Name><Value>18</Value></Token>
+            <Token><Name>INV_TeamBank</Name><Value>19</Value></Token>
+            <Token><Name>INV_CommandBank</Name><Value>20</Value></Token>
+            <Token><Name>INV_Incoming</Name><Value>100</Value></Token>
+        </Tokens>
+    </EInventoryContainerId>
+
+
+    <!-- This is directly taken from the ref_Vending_Set_Type table -->
+    <ECostType>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>COST_Naquadah</Name><Value>1</Value></Token>
+            <Token><Name>COST_Item</Name><Value>2</Value></Token>
+        </Tokens>
+    </ECostType>
+    
+    <EVisualGroupType>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>VIS_Optional</Name><Value>0</Value></Token>
+            <Token><Name>VIS_Forced</Name><Value>1</Value></Token>
+            <Token><Name>VIS_Item</Name><Value>2</Value></Token>
+        </Tokens>
+    </EVisualGroupType>
+ 
+    <EMovementType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>MOVEMENT_Walk</Name><Value>0</Value></Token>
+            <Token><Name>MOVEMENT_Run</Name><Value>1</Value></Token>
+        </Tokens>
+    </EMovementType>
+    <EPollType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>PT_Interact</Name><Value>0</Value></Token>
+        </Tokens>
+    </EPollType>
+    <EGMInfoRequestType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>GMINFO_Abilities</Name><Value>0</Value></Token>
+            <Token><Name>GMINFO_Inventory</Name><Value>1</Value></Token>
+        </Tokens>
+    </EGMInfoRequestType>
+
+    <ESubsystem>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>SUBSYSTEM_Unknown</Name><Value>0</Value></Token>
+            <Token><Name>SUBSYSTEM_Minigame</Name><Value>1</Value></Token>
+            <Token><Name>SUBSYSTEM_Mission</Name><Value>2</Value></Token>
+            <Token><Name>SUBSYSTEM_Inventory</Name><Value>3</Value></Token>
+            <Token><Name>SUBSYSTEM_PlayerAbility</Name><Value>4</Value></Token>
+            <Token><Name>SUBSYSTEM_MobAbility</Name><Value>5</Value></Token>
+            <Token><Name>SUBSYSTEM_Dialog</Name><Value>6</Value></Token>
+            <Token><Name>SUBSYSTEM_PlayerPassiveAbility</Name><Value>7</Value></Token>
+            <Token><Name>SUBSYSTEM_GateTravel</Name><Value>8</Value></Token>
+            <Token><Name>SUBSYSTEM_PendingAbility</Name><Value>9</Value></Token>
+        </Tokens>
+    </ESubsystem>
+    <EMinigameCallResult>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>MCR_Accepted</Name><Value>0</Value></Token>
+            <Token><Name>MCR_Declined</Name><Value>1</Value></Token>
+            <Token><Name>MCR_NoCash</Name><Value>2</Value></Token>
+            <Token><Name>MCR_ZeroCash</Name><Value>3</Value></Token>
+            <Token><Name>MCR_TimedOut</Name><Value>4</Value></Token>
+            <Token><Name>MCR_NotAvailable</Name><Value>5</Value></Token>
+            <Token><Name>MCR_WrongAlignment</Name><Value>6</Value></Token>
+            <Token><Name>MCR_TimeLimit</Name><Value>7</Value></Token>
+            <Token><Name>MCR_HelpSelf</Name><Value>8</Value></Token>
+            <Token><Name>MCR_NoInstance</Name><Value>9</Value></Token>
+        </Tokens>
+    </EMinigameCallResult>
+    <EMinigameCallEndedResult>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>MCER_SuccessPayTip</Name><Value>0</Value></Token>
+            <Token><Name>MCER_CallerClosedWindow</Name><Value>1</Value></Token>
+            <Token><Name>MCER_CallerMovedTooFar</Name><Value>2</Value></Token>
+            <Token><Name>MCER_CallerInterrupted</Name><Value>3</Value></Token>
+            <Token><Name>MCER_CallerDied</Name><Value>4</Value></Token>
+            <Token><Name>MCER_CallerDisconnected</Name><Value>5</Value></Token>
+            <Token><Name>MCER_RemoteClosedWindow</Name><Value>6</Value></Token>
+            <Token><Name>MCER_RemoteMovedTooFar</Name><Value>7</Value></Token>
+            <Token><Name>MCER_RemoteInterrupted</Name><Value>8</Value></Token>
+            <Token><Name>MCER_RemoteDied</Name><Value>9</Value></Token>
+            <Token><Name>MCER_RemoteDisconnected</Name><Value>10</Value></Token>
+        </Tokens>
+    </EMinigameCallEndedResult>
+    <EGiveCashTag>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>GCT_MinigameCall</Name><Value>1</Value></Token>
+            <Token><Name>GCT_MinigameContact</Name><Value>2</Value></Token>
+        </Tokens>
+    </EGiveCashTag>
+    <EMailFlags>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>MAIL_Archive</Name><Value>1</Value></Token>
+            <Token><Name>MAIL_COD</Name><Value>2</Value></Token>
+            <Token><Name>MAIL_ToVault</Name><Value>4</Value></Token>
+            <Token><Name>MAIL_ToTeam</Name><Value>8</Value></Token>
+            <Token><Name>MAIL_ToCommand</Name><Value>16</Value></Token>
+            <Token><Name>MAIL_ToCommandOfficers</Name><Value>32</Value></Token>
+            <Token><Name>MAIL_ToCommandRank0</Name><Value>64</Value></Token>
+            <Token><Name>MAIL_ToCommandRank1</Name><Value>128</Value></Token>
+            <Token><Name>MAIL_ToCommandRank2</Name><Value>256</Value></Token>
+            <Token><Name>MAIL_ToCommandRank3</Name><Value>512</Value></Token>
+            <Token><Name>MAIL_ToCommandRank4</Name><Value>1024</Value></Token>
+            <Token><Name>MAIL_ToCommandRank5</Name><Value>2048</Value></Token>
+            <Token><Name>MAIL_ToCommandRank6</Name><Value>4092</Value></Token>
+            <Token><Name>MAIL_ToCommandRank7</Name><Value>8196</Value></Token>
+        </Tokens>
+    </EMailFlags>
+    <EMailResultCodes>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>MAILRESULT_Sent</Name><Value>0</Value></Token>
+            <Token><Name>MAILRESULT_NoRecipients</Name><Value>1</Value></Token>
+            <Token><Name>MAILRESULT_ItemNotAvailable</Name><Value>2</Value></Token>
+            <Token><Name>MAILRESULT_AttachmentsAndMultipleRecipients</Name><Value>3</Value></Token>
+            <Token><Name>MAILRESULT_NotEnoughCash</Name><Value>4</Value></Token>
+            <Token><Name>MAILRESULT_VaultButNoItem</Name><Value>5</Value></Token>
+            <Token><Name>MAILRESULT_VaultPlusCash</Name><Value>6</Value></Token>
+            <Token><Name>MAILRESULT_SentToVault</Name><Value>7</Value></Token>
+        </Tokens>
+    </EMailResultCodes>
+    <EClientLockBits>ENUMERATION <!-- Warning:  This enumeration must be contiguous and LoadRegistered must be last -->
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>CLB_AppearenceLoaded</Name><Value>0</Value></Token>
+            <Token><Name>CLB_WorldLoaded</Name><Value>1</Value></Token>
+            <Token><Name>CLB_LoadRegistered</Name><Value>2</Value></Token> <!-- This MUST be the last item in this enumeration -->
+        </Tokens>
+    </EClientLockBits>
+    <EAoIRadiusType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>AOIR_TYPE_SERVER</Name><Value>1</Value></Token>
+            <Token><Name>AOIR_TYPE_CLIENT</Name><Value>2</Value></Token>
+            <Token><Name>AOIR_TYPE_CLIENT_VISIBLE</Name><Value>3</Value></Token>
+        </Tokens>
+    </EAoIRadiusType>
+    <EEffectFlag>ENUMERATION <!-- Bitfield -->
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>EF_Beneficial_Effect</Name>           <Value>        1</Value></Token>
+            <Token><Name>EF_Offline_Time_Counts</Name>         <Value>        2</Value></Token>
+            <Token><Name>EF_ClearOnDeath</Name>                <Value>        4</Value></Token>
+            <Token><Name>EF_ClearOnDamage</Name>               <Value>        8</Value></Token>
+            <Token><Name>EF_DontUseQR</Name>                   <Value>       16</Value></Token>
+            <Token><Name>EF_HasInductionBar</Name>             <Value>       32</Value></Token>
+            <Token><Name>EF_SequenceOnFinish</Name>            <Value>       64</Value></Token>
+            <Token><Name>EF_SequenceOnPulse</Name>             <Value>      128</Value></Token>
+            <Token><Name>EF_SequenceOnFail</Name>              <Value>      256</Value></Token>
+            <Token><Name>EF_SequenceOnStart</Name>             <Value>      512</Value></Token>
+            <Token><Name>EF_SequenceOnRemove</Name>            <Value>     1024</Value></Token>
+            <Token><Name>EF_ClearOnRez</Name>                  <Value>     2048</Value></Token>
+            <Token><Name>EF_HideIconOnClient</Name>            <Value>     4096</Value></Token>
+            <Token><Name>EF_OnlySendToGroup</Name>             <Value>     8192</Value></Token>
+            <Token><Name>EF_OnlySendToSelf</Name>              <Value>    16384</Value></Token>
+            <Token><Name>EF_RemoveOnDisguiseZeroed</Name>      <Value>    32768</Value></Token>
+            <Token><Name>EF_RemoveOnBandolierSlotChange</Name> <Value>    65536</Value></Token>
+            <Token><Name>EF_ResolveOnAbilityUser</Name>        <Value>   131072</Value></Token>
+            <Token><Name>EF_DisableDisguiseWhenRemoved</Name>  <Value>   262144</Value></Token>
+            <Token><Name>EF_AlwaysPersist</Name>               <Value>   524288</Value></Token>
+            <Token><Name>EF_Response</Name>                    <Value>  1048576</Value></Token>
+            <Token><Name>EF_RemoveOnStealthZeroed</Name>       <Value>  2097152</Value></Token>
+            <Token><Name>EF_CalculateQRFromTarget</Name>       <Value>  4194304</Value></Token>
+            <Token><Name>EF_PromptConfirmationDialog</Name>    <Value>  8388608</Value></Token>
+            <Token><Name>EF_SequenceOnConfirmation</Name>      <Value> 16777216</Value></Token>
+        </Tokens>
+    </EEffectFlag>
+    <EItemFlag>ENUMERATION <!-- Bitfield -->
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>ITEM_FLAG_MinigameInstrument   </Name><Value>     1</Value></Token>
+            <Token><Name>ITEM_FLAG_MinigameConsumable   </Name><Value>     2</Value></Token>
+            <Token><Name>ITEM_FLAG_BindOnAcquire        </Name><Value>     4</Value></Token>
+            <Token><Name>ITEM_FLAG_BindOnEquip          </Name><Value>     8</Value></Token>
+            <Token><Name>ITEM_FLAG_NotResearchable      </Name><Value>    16</Value></Token>
+            <Token><Name>ITEM_FLAG_Kicker               </Name><Value>    32</Value></Token>
+            <Token><Name>ITEM_FLAG_Craft_Craft          </Name><Value>    64</Value></Token>
+            <Token><Name>ITEM_FLAG_Craft_Research       </Name><Value>   128</Value></Token>
+            <Token><Name>ITEM_FLAG_Craft_RevEng         </Name><Value>   256</Value></Token>
+            <Token><Name>ITEM_FLAG_Craft_Alloying       </Name><Value>   512</Value></Token>
+            <Token><Name>ITEM_FLAG_CanBeSold            </Name><Value>  1024</Value></Token>
+            <Token><Name>ITEM_FLAG_CanBeDeleted         </Name><Value>  2048</Value></Token>
+            <Token><Name>ITEM_FLAG_Unique               </Name><Value>  4096</Value></Token>
+            <Token><Name>ITEM_FLAG_MustEquipToUse       </Name><Value>  8192</Value></Token>
+			<Token><Name>ITEM_FLAG_DestroyOnClear       </Name><Value> 16384</Value></Token>
+			<Token><Name>ITEM_FLAG_ElementaryComponent  </Name><Value> 32768</Value></Token>
+        </Tokens>
+    </EItemFlag>
+    <EVendingSetFlag>ENUMERATION <!-- Bitfield -->
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>VENDING_SET_FLAG_SellsAsFullStack</Name><Value>1</Value></Token>
+        </Tokens>
+    </EVendingSetFlag>
+    <EMoniker>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>MONIKER_Minigame_Reuse_Timer</Name><Value>3864481452</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Weapons</Name><Value>3901383057</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Armor</Name><Value>2365924106</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Consumables</Name><Value>72731287</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Miscellaneous</Name><Value>552498541</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Devices</Name><Value>2877527274</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_DataStorage</Name><Value>2641421205</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_CollectionItems</Name><Value>1261965660</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_ActivationItems</Name><Value>2349679024</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Components</Name><Value>733738939</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Sub_Combines</Name><Value>291550803</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Tools</Name><Value>3638035329</Value></Token>
+            <Token><Name>MONIKER_CATEGORY_Kickers</Name><Value>688786469</Value></Token>
+        </Tokens>
+    </EMoniker>
+    <EEffectType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>ETYPE_Duration</Name><Value>0</Value></Token>
+            <Token><Name>ETYPE_Pulse</Name><Value>1</Value></Token>
+        </Tokens>
+    </EEffectType>
+
+    <EGameFunctionFlags>ENUMERATION <!-- Bitfield -->
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>EGFF_Not</Name><Value>1</Value></Token>
+            <Token><Name>EGFF_SelfPass</Name><Value>2</Value></Token>
+        </Tokens>
+    </EGameFunctionFlags>
+    
+    <EMapWaypoint>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>MAPWAYPOINT_MissionTask</Name><Value>0</Value></Token>
+            <Token><Name>MAPWAYPOINT_ClickPing</Name><Value>1</Value></Token>
+        </Tokens>
+    </EMapWaypoint>
+
+    <EMapPing>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>MAPPING_SquadPing</Name><Value>0</Value></Token>
+        </Tokens>
+    </EMapPing>
+
+    <EErrorCodeSystem>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>ERRORCODE_SYSTEM_Ability</Name><Value>0</Value></Token>
+        </Tokens>
+    </EErrorCodeSystem>
+
+    <EConditionHandlerFeedback>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>CONDITION_FEEDBACK_InvalidEntity</Name>                     <Value>  0</Value></Token>    <!-- 1001, 1002, 1003, 1004, 1005, 1007, 1008, 1009, 1010, 1011, 1016, 1018, 1020, 1021, 1022, 1023, 1030, 1035, 1036, 1038, 1039, 1040, 1041, 1042, 1043, 1104, 1105, 1108, 1109, 1113, 1300, 1301, 1302, 1303, 1304, 1305, 1306, 1308, 1501, 1502, 1503, 1309, 1310, 1311, 1313, 1314, 1315, 1317, 1318, 1319, 1320, 1323, 1802, 1803, 1804, 1805, 1325 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckNotAbove</Name>             <Value>  1</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckNotBelow</Name>             <Value>  2</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckNotFront</Name>             <Value>  3</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckNotFlank</Name>             <Value>  4</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckNotRear</Name>              <Value>  5</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_NotSpecifiedArchetype</Name>             <Value>  6</Value></Token>    <!-- 1002 -->
+            <Token><Name>CONDITION_FEEDBACK_LevelNotEqual</Name>                     <Value>  7</Value></Token>    <!-- 1003 -->
+            <Token><Name>CONDITION_FEEDBACK_LevelEqual</Name>                        <Value>  8</Value></Token>    <!-- 1003 -->
+            <Token><Name>CONDITION_FEEDBACK_LevelGreaterThanOrEqual</Name>           <Value>  9</Value></Token>    <!-- 1003 -->
+            <Token><Name>CONDITION_FEEDBACK_LevelGreaterThan</Name>                  <Value> 10</Value></Token>    <!-- 1003 -->
+            <Token><Name>CONDITION_FEEDBACK_LevelLessThanOrEqual</Name>              <Value> 11</Value></Token>    <!-- 1003 -->
+            <Token><Name>CONDITION_FEEDBACK_LevelLessThan</Name>                     <Value> 12</Value></Token>    <!-- 1003 -->
+            <Token><Name>CONDITION_FEEDBACK_Living</Name>                            <Value> 13</Value></Token>    <!-- 1004 -->
+            <Token><Name>CONDITION_FEEDBACK_NotLiving</Name>                         <Value> 14</Value></Token>    <!-- 1004 -->
+            <Token><Name>CONDITION_FEEDBACK_Deprecated</Name>                        <Value> 15</Value></Token>    <!-- 1000, 1006, 1013, 1014, 1015, 1017, 1025, 1027, 1028, 1031, 1033 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckAbove</Name>                <Value> 16</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckBelow</Name>                <Value> 17</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckFront</Name>                <Value> 18</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckFlank</Name>                <Value> 19</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_PositionCheckRear</Name>                 <Value> 20</Value></Token>    <!-- 1001 -->
+            <Token><Name>CONDITION_FEEDBACK_SpecifiedArchetype</Name>                <Value> 21</Value></Token>    <!-- 1002 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityMoving</Name>                      <Value> 22</Value></Token>    <!-- 1003 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityNotMoving</Name>                   <Value> 23</Value></Token>    <!-- 1003 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemQuantityNotEqual</Name>              <Value> 24</Value></Token>    <!-- 1007 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemQuantityEqual</Name>                 <Value> 25</Value></Token>    <!-- 1007 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemQuantityGreaterThanOrEqual</Name>    <Value> 26</Value></Token>    <!-- 1007 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemQuantityGreaterThan</Name>           <Value> 27</Value></Token>    <!-- 1007 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemQuantityLessThanOrEqual</Name>       <Value> 28</Value></Token>    <!-- 1007 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemQuantityLessThan</Name>              <Value> 29</Value></Token>    <!-- 1007 -->
+            <Token><Name>CONDITION_FEEDBACK_StatValueNotEqual</Name>                 <Value> 30</Value></Token>    <!-- 1008 -->
+            <Token><Name>CONDITION_FEEDBACK_StatValueEqual</Name>                    <Value> 31</Value></Token>    <!-- 1008 -->
+            <Token><Name>CONDITION_FEEDBACK_StatValueGreaterThanOrEqual</Name>       <Value> 32</Value></Token>    <!-- 1008 -->
+            <Token><Name>CONDITION_FEEDBACK_StatValueGreaterThan</Name>              <Value> 33</Value></Token>    <!-- 1008 -->
+            <Token><Name>CONDITION_FEEDBACK_StatValueLessThanOrEqual</Name>          <Value> 34</Value></Token>    <!-- 1008 -->
+            <Token><Name>CONDITION_FEEDBACK_StatValueLessThan</Name>                 <Value> 35</Value></Token>    <!-- 1008 -->
+            <Token><Name>CONDITION_FEEDBACK_RelationshipNeutral</Name>               <Value> 36</Value></Token>    <!-- 1009 -->
+            <Token><Name>CONDITION_FEEDBACK_RelationshipFriend</Name>                <Value> 37</Value></Token>    <!-- 1009, 1323 -->
+            <Token><Name>CONDITION_FEEDBACK_RelationshipFoe</Name>                   <Value> 38</Value></Token>    <!-- 1009, 1323 -->
+            <Token><Name>CONDITION_FEEDBACK_LOS</Name>                               <Value> 39</Value></Token>    <!-- 1010 -->
+            <Token><Name>CONDITION_FEEDBACK_NoLOS</Name>                             <Value> 40</Value></Token>    <!-- 1010 -->
+            <Token><Name>CONDITION_FEEDBACK_InsideWeaponRange</Name>                 <Value> 41</Value></Token>    <!-- 1011 -->
+            <Token><Name>CONDITION_FEEDBACK_OutsideWeaponRange</Name>                <Value> 42</Value></Token>    <!-- 1011 -->
+            <Token><Name>CONDITION_FEEDBACK_OutsideDistanceCheck</Name>              <Value> 43</Value></Token>    <!-- 1012 -->
+            <Token><Name>CONDITION_FEEDBACK_InsideDistanceCheck</Name>               <Value> 44</Value></Token>    <!-- 1012 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityNotFacing</Name>                   <Value> 45</Value></Token>    <!-- 1016 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityFacing</Name>                      <Value> 46</Value></Token>    <!-- 1016 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityInCombat</Name>                    <Value> 47</Value></Token>    <!-- 1018 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityOutOfCombat</Name>                 <Value> 48</Value></Token>    <!-- 1018 -->
+            <Token><Name>CONDITION_FEEDBACK_RandomNumberNotEqual</Name>              <Value> 49</Value></Token>    <!-- 1019 -->
+            <Token><Name>CONDITION_FEEDBACK_RandomNumberEqual</Name>                 <Value> 50</Value></Token>    <!-- 1019 -->
+            <Token><Name>CONDITION_FEEDBACK_RandomNumberGreaterThanOrEqual</Name>    <Value> 51</Value></Token>    <!-- 1019 -->
+            <Token><Name>CONDITION_FEEDBACK_RandomNumberGreaterThan</Name>           <Value> 52</Value></Token>    <!-- 1019 -->
+            <Token><Name>CONDITION_FEEDBACK_RandomNumberLessThanOrEqual</Name>       <Value> 53</Value></Token>    <!-- 1019 -->
+            <Token><Name>CONDITION_FEEDBACK_RandomNumberLessThan</Name>              <Value> 54</Value></Token>    <!-- 1019 -->
+            <Token><Name>CONDITION_FEEDBACK_AmmoCheckIgnored</Name>                  <Value> 55</Value></Token>    <!-- 1020, 1022 -->
+            <Token><Name>CONDITION_FEEDBACK_AmmoCountNotEqual</Name>                 <Value> 56</Value></Token>    <!-- 1020, 1022 -->
+            <Token><Name>CONDITION_FEEDBACK_AmmoCountEqual</Name>                    <Value> 57</Value></Token>    <!-- 1020, 1022 -->
+            <Token><Name>CONDITION_FEEDBACK_AmmoCountGreaterThanOrEqual</Name>       <Value> 58</Value></Token>    <!-- 1020, 1022 -->
+            <Token><Name>CONDITION_FEEDBACK_AmmoCountGreaterThan</Name>              <Value> 59</Value></Token>    <!-- 1020, 1022 -->
+            <Token><Name>CONDITION_FEEDBACK_AmmoCountLessThanOrEqual</Name>          <Value> 60</Value></Token>    <!-- 1020, 1022 -->
+            <Token><Name>CONDITION_FEEDBACK_AmmoCountLessThan</Name>                 <Value> 61</Value></Token>    <!-- 1020, 1022 -->
+            <Token><Name>CONDITION_FEEDBACK_WeaponNotActivated</Name>                <Value> 62</Value></Token>    <!-- 1021 -->
+            <Token><Name>CONDITION_FEEDBACK_WrongWeaponType</Name>                   <Value> 63</Value></Token>    <!-- 1021 -->
+            <Token><Name>CONDITION_FEEDBACK_InvalidEventType</Name>                  <Value> 64</Value></Token>    <!-- 1023, 1024, 1026, 1029, 1030, 1037, 1038, 1039, 1043, 1100, 1102, 1103, 1104, 1105, 1106, 1109, 1111, 1300, 1304, 1305, 1306, 1307, 1308, 1700, 1701, 1319, 1802, 1803, 1804, 1805 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchKillEvent</Name>          <Value> 65</Value></Token>    <!-- 1023, 1100, 1106 -->
+            <Token><Name>CONDITION_FEEDBACK_MobMatchesKillEvent</Name>               <Value> 66</Value></Token>    <!-- 1023, 1100, 1106 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemDoesNotMatchCollectTask</Name>       <Value> 67</Value></Token>    <!-- 1024 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemMatchesCollectTask</Name>            <Value> 68</Value></Token>    <!-- 1024 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchInteractEvent</Name>      <Value> 69</Value></Token>    <!-- 1026, 1110 -->
+            <Token><Name>CONDITION_FEEDBACK_MobMatchesInteractEvent</Name>           <Value> 70</Value></Token>    <!-- 1026, 1110 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemDoesNotMatchUseTask</Name>           <Value> 71</Value></Token>    <!-- 1029, 1032, 1102, 1103 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemMatchesUseTask</Name>                <Value> 72</Value></Token>    <!-- 1029, 1102, 1103 -->
+            <Token><Name>CONDITION_FEEDBACK_CompletedMission</Name>                  <Value> 73</Value></Token>    <!-- 1030, 1309 -->
+            <Token><Name>CONDITION_FEEDBACK_NotCompletedMission</Name>               <Value> 74</Value></Token>    <!-- 1030, 1309 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchUseTask</Name>            <Value> 75</Value></Token>    <!-- 1032, 1104, 1105 -->
+            <Token><Name>CONDITION_FEEDBACK_MobAndItemMatchesUseTask</Name>          <Value> 76</Value></Token>    <!-- 1032 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionCountNotEqual</Name>              <Value> 77</Value></Token>    <!-- 1034, 1108, 1319 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionCountEqual</Name>                 <Value> 78</Value></Token>    <!-- 1034, 1108, 1319 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionCountGreaterThanOrEqual</Name>    <Value> 79</Value></Token>    <!-- 1034, 1108, 1319 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionCountGreaterThan</Name>           <Value> 80</Value></Token>    <!-- 1034, 1108, 1319 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionCountLessThanOrEqual</Name>       <Value> 81</Value></Token>    <!-- 1034, 1108, 1319 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionCountLessThan</Name>              <Value> 82</Value></Token>    <!-- 1034, 1108, 1319 -->
+            <Token><Name>CONDITION_FEEDBACK_SentFeedbackToEntity</Name>              <Value> 83</Value></Token>    <!-- 1035 -->
+            <Token><Name>CONDITION_FEEDBACK_GroupSizeNotEqual</Name>                 <Value> 84</Value></Token>    <!-- 1036 -->
+            <Token><Name>CONDITION_FEEDBACK_GroupSizeEqual</Name>                    <Value> 85</Value></Token>    <!-- 1036 -->
+            <Token><Name>CONDITION_FEEDBACK_GroupSizeGreaterThanOrEqual</Name>       <Value> 86</Value></Token>    <!-- 1036 -->
+            <Token><Name>CONDITION_FEEDBACK_GroupSizeGreaterThan</Name>              <Value> 87</Value></Token>    <!-- 1036 -->
+            <Token><Name>CONDITION_FEEDBACK_GroupSizeLessThanOrEqual</Name>          <Value> 88</Value></Token>    <!-- 1036 -->
+            <Token><Name>CONDITION_FEEDBACK_GroupSizeLessThan</Name>                 <Value> 89</Value></Token>    <!-- 1036 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchDeathEvent</Name>         <Value> 90</Value></Token>    <!-- 1037 -->
+            <Token><Name>CONDITION_FEEDBACK_MobMatchesDeathEvent</Name>              <Value> 91</Value></Token>    <!-- 1037 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityReachedNextPatrolPoint</Name>      <Value> 92</Value></Token>    <!-- 1038 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityNotReachedNextPatrolPoint</Name>   <Value> 93</Value></Token>    <!-- 1038 -->
+            <Token><Name>CONDITION_FEEDBACK_UnableToCheckNextPatrolPoint</Name>      <Value> 94</Value></Token>    <!-- 1038 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityReachedWaypoint</Name>             <Value> 95</Value></Token>    <!-- 1039 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityNotReachedWaypoint</Name>          <Value> 96</Value></Token>    <!-- 1039 -->
+            <Token><Name>CONDITION_FEEDBACK_UnableToCheckWaypoint</Name>             <Value> 97</Value></Token>    <!-- 1039 -->
+            <Token><Name>CONDITION_FEEDBACK_WeaponCooldownReady</Name>               <Value> 98</Value></Token>    <!-- 1040 -->
+            <Token><Name>CONDITION_FEEDBACK_WeaponCooldownNotReady</Name>            <Value> 99</Value></Token>    <!-- 1040 -->
+            <Token><Name>CONDITION_FEEDBACK_UnableToRunOnGhostEntity</Name>          <Value>100</Value></Token>    <!-- 1041, 1042 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemIsEquipped</Name>                    <Value>101</Value></Token>    <!-- 1041 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemNotIsEquipped</Name>                 <Value>102</Value></Token>    <!-- 1041 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemIsInInventory</Name>                 <Value>103</Value></Token>    <!-- 1042 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemIsNotInInventory</Name>              <Value>104</Value></Token>    <!-- 1042 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionaryDoesNotMatchUseTask</Name>     <Value>105</Value></Token>    <!-- 1043 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionaryMatchesUseTask</Name>          <Value>106</Value></Token>    <!-- 1043 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemStackNotEqual</Name>                 <Value>107</Value></Token>    <!-- 1101 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemStackEqual</Name>                    <Value>108</Value></Token>    <!-- 1101 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemStackGreaterThanOrEqual</Name>       <Value>109</Value></Token>    <!-- 1101 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemStackGreaterThan</Name>              <Value>110</Value></Token>    <!-- 1101 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemStackLessThanOrEqual</Name>          <Value>111</Value></Token>    <!-- 1101 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemStackLessThan</Name>                 <Value>112</Value></Token>    <!-- 1101 -->
+            <Token><Name>CONDITION_FEEDBACK_MobMatchesUseTask</Name>                 <Value>113</Value></Token>    <!-- 1104, 1105 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDistanceNotEqual</Name>            <Value>114</Value></Token>    <!-- 1107, 1320 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDistanceEqual</Name>               <Value>115</Value></Token>    <!-- 1107, 1320 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDistanceGreaterThanOrEqual</Name>  <Value>116</Value></Token>    <!-- 1107, 1320 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDistanceGreaterThan</Name>         <Value>117</Value></Token>    <!-- 1107, 1320 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDistanceLessThanOrEqual</Name>     <Value>118</Value></Token>    <!-- 1107, 1320 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDistanceLessThan</Name>            <Value>119</Value></Token>    <!-- 1107, 1320 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionaryNotOnMission</Name>            <Value>120</Value></Token>    <!-- 1108, 1501, 1502 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionaryOnMission</Name>               <Value>121</Value></Token>    <!-- 1108, 1501, 1502 -->
+            <Token><Name>CONDITION_FEEDBACK_DesignerFlagSet</Name>                   <Value>122</Value></Token>    <!-- 1109 -->
+            <Token><Name>CONDITION_FEEDBACK_DesignerFlagNotSet</Name>                <Value>123</Value></Token>    <!-- 1109 -->
+            <Token><Name>CONDITION_FEEDBACK_DialogSetMatchesDialogEvent</Name>       <Value>126</Value></Token>    <!-- 1111 -->
+            <Token><Name>CONDITION_FEEDBACK_DialogSetDoesNotMatchDialogEvent</Name>  <Value>127</Value></Token>    <!-- 1111 -->
+            <Token><Name>CONDITION_FEEDBACK_ChanceToFireSuccess</Name>               <Value>128</Value></Token>    <!-- 1112 -->
+            <Token><Name>CONDITION_FEEDBACK_ChanceToFireFailure</Name>               <Value>129</Value></Token>    <!-- 1112 -->
+            <Token><Name>CONDITION_FEEDBACK_ChanceToResistStateSuccess</Name>        <Value>130</Value></Token>    <!-- 1113 -->
+            <Token><Name>CONDITION_FEEDBACK_ChanceToResistStateFailure</Name>        <Value>131</Value></Token>    <!-- 1113 -->
+            <Token><Name>CONDITION_FEEDBACK_EffectMonikerNotOnEntity</Name>          <Value>132</Value></Token>    <!-- 1114, 1325 -->
+            <Token><Name>CONDITION_FEEDBACK_EffectMonikerOnEntity</Name>             <Value>133</Value></Token>    <!-- 1114, 1325 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchSubmitEvent</Name>        <Value>134</Value></Token>    <!-- 1300 -->
+            <Token><Name>CONDITION_FEEDBACK_MobMatchesSubmitEvent</Name>             <Value>135</Value></Token>    <!-- 1300 -->
+            <Token><Name>CONDITION_FEEDBACK_TappedPlayersNotOnMissionStep</Name>     <Value>136</Value></Token>    <!-- 1301 -->
+            <Token><Name>CONDITION_FEEDBACK_TappedPlayersOnMissionStep</Name>        <Value>137</Value></Token>    <!-- 1301 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityInterrupedByDamage</Name>          <Value>138</Value></Token>    <!-- 1302 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityNotInterrupedByDamage</Name>       <Value>139</Value></Token>    <!-- 1302 -->
+            <Token><Name>CONDITION_FEEDBACK_MobMatchesClassification</Name>          <Value>140</Value></Token>    <!-- 1303 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchClassification</Name>     <Value>141</Value></Token>    <!-- 1303 -->
+            <Token><Name>CONDITION_FEEDBACK_MobMatchesEscortDeathEvent</Name>        <Value>142</Value></Token>    <!-- 1304 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchEscortDeathEvent</Name>   <Value>143</Value></Token>    <!-- 1304 -->
+            <Token><Name>CONDITION_FEEDBACK_PointIDOutsidePointSet</Name>            <Value>144</Value></Token>    <!-- 1305, 1306, 1320 -->
+            <Token><Name>CONDITION_FEEDBACK_EscortReachedWaypoint</Name>             <Value>145</Value></Token>    <!-- 1305 -->
+            <Token><Name>CONDITION_FEEDBACK_EscortNotReachedWaypoint</Name>          <Value>146</Value></Token>    <!-- 1305 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchEscortVisitEvent</Name>   <Value>147</Value></Token>    <!-- 1305, 1306 -->
+            <Token><Name>CONDITION_FEEDBACK_EscortReachedPatrolPoint</Name>          <Value>148</Value></Token>    <!-- 1306 -->
+            <Token><Name>CONDITION_FEEDBACK_EscortNotReachedPatrolPoint</Name>       <Value>149</Value></Token>    <!-- 1306 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityEnteredRegion</Name>               <Value>150</Value></Token>    <!-- 1307 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityNotEnteredRegion</Name>            <Value>151</Value></Token>    <!-- 1307 -->
+            <Token><Name>CONDITION_FEEDBACK_EscortEnteredRegion</Name>               <Value>152</Value></Token>    <!-- 1308 -->
+            <Token><Name>CONDITION_FEEDBACK_EscortNotEnteredRegion</Name>            <Value>153</Value></Token>    <!-- 1308 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchEscortRegionEvent</Name>  <Value>154</Value></Token>    <!-- 1305, 1306 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDoesNotMatchAlignment</Name>       <Value>155</Value></Token>    <!-- 1503 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityMatchesAlignment</Name>            <Value>156</Value></Token>    <!-- 1503 -->
+            <Token><Name>CONDITION_FEEDBACK_MinigameDoesNotMatchSuccessEvent</Name>  <Value>157</Value></Token>    <!-- 1700 -->
+            <Token><Name>CONDITION_FEEDBACK_MinigameMatchesSuccessEvent</Name>       <Value>158</Value></Token>    <!-- 1700 -->
+            <Token><Name>CONDITION_FEEDBACK_MinigameDoesNotMatchFailureEvent</Name>  <Value>159</Value></Token>    <!-- 1701 -->
+            <Token><Name>CONDITION_FEEDBACK_MinigameMatchesFailureEvent</Name>       <Value>160</Value></Token>    <!-- 1701 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityIsPlayingMinigame</Name>           <Value>161</Value></Token>    <!-- 1702 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityIsNotPlayingMinigame</Name>        <Value>162</Value></Token>    <!-- 1702 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityIsPlayingSpecificMinigame</Name>   <Value>163</Value></Token>    <!-- 1702 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityIsNotPlayingSpecificMinigame</Name><Value>164</Value></Token>    <!-- 1702 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityHasMinigameContact</Name>          <Value>165</Value></Token>    <!-- 1703 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDoesNotHaveMinigameContact</Name>  <Value>166</Value></Token>    <!-- 1703 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDoesNotHaveAbility</Name>          <Value>167</Value></Token>    <!-- 1310 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityHasAbility</Name>                  <Value>168</Value></Token>    <!-- 1310 -->
+            <Token><Name>CONDITION_FEEDBACK_InvalidAbilitySet</Name>                 <Value>169</Value></Token>    <!-- 1311 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityMissingAbilityInSet</Name>         <Value>170</Value></Token>    <!-- 1311 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityHasAllAbilitiesInSet</Name>        <Value>171</Value></Token>    <!-- 1311 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityAcceptedRewardList</Name>          <Value>172</Value></Token>    <!-- 1800 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityNotAcceptedRewardList</Name>       <Value>173</Value></Token>    <!-- 1800 -->
+            <Token><Name>CONDITION_FEEDBACK_SpawnRegionActivated</Name>              <Value>174</Value></Token>    <!-- 1313 -->
+            <Token><Name>CONDITION_FEEDBACK_SpawnRegionNotActivated</Name>           <Value>175</Value></Token>    <!-- 1313 -->
+            <Token><Name>CONDITION_FEEDBACK_SpawnRegionSetActivated</Name>           <Value>176</Value></Token>    <!-- 1314 -->
+            <Token><Name>CONDITION_FEEDBACK_SpawnRegionSetNotActivated</Name>        <Value>177</Value></Token>    <!-- 1314 -->
+            <Token><Name>CONDITION_FEEDBACK_SpawnRegionInvalidSet</Name>             <Value>178</Value></Token>    <!-- 1314 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityHasStargateAddress</Name>          <Value>179</Value></Token>    <!-- 1704 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDoesNotHaveStargateAddress</Name>  <Value>180</Value></Token>    <!-- 1704 -->
+            <Token><Name>CONDITION_FEEDBACK_MobVariableNotEqual</Name>               <Value>181</Value></Token>    <!-- 1315, 1316 -->
+            <Token><Name>CONDITION_FEEDBACK_MobVariableEqual</Name>                  <Value>182</Value></Token>    <!-- 1315, 1316 -->
+            <Token><Name>CONDITION_FEEDBACK_MobVariableGreaterThanOrEqual</Name>     <Value>183</Value></Token>    <!-- 1315, 1316 -->
+            <Token><Name>CONDITION_FEEDBACK_MobVariableGreaterThan</Name>            <Value>184</Value></Token>    <!-- 1315, 1316 -->
+            <Token><Name>CONDITION_FEEDBACK_MobVariableLessThanOrEqual</Name>        <Value>185</Value></Token>    <!-- 1315, 1316 -->
+            <Token><Name>CONDITION_FEEDBACK_MobVariableLessThan</Name>               <Value>186</Value></Token>    <!-- 1315, 1316 -->
+            <Token><Name>CONDITION_FEEDBACK_WorldinstanceFlagSet</Name>              <Value>187</Value></Token>    <!-- 1400 -->
+            <Token><Name>CONDITION_FEEDBACK_WorldinstanceFlagNotSet</Name>           <Value>188</Value></Token>    <!-- 1400 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityHasPet</Name>                      <Value>189</Value></Token>    <!-- 1317 -->
+            <Token><Name>CONDITION_FEEDBACK_EntityDoesNotHavePet</Name>              <Value>190</Value></Token>    <!-- 1317 -->
+            <Token><Name>CONDITION_FEEDBACK_PetCountNotEqual</Name>                  <Value>191</Value></Token>    <!-- 1318 -->
+            <Token><Name>CONDITION_FEEDBACK_PetCountEqual</Name>                     <Value>192</Value></Token>    <!-- 1318 -->
+            <Token><Name>CONDITION_FEEDBACK_PetCountGreaterThanOrEqual</Name>        <Value>193</Value></Token>    <!-- 1318 -->
+            <Token><Name>CONDITION_FEEDBACK_PetCountGreaterThan</Name>               <Value>194</Value></Token>    <!-- 1318 -->
+            <Token><Name>CONDITION_FEEDBACK_PetCountLessThanOrEqual</Name>           <Value>195</Value></Token>    <!-- 1318 -->
+            <Token><Name>CONDITION_FEEDBACK_PetCountLessThan</Name>                  <Value>196</Value></Token>    <!-- 1318 -->
+            <Token><Name>CONDITION_FEEDBACK_AbilityDoesNotMatchUseTask</Name>        <Value>197</Value></Token>    <!-- 1802 -->
+            <Token><Name>CONDITION_FEEDBACK_AbilityMatchesUseTask</Name>             <Value>198</Value></Token>    <!-- 1802 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionaryMatchesAbilityUseTask</Name>   <Value>199</Value></Token>    <!-- 1803 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionaryDoesNotMatchAbilityUseTask</Name> <Value>200</Value></Token>    <!-- 1803 -->
+            <Token><Name>CONDITION_FEEDBACK_MobMatchesLaunchAbilityEvent</Name>      <Value>201</Value></Token>    <!-- 1804, 1805 -->
+            <Token><Name>CONDITION_FEEDBACK_MobDoesNotMatchLaunchAbilityEvent</Name> <Value>202</Value></Token>    <!-- 1804, 1805 -->
+            <Token><Name>CONDITION_FEEDBACK_MobIsOfType</Name>                       <Value>203</Value></Token>    <!-- 1806 -->
+            <Token><Name>CONDITION_FEEDBACK_MobIsNotOfType</Name>                    <Value>204</Value></Token>    <!-- 1806 -->
+            <Token><Name>CONDITION_FEEDBACK_UnitIsInWorld</Name>                     <Value>205</Value></Token>    <!-- 1807 -->
+            <Token><Name>CONDITION_FEEDBACK_UnitIsNotInWorld</Name>                  <Value>206</Value></Token>    <!-- 1807 -->
+            <Token><Name>CONDITION_FEEDBACK_RotationEqual</Name>                     <Value>207</Value></Token>    <!-- 1810 -->
+            <Token><Name>CONDITION_FEEDBACK_RotationNotEqual</Name>                  <Value>208</Value></Token>    <!-- 1810 -->
+            <Token><Name>CONDITION_FEEDBACK_RotationGreaterThanOrEqual</Name>        <Value>209</Value></Token>    <!-- 1810 -->
+            <Token><Name>CONDITION_FEEDBACK_RotationLessThan</Name>                  <Value>210</Value></Token>    <!-- 1810 -->
+            <Token><Name>CONDITION_FEEDBACK_RotationGreaterThan</Name>               <Value>211</Value></Token>    <!-- 1810 -->
+            <Token><Name>CONDITION_FEEDBACK_RotationLessThanOrEqual</Name>           <Value>212</Value></Token>    <!-- 1810 -->
+            <Token><Name>CONDITION_FEEDBACK_EnoughAppliedSciencePoints</Name>        <Value>213</Value></Token>    <!-- 1809 -->
+            <Token><Name>CONDITION_FEEDBACK_NotEnoughAppliedSciencePoints</Name>     <Value>214</Value></Token>    <!-- 1809 -->
+            <Token><Name>CONDITION_FEEDBACK_IsSelf</Name>                            <Value>215</Value></Token>    <!-- Flag -->
+            <Token><Name>CONDITION_FEEDBACK_PvPServer</Name>                         <Value>216</Value></Token>    <!-- 1324 -->
+            <Token><Name>CONDITION_FEEDBACK_NotPvPServer</Name>                      <Value>217</Value></Token>    <!-- 1324 -->
+            <Token><Name>CONDITION_FEEDBACK_FlagMatchesTask</Name>                   <Value>218</Value></Token>    <!-- 1811 -->
+            <Token><Name>CONDITION_FEEDBACK_FlagDoesNotMatchTask</Name>              <Value>219</Value></Token>    <!-- 1811 -->
+            <Token><Name>CONDITION_FEEDBACK_AIStateMatches</Name>                    <Value>220</Value></Token>    <!-- 1812 -->
+            <Token><Name>CONDITION_FEEDBACK_AIStateDoesNotMatch</Name>               <Value>221</Value></Token>    <!-- 1812 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemMatchesTask</Name>                   <Value>222</Value></Token>    <!-- 1813 -->
+            <Token><Name>CONDITION_FEEDBACK_ItemDoesNotMatchTask</Name>              <Value>223</Value></Token>    <!-- 1813 -->
+            <Token><Name>CONDITION_FEEDBACK_AbilityPulseCheckFailed</Name>           <Value>224</Value></Token>    <!-- 1116 -->
+            <Token><Name>CONDITION_FEEDBACK_AbilityPulseCheckPassed</Name>           <Value>225</Value></Token>    <!-- 1116 -->
+            <Token><Name>CONDITION_FEEDBACK_HasCraft</Name>                          <Value>224</Value></Token>    <!-- 1815 -->
+            <Token><Name>CONDITION_FEEDBACK_DoesNotHaveCraft</Name>                  <Value>225</Value></Token>    <!-- 1815 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionCountInRange</Name>               <Value>226</Value></Token>    <!-- 1817 -->
+            <Token><Name>CONDITION_FEEDBACK_MissionCountNotInRange</Name>            <Value>227</Value></Token>    <!-- 1817 -->
+            <Token><Name>CONDITION_FEEDBACK_ExpertiseValueNotEqual</Name>            <Value>228</Value></Token>    <!-- 1900 -->
+            <Token><Name>CONDITION_FEEDBACK_ExpertiseValueEqual</Name>               <Value>229</Value></Token>    <!-- 1900 -->
+            <Token><Name>CONDITION_FEEDBACK_ExpertiseValueGreaterThan</Name>         <Value>230</Value></Token>    <!-- 1900 -->
+            <Token><Name>CONDITION_FEEDBACK_ExpertiseValueGreaterThanOrEqual</Name>  <Value>231</Value></Token>    <!-- 1900 -->
+            <Token><Name>CONDITION_FEEDBACK_ExpertiseValueLessThanOrEqual</Name>     <Value>232</Value></Token>    <!-- 1900 -->
+            <Token><Name>CONDITION_FEEDBACK_ExpertiseValueLessThan</Name>            <Value>233</Value></Token>    <!-- 1900 -->
+            <Token><Name>CONDITION_FEEDBACK_ExpertiseNoCraft</Name>                  <Value>234</Value></Token>    <!-- 1900 -->
+            <Token><Name>CONDITION_FEEDBACK_IsPetOwner</Name>                        <Value>235</Value></Token>    <!-- 1901 -->
+            <Token><Name>CONDITION_FEEDBACK_IsNotPetOwner</Name>                     <Value>236</Value></Token>    <!-- 1901 -->
+            <Token><Name>CONDITION_FEEDBACK_IsTarget</Name>                          <Value>237</Value></Token>    <!-- 1902 -->
+            <Token><Name>CONDITION_FEEDBACK_IsNotTarget</Name>                       <Value>238</Value></Token>    <!-- 1902 -->
+            <Token><Name>ERROR_CharacterCreationNotEnoughInformation</Name>          <Value>10000</Value></Token>
+            <Token><Name>ERROR_CharacterCreationInvalidCharacterType</Name>          <Value>10001</Value></Token>
+            <Token><Name>ERROR_CharacterCreationInvalidSkinColor</Name>              <Value>10002</Value></Token>
+            <Token><Name>ERROR_CharacterCreationUnspecifiedError</Name>              <Value>10003</Value></Token>
+            <Token><Name>ERROR_SpecialWordViolation</Name>                           <Value>10004</Value></Token>
+            <Token><Name>ERROR_UnknownDatabaseError</Name>                           <Value>10005</Value></Token>
+            <Token><Name>ERROR_DBManagerError</Name>                                 <Value>10006</Value></Token>
+            <Token><Name>ERROR_DBManagerPriorCommandFailed</Name>                    <Value>10007</Value></Token>
+            <Token><Name>ERROR_DBManagerSubsequentCommandFailed</Name>               <Value>10008</Value></Token>
+            <Token><Name>ERROR_CharacterPlayRestrictedArchetype</Name>               <Value>10009</Value></Token>
+        </Tokens>
+    </EConditionHandlerFeedback>
+    
+    <EWorldFlags>ENUMERATION
+        <Type>UINT8</Type> <!-- Bitfield -->
+        <Tokens>
+            <Token><Name>WF_None</Name><Value>0</Value></Token>
+            <Token><Name>WF_Instance</Name><Value>1</Value></Token>
+            <Token><Name>WF_ForceTravelWhenReady</Name><Value>2</Value></Token>
+            <Token><Name>WF_TeardownWhenIdle</Name><Value>4</Value></Token>
+        </Tokens>
+    </EWorldFlags>
+    
+    <EEntityFlags>ENUMERATION
+        <Type>UINT32</Type> <!-- Bitfield db:ref_MOB_FLAGS -->
+        <Tokens>
+            <Token><Name>ENTITYFLAG_None                    </Name><Value>     0</Value></Token>
+            <Token><Name>ENTITYFLAG_HideName                </Name><Value>     1</Value></Token>
+            <Token><Name>ENTITYFLAG_NoTarget                </Name><Value>     2</Value></Token>
+            <Token><Name>ENTITYFLAG_DoNotDrop               </Name><Value>     4</Value></Token>
+            <Token><Name>ENTITYFLAG_NoPetLeveling           </Name><Value>     8</Value></Token>
+            <Token><Name>ENTITYFLAG_NoPetTargeting          </Name><Value>    16</Value></Token>
+            <Token><Name>ENTITYFLAG_DespawnOnOwnerLeash     </Name><Value>    32</Value></Token> <!-- You got too far from your owner -->
+            <Token><Name>ENTITYFLAG_NoPassive               </Name><Value>    64</Value></Token>
+            <Token><Name>ENTITYFLAG_NoDefensive             </Name><Value>   128</Value></Token>
+            <Token><Name>ENTITYFLAG_NoAggressive            </Name><Value>   256</Value></Token>
+            <Token><Name>ENTITYFLAG_DetectionPet            </Name><Value>   512</Value></Token>
+            <Token><Name>ENTITYFLAG_Pet                     </Name><Value>  1024</Value></Token>
+            <Token><Name>ENTITYFLAG_Craft_Craft             </Name><Value>  2048</Value></Token>
+            <Token><Name>ENTITYFLAG_Craft_Research          </Name><Value>  4096</Value></Token>
+            <Token><Name>ENTITYFLAG_Craft_RevEng            </Name><Value>  8192</Value></Token>
+            <Token><Name>ENTITYFLAG_Craft_Alloying          </Name><Value> 16384</Value></Token>
+            <Token><Name>ENTITYFLAG_DespawnOnLeashFromOwner </Name><Value> 32768</Value></Token> <!-- Your owner is a mob who is leashing -->
+            <Token><Name>ENTITYFLAG_PetUseOwnFaction        </Name><Value> 65536</Value></Token>
+            <Token><Name>ENTITYFLAG_PetWaitToDespawn        </Name><Value>131072</Value></Token>
+            <Token><Name>ENTITYFLAG_DoNotLeaveDefaultState  </Name><Value>262144</Value></Token>
+        </Tokens>
+    </EEntityFlags>
+    
+    <EReloadType>ENUMERATION
+        <Type>UINT8</Type> 
+        <Tokens>
+            <Token><Name>RELOAD_ActiveWeapon</Name><Value>0</Value></Token>
+            <Token><Name>RELOAD_DeploymentBar</Name><Value>1</Value></Token>
+        </Tokens>
+    </EReloadType>
+
+    <ETextType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+        
+            <!--
+            
+            mendsley: 07/07/2008
+            
+            When you modify this enumeration, the token TEXT_TYPE_MAX must be
+            updated to be the maximum value of all tokens.
+            
+            -->
+            <Token><Name>TEXT_TYPE_AbilityDisplayName</Name>        <Value> 2</Value></Token>
+            <Token><Name>TEXT_TYPE_Tooltip</Name>                   <Value> 3</Value></Token>
+            <Token><Name>TEXT_TYPE_ItemDisplayName</Name>           <Value> 4</Value></Token>
+            <Token><Name>TEXT_TYPE_ItemDescription</Name>           <Value> 5</Value></Token>
+            <Token><Name>TEXT_TYPE_ItemTooltip</Name>               <Value> 6</Value></Token>
+            <Token><Name>TEXT_TYPE_MissionDisplayName</Name>        <Value> 7</Value></Token>
+            <Token><Name>TEXT_TYPE_MissionObjectiveLogText</Name>   <Value> 8</Value></Token>
+            <Token><Name>TEXT_TYPE_MissionStepLogText</Name>        <Value> 9</Value></Token>
+            <Token><Name>TEXT_TYPE_MissionLabel</Name>              <Value>10</Value></Token>
+            <Token><Name>TEXT_TYPE_DiscoveryText</Name>             <Value>11</Value></Token>
+            <Token><Name>TEXT_TYPE_LevelUp</Name>                   <Value>12</Value></Token>
+            <Token><Name>TEXT_TYPE_AbilityDescription</Name>        <Value>14</Value></Token>
+            <Token><Name>TEXT_TYPE_GateMailSender</Name>            <Value>17</Value></Token>
+            <Token><Name>TEXT_TYPE_GateMailRecipient</Name>         <Value>18</Value></Token>
+            <Token><Name>TEXT_TYPE_GateMailSubject</Name>           <Value>19</Value></Token>
+            <Token><Name>TEXT_TYPE_GateMailBody</Name>              <Value>20</Value></Token>
+            <Token><Name>TEXT_TYPE_RegionDisplayName</Name>         <Value>21</Value></Token>
+            <Token><Name>TEXT_TYPE_MobDisplayName</Name>            <Value>22</Value></Token>
+            <Token><Name>TEXT_TYPE_MinigameContactName</Name>       <Value>25</Value></Token>
+            <Token><Name>TEXT_TYPE_MinigameContactTitle</Name>      <Value>26</Value></Token>
+            <Token><Name>TEXT_TYPE_MinigameRequestNPCName</Name>    <Value>27</Value></Token>
+            <Token><Name>TEXT_TYPE_MinigameRequestNPCTitle</Name>   <Value>28</Value></Token>
+            <Token><Name>TEXT_TYPE_MinigameExternalName</Name>      <Value>29</Value></Token>
+            <Token><Name>TEXT_TYPE_MissionHistoryText</Name>        <Value>30</Value></Token>
+            <Token><Name>TEXT_TYPE_SystemText</Name>                <Value>31</Value></Token>
+
+            
+            <!-- Add new values above this line -->
+            
+            <Token><Name>TEXT_TYPE_MAX</Name>                       <Value>32</Value></Token>
+        </Tokens>
+    </ETextType>    
+
+    <EMonikerFlags>ENUMERATION
+        <Type>UINT32</Type> <!-- db:REF_MONIKER_FLAGS -->
+        <Tokens>
+            <Token><Name>MONIKER_FLAGS_Item</Name><Value>1</Value></Token>
+        </Tokens>
+    </EMonikerFlags>
+    
+    <EStatType>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>STAT_TYPE_Min</Name>      <Value>0</Value></Token>
+            <Token><Name>STAT_TYPE_Current</Name>  <Value>1</Value></Token>
+            <Token><Name>STAT_TYPE_Max</Name>      <Value>2</Value></Token>
+        </Tokens>
+    </EStatType>
+    
+    <EStatLevel>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>STAT_LEVEL_Current</Name>   <Value>0</Value></Token>
+            <Token><Name>STAT_LEVEL_Base</Name>      <Value>1</Value></Token>
+        </Tokens>
+    </EStatLevel>
+    
+    <EKismetViewType>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>KISMET_VIEW_Witness</Name>       <Value>0</Value></Token>
+            <Token><Name>KISMET_VIEW_NonWitness</Name>    <Value>1</Value></Token>
+            <Token><Name>KISMET_VIEW_Finish</Name>        <Value>2</Value></Token>
+            <Token><Name>KISMET_VIEW_EventInvoker</Name>  <Value>3</Value></Token>
+            <Token><Name>KISMET_VIEW_EventWitness</Name>  <Value>4</Value></Token>
+        </Tokens>
+    </EKismetViewType>
+    
+    <EBehaviorEventFlags>ENUMERATION
+        <Type>UINT64</Type> <!-- bitfield -->
+        <Tokens>
+            <Token><Name>PetCommand</Name><Value>1</Value></Token>
+        </Tokens>
+    </EBehaviorEventFlags>
+
+    <EMobMovementType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>MOB_MOVEMENT_Cover</Name>           <Value>0</Value></Token>
+            <Token><Name>MOB_MOVEMENT_CombatAdvance</Name>   <Value>1</Value></Token>
+            <Token><Name>MOB_MOVEMENT_Patrol</Name>          <Value>2</Value></Token>
+            <Token><Name>MOB_MOVEMENT_Follow</Name>          <Value>3</Value></Token>
+            <Token><Name>MOB_MOVEMENT_Wander</Name>          <Value>4</Value></Token>
+            <Token><Name>MOB_MOVEMENT_Leash</Name>           <Value>5</Value></Token>
+            <Token><Name>MOB_MOVEMENT_Avoid</Name>           <Value>6</Value></Token>
+        </Tokens>
+    </EMobMovementType>
+    <ELoggingEvent>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>LE_UNKNOWN</Name>  <Value>0</Value></Token> <!-- Something that is currently uncategorized and really needs a category -->
+            <Token><Name>LE_Death</Name>  <Value>1</Value></Token> <!-- Event involving the death of an entity -->
+            <Token><Name>LE_XP</Name>  <Value>2</Value></Token> <!-- Event involving changing XP -->
+            <Token><Name>LE_Level</Name>  <Value>3</Value></Token> <!-- Event involving changing level -->
+            <Token><Name>LE_Mission</Name>  <Value>4</Value></Token> <!-- Event involving altering mission states -->
+            <Token><Name>LE_Item</Name>  <Value>5</Value></Token> <!-- Event involving moving, creating or destroying items -->
+            <Token><Name>LE_Location</Name>  <Value>6</Value></Token> <!-- Event involving only a location  (such as /stuck or linkdeath) -->
+            <Token><Name>LE_Privledge</Name>  <Value>7</Value></Token> <!-- Event involving using a privledged command or performing a privledged action (GM commands) -->
+            <Token><Name>LE_Pet</Name>  <Value>8</Value></Token> <!-- Event involvinga pet (spawn, despawn, etc) -->
+            <Token><Name>LE_StatChange</Name>  <Value>9</Value></Token> <!-- Event involving the changing of a persistant stat that we want to track seperately (Faction, etc) -->
+            <Token><Name>LE_Cheater</Name>  <Value>10</Value></Token> <!-- The cheating checks have flagged or unflagged -->
+            <Token><Name>LE_Ability</Name>  <Value>11</Value></Token> <!-- Altering Abilities -->
+            <Token><Name>LE_Interact</Name>  <Value>12</Value></Token> <!-- other interactions -->
+            <Token><Name>LE_Money</Name>  <Value>13</Value></Token> <!-- Shifts of Naq interactions -->
+            <Token><Name>LE_MobError</Name>  <Value>14</Value></Token> <!-- Mob entered the AI Error State -->
+            <Token><Name>LE_JoinChannel</Name>  <Value>15</Value></Token> <!-- Player entered a private channel -->
+            <Token><Name>LE_LeaveChannel</Name>  <Value>16</Value></Token> <!-- Player exited a private channel -->
+            <Token><Name>LE_PerfStat</Name>  <Value>17</Value></Token> <!-- Client performance stats -->
+            <Token><Name>LE_Loginout</Name>  <Value>18</Value></Token> <!-- Event involving a player logging in or out -->
+            <Token><Name>LE_Error</Name>  <Value>19</Value></Token> <!-- Event that is an error that content will need to look at -->
+        </Tokens>
+    </ELoggingEvent>
+    <EInteractionDirection>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>ID_UNKNOWN</Name>  <Value>0</Value></Token> <!-- Unknown Direction, error condition -->
+            <Token><Name>ID_LoggerTo</Name>  <Value>1</Value></Token> <!-- The Logger did this to the OtherID -->
+            <Token><Name>ID_ToLogger</Name>  <Value>2</Value></Token> <!-- The OtherID did this to the Logger -->
+        </Tokens>
+    </EInteractionDirection>  
+
+    <ERegionEvents>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>REGION_EVENT_OnEnter</Name>     <Value>1</Value></Token>
+            <Token><Name>REGION_EVENT_OnExit</Name>      <Value>2</Value></Token>
+            <Token><Name>REGION_EVENT_TeleportOut</Name> <Value>3</Value></Token>
+            <Token><Name>REGION_EVENT_TeleportIn</Name>  <Value>4</Value></Token>
+        </Tokens>
+    </ERegionEvents>  
+
+    <ERegionFlags>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>REGION_FLAG_ClientHinted</Name>  <Value>  1</Value></Token>
+            <Token><Name>REGION_FLAG_Stargate</Name>      <Value>  2</Value></Token>
+            <Token><Name>REGION_FLAG_PvPZone</Name>       <Value>  4</Value></Token>
+            <Token><Name>REGION_FLAG_NonPvPZone</Name>    <Value>  8</Value></Token>
+        </Tokens>
+    </ERegionFlags>  
+
+    <EMobIntel>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>MOB_INTEL_Low</Name>     <Value>1</Value></Token>
+            <Token><Name>MOB_INTEL_Med</Name>     <Value>2</Value></Token>
+            <Token><Name>MOB_INTEL_High</Name>    <Value>3</Value></Token>
+        </Tokens>
+    </EMobIntel>  
+    
+    <EPersistentOrganizationType>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>POT_Team</Name>     <Value>1</Value></Token>
+            <Token><Name>POT_Command</Name>     <Value>2</Value></Token>
+        </Tokens>
+    </EPersistentOrganizationType> 
+    
+    <ECraftTypeFlags>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>CRAFT_TYPE_Craft</Name>                  <Value>  1</Value></Token>
+            <Token><Name>CRAFT_TYPE_Research</Name>               <Value>  2</Value></Token>
+            <Token><Name>CRAFT_TYPE_ReverseEngineering</Name>     <Value>  4</Value></Token>
+            <Token><Name>CRAFT_TYPE_Alloying</Name>               <Value>  8</Value></Token>
+        </Tokens>
+    </ECraftTypeFlags>  
+
+    <ECraftFlags>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>CRAFT_FLAG_Alloying</Name>      <Value>  1</Value></Token>
+        </Tokens>
+    </ECraftFlags>  
+
+    <EItemQuality>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>ITEM_QUALITY_Fantastic</Name>    <Value>5000</Value></Token>
+            <Token><Name>ITEM_QUALITY_Great</Name>        <Value>4000</Value></Token>
+            <Token><Name>ITEM_QUALITY_Good</Name>         <Value>3000</Value></Token>
+            <Token><Name>ITEM_QUALITY_Normal</Name>       <Value>2000</Value></Token>
+            <Token><Name>ITEM_QUALITY_Poor</Name>         <Value>1000</Value></Token>
+        </Tokens>
+    </EItemQuality>  
+ 
+    <EWorldIdType>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>WORLD_ID_INVALID</Name>    <Value>-1</Value></Token>
+        </Tokens>
+    </EWorldIdType>
+
+    <EPatrolType>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>PATROL_TYPE_OneWay</Name>        <Value>1</Value></Token>
+            <Token><Name>PATROL_TYPE_BackAndForth</Name>  <Value>2</Value></Token>
+            <Token><Name>PATROL_TYPE_Loop</Name>          <Value>3</Value></Token>
+        </Tokens>
+    </EPatrolType>
+
+    <EEntityPropertyType>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>GENERICPROPERTY_TrainingPoints</Name>          <Value>1</Value></Token>
+            <Token><Name>GENERICPROPERTY_AppliedSciencePoints</Name>    <Value>2</Value></Token>
+            <Token><Name>GENERICPROPERTY_AmmoTypeId</Name>              <Value>3</Value></Token>
+            <Token><Name>GENERICPROPERTY_PvPFlag</Name>                 <Value>4</Value></Token>
+            <Token><Name>GENERICPROPERTY_PetOwnerId</Name>              <Value>5</Value></Token>
+            <Token><Name>GENERICPROPERTY_MobAggression</Name>           <Value>6</Value></Token>
+            <Token><Name>GENERICPROPERTY_AccessLevel</Name>             <Value>7</Value></Token>
+            <Token><Name>GENERICPROPERTY_Gender</Name>                  <Value>8</Value></Token>
+            <Token><Name>GENERICPROPERTY_DatabaseId</Name>              <Value>9</Value></Token>
+        </Tokens>
+    </EEntityPropertyType>
+
+    
+    <ESpecialWordFlags>ENUMERATION
+        <Type>INT32</Type>
+            <Tokens>
+            <Token><Name>IGNORE_CASE</Name> <Value>1</Value></Token>
+        </Tokens>
+    </ESpecialWordFlags>
+    
+    <EClientChallengeType>ENUMERATION
+        <Type>UINT32</Type>
+	 <Tokens>
+		<Token><Name>SHA1_CS</Name><Value>0</Value></Token>
+		<Token><Name>SHA1_UnrealScript</Name><Value>1</Value></Token>
+	 </Tokens>
+    </EClientChallengeType>
+
+    <EActionHandlerEvent>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>EACTIONHANDLEREVENT_PreExecute</Name>      <Value>1</Value></Token>
+            <Token><Name>EACTIONHANDLEREVENT_PostExecute</Name>     <Value>2</Value></Token>
+            <Token><Name>EACTIONHANDLEREVENT_PostFailExecute</Name> <Value>3</Value></Token>
+        </Tokens>
+    </EActionHandlerEvent>
+        
+    <EDuelDefeatReason>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>EDUEL_DEFEAT_Health</Name>      <Value>1</Value></Token>
+            <Token><Name>EDUEL_DEFEAT_LeftSquad</Name>   <Value>2</Value></Token>
+            <Token><Name>EDUEL_DEFEAT_Connection</Name>  <Value>3</Value></Token>
+            <Token><Name>EDUEL_DEFEAT_Range</Name>       <Value>4</Value></Token>
+            <Token><Name>EDUEL_DEFEAT_Teleport</Name>    <Value>5</Value></Token>
+            <Token><Name>EDUEL_DEFEAT_InDuel</Name>      <Value>6</Value></Token>
+            <Token><Name>EDUEL_DEFEAT_Forfeit</Name>     <Value>7</Value></Token>
+        </Tokens>
+    </EDuelDefeatReason>
+    
+    <EDuelState>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>EDUEL_STATE_None</Name>            <Value>0</Value></Token>
+            <Token><Name>EDUEL_STATE_ResponsePending</Name> <Value>1</Value></Token>
+            <Token><Name>EDUEL_STATE_Challenged</Name>      <Value>2</Value></Token>
+            <Token><Name>EDUEL_STATE_StartPending</Name>    <Value>3</Value></Token>
+            <Token><Name>EDUEL_STATE_Engaged</Name>         <Value>4</Value></Token>
+        </Tokens>
+    </EDuelState>
+    
+    <ETradeLockState>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>ETRADELOCKSTATE_None</Name>                <Value>0</Value></Token>
+            <Token><Name>ETRADELOCKSTATE_Locked</Name>              <Value>1</Value></Token>
+            <Token><Name>ETRADELOCKSTATE_LockedAndConfirmed</Name>  <Value>2</Value></Token>
+        </Tokens>
+    </ETradeLockState>
+    
+    <ETradeResults>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>Completed</Name>                <Value>1</Value></Token>
+            <Token><Name>Cancelled</Name>                <Value>2</Value></Token>
+            <Token><Name>NoLocalSpace</Name>                <Value>3</Value></Token>
+            <Token><Name>NoRemoteSpace</Name>                <Value>4</Value></Token>
+            <Token><Name>NoLocalCash</Name>                <Value>5</Value></Token>
+            <Token><Name>NoRemoteCash</Name>                <Value>6</Value></Token>
+        </Tokens>
+    </ETradeResults>
+    
+    <EErrorAIStateReason>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>EAI_ERROR_STATE_None</Name>            <Value>0</Value></Token>
+            <Token><Name>EAI_ERROR_STATE_StateChanges</Name>    <Value>1</Value></Token>
+            <Token><Name>EAI_ERROR_STATE_NavFailures</Name>     <Value>2</Value></Token>
+            <Token><Name>EAI_ERROR_STATE_PatrolFailure</Name>   <Value>3</Value></Token>
+            <Token><Name>EAI_ERROR_STATE_BehaviorEvent</Name>   <Value>4</Value></Token>
+            <Token><Name>EAI_ERROR_STATE_BehaviorNACS</Name>    <Value>5</Value></Token>
+            <Token><Name>EAI_ERROR_STATE_AbilitySet</Name>      <Value>6</Value></Token>
+            <Token><Name>EAI_ERROR_STATE_GMSlashCommand</Name>  <Value>7</Value></Token>
+            <Token><Name>EAI_ERROR_STATE_PetWithoutOwner</Name> <Value>8</Value></Token>
+        </Tokens>
+    </EErrorAIStateReason>
+    
+    <EAIErrorStateAction>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>EAI_ERROR_ACTION_Nothing</Name>     <Value>0</Value></Token>
+            <Token><Name>EAI_ERROR_ACTION_Despawn</Name>     <Value>1</Value></Token>
+            <Token><Name>EAI_ERROR_ACTION_Invisible</Name>   <Value>2</Value></Token>
+        </Tokens>
+    </EAIErrorStateAction>
+
+    <FACTION_REACTION_TABLE>FACTION
+        <ValueType>EMobAggressionLevel</ValueType>
+        <Row><Key>0</Key> <Data>4,4,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Undefined</Label></Row>
+        <Row><Key>1</Key> <Data>4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4</Data><Label>World Object</Label></Row>
+        <Row><Key>2</Key> <Data>3,4,4,3,4,3,4,3,3,4,1,1,4,1,3,4,3,3,4,1,3,1,3,3,4,1,1,1,1,1,3,4,1,4,1,4,4,3,3,3,3,1,3,3</Data><Label>SGU</Label></Row>
+        <Row><Key>3</Key> <Data>3,4,3,4,3,4,4,3,3,4,1,1,4,1,3,4,3,1,4,3,3,1,1,3,1,1,1,4,1,4,1,4,1,4,1,4,4,3,3,3,3,1,3,3</Data><Label>Praxis</Label></Row>
+        <Row><Key>4</Key> <Data>3,4,4,3,4,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>SGU_MissionGiver</Label></Row>
+        <Row><Key>5</Key> <Data>3,4,3,4,3,4,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Praxis_MissionGiver</Label></Row>
+        <Row><Key>6</Key> <Data>4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,3</Data><Label>Neutral_MissionGiver</Label></Row>
+        <Row><Key>7</Key> <Data>3,4,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Neutral_Ambient</Label></Row>
+        <Row><Key>8</Key> <Data>1,4,1,1,3,3,3,3,4,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3</Data><Label>Aggro_Ambient</Label></Row>
+        <Row><Key>9</Key> <Data>4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,3</Data><Label>Friendly_Ambient</Label></Row>
+        <Row><Key>10</Key><Data>3,4,1,1,3,3,3,3,3,3,4,1,1,1,1,1,3,3,3,3,1,4,3,3,3,3,3,3,3,3,3,3,3,1,1,4,3,3,3,3,3,3,3,3</Data><Label>Straegis</Label></Row>
+        <Row><Key>11</Key><Data>3,4,1,1,3,3,3,3,3,3,1,4,4,3,1,3,3,3,3,3,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Agnos_Laro</Label></Row>
+        <Row><Key>12</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Ancients</Label></Row>
+        <Row><Key>13</Key><Data>3,4,1,1,3,3,3,3,3,3,3,3,3,4,1,3,3,3,3,3,3,1,3,3,3,3,3,3,3,3,3,3,3,1,1,3,1,3,3,3,3,3,3,3</Data><Label>Bataur</Label></Row>
+        <Row><Key>14</Key><Data>3,4,1,1,3,3,3,3,3,3,3,3,3,1,4,3,3,3,3,3,3,4,3,1,1,1,1,1,1,1,3,3,3,3,3,3,4,3,3,3,3,3,3,3</Data><Label>Burtonol</Label></Row>
+        <Row><Key>15</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Furling</Label></Row>
+        <Row><Key>16</Key><Data>3,4,1,1,3,3,3,3,3,3,1,3,3,3,3,3,4,3,3,3,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Ihpet_Unas</Label></Row>
+        <Row><Key>17</Key><Data>3,4,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,1,1,3,3,3,3</Data><Label>Jaffa_Beleth</Label></Row>
+        <Row><Key>18</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Jaffa_Dakara</Label></Row>
+        <Row><Key>19</Key><Data>3,4,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Jaffa_DakorFollower</Label></Row>
+        <Row><Key>20</Key><Data>3,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Jaffa_NinePeaks</Label></Row>
+        <Row><Key>21</Key><Data>3,4,1,1,3,3,3,3,3,3,4,1,1,1,3,3,3,3,3,3,2,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Jaffa_Ra</Label></Row>
+        <Row><Key>22</Key><Data>3,4,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,1,1,3,3,3,3</Data><Label>Jaffa_Svarog</Label></Row>
+        <Row><Key>23</Key><Data>3,4,3,3,3,3,3,3,3,3,3,3,3,3,1,3,3,3,3,3,3,1,3,4,3,3,3,1,1,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Lucia_Ambient</Label></Row>
+        <Row><Key>24</Key><Data>3,4,4,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1,3,3,4,1,1,1,1,1,3,3,3,3,3,3,4,3,3,3,3,3,3,3</Data><Label>Lucia_Blue</Label></Row>
+        <Row><Key>25</Key><Data>3,4,2,2,3,3,3,3,3,3,3,3,3,3,2,3,3,3,3,3,3,2,3,3,2,4,4,4,2,2,3,3,3,3,3,3,2,3,3,3,3,3,3,3</Data><Label>Lucia_DrugAddict</Label></Row>
+        <Row><Key>26</Key><Data>3,4,1,1,3,3,3,3,3,3,3,3,3,3,1,3,3,3,3,3,3,1,3,3,1,4,4,4,1,1,3,3,3,3,3,3,1,3,3,3,3,3,3,3</Data><Label>Lucia_DrugDealer</Label></Row>
+        <Row><Key>27</Key><Data>3,4,1,4,3,3,3,3,3,3,3,3,3,3,1,3,3,3,3,3,3,1,3,3,1,3,3,4,1,1,3,3,3,3,3,3,1,3,3,3,3,3,3,3</Data><Label>Lucia_Green</Label></Row>
+        <Row><Key>28</Key><Data>3,4,1,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1,3,1,1,3,3,1,4,1,3,3,3,3,3,3,1,3,3,3,3,3,3,3</Data><Label>Lucia_Red</Label></Row>
+        <Row><Key>29</Key><Data>3,4,1,4,3,3,3,3,3,3,3,3,3,3,1,3,3,3,3,3,3,3,3,1,1,3,3,1,1,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Lucia_Yellow</Label></Row>
+        <Row><Key>30</Key><Data>3,4,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>NID</Label></Row>
+        <Row><Key>31</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Nox</Label></Row>
+        <Row><Key>32</Key><Data>3,4,1,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3</Data><Label>Replicator</Label></Row>
+        <Row><Key>33</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,3,1,3,3,3,3,3,3,3,1,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3</Data><Label>Sha_Friendly</Label></Row>
+        <Row><Key>34</Key><Data>3,4,1,1,3,3,3,3,3,3,3,3,3,1,3,3,3,3,3,3,3,1,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3</Data><Label>Sha_Hostile</Label></Row>
+        <Row><Key>35</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3</Data><Label>Straegis_Prime</Label></Row>
+        <Row><Key>36</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,3,3,4,1,1,1,1,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3</Data><Label>TechConGroup</Label></Row>
+        <Row><Key>37</Key><Data>3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,3,3,3,3</Data><Label>Tollan_Ambient</Label></Row>
+        <Row><Key>38</Key><Data>3,4,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,1,3,3,3,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,1,3,3,3,3</Data><Label>Tollan_Narim</Label></Row>
+        <Row><Key>39</Key><Data>3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1,3,3,3,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,1,4,3,3,3,3</Data><Label>Tollan_Travell</Label></Row>
+        <Row><Key>40</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,3</Data><Label>Vokos_Aesir</Label></Row>
+        <Row><Key>41</Key><Data>3,4,1,1,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3</Data><Label>Vokos_Alterr</Label></Row>
+        <Row><Key>42</Key><Data>3,4,4,4,3,3,3,3,3,3,3,3,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,3</Data><Label>Vokos_Nix</Label></Row>
+        <Row><Key>43</Key><Data>3,4,1,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4</Data><Label>Hostile_To_Players</Label></Row>
+    </FACTION_REACTION_TABLE>   
+
+    <EMemberInfo>ENUMERATION
+        <Type>INT8</Type>
+        <Tokens>
+            <Token><Name>EMEMBER_INFO_Position</Name>     <Value>0</Value></Token>
+            <Token><Name>EMEMBER_INFO_Space</Name>        <Value>1</Value></Token>
+            <Token><Name>EMEMBER_INFO_Level</Name>        <Value>2</Value></Token>
+            <Token><Name>EMEMBER_INFO_Health</Name>       <Value>3</Value></Token>
+            <Token><Name>EMEMBER_INFO_Focus</Name>        <Value>4</Value></Token>
+            <Token><Name>EMEMBER_INFO_Energy</Name>       <Value>5</Value></Token>
+            <Token><Name>EMEMBER_INFO_Name</Name>         <Value>6</Value></Token>
+            <Token><Name>EMEMBER_INFO_Archetype</Name>    <Value>7</Value></Token>
+            <Token><Name>EMEMBER_INFO_World</Name>        <Value>8</Value></Token>
+        </Tokens>
+    </EMemberInfo>      
+
+    <EOrganizationRank>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>EORG_RANK_None</Name>            <Value>0</Value></Token>
+            <Token><Name>EORG_RANK_Initiate</Name>        <Value>1</Value></Token>
+            <Token><Name>EORG_RANK_Member</Name>          <Value>2</Value></Token>
+            <Token><Name>EORG_RANK_SeniorMember</Name>    <Value>3</Value></Token>
+            <Token><Name>EORG_RANK_Veteran</Name>         <Value>4</Value></Token>
+            <Token><Name>EORG_RANK_SeniorVeteran</Name>   <Value>5</Value></Token>
+            <Token><Name>EORG_RANK_Officer</Name>         <Value>6</Value></Token>
+            <Token><Name>EORG_RANK_SeniorOfficer</Name>   <Value>7</Value></Token>
+            <Token><Name>EORG_RANK_Leader</Name>          <Value>8</Value></Token>
+        </Tokens>
+    </EOrganizationRank>      
+
+    <EOrganizationPermission>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>EORG_PERM_DoNotUse         </Name> <Value>         1</Value></Token>
+            <Token><Name>EORG_PERM_Invite           </Name> <Value>         2</Value></Token>
+            <Token><Name>EORG_PERM_Promote          </Name> <Value>         4</Value></Token>
+            <Token><Name>EORG_PERM_Demote           </Name> <Value>         8</Value></Token>
+            <Token><Name>EORG_PERM_Eject            </Name> <Value>        16</Value></Token>
+            <Token><Name>EORG_PERM_RosterNotes      </Name> <Value>        32</Value></Token>
+            <Token><Name>EORG_PERM_OfficerNotes     </Name> <Value>        64</Value></Token>
+            <Token><Name>EORG_PERM_RankNames        </Name> <Value>       128</Value></Token>
+            <Token><Name>EORG_PERM_OfficerChat      </Name> <Value>       256</Value></Token>
+            <Token><Name>EORG_PERM_EmailLists       </Name> <Value>       512</Value></Token>
+            <Token><Name>EORG_PERM_MOTD             </Name> <Value>      1024</Value></Token>
+            <Token><Name>EORG_PERM_HistoryLog       </Name> <Value>      2048</Value></Token>
+            <Token><Name>EORG_PERM_Calendar         </Name> <Value>      4096</Value></Token>
+            <Token><Name>EORG_PERM_RecruitDesc      </Name> <Value>      8192</Value></Token>
+            <Token><Name>EORG_PERM_Adjectives       </Name> <Value>     16384</Value></Token>
+            <Token><Name>EORG_PERM_Insignia         </Name> <Value>     32768</Value></Token>
+            <Token><Name>EORG_PERM_DepositBank      </Name> <Value>     65536</Value></Token>
+            <Token><Name>EORG_PERM_WithdrawBank     </Name> <Value>    131072</Value></Token>
+            <Token><Name>EORG_PERM_DepositCash      </Name> <Value>    262144</Value></Token>
+            <Token><Name>EORG_PERM_WithdrawCash     </Name> <Value>    524288</Value></Token>
+            <Token><Name>EORG_PERM_ViewBankLogs     </Name> <Value>   1048576</Value></Token>
+            <Token><Name>EORG_PERM_LeaderChat       </Name> <Value>   2097152</Value></Token>
+            <Token><Name>EORG_PERM_AllianceChat     </Name> <Value>   4194304</Value></Token>
+            <Token><Name>EORG_PERM_AlterPerms       </Name> <Value>   8388608</Value></Token>
+            <Token><Name>EORG_PERM_TransferLeader   </Name> <Value>  16777216</Value></Token>
+            <Token><Name>EORG_PERM_AllianceCmds     </Name> <Value>  33554432</Value></Token>
+        </Tokens>
+    </EOrganizationPermission>      
+
+    <EOrganizationType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>EORG_TYPE_Squad            </Name> <Value> 0</Value></Token>
+            <Token><Name>EORG_TYPE_Team             </Name> <Value> 1</Value></Token>
+            <Token><Name>EORG_TYPE_Command          </Name> <Value> 2</Value></Token>
+        </Tokens>
+    </EOrganizationType>      
+
+    <EDBErrorType>ENUMERATION
+        <Type>INT32</Type>
+        <Tokens>
+            <Token><Name>EDB_ERROR_Insufficient_info        </Name> <Value> -20047</Value></Token>
+            <Token><Name>EDB_ERROR_No_such_player           </Name> <Value> -20055</Value></Token>
+            <Token><Name>EDB_ERROR_Player_in_org_type       </Name> <Value> -20071</Value></Token>
+            <Token><Name>EDB_ERROR_Player_rank_too_low      </Name> <Value> -20072</Value></Token>
+            <Token><Name>EDB_ERROR_Invoker_not_org_member   </Name> <Value> -20090</Value></Token>
+            <Token><Name>EDB_ERROR_Target_not_org_member    </Name> <Value> -20091</Value></Token>
+            <Token><Name>EDB_ERROR_Invalid_org_rank         </Name> <Value> -20092</Value></Token>
+        </Tokens>
+    </EDBErrorType>
+    
+    <EAggressionIDType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>EAIDT_EntityId            </Name> <Value> 0</Value></Token>
+            <Token><Name>EAIDT_FactionId           </Name> <Value> 1</Value></Token>
+        </Tokens>
+    </EAggressionIDType>     
+ 
+    <EBlackMarketSortType>ENUMERATION
+        <Type>UINT8</Type>
+        <Tokens>
+            <Token><Name>FirstSort</Name> <Value> 1</Value></Token>
+            <Token><Name>ItemName</Name>  <Value> 2</Value></Token>
+        </Tokens>
+    </EBlackMarketSortType>
+    
+    <EBlackMarketFilter>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>FirstFilter</Name> <Value> 1</Value></Token>
+        </Tokens>
+    </EBlackMarketFilter>
+
+    <EBlackMarketTime>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>VeryShort</Name>   <Value> 1</Value></Token>
+            <Token><Name>Short</Name>       <Value> 2</Value></Token>
+            <Token><Name>Medium</Name>      <Value> 3</Value></Token>
+            <Token><Name>Long</Name>        <Value> 4</Value></Token>
+            <Token><Name>VeryLong</Name>    <Value> 5</Value></Token>
+        </Tokens>
+    </EBlackMarketTime>
+
+    <EBlackMarketError>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>InvalidSortType</Name>   <Value> 1</Value></Token>
+            <Token><Name>BMUnavailable</Name>   <Value> 2</Value></Token>
+        </Tokens>
+    </EBlackMarketError>
+    
+    <EBlackMarketSearchType>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>Search</Name>      <Value> 0</Value></Token>
+            <Token><Name>MyAuctions</Name>  <Value> 1</Value></Token>
+            <Token><Name>MyBids</Name>      <Value> 2</Value></Token>
+        </Tokens>
+    </EBlackMarketSearchType>
+
+    <EContactListEvent>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>ECONTACT_LIST_EVENT_LoggedInStatus   </Name> <Value> 1</Value></Token>
+            <Token><Name>ECONTACT_LIST_EVENT_GainLevel        </Name> <Value> 2</Value></Token>
+            <Token><Name>ECONTACT_LIST_EVENT_Death            </Name> <Value> 4</Value></Token>
+            <Token><Name>ECONTACT_LIST_EVENT_GateTravel       </Name> <Value> 8</Value></Token>
+        </Tokens>
+    </EContactListEvent>      
+    
+    <EMissionTaskFlag>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>ETASKFLAG_GroupUpdate</Name> <Value> 1</Value></Token>
+        </Tokens>
+    </EMissionTaskFlag>
+
+    <ELootSetFlags>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <Token><Name>ELOOTSET_FLAG_Soldier</Name>           <Value>    1</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_Commando</Name>          <Value>    2</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_Scientist</Name>         <Value>    4</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_Archeologist</Name>      <Value>    8</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_Asgard</Name>            <Value>   16</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_Goauld</Name>            <Value>   32</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_Sholva</Name>            <Value>   64</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_Jaffa</Name>             <Value>  128</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_ItemFantastic</Name>     <Value>  256</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_ItemGood</Name>          <Value>  512</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_ItemGreat</Name>         <Value> 1024</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_ItemNormal</Name>        <Value> 2048</Value></Token>
+            <Token><Name>ELOOTSET_FLAG_ItemPoor</Name>          <Value> 4096</Value></Token>
+        </Tokens>
+    </ELootSetFlags>
+    <EMissionFlags>ENUMERATION
+        <Type>UINT32</Type>
+        <Tokens>
+            <!-- <Token><Name>EMISSION_FLAG_isEnabled</Name>         <Value>    1</Value></Token> Removed -->
+            <Token><Name>EMISSION_FLAG_isAStory</Name>          <Value>    2</Value></Token>
+            <!-- <Token><Name>EMISSION_FLAG_isOverride</Name>        <Value>    4</Value></Token> Removed -->
+            <Token><Name>EMISSION_FLAG_isHidden</Name>          <Value>    8</Value></Token>
+            <Token><Name>EMISSION_FLAG_canFail</Name>           <Value>   16</Value></Token>
+            <Token><Name>EMISSION_FLAG_canRepeatOnFail</Name>   <Value>   32</Value></Token>
+            <Token><Name>EMISSION_FLAG_canAbandon</Name>        <Value>   64</Value></Token>
+            <Token><Name>EMISSION_FLAG_isShareable</Name>       <Value>  128</Value></Token>
+            <!-- <Token><Name>EMISSION_FLAG_isPvp</Name>             <Value>  256</Value></Token> Removed -->
+            <!-- <Token><Name>EMISSION_FLAG_isInstance</Name>        <Value>  512</Value></Token> Removed -->
+            <!-- <Token><Name>EMISSION_FLAG_isFaction</Name>         <Value> 1024</Value></Token> Removed -->
+            <Token><Name>EMISSION_FLAG_awardsXP</Name>          <Value> 2048</Value></Token>
+            <Token><Name>EMISSION_FLAG_awardsCash</Name>        <Value> 4096</Value></Token>
+        </Tokens>
+    </EMissionFlags>
+    
+</root>

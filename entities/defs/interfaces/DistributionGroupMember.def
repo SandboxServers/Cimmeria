@@ -1,0 +1,93 @@
+<root>
+
+    <UnrealProperties>
+    </UnrealProperties>
+    
+    <Implements>
+    </Implements>
+
+    <Volatile>
+    </Volatile>
+
+    <Properties>
+
+        <!-- The groups this member is in -->
+        <groups>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </groups>
+
+        <!-- dict of id -> controller -->
+        <groupInfoUpdateTimers>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </groupInfoUpdateTimers>
+        
+        <pendingJoin>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </pendingJoin>
+
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>
+        <remoteJoinGroup>
+            <Arg>   PYTHON      <ArgName>aType</ArgName></Arg>
+            <Arg>   PYTHON      <ArgName>aGroupID</ArgName></Arg>
+            <Arg>   MAILBOX     <ArgName>aAuthority</ArgName></Arg>
+            <Arg>   STRING      <ArgName>aMemberName</ArgName></Arg> <!-- name of a method to call -->
+        </remoteJoinGroup>
+    
+        <!-- A GroupAuthority invokes this to inform an entity that it was added to a group -->
+        <onGroupJoined>
+            <Arg>   PYTHON      <ArgName>aType</ArgName></Arg>
+            <Arg>   PYTHON      <ArgName>aGroupID</ArgName></Arg>
+            <Arg>   MAILBOX     <ArgName>aAuthority</ArgName></Arg>
+            <Arg>   PYTHON      <ArgName>aState</ArgName></Arg>
+            <Arg>   PYTHON      <ArgName>aJoinData</ArgName></Arg>
+        </onGroupJoined>
+        
+        <!-- A GroupAuthority invokes this to inform an entity that it was not added to a group -->
+        <onGroupJoinFail>
+            <Arg>   PYTHON      <ArgName>aType</ArgName></Arg>
+            <Arg>   PYTHON      <ArgName>aGroupID</ArgName></Arg>
+            <Arg>   INT32       <ArgName>aReason</ArgName></Arg>          <!-- Reason it failed -->
+        </onGroupJoinFail>
+
+        <!-- A GroupAuthority invokes this to inform a group that an entity was added to it -->
+        <onGroupMemberJoined>
+            <Arg>   PYTHON      <ArgName>aGroupID</ArgName></Arg>
+            <Arg>   MAILBOX     <ArgName>aEntity</ArgName></Arg>            <!-- Entity that was added -->
+            <Arg>   PYTHON      <ArgName>aJoinData</ArgName></Arg>
+        </onGroupMemberJoined>
+        
+        <!-- A GroupAuthority invokes this to inform a group that an entity was removed from it -->
+        <onGroupMemberLeft>
+            <Arg>   PYTHON      <ArgName>aGroupID</ArgName></Arg>
+            <Arg>   MAILBOX     <ArgName>aEntity</ArgName></Arg>            <!-- Entity that was added -->
+            <Arg>   WSTRING		<ArgName>aEntityName</ArgName></Arg>
+            <Arg>   INT32       <ArgName>aReason</ArgName></Arg>
+        </onGroupMemberLeft>
+
+        <!-- Calls a method on the passed group -->
+        <callMethodOnGroup>
+            <Arg>   INT32   </Arg>      <!-- Id of a group we want to call a method on -->
+            <Arg>   STRING  </Arg>      <!-- Name of the method we want to call -->
+            <Arg>   PYTHON  </Arg>      <!-- List of arguments to pass to the method -->
+        </callMethodOnGroup>
+        
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

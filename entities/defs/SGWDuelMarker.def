@@ -1,0 +1,39 @@
+<root>
+
+    <Parent>SGWSpawnableEntity</Parent>
+    
+    <!-- Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+    <Properties>        
+        
+        <duelDetectorID>
+            <Type>    CONTROLLER_ID   </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </duelDetectorID>
+
+        <duelEntities>
+            <Type>    ARRAY <of> MAILBOX </of>  </Type>
+            <Flags>   CELL_PRIVATE              </Flags>
+        </duelEntities>
+
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>
+    
+        <onEntityDefeated>
+            <Arg>    INT32    </Arg> <!-- entity id -->
+        </onEntityDefeated>
+
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

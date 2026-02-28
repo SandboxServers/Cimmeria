@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Castle_CellBlock.Hallway05Controller" Type="Mission" NextId="9">
+	<Node Id="1" Ref="Event_Dead" X="-65" Y="-7">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="Hallway05_Guard1"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="2" Ref="Event_Dead" X="-62" Y="110">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="Hallway05_Guard2"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Counter_Int" X="128" Y="26">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Increment" Value="1"/>
+		<Property Name="Initial Value" Value="0"/>
+		<Port Name="A" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Set Value" Flags="0"/>
+		<Port Name="Value != A" Flags="0"/>
+		<Port Name="Value &lt; A" Flags="0"/>
+		<Port Name="Value == A" Flags="0"/>
+		<Port Name="Value &gt; A" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Var_Int" X="137" Y="124">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="2"/>
+		<Property Name="Variable Name" Value=""/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Node Id="5" Ref="Act_GetMission" X="325" Y="64">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="686"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Accepted" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Node Id="6" Ref="Var_Player" X="-40" Y="239">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Player" Flags="0"/>
+	</Node>
+	<Node Id="8" Ref="Act_UpdateMission" X="522" Y="69">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="686"/>
+		<Port Name="Abandon" Flags="0"/>
+		<Port Name="Accept" Flags="0"/>
+		<Port Name="Complete" Flags="0"/>
+		<Port Name="Fail" Flags="0"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Connection OutNode="4" OutPort="Value" InNode="3" InPort="A"/>
+	<Connection OutNode="2" OutPort="Out" InNode="3" InPort="In"/>
+	<Connection OutNode="6" OutPort="Player" InNode="5" InPort="Player"/>
+	<Connection OutNode="3" OutPort="Value == A" InNode="5" InPort="In"/>
+	<Connection OutNode="5" OutPort="Active" InNode="8" InPort="Complete"/>
+	<Connection OutNode="6" OutPort="Player" InNode="8" InPort="Player"/>
+	<Connection OutNode="1" OutPort="Out" InNode="3" InPort="In"/>
+	<Comment Id="0" Text="Comment" X="-95" Y="-58" Width="855" Height="425" Color="0"/>
+	<Connection OutNode="3" OutPort="Value &gt; A" InNode="5" InPort="In"/>
+</Script>

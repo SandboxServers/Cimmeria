@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Castle_CellBlock.ArmYourself" Type="Mission" NextId="25">
+	<Node Id="3" Ref="Act_UpdateMission" X="-1071" Y="-52">
+		<Property Name="Comment" Value="Search corpses"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="622"/>
+		<Port Name="Abandon" Flags="0"/>
+		<Port Name="Accept" Flags="0"/>
+		<Port Name="Complete" Flags="0"/>
+		<Port Name="Display Rewards" Flags="0"/>
+		<Port Name="Fail" Flags="0"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Node Id="4" Ref="Act_Sequence" X="-846" Y="-97">
+		<Property Name="Comment" Value="Open double doors"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Impact Time" Value="0"/>
+		<Property Name="Instance Id" Value="0"/>
+		<Property Name="Primary Target" Value="true"/>
+		<Property Name="Sequence Id" Value="10000"/>
+		<Property Name="View Type" Value="0"/>
+		<Property Name="Visible to Source" Value="true"/>
+		<Property Name="Visible to Target" Value="true"/>
+		<Property Name="Visible to Witnesses" Value="true"/>
+		<Port Name="Impact Time" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Instance Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Primary Target" Flags="0"/>
+		<Port Name="Sequence Id" Flags="0"/>
+		<Port Name="Source" Flags="2"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="5" Ref="Act_GetEntity" X="-1072" Y="-160">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Tag" Value="ArmYourself_FrostBody"/>
+		<Property Name="Template Tag" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Entity Id" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="Found" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Tag" Flags="0"/>
+		<Port Name="Template Tag" Flags="0"/>
+	</Node>
+	<Node Id="6" Ref="Act_UpdateInteraction" X="-856" Y="-220">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Interaction Type" Value="4194304"/>
+		<Port Name="Entity" Flags="2"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="Interaction Type" Flags="0"/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+		<Port Name="Unset" Flags="0"/>
+	</Node>
+	<Node Id="17" Ref="Event_Dialog" X="-1484" Y="87">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Dialog Id" Value="3995"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Port Name="Dialog Set Map Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+	</Node>
+	<Node Id="18" Ref="Act_GiveItems" X="-1090" Y="150">
+		<Property Name="Bag" Value="3"/>
+		<Property Name="Comment" Value="Give pistol to player"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="55"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Node Id="19" Ref="Act_GiveItems" X="-849" Y="88">
+		<Property Name="Bag" Value="0"/>
+		<Property Name="Comment" Value="Give Frost's letter to player"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="3730"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Node Id="20" Ref="Act_SetActiveSlot" X="-848" Y="224">
+		<Property Name="Bag" Value="3"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Slot Id" Value="1"/>
+		<Port Name="Bag" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Slot Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="5" OutPort="Found" InNode="6" InPort="Unset"/>
+	<Connection OutNode="5" OutPort="Entity" InNode="6" InPort="Entity"/>
+	<Connection OutNode="17" OutPort="Player" InNode="4" InPort="Source"/>
+	<Connection OutNode="17" OutPort="Player" InNode="4" InPort="Target"/>
+	<Connection OutNode="17" OutPort="Player" InNode="3" InPort="Player"/>
+	<Connection OutNode="5" OutPort="Found" InNode="4" InPort="In"/>
+	<Connection OutNode="17" OutPort="Player" InNode="18" InPort="Player"/>
+	<Connection OutNode="18" OutPort="Added" InNode="19" InPort="In"/>
+	<Connection OutNode="17" OutPort="Player" InNode="19" InPort="Player"/>
+	<Connection OutNode="18" OutPort="Added" InNode="20" InPort="In"/>
+	<Connection OutNode="17" OutPort="Player" InNode="20" InPort="Player"/>
+	<Connection OutNode="17" OutPort="Out" InNode="5" InPort="In"/>
+	<Connection OutNode="17" OutPort="Out" InNode="18" InPort="In"/>
+	<Comment Id="0" Text="Get pistol and letter" X="-1519" Y="-236" Width="853" Height="579" Color="0"/>
+	<Connection OutNode="17" OutPort="Out" InNode="3" InPort="Complete"/>
+</Script>

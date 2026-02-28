@@ -1,0 +1,30 @@
+<?xml version="1.0" charset="UTF-8"?>
+<Spaces>
+    <!--
+	This file contains a list of spaces that the base is allowed to create or handle.
+    -->
+	<Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" />
+	<Space WorldName="Agnos_Library" Instanced="false" MinX="-600" MaxX="600" MinY="-600" MaxY="600" />
+	<Space WorldName="Beta_Site_Evo_1" Instanced="false" MinX="-1600" MaxX="2600" MinY="-3000" MaxY="3000" />
+	<Space WorldName="Castle" Instanced="false" MinX="0" MaxX="2400" MinY="0" MaxY="2400" />
+	<Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="Dakara_E1" Instanced="false" MinX="-2000" MaxX="2000" MinY="-2000" MaxY="2000" />
+	<Space WorldName="Dakara_E1_StoryRm" Instanced="true" MinX="0" MaxX="200" MinY="0" MaxY="200" />
+	<Space WorldName="Harset" Instanced="false" MinX="-1000" MaxX="800" MinY="-800" MaxY="800" />
+	<Space WorldName="Harset_CmdCenter" Instanced="false" MinX="-400" MaxX="400" MinY="-400" MaxY="400" />
+	<Space WorldName="Harset_Market" Instanced="true" MinX="0" MaxX="0" MinY="0" MaxY="0" />
+	<Space WorldName="Harset_StorageRm" Instanced="true" MinX="-200" MaxX="400" MinY="-200" MaxY="400" />
+	<Space WorldName="Ihpet_Crater_Dark" Instanced="false" MinX="-2600" MaxX="200" MinY="-600" MaxY="1600" />
+	<Space WorldName="Ihpet_Crater_Light" Instanced="false" MinX="-2600" MaxX="200" MinY="-600" MaxY="1600" />
+	<Space WorldName="Lucia" Instanced="false" MinX="-2800" MaxX="2600" MinY="-3000" MaxY="3600" />
+	<Space WorldName="Menfa_Dark" Instanced="false" MinX="-1800" MaxX="1200" MinY="-1800" MaxY="1800" />
+	<Space WorldName="Menfa_Light" Instanced="false" MinX="-1800" MaxX="1200" MinY="-1800" MaxY="1800" />
+	<Space WorldName="Omega_Site" Instanced="false" MinX="-1000" MaxX="1200" MinY="-1200" MaxY="1200" />
+	<Space WorldName="Omega_Site_CmdCenter" Instanced="true" MinX="-400" MaxX="400" MinY="-600" MaxY="600" />
+	<Space WorldName="SandBox" Instanced="false" MinX="-600" MaxX="1000" MinY="-1000" MaxY="800" />
+	<Space WorldName="Sewer_Falls" Instanced="false" MinX="-600" MaxX="1000" MinY="-1000" MaxY="800" />
+	<Space WorldName="SGC" Instanced="true" MinX="-400" MaxX="400" MinY="0" MaxY="800" />
+	<Space WorldName="SGC_W1" Instanced="true" MinX="-400" MaxX="400" MinY="-400" MaxY="800" />
+	<Space WorldName="Tollana" Instanced="false" MinX="-2400" MaxX="1800" MinY="-2400" MaxY="2400" />
+	<Space WorldName="Tollana_Curia" Instanced="true" MinX="0" MaxX="200" MinY="0" MaxY="200" />
+</Spaces>

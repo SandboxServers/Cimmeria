@@ -1,0 +1,88 @@
+<root>
+
+    <UnrealProperties>
+    </UnrealProperties>
+    
+    <Implements>
+    </Implements>
+
+    <Volatile>
+    </Volatile>
+
+    <Properties>
+     
+        <!-- Loot state of the entity 1 - Has loot  0 - Has no loot -->
+        <hasLoot>
+            <Type>        INT8                  </Type>
+            <Flags>       CELL_PRIVATE          </Flags>
+            <Default>     0                     </Default>
+        </hasLoot>
+
+        <!-- List of lootable items -->
+        <lootableItems>
+            <Type>        LootItemDefinitionList  </Type>
+            <Flags>       CELL_PRIVATE          </Flags>
+        </lootableItems>
+        
+        <!-- Lootable Cash -->
+        <lootableCash>
+            <Type>        INT16                 </Type>
+            <Flags>       CELL_PRIVATE          </Flags>
+        </lootableCash>
+        
+        <activeLooters>
+            <Type>        ARRAY <of> INT32 </of>    </Type>
+            <Flags>        CELL_PRIVATE            </Flags>
+        </activeLooters>
+    
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>
+
+        <!-- Lists the lootable items on the inventory holder -->
+        <listLoot>
+            <Arg> INT32<ArgName>aLootingId</ArgName></Arg>
+        </listLoot>
+
+        <!-- Requests to loot an item from the entity -->
+        <lootItem>
+            <Arg> INT32<ArgName>aLootingId</ArgName></Arg> <!-- ID of requesting entitiy -->
+            <Arg>INT32<ArgName>aItemIndex</ArgName></Arg> <!-- Requested item index -->
+        </lootItem>
+        
+        <lootItemCallback>
+            <Arg> INT32<ArgName>aQuantity</ArgName></Arg> <!-- How many of the item got looted? -->
+            <Arg>INT32<ArgName>aItemIndex</ArgName></Arg> <!-- Requested item index -->
+        </lootItemCallback>
+
+        <!-- Spawns loot on the entity -->
+        <spawnLoot>
+            <Arg>LootTableID<ArgName>aLootTableID</ArgName></Arg> <!-- Loot table to use -->
+            <Arg>INT8<ArgName>aDeleteExisting</ArgName></Arg> <!-- Non zero to delete existing loot -->
+            <Arg>INT8<ArgName>aLootType</ArgName></Arg><!-- Type of Loot (normal or additional) -->
+            <Arg>ARRAY <of>INT32</of><ArgName>aPlayerEligableID</ArgName></Arg><!-- ID of player(s) allowed to loot -->
+            <Arg>ARRAY <of>INT32</of><ArgName>aSquadEligableID</ArgName></Arg><!-- ID of group(s) allowed to loot -->
+        </spawnLoot>
+    
+        <!-- Spawns an item on the entity -->
+        <spawnItem>
+            <Arg>    INT32                   <ArgName>    aItemID               </ArgName>    </Arg> <!-- Item Id -->
+            <Arg>    INT32                   <ArgName>    aQuantity             </ArgName>    </Arg> <!-- quantity -->
+            <Arg>    INT8                    <ArgName>    aDeleteExisting       </ArgName>    </Arg> <!-- Non zero to delete existing loot -->
+            <Arg>    INT8                    <ArgName>    aLootType             </ArgName>    </Arg> <!-- Type of Loot (normal or additional) -->
+            <Arg>    ARRAY <of>INT32</of>    <ArgName>    aPlayerEligableID     </ArgName>    </Arg> <!-- ID of player(s) allowed to loot -->
+            <Arg>    ARRAY <of>INT32</of>    <ArgName>    aSquadEligableID       </ArgName>    </Arg> <!-- ID of group(s) allowed to loot -->
+        </spawnItem>
+    
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

@@ -1,0 +1,577 @@
+<root>    
+
+    <!-- ID of a BigWorld cell controller -->
+    <CONTROLLER_ID>        INT32        </CONTROLLER_ID>
+    
+    <!-- Type of a database ID -->
+    <DBID>                INT64        </DBID>
+
+    <!-- Identifies a character in an account -->
+    <CharacterInfo> FIXED_DICT
+        <Properties>
+            <playerId><Type>        INT32		</Type></playerId>
+            <name><Type>            WSTRING		</Type></name>
+            <extraName><Type>       WSTRING		</Type></extraName>
+            <alignment><Type>       INT8		</Type></alignment>
+            <level><Type>           INT8		</Type></level>
+            <gender><Type>          INT8		</Type></gender>
+            <worldLocation><Type>   WSTRING		</Type></worldLocation>
+            <archetype><Type>       INT8		</Type></archetype>
+            <title><Type>           INT8		</Type></title>
+            <playerType><Type>      INT32		</Type></playerType>
+            <playable><Type>        INT8		</Type></playable>
+        </Properties>
+    </CharacterInfo>
+    <CharacterInfoList>        ARRAY <of>    CharacterInfo    </of></CharacterInfoList>
+    
+    <RosterInfo> FIXED_DICT
+        <Properties>
+            <name><Type>            WSTRING </Type></name>
+            <level><Type>           UINT8   </Type></level>
+            <archetype><Type>       UINT8   </Type></archetype>
+            <rank><Type>            UINT8   </Type></rank>
+            <note><Type>            WSTRING </Type></note>
+            <officerNote><Type>     WSTRING </Type></officerNote>
+        </Properties>
+    </RosterInfo>
+    
+    <!-- VisualChoices is a list of VisGroupIds and ChoiceIds sent from the client during character creation -->
+    <VisualChoices>FIXED_DICT
+        <Properties>
+            <VisGroupId><Type>      INT32   </Type></VisGroupId>
+            <ChoiceId><Type>        INT32   </Type></ChoiceId>
+        </Properties>
+    </VisualChoices>
+            
+    <!-- one dimensional array containing a two-dimensional game board, in row-major order -->
+    <CrystalBoardLayout> ARRAY <of> UINT8 </of> </CrystalBoardLayout>
+    
+    <!-- List of ability IDs for the crystal game -->
+    <CrystalAbilityList> ARRAY <of> INT8 </of> </CrystalAbilityList>
+
+    <!-- Inventory and Items -->
+    <ItemID> INT32 </ItemID>
+  
+    <!-- Loot item/quantity group -->
+    <LootItemQuantity>FIXED_DICT
+      <Properties>
+        <itemID><Type>ItemID</Type></itemID>
+        <quantity><Type>INT16</Type></quantity>
+        <index><Type>INT32</Type></index>
+        <typeID><Type>INT32</Type></typeID>
+      </Properties>
+    </LootItemQuantity>
+    <LootItemQuantityList>ARRAY<of>LootItemQuantity</of></LootItemQuantityList>
+    <LootTableID>DBID</LootTableID>
+
+	<LootItemDefinition>FIXED_DICT
+		<Properties>
+			<Item><Type>LootItemQuantity</Type></Item>
+			<SquadEligableIDList><Type>ARRAY <of> INT32 </of></Type></SquadEligableIDList>
+			<LootType><Type>UINT64</Type></LootType>
+			<PlayerEligableIDList><Type>ARRAY <of> INT32 </of></Type></PlayerEligableIDList>
+			<Lock><Type>INT32</Type></Lock>
+		</Properties>
+	</LootItemDefinition>
+	<LootItemDefinitionList>ARRAY<of>LootItemDefinition</of></LootItemDefinitionList>
+	
+	<EscrowRecord>FIXED_DICT
+		<Properties>
+			<Item><Type>LootItemDefinition</Type></Item>
+			<FromID><Type>INT32</Type></FromID>
+			<ToID><Type>INT32</Type></ToID>
+			<ERNumber><Type>INT32</Type></ERNumber>
+		</Properties>
+	</EscrowRecord>
+	<EscrowRecordList>ARRAY<of>EscrowRecord</of></EscrowRecordList>
+	
+	<!-- Gate-mail -->
+	<MessageHeader>FIXED_DICT
+        <Properties>
+            <id><Type>INT32</Type></id>
+            <fromText><Type>WSTRING</Type></fromText>
+            <fromId><Type>INT32</Type></fromId>
+            <subjectText><Type>WSTRING</Type></subjectText>
+            <subjectId><Type>INT32</Type></subjectId>
+            <cash><Type>INT32</Type></cash>
+            <sentTime><Type>FLOAT</Type></sentTime>
+            <readTime><Type>FLOAT</Type></readTime>
+            <flags><Type>INT32</Type></flags>
+        </Properties>
+    </MessageHeader>
+    
+    <MessageAttachment>FIXED_DICT
+        <Properties>
+            <id><Type>INT32</Type></id>
+            <itemId><Type>INT32</Type></itemId>
+            <stackSize><Type>INT32</Type></stackSize>
+            <durability><Type>INT32</Type></durability>
+            <charges><Type>INT32</Type></charges>
+        </Properties>
+    </MessageAttachment>
+            
+	<!-- Missions -->
+	<MissionReward>FIXED_DICT
+		<Properties>
+			<itemDef><Type>		INT32	</Type></itemDef>
+			<quantity><Type>	INT16	</Type></quantity>
+			<group><Type>		INT8	</Type></group>
+			<id><Type>			INT8	</Type></id>
+		</Properties>
+	</MissionReward>
+	
+	<MissionTaskStatus>FIXED_DICT
+		<Properties>
+			<taskID><Type>		INT32	</Type></taskID>
+			<status><Type>  	INT8	</Type></status>
+			<count><Type>		INT8	</Type></count>
+		</Properties>
+	</MissionTaskStatus>
+	<MissionObjectiveStatus>FIXED_DICT
+		<Properties>
+			<objectiveID><Type>	INT32	</Type></objectiveID>
+			<status><Type>      INT8    </Type></status>
+			<tasks><Type>		ARRAY <of> MissionTaskStatus	</of>	</Type></tasks>
+		</Properties>
+	</MissionObjectiveStatus>
+	<MissionStepStatus>FIXED_DICT
+		<Properties>
+			<stepID><Type>	INT32	</Type></stepID>
+			<status><Type>      INT8    </Type></status>
+			<objectives><Type>	ARRAY <of> MissionObjectiveStatus	</of>	</Type></objectives>
+		</Properties>
+	</MissionStepStatus>
+	<MissionStatus>FIXED_DICT
+		<Properties>
+			<missionID><Type>	INT32	</Type></missionID>
+			<status><Type>      INT8    </Type></status>
+			<currentStep><Type> INT8    </Type></currentStep>
+			<recievedBy><Type>  INT32   </Type></recievedBy>
+			<steps><Type>		ARRAY <of> MissionStepStatus	</of>	</Type></steps>
+		</Properties>
+	</MissionStatus>
+    
+    <DurationType>FIXED_DICT
+        <Properties>
+            <abilityID><Type>    INT32    </Type></abilityID>
+            <effectID><Type>     INT32    </Type></effectID>
+            <invokerID><Type>    INT32    </Type></invokerID>
+            <pulseCount><Type>   INT32    </Type></pulseCount>
+            <pulseDuration><Type>FLOAT    </Type></pulseDuration>
+            <timeStarted><Type>  FLOAT    </Type></timeStarted>
+            <lastPulse><Type>    FLOAT    </Type></lastPulse>
+            <numPulses><Type>    INT16    </Type></numPulses>
+        </Properties>
+    </DurationType>
+
+    <!-- Stats for Beings -->
+    <StatType>FIXED_DICT
+        <Properties>
+            <BaseMin><Type>      INT32    </Type></BaseMin>
+            <BaseCurrent><Type>  INT32    </Type></BaseCurrent>
+            <BaseMax><Type>      INT32    </Type></BaseMax>
+            <Min><Type>          INT32    </Type></Min>
+            <Current><Type>      INT32    </Type></Current>
+            <Max><Type>          INT32    </Type></Max>
+        </Properties>
+    </StatType>
+
+  <StatUpdate>FIXED_DICT
+  <Properties>
+    <StatId><Type>INT32</Type></StatId>
+    <Min><Type>INT32</Type></Min>
+    <Current><Type>INT32</Type></Current>
+    <Max><Type>INT32</Type></Max>
+  </Properties>
+  </StatUpdate>
+
+  <StatUpdateList>ARRAY<of>StatUpdate</of></StatUpdateList>
+
+    <!-- StatList contains all of the stats which can be buffed/debuffed -->
+    <StatList>FIXED_DICT
+        <Properties>
+            <coordination><Type>          INT32   </Type><Default>    0   </Default></coordination>                <!-- +0.05 to ranged attack QR per point, +0.1% resistance to interrupts per point -->
+            <engagement><Type>            INT32   </Type><Default>    0   </Default></engagement>                  <!-- +0.05 to melee attack QR per point, +1% to kinetic resists per point -->
+            <fortitude><Type>             INT32   </Type><Default>    0   </Default></fortitude>                   <!-- +10 health points per point, +1% to health resists per point -->
+            <morale><Type>                INT32   </Type><Default>    0   </Default></morale>                      <!-- +100 focus points per point, +0.5% increase to focus regeneration rate per point -->
+            <perception><Type>            INT32   </Type><Default>    0   </Default></perception>                  <!-- -0.05 to defense QR per point, +0.5% to stealth/disguise/reveal checks per point -->
+            <intelligence><Type>          INT32   </Type><Default>    0   </Default></intelligence>                <!-- +0.5% change for a Super Trump Card for Conversation Mini games per point, +1% to mental resists per point -->
+            <movementSpeedMod><Type>      INT32   </Type><Default>    0   </Default></movementSpeedMod>            <!-- multiplies movement speed by curr/100 -->
+            <health><Type>                INT32   </Type><Default>    0   </Default></health>                      <!-- increases health by 1 -->
+            <focus><Type>                 INT32   </Type><Default>    0   </Default></focus>                       <!-- increases focus by 1 -->
+            <healthRegen><Type>           INT32   </Type><Default>    0   </Default></healthRegen>                 <!-- increases health regeneration rate by 1% -->
+            <focusRegen><Type>            INT32   </Type><Default>    0   </Default></focusRegen>                  <!-- increases focus regeneration rate by 1% -->
+            <accuracy><Type>              INT32   </Type><Default>    0   </Default></accuracy>                    <!-- modifies outgoing ranged and melee QR by +0.01 per point -->
+            <defense><Type>               INT32   </Type><Default>    0   </Default></defense>                     <!-- modifies incoming ranged and melee QR by -0.01 per point -->
+            <qrMod><Type>                 INT32   </Type><Default>    0   </Default></qrMod>                       <!-- modifies both attacking and defending QR by 1 per point -->
+            <physicalAF><Type>            INT32   </Type><Default>    0   </Default></physicalAF>                  <!-- physical damage armor factor -->
+            <energyAF><Type>              INT32   </Type><Default>    0   </Default></energyAF>                    <!-- energy damage armor factor -->
+            <hazmatAF><Type>              INT32   </Type><Default>    0   </Default></hazmatAF>                    <!-- hazmat/contamination damage armor factor -->
+            <psionicAF><Type>             INT32   </Type><Default>    0   </Default></psionicAF>                   <!-- psionic damage armor factor -->
+            <kineticRes><Type>            INT32   </Type><Default>    0   </Default></kineticRes>                  <!-- increases resistance to all harmful kinetic effects by 1% additive -->
+            <mentalRes><Type>             INT32   </Type><Default>    0   </Default></mentalRes>                   <!-- increases resistance to all harmful mental effects by 1% additive -->
+            <healthRes><Type>             INT32   </Type><Default>    0   </Default></healthRes>                   <!-- increases resistance to all harmful health effects by 1% additive -->
+            <stealthRating><Type>         INT32   </Type><Default>    0   </Default></stealthRating>               <!-- increases the stealth rating of a player while stealthed by 1% additive -->
+            <rangeModifier><Type>         INT32   </Type><Default>    0   </Default></rangeModifier>               <!-- increases the range of the player by 1% -->
+            <coverQRModifier><Type>       INT32   </Type><Default>    0   </Default></coverQRModifier>             <!-- increases both attack and defend QR while behind cover by 1 per point -->
+            <ammoSlot1><Type>             INT32   </Type><Default>    0   </Default></ammoSlot1>                   <!-- ammo count in bandolier slot 1 -->
+            <ammoSlot2><Type>             INT32   </Type><Default>    0   </Default></ammoSlot2>                   <!-- ammo count in bandolier slot 2 -->
+            <ammoSlot3><Type>             INT32   </Type><Default>    0   </Default></ammoSlot3>                   <!-- ammo count in bandolier slot 3 -->
+            <ammoSlot4><Type>             INT32   </Type><Default>    0   </Default></ammoSlot4>                   <!-- ammo count in bandolier slot 4 -->
+            <ammoSlot5><Type>             INT32   </Type><Default>    0   </Default></ammoSlot5>                   <!-- ammo count in bandolier slot 5 -->
+            <deploymentBarAmmo><Type>     INT32   </Type><Default>    0   </Default></deploymentBarAmmo>           <!-- ammo count in deployment bar -->
+            <response><Type>              INT32   </Type><Default>    0   </Default></response>                    <!-- decreases the reuse time of abilities with the response ability flag by 1% -->
+            <damage><Type>                INT32   </Type><Default>    0   </Default></damage>                      <!-- increases the damage done by all attacks and effects by 1% -->
+            <penetration><Type>           INT32   </Type><Default>    0   </Default></penetration>                 <!-- decreases the target's final calculated mitigation by 1% -->
+            <physicalDensity><Type>       INT32   </Type><Default>    0   </Default></physicalDensity>             <!-- gives 1 additional AF vs physical damage -->
+            <energyDensity><Type>         INT32   </Type><Default>    0   </Default></energyDensity>               <!-- gives 1 additional AF vs energy damage -->
+            <hazmatDensity><Type>         INT32   </Type><Default>    0   </Default></hazmatDensity>               <!-- gives 1 additional AF vs hazmat/contamination damage -->
+            <psionicDensity><Type>        INT32   </Type><Default>    0   </Default></psionicDensity>              <!-- gives 1 additional AF vs psionic damage -->
+            <tracking><Type>              INT32   </Type><Default>    0   </Default></tracking>                    <!-- modifies the QR shift frpm defensive movement by -0.01 per point -->
+            <stabilization><Type>         INT32   </Type><Default>    0   </Default></stabilization>               <!-- modifies the QR shift from attacker movement by -0.01 per point -->
+            <awareness><Type>             INT32   </Type><Default>    0   </Default></awareness>                   <!-- modifies outgoing ranged and melee QR by +0.01 per point -->
+            <interruptRes><Type>          INT32   </Type><Default>    0   </Default></interruptRes>                <!-- increases resistance to all interrupts except movement by 1% -->
+            <coverAccuracy><Type>         INT32   </Type><Default>    0   </Default></coverAccuracy>               <!-- increases the accuracy of attacks against a target inside cover by +0.01 QR -->
+            <coverDefense><Type>          INT32   </Type><Default>    0   </Default></coverDefense>                <!-- increases the defense of a player in cover by -0.01 QR -->
+            <crouchingAccuracy><Type>     INT32   </Type><Default>    0   </Default></crouchingAccuracy>           <!-- increases the player's accuracy of attacks while crouching by +0.01 QR -->
+            <crouchingDefense><Type>      INT32   </Type><Default>    0   </Default></crouchingDefense>            <!-- increases the player's defense from attacks while crouching by -0.01 QR -->
+            <stealthMovement><Type>       INT32   </Type><Default>    0   </Default></stealthMovement>             <!-- increases the movement speed of a player while stealthed by 1% additive -->
+            <revealRating><Type>          INT32   </Type><Default>    0   </Default></revealRating>                <!-- increases the reveal rating of a player -->
+            <negation><Type>              INT32   </Type><Default>    0   </Default></negation>                    <!-- decreases the chance that harmful effects will be resisted fully by 1% subtractive -->
+            <disguiseRating><Type>        INT32   </Type><Default>    0   </Default></disguiseRating>              <!-- once disguise rating reaches zero entity leaves disguise -->
+            <disguiseDetection><Type>     INT32   </Type><Default>    0   </Default></disguiseDetection>           <!-- how much an entity will tick down someones disguise -->
+            <mitigation><Type>            INT32   </Type><Default>    0   </Default></mitigation>                  <!-- armor mitigation percent (0-100%) -->
+            <rotationSpeedMod><Type>      INT32   </Type><Default>    0   </Default></rotationSpeedMod>            <!-- multiplies rotation speed by curr/100 -->
+            <energy><Type>                INT32   </Type><Default>    0   </Default></energy>                      <!-- increases energy by 1 -->
+            <energyRegen><Type>           INT32   </Type><Default>    0   </Default></energyRegen>                 <!-- increases energy regeneration rate by 1% -->
+            <speedReload><Type>           INT32   </Type><Default>    0   </Default></speedReload>                 <!-- decreases reload time by 1% -->
+            <speedGrenade><Type>          INT32   </Type><Default>    0   </Default></speedGrenade>                <!-- decreases warmup time of grenade abilities by 1% -->
+            <speedDeploy><Type>           INT32   </Type><Default>    0   </Default></speedDeploy>                 <!-- decreases warmup time of deployable abilities by 1% -->
+            <speedAttack><Type>           INT32   </Type><Default>    0   </Default></speedAttack>                 <!-- decreases warmup time of attack abilities by 1% -->
+            <recovery><Type>              INT32   </Type><Default>    0   </Default></recovery>                    <!-- increases amount of healing done via abilities by 1% -->
+            <restoration><Type>           INT32   </Type><Default>    0   </Default></restoration>                 <!-- increases amount of healing received through effects by 1% -->
+            <subtlety><Type>              INT32   </Type><Default>    0   </Default></subtlety>                    <!-- decreases the threat generated by 0.1% -->
+            <speedPet><Type>              INT32   </Type><Default>    0   </Default></speedPet>                    <!-- decreases the threat generated by 0.1% -->
+            <absorbPhysical><Type>        INT32   </Type><Default>    0   </Default></absorbPhysical>              <!-- how much physical damage to absorb -->
+            <absorbEnergy><Type>          INT32   </Type><Default>    0   </Default></absorbEnergy>                <!-- how much energy damage to absorb -->
+            <absorbHazmat><Type>          INT32   </Type><Default>    0   </Default></absorbHazmat>                <!-- how much hazmat damage to absorb -->
+            <absorbPsionic><Type>         INT32   </Type><Default>    0   </Default></absorbPsionic>               <!-- how much psionic damage to absorb -->
+            <absorbUntyped><Type>         INT32   </Type><Default>    0   </Default></absorbUntyped>               <!-- how much untyped damage to absorb -->
+            <absorbPhysicalItem><Type>    INT32   </Type><Default>    0   </Default></absorbPhysicalItem>          <!-- how much physical damage to absorb and charge to an item -->
+            <absorbEnergyItem><Type>      INT32   </Type><Default>    0   </Default></absorbEnergyItem>            <!-- how much energy damage to absorb and charge to an item -->
+            <absorbHazmatItem><Type>      INT32   </Type><Default>    0   </Default></absorbHazmatItem>            <!-- how much hazmat damage to absorb and charge to an item -->
+            <absorbPsionicItem><Type>     INT32   </Type><Default>    0   </Default></absorbPsionicItem>           <!-- how much psionic damage to absorb and charge to an item -->
+            <absorbUntypedItem><Type>     INT32   </Type><Default>    0   </Default></absorbUntypedItem>           <!-- how much untyped damage to absorb and charge to an item -->
+            <absorbPhysicalEnergy><Type>  INT32   </Type><Default>    0   </Default></absorbPhysicalEnergy>        <!-- how much physical damage to absorb and charge to Energy -->
+            <absorbEnergyEnergy><Type>    INT32   </Type><Default>    0   </Default></absorbEnergyEnergy>          <!-- how much energy damage to absorb and charge to Energy -->
+            <absorbHazmatEnergy><Type>    INT32   </Type><Default>    0   </Default></absorbHazmatEnergy>          <!-- how much hazmat damage to absorb and charge to Energy -->
+            <absorbPsionicEnergy><Type>   INT32   </Type><Default>    0   </Default></absorbPsionicEnergy>         <!-- how much psionic damage to absorb and charge to Energy -->
+            <absorbUntypedEnergy><Type>   INT32   </Type><Default>    0   </Default></absorbUntypedEnergy>         <!-- how much untyped damage to absorb and charge to Energy -->
+        </Properties>
+    </StatList>
+
+    <SlotType>FIXED_DICT
+        <Properties>
+            <slotReq><Type>      INT32    </Type></slotReq>  <!-- Item in slot matches one of the following slot reqs -->
+            <itemID><Type>       INT32    </Type></itemID>
+            <condition><Type>    INT32    </Type></condition>
+            <durability><Type>   INT32    </Type></durability>
+            <quantity><Type>     INT32    </Type></quantity>
+            <slotType><Type>     INT32    </Type></slotType>
+            <columnPos><Type>    INT8     </Type></columnPos>
+            <rowPos><Type>       INT8     </Type></rowPos>
+            <bound><Type>        INT8     </Type></bound>
+            <auction><Type>      INT8     </Type></auction>
+            <soldDate><Type>     INT32    </Type></soldDate>
+            <crafter><Type>      INT32    </Type></crafter>
+        </Properties>
+    </SlotType>
+    
+    <InventoryBag>FIXED_DICT
+        <Properties>
+            <capacity><Type>     INT32    </Type></capacity>
+            <bagType><Type>      UINT8    </Type></bagType>
+            <bagItems><Type>ARRAY <of>SlotType</of></Type></bagItems>
+            <itemTypes><Type>ARRAY <of>UINT8</of></Type></itemTypes>
+            <bReqSlotCheck><Type>INT8     </Type></bReqSlotCheck>
+        </Properties>
+    </InventoryBag>
+
+    <WeaponSkillType>FIXED_DICT
+        <Properties>
+            <skill><Type>       INT32     </Type></skill>
+            <weaponType><Type>  UINT8     </Type></weaponType>
+        </Properties>
+    </WeaponSkillType>
+    
+    <NameValuePair>FIXED_DICT
+        <Properties>
+            <name><Type>    WSTRING  </Type></name>
+            <value><Type>   WSTRING  </Type></value>
+        </Properties>
+    </NameValuePair>
+
+    <ClientEffectResult>FIXED_DICT
+        <Properties>
+            <StatID>            <Type>  INT8    </Type></StatID>             <!-- The ID of the stat that was modified   -->
+            <Delta>                <Type>  INT32   </Type></Delta>             <!-- The change in the stat value           -->
+            <DamageCode>        <Type>  INT8    </Type></DamageCode>        <!-- Enumeration describing the type damage(Hazmat, Physical, etc) -->
+            <StatResultCode>    <Type>  INT8    </Type></StatResultCode>    <!-- Comes back None most of the time, but will note immunitites or absorbtions -->
+        </Properties>
+    </ClientEffectResult>
+    <ClientEffectResultList>ARRAY<of>ClientEffectResult</of></ClientEffectResultList>
+        
+    <!-- Dialog choices -->
+    <DialogChoices>FIXED_DICT
+        <Properties>
+            <dialogSetMapID><Type>  INT32   </Type></dialogSetMapID>
+            <level><Type>           INT32   </Type></level>
+            <missionId><Type>       INT32   </Type></missionId>
+        </Properties>
+    </DialogChoices>
+    
+    <!-- Inventory Item -->
+    <InvItem>FIXED_DICT
+        <Properties>
+            <id><Type>          INT32   </Type></id>
+            <dbid><Type>        INT32   </Type></dbid>
+            <stackSize><Type>   INT32   </Type></stackSize>
+            <slotID><Type>      INT32   </Type></slotID>
+            <containerID><Type> INT32   </Type></containerID>
+            <isBound><Type>     UINT8   </Type></isBound>
+            <durability><Type>  INT32   </Type></durability>
+            <ammoTypes><Type>ARRAY<of>INT32</of></Type></ammoTypes>
+            <curAmmoType><Type> INT32   </Type></curAmmoType>
+            <charges><Type>     INT32   </Type></charges>
+        </Properties>
+    </InvItem>
+    <BagInfo>FIXED_DICT
+        <Properties>
+            <BagId><Type>           INT32   </Type></BagId>
+            <NumberOfSlots><Type>   INT32   </Type></NumberOfSlots>
+        </Properties>
+    </BagInfo>
+    
+    <!-- Trade Proposals -->
+    <LocalTradeItem>FIXED_DICT
+        <Properties>
+            <instanceId><Type>  INT32   </Type></instanceId>
+            <slotId><Type>      INT32   </Type></slotId>
+        </Properties>
+    </LocalTradeItem>
+    
+    <LocalTradeProposal>FIXED_DICT
+        <Properties>
+            <version><Type>     INT32   </Type></version>
+            <items><Type>ARRAY<of>LocalTradeItem</of> </Type></items>
+            <cash><Type>        INT32   </Type></cash>
+            <lockState><Type>   INT8    </Type></lockState>
+        </Properties>
+    </LocalTradeProposal>
+    
+    <RemoteTradeProposal>FIXED_DICT
+        <Properties>
+            <version><Type>     INT32   </Type></version>
+            <items><Type>ARRAY<of>InvItem</of> </Type></items>
+            <cash><Type>        INT32   </Type></cash>
+            <lockState><Type>   INT8    </Type></lockState>
+        </Properties>
+    </RemoteTradeProposal>
+    
+    <!-- Item list for a store -->
+    <ItemCost>FIXED_DICT
+        <Properties>
+            <cost><Type>            INT32   </Type></cost>
+            <itemId><Type>          INT32   </Type></itemId>
+        </Properties>
+    </ItemCost>
+    
+    <BuyCost>FIXED_DICT
+        <Properties>
+            <type><Type>            INT32   </Type></type>
+            <typeId><Type>          INT32   </Type></typeId>
+            <quantity><Type>        INT32   </Type></quantity>
+        </Properties>
+    </BuyCost>
+    
+    <StoreItem>FIXED_DICT
+        <Properties>
+            <index><Type>           INT32               </Type></index>
+            <itemId><Type>          INT32               </Type></itemId>
+            <costList><Type> ARRAY <of> BuyCost </of>   </Type></costList>
+            <usable><Type>          UINT8               </Type></usable>
+            <quantity><Type>        INT32               </Type></quantity>
+        </Properties>
+    </StoreItem>
+
+    <ItemCostUpdate>FIXED_DICT
+        <Properties>
+            <itemId><Type>          INT32               </Type></itemId>
+            <sellPrice><Type>       INT32               </Type></sellPrice>
+            <repairPrice><Type>     INT32               </Type></repairPrice>
+            <rechargePrice><Type>   INT32               </Type></rechargePrice>
+        </Properties>
+    </ItemCostUpdate>
+    
+    <!-- Ability list for a trainer -->
+    <TrainerAbility>FIXED_DICT
+        <Properties>
+            <abilityID><Type>   INT32  </Type></abilityID>
+            <trainable><Type>   UINT8  </Type></trainable>
+        </Properties>
+    </TrainerAbility>
+
+	<Respawner>FIXED_DICT
+		<Properties>
+			<respawnerID><Type>INT32</Type></respawnerID>
+			<respawnerName><Type>WSTRING</Type></respawnerName>
+		</Properties>
+	</Respawner>
+
+  <Waypoint>FIXED_DICT <!-- could probably be an array -->
+    <Properties>
+      <locationX><Type>FLOAT</Type></locationX>
+      <locationY><Type>FLOAT</Type></locationY>
+      <locationZ><Type>FLOAT</Type></locationZ>
+      <pitch><Type>FLOAT</Type></pitch>
+      <yaw><Type>FLOAT</Type></yaw>
+      <roll><Type>FLOAT</Type></roll>
+    </Properties>
+  </Waypoint>
+
+  <WaypointList>
+    ARRAY<of>Waypoint</of>
+  </WaypointList>
+
+    <PublicWeaponData>FIXED_DICT
+        <Properties>
+            <activated><Type>   UINT8         </Type></activated>
+            <type><Type>        UINT32        </Type></type>
+        </Properties>
+    </PublicWeaponData>
+
+    <PublicCoverNodeReservationData>FIXED_DICT
+        <Properties>
+            <nodeID><Type>    UINT32    </Type></nodeID>
+            <slotID><Type>    UINT8     </Type></slotID>
+            <entityID><Type>  UINT32    </Type></entityID>
+        </Properties>
+    </PublicCoverNodeReservationData>
+    
+    <RewardItem>FIXED_DICT
+        <Properties>
+            <ItemId><Type>   UINT32    </Type></ItemId>
+            <Index><Type>    UINT32    </Type></Index>
+        </Properties>
+    </RewardItem>
+        
+    <ItemGroup>FIXED_DICT
+        <Properties>
+            <GroupId><Type>    UINT32    </Type></GroupId>
+            <NumChoices><Type>    UINT32    </Type></NumChoices>
+            <Items><Type> ARRAY <of> RewardItem </of>  </Type></Items>
+        </Properties>
+    </ItemGroup>
+    
+    <Rewards>FIXED_DICT
+        <Properties>
+            <XP><Type>    UINT32    </Type></XP>
+            <Naquadah><Type>    UINT32    </Type></Naquadah>
+            <ItemGroups><Type> ARRAY <of> ItemGroup </of>  </Type></ItemGroups>
+         </Properties>
+    </Rewards>       
+    
+    <GroupChoice>FIXED_DICT
+        <Properties>
+            <GroupId><Type> UINT32 </Type></GroupId>
+            <Choices><Type> ARRAY <of> UINT32 </of>  </Type></Choices>
+        </Properties>
+    </GroupChoice>
+    
+    <RewardChoices>FIXED_DICT
+        <Properties>
+            <GroupChoices> <Type> ARRAY <of> GroupChoice </of>  </Type></GroupChoices>
+        </Properties>
+    </RewardChoices>
+
+    <RegionInfo>FIXED_DICT
+        <Properties>
+            <RegionId>    <Type> INT32   </Type> </RegionId>
+            <DisplayName> <Type> INT32   </Type> </DisplayName>
+            <WorldId>     <Type> INT32   </Type> </WorldId>
+            <Position>    <Type> VECTOR3 </Type> </Position>
+        </Properties>
+    </RegionInfo>
+    
+    <CraftingInfo>FIXED_DICT
+        <Properties>
+            <items>    <Type>  ARRAY <of> INT32 </of> </Type> </items>
+            <entities> <Type>  ARRAY <of> INT32 </of> </Type> </entities>
+        </Properties>
+    </CraftingInfo>
+    
+    <CraftingOptions>FIXED_DICT
+        <Properties>
+            <crafting>           <Type>  CraftingInfo  </Type> </crafting>
+            <research>           <Type>  CraftingInfo  </Type> </research>
+            <reverseEngineering> <Type>  CraftingInfo  </Type> </reverseEngineering>
+            <alloying>           <Type>  CraftingInfo  </Type> </alloying>
+        </Properties>
+    </CraftingOptions>
+
+	<NavigationPolygonEdge>FIXED_DICT
+		<Properties>
+			<adjacency><Type>INT32</Type></adjacency>
+			<point><Type>VECTOR3</Type></point>
+		</Properties>
+	</NavigationPolygonEdge>
+    
+	<NavigationPolygon>FIXED_DICT
+		<Properties>
+			<set><Type>INT32</Type></set>
+			<id><Type>INT32</Type></id>
+			<polygon><Type>ARRAY <of>NavigationPolygonEdge</of></Type></polygon>
+		</Properties>
+	</NavigationPolygon>
+
+    <!-- Token dictionary for sendPlayerFeedbackToken -->
+    <StringToken>FIXED_DICT
+        <Properties>
+            <stringID><Type>INT32</Type></stringID>
+            <literal><Type>WSTRING</Type></literal>
+        </Properties>
+    </StringToken>
+
+    <!-- Auction Item is all of the information about an item on the Black Market -->
+    <AuctionItem>FIXED_DICT
+        <Properties>
+            <sequenceId>        <Type>  INT32  </Type> </sequenceId>
+            <itemDefId>         <Type>  INT32  </Type> </itemDefId>
+            <stackSize>         <Type>  INT32  </Type> </stackSize>
+            <durability>        <Type>  INT32  </Type> </durability>
+            <charges>           <Type>  INT32  </Type> </charges>
+            <currentBid>        <Type>  INT32  </Type> </currentBid>
+            <buyoutPrice>       <Type>  INT32  </Type> </buyoutPrice>
+            <endTimeValue>      <Type>  UINT8  </Type> </endTimeValue>
+            <nextMinBidPrice>   <Type>  INT32  </Type> </nextMinBidPrice>
+            <sellerName>        <Type>  STRING </Type> </sellerName>
+        </Properties>
+    </AuctionItem>
+    
+    <BMSearchOptions>FIXED_DICT
+        <Properties>
+            <sortId>        <Type>  UINT8   </Type> </sortId>
+            <clientKey>     <Type>  INT32   </Type> </clientKey>
+            <sequenceId>    <Type>  INT32   </Type> </sequenceId>
+            <bForward>      <Type>  UINT8   </Type> </bForward>
+            <sellerName>    <Type>  STRING  </Type> </sellerName>
+            <bidderName>    <Type>  STRING  </Type> </bidderName>
+            <itemName>      <Type>  STRING  </Type> </itemName>
+            <minTC>         <Type>  INT32   </Type> </minTC>
+            <maxTC>         <Type>  INT32   </Type> </maxTC>
+            <quality>       <Type>  INT32   </Type> </quality>
+            <monikerCRC>    <Type>  INT32   </Type> </monikerCRC>
+        </Properties>
+    </BMSearchOptions>
+    
+</root>

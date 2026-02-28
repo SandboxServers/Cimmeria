@@ -1,0 +1,183 @@
+<root>
+
+	<Parent>SGWEntity</Parent>
+
+	<ServerOnly />	<!-- Don't send this entity to clients -->
+
+	<Properties>
+		<!-- Name of the area of the world this is for -->
+		<areaName>
+			<Type>			WSTRING			</Type>
+			<Flags>			CELL_PUBLIC	</Flags>
+		</areaName>
+        
+		<!-- Unique key of this Space -->
+		<areaKey>
+			<Type>			WSTRING  		</Type>
+			<Flags>			CELL_PUBLIC	</Flags>
+			<Identifier>	true			</Identifier>
+            <Persistent>    true            </Persistent>
+			<DatabaseLength>	64			</DatabaseLength>
+		</areaKey>
+
+		<worldID>
+			<Type> UINT32 </Type>
+			<Flags> CELL_PUBLIC </Flags>
+		</worldID>
+
+		<expirationTimestamp>
+			<Type>			STRING			</Type>
+			<Flags>			CELL_PRIVATE	</Flags>
+		</expirationTimestamp>
+
+	<loadData>
+		<Type> PYTHON </Type>
+		<Flags> CELL_PRIVATE </Flags>
+		<Default> {} </Default>
+	</loadData>
+        
+		<worldinstanceID>
+			<Type> UINT32 </Type>
+			<Flags> CELL_PUBLIC </Flags>
+		</worldinstanceID>
+
+		<worldinstanceFlags>
+			<Type> UINT32 </Type>
+			<Flags> CELL_PRIVATE </Flags>
+		</worldinstanceFlags>
+		
+		<CurrentPopulation>
+            <Type>        PYTHON        </Type>
+            <Default>        {}        </Default>
+            <Flags>        BASE        </Flags>
+        </CurrentPopulation>
+        
+        <MySpawnRegionEntityIDs>
+            <Type>      ARRAY <of>INT32</of>    </Type>
+            <Flags>     BASE        </Flags>
+        </MySpawnRegionEntityIDs>
+
+	</Properties>
+
+	<ClientMethods>
+	</ClientMethods>
+
+	<BaseMethods>
+        <!-- Players invoke this to request entry to a cell -->
+        <requestCell>
+            <Arg>           MAILBOX         </Arg>      <!-- The Base mailbox of the player -->
+        </requestCell>
+
+        <!-- A player is entering the space created by this creator -->
+        <onPlayerEnter>
+            <Arg>           MAILBOX         </Arg>      <!-- The Base mailbox of the player -->
+        </onPlayerEnter>
+
+        <!-- A player is exiting the space created by this creator -->
+        <onPlayerExit>
+            <Arg>           MAILBOX         </Arg>      <!-- The Base mailbox of the player -->
+        </onPlayerExit>
+
+	<registerPlayerRespawner>
+		<Arg>       UINT32 <ArgName>aRespawnerID</ArgName></Arg>
+		<Arg>       PYTHON <ArgName>aRespawnerDefinition</ArgName></Arg>
+	</registerPlayerRespawner>
+
+	<deregisterPlayerRespawner>
+		<Arg>       UINT32 <ArgName>aRespawnerID</ArgName></Arg>
+	</deregisterPlayerRespawner>
+	
+	<registerSpawnRegion>
+            <Arg>        INT32        </Arg>
+    </registerSpawnRegion>
+        
+    <deregisterSpawnRegion>
+            <Arg>        INT32        </Arg>
+    </deregisterSpawnRegion>
+
+	<sendRespawnersToPlayer>
+		<Arg>		MAILBOX <ArgName>aPlayer</ArgName></Arg>	<!-- Player respawning -->
+		<Arg>		ARRAY <of>UINT32</of><ArgName>KnownRespawners</ArgName></Arg>	<!-- Known respawners for player -->
+	</sendRespawnersToPlayer>
+
+	<sendPlayerToRespawner>
+		<Arg>		MAILBOX <ArgName>player</ArgName></Arg>				<!-- Cell mailbox of player to respawn -->
+		<Arg>		UINT32 <ArgName>entityID</ArgName></Arg>			<!-- Entity ID of respawner -->
+		<Arg>		VECTOR3 <ArgName>aPlayerPosition</ArgName></Arg>		<!-- Position of player -->
+		<Arg>		ARRAY <of>UINT32</of><ArgName>KnownRespawners</ArgName></Arg>	<!-- Known player respawners -->
+	</sendPlayerToRespawner>
+
+	<!-- All the geometry for this space has now been loaded on the cell.  Start loading other entities -->
+	<onStartLoadingEntities>
+	</onStartLoadingEntities>
+	
+	<entityEnteredRegion>
+	    <Arg>   MAILBOX </Arg> <!-- Base mailbox of the entity who entered the region -->
+	    <Arg>   INT32   </Arg> <!-- Region id this entity entered -->
+	</entityEnteredRegion>
+	
+	<entityExitRegion>
+	    <Arg>   MAILBOX </Arg>  <!-- Base mailbox of the entity who entered the region -->
+	    <Arg>   INT32   </Arg>  <!-- Region id this entity entered -->
+	</entityExitRegion>
+	
+	<isEntityInRegion>
+	    <Arg>   INT32   </Arg>  <!-- EntityId we are checking for -->
+	    <Arg>   INT32   </Arg>  <!-- RegionId we are checking within -->
+	    <Arg>   MAILBOX </Arg>  <!-- Mailbox to call the callback method on -->
+	    <Arg>   STRING  </Arg>  <!-- Name of the callback method -->
+	</isEntityInRegion>
+	
+	<getEntitiesInRegion>
+	    <Arg>   INT32   </Arg>  <!-- RegionId we are checking within -->
+	    <Arg>   MAILBOX </Arg>  <!-- Mailbox to call the callback method on -->
+	    <Arg>   STRING  </Arg>  <!-- Name of the callback method -->
+	</getEntitiesInRegion>
+	
+	<reportPopulation>
+        <Arg> INT32 </Arg> <!-- spawn region id -->
+        <Arg> INT32 </Arg> <!-- current population -->
+    </reportPopulation>
+    
+    <displayMobCount>
+        <Arg> MAILBOX </Arg> <!-- Base mailbox to reply to -->
+        <Arg> UINT32 </Arg> <!-- Specific region to query (all if 0) -->
+    </displayMobCount>
+    
+    <activateSpawnRegion>
+        <Arg> UINT32 </Arg> <!-- ID of region to activate -->
+    </activateSpawnRegion>
+    
+    <deactivateSpawnRegion>
+        <Arg> UINT32 </Arg> <!-- ID of region to deactivate -->
+    </deactivateSpawnRegion>
+    
+    <activateSpawnSet>
+        <Arg> UINT32 </Arg> <!-- ID of spawn set to activate -->
+    </activateSpawnSet>
+    
+    <deactivateSpawnSet>
+        <Arg> UINT32 </Arg> <!-- ID of spawn set to deactivate -->
+    </deactivateSpawnSet>
+
+	</BaseMethods>
+
+	<CellMethods>
+        <!-- Timer on the base has expired, and this space has no players.  Tear it down. -->
+        <tearDownSpace>
+        </tearDownSpace>
+
+	<!-- Set flags on worldinstance -->
+	<setWorldinstanceFlag>
+		<Arg> UINT32 </Arg>
+		<Arg> UINT8 </Arg>
+	</setWorldinstanceFlag>
+
+	<!-- Extend worldinstance expiration by given number of seconds -->
+	<extendExpiration>
+		<Arg> UINT32 </Arg>
+	</extendExpiration>
+
+
+	</CellMethods>
+</root>

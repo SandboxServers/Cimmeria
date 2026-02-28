@@ -1,0 +1,32 @@
+<root>
+    <!--
+    This file is used by the BigWorld engine to determine the types of entities
+    available for use by the engine. Each tag must correspond to a definition
+    file and possibly a Python implementation script for the cell, base and
+    client version of the distributed entity.
+    -->
+    <SGWSpawnableEntity/>
+    <SGWBeing/>
+    <SGWPlayer/>
+    <SGWGmPlayer/>
+    <SGWMob/>
+    <SGWPet/>
+    <SGWDuelMarker/>
+    <SGWBlackMarket/>
+
+    <Account/>                  <!-- Entity created when the player first connects to a server.
+                                     It manages login and character selection. -->
+                                     
+    <SGWEntity/>
+    <SGWPlayerGroupAuthority/>	<!-- Server only entity that manages distribution groups of player entities -->
+    <SGWSpaceCreator/>          <!-- Server-only entity that creates and maintains a space -->
+
+    <SGWSpawnRegion/>
+    <SGWSpawnSet/>              <!-- contains spawn point objects and spawns mobs -->
+    <SGWPlayerRespawner/>       <!-- basically, a graveyard -->
+    <SGWCoverSet/>              <!-- an entity to contain cover node objects -->
+    <SGWEscrow/>				<!-- an entity to handle item transactions -->
+
+    <SGWChannelManager/>	<!-- Channel manager -->
+
+</root>

@@ -1,0 +1,770 @@
+<root>    
+    <Parent>SGWBeing</Parent>
+    
+    <Implements>
+    <Interface> Lootable </Interface>
+    </Implements>
+
+<!--	Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+    <Properties>
+        <navControllerID>   <!-- ID of the navigation controller that's driving us -->
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </navControllerID>
+        <visionID>          <!-- ID of the vision controller we're using to see threats -->
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </visionID>
+        <yawID>             <!-- ID of the yaw controller we're using to rotate -->
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </yawID>
+        <AIState>
+            <Type>          INT32               </Type>
+            <Flags>         CELL_PUBLIC         </Flags>
+            <Default>       1                   </Default>
+        </AIState>
+        <POI>               <!-- point of interest, something I need to check out or tell other mobs about -->
+            <Type>          VECTOR3             </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </POI>   
+        <Home>              <!-- point of reference that we wander around when we're idle -->
+            <Type>          VECTOR3             </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </Home> 
+        <lastNavigate>      <!-- navigation data of last movement -->
+            <Type>          PYTHON              </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       None                </Default>
+        </lastNavigate>
+        <bCoverFromTarget>  <!-- flag indicating player's cover state in relation to current target -->
+            <Type>          INT8                    </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </bCoverFromTarget>
+        <lastCoverMove> <!-- last time I started moving to cover -->
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </lastCoverMove>
+        <lastCoverCheck> <!-- last time I checked for cover -->
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </lastCoverCheck>
+        <cullLOSBlockers>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       1                       </Default>
+        </cullLOSBlockers>
+        <CombatStance>      <!-- whether and how I use cover -->
+            <Type>          INT8                    </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </CombatStance>
+        <priorStance>      <!-- The stance I was previously in, and need to return to -->
+            <Type>          INT8                    </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </priorStance>
+        <MyAbilitySetID>    <!-- ID of the ability set I use to pick abilities -->
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </MyAbilitySetID>
+        <LootTableID>       <!-- ID for the loot table to generate loot from -->
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </LootTableID>
+        <SecondaryDisplayName>
+            <Type>          WSTRING                  </Type>
+            <Flags>         CELL_PUBLIC             </Flags>
+            <Default>       Secondary Name          </Default>
+        </SecondaryDisplayName>
+        <Aggression>        <!-- Enum value of the aggression for this mob, maps to EMobAggressionLevel-->
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PUBLIC             </Flags>
+            <Default>       3                       </Default>
+        </Aggression>
+        
+        <threatXferMultpr>
+            <Type>     INT32         </Type>
+            <Flags>    CELL_PRIVATE  </Flags>
+            <Default>  0             </Default>
+        </threatXferMultpr>
+        
+        <minIdealRange>
+            <Type>     INT32         </Type>
+            <Flags>    CELL_PRIVATE  </Flags>
+            <Default>  0             </Default>
+        </minIdealRange>
+        
+        <maxIdealRange>
+            <Type>     INT32         </Type>
+            <Flags>    CELL_PRIVATE  </Flags>
+            <Default>  35            </Default>
+        </maxIdealRange>
+        
+        <raceId>
+            <Type>     INT32         </Type>
+            <Flags>    CELL_PUBLIC   </Flags>
+            <Default>  0             </Default>
+        </raceId>
+        
+        <spawner>
+            <Type>          MAILBOX                 </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </spawner>
+        <mobGroup>
+            <Type>          PYTHON                  </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </mobGroup>
+        <hearingRadius>
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </hearingRadius>
+        <intelligenceId>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </intelligenceId>
+        <useCover>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </useCover>
+        <isKillable>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </isKillable>
+        <isTrackable>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </isTrackable>
+        <isWorthXP>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </isWorthXP> 
+        <mobTypeId>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PUBLIC             </Flags>
+            <Default>       0                       </Default>
+        </mobTypeId>
+        <roleId>
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </roleId>
+        <currentlyFollowing>
+            <Type>          UINT8                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </currentlyFollowing>
+        <followTarget>
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </followTarget>
+        <followMinDistance>
+            <Type>          FLOAT                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </followMinDistance>
+        <followMaxDistance>
+            <Type>          FLOAT                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </followMaxDistance>
+        <followAngle>
+            <Type>          FLOAT                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </followAngle>
+       
+       
+        <!-- mob threat list (KEY: entityID VALUE: threat value) -->
+        <threatList>
+            <Type>    PYTHON        </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> {}            </Default>
+        </threatList>
+        
+        <!-- mob behavior event set {eventSetId : eventSetMap} -->
+        <mobBehaviorEventSet>
+            <Type>    PYTHON        </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> {}            </Default>
+        </mobBehaviorEventSet>
+        
+        <!-- List used to track how much damage different entities have done to a mob -->
+        <entityDamageList>
+            <Type>    PYTHON        </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> {}            </Default>
+        </entityDamageList>
+        
+        <!-- List used to track how much damage different squads have done to a mob -->
+        <squadDamageList>
+            <Type>    PYTHON        </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> {}            </Default>
+        </squadDamageList>
+        
+        <!-- The total amount of damage this mob took -->
+        <totalDamageTaken>
+            <Type>    INT32         </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> 0             </Default>
+        </totalDamageTaken>
+        
+        <!-- Tapped entity -->
+        <tappedEntity>
+            <Type>    INT32         </Type>
+            <Flags>   CELL_PUBLIC   </Flags>
+            <Default> 0             </Default>
+        </tappedEntity>
+        <!-- Tapped squad -->
+        <tappedSquad>
+            <Type>    INT32        </Type>
+            <Flags>   CELL_PUBLIC  </Flags>
+            <Default> 0            </Default>
+        </tappedSquad>
+                
+        <!-- Tapped squad members -->
+        <tappedSquadMembers>
+            <Type>    ARRAY <of> INT32 </of>   </Type>
+            <Flags>   CELL_PUBLIC              </Flags>
+        </tappedSquadMembers>
+
+        <!-- When enabled, will send any debug messages about this mob to its current debug target -->
+        <bFeedbackDebug>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </bFeedbackDebug>
+        <feedbackDebugTarget>
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </feedbackDebugTarget>
+        <feedbackDebugPreviousState>
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       -1                      </Default>
+        </feedbackDebugPreviousState>
+        <behaviorDebug>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </behaviorDebug>
+        <pathDebug>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </pathDebug>
+
+        <!-- ID of the behavior timer controller -->
+        <behaviorTimerID>
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </behaviorTimerID>
+
+        <_targetSelectionTickCount>
+            <Type>        INT32           </Type>
+            <Flags>       CELL_PRIVATE    </Flags>
+            <Default>     0               </Default>
+        </_targetSelectionTickCount>
+        
+        <_myLastPos>             
+            <Type>          VECTOR3             </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </_myLastPos> 
+        
+        <_lostSight>
+            <Type>      FLOAT       </Type>
+            <Flags>     CELL_PRIVATE    </Flags>
+            <Default>   0.0     </Default>
+        </_lostSight>
+
+        <_targetLastPos>             
+            <Type>          VECTOR3             </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </_targetLastPos>
+
+        <_targetThreshold>
+            <Type>          FLOAT               </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0.0                 </Default>
+        </_targetThreshold> 
+        
+        <_acted>
+            <Type>          FLOAT               </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0.0                 </Default>
+        </_acted>
+        
+        <nextWanderTime>
+            <Type>      FLOAT       </Type>
+            <Flags>     CELL_PRIVATE    </Flags>
+            <Default>   0.0     </Default>
+        </nextWanderTime>
+        
+        <!-- locks the MOB into its current state until it is unlocked -->
+        <stateLock>
+            <Type>          INT8                </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </stateLock>
+
+        <!-- overrides aggression towards entities for a period of time -->
+        <aggressionOverrides>
+            <Type>          ARRAY<of>PYTHON</of></Type>
+            <Flags>         CELL_PUBLIC         </Flags>
+            <Default>       []                  </Default>
+        </aggressionOverrides>
+        
+        <!-- hold timers associated to the aggressionOverrides -->
+        <aggressionOverrideTimers>
+            <Type>          PYTHON              </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       {}                  </Default>
+        </aggressionOverrideTimers>
+
+        <!-- ID of the despawn timer controller -->
+        <despawnTimerID>
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </despawnTimerID>
+
+        <despawnFlag>
+            <Type>    INT8          </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> 0             </Default>
+        </despawnFlag>
+
+        <abilitySelection>
+            <Type>    PYTHON        </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> {}            </Default>
+        </abilitySelection>
+
+        <healRequests>
+            <Type>    PYTHON       </Type>
+            <Flags>   CELL_PRIVATE </Flags>
+            <Default> {}           </Default>
+        </healRequests>
+        
+        <decayTimerID>
+            <Type>    INT32         </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> 0             </Default>
+        </decayTimerID>
+
+        <spawnTime>
+            <Type>    FLOAT        </Type>
+            <Flags>   CELL_PUBLIC  </Flags>
+            <Default> 0            </Default>
+        </spawnTime>
+
+        <!-- {entityID,chunkID,nodeID,slotID} that the MOB currently has reserved -->
+        <reservedCoverNode>
+            <Type>    PYTHON       </Type>
+            <Flags>   CELL_PRIVATE </Flags>
+            <Default> None         </Default>
+        </reservedCoverNode>
+
+        <activationTime>
+            <Type>    INT32           </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </activationTime>
+
+        <nextAbility>
+            <Type>    PYTHON          </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> None            </Default>
+        </nextAbility>
+
+        <lastCombatAction>
+            <Type>    FLOAT           </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </lastCombatAction>
+
+        <costObjects>
+            <Type>    PYTHON          </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> []              </Default>
+        </costObjects>
+
+        <lastCostObjectsUpdate>
+            <Type>    FLOAT           </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </lastCostObjectsUpdate>
+
+        <grenadeDetectorID>
+            <Type>    CONTROLLER_ID   </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </grenadeDetectorID>
+
+        <threatSystemEnabled>
+            <Type>    INT8            </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 1               </Default>
+        </threatSystemEnabled>
+
+        <threatenedMobsWhenDisabled>
+            <Type>    ARRAY <of> INT32 </of>     </Type>
+            <Flags>   CELL_PRIVATE               </Flags>
+        </threatenedMobsWhenDisabled>
+
+        <trackControllerID>
+            <Type>    CONTROLLER_ID   </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </trackControllerID>
+
+        <spawnPointId>
+            <Type>    INT32           </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </spawnPointId>
+
+        <patrolPaths>
+            <Type>     PYTHON         </Type>
+            <Flags>    CELL_PRIVATE   </Flags>
+            <Default>  {}             </Default>
+        </patrolPaths>
+
+        <currentPatrolPath>
+            <Type>    INT32           </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </currentPatrolPath>
+
+        <investigateTimerID>
+            <Type>    CONTROLLER_ID   </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </investigateTimerID>
+
+        <disableBehaviorSystem>
+            <Type>    INT8            </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </disableBehaviorSystem>
+
+        <stateChanges>
+            <Type>     INT32           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </stateChanges>
+
+        <navigateFailures>
+            <Type>     INT32           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </navigateFailures>
+
+        <lastErrorStateCheck>
+            <Type>     FLOAT           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </lastErrorStateCheck>
+
+        <errorStateReason>
+            <Type>     INT8            </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </errorStateReason>
+
+        <errorStateDescription>
+            <Type>     STRING          </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+        </errorStateDescription>
+
+        <errorAIState>
+            <Type>     INT32           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </errorAIState>
+
+        <stateHistory>
+            <Type>     PYTHON          </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  []              </Default>
+        </stateHistory>
+
+        <errorTime>
+            <Type>     FLOAT           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </errorTime>
+        
+        <nameIDOverride>
+            <Type>     INT32           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </nameIDOverride>
+
+        <followMovementType>
+            <Type>     UINT8           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  1               </Default>
+        </followMovementType>
+
+        <patrolMovementType>
+            <Type>     UINT8           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </patrolMovementType>
+
+        <lastPatrolHomeUpdate>
+            <Type>     FLOAT           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </lastPatrolHomeUpdate>
+
+        <targetOverride>
+            <Type>     INT32           </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </targetOverride>
+
+        <targetOverrideTimer>
+            <Type>     CONTROLLER_ID   </Type>
+            <Flags>    CELL_PRIVATE    </Flags>
+            <Default>  0               </Default>
+        </targetOverrideTimer>
+
+    </Properties>
+    
+    <ClientMethods>
+
+        <onAggressionOverrideUpdate>
+            <Arg>    INT8    <ArgName>    aAggressionLevel    </ArgName>    </Arg>
+        </onAggressionOverrideUpdate>
+        
+        <onAggressionOverrideCleared>
+        </onAggressionOverrideCleared>
+        
+    </ClientMethods>
+    
+    <CellMethods>
+        <!-- Called by a group member to inform his friends that he entered combat -->
+        <onGroupMateEnteredCombat>
+            <Arg>       MAILBOX       </Arg>    <!-- The mob groupmate entering combat -->
+            <Arg>       MAILBOX       </Arg>    <!-- The entity the mob is in combat with -->
+        </onGroupMateEnteredCombat>
+        
+        <!-- Called by a group member when they gain threat -->
+        <onGroupMateThreatTransfer>
+            <Arg>       MAILBOX       </Arg>    <!-- The mob groupmate gaining threat -->
+            <Arg>       MAILBOX       </Arg>    <!-- entity that caused threat -->
+            <Arg>       INT32         </Arg>    <!-- threat value invoked -->
+        </onGroupMateThreatTransfer>
+        
+        <!-- Called by a GMPlayer when trying to gather more data about the mob -->
+        <onGatherInformation>
+            <Arg>       INT32           </Arg>  <!-- The ID of the player -->
+        </onGatherInformation>
+        
+        <!-- Called by a GMPlayer when trying to gather more data about the mob -->
+        <onGetAttribute>
+            <Arg>       STRING      <ArgName>Attribute</ArgName></Arg> <!-- Attribute of the mob to fetch -->
+        </onGetAttribute>
+        
+        <!-- Called by a GMPlayer when trying to modify data on the mob -->
+        <onSetAttribute>
+            <Arg>       STRING      <ArgName>Attribute</ArgName></Arg> <!-- Attribute of the mob to alter -->
+            <Arg>       INT32      <ArgName>AttributeType</ArgName></Arg> <!-- Value to set the attribute to -->
+            <Arg>       INT32      <ArgName>Value</ArgName></Arg> <!-- Value to set the attribute to -->
+        </onSetAttribute>
+        
+        <!-- Toggles if to inform an entity when the MOBs AI State has changed -->
+        <onTrackData>
+            <Arg>       INT32           </Arg> <!-- Entity ID of the entity to inform -->
+        </onTrackData>
+        
+        <addDirectToThreatList>
+            <Arg>        MAILBOX       </Arg> <!-- entity that caused threat -->
+            <Arg>        INT32         </Arg> <!-- threat value invoked -->
+        </addDirectToThreatList>
+
+        <addBuffToThreatList>
+            <Arg>        MAILBOX       </Arg> <!-- the entity that invoked a buff ablity -->
+            <Arg>        MAILBOX       </Arg> <!-- the target -->
+            <Arg>        INT32         </Arg> <!-- the buff ability threat level value -->
+        </addBuffToThreatList>
+
+        <addHealToThreatList>
+            <Arg>        MAILBOX      </Arg> <!-- the entity that invoked a heal ability -->
+            <Arg>        MAILBOX      </Arg> <!-- the target -->
+            <Arg>        INT32        </Arg> <!-- the amount of healing done -->
+        </addHealToThreatList>
+
+        <addToThreatList>
+            <Arg>        MAILBOX      </Arg> <!-- the entity to add to the treat list -->
+            <Arg>        INT32        </Arg> <!-- the health change caused by entity -->
+            <Arg>        INT32        </Arg> <!-- the focus change caused by entity -->
+        </addToThreatList>
+
+        <removeFromThreatList>
+            <Arg>    INT32    </Arg>    <!-- id of entity to remove from threat list -->
+            <Arg>    INT8     </Arg>    <!-- 0 = do not call onRemovedFromThreatList, 1 = call onRemovedFromThreatList -->
+        </removeFromThreatList>
+
+        <addToDamageTracking>
+            <Arg>        MAILBOX      </Arg> <!-- the entity to add to the treat list -->
+            <Arg>        INT32        </Arg> <!-- the health change caused by entity -->
+            <Arg>        INT32        </Arg> <!-- the focus change caused by entity -->
+        </addToDamageTracking>
+        
+        <clearDamageTracking>
+        </clearDamageTracking>
+        
+        <!-- Called by a squad, with the id of who has looting rights -->
+        <onSquadLooterResponse>
+            <Arg>       ARRAY <of>INT32</of>         </Arg> <!-- ID of the entity from the group who was loot rights to loot from me -->
+        </onSquadLooterResponse>
+        
+        <onDropAdditionalLoot>
+            <Arg>       ARRAY <of>INT32</of>    </Arg> <!-- Loot table id to spawn -->
+            <Arg>       ARRAY <of>INT32</of>    </Arg>    <!-- EntityID to give the loot to -->
+        </onDropAdditionalLoot>
+
+        <onDropAdditionalItem>
+            <Arg>       INT32                   </Arg> <!-- Item id -->
+            <Arg>       INT32                   </Arg> <!-- quantity -->
+            <Arg>       ARRAY <of>INT32</of>    </Arg> <!-- EntityID to give the loot to -->
+        </onDropAdditionalItem>
+
+        <!-- request the mob to change its state -->
+        <reqState>
+            <Arg>       INT32           </Arg> <!-- new AI state -->
+        </reqState>
+
+        <!-- toggles debugging of behaviors when tracking the MOBs data -->
+        <toggleBehaviorDebugging>
+            <Arg>       INT32           </Arg> <!-- player id -->
+        </toggleBehaviorDebugging>
+
+        <!-- toggles debugging of navigation paths when tracking the MOBs data -->
+        <togglePathDebugging>
+            <Arg>       INT32           </Arg> <!-- player id -->
+        </togglePathDebugging>
+
+        <!-- removes the state lock so that MOB can transition to other states as usual -->
+        <removeStateLock>
+        </removeStateLock>
+
+        <!-- starts a behavior timer on the mob -->
+        <overrideAggression>
+            <Arg>       INT8            </Arg> <!-- aggression level -->
+            <Arg>       MAILBOX         </Arg> <!-- entity base mailbox -->
+            <Arg>       INT32           </Arg> <!-- number of seconds override lasts-->
+        </overrideAggression>
+        
+        <onOverrideAggressionToTappedEntities>
+            <Arg>       INT32           </Arg> <!-- aSquadID -->
+            <Arg>       PYTHON          </Arg> <!-- aMembers -->
+            <Arg>       INT32           </Arg> <!-- aAggressionLevel -->
+            <Arg>       INT32           </Arg> <!-- aTimePeriod -->
+        </onOverrideAggressionToTappedEntities>
+
+        <!-- end the despawn timer -->
+        <endDespawnTimer>
+        </endDespawnTimer>
+
+        <!-- start the despawn timer -->
+        <onTappedSquadUpdate>
+            <Arg>    INT32    </Arg> <!-- squad ID -->
+            <Arg>    PYTHON   </Arg> <!-- list of squad members -->
+        </onTappedSquadUpdate>
+
+        <DespawnWhenFree>
+        </DespawnWhenFree>
+
+        <chooseDialogResponse>
+            <Arg>    MAILBOX </Arg> <!-- mailbox of dialog giver -->
+            <Arg>    PYTHON  </Arg> <!-- eligible dialogs -->
+        </chooseDialogResponse>
+
+        <changeAbilitySet>
+            <Arg>    INT32   </Arg> <!-- ability set ID -->
+        </changeAbilitySet>
+
+        <changeStance>
+            <Arg>    INT32   </Arg> <!-- stance enumeration -->
+        </changeStance>
+
+        <onReserveCoverSlot>
+            <Arg>    INT32    </Arg>  <!-- SGWCoverSet entity id -->
+            <Arg>    UINT32   </Arg>  <!-- chunk id -->
+            <Arg>    INT32    </Arg>  <!-- node id -->
+            <Arg>    INT32    </Arg>  <!-- slot id -->
+            <Arg>    INT8     </Arg>  <!-- bool - true is slot was reserved -->
+        </onReserveCoverSlot>
+        
+        <setNextAbility>
+            <Arg>    INT32   </Arg> <!-- aAbilityId -->
+            <Arg>    INT32   </Arg> <!-- aTargetId -->
+        </setNextAbility>
+
+        <reevaluateEntityHostility>
+            <Arg>    INT32   </Arg> <!-- aEntityId -->
+        </reevaluateEntityHostility>
+
+        <setYawRotation>
+            <Arg>    FLOAT   </Arg> <!-- aAngle -->
+            <Arg>    FLOAT   </Arg> <!-- aSpeed -->
+        </setYawRotation>
+
+        <addBehaviorSet>
+            <Arg>    INT32    </Arg> <!-- behavior event set id -->
+        </addBehaviorSet>
+
+        <removeBehaviorSet>
+            <Arg>    INT32    </Arg> <!-- behavior event set id -->
+        </removeBehaviorSet>
+
+        <onNoise>
+            <Arg>    MAILBOX    </Arg> <!-- entity mailbox -->
+            <Arg>    FLOAT      </Arg> <!-- propagation range -->
+            <Arg>    FLOAT      </Arg> <!-- distance -->
+            <Arg>    INT32      </Arg> <!-- event -->
+            <Arg>    INT32      </Arg> <!-- info -->
+        </onNoise>
+
+        <enterErrorAIState>
+            <Arg>    INT8     </Arg> <!-- reason -->
+            <Arg>    STRING   </Arg> <!-- description -->
+        </enterErrorAIState>
+
+        <leaveErrorAIState>
+        </leaveErrorAIState>
+
+        <mobJoinGroup>
+        </mobJoinGroup>
+
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

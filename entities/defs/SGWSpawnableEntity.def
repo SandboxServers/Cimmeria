@@ -1,0 +1,225 @@
+<root>
+
+    <Parent>SGWEntity</Parent>
+    
+<!--	Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+    <Properties>        
+        
+        <!-- -->
+        <kismetEventSetId>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC    </Flags>
+        </kismetEventSetId>
+        
+        <SpawnSetID>
+            <Type>          INT32               </Type>
+            <Flags>         BASE                </Flags>
+        </SpawnSetID>
+        
+        <staticMeshName>
+            <Type>          WSTRING			</Type>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </staticMeshName>
+
+        <bodySet>
+            <Type>          WSTRING			</Type>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </bodySet>
+        
+        <mobId>    <!-- ID of the type of mob I am -->
+            <Type>          INT32                   </Type>
+            <Flags>         CELL_PUBLIC             </Flags>
+            <Default>       0                       </Default>
+        </mobId>
+        
+        <baseMobId>    <!-- ID of the type of mob, stored on the base -->
+            <Type>          INT32                   </Type>
+            <Flags>         BASE                    </Flags>
+            <Default>       0                       </Default>
+        </baseMobId>
+        
+        <minigamePlayers>
+            <Type>          ARRAY <of>INT32</of>    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </minigamePlayers>
+        
+        <entityVariables>
+            <Type>      PYTHON          </Type>
+            <Flags>     CELL_PRIVATE    </Flags>
+            <Default>   {}              </Default>
+        </entityVariables>
+        
+        <interactDebug>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       0                       </Default>
+        </interactDebug>
+
+        <shouldSendKismet>
+            <Type>          INT8                    </Type>
+            <Flags>         CELL_PRIVATE            </Flags>
+            <Default>       1                       </Default>
+        </shouldSendKismet>
+        
+        <craftingStationControllerID>
+            <Type>    CONTROLLER_ID   </Type>
+            <Flags>   CELL_PRIVATE    </Flags>
+            <Default> 0               </Default>
+        </craftingStationControllerID>
+        
+        <spaceCreatorMailbox>
+            <Type>  MAILBOX         </Type>
+            <Flags> CELL_PRIVATE    </Flags>
+        </spaceCreatorMailbox>
+
+    </Properties>
+    
+    <ClientMethods>
+        
+        <onStaticMeshNameUpdate>
+            <Arg>   WSTRING  <ArgName>StaticMeshName</ArgName>	</Arg>
+            <Arg>   WSTRING  <ArgName>BodySetName</ArgName>		</Arg>
+        </onStaticMeshNameUpdate>
+        
+    	<!-- Sends a kismet sequence to the client -->
+        <onSequence>
+            <Arg>   INT32   <ArgName>KismetEventSetSeqID</ArgName></Arg>    <!-- Kismet_Event_Set_Seq_ID                                -->
+            <Arg>   INT32   <ArgName>SourceID</ArgName></Arg>               <!-- SourceID:  The Being that executed this ability/action -->
+            <Arg>   INT32   <ArgName>TargetID</ArgName></Arg>               <!-- TargetID: The target of the ability/action             -->
+            <Arg>   INT8    <ArgName>PrimaryTarget</ArgName></Arg>          <!-- PrimaryTarget? Boolean value 1=primary 0=secondary     -->
+            <Arg>   FLOAT   <ArgName>ImpactTime</ArgName></Arg>             <!-- Impact Time:  How long before the 'impact' of the projectile   -->
+            <Arg>
+                ARRAY <of> NameValuePair </of> <ArgName>NameValuePairs</ArgName>  <!-- Custom override properties that are injected into the kismet sequence  -->
+            </Arg>
+            <Arg>   INT8    <ArgName>ViewType</ArgName></Arg>               <!-- value from EKismetViewType -->
+            <Arg>   INT32   <ArgName>InstanceId</ArgName></Arg>             <!-- ability or effect instance id -->
+        </onSequence>
+    
+        <onEntityMove>
+            <Arg>  FLOAT <ArgName>locationX</ArgName></Arg>
+            <Arg>  FLOAT <ArgName>locationY</ArgName></Arg>
+            <Arg>  FLOAT <ArgName>locationZ</ArgName></Arg>
+
+            <Arg>  FLOAT <ArgName>velocityX</ArgName></Arg>
+            <Arg>  FLOAT <ArgName>velocityY</ArgName></Arg>
+            <Arg>  FLOAT <ArgName>velocityZ</ArgName></Arg>
+
+            <Arg>  FLOAT <ArgName>yaw</ArgName></Arg>
+            <Arg>  FLOAT <ArgName>pitch</ArgName></Arg>
+            <Arg>  FLOAT <ArgName>roll</ArgName></Arg>
+        </onEntityMove>
+        
+        <InteractionType>
+            <Arg>   UINT64   <ArgName>   TypeId  </ArgName></Arg> <!-- ID of the type of interaction, see EInteractionNotificationType from enumerations.py -->
+        </InteractionType>
+        
+        <onEntityFlags>
+            <Arg>   UINT64  <ArgName>  aFlags  </ArgName> </Arg>
+        </onEntityFlags>
+        
+        <getInteractions>
+            <Arg>   MAILBOX  <ArgName>  aEntity  </ArgName> </Arg>
+        </getInteractions>
+        
+        <!-- toggles debugging of interactions -->
+        <toggleInteractionDebugging>
+            <Arg>       INT32           </Arg> <!-- player id -->
+        </toggleInteractionDebugging>
+        
+        <onEntityProperty>
+            <Arg>       INT32   <ArgName> type  </ArgName>  </Arg>
+            <Arg>       INT32   <ArgName> value </ArgName>  </Arg>
+        </onEntityProperty>
+
+	<onVisible>
+		<Arg> INT8 <ArgName>visible</ArgName></Arg>
+	</onVisible>
+
+        <onKismetEventSetUpdate>
+            <Arg>   INT32   <ArgName>kismetEventSetId</ArgName>    </Arg>
+        </onKismetEventSetUpdate>
+        
+    <onEntityTint>
+        <Arg> UINT32 <ArgName>primaryColorId</ArgName></Arg>
+        <Arg> UINT32 <ArgName>secondaryColorId</ArgName></Arg>
+        <Arg> UINT32 <ArgName>skinColorId</ArgName></Arg>
+    </onEntityTint>
+    
+    <onBeingNameIDUpdate>
+        <Arg>   INT32  <ArgName>BeingNameID</ArgName>        </Arg>
+    </onBeingNameIDUpdate>
+
+    </ClientMethods>
+    
+    <CellMethods>
+    
+        <updateSpaceCreatorMailbox>
+            <Arg>   MAILBOX </Arg>
+        </updateSpaceCreatorMailbox>
+    
+        <!-- Send an onSequence rpc -->
+        <PlayAllClientKismetSeq>
+            <Arg>           INT32           </Arg>              <!-- aSequenceEventType -->
+            <Arg>           INT32           </Arg>              <!-- aEventSetId -->
+            <Arg>           INT32           </Arg>              <!-- aSourceId -->
+            <Arg>           INT32           </Arg>              <!-- aTargetId -->
+        </PlayAllClientKismetSeq>
+    
+        <onInitialResponse>
+            <Arg>           INT32           </Arg>              <!-- ID of entity that just targeted us -->
+            <Arg>           MAILBOX         </Arg>              <!-- Cell mailbox of entity that just targeted us -->
+            <Arg>           INT32           </Arg>              <!-- The dialog id that the player has just selected -->
+            <Arg>           PYTHON          </Arg>              <!-- Static location to use instead of entity if the entity is missing -->
+            <Arg>           INT32           </Arg>              <!-- Mission this dialog is associated with-->
+        </onInitialResponse>
+                
+        <onButtonSelection>
+            <Arg>           INT32           </Arg>              <!-- ID of entity that just targeted us -->
+            <Arg>           MAILBOX         </Arg>              <!-- Cell mailbox of entity that just targeted us -->
+            <Arg>           INT32           </Arg>              <!-- The button id that the player has just selected -->
+            <Arg>           INT32           </Arg>              <!-- The dialog set id that this button came from -->
+        </onButtonSelection>
+        
+        <onInteract>
+            <Arg>           INT32           </Arg>              <!-- ID of entity that just targeted us -->
+            <Arg>           MAILBOX         </Arg>              <!-- Mailbox of the entity that just interacted with us -->
+            <Arg>           UINT8           </Arg>              <!-- Debug Flag -->
+        </onInteract>
+        
+        <getInteractionType>
+            <Arg>           MAILBOX         </Arg>
+        </getInteractionType>
+        
+        <addMinigamePlayer>
+            <Arg>           INT32           <ArgName>PlayerId</ArgName></Arg>
+            <Arg>           UINT8           <ArgName>SingleInstance</ArgName></Arg>
+        </addMinigamePlayer>
+        
+        <remMinigamePlayer>
+            <Arg>           INT32           <ArgName>PlayerId</ArgName></Arg>
+        </remMinigamePlayer>
+
+        <getMinigamePlayers>
+            <Arg>           MAILBOX         <ArgName>playerMailbox</ArgName></Arg>
+        </getMinigamePlayers>
+
+        <sendPlayerFeedback>
+            <Arg>           WSTRING          </Arg> <!-- message -->
+        </sendPlayerFeedback>
+        
+        <sendPlayerFeedbackToken>
+            <Arg>           WSTRING          </Arg> <!-- message -->
+            <Arg>   ARRAY <of> StringToken </of>    <ArgName>tokenList</ArgName> </Arg>
+        </sendPlayerFeedbackToken>
+        
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

@@ -1,0 +1,191 @@
+<root>
+    
+    <Parent>SGWEntity</Parent>
+    
+    <Implements>
+        <Interface>GroupAuthority</Interface>
+    </Implements>
+
+<!--    Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+    <ServerOnly />
+
+    <Properties>
+
+        <!-- TODO: MobOption[] ( customization options for the mobs I spawn ) -->
+        
+        <SpawnSetID>
+            <Type>        UINT32   </Type>
+            <Flags>       BASE     </Flags>
+            <Default>     0        </Default>
+        </SpawnSetID>
+        
+        <MySpawnPoints>
+            <Type>    PYTHON  </Type>
+            <Flags>   BASE    </Flags>
+            <Default> []      </Default>
+        </MySpawnPoints>
+        
+        <SpawnPointLastUsed>
+            <Type>      ARRAY <of>FLOAT</of>    </Type>
+            <Flags>     BASE        </Flags>
+        </SpawnPointLastUsed>
+        
+        <MyMobBaseIDList>
+            <Type>     PYTHON   </Type>
+            <Flags>    BASE     </Flags>
+                <Default>  []       </Default>
+        </MyMobBaseIDList>
+        
+        <CurrentPopulation>
+            <Type>        UINT32        </Type>
+            <Default>        0        </Default>
+            <Flags>        BASE        </Flags>
+        </CurrentPopulation>
+        
+        <LastReportedPopulation>
+            <Type>        UINT32        </Type>
+            <Default>        0        </Default>
+            <Flags>        BASE        </Flags>
+        </LastReportedPopulation>
+        
+        <Activated>
+            <Type>        INT8        </Type>
+            <Default>        1        </Default>
+            <Flags>        BASE        </Flags>
+        </Activated>    
+        
+        <bRandomizeSpawnPoints>
+            <Type>  INT8    </Type>
+            <Default> 0     </Default>
+            <Flags> BASE    </Flags>
+        </bRandomizeSpawnPoints>
+        
+        <mySpawnRegionID>
+            <Type> INT32    </Type>
+            <Default> 0     </Default>
+            <Flags> BASE    </Flags>
+        </mySpawnRegionID>
+        
+        <bLinked>
+            <Type> INT8     </Type>
+            <Default> 0     </Default>
+            <Flags> BASE    </Flags>
+        </bLinked>
+
+        <lastCooldownStart>
+            <Type>    INT32 </Type>
+            <Flags>   BASE          </Flags>
+            <Default> 0             </Default>
+        </lastCooldownStart>
+
+        <cooldownSeconds>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </cooldownSeconds>
+
+        <minCooldownSeconds>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </minCooldownSeconds>
+
+        <maxCooldownSeconds>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </maxCooldownSeconds>
+
+        <currentSpawnTableID>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </currentSpawnTableID>
+
+        <!-- list of tuples (SpawnTableID, Weight) -->
+        <spawnTableIDs>           
+            <Type>    PYTHON </Type>
+            <Flags>   BASE   </Flags>
+            <Default> []     </Default>
+        </spawnTableIDs>
+
+        <minMOBLevel>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </minMOBLevel>
+
+        <maxMOBLevel>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </maxMOBLevel>
+
+        <deadMOBs>           
+            <Type>  ARRAY <of> INT32 </of>  </Type>
+            <Flags> BASE    </Flags>
+        </deadMOBs>
+
+        <spawnPointReservation>           
+            <Type>    PYTHON  </Type>
+            <Flags>   BASE    </Flags>
+            <Default> {}      </Default>
+        </spawnPointReservation>
+
+        <cooldownTimer>
+            <Type>    INT32   </Type>
+            <Flags>   BASE    </Flags>
+            <Default> 0       </Default>
+        </cooldownTimer>
+        
+        <populationReportTimer>
+            <Type>    INT32   </Type>
+            <Flags>   BASE    </Flags>
+            <Default> 0       </Default>
+        </populationReportTimer>
+
+	<spaceCreatorBaseMB>
+            <Type>          MAILBOX         </Type>
+            <Flags>         BASE            </Flags>
+	</spaceCreatorBaseMB>
+
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>   
+    </CellMethods>
+
+    <BaseMethods> 
+        
+        <RegisterMobBase>
+            <Arg>        INT32        </Arg> <!-- entity id -->
+            <Arg>        INT32        </Arg> <!-- mob id -->
+        </RegisterMobBase>
+
+        <MobFailedToSpawn>
+            <Arg>        INT32        </Arg> <!-- entity id -->
+        </MobFailedToSpawn>
+        
+        <BeingDeath>
+            <Arg>        INT32        </Arg>
+        </BeingDeath>
+        
+        <BeingDespawn>
+            <Arg>        INT32        </Arg>
+        </BeingDespawn>
+        
+        <ActivateMe/>
+        
+        <DeactivateMe>
+            <Arg>   UINT8  </Arg> <!-- despawn mobs -->
+        </DeactivateMe>
+
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

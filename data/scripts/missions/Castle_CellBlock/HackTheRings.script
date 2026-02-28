@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Castle_CellBlock.HackTheRings" Type="Mission" NextId="14">
+	<Node Id="1" Ref="Event_EntityInteract" X="-1774" Y="-555">
+		<Property Name="Comment" Value="Ring switch used"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="HackTheRings_Switch"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="2" Ref="Act_GetMissionStep" X="-1496" Y="-518">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="640"/>
+		<Property Name="Step Id" Value="2120"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Started" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Act_Minigame" X="-1197" Y="-582">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Difficulty" Value="1"/>
+		<Property Name="Display Name" Value="Livewire"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Minigame" Value="Livewire"/>
+		<Port Name="Difficulty" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Lost" Flags="0"/>
+		<Port Name="Minigame" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Won" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Act_AdvanceMission" X="-974" Y="-582">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="640"/>
+		<Property Name="Step Id" Value="2215"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step" Flags="0"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Node Id="5" Ref="Act_RingTransportDlg" X="-1219" Y="-425">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="1"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="1" OutPort="Out" InNode="2" InPort="In"/>
+	<Connection OutNode="1" OutPort="Player" InNode="2" InPort="Player"/>
+	<Connection OutNode="2" OutPort="Active" InNode="3" InPort="In"/>
+	<Connection OutNode="1" OutPort="Player" InNode="3" InPort="Player"/>
+	<Connection OutNode="3" OutPort="Won" InNode="4" InPort="Step"/>
+	<Connection OutNode="1" OutPort="Player" InNode="4" InPort="Player"/>
+	<Connection OutNode="1" OutPort="Player" InNode="5" InPort="Player"/>
+	<Connection OutNode="2" OutPort="Completed" InNode="5" InPort="In"/>
+	<Comment Id="0" Text="Hack the Rings" X="-1812" Y="-605" Width="1009" Height="313" Color="0"/>
+</Script>

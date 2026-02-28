@@ -1,0 +1,68 @@
+<root>
+
+    <Implements>
+    </Implements>
+    
+    <ServerOnly />
+
+    <Properties>
+    
+        <!-- Stores a mapping of itemIds to a list of player base mailboxes -->
+        <watchedItems>
+            <Type>          PYTHON          </Type>
+            <Flags>         BASE            </Flags>
+        </watchedItems>
+    
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>
+    </CellMethods>
+
+    <BaseMethods>
+    
+        <searchBlackMarket>
+            <Arg>   MAILBOX         </Arg>
+            <Arg>   INT32           </Arg>
+            <Arg>   BMSearchOptions </Arg>
+            <Arg>   INT32           </Arg> <!-- Language Id -->
+        </searchBlackMarket>
+        
+        <placeBid>
+            <Arg>   INT32   </Arg>  <!-- SequenceId of the auction -->
+            <Arg>   INT32   </Arg>  <!-- Bid Amount -->
+        </placeBid>
+        
+        <createAuction>
+            <Arg>   MAILBOX         </Arg>
+            <Arg>   INT32           </Arg>
+            <Arg>   INT32           </Arg>  <!-- Item instance to put up for auction -->
+            <Arg>   INT32           </Arg>  <!-- Buyout price for this auction -->
+            <Arg>   UINT8           </Arg>  <!-- Length id for this auction -->
+            <Arg>   INT32           </Arg>  <!-- Starting price of the auction -->
+        </createAuction>
+        
+        <cancelAuction>
+            <Arg>   MAILBOX         </Arg>
+            <Arg>   INT32           </Arg>
+            <Arg>   INT32           </Arg>  <!-- Sequence Id of the auction to cancel -->
+        </cancelAuction>
+
+        <registerWatchedItems>
+            <Arg>       ARRAY<of>INT32</of> </Arg>
+            <Arg>       MAILBOX             </Arg>
+        </registerWatchedItems>
+        
+        <unregisterWatchedItems>
+            <Arg>       ARRAY<of>INT32</of> </Arg>
+            <Arg>       MAILBOX             </Arg>
+        </unregisterWatchedItems>
+
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="SandBox" Type="Level" NextId="5">
+	<Node Id="1" Ref="Event_ScriptLoaded" X="-228" Y="-14">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+	</Node>
+	<Node Id="2" Ref="Act_Log" X="14" Y="-84">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="Sandbox level script loaded"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Connection OutNode="1" OutPort="Out" InNode="2" InPort="In"/>
+	<Node Id="3" Ref="Event_Loaded" X="-233" Y="122">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Act_Log" X="19" Y="83">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="(SandBox) Player loaded on map"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Connection OutNode="3" OutPort="Out" InNode="4" InPort="In"/>
+</Script>

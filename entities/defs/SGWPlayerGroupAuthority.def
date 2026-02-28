@@ -1,0 +1,17 @@
+<root>
+	<ServerOnly />
+
+	<Parent>SGWEntity</Parent>	
+	<Implements>
+        <Interface>GroupAuthority</Interface>
+	</Implements>
+
+	<Properties>
+	</Properties>
+		
+	<CellMethods>
+	</CellMethods>
+
+	<BaseMethods>
+	</BaseMethods>
+</root>

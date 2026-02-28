@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Castle_CellBlock.MessHall" Type="Mission" NextId="41">
+	<Node Id="3" Ref="Event_GenericRegion" X="-74" Y="29">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Tag" Value="Castle_Cellblock.Region9"/>
+		<Port Name="Entered" Flags="0"/>
+		<Port Name="Invoker" Flags="0"/>
+		<Port Name="Left" Flags="0"/>
+		<Port Name="Region Id" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Act_GetMission" X="211" Y="38">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="680"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Accepted" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Node Id="5" Ref="Act_UpdateMission" X="411" Y="22">
+		<Property Name="Comment" Value="EscapeTheCellblock"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="680"/>
+		<Port Name="Abandon" Flags="0"/>
+		<Port Name="Accept" Flags="0"/>
+		<Port Name="Complete" Flags="0"/>
+		<Port Name="Fail" Flags="0"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Node Id="22" Ref="Act_GetMission" X="363" Y="426">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="681"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Accepted" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Node Id="31" Ref="Event_Dead" X="-61" Y="401">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="MessHall_Guard1"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="32" Ref="Event_Dead" X="-68" Y="490">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="MessHall_Guard2"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="33" Ref="Counter_Int" X="129" Y="416">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Increment" Value="1"/>
+		<Property Name="Initial Value" Value="0"/>
+		<Port Name="A" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Set Value" Flags="0"/>
+		<Port Name="Value != A" Flags="0"/>
+		<Port Name="Value &lt; A" Flags="0"/>
+		<Port Name="Value == A" Flags="0"/>
+		<Port Name="Value &gt; A" Flags="0"/>
+	</Node>
+	<Node Id="34" Ref="Var_Int" X="134" Y="512">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="2"/>
+		<Property Name="Variable Name" Value=""/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Connection OutNode="3" OutPort="Invoker" InNode="4" InPort="Player"/>
+	<Connection OutNode="4" OutPort="Active" InNode="5" InPort="Complete"/>
+	<Connection OutNode="3" OutPort="Invoker" InNode="5" InPort="Player"/>
+	<Connection OutNode="34" OutPort="Value" InNode="33" InPort="A"/>
+	<Connection OutNode="32" OutPort="Out" InNode="33" InPort="In"/>
+	<Connection OutNode="31" OutPort="Out" InNode="33" InPort="In"/>
+	<Connection OutNode="33" OutPort="Value == A" InNode="22" InPort="In"/>
+	<Connection OutNode="3" OutPort="Invoker" InNode="22" InPort="Player"/>
+	<Comment Id="0" Text="Mess Hall" X="-107" Y="-1" Width="1056" Height="355" Color="0"/>
+	<Comment Id="0" Text="Two guards" X="-109" Y="362" Width="1052" Height="225" Color="1"/>
+	<Node Id="39" Ref="Act_UpdateMission" X="584" Y="395">
+		<Property Name="Comment" Value="Mess Hall"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="681"/>
+		<Port Name="Abandon" Flags="0"/>
+		<Port Name="Accept" Flags="0"/>
+		<Port Name="Complete" Flags="0"/>
+		<Port Name="Fail" Flags="0"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Connection OutNode="3" OutPort="Invoker" InNode="39" InPort="Player"/>
+	<Connection OutNode="3" OutPort="Left" InNode="4" InPort="In"/>
+	<Connection OutNode="22" OutPort="Active" InNode="39" InPort="Complete"/>
+</Script>

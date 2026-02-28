@@ -1,0 +1,82 @@
+<root>
+
+    <UnrealProperties>
+    </UnrealProperties>
+    
+    <Parent>SGWEntity</Parent>
+    
+    <Implements>
+    </Implements>
+
+    <!-- Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+    <ServerOnly />
+
+    <Properties>
+
+        <chunkName>
+            <Type>      STRING          </Type>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </chunkName>
+
+        <chunkID>
+            <Type>      UINT32          </Type>
+            <Flags>     CELL_PUBLIC     </Flags>
+            <Default>   0               </Default>
+        </chunkID>
+
+         <!-- ID of the proximity controller we are using to watch for entities in our area -->
+         <proximityID>      
+             <Type>          CONTROLLER_ID       </Type>
+             <Flags>         CELL_PRIVATE        </Flags>
+             <Default>       0                   </Default>
+         </proximityID>
+
+        <!-- reserved cover nodes - { nodeID -> [ (slot,entityID) ] } -->
+        <reservedCoverNodes>
+            <Type>      PYTHON          </Type>
+            <Flags>     CELL_PRIVATE    </Flags>
+            <Default>   {}              </Default>
+        </reservedCoverNodes>
+
+        <!-- public reserved cover node data, list of fixed dicts (nodeID, slotID, entityID) -->
+        <publicReservationData>
+            <Type>      ARRAY <of> PublicCoverNodeReservationData </of>   </Type>
+            <Flags>     CELL_PUBLIC                                       </Flags>
+        </publicReservationData>
+
+        <proximityRetries>
+            <Type>    INT8          </Type>
+            <Flags>   CELL_PRIVATE  </Flags>
+            <Default> 10            </Default>
+        </proximityRetries>
+
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>
+
+        <!-- requests a cover slot to be reserved, this will automatically release any slots already reserved by entity -->
+        <reserveCoverSlot>
+            <Arg>    INT32    </Arg> <!-- entityID -->
+            <Arg>    INT32    </Arg> <!-- nodeID -->
+            <Arg>    INT8     </Arg> <!-- slotID -->
+        </reserveCoverSlot>
+
+        <releaseCoverSlot>
+            <Arg>    INT32    </Arg> <!-- entityID -->
+            <Arg>    INT32    </Arg> <!-- nodeID -->
+            <Arg>    INT8     </Arg> <!-- slotID -->
+        </releaseCoverSlot>
+
+    </CellMethods> 
+    
+    <BaseMethods> 
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

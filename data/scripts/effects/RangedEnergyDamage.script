@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="RangedPhysicalDamage" Type="Effect" NextId="12">
+	<Node Id="1" Ref="Event_Effect" X="-717" Y="-131">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Effect Init" Flags="0"/>
+		<Port Name="Effect Removed" Flags="0"/>
+		<Port Name="Pulse Begin" Flags="0"/>
+		<Port Name="Pulse End" Flags="0"/>
+	</Node>
+	<Node Id="2" Ref="Act_QRDamage" X="-413" Y="-155">
+		<Property Name="Base Damage" Value="0"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Damage Type" Value="15"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Ranged" Value="true"/>
+		<Property Name="Stat Id" Value="7"/>
+		<Property Name="Use Shared QR" Value="true"/>
+		<Port Name="Base Damage" Flags="0"/>
+		<Port Name="Damage Type" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Ranged" Flags="0"/>
+		<Port Name="Remaining Damage" Flags="0"/>
+		<Port Name="Remaining Dmg Percent" Flags="0"/>
+		<Port Name="Result Code" Flags="0"/>
+		<Port Name="Stat Id" Flags="0"/>
+		<Port Name="Total Damage" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="EffectParam_Int" X="-777" Y="-16">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Parameter Name" Value="HealthDamage"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Act_QRDamage" X="-410" Y="-13">
+		<Property Name="Base Damage" Value="0"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Damage Type" Value="15"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Ranged" Value="true"/>
+		<Property Name="Stat Id" Value="8"/>
+		<Property Name="Use Shared QR" Value="true"/>
+		<Port Name="Base Damage" Flags="0"/>
+		<Port Name="Damage Type" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Ranged" Flags="0"/>
+		<Port Name="Remaining Damage" Flags="0"/>
+		<Port Name="Remaining Dmg Percent" Flags="0"/>
+		<Port Name="Result Code" Flags="0"/>
+		<Port Name="Stat Id" Flags="0"/>
+		<Port Name="Total Damage" Flags="0"/>
+	</Node>
+	<Node Id="5" Ref="EffectParam_Int" X="-731" Y="153">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Parameter Name" Value="FocusDamage"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Node Id="6" Ref="Cmp_Int" X="-128" Y="-17">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="A" Flags="2"/>
+		<Port Name="A != B" Flags="0"/>
+		<Port Name="A &lt; B" Flags="0"/>
+		<Port Name="A == B" Flags="0"/>
+		<Port Name="A &gt; B" Flags="0"/>
+		<Port Name="B" Flags="2"/>
+		<Port Name="In" Flags="2"/>
+	</Node>
+	<Node Id="7" Ref="Var_Int" X="-343" Y="147">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="0"/>
+		<Property Name="Variable Name" Value=""/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Node Id="8" Ref="Act_QRDamage" X="414" Y="-4">
+		<Property Name="Base Damage" Value="0"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Damage Type" Value="15"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Ranged" Value="true"/>
+		<Property Name="Stat Id" Value="7"/>
+		<Property Name="Use Shared QR" Value="true"/>
+		<Port Name="Base Damage" Flags="0"/>
+		<Port Name="Damage Type" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Ranged" Flags="0"/>
+		<Port Name="Remaining Damage" Flags="0"/>
+		<Port Name="Remaining Dmg Percent" Flags="0"/>
+		<Port Name="Result Code" Flags="0"/>
+		<Port Name="Stat Id" Flags="0"/>
+		<Port Name="Total Damage" Flags="0"/>
+	</Node>
+	<Node Id="9" Ref="Act_MulInt" X="50" Y="-2">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="A" Flags="2"/>
+		<Port Name="B" Flags="2"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Output" Flags="2"/>
+	</Node>
+	<Node Id="10" Ref="Act_DivInt" X="231" Y="-2">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="A" Flags="2"/>
+		<Port Name="B" Flags="2"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Output" Flags="2"/>
+	</Node>
+	<Node Id="11" Ref="Var_Int" X="33" Y="109">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="300"/>
+		<Property Name="Variable Name" Value=""/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Connection OutNode="1" OutPort="Pulse Begin" InNode="2" InPort="In"/>
+	<Connection OutNode="3" OutPort="Value" InNode="2" InPort="Base Damage"/>
+	<Connection OutNode="1" OutPort="Pulse Begin" InNode="4" InPort="In"/>
+	<Connection OutNode="5" OutPort="Value" InNode="4" InPort="Base Damage"/>
+	<Connection OutNode="7" OutPort="Value" InNode="6" InPort="B"/>
+	<Connection OutNode="4" OutPort="Out" InNode="6" InPort="In"/>
+	<Connection OutNode="6" OutPort="A &gt; B" InNode="9" InPort="In"/>
+	<Connection OutNode="5" OutPort="Value" InNode="9" InPort="B"/>
+	<Connection OutNode="9" OutPort="Out" InNode="10" InPort="In"/>
+	<Connection OutNode="9" OutPort="Output" InNode="10" InPort="A"/>
+	<Connection OutNode="11" OutPort="Value" InNode="10" InPort="B"/>
+	<Connection OutNode="10" OutPort="Out" InNode="8" InPort="In"/>
+	<Connection OutNode="10" OutPort="Output" InNode="8" InPort="Base Damage"/>
+	<Connection OutNode="4" OutPort="Remaining Dmg Percent" InNode="6" InPort="A"/>
+	<Connection OutNode="4" OutPort="Remaining Dmg Percent" InNode="9" InPort="A"/>
+</Script>

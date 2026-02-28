@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Menfa_Dark" Type="Level" NextId="45">
+	<Node Id="2" Ref="Event_EntityInteract" X="-168" Y="-49">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="Menfa_Dark_Ring_00040001"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Act_RingTransportDlg" X="50" Y="-49">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="30"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="2" OutPort="Out" InNode="3" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="3" InPort="Player"/>
+	<Comment Id="0" Text="Ring Transporters" X="-201" Y="-87" Width="453" Height="261" Color="5"/>
+	<Node Id="41" Ref="Event_EntityInteract" X="-168" Y="75">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="Menfa_Dark_Ring_00040000"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="42" Ref="Act_RingTransportDlg" X="58" Y="73">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="31"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="41" OutPort="Out" InNode="42" InPort="In"/>
+	<Connection OutNode="41" OutPort="Player" InNode="42" InPort="Player"/>
+	<Node Id="43" Ref="Event_EntityInteract" X="-164" Y="236">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="Menfa_Dark_Ring_ffff0003"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="44" Ref="Act_RingTransportDlg" X="80" Y="237">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="32"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="43" OutPort="Out" InNode="44" InPort="In"/>
+	<Connection OutNode="43" OutPort="Player" InNode="44" InPort="Player"/>
+</Script>

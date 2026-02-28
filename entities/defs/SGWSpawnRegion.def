@@ -1,0 +1,252 @@
+<root>
+
+    <Parent>SGWEntity</Parent>
+    
+    <Implements>
+    </Implements>
+
+<!--    Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+    <ServerOnly />
+
+    <Properties>
+    
+        <!-- These are the IDs as pulled from the db -->
+        <MySpawnSetIDs>
+            <Type>        ARRAY <of>INT32</of>    </Type>
+            <Flags>        BASE        </Flags>
+        </MySpawnSetIDs>
+        
+        <!-- These are the BigWorld IDs of the Spawn Sets -->
+        <MySpawnSetEntityIDs>
+            <Type>      ARRAY <of>INT32</of>    </Type>
+            <Flags>     BASE        </Flags>
+        </MySpawnSetEntityIDs>
+
+        <RegionSpawnTimer>
+            <Type>        INT32        </Type>
+            <Default>   10          </Default>
+            <Flags>        BASE        </Flags>
+        </RegionSpawnTimer>
+
+        <Activated>
+            <Type>        INT8        </Type>
+            <Default>        1        </Default>
+            <Flags>        BASE        </Flags>
+        </Activated>    
+
+        <SpawnRegionID>
+            <Type>    UINT32    </Type>
+            <Flags>    BASE    </Flags>
+        </SpawnRegionID>
+        
+        <WorldID>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+        </WorldID>
+            
+        <MaxActiveSets>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </MaxActiveSets>
+
+        <MinRespawnSeconds>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </MinRespawnSeconds>
+
+        <MaxRespawnSeconds>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </MaxRespawnSeconds>
+
+        <SpawnSetMinCooldown>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </SpawnSetMinCooldown>
+
+        <SpawnSetMaxCooldown>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </SpawnSetMaxCooldown>
+
+        <RespawnFlag>           
+            <Type>  UINT8   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  1    </Default>
+        </RespawnFlag>
+
+        <EventSetId>           
+            <Type>  INT32   </Type>
+            <Flags> BASE    </Flags>
+            <Default>  0    </Default>
+        </EventSetId>
+
+        <lastTimeCheck>
+            <Type>     FLOAT        </Type>
+            <Flags>    CELL_PRIVATE </Flags>
+            <Default>  0            </Default>
+        </lastTimeCheck>
+
+        <lastWorldTime>
+            <Type>     FLOAT        </Type>
+            <Flags>    CELL_PRIVATE </Flags>
+            <Default>  0            </Default>
+        </lastWorldTime>
+
+	<spaceCreatorBaseMB>
+            <Type>          MAILBOX         </Type>
+            <Flags>         BASE            </Flags>
+	</spaceCreatorBaseMB>
+
+        <detectionRadius>
+            <Type>     FLOAT        </Type>
+            <Flags>    CELL_PRIVATE </Flags>
+            <Default>  0            </Default>
+        </detectionRadius>
+
+        <detectionController>
+            <Type>     CONTROLLER_ID  </Type>
+            <Flags>    CELL_PRIVATE   </Flags>
+            <Default>  0              </Default>
+        </detectionController>
+
+        <entitiesInRegion>
+            <Type>     PYTHON  </Type>
+            <Flags>    BASE    </Flags>
+            <Default>  {}      </Default>
+        </entitiesInRegion>
+
+        <!-- mission data of entities in region {missionID : {step: count} } -->
+        <missionData>
+            <Type>     PYTHON  </Type>
+            <Flags>    BASE    </Flags>
+            <Default>  {}      </Default>
+        </missionData>
+
+        <missionEventTimer>
+            <Type>     CONTROLLER_ID  </Type>
+            <Flags>    BASE           </Flags>
+            <Default>  0              </Default>
+        </missionEventTimer>
+        
+        <populationReportTimer>
+            <Type>    INT32   </Type>
+            <Flags>   BASE    </Flags>
+            <Default> 0       </Default>
+        </populationReportTimer>
+        
+        <CurrentPopulation>
+            <Type>        PYTHON        </Type>
+            <Default>        {}        </Default>
+            <Flags>        BASE        </Flags>
+        </CurrentPopulation>
+        
+        <LastReportedPopulation>
+            <Type>        UINT32        </Type>
+            <Default>        0        </Default>
+            <Flags>        BASE        </Flags>
+        </LastReportedPopulation>
+
+        <mobDeaths>
+            <Type>        UINT32   </Type>
+            <Default>     0        </Default>
+            <Flags>       BASE     </Flags>
+        </mobDeaths>
+
+        <timerReduction>
+            <Type>        FLOAT    </Type>
+            <Default>     0        </Default>
+            <Flags>       BASE     </Flags>
+        </timerReduction>
+
+        <respawnTimers>
+            <Type>        PYTHON   </Type>
+            <Default>     []       </Default>
+            <Flags>       BASE     </Flags>
+        </respawnTimers>
+
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>   
+    </CellMethods>
+
+    <BaseMethods> 
+
+        <RegisterSpawnSetBase>
+            <Arg>        INT32        </Arg>
+        </RegisterSpawnSetBase>
+        
+        <ActivateMe>
+            <Arg> INT32 </Arg>
+        </ActivateMe>
+        
+        <DeactivateMe>
+            <Arg> INT32 </Arg>
+        </DeactivateMe>
+        
+        <deactivateSet>
+            <Arg> INT32 </Arg> <!-- spawn set id -->
+            <Arg> UINT8 </Arg> <!-- despawn MOBs -->
+        </deactivateSet>
+        
+        <activateSet>
+            <Arg> INT32 </Arg> <!-- spawn set id -->
+        </activateSet>
+
+        <StartRespawnTimer/>
+
+        <onTimeOfDayTick>
+            <Arg> INT32 </Arg>
+        </onTimeOfDayTick>
+
+        <onSpawnSetActivate>
+            <Arg> INT32 </Arg> <!-- entity id -->
+        </onSpawnSetActivate>
+
+        <onSpawnSetDeactivate>
+            <Arg> INT32 </Arg> <!-- entity id -->
+        </onSpawnSetDeactivate>
+
+        <onEntityEnter>
+            <Arg> INT32                   </Arg> <!-- entity id -->
+            <Arg> ARRAY <of> PYTHON </of> </Arg> <!-- public mission data -->
+        </onEntityEnter>
+
+        <onEntityExit>
+            <Arg> INT32 </Arg> <!-- entity id -->
+        </onEntityExit>
+
+        <entityMissionStepUpdate>
+            <Arg> INT32 </Arg> <!-- entity id -->
+            <Arg> INT32 </Arg> <!-- mission id -->
+            <Arg> INT32 </Arg> <!-- step count -->
+        </entityMissionStepUpdate>
+
+        <entityMissionComplete>
+            <Arg> INT32 </Arg> <!-- entity id -->
+            <Arg> INT32 </Arg> <!-- mission id -->
+        </entityMissionComplete>
+        
+        <reportPopulation>
+            <Arg> INT32 </Arg> <!-- spawn set id -->
+            <Arg> INT32 </Arg> <!-- current population -->
+        </reportPopulation>
+
+        <onMobDeath>
+        </onMobDeath>
+
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

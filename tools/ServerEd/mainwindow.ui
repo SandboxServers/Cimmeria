@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>922</width>
+    <height>652</height>
+   </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>200</width>
+    <height>200</height>
+   </size>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>16777215</width>
+    <height>16777215</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>Atrea Script Editor</string>
+  </property>
+  <property name="dockOptions">
+   <set>QMainWindow::AllowNestedDocks|QMainWindow::AllowTabbedDocks|QMainWindow::AnimatedDocks</set>
+  </property>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>922</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="actionNew_Mission"/>
+    <addaction name="actionLoad_Mission"/>
+    <addaction name="actionQuit"/>
+   </widget>
+   <widget class="QMenu" name="menu_Tools">
+    <property name="title">
+     <string> Tools</string>
+    </property>
+    <addaction name="actionBulk_Compile_Scripts"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menu_Tools"/>
+  </widget>
+  <action name="actionNew_Mission">
+   <property name="text">
+    <string>New Script</string>
+   </property>
+  </action>
+  <action name="actionSave_Mission">
+   <property name="text">
+    <string>Save Script</string>
+   </property>
+  </action>
+  <action name="actionLoad_Mission">
+   <property name="text">
+    <string>Load Script</string>
+   </property>
+  </action>
+  <action name="actionQuit">
+   <property name="text">
+    <string>Quit</string>
+   </property>
+  </action>
+  <action name="actionSave_Script_As">
+   <property name="text">
+    <string>Save Script As ...</string>
+   </property>
+  </action>
+  <action name="actionCompileScript">
+   <property name="text">
+    <string>Compile Script As ...</string>
+   </property>
+  </action>
+  <action name="actionReloadOnServer">
+   <property name="text">
+    <string>Reload on Server</string>
+   </property>
+  </action>
+  <action name="actionSettings">
+   <property name="text">
+    <string>Settings</string>
+   </property>
+  </action>
+  <action name="actionCompileScriptServer">
+   <property name="text">
+    <string>Compile Script</string>
+   </property>
+  </action>
+  <action name="actionCompileAndReload">
+   <property name="text">
+    <string>Compile and Reload</string>
+   </property>
+  </action>
+  <action name="actionBulk_Compile_Scripts">
+   <property name="text">
+    <string>Bulk Compile Scripts ...</string>
+   </property>
+  </action>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <resources/>
+ <connections/>
+</ui>

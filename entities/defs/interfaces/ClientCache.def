@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<root>
+	
+	<BaseMethods>        
+        <!-- Request information on how to update the cache for this category -->
+        <versionInfoRequest>
+            <Exposed/>
+            <Arg> INT32                 <ArgName>CategoryId</ArgName></Arg>
+            <Arg> INT32                 <ArgName>Version</ArgName></Arg>
+        </versionInfoRequest>
+
+        <!-- Request a new element -->
+        <elementDataRequest>
+            <Exposed/>
+            <Arg>   INT32               <ArgName>CategoryId</ArgName></Arg>
+            <Arg>   INT32               <ArgName>Key</ArgName></Arg>
+        </elementDataRequest>
+	</BaseMethods>
+
+    <CellMethods>
+    </CellMethods>      
+    
+    <ClientMethods>
+        <!-- Response to versionInfoRequest -->
+        <onVersionInfo>
+            <Arg>   INT32               <ArgName>CategoryId</ArgName></Arg>
+            <Arg>   INT32               <ArgName>Version</ArgName></Arg>
+            <Arg>   INT32               <ArgName>RequiredUpdates</ArgName></Arg>
+            <Arg>   INT8                <ArgName>InvalidateAll</ArgName></Arg>
+			<Arg>   ARRAY <of>INT32</of><ArgName>InvalidKeys</ArgName></Arg>
+        </onVersionInfo>
+
+        <onCookedDataError>
+            <Arg>	INT32	<ArgName>categoryID</ArgName></Arg>
+            <Arg>	INT32	<ArgName>elementKey</ArgName></Arg>
+        </onCookedDataError>
+
+    </ClientMethods>
+
+	<LoDLevels>
+	</LoDLevels>
+
+</root>

@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Castle_CellBlock.Aftermath" Type="Mission" NextId="26">
+	<Node Id="2" Ref="Event_EntityInteract" X="-66" Y="-13">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="Cellblock_WoodenCrate"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Comment Id="0" Text="Comment" X="-95" Y="-58" Width="1163" Height="494" Color="0"/>
+	<Node Id="7" Ref="Act_GetProperty" X="360" Y="-7">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Aggression" Flags="0"/>
+		<Port Name="Alignment" Flags="0"/>
+		<Port Name="Archetype" Flags="0"/>
+		<Port Name="Body Set" Flags="0"/>
+		<Port Name="Entity" Flags="2"/>
+		<Port Name="Event Set" Flags="0"/>
+		<Port Name="Faction" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Interaction Flags" Flags="0"/>
+		<Port Name="Item Event Set" Flags="0"/>
+		<Port Name="Level" Flags="0"/>
+		<Port Name="Name" Flags="0"/>
+		<Port Name="Name Id" Flags="0"/>
+		<Port Name="Static Mesh" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+		<Port Name="Visible" Flags="0"/>
+	</Node>
+	<Connection OutNode="2" OutPort="Player" InNode="7" InPort="Entity"/>
+	<Node Id="8" Ref="Var_Int" X="538" Y="100">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="0"/>
+		<Property Name="Variable Name" Value=""/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Connection OutNode="7" OutPort="Archetype" InNode="8" InPort="Set"/>
+	<Node Id="9" Ref="Cmp_Int" X="713" Y="-12">
+		<Property Name="Comment" Value="JAffa"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="A" Flags="2"/>
+		<Port Name="A != B" Flags="0"/>
+		<Port Name="A &lt; B" Flags="0"/>
+		<Port Name="A == B" Flags="0"/>
+		<Port Name="A &gt; B" Flags="0"/>
+		<Port Name="B" Flags="2"/>
+		<Port Name="In" Flags="2"/>
+	</Node>
+	<Connection OutNode="8" OutPort="Value" InNode="9" InPort="A"/>
+	<Node Id="10" Ref="Var_Int" X="710" Y="101">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="8"/>
+		<Property Name="Variable Name" Value=""/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Connection OutNode="10" OutPort="Value" InNode="9" InPort="B"/>
+	<Node Id="11" Ref="Cmp_Int" X="728" Y="181">
+		<Property Name="Comment" Value="Human"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="A" Flags="2"/>
+		<Port Name="A != B" Flags="0"/>
+		<Port Name="A &lt; B" Flags="0"/>
+		<Port Name="A == B" Flags="0"/>
+		<Port Name="A &gt; B" Flags="0"/>
+		<Port Name="B" Flags="2"/>
+		<Port Name="In" Flags="2"/>
+	</Node>
+	<Node Id="12" Ref="Var_Int" X="725" Y="295">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="5"/>
+		<Property Name="Variable Name" Value=""/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Connection OutNode="12" OutPort="Value" InNode="11" InPort="B"/>
+	<Connection OutNode="8" OutPort="Value" InNode="11" InPort="A"/>
+	<Node Id="13" Ref="Act_Dialog" X="883" Y="5">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Dialog Set" Value="3943"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Dialog Set" Flags="1"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="NPC" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Connection OutNode="9" OutPort="A == B" InNode="13" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="13" InPort="Player"/>
+	<Connection OutNode="7" OutPort="Successful" InNode="11" InPort="In"/>
+	<Connection OutNode="7" OutPort="Successful" InNode="9" InPort="In"/>
+	<Node Id="14" Ref="Act_Dialog" X="890" Y="212">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Dialog Set" Value="3942"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Dialog Set" Flags="1"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="NPC" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Connection OutNode="11" OutPort="A &lt; B" InNode="14" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="14" InPort="Player"/>
+	<Node Id="15" Ref="Act_GiveItems" X="1091" Y="215">
+		<Property Name="Bag" Value="1"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="3347"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Connection OutNode="14" OutPort="Out" InNode="15" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="15" InPort="Player"/>
+	<Node Id="16" Ref="Act_GiveItems" X="1095" Y="323">
+		<Property Name="Bag" Value="1"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="3359"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Connection OutNode="14" OutPort="Out" InNode="16" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="16" InPort="Player"/>
+	<Node Id="17" Ref="Act_GiveItems" X="1099" Y="429">
+		<Property Name="Bag" Value="1"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="3372"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Connection OutNode="14" OutPort="Out" InNode="17" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="17" InPort="Player"/>
+	<Node Id="18" Ref="Act_GiveItems" X="1274" Y="214">
+		<Property Name="Bag" Value="1"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="3387"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Connection OutNode="14" OutPort="Out" InNode="18" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="18" InPort="Player"/>
+	<Node Id="19" Ref="Act_GiveItems" X="1273" Y="324">
+		<Property Name="Bag" Value="1"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="3401"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Connection OutNode="14" OutPort="Out" InNode="19" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="19" InPort="Player"/>
+	<Node Id="20" Ref="Act_AdvanceMission" X="1557" Y="116">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="687"/>
+		<Property Name="Step Id" Value="2355"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step" Flags="0"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Connection OutNode="14" OutPort="Out" InNode="20" InPort="Step"/>
+	<Connection OutNode="2" OutPort="Player" InNode="20" InPort="Player"/>
+	<Connection OutNode="13" OutPort="Out" InNode="20" InPort="Step"/>
+	<Node Id="21" Ref="Act_GetMissionStep" X="152" Y="123">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="687"/>
+		<Property Name="Step Id" Value="2354"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Started" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Connection OutNode="21" OutPort="Active" InNode="7" InPort="In"/>
+	<Connection OutNode="2" OutPort="Out" InNode="21" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="21" InPort="Player"/>
+	<Node Id="22" Ref="Act_GiveItems" X="1275" Y="431">
+		<Property Name="Bag" Value="1"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="3325"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Connection OutNode="14" OutPort="Out" InNode="22" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="22" InPort="Player"/>
+	<Comment Id="0" Text="Human items" X="1081" Y="193" Width="357" Height="362" Color="1"/>
+	<Comment Id="23" Text="Jaffa items" X="1083" Y="-60" Width="197" Height="239" Color="2"/>
+	<Node Id="24" Ref="Act_GiveItems" X="1110" Y="-35">
+		<Property Name="Bag" Value="1"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="3482"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Connection OutNode="13" OutPort="Out" InNode="24" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="24" InPort="Player"/>
+	<Node Id="25" Ref="Act_GiveItems" X="1110" Y="68">
+		<Property Name="Bag" Value="1"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="2797"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Connection OutNode="13" OutPort="Out" InNode="25" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="25" InPort="Player"/>
+</Script>

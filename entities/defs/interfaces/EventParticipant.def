@@ -1,0 +1,35 @@
+<root>
+
+	<Properties>        
+        <!-- Base events this entity is subscribed to -->
+        <baseEvents>
+            <Type>      PYTHON          </Type>
+            <Flags>     BASE            </Flags>
+        </baseEvents>  
+
+        <!-- Cell events this entity is subscribed to -->
+        <cellEvents>
+            <Type>      PYTHON          </Type>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </cellEvents>
+	</Properties>
+	
+	<ClientMethods>
+	</ClientMethods>
+	
+	<CellMethods>
+        <!-- Invoked when a remote event occurs -->
+        <onEvent>
+            <Arg>       INT32           </Arg>      <!-- Entity ID of the event thrower -->
+            <Arg>       PYTHON          </Arg>      <!-- The event -->
+            <Arg>       PYTHON          </Arg>      <!-- The subject -->
+        </onEvent>
+    </CellMethods>
+
+	<BaseMethods>
+	</BaseMethods>
+
+	<LoDLevels>
+	</LoDLevels>
+
+</root>

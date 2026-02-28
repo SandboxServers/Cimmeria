@@ -1,0 +1,542 @@
+<root>
+	<Properties>
+        <!-- Current State of the Minigame -->
+		<minigame>
+			<Type>		    PYTHON		    </Type>
+			<Flags>		    CELL_PRIVATE    </Flags>
+		</minigame>
+		<pendingInstance>
+		    <Type>          INT32           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>
+		</pendingInstance>
+		<pendingMinigamePosition>
+		    <Type>          VECTOR3         </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0.0 0.0 0.0     </Default>
+		</pendingMinigamePosition>
+		<pendingItem>
+		    <Type>          INT32           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>
+		</pendingItem>
+		<pendingMob>
+		    <Type>          INT32           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>
+		</pendingMob>
+		<pendingSeed>
+		    <Type>          INT32           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>
+		</pendingSeed>
+		<pendingTC>
+		    <Type>          INT32           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>
+		</pendingTC>
+		<minigameMobAttemptTracker>
+		    <Type>          PYTHON          </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       {}              </Default>
+		</minigameMobAttemptTracker>
+		<minigameItemAttemptTracker>
+		    <Type>          PYTHON          </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       {}              </Default>
+		</minigameItemAttemptTracker>
+		<minigameRegistrationCost>
+		    <Type>          INT32           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       -1              </Default>
+		</minigameRegistrationCost>
+		<minigameRegistered>
+		    <Type>          UINT8           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>	
+		</minigameRegistered>
+		<minigameRegisteredWantsRequests>
+		    <Type>          UINT8           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>	
+		</minigameRegisteredWantsRequests>
+		<minigameRegisteredNote>
+		    <Type>          WSTRING			</Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		</minigameRegisteredNote>
+		<minigameRegisteredRange>
+		    <Type>          UINT8           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>		
+		</minigameRegisteredRange>
+		<minigameRegistrationAvailable>
+		    <Type>          UINT8           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>		
+		</minigameRegistrationAvailable>
+		<pendingHelper>
+		    <Type>          INT32           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>
+		</pendingHelper>
+		<pendingHelperBase> 
+		    <Type>          MAILBOX         </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		</pendingHelperBase>
+		<pendingHelperExpires>
+		    <Type>          FLOAT           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0.0             </Default>
+		</pendingHelperExpires>
+		<pendingHelperTip>
+		    <Type>          INT32           </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		    <Default>       0               </Default>
+		</pendingHelperTip>
+		<pendingHelperTicket>
+		    <Type>          STRING          </Type>
+		    <Flags>         CELL_PRIVATE    </Flags>
+		</pendingHelperTicket>
+        <pendingMinigameRequests>
+            <Type>          PYTHON          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       []            </Default>
+        </pendingMinigameRequests>
+        <currentMinigameRequest>
+            <Type>          PYTHON          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       None            </Default>
+        </currentMinigameRequest>
+        <minigameCallTracker>
+            <Type>          PYTHON          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       []            </Default>
+        </minigameCallTracker>
+        <minigameWaitingOnCash>
+            <Type>          PYTHON          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       None            </Default>
+        </minigameWaitingOnCash>
+        <minigameSavedTimeInfo>
+            <Type>          FLOAT           </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       0.0             </Default>
+        </minigameSavedTimeInfo>
+        <minigameSavedRegistrationInfo>
+            <Type>          STRING          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </minigameSavedRegistrationInfo>
+        <minigameSavedRegistrationNote>
+            <Type>          WSTRING			</Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </minigameSavedRegistrationNote>
+        <minigameContacts>
+            <Type>          PYTHON          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       []              </Default>
+        </minigameContacts>
+        <minigameRequestTimer>
+            <Type>          INT32           </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       0               </Default>
+        </minigameRequestTimer>
+        <minigameNextNPCRequest>
+            <Type>          FLOAT           </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       0.0             </Default>
+        </minigameNextNPCRequest>            
+        <pendingContactList>
+            <Type>          PYTHON          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       []            </Default>
+        </pendingContactList>
+	</Properties>
+
+	<ClientMethods>
+		<onStartMinigame>
+			<Arg>	    WSTRING              <ArgName>URL</ArgName></Arg>
+		</onStartMinigame>
+		<onStartMinigameDialog>
+		    <Arg>       WSTRING              <ArgName>Name</ArgName></Arg>
+		    <Arg>       WSTRING              <ArgName>Difficulty</ArgName></Arg>
+		    <Arg>       INT32               <ArgName>TCLevel</ArgName></Arg>
+		    <Arg>       WSTRING              <ArgName>Verb</ArgName></Arg>
+		    <Arg>       INT32               <ArgName>ArchetypeBitfield</ArgName></Arg>
+		    <Arg>       UINT8               <ArgName>CanPlay</ArgName></Arg>
+		    <Arg>       UINT8               <ArgName>CanCall</ArgName></Arg>
+		    <Arg>       UINT8               <ArgName>CanSpectate</ArgName></Arg>
+		</onStartMinigameDialog>
+		<onStartMinigameDialogClose>
+		</onStartMinigameDialogClose>
+		<onEndMinigame>
+		</onEndMinigame>
+        <onSpectateList>
+            <Arg>       ARRAY <of>INT32</of><ArgName>playerIds</ArgName></Arg>
+            <Arg>       ARRAY <of>WSTRING</of><ArgName>playerNames</ArgName></Arg>
+        </onSpectateList>
+        <onMinigameRegistrationPrompt>
+            <Arg>       INT32               <ArgName>Cost</ArgName></Arg>
+        </onMinigameRegistrationPrompt>
+        <minigameRegistrationInfo>
+            <Arg>       UINT8               <ArgName>Registered</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>InRangeOnly</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>WantsRequests</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>Note</ArgName></Arg>
+        </minigameRegistrationInfo>
+        <addOrUpdateMinigameHelper>
+            <Arg>       INT32               <ArgName>PlayerId</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>Name</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>Note</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>Level</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>Archetype</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>Friend</ArgName></Arg>        
+        </addOrUpdateMinigameHelper>
+        <removeMinigameHelper>
+            <Arg>       INT32               <ArgName>PlayerId</ArgName></Arg>
+        </removeMinigameHelper>
+        <minigameCallDisplay>
+            <Arg>       INT32               <ArgName>CallingPlayerId</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>Name</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Archetype</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Level</ArgName></Arg>
+            <Arg>       INT32               <ArgName>TipAmount</ArgName></Arg>
+            <Arg>       INT32               <ArgName>ExpiresAt</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>GameName</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>GameDifficulty</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>GameVerb</ArgName></Arg>
+            <Arg>       INT32               <ArgName>GameTC</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>NPCTitle</ArgName></Arg>
+        </minigameCallDisplay>
+        <minigameCallResult>
+            <Arg>       INT32               <ArgName>ResultCode</ArgName></Arg>
+            <Arg>       FLOAT               <ArgName>StartTime</ArgName></Arg>
+        </minigameCallResult>
+        <minigameCallAbort>
+            <Arg>       INT32               <ArgName>CallingPlayerId</ArgName></Arg>
+        </minigameCallAbort>
+        <showMinigameContact>
+            <Arg>       INT32               <ArgName>Id</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>Name</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>Title</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>Icon</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Time</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Success</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Cost</ArgName></Arg>
+        </showMinigameContact>
+	</ClientMethods>
+
+	<BaseMethods>
+	    <startMinigame>
+	        <Arg>       INT32               <ArgName>GameId</ArgName></Arg>
+	        <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>Difficulty</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>TechComp</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>Seed</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>AbilityBitfield</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>Intelligence</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>prevCount</ArgName></Arg>
+	    </startMinigame>
+
+	    <joinMinigame>
+	        <Arg>       UINT8               <ArgName>Spectator</ArgName></Arg>             
+	        <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+	    </joinMinigame>
+	    
+	    <endMinigameForPlayer>
+	        <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+	    </endMinigameForPlayer>
+	
+	    <addItemToMinigame>
+	        <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>instanceId</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>itemId</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>toolType</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>toolRank</ArgName></Arg>
+	    </addItemToMinigame>
+	    
+	    <remItemFromMinigame>
+	        <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>instanceId</ArgName></Arg>
+	    </remItemFromMinigame>
+	    
+	    <consumeItemByMinigame>
+	        <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>instanceId</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>requestId</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>resultCode</ArgName></Arg>
+	    </consumeItemByMinigame>
+	    
+	    <updateMinigameItemCheats>
+	        <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>instCC</ArgName></Arg> <!-- cheat class of instrument -->
+	        <Arg>       INT32               <ArgName>CA0</ArgName></Arg> <!-- class 0 cheat activations -->
+	        <Arg>       INT32               <ArgName>CA1</ArgName></Arg> <!-- class 1 cheat activations -->
+	        <Arg>       INT32               <ArgName>CA2</ArgName></Arg> <!-- class 2 cheat activations -->
+	        <Arg>       INT32               <ArgName>CA3</ArgName></Arg> <!-- class 3 cheat activations -->
+	        <Arg>       INT32               <ArgName>CA4</ArgName></Arg> <!-- class 4 cheat activations -->
+        </updateMinigameItemCheats>	    
+        
+        <minigameLevelUpdate>
+            <Arg>       INT32               <ArgName>level</ArgName></Arg>
+        </minigameLevelUpdate>
+        
+        <updateMinigameRegistrationState>
+            <Arg>       UINT8               <ArgName>registered</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>note</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>inRange</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>wantsRequests</ArgName></Arg>
+        </updateMinigameRegistrationState>
+        
+        <updateMinigameAvailableState>
+            <Arg>       UINT8               <ArgName>available</ArgName></Arg>
+        </updateMinigameAvailableState>
+        
+        <updateMinigameWantsHelpState>
+            <Arg>       UINT8               <ArgName>wantsHelp</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>techComp</ArgName></Arg>
+            <Arg>       INT32               <ArgName>archetypes</ArgName></Arg>
+        </updateMinigameWantsHelpState>
+        
+        <minigameCallRequest>
+            <Exposed/>
+            <Arg>       WSTRING             <ArgName>RemotePlayerName</ArgName></Arg>
+            <Arg>       INT32               <ArgName>TipAmount</ArgName></Arg>
+        </minigameCallRequest>
+
+        <minigameCallRequestPhaseTwo>
+            <Arg>       INT32               <ArgName>CallingPlayerId</ArgName></Arg>
+            <Arg>       WSTRING             <ArgName>CallingPlayerName</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Archetype</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Alignment</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Level</ArgName></Arg>
+            <Arg>       INT32               <ArgName>InstanceId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>GameTC</ArgName></Arg>
+            <Arg>       INT32               <ArgName>TipAmount</ArgName></Arg>
+            <Arg>       INT32               <ArgName>ExpiresAt</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Seed</ArgName></Arg>
+        </minigameCallRequestPhaseTwo>
+       
+        <minigameCallAcceptPhaseTwo>
+            <Arg>       INT32               <ArgName>RemotePlayerId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>InstanceId</ArgName></Arg>
+            <Arg>       FLOAT               <ArgName>StartTime</ArgName></Arg>
+            <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+        </minigameCallAcceptPhaseTwo>
+	    
+        <minigameCallDeclinePhaseTwo>
+            <Arg>       INT32               <ArgName>RemotePlayerId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>InstanceId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>ResultCode</ArgName></Arg>
+        </minigameCallDeclinePhaseTwo>
+        
+        <minigameEndCall>
+            <Arg>       INT32               <ArgName>Reason</ArgName></Arg>
+            <Arg>       INT32               <ArgName>TipAmount</ArgName></Arg>
+        </minigameEndCall>
+        
+        <minigameCallAbortPhaseTwo>
+            <Arg>       INT32               <ArgName>CallingPlayerId</ArgName></Arg>
+        </minigameCallAbortPhaseTwo>
+
+        <giveMinigameContactStr>
+            <Arg>       WSTRING				<ArgName>ContactId</ArgName></Arg>
+        </giveMinigameContactStr>
+                
+        <removeMinigameContactStr>
+            <Arg>       WSTRING             <ArgName>ContactId</ArgName></Arg>
+        </removeMinigameContactStr>
+        
+    </BaseMethods>
+
+	<CellMethods>
+        <debugStartMinigame>
+            <Exposed/>
+            <Arg>       INT32               <ArgName>aGameId</ArgName></Arg>
+        </debugStartMinigame>
+        <debugSpectateMinigame>
+            <Exposed/>
+        </debugSpectateMinigame>
+        <debugJoinMinigame>
+            <Exposed/>
+        </debugJoinMinigame>
+        <debugMinigameInstance>
+            <Exposed/>
+            <Arg>       INT32               <ArgName>InstanceId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Seed</ArgName></Arg>
+            <Arg>       INT32               <ArgName>TechComp</ArgName></Arg>
+        </debugMinigameInstance>
+        <handleMinigameResults>
+            <Arg>       STRING              <ArgName>ticket</ArgName></Arg>
+            <Arg>       INT32               <ArgName>resultId</ArgName></Arg>
+            <Arg>       FLOAT               <ArgName>timeRemainingPct</ArgName></Arg>
+            <Arg>       INT32               <ArgName>numAttempts</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>instrumentUsed</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>consumableUsed</ArgName></Arg>
+        </handleMinigameResults>
+        <handleStartMinigameFailed>
+            <Arg>       STRING              <ArgName>ticket</ArgName></Arg>
+            <Arg>       INT32               <ArgName>reason</ArgName></Arg>
+        </handleStartMinigameFailed>
+        <handleMinigameSystemShutdown>
+        </handleMinigameSystemShutdown>
+        
+        <joinMinigameRequest>
+            <Arg>       MAILBOX             </Arg> <!-- Entity who is requesting to join our minigame -->
+            <Arg>       INT32               </Arg> <!-- Id of the entity who wants to join our minigame -->
+            <Arg>       UINT8               </Arg> <!-- Skip the disable spectating check? -->
+        </joinMinigameRequest>
+            
+        <joinMinigameResponse>
+            <Arg>       MAILBOX             </Arg> <!-- Entity whos game we are going to join -->
+            <Arg>       INT32               </Arg> <!-- Entity id whos game we are going to join -->
+            <Arg>       INT32               </Arg> <!-- Game Id -->
+            <Arg>       STRING              </Arg> <!-- Ticket -->
+        </joinMinigameResponse>
+
+        <joinMinigameError>
+            <Arg>       MAILBOX             </Arg> <!-- Entity whos minigame we were trying to join -->
+            <Arg>       INT32               </Arg> <!-- Id of the entity whos minigame we were trying to join -->
+            <Arg>       UINT8               </Arg> <!-- Reason -->
+        </joinMinigameError>
+        
+        <startMinigame>
+            <Exposed/>
+        </startMinigame>
+        
+        <endCurrentMinigame>
+            <Exposed/>
+        </endCurrentMinigame>
+        
+        <processStartMinigameAction>
+            <Arg>       INT32               <ArgName>minigameInstanceId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>triggeringItem</ArgName></Arg>
+            <Arg>       INT32               <ArgName>triggeringMob</ArgName></Arg>
+            <Arg>       INT32               <ArgName>triggeringSeed</ArgName></Arg>
+            <Arg>       INT32               <ArgName>tcOverride</ArgName></Arg>
+        </processStartMinigameAction>    
+            
+        <processForceMinigameAction>
+            <Arg>       INT32               <ArgName>minigameInstanceId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>triggeringItem</ArgName></Arg>
+            <Arg>       INT32               <ArgName>triggeringMob</ArgName></Arg>
+            <Arg>       INT32               <ArgName>triggeringSeed</ArgName></Arg>
+        </processForceMinigameAction>    
+            
+        <consumeItemByMinigame>
+            <Arg>       STRING              <ArgName>ticket</ArgName></Arg>
+            <Arg>       INT32               <ArgName>cheatClass</ArgName></Arg>
+            <Arg>       INT32               <ArgName>requestId</ArgName></Arg>
+        </consumeItemByMinigame>
+        
+        <addMinigamePlayerSuccess>
+            <Arg>       INT32               <ArgName>mobId</ArgName></Arg>
+        </addMinigamePlayerSuccess>
+        
+        <addMinigamePlayerFail>
+            <Arg>       INT32               <ArgName>mobId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>blockingPlayerId</ArgName></Arg>
+        </addMinigamePlayerFail>
+        
+        <handleMinigamePlayerList>
+            <Arg>       INT32               <ArgName>mobId</ArgName></Arg>
+            <Arg>       ARRAY <of>INT32</of><ArgName>minigamePlayers</ArgName></Arg>
+        </handleMinigamePlayerList>
+        
+        <requestSpectateList>
+            <Exposed/>
+        </requestSpectateList>
+        
+        <spectateMinigame>
+            <Exposed/>
+            <Arg>       INT32               <ArgName>playerId</ArgName></Arg>
+        </spectateMinigame>
+        
+        <registerToMinigameHelp>
+            <Exposed/>
+            <Arg>       WSTRING				<ArgName>note</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>inRangeOnly</ArgName></Arg>
+        </registerToMinigameHelp>
+        
+        <updateRegisterToMinigameHelp>
+            <Exposed/>
+            <Arg>       WSTRING				<ArgName>note</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>inRangeOnly</ArgName></Arg>
+            <Arg>       UINT8               <ArgName>wantsRequests</ArgName></Arg>
+        </updateRegisterToMinigameHelp>            
+        
+        <minigameStartCancel>
+            <Exposed/>
+        </minigameStartCancel>
+        
+        <minigameCallRequest>
+            <Arg>       INT32               <ArgName>RemotePlayerId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>TipAmount</ArgName></Arg>
+            <Arg>       MAILBOX             <ArgName>RemotePlayerBase</ArgName></Arg>
+        </minigameCallRequest>
+        
+        <minigameCallRequestPhaseTwo>
+            <Arg>       INT32               <ArgName>CallingPlayerId</ArgName></Arg>
+            <Arg>       MAILBOX             <ArgName>CallingPlayerBase</ArgName></Arg>
+            <Arg>       WSTRING				<ArgName>CallingPlayerName</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Archetype</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Alignment</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Level</ArgName></Arg>
+            <Arg>       INT32               <ArgName>InstanceId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>GameTC</ArgName></Arg>
+            <Arg>       INT32               <ArgName>TipAmount</ArgName></Arg>
+            <Arg>       INT32               <ArgName>ExpiresAt</ArgName></Arg>
+            <Arg>       INT32               <ArgName>Seed</ArgName></Arg>
+        </minigameCallRequestPhaseTwo>        
+        
+        <minigameCallAccept>
+            <Exposed/>
+            <Arg>       INT32               <ArgName>CallingPlayerId</ArgName></Arg>
+        </minigameCallAccept>
+              
+        <minigameCallDecline>
+            <Exposed/>
+            <Arg>       INT32               <ArgName>CallingPlayerId</ArgName></Arg>
+        </minigameCallDecline>
+        
+        <minigameCallAcceptPhaseTwo>
+	        <Arg>       INT32               <ArgName>RemotePlayerId</ArgName></Arg>
+	        <Arg>       INT32               <ArgName>InstanceId</ArgName></Arg>
+	        <Arg>       FLOAT               <ArgName>StartTime</ArgName></Arg>
+	        <Arg>       STRING              <ArgName>Ticket</ArgName></Arg>
+        </minigameCallAcceptPhaseTwo>        
+        
+        <minigameCallDeclinePhaseTwo>
+            <Arg>       INT32               <ArgName>RemotePlayerId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>InstanceId</ArgName></Arg>
+            <Arg>       INT32               <ArgName>ResultCode</ArgName></Arg>
+        </minigameCallDeclinePhaseTwo>
+        
+        <minigameCallAbort>
+            <Exposed/>
+        </minigameCallAbort>
+        
+        <minigameEndCall>
+            <Arg>       INT32               <ArgName>Reason</ArgName></Arg>
+            <Arg>       INT32               <ArgName>TipAmount</ArgName></Arg>
+        </minigameEndCall>        
+
+        <minigameCallAbortPhaseTwo>
+            <Arg>       INT32               <ArgName>CallingPlayerId</ArgName></Arg>
+        </minigameCallAbortPhaseTwo>
+
+        <giveMinigameContactStr>
+            <Arg>       WSTRING				<ArgName>ContactId</ArgName></Arg>
+        </giveMinigameContactStr>
+                
+        <removeMinigameContactStr>
+            <Arg>       WSTRING				<ArgName>ContactId</ArgName></Arg>
+        </removeMinigameContactStr>
+        
+        <minigameContactRequest>
+            <Exposed/>
+            <Arg>       INT32               <ArgName>ContactId</ArgName></Arg>
+        </minigameContactRequest>
+                
+	</CellMethods>
+	
+</root>

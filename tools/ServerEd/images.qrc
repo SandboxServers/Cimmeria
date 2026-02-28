@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/resources">
+        <file alias="ScriptBackground.png">resources/ScriptBackground.png</file>
+    </qresource>
+</RCC>

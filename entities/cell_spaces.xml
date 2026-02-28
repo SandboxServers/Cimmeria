@@ -1,0 +1,24 @@
+<?xml version="1.0" charset="UTF-8"?>
+<Spaces>
+    <!--
+	This file contains a list of spaces that the cell should create on startup.
+	Different cells may load a different set of spaces, but two cells shouldn't create the same world.
+	Instanced worlds shouldn't be added here.
+    -->
+	<Space WorldName="SandBox" />
+	<Space WorldName="Castle" />
+	<Space WorldName="Agnos" />
+	<Space WorldName="Lucia" />
+	<Space WorldName="Omega_Site" />
+	<Space WorldName="Tollana" />
+	<Space WorldName="Agnos_Library" />
+	<Space WorldName="Sewer_Falls" />
+	<Space WorldName="Harset" />
+	<Space WorldName="Harset_CmdCenter" />
+	<Space WorldName="Dakara_E1" />
+	<Space WorldName="Ihpet_Crater_Dark" />
+	<Space WorldName="Ihpet_Crater_Light" />
+	<Space WorldName="Menfa_Dark" />
+	<Space WorldName="Menfa_Light" />
+	<Space WorldName="Beta_Site_Evo_1" />
+</Spaces>

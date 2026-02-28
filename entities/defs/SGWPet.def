@@ -1,0 +1,137 @@
+<root>    
+    <Parent>SGWMob</Parent>
+    
+    <Properties>
+        
+<!--	Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+        <ownerID>
+            <Type>          INT32              </Type>
+            <Flags>         CELL_PUBLIC        </Flags>
+            <Default>       0                  </Default>
+        </ownerID>
+
+        <ownerBase>
+            <Type>          MAILBOX            </Type>
+            <Flags>         CELL_PUBLIC        </Flags>
+        </ownerBase>
+        
+        <transferXP>
+            <Type>          FLOAT              </Type>
+            <Flags>         CELL_PRIVATE       </Flags>
+            <Default>       1.0                </Default>
+        </transferXP>
+
+        <petDespawnTimerId>
+            <Type>          CONTROLLER_ID      </Type>
+            <Flags>         CELL_PRIVATE       </Flags>
+            <Default>       0                  </Default>
+        </petDespawnTimerId>
+        
+        <!-- If abilityToResolve is set for this entity during creation, the pet will resolve this ability when its spawn timer is up -->
+        <abilityToResolve>
+            <Type>          INT32               </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </abilityToResolve>
+        
+        <!-- Ability information contains the runtime params as well as any other information needed -->
+        <abilityInformation>
+            <Type>          PYTHON              </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       {}                  </Default>
+        </abilityInformation>
+
+        <!-- list of pet toggled abilities that are toggled OFF -->
+        <toggledAbilities>
+            <Type>   ARRAY <of> INT32 </of>  </Type>
+            <Flags>  CELL_PRIVATE            </Flags>
+        </toggledAbilities>
+
+        <lastOwnerPositionCheck>
+            <Type>          FLOAT               </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </lastOwnerPositionCheck>
+        
+        <lastTeleportTime>
+            <Type>          FLOAT               </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </lastTeleportTime>
+        
+        <ownerLastPosition>             
+            <Type>          VECTOR3             </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </ownerLastPosition>
+
+        <petLastPosition>             
+            <Type>          VECTOR3             </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </petLastPosition>
+
+        <petStance>
+            <Type>          INT8               </Type>
+            <Flags>         CELL_PRIVATE       </Flags>
+            <Default>       1                  </Default>
+        </petStance>
+        
+    </Properties>
+    
+    <ClientMethods>
+
+      <onPetAbilityList>
+        <Arg>   ARRAY <of> INT32 </of>  <ArgName>  aAbilityList  </ArgName>  </Arg>  
+      </onPetAbilityList>
+      
+      <onPetStanceList>
+        <Arg>   ARRAY <of> INT8 </of>   <ArgName>  aStanceList   </ArgName>  </Arg>  
+      </onPetStanceList>
+      
+      <onPetStanceUpdate>
+        <Arg>   INT8   <ArgName>  aStance   </ArgName>  </Arg>  
+      </onPetStanceUpdate>
+      
+    </ClientMethods>
+    
+    <CellMethods>
+
+        <onOwnerDeath/>
+        
+        <onOwnerLeash/>
+
+        <onOwnerRespawn>
+            <Arg>    INT8     </Arg> <!-- aShouldDespawn -->
+        </onOwnerRespawn>
+
+        <saveToDB>
+            <Arg>    INT32    </Arg> <!-- player DB id -->
+        </saveToDB>
+
+        <toggleAbility>
+            <Arg>    INT32    </Arg> <!-- ability id -->
+            <Arg>    INT8     </Arg> <!-- toggle on/off -->
+        </toggleAbility>
+
+        <changePetStance>
+            <Arg>    INT8     </Arg> <!-- aStance -->
+        </changePetStance>
+        
+        <setPetLevel>
+            <Arg>    INT8     </Arg> <!-- Level -->
+        </setPetLevel>
+
+        <sendPetInfoToOwner>
+            <Arg>    MAILBOX                 </Arg> <!-- aOwnerMailbox -->
+            <Arg>    ARRAY <of> INT32 </of>  </Arg> <!-- aOwnerPetAbilities -->
+        </sendPetInfoToOwner>
+
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

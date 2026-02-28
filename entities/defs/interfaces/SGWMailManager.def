@@ -1,0 +1,107 @@
+<root>
+    <Properties>
+
+        <!-- Reference to a Dictionary of Mail Messages -->
+        <mailMessages>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </mailMessages>
+        <pendingMailMessages>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </pendingMailMessages>
+        <lastMailGetTime>
+            <Type>          FLOAT               </Type>
+            <Default>       0.0                 </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </lastMailGetTime>
+        <haveMailMessages>
+            <Type>          UINT8               </Type>
+            <Default>       0                   </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </haveMailMessages>
+    </Properties>
+
+    <ClientMethods>
+        <onMailHeaderInfo>
+            <Arg>   UINT8   <ArgName>ResetCategory</ArgName></Arg>
+            <Arg>   UINT8   <ArgName>bArchive</ArgName></Arg>
+            <Arg>   ARRAY <of> MessageHeader </of> <ArgName>MessageHeaders</ArgName></Arg>
+            <Arg>   ARRAY <of> MessageAttachment </of> <ArgName>MessageAttachments</ArgName></Arg>
+        </onMailHeaderInfo>
+        <onMailHeaderRemove>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+        </onMailHeaderRemove>
+        <onMailRead>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+            <Arg>   WSTRING  <ArgName>BodyText</ArgName></Arg>
+            <Arg>   INT32   <ArgName>BodyId</ArgName></Arg>
+            <Arg>   WSTRING  <ArgName>ToText</ArgName></Arg>
+        </onMailRead>
+        <sendMailResult>
+            <Arg>   UINT8   <ArgName>ResultCode</ArgName></Arg>
+            <Arg>   ARRAY <of> WSTRING </of> <ArgName>FailedRecipients</ArgName></Arg>
+            <Arg>   INT32   <ArgName>FailedRecipientFlags</ArgName></Arg>
+        </sendMailResult>
+    </ClientMethods>
+
+
+    <CellMethods>
+        <requestMailHeaders>
+            <Exposed/>
+            <Arg>   UINT8   <ArgName>bArchive</ArgName></Arg>            
+        </requestMailHeaders>
+        <sendMailMessage>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>RecipientFlags</ArgName></Arg>
+            <Arg>   ARRAY <of> WSTRING </of> <ArgName>Recipients</ArgName></Arg>
+            <Arg>   WSTRING  <ArgName>Subject</ArgName></Arg>
+            <Arg>   WSTRING  <ArgName>Body</ArgName></Arg>
+            <Arg>   INT32   <ArgName>Cash</ArgName></Arg>
+            <Arg>   UINT8   <ArgName>bCOD</ArgName></Arg>
+            <Arg>   INT32   <ArgName>ItemId</ArgName></Arg>
+            <Arg>   INT32   <ArgName>ItemQuantity</ArgName></Arg>
+        </sendMailMessage>
+        <archiveMailMessage>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+        </archiveMailMessage>
+        <deleteMailMessage>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+        </deleteMailMessage>
+        <returnMailMessage>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+        </returnMailMessage>
+        <requestMailBody>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+        </requestMailBody>
+        <onNewMail>
+        </onNewMail>
+        <takeCashFromMailMessage>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+        </takeCashFromMailMessage>
+        <takeItemFromMailMessage>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+            <Arg>   INT32   <ArgName>ContainerId</ArgName></Arg>
+            <Arg>   INT32   <ArgName>SlotId</ArgName></Arg>
+        </takeItemFromMailMessage>
+        <payCODForMailMessage>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>MailId</ArgName></Arg>
+        </payCODForMailMessage>
+    </CellMethods>
+
+
+    <BaseMethods>
+        <notifyPlayersOfNewMail>
+            <Arg>   ARRAY <of> WSTRING </of> <ArgName>Recipients</ArgName></Arg>
+        </notifyPlayersOfNewMail>
+    </BaseMethods>
+</root>

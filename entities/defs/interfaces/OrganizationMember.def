@@ -1,0 +1,454 @@
+<root>
+
+    <Implements>
+    </Implements>
+
+    <Volatile>
+    </Volatile>
+
+    <Properties>
+
+        <!-- Initial DB records for organizations -->
+        <records>
+            <Type>       PYTHON         </Type>
+            <Default>    {}             </Default>
+            <Flags>      CELL_PRIVATE   </Flags>
+        </records>
+
+        <!-- Group Id of squad -->
+        <squad>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </squad>
+
+        <!-- Strike Team timers for response timeouts when stike team updates -->
+        <strikeTeamTimers>
+            <Type>    PYTHON        </Type>
+            <Default> {}            </Default>
+            <Flags>   CELL_PRIVATE  </Flags>
+        </strikeTeamTimers>
+
+        <!-- Pending PvP change requests for when changing pvp status that causes an org leave -->
+        <pendingPvPTimers>
+            <Type>    PYTHON        </Type>
+            <Default> {}            </Default>
+            <Flags>   CELL_PRIVATE  </Flags>
+        </pendingPvPTimers>
+        
+        <!-- Pending group creates { group type -> list of people to invite when created -->
+        <pendingGroups>
+            <Type>       PYTHON         </Type>
+            <Default>    {}             </Default>
+            <Flags>      CELL_PRIVATE   </Flags>
+        </pendingGroups>
+
+        <pendingJoins>
+            <Type>       PYTHON         </Type>
+            <Default>    {}             </Default>
+            <Flags>      CELL_PRIVATE   </Flags>
+        </pendingJoins>        
+        
+        <!-- Initial DB records for organizations -->
+        <pendingInvitesByType>
+            <Type>       PYTHON         </Type>
+            <Default>    {}             </Default>
+            <Flags>      CELL_PRIVATE   </Flags>
+        </pendingInvitesByType>        
+        
+    </Properties>
+
+    <ClientMethods>
+
+        <!-- Invoked when this player has been invited to an organization -->
+        <onOrganizationInvite>
+            <Arg>   WSTRING			<ArgName> aInviterName      </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aOrganizationType </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aRequestID        </ArgName></Arg>
+            <Arg>   WSTRING			<ArgName> aName             </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aIsStrikeTeam     </ArgName></Arg>
+        </onOrganizationInvite>
+
+        <!-- Invoked when this player has joined an organization -->
+        <onOrganizationJoined>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aOrganizationType </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aRank             </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aNewMember        </ArgName></Arg>
+        </onOrganizationJoined>
+        
+        <!-- Invoked when this player has left a organization -->
+        <onOrganizationLeft>
+            <Arg>   UINT8           <ArgName> aReason           </ArgName></Arg> <!-- EReasons enumeration -->
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+        </onOrganizationLeft>
+        
+        <!-- Invoked when someone has joined the organization -->
+        <onMemberJoinedOrganization>
+            <Arg>   WSTRING			<ArgName> aMemberName       </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aMember           </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aRank             </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aNewMember        </ArgName></Arg>
+        </onMemberJoinedOrganization>
+        
+        <onOrganizationRosterInfo>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   ARRAY<of>RosterInfo</of>    <ArgName>aRosterInfo</ArgName></Arg>
+        </onOrganizationRosterInfo>
+        
+        <!-- Invoked when someone has left the organization (or was kicked) -->
+        <onMemberLeftOrganization>
+            <Arg>   INT32           <ArgName> aMember           </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aReason           </ArgName></Arg> <!-- EReasons enumeration -->
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING			<ArgName> aMemberName       </ArgName></Arg>
+        </onMemberLeftOrganization>
+        
+        <!-- Invoked when the rank of a member has changed -->
+        <onMemberRankChangedOrganization>
+            <Arg>   INT32           <ArgName> aMember           </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aRank             </ArgName></Arg> <!-- EOrganizationRank enumeration -->
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING			<ArgName> aMemberName       </ArgName></Arg>
+        </onMemberRankChangedOrganization>
+
+        <!-- called when an organization changes its strike team status -->
+        <onStrikeTeamUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   UINT8           <ArgName> aPvPValue         </ArgName></Arg>
+        </onStrikeTeamUpdate>
+
+        <!-- called when you want to change your pvp flag when it would cause you to leave a group -->
+        <onPvPOrganizationLeaveRequest>
+            <Arg>    INT32          <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>    UINT8          <ArgName> aPvPValue         </ArgName></Arg>
+        </onPvPOrganizationLeaveRequest>
+        
+        <onOrganizationNameUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING			<ArgName> aName             </ArgName></Arg>
+        </onOrganizationNameUpdate>
+        
+        <onOrganizationExperienceUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   UINT64          <ArgName> aExperience       </ArgName></Arg>
+        </onOrganizationExperienceUpdate>
+        
+        <onOrganizationMOTDUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING			<ArgName> aMOTD             </ArgName></Arg>
+        </onOrganizationMOTDUpdate>
+
+        <onOrganizationNoteUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aName             </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aNote             </ArgName></Arg>
+        </onOrganizationNoteUpdate>
+        
+        <onOrganizationOfficerNoteUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aName             </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aNote             </ArgName></Arg>
+        </onOrganizationOfficerNoteUpdate>
+        
+        <onOrganizationCashUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   UINT64          <ArgName> aCash             </ArgName></Arg>
+        </onOrganizationCashUpdate>
+        
+        <onOrganizationRankUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   ARRAY<of>INT32</of> <ArgName> aRankIds      </ArgName></Arg>
+            <Arg>   ARRAY<of>INT32</of> <ArgName> aRankFlags    </ArgName></Arg>
+        </onOrganizationRankUpdate>
+        
+        <onOrganizationRankNameUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   ARRAY<of>INT32</of> <ArgName> aRankIds      </ArgName></Arg>
+            <Arg>   ARRAY<of>WSTRING</of><ArgName> aRankNames    </ArgName></Arg>
+        </onOrganizationRankNameUpdate>
+        
+        <onSquadLootType>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aLootType         </ArgName></Arg>
+        </onSquadLootType>
+        
+    </ClientMethods>
+    
+    <CellMethods>   
+
+        <onOrganizationJoined>
+            <Arg>   PYTHON          </Arg>          <!-- group instance -->
+            <Arg>   INT8            </Arg>          <!-- exists -->
+        </onOrganizationJoined>
+                        
+        <!-- The base portion forwards the organization invite to the cell after it finds the target base -->
+        <organizationInvite>
+            <Arg>   INT32           </Arg>          <!-- Id of the organization to invite into -->
+            <Arg>   MAILBOX         </Arg>          <!-- Base of the player to invite -->
+            <Arg>   WSTRING			</Arg>          <!-- Name of the player to invite -->
+        </organizationInvite>
+        
+        <!-- The base portion forwards the organization invite to the cell after it finds the target base -->
+        <organizationInviteByType>
+            <Arg>   INT8            </Arg>          <!-- Type of organization -->
+            <Arg>   MAILBOX         </Arg>          <!-- Base of the player to invite -->
+            <Arg>   WSTRING			</Arg>          <!-- Name of the player to invite -->
+        </organizationInviteByType>
+        
+        <!-- The base portion forwards the organization kick to the cell after it finds the target base -->
+        <organizationKick>
+            <Arg>   INT32           </Arg>          <!-- Id of the organization to kick from -->
+            <Arg>   MAILBOX         </Arg>          <!-- Base of the player to kick -->
+            <Arg>   WSTRING			</Arg>          <!-- Name of the player to kick -->
+        </organizationKick>
+        
+        <!-- The base portion forwards the organization promote to the cell after it finds the target base -->
+        <organizationRankChange>
+            <Arg>   INT32           </Arg>          <!-- Id of the organization to rank change in -->
+            <Arg>   MAILBOX         </Arg>          <!-- Base of the player to rank change -->
+            <Arg>   WSTRING			</Arg>          <!-- Name of the player to rank change -->
+            <Arg>   INT8            </Arg>          <!-- EOrganizationRank enumeration -->
+        </organizationRankChange>
+        
+        <onMemberRankChange>
+            <Arg>   INT32           </Arg>          <!-- Id of the organization to rank change in -->
+            <Arg>   MAILBOX         </Arg>          <!-- Base of the player to rank change -->
+            <Arg>   WSTRING			</Arg>          <!-- Name of the player to rank change -->
+            <Arg>   INT8            </Arg>          <!-- EOrganizationRank enumeration -->
+        </onMemberRankChange>
+        
+        <onOrganizationMOTDUpdate>
+            <Arg>   INT32           </Arg>          <!-- Id of the organization to set MOTD in -->
+            <Arg>   WSTRING         </Arg>          <!-- New MOTD -->
+        </onOrganizationMOTDUpdate>
+
+        <onOrganizationNoteUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aName             </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aNote             </ArgName></Arg>
+        </onOrganizationNoteUpdate>
+        
+        <onOrganizationOfficerNoteUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aName             </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aNote             </ArgName></Arg>
+        </onOrganizationOfficerNoteUpdate>
+        
+        <onOrganizationRankPermissionsUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aRank             </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aPermissions      </ArgName></Arg>
+        </onOrganizationRankPermissionsUpdate>
+        
+        <onOrganizationSingleRankNameUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aRank             </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aName             </ArgName></Arg>
+        </onOrganizationSingleRankNameUpdate>
+        
+        <onSquadLootModeUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aLootMode         </ArgName></Arg>
+        </onSquadLootModeUpdate>
+        
+        <!-- Invoked when this player has been invited to an organization -->
+        <onOrganizationInvite>
+            <Arg>   WSTRING			</Arg>          <!-- Name of the inviting player -->
+            <Arg>   MAILBOX         </Arg>          <!-- Base of the inviting player -->
+            <Arg>   INT32           </Arg>          <!-- Organization ID -->
+            <Arg>   WSTRING          </Arg>          <!-- Organization Type -->
+            <Arg>   MAILBOX         </Arg>          <!-- Mailbox of the group authority-->
+            <Arg>   PYTHON          </Arg>          <!-- information about the group -->
+        </onOrganizationInvite>
+        
+        <!-- The client invokes this to accept or decline an organization invitation -->
+        <organizationInviteResponse>
+            <Exposed/>
+            <Arg>   INT32           <ArgName>aRequestID</ArgName></Arg>         <!-- The invite id -->
+            <Arg>   UINT8           <ArgName>aResponse</ArgName></Arg>          <!-- Non-zero to accept, zero to decline -->
+        </organizationInviteResponse>
+
+        <organizationInviteResults>
+            <Arg>   INT32           <ArgName>timerId</ArgName></Arg>            <!-- timer id -->
+            <Arg>   WSTRING			<ArgName>playerName</ArgName></Arg>         <!-- player Name -->
+            <Arg>   UINT8           <ArgName>accepted</ArgName></Arg>           <!-- non-zero if accepted -->
+            <Arg>   WSTRING          </Arg>                                      <!-- Organization Type -->
+        </organizationInviteResults>
+        
+        <organizationInviteAccepted>
+            <Arg>   MAILBOX         </Arg>          <!-- Base of the inviting player -->
+            <Arg>   WSTRING          </Arg>          <!-- Organization Type -->
+        </organizationInviteAccepted>
+            
+        <!-- The client invokes this to leave an organization -->
+        <organizationLeave>
+            <Exposed/>
+            <Arg>   INT32           <ArgName>aOrganizationId</ArgName></Arg>          <!-- Id of the organization to leave -->
+        </organizationLeave>
+        
+        <onOrganizationMemberJoined>
+            <Arg>   INT32           </Arg>          <!-- Id of the organization to join -->
+            <Arg>   MAILBOX         </Arg>          <!-- base mailbox of new member -->
+        </onOrganizationMemberJoined>
+        
+        <initialOrganizationMemberInfo>
+            <Arg>   INT32           </Arg>          <!-- Id of the organization to join -->
+            <Arg>   INT32           </Arg>          <!-- member id who is owner of information -->
+            <Arg>   PYTHON          </Arg>          <!-- information dictionary -->
+        </initialOrganizationMemberInfo>
+        
+        <onOrganizationMemberInfoUpdate>
+            <Arg>   INT32           </Arg>          <!-- Id of the organization -->
+            <Arg>   INT32           </Arg>          <!-- member id who is owner of information -->
+            <Arg>   PYTHON          </Arg>          <!-- information dictionary or changes -->
+        </onOrganizationMemberInfoUpdate>
+        
+        <BroadcastMinimapPing>
+            <Exposed />
+            <Arg>  INT32       <ArgName> aOrganzationId  </ArgName> </Arg>
+            <Arg>  VECTOR3     <ArgName> aLocation       </ArgName> </Arg>
+        </BroadcastMinimapPing>
+        
+        <receivedMinimapPing>
+            <Arg>    INT32       <ArgName> aWorldId      </ArgName> </Arg>
+            <Arg>    INT32       <ArgName> aEntityId     </ArgName> </Arg>
+            <Arg>    VECTOR3     <ArgName> aLocation     </ArgName> </Arg>
+            <Arg>    INT32       <ArgName> aLifetime     </ArgName> </Arg>
+            <Arg>    UINT32      <ArgName> aPingType     </ArgName> </Arg>
+        </receivedMinimapPing>
+        
+        <!-- called when an organization changes its strike team status -->
+        <onStrikeTeamUpdate>
+            <Arg>   INT32          <ArgName> aOrganizationId   </ArgName> </Arg>
+            <Arg>   UINT8          <ArgName> aPvPValue         </ArgName> </Arg>
+        </onStrikeTeamUpdate>
+        
+        <!-- called by the client with a response to a strike team change -->
+        <strikeTeamResponse>
+            <Exposed/>
+            <Arg>   INT32          <ArgName> aOrganizationId   </ArgName> </Arg>
+            <Arg>   UINT8          <ArgName> aResponse         </ArgName> </Arg>
+        </strikeTeamResponse>
+        
+        <!-- called by the client with a response to changing your pvp flag -->
+        <pvpOrganizationLeaveResponse>
+            <Exposed/>
+            <Arg>   INT32          <ArgName> aOrganizationId    </ArgName> </Arg>
+            <Arg>   UINT8          <ArgName> aResponse          </ArgName> </Arg>
+        </pvpOrganizationLeaveResponse>
+        
+        <onOrganizationHeaderUpdate>
+            <Arg>   INT32          <ArgName> aOrganizationId    </ArgName> </Arg>
+            <Arg>   WSTRING		   <ArgName> aName              </ArgName> </Arg>
+            <Arg>   UINT64         <ArgName> aExperience        </ArgName> </Arg>
+            <Arg>   WSTRING        <ArgName> aMOTD              </ArgName> </Arg>
+            <Arg>   UINT64         <ArgName> aCash              </ArgName> </Arg>
+        </onOrganizationHeaderUpdate>
+        
+        <onOrganizationCashUpdate>
+            <Arg>   INT32          <ArgName> aOrganizationId    </ArgName> </Arg>
+            <Arg>   UINT64         <ArgName> aCash              </ArgName> </Arg>
+        </onOrganizationCashUpdate>
+        
+        <orgUpdatePlayerCash>
+            <Arg>   UINT64         <ArgName> aCash              </ArgName> </Arg>
+        </orgUpdatePlayerCash>
+        
+        <onOrganizationRankUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   ARRAY<of>INT32</of> <ArgName> aRankIds      </ArgName></Arg>
+            <Arg>   ARRAY<of>INT32</of> <ArgName> aRankFlags    </ArgName></Arg>
+        </onOrganizationRankUpdate>
+        
+        <onOrganizationRankNameUpdate>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   ARRAY<of>INT32</of> <ArgName> aRankIds      </ArgName></Arg>
+            <Arg>   ARRAY<of>WSTRING</of><ArgName> aRankNames    </ArgName></Arg>
+        </onOrganizationRankNameUpdate>
+        
+        <organizationMOTD>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aMOTD             </ArgName></Arg>
+        </organizationMOTD>
+        
+        <organizationNote>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aNote             </ArgName></Arg>
+        </organizationNote>
+
+        <organizationOfficerNote>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aName             </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aNote             </ArgName></Arg>
+        </organizationOfficerNote>
+        
+        <organizationSetRankPermissions>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aRank             </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aPermissions      </ArgName></Arg>
+        </organizationSetRankPermissions>
+        
+        <organizationSetRankName>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aRank             </ArgName></Arg>
+            <Arg>   WSTRING         <ArgName> aName             </ArgName></Arg>
+        </organizationSetRankName>
+        
+        <squadSetLootMode>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aLootMode         </ArgName></Arg>
+        </squadSetLootMode>
+        
+        <organizationTransferCash>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId   </ArgName></Arg>
+            <Arg>   INT32           <ArgName> aCash             </ArgName></Arg>
+        </organizationTransferCash>
+        
+        
+    </CellMethods>
+
+    <BaseMethods>
+
+        <!-- The client invokes this to invite another player to their organization -->
+        <organizationInvite>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId  </ArgName> </Arg>
+            <Arg>   WSTRING			<ArgName> aPlayerName     </ArgName> </Arg>          <!-- Name of the player to invite -->
+        </organizationInvite>
+
+        <!-- The client invokes this to invite another player to their organization by group type. If the member is not in a group of that type it will be created automatically -->
+        <organizationInviteByType>
+            <Exposed/>
+            <Arg>   UINT8           <ArgName> aOrganizationType </ArgName></Arg>
+            <Arg>   WSTRING			<ArgName> aPlayerName     </ArgName> </Arg>          <!-- Name of the player to invite -->
+        </organizationInviteByType>
+
+        <!-- The client invokes this to kick a player from its organization -->
+        <organizationKick>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId </ArgName> </Arg>
+            <Arg>   WSTRING			<ArgName> aPlayerName     </ArgName> </Arg>          <!-- Name of the player to kick -->
+        </organizationKick>
+        
+        <!-- The client invokes this to change the rank of an organization member -->
+        <organizationRankChange>
+            <Exposed/>
+            <Arg>   INT32           <ArgName> aOrganizationId </ArgName> </Arg>
+            <Arg>   WSTRING			<ArgName> aPlayerName     </ArgName> </Arg>          <!-- Name of the player to promote -->
+            <Arg>   UINT8           <ArgName> aRank           </ArgName> </Arg>
+        </organizationRankChange>
+
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

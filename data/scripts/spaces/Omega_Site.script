@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Omega_Site" Type="Level" NextId="21">
+	<Node Id="2" Ref="Event_EntityInteract" X="-169" Y="-64">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="OmegaSiteBeamCenter"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Act_RingTransportDlg" X="51" Y="-56">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="10"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Event_EntityInteract" X="-147" Y="51">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="OmegaSiteBeamBottom"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="5" Ref="Act_RingTransportDlg" X="81" Y="50">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="11"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="2" OutPort="Out" InNode="3" InPort="In"/>
+	<Connection OutNode="2" OutPort="Player" InNode="3" InPort="Player"/>
+	<Connection OutNode="4" OutPort="Out" InNode="5" InPort="In"/>
+	<Connection OutNode="4" OutPort="Player" InNode="5" InPort="Player"/>
+	<Comment Id="0" Text="Asgard Transporters" X="-216" Y="-96" Width="494.75" Height="493.5" Color="5"/>
+	<Node Id="14" Ref="Event_EntityInteract" X="-153" Y="170">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="OmegaSiteBeamLeft"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="15" Ref="Act_RingTransportDlg" X="75" Y="170">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="12"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="14" OutPort="Out" InNode="15" InPort="In"/>
+	<Connection OutNode="14" OutPort="Player" InNode="15" InPort="Player"/>
+	<Node Id="16" Ref="Event_EntityInteract" X="-160.75" Y="471.25">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="OmegaSiteBeamToCmdCenter"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="18" Ref="Event_EntityInteract" X="-153" Y="279">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="OmegaSiteBeamRight"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="19" Ref="Act_RingTransportDlg" X="79" Y="272">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="16"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="18" OutPort="Out" InNode="19" InPort="In"/>
+	<Connection OutNode="18" OutPort="Player" InNode="19" InPort="Player"/>
+	<Node Id="20" Ref="Act_RingTransportDlg" X="72.5" Y="462.5">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Region Id" Value="14"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Region Id" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+	</Node>
+	<Connection OutNode="16" OutPort="Out" InNode="20" InPort="In"/>
+	<Connection OutNode="16" OutPort="Player" InNode="20" InPort="Player"/>
+	<Comment Id="0" Text="Comment" X="-213.75" Y="405" Width="497.5" Height="198.75" Color="0"/>
+</Script>

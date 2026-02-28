@@ -1,0 +1,28 @@
+<root>
+
+    <Properties>
+        
+        <interactFlag>
+            <Type>          INT8                    </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </interactFlag>
+        
+        <lastPollTime>
+            <Type>          INT32                    </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </lastPollTime>
+        
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+</root>

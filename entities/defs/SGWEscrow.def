@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<root>
+	
+	<Parent>SGWEntity</Parent>
+	
+	<Implements>
+    </Implements>
+
+<!--	Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+	<ServerOnly />
+
+	<Properties>
+	
+		<!-- List of Escro Records -->
+	    <escrowRecordList>
+	      <Type>        EscrowRecordList  </Type>
+	      <Flags>       CELL_PRIVATE     </Flags>
+	      <Default>     []         </Default>
+	    </escrowRecordList>
+	    
+	    <escrowNumber>
+	    	<Type>	INT32 			</Type>
+	    	<Flags>	CELL_PRIVATE	</Flags>
+	    	<Default>     0         </Default>
+	    </escrowNumber>
+    
+    </Properties>
+	
+	<ClientMethods>
+	</ClientMethods>
+	
+	<CellMethods>
+	
+		<lootItemTransfer>
+			<Arg>INT32<ArgName>FromID</ArgName></Arg> <!-- ID of who the item's comming from -->
+			<Arg>INT32<ArgName>ToID</ArgName></Arg> <!-- ID of who the item's going to  -->
+			<Arg>LootItemDefinition<ArgName>ItemToTransfer</ArgName></Arg> <!-- The item being transfered -->
+		</lootItemTransfer>
+		
+		<lootItemTransferCallback>
+			<Arg>INT32<ArgName>aLooterID</ArgName></Arg> <!-- ID of the person looting -->
+			<Arg>INT32<ArgName>aQuantity</ArgName></Arg> <!-- How many were looted? -->
+			<Arg>INT32<ArgName>aEscrowNumber</ArgName></Arg> <!-- ID of the escrow for internal lookup -->
+		</lootItemTransferCallback>
+	
+	</CellMethods>
+
+	<BaseMethods> 
+	</BaseMethods>
+
+	<LoDLevels>
+	</LoDLevels>
+
+</root>

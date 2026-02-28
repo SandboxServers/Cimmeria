@@ -1,0 +1,33 @@
+<root>
+
+	<Parent>SGWSpawnableEntity</Parent>
+	<Implements>
+		<Interface> SGWBeing </Interface>
+		<Interface> SGWAbilityManager </Interface>
+		<Interface> SGWCombatant </Interface>
+	</Implements>
+
+<!--	Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+	<Properties>
+	</Properties>
+	
+	<ClientMethods>
+           
+      <BeingAppearance>
+        <Arg> WSTRING                  <ArgName> BodySet       </ArgName> </Arg>
+        <Arg> ARRAY <of> WSTRING </of> <ArgName> ComponentList </ArgName> </Arg>
+      </BeingAppearance>
+        
+	</ClientMethods>
+	
+	<CellMethods>
+	</CellMethods>
+
+	<BaseMethods>
+	</BaseMethods>
+
+	<LoDLevels>
+	</LoDLevels>
+
+</root>

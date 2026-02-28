@@ -1,0 +1,113 @@
+<root>
+
+	<ServerOnly />
+
+	<Implements/>
+
+	<Volatile/>
+
+	<Properties>
+	</Properties>
+
+	<ClientMethods>
+	</ClientMethods>
+
+	<BaseMethods>
+		<addChannelManager>
+			<Arg> UINT32 </Arg> <!-- Base App ID -->
+			<Arg> MAILBOX </Arg> <!-- Channel manager mailbox -->
+		</addChannelManager>
+
+		<joinGlobal>
+			<Arg> WSTRING </Arg> <!-- Entity name joining channel -->
+			<Arg> WSTRING </Arg> <!-- Channel name being joined -->
+			<Arg> MAILBOX </Arg> <!-- Mailbox of entity joining channel -->
+		</joinGlobal>
+
+		<join>
+			<Arg> WSTRING </Arg> <!-- Entity ID joining channel -->
+			<Arg> WSTRING </Arg> <!-- Channel name              -->
+			<Arg> WSTRING </Arg> <!-- Channel password -->
+			<Arg> MAILBOX </Arg>  <!-- Entity mailbox if local, None if not local -->
+		</join>
+
+		<leaveAll>
+			<Arg> WSTRING </Arg> <!-- Entity leaving all channels (in preparation to log out) -->
+		</leaveAll>
+
+		<leave>
+			<Arg> WSTRING </Arg> <!-- Entity ID leaving channel -->
+			<Arg> WSTRING </Arg> <!-- Channel being left -->
+		</leave>
+
+		<speak>
+			<Arg> WSTRING		</Arg>  <!-- Speaker name -->
+            <Arg> UINT8			</Arg>  <!-- Flags describing the Speaker -->
+			<Arg> WSTRING		</Arg>  <!-- Target Name -->
+			<Arg> WSTRING		</Arg>  <!-- Channel name being spoken on -->
+			<Arg> WSTRING		</Arg>  <!-- Text to speak on channel -->
+		</speak>
+		<announce>
+			<Arg> WSTRING		</Arg>  <!-- Speaker name -->
+            <Arg> UINT8			</Arg>  <!-- Flags describing the Speaker -->
+			<Arg> WSTRING		</Arg>  <!-- Channel name being spoken on -->
+			<Arg> WSTRING		</Arg>  <!-- Text to speak on channel -->
+		</announce>
+		<!-- List all entities in channel -->
+		<list>
+			<Arg> WSTRING </Arg> <!-- Name of entity listing -->
+			<Arg> WSTRING </Arg> <!-- Channel to list -->
+		</list>
+
+		<!-- Disallow entity from speaking on a channel -->
+		<mute>
+			<Arg> WSTRING </Arg> <!-- Entity muting -->
+			<Arg> WSTRING </Arg> <!-- Entity to mute -->
+			<Arg> WSTRING </Arg> <!-- Channel to mute entity on -->
+		</mute>
+
+		<!-- Allow entity to speak on channel again -->
+		<unmute>
+			<Arg> WSTRING </Arg> <!-- Entity muting -->
+			<Arg> WSTRING </Arg> <!-- Entity to mute -->
+			<Arg> WSTRING </Arg> <!-- Channel to mute entity on -->
+		</unmute>
+
+		<!-- Forcibly remove entity from channel, but not permanently -->
+		<kick>
+			<Arg> WSTRING </Arg> <!-- Entity kicking -->
+			<Arg> WSTRING </Arg> <!-- Entity to kick -->
+			<Arg> WSTRING </Arg> <!-- Channel to kick entity from -->
+		</kick>
+
+		<!-- Ban entity from channel, kick them if they are in it -->
+		<ban>
+			<Arg> WSTRING </Arg> <!-- Entity ID banning -->
+			<Arg> WSTRING </Arg> <!-- Entity ID to ban -->
+			<Arg> WSTRING </Arg> <!-- Channel to ban entity from -->
+		</ban>
+
+		<!-- Allow entity to join channel again -->
+		<unban>
+			<Arg> WSTRING </Arg> <!-- Entity ID unbanning -->
+			<Arg> WSTRING </Arg> <!-- Entity ID to un-ban -->
+			<Arg> WSTRING </Arg> <!-- Channel to un-ban entity from -->
+		</unban>
+
+		<op>
+			<Arg> WSTRING </Arg> <!-- Entity ID op-ing -->
+			<Arg> WSTRING </Arg> <!-- Entity ID to op -->
+			<Arg> WSTRING </Arg> <!-- Channel to op entity in -->
+		</op>
+
+		<password>
+			<Arg> WSTRING </Arg> <!-- Entity name setting password -->
+			<Arg> WSTRING </Arg> <!-- Channel name to set password for -->
+			<Arg> WSTRING </Arg> <!-- Channel Password to set -->
+		</password>
+	</BaseMethods>
+
+	<CellMethods>
+	</CellMethods>
+    
+</root>

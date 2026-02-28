@@ -1,0 +1,731 @@
+<?xml version="1.0"?>
+<root>
+    
+    <Parent>SGWPlayer</Parent>
+
+    <Implements>
+    </Implements>
+
+<!--    Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+    <Properties>
+    
+        <bCombatLOS>
+            <Type>      UINT8           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </bCombatLOS>
+        
+        <bHideGM>
+            <Type>      UINT8           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </bHideGM>
+        
+	</Properties>
+
+    <ClientMethods>
+        <!-- Command to test LOS -->
+        <onLOSResult>
+            <Arg>       VECTOR3     <ArgName>aStart</ArgName></Arg>
+            <Arg>       VECTOR3     <ArgName>aEnd</ArgName></Arg>
+            <Arg>       INT8        <ArgName>aClear</ArgName></Arg>
+        </onLOSResult>
+
+    <onShowWaypoints>
+      <Arg>WSTRING <ArgName>pointSetName</ArgName></Arg>
+      <Arg>FLOAT <ArgName>radius</ArgName></Arg>
+      <Arg>WaypointList <ArgName>wayPoints</ArgName></Arg>
+    </onShowWaypoints>
+
+    <onShowPath>
+      <Arg>    INT32                       <ArgName>    aEntityId        </ArgName>    </Arg>
+      <Arg>    UINT8                       <ArgName>    aMovementType    </ArgName>    </Arg> <!-- EMobMovementType -->
+      <Arg>    ARRAY <of> VECTOR3 </of>    <ArgName>    aPath            </ArgName>    </Arg>
+    </onShowPath>
+
+    <onDisableShowPath>
+      <Arg>    INT32                       <ArgName>    aEntityId        </ArgName>    </Arg>
+    </onDisableShowPath>
+    
+    <onSetTarget>
+        <Arg>    INT32                     <ArgName>    aEntityId        </ArgName>    </Arg>
+    </onSetTarget>
+
+	<onShowNavigation>
+		<Arg> WSTRING <ArgName>aChunkName</ArgName></Arg>
+		<Arg> ARRAY <of>NavigationPolygon</of> <ArgName>aNavPolyList</ArgName></Arg>
+	</onShowNavigation>
+
+  </ClientMethods>
+    
+    <CellMethods>
+<!-- MISSION COMMANDS -->
+                            
+        <gmMissionAssign>
+            <Exposed/>
+            <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+            <Arg>    UINT8   <ArgName>DisplayPopup</ArgName></Arg>
+        </gmMissionAssign>
+
+        <gmMissionClear>
+          <Exposed/>
+          <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+        </gmMissionClear>
+
+        <gmMissionClearActive>
+          <Exposed/>
+        </gmMissionClearActive>
+
+        <gmMissionClearHistory>
+          <Exposed/>
+        </gmMissionClearHistory>
+
+        <gmMissionList>
+          <Exposed/>
+        </gmMissionList>
+
+        <gmMissionListFull>
+          <Exposed/>
+        </gmMissionListFull>
+
+        <gmMissionDetails>
+          <Exposed/>
+          <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+        </gmMissionDetails>
+
+        <gmMissionAdvance>
+          <Exposed/>
+          <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+          <Arg>    INT32     <ArgName>StepToAdvanceTo</ArgName></Arg>
+        </gmMissionAdvance>
+
+        <gmMissionReset>
+          <Exposed/>
+          <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+          <Arg>    INT32    <ArgName>StepToAdvanceTo</ArgName></Arg>
+        </gmMissionReset>
+
+        <gmMissionComplete>
+          <Exposed/>
+          <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+          <Arg>    INT8      <ArgName>TurnIn</ArgName></Arg>
+        </gmMissionComplete>
+
+        <gmMissionSetAvailable>
+          <Exposed/>
+          <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+        </gmMissionSetAvailable>
+        
+        <gmMissionAbandon>
+          <Exposed/>
+          <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+        </gmMissionAbandon>
+
+<!-- SHOW COMMANDS -->
+        
+        <gmShowTargetLocation>
+            <Exposed/>
+        </gmShowTargetLocation>
+        
+        <gmShowRotation>
+            <Exposed/>
+        </gmShowRotation>
+        
+        <listAbilities>
+            <Exposed/>
+        </listAbilities>
+        
+        <showPointSet>
+            <Exposed/>
+            <Arg>       WSTRING       <ArgName>Type</ArgName></Arg> <!-- Type of the point set to display -->
+        </showPointSet>
+      
+        <gmShowFlag>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>aFlagId</ArgName></Arg> <!-- ID # of the flag -->
+        </gmShowFlag>
+      
+      <gmListInteractions>
+        <Exposed/>
+      </gmListInteractions>
+      
+    <gmGetMobAttribute>
+        <Exposed/>
+        <Arg>       INT32      <ArgName>TargetID</ArgName></Arg> <!-- entity ID of the mob to despawn -->
+        <Arg>       WSTRING      <ArgName>Attribute</ArgName></Arg> <!-- Attribute of the mob to alter -->
+    </gmGetMobAttribute> 
+    
+    <gmShowMobCount>
+      <Exposed/>
+        <Arg>       INT32      <ArgName>SpaceID</ArgName></Arg> <!-- entity ID of the mob to despawn -->
+    </gmShowMobCount> 
+    
+    <gmShowIP>
+      <Exposed/>
+        <Arg>       INT32      <ArgName>TargetID</ArgName></Arg> <!-- entity ID of the player to investigate -->
+    </gmShowIP> 
+    
+    <gmShowInventory>
+      <Exposed/>
+        <Arg>       INT32      <ArgName>TargetID</ArgName></Arg> <!-- entity ID of the player to investigate -->
+    </gmShowInventory> 
+    
+    <gmShowPlayer>
+      <Exposed/>
+        <Arg>       INT32      <ArgName>TargetID</ArgName></Arg> <!-- entity ID of the player to investigate -->
+    </gmShowPlayer> 
+<!-- GIVE/REMOVE COMMANDS -->
+                            
+        <gmGiveXp>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>XpAmount</ArgName></Arg> <!-- Amount of xp to give yourself -->
+        </gmGiveXp>
+        
+        <gmGiveItem>
+            <Exposed/>
+            <Arg>       WSTRING      <ArgName>DesignId</ArgName></Arg>
+            <Arg>       INT32       <ArgName>Quantity</ArgName></Arg>
+        </gmGiveItem>
+        
+        <gmGiveCash>
+            <Exposed/>
+            <Arg>           INT32       <ArgName>Amount</ArgName></Arg>  <!-- Amount of cash to give -->
+        </gmGiveCash>
+        
+        <gmRemoveItem>
+            <Exposed/>
+            <Arg>           ItemID      <ArgName>itemID</ArgName></Arg>  <!-- Item's Inventory ID -->
+            <Arg>           INT16       <ArgName>quantity</ArgName></Arg>  <!-- Quantity -->
+        </gmRemoveItem>
+        
+        <gmGiveAbility>
+            <Exposed/>
+            <Arg>           INT32       <ArgName> aAbilityID </ArgName> </Arg>  <!-- ability ID -->
+        </gmGiveAbility>
+        
+        <gmGiveTrainingPoints>
+            <Exposed/>
+            <Arg>           INT32       <ArgName> aNumTrainingPoints </ArgName> </Arg>  <!-- How many training points to give -->
+        </gmGiveTrainingPoints>
+
+	<gmGiveRespawner>
+		<Exposed/>
+		<Arg> INT32 <ArgName>aRespawnerMobID</ArgName></Arg> <!-- Give player respawner to player -->
+	</gmGiveRespawner>
+
+        <gmGiveExpertise>
+            <Exposed/>
+            <Arg>  INT32  <ArgName>  aDisciplineId  </ArgName>  </Arg>
+            <Arg>  INT32  <ArgName>  aExpertise     </ArgName>  </Arg>
+        </gmGiveExpertise>
+        
+        <gmGiveAppliedSciencePoints>
+            <Exposed/>
+            <Arg>  INT32  <ArgName>  aPoints     </ArgName>  </Arg>
+        </gmGiveAppliedSciencePoints>
+        
+        <gmGiveRacialParadigmLevels>
+            <Exposed/>
+            <Arg>  INT32  <ArgName>  aRacialParadigmId  </ArgName>  </Arg>
+            <Arg>  INT32  <ArgName>  aLevels            </ArgName>  </Arg>
+        </gmGiveRacialParadigmLevels>
+        
+<!-- SET COMMANDS -->
+        
+         <gmSetGodMode>
+            <Exposed/>
+            <Arg>       UINT8       <ArgName>bTurnOn</ArgName></Arg> <!-- on/off toggle -->
+        </gmSetGodMode>
+        
+        <gmSetNoXP>
+            <Exposed/>
+        </gmSetNoXP>
+        
+        <gmSetNoDamage>
+            <Exposed/>
+        </gmSetNoDamage>  
+        
+        <gmSetNoAggro>
+            <Exposed/>
+            <Arg>       UINT8       <ArgName>bTurnOn</ArgName></Arg> <!-- on/off toggle -->
+        </gmSetNoAggro>
+        
+        <gmSetSpeed>
+            <Exposed/>
+            <Arg>       FLOAT       <ArgName>Multiplier</ArgName></Arg> <!-- Speed Multiplier (1.0 default) -->
+        </gmSetSpeed>
+        
+        <gmSetHealth>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>Amount</ArgName></Arg> <!-- Amount to set health to -->
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Target to set health on -->
+        </gmSetHealth>
+        
+        <gmSetHealthMax>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>Amount</ArgName></Arg> <!-- Amount to set health max to -->
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Target to set health max on -->
+        </gmSetHealthMax>
+        
+        <gmSetFocus>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>Amount</ArgName></Arg> <!-- Amount to set focus to -->
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Target to set focus on -->
+        </gmSetFocus>
+        
+        <gmSetFocusMax>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>Amount</ArgName></Arg> <!-- Amount to set focus max to -->
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Target to set focus max on -->
+        </gmSetFocusMax>     
+        
+       <gmSetFlag>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>aFlagId</ArgName></Arg> <!-- Name of the flag -->
+            <Arg>       UINT8       <ArgName>aForceVal</ArgName></Arg> <!-- value to force to (toggle if this is 2) -->
+        </gmSetFlag>   
+        <gmSetLevel>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>aLevel</ArgName></Arg> <!-- Level to set the target to -->
+        </gmSetLevel> 
+        
+        <gmResetAbilities>
+            <Exposed/>
+        </gmResetAbilities> 
+        <gmGiveAllAbilities>
+            <Exposed/>
+        </gmGiveAllAbilities> 
+        <gmRespec>
+            <Exposed/>
+        </gmRespec> 
+        <gmSetTarget>
+            <Exposed/>
+            <Arg>       WSTRING       <ArgName>aNameOrID</ArgName></Arg> <!--Name or Entity ID of the target -->
+        </gmSetTarget> 
+        
+        <gmSetMobStance>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>aNewStance</ArgName></Arg> <!-- Name of the stance to switch to -->
+        </gmSetMobStance>  
+        
+        <gmSetCallback>
+            <Arg>       PYTHON      <ArgName>aChangeList</ArgName></Arg> <!-- List of changes -->
+            <Arg>       UINT8       <ArgName>bSuccess</ArgName></Arg> <!-- Did any fail? -->
+            <Arg>       UINT32      <ArgName>aEntityId</ArgName></Arg> <!-- entitiy who's info was changed -->
+        </gmSetCallback>      
+        
+        <gmSetMobAbilitySet>
+            <Exposed/>
+            <Arg>           INT32       <ArgName> aAbilitySetId </ArgName> </Arg>  <!-- ability Set ID -->
+        </gmSetMobAbilitySet>   
+        
+<!-- TRAVEL COMMANDS -->
+                            
+        <gmDHD>
+            <Exposed/>
+            <Arg>       INT8    <ArgName>aGateAddress</ArgName></Arg>            <!-- gate address or 0 to request list -->
+        </gmDHD>
+        
+        <gmGoto>
+            <Exposed/>
+            <Arg>       WSTRING  <ArgName>aNameOrID</ArgName></Arg>             <!-- string that contains information about where to go -->
+        </gmGoto>
+        
+        <gmSummon>
+            <Exposed/>
+            <Arg>       WSTRING  <ArgName>aNameOrID</ArgName></Arg>             <!-- string that contains information about where to go -->
+        </gmSummon>
+        
+        <gmGotoLocation>
+            <Exposed/>
+            <Arg>       WSTRING  <ArgName>aWorldName</ArgName></Arg>             <!-- string that contains information about where to go -->
+            <Arg>       FLOAT   <ArgName>aX</ArgName></Arg>                     <!-- X location of where to go -->
+            <Arg>       FLOAT   <ArgName>aY</ArgName></Arg>                     <!-- Y Location of where to go -->
+            <Arg>       FLOAT   <ArgName>aZ</ArgName></Arg>                     <!-- Z Location of where to go -->
+        </gmGotoLocation>
+
+        <gmGotoXYZ>
+            <Exposed/>
+            <Arg>       FLOAT   <ArgName>aX</ArgName></Arg>                     <!-- X location of where to go -->
+            <Arg>       FLOAT   <ArgName>aY</ArgName></Arg>                     <!-- Y Location of where to go -->
+            <Arg>       FLOAT   <ArgName>aZ</ArgName></Arg>                     <!-- Z Location of where to go -->
+        </gmGotoXYZ>
+
+        <gmReloadOrganizations>
+            <Exposed/>
+        </gmReloadOrganizations>
+        
+        <gmReloadInventory>
+            <Exposed/>
+        </gmReloadInventory>
+        
+        <gmUsers>
+            <Exposed/>
+        </gmUsers>
+        
+        <gmSetHideGM>
+            <Exposed/>
+            <Arg>       UINT8   <ArgName>bTurnOn</ArgName></Arg>
+        </gmSetHideGM>
+        
+      <gmPrintStats>
+        <Exposed/>
+        <Arg> WSTRING  <ArgName>aStat</ArgName> </Arg> <!-- string that contains information about who to check -->
+      </gmPrintStats>
+        
+<!-- DEBUG COMMANDS -->
+        <gmDebugAbility>
+        <Exposed/>
+            <Arg>   INT32       <ArgName>aAbilityId</ArgName></Arg> <!-- Ability Id -->
+        </gmDebugAbility>   
+        
+        <gmDebugCombat>
+        <Exposed/>
+        </gmDebugCombat>
+        
+        <gmDebugCombatVerbose>
+        <Exposed/>
+        </gmDebugCombatVerbose>
+        
+        <gmDebugHeal>
+        <Exposed/>
+        </gmDebugHeal>
+        
+        <gmDebugStartMinigame>
+            <Exposed/>
+            <Arg>       INT32               <ArgName>aGameId</ArgName></Arg>
+        </gmDebugStartMinigame>
+
+        <gmDebugSpectateMinigame>
+            <Exposed/>
+        </gmDebugSpectateMinigame>
+
+        <gmDebugJoinMinigame>
+            <Exposed/>
+        </gmDebugJoinMinigame>
+
+        <gmDebugAbilityOnMob>
+        <Exposed/>
+            <Arg>       INT32       <ArgName>AbilityID</ArgName></Arg> <!-- Ability ID to toggle debugging on -->
+        </gmDebugAbilityOnMob>
+
+        <gmDebugBehaviorsOnMob>
+            <Exposed/>
+        </gmDebugBehaviorsOnMob>
+
+        <gmDebugPathsOnMob>
+            <Exposed/>
+        </gmDebugPathsOnMob>
+
+        <gmDebugEvents>
+        <Exposed/>
+            <Arg>       INT32       <ArgName>TargetId</ArgName></Arg>  <!-- Target Entity Id for toggling event debugging -->
+            <Arg>       INT32       <ArgName>InformLevel</ArgName></Arg>  <!-- Level of information about events 1 = Throwing an Event  2 = Receiving an Event  3 = Either -->
+        </gmDebugEvents>
+
+        <gmDebugMobData>  
+        <Exposed/>
+            <Arg>        INT32        <ArgName>aSpaceID</ArgName></Arg>    <!-- spaceID, 0 for current -->
+            <Arg>        INT32        <ArgName>aTargetID</ArgName></Arg>    <!-- mobID, 0 for all -->
+        </gmDebugMobData>   
+
+        <gmDebugInteract>
+            <Exposed/>
+        </gmDebugInteract>  
+        
+        <gmEmitBehaviorEventOnMob>
+            <Exposed/>
+            <Arg>        INT32        <ArgName>aBehaviorEventId</ArgName></Arg>    <!-- ID of the behavior event to emit -->
+        </gmEmitBehaviorEventOnMob>
+
+        <gmAddBehaviorEventSet>
+            <Exposed/>
+            <Arg>        INT32        <ArgName>aBehaviorEventSetId</ArgName></Arg>    <!-- ID of the behavior event to emit -->
+        </gmAddBehaviorEventSet>
+
+        <gmRemoveBehaviorEventSet>
+            <Exposed/>
+            <Arg>        INT32        <ArgName>aBehaviorEventSetId</ArgName></Arg>    <!-- ID of the behavior event to emit -->
+        </gmRemoveBehaviorEventSet>
+
+<!-- MISC COMMANDS -->
+
+        <gmSpawnByCmd>
+            <Exposed/>
+            <Arg>       WSTRING		<ArgName>DesignId</ArgName></Arg> <!-- DesignId of the mob to spawn -->
+            <Arg>       FLOAT       <ArgName>XOffset</ArgName></Arg>
+            <Arg>       FLOAT       <ArgName>ZOffset</ArgName></Arg>
+        </gmSpawnByCmd>  
+          
+        <gmDespawnByCmd>
+            <Exposed/>
+            <Arg>       INT32      <ArgName>TargetID</ArgName></Arg> <!-- entity ID of the mob to despawn -->
+        </gmDespawnByCmd> 
+        <gmRechargeItem>
+            <Exposed/>
+            <Arg>       INT32      <ArgName>ItemId</ArgName></Arg> <!-- entity ID of the mob to despawn -->
+        </gmRechargeItem> 
+        
+        <gmSetMobAttribute>
+            <Exposed/>
+            <Arg>       INT32		<ArgName>TargetID</ArgName></Arg> <!-- entity ID of the mob to despawn -->
+            <Arg>       WSTRING		<ArgName>Attribute</ArgName></Arg> <!-- Attribute of the mob to alter -->
+            <Arg>       WSTRING		<ArgName>AttributeType</ArgName></Arg> <!-- Value to set the attribute to -->
+            <Arg>       INT32		<ArgName>Value</ArgName></Arg> <!-- Value to set the attribute to -->
+        </gmSetMobAttribute> 
+        
+         <gmRespawn>
+            <Exposed/>
+        </gmRespawn>  
+        
+        <gmKillTarget>
+            <Exposed/>
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Id of the target to kill -->
+        </gmKillTarget>                 
+        
+        <debugMinigameComplete>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>ResultCode</ArgName></Arg> <!-- minigame result enum -->
+        </debugMinigameComplete>
+        
+        <gmGiveMinigameContact>
+            <Exposed/>
+            <Arg>       WSTRING		<ArgName>ContactId</ArgName></Arg> <!-- can be an internal name or id number -->
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Target to give contact to -->
+        </gmGiveMinigameContact>
+        
+        <gmRemoveMinigameContact>
+            <Exposed/>
+            <Arg>       WSTRING		<ArgName>ContactId</ArgName></Arg> <!-- can be an internal name or id number -->
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Target to remove contact from -->
+        </gmRemoveMinigameContact>
+
+        <gmGiveStargateAddress>
+            <Exposed/>
+            <Arg>       WSTRING		<ArgName>AddressId</ArgName></Arg> <!-- can be an internal name or id number -->
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Target to give contact to -->
+            <Arg>       UINT8       <ArgName>Hidden</ArgName></Arg> <!-- Is the address listed in their address book? -->
+        </gmGiveStargateAddress>
+
+        <gmRemoveStargateAddress>
+            <Exposed/>
+            <Arg>       WSTRING		<ArgName>AddressId</ArgName></Arg> <!-- can be an internal name or id number -->
+            <Arg>       INT64       <ArgName>TargetId</ArgName></Arg> <!-- Target to remove contact from -->
+        </gmRemoveStargateAddress>
+        
+        <loadConstants>
+            <Exposed/>
+        </loadConstants>
+        
+        <loadAbility>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aAbilityId   </ArgName>    </Arg>
+        </loadAbility>
+        
+        <loadNACSI>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aNACSIId   </ArgName>    </Arg>
+        </loadNACSI>
+        
+        <loadAbilitySet>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aAbilitySetId  </ArgName>    </Arg>
+        </loadAbilitySet>
+        
+        <loadBehavior>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aBehaviorEventSetId  </ArgName>    </Arg>
+        </loadBehavior>
+        
+        <loadMOB>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aMobId  </ArgName>    </Arg>
+        </loadMOB>
+        
+        <loadDialogSet>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aDialogSetId  </ArgName>    </Arg>
+        </loadDialogSet>
+        
+        <loadItem>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aItemId  </ArgName>    </Arg>
+        </loadItem>
+        
+        <loadMission>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aMissionId  </ArgName>    </Arg>
+        </loadMission>
+        
+        <setMobVariable>
+            <Exposed/>
+            <Arg>    INT32    <ArgName>    aVariable    </ArgName>    </Arg>
+            <Arg>    INT32    <ArgName>    aValue       </ArgName>    </Arg>
+        </setMobVariable>
+        
+        <enterErrorAIState>
+            <Exposed/>
+        </enterErrorAIState>
+        
+        <exitErrorAIState>
+            <Exposed/>
+        </exitErrorAIState>
+
+	<gmPerfStatsByChannel>
+		<Exposed/>
+		<Arg> INT8 <ArgName>aOnOff</ArgName></Arg>
+	</gmPerfStatsByChannel>
+
+	<gmShowInstanceFlag>
+		<Exposed/>
+		<Arg> INT32 <ArgName>aFlagNumber</ArgName></Arg>
+	</gmShowInstanceFlag>
+
+	<gmSetInstanceFlag>
+		<Exposed/>
+		<Arg> INT32 <ArgName>aFlagNumber</ArgName></Arg>
+		<Arg> INT8 <ArgName>aFlagValue</ArgName></Arg>
+	</gmSetInstanceFlag>
+
+	<gmShowNavigation>
+		<Exposed/>
+		<Arg> INT8 <ArgName>aOnOff</ArgName></Arg>
+	</gmShowNavigation>
+        
+<!-- TEST COMMANDS -->
+        <!-- mendsley: 3/14/2006 -->
+        <!-- Tells a lootable entity to spawn loot -->
+        <spawnEntityLoot>
+          <Exposed/>
+          <Arg>             INT32       </Arg> <!-- The lootable entity to spawn loot -->
+          <Arg>             LootTableID </Arg> <!-- The loottable ID to roll on the entity -->
+        </spawnEntityLoot>
+      
+        <despawnMob>
+            <Exposed/>
+            <Arg>        INT32        </Arg>    <!-- Mob EntityID -->
+        </despawnMob>
+        <activateSpawnSet>
+            <Exposed/>
+            <Arg>        INT32        </Arg>    <!-- SpawnSet EntityID -->
+        </activateSpawnSet>
+        <deactivateSpawnSet>
+            <Exposed/>
+            <Arg>        INT32        </Arg>    <!-- SpawnSet EntityID -->
+        </deactivateSpawnSet>
+        
+        <!-- Command to test LOS -->
+        <testLOS>
+            <Exposed/>
+            <Arg>       INT32        <ArgName>aSourceEntityID</ArgName></Arg> <!-- Source EntityID -->
+            <Arg>       INT32        <ArgName>aTargetEntityID</ArgName></Arg> <!-- Target EntityID -->
+        </testLOS>
+        
+        <!-- Command to toggle combat LOS testing -->
+        <toggleCombatLOS>
+            <Exposed/>
+        </toggleCombatLOS>
+        
+        <!-- Command to track a mob AI state-->
+        <trackMob>
+            <Exposed/>
+        </trackMob>
+        
+        <onXRayEyes>
+            <Exposed/>
+            <Arg>       UINT8 <ArgName>bTurnOn</ArgName></Arg>
+        </onXRayEyes>
+    
+        <onInvisible>
+            <Exposed/>
+            <Arg>       UINT8 <ArgName>bTurnOn</ArgName></Arg>
+        </onInvisible>
+    
+        <onPhysics>
+            <Exposed/>
+            <Arg>    UINT8 <ArgName>bTurnOn</ArgName></Arg>
+        </onPhysics>
+
+        <sendGMShout>
+            <Exposed/>
+            <Arg> UINT8 <ArgName> isGlobal </ArgName></Arg> <!-- True for all, false for this space -->
+            <Arg> WSTRING <ArgName> Text </ArgName></Arg> <!-- Text to send to all players -->
+        </sendGMShout>
+
+        <regenerateCoverLinks>
+            <Exposed/>
+            <Arg>  FLOAT  <ArgName> aNormalLimit </ArgName> </Arg>
+            <Arg>  UINT32 <ArgName> aMaxLinks    </ArgName> </Arg>
+            <Arg>  FLOAT  <ArgName> aMaxDistance </ArgName> </Arg>
+        </regenerateCoverLinks>
+
+        <changeCoverWeight>
+            <Exposed/>
+            <Arg>  FLOAT  <ArgName> aDistanceWeight  </ArgName> </Arg>
+            <Arg>  FLOAT  <ArgName> aDefCoverWeight  </ArgName> </Arg>
+            <Arg>  FLOAT  <ArgName> aOffCoverWeight  </ArgName> </Arg>
+            <Arg>  FLOAT  <ArgName> aMoveWeight      </ArgName> </Arg>
+            <Arg>  FLOAT  <ArgName> aCrossPathWeight </ArgName> </Arg>
+            <Arg>  FLOAT  <ArgName> aCoverWeight     </ArgName> </Arg>
+        </changeCoverWeight>
+
+        <changeCoverStanceWeight>
+            <Exposed/>
+            <Arg>  WSTRING <ArgName> aStanceName      </ArgName> </Arg>
+            <Arg>  WSTRING <ArgName> aDistanceWeight  </ArgName> </Arg>
+            <Arg>  WSTRING <ArgName> aDefCoverWeight  </ArgName> </Arg>
+            <Arg>  WSTRING <ArgName> aOffCoverWeight  </ArgName> </Arg>
+            <Arg>  WSTRING <ArgName> aMoveWeight      </ArgName> </Arg>
+            <Arg>  WSTRING <ArgName> aCrossPathWeight </ArgName> </Arg>
+            <Arg>  WSTRING <ArgName> aCoverWeight     </ArgName> </Arg>
+        </changeCoverStanceWeight>
+
+    </CellMethods>
+    
+    <BaseMethods>
+        <spawnByCmd>
+            <Arg>       WSTRING		<ArgName>DesignId</ArgName></Arg> <!-- DesignId of the mob to spawn -->
+            <Arg>       VECTOR3     <ArgName>Position</ArgName></Arg> <!-- Optional x offset for spawn -->
+        </spawnByCmd>    
+
+        <sendGMShout>
+            <Arg> UINT8		<ArgName> ChannelID </ArgName></Arg> <!-- What channel to shout on... -->
+            <Arg> UINT8		<ArgName> BroadcastScope </ArgName></Arg> <!-- Scope of broadcast -->
+            <Arg> INT32		<ArgName> SpaceID </ArgName></Arg>    <!-- spaceID -->
+            <Arg> WSTRING	<ArgName> Text </ArgName></Arg> <!-- Text to send to all players -->
+        </sendGMShout>
+
+        <loadConstants>
+        </loadConstants>
+        
+        <!-- GM Commands -->
+        <gmSummon>
+            <Arg> WSTRING <ArgName>aPlayerName</ArgName></Arg> <!-- Name of the player you're looking for... -->
+            <Arg> WSTRING <ArgName>aWorldName</ArgName></Arg>
+            <Arg> WSTRING <ArgName>aAreaKey</ArgName></Arg>
+            <Arg> VECTOR3 <ArgName>aTargetLoc</ArgName></Arg>
+            <Arg> VECTOR3 <ArgName>aTargetDir</ArgName></Arg>
+        </gmSummon>
+        
+        <gmGoto>
+            <Arg> WSTRING <ArgName>aPlayerName</ArgName></Arg> <!-- Name of the player you're looking for... -->
+        </gmGoto>
+        
+    <gmShowMobCount>
+        <Arg>       WSTRING      <ArgName>aAreaKey</ArgName></Arg> <!-- entity ID of the mob to despawn -->
+    </gmShowMobCount> 
+
+    <gmUsers>
+    </gmUsers>
+
+    <gmSetHideGM>
+        <Arg>       UINT8   <ArgName>bTurnOn</ArgName></Arg>
+    </gmSetHideGM>
+    
+    </BaseMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

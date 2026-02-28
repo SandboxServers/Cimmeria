@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="Castle_CellBlock.FindAmbernol" Type="Mission" NextId="40">
+	<Node Id="1" Ref="Event_EntityInteract" X="-1643" Y="-667">
+		<Property Name="Comment" Value="Get ambernol"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="ArmYourself_AmbernolVial"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Act_GiveItems" X="-1157" Y="-719">
+		<Property Name="Bag" Value="0"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="19"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Added" Flags="0"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Act_AdvanceMission" X="-1151" Y="-822">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="639"/>
+		<Property Name="Step Id" Value="2144"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step" Flags="0"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Node Id="5" Ref="Act_GetMissionStep" X="-1381" Y="-772">
+		<Property Name="Comment" Value="Retrieve ambernol"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="639"/>
+		<Property Name="Step Id" Value="2145"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Started" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Node Id="6" Ref="Act_GetEntity" X="-826" Y="-761">
+		<Property Name="Comment" Value="Ambernol"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Tag" Value="ArmYourself_AmbernolVial"/>
+		<Property Name="Template Tag" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Entity Id" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="Found" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Tag" Flags="0"/>
+		<Port Name="Template Tag" Flags="0"/>
+	</Node>
+	<Node Id="7" Ref="Act_Despawn" X="-641" Y="-730">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Despawned" Flags="0"/>
+		<Port Name="Entity" Flags="2"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+	</Node>
+	<Node Id="8" Ref="Act_GetEntity" X="-827" Y="-619">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Tag" Value="ArmYourself_PrisonerRetrievalUnit"/>
+		<Property Name="Template Tag" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Entity Id" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="Found" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Tag" Flags="0"/>
+		<Port Name="Template Tag" Flags="0"/>
+	</Node>
+	<Node Id="9" Ref="Act_UpdateProperty" X="-649" Y="-622">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Aggression" Flags="0"/>
+		<Port Name="Alignment" Flags="0"/>
+		<Port Name="Archetype" Flags="0"/>
+		<Port Name="Body Set" Flags="0"/>
+		<Port Name="Entity" Flags="2"/>
+		<Port Name="Event Set" Flags="0"/>
+		<Port Name="Faction" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Interaction Type" Flags="0"/>
+		<Port Name="Level" Flags="0"/>
+		<Port Name="Name" Flags="0"/>
+		<Port Name="Name Id" Flags="0"/>
+		<Port Name="Static Mesh" Flags="0"/>
+		<Port Name="Successful" Flags="0"/>
+		<Port Name="Visible" Flags="0"/>
+	</Node>
+	<Node Id="10" Ref="Var_Int" X="-865" Y="-436">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Global Variable" Value="false"/>
+		<Property Name="Persistent" Value="false"/>
+		<Property Name="Value" Value="1"/>
+		<Property Name="Variable Name" Value="AGGRESSION_HOSTILE"/>
+		<Port Name="Set" Flags="0"/>
+		<Port Name="Value" Flags="0"/>
+	</Node>
+	<Node Id="11" Ref="Act_Dialog" X="-818" Y="-965">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Dialog Set" Value="2297"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Dialog Set" Flags="1"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="NPC" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Node Id="12" Ref="Event_Item" X="-1634" Y="-205">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design Id" Value="19"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Event" Value="5"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Port Name="Bag" Flags="0"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Out" Flags="2"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Quantity" Flags="0"/>
+		<Port Name="Slot" Flags="0"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="14" Ref="Act_RemoveItems" X="-1212" Y="-23">
+		<Property Name="Bag" Value="2"/>
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Design" Value="19"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Quantity" Value="1"/>
+		<Port Name="Bag" Flags="1"/>
+		<Port Name="Design" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Item Id" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Quantity" Flags="0"/>
+		<Port Name="Removed" Flags="0"/>
+	</Node>
+	<Node Id="17" Ref="Event_Dead" X="-1210" Y="-263">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Property Name="Tag" Value="ArmYourself_PrisonerRetrievalUnit"/>
+		<Property Name="Template Name" Value=""/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="19" Ref="Act_Sequence" X="-992" Y="-596">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Impact Time" Value="0"/>
+		<Property Name="Instance Id" Value="0"/>
+		<Property Name="Primary Target" Value="true"/>
+		<Property Name="Sequence Id" Value="10001"/>
+		<Property Name="View Type" Value="0"/>
+		<Property Name="Visible to Source" Value="true"/>
+		<Property Name="Visible to Target" Value="true"/>
+		<Property Name="Visible to Witnesses" Value="true"/>
+		<Port Name="Impact Time" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Instance Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Primary Target" Flags="0"/>
+		<Port Name="Sequence Id" Flags="0"/>
+		<Port Name="Source" Flags="2"/>
+		<Port Name="Target" Flags="0"/>
+	</Node>
+	<Node Id="25" Ref="Event_GenericRegion" X="-1645" Y="-964">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Tag" Value="Castle_Cellblock.Region11"/>
+		<Port Name="Entered" Flags="0"/>
+		<Port Name="Invoker" Flags="0"/>
+		<Port Name="Left" Flags="0"/>
+		<Port Name="Region Id" Flags="0"/>
+	</Node>
+	<Node Id="26" Ref="Act_AdvanceMission" X="-1177" Y="-966">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="639"/>
+		<Property Name="Step Id" Value="2145"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step" Flags="0"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Node Id="27" Ref="Act_GetMissionStep" X="-1410" Y="-965">
+		<Property Name="Comment" Value="Look 4 ambernol"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="639"/>
+		<Property Name="Step Id" Value="2117"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Started" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Node Id="30" Ref="Act_AdvanceMission" X="-1052" Y="-278">
+		<Property Name="Comment" Value="Use ambernol"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="639"/>
+		<Property Name="Step Id" Value="2343"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step" Flags="0"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Node Id="32" Ref="Act_GetMissionStep" X="-1427" Y="-120">
+		<Property Name="Comment" Value="use ambernol"/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="639"/>
+		<Property Name="Step Id" Value="2343"/>
+		<Port Name="Active" Flags="0"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Not Started" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+		<Port Name="Step Id" Flags="0"/>
+	</Node>
+	<Node Id="33" Ref="Act_UpdateMission" X="-932" Y="-116">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="639"/>
+		<Port Name="Abandon" Flags="0"/>
+		<Port Name="Accept" Flags="0"/>
+		<Port Name="Complete" Flags="0"/>
+		<Port Name="Fail" Flags="0"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Node Id="34" Ref="Act_UpdateMission" X="-768" Y="-65">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="640"/>
+		<Port Name="Abandon" Flags="0"/>
+		<Port Name="Accept" Flags="0"/>
+		<Port Name="Complete" Flags="0"/>
+		<Port Name="Fail" Flags="0"/>
+		<Port Name="Mission Id" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="2"/>
+	</Node>
+	<Connection OutNode="1" OutPort="Player" InNode="3" InPort="Player"/>
+	<Connection OutNode="1" OutPort="Player" InNode="4" InPort="Player"/>
+	<Connection OutNode="1" OutPort="Player" InNode="5" InPort="Player"/>
+	<Connection OutNode="1" OutPort="Out" InNode="5" InPort="In"/>
+	<Connection OutNode="5" OutPort="Active" InNode="3" InPort="In"/>
+	<Connection OutNode="3" OutPort="Added" InNode="6" InPort="In"/>
+	<Connection OutNode="6" OutPort="Found" InNode="7" InPort="In"/>
+	<Connection OutNode="6" OutPort="Entity" InNode="7" InPort="Entity"/>
+	<Connection OutNode="3" OutPort="Added" InNode="8" InPort="In"/>
+	<Connection OutNode="8" OutPort="Found" InNode="9" InPort="In"/>
+	<Connection OutNode="8" OutPort="Entity" InNode="9" InPort="Entity"/>
+	<Connection OutNode="10" OutPort="Value" InNode="9" InPort="Aggression"/>
+	<Connection OutNode="3" OutPort="Added" InNode="11" InPort="In"/>
+	<Connection OutNode="1" OutPort="Player" InNode="11" InPort="Player"/>
+	<Connection OutNode="12" OutPort="Player" InNode="14" InPort="Player"/>
+	<Connection OutNode="3" OutPort="Added" InNode="19" InPort="In"/>
+	<Connection OutNode="1" OutPort="Player" InNode="19" InPort="Source"/>
+	<Connection OutNode="1" OutPort="Player" InNode="19" InPort="Target"/>
+	<Connection OutNode="25" OutPort="Entered" InNode="27" InPort="In"/>
+	<Connection OutNode="25" OutPort="Invoker" InNode="27" InPort="Player"/>
+	<Connection OutNode="27" OutPort="Active" InNode="26" InPort="Step"/>
+	<Connection OutNode="25" OutPort="Invoker" InNode="26" InPort="Player"/>
+	<Connection OutNode="5" OutPort="Active" InNode="4" InPort="Step"/>
+	<Connection OutNode="17" OutPort="Out" InNode="30" InPort="Step"/>
+	<Connection OutNode="12" OutPort="Out" InNode="32" InPort="In"/>
+	<Connection OutNode="12" OutPort="Player" InNode="32" InPort="Player"/>
+	<Connection OutNode="32" OutPort="Active" InNode="14" InPort="In"/>
+	<Connection OutNode="33" OutPort="Out" InNode="34" InPort="Accept"/>
+	<Connection OutNode="12" OutPort="Player" InNode="34" InPort="Player"/>
+	<Connection OutNode="12" OutPort="Player" InNode="33" InPort="Player"/>
+	<Connection OutNode="32" OutPort="Active" InNode="33" InPort="Complete"/>
+	<Connection OutNode="1" OutPort="Player" InNode="30" InPort="Player"/>
+	<Comment Id="0" Text="Vial item pickup (after 329 conversation)" X="-1668" Y="-1011" Width="1239" Height="657" Color="0"/>
+	<Comment Id="0" Text="Player uses Ambernol vial" X="-1659" Y="-337" Width="1153" Height="426" Color="0"/>
+	<Node Id="39" Ref="Act_GenerateThreat" X="-447" Y="-603">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Threat Level" Value="1000"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="In" Flags="2"/>
+		<Port Name="Instigator" Flags="2"/>
+		<Port Name="Successful" Flags="0"/>
+		<Port Name="Target" Flags="2"/>
+		<Port Name="Threat Level" Flags="0"/>
+	</Node>
+	<Connection OutNode="9" OutPort="Successful" InNode="39" InPort="In"/>
+	<Connection OutNode="8" OutPort="Entity" InNode="39" InPort="Target"/>
+	<Connection OutNode="1" OutPort="Player" InNode="39" InPort="Instigator"/>
+</Script>

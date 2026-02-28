@@ -1,0 +1,191 @@
+<root>
+
+    <Properties>
+        <!-- The set of missions and their progress -->
+        <missions>
+            <Type>       PYTHON         </Type>
+            <Default>    {}             </Default>
+            <Flags>      CELL_PRIVATE   </Flags>
+        </missions>
+        
+        <!-- Public mission data is what mission data needs to be propagated to other cells -->
+        <!-- This array contains tuples in the form: (MissionId, CurrentStep(1 based)) -->
+        <publicMissionData>
+            <Type>      ARRAY<of>PYTHON</of></Type>
+            <Default>   []                  </Default>
+            <Flags>     CELL_PUBLIC         </Flags>
+        </publicMissionData>
+        
+        <!-- The set of mission the missionary has completed -->
+        <!-- This array contains tuples in the form: (MissionId, NumberOfCompletions) -->
+        <completedMissions>
+            <Type>       ARRAY<of>PYTHON</of></Type>
+            <Default>    []                  </Default>
+            <Flags>      CELL_PUBLIC         </Flags>
+        </completedMissions>
+        
+        <!-- currentMissionLoot contains lists of loot tables for mob IDs, used to generate mission items -->
+        <currentMissionLoot>
+            <Type>      PYTHON          </Type>
+            <Default>   {}              </Default>
+            <Flags>     CELL_PRIVATE     </Flags>
+        </currentMissionLoot>
+        
+        <!-- When True, the missionary will print all updates of the mission -->
+        <bShowMissionDebug>
+            <Type>      INT8            </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </bShowMissionDebug>
+
+        <!-- stores queued data to be run when mission instances become unlocked -->
+        <missionProcessQueue>
+            <Type>      PYTHON          </Type>
+            <Default>   {}              </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </missionProcessQueue>
+
+        <!-- stores pending new mission accepts -->
+        <pendingMissionAccepts>
+            <Type>    ARRAY <of> INT32 </of>    </Type>
+            <Flags>   CELL_PRIVATE              </Flags>
+        </pendingMissionAccepts>
+        
+        <!-- stores Data for missions currently pending acceptance from shared missions -->
+        <pendingMissionShares>
+            <Type>      PYTHON          </Type>
+            <Default>   {}              </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </pendingMissionShares>
+        
+    </Properties>
+    
+    <ClientMethods>
+        
+        <!-- Inform the client that a mission has updated -->
+        <onMissionUpdate>
+            <Arg>   INT32           <ArgName>MissionID</ArgName></Arg>
+            <Arg>   INT8            <ArgName>Status</ArgName></Arg>
+            <Arg>   INT32           <ArgName>MissionGiverName</ArgName></Arg>
+        </onMissionUpdate>
+        
+        <!-- Inform the client that a step has updated -->
+        <onStepUpdate>
+            <Arg>   INT32           <ArgName>StepID</ArgName></Arg>
+            <Arg>   INT8            <ArgName>Status</ArgName></Arg>
+        </onStepUpdate>
+        
+        <!-- Inform the client that a objective has updated -->
+        <onObjectiveUpdate>
+            <Arg>   INT32           <ArgName>ObjectiveID</ArgName></Arg>
+            <Arg>   INT8            <ArgName>Status</ArgName></Arg>
+            <Arg>   INT8            <ArgName>Hidden</ArgName></Arg>
+            <Arg>   INT8            <ArgName>Optional</ArgName></Arg>
+        </onObjectiveUpdate>
+        
+        <!-- Inform the client that a task has updated -->
+        <onTaskUpdate>
+            <Arg>   INT32           <ArgName>TaskID</ArgName></Arg>
+            <Arg>   INT8            <ArgName>Status</ArgName></Arg>
+            <Arg>   INT32           <ArgName>Count</ArgName></Arg>
+        </onTaskUpdate>
+        
+        <offerSharedMission>
+            <Arg>   INT32           <ArgName>MissionId</ArgName></Arg>
+        </offerSharedMission>
+        
+    </ClientMethods>
+    
+    <CellMethods>
+    
+        <!-- Abandon mission -->
+        <abandonMission>
+            <Exposed/>
+            <Arg>   INT32           <ArgName>MissionID</ArgName></Arg>  <!-- ID of the Mission Def -->
+        </abandonMission>
+        
+        <shareMission>
+            <Exposed/>
+            <Arg>   INT32           <ArgName>MissionID</ArgName></Arg>  <!-- ID of the Mission Def -->
+        </shareMission>
+        
+        <shareMissionOffer>
+            <Arg>   INT32           <ArgName>MissionID</ArgName></Arg>  <!-- ID of the Mission Def -->
+            <Arg>   MAILBOX           <ArgName>SenderBaseMailbox</ArgName></Arg>  <!-- base mailbox of the sender -->
+            <Arg>   INT32           <ArgName>MissionGiverID</ArgName></Arg>  <!-- mobID of the mission giver -->
+        </shareMissionOffer>
+        
+        <shareMissionResponse>
+            <Exposed/>
+            <Arg>   INT8           <ArgName>Choice</ArgName></Arg>  <!-- Did they accept or decline the mission? -->
+        </shareMissionResponse>
+        
+        <requestAbandonMission>
+            <Arg>   INT32           <ArgName>MissionID</ArgName></Arg>  <!-- ID of the Mission Def -->
+        </requestAbandonMission>
+              
+        <missionAssign>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>  
+            <Arg>    WSTRING  <ArgName>DesignID</ArgName></Arg>
+            <Arg>    UINT8   <ArgName>DisplayPopup</ArgName></Arg>
+        </missionAssign>
+
+        <missionClear>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+          	<Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+        </missionClear>
+
+        <missionClearActive>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+        </missionClearActive>
+
+        <missionClearHistory>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+        </missionClearHistory>
+
+        <missionList>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+        </missionList>
+
+        <missionListFull>
+        </missionListFull>
+
+        <missionDetails>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+          	<Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+        </missionDetails>
+
+        <missionAdvance>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+          	<Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+          	<Arg>    INT32     <ArgName>StepToAdvanceTo</ArgName></Arg>
+        </missionAdvance>
+
+        <missionReset>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+          	<Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+          	<Arg>    INT32    <ArgName>StepToAdvanceTo</ArgName></Arg>
+        </missionReset>
+
+        <missionComplete>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+          	<Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+          	<Arg>    INT8      <ArgName>TurnIn</ArgName></Arg>
+        </missionComplete>
+
+        <missionSetAvailable>
+        	<Arg>	 MAILBOX <ArgName>aCaller</ArgName></Arg>
+            <Arg>    WSTRING    <ArgName>DesignID</ArgName></Arg>
+        </missionSetAvailable>
+
+        <remoteMissionEvent>
+            <Arg>    INT32    </Arg> <!-- entity id -->
+            <Arg>    PYTHON   </Arg> <!-- event -->
+        </remoteMissionEvent>
+
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+</root>

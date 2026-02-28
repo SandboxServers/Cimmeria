@@ -1,0 +1,310 @@
+<root>
+
+    <Properties>
+        <warmupTimer>
+            <Type>          PYTHON              </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       {}                  </Default>
+        </warmupTimer>
+        
+        <bIsWarmingUp>
+            <Type>          INT8                </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       FALSE               </Default>
+        </bIsWarmingUp>
+
+        <!-- Time of when the last warmup interrupt was checked -->
+        <lastWarmUpInterruptTime>
+            <Type>          FLOAT           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </lastWarmUpInterruptTime>
+        
+        <!-- Runtime params for the warming up ability -->
+        <warmUpRuntimeParams>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </warmUpRuntimeParams>
+    
+        <pulsedEffects>
+                <Type>      PYTHON              </Type>
+                <Default>   []                  </Default>
+                <Flags>     CELL_PRIVATE        </Flags>
+        </pulsedEffects>
+
+        <durationEffects>
+                <Type>      PYTHON              </Type>
+                <Default>   []                  </Default>
+                <Flags>     CELL_PRIVATE        </Flags>
+        </durationEffects>
+        
+        <abilityAdjustments>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </abilityAdjustments>
+        
+        <abilityCooldowns>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </abilityCooldowns>
+        
+        <categoryCooldowns>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </categoryCooldowns>
+    
+        <!-- turns on or off incoming damage -->
+        <bDmgOff>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </bDmgOff> 
+        
+        <!-- turns on or off god mode -->
+        <bGodMode>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </bGodMode> 
+        
+        <!-- turns on or off infinite ammo -->
+        <bInfiniteAmmo>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </bInfiniteAmmo> 
+    
+        <!-- turns on or off ignore health -->
+        <bIgnoreHealth>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </bIgnoreHealth> 
+    
+        <!-- turns on or off ignore focus -->
+        <bIgnoreFocus>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </bIgnoreFocus> 
+        
+        <!-- turns on or off NoAggro mode -->
+        <bNoAggro>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </bNoAggro>
+    
+        <!-- Turns on or off combat debug (QR) information -->
+        <bCombatDebug>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE      </Flags>
+        </bCombatDebug>
+    
+        <bCombatVerboseDebug>
+            <Type>          INT8            </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE      </Flags>
+        </bCombatVerboseDebug>
+        
+        <!-- Lists of Abilities and Effects we are currently interested in debugging -->
+        <debugAbilityList>
+            <Type>          ARRAY <of>INT32</of>    </Type>
+            <Default>       []                      </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </debugAbilityList>
+        
+        <debugEffectList>
+            <Type>          ARRAY <of>INT32</of>    </Type>
+            <Default>       []                      </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </debugEffectList>
+        
+        <debugAbilityLevel>
+            <Type>          INT32    </Type>
+            <Default>       1                       </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </debugAbilityLevel>
+    
+        <!-- target id for who should receive ability action/cond feedback -->
+        <debugAbilityTargetID>
+            <Type>          INT32    </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </debugAbilityTargetID>
+    
+        <!-- Stores an ability timer id, and an ability id for the currently channeled ability -->
+        <channeledAbilityData>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </channeledAbilityData>
+                
+        <channeledData>
+            <Type>          PYTHON           </Type>
+            <Default>       {}               </Default>
+            <Flags>         CELL_PRIVATE     </Flags>
+        </channeledData>
+
+        <lastChannelInterruptTime>
+            <Type>          FLOAT           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </lastChannelInterruptTime>
+        
+        <effectComponents>
+            <Type>          ARRAY<of>PYTHON</of>    </Type>
+            <Default>       []                      </Default>
+            <Flags>         CELL_PRIVATE            </Flags>
+        </effectComponents>
+        
+        <!-- array of tuples (entityId, moniker CRC) -->
+        <effectMonikers>
+            <Type>          ARRAY <of> PYTHON </of>   </Type>
+            <Flags>         CELL_PUBLIC               </Flags>
+        </effectMonikers>
+
+        <!-- This sequence id is used to make sure a player has a unique key on
+             every effect they save.  This is initialized to be 1 higher than 
+             current max the player has on them at login.  Each time an effect is
+             saved, this value is incremented by 1.  -->
+        <effectSequenceId>
+            <Type>      INT32               </Type>
+            <Default>   1                   </Default>
+            <Flags>     CELL_PRIVATE        </Flags>
+        </effectSequenceId>    
+        
+        <diminishingReturns>
+            <Type>      PYTHON              </Type>
+            <Default>   {}                  </Default>
+            <Flags>     CELL_PRIVATE        </Flags>
+        </diminishingReturns> 
+        
+        <immuneToEffects>
+            <Type>      INT8          </Type>
+            <Default>   0             </Default>
+            <Flags>     CELL_PRIVATE  </Flags>
+        </immuneToEffects> 
+        
+        <pendingAbilities>
+            <Type>      PYTHON          </Type>
+            <Default>   {}              </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </pendingAbilities>
+        
+    </Properties>
+    
+    <ClientMethods>
+    </ClientMethods>
+    
+    <CellMethods>   
+    
+        <onHealthZeroed>
+            <Arg>       INT32       </Arg>
+            <Arg>       WSTRING     </Arg>
+            <Arg>       WSTRING     </Arg>
+            <Arg>       WSTRING     </Arg>
+        </onHealthZeroed>
+        
+        <!-- Used by other entities to tell this entity to invoke an ability -->
+        <invokeAbility>
+            <Arg>       INT32       <ArgName>aAbilityId</ArgName></Arg> 
+            <Arg>       INT32       <ArgName>aTargetId</ArgName></Arg>  
+            <Arg>       INT32       <ArgName>originatingSubsystemID</ArgName></Arg>
+            <Arg>       PYTHON      <ArgName>aLocation</ArgName></Arg> 
+            <Arg>       PYTHON      <ArgName>userData</ArgName></Arg>
+        </invokeAbility>
+        
+        <resolveAbility>
+            <Arg>       INT32       </Arg>  <!-- Ability ID -->
+            <Arg>       PYTHON      </Arg>  <!-- Invoker's Params for QR System -->
+            <Arg>       PYTHON      </Arg>  <!-- Runtime Params from the Ability User -->
+            <Arg>       UINT8       </Arg>  <!-- Bool, if false then ability velocity will not be used -->
+        </resolveAbility>
+        
+        <resolveEffect>
+            <Arg>       INT32       </Arg>  <!-- Effect ID -->
+            <Arg>       INT32       </Arg>  <!-- Ability ID -->
+            <Arg>       PYTHON      </Arg>  <!-- Runtime Params from the Ability User -->
+            <Arg>       PYTHON      </Arg>  <!-- Attacker vars -->
+            <Arg>       INT32       </Arg>  <!-- Pulse Count -->
+            <Arg>       INT32       </Arg>  <!-- Duration -->
+            <Arg>       INT32       </Arg>  <!-- Caller ID -->
+            <Arg>       PYTHON      </Arg>  <!-- Caller attack vars -->
+        </resolveEffect>
+        
+        <!-- Inform the entity that it got kill credit -->
+        <onKillCredit>
+            <Arg>   INT32       </Arg>  <!-- ID of the entity spec killed -->
+            <Arg>   INT32       </Arg>  <!-- Database ID of the entity -->
+            <Arg>   INT32       </Arg>  <!-- XP award for killing this entity -->
+        </onKillCredit>
+        
+        <!-- Method to toggle combat debug print statements -->
+        <toggleCombatDebug>
+            <Exposed/>
+        </toggleCombatDebug>
+
+        <!-- Method to toggle verbose combat debug print statements -->
+        <toggleCombatVerboseDebug>
+            <Exposed/>
+        </toggleCombatVerboseDebug>
+        
+        <!-- Method to toggle ability debugging -->
+        <toggleAbilityDebugging>
+            <Arg>   INT32       <ArgName>aAbilityId</ArgName></Arg> <!-- Ability Id -->
+        </toggleAbilityDebugging>
+
+        <!-- Set the target of ability debug feedback -->
+        <setAbilityDebugTarget>
+            <Arg>   INT32    </Arg> <!-- player id -->
+        </setAbilityDebugTarget>
+        
+        <!-- resets the ability debug target to self and removes all ability and effect debugging -->
+        <clearAbilityDebug>
+        </clearAbilityDebug>
+       
+        <onStealthChanged>
+            <Arg>    INT32    </Arg> <!-- entity id -->
+            <Arg>    INT32    </Arg> <!-- new canBeSeen bits -->
+        </onStealthChanged>
+
+        <pulseChanneledEffectOnTarget>
+            <Arg>   INT32   </Arg> <!-- Ability Id -->
+            <Arg>   INT32   </Arg> <!-- Effect Id -->
+            <Arg>   PYTHON  </Arg> <!-- RuntimeParams -->
+            <Arg>   PYTHON  </Arg> <!-- AttackerVars -->
+            <Arg>   FLOAT   </Arg> <!-- Time to pulse effect -->
+        </pulseChanneledEffectOnTarget>
+        
+        <setNoAggro>
+            <Arg>    UINT8    </Arg> <!-- Turn on or off? -->
+        </setNoAggro>
+
+        <clearEffectsByMoniker>
+            <Arg>    UINT32    </Arg> <!-- moniker CRC -->
+            <Arg>    INT32     </Arg> <!-- number to remove (0 for all) -->
+            <Arg>    INT32     </Arg> <!-- from source entity (-1 for anyone) -->
+        </clearEffectsByMoniker>
+        
+        <confirmationResponse>
+            <Exposed/>
+            <Arg>   INT32    <ArgName> aEffectId </ArgName> </Arg>
+            <Arg>   UINT8    <ArgName> aAccepted </ArgName> </Arg>
+        </confirmationResponse>
+        
+        <removeEffectById>
+            <Arg>   INT32    </Arg> <!-- Effect Id -->
+        </removeEffectById>
+
+    </CellMethods>
+
+    <BaseMethods>
+    </BaseMethods>
+
+</root>

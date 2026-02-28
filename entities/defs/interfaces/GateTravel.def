@@ -1,0 +1,95 @@
+<root>
+	<Properties>
+	
+        <knownStargateAddresses>
+            <Type>    ARRAY <of>PYTHON</of>       </Type>
+            <Default> []           </Default>
+            <Flags>   CELL_PRIVATE </Flags>
+        </knownStargateAddresses>
+        <oldWorldID>
+            <Type>      INT32           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </oldWorldID>
+        <gateCounter>
+            <Type>      INT32           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </gateCounter>
+        <destinationGate>
+            <Type>      INT32           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </destinationGate>
+        <destinationGateArrivalTime>
+            <Type>      FLOAT           </Type>
+            <Default>   0.0             </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </destinationGateArrivalTime>
+	</Properties>
+
+	<ClientMethods>
+
+	    <setupStargateInfo>
+            <Arg> ARRAY <of> INT32 </of> <ArgName>worldStargateList</ArgName> </Arg>
+            <Arg> ARRAY <of> INT32 </of> <ArgName>knownStargateList</ArgName> </Arg>
+            <Arg> ARRAY <of> INT32 </of> <ArgName>hiddenStargateList</ArgName> </Arg>
+        </setupStargateInfo>
+
+        <updateStargateAddress>
+            <Arg> INT32 <ArgName>addressId</ArgName></Arg>
+            <Arg> UINT8 <ArgName>hasAddress</ArgName></Arg>
+            <Arg> UINT8 <ArgName>hidden</ArgName></Arg>
+        </updateStargateAddress>
+        
+        <stargateRotationOverride>
+            <Arg> FLOAT <ArgName>yaw</ArgName></Arg>
+        </stargateRotationOverride>
+        
+        <onStargatePassage>
+            <Arg> INT32 <ArgName>addressId</ArgName></Arg>
+        </onStargatePassage>
+      
+	</ClientMethods>
+
+	<BaseMethods>
+	
+	    <processSquadLeaderGateTravel>
+	        <Arg>   INT32   <ArgName>id</ArgName></Arg> <!-- id of squad member -->
+	        <Arg>   PYTHON  <ArgName>userData</ArgName></Arg> <!-- user data for gate travel ability -->
+	    </processSquadLeaderGateTravel>
+	    
+	    <processGateTravel>
+	        <Arg>   PYTHON  <ArgName>userData</ArgName></Arg> <!-- user data for gate travel ability -->
+	    </processGateTravel>
+
+    </BaseMethods>
+
+	<CellMethods>
+        
+	    <onDialGate>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>TargetAddressId</ArgName></Arg> <!-- index into ref_stargate -->
+            <Arg>   INT32   <ArgName>SourceAddressId</ArgName></Arg> <!-- index into ref_stargate -->
+        </onDialGate>
+        
+        <giveStargateAddressStr>
+            <Arg>   WSTRING  <ArgName>AddressId</ArgName></Arg>
+            <Arg>   UINT8   <ArgName>Hidden</ArgName></Arg>
+        </giveStargateAddressStr>
+        
+        <removeStargateAddressStr>
+            <Arg>   WSTRING  <ArgName>AddressId</ArgName></Arg>
+        </removeStargateAddressStr>
+      
+        <closeGatesTo>
+            <Arg>   UINT32  <ArgName>AddressId</ArgName></Arg>
+        </closeGatesTo>
+        
+        <processGateTravel>
+            <Arg>   PYTHON  <ArgName>userData</ArgName></Arg>
+        </processGateTravel>
+        
+	</CellMethods>
+	
+</root>

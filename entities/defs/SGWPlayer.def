@@ -1,0 +1,1448 @@
+<?xml version="1.0"?>
+<root>
+    
+    <Parent>SGWBeing</Parent>
+    <Implements>
+        <Interface>Communicator</Interface>
+        <Interface>OrganizationMember</Interface>
+        <Interface>MinigamePlayer</Interface>
+        <Interface>GateTravel</Interface>
+        <Interface>SGWInventoryManager</Interface>
+        <Interface>SGWMailManager</Interface>
+        <Interface>Missionary</Interface>
+        <Interface>SGWPoller</Interface>
+        <Interface>ContactListManager</Interface>
+        <Interface>SGWBlackMarketManager</Interface>
+
+        <Interface>ClientCache</Interface>      <!-- This isn't really logically part of a player, but
+                                                      it needs to be here for technical reasons. -->
+    </Implements>
+
+<!--	Leave this out, otherwise it will overwrite with empty. <Volatile/> -->
+
+    <Properties>
+
+        <!-- The name of this player. -->
+        <playerName>
+            <Type>          WSTRING			</Type>
+            <Flags>         CELL_PUBLIC     </Flags>
+            <Identifier>    true            </Identifier>
+            <Persistent>    true            </Persistent>
+            <DatabaseLength>    64          </DatabaseLength>
+        </playerName>
+        
+        <!-- The first name of this player. -->
+        <extraName>
+            <Type>          WSTRING			</Type>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </extraName>
+        
+        <!-- The account object that this player belongs to. -->
+        <account>
+            <Type>          MAILBOX         </Type>
+            <Flags>         BASE            </Flags>
+        </account>
+
+        <!-- The name of the space this player is in -->
+        <areaName>
+            <Type>          WSTRING			</Type>
+            <Default>       CombatSim       </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </areaName>
+
+        <!-- The Key of the space this player is in -->
+        <areaKey>
+            <Type>          WSTRING			</Type>
+            <Default>       Space 1         </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </areaKey>
+
+        <!-- Current Experience Points into this level -->
+        <experience>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </experience>
+        
+        <trainingPoints>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </trainingPoints>
+        
+        <!-- A list of IDs for abilities that the player knows -->
+        <knownAbilities>
+            <Type>          ARRAY <of>INT32</of>    </Type>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </knownAbilities>
+        
+        <!-- A list of pet ability ids that the player knows -->
+        <knownPetAbilities>
+            <Type>          ARRAY <of>INT32</of>    </Type>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </knownPetAbilities>
+        
+        <pvpFlag>
+            <Type>          INT8                    </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </pvpFlag>
+        
+        <isBankingOverride>
+            <Type>          INT8                    </Type>
+            <Default>       0                       </Default>
+            <Flags>         CELL_PUBLIC             </Flags>
+        </isBankingOverride>
+        
+        <respawnTimerID>
+            <Type>          INT32                          </Type>
+            <Flags>         CELL_PRIVATE                   </Flags>
+        </respawnTimerID>
+
+        <unstuckTimerID>
+            <Type>          INT32                          </Type>
+            <Flags>         CELL_PRIVATE                   </Flags>
+        </unstuckTimerID>
+
+        <rezDebuff>
+            <Type>          INT32                          </Type>
+            <Flags>         CELL_PRIVATE                   </Flags>
+        </rezDebuff>
+        
+        <lastPrimaryUpdateTime>
+            <Type>          INT32                           </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </lastPrimaryUpdateTime>
+        
+        <lastSecondaryUpdateTime>
+            <Type>          INT32                           </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </lastSecondaryUpdateTime>
+
+        <gainLevelLock>
+            <Type>          INT8                            </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </gainLevelLock>
+
+        <currentLoginTime>
+            <Type>          FLOAT                           </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </currentLoginTime>
+        
+        <totalTimePlayed>
+            <Type>          FLOAT                           </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </totalTimePlayed>
+        
+        <timeLastLevelled>
+            <Type>          FLOAT                           </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </timeLastLevelled>
+
+        <timeSpentThisLevel>
+            <Type>          FLOAT                           </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </timeSpentThisLevel>
+        
+        <!-- Current list of who I am interacting with, and how -->
+        <!-- Maps interaction type id (found in enumerations.xml as EInteractionType) to a tuple consisting of (entity id, data) where data is... -->
+            <!-- Training (Trainer Id, ability set) -->
+            <!-- Vending (Vendor Id, Item List Id) -->
+            <!-- Conversation (Entity Id, DialogSetId) -->
+        <interactionList>
+            <Type>          PYTHON                          </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>        {}                             </Default>
+        </interactionList>
+        
+        <interactionTimer>
+            <Type>          INT32                           </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </interactionTimer>
+        
+        <logoutTimer>
+            <Type>          INT32                           </Type>
+            <Flags>         CELL_PRIVATE                    </Flags>
+            <Default>       0                               </Default>
+        </logoutTimer>
+                
+        <queuedAbility>
+            <Type>          INT32            </Type>
+            <Default>       0                </Default>
+            <Flags>         CELL_PRIVATE     </Flags>
+        </queuedAbility>
+
+        <autoCycleTimerID>
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </autoCycleTimerID>
+
+        <playerAvatarSetID>
+            <Type>          INT32            </Type>
+            <Default>       0                </Default>
+            <Flags>         CELL_PRIVATE     </Flags>
+        </playerAvatarSetID>
+        
+        <accessLevel>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </accessLevel>
+        
+        <designerFlags>
+            <Type>          STRING          </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PUBLIC     </Flags>
+        </designerFlags>
+
+        <playerReadyFlags>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </playerReadyFlags>
+
+        <loadTimerID>
+            <Type>          CONTROLLER_ID   </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       0               </Default>
+        </loadTimerID>
+        
+        <!-- Current gate address is a tuple of (Gate Address, bInstance) -->
+        <currentGateAddress>
+            <Type>          PYTHON          </Type>
+            <Flags>         CELL_PRIVATE    </Flags>
+            <Default>       {}               </Default>
+        </currentGateAddress>
+
+        <ImmunityDict>
+            <Type>      PYTHON              </Type>
+            <Default>   {}                  </Default>
+            <Flags>     CELL_PRIVATE        </Flags>
+        </ImmunityDict>
+        
+        <worldinstance>
+            <Type>      PYTHON              </Type>
+            <Default>   {}                  </Default>
+            <Flags>     CELL_PRIVATE        </Flags>    
+        </worldinstance>
+
+        <worldID>
+    		<Type>	INT32 </Type>
+    		<Default> 0 </Default>
+    		<Flags> CELL_PUBLIC </Flags>
+        </worldID>
+                
+        <!-- mendsley: 04/22/2008 - Stores the list of current waypoints for the player -->
+        <currentWaypoints>
+            <Type>    PYTHON       </Type>
+            <Default> {}           </Default>
+            <Flags>   CELL_PRIVATE </Flags>
+        </currentWaypoints>
+        
+        <hasWitness>
+            <Type>      UINT8           </Type>
+            <Default>   0               </Default>
+            <Flags>     CELL_PRIVATE    </Flags>
+        </hasWitness>
+        
+        <bXPOff>
+    	    <Type>      UINT8           </Type>
+    	    <Default>   0               </Default>
+    	    <Flags>     CELL_PRIVATE    </Flags>
+    	</bXPOff>
+        
+        <bInteractDebug>
+    	    <Type>      UINT8           </Type>
+    	    <Default>   0               </Default>
+    	    <Flags>     CELL_PRIVATE    </Flags>
+    	</bInteractDebug>
+
+	<perfStatsByChannel>
+		<Type> UINT8 </Type>
+		<Default> 0 </Default>
+		<Flags> BASE </Flags>
+	</perfStatsByChannel>
+
+        <currentRingTransporterDestination>
+    	    <Type>      PYTHON          </Type>
+    	    <Default>   None            </Default>
+    	    <Flags>     CELL_PRIVATE    </Flags>
+        </currentRingTransporterDestination>
+
+        <pendingRingTeleport>
+    	    <Type>      INT8            </Type>
+    	    <Default>   0               </Default>
+    	    <Flags>     CELL_PRIVATE    </Flags>
+        </pendingRingTeleport>
+
+	    <spaceCreatorID>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+	    </spaceCreatorID>
+
+	    <worldinstanceMapResetDate>
+            <Type>          FLOAT          </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+	    </worldinstanceMapResetDate>
+
+	    <canBeSeenOld>
+    		<Type> INT32 </Type>
+    		<Default> 0 </Default>
+    		<Flags> CELL_PRIVATE </Flags>
+	    </canBeSeenOld>
+
+        <systemOptions>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </systemOptions>
+
+	    <playerRespawners>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+	    </playerRespawners>
+
+        <!-- array of SGWSpawnRegion base mailboxes that player should send updates to -->
+	    <spawnRegionUpdates>
+            <Type>    ARRAY <of> MAILBOX </of>   </Type>
+            <Flags>   CELL_PRIVATE               </Flags>
+	    </spawnRegionUpdates>
+
+    
+	    <!-- Contains the base mailbox of the space creator -->
+        <craftingEntityFlags>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </craftingEntityFlags>
+
+        <craftingOptions>
+            <Type>          PYTHON          </Type>
+            <Default>       {}              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </craftingOptions>
+        
+        <!-- Induction timer -->
+        <craftTimer>
+            <Type>          CONTROLLER_ID   </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </craftTimer>
+
+        <!-- Crafting Queue -->
+        <craftQueue>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </craftQueue>
+        
+        <duelState>
+            <Type>       INT8            </Type>
+            <Flags>      CELL_PUBLIC     </Flags>
+            <Default>    0               </Default>
+        </duelState>
+
+        <duelEntities>
+            <Type>    ARRAY <of> MAILBOX </of> </Type>
+            <Flags>   CELL_PUBLIC              </Flags>
+        </duelEntities>
+
+        <duelEntitiesDefeated>
+            <Type>    ARRAY <of> MAILBOX </of> </Type>
+            <Flags>   CELL_PRIVATE           </Flags>
+        </duelEntitiesDefeated>
+
+        <duelMarker>
+            <Type>    MAILBOX      </Type>
+            <Flags>   CELL_PRIVATE </Flags>
+        </duelMarker>
+
+        <duelChallengeTimer>
+            <Type>       CONTROLLER_ID    </Type>
+            <Flags>      CELL_PRIVATE     </Flags>
+            <Default>    0                </Default>
+        </duelChallengeTimer>
+
+        <lastNoiseTime>
+            <Type>          FLOAT           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </lastNoiseTime>
+        
+        <gender>
+            <Type>          INT32           </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </gender>
+
+        <!-- list of regions that the player is currently in -->
+        <regions>
+            <Type>          ARRAY <of> INT32 </of>       </Type>
+            <Flags>         CELL_PRIVATE                 </Flags>
+        </regions>
+
+        <!-- timer to turn off PvP flag -->
+        <pvpTimer>
+            <Type>          CONTROLLER_ID   </Type>
+            <Default>       0               </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </pvpTimer>
+
+        <!-- list of player flags waiting for a db response -->
+        <pendingPlayerFlags>
+            <Type>          PYTHON          </Type>
+            <Default>       []              </Default>
+            <Flags>         CELL_PRIVATE    </Flags>
+        </pendingPlayerFlags>
+
+		<!-- List of dialogs available to the player -->
+		<availableDialogs>
+			<Type>          PYTHON			</Type>
+			<Default>       {}				</Default>
+			<Flags>         CELL_PRIVATE	</Flags>
+		</availableDialogs>
+
+	<clientVersion>
+		<Type>WSTRING</Type>
+		<Default>4.3.2.1</Default>
+		<Flags>CELL_PRIVATE</Flags>
+	</clientVersion>
+	
+	<languageId>
+		<Type>			INT32			</Type>
+		<Default>		0				</Default>
+		<Flags>			CELL_PRIVATE	</Flags>
+	</languageId>
+	
+	<numRespecAbility>
+        <Type>          INT32           </Type>
+        <Default>       0               </Default>
+        <Flags>         CELL_PRIVATE    </Flags>
+    </numRespecAbility>
+	<numRespecCrafting>
+        <Type>          INT32           </Type>
+        <Default>       0               </Default>
+        <Flags>         CELL_PRIVATE    </Flags>
+    </numRespecCrafting>
+    
+    <initialBandolierSlot>
+        <Type>          INT32           </Type>
+        <Default>       0               </Default>
+        <Flags>         CELL_PRIVATE    </Flags>
+    </initialBandolierSlot>
+    
+    </Properties>
+    
+    <BaseMethods>
+        <!-- Disconnect the client from this entity, based on flag hand back to Account or nuke it completely -->
+        <logOff>
+            <Exposed/>
+            <Arg>	INT8	<ArgName>Disconnect</ArgName></Arg> <!-- boolean - if true exit completely, if false return me to the Account -->
+        </logOff>
+        
+        <!-- Cancels a pending client disconnect -->
+        <cancelLogOff>
+            <Exposed/>
+        </cancelLogOff>
+        
+        <onLogOffTimer>
+            <Arg>	INT8	</Arg> <!-- boolean - if true exit completely, if false return me to the Account -->
+        </onLogOffTimer>
+        
+        <!-- This notifies the player that the space requested is ready -->
+        <onSpaceReady>
+            <Arg>           MAILBOX         </Arg>      <!-- The Cell mailbox of the Space -->
+            <Arg>           MAILBOX         </Arg>      <!-- The Base mailbox of the Space -->
+        </onSpaceReady>
+
+        <loadSpace>
+            <Arg> WSTRING </Arg>	<!-- Space key where this teleporter sends players (empty string for instance spaces) -->
+            <Arg> WSTRING </Arg>	<!-- Map name where this teleporter sends players (must match a key in Constants.py) -->
+            <Arg> VECTOR3 </Arg>	<!-- Destination position -->
+            <Arg> VECTOR3 </Arg>	<!-- Destination orientation -->
+        </loadSpace>
+
+        <!-- called by the cell when the player has loaded all of its data -->
+        <onPlayerReady/>
+
+        <!-- called by the cell when the player failed to loaded all of its data -->
+        <onPlayerFailed/>
+        
+        <!-- called by the client when it is ready to control the player -->
+        <onClientReady>
+            <Exposed/>
+        </onClientReady>
+
+	    <onSpaceEntered>
+		    <Arg> WSTRING </Arg> <!-- Instance key I'm trying to enter (areaName) -->
+		    <Arg> WSTRING </Arg> <!-- Area Name for space I'm trying to enter -->
+		    <Arg> INT8 </Arg> <!-- Boolean - true of entity was able to enter space -->
+	    </onSpaceEntered>
+
+	    <sendRespawnersToPlayer>
+    		<Arg> MAILBOX </Arg> <!-- Cell Mailbox of player -->
+    		<Arg> ARRAY <of> INT32</of> </Arg> <!-- Array of player respawner mob IDs known to player -->
+	    </sendRespawnersToPlayer>
+
+    	<sendPlayerToRespawner>
+    		<Arg> INT32 </Arg> <!-- Entity ID of respawner to send us to -->
+    		<Arg> VECTOR3 </Arg> <!-- Position of respawner to send us to -->
+    		<Arg> ARRAY <of> INT32 </of></Arg> <!-- Array of player respawner mob IDs known to player -->
+    	</sendPlayerToRespawner>
+	
+    	<showIP>
+    	   <Arg> MAILBOX </Arg><!-- Base mailbox of GM calling this -->
+    	</showIP>
+
+        <sendDuelChallenge>
+            <Exposed/>
+            <Arg>    WSTRING	<ArgName> aPlayerName  </ArgName>    </Arg>
+            <Arg>    INT8		<ArgName> aSquadDuel   </ArgName>    </Arg>
+        </sendDuelChallenge>
+
+	<onSpaceQueueStatus>
+		<Exposed/>
+	</onSpaceQueueStatus>
+
+	<onSpaceQueueReadyResponse>
+		<Exposed/>
+		<Arg> INT8 <ArgName>aAccept</ArgName></Arg>
+	</onSpaceQueueReadyResponse>
+
+	<onSpaceQueuedResponse>
+		<Exposed/>
+		<Arg> INT8 <ArgName>aAccept</ArgName></Arg>
+	</onSpaceQueuedResponse>
+
+        <perfStats>
+            <Exposed/>
+            <Arg>   FLOAT   <ArgName>fpsAvg</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>fpsMin</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>fpsMax</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>bpsIn</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>bpsOut</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>packetsIn</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>packetsOut</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>lagAvgMS</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>lagMinMS</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>lagMaxMS</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>resends</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>AppearanceJobs</ArgName></Arg>
+        </perfStats>
+
+	<onPerfStatsByChannel>
+		<Arg> INT8 <ArgName>aOnOff</ArgName></Arg>
+	</onPerfStatsByChannel>
+
+	<onSpaceQueueUpdate>
+		<Arg>UINT32<ArgName>worldID</ArgName></Arg>
+		<Arg>WSTRING<ArgName>areaName</ArgName></Arg>
+		<Arg>WSTRING<ArgName>areaKey</ArgName></Arg>
+		<Arg>UINT8 <ArgName>aCanCreate</ArgName></Arg>
+		<Arg>UINT32 <ArgName>aPlaceInLine</ArgName></Arg>
+	</onSpaceQueueUpdate>
+
+	<setClientVersion>
+		<Arg>	STRING	<ArgName>ClientVersion</ArgName></Arg>
+		<Arg>	INT32	<ArgName>LanguageId</ArgName></Arg>
+	</setClientVersion>
+
+    </BaseMethods>
+    
+    <CellMethods>   
+        <!-- Client respawns sooner than the auto-release. -->        
+        <callForAid>
+            <Exposed/>
+		    <Arg> INT32 <ArgName>respawnerID</ArgName></Arg> <!-- Respawner Entity ID to respawn at -->
+        </callForAid>
+
+        <!-- Called from the squad to award xp to the player -->
+        <awardSquadXP>
+            <Arg>       INT32       </Arg>            <!-- MobId -->
+            <Arg>       INT32       </Arg>            <!-- Mob Definition Id -->
+            <Arg>       VECTOR3     </Arg>            <!-- Mob position -->
+            <Arg>       INT32       </Arg>            <!-- Mob level -->
+            <Arg>       INT32       </Arg>            <!-- Individual amount of XP to award -->
+        </awardSquadXP>
+
+        <useAbility>
+            <Exposed/>
+            <Arg>       INT32   <ArgName>AbilityID</ArgName></Arg>
+            <Arg>       INT32   <ArgName>TargetID</ArgName></Arg>
+        </useAbility>
+        
+        <useAbilityOnGroundTarget>
+            <Exposed/>
+            <Arg>       INT32   <ArgName>AbilityID</ArgName></Arg>
+            <Arg>       FLOAT   <ArgName>LocationX</ArgName></Arg>
+            <Arg>       FLOAT   <ArgName>LocationY</ArgName></Arg>
+            <Arg>       FLOAT   <ArgName>LocationZ</ArgName></Arg>
+        </useAbilityOnGroundTarget>
+        
+        <respawn>
+            <Exposed/>
+        </respawn>
+
+        <unstuck>
+            <Exposed/>
+        </unstuck>
+        
+        <resetMyAbilities>
+            <Exposed/>
+        </resetMyAbilities>
+        
+        <who>
+            <Exposed/>
+            <Arg>   WSTRING      <ArgName>Name</ArgName></Arg>
+            <Arg>   WSTRING      <ArgName>Archetype</ArgName></Arg>
+            <Arg>   WSTRING      <ArgName>Alignment</ArgName></Arg>
+            <Arg>   WSTRING      <ArgName>PlayerType</ArgName></Arg>
+        </who>
+
+        <!-- Calls onInteract on the players current target -->
+        <interact>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>OverrideTarget</ArgName></Arg>
+        </interact>
+                
+        <!-- Tells whoever we are interacting with that we have just clicked on a non-standard button (a button with a NACS) -->
+        <dialogButtonChoice>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>DialogId</ArgName></Arg>
+            <Arg>   INT32       <ArgName>ButtonId</ArgName></Arg>
+        </dialogButtonChoice>
+        
+        <!-- Tells whoever we are interacting with that we have made a dialog selection from the first dialog topic list -->
+        <!-- NOTE: This is looking for a valid DialogSetMapID, and not just a dialog id. This is to ensure that we run the correct NACS -->
+        <initialResponse>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>DialogSetMapID</ArgName></Arg>
+        </initialResponse>
+        
+        <!-- Response to a trainer window to tell the client that they would like to train an ability -->
+        <trainAbility>
+            <Exposed/>
+            <Arg>   INT32       <ArgName>AbilityID</ArgName></Arg>
+        </trainAbility>
+        
+        <giveTrainingPoints>
+            <Arg>   INT32       <ArgName>aNumTrainingPoints</ArgName></Arg>
+        </giveTrainingPoints>
+       
+        <purchaseItems>
+            <Exposed/>
+            <Arg> ARRAY <of>INT32</of> <ArgName>ItemIndices</ArgName></Arg>
+            <Arg> ARRAY <of>INT32</of> <ArgName>Quantities</ArgName></Arg>
+        </purchaseItems>
+                
+        <sellItems>
+            <Exposed/>
+            <Arg> ARRAY <of>INT32</of> <ArgName>ItemIds</ArgName></Arg>
+            <Arg> ARRAY <of>INT32</of> <ArgName>Quantities</ArgName></Arg>
+        </sellItems>
+        
+        <buybackItems>
+            <Exposed/>
+            <Arg> ARRAY <of>INT32</of> <ArgName>ItemIds</ArgName></Arg>
+            <Arg> ARRAY <of>INT32</of> <ArgName>Quantities</ArgName></Arg>
+        </buybackItems>
+        
+        <repairItems>
+            <Exposed/>
+            <Arg> ARRAY <of>INT32</of> <ArgName>ItemIds</ArgName></Arg>
+        </repairItems>
+        
+        <rechargeItems>
+            <Exposed/>
+            <Arg> ARRAY <of>INT32</of> <ArgName>ItemIds</ArgName></Arg>
+        </rechargeItems>            
+        
+        <requestAdditionalLoot>
+            <Arg>      MAILBOX      </Arg>  <!-- Mobs Base mailbox -->
+            <Arg>      INT32        </Arg>  <!-- Mobs definition id -->
+            <Arg>      INT32        </Arg>  <!-- Mobs type -->
+            <Arg>      INT32        </Arg>  <!-- Mobs race -->
+            <Arg>      INT32        </Arg>  <!-- Mobs faction -->
+        </requestAdditionalLoot>
+
+        <operateGateLoc>
+            <Arg> INT8 </Arg>     <!-- The address of where I want to go.  Corresponds to constants PLACES list -->
+            <Arg> WSTRING </Arg>     <!-- String that is the instance key if they want an Instance -->
+        </operateGateLoc>
+        
+        <onSendCombatDebug>
+            <Arg> WSTRING </Arg>   <!-- simple debug message -->
+            <Arg> WSTRING </Arg>   <!-- verbose debug message -->
+        </onSendCombatDebug>
+        
+        <onSendEventDebug>
+            <Arg> STRING </Arg>
+        </onSendEventDebug>
+
+        <startAutoCycleAbility>
+        </startAutoCycleAbility>
+        
+        <!-- Stops any abilities warming up, in the queue, and auto cycled -->
+        <clearAbilities>
+        </clearAbilities>
+
+      <setAutoCycle>
+        <Exposed/>        
+        <Arg> INT8   <ArgName>enabled</ArgName></Arg>
+      </setAutoCycle>
+
+        <stopAutoCycle>
+        </stopAutoCycle>
+        
+        <!-- Send an initial greet window to the client of this player -->
+        <sendGreetWindowToClient>
+            <Arg>   INT32   </Arg>                      <!-- Entity Id who is starting this greet window with the player -->
+            <Arg>   MAILBOX </Arg>                      <!-- Entity Cell Mailbox who is starting this greet window with the player -->
+            <Arg>   ARRAY <of>DialogChoices</of> </Arg> <!-- List of DialogChoices to send to the client -->
+            <Arg>   PYTHON  </Arg>                      <!-- Static location to use instead of entity if the entity is missing -->
+        </sendGreetWindowToClient>
+        
+        <sendDialogDisplayToClient>
+            <Arg>   INT32   </Arg>              <!-- Entity Id who is starting this dialog with the player -->
+            <Arg>   MAILBOX </Arg>              <!-- Entity Cell Mailbox who is starting this dialog with the player -->
+            <Arg>   INT32   </Arg>              <!-- Dialog Id to send to the client -->
+            <Arg>   INT32   </Arg>              <!-- Dialog Set Id that this dialog came from -->
+            <Arg>   INT32   </Arg>              <!-- Flags associated to this dialog -->
+            <Arg>   PYTHON  </Arg>              <!-- Static location to use instead of entity if the entity is missing -->
+            <Arg>   INT32   </Arg>              <!-- Mission ID of the dialog to display -->
+        </sendDialogDisplayToClient>
+        
+        <!-- Send a list of loot to display -->
+        <sendLootToClient>
+        	<Arg>   INT32   </Arg>              <!-- Entity Id who is sending this list to the player -->
+            <Arg>   LootItemQuantityList </Arg> <!-- List of loot to send to the client -->
+            <Arg>	INT8	</Arg>				<!-- Flag for if this should open the Loot window or just update it -->
+        </sendLootToClient>
+
+        <closeLootWindow>
+            <Arg>  INT32  </Arg> <!-- entity id -->
+        </closeLootWindow>
+        
+	    <lootItem>
+	      	<Exposed/>
+	      	<Arg>	INT32 <ArgName>Index</ArgName></Arg>	<!-- Index of item to be looted from currently open Loot Window -->
+	    </lootItem>
+		
+        <setDesignerFlag>
+            <Arg>    INT32    </Arg> <!-- flag id -->
+            <Arg>    UINT8    </Arg> <!-- flag value -->
+        </setDesignerFlag>
+
+        <!-- called by the base app when client is ready to control entity -->
+        <onClientReady>
+        </onClientReady>
+        
+        <setGateAddressLoc>
+            <Arg>   INT32   </Arg>  <!-- gateLocation -->
+            <Arg>   INT8    </Arg>  <!-- bInstance -->
+            <Arg>   STRING  </Arg>  <!-- instanceKey -->
+        </setGateAddressLoc>
+        
+        <setGateAddressPoint>
+            <Arg>   INT32   </Arg>  <!-- aPointSetID -->
+            <Arg>   INT32   </Arg>  <!-- aPointID -->
+            <Arg>   INT8    </Arg>  <!-- bSquadKey -->
+            <Arg>   INT8    </Arg>  <!-- bPropogate -->
+            <Arg>   STRING  </Arg>  <!-- instanceKey -->
+        </setGateAddressPoint>
+        
+        <triggerClientHintedGenericRegion>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>id</ArgName></Arg>
+            <Arg>   UINT8   <ArgName>bEntering</ArgName></Arg>
+            <Arg>   VECTOR3 <ArgName>position</ArgName></Arg>
+        </triggerClientHintedGenericRegion>
+
+	<!-- Called when player starts teleporting
+	  -->
+	<onTeleportStart>
+	</onTeleportStart>
+
+    	<!-- Called when player finishes a teleport and the
+    	     client has loaded and is ready to go again..
+    	  -->
+    	<onTeleportFinished>
+    	</onTeleportFinished>
+
+        <gmRequestInfo>
+            <Arg>   MAILBOX </Arg>  <!-- Mailbox of the GM that's requesting info -->
+            <Arg>   UINT8   </Arg>  <!-- Enum of what kind of info they're asking for -->
+        </gmRequestInfo>
+        
+        
+        <onSetSpeed>
+            <Arg>   INT32   </Arg>  <!-- multiplier to set the speed to -->
+        </onSetSpeed>
+        
+        <requestReload>
+            <Exposed/>
+            <Arg>  UINT8  <ArgName>aReloadType</ArgName>  </Arg> <!-- EReloadType from enumerations -->
+        </requestReload>
+                
+        <removeWaypoint>
+            <Arg> UINT32  </Arg> <!-- waypointType -->
+            <Arg> UINT32  </Arg> <!-- systemId -->
+            <Arg> UINT32  </Arg> <!-- waypointKeyId -->
+            <Arg> UINT32  </Arg> <!-- worldId -->
+            <Arg> VECTOR3 </Arg> <!-- location -->
+        </removeWaypoint>
+        
+        <onMissionRewardsDisplay>
+            <Arg>   INT32   <ArgName>aEntityID</ArgName></Arg>
+            <Arg>   Rewards   <ArgName>aRewards</ArgName></Arg>
+            <Arg>   INT32   <ArgName>aMissionId</ArgName></Arg>
+            <Arg>   PYTHON  <ArgName>aStaticLoc</ArgName></Arg>
+        </onMissionRewardsDisplay>
+        
+        <onMissionOfferDisplay>
+            <Arg>   INT32   <ArgName>aDialogId</ArgName></Arg>  
+            <Arg>   Rewards <ArgName>Rewards</ArgName></Arg>
+            <Arg>   INT32   <ArgName>aMissionId</ArgName></Arg>
+            <Arg>   PYTHON  <ArgName>aStaticLoc</ArgName></Arg>
+        </onMissionOfferDisplay>
+        
+        <chosenRewards>
+            <Exposed/>
+            <Arg>   RewardChoices   <ArgName>RewardChoices</ArgName></Arg>
+            <Arg>   INT32   <ArgName>aMissionId</ArgName></Arg>
+        </chosenRewards>
+    
+        <petInvokeAbility>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>  aEntityId   </ArgName>  </Arg>
+            <Arg>   INT32   <ArgName>  aAbilityId  </ArgName>  </Arg>
+            <Arg>   INT32   <ArgName>  aTargetId   </ArgName>  </Arg>
+        </petInvokeAbility>
+
+        <petAbilityToggle>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>  aEntityId   </ArgName>  </Arg>
+            <Arg>   INT32   <ArgName>  aAbilityId  </ArgName>  </Arg>
+            <Arg>   INT8    <ArgName>  aToggle     </ArgName>  </Arg>
+        </petAbilityToggle>
+
+        <petChangeStance>
+            <Exposed/>
+            <Arg>   INT32   <ArgName>  aEntityId   </ArgName>  </Arg>
+            <Arg>   INT8    <ArgName>  aStance     </ArgName>  </Arg>
+        </petChangeStance>
+        
+        <!-- activates a ring transporter -->
+        <setRingTransporterDestination>
+            <Exposed/>
+            <Arg>   INT32  <ArgName> aRegionId      </ArgName>  </Arg> <!-- Generic region we are going to enter -->
+            <Arg>   INT32  <ArgName> aDestinationId </ArgName>  </Arg> <!-- Generic region destination -->
+        </setRingTransporterDestination>
+        
+        <!-- called when a fellow squad member uses a ring transporter -->
+        <onSquadMemberRingTransport>
+            <Arg>   INT32   </Arg> <!-- Generic region they entered -->
+            <Arg>   INT32   </Arg> <!-- Generic region destination -->
+        </onSquadMemberRingTransport>
+        
+        <!-- called when a fellow squad member transported to their destination -->
+        <onSquadMemberRingTransportFinished>
+            <Arg>   INT32   </Arg> <!-- Generic region destination -->
+        </onSquadMemberRingTransportFinished>
+        
+        <onReady>
+        </onReady>
+            
+    	<onWorldInstanceReset>
+    		<Exposed/>
+    	</onWorldInstanceReset>
+
+        <updateSystemOptions>
+            <Exposed/>
+            <Arg>   ARRAY <of> NameValuePair </of> <ArgName> aOptions </ArgName> </Arg>
+        </updateSystemOptions>
+        
+        <onOrganizationCreation>
+            <Exposed/>
+            <Arg> WSTRING <ArgName> aOrganizationName  </ArgName> </Arg>
+        </onOrganizationCreation>
+
+        <callForAidFinish>
+            <Arg> UINT8 <ArgName>foundRespawner</ArgName></Arg>
+        </callForAidFinish>
+
+        <onRegisterSpawnRegionUpdates>
+          <Arg>  MAILBOX  </Arg>
+        </onRegisterSpawnRegionUpdates>
+
+        <onDeregisterSpawnRegionUpdates>
+          <Arg>  MAILBOX  </Arg>
+        </onDeregisterSpawnRegionUpdates>
+        
+        <gainRacialParadigmLevels>
+            <Arg>  INT32  </Arg> <!-- racial paradigm -->
+            <Arg>  INT8   </Arg> <!-- levels -->
+            <Arg>  INT8   </Arg> <!-- with transaction -->
+        </gainRacialParadigmLevels>
+        
+        <gainExpertise>
+            <Arg>  INT32  </Arg> <!-- expertise -->
+            <Arg>  INT32  </Arg> <!-- discipline seq id -->
+            <Arg>  INT8   </Arg> <!-- with transaction -->
+        </gainExpertise>
+        
+        <gainAppliedSciencePoints>
+            <Arg>  INT32  </Arg> <!-- points -->
+            <Arg>  INT8   </Arg> <!-- with transaction -->
+        </gainAppliedSciencePoints>
+        
+        <updateCraftingFlags>
+            <Arg>  INT32    </Arg> <!-- entity id -->
+            <Arg>  INT8     </Arg> <!-- flags -->
+        </updateCraftingFlags>
+        
+        <spendAppliedSciencePoints>
+            <Exposed/>
+            <Arg>  INT32  <ArgName>  aDisciplineSeqId  </ArgName>  </Arg>
+        </spendAppliedSciencePoints>
+        
+        <craft>
+            <Exposed/>
+            <Arg>  INT32                    <ArgName>  aCraftId  </ArgName>  </Arg>
+            <Arg>  ARRAY <of> ItemID </of>  <ArgName>  aItems    </ArgName>  </Arg>
+            <Arg>  INT32                    <ArgName>  aQuantity </ArgName>  </Arg>
+        </craft>
+        
+        <research>
+            <Exposed/>
+            <Arg>  ItemID                   <ArgName>  aItemId   </ArgName>  </Arg>
+            <Arg>  ARRAY <of> ItemID </of>  <ArgName>  aKickers  </ArgName>  </Arg>
+        </research>
+        
+        <reverseEngineer>
+            <Exposed/>
+            <Arg>  ItemID  <ArgName>  aItemId  </ArgName></Arg>
+        </reverseEngineer>
+        
+        <alloying>
+            <Exposed/>
+            <Arg>  INT32                    <ArgName>  aCraftId             </ArgName></Arg>
+            <Arg>  ItemID                   <ArgName>  aCurrentTierItemId   </ArgName>  </Arg>
+            <Arg>  ARRAY <of> ItemID </of>  <ArgName>  aLowerTierItems      </ArgName>  </Arg>
+        </alloying>
+        
+        <respecCrafting>
+            <Exposed/>
+        </respecCrafting>
+        
+        <gmGotoCallback>
+            <Arg>           MAILBOX         </Arg>              <!-- Base mailbox of GM -->
+        </gmGotoCallback>
+        
+	<!-- Called by client when it wants to respond to a server challenge -->        
+	<onClientChallengeResponse>
+		<Exposed/>
+		<Arg> INT32 <ArgName>aClientChallenge</ArgName></Arg>
+		<Arg> WSTRING <ArgName>aClientVersion</ArgName></Arg>
+		<Arg> INT32 <ArgName>aChallengeType</ArgName></Arg>
+		<Arg> WSTRING <ArgName>aChallengeObject</ArgName></Arg>
+		<Arg> INT32 <ArgName>aChallengeID1</ArgName></Arg>
+		<Arg> INT32 <ArgName>aChallengeID2</ArgName></Arg>
+		<Arg> WSTRING <ArgName>aChallengeValue</ArgName></Arg>
+	</onClientChallengeResponse>
+	
+        <showPlayer>
+            <Arg>       MAILBOX    </Arg> <!-- Base mailbox of the GM calling this -->
+        </showPlayer>
+        
+        <sendDuelChallenge>
+            <Arg>    MAILBOX   </Arg> <!-- entity mailbox -->
+            <Arg>    INT8      </Arg> <!-- squad duel -->
+        </sendDuelChallenge>
+
+        <sendDuelResponse>
+            <Exposed/>
+            <Arg>    INT8     <ArgName> aResponse  </ArgName>    </Arg>
+        </sendDuelResponse>
+
+        <duelChallenge>
+            <Arg>    MAILBOX                   </Arg>  <!-- entity base mailbox -->
+            <Arg>    ARRAY <of> MAILBOX </of>  </Arg>  <!-- squad entity base mailboxes -->
+        </duelChallenge>
+
+        <duelResponse>
+            <Arg>    MAILBOX                    </Arg>  <!-- entity base mailbox -->
+            <Arg>    INT8                       </Arg>  <!-- reponse -->
+            <Arg>    ARRAY <of> MAILBOX </of>   </Arg>  <!-- squad entity base mailboxes -->
+        </duelResponse>
+
+        <duelEntityDefeat>
+            <Arg>   MAILBOX    </Arg> <!-- entity base mailbox -->
+            <Arg>   INT8       </Arg> <!-- reason -->
+        </duelEntityDefeat>
+
+        <startSquadDuel>
+            <Arg>   ARRAY <of> MAILBOX </of>  </Arg>  <!-- enemy squad mailboxes -->
+        </startSquadDuel>
+
+        <duelAbort>
+        </duelAbort>
+
+        <onDuelDefeat>
+            <Arg>    INT8    </Arg> <!-- reason -->
+        </onDuelDefeat>
+
+        <registerDuelMarker>
+            <Arg>    MAILBOX    </Arg> <!-- SGWDuelMarker base mailbox -->
+        </registerDuelMarker>
+
+        <startDuel>
+            <Arg>    MAILBOX    </Arg> <!-- SGWDuelMarker base mailbox -->
+        </startDuel>
+
+        <duelForfeit>
+            <Exposed/>
+        </duelForfeit>
+
+        <perfStats>
+            <Arg>   FLOAT   <ArgName>AvgFPS</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>MinFPS</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>MaxFPS</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>InBytes</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>OutBytes</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>InPackets</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>OutPackets</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>AvgLag</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>MinLag</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>MaxLag</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>resends</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>AppearanceJobs</ArgName></Arg>
+        </perfStats>
+        <!-- Called by the client to request to start a trade with another entity -->
+        <tradeRequest>
+            <Exposed/>
+            <Arg>       INT32               <ArgName>EntityId</ArgName></Arg>
+            <Arg>       LocalTradeProposal  <ArgName>LocalProposal</ArgName></Arg>
+        </tradeRequest>
+
+        <!-- Called by another entity to request to start a trade with this entity -->
+        <tradeRequestFromEntity>
+            <Arg>       INT32               </Arg>
+            <Arg>       RemoteTradeProposal </Arg>
+        </tradeRequestFromEntity>
+
+        <!-- Called by the client to request that the current trade is cancelled -->
+        <tradeRequestCancel>
+            <Exposed/>
+            <Arg>       INT32       <ArgName>EntityId</ArgName></Arg>
+        </tradeRequestCancel>
+
+        <!-- Called by the client to update what this entity currently has in their trade window -->
+        <tradeUpdateProposal>
+            <Exposed/>
+            <Arg>   INT32               <ArgName> EntityId        </ArgName> </Arg>
+            <Arg>   LocalTradeProposal  <ArgName> LocalProposal   </ArgName> </Arg>
+        </tradeUpdateProposal>
+        
+        <!-- Called by another entity to update the status of the trade -->
+        <updateTradeState>
+            <Arg>   MAILBOX             </Arg>
+            <Arg>   INT32               </Arg>
+            <Arg>   RemoteTradeProposal </Arg>
+        </updateTradeState>
+        
+        <!-- Called by the client to update the state of their trade locks -->
+        <tradeLockState>
+            <Exposed/>
+            <Arg>   INT32               <ArgName> LocalVersionId  </ArgName> </Arg>
+            <Arg>   INT32               <ArgName> RemoteVersionId </ArgName> </Arg>
+            <Arg>   INT8               <ArgName> LockState       </ArgName> </Arg>
+        </tradeLockState>
+
+	<!-- Called by the space creator when a player comes close. -->
+	<learnPlayerRespawner>
+            <Arg>   INT32   </Arg>                      <!-- Entity Id who is starting this greet window with the player -->
+	</learnPlayerRespawner>
+        
+        <!-- Called by another entity to update thier current lock state -->
+        <updateTradeLockState>
+            <Arg>   INT32   </Arg>
+            <Arg>   INT32   </Arg>
+            <Arg>   INT32   </Arg>
+        </updateTradeLockState>
+                
+        <!-- Called by another entity to request the trade to be cancelled -->
+        <tradeCancel>
+            <Arg>       INT32       <ArgName> EntityId </ArgName></Arg>
+        </tradeCancel>
+
+        <setPvPFlag>
+            <Arg>    INT8    </Arg> <!-- flag value -->
+            <Arg>    INT8    </Arg> <!-- should do strike team logic -->
+        </setPvPFlag>
+        
+        <startPvPTimer>
+            <Arg>    INT8    </Arg> <!-- flag value -->
+            <Arg>    FLOAT   </Arg> <!-- time length -->
+        </startPvPTimer>
+        
+        <cancelPvPTimer>
+        </cancelPvPTimer>
+        
+        <cancelMovie>
+            <Exposed/>
+            <Arg>   WSTRING  <ArgName>MovieName</ArgName></Arg>
+        </cancelMovie>
+        
+    </CellMethods>
+
+    <ClientMethods>
+    
+        <!-- Starts the Defeat Window -->
+        <onBeginAidWait>
+        <Arg>   INT32  <ArgName>TimeToAid</ArgName></Arg>           <!-- Time to "Respawn/Release" -->
+            <Arg> ARRAY <of> Respawner </of> <ArgName> respawners </ArgName> </Arg>
+        </onBeginAidWait>
+        
+        <!-- Closes the Defeat Window -->
+        <onEndAidWait>
+        </onEndAidWait>
+        
+        <!-- Give the client feedback on attempted DHD use -->
+        <onDHDReply>
+            <Arg>          WSTRING       <ArgName>aMessage</ArgName></Arg>
+        </onDHDReply>
+        
+        <onKnownAbilitiesUpdate>            
+            <Arg>   ARRAY<of>INT32</of>   <ArgName>AbilityData</ArgName> </Arg>
+        </onKnownAbilitiesUpdate>
+      
+        <!-- Update time of day information -->
+        <onTimeofDay>
+            <Arg>   FLOAT   <ArgName>Time</ArgName></Arg>
+            <Arg>   FLOAT   <ArgName>Wind</ArgName></Arg>
+            <Arg>   INT8    <ArgName>Weather</ArgName></Arg>
+        </onTimeofDay>
+      
+		<!-- Update the client perf stats late -->
+		<onOverridePerfStatsRate>
+			<Arg>	INT32	<ArgName>NewIntervalMS</ArgName></Arg>
+		</onOverridePerfStatsRate>
+	  
+        <!-- Prompts the initial interaction screen with a list of topics -->
+        <onInitialInteraction>
+            <Arg> ARRAY <of>DialogChoices</of> <ArgName>Choices</ArgName></Arg>
+        </onInitialInteraction>
+     
+      <!-- Starts a dialog with the player --> 
+      <onDialogDisplay>
+        <Arg>   INT32   <ArgName>   EntityId    </ArgName></Arg>
+        <Arg>   INT32   <ArgName>   DialogID    </ArgName></Arg>
+        <Arg>   INT32   <ArgName>   MissionFlags</ArgName></Arg>
+        <Arg>   UINT8   <ArgName>   IsImmediate	</ArgName></Arg>
+        <Arg>   INT32   <ArgName>   aMissionId  </ArgName></Arg>
+      </onDialogDisplay>
+      
+      <onVaultOpen>
+        <Arg>   INT32   <ArgName>   EntityId    </ArgName></Arg>
+        <Arg>   VECTOR3 <ArgName>   Position    </ArgName></Arg>
+      </onVaultOpen>      
+
+      <onTeamVaultOpen>
+        <Arg>   INT32   <ArgName>   EntityId    </ArgName></Arg>
+        <Arg>   VECTOR3 <ArgName>   Position    </ArgName></Arg>
+      </onTeamVaultOpen>      
+
+      <onCommandVaultOpen>
+        <Arg>   INT32   <ArgName>   EntityId    </ArgName></Arg>
+        <Arg>   VECTOR3 <ArgName>   Position    </ArgName></Arg>
+      </onCommandVaultOpen>
+      
+      <onStoreOpen>
+        <Arg>   INT32   <ArgName>   EntityId    </ArgName></Arg>
+        <Arg>   INT32   <ArgName>   VendorType  </ArgName></Arg>
+        <Arg> ARRAY <of> StoreItem </of> <ArgName> Items </ArgName> </Arg>
+        <Arg> ARRAY <of> ItemCost </of> <ArgName> SellPrices </ArgName> </Arg>
+        <Arg> ARRAY <of> ItemCost </of> <ArgName> BuybackPrices </ArgName> </Arg>
+        <Arg> ARRAY <of> ItemCost </of> <ArgName> RepairPrices </ArgName> </Arg>
+        <Arg> ARRAY <of> ItemCost </of> <ArgName> RechargePrices </ArgName> </Arg>
+      </onStoreOpen>
+      
+      <onStoreUpdate>
+        <Arg>           ARRAY<of>ItemCostUpdate</of><ArgName>ItemCostUpdates</ArgName></Arg>
+      </onStoreUpdate>
+      
+      <onStoreClose>
+      </onStoreClose>
+      
+      <onCraftingRespecPrompt>
+        <Arg>   INT32   <ArgName>CostToRespec</ArgName></Arg> <!-- Cost to respec crafting, in Naq -->
+      </onCraftingRespecPrompt>
+      
+      <onTrainerOpen>
+        <Arg>	INT32   <ArgName>TrainerID</ArgName></Arg>	<!-- ID of the trainer we're interacting with -->
+        <Arg> ARRAY <of> TrainerAbility </of> <ArgName> Abilities </ArgName> </Arg>
+        <Arg>   INT32   <ArgName>CostToRespec</ArgName></Arg>  <!-- Cost to respec abilities, in Naq -->
+      </onTrainerOpen>
+      
+      <onLootDisplay>
+      	<Arg>	INT32   <ArgName>EntityID</ArgName></Arg>	<!-- Mob ID of who's loot this is -->
+      	<Arg> 	LootItemQuantityList<ArgName>ItemList</ArgName></Arg>	<!-- List of Loot -->
+      	<Arg>	INT8 	<ArgName>Initial</ArgName></Arg>	<!-- Is this an update or initial loot window? -->
+      </onLootDisplay>
+      
+      <!-- called by the cell when the player has sent all its data to the client -->
+      <onPlayerDataLoaded/>
+
+      <!-- Called by the cell when we teleport anywhere.
+	   Causes the client to force a waiting state flag.
+	   Needs to have position with message, otherwise the streaming level
+	   loading code will not know which chunks to wait for.
+	-->
+      <onPlayerTeleport>
+        <Arg> VECTOR3 <ArgName>Location</ArgName></Arg>
+        <Arg> VECTOR3 <ArgName>Direction</ArgName></Arg>
+      </onPlayerTeleport>
+
+      <onClientMapLoad>
+	<Arg> WSTRING <ArgName>areaName</ArgName></Arg>
+	<Arg> WSTRING <ArgName>mapPath</ArgName></Arg>
+	<Arg> INT32 <ArgName>WorldID</ArgName></Arg>
+        <Arg> VECTOR3 <ArgName>Location</ArgName></Arg>
+        <Arg> VECTOR3 <ArgName>Direction</ArgName></Arg>
+      </onClientMapLoad>
+
+      <giveAbility>
+        <Arg> INT32 </Arg> <!-- ability ID -->
+        <Arg> INT8  </Arg> <!-- 0 = do not persist 1 = persist -->
+      </giveAbility>
+
+      <giveXPForLevel>
+        <Arg> INT32 </Arg> <!-- level -->
+      </giveXPForLevel>
+      
+      <onDisplayDHD>
+        <Arg> UINT8     <ArgName>PointOfOrigin</ArgName></Arg> <!-- 1 to 38, point of origin glyph -->
+      </onDisplayDHD>
+
+      <onErrorCode>
+        <Arg>  UINT8  <ArgName>  SystemID     </ArgName> </Arg>  <!-- EErrorCodeSystem enum -->
+        <Arg>  INT32  <ArgName>  InstanceID   </ArgName> </Arg>  <!-- ID of subsystem instance (ex. Ability ID) -->
+        <Arg>  UINT16 <ArgName>  ErrorCodeID  </ArgName> </Arg>  <!-- EConditionHandlerFeedback enum -->
+      </onErrorCode>
+      
+      <setupWorldParameters>
+        <Arg> INT32 <ArgName>worldId</ArgName></Arg>
+        <Arg> INT32 <ArgName>weatherSetId</ArgName></Arg>
+        <Arg> INT32 <ArgName>minToRealMinutes</ArgName></Arg>
+        <Arg> INT32 <ArgName>minutesPerDay</ArgName></Arg>
+        <Arg> INT32 <ArgName>currentTimeInSeconds</ArgName></Arg>
+        <Arg> FLOAT <ArgName>gravity</ArgName></Arg>
+        <Arg> FLOAT <ArgName>runSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>sidewaysRunSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>backwardRunSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>walkSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>sidewaysWalkSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>backwardsWalkSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>crouchRunSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>sidewaysCrouchRunSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>backwardsCrouchRunSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>crouchWalkSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>sidewaysCrouchWalkSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>backwardsCrouchWalkSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>swimSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>sidewaysSwimSpeed</ArgName></Arg>
+        <Arg> FLOAT <ArgName>backwardsSwimSpeed</ArgName></Arg>    
+        <Arg> FLOAT <ArgName>jumpSpeed</ArgName></Arg>
+      </setupWorldParameters>
+ 
+      <onMapInfo>
+        <Arg> UINT32  <ArgName>SysTypeID</ArgName></Arg>
+        <Arg> UINT32  <ArgName>SysID</ArgName></Arg>
+        <Arg> UINT32  <ArgName>KeyID</ArgName></Arg>
+        <Arg> INT32   <ArgName>WorldID</ArgName></Arg>
+        <Arg> VECTOR3 <ArgName>Location</ArgName></Arg>
+        <Arg> UINT32  <ArgName>Lifetime</ArgName></Arg>
+        <Arg> UINT8   <ArgName>Delete</ArgName></Arg>
+      </onMapInfo>
+      
+      <clearClientHintedGenericRegions>
+      </clearClientHintedGenericRegions>
+      
+      <addClientHintedGenericRegion>
+        <Arg> INT32                     <ArgName>regionId</ArgName></Arg>
+        <Arg> FLOAT                     <ArgName>height</ArgName></Arg>
+        <Arg> FLOAT                     <ArgName>radius</ArgName></Arg>
+        <Arg> INT32                     <ArgName>flags</ArgName></Arg>
+        <Arg> ARRAY <of>VECTOR3</of>    <ArgName>points</ArgName></Arg>
+      </addClientHintedGenericRegion>
+      
+        <onResetMapInfo>
+        </onResetMapInfo>
+        
+      <onMissionRewardsDisplay>
+        <Arg>   Rewards   <ArgName>Rewards</ArgName></Arg>
+        <Arg>   INT32   <ArgName>aMissionId</ArgName></Arg>
+      </onMissionRewardsDisplay>
+        
+      <onMissionOfferDisplay>
+        <Arg>   INT32   <ArgName>aDialogId</ArgName></Arg>  
+        <Arg>   Rewards <ArgName>Rewards</ArgName></Arg>
+        <Arg>   INT32   <ArgName>aMissionId</ArgName></Arg>
+      </onMissionOfferDisplay>
+      
+      <stargateTriggerFailed>
+      </stargateTriggerFailed>
+
+      <onExtraNameUpdate>
+        <Arg>   WSTRING  <ArgName>ExtraName</ArgName></Arg>
+      </onExtraNameUpdate>
+      
+      <onExpUpdate>
+        <Arg>   INT32                   <ArgName>Exp</ArgName></Arg>
+      </onExpUpdate>
+      
+      <onMaxExpUpdate>
+        <Arg>   INT32                   <ArgName>MaxExp</ArgName></Arg>
+      </onMaxExpUpdate>
+
+        <onRingTransporterList>
+            <Arg>   RegionInfo                   <ArgName>  aRegion       </ArgName>  </Arg>  
+            <Arg>   ARRAY <of> RegionInfo </of>  <ArgName>  aRegionList   </ArgName>  </Arg>  
+        </onRingTransporterList>
+        
+        <onOrganizationCreationResult>
+            <Arg>   UINT8   <ArgName> Result  </ArgName>  </Arg> 
+            <Arg>   UINT8   <ArgName> RetCode </ArgName>  </Arg> 
+        </onOrganizationCreationResult>
+        
+        <launchOrganizationCreation>
+            <Arg>   UINT8   <ArgName> aOrgType </ArgName>  </Arg> 
+        </launchOrganizationCreation>
+
+        <onUpdateDiscipline>
+            <Arg>   INT32    <ArgName>  aDisciplineSeqId  </ArgName>  </Arg>  
+            <Arg>   INT32    <ArgName>  aExpertise        </ArgName>  </Arg>  
+        </onUpdateDiscipline>
+        
+        <onDisciplineRespec>
+        </onDisciplineRespec>
+
+        <onUpdateRacialParadigmLevel>
+            <Arg>   INT32    <ArgName>  aRacialParadigmId  </ArgName>  </Arg>  
+            <Arg>   INT8     <ArgName>  aLevel             </ArgName>  </Arg>  
+        </onUpdateRacialParadigmLevel>
+
+        <onUpdateKnownCrafts>
+            <Arg>   ARRAY <of> INT32 </of>  <ArgName>  aCraftList  </ArgName>  </Arg>  
+        </onUpdateKnownCrafts>
+
+        <onUpdateCraftingOptions>
+            <Arg>  CraftingOptions <ArgName> aOptions </ArgName> </Arg>
+        </onUpdateCraftingOptions>
+      
+        <onAbilityTreeInfo>
+            <Arg>   ARRAY <of> ARRAY <of> INT32 </of> </of> <ArgName> AbilityLists   </ArgName>  </Arg>
+        </onAbilityTreeInfo>
+        
+        <!-- Sent to client when server wants to challenge the client.
+           - Client must respond with onClientChallengeResponse with the
+           - correct values in order to avoid being marked as incompliant.
+          -->
+        <onClientChallenge>
+		<Arg> INT32 <ArgName>aClientChallenge</ArgName></Arg>
+        	<Arg> INT32 <ArgName>aChallengeType</ArgName></Arg>
+        	<Arg> WSTRING <ArgName>aChallengeObject</ArgName></Arg>
+        	<Arg> INT32 <ArgName>aChallengeID1</ArgName></Arg>
+        	<Arg> INT32 <ArgName>aChallengeID2</ArgName></Arg>
+        </onClientChallenge>
+
+        <onDuelChallenge>
+            <Arg>  INT32                   <ArgName>  aEntityId   </ArgName>  </Arg> <!-- entity id of who initiated the duel challenge -->
+            <Arg>  ARRAY <of> INT32 </of>  <ArgName>  aSquadList  </ArgName>  </Arg> <!-- list of squad members of challenger -->
+        </onDuelChallenge>
+
+        <!-- Updates the current state of the trade window on the client -->
+        <onTradeState>
+            <Arg>   INT32               <ArgName>EntityId</ArgName></Arg>
+            <Arg>   LocalTradeProposal  <ArgName>LocalProposal</ArgName></Arg>
+            <Arg>   RemoteTradeProposal <ArgName>RemoteProposal</ArgName></Arg>
+        </onTradeState>
+        
+        <!-- Informs the client that the current trade has been cancelled -->
+        <onTradeResults>
+            <Arg>   INT32   <ArgName> EntityId </ArgName>   </Arg>
+            <Arg>   INT32   <ArgName> Result   </ArgName>   </Arg>
+        </onTradeResults>
+
+	<onSpaceQueued>
+		<Arg> WSTRING <ArgName>aSpaceName</ArgName></Arg>
+	</onSpaceQueued>
+
+	<onSpaceQueueReady>
+		<Arg> WSTRING <ArgName>aSpaceName</ArgName></Arg>
+	</onSpaceQueueReady>
+
+        <onRemoteEntityCreate>
+            <Arg>    INT32    <ArgName>  aEntityId    </ArgName>  </Arg>
+            <Arg>    WSTRING  <ArgName>  aEntityType  </ArgName>  </Arg>
+            <Arg>    VECTOR3  <ArgName>  aPosition    </ArgName>  </Arg>
+            <Arg>    INT32    <ArgName>  aWorldId     </ArgName>  </Arg>
+            <Arg>    INT32    <ArgName>  aSpaceId     </ArgName>  </Arg>
+        </onRemoteEntityCreate>
+
+        <onRemoteEntityMove>
+            <Arg>    INT32    <ArgName>  aEntityId    </ArgName>  </Arg>
+            <Arg>    VECTOR3  <ArgName>  aPosition    </ArgName>  </Arg>
+            <Arg>    INT32    <ArgName>  aWorldId     </ArgName>  </Arg>
+            <Arg>    INT32    <ArgName>  aSpaceId     </ArgName>  </Arg>
+        </onRemoteEntityMove>
+
+        <onRemoteEntityRemove>
+            <Arg>    INT32    <ArgName>  aEntityId    </ArgName>  </Arg>
+        </onRemoteEntityRemove>
+
+        <onDuelEntitiesSet>
+            <Arg>    ARRAY <of> INT32 </of>    <ArgName>  aEntityList    </ArgName>  </Arg>
+        </onDuelEntitiesSet>
+
+        <onDuelEntitiesRemove>
+            <Arg>    INT32    <ArgName>  aEntityId    </ArgName>  </Arg>
+        </onDuelEntitiesRemove>
+
+        <onDuelEntitiesClear>
+        </onDuelEntitiesClear>
+
+        <onThreatenedMobsUpdate>
+            <Arg>   INT32   <ArgName>   EntityId    </ArgName>  </Arg>
+            <Arg>   UINT8   <ArgName>   HasThreat   </ArgName>  </Arg>
+        </onThreatenedMobsUpdate>
+        
+        <onPlayMovie>
+            <Arg>   WSTRING		<ArgName>   MovieName   </ArgName>  </Arg>
+            <Arg>   UINT8		<ArgName>   FullScreen  </ArgName>  </Arg>
+        </onPlayMovie>
+        
+        <onCancelMovie>
+            <Arg>   WSTRING		<ArgName>   MovieName   </ArgName>  </Arg>
+            <Arg>   INT32		<ArgName>   EntityId    </ArgName>  </Arg>
+        </onCancelMovie>
+            
+    </ClientMethods>
+
+    <LoDLevels>
+    </LoDLevels>
+
+</root>

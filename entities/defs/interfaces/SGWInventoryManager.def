@@ -1,0 +1,222 @@
+<root>
+    <Properties>
+
+        <!-- Reference to a Dictionary of Bags -->
+        <playerBags>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </playerBags>
+        
+        <!-- Mapping of bagId to current equipped slot -->
+        <activeSlots>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </activeSlots>
+
+        <!-- Players Stat Adjustment from equipped items -->
+        <inventoryAdjustments>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </inventoryAdjustments>
+
+        <!-- Pending transactions hold what current database transactions are still out -->
+        <!-- This maps transactionId to the number of calls this transaction is waiting for, and if there are any callbacks which need to be made -->
+        <pendingItemTransactions>
+            <Type>          PYTHON              </Type>
+            <Default>       {}                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </pendingItemTransactions>
+        
+        <!-- Current amount of cash this entity has -->
+        <cash>
+            <Type>          INT32               </Type>
+            <Default>       0                   </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </cash>
+        
+        <!-- Holds the current weapon activation timer -->
+        <weaponActivationTimerID>
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </weaponActivationTimerID>
+
+        <!-- Holds the current weapon deactivation timer -->
+        <weaponDeactivationTimerID>
+            <Type>          CONTROLLER_ID       </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       0                   </Default>
+        </weaponDeactivationTimerID>
+
+        <!-- contains if the current weapon is activated and its type -->
+        <weaponActivated>
+            <Type>          UINT8               </Type>
+            <Flags>         CELL_PRIVATE        </Flags>
+            <Default>       1                   </Default>
+        </weaponActivated>
+
+        <!-- List of currently active components (components tied to equipped items) -->
+        <inventoryComponents>
+            <Type>          ARRAY <of> WSTRING </of> </Type>
+            <Flags>         CELL_PUBLIC              </Flags>
+        </inventoryComponents>
+
+        <!-- Known Ammo Types holds an array of all of the known ammo types for this player -->
+        <knownAmmoTypes>
+            <Type>          ARRAY<of>INT32</of> </Type>
+            <Default>       []                  </Default>
+            <Flags>         CELL_PRIVATE        </Flags>
+        </knownAmmoTypes>
+
+        <!-- { id : level } -->
+        <racialParadigmLevels>
+            <Type>     PYTHON        </Type>
+            <Default>  {}            </Default>
+            <Flags>    CELL_PRIVATE  </Flags>
+        </racialParadigmLevels>
+
+        <appliedSciencePoints>
+            <Type>     INT32         </Type>
+            <Default>  0             </Default>
+            <Flags>    CELL_PRIVATE  </Flags>
+        </appliedSciencePoints>
+
+        <!-- { discipline seq id : expertise } -->
+        <knownDisciplines>
+            <Type>     PYTHON        </Type>
+            <Default>  {}            </Default>
+            <Flags>    CELL_PRIVATE  </Flags>
+        </knownDisciplines>
+
+        <knownCrafts>
+            <Type>     ARRAY <of> INT32 </of>   </Type>
+            <Flags>    CELL_PRIVATE             </Flags>
+        </knownCrafts>
+
+    </Properties>
+
+    <ClientMethods>
+        <onBagInfo>
+            <Arg>           ARRAY<of>BagInfo</of>   <ArgName>BagInfo</ArgName></Arg>
+        </onBagInfo>
+        <onActiveSlotUpdate>
+            <Arg>           INT32                   <ArgName>BagId</ArgName></Arg>
+            <Arg>           INT32                   <ArgName>SlotId</ArgName></Arg>
+        </onActiveSlotUpdate>
+        <onRemoveItem>
+            <Arg>           ARRAY<of>INT32</of>     <ArgName>ItemIdList</ArgName></Arg>
+        </onRemoveItem>
+        <onUpdateItem>
+            <Arg>           ARRAY<of>InvItem</of>   <ArgName>ItemUpdates</ArgName></Arg>
+        </onUpdateItem>
+        <onRefreshItem>
+            <Arg>           INT32                   <ArgName>ItemId</ArgName></Arg>
+        </onRefreshItem>
+        <onClearOrgVaultInventory>
+            <Arg>           INT32                   <ArgName>OrganizationId</ArgName></Arg>
+        </onClearOrgVaultInventory>
+        <onCashChanged>
+            <Arg>           INT32                   <ArgName>cash</ArgName></Arg>
+        </onCashChanged>       
+    </ClientMethods>
+
+
+    <CellMethods>
+        <!-- Adds cash to the player -->
+        <giveCash>
+            <Arg>           INT32       <ArgName>Amount</ArgName></Arg>  <!-- Amount of cash to give -->
+        </giveCash>
+        
+        <!-- Give an item to this entity -->
+        <requestGiveItem>
+            <Arg>           INT32       </Arg> <!-- Item Id -->
+            <Arg>           INT32       </Arg> <!-- Quantity -->
+            <Arg>           INT8        </Arg> <!-- Boolean determining if the entity is required to take the full quantity -->
+            <Arg>           INT32       </Arg> <!-- Entity Id to make the given callback on -->
+            <Arg>           STRING      </Arg> <!-- Callback rpc name -->
+            <Arg>           PYTHON      </Arg> <!-- Callback arguments -->
+        </requestGiveItem>
+        
+        <!-- Remove an item -->
+        <removeItem>
+            <Exposed/>
+            <Arg>           ItemID      <ArgName>itemID</ArgName></Arg>  <!-- Item's Inventory ID -->
+            <Arg>           INT16       <ArgName>quantity</ArgName></Arg>  <!-- Quantity -->
+        </removeItem>
+
+        <!-- Requests that an item be removed from the inventory -->
+        <requestRemoveItem>
+            <Arg>           ItemID      </Arg>  <!-- Items Inventory ID -->
+            <Arg>           INT16       </Arg>  <!-- Quantity -->
+        </requestRemoveItem>
+
+        <!-- Request a list of inventory items -->
+        <listItems>
+            <Exposed/>
+        </listItems>
+      
+        <moveItem>
+            <Exposed/>
+            <Arg>           INT32       <ArgName>aItemId</ArgName></Arg>
+            <Arg>           INT32       <ArgName>aTargetBag</ArgName></Arg>
+            <Arg>           INT32       <ArgName>aTargetSlot</ArgName></Arg>
+            <Arg>           INT32       <ArgName>aQuantity</ArgName></Arg>
+        </moveItem>
+       
+        <!-- Request from the client to use the selected item -->
+        <useItem>
+            <Exposed/>
+            <Arg>           INT32       <ArgName>aItemID</ArgName></Arg>   <!-- Player inventory id for use -->
+            <Arg>           INT32       <ArgName>aTargetID</ArgName></Arg> <!-- BigWorld Entity Id -->
+        </useItem>
+        
+        <!-- Request from the client to repair the selected item -->
+        <repairItemRequest>
+            <Exposed/>
+            <Arg>           INT32       <ArgName>itemId</ArgName></Arg>  <!-- Player inventory id for repair -->
+            <Arg>           FLOAT       <ArgName>repairRatio</ArgName></Arg>  <!-- Player inventory id for repair -->
+        </repairItemRequest>
+
+        <requestActiveSlotChange>
+            <Exposed/>
+            <Arg>           INT32       <ArgName>BagId</ArgName></Arg>
+            <Arg>           INT32       <ArgName>SlotId</ArgName></Arg>
+        </requestActiveSlotChange>
+        
+        <!-- Request Ammo Change attempts to change the ammo of the current weapon to a new ammo type -->
+        <requestAmmoChange>
+            <Exposed/>
+            <Arg>           INT32       <ArgName>ItemId</ArgName></Arg>
+            <Arg>           INT32       <ArgName>AmmoType</ArgName></Arg>
+        </requestAmmoChange>
+        
+        <showInventory>
+            <Arg>       MAILBOX     </Arg> <!-- Base mailbox of the GM calling this -->
+        </showInventory> 
+        
+        <!-- Called by another entity from swapItemsStart -->
+        <swapItemsFinish>
+            <Arg>       INT32       </Arg> <!-- Remote Entity Id -->
+            <Arg>       INT32       </Arg> <!-- Remote Entity db id -->
+            <Arg>       PYTHON      </Arg> <!-- List of partial InvItem structure of remote entities items -->
+            <Arg>       INT32       </Arg> <!-- Remote cash value -->
+            <Arg>       PYTHON      </Arg> <!-- List of expected local Inv Item -->
+            <Arg>       INT32       </Arg> <!-- Expected local cash amount -->
+            <Arg>       PYTHON      </Arg> <!-- Database arguments for remote entities db calls -->
+        </swapItemsFinish>
+        
+        <onOrgMoveItemResult>
+            <Arg>       UINT8       <ArgName>bSuccess</ArgName></Arg>
+            <Arg>       INT32       <ArgName>orgMoveTag</ArgName></Arg>
+            <Arg>       PYTHON      <ArgName>changesToApply</ArgName></Arg>
+        </onOrgMoveItemResult>
+        
+    </CellMethods>
+
+
+    <BaseMethods>
+    </BaseMethods>
+</root>

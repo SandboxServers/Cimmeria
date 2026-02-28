@@ -1,0 +1,363 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Script Version="1.4" DatasetVersion="1.2" Module="General.test" Type="Mission" NextId="29">
+	<Node Id="1" Ref="Event_Loaded" X="-126" Y="-81">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+	</Node>
+	<Node Id="2" Ref="Act_Log" X="175" Y="-100">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Player Loaded"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="3" Ref="Event_ScriptLoaded" X="-128" Y="107">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Port Name="Out" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+	</Node>
+	<Node Id="4" Ref="Act_Log" X="169" Y="84">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Script Loaded"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="5" Ref="Event_Stargate" X="-119" Y="369">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Port Name="Destroy Gate" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Gate Passage" Flags="0"/>
+		<Port Name="Make Gate" Flags="0"/>
+		<Port Name="Make Gate Failed" Flags="0"/>
+		<Port Name="Stargate Id" Flags="0"/>
+	</Node>
+	<Node Id="6" Ref="Act_Log" X="212" Y="329">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Make Gate Failed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="7" Ref="Act_Log" X="99" Y="271">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Make Gate"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="8" Ref="Act_Log" X="321" Y="390">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Destroy Gate"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="9" Ref="Act_Log" X="424" Y="450">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Gate Passage"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="10" Ref="Event_MissionUpdate" X="-119" Y="672">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Fire Only Once" Value="false"/>
+		<Property Name="Mission Id" Value="1627"/>
+		<Property Name="Stop Propagating Event" Value="true"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Rewards Chosen" Flags="0"/>
+		<Port Name="Started" Flags="0"/>
+	</Node>
+	<Node Id="11" Ref="Act_Log" X="75" Y="567">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Started"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="12" Ref="Act_Log" X="189" Y="623">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Completed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="13" Ref="Act_Log" X="299" Y="672">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Failed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="14" Ref="Act_Log" X="407" Y="726">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Rewards Chosen"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="16" Ref="Event_MissionStepUpdate" X="-122" Y="943">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="1627"/>
+		<Property Name="Step Id" Value="4839"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Started" Flags="0"/>
+	</Node>
+	<Node Id="17" Ref="Act_Log" X="106" Y="848">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Step Started"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="18" Ref="Act_Log" X="217" Y="891">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Step Completed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="19" Ref="Act_Log" X="333" Y="938">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Step Failed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="20" Ref="Event_MissionObjectiveUpdate" X="614" Y="719">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="1627"/>
+		<Property Name="Objective Id" Value="5548"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Started" Flags="0"/>
+	</Node>
+	<Node Id="21" Ref="Act_Log" X="841" Y="611">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Objective Started"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="22" Ref="Act_Log" X="959" Y="641">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Objective Completed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="23" Ref="Act_Log" X="1065" Y="685">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Objective Failed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="24" Ref="Event_MissionTaskUpdate" X="624" Y="937">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Mission Id" Value="1627"/>
+		<Property Name="Task Id" Value="6898"/>
+		<Port Name="Completed" Flags="0"/>
+		<Port Name="Failed" Flags="0"/>
+		<Port Name="Player" Flags="0"/>
+		<Port Name="Progress" Flags="0"/>
+		<Port Name="Progress Update" Flags="0"/>
+		<Port Name="Started" Flags="0"/>
+	</Node>
+	<Node Id="25" Ref="Act_Log" X="842" Y="841">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Task Started"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="26" Ref="Act_Log" X="959" Y="890">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Task Completed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="27" Ref="Act_Log" X="1079" Y="940">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Task Failed"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Node Id="28" Ref="Act_Log" X="1190" Y="989">
+		<Property Name="Comment" Value=""/>
+		<Property Name="Debug" Value="false"/>
+		<Property Name="Enabled" Value="true"/>
+		<Property Name="Message" Value="EVENT TEST - Mission Task Progress"/>
+		<Port Name="Boolean" Flags="0"/>
+		<Port Name="Entity" Flags="0"/>
+		<Port Name="Float" Flags="0"/>
+		<Port Name="In" Flags="0"/>
+		<Port Name="Integer" Flags="0"/>
+		<Port Name="Message" Flags="0"/>
+		<Port Name="Out" Flags="0"/>
+	</Node>
+	<Connection OutNode="1" OutPort="Out" InNode="2" InPort="In"/>
+	<Connection OutNode="3" OutPort="Out" InNode="4" InPort="In"/>
+	<Connection OutNode="5" OutPort="Make Gate" InNode="7" InPort="In"/>
+	<Connection OutNode="5" OutPort="Make Gate Failed" InNode="6" InPort="In"/>
+	<Connection OutNode="5" OutPort="Destroy Gate" InNode="8" InPort="In"/>
+	<Connection OutNode="5" OutPort="Gate Passage" InNode="9" InPort="In"/>
+	<Connection OutNode="10" OutPort="Started" InNode="11" InPort="In"/>
+	<Connection OutNode="10" OutPort="Completed" InNode="12" InPort="In"/>
+	<Connection OutNode="10" OutPort="Failed" InNode="13" InPort="In"/>
+	<Connection OutNode="10" OutPort="Rewards Chosen" InNode="14" InPort="In"/>
+	<Connection OutNode="16" OutPort="Started" InNode="17" InPort="In"/>
+	<Connection OutNode="16" OutPort="Completed" InNode="18" InPort="In"/>
+	<Connection OutNode="16" OutPort="Failed" InNode="19" InPort="In"/>
+	<Connection OutNode="20" OutPort="Started" InNode="21" InPort="In"/>
+	<Connection OutNode="20" OutPort="Completed" InNode="22" InPort="In"/>
+	<Connection OutNode="20" OutPort="Failed" InNode="23" InPort="In"/>
+	<Connection OutNode="24" OutPort="Started" InNode="25" InPort="In"/>
+	<Connection OutNode="24" OutPort="Completed" InNode="26" InPort="In"/>
+	<Connection OutNode="24" OutPort="Failed" InNode="27" InPort="In"/>
+	<Connection OutNode="24" OutPort="Progress Update" InNode="28" InPort="In"/>
+	<Connection OutNode="24" OutPort="Progress" InNode="28" InPort="Integer"/>
+	<Comment Id="0" Text="Mission Events Block" X="-142" Y="550" Width="1420" Height="600" Color="0"/>
+	<Connection OutNode="5" OutPort="Stargate Id" InNode="9" InPort="Integer"/>
+	<Connection OutNode="5" OutPort="Stargate Id" InNode="8" InPort="Integer"/>
+	<Connection OutNode="5" OutPort="Stargate Id" InNode="6" InPort="Integer"/>
+	<Connection OutNode="5" OutPort="Stargate Id" InNode="7" InPort="Integer"/>
+</Script>
