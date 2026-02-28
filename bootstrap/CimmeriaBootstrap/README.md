@@ -91,7 +91,7 @@ Update-CimmeriaClient
 3. Launch the game client
 4. Login with: **test** / **test**
 
-The auth endpoint is `http://localhost:8080/SGWLogin/UserAuth`.
+The auth endpoint is `http://localhost:8081/SGWLogin/UserAuth`.
 
 ## Database Details
 

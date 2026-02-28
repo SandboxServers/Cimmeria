@@ -5,7 +5,7 @@ function Update-CimmeriaClient {
 
     .DESCRIPTION
         Finds the Stargate Worlds client installation and patches Login.lua to point
-        at the local AuthenticationServer (http://localhost:8080/SGWLogin/UserAuth).
+        at the local AuthenticationServer (http://localhost:8081/SGWLogin/UserAuth).
 
         The original file is backed up as Login.lua.bak before patching.
 
@@ -14,7 +14,7 @@ function Update-CimmeriaClient {
         install locations automatically.
 
     .PARAMETER ServerUrl
-        Server URL to patch into Login.lua. Default: http://localhost:8080
+        Server URL to patch into Login.lua. Default: http://localhost:8081
 
     .EXAMPLE
         Update-CimmeriaClient
@@ -25,7 +25,7 @@ function Update-CimmeriaClient {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [string]$ClientPath,
-        [string]$ServerUrl = "http://localhost:8080"
+        [string]$ServerUrl = "http://localhost:8081"
     )
 
     Write-Step "PATCHING GAME CLIENT"

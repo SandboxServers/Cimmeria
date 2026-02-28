@@ -76,10 +76,10 @@ function Start-CimmeriaServer {
     # Start AuthenticationServer
     Write-Status "Starting AuthenticationServer..." "White"
     Start-Process -FilePath $authExe -WorkingDirectory $binDir -WindowStyle Normal
-    if (Wait-ForPort -Port 8080 -TimeoutSeconds 15) {
-        Write-Status "AuthenticationServer ready (port 8080)." "Green"
+    if (Wait-ForPort -Port 8081 -TimeoutSeconds 15) {
+        Write-Status "AuthenticationServer ready (port 8081)." "Green"
     } else {
-        Write-Status "WARNING: AuthenticationServer did not respond on port 8080 within 15s." "Yellow"
+        Write-Status "WARNING: AuthenticationServer did not respond on port 8081 within 15s." "Yellow"
         $authProc = Get-Process -Name "AuthenticationServer${suffix}" -ErrorAction SilentlyContinue
         if ($authProc) {
             Write-Status "  Process is alive (PID $($authProc.Id)) - may still be initializing." "Yellow"
@@ -123,7 +123,7 @@ function Start-CimmeriaServer {
     Write-Host "=============================================" -ForegroundColor Green
     Write-Host " Cimmeria Server Running" -ForegroundColor Green
     Write-Host "=============================================" -ForegroundColor Green
-    Write-Host " Auth server:   http://localhost:8080 (client login)" -ForegroundColor White
+    Write-Host " Auth server:   http://localhost:8081 (client login)" -ForegroundColor White
     Write-Host " Shard server:  localhost:32832 (game client)" -ForegroundColor White
     Write-Host " PostgreSQL:    localhost:$Port" -ForegroundColor White
     Write-Host " Test account:  test / test" -ForegroundColor White
