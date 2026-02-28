@@ -1,0 +1,120 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="authentication">
+      <UniqueIdentifier>{b2e4985d-c2fc-42f9-8d4e-466d5c69051d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="entity">
+      <UniqueIdentifier>{e081ebfa-b799-4da8-9dfe-cf5ade035cf4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mercury">
+      <UniqueIdentifier>{d2ae720a-6e9a-4117-b6f7-72fd29e05fb5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="base">
+      <UniqueIdentifier>{285243ef-57af-4435-a8c5-1f62c41333fb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mercury\sgw">
+      <UniqueIdentifier>{c6fc1fed-833e-4506-91fa-6e7cba8c19fb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="base\minigame">
+      <UniqueIdentifier>{004747e9-a2ec-482a-ae82-9d3aff509cfb}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\authentication\shard_client.cpp">
+      <Filter>authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\mercury\cell_handler.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\entity\base_entity.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\entity\base_py_util.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\launcher.cpp">
+      <Filter>base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\base_service.cpp">
+      <Filter>base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\mercury\sgw\client_handler.cpp">
+      <Filter>mercury\sgw</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\mercury\sgw\connect_handler.cpp">
+      <Filter>mercury\sgw</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\mercury\sgw\messages.cpp">
+      <Filter>mercury\sgw</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\mercury\sgw\resource.cpp">
+      <Filter>mercury\sgw</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\cell_manager.cpp">
+      <Filter>base</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\authentication\logon_queue.cpp" />
+    <ClCompile Include="..\src\baseapp\minigame.cpp">
+      <Filter>base\minigame</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\minigame_connection.cpp">
+      <Filter>base\minigame</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\stdafx.cpp" />
+    <ClCompile Include="..\src\baseapp\entity\ticker.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\baseapp\entity\cached_entity.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\authentication\shard_client.hpp">
+      <Filter>authentication</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\mercury\cell_handler.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\entity\base_entity.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\entity\base_py_util.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\base_service.hpp">
+      <Filter>base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\entity\base_entity_manager.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\mercury\sgw\client_handler.hpp">
+      <Filter>mercury\sgw</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\mercury\sgw\connect_handler.hpp">
+      <Filter>mercury\sgw</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\mercury\sgw\messages.hpp">
+      <Filter>mercury\sgw</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\mercury\sgw\resource.hpp">
+      <Filter>mercury\sgw</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\cell_manager.hpp">
+      <Filter>base</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\authentication\logon_queue.hpp" />
+    <ClInclude Include="..\src\baseapp\minigame_connection.hpp">
+      <Filter>base\minigame</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\minigame.hpp">
+      <Filter>base\minigame</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\entity\ticker.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\baseapp\entity\cached_entity.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

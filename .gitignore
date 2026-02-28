@@ -1,0 +1,117 @@
+# =============================================================================
+# Cimmeria (Stargate Worlds Emulator) - .gitignore
+# =============================================================================
+
+# =============================================================================
+# Build Outputs
+# =============================================================================
+# Compiled executables and runtime DLLs
+bin64/
+!bin64/.keep
+
+# Compiled static/dynamic libraries
+lib64/
+!lib64/.keep
+lib/
+!lib/.keep
+
+# Object files and intermediates
+*.obj
+*.o
+*.res
+*.iobj
+*.ipdb
+*.ilk
+*.exp
+
+# =============================================================================
+# Third-Party Dependencies (vendored - 724MB)
+# =============================================================================
+# These should be fetched/built separately, not stored in git.
+# Run setup-dependencies.ps1 to download and set up all dependencies.
+# See CLAUDE.md or setup-dependencies.ps1 for full dependency details.
+external/*
+!external/boost/
+external/boost/*
+!external/boost/user-config.jam
+
+# =============================================================================
+# Visual Studio
+# =============================================================================
+.vs/
+*.vcxproj.user
+*.sln.user
+*.suo
+*.ncb
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+ipch/
+*.aps
+*.cachefile
+*.psess
+*.vsp
+*.vspx
+*.sap
+*.e2e
+
+# Build configuration directories (VS intermediate output)
+Debug/
+Release/
+MinSizeRel/
+RelWithDebInfo/
+UnoptRelease/
+x64/
+Win32/
+
+# =============================================================================
+# Runtime / Logs
+# =============================================================================
+logs/**
+!logs/*/.keep
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+
+# =============================================================================
+# OS Files
+# =============================================================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# =============================================================================
+# Editor / IDE
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+*.tmp
+
+# =============================================================================
+# Local Config Overrides (credentials, local dev settings)
+# =============================================================================
+# The checked-in config/ files are templates with defaults.
+# Use *.local for machine-specific overrides containing real credentials.
+config/*.local
+*.local.config
+.env
+.env.*

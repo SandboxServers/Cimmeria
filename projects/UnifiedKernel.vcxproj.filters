@@ -1,0 +1,213 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="log">
+      <UniqueIdentifier>{1dfdb788-975f-4338-ae7b-ac007385d920}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="util">
+      <UniqueIdentifier>{c3f2a40d-8c67-454b-8281-fac61dfe2b3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="xml">
+      <UniqueIdentifier>{ec50bd05-ce53-4a0e-a70c-8950c8647385}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="entity">
+      <UniqueIdentifier>{7104f13e-e261-4319-b337-9cd9ccb252d3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mercury">
+      <UniqueIdentifier>{8dd7e505-5b6c-47a6-9054-d9727e1d5e7a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common">
+      <UniqueIdentifier>{b28dd78c-8d8f-4a69-9bb7-99459557ec41}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mercury\sgw">
+      <UniqueIdentifier>{4b92f3ab-8b1a-419f-a7c6-94168699820f}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\log\logger.cpp">
+      <Filter>log</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\xml\tinyxml2.cpp">
+      <Filter>xml</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\entity\python.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\entity\defs.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\entity\method.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\bundle.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\channel.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\encryption_filter.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\memory_stream.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\message.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\message_handler.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\nub.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\Stream.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\unified_connection.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\entity\pyutil.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\util\crashdump.cpp">
+      <Filter>util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\common\database.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\common\service.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\transparent_filter.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\entity\mailbox.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\stdafx.cpp" />
+    <ClCompile Include="..\src\common\console.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\entity\py_client.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\entity\entity.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\condemned_channels.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\packet.cpp">
+      <Filter>mercury</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mercury\sgw\entity_message_handler.cpp">
+      <Filter>mercury\sgw</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\log\logger.hpp">
+      <Filter>log</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\util\autoinit_singleton.hpp">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\util\singleton.hpp">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\stdafx.hpp" />
+    <ClInclude Include="..\src\fwd_decls.hpp" />
+    <ClInclude Include="..\src\xml\tinyxml2.h">
+      <Filter>xml</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\entity\python.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\entity\defs.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\entity\method.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\bundle.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\channel.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\encryption_filter.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\memory_stream.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\message.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\message_handler.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\nub.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\stream.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\tcp_server.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\timer.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\unified_connection.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\unified_protocol.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\base_cell_messages.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\entity\pyutil.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\util\crashdump.hpp">
+      <Filter>util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\common\database.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\common\service.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\transparent_filter.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\entity\mailbox.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\entity\entity.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\common\vec3.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\common\console.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\entity\py_client.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\entity\world_grid.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\condemned_channels.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\packet.hpp">
+      <Filter>mercury</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mercury\sgw\entity_message_handler.hpp">
+      <Filter>mercury\sgw</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

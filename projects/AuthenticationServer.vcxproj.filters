@@ -1,0 +1,41 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="authentication">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\authentication\service_main.hpp">
+      <Filter>authentication</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\authentication\logon_connection.hpp">
+      <Filter>authentication</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\authentication\logon_queue.hpp">
+      <Filter>authentication</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\authentication\frontend_connection.hpp">
+      <Filter>authentication</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\authentication\service_main.cpp">
+      <Filter>authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\authentication\launcher.cpp">
+      <Filter>authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\authentication\logon_connection.cpp">
+      <Filter>authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\authentication\logon_queue.cpp">
+      <Filter>authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\authentication\frontend_connection.cpp">
+      <Filter>authentication</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\stdafx.cpp" />
+  </ItemGroup>
+</Project>

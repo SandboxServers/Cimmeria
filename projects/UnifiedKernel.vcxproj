@@ -1,0 +1,329 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="UnoptRelease|Win32">
+      <Configuration>UnoptRelease</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="UnoptRelease|x64">
+      <Configuration>UnoptRelease</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{5A011583-61B0-4EE9-B639-6730A7934C1D}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>NetTest</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)\lib\</OutDir>
+    <IntDir>staging\unified_kernel\$(Configuration)\</IntDir>
+    <TargetName>unified_kernel_d</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)\lib64\</OutDir>
+    <IntDir>staging64\unified_kernel\$(Configuration)\</IntDir>
+    <TargetName>unified_kernel_d</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)\lib\</OutDir>
+    <IntDir>staging\unified_kernel\$(Configuration)\</IntDir>
+    <TargetName>unified_kernel</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)\lib\</OutDir>
+    <IntDir>staging\unified_kernel\$(Configuration)\</IntDir>
+    <TargetName>unified_kernel</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)\lib64\</OutDir>
+    <IntDir>staging64\unified_kernel\$(Configuration)\</IntDir>
+    <TargetName>unified_kernel</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)\lib64\</OutDir>
+    <IntDir>staging64\unified_kernel\$(Configuration)\</IntDir>
+    <TargetName>unified_kernel</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ProgramDataBaseFileName>$(SolutionDir)\lib\unified_kernel_d.pdb</ProgramDataBaseFileName>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>F:\boost\lib</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;BOOST_PYTHON_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ProgramDataBaseFileName>$(SolutionDir)\lib\unified_kernel_d.pdb</ProgramDataBaseFileName>
+      <DisableSpecificWarnings>4996</DisableSpecificWarnings>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>F:\boost\lib</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <ProgramDataBaseFileName>$(SolutionDir)\lib\unified_kernel.pdb</ProgramDataBaseFileName>
+      <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>F:\boost\lib</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <ProgramDataBaseFileName>$(SolutionDir)\lib\unified_kernel.pdb</ProgramDataBaseFileName>
+      <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>F:\boost\lib</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <ProgramDataBaseFileName>$(SolutionDir)\lib\unified_kernel.pdb</ProgramDataBaseFileName>
+      <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>F:\boost\lib</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <Optimization>Disabled</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <ProgramDataBaseFileName>$(SolutionDir)\lib\unified_kernel.pdb</ProgramDataBaseFileName>
+      <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalLibraryDirectories>F:\boost\lib</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\common\console.cpp" />
+    <ClCompile Include="..\src\common\database.cpp" />
+    <ClCompile Include="..\src\common\service.cpp" />
+    <ClCompile Include="..\src\entity\defs.cpp" />
+    <ClCompile Include="..\src\entity\entity.cpp" />
+    <ClCompile Include="..\src\entity\mailbox.cpp" />
+    <ClCompile Include="..\src\entity\method.cpp" />
+    <ClCompile Include="..\src\entity\python.cpp" />
+    <ClCompile Include="..\src\entity\pyutil.cpp" />
+    <ClCompile Include="..\src\entity\py_client.cpp" />
+    <ClCompile Include="..\src\log\logger.cpp" />
+    <ClCompile Include="..\src\mercury\bundle.cpp" />
+    <ClCompile Include="..\src\mercury\channel.cpp" />
+    <ClCompile Include="..\src\mercury\condemned_channels.cpp" />
+    <ClCompile Include="..\src\mercury\encryption_filter.cpp" />
+    <ClCompile Include="..\src\mercury\packet.cpp" />
+    <ClCompile Include="..\src\mercury\memory_stream.cpp" />
+    <ClCompile Include="..\src\mercury\message.cpp" />
+    <ClCompile Include="..\src\mercury\message_handler.cpp" />
+    <ClCompile Include="..\src\mercury\nub.cpp" />
+    <ClCompile Include="..\src\mercury\sgw\entity_message_handler.cpp" />
+    <ClCompile Include="..\src\mercury\Stream.cpp" />
+    <ClCompile Include="..\src\mercury\transparent_filter.cpp" />
+    <ClCompile Include="..\src\mercury\unified_connection.cpp" />
+    <ClCompile Include="..\src\stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='UnoptRelease|Win32'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\src\util\crashdump.cpp" />
+    <ClCompile Include="..\src\xml\tinyxml2.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\common\console.hpp" />
+    <ClInclude Include="..\src\common\database.hpp" />
+    <ClInclude Include="..\src\common\service.hpp" />
+    <ClInclude Include="..\src\common\vec3.hpp" />
+    <ClInclude Include="..\src\entity\defs.hpp" />
+    <ClInclude Include="..\src\entity\entity.hpp" />
+    <ClInclude Include="..\src\entity\mailbox.hpp" />
+    <ClInclude Include="..\src\entity\method.hpp" />
+    <ClInclude Include="..\src\entity\python.hpp" />
+    <ClInclude Include="..\src\entity\pyutil.hpp" />
+    <ClInclude Include="..\src\entity\py_client.hpp" />
+    <ClInclude Include="..\src\entity\world_grid.hpp" />
+    <ClInclude Include="..\src\fwd_decls.hpp" />
+    <ClInclude Include="..\src\log\logger.hpp" />
+    <ClInclude Include="..\src\mercury\base_cell_messages.hpp" />
+    <ClInclude Include="..\src\mercury\bundle.hpp" />
+    <ClInclude Include="..\src\mercury\channel.hpp" />
+    <ClInclude Include="..\src\mercury\condemned_channels.hpp" />
+    <ClInclude Include="..\src\mercury\encryption_filter.hpp" />
+    <ClInclude Include="..\src\mercury\packet.hpp" />
+    <ClInclude Include="..\src\mercury\memory_stream.hpp" />
+    <ClInclude Include="..\src\mercury\message.hpp" />
+    <ClInclude Include="..\src\mercury\message_handler.hpp" />
+    <ClInclude Include="..\src\mercury\nub.hpp" />
+    <ClInclude Include="..\src\mercury\sgw\entity_message_handler.hpp" />
+    <ClInclude Include="..\src\mercury\stream.hpp" />
+    <ClInclude Include="..\src\mercury\tcp_server.hpp" />
+    <ClInclude Include="..\src\mercury\timer.hpp" />
+    <ClInclude Include="..\src\mercury\transparent_filter.hpp" />
+    <ClInclude Include="..\src\mercury\unified_connection.hpp" />
+    <ClInclude Include="..\src\mercury\unified_protocol.hpp" />
+    <ClInclude Include="..\src\stdafx.hpp" />
+    <ClInclude Include="..\src\util\autoinit_singleton.hpp" />
+    <ClInclude Include="..\src\util\crashdump.hpp" />
+    <ClInclude Include="..\src\util\singleton.hpp" />
+    <ClInclude Include="..\src\xml\tinyxml2.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

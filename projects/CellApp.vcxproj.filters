@@ -1,0 +1,64 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="cell">
+      <UniqueIdentifier>{d883aeb4-cd2d-43ac-b5e8-3f74e0b48f55}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="entity">
+      <UniqueIdentifier>{9a8ea50f-299e-4ae5-9e54-185dbaa2734e}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\cellapp\cell_service.hpp">
+      <Filter>cell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cellapp\base_client.hpp">
+      <Filter>cell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cellapp\space.hpp">
+      <Filter>cell</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cellapp\entity\cell_entity.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cellapp\entity\entity_manager.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cellapp\entity\cell_py_util.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cellapp\entity\movement.hpp">
+      <Filter>entity</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\cellapp\entity\navigation.hpp">
+      <Filter>cell</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\cellapp\cell_service.cpp">
+      <Filter>cell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cellapp\cell_launcher.cpp">
+      <Filter>cell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cellapp\base_client.cpp">
+      <Filter>cell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cellapp\space.cpp">
+      <Filter>cell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cellapp\entity\cell_entity.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cellapp\entity\cell_py_util.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cellapp\entity\movement.cpp">
+      <Filter>entity</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\cellapp\entity\navigation.cpp">
+      <Filter>cell</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\stdafx.cpp" />
+  </ItemGroup>
+</Project>
