@@ -14,7 +14,7 @@
         'Initialize-CimmeriaRuntime',
         'Start-CimmeriaServer',
         'Stop-CimmeriaServer',
-        'Patch-CimmeriaClient',
+        'Update-CimmeriaClient',
         'Invoke-CimmeriaBootstrap'
     )
 

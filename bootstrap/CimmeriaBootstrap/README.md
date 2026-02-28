@@ -46,7 +46,7 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 
 ### Client & Orchestration
 
-- **`Patch-CimmeriaClient`** - Patch game client Login.lua to connect locally
+- **`Update-CimmeriaClient`** - Patch game client Login.lua to connect locally
 - **`Invoke-CimmeriaBootstrap`** - Full pipeline orchestrator
 
 ## Common Options
@@ -81,13 +81,13 @@ Start-CimmeriaServer
 Stop-CimmeriaServer
 
 # Patch game client:
-Patch-CimmeriaClient
+Update-CimmeriaClient
 ```
 
 ## Connecting a Game Client
 
 1. Install the Stargate Worlds QA client
-2. Run `Patch-CimmeriaClient` (or manually edit Login.lua)
+2. Run `Update-CimmeriaClient` (or manually edit Login.lua)
 3. Launch the game client
 4. Login with: **test** / **test**
 
@@ -122,7 +122,7 @@ CimmeriaBootstrap/
 │   ├── Initialize-CimmeriaRuntime.ps1
 │   ├── Start-CimmeriaServer.ps1
 │   ├── Stop-CimmeriaServer.ps1
-│   ├── Patch-CimmeriaClient.ps1
+│   ├── Update-CimmeriaClient.ps1
 │   └── Invoke-CimmeriaBootstrap.ps1
 └── Private/                        # Internal helpers (11 files)
     ├── Write-Step.ps1

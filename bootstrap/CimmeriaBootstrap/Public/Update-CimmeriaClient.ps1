@@ -1,4 +1,4 @@
-function Patch-CimmeriaClient {
+function Update-CimmeriaClient {
     <#
     .SYNOPSIS
         Patches the Stargate Worlds game client to connect to the local Cimmeria server.
@@ -17,10 +17,10 @@ function Patch-CimmeriaClient {
         Server URL to patch into Login.lua. Default: http://localhost:8080
 
     .EXAMPLE
-        Patch-CimmeriaClient
+        Update-CimmeriaClient
 
     .EXAMPLE
-        Patch-CimmeriaClient -ClientPath "D:\Games\Stargate Worlds-QA"
+        Update-CimmeriaClient -ClientPath "D:\Games\Stargate Worlds-QA"
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -52,7 +52,7 @@ function Patch-CimmeriaClient {
             Write-Host "Stargate Worlds client not found in common locations." -ForegroundColor Yellow
             Write-Host ""
             Write-Host "Please specify the path manually:" -ForegroundColor White
-            Write-Host "  Patch-CimmeriaClient -ClientPath 'C:\Path\To\Stargate Worlds-QA'" -ForegroundColor Gray
+            Write-Host "  Update-CimmeriaClient -ClientPath 'C:\Path\To\Stargate Worlds-QA'" -ForegroundColor Gray
             Write-Host ""
             Write-Host "The client directory should contain:" -ForegroundColor Gray
             Write-Host "  Working\SGWGame\Content\UI\Startup\Login\Login.lua" -ForegroundColor Gray

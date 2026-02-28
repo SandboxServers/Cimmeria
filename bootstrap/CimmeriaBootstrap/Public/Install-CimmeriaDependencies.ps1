@@ -201,11 +201,11 @@ function Install-CimmeriaDependencies {
         Write-Status "PostgreSQL: preserving server distribution for runtime..." "DarkGray"
         if (Test-Path $pgServerDir) { Remove-Item $pgServerDir -Recurse -Force }
         if (Test-Path (Join-Path $pgBinRoot "bin\postgres.exe")) {
-            Rename-Item $pgBinRoot $pgServerDir
+            Move-Item $pgBinRoot $pgServerDir
         } else {
             # The pgsql directory itself is the root
             $pgRootDir = $pgRoot.FullName
-            Rename-Item $pgRootDir $pgServerDir
+            Move-Item $pgRootDir $pgServerDir
         }
 
         Write-Status "PostgreSQL: cleaning temp files..." "DarkGray"

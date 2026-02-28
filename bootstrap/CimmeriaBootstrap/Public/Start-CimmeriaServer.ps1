@@ -131,7 +131,7 @@ function Start-CimmeriaServer {
     Write-Host "=============================================" -ForegroundColor Green
     Write-Host ""
     Write-Host " To connect a game client:" -ForegroundColor Gray
-    Write-Host "   1. Run: Patch-CimmeriaClient" -ForegroundColor Gray
+    Write-Host "   1. Run: Update-CimmeriaClient" -ForegroundColor Gray
     Write-Host "   2. Launch the game client" -ForegroundColor Gray
     Write-Host "   3. Login with: test / test" -ForegroundColor Gray
     Write-Host ""

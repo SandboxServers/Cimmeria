@@ -38,7 +38,7 @@ Install-CimmeriaDependencies -SkipDownload    # Re-apply patches only
 Build-CimmeriaSolution -Configuration Release  # Build release
 Start-CimmeriaServer                           # Launch servers
 Stop-CimmeriaServer                            # Shut down everything
-Patch-CimmeriaClient                           # Patch game client
+Update-CimmeriaClient                          # Patch game client
 ```
 
 ## Prerequisites
@@ -109,7 +109,7 @@ Standalone `.bat` scripts for manual use:
 ## Connecting a Game Client
 
 1. Install the Stargate Worlds QA client
-2. Run: `Patch-CimmeriaClient` (or manually edit Login.lua to point at `http://localhost:8080/SGWLogin/UserAuth`)
+2. Run: `Update-CimmeriaClient` (or manually edit Login.lua to point at `http://localhost:8080/SGWLogin/UserAuth`)
 3. Launch the game client
 4. Login with: **test** / **test**
 
