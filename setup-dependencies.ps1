@@ -661,17 +661,19 @@ Write-Step "PHASE 3: APPLYING COMPATIBILITY PATCHES"
 
 # Patch mapping: source file in bootstrap/patches/ -> target in external/
 $patchMap = @{
-    "boost_auto_link.hpp"   = "boost\boost\config\auto_link.hpp"
-    "soci_platform.h"       = "soci\src\core\soci-platform.h"
-    "openssl_e_os.h"        = "openssl_src\e_os.h"
-    "openssl_e_padlock.c"   = "openssl_src\engines\e_padlock.c"
+    "boost_auto_link.hpp"       = "boost\boost\config\auto_link.hpp"
+    "soci_platform.h"           = "soci\src\core\soci-platform.h"
+    "soci_backends_config.h"    = "soci\src\core\soci_backends_config.h"
+    "openssl_e_os.h"            = "openssl_src\e_os.h"
+    "openssl_e_padlock.c"       = "openssl_src\engines\e_padlock.c"
 }
 
 $patchDescriptions = @{
-    "boost_auto_link.hpp"   = "Add vc140/vc145 toolset entries for VS2015+ auto-linking"
-    "soci_platform.h"       = "Guard snprintf/strtoll macros for VS2013+ native CRT"
-    "openssl_e_os.h"        = "Skip stdin/stdout/stderr redefinition on VS2015+ UCRT"
-    "openssl_e_padlock.c"   = "Guard x86 inline asm with _M_IX86 for x64 builds"
+    "boost_auto_link.hpp"       = "Add vc140/vc145 toolset entries for VS2015+ auto-linking"
+    "soci_platform.h"           = "Guard snprintf/strtoll macros for VS2013+ native CRT"
+    "soci_backends_config.h"    = "Generate CMake config header for static-link build"
+    "openssl_e_os.h"            = "Skip stdin/stdout/stderr redefinition on VS2015+ UCRT"
+    "openssl_e_padlock.c"       = "Guard x86 inline asm with _M_IX86 for x64 builds"
 }
 
 $patchesApplied = 0
@@ -730,14 +732,21 @@ if ($script:ClExePath -and (Test-Path $templatePath)) {
     }
 
     $clPathEscaped = $script:ClExePath -replace '\\', '\\\\'
+    $pythonInclude = (Join-Path $ExternalDir "python\include") -replace '\\', '\\\\'
+    $pythonLib = (Join-Path $ExternalDir "python\lib64") -replace '\\', '\\\\'
+
     $template = Get-Content $templatePath -Raw
     $generated = $template -replace '\{\{MSVC_TOOLSET_VERSION\}\}', $b2Toolset
     $generated = $generated -replace '\{\{MSVC_CL_PATH\}\}', $clPathEscaped
+    $generated = $generated -replace '\{\{PYTHON_INCLUDE_PATH\}\}', $pythonInclude
+    $generated = $generated -replace '\{\{PYTHON_LIB_PATH\}\}', $pythonLib
 
     Set-Content -Path $userConfigPath -Value $generated -NoNewline
     Write-Status "Generated: $userConfigPath" "Green"
     Write-Status "  MSVC toolset: msvc-$b2Toolset" "DarkGray"
     Write-Status "  cl.exe: $script:ClExePath" "DarkGray"
+    Write-Status "  Python include: $pythonInclude" "DarkGray"
+    Write-Status "  Python lib: $pythonLib" "DarkGray"
 } elseif (Test-Path $userConfigPath) {
     Write-Status "user-config.jam already exists, keeping current version" "DarkGray"
 } else {

@@ -24,6 +24,21 @@ set "PROJECT_ROOT=%SCRIPT_DIR%.."
 set "SOCI_SRC=%PROJECT_ROOT%\external\soci\src"
 set "PG_INC=%PROJECT_ROOT%\external\postgresql\include"
 
+REM Generate soci_backends_config.h if missing (normally CMake-generated).
+REM Also defines SOCI_LIB_PREFIX/SUFFIX for the dynamic backend loader
+REM (unused in our static-link build, but must compile).
+if not exist "%SOCI_SRC%\core\soci_backends_config.h" (
+    echo Generating soci_backends_config.h...
+    (
+        echo #ifndef SOCI_BACKENDS_CONFIG_H
+        echo #define SOCI_BACKENDS_CONFIG_H
+        echo #define DEFAULT_BACKENDS_PATH ""
+        echo #define SOCI_LIB_PREFIX ""
+        echo #define SOCI_LIB_SUFFIX ".dll"
+        echo #endif
+    ) > "%SOCI_SRC%\core\soci_backends_config.h"
+)
+
 REM Common compiler flags
 set "COMMON_FLAGS=/nologo /c /EHsc /W3 /DSOCI_LIB /D_CRT_SECURE_NO_WARNINGS /D_CRT_SECURE_NO_DEPRECATE"
 set "INCLUDE_CORE=/I"%SOCI_SRC%\core""
@@ -41,7 +56,7 @@ set "OUT_DIR=%PROJECT_ROOT%\lib64\debug"
 if not exist "%TMP_DIR%" mkdir "%TMP_DIR%"
 if not exist "%OUT_DIR%" mkdir "%OUT_DIR%"
 
-set "DBG_FLAGS=/MTd /Od /Zi /D_DEBUG /DDEBUG"
+set "DBG_FLAGS=/MDd /Od /Zi /D_DEBUG /DDEBUG"
 
 echo Compiling SOCI core...
 for %%f in ("%SOCI_SRC%\core\*.cpp") do (
@@ -86,7 +101,7 @@ set "OUT_DIR=%PROJECT_ROOT%\lib64\release"
 if not exist "%TMP_DIR%" mkdir "%TMP_DIR%"
 if not exist "%OUT_DIR%" mkdir "%OUT_DIR%"
 
-set "REL_FLAGS=/MT /O2 /DNDEBUG"
+set "REL_FLAGS=/MD /O2 /DNDEBUG"
 
 echo Compiling SOCI core...
 for %%f in ("%SOCI_SRC%\core\*.cpp") do (

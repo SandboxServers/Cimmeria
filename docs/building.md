@@ -128,10 +128,11 @@ in `bootstrap/patches/` and applied automatically by `setup-dependencies.ps1`.
 If you extract dependencies manually, you must apply these patches yourself:
 
 ```powershell
-copy bootstrap\patches\boost_auto_link.hpp   external\boost\boost\config\auto_link.hpp
-copy bootstrap\patches\soci_platform.h       external\soci\src\core\soci-platform.h
-copy bootstrap\patches\openssl_e_os.h        external\openssl_src\e_os.h
-copy bootstrap\patches\openssl_e_padlock.c   external\openssl_src\engines\e_padlock.c
+copy bootstrap\patches\boost_auto_link.hpp      external\boost\boost\config\auto_link.hpp
+copy bootstrap\patches\soci_platform.h          external\soci\src\core\soci-platform.h
+copy bootstrap\patches\soci_backends_config.h   external\soci\src\core\soci_backends_config.h
+copy bootstrap\patches\openssl_e_os.h           external\openssl_src\e_os.h
+copy bootstrap\patches\openssl_e_padlock.c      external\openssl_src\engines\e_padlock.c
 ```
 
 See [../bootstrap/patches/README.md](../bootstrap/patches/README.md) for details
