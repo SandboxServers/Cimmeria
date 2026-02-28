@@ -125,7 +125,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
@@ -140,7 +140,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;BOOST_PYTHON_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -159,7 +159,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
@@ -179,7 +179,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>../external/boost;../src/;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../external/boost;../src/;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
@@ -199,7 +199,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>../external/boost;../src/;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../external/boost;../src/;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
@@ -219,7 +219,7 @@
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>false</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>../external/boost;../src/;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../external/boost;../src/;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include;../external/recast/Recast/Include;../external/recast/Detour/Include</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>

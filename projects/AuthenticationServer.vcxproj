@@ -133,7 +133,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include</AdditionalIncludeDirectories>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
@@ -149,7 +149,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;BOOST_PYTHON_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include</AdditionalIncludeDirectories>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
       <DisableSpecificWarnings>4996</DisableSpecificWarnings>
     </ClCompile>
@@ -168,7 +168,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include</AdditionalIncludeDirectories>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
@@ -189,7 +189,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include</AdditionalIncludeDirectories>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
@@ -210,7 +210,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include</AdditionalIncludeDirectories>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
@@ -231,7 +231,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>false</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/postgresql/include;../external/python/include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../src/;../external/boost;../external/soci/src/core;../external/soci/src/backends/postgresql;../external/python/include;../external/postgresql/include</AdditionalIncludeDirectories>
       <PrecompiledHeaderFile>stdafx.hpp</PrecompiledHeaderFile>
       <EnableEnhancedInstructionSet>StreamingSIMDExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
