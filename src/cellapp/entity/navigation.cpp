@@ -342,7 +342,7 @@ void NavigationPath::smooth(Vec3 & startingPoint, dtPolyRef startingPoly, Vec3 &
 		Vec3 delta;
 		delta = steerPos - iterPos;
 
-		float len = dtSqrt(dtVdot(delta.raw(), delta.raw()));
+		float len = dtMathSqrtf(dtVdot(delta.raw(), delta.raw()));
 
 		// If the steer target is end of path or off-mesh link, do not move past the location.
 		if (endOfPath && len < params.smoothingStepSize)
