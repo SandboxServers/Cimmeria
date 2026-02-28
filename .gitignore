@@ -34,6 +34,13 @@ external/*
 !external/boost/
 external/boost/*
 !external/boost/user-config.jam
+!external/soci/
+external/soci/*
+!external/soci/src/
+external/soci/src/*
+!external/soci/src/core/
+external/soci/src/core/*
+!external/soci/src/core/soci-platform.h
 
 # =============================================================================
 # Visual Studio
