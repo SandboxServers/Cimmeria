@@ -86,6 +86,18 @@ function Initialize-CimmeriaDatabase {
     # Step 3: Create role and database
     $psqlExe = Join-Path $pgBin "psql.exe"
 
+    # Wait for PostgreSQL to be ready for queries (TCP open != accepting queries)
+    Write-Status "Waiting for PostgreSQL to accept queries..." "DarkGray"
+    $ready = $false
+    for ($i = 0; $i -lt 15; $i++) {
+        $check = & $psqlExe -p $Port -U postgres -tAc "SELECT 1" 2>$null
+        if ($check -match '1') { $ready = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ready) {
+        throw "PostgreSQL is not accepting queries after 15 seconds."
+    }
+
     # Check if database already exists
     Write-Status "Checking for existing database..." "DarkGray"
     $dbCheck = & $psqlExe -p $Port -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='sgw'" 2>$null
