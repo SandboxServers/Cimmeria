@@ -311,7 +311,7 @@ function Install-CimmeriaDependencies {
         $extracted = Join-Path $ExternalDir "openssl-OpenSSL_1_0_1e"
         if (Test-Path $extracted) {
             Write-Status "OpenSSL: renaming to openssl_src/" "DarkGray"
-            if (Test-Path $opensslSrcDir) { Remove-Item $opensslSrcDir -Recurse -Force }
+            if (Test-Path $opensslSrcDir) { cmd /c "rd /s /q `"$opensslSrcDir`"" }
             Rename-Item $extracted $opensslSrcDir
         }
         Write-Status "OpenSSL: done" "Green"
