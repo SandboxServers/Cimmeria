@@ -304,14 +304,19 @@ function Install-CimmeriaDependencies {
     }
 
     # --- OpenSSL (extract source, will be patched and built later) ---
+    # NOTE: OpenSSL's source tree contains a file named 'NUL' which is a reserved
+    # device name on Windows. We must delete it immediately after extraction and
+    # use cmd /c rd for directory removal since PowerShell can't handle NUL files.
     $opensslSrcDir = Join-Path $ExternalDir "openssl_src"
     if (-not (Test-Path (Join-Path $opensslSrcDir "Configure"))) {
         Write-Status "OpenSSL: extracting source..." "White"
+        if (Test-Path $opensslSrcDir) { cmd /c "rd /s /q `"$opensslSrcDir`"" 2>$null }
         Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.OpenSSL.FileName) $ExternalDir
         $extracted = Join-Path $ExternalDir "openssl-OpenSSL_1_0_1e"
         if (Test-Path $extracted) {
+            # Delete reserved 'NUL' filename before any move/rename/delete operations
+            cmd /c "del /f /q `"$extracted\NUL`"" 2>$null
             Write-Status "OpenSSL: renaming to openssl_src/" "DarkGray"
-            if (Test-Path $opensslSrcDir) { cmd /c "rd /s /q `"$opensslSrcDir`"" }
             Rename-Item $extracted $opensslSrcDir
         }
         Write-Status "OpenSSL: done" "Green"
