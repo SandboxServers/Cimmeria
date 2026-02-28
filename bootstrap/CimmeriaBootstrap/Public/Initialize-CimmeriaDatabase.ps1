@@ -83,6 +83,7 @@ function Initialize-CimmeriaDatabase {
     $psqlExe = Join-Path $pgBin "psql.exe"
 
     # Check if database already exists
+    Write-Status "Checking for existing database..." "DarkGray"
     $dbCheck = & $psqlExe -p $Port -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='sgw'" 2>$null
     if ($dbCheck -match '1') {
         Write-Status "Database 'sgw' already exists." "DarkGray"
@@ -107,6 +108,7 @@ function Initialize-CimmeriaDatabase {
     $sgwSql = Join-Path $paths.DbDir "sgw.sql"
 
     # Check if schemas are already loaded by testing for a key table
+    Write-Status "Checking for existing schemas..." "DarkGray"
     $tableCheck = & $psqlExe -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='account'" 2>$null
     if ($tableCheck -match '1') {
         Write-Status "Schemas already loaded (account table exists)." "DarkGray"
