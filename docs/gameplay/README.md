@@ -255,8 +255,8 @@ Overview of every game system in Stargate Worlds, with implementation status, ke
 
 **Features**: Friend lists, ignore lists, custom lists. Online notifications.
 **6 NetOut events**, **5 NetIn events**
-**Interface**: `ContactListManager.def` — 1 property, 4 cell methods, 4 client methods, 2 base methods
-**RE doc**: [contact-lists not yet documented]
+**Interface**: `ContactListManager.def` — 1 property, 6 cell methods, 5 client methods, 2 base methods
+**RE doc**: [contact-list.md](contact-list.md)
 
 ---
 

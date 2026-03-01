@@ -292,10 +292,196 @@ Access requires a password set in the config file (`py_console_password`). The c
 - [Space Management](../engine/space-management.md) -- CellApp world management
 - [Connection Flow](../connection-flow.md) -- End-to-end player connection
 
+## Developer Mode
+
+When `developer_mode` is set to `true` in `BaseService.config` or `CellService.config`, several behaviors change across both C++ and Python layers. The setting is exposed to Python scripts via `Atrea.config.developer_mode` and read into `Config.DEVELOPER_MODE` in `python/common/Config.py`.
+
+### Configuration
+
+```xml
+<!-- config/BaseService.config and config/CellService.config -->
+<developer_mode>false</developer_mode>
+```
+
+### Changed Behaviors
+
+| Behavior | Normal Mode | Developer Mode | Source |
+|----------|------------|----------------|--------|
+| **Duplicate logins** | Rejected (same account/character blocked) | Allowed (`DISALLOW_DUPLICATE_CHARACTERS = False`) | `python/common/Config.py:19` |
+| **Player access level** | Loaded from database `access_level` column | Forced to `65535` (max) on both Base and Cell | `python/base/SGWPlayer.py:35-36`, `python/cell/SGWPlayer.py:174-175` |
+| **Feedback logging** | Feedback messages logged at TRACE level | Feedback log suppressed (only sent to client) | `python/cell/SGWPlayer.py:367` |
+| **Debug messages** | Debug messages sent to client via feedback channel | Debug messages NOT sent to client | `python/cell/SGWPlayer.py:384` |
+| **Logger callback** | No callback; log messages go to server log only | All log categories set to `LOG_TRACE`; `Logger.LoggerCallback` set to forward all messages to the player's `onDebug()` method | `python/cell/SGWPlayer.py:552-555` |
+
+### Config Comment (Verbatim)
+
+From `BaseService.config` (identical in `CellService.config`):
+
+```
+Enables developer mode:
+- Allow multiple logins with the same account/character
+- All players have max access level by default
+- Logging to player is enabled
+- Log level is increased to TRACE
+```
+
+> **Note**: The config comment mentions "Log level is increased to TRACE" but this is implemented per-player via the Python logger callback, not by changing the C++ `log_level` config parameter.
+
+---
+
+## Python Console
+
+Both BaseApp and CellApp provide two console interfaces: a **local stdin console** and a **remote TCP console** (the `py_client` protocol). Neither has pre-registered commands -- both are raw Python REPLs with full access to the `Atrea` module and all imported game modules.
+
+### Local Console (`src/common/console.cpp`)
+
+A background thread started during service initialization reads lines from `stdin` and executes them as Python statements via `bp::exec()`. The console uses the `__main__` module's global namespace.
+
+| Feature | Details |
+|---------|---------|
+| Activation | Always started (runs in a `boost::thread` via `ConsoleThread()`) |
+| Prompt | `>>> ` (colored white on Windows, ANSI escape on Linux) |
+| Exit commands | `exit` or `quit` returns to normal log output |
+| Error handling | Python exceptions displayed in yellow (Windows) or logged via `PyUtil_ShowErr` |
+| Log suppression | Log level temporarily reduced to `WARNING` while console is active to reduce noise |
+
+### Remote TCP Console (`src/entity/py_client.hpp/cpp`)
+
+A password-authenticated TCP service using the unified protocol framing. Enabled only when `py_console_password` is non-empty in the config file.
+
+| Service | Default Port | Config Parameter |
+|---------|-------------|------------------|
+| BaseApp | 8989 | `console_port` |
+| CellApp | 8990 | `console_port` |
+
+**Protocol messages:**
+
+| ID | Name | Direction | Description |
+|----|------|-----------|-------------|
+| `0x01` | `PYS_REQ_AUTHENTICATE` | Client -> Server | Send password string |
+| `0x02` | `PYS_ACK_AUTHENTICATE` | Server -> Client | `uint32(0)` = success, `uint32(1)` = failure |
+| `0x03` | `PYS_REQ_EVALUATE` | Client -> Server | Evaluate Python expression, return result |
+| `0x04` | `PYS_ACK_EVALUATE` | Server -> Client | Result type + value (see below) |
+| `0x05` | `PYS_REQ_EXECUTE` | Client -> Server | Execute Python statement (no return value) |
+| `0x06` | `PYS_ACK_EXECUTE` | Server -> Client | `PY_EXEC_NONE` on success or `PY_EXEC_EXCEPTION` + error string |
+
+**Evaluate response types** (`py_exec_response`):
+
+| Value | Type | Payload |
+|-------|------|---------|
+| `0` | `PY_EXEC_NONE` | (none) |
+| `1` | `PY_EXEC_EXCEPTION` | Error string |
+| `2` | `PY_EXEC_INTEGER` | `int32` |
+| `3` | `PY_EXEC_FLOAT` | `float` |
+| `4` | `PY_EXEC_STRING` | Length-prefixed string |
+
+### Available `Atrea` Functions
+
+Since both consoles execute in the `__main__` namespace with `Atrea` imported, the following functions are available:
+
+**BaseApp (`Atrea.*`):**
+
+| Function | Description |
+|----------|-------------|
+| `dbQuery(sql)` | Execute SQL query, return list of row dicts |
+| `dbPerform(sql)` | Execute SQL statement (no return) |
+| `sendResource(entity, categoryId, elementId)` | Send cooked data resource to a client entity |
+| `createBaseEntity(className)` | Create a new base entity |
+| `createBaseEntityFromDb(className, dbid)` | Create base entity from database record |
+| `createCellEntity(entityId, spaceId, dbid, x, y, z, yaw, pitch, roll, worldName)` | Create a cell entity |
+| `findAllEntities()` | Return all base entities |
+| `switchEntity(entityId, newEntityId)` | Switch controller between entities |
+| `registerMinigameSession(...)` | Register a minigame session |
+| `cancelMinigameSession(entityId)` | Cancel a minigame session |
+| `getGameTime()` | Get current game time |
+| `addTimer(completeTime, callback)` | Register a timer |
+| `cancelTimer(timerId)` | Cancel a timer |
+| `reloadClasses()` | Hot-reload Python entity classes |
+
+**CellApp (`Atrea.*`):**
+
+| Function | Description |
+|----------|-------------|
+| `dbQuery(sql)` | Execute SQL query, return list of row dicts |
+| `dbPerform(sql)` | Execute SQL statement (no return) |
+| `createCellPlayer(entityId)` | Create a cell player entity |
+| `createCellEntity(className, dbid)` | Create a cell entity |
+| `destroyCellEntity(entityId)` | Destroy a cell entity |
+| `createSpace(worldName, creatorId)` | Create a new space |
+| `destroySpace(spaceId)` | Destroy a space |
+| `findSpace(worldName)` | Find space by world name |
+| `findEntity(entityId)` | Find entity by ID |
+| `findEntityOnSpace(entityId, spaceId)` | Find entity on specific space |
+| `findEntitiesByDbid(databaseId, spaceId)` | Find entities by database ID |
+| `findEntities(spaceId)` | Find all entities on a space |
+| `getGameTime()` | Get current game time |
+| `addTimer(completeTime, callback)` | Register a timer |
+| `cancelTimer(timerId)` | Cancel a timer |
+| `findPath(spaceId, start, destination)` | Find navmesh path |
+| `findDetailedPath(spaceId, start, dest, ...)` | Find detailed navmesh path with extents |
+| `reloadClasses()` | Hot-reload Python entity classes |
+
+---
+
+## Shutdown Sequence
+
+The shutdown sequence is triggered by the C `atexit()` handler registered in `Service::Service()` (`src/common/service.cpp:17`). There is no SIGTERM/SIGINT signal handler -- the process relies on `atexit` being called during normal process termination.
+
+### Shutdown Call Chain
+
+```
+atexit() -> Service::exitHandler()
+               |
+               +-> Service::stop()
+               |       |
+               |       +-> cleanup()  (virtual, per-service)
+               |
+               +-> Service::init(nullptr)  (clear singleton)
+               +-> Logger::shutdown()      (flush and stop log thread)
+```
+
+### Per-Service Cleanup
+
+**AuthenticationServer** (`src/authentication/service_main.cpp:28`):
+```
+cleanup():
+  1. frontendServer_.reset()  -- Close BaseApp connection, force-logoff all accounts on that shard
+  2. loginServer_.reset()     -- Close HTTP login listener
+```
+When a shard (BaseApp) connection is lost, `unregisterShard()` iterates all online accounts on that shard and removes them from the online map.
+
+**BaseApp** (`src/baseapp/base_service.cpp:269`):
+```
+cleanup():
+  1. delete clientNub_        -- Close UDP client listener (stops accepting client connections)
+  2. authClient_.reset()      -- Disconnect from Auth Server
+  3. delete minigameServer_   -- Close minigame TCP server
+  4. delete consoleServer_    -- Close Python console TCP server
+```
+
+**CellApp** (`src/cellapp/cell_service.cpp:182`):
+```
+cleanup():
+  (empty -- no explicit cleanup implemented)
+```
+
+### Entity Persistence
+
+**No automatic persistence on shutdown.** The shutdown sequence does not explicitly save entity state. Key observations:
+
+- `BaseService::cleanup()` deletes the client nub and auth connection but does **not** iterate entities to call `persist()`.
+- `CellService::cleanup()` is empty -- no entity save, no space teardown.
+- Entity `persist()` methods exist on `SGWPlayer` (both base and cell) and are called during normal gameplay (e.g., space transitions), but they are **not** invoked during shutdown.
+- The `Service::~Service()` destructor calls `io_service_.stop()` which halts the event loop but does not trigger entity persistence.
+
+**Implication**: A server crash or shutdown will lose any unsaved entity state since the last explicit `persist()` call. This is a known limitation of the current implementation.
+
+---
+
 ## TODO
 
 - [ ] Document the minigame server protocol (TCP format)
 - [x] ~~Document entity backup/restore between Base and Cell~~ → Full analysis in `engine/distributed-checkpointing.md` (Cimmeria's Existing Backup section)
-- [ ] Document the developer mode behaviors in detail
-- [ ] Map all Python console commands available on each service
-- [ ] Document graceful shutdown sequence and entity persistence
+- [x] ~~Document the developer mode behaviors in detail~~ → See "Developer Mode" section above. Five behaviors change: duplicate logins allowed, access level forced to max, feedback logging suppressed, debug messages to client suppressed, per-player TRACE logging via callback.
+- [x] ~~Map all Python console commands available on each service~~ → See "Python Console" section above. Two interfaces (local stdin REPL + remote TCP `py_client` protocol). No pre-registered commands; both are raw Python REPLs with full `Atrea.*` function access. BaseApp exposes 13 functions, CellApp exposes 15 functions.
+- [x] ~~Document graceful shutdown sequence and entity persistence~~ → See "Shutdown Sequence" section above. Uses `atexit()` handler; each service has a `cleanup()` method. Entity state is NOT automatically persisted on shutdown.

@@ -165,13 +165,24 @@ Platform: `x64` (primary), `Win32` (legacy)
 
 ## Documentation
 
-The [docs/](docs/readme.md) directory contains comprehensive project documentation:
+The [docs/](docs/readme.md) directory contains **89 documents** covering every aspect of the project:
 
+| Category | Docs | Covers |
+|----------|------|--------|
+| [Top-level](docs/readme.md) | 9 | Technology overview, game systems survey, connection flow, project status |
+| [protocol/](docs/protocol/) | 5 | Mercury wire format, entity property sync, login handshake, position updates |
+| [gameplay/](docs/gameplay/) | 18 | Per-system breakdowns: combat, abilities, inventory, missions, crafting, etc. |
+| [engine/](docs/engine/) | 8 | BigWorld internals, CME framework, cooked data, space management, LOD, checkpointing |
+| [architecture/](docs/architecture/) | 1 | Cimmeria service topology, inter-service protocol, configuration reference |
+| [analysis/](docs/analysis/) | 2 | Event-net mapping (420 messages), BigWorld source cross-reference index |
+| [reverse-engineering/](docs/reverse-engineering/) | 21 | Ghidra annotation scripts, RE plan/status, 17 per-system wire format findings |
+| [guides/](docs/guides/) | 3 | Evidence standards, reading decompiled code, entity definition guide |
+| [technical/](docs/technical/) | 16 | Legacy analysis documents from initial RE investigation |
+
+**Start here:**
 - **[How SGW Works](docs/how-sgw-works.md)** — Technology overview of the BigWorld + UE3 hybrid architecture
 - **[Game Systems](docs/game-systems.md)** — Every game feature: combat, abilities, stargates, missions, crafting
-- **[Game Data](docs/game-data.md)** — What content exists (6,060 items, 1,887 abilities, 1,041 missions)
 - **[Connection Flow](docs/connection-flow.md)** — End-to-end login and world entry sequence
-- **[Network Messages](docs/network-messages.md)** — Complete catalog of 420 client-server messages
 - **[Project Status](docs/project-status.md)** — What works, what's left, and the roadmap
 
 For reverse engineering work, see [docs/reverse-engineering/](docs/reverse-engineering/PLAN.md).

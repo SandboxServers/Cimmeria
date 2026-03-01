@@ -184,11 +184,231 @@ Properties can be time-stamped with an `EventNumber` (int32, starting at 1). Thi
 - [Entity Type Catalog](../engine/entity-type-catalog.md) -- All entity definitions
 - [BigWorld Architecture](../engine/bigworld-architecture.md) -- Entity split model
 
+## Event Stamps vs Simple Overwrite: Property Update Ordering
+
+> **Source**: `external/engines/BigWorld-Engine-2.0.1/src/lib/entitydef/entity_description.cpp` (lines 353-374), `data_description.hpp`, `property_event_stamps.hpp`
+
+### Rule: Only OTHER_CLIENT Properties Get Event Stamps
+
+Event stamps are **exclusively** assigned to properties with the `DATA_OTHER_CLIENT` flag (i.e., properties visible to other players). All other properties use **simple overwrite** with no ordering guarantee.
+
+From `entity_description.cpp`, inside `parseProperties()`:
+
+```cpp
+#ifdef MF_SERVER
+if (dataDescription.isOtherClientData())
+{
+    // ... detail level assignment ...
+    dataDescription.eventStampIndex( numEventStampedProperties_ );
+    numEventStampedProperties_++;
+}
+#endif
+```
+
+The `eventStampIndex` is a sequential integer assigned during entity type parsing. Properties without `DATA_OTHER_CLIENT` have `eventStampIndex_ = -1` (default), meaning they are not stamped.
+
+### Property Categories and Their Update Mechanism
+
+| Property Flag | Event Stamped? | Update Mechanism |
+|---------------|---------------|------------------|
+| `CELL_PRIVATE` | No | Cell-local only; never sent anywhere |
+| `CELL_PUBLIC` (no `OTHER_CLIENT`) | No | Ghosted to other CellApps via simple overwrite |
+| `OTHER_CLIENTS` | **Yes** | Sent to other clients with event ordering |
+| `OWN_CLIENT` | No | Sent to own client via simple overwrite |
+| `ALL_CLIENTS` | **Yes** | Has `OTHER_CLIENT` bit, so event-stamped for other clients |
+| `BASE` | No | Base-only; never event-stamped |
+| `BASE_AND_CLIENT` | No | Sent to own client; no `OTHER_CLIENT` bit |
+
+### How Event Stamps Work
+
+The `PropertyEventStamps` class (from `property_event_stamps.hpp`) maintains a vector of `EventNumber` values, one per event-stamped property. The type is `int32`, starting at `INITIAL_EVENT_NUMBER = 1`.
+
+```cpp
+class PropertyEventStamps {
+    void init(const EntityDescription & entityDescription);
+    void init(const EntityDescription & entityDescription, EventNumber lastEventNumber);
+    void set(const DataDescription & dataDescription, EventNumber eventNumber);
+    EventNumber get(const DataDescription & dataDescription) const;
+    void addToStream(BinaryOStream & stream) const;
+    void removeFromStream(BinaryIStream & stream);
+private:
+    std::vector<EventNumber> eventStamps_;  // Indexed by eventStampIndex
+};
+```
+
+When an `OTHER_CLIENT` property changes on the CellApp:
+
+1. The entity's `PropertyEventStamps` records the current `EventNumber` for that property
+2. The property change is sent to other clients via `ghostHistoryEvent` messages (in multi-cell BW) or via the AoI update system
+3. Receiving clients can use the `EventNumber` to order property changes correctly, even if they arrive out of order
+
+### Why Only OTHER_CLIENT?
+
+- **OWN_CLIENT** properties go to a single client over a reliable ordered channel -- ordering is guaranteed by Mercury
+- **CELL_PUBLIC** ghost updates go over internal server channels -- also ordered
+- **OTHER_CLIENT** properties fan out to multiple clients through the AoI system, where property changes from different sources (position updates, combat, etc.) may interleave -- event stamps provide a total ordering
+
+### SGW Implications
+
+In SGW's .def files:
+
+- Properties flagged `OTHER_CLIENTS` or `ALL_CLIENTS` get event stamps: e.g., `knownAbilities`, `playerState`, `combatState`
+- Properties flagged `CELL_PUBLIC` (without `OTHER_CLIENT`) do NOT get event stamps: e.g., `playerName` (CELL_PUBLIC only in SGW's defs)
+- Properties flagged `OWN_CLIENT` or `BASE_AND_CLIENT` never get event stamps
+
+The count of event-stamped properties per entity type is stored in `EntityDescription::numEventStampedProperties_` and used to size the `PropertyEventStamps` vector at entity creation.
+
+## Incremental Update Flag Behavior in the Cache Stamp System
+
+> **Source**: `src/baseapp/entity/cached_entity.hpp`, `src/baseapp/entity/cached_entity.cpp`, `src/mercury/base_cell_messages.hpp`
+
+The cache stamp system is Cimmeria's extension to BigWorld for efficient entity data distribution. It tracks versioned property sets per entity, allowing the BaseApp to send only the changes a client has not yet seen.
+
+### Architecture Overview
+
+```
+CellApp                    BaseApp                         Client
+   |                          |                              |
+   |-- UPDATE_CACHE_STAMP --> |                              |
+   |   (entity, propset,     |                              |
+   |    messages[])           |                              |
+   |                      CachedEntity                       |
+   |                      stores versioned                   |
+   |                      PropertySets                       |
+   |                          |                              |
+   |                          |-- sendDeltas() ----------> |
+   |                          |   (only messages the        |
+   |                          |    client hasn't seen)      |
+```
+
+### Data Structures
+
+**PropertySet** -- One per cacheable property group (up to `MaxPropertySets = 2`):
+
+```
+PropertySet:
+  firstStampId: uint32    -- Version number of the first stamp in the current window
+  stamps: vector<CacheStamp>  -- Each stamp = one UPDATE_CACHE_STAMP transaction
+  messages: vector<CacheMessage>  -- All messages across all stamps
+```
+
+The version number for stamp `i` is `firstStampId + i`. When invalidated, `firstStampId` advances past all current stamps and both vectors are cleared.
+
+**CacheStamp** -- One per `beginCacheStamp()`/`endCacheStamp()` transaction:
+
+```
+CacheStamp:
+  messages: vector<unsigned int>  -- Indices into PropertySet::messages
+```
+
+**CacheMessage** -- An individual entity RPC message within a stamp:
+
+```
+CacheMessage:
+  messageId: uint8       -- RPC method ID
+  flags: uint8           -- Distribution flags (INCREMENTAL_UPDATABLE)
+  minVersion: uint32     -- First version that includes this message
+  maxVersion: uint32     -- Last version where this message is still valid (0xFFFFFFFF = no limit)
+  argsLength: uint16     -- Length of serialized arguments
+  args: uint8*           -- Serialized method arguments
+```
+
+**KnownVersion** -- Tracks what a witness (player) has seen of a particular entity:
+
+```
+KnownVersion:
+  generationId: uint32   -- Entity ID reuse counter
+  versions[MaxPropertySets]: uint32  -- Last seen version per property set
+```
+
+### The INCREMENTAL_UPDATABLE Flag
+
+From `base_cell_messages.hpp`, the `INCREMENTAL_UPDATABLE` flag is set on cache messages within the `UPDATE_CACHE_STAMP` protocol message:
+
+```
+CELL_BASE_UPDATE_CACHE_STAMP (0x11):
+  uint32    Entity ID
+  uint32    PropSet ID     (0 to MaxPropertySets-1)
+  uint8     Invalidate     (clear existing cache?)
+  Message[] Messages:
+      uint8  Message ID
+      uint8  Flags          (INCREMENTAL_UPDATABLE = 0x01)
+      uint16 Length
+      byte[] Args
+```
+
+When the CellApp sends an `UPDATE_CACHE_STAMP`, the BaseApp handler (`onUpdateCacheStamp()`) processes it as follows:
+
+1. If `Invalidate` is set, `invalidateCacheStamps(propertySetId)` clears all existing stamps and messages for that property set, advancing `firstStampId` past the old window
+2. `beginCacheStamp(propertySetId)` opens a new stamp (appends to the stamps vector)
+3. For each message: `addCacheMessage()` creates a `CacheMessage` with `minVersion = lastVersion()` and `maxVersion = 0xFFFFFFFF` (unbounded)
+4. `endCacheStamp()` finalizes the stamp and propagates the new messages to all current witnesses via `visitWitnesses()`
+
+### Delta Computation (sendDeltas)
+
+When a witness needs updates (e.g., an entity becomes visible), `sendDeltas()` compares the witness's `KnownVersion` against the entity's current `PropertySet` state:
+
+```
+sendDeltas(witness, propertySetId, refVersion):
+  1. If refVersion > lastVersion: WARN and reset to firstStampId - 1
+  2. If refVersion < firstStampId - 1: stamps were invalidated, reset
+  3. Starting from refIndex = refVersion + 1 - firstStampId:
+     For each stamp from refIndex to end:
+       For each message in that stamp:
+         If msg.minVersion == current_stamp_version
+            AND msg.maxVersion >= lastVersion:
+           Send the message to the witness
+```
+
+The `minVersion`/`maxVersion` pair implements **message supersession**: when a property is updated multiple times, older messages can be superseded by setting their `maxVersion` to a value less than `lastVersion`. Currently, Cimmeria sets `maxVersion = 0xFFFFFFFF` for all messages (no supersession), meaning all historical messages within the stamp window are sent to late-joining witnesses.
+
+### Generation ID (Entity ID Reuse)
+
+When an entity ID is reused (entity destroyed and recreated), `CachedEntityManager::addEntity()` increments the `generationId`. During `sendDeltas()`, if the witness's `KnownVersion.generationId` does not match the entity's current `generationId_`, all property sets are sent from version 0 (full update), ensuring stale cache data from a previous entity occupying the same ID is not used.
+
+### Entity Visibility Integration
+
+The cache system integrates with the AoI world grid:
+
+| Event | Cache Behavior |
+|-------|---------------|
+| Entity becomes visible (`onEntityVisible`) | `sendDeltas()` with stored `KnownVersion` (or default 0 for new entities) |
+| Entity becomes invisible (`onEntityInvisible`) | If caching enabled: save current versions to `knownEntities_` map. If destroyed: erase from map |
+| Entity re-enters AoI | `sendDeltas()` uses saved `KnownVersion`, sending only changes since last seen |
+| Entity destroyed | `leaveAoI(entityId, clearCache=true)` tells client to discard cached data |
+
+### CacheOnClient Configuration
+
+The `cache_on_client` config parameter (read from `BaseService.config`) controls whether the BaseApp uses the caching optimization:
+
+- **Enabled** (default): Witnesses track `KnownVersion` per entity. On re-enter, only delta messages are sent. Client cache is preserved on `leaveAoI`.
+- **Disabled**: Every visibility event sends a full `createEntity` + all cache messages. No `knownEntities_` map is allocated. `leaveAoI` always clears client cache.
+
+### Cell Entity Flags
+
+From `base_cell_messages.hpp`, the CellApp sends flags with each entity describing its cache properties:
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `ENTITY_HAS_DYNAMIC` | 0x01 | Entity has dynamic (frequently changing) properties |
+| `ENTITY_NOT_CACHED` | 0x02 | Entity data is not locally cached on BaseApp |
+
+When an entity becomes visible, the BaseApp checks these flags to determine what to request from the CellApp:
+
+```cpp
+if (ref->flags() & Mercury::ENTITY_HAS_DYNAMIC)
+    requested |= Mercury::UPDATE_DYNAMIC;
+if (ref->flags() & Mercury::ENTITY_NOT_CACHED)
+    requested |= Mercury::UPDATE_STATIC | Mercury::UPDATE_UNCACHED;
+```
+
+This ensures the BaseApp only requests data it does not already have cached.
+
 ## TODO
 
-- [x] ~~Reverse engineer the exact property streaming order~~ → Documented in `findings/entity-property-sync.md`: sequential in parse order (Parent→Implements→Own)
+- [x] ~~Reverse engineer the exact property streaming order~~ → Documented in `findings/entity-property-sync.md`: sequential in parse order (Parent->Implements->Own)
 - [x] ~~Determine if SGW uses LoD levels~~ → NO. All `<LoDLevels>` tags empty. See `engine/entity-lod-system.md`
-- [ ] Map which properties use event stamps vs which use simple overwrite
-- [ ] Document the incremental update flag behavior in the cache stamp system
+- [x] ~~Map which properties use event stamps vs which use simple overwrite~~ → Only `OTHER_CLIENT` properties (those with `DATA_OTHER_CLIENT` flag) receive event stamps via `eventStampIndex`. All other properties use simple overwrite. See "Event Stamps vs Simple Overwrite" section above.
+- [x] ~~Document the incremental update flag behavior in the cache stamp system~~ → Cimmeria's `CachedEntity` uses `PropertySet` versioning with `CacheMessage` min/max version pairs. `sendDeltas()` compares witness `KnownVersion` against entity state to send only unseen messages. `generationId` handles entity ID reuse. See "Incremental Update Flag Behavior" section above.
 - [x] ~~Verify property ID encoding for >60 properties~~ → IDs 0-59 = 1-byte, 60+ = 2-byte extended. See `findings/entity-property-sync.md`
 - [x] ~~Determine exact format of createBasePlayer/createCellPlayer~~ → Fully documented in `findings/entity-property-sync.md`

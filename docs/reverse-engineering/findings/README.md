@@ -18,6 +18,7 @@ This directory contains per-system reverse engineering findings with evidence.
 | `mail-wire-formats.md` | 4 | Mail send/receive, attachments, COD, archive | HIGH |
 | `black-market-wire-formats.md` | 4 | Auction search, create, bid, cancel, watch list | HIGH |
 | `contact-list-wire-formats.md` | 4 | Contact lists, members, online/offline events | HIGH |
+| `group-wire-formats.md` | 4 | Group authority, member coordination, mob groups | HIGH |
 | `trade-wire-formats.md` | 4 | Player-to-player trade proposals, lock, confirm | HIGH |
 | `duel-wire-formats.md` | 4 | Duel challenge, response, forfeit, participants | HIGH |
 | `pet-wire-formats.md` | 4 | Pet abilities, stances, player-routed commands | HIGH |
