@@ -17,7 +17,7 @@ Run scripts in order (01-10). Later scripts depend on names established by earli
 | # | Script | Target | Expected Yield | Actual Yield | Status |
 |---|--------|--------|----------------|--------------|--------|
 | 01 | rtti_annotator.py | RTTI `.?AV...@@` → vtable/class | 200-400 | **9,700 RTTI, 8,961 vtables, 4,364 vfuncs** | DONE |
-| 02 | ue3_exec_annotator.py | `exec*` strings → UE3 natives | 500-1000 | — | NOT RUN |
+| 02 | ue3_exec_annotator.py | `int*` strings → UE3 natives | 500-1000 | **1,275 int* found, 1,006 renamed** | DONE |
 | 03 | bigworld_source_annotator.py | Source paths → BW functions | 100-300 | — | NOT RUN |
 | 04 | event_signal_annotator.py | Event_NetOut/NetIn → handlers | ~420 | — | NOT RUN |
 | 05 | mercury_annotator.py | Mercury:: debug strings | 30-50 | — | NOT RUN |
@@ -41,13 +41,17 @@ Functions named through manual Ghidra analysis (decompilation, cross-referencing
 
 ```
 Total functions:     ~85,000
-Auto-named (scripts): 4,364  (script 01 only so far)
-  - vtables labeled:  8,961
-  - vfunc_0 renamed:  4,364
-  - RTTI classes:     9,700
+Auto-named (scripts): 5,370  (scripts 01-02)
+  Script 01 (RTTI):
+    - RTTI classes:     9,700
+    - vtables labeled:  8,961
+    - vfunc_0 renamed:  4,364
+  Script 02 (UE3):
+    - int* strings:     1,275
+    - functions renamed: 1,006
 Manual-named:              0
-Total named:           4,364  (5.1%)
-Remaining unnamed:   ~80,636
+Total named:           5,370  (6.3%)
+Remaining unnamed:   ~79,630
 ```
 
 **Note**: Script 01 yielded 24x the expected result (9,700 vs 200-400 estimated).
