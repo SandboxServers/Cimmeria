@@ -80,16 +80,21 @@ The player can log in, select a shard, enter the game world, move around, intera
 ### Phase 2: Expanding Content
 
 - **More zones** — Only Castle Cellblock is tested; other zones need their space scripts verified
-- **Stargate travel** — 29 gates defined, travel logic coded, needs end-to-end testing with zone transitions
-- **Chat system** — Already mostly implemented, needs integration testing
-- **Crafting** — 499 blueprints, full logic coded, needs in-game testing
+- **Stargate travel** — 29 gates defined, dialing sequence coded but GateTravel.py is a stub; needs zone transition implementation and end-to-end testing
+- **Chat system** — Python logic exists (365 lines), needs in-game testing
+- **Crafting** — 499 blueprints, Python logic exists (532 lines), needs in-game testing
+- **Abilities** — 1,887 defined, Python pipeline exists (1,090 lines), needs in-game testing
+- **Trading** — Python logic exists (273 lines), needs in-game testing
+- **Character creation** — Data exists but server handling is barely functional
 
 ### Phase 3: Social
 
-- **Organizations/Guilds** — Entity definitions exist (23KB), needs Python implementation
-- **Mail system** — Database table exists, needs handlers
-- **Auction house** — Entity definitions only
-- **Complete minigames** — 3 of 10 done, 7 need implementation
+- **Organizations/Guilds** — Entity definitions exist, all 15 RPC methods are empty stubs
+- **Mail system** — Read-only header retrieval works; sending/archiving/deleting are stubs
+- **Auction house** — Entity definitions only, both Python files are empty stubs
+- **Contact lists** — All 6 methods are empty stubs
+- **Dueling** — Empty stubs
+- **Complete minigames** — 3 of 9 have full logic, 6 have placeholder handlers
 
 ### Phase 4: Polish
 
@@ -136,9 +141,10 @@ The original feasibility assessment rated this project as "MODERATE-HIGH" based 
 
 The remaining work is:
 
-1. **Breadth** — Testing and fixing more zones, missions, and content beyond Castle Cellblock
-2. **Social systems** — Organizations, mail, auction house, more minigames
-3. **Polish** — AI behavior, loot tables, XP curves, stat scaling
-4. **Interaction type bugs** — Some entities missing visual quest indicators (see Known Issues)
+1. **In-game testing** — Many systems have Python logic but haven't been tested with a real client (abilities, crafting, chat, trading, stargates)
+2. **Breadth** — Only Castle Cellblock is tested; other zones need verification
+3. **Stub implementations** — Organizations, contact lists, dueling, auction house, and mail sending all need real code
+4. **Character creation** — Data exists but server-side handling is barely functional
+5. **Polish** — AI behavior, loot tables, XP curves, stat scaling
 
-The hardest part (reverse engineering the protocol, understanding the architecture, and getting a client into the game world) is done. What remains is expanding content coverage and implementing social features.
+The hardest part (reverse engineering the protocol, understanding the architecture, and getting a client into the game world) is done. A significant amount of Python game logic exists from the original developers, but much of it hasn't been verified in our emulator yet.
