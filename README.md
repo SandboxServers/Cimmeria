@@ -6,27 +6,32 @@ Cimmeria reimplements the server infrastructure — authentication, world simula
 
 ### Current State
 
-The server **infrastructure** is 75–80% complete: Mercury networking, entity lifecycle, database persistence, authentication, navigation meshes, and Area of Interest all work. Players can log in, create characters, enter the world, move around, interact with NPCs, accept missions, and engage in basic combat.
+The **login flow is solid**: authentication, shard selection, session keys, and encrypted Mercury transport all work reliably. A player can log in and enter the game world.
 
-**What works:**
-- Full login/auth flow and character creation
-- World entry, movement, entity spawning and despawn
-- NPC interactions and dialog trees
-- Basic combat (abilities, effects, damage, death/respawn)
-- Inventory and item management
-- Chat channels and private messaging
-- Mission accept/advance (scripted missions)
+**Beyond login, things work but are incomplete.** Many game systems have code — including 164 original Python scripts from the developers — but most haven't been rigorously tested, and only one zone (Castle Cellblock) has been verified end-to-end.
 
-**What's missing or incomplete:**
-- **Content**: Only a handful of the game's zones and missions are wired up; most world content still needs scripting
-- **XP and leveling**: Level progression and XP curve tuning
-- **Enemy AI**: Mobs spawn but lack patrol paths, aggro leashing, and sophisticated combat behavior
-- **Crafting**: Not implemented (0%) — disciplines, blueprints, research, alloys
-- **Stargate travel**: Partially implemented (~20%) — DHD UI works but gate transitions are incomplete
-- **Organizations/Guilds**: Stub only (~5%)
-- **Minigames**: Framework exists but none of the 5+ minigames are functional
-- **Mail, auction house, trading, duels, pets**: Not yet implemented
-- **Stat scaling and balance**: Base stats work but derived stats, diminishing returns, and combat formulas need validation against the original client
+**Solid** (tested, reliable):
+- Full login/auth flow (HTTP → shard select → Mercury connect)
+- Mercury protocol transport (reliable UDP, AES-256 encryption)
+- Game data pipeline (22 resource categories, 274+ packets)
+- Build & setup (`pwsh setup-dependencies.ps1` — clone to running in one command)
+
+**Working** (functional but incomplete or lightly tested):
+- World entry, movement, entity spawning
+- NPC interactions and dialog trees (Castle Cellblock only)
+- Mission scripting (FindAmbernol quest runs end-to-end)
+- Basic combat (abilities fire, damage resolves, death/respawn)
+- Inventory (items appear, bags work)
+
+**Partial or untested** (code exists but hasn't been verified with a live client):
+- Chat, crafting, trading, abilities beyond basic attacks
+- Stargate travel (~20% — DHD UI works, zone transitions don't)
+- Character creation (data exists, server handling minimal)
+
+**Stub or not started:**
+- Organizations/guilds, mail, auction house, contact lists, dueling, pets
+- Enemy AI (no patrol/wander), XP curves, stat scaling, loot tables
+- Minigames (framework only)
 
 See [docs/project-status.md](docs/project-status.md) for a detailed breakdown and [docs/](docs/readme.md) for full documentation.
 

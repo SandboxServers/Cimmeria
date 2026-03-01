@@ -383,6 +383,37 @@ SGWEntity (base)
 - Mission system has `recievedBy` typo preserved from original `.def`
 - Minigames are web/Flash-based — launched via URL
 
+### Session 5 — 2026-03-01
+
+**Phase 6 — TODO Resolution & Doc Completeness — COMPLETED:**
+- Categorized 47 remaining TODOs across all docs by resolution method (Ghidra, BW source, Cimmeria source, runtime testing)
+- Resolved 42 of 47 TODOs via 9 parallel agents using Ghidra MCP tools, BW 2.0.1 reference source, and Cimmeria source code
+- 5 remaining TODOs genuinely require runtime testing (minigame TCP protocol, WorldGrid profiling, bandwidth measurement, vehicle/mount system, duplicate minigame entry)
+- Wrote 2 new documents: `findings/group-wire-formats.md` (210 lines), `gameplay/contact-list.md` (170 lines)
+- Updated 14 existing documents with decompiled evidence and cross-referenced findings
+- Updated all 3 hub files: root README.md, CLAUDE.md, docs/readme.md
+- Updated docs/readme.md: all statuses from "Planned" to "Complete", added missing entries, updated Quick Stats
+- Updated PR #2 description with Phase 6 results (surgical edits, no mangling)
+- Rewrote `docs/project-status.md` with honest per-system status ratings
+
+**Key findings from TODO resolution:**
+- avatarUpdate: Client SENDS 4 SGW-specific variants, RECEIVES all 32 BW standard handlers
+- Direction packing: 3 bytes, 256 steps per 2π (~1.4° precision)
+- SVID (Space Viewport ID): 1-byte entity alias replaces 4-byte EntityID in headers
+- Mercury byte ordering: Cimmeria uses native little-endian; BigWorld uses big-endian
+- Piggyback packets: BigWorld supports them; Cimmeria explicitly rejects them
+- Entity serialization: 4-pass system (Pass 0-3) for Base/Client/Cell property splitting
+- EntityMailBoxRef: 12-byte wire format, Component type in addr.salt bits 13-15
+- Ghost offload: 5-state machine (NORMAL → PRE-OFFLOAD → OFFLOAD → ONLOAD → NEW NORMAL)
+- PropertyNode: Client-side UI binding only, no custom wire format
+- CME RTTI: 28 framework classes, 330 non-network EventSignal types (not ~534 as estimated)
+- Event-net mapping coverage: ~98% (up from 46%)
+- Clean-room confirmation: Cimmeria does NOT include BigWorld headers
+
+**Documents created:** 2 new
+**Documents updated:** 14 existing + 3 hub files + project-status.md
+**Total lines added:** ~4,800
+
 ### Session 4 — 2026-03-01
 
 **Phase 5 — BigWorld Engine Subsystems — COMPLETED:**
