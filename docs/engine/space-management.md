@@ -16,28 +16,36 @@ Spaces are the fundamental world containers in BigWorld. Each space represents a
 
 Defines which spaces the CellApp creates at startup:
 
-```xml
-<Spaces>
-    <Space WorldName="SandBox" />
-    <Space WorldName="Castle" />
-    <Space WorldName="Agnos" />
-    <Space WorldName="Lucia" />
-    <Space WorldName="Omega_Site" />
-    <Space WorldName="Tollana" />
-    <Space WorldName="Agnos_Library" />
-    <Space WorldName="Sewer_Falls" />
-    <Space WorldName="Harset" />
-    <Space WorldName="Harset_CmdCenter" />
-    <Space WorldName="Dakara_E1" />
-    <Space WorldName="Ihpet_Crater_Dark" />
-    <Space WorldName="Ihpet_Crater_Light" />
-    <Space WorldName="Menfa_Dark" />
-    <Space WorldName="Menfa_Light" />
-    <Space WorldName="Beta_Site_Evo_1" />
-</Spaces>
-```
+From `entities/spaces.xml` (24 total — 16 shared + 8 instanced):
 
-Total: 16 persistent spaces loaded at startup.
+| Space | Instanced | Extents (X) | Extents (Y) | Size |
+|-------|-----------|-------------|-------------|------|
+| Agnos | no | -2400 to 2200 | -3200 to 2800 | 4600×6000 |
+| Agnos_Library | no | -600 to 600 | -600 to 600 | 1200×1200 |
+| Beta_Site_Evo_1 | no | -1600 to 2600 | -3000 to 3000 | 4200×6000 |
+| Castle | no | 0 to 2400 | 0 to 2400 | 2400×2400 |
+| Castle_CellBlock | **yes** | -800 to 800 | -800 to 800 | 1600×1600 |
+| Dakara_E1 | no | -2000 to 2000 | -2000 to 2000 | 4000×4000 |
+| Dakara_E1_StoryRm | **yes** | 0 to 200 | 0 to 200 | 200×200 |
+| Harset | no | -1000 to 800 | -800 to 800 | 1800×1600 |
+| Harset_CmdCenter | no | -400 to 400 | -400 to 400 | 800×800 |
+| Harset_Market | **yes** | 0 to 0 | 0 to 0 | 0×0 |
+| Harset_StorageRm | **yes** | -200 to 400 | -200 to 400 | 600×600 |
+| Ihpet_Crater_Dark | no | -2600 to 200 | -600 to 1600 | 2800×2200 |
+| Ihpet_Crater_Light | no | -2600 to 200 | -600 to 1600 | 2800×2200 |
+| Lucia | no | -2800 to 2600 | -3000 to 3600 | 5400×6600 |
+| Menfa_Dark | no | -1800 to 1200 | -1800 to 1800 | 3000×3600 |
+| Menfa_Light | no | -1800 to 1200 | -1800 to 1800 | 3000×3600 |
+| Omega_Site | no | -1000 to 1200 | -1200 to 1200 | 2200×2400 |
+| Omega_Site_CmdCenter | **yes** | -400 to 400 | -600 to 600 | 800×1200 |
+| SandBox | no | -600 to 1000 | -1000 to 800 | 1600×1800 |
+| Sewer_Falls | no | -600 to 1000 | -1000 to 800 | 1600×1800 |
+| SGC | **yes** | -400 to 400 | 0 to 800 | 800×800 |
+| SGC_W1 | **yes** | -400 to 400 | -400 to 800 | 800×1200 |
+| Tollana | no | -2400 to 1800 | -2400 to 2400 | 4200×4800 |
+| Tollana_Curia | **yes** | 0 to 200 | 0 to 200 | 200×200 |
+
+Total: 16 persistent (non-instanced) spaces loaded at startup. 8 additional instanced spaces created on demand (24 total defined in `spaces.xml`).
 
 ### spaces.xml
 
@@ -890,7 +898,7 @@ The BSP tree and ghost system are architecturally independent additions -- Cimme
 
 - [ ] Document the NavigationMesh integration per space (Recast/Detour)
 - [ ] Document the space data format sent to clients (space geometry keys)
-- [ ] Verify world extents for all 16 spaces from spaces.xml
+- [x] ~~Verify world extents for all spaces~~ → 24 spaces verified from `entities/spaces.xml` (not 16 — includes instanced spaces like Castle_CellBlock, SGC_W1, etc.)
 - [ ] Profile the WorldGrid algorithm with realistic entity counts
 - [ ] Document the instanced space creation and cleanup lifecycle
 - [ ] Trace `ghostSetReal` / `ghostSetNextReal` message handling in BW `.cpp` files for full offload state machine

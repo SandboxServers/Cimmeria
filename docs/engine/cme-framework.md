@@ -180,4 +180,4 @@ From Ghidra analysis, the following CME-specific string prefixes have been ident
 - [ ] Identify all SpaceViewport parameters from Ghidra
 - [ ] Document the minigame server protocol (TCP-based)
 - [ ] Map the ~534 non-network EventSignal types
-- [ ] Determine if CME modified BigWorld's entity serialization format
+- [x] ~~Determine if CME modified BigWorld's entity serialization~~ → NO. Universal RPC dispatcher at `0x00c6fc40` uses standard BW `DataType::addToStream`. See `findings/combat-wire-formats.md`

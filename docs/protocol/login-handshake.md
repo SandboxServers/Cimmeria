@@ -231,4 +231,4 @@ Client                     Auth Server              BaseApp
 - [ ] Document the exact baseAppLogin message binary format
 - [ ] Verify the client challenge/response protocol (onClientChallenge / onClientChallengeResponse events)
 - [ ] Document error recovery (what happens on Phase 3 failure)
-- [ ] Document the version info exchange (versionInfoRequest / onVersionInfo events)
+- [x] ~~Document the version info exchange~~ → ClientCache `versionInfoRequest`/`onVersionInfo` fully documented in `findings/entity-types-wire-formats.md`

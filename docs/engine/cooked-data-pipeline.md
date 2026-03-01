@@ -166,6 +166,6 @@ The cooked data system includes version tracking:
 
 - [ ] Document the exact XSD schema for each cooked data type
 - [ ] Determine if the client validates XML against XSD at runtime
-- [ ] Document the incremental update protocol (cache stamp comparison)
+- [x] ~~Document the incremental update protocol~~ → ClientCache `versionInfoRequest`/`onVersionInfo`/`elementDataRequest` in `findings/entity-types-wire-formats.md`
 - [ ] Map the exact Mercury message format for cooked data delivery
 - [ ] Verify the PAK file compression level and format details

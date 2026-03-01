@@ -295,7 +295,7 @@ Access requires a password set in the config file (`py_console_password`). The c
 ## TODO
 
 - [ ] Document the minigame server protocol (TCP format)
-- [ ] Document the entity backup/restore system between Base and Cell
+- [x] ~~Document entity backup/restore between Base and Cell~~ → Full analysis in `engine/distributed-checkpointing.md` (Cimmeria's Existing Backup section)
 - [ ] Document the developer mode behaviors in detail
 - [ ] Map all Python console commands available on each service
 - [ ] Document graceful shutdown sequence and entity persistence

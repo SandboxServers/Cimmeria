@@ -186,9 +186,9 @@ Properties can be time-stamped with an `EventNumber` (int32, starting at 1). Thi
 
 ## TODO
 
-- [ ] Reverse engineer the exact property streaming order used by the SGW client
-- [ ] Determine if SGW uses LoD levels or a flat model (check Ghidra for DataLoDLevel references)
+- [x] ~~Reverse engineer the exact property streaming order~~ → Documented in `findings/entity-property-sync.md`: sequential in parse order (Parent→Implements→Own)
+- [x] ~~Determine if SGW uses LoD levels~~ → NO. All `<LoDLevels>` tags empty. See `engine/entity-lod-system.md`
 - [ ] Map which properties use event stamps vs which use simple overwrite
 - [ ] Document the incremental update flag behavior in the cache stamp system
-- [ ] Verify the property ID encoding for entities with >60 properties (SGWPlayer has many)
-- [ ] Determine exact format of `createBasePlayer` and `createCellPlayer` property streams via packet capture
+- [x] ~~Verify property ID encoding for >60 properties~~ → IDs 0-59 = 1-byte, 60+ = 2-byte extended. See `findings/entity-property-sync.md`
+- [x] ~~Determine exact format of createBasePlayer/createCellPlayer~~ → Fully documented in `findings/entity-property-sync.md`

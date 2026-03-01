@@ -228,7 +228,7 @@ Each config file supports a `.local` override for environment-specific settings.
 ## TODO
 
 - [ ] Document the entity serialization format for database persistence
-- [ ] Document the ghost entity system (DATA_GHOSTED) for multi-cell understanding
+- [x] ~~Document the ghost entity system~~ → Full deep-dive in `engine/space-management.md` (Phase 5: Ghost Entity System section)
 - [ ] Document the mailbox system for cross-process entity communication
 - [ ] Map BigWorld version differences between 1.9.1 and 2.0.1 relevant to SGW
-- [ ] Document the entity creation/destruction lifecycle in detail
+- [x] ~~Document entity creation/destruction lifecycle~~ → createBasePlayer/createCellPlayer in `findings/entity-property-sync.md`; entity lifecycle in `findings/entity-types-wire-formats.md`

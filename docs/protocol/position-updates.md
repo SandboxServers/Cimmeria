@@ -201,6 +201,6 @@ See [Space Management](../engine/space-management.md) for details on the grid sy
 - [ ] Reverse engineer which of the 32 avatarUpdate variants SGW actually uses (Ghidra)
 - [ ] Determine the packed position/direction formats used by SGW (PackedXYZ, PackedXZ, etc.)
 - [ ] Document the vehicle/mount position system (setVehicle message)
-- [ ] Verify if SGW uses entity ID aliasing (reduces 4-byte IDs to 1-byte aliases)
+- [ ] Verify if SGW uses entity ID aliasing (BW EntityCache supports IDAlias — see `engine/space-management.md` EntityCache section)
 - [ ] Document client-side prediction and server reconciliation algorithm
 - [ ] Measure actual bandwidth usage of position updates in a typical session

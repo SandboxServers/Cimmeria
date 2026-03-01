@@ -376,12 +376,12 @@ The ~225 unmapped events fall into several categories:
 
 ## TODO
 
-- [ ] Complete mapping for SGWCombatant, SGWAbilityManager, SGWBeing (interface) methods
-- [ ] Complete mapping for SGWBlackMarketManager, SGWMailManager methods
-- [ ] Complete mapping for ContactListManager, SGWPoller, EventParticipant methods
-- [ ] Map the remaining SGWPlayer-specific client/cell methods (store, trade, duel, crafting)
+- [x] ~~Complete mapping for SGWCombatant, SGWAbilityManager, SGWBeing methods~~ → `findings/combat-wire-formats.md`
+- [x] ~~Complete mapping for SGWBlackMarketManager, SGWMailManager methods~~ → `findings/black-market-wire-formats.md`, `findings/mail-wire-formats.md`
+- [x] ~~Complete mapping for ContactListManager, SGWPoller, EventParticipant methods~~ → `findings/contact-list-wire-formats.md`
+- [x] ~~Map remaining SGWPlayer methods (store, trade, duel, crafting)~~ → `findings/trade-wire-formats.md`, `findings/duel-wire-formats.md`, `findings/crafting-wire-formats.md`, `findings/inventory-wire-formats.md`
 - [ ] Verify event name to .def method name casing conventions via Ghidra
 - [ ] Determine which unmapped events are protocol-level vs entity-level
 - [ ] Add Ghidra string addresses for each event (from Script 04 results)
 - [ ] Cross-reference with handler function addresses when available
-- [ ] Document the method index calculation (order in .def file = wire index)
+- [x] ~~Document method index calculation~~ → Sequential order in .def file = wire index. See `findings/entity-property-sync.md`
