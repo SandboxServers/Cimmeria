@@ -12,8 +12,10 @@ BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, 
 | [bigworld-architecture.md](bigworld-architecture.md) | BigWorld cell/base/client architecture overview | Stub |
 | [cme-framework.md](cme-framework.md) | CME PropertyNode, EventSignal, SoapLibrary | Stub |
 | [cooked-data-pipeline.md](cooked-data-pipeline.md) | .pak format, XSD schemas, CookedElementBase | Stub |
-| [watcher-system.md](watcher-system.md) | BigWorld reactive property monitoring | Stub |
-| [space-management.md](space-management.md) | Cell spaces, grid chunks, load balancing | Stub |
+| [watcher-system.md](watcher-system.md) | BigWorld watcher system: classes, protocol, network, Python API | Deep-dive (Phase 5) |
+| [space-management.md](space-management.md) | Cell spaces, WorldGrid, BSP tree, ghost entities, load balancing | Deep-dive (Phase 5) |
+| [entity-lod-system.md](entity-lod-system.md) | BigWorld entity property LOD (not used by SGW) | Deep-dive (Phase 5) |
+| [distributed-checkpointing.md](distributed-checkpointing.md) | Distributed backup, crash recovery, reviver system | Deep-dive (Phase 5) |
 
 ## Key References
 

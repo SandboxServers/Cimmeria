@@ -1,8 +1,8 @@
 # Reverse Engineering Progress Tracker
 
 > **Last updated**: 2026-03-01
-> **Current phase**: Phase 4 — Secondary Systems RE (COMPLETE)
-> **Next phase**: Phase 5 — BigWorld Engine Subsystems
+> **Current phase**: Phase 5 — BigWorld Engine Subsystems (COMPLETE)
+> **Next phase**: None — all planned RE phases complete
 > **Branch**: `feature/reverse-engineering-docs`
 
 ---
@@ -179,11 +179,58 @@ This means we do NOT need to decompile individual event handlers (100+ functions
 
 ---
 
-## Phase 5 (Not Started)
+## Phase 5 — BigWorld Engine Subsystems — COMPLETE
 
-See `docs/reverse-engineering/PLAN.md` for full details.
+**Goal**: Deep-dive into four BigWorld server-side subsystems from the 2.0.1 reference source code. No Ghidra/client binary analysis needed — confirmed all four subsystems are server-only (SGW.exe contains no watcher, ghost, LOD, or backup functions).
 
-- **Phase 5** — BigWorld Engine Subsystems: watchers, space slicing, LOD, checkpointing
+### 5a. Watcher System — DONE
+- [x] Full class hierarchy: 18+ watcher types (DataWatcher, MemberWatcher, FunctionWatcher, DirectoryWatcher, CallableWatcher, SequenceWatcher, MapWatcher, Python watchers, Forwarding watchers)
+- [x] MF_WATCH macro system with all overloads documented
+- [x] WatcherDataType enum (8 values) with wire encoding
+- [x] Protocol v1 (string-based, messages 16-20) and v2 (binary, messages 26-29) fully documented
+- [x] Network transport: WatcherNub (UDP 64KB / TCP 16MB), WatcherConnection, WatcherPacketHandler
+- [x] Multi-process forwarding with ExposeHints (WITH_ENTITY, ALL, WITH_SPACE, LEAST_LOADED)
+- [x] Python integration: 6 BigWorld.* functions documented
+- [x] Conditional compilation: ENABLE_WATCHERS, FORCE_ENABLE_WATCHERS, PS3 override
+- [x] Document: `docs/engine/watcher-system.md` (768 lines, replaces 192-line stub)
+
+### 5b. Space Slicing & Ghost Entities — DONE
+- [x] BSP tree partitioning: SpaceNode (abstract) → SpaceBranch (internal) / CellInfo (leaf)
+- [x] Cell boundary system with rect-based partitioning and CellApp address mapping
+- [x] Entity offloading lifecycle: 8-step flow from checkOffloadsAndGhosts() through convertRealToGhost()/convertGhostToReal()
+- [x] Ghost entity system: real/ghost duality, 8 ghost update message types, BufferedGhostMessage queue hierarchy (4 classes)
+- [x] EntityCache with MAX_LOD_LEVELS = 4, priority-based AoI, IDAlias
+- [x] Load balancing: BalanceConfig (6 params), CellAppConfig (20+ params organized by category)
+- [x] Cimmeria vs BigWorld comparison table (13 dimensions)
+- [x] Document: `docs/engine/space-management.md` (898 lines, expanded from 273-line stub)
+
+### 5c. Entity LOD System — DONE
+- [x] DataLoDLevel class: distance thresholds, hysteresis (default 10m), MAX_DATA_LOD_LEVELS = 6
+- [x] Property assignment via DataDescription.detailLevel_ (NO_LEVEL = -1, OUTER_LEVEL = -2)
+- [x] VolatileInfo: position/yaw/pitch/roll priority fields with squared-distance semantics
+- [x] PropertyEventStamps: per-property event number tracking for change detection
+- [x] PropertyChange encoding: MAX_SIMPLE_PROPERTY_CHANGE_ID = 60, bit-packed paths, SinglePropertyChange vs SlicePropertyChange
+- [x] SGW status confirmed: NOT used (all LoDLevels tags empty, no client binary functions)
+- [x] Client draw distance slider is UE3/CME rendering feature, not BW entity LOD
+- [x] Document: `docs/engine/entity-lod-system.md` (579 lines, new)
+
+### 5d. Distributed Checkpointing — DONE
+- [x] BackupHash algorithm: `(id * prime >> 8) % virtualSize` with power-of-2 virtual bucketing
+- [x] BackupHashChain: chain resolution through dead BaseApps with loop detection
+- [x] AutoBackupAndArchive: Policy enum (NO=0, YES=1, NEXT_ONLY=2)
+- [x] BackupSender: tick-based incremental backup with basesToBackUp_ queue
+- [x] ReviverSubject: health-check pings with priority-based election, 200ms timeout
+- [x] Cimmeria's existing backup: CELL_BASE_BACKUP_ENTITY = 0x0A for space transitions
+- [x] Gap analysis: 5 implemented features vs 9 missing features with priority recommendations
+- [x] Document: `docs/engine/distributed-checkpointing.md` (765 lines, new)
+
+### Key Findings
+- All four subsystems are server-side only — no client binary analysis needed
+- SGW does NOT use entity property LOD (all `<LoDLevels>` empty across every .def file)
+- SGW does NOT use ghost entities, BSP space partitioning, or multi-CellApp support
+- Cimmeria HAS basic entity backup for space transitions but NOT distributed crash recovery
+- PropertyChange encoding (1-byte IDs 0-59, 2-byte 60+) IS used by Cimmeria
+- BW watcher system could be approximated via Cimmeria's Python console (port 8989)
 
 ---
 
@@ -336,3 +383,26 @@ SGWEntity (base)
 - Organization cash/XP use `UINT64` (8-byte) for large values
 - Mission system has `recievedBy` typo preserved from original `.def`
 - Minigames are web/Flash-based — launched via URL
+
+### Session 4 — 2026-03-01
+
+**Phase 5 — BigWorld Engine Subsystems — COMPLETED:**
+- Read 75 BigWorld 2.0.1 reference source files across 3 parallel research agents
+- Confirmed via Ghidra binary search: no watcher, ghost, LOD, or backup functions in SGW.exe client
+- Wrote/updated 4 engine documents totaling ~3,010 lines from reference source analysis
+- No per-handler decompilation needed — all four subsystems are server-side only
+
+**Documents created/updated:**
+- `watcher-system.md` — Replaced 192-line stub with 768-line deep-dive (class hierarchy, protocol, network transport, Python integration)
+- `space-management.md` — Expanded 273-line doc to 898 lines (added BSP tree, ghost entities, entity cache, load balancing, comparison table)
+- `entity-lod-system.md` — New 579-line doc (DataLoDLevel, VolatileInfo, PropertyChange encoding, SGW non-use evidence)
+- `distributed-checkpointing.md` — New 765-line doc (BackupHash algorithm, BackupHashChain, ReviverSubject, Cimmeria gap analysis)
+
+**Key findings:**
+- SGW does NOT use BigWorld's entity property LOD — all `<LoDLevels>` tags empty across every .def file
+- Client draw distance slider is UE3/CME rendering, not BW entity LOD
+- SGW does NOT use ghost entities, BSP space partitioning, or multi-CellApp cell boundaries
+- Cimmeria HAS entity backup for space transitions (CELL_BASE_BACKUP_ENTITY = 0x0A) but NOT distributed crash recovery
+- BW BackupHash uses formula `(id * prime >> 8) % virtualSize` with random primes near `0x9e3779__`
+- BW ghost message buffering handles cross-CellApp message ordering with subsequence tracking
+- BW watcher system is conditionally compiled (ENABLE_WATCHERS) — can be stripped from production builds
