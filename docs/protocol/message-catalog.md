@@ -1,7 +1,7 @@
 # Network Message Catalog
 
-> **Status**: Phase 1 foundation document
-> **Total messages**: 420 (253 NetOut + 167 NetIn)
+> **Status**: Phase 2 update — wire formats documented for combat & inventory
+> **Total messages**: 975 (479 NetOut + 496 NetIn)
 > **Source**: Ghidra string search of sgw.exe + entity .def file correlation
 
 This is the **RE-focused** message catalog. For the readable categorized list, see [../network-messages.md](../network-messages.md) and [../technical/network-messages.md](../technical/network-messages.md).
@@ -15,9 +15,19 @@ This document adds what those don't have:
 
 ## How Events Work
 
-The client uses `CME::EventSignal` for event dispatch. The `SGWNetworkManager` class ([SGW 0x019abbc4]) subscribes to all `Event_NetOut_*` signals and serializes them into Mercury messages sent to the server. Incoming Mercury messages trigger `Event_NetIn_*` signals that the UI and game systems subscribe to.
+The client uses `CME::EventSignal` for **client-side UI event dispatch only**. The `SGWNetworkManager` class subscribes to `Event_NetOut_*` signals and routes them through the **universal RPC dispatcher** at `0x00c6fc40`, which serializes method arguments using BigWorld's `DataType::addToStream` virtual methods. Incoming Mercury messages trigger `Event_NetIn_*` signals that the UI and game systems subscribe to.
 
-Each event string appears in the binary at a known address and is referenced by the registration code that wires up the handler. Script `04_event_signal_annotator.py` traces these references to identify the actual handler functions.
+**Key Phase 2 finding**: Event registration functions (e.g., `register_NetOut_UseAbility` at `0x00cb7d90`) simply return a name string — they do NOT contain serialization logic. Wire formats are entirely driven by `.def` file method signatures. See `docs/reverse-engineering/findings/combat-wire-formats.md` for full details.
+
+Wire format for all entity method calls:
+- **Cell methods**: `[1 byte: methodID | 0x80] [serialized args per .def]`
+- **Base methods**: `[1 byte: methodID | 0xC0] [serialized args per .def]`
+- **Client methods**: `[method ID] [serialized args per .def]`
+
+For documented wire formats, see:
+- [Combat Wire Formats](../reverse-engineering/findings/combat-wire-formats.md)
+- [Inventory Wire Formats](../reverse-engineering/findings/inventory-wire-formats.md)
+- [Entity Property Sync](../reverse-engineering/findings/entity-property-sync.md)
 
 ---
 

@@ -14,7 +14,7 @@ Key virtual addresses, vtables, global variables, and important functions discov
 
 | Address | Name | Type | Notes |
 |---------|------|------|-------|
-| TODO | `g_EntityManager` | `EntityManager*` | Singleton — access point for all entities |
+| `0x01ef244c` | `g_EntityManager` | `EntityManager*` | Singleton — set in `BW_client_entity_manager` constructor |
 | TODO | `g_ConnectionModel` | `ServerConnection*` | Main server connection object |
 | TODO | `g_App` | `App*` | Application singleton |
 | TODO | `g_ScriptManager` | `ScriptManager*` | Python script engine |
@@ -25,34 +25,70 @@ Vtables identified via RTTI (script 01) or manual analysis.
 
 | Address | Class | vfunc Count | Notes |
 |---------|-------|-------------|-------|
-| TODO | `EntityManager` | — | Entity lifecycle management |
+| See `BW_client_entity_manager` | `EntityManager` | — | Dual vtable: ServerMessageHandler + FCallbackEventDevice |
 | TODO | `ServerConnection` | — | Mercury connection to server |
 | TODO | `Entity` | — | Base entity class (BigWorld) |
-| TODO | `CME::EventSignal` | — | CME event dispatch |
+| TODO | `CME::EventSignal` | — | CME event dispatch (client-side UI bus only) |
 
-## Event Handler Functions
+## Core Architecture Functions — Phase 2 Decompiled
 
-Key Event_NetOut/NetIn handler addresses (script 04 output).
+### Universal RPC Dispatcher
 
-### NetOut Handlers (Client → Server)
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x00c6fc40` | Universal RPC dispatcher | ALL outgoing entity method calls route here |
+| `0x00dd6a60` | `ServerConnection_startEntityMessage` | Writes cell method header: `methodID \| 0x80` |
+| `0x00dd6980` | `ServerConnection_startProxyMessage` | Writes base method header: `methodID \| 0xC0` |
 
-| Address | Event Name | .def Method | Decompiled? |
-|---------|------------|-------------|-------------|
-| TODO | `Event_NetOut_UseAbility` | SGWCombatant.useAbility | NO |
-| TODO | `Event_NetOut_MoveItem` | SGWInventoryManager.moveItem | NO |
-| TODO | `Event_NetOut_MissionAssign` | Missionary.missionAssign | NO |
-| TODO | `Event_NetOut_onDialGate` | GateTravel.onDialGate | NO |
-| TODO | `Event_NetOut_CreateCharacter` | Account.createCharacter | NO |
+### Entity Creation
 
-### NetIn Handlers (Server → Client)
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x00dddca0` | `ServerConnection_createBasePlayer` | 4B entityID + 2B typeID + property stream |
+| `0x00dda2e0` | `ServerConnection_createCellPlayer` | 4B skip + 4B spaceID + 12B Vec3 pos + property stream |
 
-| Address | Event Name | .def Method | Decompiled? |
-|---------|------------|-------------|-------------|
-| TODO | `Event_NetIn_onEffectResults` | SGWCombatant.onEffectResults | NO |
-| TODO | `Event_NetIn_onContainerInfo` | SGWInventoryManager.onContainerInfo | NO |
-| TODO | `Event_NetIn_onMissionUpdate` | Missionary.onMissionUpdate | NO |
-| TODO | `Event_NetIn_onStatUpdate` | SGWCombatant.onStatUpdate | NO |
-| TODO | `Event_NetIn_CharacterList` | Account.characterList | NO |
+### Entity Manager (entity_manager.cpp)
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x00dd3330` | `BW_client_entity_manager` | Constructor — initializes EntityManager singleton |
+| `0x00dd0d00` | `BW_client_entity_manager_1` area | Entity method dispatch |
+| `0x00dd2900` | `BW_client_entity_manager_5` | Entity leave AoI — decrements refcount, cleanup |
+| `0x00dd27f0` | `BW_client_entity_manager_4` area | Entity enter AoI — increments refcount, enterWorld |
+| `0x00dd1b10` | `BW_client_entity_manager_6` | Entity position/movement update |
+
+### EntityDescription Parsing
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x01593cd0` | `EntityDescription_parse` | Opens .def file, handles Parent recursion |
+| `0x01593600` | `EntityDescription__unknown_01593600` | Parse dispatch: Implements→Properties→Methods |
+| `0x015924a0` | `EntityDescription_parseProperties` | Property ID assignment (sequential, excludes EDITOR_ONLY) |
+| `0x01594f60` | `MethodDescription_parse` | Method signature parsing (Args, ArgNames, Exposed) |
+| `0x015974a0` | `DataDescription_parse_2` | Property type + flags + default value parsing |
+| `0x015959c0` | `DataDescription_parse_1` | Property flag string → bitmask conversion |
+| `0x01593420` | FUN_01593420 | ClientMethods parsing (called from parse dispatch) |
+| `0x015934c0` | FUN_015934c0 | CellMethods parsing (called from parse dispatch) |
+| `0x01593560` | FUN_01593560 | BaseMethods parsing (called from parse dispatch) |
+
+### Property Change
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x015652d0` | `FNetworkPropertyChange__vfunc_0` | Writes property change to stream (4B header + values) |
+
+### Event Signal Registration (CME — client-side only)
+
+| Address | Event Name | Notes |
+|---------|------------|-------|
+| `0x00cb7d90` | `register_NetOut_UseAbility` | Returns string "Event_NetOut_UseAbility" |
+| `0x00d771e0` | `register_NetIn_onEffectResults` | Returns string "Event_NetIn_onEffectResults" |
+| `0x00d7f520` | `register_NetIn_TimerUpdate` | Returns string "Event_NetIn_TimerUpdate" |
+| `0x00d86620` | `register_NetIn_onStatUpdate` | Returns string "Event_NetIn_onStatUpdate" |
+| `0x00d86c10` | `register_NetIn_onStatBaseUpdate` | Returns string "Event_NetIn_onStatBaseUpdate" |
+| `0x00d7d300` | `register_NetIn_onContainerInfo` | Returns string "Event_NetIn_onContainerInfo" |
+
+**Note**: Event registration functions simply return a name string. They do NOT contain serialization logic. The actual network serialization is handled by the universal RPC dispatcher at `0x00c6fc40`. See `docs/reverse-engineering/findings/combat-wire-formats.md` for details.
 
 ## Mercury Protocol Functions
 
@@ -67,10 +103,11 @@ Key Event_NetOut/NetIn handler addresses (script 04 output).
 
 | Address | Function | Notes |
 |---------|----------|-------|
-| TODO | `Entity::setProperty` | Property update dispatch |
+| `0x015652d0` | `FNetworkPropertyChange__vfunc_0` | Property change serialization |
+| `0x015924a0` | `EntityDescription_parseProperties` | Property ID assignment |
+| `0x015974a0` | `DataDescription_parse_2` | Property flag/type parsing |
 | TODO | `Entity::readCellData` | Deserialize cell entity data |
 | TODO | `Entity::readBaseData` | Deserialize base entity data |
-| TODO | `Entity::handlePropertyUpdate` | Process property change from server |
 
 ## UE3 Integration Points
 
@@ -84,9 +121,9 @@ Key Event_NetOut/NetIn handler addresses (script 04 output).
 
 | Address Range | Content | Count |
 |---------------|---------|-------|
-| TODO | Event_NetOut_* strings | 253 |
-| TODO | Event_NetIn_* strings | 167 |
-| TODO | RTTI type descriptors | ~2000+ |
+| TODO | Event_NetOut_* strings | 479 |
+| TODO | Event_NetIn_* strings | 496 |
+| TODO | RTTI type descriptors | ~9,700 |
 | TODO | BigWorld source paths | ~200+ |
 | TODO | CME:: debug strings | ~100+ |
 
