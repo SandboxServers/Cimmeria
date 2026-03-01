@@ -109,26 +109,97 @@ def run():
     println("=" * 70)
     println("")
 
-    # Phase 1: Collect all defined strings
-    println("Phase 1: Scanning for exec* and int property accessor strings...")
-    monitor.setMessage("UE3 Exec Annotator: Scanning strings...")
+    # Phase 1: Collect strings using memory scan (findBytes API)
+    # UE3 registration strings are in the format "intClassNameexecMethodName"
+    # e.g. "intUObjectexecSaveConfig", "intUCommandletexecMain"
+    println("Phase 1: Scanning memory for UE3 registration strings...")
+    monitor.setMessage("UE3 Exec Annotator: Scanning memory...")
 
-    all_strings = get_all_defined_strings()
-    exec_strings = []
-    int_accessor_strings = []
+    memory = currentProgram.getMemory()
+    from ghidra.program.model.mem import MemoryAccessException
 
-    for addr, value in all_strings:
+    # Use findBytes to locate "int" prefixed strings in memory
+    exec_strings = []       # standalone exec* strings
+    int_accessor_strings = []  # intClass* strings (which may contain exec)
+
+    search_start = currentProgram.getMinAddress()
+    search_end = currentProgram.getMaxAddress()
+
+    # Search for "intU" pattern (most UE3 int accessors reference UClass names starting with U)
+    for prefix in ["intU", "intA", "intF"]:
+        addr = search_start
+        while addr is not None and addr.compareTo(search_end) < 0:
+            if monitor.isCancelled():
+                return
+            addr = memory.findBytes(addr, search_end, prefix.encode('ascii'), None, True, monitor)
+            if addr is None:
+                break
+
+            # Read the full null-terminated string
+            chars = []
+            offset = 0
+            try:
+                while offset < 512:
+                    b = memory.getByte(addr.add(offset))
+                    if b == 0:
+                        break
+                    c = chr(b & 0xFF)
+                    if not (c.isalnum() or c == '_'):
+                        break
+                    chars.append(c)
+                    offset += 1
+            except MemoryAccessException:
+                pass
+
+            if chars:
+                value = ''.join(chars)
+                # Must be a plausible UE3 registration string
+                if len(value) > 6 and value.startswith("int"):
+                    int_accessor_strings.append((addr, value))
+
+            addr = addr.add(1)
+
+    # Also search for standalone "exec" strings
+    addr = search_start
+    while addr is not None and addr.compareTo(search_end) < 0:
         if monitor.isCancelled():
-            println("Cancelled by user.")
             return
-        # Match exec function strings: must start with "exec" followed by
-        # an uppercase letter (to avoid false positives like "execute", "exception")
-        if value.startswith("exec") and len(value) > 4 and value[4].isupper():
-            exec_strings.append((addr, value))
-        # UE3 int property accessors: strings like "intFunctionName"
-        # These are property getter/setter registration entries
-        elif value.startswith("int") and len(value) > 3 and value[3].isupper():
-            int_accessor_strings.append((addr, value))
+        addr = memory.findBytes(addr, search_end, "exec".encode('ascii'), None, True, monitor)
+        if addr is None:
+            break
+
+        chars = []
+        offset = 0
+        try:
+            while offset < 256:
+                b = memory.getByte(addr.add(offset))
+                if b == 0:
+                    break
+                c = chr(b & 0xFF)
+                if not (c.isalnum() or c == '_'):
+                    break
+                chars.append(c)
+                offset += 1
+        except MemoryAccessException:
+            pass
+
+        if chars:
+            value = ''.join(chars)
+            if value.startswith("exec") and len(value) > 4 and value[4].isupper():
+                # Only add if not already captured as part of an int* string
+                exec_strings.append((addr, value))
+
+        addr = addr.add(1)
+
+    # Deduplicate int_accessor_strings by address
+    seen_addrs = set()
+    deduped = []
+    for a, v in int_accessor_strings:
+        key = str(a)
+        if key not in seen_addrs:
+            seen_addrs.add(key)
+            deduped.append((a, v))
+    int_accessor_strings = deduped
 
     stats['exec_strings_found'] = len(exec_strings)
     stats['int_accessor_strings'] = len(int_accessor_strings)
@@ -213,8 +284,11 @@ def run():
             println("  ERROR processing %s: %s" % (exec_name, str(e)))
 
     # Phase 3: Process int property accessor strings
+    # Format: "intClassNameexecMethodName" or "intClassNameMethodName"
+    # The string and function pointer are stored as adjacent entries in a
+    # registration table: [string_ptr(4)] [func_ptr(4)]
     println("")
-    println("Phase 3: Tracing int property accessor references...")
+    println("Phase 3: Tracing int accessor strings via registration tables...")
     monitor.setMessage("UE3 Exec Annotator: Processing int accessors...")
     monitor.setMaximum(len(int_accessor_strings))
 
@@ -224,43 +298,127 @@ def run():
             return
         monitor.setProgress(idx)
 
+        # Parse "intClassexecMethod" -> "Class::execMethod"
+        # or "intClassName" -> keep as-is for labeling
+        parsed_name = accessor_name
+        if accessor_name.startswith("int"):
+            inner = accessor_name[3:]  # Remove "int" prefix
+            # Try to find "exec" within the name
+            exec_idx = inner.find("exec")
+            if exec_idx > 0:
+                class_name = inner[:exec_idx]
+                method_name = inner[exec_idx:]
+                parsed_name = "%s_%s" % (class_name, method_name)
+            else:
+                parsed_name = inner
+
         try:
+            # Method 1: Look for xrefs to the string address
             refs = getReferencesTo(str_addr)
-            if not refs:
+
+            found_func = False
+            if refs:
+                for ref in refs:
+                    if monitor.isCancelled():
+                        return
+
+                    ref_addr = ref.getFromAddress()
+
+                    # Check if this is a data reference (registration table)
+                    func = getFunctionContaining(ref_addr)
+                    if func is not None:
+                        # Code reference — the referencing function is the accessor
+                        func_addr = func.getEntryPoint()
+                        addr_str = str(func_addr)
+                        if addr_str not in renamed_addresses and not is_user_named(func) and is_unnamed_function(func):
+                            safe_name = sanitize_label(parsed_name)
+                            try:
+                                func.setName(safe_name, SourceType.USER_DEFINED)
+                                add_plate_comment(func, "UE3: %s" % accessor_name)
+                                stats['int_accessors_renamed'] += 1
+                                renamed_addresses.add(addr_str)
+                                found_func = True
+                            except:
+                                try:
+                                    func.setName(safe_name + "_impl", SourceType.USER_DEFINED)
+                                    stats['int_accessors_renamed'] += 1
+                                    renamed_addresses.add(addr_str)
+                                    found_func = True
+                                except:
+                                    stats['errors'] += 1
+                        break
+                    else:
+                        # Data reference — registration table entry
+                        # [string_ptr(4)] [func_ptr(4)] layout
+                        try:
+                            func_ptr_val = memory.getInt(ref_addr.add(4)) & 0xFFFFFFFF
+                            func_ptr_addr = toAddr(func_ptr_val)
+                            target_func = func_mgr.getFunctionAt(func_ptr_addr)
+                            if target_func is None:
+                                try:
+                                    target_func = createFunction(func_ptr_addr, None)
+                                except:
+                                    pass
+                            if target_func is not None:
+                                addr_str = str(target_func.getEntryPoint())
+                                if addr_str not in renamed_addresses and not is_user_named(target_func) and is_unnamed_function(target_func):
+                                    safe_name = sanitize_label(parsed_name)
+                                    try:
+                                        target_func.setName(safe_name, SourceType.USER_DEFINED)
+                                        add_plate_comment(target_func, "UE3 (table): %s" % accessor_name)
+                                        stats['int_accessors_renamed'] += 1
+                                        renamed_addresses.add(addr_str)
+                                        found_func = True
+                                    except:
+                                        try:
+                                            target_func.setName(safe_name + "_impl", SourceType.USER_DEFINED)
+                                            stats['int_accessors_renamed'] += 1
+                                            renamed_addresses.add(addr_str)
+                                            found_func = True
+                                        except:
+                                            stats['errors'] += 1
+                        except:
+                            pass
+                        break
+
+            if found_func:
                 continue
 
-            for ref in refs:
-                if monitor.isCancelled():
-                    return
-
-                ref_addr = ref.getFromAddress()
-                func = getFunctionContaining(ref_addr)
-
-                if func is None:
-                    continue
-
-                func_addr = func.getEntryPoint()
-                addr_str = str(func_addr)
-
-                if addr_str in renamed_addresses:
-                    continue
-
-                if is_user_named(func):
-                    renamed_addresses.add(addr_str)
-                    continue
-
-                if is_unnamed_function(func):
-                    safe_name = sanitize_label(accessor_name)
-                    try:
-                        func.setName(safe_name, SourceType.USER_DEFINED)
-                        add_plate_comment(func, "UE3 Int Accessor: %s" % accessor_name)
-                        stats['int_accessors_renamed'] += 1
-                        renamed_addresses.add(addr_str)
-                        println("  Int accessor: %s at %s" % (safe_name, func_addr))
-                    except:
-                        stats['errors'] += 1
-
-                break
+            # Method 2: No xrefs — look for a pointer TO this string in nearby memory
+            # Search for the string address as a 4-byte LE value
+            str_addr_int = str_addr.getOffset()
+            search_bytes = bytearray([
+                str_addr_int & 0xFF,
+                (str_addr_int >> 8) & 0xFF,
+                (str_addr_int >> 16) & 0xFF,
+                (str_addr_int >> 24) & 0xFF
+            ])
+            ptr_addr = memory.findBytes(search_start, search_end, bytes(search_bytes), None, True, monitor)
+            if ptr_addr is not None:
+                try:
+                    func_ptr_val = memory.getInt(ptr_addr.add(4)) & 0xFFFFFFFF
+                    func_ptr_addr = toAddr(func_ptr_val)
+                    block = memory.getBlock(func_ptr_addr)
+                    if block is not None and (block.isExecute() or block.getName() == '.text'):
+                        target_func = func_mgr.getFunctionAt(func_ptr_addr)
+                        if target_func is None:
+                            try:
+                                target_func = createFunction(func_ptr_addr, None)
+                            except:
+                                pass
+                        if target_func is not None:
+                            addr_str = str(target_func.getEntryPoint())
+                            if addr_str not in renamed_addresses and not is_user_named(target_func) and is_unnamed_function(target_func):
+                                safe_name = sanitize_label(parsed_name)
+                                try:
+                                    target_func.setName(safe_name, SourceType.USER_DEFINED)
+                                    add_plate_comment(target_func, "UE3 (ptr scan): %s" % accessor_name)
+                                    stats['int_accessors_renamed'] += 1
+                                    renamed_addresses.add(addr_str)
+                                except:
+                                    stats['errors'] += 1
+                except:
+                    pass
 
         except Exception as e:
             stats['errors'] += 1
