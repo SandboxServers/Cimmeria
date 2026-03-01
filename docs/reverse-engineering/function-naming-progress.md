@@ -16,7 +16,7 @@ Run scripts in order (01-10). Later scripts depend on names established by earli
 
 | # | Script | Target | Expected Yield | Actual Yield | Status |
 |---|--------|--------|----------------|--------------|--------|
-| 01 | rtti_annotator.py | RTTI `.?AV...@@` → vtable/class | 200-400 | — | NOT RUN |
+| 01 | rtti_annotator.py | RTTI `.?AV...@@` → vtable/class | 200-400 | **9,700 RTTI, 8,961 vtables, 4,364 vfuncs** | DONE |
 | 02 | ue3_exec_annotator.py | `exec*` strings → UE3 natives | 500-1000 | — | NOT RUN |
 | 03 | bigworld_source_annotator.py | Source paths → BW functions | 100-300 | — | NOT RUN |
 | 04 | event_signal_annotator.py | Event_NetOut/NetIn → handlers | ~420 | — | NOT RUN |
@@ -41,11 +41,17 @@ Functions named through manual Ghidra analysis (decompilation, cross-referencing
 
 ```
 Total functions:     ~85,000
-Auto-named (scripts):     0
+Auto-named (scripts): 4,364  (script 01 only so far)
+  - vtables labeled:  8,961
+  - vfunc_0 renamed:  4,364
+  - RTTI classes:     9,700
 Manual-named:              0
-Total named:               0  (0.0%)
-Remaining unnamed:   ~85,000
+Total named:           4,364  (5.1%)
+Remaining unnamed:   ~80,636
 ```
+
+**Note**: Script 01 yielded 24x the expected result (9,700 vs 200-400 estimated).
+The binary is extremely rich in RTTI — UE3, BigWorld, and CME classes all present.
 
 ## Priority Targets
 

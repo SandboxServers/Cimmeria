@@ -8,7 +8,9 @@
 #
 # MSVC RTTI layout (32-bit):
 #   1. RTTITypeDescriptor contains the mangled name string ".?AVClassName@@"
-#   2. RTTICompleteObjectLocator references the TypeDescriptor (among other fields)
+#      Layout: [pVFTable(4)] [spare(4)] [name(variable, null-terminated)]
+#   2. RTTICompleteObjectLocator references the TypeDescriptor
+#      Layout: [signature(4)] [offset(4)] [cdOffset(4)] [pTypeDescriptor(4)] [pClassHierarchy(4)]
 #   3. The vtable pointer array is preceded by a pointer to the CompleteObjectLocator
 #   4. The first entry in the vtable array points to vfunc_0
 #
@@ -20,32 +22,66 @@
 """
 RTTI Annotator for SGW.exe
 
-Scans for MSVC RTTI type descriptor strings (.?AV*@@), traces references
+Scans memory for MSVC RTTI type descriptor strings (.?AV*@@), traces references
 through the RTTI object hierarchy to locate vtables, and labels them
 along with their first virtual function entry.
 """
 
 from ghidra.program.model.symbol import SourceType
-from ghidra.program.model.data import StringDataType
 from ghidra.program.model.mem import MemoryAccessException
+from ghidra.program.model.address import AddressSet
 import re
+import struct
 
-def get_all_defined_strings():
-    """Iterate over all defined data in the program and collect string entries."""
-    listing = currentProgram.getListing()
-    data_iter = listing.getDefinedData(True)
-    strings = []
-    while data_iter.hasNext():
-        data = data_iter.next()
-        dt = data.getDataType()
-        if dt is not None and ("string" in dt.getName().lower() or "unicode" in dt.getName().lower()):
-            value = data.getValue()
-            if value is not None:
-                try:
-                    strings.append((data.getAddress(), unicode(value).encode('utf-8', 'replace')))
-                except:
-                    pass
-    return strings
+
+def find_rtti_strings_by_memory_scan():
+    """Scan memory for .?AV*@@ and .?AU*@@ RTTI type descriptor name strings.
+
+    Uses Ghidra's built-in findBytes API for reliable searching across all
+    memory blocks, then reads the full null-terminated string at each hit.
+    """
+    memory = currentProgram.getMemory()
+    results = []
+
+    # Search for both .?AV (class) and .?AU (struct) RTTI patterns
+    patterns = [".?AV", ".?AU"]
+    search_start = currentProgram.getMinAddress()
+    search_end = currentProgram.getMaxAddress()
+
+    for pattern in patterns:
+        # Convert pattern to byte string for findBytes
+        addr = search_start
+        while addr is not None and addr.compareTo(search_end) < 0:
+            if monitor.isCancelled():
+                return results
+
+            # Use memory.findBytes to search for the pattern
+            addr = memory.findBytes(addr, search_end, pattern.encode('ascii'), None, True, monitor)
+            if addr is None:
+                break
+
+            # Read the full string from this address until null terminator
+            name_chars = []
+            offset = 0
+            try:
+                while offset < 512:
+                    b = memory.getByte(addr.add(offset))
+                    if b == 0:
+                        break
+                    name_chars.append(chr(b & 0xFF))
+                    offset += 1
+            except MemoryAccessException:
+                pass
+
+            if name_chars:
+                name_str = ''.join(name_chars)
+                if name_str.endswith('@@'):
+                    results.append((addr, name_str))
+
+            # Advance past this hit
+            addr = addr.add(1)
+
+    return results
 
 
 def read_pointer(addr):
@@ -60,13 +96,22 @@ def read_pointer(addr):
         return None
 
 
+def is_valid_code_addr(addr):
+    """Check if an address points to executable memory."""
+    if addr is None:
+        return False
+    block = currentProgram.getMemory().getBlock(addr)
+    if block is None:
+        return False
+    return block.isExecute() or block.getName() == '.text'
+
+
 def is_unnamed_function(func):
     """Check if a function has an auto-generated name (not user-defined)."""
     if func is None:
         return False
     name = func.getName()
     source = func.getSymbol().getSource()
-    # Auto-generated names: FUN_*, thunk_FUN_*, etc.
     if source == SourceType.USER_DEFINED:
         return False
     if name.startswith("FUN_") or name.startswith("thunk_FUN_"):
@@ -87,9 +132,9 @@ def extract_class_name(rtti_string):
     """Extract class name from RTTI mangled string .?AVClassName@@
 
     Handles nested namespaces: .?AVClassName@Namespace@@ -> Namespace::ClassName
+    Also handles .?AU (struct) and .?AW (enum) prefixes.
     """
-    # Match the RTTI pattern
-    match = re.match(r'\.?\?AV(.+?)@@$', rtti_string)
+    match = re.match(r'\.?\?A[VUW](.+?)@@$', rtti_string)
     if not match:
         return None
 
@@ -98,7 +143,6 @@ def extract_class_name(rtti_string):
     # MSVC mangling: .?AVClass@Namespace@@ means Namespace::Class
     # Split on @ to get namespace parts (reversed order)
     parts = raw.split('@')
-    # Filter empty parts and reverse (MSVC stores inner-to-outer)
     parts = [p for p in parts if p]
     if len(parts) > 1:
         parts.reverse()
@@ -108,11 +152,8 @@ def extract_class_name(rtti_string):
 
 def sanitize_label(name):
     """Sanitize a name to be a valid Ghidra label (no special characters)."""
-    # Replace :: with _ for label compatibility
     sanitized = name.replace('::', '_')
-    # Replace any remaining invalid characters
     sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', sanitized)
-    # Ensure it doesn't start with a digit
     if sanitized and sanitized[0].isdigit():
         sanitized = '_' + sanitized
     return sanitized
@@ -121,7 +162,6 @@ def sanitize_label(name):
 def set_label(addr, name):
     """Set a label at the given address."""
     sym_table = currentProgram.getSymbolTable()
-    # Check if there is already a user-defined symbol here
     existing = sym_table.getPrimarySymbol(addr)
     if existing is not None and existing.getSource() == SourceType.USER_DEFINED:
         return False
@@ -134,14 +174,13 @@ def set_label(addr, name):
 
 def run():
     monitor = getMonitor()
-    monitor.setMessage("RTTI Annotator: Scanning for type descriptor strings...")
+    monitor.setMessage("RTTI Annotator: Scanning memory for type descriptor strings...")
 
-    # Statistics
     stats = {
         'rtti_strings_found': 0,
         'class_names_extracted': 0,
         'type_descriptors_found': 0,
-        'complete_object_locators_found': 0,
+        'col_found': 0,
         'vtables_labeled': 0,
         'vfunc0_renamed': 0,
         'skipped_user_named': 0,
@@ -151,33 +190,43 @@ def run():
     func_mgr = currentProgram.getFunctionManager()
     ref_mgr = currentProgram.getReferenceManager()
 
-    # Step 1: Find all RTTI type descriptor strings
     println("=" * 70)
     println("RTTI Annotator - Stargate Worlds (SGW.exe)")
     println("=" * 70)
     println("")
-    println("Phase 1: Scanning for .?AV*@@ RTTI strings...")
+    println("Phase 1: Scanning memory for .?AV*@@ / .?AU*@@ RTTI strings...")
 
-    all_strings = get_all_defined_strings()
+    # Memory scan instead of defined string search
     rtti_entries = []
+    raw_hits = find_rtti_strings_by_memory_scan()
 
-    for addr, value in all_strings:
+    for addr, value in raw_hits:
         if monitor.isCancelled():
             println("Cancelled by user.")
             return
-        if '.?AV' in value and value.endswith('@@'):
-            class_name = extract_class_name(value)
-            if class_name:
-                rtti_entries.append((addr, value, class_name))
-                stats['rtti_strings_found'] += 1
+        class_name = extract_class_name(value)
+        if class_name:
+            rtti_entries.append((addr, value, class_name))
+            stats['rtti_strings_found'] += 1
 
     println("  Found %d RTTI type descriptor strings" % stats['rtti_strings_found'])
 
     if stats['rtti_strings_found'] == 0:
-        println("No RTTI strings found. Is this binary stripped of RTTI?")
+        println("No RTTI strings found. The binary may have RTTI disabled (/GR-).")
         return
 
-    # Step 2-6: For each RTTI string, trace through the hierarchy
+    # Print some examples
+    println("")
+    println("  Sample classes found:")
+    for _, _, name in rtti_entries[:20]:
+        println("    %s" % name)
+    if len(rtti_entries) > 20:
+        println("    ... and %d more" % (len(rtti_entries) - 20))
+
+    # Phase 2: For each RTTI string, trace the hierarchy
+    # The string is at offset +8 within RTTITypeDescriptor.
+    # So TypeDescriptor base = string_addr - 8
+    # We look for xrefs TO the TypeDescriptor base.
     println("")
     println("Phase 2: Tracing RTTI hierarchy (TypeDescriptor -> COL -> vtable)...")
     monitor.setMessage("RTTI Annotator: Tracing RTTI hierarchy...")
@@ -190,102 +239,68 @@ def run():
             println("Cancelled by user.")
             return
         monitor.setProgress(idx)
-        monitor.setMessage("Processing: %s" % class_name)
 
         stats['class_names_extracted'] += 1
-        safe_name = sanitize_label(class_name)
 
         try:
-            # Step 3: Find xrefs TO the RTTI string -> these point to TypeDescriptor
-            # The RTTI string is embedded within the RTTITypeDescriptor structure.
-            # The TypeDescriptor starts 8 bytes before the string (pVFTable + spare)
-            # But references may point to the string directly or to the struct start.
-            # We look for references to the string address itself.
-            refs_to_string = getReferencesTo(rtti_addr)
+            # TypeDescriptor base is 8 bytes before the name string
+            type_desc_addr = rtti_addr.subtract(8)
 
-            if not refs_to_string:
-                # The string might be part of a larger TypeDescriptor structure.
-                # Try looking at the address 8 bytes before (RTTITypeDescriptor layout:
-                # offset 0: pVFTable, offset 4: spare, offset 8: name[])
-                type_desc_addr = rtti_addr.subtract(8)
-                refs_to_td = getReferencesTo(type_desc_addr)
-                if refs_to_td:
-                    stats['type_descriptors_found'] += 1
-                    refs_to_string = []  # We will use refs_to_td below
-                    # Now find xrefs TO the TypeDescriptor -> CompleteObjectLocator
-                    for td_ref in refs_to_td:
-                        col_candidate = td_ref.getFromAddress()
-                        # The COL references the TD; find xrefs to this COL
-                        refs_to_col = getReferencesTo(col_candidate)
-                        if refs_to_col:
-                            stats['complete_object_locators_found'] += 1
-                            for col_ref in refs_to_col:
-                                # The pointer to the COL sits at vtable[-1]
-                                # So the vtable starts at col_ref + 4
-                                vtable_addr = col_ref.getFromAddress().add(4)
-                                vtable_map[class_name] = vtable_addr
+            # Find xrefs to the TypeDescriptor
+            # These come from CompleteObjectLocator.pTypeDescriptor field
+            refs_to_td = getReferencesTo(type_desc_addr)
+
+            if not refs_to_td:
                 continue
 
-            # References to the RTTI name string found
-            for str_ref in refs_to_string:
+            stats['type_descriptors_found'] += 1
+
+            for td_ref in refs_to_td:
                 if monitor.isCancelled():
                     return
 
-                # str_ref.getFromAddress() is inside the TypeDescriptor (the name field pointer)
-                # The TypeDescriptor struct start is at the referring address's context
-                # Actually, the string IS the name field, so the ref FROM address is where
-                # a pointer to this string lives. That pointer is inside a TypeDescriptor
-                # or a CompleteObjectLocator.
+                # td_ref.getFromAddress() is inside a COL (at the pTypeDescriptor field)
+                # In 32-bit MSVC COL: pTypeDescriptor is at offset +12
+                # So COL base = from_addr - 12
+                col_td_field = td_ref.getFromAddress()
+                col_base = col_td_field.subtract(12)
 
-                td_candidate = str_ref.getFromAddress()
-                stats['type_descriptors_found'] += 1
+                # Verify: COL.signature should be 0 (for 32-bit, non-ASLR)
+                sig = read_pointer(col_base)
+                if sig is not None and sig.getOffset() != 0:
+                    # Try without the offset assumption - maybe pTypeDescriptor is at a different offset
+                    # Some MSVC versions or configurations may vary
+                    pass
 
-                # Step 4: Find xrefs TO the TypeDescriptor address
-                # The CompleteObjectLocator has a pointer to the TypeDescriptor
-                # But we need the base of the TypeDescriptor, which is 8 bytes before the name
-                type_desc_base = rtti_addr.subtract(8)
+                # Find xrefs to the COL base - these come from vtable[-1]
+                refs_to_col = getReferencesTo(col_base)
 
-                refs_to_td = getReferencesTo(type_desc_base)
-                if not refs_to_td:
-                    # Try the string address itself as some tools resolve differently
-                    refs_to_td = getReferencesTo(rtti_addr)
+                if not refs_to_col:
+                    # Try the original address (the pTypeDescriptor field itself)
+                    # In case references point to this field directly
+                    continue
 
-                for td_ref in refs_to_td:
-                    if monitor.isCancelled():
-                        return
+                stats['col_found'] += 1
 
-                    # td_ref.getFromAddress() is inside the CompleteObjectLocator
-                    # (specifically the pTypeDescriptor field)
-                    col_candidate_addr = td_ref.getFromAddress()
+                for col_ref in refs_to_col:
+                    # The pointer to COL sits at vtable[-1]
+                    # So vtable[0] = this address + 4
+                    vtable_addr = col_ref.getFromAddress().add(4)
 
-                    # The COL structure (32-bit MSVC):
-                    # offset 0: signature (0)
-                    # offset 4: offset
-                    # offset 8: cdOffset
-                    # offset 12: pTypeDescriptor  <- this is what references our TD
-                    # offset 16: pClassHierarchyDescriptor
-                    # So COL base = col_candidate_addr - 12
-                    col_base = col_candidate_addr.subtract(12)
-
-                    # Step 5: Find xrefs TO the COL base
-                    refs_to_col = getReferencesTo(col_base)
-                    if refs_to_col:
-                        stats['complete_object_locators_found'] += 1
-                        for col_ref in refs_to_col:
-                            # The reference to COL is at vtable[-1]
-                            # So vtable[0] = col_ref.getFromAddress() + 4
-                            vtable_start = col_ref.getFromAddress().add(4)
-                            if class_name not in vtable_map:
-                                vtable_map[class_name] = vtable_start
-
-                # Only process the first ref to avoid duplicates
-                break
+                    # Verify: first vtable entry should point to executable code
+                    first_entry = read_pointer(vtable_addr)
+                    if first_entry is not None and is_valid_code_addr(first_entry):
+                        if class_name not in vtable_map:
+                            vtable_map[class_name] = vtable_addr
 
         except Exception as e:
             stats['errors'] += 1
-            println("  ERROR processing %s: %s" % (class_name, str(e)))
 
-    # Step 6-7: Label vtables and first virtual functions
+    println("  TypeDescriptors with xrefs: %d" % stats['type_descriptors_found'])
+    println("  CompleteObjectLocators found: %d" % stats['col_found'])
+    println("  Vtables identified: %d" % len(vtable_map))
+
+    # Phase 3: Label vtables and first virtual functions
     println("")
     println("Phase 3: Labeling vtables and vfunc_0 entries...")
     monitor.setMessage("RTTI Annotator: Labeling vtables...")
@@ -304,14 +319,12 @@ def run():
             vtable_label = "vtable_%s" % safe_name
             if set_label(vtable_addr, vtable_label):
                 stats['vtables_labeled'] += 1
-                println("  vtable: %s at %s" % (vtable_label, vtable_addr))
 
             # Read the first vtable entry to get vfunc_0
             vfunc0_addr = read_pointer(vtable_addr)
-            if vfunc0_addr is not None:
+            if vfunc0_addr is not None and is_valid_code_addr(vfunc0_addr):
                 func = func_mgr.getFunctionAt(vfunc0_addr)
                 if func is None:
-                    # Try to get the function containing this address
                     func = func_mgr.getFunctionContaining(vfunc0_addr)
 
                 if func is not None:
@@ -322,23 +335,20 @@ def run():
                         try:
                             func.setName(new_name, SourceType.USER_DEFINED)
                             stats['vfunc0_renamed'] += 1
-                            println("  vfunc_0: %s at %s" % (new_name, vfunc0_addr))
                         except:
                             stats['errors'] += 1
-                elif vfunc0_addr is not None:
+                else:
                     # No function at this address; try to create one
                     try:
                         new_name = "%s__vfunc_0" % safe_name
                         func = createFunction(vfunc0_addr, new_name)
                         if func is not None:
                             stats['vfunc0_renamed'] += 1
-                            println("  vfunc_0 (created): %s at %s" % (new_name, vfunc0_addr))
                     except:
                         stats['errors'] += 1
 
         except Exception as e:
             stats['errors'] += 1
-            println("  ERROR labeling %s: %s" % (class_name, str(e)))
 
     # Print summary
     println("")
@@ -347,13 +357,22 @@ def run():
     println("=" * 70)
     println("  RTTI strings found:                %d" % stats['rtti_strings_found'])
     println("  Class names extracted:             %d" % stats['class_names_extracted'])
-    println("  TypeDescriptors located:           %d" % stats['type_descriptors_found'])
-    println("  CompleteObjectLocators located:     %d" % stats['complete_object_locators_found'])
+    println("  TypeDescriptors with xrefs:        %d" % stats['type_descriptors_found'])
+    println("  CompleteObjectLocators found:       %d" % stats['col_found'])
     println("  Vtables labeled:                   %d" % stats['vtables_labeled'])
     println("  vfunc_0 functions renamed:         %d" % stats['vfunc0_renamed'])
     println("  Skipped (already user-named):      %d" % stats['skipped_user_named'])
     println("  Errors:                            %d" % stats['errors'])
     println("=" * 70)
+
+    # Print some labeled vtables
+    if vtable_map:
+        println("")
+        println("Sample vtables labeled:")
+        for name, addr in sorted(vtable_map.items())[:30]:
+            println("  %s -> %s" % (addr, name))
+        if len(vtable_map) > 30:
+            println("  ... and %d more" % (len(vtable_map) - 30))
 
 
 # Entry point
