@@ -17,17 +17,24 @@
 - [x] Cataloged all 18 entity .def files with property/method counts
 - [x] Cataloged all 18 interface .def files with property/method counts
 - [x] Committed PLAN.md and STATUS.md as starting point
+- [x] docs/README.md — Master navigation hub (248 lines)
+- [x] Root README.md — Updated with project context, what works/missing
+- [x] docs/protocol/message-catalog.md — All 420 events mapped with implementation status (~26% coverage)
+- [x] docs/gameplay/README.md — System dashboard with 18 systems, priority matrix
+- [x] docs/guides/evidence-standards.md — Three-tier confidence system (333 lines)
+- [x] docs/guides/reading-decompiled-code.md — MSVC patterns, BigWorld specifics (491 lines)
+- [x] docs/guides/entity-def-guide.md — Complete .def walkthrough (817 lines)
+- [x] All 10 Ghidra annotation scripts (01-10) written and committed
+- [x] docs/engine/entity-type-catalog.md — All 36 types with full property/method tables (953 lines)
+- [x] docs/reverse-engineering/function-naming-progress.md — Script results tracking template
+- [x] docs/reverse-engineering/address-map.md — Key address tracking template
+- [x] docs/reverse-engineering/findings/README.md — Findings directory structure
+- [x] docs/protocol/README.md — Protocol section navigation
+- [x] docs/engine/README.md — Engine section navigation
 
 **In Progress:**
-- [ ] docs/README.md — Master navigation hub
-- [ ] docs/guides/evidence-standards.md
-- [ ] docs/guides/reading-decompiled-code.md
-- [ ] docs/guides/entity-def-guide.md
-- [ ] Ghidra annotation scripts 01-10
-- [ ] docs/protocol/message-catalog.md (HUB)
-- [ ] docs/engine/entity-type-catalog.md (HUB)
-- [ ] docs/gameplay/README.md (HUB)
-- [ ] Remaining protocol/engine/analysis/architecture docs
+- [ ] Remaining protocol/engine/analysis/architecture docs (12 files)
+- [ ] Gameplay system docs (17 files: combat, abilities, effects, stats, etc.)
 
 **Not Started:**
 - [ ] Phase 2: Combat & Core Systems RE
@@ -123,60 +130,60 @@ SGWEntity (base)
 - [x] Directory tree created
 - [x] PLAN.md written
 - [x] STATUS.md written (this file)
-- [ ] docs/README.md — Master navigation hub
-- [ ] docs/protocol/README.md
-- [ ] docs/gameplay/README.md (HUB)
-- [ ] docs/engine/README.md
-- [ ] docs/guides/evidence-standards.md
-- [ ] docs/guides/reading-decompiled-code.md
-- [ ] docs/guides/entity-def-guide.md
+- [x] docs/README.md — Master navigation hub
+- [x] docs/protocol/README.md
+- [x] docs/gameplay/README.md (HUB)
+- [x] docs/engine/README.md
+- [x] docs/guides/evidence-standards.md
+- [x] docs/guides/reading-decompiled-code.md
+- [x] docs/guides/entity-def-guide.md
 
 ### 1b. Ghidra Annotation Scripts
-- [ ] 01_rtti_annotator.py
-- [ ] 02_ue3_exec_annotator.py
-- [ ] 03_bigworld_source_annotator.py
-- [ ] 04_event_signal_annotator.py
-- [ ] 05_mercury_annotator.py
-- [ ] 06_cme_framework_annotator.py
-- [ ] 07_vtable_annotator.py
-- [ ] 08_lua_binding_annotator.py
-- [ ] 09_string_discovery.py
-- [ ] 10_xref_propagation.py
+- [x] 01_rtti_annotator.py
+- [x] 02_ue3_exec_annotator.py
+- [x] 03_bigworld_source_annotator.py
+- [x] 04_event_signal_annotator.py
+- [x] 05_mercury_annotator.py
+- [x] 06_cme_framework_annotator.py
+- [x] 07_vtable_annotator.py
+- [x] 08_lua_binding_annotator.py
+- [x] 09_string_discovery.py
+- [x] 10_xref_propagation.py
 
 ### 1c. Hub Documents
-- [ ] docs/protocol/message-catalog.md — All 420 events mapped
-- [ ] docs/engine/entity-type-catalog.md — All 36 types documented
-- [ ] docs/gameplay/README.md — System dashboard
+- [x] docs/protocol/message-catalog.md — All 420 events mapped
+- [x] docs/engine/entity-type-catalog.md — All 36 types documented
+- [x] docs/gameplay/README.md — System dashboard
 
 ### 1d. Remaining Docs
-- [ ] docs/protocol/mercury-wire-format.md
-- [ ] docs/protocol/entity-property-sync.md
-- [ ] docs/protocol/login-handshake.md
-- [ ] docs/protocol/position-updates.md
-- [ ] docs/engine/bigworld-architecture.md
-- [ ] docs/engine/cme-framework.md
-- [ ] docs/engine/cooked-data-pipeline.md
-- [ ] docs/engine/watcher-system.md
-- [ ] docs/engine/space-management.md
-- [ ] docs/architecture/service-architecture.md
-- [ ] docs/analysis/event-net-mapping.md
-- [ ] docs/analysis/bigworld-reference-index.md
-- [ ] docs/reverse-engineering/function-naming-progress.md
-- [ ] docs/reverse-engineering/address-map.md
-- [ ] docs/gameplay/combat-system.md
-- [ ] docs/gameplay/ability-system.md
-- [ ] docs/gameplay/effect-system.md
-- [ ] docs/gameplay/stat-system.md
-- [ ] docs/gameplay/inventory-system.md
-- [ ] docs/gameplay/crafting-system.md
-- [ ] docs/gameplay/mission-system.md
-- [ ] docs/gameplay/gate-travel.md
-- [ ] docs/gameplay/minigame-system.md
-- [ ] docs/gameplay/organization-system.md
-- [ ] docs/gameplay/group-system.md
-- [ ] docs/gameplay/chat-system.md
-- [ ] docs/gameplay/mail-system.md
-- [ ] docs/gameplay/trade-system.md
-- [ ] docs/gameplay/black-market.md
-- [ ] docs/gameplay/pet-system.md
-- [ ] docs/gameplay/duel-system.md
+- [ ] docs/protocol/mercury-wire-format.md *(in progress)*
+- [ ] docs/protocol/entity-property-sync.md *(in progress)*
+- [ ] docs/protocol/login-handshake.md *(in progress)*
+- [ ] docs/protocol/position-updates.md *(in progress)*
+- [ ] docs/engine/bigworld-architecture.md *(in progress)*
+- [ ] docs/engine/cme-framework.md *(in progress)*
+- [ ] docs/engine/cooked-data-pipeline.md *(in progress)*
+- [ ] docs/engine/watcher-system.md *(in progress)*
+- [ ] docs/engine/space-management.md *(in progress)*
+- [ ] docs/architecture/service-architecture.md *(in progress)*
+- [ ] docs/analysis/event-net-mapping.md *(in progress)*
+- [ ] docs/analysis/bigworld-reference-index.md *(in progress)*
+- [x] docs/reverse-engineering/function-naming-progress.md
+- [x] docs/reverse-engineering/address-map.md
+- [ ] docs/gameplay/combat-system.md *(in progress)*
+- [ ] docs/gameplay/ability-system.md *(in progress)*
+- [ ] docs/gameplay/effect-system.md *(in progress)*
+- [ ] docs/gameplay/stat-system.md *(in progress)*
+- [ ] docs/gameplay/inventory-system.md *(in progress)*
+- [ ] docs/gameplay/crafting-system.md *(in progress)*
+- [ ] docs/gameplay/mission-system.md *(in progress)*
+- [ ] docs/gameplay/gate-travel.md *(in progress)*
+- [ ] docs/gameplay/minigame-system.md *(in progress)*
+- [ ] docs/gameplay/organization-system.md *(in progress)*
+- [ ] docs/gameplay/group-system.md *(in progress)*
+- [ ] docs/gameplay/chat-system.md *(in progress)*
+- [ ] docs/gameplay/mail-system.md *(in progress)*
+- [ ] docs/gameplay/trade-system.md *(in progress)*
+- [ ] docs/gameplay/black-market.md *(in progress)*
+- [ ] docs/gameplay/pet-system.md *(in progress)*
+- [ ] docs/gameplay/duel-system.md *(in progress)*
