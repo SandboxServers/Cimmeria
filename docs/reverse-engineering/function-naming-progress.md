@@ -18,10 +18,10 @@ Run scripts in order (01-10). Later scripts depend on names established by earli
 |---|--------|--------|----------------|--------------|--------|
 | 01 | rtti_annotator.py | RTTI `.?AV...@@` → vtable/class | 200-400 | **9,700 RTTI, 8,961 vtables, 4,364 vfuncs** | DONE |
 | 02 | ue3_exec_annotator.py | `int*` strings → UE3 natives | 500-1000 | **1,275 int* found, 1,006 renamed** | DONE |
-| 03 | bigworld_source_annotator.py | Source paths → BW functions | 100-300 | — | NOT RUN |
-| 04 | event_signal_annotator.py | Event_NetOut/NetIn → handlers | ~420 | — | NOT RUN |
-| 05 | mercury_annotator.py | Mercury:: debug strings | 30-50 | — | NOT RUN |
-| 06 | cme_framework_annotator.py | CME:: symbols | 50-100 | — | NOT RUN |
+| 03 | bigworld_source_annotator.py | Source paths → BW functions | 100-300 | **17 paths + 17 Mercury, 23 renamed** | DONE |
+| 04 | event_signal_annotator.py | Event_NetOut/NetIn → handlers | ~420 | **975 events (479 out + 496 in), 419 renamed** | DONE |
+| 05 | mercury_annotator.py | Mercury:: debug strings | 30-50 | **120 strings, 38 renamed, 79 RTTI vtables** | DONE |
+| 06 | cme_framework_annotator.py | CME:: symbols | 50-100 | **42 strings, 28 renamed, 5 classes** | DONE |
 | 07 | vtable_annotator.py | Named vtables → vfunc_N | 2000-5000 | — | NOT RUN |
 | 08 | lua_binding_annotator.py | toLua registration | 100-200 | — | NOT RUN |
 | 09 | string_discovery.py | Broad `class::method` strings | 500-2000 | — | NOT RUN |
@@ -41,7 +41,7 @@ Functions named through manual Ghidra analysis (decompilation, cross-referencing
 
 ```
 Total functions:     ~85,000
-Auto-named (scripts): 5,370  (scripts 01-02)
+Auto-named (scripts): 5,850  (scripts 01-05)
   Script 01 (RTTI):
     - RTTI classes:     9,700
     - vtables labeled:  8,961
@@ -49,9 +49,24 @@ Auto-named (scripts): 5,370  (scripts 01-02)
   Script 02 (UE3):
     - int* strings:     1,275
     - functions renamed: 1,006
+  Script 03 (BW Source + Mercury):
+    - BW paths:         17 (3 unique files)
+    - Mercury strings:  17
+    - functions renamed: 23
+  Script 04 (Event Signals):
+    - events found:     975 (479 out + 496 in)
+    - funcs renamed:    419
+  Script 05 (Mercury):
+    - Mercury strings:  120
+    - RTTI vtables:     79
+    - funcs renamed:    38
+  Script 06 (CME):
+    - CME strings:      42
+    - CME classes:      5
+    - funcs renamed:    28
 Manual-named:              0
-Total named:           5,370  (6.3%)
-Remaining unnamed:   ~79,630
+Total named:           5,878  (6.9%)
+Remaining unnamed:   ~79,122
 ```
 
 **Note**: Script 01 yielded 24x the expected result (9,700 vs 200-400 estimated).

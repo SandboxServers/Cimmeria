@@ -70,16 +70,8 @@ def is_code_address(addr, mem, addr_space):
 def read_pointer(listing, mem, addr):
     """Read a 4-byte pointer value at the given address (32-bit LE)."""
     try:
-        bytes_val = bytearray(4)
-        count = mem.getBytes(addr, bytes_val)
-        if count != 4:
-            return None
-        # Little-endian 32-bit
-        val = (bytes_val[0] & 0xFF) | \
-              ((bytes_val[1] & 0xFF) << 8) | \
-              ((bytes_val[2] & 0xFF) << 16) | \
-              ((bytes_val[3] & 0xFF) << 24)
-        return val
+        val = mem.getInt(addr)
+        return val & 0xFFFFFFFF
     except MemoryAccessException:
         return None
     except:
