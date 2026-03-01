@@ -46,7 +46,10 @@ def get_all_defined_strings():
         if dt is not None and ("string" in dt.getName().lower() or "unicode" in dt.getName().lower()):
             value = data.getValue()
             if value is not None:
-                strings.append((data.getAddress(), str(value)))
+                try:
+                    strings.append((data.getAddress(), unicode(value).encode('utf-8', 'replace')))
+                except:
+                    pass
     return strings
 
 
