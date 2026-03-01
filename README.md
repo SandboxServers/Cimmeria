@@ -6,7 +6,27 @@ Cimmeria reimplements the server infrastructure — authentication, world simula
 
 ### Current State
 
-Players can **log in**, **create characters**, **enter the world**, **move around**, **interact with NPCs**, **run missions**, and **engage in combat**. The server infrastructure (networking, entity lifecycle, database persistence, authentication, navigation) is 75–80% complete. The remaining work is primarily game logic: crafting, gate travel, minigames, guilds, mail, and the auction house.
+The server **infrastructure** is 75–80% complete: Mercury networking, entity lifecycle, database persistence, authentication, navigation meshes, and Area of Interest all work. Players can log in, create characters, enter the world, move around, interact with NPCs, accept missions, and engage in basic combat.
+
+**What works:**
+- Full login/auth flow and character creation
+- World entry, movement, entity spawning and despawn
+- NPC interactions and dialog trees
+- Basic combat (abilities, effects, damage, death/respawn)
+- Inventory and item management
+- Chat channels and private messaging
+- Mission accept/advance (scripted missions)
+
+**What's missing or incomplete:**
+- **Content**: Only a handful of the game's zones and missions are wired up; most world content still needs scripting
+- **XP and leveling**: Level progression and XP curve tuning
+- **Enemy AI**: Mobs spawn but lack patrol paths, aggro leashing, and sophisticated combat behavior
+- **Crafting**: Not implemented (0%) — disciplines, blueprints, research, alloys
+- **Stargate travel**: Partially implemented (~20%) — DHD UI works but gate transitions are incomplete
+- **Organizations/Guilds**: Stub only (~5%)
+- **Minigames**: Framework exists but none of the 5+ minigames are functional
+- **Mail, auction house, trading, duels, pets**: Not yet implemented
+- **Stat scaling and balance**: Base stats work but derived stats, diminishing returns, and combat formulas need validation against the original client
 
 See [docs/project-status.md](docs/project-status.md) for a detailed breakdown and [docs/](docs/readme.md) for full documentation.
 
