@@ -88,11 +88,11 @@ void ConnectHandler::handlePacket(Nub & nub, ReceivedPacket::Ptr packet, boost::
 		handler->update_channel(channel);
 		nub.connectChannel(channel, endpoint);
 		
-		// Send BaseApp connection ack message
+		// Send BaseApp connection ack message (echo the ticket back to confirm authentication)
 		Bundle & bundle = *channel->bundle();
 		bundle.beginMessage(BASEMSG_REPLY_MESSAGE, ServerMessageList[BASEMSG_AUTHENTICATE], Bundle::FLUSH);
-		bundle << requestId << (uint8_t)0x20;
-		bundle.write(key, sizeof(key));
+		bundle << requestId << ticketLength;
+		bundle.write(ticket, ticketLength);
 		bundle.endMessage();
 		// The auth message needs to be flushed in a separate packet
 		// (at least that's how the SGW server does it, maybe it's not necessary)
