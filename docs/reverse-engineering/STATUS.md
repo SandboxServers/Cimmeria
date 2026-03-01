@@ -159,16 +159,15 @@ This means we do NOT need to decompile individual event handlers (100+ functions
 
 **Goal**: Document wire formats for all remaining game systems.
 
-### 4a. Secondary Systems (Combined Document) — DONE
-- [x] Minigames: 13 client methods, matchmaking, call request flow
-- [x] Chat: 7 client methods, 15+ base methods, channel management
-- [x] Mail: 4 client methods, 10 cell methods, COD support, attachments
-- [x] Black Market: 6 client methods, 6 cell methods, BMSearchOptions/AuctionItem types
-- [x] Contact Lists: 5 client methods, 6 cell methods
-- [x] Trade: LocalTradeProposal/RemoteTradeProposal asymmetry
-- [x] Duel: challenge/response/forfeit flow, squad duels
-- [x] Pet: ability lists, stances (INT8, not INT32)
-- [x] Findings: `docs/reverse-engineering/findings/secondary-systems-wire-formats.md`
+### 4a. Secondary Systems — DONE
+- [x] Minigames: 13 client methods, matchmaking, call request flow → `findings/minigame-wire-formats.md`
+- [x] Chat: 7 client methods, 15+ base methods, channel management → `findings/chat-wire-formats.md`
+- [x] Mail: 4 client methods, 10 cell methods, COD support, attachments → `findings/mail-wire-formats.md`
+- [x] Black Market: 6 client methods, 6 cell methods, BMSearchOptions/AuctionItem types → `findings/black-market-wire-formats.md`
+- [x] Contact Lists: 5 client methods, 6 cell methods → `findings/contact-list-wire-formats.md`
+- [x] Trade: LocalTradeProposal/RemoteTradeProposal asymmetry → `findings/trade-wire-formats.md`
+- [x] Duel: challenge/response/forfeit flow, squad duels → `findings/duel-wire-formats.md`
+- [x] Pet: ability lists, stances (INT8, not INT32) → `findings/pet-wire-formats.md`
 
 ### 4b. Entity Types — DONE
 - [x] Account: character creation/selection, ClientCache data versioning

@@ -13,7 +13,14 @@ This directory contains per-system reverse engineering findings with evidence.
 | `mission-wire-formats.md` | 3 | Missions, steps, objectives, tasks, rewards | HIGH |
 | `organization-wire-formats.md` | 3 | Squads, guilds, strike teams, roster, ranks | HIGH |
 | `crafting-wire-formats.md` | 3 | Craft, research, reverse engineer, alloy | HIGH |
-| `secondary-systems-wire-formats.md` | 4 | Minigames, chat, mail, black market, contacts, trade, duel, pets | HIGH |
+| `minigame-wire-formats.md` | 4 | Minigame matchmaking, calls, spectating, helpers | HIGH |
+| `chat-wire-formats.md` | 4 | Chat channels, tells, ignore, friends, GM petitions | HIGH |
+| `mail-wire-formats.md` | 4 | Mail send/receive, attachments, COD, archive | HIGH |
+| `black-market-wire-formats.md` | 4 | Auction search, create, bid, cancel, watch list | HIGH |
+| `contact-list-wire-formats.md` | 4 | Contact lists, members, online/offline events | HIGH |
+| `trade-wire-formats.md` | 4 | Player-to-player trade proposals, lock, confirm | HIGH |
+| `duel-wire-formats.md` | 4 | Duel challenge, response, forfeit, participants | HIGH |
+| `pet-wire-formats.md` | 4 | Pet abilities, stances, player-routed commands | HIGH |
 | `entity-types-wire-formats.md` | 4 | Account, SGWEntity, SGWSpawnableEntity, SGWPet | HIGH |
 
 ## Finding Format
