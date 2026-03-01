@@ -132,7 +132,21 @@ function Build-CimmeriaLibraries {
     $sociReleaseLib = Join-Path $ProjectRoot "lib64\release\libsoci_core_3_2.lib"
     $sociLibExists = (Test-Path $sociDebugLib) -and (Test-Path $sociReleaseLib)
 
+    # Check if patched source is newer than built library (rebuild needed after patching)
+    $sociNeedsRebuild = $false
     if ($sociLibExists) {
+        $sociPatchedSrc = Join-Path $ExternalDir "soci\src\backends\postgresql\statement.cpp"
+        if (Test-Path $sociPatchedSrc) {
+            $srcTime = (Get-Item $sociPatchedSrc).LastWriteTime
+            $libTime = (Get-Item $sociDebugLib).LastWriteTime
+            if ($srcTime -gt $libTime) {
+                $sociNeedsRebuild = $true
+                Write-Status "SOCI: patched source is newer than built library, rebuilding" "Yellow"
+            }
+        }
+    }
+
+    if ($sociLibExists -and -not $sociNeedsRebuild) {
         Write-Status "SOCI: libraries already built, skipping" "DarkGray"
     } else {
         Write-Status "Building SOCI (this should take about a minute)..." "White"

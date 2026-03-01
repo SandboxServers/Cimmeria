@@ -180,7 +180,7 @@ function Install-CimmeriaDependencies {
     # --- PostgreSQL (headers + lib for compilation, full server for runtime) ---
     $pgDir = Join-Path $ExternalDir "postgresql"
     $pgServerDir = Join-Path $ExternalDir "postgresql_server"
-    if (-not (Test-Path (Join-Path $pgDir "include"))) {
+    if (-not (Test-Path (Join-Path $pgDir "include")) -or -not (Test-Path (Join-Path $pgServerDir "bin"))) {
         Write-Status "PostgreSQL: extracting binary distribution..." "White"
         $pgTempDir = Join-Path $ExternalDir "postgresql_temp"
         Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.PostgreSQL.FileName) $pgTempDir
@@ -213,15 +213,16 @@ function Install-CimmeriaDependencies {
         Write-Status "PostgreSQL: done (compilation headers + runtime server)" "Green"
     } else {
         Write-Status "PostgreSQL: already extracted" "DarkGray"
-        # Check if server distribution exists; if not, note it
-        if (-not (Test-Path (Join-Path $pgServerDir "bin"))) {
-            Write-Status "PostgreSQL: WARNING - server distribution missing. Delete external/postgresql/ and re-run to extract." "Yellow"
-        }
     }
 
     # --- Python (headers + libs + python34.dll from MSI) ---
     $pythonDir = Join-Path $ExternalDir "python"
-    if (-not (Test-Path (Join-Path $pythonDir "include"))) {
+    $pythonComplete = (Test-Path (Join-Path $pythonDir "include")) -and
+                      (Test-Path (Join-Path $pythonDir "lib64")) -and
+                      (Test-Path (Join-Path $pythonDir "python34.dll")) -and
+                      (Test-Path (Join-Path $pythonDir "Lib")) -and
+                      (Test-Path (Join-Path $pythonDir "DLLs"))
+    if (-not $pythonComplete) {
         Write-Status "Python: extracting development files from MSI..." "White"
 
         New-Item -ItemType Directory -Path $pythonDir -Force | Out-Null
