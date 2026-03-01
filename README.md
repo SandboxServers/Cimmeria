@@ -1,7 +1,14 @@
-# Cimmeria - Stargate Worlds Server Emulator
+# Cimmeria — Stargate Worlds Server Emulator
 
-A server emulator for the Stargate Worlds MMO, implementing authentication, world
-simulation, entity management, and game logic via a distributed service architecture.
+A server emulator for [Stargate Worlds](https://en.wikipedia.org/wiki/Stargate_Worlds), the cancelled Stargate MMO developed by Cheyenne Mountain Entertainment. The game was built on [BigWorld Technology](https://en.wikipedia.org/wiki/BigWorld) (networking/server) and Unreal Engine 3 (rendering/client), and reached a playable beta before the studio shut down in 2010.
+
+Cimmeria reimplements the server infrastructure — authentication, world simulation, entity management, and game logic — allowing the original game client to connect and play.
+
+### Current State
+
+Players can **log in**, **create characters**, **enter the world**, **move around**, **interact with NPCs**, **run missions**, and **engage in combat**. The server infrastructure (networking, entity lifecycle, database persistence, authentication, navigation) is 75–80% complete. The remaining work is primarily game logic: crafting, gate travel, minigames, guilds, mail, and the auction house.
+
+See [docs/project-status.md](docs/project-status.md) for a detailed breakdown and [docs/](docs/readme.md) for full documentation.
 
 ## Architecture
 
@@ -135,6 +142,19 @@ Connection string is configured in `BaseService.config`.
 | MinSizeRel | Minimize binary size |
 
 Platform: `x64` (primary), `Win32` (legacy)
+
+## Documentation
+
+The [docs/](docs/readme.md) directory contains comprehensive project documentation:
+
+- **[How SGW Works](docs/how-sgw-works.md)** — Technology overview of the BigWorld + UE3 hybrid architecture
+- **[Game Systems](docs/game-systems.md)** — Every game feature: combat, abilities, stargates, missions, crafting
+- **[Game Data](docs/game-data.md)** — What content exists (6,060 items, 1,887 abilities, 1,041 missions)
+- **[Connection Flow](docs/connection-flow.md)** — End-to-end login and world entry sequence
+- **[Network Messages](docs/network-messages.md)** — Complete catalog of 420 client-server messages
+- **[Project Status](docs/project-status.md)** — What works, what's left, and the roadmap
+
+For reverse engineering work, see [docs/reverse-engineering/](docs/reverse-engineering/PLAN.md).
 
 ## License
 
