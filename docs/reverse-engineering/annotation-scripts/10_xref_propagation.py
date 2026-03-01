@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 10_xref_propagation.py
 # Ghidra Jython script for SGW.exe reverse engineering
 #

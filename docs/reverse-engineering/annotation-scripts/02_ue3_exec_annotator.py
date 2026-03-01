@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 02_ue3_exec_annotator.py
 # Ghidra Jython script for Stargate Worlds (SGW.exe) reverse engineering
 #

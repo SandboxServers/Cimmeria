@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 09_string_discovery.py
 # Ghidra Jython script for SGW.exe reverse engineering
 #

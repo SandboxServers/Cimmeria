@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 06_cme_framework_annotator.py
 # Ghidra Jython script for SGW.exe reverse engineering
 #

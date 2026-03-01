@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 07_vtable_annotator.py
 # Ghidra Jython script for SGW.exe reverse engineering
 #

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 08_lua_binding_annotator.py
 # Ghidra Jython script for SGW.exe reverse engineering
 #

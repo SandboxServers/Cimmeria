@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # 01_rtti_annotator.py
 # Ghidra Jython script for Stargate Worlds (SGW.exe) reverse engineering
 #

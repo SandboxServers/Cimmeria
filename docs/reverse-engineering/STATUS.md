@@ -156,34 +156,34 @@ SGWEntity (base)
 - [x] docs/gameplay/README.md — System dashboard
 
 ### 1d. Remaining Docs
-- [ ] docs/protocol/mercury-wire-format.md *(in progress)*
-- [ ] docs/protocol/entity-property-sync.md *(in progress)*
-- [ ] docs/protocol/login-handshake.md *(in progress)*
-- [ ] docs/protocol/position-updates.md *(in progress)*
-- [ ] docs/engine/bigworld-architecture.md *(in progress)*
-- [ ] docs/engine/cme-framework.md *(in progress)*
-- [ ] docs/engine/cooked-data-pipeline.md *(in progress)*
-- [ ] docs/engine/watcher-system.md *(in progress)*
-- [ ] docs/engine/space-management.md *(in progress)*
-- [ ] docs/architecture/service-architecture.md *(in progress)*
-- [ ] docs/analysis/event-net-mapping.md *(in progress)*
-- [ ] docs/analysis/bigworld-reference-index.md *(in progress)*
+- [x] docs/protocol/mercury-wire-format.md
+- [x] docs/protocol/entity-property-sync.md
+- [x] docs/protocol/login-handshake.md
+- [x] docs/protocol/position-updates.md
+- [x] docs/engine/bigworld-architecture.md
+- [x] docs/engine/cme-framework.md
+- [x] docs/engine/cooked-data-pipeline.md
+- [x] docs/engine/watcher-system.md
+- [x] docs/engine/space-management.md
+- [x] docs/architecture/service-architecture.md
+- [x] docs/analysis/event-net-mapping.md
+- [x] docs/analysis/bigworld-reference-index.md
 - [x] docs/reverse-engineering/function-naming-progress.md
 - [x] docs/reverse-engineering/address-map.md
-- [ ] docs/gameplay/combat-system.md *(in progress)*
-- [ ] docs/gameplay/ability-system.md *(in progress)*
-- [ ] docs/gameplay/effect-system.md *(in progress)*
-- [ ] docs/gameplay/stat-system.md *(in progress)*
-- [ ] docs/gameplay/inventory-system.md *(in progress)*
-- [ ] docs/gameplay/crafting-system.md *(in progress)*
-- [ ] docs/gameplay/mission-system.md *(in progress)*
-- [ ] docs/gameplay/gate-travel.md *(in progress)*
-- [ ] docs/gameplay/minigame-system.md *(in progress)*
-- [ ] docs/gameplay/organization-system.md *(in progress)*
-- [ ] docs/gameplay/group-system.md *(in progress)*
-- [ ] docs/gameplay/chat-system.md *(in progress)*
-- [ ] docs/gameplay/mail-system.md *(in progress)*
-- [ ] docs/gameplay/trade-system.md *(in progress)*
-- [ ] docs/gameplay/black-market.md *(in progress)*
-- [ ] docs/gameplay/pet-system.md *(in progress)*
-- [ ] docs/gameplay/duel-system.md *(in progress)*
+- [x] docs/gameplay/combat-system.md
+- [x] docs/gameplay/ability-system.md
+- [x] docs/gameplay/effect-system.md
+- [x] docs/gameplay/stat-system.md
+- [x] docs/gameplay/inventory-system.md
+- [x] docs/gameplay/crafting-system.md
+- [x] docs/gameplay/mission-system.md
+- [x] docs/gameplay/gate-travel.md
+- [x] docs/gameplay/minigame-system.md
+- [x] docs/gameplay/organization-system.md
+- [x] docs/gameplay/group-system.md
+- [x] docs/gameplay/chat-system.md
+- [x] docs/gameplay/mail-system.md
+- [x] docs/gameplay/trade-system.md
+- [x] docs/gameplay/black-market.md
+- [x] docs/gameplay/pet-system.md
+- [x] docs/gameplay/duel-system.md
