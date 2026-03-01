@@ -1,8 +1,8 @@
 # Reverse Engineering Progress Tracker
 
 > **Last updated**: 2026-03-01
-> **Current phase**: Phase 2 — Combat & Core Systems RE (COMPLETE)
-> **Next phase**: Phase 3 — Missing Systems RE
+> **Current phase**: Phase 4 — Secondary Systems RE (COMPLETE)
+> **Next phase**: Phase 5 — BigWorld Engine Subsystems
 > **Branch**: `feature/reverse-engineering-docs`
 
 ---
@@ -124,12 +124,65 @@ This means we do NOT need to decompile individual event handlers (100+ functions
 
 ---
 
-## Phase 3-5 (Not Started)
+## Phase 3 — Missing Systems RE — COMPLETE
+
+**Goal**: Document wire formats for gate travel, missions, crafting, and organizations.
+
+**Approach**: Same as Phase 2 — derive wire formats from `.def` files + `alias.xml`, leveraging the universal RPC dispatcher discovery. No per-handler Ghidra decompilation needed.
+
+### 3a. Gate Travel — DONE
+- [x] 4 client methods, 1 exposed cell method documented
+- [x] Stargate address discovery, dialing, passage flow
+- [x] Findings: `docs/reverse-engineering/findings/gate-travel-wire-formats.md`
+
+### 3b. Mission System — DONE
+- [x] 5 client methods, 3 exposed cell methods documented
+- [x] Hierarchical update structure: Mission → Step → Objective → Task
+- [x] Custom types: MissionStatus, MissionStepStatus, MissionObjectiveStatus, MissionTaskStatus, Rewards
+- [x] Findings: `docs/reverse-engineering/findings/mission-wire-formats.md`
+
+### 3c. Organization System — DONE
+- [x] 17 client methods, 12+ exposed cell/base methods documented
+- [x] Three org types: squad, guild, strike team
+- [x] Roster management, rank hierarchy, MOTD, notes, cash pooling, PvP
+- [x] Findings: `docs/reverse-engineering/findings/organization-wire-formats.md`
+
+### 3d. Crafting System — DONE
+- [x] 4 crafting activities: craft, research, reverse engineer, alloy
+- [x] Discipline/expertise progression, applied science points
+- [x] CraftingOptions nested FIXED_DICT documented
+- [x] Findings: `docs/reverse-engineering/findings/crafting-wire-formats.md`
+
+---
+
+## Phase 4 — Secondary Systems RE — COMPLETE
+
+**Goal**: Document wire formats for all remaining game systems.
+
+### 4a. Secondary Systems (Combined Document) — DONE
+- [x] Minigames: 13 client methods, matchmaking, call request flow
+- [x] Chat: 7 client methods, 15+ base methods, channel management
+- [x] Mail: 4 client methods, 10 cell methods, COD support, attachments
+- [x] Black Market: 6 client methods, 6 cell methods, BMSearchOptions/AuctionItem types
+- [x] Contact Lists: 5 client methods, 6 cell methods
+- [x] Trade: LocalTradeProposal/RemoteTradeProposal asymmetry
+- [x] Duel: challenge/response/forfeit flow, squad duels
+- [x] Pet: ability lists, stances (INT8, not INT32)
+- [x] Findings: `docs/reverse-engineering/findings/secondary-systems-wire-formats.md`
+
+### 4b. Entity Types — DONE
+- [x] Account: character creation/selection, ClientCache data versioning
+- [x] SGWEntity: root entity (ServerOnly, no client methods)
+- [x] SGWSpawnableEntity: onEntityMove (37B), Kismet sequences, entity flags
+- [x] SGWPet: abilities, stances, owner tracking
+- [x] Findings: `docs/reverse-engineering/findings/entity-types-wire-formats.md`
+
+---
+
+## Phase 5 (Not Started)
 
 See `docs/reverse-engineering/PLAN.md` for full details.
 
-- **Phase 3** — Missing Systems RE: gate travel, missions, crafting, organizations
-- **Phase 4** — Secondary Systems RE: minigames, chat, mail, pets, black market, dueling
 - **Phase 5** — BigWorld Engine Subsystems: watchers, space slicing, LOD, checkpointing
 
 ---
@@ -258,3 +311,28 @@ SGWEntity (base)
 - 5 property names excluded from client processing: publicReservationData, publicMissionData, completedMissions, aggressionOverrides, effectMonikers
 - createBasePlayer format: 4B entityID + 2B typeID + property stream
 - createCellPlayer buffers if no base player yet, replays after createBasePlayer
+
+### Session 3 — 2026-03-01
+
+**Phase 3+4 — All Remaining Systems RE — COMPLETED:**
+- Read all 18 interface `.def` files and 5 entity `.def` files
+- Derived wire formats for every entity method across all game systems
+- Wrote 6 new findings documents totaling ~3,000+ lines
+- Committed and pushed after each document pair (commit early, push often)
+
+**Documents created:**
+- `gate-travel-wire-formats.md` — Stargate dialing, address discovery, passage
+- `mission-wire-formats.md` — Mission hierarchy (Mission→Step→Objective→Task), rewards
+- `organization-wire-formats.md` — Squads, guilds, strike teams, roster, ranks, MOTD, cash
+- `crafting-wire-formats.md` — Craft, research, reverse engineer, alloy, discipline progression
+- `secondary-systems-wire-formats.md` — Minigames, chat, mail, black market, contacts, trade, duel, pets
+- `entity-types-wire-formats.md` — Account, SGWEntity, SGWSpawnableEntity, SGWPet
+
+**Key findings:**
+- All wire formats derivable from `.def` files — no per-handler decompilation needed (confirmed across ALL systems)
+- Black Market uses `STRING` (UTF-8) while all other systems use `WSTRING` (UTF-16LE) for names
+- Pet stances use `INT8` (compact), not `INT32`
+- Trade has asymmetric proposal types: `LocalTradeItem` (8B) vs full `InvItem` (37+B)
+- Organization cash/XP use `UINT64` (8-byte) for large values
+- Mission system has `recievedBy` typo preserved from original `.def`
+- Minigames are web/Flash-based — launched via URL
