@@ -64,4 +64,31 @@
         ExtractTo = "recast"
         Notes     = "Using main branch; compiled by Recast.vcxproj in the solution."
     }
+
+    BigWorld191 = @{
+        Version   = "1.9.1"
+        Url       = "https://github.com/v2v3v4/BigWorld-Engine-1.9.1/archive/refs/heads/master.zip"
+        FileName  = "BigWorld-Engine-1.9.1.zip"
+        Type      = "source"
+        ExtractTo = "bigworld_1.9.1"
+        Notes     = "Reference source for Mercury protocol, entity system, and server architecture."
+    }
+
+    Qt = @{
+        Version   = "5.15.18"
+        Url       = "https://github.com/martinrotter/qt-minimalistic-builds/releases/download/5.15.18/qt-5.15.18-dynamic-msvc2022-x86_64.7z"
+        FileName  = "qt-5.15.18-dynamic-msvc2022-x86_64.7z"
+        Type      = "prebuilt"
+        ExtractTo = "qt"
+        Notes     = "Prebuilt Qt 5.15.18 (MSVC2022, x64). Needed for ServerEd tool."
+    }
+
+    BigWorld201 = @{
+        Version   = "2.0.1"
+        Url       = "https://github.com/v2v3v4/BigWorld-Engine-2.0.1/archive/refs/heads/master.zip"
+        FileName  = "BigWorld-Engine-2.0.1.zip"
+        Type      = "source"
+        ExtractTo = "bigworld_2.0.1"
+        Notes     = "Reference source for FixedDictDataType, UserDataType, and later protocol features."
+    }
 }

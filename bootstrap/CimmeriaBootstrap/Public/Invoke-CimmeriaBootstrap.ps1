@@ -9,9 +9,10 @@ function Invoke-CimmeriaBootstrap {
         Step 1: Install-CimmeriaDependencies   (download, extract, patch)
         Step 2: Build-CimmeriaLibraries         (Boost, OpenSSL, SOCI)
         Step 3: Build-CimmeriaSolution          (MSBuild W-NG.sln)
-        Step 4: Initialize-CimmeriaDatabase     (PostgreSQL + schema)
-        Step 5: Initialize-CimmeriaRuntime      (stage DLLs)
-        Step 6: Start-CimmeriaServer            (launch Auth, Base, Cell)
+        Step 4: Build-ServerEd                  (qmake + nmake ServerEd)
+        Step 5: Initialize-CimmeriaDatabase     (PostgreSQL + schema)
+        Step 6: Initialize-CimmeriaRuntime      (stage DLLs)
+        Step 7: Start-CimmeriaServer            (launch Auth, Base, Cell)
 
         Each step is idempotent. Safe to re-run - completed work is skipped.
         On failure, the pipeline aborts with a clear error message.
@@ -66,7 +67,7 @@ function Invoke-CimmeriaBootstrap {
         Write-Host ""
 
         # Step 1: Download, extract, patch
-        Write-Host "--- Step 1/6: Dependencies ---" -ForegroundColor Cyan
+        Write-Host "--- Step 1/7: Dependencies ---" -ForegroundColor Cyan
         try {
             Install-CimmeriaDependencies -SkipDownload:$SkipDownload -InstallVS:$InstallVS
         } catch {
@@ -79,7 +80,7 @@ function Invoke-CimmeriaBootstrap {
         if (-not $SkipBuild) {
             # Step 2: Build libraries
             Write-Host ""
-            Write-Host "--- Step 2/6: Build Libraries ---" -ForegroundColor Cyan
+            Write-Host "--- Step 2/7: Build Libraries ---" -ForegroundColor Cyan
             try {
                 Build-CimmeriaLibraries
             } catch {
@@ -91,7 +92,7 @@ function Invoke-CimmeriaBootstrap {
 
             # Step 3: Build solution
             Write-Host ""
-            Write-Host "--- Step 3/6: Build Solution ---" -ForegroundColor Cyan
+            Write-Host "--- Step 3/7: Build Solution ---" -ForegroundColor Cyan
             try {
                 Build-CimmeriaSolution -Configuration $Configuration
             } catch {
@@ -100,50 +101,61 @@ function Invoke-CimmeriaBootstrap {
                 Write-Host "  $_" -ForegroundColor Red
                 throw
             }
+            # Step 4: Build ServerEd (non-fatal - optional tool)
+            Write-Host ""
+            Write-Host "--- Step 4/7: Build ServerEd ---" -ForegroundColor Cyan
+            try {
+                Build-ServerEd -Configuration $Configuration
+            } catch {
+                Write-Host ""
+                Write-Host "WARNING: Step 4 (Build-ServerEd) failed - continuing" -ForegroundColor Yellow
+                Write-Host "  $_" -ForegroundColor Yellow
+                Write-Host "  ServerEd is optional. The game servers will work without it." -ForegroundColor DarkGray
+            }
         } else {
             Write-Host ""
-            Write-Host "--- Steps 2-3: Skipped (-SkipBuild) ---" -ForegroundColor DarkGray
+            Write-Host "--- Steps 2-4: Skipped (-SkipBuild) ---" -ForegroundColor DarkGray
         }
 
-        # Step 4: Database
+        # Step 5: Database
         Write-Host ""
-        Write-Host "--- Step 4/6: Database ---" -ForegroundColor Cyan
+        Write-Host "--- Step 5/7: Database ---" -ForegroundColor Cyan
         try {
             Initialize-CimmeriaDatabase
         } catch {
             Write-Host ""
-            Write-Host "FAILED at Step 4: Initialize-CimmeriaDatabase" -ForegroundColor Red
+            Write-Host "FAILED at Step 5: Initialize-CimmeriaDatabase" -ForegroundColor Red
             Write-Host "  $_" -ForegroundColor Red
             throw
         }
 
-        # Step 5: Runtime DLLs
+        # Step 6: Runtime DLLs
         Write-Host ""
-        Write-Host "--- Step 5/6: Runtime Setup ---" -ForegroundColor Cyan
+        Write-Host "--- Step 6/7: Runtime Setup ---" -ForegroundColor Cyan
         try {
             Initialize-CimmeriaRuntime -Configuration $Configuration
         } catch {
             Write-Host ""
-            Write-Host "FAILED at Step 5: Initialize-CimmeriaRuntime" -ForegroundColor Red
+            Write-Host "FAILED at Step 6: Initialize-CimmeriaRuntime" -ForegroundColor Red
             Write-Host "  $_" -ForegroundColor Red
             throw
         }
 
-        # Step 6: Launch
+        # Step 7: Launch
         if (-not $NoLaunch) {
             Write-Host ""
-            Write-Host "--- Step 6/6: Launch ---" -ForegroundColor Cyan
+            Write-Host "--- Step 7/7: Launch ---" -ForegroundColor Cyan
             try {
                 Start-CimmeriaServer -Configuration $Configuration
             } catch {
                 Write-Host ""
-                Write-Host "FAILED at Step 6: Start-CimmeriaServer" -ForegroundColor Red
+                Write-Host "FAILED at Step 7: Start-CimmeriaServer" -ForegroundColor Red
                 Write-Host "  $_" -ForegroundColor Red
                 throw
             }
         } else {
             Write-Host ""
-            Write-Host "--- Step 6: Skipped (-NoLaunch) ---" -ForegroundColor DarkGray
+            Write-Host "--- Step 7: Skipped (-NoLaunch) ---" -ForegroundColor DarkGray
         }
 
         $elapsed = (Get-Date) - $pipelineStart

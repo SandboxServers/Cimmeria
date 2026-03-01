@@ -52,7 +52,7 @@ function Install-CimmeriaDependencies {
     Write-Host "=============================================" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "This will download, patch, and arrange all external dependencies."
-    Write-Host "Total download size: ~200 MB (vs 724 MB vendored)"
+    Write-Host "Total download size: ~510 MB (vs 724 MB vendored)"
     Write-Host "Target directory: $ExternalDir"
     Write-Host ""
 
@@ -80,16 +80,16 @@ function Install-CimmeriaDependencies {
     if (-not $SkipDownload) {
         Write-Step "PHASE 1: DOWNLOADING DEPENDENCIES"
 
-        Write-Host "`n[1/7] Boost $($Dependencies.Boost.Version)" -ForegroundColor White
+        Write-Host "`n[1/10] Boost $($Dependencies.Boost.Version)" -ForegroundColor White
         Get-DownloadFile $Dependencies.Boost.Url (Join-Path $DownloadDir $Dependencies.Boost.FileName)
 
-        Write-Host "`n[2/7] OpenSSL $($Dependencies.OpenSSL.Version)" -ForegroundColor White
+        Write-Host "`n[2/10] OpenSSL $($Dependencies.OpenSSL.Version)" -ForegroundColor White
         Get-DownloadFile $Dependencies.OpenSSL.Url (Join-Path $DownloadDir $Dependencies.OpenSSL.FileName)
 
-        Write-Host "`n[3/7] PostgreSQL $($Dependencies.PostgreSQL.Version)" -ForegroundColor White
+        Write-Host "`n[3/10] PostgreSQL $($Dependencies.PostgreSQL.Version)" -ForegroundColor White
         Get-DownloadFile $Dependencies.PostgreSQL.Url (Join-Path $DownloadDir $Dependencies.PostgreSQL.FileName)
 
-        Write-Host "`n[4/7] Python $($Dependencies.Python.Version)" -ForegroundColor White
+        Write-Host "`n[4/10] Python $($Dependencies.Python.Version)" -ForegroundColor White
         if ($BuildArch -eq "x86" -or $BuildArch -eq "both") {
             Get-DownloadFile $Dependencies.Python.Url32 (Join-Path $DownloadDir $Dependencies.Python.FileName32)
         }
@@ -97,14 +97,23 @@ function Install-CimmeriaDependencies {
             Get-DownloadFile $Dependencies.Python.Url64 (Join-Path $DownloadDir $Dependencies.Python.FileName64)
         }
 
-        Write-Host "`n[5/7] SOCI $($Dependencies.SOCI.Version)" -ForegroundColor White
+        Write-Host "`n[5/10] SOCI $($Dependencies.SOCI.Version)" -ForegroundColor White
         Get-DownloadFile $Dependencies.SOCI.Url (Join-Path $DownloadDir $Dependencies.SOCI.FileName)
 
-        Write-Host "`n[6/7] SDL $($Dependencies.SDL.Version)" -ForegroundColor White
+        Write-Host "`n[6/10] SDL $($Dependencies.SDL.Version)" -ForegroundColor White
         Get-DownloadFile $Dependencies.SDL.Url (Join-Path $DownloadDir $Dependencies.SDL.FileName)
 
-        Write-Host "`n[7/7] Recast/Detour" -ForegroundColor White
+        Write-Host "`n[7/10] Recast/Detour" -ForegroundColor White
         Get-DownloadFile $Dependencies.Recast.Url (Join-Path $DownloadDir $Dependencies.Recast.FileName)
+
+        Write-Host "`n[8/10] BigWorld Engine $($Dependencies.BigWorld191.Version)" -ForegroundColor White
+        Get-DownloadFile $Dependencies.BigWorld191.Url (Join-Path $DownloadDir $Dependencies.BigWorld191.FileName)
+
+        Write-Host "`n[9/10] BigWorld Engine $($Dependencies.BigWorld201.Version)" -ForegroundColor White
+        Get-DownloadFile $Dependencies.BigWorld201.Url (Join-Path $DownloadDir $Dependencies.BigWorld201.FileName)
+
+        Write-Host "`n[10/10] Qt $($Dependencies.Qt.Version)" -ForegroundColor White
+        Get-DownloadFile $Dependencies.Qt.Url (Join-Path $DownloadDir $Dependencies.Qt.FileName)
     }
 
     # =========================================================================
@@ -334,6 +343,55 @@ function Install-CimmeriaDependencies {
         Write-Status "OpenSSL: done" "Green"
     } else {
         Write-Status "OpenSSL: already extracted" "DarkGray"
+    }
+
+    # --- BigWorld 1.9.1 (reference source) ---
+    $bw191Dir = Join-Path $ExternalDir "bigworld_1.9.1"
+    if (-not (Test-Path (Join-Path $bw191Dir "src"))) {
+        Write-Status "BigWorld 1.9.1: extracting..." "White"
+        Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.BigWorld191.FileName) $ExternalDir
+        $extracted = Join-Path $ExternalDir "BigWorld-Engine-1.9.1-master"
+        if (Test-Path $extracted) {
+            Write-Status "BigWorld 1.9.1: renaming..." "DarkGray"
+            if (Test-Path $bw191Dir) { Remove-Item $bw191Dir -Recurse -Force }
+            Rename-Item $extracted $bw191Dir
+        }
+        Write-Status "BigWorld 1.9.1: done" "Green"
+    } else {
+        Write-Status "BigWorld 1.9.1: already extracted" "DarkGray"
+    }
+
+    # --- BigWorld 2.0.1 (reference source) ---
+    $bw201Dir = Join-Path $ExternalDir "bigworld_2.0.1"
+    if (-not (Test-Path (Join-Path $bw201Dir "src"))) {
+        Write-Status "BigWorld 2.0.1: extracting..." "White"
+        Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.BigWorld201.FileName) $ExternalDir
+        $extracted = Join-Path $ExternalDir "BigWorld-Engine-2.0.1-master"
+        if (Test-Path $extracted) {
+            Write-Status "BigWorld 2.0.1: renaming..." "DarkGray"
+            if (Test-Path $bw201Dir) { Remove-Item $bw201Dir -Recurse -Force }
+            Rename-Item $extracted $bw201Dir
+        }
+        Write-Status "BigWorld 2.0.1: done" "Green"
+    } else {
+        Write-Status "BigWorld 2.0.1: already extracted" "DarkGray"
+    }
+
+    # --- Qt (prebuilt dynamic libraries for ServerEd) ---
+    $qtDir = Join-Path $ExternalDir "qt"
+    if (-not (Test-Path (Join-Path $qtDir "bin\qmake.exe"))) {
+        Write-Status "Qt: extracting..." "White"
+        Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.Qt.FileName) $ExternalDir
+        # Archive extracts to a versioned directory name
+        $extracted = Get-ChildItem $ExternalDir -Directory -Filter "qt-*" | Select-Object -First 1
+        if ($extracted) {
+            Write-Status "Qt: renaming $($extracted.Name)/ -> qt/" "DarkGray"
+            if (Test-Path $qtDir) { Remove-Item $qtDir -Recurse -Force }
+            Rename-Item $extracted.FullName $qtDir
+        }
+        Write-Status "Qt: done" "Green"
+    } else {
+        Write-Status "Qt: already extracted" "DarkGray"
     }
 
     # =========================================================================

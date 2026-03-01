@@ -80,6 +80,76 @@ function Initialize-CimmeriaRuntime {
         Write-Status "Run Install-CimmeriaDependencies to ensure all dependencies are extracted." "Yellow"
     }
 
+    # Stage Qt DLLs for ServerEd
+    $qtDir = Join-Path $paths.ExternalDir "qt"
+    $qtBinDir = Join-Path $qtDir "bin"
+    if (Test-Path $qtBinDir) {
+        $qtDlls = @(
+            @{ Name = "Qt5Core.dll";    Desc = "Qt Core module (ServerEd)" }
+            @{ Name = "Qt5Gui.dll";     Desc = "Qt GUI module (ServerEd)" }
+            @{ Name = "Qt5Widgets.dll"; Desc = "Qt Widgets module (ServerEd)" }
+            @{ Name = "Qt5Xml.dll";     Desc = "Qt XML module (ServerEd)" }
+            @{ Name = "Qt5Network.dll"; Desc = "Qt Network module (ServerEd)" }
+            @{ Name = "Qt5Sql.dll";     Desc = "Qt SQL module (ServerEd)" }
+        )
+
+        foreach ($dll in $qtDlls) {
+            $srcPath = Join-Path $qtBinDir $dll.Name
+            $dstPath = Join-Path $binDir $dll.Name
+
+            if (-not (Test-Path $srcPath)) {
+                Write-Status "WARNING: $($dll.Name) not found at $srcPath" "Yellow"
+                $missing++
+                continue
+            }
+
+            if (Test-Path $dstPath) {
+                $srcHash = (Get-FileHash $srcPath -Algorithm SHA256).Hash
+                $dstHash = (Get-FileHash $dstPath -Algorithm SHA256).Hash
+                if ($srcHash -eq $dstHash) {
+                    Write-Status "Already staged: $($dll.Name)" "DarkGray"
+                    $skipped++
+                    continue
+                }
+            }
+
+            Copy-Item -Path $srcPath -Destination $dstPath -Force
+            Write-Status "Staged: $($dll.Name) - $($dll.Desc)" "Green"
+            $staged++
+        }
+
+        # Stage Qt platform plugins (required for any Qt GUI app on Windows)
+        $qtPlatformsDir = Join-Path $qtDir "plugins\platforms"
+        $destPlatformsDir = Join-Path $binDir "platforms"
+        if (Test-Path $qtPlatformsDir) {
+            if (-not (Test-Path (Join-Path $destPlatformsDir "qwindows.dll"))) {
+                Write-Status "Staging Qt platforms plugins..." "White"
+                New-Item -ItemType Directory -Path $destPlatformsDir -Force | Out-Null
+                Copy-Item -Path (Join-Path $qtPlatformsDir "*.dll") -Destination $destPlatformsDir -Force
+                Write-Status "Staged: platforms/ - Qt platform plugins (qwindows.dll)" "Green"
+            } else {
+                Write-Status "Already staged: platforms/" "DarkGray"
+            }
+        }
+
+        # Stage Qt SQL driver plugins (for database connectivity)
+        $qtSqlDriversDir = Join-Path $qtDir "plugins\sqldrivers"
+        $destSqlDriversDir = Join-Path $binDir "sqldrivers"
+        if (Test-Path $qtSqlDriversDir) {
+            if (-not (Test-Path $destSqlDriversDir) -or
+                (Get-ChildItem $destSqlDriversDir -Filter "*.dll" -ErrorAction SilentlyContinue | Measure-Object).Count -eq 0) {
+                Write-Status "Staging Qt SQL driver plugins..." "White"
+                New-Item -ItemType Directory -Path $destSqlDriversDir -Force | Out-Null
+                Copy-Item -Path (Join-Path $qtSqlDriversDir "*.dll") -Destination $destSqlDriversDir -Force
+                Write-Status "Staged: sqldrivers/ - Qt SQL driver plugins" "Green"
+            } else {
+                Write-Status "Already staged: sqldrivers/" "DarkGray"
+            }
+        }
+    } else {
+        Write-Status "Qt not found - ServerEd DLLs not staged (run Install-CimmeriaDependencies)" "DarkGray"
+    }
+
     # Stage Python standard library (embedded Python needs encodings, codecs, etc.)
     $pythonLib = Join-Path $pythonDir "Lib"
     $destLib = Join-Path $binDir "Lib"
