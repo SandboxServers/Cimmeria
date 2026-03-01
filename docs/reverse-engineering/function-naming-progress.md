@@ -22,12 +22,13 @@ Run scripts in order (01-10). Later scripts depend on names established by earli
 | 04 | event_signal_annotator.py | Event_NetOut/NetIn → handlers | ~420 | **975 events (479 out + 496 in), 419 renamed** | DONE |
 | 05 | mercury_annotator.py | Mercury:: debug strings | 30-50 | **120 strings, 38 renamed, 79 RTTI vtables** | DONE |
 | 06 | cme_framework_annotator.py | CME:: symbols | 50-100 | **42 strings, 28 renamed, 5 classes** | DONE |
-| 07 | vtable_annotator.py | Named vtables → vfunc_N | 2000-5000 | — | NOT RUN |
-| 08 | lua_binding_annotator.py | toLua registration | 100-200 | — | NOT RUN |
-| 09 | string_discovery.py | Broad `class::method` strings | 500-2000 | — | NOT RUN |
-| 10 | xref_propagation.py | Call graph inference | 1000-3000 | — | NOT RUN |
+| 07 | vtable_annotator.py | Named vtables → vfunc_N | 2000-5000 | **~13,970 total vfuncs (~9,600 new)** | DONE (partial, cancelled) |
+| 08 | lua_binding_annotator.py | toLua registration | 100-200 | **72 Lua strings, 0 renamed (no bindings)** | DONE |
+| 09 | string_discovery.py | Broad `class::method` strings | 500-2000 | **1,310 `::` strings, 1,364 renamed, 143 classes** | DONE |
+| 10 | xref_propagation.py | Call graph inference | 1000-3000 | **3,333 renamed (3 passes), 226 classes** | DONE |
 
 **Expected total**: 4,000-12,000 functions (~5-14% of all functions, ~40-60% of server-relevant)
+**Actual total**: 101,909 named (60.6% of 168,239 non-thunk functions)
 
 ## Manual Naming
 
@@ -41,7 +42,7 @@ Functions named through manual Ghidra analysis (decompilation, cross-referencing
 
 ```
 Total functions:     ~85,000
-Auto-named (scripts): 5,850  (scripts 01-05)
+Auto-named (scripts): ~15,478  (scripts 01-07)
   Script 01 (RTTI):
     - RTTI classes:     9,700
     - vtables labeled:  8,961
@@ -64,9 +65,26 @@ Auto-named (scripts): 5,850  (scripts 01-05)
     - CME strings:      42
     - CME classes:      5
     - funcs renamed:    28
+  Script 07 (VTable propagation — partial):
+    - ~13,970 total vfunc entries
+    - ~9,600 new (beyond script 01)
+    - cancelled partway through U*Factory classes
+  Script 08 (Lua bindings):
+    - 72 Lua strings, 0 renamed
+    - No structured binding tables (Lua vestigial)
+  Script 09 (String discovery):
+    - 1,310 `::` strings, 143 unique classes
+    - functions renamed: 1,364
+  Script 10 (Xref propagation — LOW confidence):
+    - 3 passes: 713 + 1,350 + 1,270
+    - functions renamed: 3,333
+    - unique classes inferred: 226
 Manual-named:              0
-Total named:           5,878  (6.9%)
-Remaining unnamed:   ~79,122
+
+Ghidra final tally (from script 10 setup):
+  Total non-thunk functions: 168,239
+  Named after all scripts:   101,909 (60.6%)
+  Unnamed remaining:          66,330 (39.4%)
 ```
 
 **Note**: Script 01 yielded 24x the expected result (9,700 vs 200-400 estimated).
