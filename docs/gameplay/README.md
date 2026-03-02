@@ -34,6 +34,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Dueling](#dueling) | KM | (SGWPlayer direct) | — | LOW |
 | [Groups](#groups) | KM | GroupAuthority | — | MEDIUM |
 | [Contact Lists](#contact-lists) | KM | ContactListManager | — | LOW |
+| [Cinematics](#cinematics) | IM | SGWSpawnableEntity | SGWSpawnableEntity.py, RingTransporter.py | MEDIUM |
 
 ---
 
@@ -315,6 +316,24 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 **Key concepts**: Archetype selection, visual choices, name validation, starting loadout, character deletion
 **Python**: `python/base/Account.py`
 **RE doc**: [character-creation.md](character-creation.md)
+
+---
+
+## Cinematics
+
+**Status**: 60% — Core `playSequence()` works for abilities, effects, stargates, and ring transport. 1,973 sequences and 675 event sets in DB. Missing: DHD chevron animations, stargate witness visibility, item equip/unequip VFX, multi-player ring sync, entity spawn/despawn sequences.
+
+**Key Events (NetIn → client)**:
+- `onSequence` — Play a Kismet/Matinee sequence (8 args: seqId, source, target, primaryTarget, impactTime, NVPs, viewType, instanceId)
+- `onKismetEventSetUpdate` — Update entity's default event set
+
+**Key Events (Cell methods)**:
+- `PlayAllClientKismetSeq` — Original BigWorld sequence trigger (bypassed by Python implementation)
+
+**Interface**: `SGWSpawnableEntity.def` — `kismetEventSetId` property, `shouldSendKismet` flag
+**Python**: `python/cell/SGWSpawnableEntity.py` (playSequence), `python/cell/AbilityManager.py` (combat sequences), `python/cell/RingTransporter.py` (ring transport), `python/cell/SGWPlayer.py` (stargates)
+**Data**: 1,973 sequences, 675 event sets, 2,042 NVPs, 2,767 item event sets, 66 event types
+**RE doc**: [cinematic-system.md](cinematic-system.md)
 
 ---
 

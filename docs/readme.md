@@ -20,7 +20,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 106 |
+| Documentation files | 107 |
 
 
 ## Document Map
@@ -78,7 +78,7 @@ See also: [technical/mercury-protocol.md](technical/mercury-protocol.md), [techn
 
 ### `gameplay/` -- Game System Documentation
 
-Per-system breakdowns of game mechanics, derived from RE analysis, entity definitions, and Python scripts. 23 per-system documents covering combat, abilities, effects, stats, inventory, crafting, missions, travel, minigames, social systems, NPC AI, spawning, loot, progression, and character creation.
+Per-system breakdowns of game mechanics, derived from RE analysis, entity definitions, and Python scripts. 24 per-system documents covering combat, abilities, effects, stats, inventory, crafting, missions, travel, cinematics, minigames, social systems, NPC AI, spawning, loot, progression, and character creation.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -105,6 +105,7 @@ Per-system breakdowns of game mechanics, derived from RE analysis, entity defini
 | [spawn-system.md](gameplay/spawn-system.md) | Spawn regions, spawn sets, population management, respawn timers | Complete |
 | [loot-system.md](gameplay/loot-system.md) | Loot generation algorithm, loot tables, eligibility rules | Complete |
 | [progression-system.md](gameplay/progression-system.md) | XP curves, leveling, stat growth, training points, applied science | Complete |
+| [cinematic-system.md](gameplay/cinematic-system.md) | Kismet/Matinee sequences: stargate animations, ring transport, ability VFX, console activations, camera control | Complete |
 | [character-creation.md](gameplay/character-creation.md) | Character creation flow, archetypes, visual choices, starting loadout | Complete |
 
 See also: [game-systems.md](game-systems.md), [technical/game-systems.md](technical/game-systems.md), [technical/game-data-analysis.md](technical/game-data-analysis.md)
