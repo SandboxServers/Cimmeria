@@ -73,9 +73,12 @@ function Initialize-CimmeriaDatabase {
     # Step 2: Start PostgreSQL
     $pgCtl = Join-Path $pgBin "pg_ctl.exe"
 
-    # Check if already running
+    # Check if already running: pg_ctl status is unreliable from WSL/non-Windows
+    # environments because it can't locate sibling .exe files.  Fall back to a
+    # direct TCP probe so we never attempt a double-start.
     $statusResult = & $pgCtl status -D $pgDataDir 2>&1
-    if ($LASTEXITCODE -eq 0) {
+    $pgAlreadyRunning = ($LASTEXITCODE -eq 0) -or (Wait-ForPort -Port $Port -TimeoutSeconds 1)
+    if ($pgAlreadyRunning) {
         Write-Status "PostgreSQL already running." "DarkGray"
     } else {
         if ($PSCmdlet.ShouldProcess("PostgreSQL on port $Port", "Start database server")) {
@@ -83,7 +86,12 @@ function Initialize-CimmeriaDatabase {
             # pg_ctl start spawns postgres which keeps handles open, blocking
             # both pipes and Start-Process -Wait. Fire-and-forget, then poll.
             $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
-            Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
+            $spArgs = @{ FilePath = $pgCtl; ArgumentList = $pgCtlArgs }
+            # -WindowStyle is Windows-only; omit on Linux (e.g. WSL validation runs)
+            if ($IsWindows -or (-not (Test-Path variable:IsWindows))) {
+                $spArgs['WindowStyle'] = 'Hidden'
+            }
+            Start-Process @spArgs
             if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
                 Write-Status "PostgreSQL failed to start. Check $pgLogFile" "Red"
                 if (Test-Path $pgLogFile) {

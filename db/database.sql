@@ -256,10 +256,6 @@
 
 \ir resources/_primary_keys.sql
 
-\ir resources/_foreign_keys.sql
-
-\ir resources/_indexes.sql
-
 \ir resources/_functions.sql
 
 -- Seed data
@@ -332,6 +328,10 @@
 \ir resources/Worlds/Seed/stargates.sql
 \ir resources/Worlds/Seed/worlds.sql
 
+\ir resources/_foreign_keys.sql
+
+\ir resources/_indexes.sql
+
 \ir resources/_triggers.sql
 
 
@@ -364,10 +364,6 @@
 
 \ir sgw/_primary_keys.sql
 
-\ir sgw/_foreign_keys.sql
-
-\ir sgw/_indexes.sql
-
 -- Seed data
 \ir sgw/Accounts/Seed/account.sql
 \ir sgw/Inventory/Seed/sgw_inventory.sql
@@ -375,4 +371,8 @@
 \ir sgw/Mail/Seed/sgw_gate_mail.sql
 \ir sgw/Players/Seed/sgw_player.sql
 \ir sgw/Shards/Seed/shards.sql
+
+\ir sgw/_foreign_keys.sql
+
+\ir sgw/_indexes.sql
 
