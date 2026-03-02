@@ -262,8 +262,6 @@
 
 \ir resources/_functions.sql
 
-\ir resources/_triggers.sql
-
 -- Seed data
 \ir resources/Abilities/Seed/abilities.sql
 \ir resources/Abilities/Seed/ability_moniker_groups.sql
@@ -333,6 +331,8 @@
 \ir resources/Worlds/Seed/spawnlist.sql
 \ir resources/Worlds/Seed/stargates.sql
 \ir resources/Worlds/Seed/worlds.sql
+
+\ir resources/_triggers.sql
 
 
 -- ════════════════════════════════════════════════════════════════

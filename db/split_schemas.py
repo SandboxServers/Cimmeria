@@ -643,9 +643,13 @@ def generate_master() -> None:
     lines += _ir_section(OUT_R, 'Sequences', 'Sequences')
     lines += _ir_section(OUT_R, 'Tables',    'Tables')
     for fname in ('_sequence_ownership.sql', '_primary_keys.sql', '_foreign_keys.sql',
-                  '_indexes.sql', '_functions.sql', '_triggers.sql'):
+                  '_indexes.sql', '_functions.sql'):
         lines += _ir_file(OUT_R / fname)
     lines += _ir_section(OUT_R, 'Seed', 'Seed data')
+    # Triggers must load AFTER seed data: resource_update_trigger() does STRICT
+    # SELECTs against resource_types and resource_versions, which are empty until
+    # their seed rows are inserted.  This matches pg_dump's natural restore order.
+    lines += _ir_file(OUT_R / '_triggers.sql')
 
     lines += [
         '',
@@ -660,9 +664,10 @@ def generate_master() -> None:
     lines += _ir_section(OUT_S, 'Sequences', 'Sequences')
     lines += _ir_section(OUT_S, 'Tables',    'Tables')
     for fname in ('_sequence_ownership.sql', '_primary_keys.sql', '_foreign_keys.sql',
-                  '_indexes.sql', '_functions.sql', '_triggers.sql'):
+                  '_indexes.sql', '_functions.sql'):
         lines += _ir_file(OUT_S / fname)
     lines += _ir_section(OUT_S, 'Seed', 'Seed data')
+    lines += _ir_file(OUT_S / '_triggers.sql')
 
     dest = DB / 'database.sql'
     dest.write_text('\n'.join(lines) + '\n', encoding='utf-8')
