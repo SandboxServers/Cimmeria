@@ -10,11 +10,3 @@ CREATE SEQUENCE ability_moniker_groups_group_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3270 (class 0 OID 0)
--- Dependencies: 182
--- Name: ability_moniker_groups_group_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE ability_moniker_groups_group_id_seq OWNED BY ability_moniker_groups.group_id;
-

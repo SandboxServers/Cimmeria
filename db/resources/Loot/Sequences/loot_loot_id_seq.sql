@@ -10,11 +10,3 @@ CREATE SEQUENCE loot_loot_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3287 (class 0 OID 0)
--- Dependencies: 225
--- Name: loot_loot_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE loot_loot_id_seq OWNED BY loot.loot_id;
-

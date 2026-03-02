@@ -10,11 +10,3 @@ CREATE SEQUENCE generic_regions_region_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3282 (class 0 OID 0)
--- Dependencies: 216
--- Name: generic_regions_region_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE generic_regions_region_id_seq OWNED BY generic_regions.region_id;
-

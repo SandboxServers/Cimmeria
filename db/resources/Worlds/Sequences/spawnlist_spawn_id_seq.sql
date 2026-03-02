@@ -10,11 +10,3 @@ CREATE SEQUENCE spawnlist_spawn_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3302 (class 0 OID 0)
--- Dependencies: 256
--- Name: spawnlist_spawn_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE spawnlist_spawn_id_seq OWNED BY spawnlist.spawn_id;
-

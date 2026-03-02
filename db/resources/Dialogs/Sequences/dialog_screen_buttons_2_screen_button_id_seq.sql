@@ -10,11 +10,3 @@ CREATE SEQUENCE dialog_screen_buttons_2_screen_button_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3272 (class 0 OID 0)
--- Dependencies: 303
--- Name: dialog_screen_buttons_2_screen_button_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE dialog_screen_buttons_2_screen_button_id_seq OWNED BY dialog_screen_buttons.screen_button_id;
-

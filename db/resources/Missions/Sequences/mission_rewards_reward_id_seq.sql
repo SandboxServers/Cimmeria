@@ -10,11 +10,3 @@ CREATE SEQUENCE mission_rewards_reward_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3290 (class 0 OID 0)
--- Dependencies: 301
--- Name: mission_rewards_reward_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE mission_rewards_reward_id_seq OWNED BY mission_rewards.reward_id;
-

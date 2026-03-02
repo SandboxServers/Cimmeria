@@ -10,11 +10,3 @@ CREATE SEQUENCE item_list_items_item_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3283 (class 0 OID 0)
--- Dependencies: 219
--- Name: item_list_items_item_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE item_list_items_item_id_seq OWNED BY item_list_items.item_id;
-

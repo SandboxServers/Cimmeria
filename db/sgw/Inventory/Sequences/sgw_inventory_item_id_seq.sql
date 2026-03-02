@@ -10,11 +10,3 @@ CREATE SEQUENCE sgw_inventory_item_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 2708 (class 0 OID 0)
--- Dependencies: 277
--- Name: sgw_inventory_item_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE sgw_inventory_item_id_seq OWNED BY sgw_inventory.item_id;
-

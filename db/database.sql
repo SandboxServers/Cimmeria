@@ -252,6 +252,8 @@
 \ir resources/Worlds/Tables/stargates.sql
 \ir resources/Worlds/Tables/worlds.sql
 
+\ir resources/_sequence_ownership.sql
+
 \ir resources/_primary_keys.sql
 
 \ir resources/_foreign_keys.sql
@@ -357,6 +359,8 @@
 \ir sgw/Missions/Tables/sgw_mission.sql
 \ir sgw/Players/Tables/sgw_player.sql
 \ir sgw/Shards/Tables/shards.sql
+
+\ir sgw/_sequence_ownership.sql
 
 \ir sgw/_primary_keys.sql
 

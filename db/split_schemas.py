@@ -23,8 +23,9 @@ from collections import defaultdict
 
 ROOT    = Path(__file__).resolve().parent.parent
 DB      = ROOT / 'db'
-RES_SQL = DB / 'resources.sql'
-SGW_SQL = DB / 'sgw.sql'
+# Source files may live in db/ or db/deprecated/ (after the initial split)
+RES_SQL = DB / 'resources.sql' if (DB / 'resources.sql').exists() else DB / 'deprecated' / 'resources.sql'
+SGW_SQL = DB / 'sgw.sql'       if (DB / 'sgw.sql').exists()       else DB / 'deprecated' / 'sgw.sql'
 OUT_R   = DB / 'resources'
 OUT_S   = DB / 'sgw'
 
@@ -450,8 +451,9 @@ def route_resources(stmts: list[str]) -> Files:
             files[r / dom / 'Sequences' / f'{nm}.sql'].append(stmt)
 
         elif kind == 'ALTER_SEQ_OWNED_BY':
-            dom = _seq_dom_r(nm, seq_tbl)
-            files[r / dom / 'Sequences' / f'{nm}.sql'].append(stmt)
+            # Must load AFTER tables (OWNED BY references the table) — collect
+            # in a dedicated file that database.sql loads between Tables and PKs.
+            files[r / '_sequence_ownership.sql'].append(stmt)
 
         elif kind == 'CREATE_TABLE':
             dom = R_TABLE.get(nm, 'Misc')
@@ -527,8 +529,8 @@ def route_sgw(stmts: list[str]) -> Files:
             files[s / dom / 'Sequences' / f'{nm}.sql'].append(stmt)
 
         elif kind == 'ALTER_SEQ_OWNED_BY':
-            dom = _seq_dom_s(nm, seq_tbl)
-            files[s / dom / 'Sequences' / f'{nm}.sql'].append(stmt)
+            # Must load AFTER tables — collect in a dedicated file.
+            files[s / '_sequence_ownership.sql'].append(stmt)
 
         elif kind == 'CREATE_TABLE':
             dom = S_TABLE.get(nm, 'Misc')
@@ -640,8 +642,8 @@ def generate_master() -> None:
     lines += _ir_section(OUT_R, 'Types',     'Types')
     lines += _ir_section(OUT_R, 'Sequences', 'Sequences')
     lines += _ir_section(OUT_R, 'Tables',    'Tables')
-    for fname in ('_primary_keys.sql', '_foreign_keys.sql', '_indexes.sql',
-                  '_functions.sql', '_triggers.sql'):
+    for fname in ('_sequence_ownership.sql', '_primary_keys.sql', '_foreign_keys.sql',
+                  '_indexes.sql', '_functions.sql', '_triggers.sql'):
         lines += _ir_file(OUT_R / fname)
     lines += _ir_section(OUT_R, 'Seed', 'Seed data')
 
@@ -657,8 +659,8 @@ def generate_master() -> None:
     lines += _ir_section(OUT_S, 'Types',     'Types')
     lines += _ir_section(OUT_S, 'Sequences', 'Sequences')
     lines += _ir_section(OUT_S, 'Tables',    'Tables')
-    for fname in ('_primary_keys.sql', '_foreign_keys.sql', '_indexes.sql',
-                  '_functions.sql', '_triggers.sql'):
+    for fname in ('_sequence_ownership.sql', '_primary_keys.sql', '_foreign_keys.sql',
+                  '_indexes.sql', '_functions.sql', '_triggers.sql'):
         lines += _ir_file(OUT_S / fname)
     lines += _ir_section(OUT_S, 'Seed', 'Seed data')
 

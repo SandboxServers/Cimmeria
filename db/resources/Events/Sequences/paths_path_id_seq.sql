@@ -10,11 +10,3 @@ CREATE SEQUENCE paths_path_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3296 (class 0 OID 0)
--- Dependencies: 236
--- Name: paths_path_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE paths_path_id_seq OWNED BY paths.path_id;
-

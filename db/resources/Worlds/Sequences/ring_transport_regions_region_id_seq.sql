@@ -10,11 +10,3 @@ CREATE SEQUENCE ring_transport_regions_region_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 3299 (class 0 OID 0)
--- Dependencies: 246
--- Name: ring_transport_regions_region_id_seq; Type: SEQUENCE OWNED BY; Schema: resources; Owner: -
---
-
-ALTER SEQUENCE ring_transport_regions_region_id_seq OWNED BY ring_transport_regions.region_id;
-

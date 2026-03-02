@@ -10,11 +10,3 @@ CREATE SEQUENCE sgw_characters_character_id_seq
     NO MAXVALUE
     CACHE 1;
 
---
--- TOC entry 2705 (class 0 OID 0)
--- Dependencies: 271
--- Name: sgw_characters_character_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE sgw_characters_character_id_seq OWNED BY sgw_player.player_id;
-
