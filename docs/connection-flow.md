@@ -2,7 +2,7 @@
 
 How a player gets from the login screen to running around in the game world. This covers the full journey from clicking "Login" to controlling their character.
 
-> **Status: Fully working.** This entire flow has been confirmed end-to-end with a real client. Players can log in, select a shard, enter the game world, and play.
+> **Server: Confirmed working.** This entire flow has been tested end-to-end with a real client. Players can log in, select a shard, enter the game world, and play.
 
 ## Overview
 

@@ -1,7 +1,43 @@
-# Cimmeria - Stargate Worlds Server Emulator
+# Cimmeria — Stargate Worlds Server Emulator
 
-A server emulator for the Stargate Worlds MMO, implementing authentication, world
-simulation, entity management, and game logic via a distributed service architecture.
+A server emulator for [Stargate Worlds](https://en.wikipedia.org/wiki/Stargate_Worlds), the cancelled Stargate MMO developed by Cheyenne Mountain Entertainment. The game was built on [BigWorld Technology](https://en.wikipedia.org/wiki/BigWorld) (networking/server) and Unreal Engine 3 (rendering/client), and reached a playable beta before the studio shut down in 2010.
+
+Cimmeria reimplements the server infrastructure — authentication, world simulation, entity management, and game logic — allowing the original game client to connect and play.
+
+### Current State
+
+The server emulator tracks **369 features** across 30 gameplay systems and 8 infrastructure systems. See the [Gap Analysis](docs/gap-analysis.md) for per-feature detail.
+
+**Code exists for 47.4%** of tracked features (175 of 369). **52.6% remain missing** (194 features).
+
+**Confirmed Working** (CW) — tested end-to-end with the game client:
+- Full login/auth flow (HTTP → shard select → Mercury connect)
+- Mercury protocol transport (reliable UDP, AES-256 encryption)
+- Game data pipeline (22 resource categories, 112,626 DB rows)
+- World entry, entity spawning, grid-based Area of Interest
+- Build & setup (`pwsh setup-dependencies.ps1` — clone to running in one command)
+
+**Needs Test** (NT) — code exists but hasn't been verified with a live client:
+- Character creation (Account.py ~300 lines, 8 archetypes, full flow)
+- Inventory (21K-line Inventory.py, bag/equip/move)
+- Loot system (algorithm works, tables mostly empty)
+- Vendors (complete buy/sell/repair/recharge/buyback)
+- Chat, crafting (575 lines), trading (244 lines)
+
+**Implemented** (IM) — code written with known gaps:
+- Combat & abilities (1,090-line AbilityManager, single-target only)
+- Effects framework (4 of 3,217 effects have scripts)
+- Missions (29K-line MissionManager, 1 zone tested)
+- NPC AI (2 of 12 states: Spawning, Fighting)
+- Stats, XP/leveling, stargate travel, movement
+
+**Known/Missing** (KM) — needs implementation:
+- Spawn system (100% empty stubs), NPC navigation
+- Organizations, mail, auction house, contact lists
+- Dueling, pets, groups
+- Server infrastructure (rate limiting, anti-cheat, session management)
+
+See [docs/project-status.md](docs/project-status.md) for detailed breakdown and [docs/](docs/readme.md) for full documentation.
 
 ## Architecture
 
@@ -135,6 +171,30 @@ Connection string is configured in `BaseService.config`.
 | MinSizeRel | Minimize binary size |
 
 Platform: `x64` (primary), `Win32` (legacy)
+
+## Documentation
+
+The [docs/](docs/readme.md) directory contains **96 documents** covering every aspect of the project:
+
+| Category | Docs | Covers |
+|----------|------|--------|
+| [Top-level](docs/readme.md) | 10 | Technology overview, game systems survey, connection flow, project status, gap analysis |
+| [protocol/](docs/protocol/) | 5 | Mercury wire format, entity property sync, login handshake, position updates |
+| [gameplay/](docs/gameplay/) | 23 | Per-system breakdowns: combat, abilities, inventory, missions, NPC AI, spawning, loot, progression, character creation, crafting, etc. |
+| [engine/](docs/engine/) | 8 | BigWorld internals, CME framework, cooked data, space management, LOD, checkpointing |
+| [architecture/](docs/architecture/) | 2 | Cimmeria service topology, server-only infrastructure systems |
+| [analysis/](docs/analysis/) | 2 | Event-net mapping (420 messages), BigWorld source cross-reference index |
+| [reverse-engineering/](docs/reverse-engineering/) | 21 | Ghidra annotation scripts, RE plan/status, 17 per-system wire format findings |
+| [guides/](docs/guides/) | 3 | Evidence standards, reading decompiled code, entity definition guide |
+| [technical/](docs/technical/) | 16 | Legacy analysis documents from initial RE investigation |
+
+**Start here:**
+- **[How SGW Works](docs/how-sgw-works.md)** — Technology overview of the BigWorld + UE3 hybrid architecture
+- **[Game Systems](docs/game-systems.md)** — Every game feature: combat, abilities, stargates, missions, crafting
+- **[Connection Flow](docs/connection-flow.md)** — End-to-end login and world entry sequence
+- **[Project Status](docs/project-status.md)** — What works, what's left, and the roadmap
+
+For reverse engineering work, see [docs/reverse-engineering/](docs/reverse-engineering/PLAN.md).
 
 ## License
 

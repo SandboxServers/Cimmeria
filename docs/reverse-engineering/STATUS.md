@@ -1,0 +1,438 @@
+# Reverse Engineering Progress Tracker
+
+> **Last updated**: 2026-03-01
+> **Current phase**: Phase 5 — BigWorld Engine Subsystems (COMPLETE)
+> **Next phase**: None — all planned RE phases complete
+> **Branch**: `feature/reverse-engineering-docs`
+
+---
+
+## Annotation Script Results
+
+Scripts 01-06 completed, 07-10 pending. Run in order — later scripts build on earlier labels.
+
+| # | Script | Strings Found | Functions Renamed | Errors | Status |
+|---|--------|---------------|-------------------|--------|--------|
+| 01 | rtti_annotator.py | 9,700 RTTI classes | 4,364 vfuncs + 8,961 vtable labels | 0 | DONE |
+| 02 | ue3_exec_annotator.py | 1,275 int* strings | 1,006 | 0 | DONE |
+| 03 | bigworld_source_annotator.py | 17 BW paths + 17 Mercury | 23 | 0 | DONE |
+| 04 | event_signal_annotator.py | 975 events (479 out + 496 in) | 419 | 0 | DONE |
+| 05 | mercury_annotator.py | 120 Mercury strings | 38 + 79 RTTI vtable xrefs | 0 | DONE |
+| 06 | cme_framework_annotator.py | 42 CME strings | 28 | 0 | DONE |
+| 07 | vtable_annotator.py | 19,030 vtable labels | ~9,600 new vfuncs | 0 | DONE (partial, cancelled) |
+| 08 | lua_binding_annotator.py | 72 Lua strings | 0 (no binding tables) | 0 | DONE |
+| 09 | string_discovery.py | 1,310 `::` strings | 1,364 | 0 | DONE |
+| 10 | xref_propagation.py | 3 passes (69K→68K→67K) | 3,333 (LOW confidence) | 0 | DONE |
+
+**Final tally: 101,909 functions named (60.6% of 168,239 non-thunk functions)**
+
+### Bugs Fixed During Testing
+
+- **Unicode crash** (scripts 01-05): `str(value)` fails on non-ASCII in Jython. Fixed: `unicode(value).encode('utf-8', 'replace')`
+- **RTTI discovery** (script 01): `get_all_defined_strings()` misses raw RTTI bytes. Fixed: `memory.findBytes()` API
+- **UE3 discovery** (script 02): `findBytes` unreliable for short patterns in Jython. Fixed: reverted to `get_all_defined_strings()`
+- **VTable reading** (script 07): Python `bytearray` isn't Java `byte[]`. Fixed: `mem.getInt()`
+- **Encoding**: Added `# -*- coding: utf-8 -*-` to all 10 scripts
+
+---
+
+## Phase 1 Checklist — COMPLETE
+
+### 1a. Documentation Structure — DONE
+- [x] docs/ directory tree (all subdirectories)
+- [x] docs/README.md — Master navigation hub
+- [x] docs/protocol/README.md, docs/engine/README.md
+- [x] docs/gameplay/README.md (HUB) — System dashboard, 18 systems
+- [x] docs/guides/evidence-standards.md (333 lines)
+- [x] docs/guides/reading-decompiled-code.md (491 lines)
+- [x] docs/guides/entity-def-guide.md (817 lines)
+
+### 1b. Ghidra Annotation Scripts — DONE
+- [x] All 10 scripts written, tested, and run
+- [x] Scripts 01-06: 5,878 functions renamed (high confidence)
+- [x] Script 07: ~9,600 additional vfuncs (cancelled partway, medium confidence)
+- [x] Script 08: 0 (Lua vestigial in this binary)
+- [x] Script 09: 1,364 functions (medium confidence)
+- [x] Script 10: 3,333 functions (low confidence, call graph inference)
+
+### 1c. Hub Documents — DONE
+- [x] docs/protocol/message-catalog.md — 975 events mapped
+- [x] docs/engine/entity-type-catalog.md — 18 entities + 18 interfaces (953 lines)
+- [x] docs/gameplay/README.md — System dashboard
+
+### 1d. Remaining Docs — DONE
+- [x] Protocol docs (4): mercury-wire-format, entity-property-sync, login-handshake, position-updates
+- [x] Engine docs (5): bigworld-architecture, cme-framework, cooked-data-pipeline, watcher-system, space-management
+- [x] Architecture docs (1): service-architecture
+- [x] Analysis docs (2): event-net-mapping, bigworld-reference-index
+- [x] Gameplay docs (17): combat, abilities, effects, stats, inventory, crafting, missions, gate-travel, minigames, organizations, groups, chat, mail, trade, black-market, pets, dueling
+- [x] RE tracking docs (3): function-naming-progress, address-map, findings/README
+
+---
+
+## Phase 2 — Combat & Core Systems RE — COMPLETE
+
+**Goal**: Decompile the client-side handlers for combat, inventory, and entity property sync messages. Cross-reference with our server Python implementation to validate correctness and identify gaps.
+
+### Major Architectural Discovery
+
+**The CME EventSignal system is client-side only** — it routes UI events between client subsystems, NOT network messages. All network serialization goes through a **universal RPC dispatcher** at `0x00c6fc40` that serializes method calls using BigWorld's `DataType::addToStream` virtual methods. Wire formats are entirely driven by `.def` file method signatures + `alias.xml` type definitions.
+
+This means we do NOT need to decompile individual event handlers (100+ functions). Instead, wire formats for every entity method call can be derived directly from the `.def` files.
+
+### 2a. Combat System — DONE
+
+- [x] Discovered universal RPC dispatcher architecture (0x00c6fc40)
+- [x] Documented wire formats for all combat messages (client→server and server→client)
+- [x] Cross-validated against Python scripts (AbilityManager.py, SGWBeing.py) and .def files
+- [x] All formats rated HIGH confidence (3+ sources agree)
+- [x] Key discrepancy resolved: `useAbility` has 2 wire params (not 3) — `targetLoc` is server-side only
+- [x] Findings: `docs/reverse-engineering/findings/combat-wire-formats.md`
+
+### 2b. Inventory System — DONE
+
+- [x] Documented wire formats for all inventory messages
+- [x] InvItem FIXED_DICT is variable-length (ammoTypes ARRAY inside)
+- [x] Cross-validated against Inventory.py and SGWInventoryManager.def
+- [x] Findings: `docs/reverse-engineering/findings/inventory-wire-formats.md`
+
+### 2c. Entity Property Sync Protocol — DONE
+
+- [x] Property ID assignment algorithm: sequential, in parse order (Parent→Implements→Own)
+- [x] Method ID assignment: same parse order, sequential within each category
+- [x] createBasePlayer: 4B entityID + 2B typeID + property stream
+- [x] createCellPlayer: 4B skip + 4B spaceID + 12B position + property stream
+- [x] Property change encoding: IDs 0-59 = 1-byte, 60+ = 2-byte extended
+- [x] Client property exclusions identified: 5 property names filtered out
+- [x] Property type restrictions for propagation documented
+- [x] Findings: `docs/reverse-engineering/findings/entity-property-sync.md`
+
+### Key Addresses Discovered
+
+| Address | Function | Role |
+|---------|----------|------|
+| `0x00c6fc40` | Universal RPC dispatcher | ALL outgoing entity method calls |
+| `0x00dd6a60` | `ServerConnection_startEntityMessage` | Cell method header (`methodID \| 0x80`) |
+| `0x00dd6980` | `ServerConnection_startProxyMessage` | Base method header (`methodID \| 0xC0`) |
+| `0x00dddca0` | `ServerConnection_createBasePlayer` | Base entity creation |
+| `0x00dda2e0` | `ServerConnection_createCellPlayer` | Cell entity creation |
+| `0x01593600` | `EntityDescription` parse dispatch | Parse order: Impl→Props→Methods |
+| `0x015924a0` | `EntityDescription_parseProperties` | Property ID assignment |
+| `0x01594f60` | `MethodDescription_parse` | Method signature parsing |
+| `0x015974a0` | `DataDescription_parse_2` | Property flag/type parsing |
+| `0x015652d0` | `FNetworkPropertyChange__vfunc_0` | Property change serialization |
+
+---
+
+## Phase 3 — Missing Systems RE — COMPLETE
+
+**Goal**: Document wire formats for gate travel, missions, crafting, and organizations.
+
+**Approach**: Same as Phase 2 — derive wire formats from `.def` files + `alias.xml`, leveraging the universal RPC dispatcher discovery. No per-handler Ghidra decompilation needed.
+
+### 3a. Gate Travel — DONE
+- [x] 4 client methods, 1 exposed cell method documented
+- [x] Stargate address discovery, dialing, passage flow
+- [x] Findings: `docs/reverse-engineering/findings/gate-travel-wire-formats.md`
+
+### 3b. Mission System — DONE
+- [x] 5 client methods, 3 exposed cell methods documented
+- [x] Hierarchical update structure: Mission → Step → Objective → Task
+- [x] Custom types: MissionStatus, MissionStepStatus, MissionObjectiveStatus, MissionTaskStatus, Rewards
+- [x] Findings: `docs/reverse-engineering/findings/mission-wire-formats.md`
+
+### 3c. Organization System — DONE
+- [x] 17 client methods, 12+ exposed cell/base methods documented
+- [x] Three org types: squad, guild, strike team
+- [x] Roster management, rank hierarchy, MOTD, notes, cash pooling, PvP
+- [x] Findings: `docs/reverse-engineering/findings/organization-wire-formats.md`
+
+### 3d. Crafting System — DONE
+- [x] 4 crafting activities: craft, research, reverse engineer, alloy
+- [x] Discipline/expertise progression, applied science points
+- [x] CraftingOptions nested FIXED_DICT documented
+- [x] Findings: `docs/reverse-engineering/findings/crafting-wire-formats.md`
+
+---
+
+## Phase 4 — Secondary Systems RE — COMPLETE
+
+**Goal**: Document wire formats for all remaining game systems.
+
+### 4a. Secondary Systems — DONE
+- [x] Minigames: 13 client methods, matchmaking, call request flow → `findings/minigame-wire-formats.md`
+- [x] Chat: 7 client methods, 15+ base methods, channel management → `findings/chat-wire-formats.md`
+- [x] Mail: 4 client methods, 10 cell methods, COD support, attachments → `findings/mail-wire-formats.md`
+- [x] Black Market: 6 client methods, 6 cell methods, BMSearchOptions/AuctionItem types → `findings/black-market-wire-formats.md`
+- [x] Contact Lists: 5 client methods, 6 cell methods → `findings/contact-list-wire-formats.md`
+- [x] Trade: LocalTradeProposal/RemoteTradeProposal asymmetry → `findings/trade-wire-formats.md`
+- [x] Duel: challenge/response/forfeit flow, squad duels → `findings/duel-wire-formats.md`
+- [x] Pet: ability lists, stances (INT8, not INT32) → `findings/pet-wire-formats.md`
+
+### 4b. Entity Types — DONE
+- [x] Account: character creation/selection, ClientCache data versioning
+- [x] SGWEntity: root entity (ServerOnly, no client methods)
+- [x] SGWSpawnableEntity: onEntityMove (37B), Kismet sequences, entity flags
+- [x] SGWPet: abilities, stances, owner tracking
+- [x] Findings: `docs/reverse-engineering/findings/entity-types-wire-formats.md`
+
+---
+
+## Phase 5 — BigWorld Engine Subsystems — COMPLETE
+
+**Goal**: Deep-dive into four BigWorld server-side subsystems from the 2.0.1 reference source code. No Ghidra/client binary analysis needed — confirmed all four subsystems are server-only (SGW.exe contains no watcher, ghost, LOD, or backup functions).
+
+### 5a. Watcher System — DONE
+- [x] Full class hierarchy: 18+ watcher types (DataWatcher, MemberWatcher, FunctionWatcher, DirectoryWatcher, CallableWatcher, SequenceWatcher, MapWatcher, Python watchers, Forwarding watchers)
+- [x] MF_WATCH macro system with all overloads documented
+- [x] WatcherDataType enum (8 values) with wire encoding
+- [x] Protocol v1 (string-based, messages 16-20) and v2 (binary, messages 26-29) fully documented
+- [x] Network transport: WatcherNub (UDP 64KB / TCP 16MB), WatcherConnection, WatcherPacketHandler
+- [x] Multi-process forwarding with ExposeHints (WITH_ENTITY, ALL, WITH_SPACE, LEAST_LOADED)
+- [x] Python integration: 6 BigWorld.* functions documented
+- [x] Conditional compilation: ENABLE_WATCHERS, FORCE_ENABLE_WATCHERS, PS3 override
+- [x] Document: `docs/engine/watcher-system.md` (768 lines, replaces 192-line stub)
+
+### 5b. Space Slicing & Ghost Entities — DONE
+- [x] BSP tree partitioning: SpaceNode (abstract) → SpaceBranch (internal) / CellInfo (leaf)
+- [x] Cell boundary system with rect-based partitioning and CellApp address mapping
+- [x] Entity offloading lifecycle: 8-step flow from checkOffloadsAndGhosts() through convertRealToGhost()/convertGhostToReal()
+- [x] Ghost entity system: real/ghost duality, 8 ghost update message types, BufferedGhostMessage queue hierarchy (4 classes)
+- [x] EntityCache with MAX_LOD_LEVELS = 4, priority-based AoI, IDAlias
+- [x] Load balancing: BalanceConfig (6 params), CellAppConfig (20+ params organized by category)
+- [x] Cimmeria vs BigWorld comparison table (13 dimensions)
+- [x] Document: `docs/engine/space-management.md` (898 lines, expanded from 273-line stub)
+
+### 5c. Entity LOD System — DONE
+- [x] DataLoDLevel class: distance thresholds, hysteresis (default 10m), MAX_DATA_LOD_LEVELS = 6
+- [x] Property assignment via DataDescription.detailLevel_ (NO_LEVEL = -1, OUTER_LEVEL = -2)
+- [x] VolatileInfo: position/yaw/pitch/roll priority fields with squared-distance semantics
+- [x] PropertyEventStamps: per-property event number tracking for change detection
+- [x] PropertyChange encoding: MAX_SIMPLE_PROPERTY_CHANGE_ID = 60, bit-packed paths, SinglePropertyChange vs SlicePropertyChange
+- [x] SGW status confirmed: NOT used (all LoDLevels tags empty, no client binary functions)
+- [x] Client draw distance slider is UE3/CME rendering feature, not BW entity LOD
+- [x] Document: `docs/engine/entity-lod-system.md` (579 lines, new)
+
+### 5d. Distributed Checkpointing — DONE
+- [x] BackupHash algorithm: `(id * prime >> 8) % virtualSize` with power-of-2 virtual bucketing
+- [x] BackupHashChain: chain resolution through dead BaseApps with loop detection
+- [x] AutoBackupAndArchive: Policy enum (NO=0, YES=1, NEXT_ONLY=2)
+- [x] BackupSender: tick-based incremental backup with basesToBackUp_ queue
+- [x] ReviverSubject: health-check pings with priority-based election, 200ms timeout
+- [x] Cimmeria's existing backup: CELL_BASE_BACKUP_ENTITY = 0x0A for space transitions
+- [x] Gap analysis: 5 implemented features vs 9 missing features with priority recommendations
+- [x] Document: `docs/engine/distributed-checkpointing.md` (765 lines, new)
+
+### Key Findings
+- All four subsystems are server-side only — no client binary analysis needed
+- SGW does NOT use entity property LOD (all `<LoDLevels>` empty across every .def file)
+- SGW does NOT use ghost entities, BSP space partitioning, or multi-CellApp support
+- Cimmeria HAS basic entity backup for space transitions but NOT distributed crash recovery
+- PropertyChange encoding (1-byte IDs 0-59, 2-byte 60+) IS used by Cimmeria
+- BW watcher system could be approximated via Cimmeria's Python console (port 8989)
+
+---
+
+## Data Collected
+
+### Event_NetOut (Client → Server) — 479 signals found
+
+Categories identified:
+- **Combat/Ability**: UseAbility, useAbilityOnGroundTarget, SetAutoCycle, ConfirmEffect, RequestReload, RequestAmmoChange, SetCrouched, TestLOS, ToggleCombatLOS
+- **GM/Debug**: ~50 commands (GiveItem, SetLevel, Kill, Spawn, Despawn, SetGodMode, etc.)
+- **Mission**: MissionAssign, MissionAbandon, MissionAdvance, MissionComplete, MissionReset, ShareMission, ChosenRewards
+- **Inventory**: MoveItem, RemoveItem, UseItem, RepairItem, LootItem, GetItemInfo, requestItemData
+- **Chat**: ChatJoin, ChatLeave, ChatBan, ChatKick, ChatMute, sendPlayerCommunication, SendGMShout
+- **Organization**: OrganizationCreation, OrganizationInvite, OrganizationKick, OrganizationLeave, OrganizationRankChange, etc.
+- **Minigame**: StartMinigame, EndMinigame, MinigameComplete, MinigameCallRequest/Accept/Decline/Abort
+- **Mail**: SendMailMessage, RequestMailHeaders, RequestMailBody, DeleteMailMessage, TakeItemFromMailMessage
+- **Trade**: TradeProposal, TradeLockState, TradeRequestCancel
+- **Store**: PurchaseItems, SellItems, BuybackItems
+- **Black Market**: BMSearch, BMCreateAuction, BMCancelAuction, BMPlaceBid
+- **Gate Travel**: onDialGate, DHD, SetRingTransporterDestination, GiveStargateAddress
+- **Pet**: PetInvokeAbility, PetAbilityToggle, PetChangeStance
+- **Crafting**: Craft, Research, ReverseEngineer, RespecCraft, SpendAppliedSciencePoint, SetTechSkill
+- **Duel**: DuelChallenge, DuelResponse, DuelForfeit
+- **Character**: CreateCharacter, DeleteCharacter, PlayCharacter, Respawn, Unstuck
+- **Movement/World**: GotoXYZ, GotoLocation, SetMovementType, Physics, ClientReady
+- **Data Loading**: LoadConstants, LoadAbility, LoadAbilitySet, LoadBehavior, LoadMOB, LoadItem, LoadMission
+- **Contact List**: contactListCreate, contactListDelete, contactListAddMembers, contactListRemoveMembers
+
+### Event_NetIn (Server → Client) — 496 signals found
+
+Categories identified:
+- **Combat/Stats**: onEffectResults, TimerUpdate, onStatUpdate, onStatBaseUpdate, onAlignmentUpdate, KnownAbilitiesUpdate, AbilityTreeInfo, onLOSResult, onMeleeRangeUpdate, onThreatenedMobsUpdate
+- **Entity**: onEntityMove, onVisible, EntityFlags, EntityProperty, EntityTint, BeingAppearance, onBeingNameUpdate
+- **Character**: CharacterList, CharacterVisuals, CharacterCreateFailed, onPlayerDataLoaded, onArchetypeUpdate
+- **Mission**: onMissionUpdate, onStepUpdate, onObjectiveUpdate, onTaskUpdate, MissionOffer, MissionRewards
+- **Inventory**: onContainerInfo, onUpdateItem, onRemoveItem, onRefreshItem, onActiveSlotUpdate, CashChanged
+- **Store**: onStoreOpen, onStoreUpdate, onStoreClose, LootDisplay
+- **Chat**: onPlayerCommunication, onSystemCommunication, onChatJoined, onChatLeft, onNickChanged, onTellSent
+- **Organization**: 16 events — onOrganizationInvite, onOrganizationJoined, onMemberJoined/Left, onOrganizationRosterInfo, etc.
+- **Mail**: onMailHeaderInfo, onMailHeaderRemove, onMailRead, onSendMailResult
+- **Black Market**: BMOpen, BMAuctions, BMAuctionUpdate, BMAuctionRemove, BMError
+- **Minigame**: onStartMinigame, onEndMinigame, MinigameCallDisplay/Result/Abort, onSpectateList
+- **Gate Travel**: setupStargateInfo, updateStargateAddress, onStargatePassage, onDisplayDHD, onDHDReply
+- **Crafting**: onUpdateDiscipline, onUpdateKnownCrafts, onUpdateCraftingOptions, onCraftingRespecPrompt
+- **Pet**: PetAbilities, PetStances, PetStanceUpdate
+- **Duel**: onDuelChallenge, onDuelEntitiesSet, onDuelEntitiesRemove
+- **World**: onTimeofDay, setupWorldParameters, onClientMapLoad, MapInfo, onStateFieldUpdate
+- **Level/XP**: onLevelUpdate, onExpUpdate, onMaxExpUpdate, onTargetUpdate
+- **Auth/Login**: AccountLoginSuccess, ServerSelectSuccess, LoginFailure, onVersionInfo, onClientChallenge
+
+### Entity Type Catalog — 18 entities + 18 interfaces
+
+**Entity Hierarchy:**
+```
+Account (standalone)
+SGWEntity (base)
+├── SGWSpawnableEntity
+│   ├── SGWBeing
+│   │   ├── SGWMob
+│   │   │   └── SGWPet
+│   │   └── SGWPlayer (11 interfaces)
+│   │       └── SGWGmPlayer
+│   └── SGWDuelMarker
+├── SGWBlackMarket
+├── SGWCoverSet
+├── SGWEscrow
+├── SGWSpaceCreator
+├── SGWSpawnRegion
+├── SGWSpawnSet
+├── SGWPlayerRespawner
+├── SGWChannelManager
+└── SGWPlayerGroupAuthority
+```
+
+**Interfaces:** ClientCache, Communicator, ContactListManager, DistributionGroupMember, EventParticipant, GateTravel, GroupAuthority, Lootable, MinigamePlayer, Missionary, OrganizationMember, SGWAbilityManager, SGWBeing, SGWBlackMarketManager, SGWCombatant, SGWInventoryManager, SGWMailManager, SGWPoller
+
+---
+
+## Session Log
+
+### Session 1 — 2026-03-01
+
+**Phase 1 Foundation — COMPLETED:**
+- Created full docs/ directory structure (54 files, ~14,200 lines)
+- Wrote all 10 Ghidra annotation scripts
+- Ran scripts 01-06 in Ghidra, naming 5,878 functions
+- Fixed 5 Jython compatibility bugs during testing
+- Created PR #2 on `feature/reverse-engineering-docs` branch
+- Fixed script 07 read_pointer bug, ran all 10 scripts
+- Fleshed out Phase 2 plan with specific Ghidra targets, cross-references, and deliverables
+- All annotation scripts complete: **101,909 functions named (60.6%)**
+
+**Key discoveries:**
+- Binary has 9,700 RTTI classes (24x more than estimated 200-400)
+- 168,239 total non-thunk functions (not ~85,000 as initially estimated)
+- 975 Event signals found (vs 420 originally estimated from defined strings)
+- UE3 registration uses `int*` strings with adjacent function pointers in data tables
+- `get_all_defined_strings()` works for typed strings, `memory.findBytes()` needed for raw bytes
+- Jython `bytearray` is not Java `byte[]` — use `mem.getInt()` instead
+- Lua is vestigial (72 strings, no binding tables) — SGW uses Python/Boost.Python
+- CEGUI is the UI library (807+ functions from script 09)
+- Xref propagation cascades well: pass 1→713, pass 2→1,350, pass 3→1,270
+
+### Session 2 — 2026-03-01
+
+**Phase 2 Combat & Core Systems RE — COMPLETED:**
+- Decompiled 15+ functions via Ghidra MCP for targeted analysis
+- Discovered universal RPC dispatcher at `0x00c6fc40` — all entity method calls route through one function
+- Corrected misconception: CME EventSignal is client-side UI bus, NOT network protocol
+- Phase 1 annotations were CORRECT (vfunc_0 = destructor is right), but plan assumptions about which vtable slot has serialization were wrong
+- Wire format derivation method: `.def` files + `alias.xml` → complete wire format (no per-handler decompilation needed)
+- Decompiled `EntityDescription` parser chain to confirm property/method ID assignment order
+- Decompiled `ServerConnection_createBasePlayer` and `createCellPlayer` for entity creation format
+- Cross-validated all formats against Python client scripts, .def files, and BW 2.0.1 source
+- Wrote 3 findings documents totaling ~1,200 lines of documented wire formats with evidence
+
+**Key discoveries:**
+- Universal RPC dispatcher at `0x00c6fc40` routes ALL entity method calls
+- Cell method header: `methodID | 0x80`, Base method header: `methodID | 0xC0`
+- Arguments serialized via DataType vtable method at offset 0x20 (`addToStream`)
+- Entity parse order: Parent→Implements→Properties→ClientMethods→CellMethods→BaseMethods
+- Property/method IDs assigned sequentially in parse order
+- Property IDs 0-59 use 1-byte encoding, 60+ use 2-byte extended
+- `useAbility` wire format has 2 params (not 3) — `targetLoc` is server-side only
+- 5 property names excluded from client processing: publicReservationData, publicMissionData, completedMissions, aggressionOverrides, effectMonikers
+- createBasePlayer format: 4B entityID + 2B typeID + property stream
+- createCellPlayer buffers if no base player yet, replays after createBasePlayer
+
+### Session 3 — 2026-03-01
+
+**Phase 3+4 — All Remaining Systems RE — COMPLETED:**
+- Read all 18 interface `.def` files and 5 entity `.def` files
+- Derived wire formats for every entity method across all game systems
+- Wrote 6 new findings documents totaling ~3,000+ lines
+- Committed and pushed after each document pair (commit early, push often)
+
+**Documents created:**
+- `gate-travel-wire-formats.md` — Stargate dialing, address discovery, passage
+- `mission-wire-formats.md` — Mission hierarchy (Mission→Step→Objective→Task), rewards
+- `organization-wire-formats.md` — Squads, guilds, strike teams, roster, ranks, MOTD, cash
+- `crafting-wire-formats.md` — Craft, research, reverse engineer, alloy, discipline progression
+- `secondary-systems-wire-formats.md` — Minigames, chat, mail, black market, contacts, trade, duel, pets
+- `entity-types-wire-formats.md` — Account, SGWEntity, SGWSpawnableEntity, SGWPet
+
+**Key findings:**
+- All wire formats derivable from `.def` files — no per-handler decompilation needed (confirmed across ALL systems)
+- Black Market uses `STRING` (UTF-8) while all other systems use `WSTRING` (UTF-16LE) for names
+- Pet stances use `INT8` (compact), not `INT32`
+- Trade has asymmetric proposal types: `LocalTradeItem` (8B) vs full `InvItem` (37+B)
+- Organization cash/XP use `UINT64` (8-byte) for large values
+- Mission system has `recievedBy` typo preserved from original `.def`
+- Minigames are web/Flash-based — launched via URL
+
+### Session 5 — 2026-03-01
+
+**Phase 6 — TODO Resolution & Doc Completeness — COMPLETED:**
+- Categorized 47 remaining TODOs across all docs by resolution method (Ghidra, BW source, Cimmeria source, runtime testing)
+- Resolved 42 of 47 TODOs via 9 parallel agents using Ghidra MCP tools, BW 2.0.1 reference source, and Cimmeria source code
+- 5 remaining TODOs genuinely require runtime testing (minigame TCP protocol, WorldGrid profiling, bandwidth measurement, vehicle/mount system, duplicate minigame entry)
+- Wrote 2 new documents: `findings/group-wire-formats.md` (210 lines), `gameplay/contact-list.md` (170 lines)
+- Updated 14 existing documents with decompiled evidence and cross-referenced findings
+- Updated all 3 hub files: root README.md, CLAUDE.md, docs/readme.md
+- Updated docs/readme.md: all statuses from "Planned" to "Complete", added missing entries, updated Quick Stats
+- Updated PR #2 description with Phase 6 results (surgical edits, no mangling)
+- Rewrote `docs/project-status.md` with honest per-system status ratings
+
+**Key findings from TODO resolution:**
+- avatarUpdate: Client SENDS 4 SGW-specific variants, RECEIVES all 32 BW standard handlers
+- Direction packing: 3 bytes, 256 steps per 2π (~1.4° precision)
+- SVID (Space Viewport ID): 1-byte entity alias replaces 4-byte EntityID in headers
+- Mercury byte ordering: Cimmeria uses native little-endian; BigWorld uses big-endian
+- Piggyback packets: BigWorld supports them; Cimmeria explicitly rejects them
+- Entity serialization: 4-pass system (Pass 0-3) for Base/Client/Cell property splitting
+- EntityMailBoxRef: 12-byte wire format, Component type in addr.salt bits 13-15
+- Ghost offload: 5-state machine (NORMAL → PRE-OFFLOAD → OFFLOAD → ONLOAD → NEW NORMAL)
+- PropertyNode: Client-side UI binding only, no custom wire format
+- CME RTTI: 28 framework classes, 330 non-network EventSignal types (not ~534 as estimated)
+- Event-net mapping coverage: ~98% (up from 46%)
+- Clean-room confirmation: Cimmeria does NOT include BigWorld headers
+
+**Documents created:** 2 new
+**Documents updated:** 14 existing + 3 hub files + project-status.md
+**Total lines added:** ~4,800
+
+### Session 4 — 2026-03-01
+
+**Phase 5 — BigWorld Engine Subsystems — COMPLETED:**
+- Read 75 BigWorld 2.0.1 reference source files across 3 parallel research agents
+- Confirmed via Ghidra binary search: no watcher, ghost, LOD, or backup functions in SGW.exe client
+- Wrote/updated 4 engine documents totaling ~3,010 lines from reference source analysis
+- No per-handler decompilation needed — all four subsystems are server-side only
+
+**Documents created/updated:**
+- `watcher-system.md` — Replaced 192-line stub with 768-line deep-dive (class hierarchy, protocol, network transport, Python integration)
+- `space-management.md` — Expanded 273-line doc to 898 lines (added BSP tree, ghost entities, entity cache, load balancing, comparison table)
+- `entity-lod-system.md` — New 579-line doc (DataLoDLevel, VolatileInfo, PropertyChange encoding, SGW non-use evidence)
+- `distributed-checkpointing.md` — New 765-line doc (BackupHash algorithm, BackupHashChain, ReviverSubject, Cimmeria gap analysis)
+
+**Key findings:**
+- SGW does NOT use BigWorld's entity property LOD — all `<LoDLevels>` tags empty across every .def file
+- Client draw distance slider is UE3/CME rendering, not BW entity LOD
+- SGW does NOT use ghost entities, BSP space partitioning, or multi-CellApp cell boundaries
+- Cimmeria HAS entity backup for space transitions (CELL_BASE_BACKUP_ENTITY = 0x0A) but NOT distributed crash recovery
+- BW BackupHash uses formula `(id * prime >> 8) % virtualSize` with random primes near `0x9e3779__`
+- BW ghost message buffering handles cross-CellApp message ordering with subsequence tracking
+- BW watcher system is conditionally compiled (ENABLE_WATCHERS) — can be stripped from production builds

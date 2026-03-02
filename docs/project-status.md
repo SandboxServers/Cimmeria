@@ -2,143 +2,192 @@
 
 Where the Cimmeria server emulator stands today and what's ahead.
 
-## What Works Right Now
+> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks 369 individual features across 30 gameplay systems and 8 infrastructure systems.
 
-### Build & Setup
+## Status Taxonomy
 
-The project builds and runs on modern hardware:
+| Status | Symbol | Meaning |
+|--------|--------|---------|
+| **Confirmed Working** | CW | Tested end-to-end with the game client and verified correct |
+| **Needs Test** | NT | Code exists, looks reasonable, but hasn't been verified with a live client |
+| **Implemented** | IM | Code written but may be incomplete or have known issues |
+| **Known / Missing** | KM | We know this needs to exist but no code exists |
+| **Needed / Unknown** | NU | Server-only system we infer must exist but have no direct evidence for |
 
-- **One-command setup**: `pwsh setup.ps1` downloads all dependencies, patches them for VS2026, builds everything, initializes the database, and starts the servers
-- **All 6 projects compile**: Recast, UnifiedKernel, NavBuilder, AuthenticationServer, CellApp, BaseApp
-- **Database loads**: PostgreSQL with full game data (112,626 rows)
-- **Servers start**: Auth, Base, and Cell servers all launch and accept connections
+## Overall Completion
 
-### Authentication & Connection
+| Status | Features | Percentage |
+|--------|----------|-----------|
+| Confirmed Working (CW) | 31 | 8.4% |
+| Needs Test (NT) | 49 | 13.3% |
+| Implemented (IM) | 95 | 25.7% |
+| Known/Missing (KM) | 191 | 51.8% |
+| Needed/Unknown (NU) | 3 | 0.8% |
+| **Total** | **369** | |
 
-- Client connects to the Auth server over HTTP
-- Login with username/password works (test account: test/test)
-- Shard list is returned and server selection works
-- Session key is generated and shared with BaseApp
-- Client connects to BaseApp via encrypted Mercury protocol
-- Full world entry sequence works: createBasePlayer, spaceViewportInfo, createCellPlayer, forcedPosition
-- Player enters the game world with a controllable character
+**Code exists (CW + NT + IM)**: 175 features (47.4%)
+**Missing (KM + NU)**: 194 features (52.6%)
 
-### Mercury Protocol
+## System Status
 
-- Reliable UDP transport works (packets sent, ACKs received)
-- AES-256 encryption active on all traffic
-- Resource data (abilities, items, etc.) served to client — 274+ packets sent successfully
-- Inactivity timeout tuned to 5 minutes
+### Infrastructure — Solid
 
-### Game Data Pipeline
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| Authentication & login | CW | 8 (5 CW, 3 IM) | Full login/auth flow tested and reliable |
+| Mercury protocol | CW | 7 (5 CW, 2 KM) | Reliable UDP transport works. Missing cumulative ACKs, piggyback |
+| Game data pipeline | CW | 4 (3 CW, 1 KM) | 22 resource categories, 112,626 DB rows served |
+| Database persistence | CW | 5 (4 CW, 1 IM) | SOCI ORM, player/inventory/mission state persisted |
+| Python embedding | CW | — | Boost.Python 3.4 embedding works, 164 scripts load |
 
-- All 22 resource categories served from database to client
-- Cooked XML generation from Python resource classes works
-- Client receives and processes game data
+### Core Gameplay — Real Code Exists
 
-### In-Game Gameplay (Confirmed Working)
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| Character creation | NT | 11 (9 NT, 2 KM) | Account.py ~300 lines, full flow with validation. Needs client test |
+| World entry & spaces | CW | 8 (5 CW, 3 IM) | 1 zone tested (Castle Cellblock). Others need verification |
+| Movement & navigation | IM | 9 (1 CW, 5 IM, 3 KM) | Player movement works. No server-side speed validation |
+| Entity lifecycle (AoI) | CW | 7 (5 CW, 2 KM) | Grid-based AoI works. No LOD system |
+| Combat & abilities | IM | 21 (14 IM, 7 KM) | 1,090-line AbilityManager. Single-target works. AoE/deploy missing |
+| Effects & buffs | IM | 13 (8 IM, 5 KM) | Framework works. 4 of 3,217 effects have scripts |
+| Stats | IM | 8 (4 IM, 3 KM, 1 NU) | Stat class works. Missing: derived formulas, level scaling |
+| Inventory & items | NT | 11 (1 CW, 8 NT, 2 KM) | 21K-line Inventory.py. Full bag/equip/move logic |
+| Missions | IM | 12 (1 CW, 8 IM, 3 KM) | 29K-line MissionManager. 20 mission scripts. 1 zone tested |
+| Loot | NT | 9 (5 NT, 1 IM, 3 KM) | Algorithm works (221 lines). Loot tables mostly empty |
+| Vendors | NT | 7 (6 NT, 1 KM) | Vendor.py complete (buy/sell/repair/recharge/buyback) |
 
-The emulator is playable. The following have been confirmed working in live gameplay in the Castle Cellblock zone:
+### NPC Systems — Partial/Server-Only
 
-- **World entry** — Player logs in, selects shard, enters the game world, and can move around
-- **Entity spawning** — World objects and NPCs spawn and are visible to the player
-- **NPC interaction** — Right-clicking on NPCs and world objects triggers interaction scripts
-- **Mission scripts** — Python mission scripts load and execute (FindAmbernol quest runs end-to-end)
-- **Mission step advancement** — Region enter, interact, kill, and use-item objectives all advance mission steps correctly
-- **Inventory** — Items are given to the player and appear in inventory
-- **Dialog display** — Dialog trees display correctly during NPC interactions
-- **Sequence playback** — In-game cinematic/animation sequences play
-- **Aggression/threat system** — NPCs become hostile and enter combat with the player
-- **Combat** — Player can take cover and fight enemies; combat resolves with damage and kills
-- **Client-hinted regions** — Entering named regions (e.g., Med Station) triggers step advances
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| NPC AI & behavior | IM | 26 (11 IM, 15 KM) | 2 of 12 AI states work (Spawning, Fighting). No patrol/wander/leash |
+| Spawn system | KM | 19 (18 KM, 1 NU) | 100% empty Python stubs. Rich .def properties reveal design |
 
-### Script Compilation Pipeline
+### Secondary Systems — Code Exists, Untested
 
-Mission and effect scripts have a two-stage pipeline:
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| XP & leveling | IM | 11 (6 IM, 5 KM) | giveExperience() works. Placeholder XP table. No stat scaling |
+| Crafting | NT | 9 (8 NT, 1 KM) | Crafter.py 575 lines, ~95% implemented. Untested |
+| Stargate travel | IM | 9 (6 IM, 3 KM) | Dial/timer/passage work. Missing multi-player sync, return trips |
+| Chat | NT | 10 (6 NT, 4 KM) | Chat.py 352 lines. Messaging works. 11 admin methods = stubs |
+| Trading | NT | 8 (7 NT, 1 KM) | Trade.py 244 lines. P2P trade slots. Untested |
 
-- **Source**: `.script` XML files in `data/scripts/` — visual node graphs created with the Atrea Script Editor (part of ServerEd)
-- **Output**: `.py` files in `python/cell/missions/` etc. — auto-generated Python code
-- **Compiler**: `tools/ServerEd/scriptcompiler.cpp` (part of the Qt ServerEd tool)
-- Python files are **not** regenerated on server start — they are static compiled output checked into the repo
+### Stub-Only Systems — No Real Implementation
+
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| Organizations/guilds | KM | 15 (all KM) | All 15+ RPC methods are `pass`/`trace()` |
+| Mail | KM | 13 (2 IM, 10 KM, 1 NU) | sendMailMessage = `pass`. Some read-only partial |
+| Black market | KM | 10 (all KM) | All 6 handler methods = `pass` |
+| Contact lists | KM | 8 (all KM) | All 6 methods = empty stubs |
+| Dueling | KM | 6 (all KM) | All methods = `pass`/`trace()` |
+| Pets | KM | 7 (2 IM, 5 KM) | Entity + basic init exists. No behavior |
+| Minigames | IM | 9 (4 IM, 5 KM) | 3 of 9 have logic, 6 are placeholders. None tested |
+| Groups | KM | 7 (all KM) | SGWPlayerGroupAuthority.py = empty shell |
+
+### Server Infrastructure — Mostly Missing
+
+| System | Status | Features | Notes |
+|--------|--------|----------|-------|
+| Session management | IM | 6 (3 IM, 3 KM) | Basic timeout exists. No reconnection grace, no concurrent limit |
+| Rate limiting | KM | 5 (1 IM, 4 KM) | No action throttling. Exploitable |
+| Anti-cheat | IM | 7 (3 IM, 4 KM) | Post-login challenge only. No runtime validation |
+| Economy | IM | 6 (3 IM, 3 KM) | Vendor prices static. No sink/faucet tracking |
+| World state | IM | 5 (1 CW, 2 IM, 2 KM) | Space scripts reset on restart |
+| Scheduler | KM | 4 (1 IM, 3 KM) | No timed events, no cron-like system |
+| Admin/GM tools | IM | 10 (4 IM, 6 KM) | 22 GM commands are stubs in SGWPlayer.py |
+| Metrics/telemetry | KM | 5 (1 IM, 4 KM) | Logging categories exist but no game metrics |
+
+## Content Coverage
+
+| Content Type | Total in DB | Tested/Verified | Notes |
+|--------------|-------------|-----------------|-------|
+| Zones | 91 world definitions | 1 (Castle Cellblock) | Other zones have space scripts but are untested |
+| Missions | 1,041 | ~5 in Castle Cellblock | Most have scripts that exist but are unverified |
+| Abilities | 1,887 | ~10-20 | Basic attacks tested, vast majority untested |
+| Items | 6,060 | ~20-30 | Quest items and basic gear tested |
+| Effects | 3,217 | 4 have scripts | Massive content gap — generator tool created |
+| NPCs | 153 templates | ~10 | Castle Cellblock NPCs tested |
+| Dialog trees | 5,406 | ~10 | Castle Cellblock dialogs tested |
+| Stargates | 29 | 0 end-to-end | DHD UI works, gate passage does not |
+| Crafting blueprints | 499 | 0 | System untested |
+| Loot tables | defined | mostly empty | Algorithm works, tables need population |
 
 ## Known Issues
 
-### FindAmbernol Quest — Missing Vial Outline
+### Combat Formula Gaps
 
-Mission 639 "Find Ambernol" works end-to-end, but the vial entity is missing its quest interaction outline (the visual glow that tells players "click this"). Entity template 18 has `interaction_type=0` — it lacks the `INT_MissionWorldObject` flag (bit 30, value 1073741824). The `FindAmbernol.py` script never calls `setInteractionType()` on the vial. Other Castle Cellblock scripts (Prisoner_329.py, ArmYourself.py, Castle_CellBlock.py space script) set interaction types dynamically, so the fix is to add `setInteractionType(entity.interactionType | 1073741824)` when the player reaches step 2145.
+Combat works at a basic level but many formulas are unvalidated:
+- No diminishing returns on stats
+- Armor/resistance calculations may not match original
+- Ability scaling with level is undefined
+- Area-of-effect abilities not implemented
+- Cover system mechanics are minimal
 
-### Client Cache Corruption (Resolved)
+### Mercury Protocol Gaps
 
-Using ASEditor to edit a `.umap` file invalidates the client's shader cache and cooked data in `Documents/My Games/Firesky/`. This causes the game client to crash on subsequent launches, even after reinstalling the game. Deleting that folder fixes the client.
+The transport layer works but lacks some BigWorld features:
+- No cumulative ACKs (individual only)
+- No piggyback packet support
+- Native little-endian byte ordering (works because both sides are x86)
+- Untested with multiple simultaneous clients
 
-## What's Left to Build
+### Effect Content Gap
 
-### Phase 1: World Entry — DONE
+Only 4 of 3,217 effects have Python scripts. The effect framework works but virtually no effect content exists. A generator tool (`tools/generate_effect_stubs.py`) has been created to bootstrap stubs.
 
-The player can log in, select a shard, enter the game world, move around, interact with NPCs and objects, run quests, and engage in combat. The core gameplay loop works.
+### Spawn System Empty
 
-### Phase 2: Expanding Content
+SGWSpawnRegion.py and SGWSpawnSet.py are 100% empty shells. Without the spawn system, NPCs only exist via space scripts (static placement). Dynamic population management is completely missing.
 
-- **More zones** — Only Castle Cellblock is tested; other zones need their space scripts verified
-- **Stargate travel** — 29 gates defined, travel logic coded, needs end-to-end testing with zone transitions
-- **Chat system** — Already mostly implemented, needs integration testing
-- **Crafting** — 499 blueprints, full logic coded, needs in-game testing
+## Critical Path for Playability
 
-### Phase 3: Social
+The minimum viable gameplay loop requires these systems in order:
 
-- **Organizations/Guilds** — Entity definitions exist (23KB), needs Python implementation
-- **Mail system** — Database table exists, needs handlers
-- **Auction house** — Entity definitions only
-- **Complete minigames** — 3 of 10 done, 7 need implementation
+1. **Spawn System** (KM) — Without it, no mobs exist in the world dynamically
+2. **NPC Navigation** (KM) — Without it, mobs stand still during combat
+3. **XP from Kills** (KM) — Primary progression driver
+4. **Stat Scaling** (KM) — Makes leveling meaningful
+5. **Loot Table Content** (KM) — Makes combat rewarding
+6. **Effect Scripts** (KM) — 4 of 3,217 effects have scripts
 
-### Phase 4: Polish
+Once these are addressed, the core combat→loot→level loop is functional.
 
-- **AI patrol/wander** — NPCs currently just stand in place
-- **Loot table population** — System works but tables are nearly empty
-- **Level/XP curves** — Need to be designed
-- **Stat scaling** — Base stats per level need definition
+## Roadmap
 
-## What We Have to Work With
+### Near-term: Validate What Exists
 
-### Reference Source Code
+- Test character creation end-to-end with a live client
+- Test chat, crafting, trading, vendor systems with a live client
+- Verify space scripts beyond Castle Cellblock
+- Validate combat formulas against original client behavior
 
-We have the source code for the server middleware:
+### Medium-term: Fill Critical Gaps
 
-| Component | What It Tells Us |
-|-----------|-----------------|
-| **BigWorld 1.9.1 + 2.0.1** | Exactly how the Mercury protocol works, how entities are created, how the server is supposed to behave |
+- Implement spawn system (SGWSpawnRegion/Set population management)
+- Implement NPC patrol, wander, leash, and flee AI states
+- Define real XP curves and stat scaling per level
+- Populate loot tables from game data
+- Generate effect script stubs and implement key effects
+- Complete AoE and deploy ability targeting modes
 
-### Game Data
+### Long-term: Build Missing Systems
 
-Everything the original game had in terms of content data:
-- 112,626 rows of game data across 65 database tables
-- 1,887 abilities, 6,060 items, 1,041 missions, 3,217 effects
-- 5,406 dialog trees, 499 crafting blueprints, 29 stargates
-- 153 NPC templates, 91 world definitions
-- 29,126 localized text strings
-- Complete entity definitions with 17 types and 20 interfaces
-- 164 Python game logic scripts
+- Organizations/guilds (15+ RPC methods)
+- Mail system (send, receive, attachments, COD)
+- Black market/auction house
+- Contact lists, dueling, pets
+- Complete minigame implementations
+- Server infrastructure (rate limiting, anti-cheat, session management)
 
-### Reverse Engineering Documentation
+## Related Documents
 
-16 technical documents covering:
-- Complete binary analysis of sgw.exe
-- All 421 network messages cataloged
-- Full login/authentication flow mapped
-- Mercury protocol analyzed
-- BigWorld version identified
-- All client tools documented
-- Source reconstruction feasibility assessed
-
-## Feasibility Rating: PROVEN
-
-The original feasibility assessment rated this project as "MODERATE-HIGH" based on the assumption that content data was largely missing. After analysis and live testing, this has been upgraded to **PROVEN** — the emulator is running and playable. A player can log in, enter the world, move around, interact with NPCs, run quests, fight enemies, and advance through mission objectives.
-
-The remaining work is:
-
-1. **Breadth** — Testing and fixing more zones, missions, and content beyond Castle Cellblock
-2. **Social systems** — Organizations, mail, auction house, more minigames
-3. **Polish** — AI behavior, loot tables, XP curves, stat scaling
-4. **Interaction type bugs** — Some entities missing visual quest indicators (see Known Issues)
-
-The hardest part (reverse engineering the protocol, understanding the architecture, and getting a client into the game world) is done. What remains is expanding content coverage and implementing social features.
+- [Gap Analysis](gap-analysis.md) — Per-feature status tracking (source of truth)
+- [Gameplay Dashboard](gameplay/README.md) — Per-system gameplay breakdowns
+- [NPC AI](gameplay/npc-ai.md) — AI state machine and threat system
+- [Spawn System](gameplay/spawn-system.md) — Spawn region/set architecture
+- [Loot System](gameplay/loot-system.md) — Loot generation algorithm
+- [Progression](gameplay/progression-system.md) — XP, leveling, training points
+- [Character Creation](gameplay/character-creation.md) — Character creation flow
+- [Server Systems](architecture/server-systems.md) — Server-only infrastructure

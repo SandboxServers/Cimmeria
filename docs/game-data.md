@@ -90,24 +90,28 @@ PAK Files (data/cache/)
 Game Client
 ```
 
-This pipeline is **fully working**. When a client connects, the server generates cooked data from the database and sends it. The 22 resource categories handled include abilities, items, effects, missions, dialogs, stargates, blueprints, world info, text strings, and more.
+This pipeline is **confirmed working in our server**. When a client connects, the server generates cooked data from the database and sends it. The 22 resource categories handled include abilities, items, effects, missions, dialogs, stargates, blueprints, world info, text strings, and more.
 
-## What's Complete
+## Data & Code Status
 
-| System | Data | Logic | Verdict |
-|--------|------|-------|---------|
-| Abilities | 1,887 defined | Full pipeline coded | Done |
-| Items | 6,060 defined | Full inventory system | Done |
-| Effects | 3,217 defined | Script system + Python | Done |
-| Missions | 1,041 defined | 17 mission scripts | Done |
-| Dialogs | 5,406 trees | Full interaction system | Done |
-| Crafting | 499 blueprints | Full crafting logic | Done |
-| Stargates | 29 gates | Travel system coded | Done |
-| Character creation | 23 definitions | Customization system | Done |
-| World/Zones | 91 worlds | 11 space scripts | Done |
-| Spawning | 153 NPC templates | Spawn management | Done |
-| Combat formulas | In Python code | QR system fully coded | Done |
-| Chat | Defined | Full implementation | Done |
+"Data" = exists in the database or entity definitions. "Code" = Python game logic exists. "Tested" = confirmed working in our emulator with a real client.
+
+| System | Data | Code | Server Status |
+|--------|------|------|---------------|
+| Combat formulas | In Python code | QR system fully coded | Tested in-game |
+| Spawning | 153 NPC templates | Spawn management coded | Tested in-game |
+| Missions | 1,041 defined | 17 mission scripts | Tested (Castle Cellblock) |
+| Dialogs | 5,406 trees | Full interaction system | Tested in-game |
+| Items | 6,060 defined | Inventory system coded | Tested in-game |
+| Abilities | 1,887 defined | Full pipeline coded | Not yet tested |
+| Crafting | 499 blueprints | Full crafting logic | Not yet tested |
+| Chat | 11 channels | Full implementation | Not yet tested |
+| Trading | Defined | Full transaction logic | Not yet tested |
+| Stargates | 29 gates | Dialing coded, travel stub | Not yet tested |
+| Effects | 3,217 defined | Script system + Python | Not yet tested |
+| World/Zones | 91 worlds | 11 space scripts | 1 zone tested |
+| Character creation | 23 definitions | Data loading only | Barely functional |
+| Minigames | Defined | 3 of 9 complete | Not yet tested |
 
 ## What's Missing or Incomplete
 
