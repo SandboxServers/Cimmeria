@@ -1,0 +1,51 @@
+--
+-- TOC entry 932 (class 1247 OID 61228)
+-- Name: EInteractionNotificationType; Type: TYPE; Schema: resources; Owner: -
+--
+
+CREATE TYPE "EInteractionNotificationType" AS ENUM (
+    'INT_Banker',
+    'INT_Auction',
+    'INT_Pvp',
+    'INT_Dhd',
+    'INT_RingNetwork',
+    'INT_Organization',
+    'INT_Trainer',
+    'INT_MinigameLivewire',
+    'INT_MinigameActivate',
+    'INT_MinigameAnalyze',
+    'INT_MinigameBypass',
+    'INT_MinigameConverse',
+    'INT_VendorArmor',
+    'INT_VendorWeapons',
+    'INT_VendorConsumables',
+    'INT_VendorGeneral',
+    'INT_VendorMission',
+    'INT_VendorCraftBio',
+    'INT_VendorCraftPower',
+    'INT_VendorCraftMaterials',
+    'INT_VendorCraftElectronics',
+    'INT_AStoryMissionPending',
+    'INT_AStoryMissionAvaliable',
+    'INT_AStoryMissionActive',
+    'INT_AStoryMissionTurnIn',
+    'INT_NonAStoryMissionPending',
+    'INT_NonAStoryMissionAvaliable',
+    'INT_NonAStoryMissionActive',
+    'INT_NonAStoryMissionTurnIn',
+    'INT_MissionWorldObject',
+    'INT_MissionWaypoint',
+    'INT_DrossPile',
+    'INT_MissionLoot',
+    'INT_NormalLoot',
+    'INT_Attackable',
+    'INT_Machine_Electronics',
+    'INT_Machine_Materials',
+    'INT_Machine_Power',
+    'INT_Machine_Biomedical',
+    'INT_Machine_ReverseEng',
+    'INT_Attackable_In_Good_Cover',
+    'INT_Attackable_In_Normal_Cover',
+    'INT_Attackable_In_Poor_Cover'
+);
+
