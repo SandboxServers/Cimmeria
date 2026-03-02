@@ -21,9 +21,18 @@ function Install-CimmeriaDependencies {
     .PARAMETER BuildArch
         Architecture to set up: "x64" (default), "x86", or "both".
 
+    .PARAMETER IncludeBigWorld
+        Also download and extract the BigWorld Engine 1.9.1 and 2.0.1 reference sources (~300 MB).
+        These are reference-only and not required to build Cimmeria. Opt-in because the downloads
+        are large and the repos are unpinned branch-head ZIPs.
+
     .EXAMPLE
         Install-CimmeriaDependencies
-        # Full download, extract, and patch
+        # Full download, extract, and patch (without BigWorld)
+
+    .EXAMPLE
+        Install-CimmeriaDependencies -IncludeBigWorld
+        # Also download BigWorld reference source
 
     .EXAMPLE
         Install-CimmeriaDependencies -SkipDownload
@@ -34,7 +43,8 @@ function Install-CimmeriaDependencies {
         [switch]$SkipDownload,
         [switch]$InstallVS,
         [ValidateSet("x64", "x86", "both")]
-        [string]$BuildArch = "x64"
+        [string]$BuildArch = "x64",
+        [switch]$IncludeBigWorld
     )
 
     $paths = Get-ProjectPaths
@@ -52,7 +62,11 @@ function Install-CimmeriaDependencies {
     Write-Host "=============================================" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "This will download, patch, and arrange all external dependencies."
-    Write-Host "Total download size: ~510 MB (vs 724 MB vendored)"
+    if ($IncludeBigWorld) {
+        Write-Host "Total download size: ~510 MB (vs 724 MB vendored)"
+    } else {
+        Write-Host "Total download size: ~210 MB (BigWorld reference source excluded; use -IncludeBigWorld to include)"
+    }
     Write-Host "Target directory: $ExternalDir"
     Write-Host ""
 
@@ -106,11 +120,15 @@ function Install-CimmeriaDependencies {
         Write-Host "`n[7/10] Recast/Detour" -ForegroundColor White
         Get-DownloadFile $Dependencies.Recast.Url (Join-Path $DownloadDir $Dependencies.Recast.FileName)
 
-        Write-Host "`n[8/10] BigWorld Engine $($Dependencies.BigWorld191.Version)" -ForegroundColor White
-        Get-DownloadFile $Dependencies.BigWorld191.Url (Join-Path $DownloadDir $Dependencies.BigWorld191.FileName)
+        if ($IncludeBigWorld) {
+            Write-Host "`n[8/10] BigWorld Engine $($Dependencies.BigWorld191.Version)" -ForegroundColor White
+            Get-DownloadFile $Dependencies.BigWorld191.Url (Join-Path $DownloadDir $Dependencies.BigWorld191.FileName)
 
-        Write-Host "`n[9/10] BigWorld Engine $($Dependencies.BigWorld201.Version)" -ForegroundColor White
-        Get-DownloadFile $Dependencies.BigWorld201.Url (Join-Path $DownloadDir $Dependencies.BigWorld201.FileName)
+            Write-Host "`n[9/10] BigWorld Engine $($Dependencies.BigWorld201.Version)" -ForegroundColor White
+            Get-DownloadFile $Dependencies.BigWorld201.Url (Join-Path $DownloadDir $Dependencies.BigWorld201.FileName)
+        } else {
+            Write-Host "`n[8-9/10] BigWorld Engine (skipped — use -IncludeBigWorld to download)" -ForegroundColor DarkGray
+        }
 
         Write-Host "`n[10/10] Qt $($Dependencies.Qt.Version)" -ForegroundColor White
         Get-DownloadFile $Dependencies.Qt.Url (Join-Path $DownloadDir $Dependencies.Qt.FileName)
@@ -345,36 +363,39 @@ function Install-CimmeriaDependencies {
         Write-Status "OpenSSL: already extracted" "DarkGray"
     }
 
-    # --- BigWorld 1.9.1 (reference source) ---
-    $bw191Dir = Join-Path $ExternalDir "bigworld_1.9.1"
-    if (-not (Test-Path (Join-Path $bw191Dir "src"))) {
-        Write-Status "BigWorld 1.9.1: extracting..." "White"
-        Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.BigWorld191.FileName) $ExternalDir
-        $extracted = Join-Path $ExternalDir "BigWorld-Engine-1.9.1-master"
-        if (Test-Path $extracted) {
-            Write-Status "BigWorld 1.9.1: renaming..." "DarkGray"
-            if (Test-Path $bw191Dir) { Remove-Item $bw191Dir -Recurse -Force }
-            Rename-Item $extracted $bw191Dir
+    # --- BigWorld 1.9.1 and 2.0.1 (reference source, opt-in) ---
+    if ($IncludeBigWorld) {
+        $bw191Dir = Join-Path $ExternalDir "bigworld_1.9.1"
+        if (-not (Test-Path (Join-Path $bw191Dir "src"))) {
+            Write-Status "BigWorld 1.9.1: extracting..." "White"
+            Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.BigWorld191.FileName) $ExternalDir
+            $extracted = Join-Path $ExternalDir "BigWorld-Engine-1.9.1-master"
+            if (Test-Path $extracted) {
+                Write-Status "BigWorld 1.9.1: renaming..." "DarkGray"
+                if (Test-Path $bw191Dir) { Remove-Item $bw191Dir -Recurse -Force }
+                Rename-Item $extracted $bw191Dir
+            }
+            Write-Status "BigWorld 1.9.1: done" "Green"
+        } else {
+            Write-Status "BigWorld 1.9.1: already extracted" "DarkGray"
         }
-        Write-Status "BigWorld 1.9.1: done" "Green"
-    } else {
-        Write-Status "BigWorld 1.9.1: already extracted" "DarkGray"
-    }
 
-    # --- BigWorld 2.0.1 (reference source) ---
-    $bw201Dir = Join-Path $ExternalDir "bigworld_2.0.1"
-    if (-not (Test-Path (Join-Path $bw201Dir "src"))) {
-        Write-Status "BigWorld 2.0.1: extracting..." "White"
-        Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.BigWorld201.FileName) $ExternalDir
-        $extracted = Join-Path $ExternalDir "BigWorld-Engine-2.0.1-master"
-        if (Test-Path $extracted) {
-            Write-Status "BigWorld 2.0.1: renaming..." "DarkGray"
-            if (Test-Path $bw201Dir) { Remove-Item $bw201Dir -Recurse -Force }
-            Rename-Item $extracted $bw201Dir
+        $bw201Dir = Join-Path $ExternalDir "bigworld_2.0.1"
+        if (-not (Test-Path (Join-Path $bw201Dir "src"))) {
+            Write-Status "BigWorld 2.0.1: extracting..." "White"
+            Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.BigWorld201.FileName) $ExternalDir
+            $extracted = Join-Path $ExternalDir "BigWorld-Engine-2.0.1-master"
+            if (Test-Path $extracted) {
+                Write-Status "BigWorld 2.0.1: renaming..." "DarkGray"
+                if (Test-Path $bw201Dir) { Remove-Item $bw201Dir -Recurse -Force }
+                Rename-Item $extracted $bw201Dir
+            }
+            Write-Status "BigWorld 2.0.1: done" "Green"
+        } else {
+            Write-Status "BigWorld 2.0.1: already extracted" "DarkGray"
         }
-        Write-Status "BigWorld 2.0.1: done" "Green"
     } else {
-        Write-Status "BigWorld 2.0.1: already extracted" "DarkGray"
+        Write-Status "BigWorld 1.9.1 / 2.0.1: skipped (use -IncludeBigWorld to download)" "DarkGray"
     }
 
     # --- Qt (prebuilt dynamic libraries for ServerEd) ---
