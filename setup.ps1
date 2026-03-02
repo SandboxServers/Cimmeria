@@ -18,7 +18,9 @@ param(
     [switch]$SkipBuild,
     [switch]$InstallVS,
     [switch]$NoLaunch,
-    [ValidateSet("Debug","Release")][string]$Configuration = "Debug"
+    [ValidateSet("Debug","Release")][string]$Configuration = "Debug",
+    [switch]$IncludeBigWorld,
+    [switch]$ForceDatabase
 )
 
 Import-Module (Join-Path $PSScriptRoot "bootstrap/CimmeriaBootstrap") -Force

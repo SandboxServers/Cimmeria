@@ -18,7 +18,9 @@ param(
     [switch]$SkipBuild,
     [switch]$InstallVS,
     [ValidateSet("x64", "x86", "both")]
-    [string]$BuildArch = "x64"
+    [string]$BuildArch = "x64",
+    [switch]$IncludeBigWorld,
+    [switch]$ForceDatabase
 )
 
 Write-Host "NOTE: setup-dependencies.ps1 is now a compatibility shim." -ForegroundColor Yellow
@@ -30,6 +32,8 @@ $setupArgs = @{}
 if ($SkipDownload) { $setupArgs['SkipDownload'] = $true }
 if ($SkipBuild) { $setupArgs['SkipBuild'] = $true }
 if ($InstallVS) { $setupArgs['InstallVS'] = $true }
+if ($IncludeBigWorld) { $setupArgs['IncludeBigWorld'] = $true }
+if ($ForceDatabase) { $setupArgs['ForceDatabase'] = $true }
 $setupArgs['NoLaunch'] = $true
 
 & (Join-Path $PSScriptRoot "setup.ps1") @setupArgs
