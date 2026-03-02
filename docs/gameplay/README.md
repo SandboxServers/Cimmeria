@@ -6,26 +6,34 @@ Overview of every game system in Stargate Worlds, with implementation status, ke
 
 ## System Status Overview
 
-| System | Server % | Key Interface | Key Python Files | Priority |
-|--------|----------|---------------|------------------|----------|
-| [Combat](#combat) | 70% | SGWCombatant | AbilityManager.py, EffectManager.py | HIGH |
-| [Abilities](#abilities) | 60% | SGWAbilityManager | AbilityManager.py | HIGH |
-| [Effects](#effects) | 60% | SGWCombatant | EffectManager.py | HIGH |
-| [Stats](#stats) | 50% | SGWCombatant | Stat.py | HIGH |
-| [Inventory](#inventory) | 80% | SGWInventoryManager | InventoryManager.py | HIGH |
-| [Missions](#missions) | 40% | Missionary | MissionManager.py | HIGH |
-| [Gate Travel](#gate-travel) | 20% | GateTravel | GateTravel.py | MEDIUM |
-| [Chat](#chat) | 95% | Communicator | SGWChannelManager.py | LOW (done) |
-| [Crafting](#crafting) | 0% | (SGWPlayer direct) | — | MEDIUM |
-| [Organizations](#organizations) | 5% | OrganizationMember | OrganizationManager.py | MEDIUM |
-| [Minigames](#minigames) | 0% | MinigamePlayer | MinigameManager.py | LOW |
-| [Mail](#mail) | 0% | SGWMailManager | MailManager.py | MEDIUM |
-| [Trading](#trading) | 0% | SGWInventoryManager | — | LOW |
-| [Black Market](#black-market) | 0% | SGWBlackMarketManager | SGWBlackMarket.py | LOW |
-| [Pets](#pets) | 0% | (SGWPet entity) | SGWPet.py | LOW |
-| [Dueling](#dueling) | 0% | (SGWPlayer direct) | — | LOW |
-| [Groups](#groups) | 10% | GroupAuthority | — | MEDIUM |
-| [Contact Lists](#contact-lists) | 0% | ContactListManager | — | LOW |
+Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemented (known gaps), **KM** = Known/Missing, **NU** = Needed/Unknown. See [gap-analysis.md](../gap-analysis.md) for per-feature detail.
+
+| System | Status | Key Interface | Key Python Files | Priority |
+|--------|--------|---------------|------------------|----------|
+| [Combat](#combat) | IM | SGWCombatant | AbilityManager.py, EffectManager.py | HIGH |
+| [Abilities](#abilities) | IM | SGWAbilityManager | AbilityManager.py | HIGH |
+| [Effects](#effects) | IM | SGWCombatant | EffectManager.py | HIGH |
+| [Stats](#stats) | IM | SGWCombatant | Stat.py | HIGH |
+| [Inventory](#inventory) | NT | SGWInventoryManager | Inventory.py | HIGH |
+| [Missions](#missions) | IM | Missionary | MissionManager.py | HIGH |
+| [NPC AI](#npc-ai) | IM | SGWMob (direct) | SGWMob.py | HIGH |
+| [Spawn System](#spawn-system) | KM | SGWSpawnRegion | SGWSpawnRegion.py | HIGH |
+| [Loot](#loot) | NT | Lootable | Lootable.py | HIGH |
+| [XP & Leveling](#xp--leveling) | IM | SGWCombatant | SGWPlayer.py | HIGH |
+| [Character Creation](#character-creation) | NT | Account | Account.py | MEDIUM |
+| [Gate Travel](#gate-travel) | IM | GateTravel | GateTravel.py | MEDIUM |
+| [Chat](#chat) | NT | Communicator | SGWChannelManager.py | LOW (done) |
+| [Crafting](#crafting) | NT | (SGWPlayer direct) | Crafter.py | MEDIUM |
+| [Vendors](#vendors) | NT | SGWInventoryManager | Vendor.py | MEDIUM |
+| [Organizations](#organizations) | KM | OrganizationMember | OrganizationManager.py | MEDIUM |
+| [Minigames](#minigames) | IM | MinigamePlayer | MinigameManager.py | LOW |
+| [Mail](#mail) | KM | SGWMailManager | MailManager.py | MEDIUM |
+| [Trading](#trading) | NT | SGWInventoryManager | Trade.py | LOW |
+| [Black Market](#black-market) | KM | SGWBlackMarketManager | SGWBlackMarket.py | LOW |
+| [Pets](#pets) | KM | (SGWPet entity) | SGWPet.py | LOW |
+| [Dueling](#dueling) | KM | (SGWPlayer direct) | — | LOW |
+| [Groups](#groups) | KM | GroupAuthority | — | MEDIUM |
+| [Contact Lists](#contact-lists) | KM | ContactListManager | — | LOW |
 
 ---
 
@@ -138,7 +146,7 @@ Overview of every game system in Stargate Worlds, with implementation status, ke
 
 ## Chat
 
-**Status**: 95% — Fully functional: channels, tells, emotes, AFK/DND, ignore, mute, kick, ban. Only missing: some edge cases.
+**Status**: NT — Chat.py (352 lines) implements channels, tells, emotes, AFK/DND. 11 admin methods are stubs. Not tested with live client.
 
 **Interface**: `Communicator.def` — 5 properties, 11 base methods, 7 client methods, 1 cell method
 **Python**: `python/base/SGWChannelManager.py`
@@ -148,7 +156,7 @@ Overview of every game system in Stargate Worlds, with implementation status, ke
 
 ## Crafting
 
-**Status**: 0% — Not implemented.
+**Status**: NT — Crafter.py (575 lines) implements disciplines, crafting, research, reverse engineering, alloys. Untested with live client.
 
 **Key Events (NetOut)**: `Craft`, `Research`, `ReverseEngineer`, `Alloy`, `RespecCraft`, `SpendAppliedSciencePoint`
 **Key Events (NetIn)**: `onUpdateDiscipline`, `onUpdateCraftingOptions`, `onUpdateKnownCrafts`, `onCraftingRespecPrompt`, `onDisciplineRespec`
@@ -197,7 +205,7 @@ Overview of every game system in Stargate Worlds, with implementation status, ke
 
 ## Trading
 
-**Status**: 0% — Not implemented.
+**Status**: NT — Trade.py (244 lines) implements trade proposals, slot management, lock/confirm flow. Untested with live client.
 
 **Features**: Player-to-player trade windows, item/currency proposals, lock and confirm
 **Events**: `TradeProposal`, `TradeLockState`, `TradeRequestCancel` (NetOut), `TradeState`, `TradeResults` (NetIn)
@@ -260,26 +268,81 @@ Overview of every game system in Stargate Worlds, with implementation status, ke
 
 ---
 
+## NPC AI
+
+**Status**: IM — SGWMob.py (397 lines) implements combat AI (Fighting state), threat management, ability selection. Missing: 10 of 12 AI states (Patrol, Wander, Leash, Investigate, Flee, Follow, Summon, Idle, Inactive, Dead).
+
+**Key concepts**: AI state machine (12 states), threat table, aggro radius, ability selection, aggression system (3 levels)
+**Python**: `python/cell/SGWMob.py` (397 lines)
+**RE doc**: [npc-ai.md](npc-ai.md)
+
+---
+
+## Spawn System
+
+**Status**: KM — SGWSpawnRegion.py and SGWSpawnSet.py are empty shells. All 26+22 .def properties exist but no Python implementation.
+
+**Key concepts**: Spawn regions (area-based), spawn sets (NPC templates), weighted spawn tables, population caps, respawn timers
+**Python**: `python/base/SGWSpawnRegion.py`, `python/base/SGWSpawnSet.py` (both empty)
+**RE doc**: [spawn-system.md](spawn-system.md)
+
+---
+
+## Loot
+
+**Status**: NT — Lootable.py (221 lines) implements loot generation algorithm. Code works but loot tables are nearly empty.
+
+**Key concepts**: Independent probability rolls per entry, eligibility checks, loot interaction handler
+**Python**: `python/cell/Lootable.py` (221 lines)
+**RE doc**: [loot-system.md](loot-system.md)
+
+---
+
+## XP & Leveling
+
+**Status**: IM — giveExperience() works, placeholder LEVEL_EXP table. Missing: real XP curve, stat scaling on level-up, training point awards.
+
+**Key concepts**: XP thresholds, level cap (20), training points, applied science points, archetype stat growth
+**Python**: `python/cell/SGWPlayer.py`
+**RE doc**: [progression-system.md](progression-system.md)
+
+---
+
+## Character Creation
+
+**Status**: NT — Account.py (~300 lines) has complete creation flow: validation, DB insert, 8 archetypes, starting equipment/abilities.
+
+**Key concepts**: Archetype selection, visual choices, name validation, starting loadout, character deletion
+**Python**: `python/base/Account.py`
+**RE doc**: [character-creation.md](character-creation.md)
+
+---
+
 ## Priority Matrix
 
 ### Must Have (blocks playability)
 1. **Combat completion** — AoE targeting, channeled abilities, threat/aggro
 2. **Mission completion** — Objective tracking, reward selection, full mission flow
 3. **Stat system** — Derived stats, regen, level scaling
-4. **XP and leveling** — XP curves, level-up effects
-5. **Enemy AI** — Patrol paths, aggro radius, leashing, ability usage
+4. **XP & leveling** — Real XP curve, stat scaling on level-up, training point awards (see [progression-system.md](progression-system.md))
+5. **NPC AI completion** — 10 of 12 AI states unimplemented (Patrol, Wander, Leash, Investigate, Flee, Follow, Summon, Idle, Inactive, Dead)
+6. **Spawn system** — NPC population management (currently 100% empty)
 
 ### Should Have (core MMO features)
-6. **Gate travel** — Zone transitions via stargates
-7. **Organizations** — Guild creation, roster, ranks
-8. **Mail** — Basic send/receive
-9. **Inventory completion** — Repair, recharge, buyback
+7. **Gate travel** — Zone transitions via stargates
+8. **Organizations** — Guild creation, roster, ranks
+9. **Mail** — Basic send/receive
+10. **Inventory completion** — Repair, recharge, buyback
 
 ### Nice to Have (polish)
-10. **Crafting** — Disciplines, recipes, alloys
-11. **Black Market** — Auction house
-12. **Minigames** — At least 1-2 functional
-13. **Trading** — Player trade windows
-14. **Pets** — Pet summoning and control
-15. **Dueling** — PvP duels
-16. **Contact lists** — Friends/ignore
+11. **Crafting** — Disciplines, recipes, alloys
+12. **Black Market** — Auction house
+13. **Minigames** — At least 1-2 functional
+14. **Trading** — Player trade windows
+15. **Pets** — Pet summoning and control
+16. **Dueling** — PvP duels
+17. **Contact lists** — Friends/ignore
+
+---
+
+> For per-feature status tracking with dependency chains and implementation confidence levels, see the [Gap Analysis](../gap-analysis.md).

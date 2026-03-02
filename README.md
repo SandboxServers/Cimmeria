@@ -6,34 +6,38 @@ Cimmeria reimplements the server infrastructure — authentication, world simula
 
 ### Current State
 
-The **login flow is solid**: authentication, shard selection, session keys, and encrypted Mercury transport all work reliably. A player can log in and enter the game world.
+The server emulator tracks **369 features** across 30 gameplay systems and 8 infrastructure systems. See the [Gap Analysis](docs/gap-analysis.md) for per-feature detail.
 
-**Beyond login, things work but are incomplete.** Many game systems have code — including 164 original Python scripts from the developers — but most haven't been rigorously tested, and only one zone (Castle Cellblock) has been verified end-to-end.
+**Code exists for 47.4%** of tracked features (175 of 369). **52.6% remain missing** (194 features).
 
-**Solid** (tested, reliable):
+**Confirmed Working** (CW) — tested end-to-end with the game client:
 - Full login/auth flow (HTTP → shard select → Mercury connect)
 - Mercury protocol transport (reliable UDP, AES-256 encryption)
-- Game data pipeline (22 resource categories, 274+ packets)
+- Game data pipeline (22 resource categories, 112,626 DB rows)
+- World entry, entity spawning, grid-based Area of Interest
 - Build & setup (`pwsh setup-dependencies.ps1` — clone to running in one command)
 
-**Working** (functional but incomplete or lightly tested):
-- World entry, movement, entity spawning
-- NPC interactions and dialog trees (Castle Cellblock only)
-- Mission scripting (FindAmbernol quest runs end-to-end)
-- Basic combat (abilities fire, damage resolves, death/respawn)
-- Inventory (items appear, bags work)
+**Needs Test** (NT) — code exists but hasn't been verified with a live client:
+- Character creation (Account.py ~300 lines, 8 archetypes, full flow)
+- Inventory (21K-line Inventory.py, bag/equip/move)
+- Loot system (algorithm works, tables mostly empty)
+- Vendors (complete buy/sell/repair/recharge/buyback)
+- Chat, crafting (575 lines), trading (244 lines)
 
-**Partial or untested** (code exists but hasn't been verified with a live client):
-- Chat, crafting, trading, abilities beyond basic attacks
-- Stargate travel (~20% — DHD UI works, zone transitions don't)
-- Character creation (data exists, server handling minimal)
+**Implemented** (IM) — code written with known gaps:
+- Combat & abilities (1,090-line AbilityManager, single-target only)
+- Effects framework (4 of 3,217 effects have scripts)
+- Missions (29K-line MissionManager, 1 zone tested)
+- NPC AI (2 of 12 states: Spawning, Fighting)
+- Stats, XP/leveling, stargate travel, movement
 
-**Stub or not started:**
-- Organizations/guilds, mail, auction house, contact lists, dueling, pets
-- Enemy AI (no patrol/wander), XP curves, stat scaling, loot tables
-- Minigames (framework only)
+**Known/Missing** (KM) — needs implementation:
+- Spawn system (100% empty stubs), NPC navigation
+- Organizations, mail, auction house, contact lists
+- Dueling, pets, groups
+- Server infrastructure (rate limiting, anti-cheat, session management)
 
-See [docs/project-status.md](docs/project-status.md) for a detailed breakdown and [docs/](docs/readme.md) for full documentation.
+See [docs/project-status.md](docs/project-status.md) for detailed breakdown and [docs/](docs/readme.md) for full documentation.
 
 ## Architecture
 
@@ -170,15 +174,15 @@ Platform: `x64` (primary), `Win32` (legacy)
 
 ## Documentation
 
-The [docs/](docs/readme.md) directory contains **89 documents** covering every aspect of the project:
+The [docs/](docs/readme.md) directory contains **96 documents** covering every aspect of the project:
 
 | Category | Docs | Covers |
 |----------|------|--------|
-| [Top-level](docs/readme.md) | 9 | Technology overview, game systems survey, connection flow, project status |
+| [Top-level](docs/readme.md) | 10 | Technology overview, game systems survey, connection flow, project status, gap analysis |
 | [protocol/](docs/protocol/) | 5 | Mercury wire format, entity property sync, login handshake, position updates |
-| [gameplay/](docs/gameplay/) | 18 | Per-system breakdowns: combat, abilities, inventory, missions, crafting, etc. |
+| [gameplay/](docs/gameplay/) | 23 | Per-system breakdowns: combat, abilities, inventory, missions, NPC AI, spawning, loot, progression, character creation, crafting, etc. |
 | [engine/](docs/engine/) | 8 | BigWorld internals, CME framework, cooked data, space management, LOD, checkpointing |
-| [architecture/](docs/architecture/) | 1 | Cimmeria service topology, inter-service protocol, configuration reference |
+| [architecture/](docs/architecture/) | 2 | Cimmeria service topology, server-only infrastructure systems |
 | [analysis/](docs/analysis/) | 2 | Event-net mapping (420 messages), BigWorld source cross-reference index |
 | [reverse-engineering/](docs/reverse-engineering/) | 21 | Ghidra annotation scripts, RE plan/status, 17 per-system wire format findings |
 | [guides/](docs/guides/) | 3 | Evidence standards, reading decompiled code, entity definition guide |

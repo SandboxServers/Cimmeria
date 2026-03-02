@@ -20,7 +20,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 89 |
+| Documentation files | 96 |
 
 
 ## Document Map
@@ -38,6 +38,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
+| [Gap Analysis](gap-analysis.md) | Comprehensive system-by-system gap analysis with per-feature status tracking |
 
 ---
 
@@ -59,7 +60,7 @@ See also: [technical/mercury-protocol.md](technical/mercury-protocol.md), [techn
 
 ### `gameplay/` -- Game System Documentation
 
-Per-system breakdowns of game mechanics, derived from RE analysis, entity definitions, and Python scripts.
+Per-system breakdowns of game mechanics, derived from RE analysis, entity definitions, and Python scripts. 23 per-system documents covering combat, abilities, effects, stats, inventory, crafting, missions, travel, minigames, social systems, NPC AI, spawning, loot, progression, and character creation.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -82,6 +83,11 @@ Per-system breakdowns of game mechanics, derived from RE analysis, entity defini
 | [black-market.md](gameplay/black-market.md) | Auction house, listings, bidding, buyout | Complete |
 | [pet-system.md](gameplay/pet-system.md) | Pet summoning, commands, abilities | Complete |
 | [duel-system.md](gameplay/duel-system.md) | PvP duel requests, rules, resolution | Complete |
+| [npc-ai.md](gameplay/npc-ai.md) | NPC AI state machine, threat system, aggro, ability selection | Complete |
+| [spawn-system.md](gameplay/spawn-system.md) | Spawn regions, spawn sets, population management, respawn timers | Complete |
+| [loot-system.md](gameplay/loot-system.md) | Loot generation algorithm, loot tables, eligibility rules | Complete |
+| [progression-system.md](gameplay/progression-system.md) | XP curves, leveling, stat growth, training points, applied science | Complete |
+| [character-creation.md](gameplay/character-creation.md) | Character creation flow, archetypes, visual choices, starting loadout | Complete |
 
 See also: [game-systems.md](game-systems.md), [technical/game-systems.md](technical/game-systems.md), [technical/game-data-analysis.md](technical/game-data-analysis.md)
 
@@ -108,11 +114,12 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured.
+How the Cimmeria emulator itself is structured. 2 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [service-architecture.md](architecture/service-architecture.md) | Auth, Base, Cell service topology, inter-service protocol, developer mode, console commands | Complete |
+| [server-systems.md](architecture/server-systems.md) | Server-only infrastructure: session management, rate limiting, anti-cheat, economy, world state, scheduling, admin tools, metrics | Complete |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md)
 
