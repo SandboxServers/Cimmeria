@@ -8,21 +8,33 @@ function Initialize-CimmeriaDatabase {
         1. Initialize a data directory in server/pgdata/ (if it doesn't exist)
         2. Start PostgreSQL on port 5433 (avoids conflicts with system PG)
         3. Create the "w-testing" role and "sgw" database
-        4. Load db/resources.sql (resource types/tables) then db/sgw.sql (game schema + test data)
+        4. Load db/database.sql (resources schema + public schema + test data)
         5. Verify key tables exist
 
-        The test account (test/test) is created by sgw.sql. Port 5433 and the
-        w-testing credentials match the config files checked into the repo.
+        The test account (test/test) is created by the seed data in database.sql.
+        Port 5433 and the w-testing credentials match the config files checked into
+        the repo.
+
+        Use -Force to drop and recreate the sgw database before loading, giving a
+        completely clean slate without touching the PostgreSQL cluster itself.
 
     .PARAMETER Port
         PostgreSQL port. Default 5433.
 
+    .PARAMETER Force
+        Drop and recreate the sgw database before loading schemas.
+        Bypasses the idempotency check — always performs a full clean load.
+
     .EXAMPLE
         Initialize-CimmeriaDatabase
+
+    .EXAMPLE
+        Initialize-CimmeriaDatabase -Force
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
-        [int]$Port = 5433
+        [int]$Port = 5433,
+        [switch]$Force
     )
 
     $paths = Get-ProjectPaths
@@ -120,40 +132,40 @@ function Initialize-CimmeriaDatabase {
     }
 
     # Step 4: Load schemas (strict order, fail fast)
-    $resourcesSql = Join-Path $paths.DbDir "resources.sql"
-    $sgwSql = Join-Path $paths.DbDir "sgw.sql"
+    $databaseSql = Join-Path $paths.DbDir "database.sql"
 
-    # Check if schemas are already loaded by testing for a key table
-    Write-Status "Checking for existing schemas..." "DarkGray"
-    $tableCheck = & $psqlExe -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='account'" 2>$null
-    if ($tableCheck -match '1') {
-        Write-Status "Schemas already loaded (account table exists)." "DarkGray"
+    # -Force: drop and recreate the database for a guaranteed clean load
+    if ($Force) {
+        if ($PSCmdlet.ShouldProcess("database 'sgw'", "Drop and recreate")) {
+            Write-Status "Force flag set — dropping and recreating database 'sgw'..." "Yellow"
+            & $psqlExe -p $Port -U postgres -c "DROP DATABASE IF EXISTS sgw" | Out-Null
+            & $psqlExe -p $Port -U postgres -c "CREATE DATABASE sgw OWNER `"w-testing`"" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to recreate database 'sgw' under -Force."
+            }
+            Write-Status "Database 'sgw' recreated." "Green"
+        }
+        # Bypass idempotency check — always load
+        $tableCheck = ""
     } else {
-        Write-Status "Loading resources.sql (~126K lines, this may take a minute)..." "White"
-        $lineCount = 0
-        & $psqlExe -p $Port -U "w-testing" -d sgw -v ON_ERROR_STOP=1 -f $resourcesSql 2>&1 | ForEach-Object {
-            $lineCount++
-            if ($_ -match 'ERROR|FATAL') {
-                Write-Status "  $_" "Red"
-            } elseif ($lineCount % 10000 -eq 0) {
-                Write-Status "  $lineCount lines processed..." "DarkGray"
-            }
-        }
-        if ($LASTEXITCODE -ne 0) {
-            throw "resources.sql failed (exit code $LASTEXITCODE). Aborting - a partial schema is worse than none."
-        }
-        Write-Status "resources.sql loaded ($lineCount statements)." "Green"
+        # Check if schemas are already loaded by testing for a key table
+        Write-Status "Checking for existing schemas..." "DarkGray"
+        $tableCheck = & $psqlExe -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='account'" 2>$null
+    }
 
-        Write-Status "Loading sgw.sql (game schema + test data)..." "White"
-        & $psqlExe -p $Port -U "w-testing" -d sgw -v ON_ERROR_STOP=1 -f $sgwSql 2>&1 | ForEach-Object {
+    if ($tableCheck -match '1') {
+        Write-Status "Schemas already loaded (account table exists). Use -Force to reload." "DarkGray"
+    } else {
+        Write-Status "Loading database.sql (resources + public schemas, ~126K statements)..." "White"
+        & $psqlExe -p $Port -U "w-testing" -d sgw -v ON_ERROR_STOP=1 -f $databaseSql 2>&1 | ForEach-Object {
             if ($_ -match 'ERROR|FATAL') {
                 Write-Status "  $_" "Red"
             }
         }
         if ($LASTEXITCODE -ne 0) {
-            throw "sgw.sql failed (exit code $LASTEXITCODE)."
+            throw "database.sql failed (exit code $LASTEXITCODE). Aborting — a partial schema is worse than none."
         }
-        Write-Status "sgw.sql loaded." "Green"
+        Write-Status "database.sql loaded." "Green"
     }
 
     # Step 5: Verify key tables
@@ -179,4 +191,5 @@ function Initialize-CimmeriaDatabase {
     Write-Status "  Database:   sgw" "DarkGray"
     Write-Status "  Role:       w-testing" "DarkGray"
     Write-Status "  Test login: test / test (SHA1 hashed)" "DarkGray"
+    Write-Status "  Tip: use -Force to drop and reload from scratch." "DarkGray"
 }
