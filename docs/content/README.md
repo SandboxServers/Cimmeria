@@ -72,6 +72,7 @@ Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 M
 | [association-map.md](association-map.md) | ~1,060 | The crazy wall: entity-to-everything map, mission connections, broken FKs, orphaned content, reconstruction web diagrams |
 | [archetype-content-map.md](archetype-content-map.md) | ~505 | Per-archetype content availability: stats, ability trees, starting equipment, faction matrix |
 | [reconstruction-map.md](reconstruction-map.md) | ~715 | What can be rebuilt from existing data vs holes vs never-built, with priority recommendations |
+| [external-data-analysis.md](external-data-analysis.md) | ~480 | Analysis of 11 community-assembled spreadsheets (missions, dialogue, progression, locations, spawns, archetypes) cross-referenced against server DB |
 
 ## How to Read These Documents
 
