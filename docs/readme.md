@@ -20,7 +20,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 96 |
+| Documentation files | 103 |
 
 
 ## Document Map
@@ -39,6 +39,24 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
 | [Gap Analysis](gap-analysis.md) | Comprehensive system-by-system gap analysis with per-feature status tracking |
+
+---
+
+### `content/` -- Game Content Data Audit
+
+Content-level audit of all game data: zone completeness, mission chains, cross-references, orphaned content, and reconstruction potential. 6 documents covering 1,040 missions, 6,059 items, 3,216 effects, 153 NPCs, and 24 zones.
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [README.md](content/README.md) | **HUB** -- Playability matrix, content summary, zone progression, reconstruction priority | Complete |
+| [content-inventory.md](content/content-inventory.md) | Statistical inventory of all content types with completeness metrics | Complete |
+| [zone-audit.md](content/zone-audit.md) | Per-zone completeness scorecard (2 PLAYABLE, 2 PARTIAL, 5 transport-only, 14 SHELL, 1 DATA-ONLY) | Complete |
+| [mission-chains.md](content/mission-chains.md) | All 1,040 missions: scripted chains, unscripted analysis, inferred reconstruction | Complete |
+| [association-map.md](content/association-map.md) | The crazy wall: cross-references, broken FKs, orphaned content, reconstruction web | Complete |
+| [archetype-content-map.md](content/archetype-content-map.md) | Per-archetype content availability (2 implemented, 6 placeholder) | Complete |
+| [reconstruction-map.md](content/reconstruction-map.md) | What can be rebuilt vs holes vs never-built, priority recommendations | Complete |
+
+See also: [gap-analysis.md](gap-analysis.md), [game-data.md](game-data.md)
 
 ---
 

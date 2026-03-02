@@ -346,3 +346,5 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 ---
 
 > For per-feature status tracking with dependency chains and implementation confidence levels, see the [Gap Analysis](../gap-analysis.md).
+>
+> For content-level data audit (what content populates each system, orphan rates, cross-reference integrity), see the [Content Data Audit](../content/README.md).
