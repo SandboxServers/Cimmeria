@@ -650,7 +650,8 @@ fn generate_entity_struct(out: &mut String, def: &EntityDef) {
     out.push_str("        Self {\n");
     for prop in &def.properties {
         let ident = sanitize_ident(&prop.name);
-        let default = default_for_rust_type(&bw_type_to_rust(&prop.bw_type));
+        let rust_type = bw_type_to_rust(&prop.bw_type);
+        let default = default_for_rust_type(&rust_type);
         out.push_str(&format!("            {}: {},\n", ident, default));
     }
     if def.properties.is_empty() {

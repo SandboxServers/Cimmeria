@@ -80,7 +80,12 @@ impl MercuryEncryption {
         let encryptor = Aes256CbcEnc::new_from_slices(&self.aes_key, &self.iv)
             .map_err(|e| CimmeriaError::Encryption(format!("AES init failed: {e}")))?;
 
-        let ciphertext = encryptor.encrypt_padded_vec_mut::<cipher::block_padding::NoPadding>(&padded);
+        let mut buf = padded;
+        let n = buf.len();
+        encryptor
+            .encrypt_padded_mut::<cipher::block_padding::NoPadding>(&mut buf, n)
+            .map_err(|e| CimmeriaError::Encryption(format!("AES encrypt failed: {e}")))?;
+        let ciphertext = buf;
 
         // Compute HMAC-MD5 over the ciphertext (encrypt-then-MAC).
         let mut mac = HmacMd5::new_from_slice(&self.hmac_key)

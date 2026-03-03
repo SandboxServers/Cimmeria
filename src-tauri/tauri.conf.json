@@ -1,5 +1,4 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicegui/nicegui/main/public/tauri-v2-schema.json",
   "productName": "Cimmeria",
   "version": "0.1.0",
   "identifier": "com.cimmeria.server",
@@ -10,7 +9,6 @@
     "beforeBuildCommand": "cd ../frontend && npm run build"
   },
   "app": {
-    "title": "Cimmeria Server",
     "windows": [
       {
         "title": "Cimmeria Admin",
