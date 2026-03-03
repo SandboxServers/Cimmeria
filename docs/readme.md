@@ -20,7 +20,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 107 |
+| Documentation files | 110 |
 
 
 ## Document Map
@@ -44,7 +44,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 
 ### `content/` -- Game Content Data Audit
 
-Content-level audit of all game data: zone completeness, mission chains, cross-references, orphaned content, and reconstruction potential. 6 documents covering 1,040 missions, 6,059 items, 3,216 effects, 153 NPCs, and 24 zones.
+Content-level audit of all game data: zone completeness, mission chains, cross-references, orphaned content, and reconstruction potential. 7 documents covering 1,040 missions, 6,059 items, 3,216 effects, 153 NPCs, and 24 zones.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -55,6 +55,7 @@ Content-level audit of all game data: zone completeness, mission chains, cross-r
 | [association-map.md](content/association-map.md) | The crazy wall: cross-references, broken FKs, orphaned content, reconstruction web | Complete |
 | [archetype-content-map.md](content/archetype-content-map.md) | Per-archetype content availability (2 implemented, 6 placeholder) | Complete |
 | [reconstruction-map.md](content/reconstruction-map.md) | What can be rebuilt vs holes vs never-built, priority recommendations | Complete |
+| [external-data-analysis.md](content/external-data-analysis.md) | Analysis of 11 external dev team spreadsheets and text files | Complete |
 
 See also: [gap-analysis.md](gap-analysis.md), [game-data.md](game-data.md)
 
@@ -147,6 +148,28 @@ See also: [building.md](building.md), [connection-flow.md](connection-flow.md)
 
 ---
 
+### `client/` -- Game Client Analysis
+
+Analysis of game client binaries and launcher tools.
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [sgw-launcher.md](client/sgw-launcher.md) | Custom launcher design: install pipeline, login redirect, implementation tech stacks | Complete |
+
+See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/ateraloader-exe.md](technical/ateraloader-exe.md)
+
+---
+
+### `tools/` -- Development Tools
+
+Design documents for development and administration tools.
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [admin-panel.md](tools/admin-panel.md) | Web admin dashboard: architecture, Flask+React stack, py_client protocol bridge, DB queries, API routes | Complete |
+
+---
+
 ### `analysis/` -- Investigation Logs
 
 Working notes and cross-reference indexes from ongoing RE sessions.
@@ -180,6 +203,12 @@ Annotation scripts, function naming progress, and per-system RE findings.
 | [STATUS.md](reverse-engineering/STATUS.md) | RE status: 101,909/168,239 functions named (60.6%), all 5 phases complete | Complete |
 | [function-naming-progress.md](reverse-engineering/function-naming-progress.md) | Naming conventions, coverage metrics, per-script results | Complete |
 | [address-map.md](reverse-engineering/address-map.md) | Key address table: vtables, global objects, critical functions in sgw.exe | Complete |
+
+#### `binaries/` -- Binary Analysis
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [launcher-exe.md](reverse-engineering/binaries/launcher-exe.md) | CME Launcher.exe RE analysis: patch client internals, SOAP protocol | Complete |
 
 #### `annotation-scripts/` -- Ghidra Jython Scripts (Phase 1 — all run)
 
@@ -256,8 +285,7 @@ The most important files and directories for RE work, located relative to the pr
 | Interface definitions | `entities/defs/interfaces/*.def` | Shared property/method sets used across entity types |
 | Custom type aliases | `entities/custom_alias.xml` | Type mappings for entity property serialization |
 | Python game scripts | `python/` | 164 files: entity behavior, missions, combat, interactions |
-| Database schema | `db/sgw.sql` | PostgreSQL schema for all persistent game data |
-| Resource data | `db/resources.sql` | 112,626 rows of abilities, items, missions, effects, etc. |
+| Database schema | `db/database.sql`, `db/sgw/`, `db/resources/` | PostgreSQL schema (split into per-domain directories) |
 | Cooked game data | `data/cache/*.pak` | Client resource packs (items, abilities, effects, etc.) |
 | Effect/mission scripts | `data/scripts/` | Source .script XML files (visual node graphs) |
 | Space definitions | `entities/cell_spaces.xml` | Zone/cell partitioning configuration |

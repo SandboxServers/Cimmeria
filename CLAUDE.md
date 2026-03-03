@@ -17,7 +17,7 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 
 | Component | Version | Notes |
 |---|---|---|
-| MSVC Toolset | v120 (VS2012) | C++11 subset |
+| MSVC Toolset | v145 (VS2026) | C++11 (migration from v120 complete) |
 | Boost | 1.55.0 | Asio, Python, Thread, DateTime, Filesystem |
 | Python | 3.4.1 | Embedded for entity scripting |
 | PostgreSQL | 9.2.3 | Via SOCI 3.2.1 ORM |
@@ -36,13 +36,15 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 - `config/` - XML service configuration files
 - `data/cache/` - Cooked game data (.pak files)
 - `data/scripts/` - Effect, mission, and space scripts
-- `db/` - PostgreSQL schema files (sgw.sql, resources.sql)
-- `docs/` - **89 documents** covering protocol, gameplay, engine, architecture, and RE findings
+- `db/` - PostgreSQL schema files (split structure: `db/database.sql`, `db/resources/`, `db/sgw/`)
+- `docs/` - **110 documents** covering protocol, gameplay, engine, architecture, and RE findings
   - `docs/protocol/` - Mercury wire format, entity sync, login handshake, position updates
-  - `docs/gameplay/` - 18 per-system gameplay breakdowns (combat, abilities, inventory, missions, etc.)
+  - `docs/gameplay/` - 24 per-system gameplay breakdowns (combat, abilities, inventory, missions, etc.)
   - `docs/engine/` - BigWorld internals, CME framework, cooked data, space management
   - `docs/reverse-engineering/findings/` - 17 per-system wire format docs from Ghidra analysis
   - `docs/guides/` - Evidence standards, reading decompiled code, entity def guide
+  - `docs/client/` - Game client analysis (launcher, tools)
+  - `docs/tools/` - Development tool design docs (admin panel)
 - `tools/ServerEd/` - Qt editor tool source
 - `external/` - Vendored dependencies (NOT in git - see .gitignore)
 - `bin64/` - Build output (NOT in git)
@@ -50,13 +52,14 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 
 ### Build
 
-Solution: `W-NG.sln` (Visual Studio 2012)
+Solution: `W-NG.sln` (Visual Studio 2026, MSVC v145)
 Configurations: Debug, Release, UnoptRelease, MinSizeRel
 Platforms: Win32, x64
 
 Bootstrap dependencies:
-1. `setup-dependencies.ps1` - Automated: download, patch, and build everything
-2. Or manually: `bootstrap/init-boost.bat`, `bootstrap/build-boost.bat`, `bootstrap/build-openssl.bat`, `bootstrap/build-soci.bat`
+1. `setup.ps1` - Full bootstrap: clone to running server (wraps CimmeriaBootstrap module)
+2. `setup-dependencies.ps1` - Automated: download, patch, and build all external dependencies
+3. Or manually: `bootstrap/init-boost.bat`, `bootstrap/build-boost.bat`, `bootstrap/build-openssl.bat`, `bootstrap/build-soci.bat`
 
 ### Config Notes
 
@@ -80,12 +83,12 @@ Agents with deep expertise in the exact dependency versions currently in use.
 **Focus:** UnifiedKernel, server architecture, networking, protocol layer
 
 **Expertise:**
-- C++11 within VS2012 (v120) compiler constraints (no C++14/17 features)
+- C++11 with VS2026 (v145) — migrated from v120, C++14/17 features available but not yet adopted
 - Boost 1.55.0: Asio (async networking), Thread, Smart Pointers, Signals2, DateTime, Filesystem v3
 - Custom UnifiedProtocol and Mercury reliable messaging framework
 - Multi-service architecture (Auth, Base, Cell inter-service communication)
 - Memory management patterns: Boost shared_ptr, scoped_ptr
-- Precompiled headers (stdafx.hpp) and VS2012 project structure
+- Precompiled headers (stdafx.hpp) and VS2026 project structure
 
 **Key files:** `src/lib/`, `src/common/`, `src/server/`, `projects/UnifiedKernel/`
 
@@ -123,7 +126,7 @@ Agents with deep expertise in the exact dependency versions currently in use.
 - Connection pooling and transaction management
 - Entity state serialization/deserialization patterns
 
-**Key files:** `db/sgw.sql`, `db/resources.sql`, `db/scripts/`, `src/lib/database/` (if present), config `db_connection_string`
+**Key files:** `db/database.sql`, `db/resources/`, `db/sgw/`, `src/lib/database/` (if present), config `db_connection_string`
 
 **When to use:** Schema changes, query optimization, new persistent data types, database migration scripts, SOCI layer modifications.
 
@@ -189,15 +192,16 @@ Agents with deep expertise in the exact dependency versions currently in use.
 **Focus:** Build system, dependency management, CI/CD, developer workflow
 
 **Expertise:**
-- Visual Studio 2012 .sln/.vcxproj project structure
+- Visual Studio 2026 (v145) .sln/.vcxproj project structure
 - MSBuild configurations (Debug/Release/UnoptRelease/MinSizeRel x Win32/x64)
+- CimmeriaBootstrap PowerShell module (setup.ps1, setup-dependencies.ps1)
 - Boost bootstrap and build scripts (bootstrap/build-boost.bat, bootstrap/init-boost.bat)
 - External dependency layout and linking (external/ directory structure)
 - Library output management (lib64/debug, lib64/release)
 - Static vs dynamic linking patterns in the project
 - Windows-specific build considerations
 
-**Key files:** `W-NG.sln`, `projects/**/*.vcxproj`, `bootstrap/build-boost.bat`, `bootstrap/init-boost.bat`
+**Key files:** `W-NG.sln`, `projects/**/*.vcxproj`, `setup.ps1`, `setup-dependencies.ps1`, `bootstrap/`
 
 **When to use:** Build failures, adding new projects/libraries, dependency updates, CI/CD setup, build configuration changes.
 
@@ -229,11 +233,13 @@ Agents specialized in upgrading specific dependencies from current versions to m
 
 #### 9. MSVC Toolchain Migration Agent
 
-**Migration path:** VS2012 (v120) -> VS2022 (v143) or VS2026 (v180)
+**Migration path:** VS2012 (v120) -> VS2026 (v145) — **COMPLETE**
+
+**Status:** Migration to VS2026 (v145) is done. All 6 projects build successfully. See `memory/build-fixes.md` for patches applied.
 
 **Expertise:**
-- v120 -> v143/v180 toolset changes and compatibility breaks
-- C++11 -> C++17/C++20/C++23 incremental adoption strategy
+- v120 -> v145 toolset changes and compatibility breaks
+- C++11 -> C++17/C++20/C++23 incremental adoption strategy (available but not yet adopted)
 - Compiler warning/error resolution across MSVC versions
 - STL implementation changes (iterator debugging, allocator model, `std::auto_ptr` removal)
 - Windows SDK version upgrades and API changes
@@ -241,7 +247,7 @@ Agents specialized in upgrading specific dependencies from current versions to m
 - `/permissive-` conformance mode preparation
 - Deprecation of legacy CRT functions (`_CRT_SECURE_NO_WARNINGS` patterns)
 
-**Priority:** HIGH - Foundation for all other upgrades. Must be done first.
+**Priority:** ~~HIGH~~ COMPLETE - Foundation migration done.
 
 ---
 
@@ -377,7 +383,7 @@ Agents specialized in upgrading specific dependencies from current versions to m
 
 ```
 Phase 1 (Foundation):
-  1. MSVC Toolchain (v120 -> v143+)     -- unblocks everything
+  1. MSVC Toolchain (v120 -> v145)       -- COMPLETE (VS2026)
   2. OpenSSL (0.9.8 -> 3.x)             -- critical security fix
 
 Phase 2 (Core Libraries):
