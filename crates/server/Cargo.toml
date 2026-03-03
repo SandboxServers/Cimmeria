@@ -1,0 +1,17 @@
+[package]
+name = "cimmeria-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cimmeria server binary — starts Auth, Base, and Cell services"
+
+[[bin]]
+name = "cimmeria-server"
+path = "src/main.rs"
+
+[dependencies]
+cimmeria-common = { workspace = true }
+cimmeria-services = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

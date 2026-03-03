@@ -119,7 +119,7 @@ impl Orchestrator {
         // so Phase 1 responses include it immediately.
         let base_shard = ShardInfo {
             name: "Shard".to_string(),
-            host: state.config.base_host.clone(),
+            host: state.config.base_external_host.clone(),
             port: state.config.base_port,
         };
         state.auth.register_shard(base_shard);

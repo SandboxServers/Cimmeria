@@ -21,8 +21,16 @@ pub struct ServerConfig {
     /// Default: 8081 (from `AuthenticationService.config:logon_service_port`)
     pub logon_port: u16,
 
-    /// BaseApp bind address (external address clients connect to).
+    /// BaseApp bind address (the interface the UDP socket is bound to).
+    /// Use `0.0.0.0` to listen on all interfaces.
+    /// Default: `0.0.0.0`
     pub base_host: String,
+
+    /// External BaseApp address advertised to game clients in the SOAP login
+    /// response. Clients connect to this address, not the bind address.
+    /// Maps to `BaseService.config:shard_external_address`.
+    /// Default: `127.0.0.1` (suitable for local dev)
+    pub base_external_host: String,
 
     /// Port the BaseApp shard listens on for client connections.
     /// Default: 32832 (from `BaseService.config:shard_port`)
@@ -43,24 +51,31 @@ pub struct ServerConfig {
     /// Default matches the test credentials in the existing config files.
     pub db_connection_string: String,
 
+    /// Protocol digest sent in the auth login response.
+    /// Must match the value compiled into the game client.
+    /// Maps to `AuthenticationService.config:protocol_digest`.
+    pub protocol_digest: String,
+
     /// Enable developer mode (relaxed auth, elevated logging, multi-login).
-    /// Default: false (from `BaseService.config:developer_mode`)
+    /// Default: true in dev builds (from `BaseService.config:developer_mode`)
     pub developer_mode: bool,
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            auth_host: "127.0.0.1".to_string(),
+            auth_host: "0.0.0.0".to_string(),
             auth_port: 13001,
             logon_port: 8081,
-            base_host: "127.0.0.1".to_string(),
+            base_host: "0.0.0.0".to_string(),
+            base_external_host: "127.0.0.1".to_string(),
             base_port: 32832,
-            cell_host: "127.0.0.1".to_string(),
+            cell_host: "0.0.0.0".to_string(),
             cell_port: 50000,
             admin_port: 8443,
             db_connection_string:
                 "host=localhost port=5433 user=w-testing password=w-testing dbname=sgw".to_string(),
+            protocol_digest: "58AFA196AD3AC4F65CADD99BFF23B799".to_string(),
             developer_mode: true,
         }
     }

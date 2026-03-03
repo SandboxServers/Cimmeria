@@ -10,6 +10,7 @@ members = [
     "crates/services",
     "crates/admin-api",
     "crates/commands",
+    "crates/server",
     "src-tauri",
 ]
 
@@ -73,3 +74,4 @@ cimmeria-content-engine = { path = "crates/content-engine" }
 cimmeria-services = { path = "crates/services" }
 cimmeria-admin-api = { path = "crates/admin-api" }
 cimmeria-commands = { path = "crates/commands" }
+cimmeria-server = { path = "crates/server" }
