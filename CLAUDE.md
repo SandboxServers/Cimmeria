@@ -37,7 +37,7 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 - `data/cache/` - Cooked game data (.pak files)
 - `data/scripts/` - Effect, mission, and space scripts
 - `db/` - PostgreSQL schema files (split structure: `db/database.sql`, `db/resources/`, `db/sgw/`)
-- `docs/` - **111 documents** covering protocol, gameplay, engine, architecture, and RE findings
+- `docs/` - **114 documents** covering protocol, gameplay, engine, architecture, and RE findings
   - `docs/protocol/` - Mercury wire format, entity sync, login handshake, position updates
   - `docs/gameplay/` - 24 per-system gameplay breakdowns (combat, abilities, inventory, missions, etc.)
   - `docs/engine/` - BigWorld internals, CME framework, cooked data, space management

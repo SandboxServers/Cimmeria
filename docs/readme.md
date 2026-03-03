@@ -20,7 +20,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 111 |
+| Documentation files | 114 |
 
 
 ## Document Map
@@ -31,6 +31,8 @@ The emulator is **playable today**: players can log in, enter the world, interac
 |----------|-------------|
 | [How SGW Works](how-sgw-works.md) | Technology overview -- BigWorld, CME, and how the pieces fit together |
 | [Client Tools](client-tools.md) | Launcher, editor mode, debug tools available in the client |
+| [Operator Guide](operator-guide.md) | Setup, configure, run, and connect a game client -- everything from git clone to playing |
+| [Developer Guide](developer-guide.md) | How to extend the server: entities, properties, methods, commands, interactions, missions |
 | [Building the Server](building.md) | How to build and run the Cimmeria server emulator |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |
 | [Game Data](game-data.md) | What game content exists (items, abilities, missions) and what is missing |
@@ -134,7 +136,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 6 documents.
+How the Cimmeria emulator itself is structured. 7 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -144,8 +146,9 @@ How the Cimmeria emulator itself is structured. 6 documents.
 | [scaling-analysis.md](architecture/scaling-analysis.md) | Scaling strategy: current single-instance reality, BigWorld vs Cimmeria comparison, 5-tier scaling roadmap, capacity estimates | Complete |
 | [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | Tech stack replacement analysis: 5 options (incremental upgrade through full C# rewrite), codebase audit, protocol feasibility, phased recommendation | Complete |
 | [data-driven-content-engine.md](architecture/data-driven-content-engine.md) | Data-driven content engine: replace per-script Python with DB-driven trigger/condition/action chains, full schema, worked examples, runtime implementation, migration path | Complete |
+| [server-internals.md](architecture/server-internals.md) | C++ server architecture deep-dive: Mercury networking, entity system, BaseApp/CellApp internals, threading model, design patterns | Complete |
 
-See also: [building.md](building.md), [connection-flow.md](connection-flow.md)
+See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [operator-guide.md](operator-guide.md), [developer-guide.md](developer-guide.md)
 
 ---
 
