@@ -17,6 +17,10 @@ pub struct ServerConfig {
     /// Default: 13001 (from `AuthenticationService.config:base_service_port`)
     pub auth_port: u16,
 
+    /// HTTP port the auth server listens on for client SOAP login requests.
+    /// Default: 8081 (from `AuthenticationService.config:logon_service_port`)
+    pub logon_port: u16,
+
     /// BaseApp bind address (external address clients connect to).
     pub base_host: String,
 
@@ -49,6 +53,7 @@ impl Default for ServerConfig {
         Self {
             auth_host: "127.0.0.1".to_string(),
             auth_port: 13001,
+            logon_port: 8081,
             base_host: "127.0.0.1".to_string(),
             base_port: 32832,
             cell_host: "127.0.0.1".to_string(),
@@ -56,7 +61,7 @@ impl Default for ServerConfig {
             admin_port: 8443,
             db_connection_string:
                 "host=localhost port=5433 user=w-testing password=w-testing dbname=sgw".to_string(),
-            developer_mode: false,
+            developer_mode: true,
         }
     }
 }
@@ -107,15 +112,16 @@ mod tests {
     fn default_config_has_expected_ports() {
         let config = ServerConfig::default();
         assert_eq!(config.auth_port, 13001);
+        assert_eq!(config.logon_port, 8081);
         assert_eq!(config.base_port, 32832);
         assert_eq!(config.cell_port, 50000);
         assert_eq!(config.admin_port, 8443);
     }
 
     #[test]
-    fn default_config_developer_mode_off() {
+    fn default_config_developer_mode_on() {
         let config = ServerConfig::default();
-        assert!(!config.developer_mode);
+        assert!(config.developer_mode);
     }
 
     #[test]

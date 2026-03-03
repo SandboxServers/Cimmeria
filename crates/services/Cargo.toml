@@ -13,6 +13,9 @@ cimmeria-game = { workspace = true }
 cimmeria-content-engine = { workspace = true }
 cimmeria-commands = { workspace = true }
 tokio = { workspace = true }
+axum = { workspace = true }
+rand = { workspace = true }
+quick-xml = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

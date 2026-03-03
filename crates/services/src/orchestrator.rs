@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 
 use cimmeria_common::ServerConfig;
 
-use crate::auth::AuthService;
+use crate::auth::{AuthService, ShardInfo};
 use crate::base::BaseService;
 use crate::cell::CellService;
 use crate::database::DatabasePool;
@@ -114,6 +114,15 @@ impl Orchestrator {
                 // Non-fatal for now: allows starting in dev mode without a database
             }
         }
+
+        // Register the base shard with auth before starting the HTTP listener
+        // so Phase 1 responses include it immediately.
+        let base_shard = ShardInfo {
+            name: "Shard".to_string(),
+            host: state.config.base_host.clone(),
+            port: state.config.base_port,
+        };
+        state.auth.register_shard(base_shard);
 
         // 2. Start auth service
         state
