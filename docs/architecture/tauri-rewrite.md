@@ -767,3 +767,71 @@ Each phase has a concrete "it works when..." test described in the milestone sec
 
 1. **Local mode** — Dashboard shows real-time data, content editor saves to database, chain editor creates working chains, space viewer shows entity positions.
 2. **Remote mode** — Same UI hosted on Azure Static Web Apps connects to server over HTTPS, authenticates with JWT, shows same data with acceptable latency (<200ms for REST, <50ms for WebSocket).
+
+---
+
+## Security Footprint Analysis
+
+### Current C++ Stack (2013-era Dependencies)
+
+| Component | CVEs / Risk | Severity |
+|---|---|---|
+| **OpenSSL 0.9.8i** | Heartbleed (CVE-2014-0160), POODLE, BEAST, dozens more. **No patches since 2015.** | **CRITICAL** |
+| **Boost 1.55.0** | No direct CVEs, but Asio lacks modern TLS, no hardened memory handling | Medium |
+| **Python 3.4.1** | EOL since 2019. Multiple interpreter vulnerabilities. GIL-based race conditions in embedded use. Code injection surface via `eval()`/`exec()` in scripts | High |
+| **PostgreSQL 9.2.3** | EOL since 2017. Missing row-level security, scram-sha-256 auth, privilege escalation fixes | High |
+| **SOCI 3.2.1** | No parameterized query enforcement — SQL injection risk if misused | Medium |
+| **Qt 5.x (early)** | Multiple WebEngine/network CVEs over the years | Medium (ServerEd only) |
+| **Custom Mercury protocol** | No auth on UDP channel establishment, HMAC-MD5 integrity (weak), no forward secrecy, replay possible | High |
+| **Python console (port 8989)** | Plaintext password, no rate limiting, full server access if breached | **CRITICAL** |
+
+**Attack surface:** 5 open network ports (auth TCP, base TCP, cell UDP, Python console, Qt SQL). Plaintext admin access. Known-exploitable SSL library. Embedded interpreter with code execution.
+
+### Upgraded C++ Stack (Modern Dependencies)
+
+If we upgraded to OpenSSL 3.5, Boost 1.90, Python 3.12+, PostgreSQL 17, SOCI 4.x, Qt 6.10:
+
+| Component | Improvement | Remaining Risk |
+|---|---|---|
+| **OpenSSL 3.5** | All known CVEs patched. TLS 1.3. FIPS module available. | Still depends on correct usage; CBC mode still needed for game client |
+| **Boost 1.90** | Modern Asio with TLS support, hardened allocators | Boost.Python bridge still fragile |
+| **Python 3.12+** | Patched interpreter, subinterpreter support, no GIL (3.13 free-threaded) | Still an embedded interpreter = code execution surface. Type-unsafe scripting layer. |
+| **PostgreSQL 17** | scram-sha-256, row-level security, logical replication | Same schema, same query patterns |
+| **SOCI 4.x** | Better parameterized query support | Still C++ — manual memory management |
+| **Qt 6.10** | Patched WebEngine, modern TLS | ServerEd still a separate app |
+| **Python console** | Still exists, still plaintext | **Still CRITICAL** unless rewritten |
+
+**Attack surface:** Same 5 ports. Python console still exposed. Embedded interpreter still present. C++ memory safety issues (use-after-free, buffer overflows) still possible.
+
+### Rust + Tauri Rewrite
+
+| Component | Security Property | Notes |
+|---|---|---|
+| **Rust language** | Memory-safe by default. No buffer overflows, use-after-free, data races. | `unsafe` blocks only where absolutely needed (zero planned) |
+| **No embedded interpreter** | Eliminates code injection surface entirely | Python console gone. No `eval()`. No script injection. |
+| **sqlx compile-time queries** | SQL injection impossible for checked queries | Queries validated at compile time against schema |
+| **AES-256-CBC + HMAC-MD5** | Same legacy crypto for game client (unavoidable) | Isolated to Mercury protocol only. Admin API uses modern TLS. |
+| **Admin API (axum + TLS)** | JWT auth, CORS, rate limiting, HTTPS | No plaintext admin access. Token expiry. |
+| **Single binary** | 1 open game port (Mercury UDP) + 1 admin port (HTTPS) | Reduced from 5 ports to 2. Inter-service is in-process. |
+| **Tauri webview** | Uses OS browser engine (Edge WebView2 / WebKitGTK) — patched by OS updates | No bundled browser engine to maintain |
+| **tokio + rustls** | Modern TLS for admin connections | TLS 1.3 for admin API |
+| **No C++ memory issues** | Ownership model prevents entire classes of vulnerabilities | Compiler-enforced |
+
+**Attack surface:** 2 open ports (Mercury UDP for game clients, HTTPS for admin). No plaintext admin. No embedded interpreter. Memory-safe. Compile-time query checking.
+
+### Comparison Summary
+
+| Metric | Current C++ | Upgraded C++ | Rust Rewrite |
+|---|---|---|---|
+| **Known CVEs in deps** | 100+ (OpenSSL alone) | 0 (all patched) | 0 |
+| **Memory safety** | Manual (C++) | Manual (C++) | Compiler-enforced |
+| **Code injection surface** | Python console + embedded interpreter | Python console + embedded interpreter | **None** |
+| **SQL injection risk** | Possible (SOCI) | Reduced (SOCI 4.x) | **Compile-time prevented** (sqlx) |
+| **Open network ports** | 5 | 5 | **2** |
+| **Admin access** | Plaintext password on TCP | Plaintext password on TCP | **JWT over HTTPS** |
+| **Crypto for game client** | AES-CBC + HMAC-MD5 (required) | AES-CBC + HMAC-MD5 (required) | AES-CBC + HMAC-MD5 (required) |
+| **Crypto for admin** | None (plaintext) | Depends on implementation | **TLS 1.3 + JWT** |
+| **Supply chain deps** | 6 vendored C/C++ libs | 6 vendored C/C++ libs | **Cargo ecosystem** (auditable) |
+| **Forward secrecy** | No | Possible with OpenSSL 3.x | Yes (admin API via rustls) |
+
+The game client protocol crypto (AES-CBC + HMAC-MD5) is identical across all three — we can't change it because `sgw.exe` is a fixed binary. The Rust rewrite isolates that legacy crypto to the one place it's needed and uses modern security everywhere else. The biggest wins are eliminating the Python interpreter entirely (no code execution surface) and replacing the plaintext admin console with JWT-authenticated HTTPS.
