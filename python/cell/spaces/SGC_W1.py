@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import Script
+from cell.ContentEngine import engine as _content_engine
 from common import Constants
 import Atrea
 
@@ -370,6 +371,9 @@ class SGC_W1(Script):
 	n129_var_Player = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('space', 'SGC_W1'):
+			_content_engine.register_player(owner, 'SGC_W1')
+			return
 		self.n60_var_Value = self.str2vec('-123.625,1.311,-246.858')
 		self.n59_var_Destination = self.n60_var_Value
 		self.n63_var_Value = self.str2vec('237.326,1.312,17.921')
