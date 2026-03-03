@@ -20,7 +20,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 110 |
+| Documentation files | 111 |
 
 
 ## Document Map
@@ -134,11 +134,12 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 5 documents.
+How the Cimmeria emulator itself is structured. 6 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [service-architecture.md](architecture/service-architecture.md) | Auth, Base, Cell service topology, inter-service protocol, developer mode, console commands | Complete |
+| [python-console.md](architecture/python-console.md) | Python console deep-dive: wire format, reference client, Atrea API, GM command table, security | Complete |
 | [server-systems.md](architecture/server-systems.md) | Server-only infrastructure: session management, rate limiting, anti-cheat, economy, world state, scheduling, admin tools, metrics | Complete |
 | [scaling-analysis.md](architecture/scaling-analysis.md) | Scaling strategy: current single-instance reality, BigWorld vs Cimmeria comparison, 5-tier scaling roadmap, capacity estimates | Complete |
 | [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | Tech stack replacement analysis: 5 options (incremental upgrade through full C# rewrite), codebase audit, protocol feasibility, phased recommendation | Complete |
