@@ -32,6 +32,15 @@ function Invoke-CimmeriaBootstrap {
     .PARAMETER Configuration
         Build configuration: "Debug" (default) or "Release".
 
+    .PARAMETER IncludeBigWorld
+        Download and extract BigWorld Engine 1.9.1 and 2.0.1 reference sources (~300 MB).
+        Not required to build or run Cimmeria.
+
+    .PARAMETER ForceDatabase
+        Drop and recreate the sgw database before loading schemas. Equivalent to
+        Initialize-CimmeriaDatabase -Force. Use when you want a guaranteed clean
+        database reload.
+
     .EXAMPLE
         Invoke-CimmeriaBootstrap
         # Full pipeline: download -> build -> database -> launch
@@ -39,6 +48,10 @@ function Invoke-CimmeriaBootstrap {
     .EXAMPLE
         Invoke-CimmeriaBootstrap -SkipDownload -NoLaunch
         # Re-build and set up database without downloading or launching
+
+    .EXAMPLE
+        Invoke-CimmeriaBootstrap -SkipDownload -SkipBuild -ForceDatabase
+        # Wipe and reload the database only
     #>
     [CmdletBinding()]
     param(
@@ -47,7 +60,9 @@ function Invoke-CimmeriaBootstrap {
         [switch]$InstallVS,
         [switch]$NoLaunch,
         [ValidateSet("Debug", "Release")]
-        [string]$Configuration = "Debug"
+        [string]$Configuration = "Debug",
+        [switch]$IncludeBigWorld,
+        [switch]$ForceDatabase
     )
 
     $ErrorActionPreference = "Stop"
@@ -69,7 +84,7 @@ function Invoke-CimmeriaBootstrap {
         # Step 1: Download, extract, patch
         Write-Host "--- Step 1/7: Dependencies ---" -ForegroundColor Cyan
         try {
-            Install-CimmeriaDependencies -SkipDownload:$SkipDownload -InstallVS:$InstallVS
+            Install-CimmeriaDependencies -SkipDownload:$SkipDownload -InstallVS:$InstallVS -IncludeBigWorld:$IncludeBigWorld
         } catch {
             Write-Host ""
             Write-Host "FAILED at Step 1: Install-CimmeriaDependencies" -ForegroundColor Red
@@ -121,7 +136,7 @@ function Invoke-CimmeriaBootstrap {
         Write-Host ""
         Write-Host "--- Step 5/7: Database ---" -ForegroundColor Cyan
         try {
-            Initialize-CimmeriaDatabase
+            Initialize-CimmeriaDatabase -Force:$ForceDatabase
         } catch {
             Write-Host ""
             Write-Host "FAILED at Step 5: Initialize-CimmeriaDatabase" -ForegroundColor Red
