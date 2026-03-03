@@ -202,6 +202,14 @@ impl AuthService {
     pub fn take_pending_login(&self, ticket: &str) -> Option<PendingLogin> {
         self.pending_logins.lock().ok()?.remove(ticket)
     }
+
+    /// Return a cloned `Arc` pointing to the pending-logins map.
+    ///
+    /// Used by the orchestrator to wire the shared map into `BaseService`
+    /// before starting services, so the BaseService can validate Phase 3 tickets.
+    pub fn pending_logins_arc(&self) -> Arc<Mutex<HashMap<String, PendingLogin>>> {
+        Arc::clone(&self.pending_logins)
+    }
 }
 
 // ── Axum handlers ────────────────────────────────────────────────────────────

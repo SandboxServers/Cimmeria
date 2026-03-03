@@ -42,14 +42,17 @@ type HmacMd5 = Hmac<Md5>;
 ///
 /// Key material is established during the login handshake and remains
 /// fixed for the lifetime of the channel.
+///
+/// The C++ implementation uses the full 32-byte AES key as the HMAC key:
+/// `HMAC_Init(&hmac_, key, 32, EVP_md5())`.
 #[derive(Clone)]
 pub struct MercuryEncryption {
     /// 256-bit AES key.
     aes_key: [u8; 32],
-    /// 128-bit IV for CBC mode.
+    /// 16-byte CBC initialization vector (all zeros per C++ implementation).
     iv: [u8; 16],
-    /// 128-bit key for HMAC-MD5.
-    hmac_key: [u8; 16],
+    /// 256-bit HMAC-MD5 key — same as the AES key (C++ uses full 32-byte key).
+    hmac_key: [u8; 32],
 }
 
 impl MercuryEncryption {
@@ -57,14 +60,26 @@ impl MercuryEncryption {
     ///
     /// # Arguments
     ///
-    /// - `aes_key` — 32-byte AES-256 key.
-    /// - `iv` — 16-byte CBC initialization vector.
-    /// - `hmac_key` — 16-byte HMAC-MD5 key.
-    pub fn new(aes_key: [u8; 32], iv: [u8; 16], hmac_key: [u8; 16]) -> Self {
+    /// - `aes_key` — 32-byte AES-256 key derived from the 64-char hex session key.
+    /// - `iv` — 16-byte CBC initialization vector (must be all zeros per C++).
+    /// - `hmac_key` — 32-byte HMAC-MD5 key (must equal `aes_key` per C++).
+    pub fn new(aes_key: [u8; 32], iv: [u8; 16], hmac_key: [u8; 32]) -> Self {
         Self {
             aes_key,
             iv,
             hmac_key,
+        }
+    }
+
+    /// Create an encryption context from a 32-byte session key with zero IV.
+    ///
+    /// This matches the C++ `EncryptionFilter::setKey()` which uses the same
+    /// key for both AES and HMAC, and a zero IV for every packet.
+    pub fn from_session_key(key: [u8; 32]) -> Self {
+        Self {
+            aes_key: key,
+            iv: [0u8; 16],
+            hmac_key: key,
         }
     }
 
@@ -212,7 +227,7 @@ mod tests {
     fn test_keys() -> MercuryEncryption {
         let aes_key = [0x42u8; 32];
         let iv = [0x13u8; 16];
-        let hmac_key = [0x37u8; 16];
+        let hmac_key = [0x37u8; 32]; // C++ uses 32-byte key for HMAC
         MercuryEncryption::new(aes_key, iv, hmac_key)
     }
 

@@ -26,8 +26,8 @@ pub mod consts {
     /// Maximum UDP packet size including headers (MTU-safe).
     pub const PACKET_MAX_SIZE: usize = 1472;
 
-    /// Size of the Mercury packet header (sequence + flags packed into u32).
-    pub const HEADER_SIZE: usize = 4;
+    /// Size of the Mercury packet header (1-byte flags field).
+    pub const HEADER_SIZE: usize = 1;
 
     /// Maximum payload body per packet after header and footers.
     pub const MAX_BODY: usize = 1348;

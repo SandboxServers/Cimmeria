@@ -131,7 +131,9 @@ impl Orchestrator {
             .await
             .map_err(|e| OrchestratorError::AuthStartFailed(e.to_string()))?;
 
-        // 3. Start base service
+        // 3. Start base service (wire in pending_logins from auth first)
+        let pending_logins = state.auth.pending_logins_arc();
+        state.base.set_pending_logins(pending_logins);
         state
             .base
             .start()

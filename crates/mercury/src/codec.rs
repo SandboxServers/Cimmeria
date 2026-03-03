@@ -7,15 +7,15 @@
 //! encode/decode in a recv loop).
 //!
 //! When encryption is enabled, the codec:
-//! - **Encoding:** serialises the packet, encrypts the body, writes header + encrypted body.
-//! - **Decoding:** reads header, decrypts body, passes to packet decoder.
+//! - **Encoding:** serialises the packet bytes, encrypts everything, appends HMAC.
+//! - **Decoding:** verifies HMAC, decrypts, passes to packet parser.
 
 use bytes::{Bytes, BytesMut};
 use cimmeria_common::{CimmeriaError, Result};
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::encryption::MercuryEncryption;
-use crate::packet::Packet;
+use crate::packet::{parse_incoming, Packet, PacketFlags};
 
 // ── MercuryCodec ────────────────────────────────────────────────────────────
 
@@ -73,38 +73,41 @@ impl Decoder for MercuryCodec {
             return Ok(None);
         }
 
-        // For UDP, each datagram is a complete packet, so we consume the
-        // entire buffer as one packet.
-        let mut raw = src.split().freeze();
+        // For UDP, each datagram is a complete packet.
+        let raw_bytes = src.split().freeze();
 
-        // Parse the packet (header is always in the clear).
-        let mut packet = Packet::decode(&mut raw)?;
+        // If encryption is active, decrypt first.
+        let plaintext: Bytes = if let Some(ref enc) = self.encryption {
+            Bytes::from(enc.decrypt(&raw_bytes)?)
+        } else {
+            raw_bytes
+        };
 
-        // If encryption is active, decrypt the body.
-        if let Some(ref enc) = self.encryption {
-            if !packet.body.is_empty() {
-                let plaintext = enc.decrypt(&packet.body)?;
-                packet.body = Bytes::from(plaintext);
-            }
-        }
+        // Parse the decrypted bytes into a Packet.
+        let parsed = parse_incoming(&plaintext)?;
+        let pkt = Packet::new(
+            PacketFlags::from_byte(parsed.flags),
+            parsed.seq_id.unwrap_or(0),
+            parsed.body,
+        );
 
-        Ok(Some(packet))
+        Ok(Some(pkt))
     }
 }
 
 impl Encoder<Packet> for MercuryCodec {
     type Error = CimmeriaError;
 
-    fn encode(&mut self, mut packet: Packet, dst: &mut BytesMut) -> Result<()> {
-        // If encryption is active, encrypt the body before encoding.
+    fn encode(&mut self, packet: Packet, dst: &mut BytesMut) -> Result<()> {
+        let wire = packet.encode();
+
         if let Some(ref enc) = self.encryption {
-            if !packet.body.is_empty() {
-                let ciphertext = enc.encrypt(&packet.body)?;
-                packet.body = Bytes::from(ciphertext);
-            }
+            let ciphertext = enc.encrypt(&wire)?;
+            dst.extend_from_slice(&ciphertext);
+        } else {
+            dst.extend_from_slice(&wire);
         }
 
-        packet.encode(dst);
         Ok(())
     }
 }
@@ -112,16 +115,19 @@ impl Encoder<Packet> for MercuryCodec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::packet::{PacketFlags, FLAG_RELIABLE};
+    use crate::packet::FLAG_RELIABLE;
 
     #[test]
     fn round_trip_plaintext() {
+        use crate::packet::FLAG_HAS_SEQUENCE;
+
         let mut codec = MercuryCodec::new();
-        let original = Packet::new(
-            10,
-            PacketFlags::default().with(FLAG_RELIABLE),
-            Bytes::from_static(b"plaintext body"),
-        );
+        // Include FLAG_HAS_SEQUENCE so encode() writes the seq_id footer and
+        // decode() (via parse_incoming) correctly strips it.
+        let flags = PacketFlags::default()
+            .with(FLAG_RELIABLE)
+            .with(FLAG_HAS_SEQUENCE);
+        let original = Packet::new(flags, 10, Bytes::from_static(b"plaintext body"));
 
         let mut buf = BytesMut::new();
         codec.encode(original.clone(), &mut buf).unwrap();
@@ -134,19 +140,18 @@ mod tests {
 
     #[test]
     fn round_trip_encrypted() {
-        let enc = MercuryEncryption::new([0xAA; 32], [0xBB; 16], [0xCC; 16]);
+        use crate::packet::FLAG_HAS_SEQUENCE;
+
+        let enc = MercuryEncryption::new([0xAA; 32], [0xBB; 16], [0xCC; 32]);
         let mut codec = MercuryCodec::with_encryption(enc);
 
-        let original = Packet::new(
-            99,
-            PacketFlags::default(),
-            Bytes::from_static(b"secret message"),
-        );
+        let flags = PacketFlags::default().with(FLAG_HAS_SEQUENCE);
+        let original = Packet::new(flags, 99, Bytes::from_static(b"secret message"));
 
         let mut buf = BytesMut::new();
         codec.encode(original.clone(), &mut buf).unwrap();
 
-        // The encoded body should NOT contain the plaintext.
+        // The encoded bytes should NOT contain the plaintext.
         let wire_bytes = buf.clone().freeze();
         assert!(!wire_bytes.windows(14).any(|w| w == b"secret message"));
 
@@ -156,11 +161,11 @@ mod tests {
     }
 
     #[test]
-    fn empty_body_no_encryption() {
-        let enc = MercuryEncryption::new([0xAA; 32], [0xBB; 16], [0xCC; 16]);
+    fn empty_body_round_trip() {
+        let enc = MercuryEncryption::new([0xAA; 32], [0xBB; 16], [0xCC; 32]);
         let mut codec = MercuryCodec::with_encryption(enc);
 
-        let original = Packet::new(1, PacketFlags::default(), Bytes::new());
+        let original = Packet::new(PacketFlags::default(), 1, Bytes::new());
 
         let mut buf = BytesMut::new();
         codec.encode(original, &mut buf).unwrap();
