@@ -91,18 +91,51 @@ function Build-ServerEd {
         Remove-Item $makefileConfig -Force -ErrorAction SilentlyContinue
     }
 
-    # Build command: set up MSVC env, run qmake, then nmake
+    # Step 1: Run qmake to generate Makefiles
     $qmakePath = $qtInfo.QmakePath
-    $buildCmd = @(
+    $qmakeCmd = @(
         "`"$vcvarsall`" x64",
         "cd /d `"$serverEdDir`"",
-        "`"$qmakePath`" ServerEd.pro -spec win32-msvc CONFIG+=$qmakeConfig",
+        "`"$qmakePath`" ServerEd.pro -spec win32-msvc CONFIG+=$qmakeConfig"
+    ) -join " && "
+
+    Write-Status "Running qmake ($Configuration)..." "White"
+    cmd /c "$qmakeCmd" 2>&1 | ForEach-Object {
+        $line = "$_"
+        if ($line -match 'error|fatal|warning') {
+            Write-Status "  $_" "DarkGray"
+        }
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "qmake failed with exit code $LASTEXITCODE"
+    }
+
+    # Step 2: Patch qmake LIBS bug (Qt 5.15 qmake emits bare Qt lib dir in LIBS line)
+    # qmake generates "...qtmaind.lib C:\...\qt\lib shell32.lib" — the bare directory path
+    # is interpreted by the linker as a file, causing LNK1104 looking for "lib.obj".
+    $makefileDebug = Join-Path $serverEdDir "Makefile.Debug"
+    $makefileRelease = Join-Path $serverEdDir "Makefile.Release"
+    foreach ($mf in @($makefileDebug, $makefileRelease)) {
+        if (Test-Path $mf) {
+            $content = Get-Content $mf -Raw
+            $patched = $content -replace '[A-Za-z]:\\[^\s]+\\qt\\lib\s+(shell32\.lib)', '$1'
+            if ($patched -ne $content) {
+                Set-Content $mf $patched -NoNewline
+                Write-Status "  Patched LIBS bug in $(Split-Path $mf -Leaf)" "DarkGray"
+            }
+        }
+    }
+
+    # Step 3: Run nmake to compile
+    $nmakeCmd = @(
+        "`"$vcvarsall`" x64",
+        "cd /d `"$serverEdDir`"",
         "nmake $qmakeConfig"
     ) -join " && "
 
-    Write-Status "Running qmake + nmake ($Configuration)..." "White"
+    Write-Status "Running nmake ($Configuration)..." "White"
     $lineCount = 0
-    cmd /c "$buildCmd" 2>&1 | ForEach-Object {
+    cmd /c "$nmakeCmd" 2>&1 | ForEach-Object {
         $lineCount++
         $line = "$_"
         if ($line -match 'error|fatal|LINK :|ServerEd\.exe') {
