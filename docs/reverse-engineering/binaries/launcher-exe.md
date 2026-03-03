@@ -207,21 +207,186 @@ CME::Exception / CME::ExceptionImpl — Framework exceptions
 | `.\CrashDump.cpp` | Crash dump collection |
 | `.\Logger\LogCURL.cpp` | CURL logging bridge |
 
-## What Launcher.exe Does NOT Do
+## Ghidra Analysis: Confirmed Details
 
-- **Does NOT launch SGW.exe** — the game client is launched separately
+### PostInstall.exe Launch Mechanism
+
+From live decompile of `InitInstance` at `0x00412530`. When the launcher was itself patched during the session and needs a restart:
+
+```c
+GetModuleFileNameW(NULL, path, 260)    // Get our own path
+PathRemoveFileSpecW(path)              // Strip filename → directory
+PathAppendW(path, L"postinstall.exe") // Build postinstall.exe path
+LoadStringW(&cmdline, 0x85)           // Load cmdline format string (resource 0x85)
+GetCurrentProcessId()                  // Get own PID — passed to postinstall
+CStringT::Format(cmdline, ...)         // Format PID into cmdline
+args = _wcsdup(cmdline)               // Dup for CreateProcessW
+CreateProcessW(postinstall.exe, args, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)
+// Launcher does NOT wait — fires postinstall and continues to exit
+CloseHandle(pi.hProcess); CloseHandle(pi.hThread)
+```
+
+The format string in resource `0x85` encodes the current PID. Postinstall kills the old launcher by that PID, applies the patch, then re-launches launcher.exe.
+
+### Startup Log Sequence
+
+Confirmed execution order from string analysis of `InitInstance`:
+
+| Step | Level | Message |
+|------|-------|---------|
+| 1 | INFO | `"Creating update thread."` |
+| 2 | FATAL | `"Unable to create update thread."` (error path) |
+| 3 | INFO | `"Created update thread."` |
+| 4 | INFO | `"Starting update thread."` |
+| 5 | FATAL | `"Unable to start update thread."` (error path) |
+| 6 | INFO | `"Started update thread."` |
+| 7 | INFO | `"Starting Launcher Dialog Window."` |
+| 8 | INFO | `"Closed Launcher's Dialog Window."` |
+| 9 | INFO | `"Testing for launcher restart."` |
+| 10a | INFO | `"Launcher restart not necessary."` |
+| 10b | INFO | `"Launcher restart necessary."` |
+| 11 | INFO | `"Exiting the Launcher."` |
+
+### Unknown Early Exit Check (`FUN_00411280`)
+
+The very first call inside `InitInstance`. When it returns `>= 0`, the launcher exits immediately — no UI is shown, no mutex is created, no threads are started. Only when it returns `< 0` does full initialization proceed.
+
+This is NOT the single-instance mutex check (that's created later, inside the full-init block). Most likely: crash dump sentinel check or prior-session cleanup. Deserves further decompile work before implementing a mock launcher.
+
+### `VerifyServerVersion` URL Construction (0x00409d10)
+
+The SOAP endpoint URL is **not** a raw embedded string. It is assembled from Win32 string resources in a loop iterating over 5 resource IDs:
+
+| Resource ID | Decimal |
+|-------------|---------|
+| `0x91` | 145 |
+| `0x93` | 147 |
+| `0x94` | 148 |
+| `0x95` | 149 |
+| `0x96` | 150 |
+
+The segments are concatenated via `CStringT::Format`. To recover the full URL, extract string table block 10 from the `.rsrc` section (resource IDs 144–159 live in block 10). The assembled URL is logged before the SOAP call: `"Attempting to connect to URL: %s"`.
+
+## Redirecting to a Custom Patch Server
+
+How to make launcher.exe connect to our server instead of CME's.
+
+### Step 1: Find the Actual SOAP Endpoint URL
+
+The URL is assembled from Win32 string resources (IDs 145–150). To extract:
+
+```
+# On Windows — ResourceHacker:
+ResourceHacker.exe → Open launcher.exe → String Table → block 10
+
+# Alternatively: run the binary and watch the log for:
+"Attempting to connect to URL: <url>"
+```
+
+The log line is emitted before the SOAP connection attempt, so even a failed connection reveals the URL.
+
+### Step 2: Choose a Redirect Method
+
+| Method | Effort | Pros | Cons |
+|--------|--------|------|------|
+| **Hosts file** | Trivial | No binary patching needed | Only works if URL uses a DNS hostname, not an IP |
+| **Binary patch .rsrc** | Low | Clean and permanent | Must recalculate PE checksum after edit |
+| **Local DNS server** | Medium | Transparent to binary | Infrastructure overhead |
+| **HTTP proxy** | Medium | No binary modification | libcurl respects `http_proxy` env var |
+
+For development: hosts file is fastest. For distribution: binary-patch the `.rsrc` string resources.
+
+### Step 3: Understand the Patch Format
+
+**Patches are complete files, not binary diffs.**
+
+Evidence from the binary string table:
+```
+"Attempting to move temporary patch file (%s) to final destination (%s)."
+"Successfully moved temporary patch file to destination."
+```
+
+The launcher downloads each file via libcurl to a temp path, then moves it into place. There is no diff application step.
+
+The "content diff" strings (`"Failed to write updated file as content diff"`, etc.) describe the **client-side scanning phase**: the launcher hashes local files, computes which ones differ from the expected state, and sends that inventory to the SOAP server. The server responds with download URLs for only the files that need replacing.
+
+Files are hosted on a plain HTTP server as ZIPs or raw files. No proprietary format required.
+
+### Step 4: Build the SOAP Patch Server
+
+SOAP namespace (confirmed from binary): `http://schemas.xmlsoap.org/soap/envelope/`
+
+**Mode A — Pass-through (client already has current files):**
+```xml
+<VERSIONINFO>
+  <VERSIONS><VERSION>...</VERSION></VERSIONS>
+  <PATCHES></PATCHES>   <!-- empty PATCHES = result 1 = "current" -->
+</VERSIONINFO>
+```
+
+**Mode B — Deliver or update game files:**
+```xml
+<VERSIONINFO>
+  <PATCHES>
+    <PATCHENTRY>
+      <FILEENTRY>
+        <url>http://our-server/SGWGame-1.0.zip</url>
+        <hash>sha256_here</hash>
+        <destination>..\SGWGame\</destination>
+      </FILEENTRY>
+    </PATCHENTRY>
+  </PATCHES>
+</VERSIONINFO>
+```
+
+The launcher downloads the ZIP via libcurl (with range-request resume), verifies the hash, extracts via ZipArchive, and moves files to the destination path.
+
+> **Note:** Exact XML element names inside `PATCHENTRY`/`FILEENTRY` need confirmation — the type names come from the binary string table, but the literal XML tag names require either a packet capture against the original server or a decompile of `CGetPatchProcess::ProcessResponse`. Simplest path: run the binary against a mocked server and capture the exchange with Wireshark or Fiddler.
+
+Any HTTP framework works server-side. A Python script using `lxml` to serve hand-crafted SOAP envelope XML is sufficient — no gSOAP installation needed server-side.
+
+## Client Distribution
+
+**launcher.exe CAN be used for client distribution** — and it already has everything needed built in.
+
+### How It Works
+
+The update flow is not binary-diff based. The launcher:
+
+1. Hashes local files and sends the inventory to the SOAP server
+2. Receives `PATCHINFO` containing download URLs for files that need replacing
+3. Downloads each file via libcurl to a temp path
+4. Moves the temp file to its final destination
+
+On a fresh install with no local files, step 1 produces an empty inventory, and step 2 returns the full file list. The launcher then downloads and installs everything. This is a complete distribution mechanism with no special "first-run" mode needed.
+
+### How to Use It for Our Distribution
+
+1. **Host game files** on any HTTP server (nginx, S3, etc.) as ZIP archives or individual files
+2. **SOAP server** returns `PATCHINFO` with download URLs, expected hashes, and destination paths relative to the game directory (`"..\SGWGame"`)
+3. **Redirect launcher** to our SOAP endpoint via hosts file or binary patch of `.rsrc` string resources 145–150
+4. **First run**: SOAP server returns result=2 (outdated) with the full file list → launcher downloads everything
+5. **Subsequent runs**: SOAP server returns result=1 (current) → launcher passes through instantly
+
+This gives us a free auto-update system with:
+- Progress bars (download + install, separate)
+- Hash verification per file
+- Resume support (libcurl range requests)
+- News/content browser (embedded IE WebBrowser control, loads local HTML or falls back to URL)
+
+### What launcher.exe Does NOT Do
+
+- **Does NOT launch SGW.exe** — the launcher has no knowledge of the game executable
 - **No authentication** — no login, password, AES, tokens, or session management
-- **No BigWorld connection** — no LoginApp, BaseApp, CellApp, Mercury references
-- **No config files** — no .ini/.cfg/.config reading
+- **No BigWorld connection** — no LoginApp, BaseApp, CellApp, or Mercury references
+- **No config files** — no `.ini`/`.cfg`/`.config` reading
 - **No registry access** — user data goes to `My Documents\My Games\Firesky`
-- **No game-specific logic** — purely version checking, patching, and crash reporting
 
-## Emulator Implications
+After the launcher exits, the player still needs to run `AteraLoader.exe → SGW.exe`. Standard approach: the launcher's Play button invokes a wrapper script or shortcut that runs AteraLoader after launcher exits.
 
-1. **Patch server is needed for official flow**: The launcher expects a SOAP-based patch server. For emulator use, either:
-   - Run AteraLoader.exe directly (bypasses the launcher entirely)
-   - Stand up a mock SOAP patch server that returns "version current" (result=1)
-2. **Crash reporting endpoint**: `cheyenneme.com` is long dead — crash uploads will silently fail
-3. **User data path `My Games\Firesky`**: The "Firesky" name confirms this was CME's internal project codename for SGW
-4. **postinstall.exe handles restarts**: After launcher self-patching, postinstall.exe kills the old launcher (by PID) and re-launches it
-5. **The launcher is optional**: Since it doesn't launch the game, it's only needed for patching — AteraLoader.exe or direct SGW.exe launch bypasses it entirely
+### Other Notes
+
+- **`P_rstinstall`** (string at `0x0050f072`, adjacent to `"postinstall.exe"`): likely a postinstall operation name, not a patch type
+- **Crash reporting** (`cheyenneme.com`): long dead — crash uploads will silently fail, no action needed
+- **User data path `My Games\Firesky`**: confirms CME's internal project codename for SGW was "Firesky"
+- **The launcher is optional**: since it doesn't launch the game, AteraLoader.exe or direct SGW.exe invocation bypasses it entirely — useful for development

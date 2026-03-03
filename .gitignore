@@ -132,3 +132,12 @@ server/
 # PostgreSQL Server Distribution (runtime only, not needed for compilation)
 # =============================================================================
 external/postgresql_server/
+
+# =============================================================================
+# Qt / qmake Build Artifacts (tools/ServerEd)
+# =============================================================================
+tools/ServerEd/.qmake.stash
+tools/ServerEd/Makefile
+tools/ServerEd/Makefile.Debug
+tools/ServerEd/Makefile.Release
+tools/ServerEd/ui_*.h
