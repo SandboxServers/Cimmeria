@@ -21,3 +21,6 @@ SET default_tablespace = '';
 
 SET default_with_oids = false;
 
+-- Content engine schema (data-driven event/condition/action chains)
+SET search_path = resources, pg_catalog;
+

@@ -1,6 +1,15 @@
 from cell.SGWSpawnableEntity import SGWSpawnableEntity
 import Atrea
 
+# Imported lazily inside EffectScript methods to avoid circular imports at
+# module load time (ContentEngine imports from cell.Script indirectly).
+def _get_engine():
+    try:
+        from cell.ContentEngine import engine
+        return engine
+    except ImportError:
+        return None
+
 class Script(object):
 	def __init__(self, owner : SGWSpawnableEntity, persistentData : dict):
 		"""
@@ -33,6 +42,13 @@ class Script(object):
 
 
 class EffectScript(Script):
+	_LIFECYCLE_EVENT_TYPES = {
+		'onEffectInit':    'effect_init',
+		'onEffectRemoved': 'effect_removed',
+		'onPulseBegin':    'effect_pulse_begin',
+		'onPulseEnd':      'effect_pulse_end',
+	}
+
 	def __init__(self, owner : SGWSpawnableEntity, effect, nvps):
 		"""
 		@param owner: Context the script is executing in (owner entity)
@@ -41,6 +57,17 @@ class EffectScript(Script):
 		Script.__init__(self, owner, {})
 		self.effect = effect
 		self.params = nvps
+		# Wrap each lifecycle method so that the engine dispatch fires after
+		# the subclass override runs.  This works even when the subclass does
+		# not call super(), because we patch the bound method on the instance.
+		for method_name, event_type in self._LIFECYCLE_EVENT_TYPES.items():
+			original = getattr(self, method_name)
+			def _make_wrapper(orig, etype):
+				def _wrapper():
+					orig()
+					self._dispatch_effect_event(etype)
+				return _wrapper
+			setattr(self, method_name, _make_wrapper(original, event_type))
 
 
 	def addInstanceParam(self, name, value):
@@ -63,3 +90,16 @@ class EffectScript(Script):
 
 	def onPulseEnd(self):
 		pass
+
+	# ------------------------------------------------------------------
+	# Lifecycle dispatch hooks — called by the framework after the
+	# subclass overrides above.  Routes events to ContentEngine when it
+	# is handling this effect.
+	# ------------------------------------------------------------------
+
+	def _dispatch_effect_event(self, event_type):
+		eng = _get_engine()
+		if eng and hasattr(self, 'effect') and self.effect is not None:
+			effect_id = getattr(self.effect, 'effectId', None) or getattr(self.effect, 'effect_id', None)
+			if effect_id is not None:
+				eng.on_effect_event(event_type, effect_id, self)
