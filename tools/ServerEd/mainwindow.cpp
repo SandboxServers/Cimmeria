@@ -6,6 +6,8 @@
 #include "scriptcompiler.h"
 #include "databaseworker.h"
 #include "objectdatabase.h"
+#include "chaineditorwidget.h"
+#include "serverconnector.h"
 
 #include <QCloseEvent>
 #include <QMessageBox>
@@ -17,7 +19,8 @@ extern QStringList gLoadWarnings;
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
-    ui(new Ui::MainWindow)
+    ui(new Ui::MainWindow),
+    chainEditor_(0)
 {
     setTabPosition(Qt::RightDockWidgetArea, QTabWidget::North);
     setTabPosition(Qt::LeftDockWidgetArea, QTabWidget::North);
@@ -47,6 +50,16 @@ MainWindow::MainWindow(QWidget *parent) :
     QObject::connect(fs, SIGNAL(fileOpenRequested(QString)), this, SLOT(onFileOpenRequested(QString)));
     addDockWidget(Qt::LeftDockWidgetArea, fs);
     newScript();
+
+    chainEditor_ = new ChainEditorWidget(dbWorker_, config_);
+    QObject::connect(chainEditor_, SIGNAL(submitDbRequest(DatabaseRequest*)),
+                     dbWorker_,   SLOT(submit(DatabaseRequest*)));
+    QObject::connect(chainEditor_, SIGNAL(reloadOnServer()),
+                     this,         SLOT(onReloadChainEngine()));
+    addDockWidget(Qt::RightDockWidgetArea, chainEditor_);
+    QList<ScriptEditorWidget *> existingEditors = findChildren<ScriptEditorWidget *>();
+    if (!existingEditors.isEmpty())
+        tabifyDockWidget(existingEditors.first(), chainEditor_);
 }
 
 MainWindow::~MainWindow()
@@ -236,6 +249,19 @@ void MainWindow::collectScripts(QString const & path, QStringList & scriptPaths)
                 scriptPaths.append(info.filePath());
         }
     }
+}
+
+void MainWindow::onReloadChainEngine()
+{
+    // Send a Python exec to the running game server asking it to reload
+    // the content chain engine.  ServerConnector handles the TCP connection
+    // and authentication internally.
+    ServerConnector * conn = new ServerConnector(this);
+    conn->setServerAddress(config_->get("ServerHost").toString(),
+                           static_cast<qint16>(config_->get("PythonConsolePort").toInt()));
+    conn->setPassword(config_->get("PythonConsolePassword").toString());
+    conn->requestExec("engine.reload()");
+    qDebug("MainWindow: sent engine.reload() to server");
 }
 
 void MainWindow::closeEvent(QCloseEvent * event)

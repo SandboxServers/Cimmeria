@@ -5,6 +5,7 @@
 #include "scriptnodeseditor.h"
 
 class ScriptEditorWidget;
+class ChainEditorWidget;
 
 namespace Ui {
 class MainWindow;
@@ -13,7 +14,7 @@ class MainWindow;
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
-    
+
 public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
@@ -26,6 +27,7 @@ private slots:
     void onFileOpenRequested(QString path);
     void onScriptEditorClosed(ScriptEditorWidget * widget);
     void onDbError(QString error);
+    void onReloadChainEngine();
 
     void on_actionNew_Mission_triggered();
     void on_actionLoad_Mission_triggered();
@@ -43,6 +45,7 @@ private:
     class QThread * dbThread_;
     class DatabaseWorker * dbWorker_;
     class ObjectDatabase * objectDb_;
+    ChainEditorWidget * chainEditor_;
 };
 
 #endif // MAINWINDOW_H

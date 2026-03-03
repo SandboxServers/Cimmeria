@@ -40,7 +40,9 @@ SOURCES += main.cpp\
     filesystembrowserwidget.cpp \
     databaseworker.cpp \
     objectdatabase.cpp \
-    scriptdatabaselookupwidget.cpp
+    scriptdatabaselookupwidget.cpp \
+    ChainItemDialogs.cpp \
+    ChainEditorWidget.cpp
 
 HEADERS  += mainwindow.h \
     qnodeseditor.h \
@@ -68,7 +70,10 @@ HEADERS  += mainwindow.h \
     filesystembrowserwidget.h \
     databaseworker.h \
     objectdatabase.h \
-    scriptdatabaselookupwidget.h
+    scriptdatabaselookupwidget.h \
+    ChainModel.h \
+    ChainItemDialogs.h \
+    ChainEditorWidget.h
 
 FORMS    += mainwindow.ui \
     configurationdialog.ui \

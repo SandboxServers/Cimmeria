@@ -14,7 +14,12 @@
 		<FindByName>select ability_id, name from resources.abilities where name ilike '%{VALUE}%'</FindByName>
 		<FindById>select name from resources.abilities where ability_id = {VALUE}</FindById>
 	</DatabaseRef>
-	
+
+	<DatabaseRef Ref="ContentChain" NullValue="0">
+		<FindByName>select chain_id, description from resources.content_chains where description ilike '%{VALUE}%' limit 50</FindByName>
+		<FindById>select description from resources.content_chains where chain_id = {VALUE}</FindById>
+	</DatabaseRef>
+
 	<DatabaseRef Ref="Dialog" NullValue="0">
 		<FindByName>
 			select dialog_id, string_agg(text, '; ')
