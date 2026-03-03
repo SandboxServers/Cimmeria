@@ -1,0 +1,21 @@
+[package]
+name = "cimmeria-services"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Server service implementations for the Cimmeria server emulator"
+
+[dependencies]
+cimmeria-common = { workspace = true }
+cimmeria-mercury = { workspace = true }
+cimmeria-entity = { workspace = true }
+cimmeria-game = { workspace = true }
+cimmeria-content-engine = { workspace = true }
+cimmeria-commands = { workspace = true }
+tokio = { workspace = true }
+sqlx = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }

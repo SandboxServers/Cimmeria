@@ -1,0 +1,16 @@
+[package]
+name = "cimmeria-defs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Entity definitions parsed from .def XML files at compile time"
+
+[dependencies]
+serde = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+cimmeria-common = { workspace = true }
+
+[build-dependencies]
+quick-xml = { workspace = true }
+serde = { workspace = true }
