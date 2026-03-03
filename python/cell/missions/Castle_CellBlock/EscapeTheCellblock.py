@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import Script
+from cell.ContentEngine import engine as _content_engine
 from common import Constants
 
 class EscapeTheCellblock(Script):
@@ -22,6 +23,8 @@ class EscapeTheCellblock(Script):
 	n14_var_Invoker = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 680):
+			return
 		def interactCb(args):
 			# TODO: Move this to a "Player Variable" node (Entity type)
 			self.n1_var_Player = self.owner

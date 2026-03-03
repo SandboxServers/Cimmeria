@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import EffectScript
+from cell.ContentEngine import engine as _content_engine
 from common import Constants
 from common.defs.Def import DefMgr
 import Atrea
@@ -10,6 +11,8 @@ import Atrea.enums
 
 class TestEffect(EffectScript):
 	def onPulseEnd(self):
+		if _content_engine.is_handled('effect', None):
+			return
 		self.n15_propagator_Pulse_End()
 
 	def n15_propagator_Pulse_End(self):

@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import Script
+from cell.ContentEngine import engine as _content_engine
 import Atrea
 
 class ArmYourself(Script):
@@ -93,6 +94,8 @@ class ArmYourself(Script):
 	n20_var_Player = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 622):
+			return
 		def dialogCb(args):
 			self.n17_var_Player = args['player']
 			self.n17_propagator_Player()

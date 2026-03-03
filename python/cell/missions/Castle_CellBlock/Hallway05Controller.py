@@ -38,6 +38,8 @@ class Hallway05Controller(Script):
 	n8_var_Player = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 686):
+			return
 		self.n3_lvar_Value = 0
 		self.n4_var_Value = 2
 		self.n3_var_A = self.n4_var_Value

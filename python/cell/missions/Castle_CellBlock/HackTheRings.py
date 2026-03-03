@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import Script
+from cell.ContentEngine import engine as _content_engine
 from common import Constants
 from cell.Minigame import Minigame
 from common.Config import Config
@@ -37,6 +38,8 @@ class HackTheRings(Script):
 	n4_var_Player = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 640):
+			return
 		def interactCb(args):
 			# TODO: Move this to a "Player Variable" node (Entity type)
 			self.n1_var_Player = self.owner

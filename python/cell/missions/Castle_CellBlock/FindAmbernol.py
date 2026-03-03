@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import Script
+from cell.ContentEngine import engine as _content_engine
 from common import Constants
 import Atrea
 
@@ -146,6 +147,8 @@ class FindAmbernol(Script):
 	n39_var_Instigator = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 639):
+			return
 		self.n10_var_Value = 1
 		self.n9_var_Aggression = self.n10_var_Value
 		def interactCb(args):

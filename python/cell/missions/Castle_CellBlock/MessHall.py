@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import Script
+from cell.ContentEngine import engine as _content_engine
 from common import Constants
 
 class MessHall(Script):
@@ -32,6 +33,8 @@ class MessHall(Script):
 	n39_var_Player = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 681):
+			return
 		self.n33_lvar_Value = 0
 		self.n34_var_Value = 2
 		self.n33_var_A = self.n34_var_Value

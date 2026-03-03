@@ -3,9 +3,12 @@
 # Dataset Version: 1.2
 
 from cell.Script import EffectScript
+from cell.ContentEngine import engine as _content_engine
 
 class Reload(EffectScript):
 	def onEffectInit(self):
+		if _content_engine.is_handled('effect', None):
+			return
 		self.n20_trigger_In()
 
 	n3_var_Player = None

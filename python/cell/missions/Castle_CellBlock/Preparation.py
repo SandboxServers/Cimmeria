@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import Script
+from cell.ContentEngine import engine as _content_engine
 from common import Constants
 from cell.Minigame import Minigame
 from common.Config import Config
@@ -98,6 +99,8 @@ class Preparation(Script):
 	n43_var_Player = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 641):
+			return
 		self.n38_var_Value = 8
 		self.n40_var_B = self.n38_var_Value
 		def interactCb(args):

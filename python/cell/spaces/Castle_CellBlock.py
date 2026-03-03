@@ -5,6 +5,7 @@
 from cell.Script import Script
 from common import Constants
 from common.defs.Def import DefMgr
+from cell.ContentEngine import engine as _content_engine
 import Atrea
 
 class Castle_CellBlock(Script):
@@ -303,6 +304,9 @@ class Castle_CellBlock(Script):
 	n229_var_Target = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('space', 'Castle_CellBlock'):
+			_content_engine.register_player(owner, 'Castle_CellBlock')
+			return
 		self.n119_var_Value = self.str2vec('-296.715,68.511,-166.125')
 		self.n118_var_Position = self.n119_var_Value
 		self.n121_var_Value = 1

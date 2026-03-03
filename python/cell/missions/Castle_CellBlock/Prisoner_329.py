@@ -3,6 +3,7 @@
 # Dataset Version: 1.2
 
 from cell.Script import Script
+from cell.ContentEngine import engine as _content_engine
 import Atrea
 from common import Constants
 from cell.Minigame import Minigame
@@ -158,6 +159,8 @@ class Prisoner_329(Script):
 	n155_var_Player = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 638):
+			return
 		self.n145_var_Value = 0
 		self.n146_var_A = self.n145_var_Value
 		self.n148_var_A = self.n145_var_Value

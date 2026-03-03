@@ -3,9 +3,12 @@
 # Dataset Version: 1.2
 
 from cell.Script import EffectScript
+from cell.ContentEngine import engine as _content_engine
 
 class RangedEnergyDamage(EffectScript):
 	def onPulseBegin(self):
+		if _content_engine.is_handled('effect', None):
+			return
 		self.effect.qrCombatDamage(7, 15, (self.n2_var_Base_Damage or 0), True, True)
 		self.effect.qrCombatDamage(8, 15, (self.n4_var_Base_Damage or 0), True, True)
 

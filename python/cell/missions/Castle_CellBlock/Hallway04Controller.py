@@ -11,6 +11,8 @@ class Hallway04Controller(Script):
 	n4_var_Player = None
 	def __init__(self, owner, storedVars):
 		Script.__init__(self, owner, storedVars)
+		if _content_engine.is_handled('mission', 685):
+			return
 		self.n4_var_Player = self.owner
 		self.n2_var_Player = self.n4_var_Player
 		self.n3_var_Player = self.n4_var_Player
