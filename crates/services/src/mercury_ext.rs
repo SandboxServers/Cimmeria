@@ -1,10 +1,12 @@
 //! Helpers for building encrypted Mercury packets from the BaseApp server side.
 //!
 //! These functions produce byte-identical wire output to the C++ BaseApp:
-//! - [`build_connect_reply`]   — `BASEMSG_REPLY_MESSAGE` echoing the ticket back.
-//! - [`build_time_sync`]       — three time-sync messages in one packet (Phase 3).
-//! - [`build_char_list_response`] — game-state + empty character list (Phase 4).
-//! - [`build_ongoing_tick_sync`]  — single tick-sync for the 100 ms heartbeat.
+//! - [`build_connect_reply`]           — `BASEMSG_REPLY_MESSAGE` echoing the ticket back (Phase 3).
+//! - [`build_time_sync`]               — three time-sync messages in one packet (Phase 3).
+//! - [`build_char_list_response`]      — game-state + empty character list (Phase 4, char creation).
+//! - [`build_char_list_with_character`] — game-state + 1-char list (Phase 4, char select).
+//! - [`build_ongoing_tick_sync`]       — single tick-sync for the 100 ms heartbeat.
+//! - [`build_world_entry`]             — createBasePlayer + viewport + cell + position (Phase 5).
 //!
 //! Each function returns a `Vec<u8>` ready to write to the UDP socket.
 
@@ -33,10 +35,26 @@ const BASEMSG_CREATE_BASE_PLAYER: u8 = 0x05;
 /// Wire format: `[entityID:u32][ARRAY<CharacterInfo>]`.
 const BASEMSG_ON_CHARACTER_LIST: u8 = 0x82;
 
+/// `BASEMSG_SPACE_VIEWPORT_INFO` — CME-custom space/viewport setup (0x08).
+/// Wire format: `[entityID:u32][entityID2:u32][spaceID:u32][viewportID:u8]`.
+const BASEMSG_SPACE_VIEWPORT_INFO: u8 = 0x08;
+/// `BASEMSG_CREATE_CELL_PLAYER` — create cell entity with position (0x06).
+/// Wire format: `[spaceID:u32][vehicleID:u32][pos:3×f32][rot:3×f32]`.
+const BASEMSG_CREATE_CELL_PLAYER: u8 = 0x06;
+/// `BASEMSG_FORCED_POSITION` — authoritative position set (0x31).
+/// Wire format: `[entityID:u32][spaceID:u32][vehicleID:u32][pos:3×f32][vel:3×f32][rot:3×f32][flags:u8]`.
+const BASEMSG_FORCED_POSITION: u8 = 0x31;
+
 /// Account entity ID (assigned by the server on login).
 const ACCOUNT_ENTITY_ID: u32 = 2;
 /// Account entity class ID (EntityTypeID 7 in entity definitions).
 const ACCOUNT_CLASS_ID: u8 = 0x07;
+/// Player entity ID (first non-Account entity, assigned on character play).
+const PLAYER_ENTITY_ID: u32 = 1;
+/// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
+const SGWPLAYER_CLASS_ID: u8 = 0x02;
+/// Default space ID for CombatSim (matches reference server session).
+const DEFAULT_SPACE_ID: u32 = 65553;
 
 // ── Public builders ───────────────────────────────────────────────────────────
 
@@ -207,6 +225,142 @@ pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)
+}
+
+/// Build and encrypt the Phase 4 character list with one hardcoded character.
+///
+/// Same structure as [`build_char_list_response`] but sends `count=1` with a
+/// pre-built `CharacterInfo` so the client shows a character select screen
+/// instead of the character creation screen.
+///
+/// # Wire layout (character list portion, before encryption)
+/// ```text
+/// [0x82]                  BASEMSG_ON_CHARACTER_LIST
+/// [WORD_LENGTH: u16 LE]   payload length
+/// [entityID: u32 = 2]     Account entity
+/// [count: u32 = 1]        one character
+/// [CharacterInfo...]      FIXED_DICT fields in order
+/// ```
+pub fn build_char_list_with_character(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
+    let mut body = Vec::with_capacity(128);
+
+    // BASEMSG_CREATE_BASE_PLAYER (WORD_LENGTH = 6)
+    body.push(BASEMSG_CREATE_BASE_PLAYER);
+    body.extend_from_slice(&6u16.to_le_bytes());
+    body.extend_from_slice(&ACCOUNT_ENTITY_ID.to_le_bytes()); // entityID = 2
+    body.push(ACCOUNT_CLASS_ID); // classID = 7
+    body.push(0x00); // propertyCount = 0
+
+    // BASEMSG_ON_CHARACTER_LIST with 1 character
+    body.push(BASEMSG_ON_CHARACTER_LIST);
+
+    // Build payload: [entityID][ARRAY<CharacterInfo>]
+    let mut payload = Vec::with_capacity(80);
+    payload.extend_from_slice(&ACCOUNT_ENTITY_ID.to_le_bytes()); // entityID = 2
+
+    // CharacterInfoList = ARRAY<CharacterInfo> with count = 1
+    payload.extend_from_slice(&1u32.to_le_bytes()); // count = 1
+
+    // CharacterInfo FIXED_DICT (fields in alias.xml declaration order):
+    payload.extend_from_slice(&1i32.to_le_bytes()); // playerId = 1
+    write_wstring(&mut payload, "Wanderer"); // name
+    write_wstring(&mut payload, ""); // extraName
+    payload.push(0); // alignment (0 = default)
+    payload.push(1); // level = 1
+    payload.push(0); // gender (0 = male)
+    write_wstring(&mut payload, "CombatSim"); // worldLocation
+    payload.push(0); // archetype (0 = Soldier)
+    payload.push(0); // title (0 = none)
+    payload.extend_from_slice(&0i32.to_le_bytes()); // playerType = 0
+    payload.push(1); // playable = 1
+
+    body.extend_from_slice(&(payload.len() as u16).to_le_bytes()); // WORD_LENGTH
+    body.extend_from_slice(&payload);
+
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
+/// Build and encrypt the Phase 5 world entry packet.
+///
+/// Sent when the client calls `playCharacter`. Contains four messages packed
+/// into one reliable packet:
+///
+/// 1. `createBasePlayer` (0x05) — creates the SGWPlayer base entity.
+/// 2. `spaceViewportInfo` (0x08) — CME viewport setup for the target space.
+/// 3. `createCellPlayer` (0x06) — creates the cell entity with position.
+/// 4. `forcedPosition` (0x31) — sets authoritative position + velocity.
+///
+/// # Hardcoded defaults
+/// - Entity ID = 1 (first non-Account entity)
+/// - Class ID = 2 (SGWPlayer)
+/// - Position/rotation = (0, 0, 0) — adjust once proper maps are loaded
+/// - Velocity = (0, 0, 0)
+pub fn build_world_entry(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
+    let pos = [0.0f32, 0.0, 0.0]; // starting position
+    let rot = [0.0f32, 0.0, 0.0]; // rotation (rotX, rotZ, rotY — Z/Y swapped)
+
+    let mut body = Vec::with_capacity(128);
+
+    // 1. createBasePlayer (0x05, WORD_LENGTH = 6)
+    body.push(BASEMSG_CREATE_BASE_PLAYER);
+    body.extend_from_slice(&6u16.to_le_bytes());
+    body.extend_from_slice(&PLAYER_ENTITY_ID.to_le_bytes()); // entityID = 1
+    body.push(SGWPLAYER_CLASS_ID); // classID = 2
+    body.push(0x00); // propertyCount = 0
+
+    // 2. spaceViewportInfo (0x08, CONSTANT_LENGTH = 13)
+    body.push(BASEMSG_SPACE_VIEWPORT_INFO);
+    body.extend_from_slice(&PLAYER_ENTITY_ID.to_le_bytes()); // entityID
+    body.extend_from_slice(&PLAYER_ENTITY_ID.to_le_bytes()); // entityID2
+    body.extend_from_slice(&DEFAULT_SPACE_ID.to_le_bytes()); // spaceID
+    body.push(0x00); // viewportID = 0
+
+    // 3. createCellPlayer (0x06, WORD_LENGTH = 32)
+    body.push(BASEMSG_CREATE_CELL_PLAYER);
+    body.extend_from_slice(&32u16.to_le_bytes());
+    body.extend_from_slice(&DEFAULT_SPACE_ID.to_le_bytes()); // spaceID
+    body.extend_from_slice(&0u32.to_le_bytes()); // vehicleID = 0
+    for &c in &pos {
+        body.extend_from_slice(&c.to_le_bytes());
+    } // position x, y, z
+    for &c in &rot {
+        body.extend_from_slice(&c.to_le_bytes());
+    } // rotation rotX, rotZ, rotY
+
+    // 4. forcedPosition (0x31, CONSTANT_LENGTH = 49)
+    body.push(BASEMSG_FORCED_POSITION);
+    body.extend_from_slice(&PLAYER_ENTITY_ID.to_le_bytes()); // entityID
+    body.extend_from_slice(&DEFAULT_SPACE_ID.to_le_bytes()); // spaceID
+    body.extend_from_slice(&0u32.to_le_bytes()); // vehicleID = 0
+    for &c in &pos {
+        body.extend_from_slice(&c.to_le_bytes());
+    } // position
+    for &c in &[0.0f32, 0.0, 0.0] {
+        body.extend_from_slice(&c.to_le_bytes());
+    } // velocity (all zero)
+    for &c in &rot {
+        body.extend_from_slice(&c.to_le_bytes());
+    } // rotation
+    body.push(0x01); // flags
+
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
+// ── Serialization helpers ────────────────────────────────────────────────────
+
+/// Write a BigWorld `WSTRING` to a buffer.
+///
+/// Wire format: `[char_count: u32 LE][UTF-16LE data: char_count × 2 bytes]`.
+fn write_wstring(buf: &mut Vec<u8>, s: &str) {
+    let chars: Vec<u16> = s.encode_utf16().collect();
+    buf.extend_from_slice(&(chars.len() as u32).to_le_bytes());
+    for &ch in &chars {
+        buf.extend_from_slice(&ch.to_le_bytes());
+    }
 }
 
 // ── Encryption helper ─────────────────────────────────────────────────────────

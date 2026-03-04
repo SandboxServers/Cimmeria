@@ -14,14 +14,23 @@
 //!
 //! 1. Client sends login confirmation (msg_id=0x01, **encrypted**).
 //! 2. Server decrypts, identifies msg_id=0x01, sends **encrypted** character list
-//!    (seq=3): game-state (0x05) + empty char list (0x82, count=0).
+//!    (seq=3): game-state (0x05) + character list (0x82, count=1, "Wanderer").
 //! 3. Server spawns a per-connection tick-sync task that sends `BASEMSG_TICK_SYNC`
 //!    every 100 ms (seq=4, 5, …) to prevent REASON_INACTIVITY disconnects.
+//!
+//! ## Phase 5 — world entry
+//!
+//! 1. Client sends `playCharacter` (msg_id=0xC5, base method index 5) inside an
+//!    encrypted bundle (prefixed by authenticate msg_id=0x01).
+//! 2. Server sends compound packet: `createBasePlayer` (SGWPlayer, entityID=1) +
+//!    `spaceViewportInfo` + `createCellPlayer` + `forcedPosition`.
+//! 3. Client creates player entity and enters the game world.
 //!
 //! See `docs/protocol/login-handshake.md` for the full wire-level spec.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -33,7 +42,8 @@ use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUE
 
 use crate::auth::PendingLogin;
 use crate::mercury_ext::{
-    build_char_list_response, build_connect_reply, build_ongoing_tick_sync, build_time_sync,
+    build_char_list_with_character, build_connect_reply, build_ongoing_tick_sync, build_time_sync,
+    build_world_entry,
 };
 
 // ── Hex dump helper ──────────────────────────────────────────────────────────
@@ -71,6 +81,11 @@ struct ConnectedClientState {
     key: [u8; 32],
     /// `true` once the Phase 4 character list has been sent to this client.
     char_list_sent: bool,
+    /// `true` once the Phase 5 world entry packet has been sent.
+    world_entry_sent: bool,
+    /// Shared outgoing sequence counter.  Used by both the tick-sync loop
+    /// and one-shot senders (Phase 4/5) to avoid seq collisions.
+    next_seq: Arc<AtomicU32>,
     /// Client reliable-message sequence IDs that need to be ACKed.
     /// Drained by the tick-sync loop (or the char_list response) and
     /// piggybacked on the next outgoing packet.
@@ -322,9 +337,70 @@ async fn handle_encrypted_datagram(
         }
     }
 
-    // Phase 4: first client message after Phase 3 is msg_id=0x01 (login confirmation).
-    if pkt.body.first().copied() == Some(0x01) {
-        handle_login_confirmation(socket, addr, key, connected).await?;
+    // Parse the client bundle.  Every encrypted client packet starts with
+    // authenticate (msg_id=0x01, WORD_LENGTH).  After skipping it, we look
+    // for entity method calls like playCharacter (0xC5).
+    let body = &pkt.body;
+    if body.is_empty() {
+        return Ok(());
+    }
+
+    let mut offset = 0;
+
+    // First message should be authenticate (0x01, WORD_LENGTH).
+    if body[offset] == 0x01 {
+        offset += 1; // skip msg_id
+        if offset + 2 > body.len() {
+            // Phase 4: login confirmation with just msg_id=0x01, no further data.
+            handle_login_confirmation(socket, addr, key, connected).await?;
+            return Ok(());
+        }
+        let word_len = u16::from_le_bytes([body[offset], body[offset + 1]]) as usize;
+        offset += 2 + word_len; // skip WORD_LENGTH prefix + payload
+
+        if offset >= body.len() {
+            // Only authenticate, no further messages — this is the Phase 4 trigger.
+            handle_login_confirmation(socket, addr, key, connected).await?;
+            return Ok(());
+        }
+    }
+
+    // Scan remaining messages in the bundle.
+    while offset < body.len() {
+        let msg_id = body[offset];
+        offset += 1;
+        tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Client bundle message");
+
+        match msg_id {
+            // playCharacter (0xC5): base method index 5 → 0xC0 | 5
+            // Payload: INT32 playerId (4 bytes)
+            0xC5 => {
+                let player_id = if offset + 4 <= body.len() {
+                    let id = i32::from_le_bytes([
+                        body[offset],
+                        body[offset + 1],
+                        body[offset + 2],
+                        body[offset + 3],
+                    ]);
+                    offset += 4;
+                    id
+                } else {
+                    0
+                };
+                tracing::info!(%addr, player_id, "Client requests playCharacter");
+                handle_play_character(socket, addr, key, connected).await?;
+            }
+            // onClientVersion (0xC9): base method index 9 → 0xC0 | 9
+            // Payload: INT32 + WSTRING + INT32 — skip it for now.
+            0xC9 => {
+                tracing::debug!(%addr, "Client sent onClientVersion — skipping");
+                break; // can't easily parse variable-length WSTRING; stop scanning
+            }
+            _ => {
+                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Unhandled client message — stopping scan");
+                break;
+            }
+        }
     }
 
     Ok(())
@@ -345,7 +421,11 @@ async fn handle_login_confirmation(
         if let Some(c) = clients.get_mut(&addr) {
             if !c.char_list_sent {
                 c.char_list_sent = true;
-                Some((Arc::clone(&c.pending_acks), Arc::clone(&c.last_recv)))
+                Some((
+                    Arc::clone(&c.pending_acks),
+                    Arc::clone(&c.last_recv),
+                    Arc::clone(&c.next_seq),
+                ))
             } else {
                 None
             }
@@ -355,12 +435,12 @@ async fn handle_login_confirmation(
         }
     };
 
-    let (pending_acks_arc, last_recv_arc) = match arcs {
+    let (pending_acks_arc, last_recv_arc, next_seq) = match arcs {
         Some(a) => a,
         None => return Ok(()),
     };
 
-    tracing::info!(%addr, "Phase 4: sending character list (empty → triggers char creation)");
+    tracing::info!(%addr, "Phase 4: sending character list (1 character → select screen)");
 
     // Drain any pending ACKs (at minimum the client's login confirmation seq=0).
     let acks: Vec<u32> = {
@@ -370,21 +450,75 @@ async fn handle_login_confirmation(
     tracing::trace!(%addr, ?acks, "Piggybacking ACKs on char_list");
 
     // Character list at seq=3 (connect_reply=1, time_sync=2).
-    let pkt = build_char_list_response(&key, 3, &acks);
-    tracing::trace!(%addr, len = pkt.len(), hex = %to_hex(&pkt), "UDP_OUT char_list");
+    let seq = next_seq.fetch_add(1, Ordering::Relaxed);
+    let pkt = build_char_list_with_character(&key, seq, &acks);
+    tracing::trace!(%addr, len = pkt.len(), seq, hex = %to_hex(&pkt), "UDP_OUT char_list");
     socket.send_to(&pkt, addr).await?;
 
     tracing::info!(%addr, "Phase 4 complete — spawning tick-sync task");
 
-    // Kick off the 100 ms heartbeat (seq starts at 4).
+    // Kick off the 100 ms heartbeat.
     let socket_clone = Arc::clone(socket);
     tokio::spawn(run_tick_loop(
         socket_clone,
         addr,
         key,
+        Arc::clone(&next_seq),
         pending_acks_arc,
         last_recv_arc,
     ));
+
+    Ok(())
+}
+
+/// Send the Phase 5 world entry packet when the client calls `playCharacter`.
+///
+/// Creates the SGWPlayer base+cell entities and positions the player in the
+/// default space (CombatSim).
+async fn handle_play_character(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Guard: only send once per connection.
+    let arcs = {
+        let mut clients = connected
+            .lock()
+            .map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            if !c.world_entry_sent {
+                c.world_entry_sent = true;
+                Some((Arc::clone(&c.pending_acks), Arc::clone(&c.next_seq)))
+            } else {
+                None
+            }
+        } else {
+            tracing::warn!(%addr, "play_character: addr not in connected map");
+            None
+        }
+    };
+
+    let (pending_acks_arc, next_seq) = match arcs {
+        Some(a) => a,
+        None => return Ok(()),
+    };
+
+    tracing::info!(%addr, "Phase 5: sending world entry (createBasePlayer + viewport + cell + position)");
+
+    // Drain any pending ACKs.
+    let acks: Vec<u32> = {
+        let mut pending = pending_acks_arc.lock().unwrap();
+        pending.drain(..).collect()
+    };
+    tracing::trace!(%addr, ?acks, "Piggybacking ACKs on world_entry");
+
+    let seq = next_seq.fetch_add(1, Ordering::Relaxed);
+    let pkt = build_world_entry(&key, seq, &acks);
+    tracing::trace!(%addr, len = pkt.len(), seq, hex = %to_hex(&pkt), "UDP_OUT world_entry");
+    socket.send_to(&pkt, addr).await?;
+
+    tracing::info!(%addr, "Phase 5 complete — player entity created in world");
 
     Ok(())
 }
@@ -400,13 +534,12 @@ async fn run_tick_loop(
     socket: Arc<UdpSocket>,
     addr: SocketAddr,
     key: [u8; 32],
+    next_seq: Arc<AtomicU32>,
     pending_acks: Arc<Mutex<Vec<u32>>>,
     last_recv: Arc<Mutex<Instant>>,
 ) {
     const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
 
-    // seq=4 follows: connect_reply(1), time_sync(2), char_list(3).
-    let mut seq_id: u32 = 4;
     let mut tick: u32 = 0;
 
     tracing::debug!(%addr, "Tick-sync loop started");
@@ -432,9 +565,10 @@ async fn run_tick_loop(
             pending.drain(..).collect()
         };
         if !acks.is_empty() {
-            tracing::trace!(%addr, ?acks, seq_id, "Piggybacking ACKs on tick_sync");
+            tracing::trace!(%addr, ?acks, "Piggybacking ACKs on tick_sync");
         }
 
+        let seq_id = next_seq.fetch_add(1, Ordering::Relaxed);
         let pkt = build_ongoing_tick_sync(&key, seq_id, tick, &acks);
         if let Err(e) = socket.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
@@ -445,7 +579,6 @@ async fn run_tick_loop(
             tracing::debug!(%addr, tick, seq_id, "Tick-sync heartbeat (every 100th)");
         }
 
-        seq_id = seq_id.wrapping_add(1);
         tick = tick.wrapping_add(1);
     }
 }
@@ -505,6 +638,9 @@ async fn handle_login(
                 enc: MercuryEncryption::from_session_key(key),
                 key,
                 char_list_sent: false,
+                world_entry_sent: false,
+                // Seq 1=connect_reply, 2=time_sync → next available is 3.
+                next_seq: Arc::new(AtomicU32::new(3)),
                 pending_acks: Arc::new(Mutex::new(Vec::new())),
                 last_recv: Arc::new(Mutex::new(Instant::now())),
             },
