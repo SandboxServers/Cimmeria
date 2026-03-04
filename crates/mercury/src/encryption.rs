@@ -113,6 +113,12 @@ impl MercuryEncryption {
         output.extend_from_slice(&ciphertext);
         output.extend_from_slice(&tag);
 
+        tracing::trace!(
+            plaintext_len = plaintext.len(),
+            ciphertext_len = output.len(),
+            "encrypt"
+        );
+
         Ok(output)
     }
 
@@ -150,7 +156,10 @@ impl MercuryEncryption {
             .map_err(|e| CimmeriaError::Encryption(format!("HMAC init failed: {e}")))?;
         mac.update(ciphertext);
         mac.verify_slice(received_tag)
-            .map_err(|_| CimmeriaError::Encryption("HMAC-MD5 verification failed".into()))?;
+            .map_err(|_| {
+                tracing::warn!(input_len = data.len(), "HMAC-MD5 verification failed");
+                CimmeriaError::Encryption("HMAC-MD5 verification failed".into())
+            })?;
 
         // Decrypt with AES-256-CBC.
         let decryptor = Aes256CbcDec::new_from_slices(&self.aes_key, &self.iv)
@@ -163,6 +172,12 @@ impl MercuryEncryption {
 
         // Strip PKCS7 padding.
         let plaintext = pkcs7_unpad(&buf)?;
+
+        tracing::trace!(
+            input_len = data.len(),
+            plaintext_len = plaintext.len(),
+            "decrypt"
+        );
 
         Ok(plaintext.to_vec())
     }

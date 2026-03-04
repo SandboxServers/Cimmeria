@@ -72,8 +72,11 @@ impl Orchestrator {
     /// Initializes all services in a stopped state. Call [`start_all`] to
     /// begin accepting connections.
     pub fn new(config: ServerConfig) -> Self {
+        tracing::trace!("Constructing AuthService");
         let auth = AuthService::new(&config);
+        tracing::trace!("Constructing BaseService");
         let base = BaseService::new(&config);
+        tracing::trace!("Constructing CellService");
         let cell = CellService::new(&config);
 
         let state = ServerState {
@@ -85,6 +88,7 @@ impl Orchestrator {
             config,
         };
 
+        tracing::trace!("Orchestrator constructed");
         Self {
             state: Arc::new(RwLock::new(state)),
         }
@@ -100,10 +104,12 @@ impl Orchestrator {
     pub async fn start_all(&self) -> Result<(), OrchestratorError> {
         tracing::info!("Starting all services");
 
+        tracing::trace!("Acquiring state write lock");
         let mut state = self.state.write().await;
 
         // 1. Connect to the database
         let db_conn = state.config.db_connection_string.clone();
+        tracing::trace!(db_conn = %db_conn, "Connecting to database");
         match DatabasePool::connect(&db_conn).await {
             Ok(pool) => {
                 state.db = Some(pool);
@@ -125,27 +131,42 @@ impl Orchestrator {
         state.auth.register_shard(base_shard);
 
         // 2. Start auth service
+        tracing::trace!(addr = %state.auth.logon_addr, "Starting auth service");
         state
             .auth
             .start()
             .await
-            .map_err(|e| OrchestratorError::AuthStartFailed(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Auth service failed to start");
+                OrchestratorError::AuthStartFailed(e.to_string())
+            })?;
+        tracing::trace!("Auth service started successfully");
 
         // 3. Start base service (wire in pending_logins from auth first)
         let pending_logins = state.auth.pending_logins_arc();
         state.base.set_pending_logins(pending_logins);
+        tracing::trace!(addr = %state.base.listener_addr, "Starting base service");
         state
             .base
             .start()
             .await
-            .map_err(|e| OrchestratorError::BaseStartFailed(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Base service failed to start");
+                OrchestratorError::BaseStartFailed(e.to_string())
+            })?;
+        tracing::trace!("Base service started successfully");
 
         // 4. Start cell service
+        tracing::trace!(addr = %state.cell.listener_addr, "Starting cell service");
         state
             .cell
             .start()
             .await
-            .map_err(|e| OrchestratorError::CellStartFailed(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Cell service failed to start");
+                OrchestratorError::CellStartFailed(e.to_string())
+            })?;
+        tracing::trace!("Cell service started successfully");
 
         // Record actual start time now that all services are up
         state.start_time = Instant::now();
@@ -160,12 +181,23 @@ impl Orchestrator {
     pub async fn stop_all(&self) {
         tracing::info!("Stopping all services");
 
+        tracing::trace!("Acquiring state write lock for shutdown");
         let mut state = self.state.write().await;
+
+        tracing::trace!("Stopping cell service");
         state.cell.stop().await;
+        tracing::trace!("Cell service stopped");
+
+        tracing::trace!("Stopping base service");
         state.base.stop().await;
+        tracing::trace!("Base service stopped");
+
+        tracing::trace!("Stopping auth service");
         state.auth.stop().await;
+        tracing::trace!("Auth service stopped");
 
         // Drop the database pool
+        tracing::trace!("Dropping database pool");
         state.db = None;
 
         tracing::info!("All services stopped");

@@ -64,6 +64,7 @@ impl CellService {
     pub async fn start(&mut self) -> Result<(), CellError> {
         tracing::info!(addr = %self.listener_addr, "Starting cell service");
         // TODO: Initialize spatial grid, load spaces, start tick loop
+        tracing::trace!(addr = %self.listener_addr, "Cell service initialized (no bind yet — stub)");
         self.is_running = true;
         Ok(())
     }
@@ -75,6 +76,7 @@ impl CellService {
         tracing::info!("Stopping cell service");
         // TODO: Stop tick loop, save state
         self.is_running = false;
+        tracing::trace!("Cell service stopped");
     }
 
     /// Create a new game space.

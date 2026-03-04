@@ -163,6 +163,7 @@ impl AuthService {
     /// listener is bound; the task runs until the process exits.
     pub async fn start(&mut self) -> Result<(), AuthError> {
         tracing::info!(addr = %self.logon_addr, "Starting auth HTTP listener");
+        tracing::trace!(shard_count = self.shards.len(), developer_mode = self.developer_mode, "Auth service config");
 
         let state = Arc::new(HandlerState {
             shards: self.shards.clone(),
@@ -176,13 +177,20 @@ impl AuthService {
             .route("/SGWLogin/ServerSelection", post(handle_server_selection))
             .with_state(state);
 
-        let listener = TcpListener::bind(self.logon_addr).await?;
+        tracing::trace!(addr = %self.logon_addr, "Binding TCP listener for auth HTTP");
+        let listener = TcpListener::bind(self.logon_addr).await.map_err(|e| {
+            tracing::error!(addr = %self.logon_addr, error = %e, "Failed to bind auth TCP listener");
+            e
+        })?;
         tracing::info!(addr = %listener.local_addr().unwrap(), "Auth HTTP listener bound");
 
+        tracing::trace!("Spawning auth HTTP server task");
         tokio::spawn(async move {
+            tracing::trace!("Auth HTTP server task started");
             if let Err(e) = axum::serve(listener, app).await {
                 tracing::error!("Auth HTTP server error: {e}");
             }
+            tracing::trace!("Auth HTTP server task exited");
         });
 
         self.is_running = true;
@@ -192,7 +200,9 @@ impl AuthService {
     /// Stop the auth service.
     pub async fn stop(&mut self) {
         tracing::info!("Stopping authentication service");
+        // TODO: signal the HTTP server task to exit cleanly
         self.is_running = false;
+        tracing::trace!("Authentication service stopped");
     }
 
     /// Consume a pending login by ticket.
@@ -220,6 +230,7 @@ async fn handle_user_auth(
     body: String,
 ) -> Response {
     tracing::debug!("Phase 1: UserAuth");
+    tracing::trace!(body = %body, "Phase 1 raw SOAP request");
 
     let req = match parse_login_request(&body) {
         Ok(r) => r,
@@ -266,6 +277,7 @@ async fn handle_user_auth(
     }
 
     let sid = random_hex(20);
+    tracing::debug!(sid = %sid, "Phase 1 generated SID");
     {
         state.sessions.lock().unwrap().insert(
             sid.clone(),
@@ -297,6 +309,7 @@ async fn handle_server_selection(
     body: String,
 ) -> Response {
     tracing::debug!("Phase 2: ServerSelection");
+    tracing::trace!(body = %body, "Phase 2 raw SOAP request");
 
     let sid = match extract_sid(&headers) {
         Some(s) => s,
@@ -327,6 +340,7 @@ async fn handle_server_selection(
     // 64-char hex AES-256 session key, 20-char hex ticket.
     let session_key = random_hex(32);
     let ticket = random_hex(10);
+    tracing::debug!(session_key = %session_key, ticket = %ticket, "Phase 2 generated session_key + ticket");
 
     {
         state.pending_logins.lock().unwrap().insert(
