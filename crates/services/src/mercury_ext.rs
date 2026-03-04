@@ -1,14 +1,16 @@
 //! Helpers for building encrypted Mercury packets from the BaseApp server side.
 //!
 //! These functions produce byte-identical wire output to the C++ BaseApp:
-//! - [`build_connect_reply`] — `BASEMSG_REPLY_MESSAGE` echoing the ticket back.
-//! - [`build_time_sync`] — three time-sync messages in one packet.
+//! - [`build_connect_reply`]   — `BASEMSG_REPLY_MESSAGE` echoing the ticket back.
+//! - [`build_time_sync`]       — three time-sync messages in one packet (Phase 3).
+//! - [`build_char_list_response`] — game-state + empty character list (Phase 4).
+//! - [`build_ongoing_tick_sync`]  — single tick-sync for the 100 ms heartbeat.
 //!
 //! Each function returns a `Vec<u8>` ready to write to the UDP socket.
 
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{
-    build_outgoing, FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE,
+    build_outgoing, FLAG_HAS_ACKS, FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE,
 };
 
 /// Server→client reply flags (HAS_SEQUENCE | ON_CHANNEL | RELIABLE = 0x58).
@@ -24,6 +26,17 @@ const BASEMSG_UPDATE_FREQUENCY_NOTIFICATION: u8 = 0x02;
 const BASEMSG_TICK_SYNC: u8 = 0x0D;
 /// `BASEMSG_SET_GAME_TIME` — set client game clock (0x03).
 const BASEMSG_SET_GAME_TIME: u8 = 0x03;
+/// `BASEMSG_CREATE_BASE_PLAYER` — create a base entity on the client (0x05).
+/// Wire format: `[entityID:u32][classID:u8][propertyCount:u8]`.
+const BASEMSG_CREATE_BASE_PLAYER: u8 = 0x05;
+/// Base entity method: `onCharacterList` (msg_id = 0x80 + methodId 2 = 0x82).
+/// Wire format: `[entityID:u32][ARRAY<CharacterInfo>]`.
+const BASEMSG_ON_CHARACTER_LIST: u8 = 0x82;
+
+/// Account entity ID (assigned by the server on login).
+const ACCOUNT_ENTITY_ID: u32 = 2;
+/// Account entity class ID (EntityTypeID 7 in entity definitions).
+const ACCOUNT_CLASS_ID: u8 = 0x07;
 
 // ── Public builders ───────────────────────────────────────────────────────────
 
@@ -115,6 +128,87 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
     encrypt_packet(&plaintext, key)
 }
 
+/// Build and encrypt the Phase 4 character list response packet.
+///
+/// Sent immediately after the client confirms login with msg_id=0x01.
+/// Contains two messages:
+///
+/// 1. `BASEMSG_CREATE_BASE_PLAYER` (0x05, WORD_LENGTH=6) — creates the Account
+///    entity (entityID=2, classID=7) on the client.
+///
+/// 2. `BASEMSG_ON_CHARACTER_LIST` (0x82, WORD_LENGTH=8) — base entity method
+///    `onCharacterList` (methodId=2) on entity 2.  We send `count=0` (no
+///    characters) which triggers the character-creation screen.
+///
+/// # Wire layout (before encryption)
+/// ```text
+/// [0x58|0x5C]           flags (0x5C if acks present)
+/// [0x05]                BASEMSG_CREATE_BASE_PLAYER
+/// [06, 00]              WORD_LENGTH = 6
+/// [02, 00, 00, 00]      entityID = 2
+/// [07]                  classID = 7 (Account)
+/// [00]                  propertyCount = 0
+/// [0x82]                BASEMSG_ON_CHARACTER_LIST
+/// [08, 00]              WORD_LENGTH = 8
+/// [02, 00, 00, 00]      entityID = 2
+/// [00, 00, 00, 00]      count = 0 characters
+/// [seq_id: u32 LE]      footer: sequence number
+/// [ack_seq: u32 LE]...  footer: acks (if any)
+/// [ack_count: u8]       footer: ack count (if any)
+/// ```
+pub fn build_char_list_response(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
+    let mut body = Vec::with_capacity(20);
+
+    // BASEMSG_CREATE_BASE_PLAYER (WORD_LENGTH = 6)
+    body.push(BASEMSG_CREATE_BASE_PLAYER);
+    body.extend_from_slice(&6u16.to_le_bytes());
+    body.extend_from_slice(&ACCOUNT_ENTITY_ID.to_le_bytes()); // entityID = 2
+    body.push(ACCOUNT_CLASS_ID); // classID = 7
+    body.push(0x00); // propertyCount = 0
+
+    // Base entity method: onCharacterList (WORD_LENGTH = 8: entityID + count)
+    body.push(BASEMSG_ON_CHARACTER_LIST);
+    body.extend_from_slice(&8u16.to_le_bytes());
+    body.extend_from_slice(&ACCOUNT_ENTITY_ID.to_le_bytes()); // entityID = 2
+    body.extend_from_slice(&0u32.to_le_bytes()); // 0 characters → char creation screen
+
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
+/// Build and encrypt a single `BASEMSG_TICK_SYNC` heartbeat packet.
+///
+/// Sent every 100 ms after Phase 4 to keep the client's connection alive.
+/// Unlike [`build_time_sync`] (which sends the full init bundle), this sends
+/// only the tick-sync message so the client can update its clock.
+///
+/// If `acks` is non-empty, the packet piggybacks acknowledgements for the
+/// client's reliable messages (avoids sending separate ACK packets).
+///
+/// # Wire layout (before encryption)
+/// ```text
+/// [0x58|0x5C]         flags (0x5C if acks present)
+/// [0x0D]              BASEMSG_TICK_SYNC  (CONSTANT_LENGTH = 8)
+/// [tick: u32 LE]      current tick counter (increments each 100 ms)
+/// [100, 0, 0, 0]      tickRate = 100 ticks/sec
+/// [seq_id: u32 LE]    footer
+/// [ack_seq: u32]...   footer: acks (if any)
+/// [ack_count: u8]     footer: ack count (if any)
+/// ```
+pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u32]) -> Vec<u8> {
+    const TICK_RATE: u32 = 100;
+
+    let mut body = Vec::with_capacity(9);
+    body.push(BASEMSG_TICK_SYNC);
+    body.extend_from_slice(&tick.to_le_bytes());
+    body.extend_from_slice(&TICK_RATE.to_le_bytes());
+
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
 // ── Encryption helper ─────────────────────────────────────────────────────────
 
 /// Encrypt a plaintext Mercury packet (flags + body + footers).
@@ -173,5 +267,54 @@ mod tests {
         let reply = build_connect_reply(0, ticket, &TEST_KEY, 1);
         let sync = build_time_sync(&TEST_KEY, 2);
         assert_ne!(reply, sync, "reply and time sync packets must differ");
+    }
+
+    #[test]
+    fn char_list_response_size_no_acks() {
+        // body=20B, flags(1)+body(20)+seq(4)=25B → pad to 32 → +16 HMAC = 48B.
+        let out = build_char_list_response(&TEST_KEY, 3, &[]);
+        assert_eq!(out.len(), 48, "char list response should be 48 bytes");
+    }
+
+    #[test]
+    fn char_list_response_with_ack() {
+        // body=20B, flags(1)+body(20)+seq(4)+ack(4)+count(1)=30B → pad to 32 → +16 HMAC = 48B.
+        let out = build_char_list_response(&TEST_KEY, 3, &[0]);
+        assert_eq!(out.len(), 48, "char list with 1 ack should be 48 bytes");
+    }
+
+    #[test]
+    fn char_list_response_deterministic() {
+        let a = build_char_list_response(&TEST_KEY, 3, &[]);
+        let b = build_char_list_response(&TEST_KEY, 3, &[]);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn ongoing_tick_sync_size() {
+        // body=9B, flags(1)+body(9)+seq(4)=14B → pad to 16 → +16 HMAC = 32B.
+        let out = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
+        assert_eq!(out.len(), 32, "tick sync should be 32 bytes");
+    }
+
+    #[test]
+    fn ongoing_tick_sync_with_acks() {
+        // body=9B, flags(1)+body(9)+seq(4)+ack(4)+count(1)=19B → pad to 32 → +16 HMAC = 48B.
+        let out = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[0]);
+        assert_eq!(out.len(), 48, "tick sync with 1 ack should be 48 bytes");
+    }
+
+    #[test]
+    fn ongoing_tick_sync_changes_with_tick() {
+        let a = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
+        let b = build_ongoing_tick_sync(&TEST_KEY, 4, 1, &[]);
+        assert_ne!(a, b, "different tick values must produce different ciphertexts");
+    }
+
+    #[test]
+    fn ongoing_tick_sync_changes_with_seq() {
+        let a = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
+        let b = build_ongoing_tick_sync(&TEST_KEY, 5, 0, &[]);
+        assert_ne!(a, b, "different seq_ids must produce different ciphertexts");
     }
 }
