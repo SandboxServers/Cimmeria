@@ -26,11 +26,13 @@ This creates a 2 x 4 x 4 = 32 message matrix. Only the variant with sufficient p
 
 ### Position Encodings
 
+**UPDATED (2026-03-05)**: Ghidra RE confirmed that FullPos, OnChunk, and OnGround all use the SAME wire size (3 x float32 = 12 bytes). The difference is in handler interpretation: OnChunk and OnGround ignore the Y float and derive it from terrain/chunk height. See [Position Movement Wire Formats](../reverse-engineering/findings/position-movement-wire-formats.md) for field-level details.
+
 | Type | Format | Size | Description |
 |------|--------|------|-------------|
-| `FullPos` | `PackedXYZ` | 3 floats (12 bytes) | Full 3D position |
-| `OnChunk` | `PackedXHZ` | 3 values (compressed) | X, height-on-chunk, Z |
-| `OnGround` | `PackedXZ` | 2 values (compressed) | X, Z only (Y from terrain) |
+| `FullPos` | 3 x float32 | 12 bytes | Full 3D position (X, Y, Z all used) |
+| `OnChunk` | 3 x float32 | 12 bytes | X, Z used; Y IGNORED (client uses chunk height) |
+| `OnGround` | 3 x float32 | 12 bytes | X, Z used; Y IGNORED (client uses terrain height) |
 | `NoPos` | (none) | 0 bytes | No position change |
 
 ### Direction Encodings
@@ -91,13 +93,23 @@ The BaseApp translates this into client-facing entity update messages.
 
 ### Forced Position
 
-Used to correct client prediction or set initial position:
+Used to correct client prediction or set initial position. See [Position Movement Wire Formats](../reverse-engineering/findings/position-movement-wire-formats.md) for complete field-level wire format.
 
 ```
-forcedPosition:
-  uint32    Entity ID
-  Vec3      Position
-  Vec3      Velocity
+forcedPosition (msg_id 0x31, CONSTANT_LENGTH = 49 bytes):
+  int32     entityID       (4 bytes)
+  int32     spaceID        (4 bytes)
+  int32     vehicleID      (4 bytes)
+  float32   posX           (4 bytes)
+  float32   posY           (4 bytes)
+  float32   posZ           (4 bytes)
+  float32   velX           (4 bytes)
+  float32   velY           (4 bytes)
+  float32   velZ           (4 bytes)
+  float32   roll           (4 bytes)
+  float32   pitch          (4 bytes)
+  float32   yaw            (4 bytes)
+  uint8     physics        (1 byte)
 ```
 
 This overrides any client-side prediction and forces the entity to the specified location.
@@ -283,7 +295,7 @@ Each angle is quantized to 256 steps over the full circle (2*pi radians), giving
 
 The SGW client sends positions as **raw 3x float32** (12 bytes) for the client-to-server path. There is no evidence of PackedXYZ/PackedXZ/PackedXHZ compression in the client-to-server send path (`addMove`). The position is written directly as 3 consecutive 32-bit floats.
 
-The BigWorld compressed formats (`OnChunk`, `OnGround`) exist in the 32 server-to-client handlers, meaning the **server** can choose to send compressed positions to save bandwidth on the server-to-client path for AoI entities.
+For server-to-client avatar updates, all three position types (FullPos/OnChunk/OnGround) use the SAME 3x float32 encoding (12 bytes). The "OnChunk" and "OnGround" handlers simply ignore the Y float and derive height from the terrain/chunk system. This was confirmed by decompiling the handler functions (see [Position Movement Wire Formats](../reverse-engineering/findings/position-movement-wire-formats.md)).
 
 ### Velocity Packing in addMove
 

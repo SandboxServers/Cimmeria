@@ -23,6 +23,10 @@ This directory contains per-system reverse engineering findings with evidence.
 | `duel-wire-formats.md` | 4 | Duel challenge, response, forfeit, participants | HIGH |
 | `pet-wire-formats.md` | 4 | Pet abilities, stances, player-routed commands | HIGH |
 | `entity-types-wire-formats.md` | 4 | Account, SGWEntity, SGWSpawnableEntity, SGWPet | HIGH |
+| `entity-creation-wire-formats.md` | 5 | CREATE_BASE_PLAYER, CREATE_CELL_PLAYER, FORCED_POSITION, VIEWPORT_INFO, entity lifecycle | HIGH |
+| `position-movement-wire-formats.md` | 5 | forcedPosition, detailedPosition, 32 avatarUpdate variants, velocity/direction compression | HIGH |
+| `space-viewport-wire-formats.md` | 5 | Space, viewport, entity lifecycle, resource delivery, position updates | HIGH |
+| `system-protocol-wire-formats.md` | 5 | Connection protocol handlers, decompilation evidence, message dispatch | HIGH |
 
 ## Finding Format
 
