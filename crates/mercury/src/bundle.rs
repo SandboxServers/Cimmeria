@@ -7,8 +7,7 @@
 //!
 //! Wire format for a bundle body (packed into packet payload):
 //! ```text
-//! [u8 message_count]
-//! For each message:
+//! For each message (concatenated, no count prefix):
 //!   [u8  message_id]
 //!   [u16 LE payload_length]
 //!   [payload_length bytes of payload]
@@ -80,28 +79,18 @@ impl Bundle {
         self.messages.push(BundleMessage::new(message_id, payload));
     }
 
-    /// Total wire size of the bundle body (header + all messages).
+    /// Total wire size of the bundle body (all messages concatenated).
     pub fn wire_size(&self) -> usize {
-        // 1 byte for message count + each message's wire size.
-        1 + self.messages.iter().map(|m| m.wire_size()).sum::<usize>()
+        self.messages.iter().map(|m| m.wire_size()).sum::<usize>()
     }
 
     /// Encode the entire bundle into `buf`.
     ///
-    /// Format: `[u8 count] [message_id, u16 len, payload]...`
+    /// Format: `[message_id, u16 len, payload]...` (messages concatenated directly)
     pub fn encode(&self, buf: &mut BytesMut) {
-        if self.messages.len() > 255 {
-            tracing::warn!(
-                count = self.messages.len(),
-                "bundle exceeds 255 messages — truncating"
-            );
-        }
-
-        let count = self.messages.len().min(255) as u8;
         buf.reserve(self.wire_size());
-        buf.put_u8(count);
 
-        for msg in self.messages.iter().take(count as usize) {
+        for msg in &self.messages {
             buf.put_u8(msg.message_id);
             // Payload length as u16 LE — payloads > 65535 bytes must be fragmented.
             let len = msg.payload.len().min(u16::MAX as usize) as u16;
@@ -110,19 +99,12 @@ impl Bundle {
         }
     }
 
-    /// Decode a bundle from `buf`.
+    /// Decode a bundle from `buf`, reading messages until the buffer is exhausted.
     pub fn decode(buf: &Bytes) -> Result<Bundle> {
-        if buf.is_empty() {
-            return Err(CimmeriaError::PacketDecode(
-                "empty buffer for bundle decode".into(),
-            ));
-        }
-
         let mut cursor = buf.clone();
-        let count = cursor.get_u8();
-        let mut messages = Vec::with_capacity(count as usize);
+        let mut messages = Vec::new();
 
-        for i in 0..count {
+        while cursor.remaining() > 0 {
             if cursor.remaining() < 3 {
                 return Err(CimmeriaError::BufferUnderflow {
                     needed: 3,
@@ -135,7 +117,7 @@ impl Bundle {
 
             if cursor.remaining() < payload_len {
                 return Err(CimmeriaError::PacketDecode(format!(
-                    "bundle message {i}: declared length {payload_len} but only {} bytes remain",
+                    "bundle message: declared length {payload_len} but only {} bytes remain",
                     cursor.remaining()
                 )));
             }
@@ -183,14 +165,34 @@ mod tests {
         let bundle = Bundle::new();
         let mut buf = BytesMut::new();
         bundle.encode(&mut buf);
+        assert!(buf.is_empty(), "empty bundle should encode to zero bytes");
 
         let decoded = Bundle::decode(&buf.freeze()).unwrap();
         assert_eq!(decoded.messages.len(), 0);
     }
 
     #[test]
-    fn decode_empty_buf_errors() {
+    fn decode_empty_buf_returns_empty_bundle() {
         let buf = Bytes::new();
-        assert!(Bundle::decode(&buf).is_err());
+        let decoded = Bundle::decode(&buf).unwrap();
+        assert_eq!(decoded.messages.len(), 0);
+    }
+
+    #[test]
+    fn finalize_no_count_prefix() {
+        let mut bundle = Bundle::new();
+        bundle.add_message(0x42, Bytes::from_static(b"test"));
+
+        let mut buf = BytesMut::new();
+        bundle.encode(&mut buf);
+        let encoded = buf.freeze();
+
+        // Wire format must be [msg_id][u16 LE length][payload] with NO count prefix.
+        // First byte is the message_id directly, not a message count.
+        assert_eq!(encoded[0], 0x42, "first byte must be message_id, not a count prefix");
+        let payload_len = u16::from_le_bytes([encoded[1], encoded[2]]);
+        assert_eq!(payload_len, 4, "u16 LE length must equal payload size");
+        assert_eq!(&encoded[3..], b"test", "payload bytes must follow the length");
+        assert_eq!(encoded.len(), 1 + 2 + 4, "total size: 1 (id) + 2 (len) + 4 (payload)");
     }
 }

@@ -118,17 +118,27 @@ function Initialize-CimmeriaDatabase {
         throw "PostgreSQL is not accepting queries after 15 seconds."
     }
 
+    # Always ensure role exists (idempotent) — must run before DB check because
+    # if the DB already exists from a partial run, we still need the role for
+    # subsequent psql connections as w-testing.
+    Write-Status "Ensuring w-testing role exists..." "DarkGray"
+    & $psqlExe -p $Port -U postgres -c "CREATE ROLE `"w-testing`" WITH LOGIN PASSWORD 'w-testing'" 2>&1 | ForEach-Object {
+        if ($_ -notmatch 'already exists') { Write-Status "  $_" "DarkGray" }
+    }
+    # Ensure the role has full privileges (covers re-creation after a partial run)
+    & $psqlExe -p $Port -U postgres -c "ALTER ROLE `"w-testing`" WITH LOGIN CREATEDB PASSWORD 'w-testing'" 2>&1 | Out-Null
+
     # Check if database already exists
     Write-Status "Checking for existing database..." "DarkGray"
     $dbCheck = & $psqlExe -p $Port -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='sgw'" 2>$null
     if ($dbCheck -match '1') {
         Write-Status "Database 'sgw' already exists." "DarkGray"
+        # Ensure w-testing owns the database (may have been created by postgres in a previous run)
+        & $psqlExe -p $Port -U postgres -c "ALTER DATABASE sgw OWNER TO `"w-testing`"" 2>&1 | Out-Null
+        # Grant schema privileges so w-testing can create/alter schemas
+        & $psqlExe -p $Port -U postgres -d sgw -c "GRANT ALL ON DATABASE sgw TO `"w-testing`"; GRANT ALL ON SCHEMA public TO `"w-testing`"" 2>&1 | Out-Null
     } else {
-        Write-Status "Creating role and database..." "White"
-
-        & $psqlExe -p $Port -U postgres -c "CREATE ROLE `"w-testing`" WITH LOGIN PASSWORD 'w-testing'" 2>&1 | ForEach-Object {
-            if ($_ -notmatch 'already exists') { Write-Status "  $_" "DarkGray" }
-        }
+        Write-Status "Creating database..." "White"
 
         & $psqlExe -p $Port -U postgres -c "CREATE DATABASE sgw OWNER `"w-testing`"" 2>&1 | ForEach-Object {
             Write-Status "  $_" "DarkGray"
@@ -178,7 +188,7 @@ function Initialize-CimmeriaDatabase {
 
     # Step 5: Verify key tables
     Write-Status "Verifying schema..." "White"
-    $verifyTables = @("account", "sgw_player")
+    $verifyTables = @("account", "sgw_player", "shards")
     $allGood = $true
     foreach ($table in $verifyTables) {
         $check = & $psqlExe -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='$table'" 2>$null

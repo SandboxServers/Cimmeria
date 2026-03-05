@@ -76,7 +76,7 @@ impl Default for ServerConfig {
             db_connection_string:
                 "host=localhost port=5433 user=w-testing password=w-testing dbname=sgw".to_string(),
             protocol_digest: "58AFA196AD3AC4F65CADD99BFF23B799".to_string(),
-            developer_mode: true,
+            developer_mode: false,
         }
     }
 }
@@ -134,9 +134,9 @@ mod tests {
     }
 
     #[test]
-    fn default_config_developer_mode_on() {
+    fn default_config_developer_mode_off() {
         let config = ServerConfig::default();
-        assert!(config.developer_mode);
+        assert!(!config.developer_mode);
     }
 
     #[test]

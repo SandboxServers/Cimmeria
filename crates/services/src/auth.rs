@@ -22,6 +22,7 @@ use axum::{
 };
 use quick_xml::{Reader, events::Event};
 use rand::Rng;
+use sqlx::PgPool;
 use tokio::net::TcpListener;
 
 use cimmeria_common::ServerConfig;
@@ -109,6 +110,7 @@ struct HandlerState {
     sessions: Arc<Mutex<HashMap<String, SessionRecord>>>,
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
     developer_mode: bool,
+    db: Option<Arc<PgPool>>,
 }
 
 // ── AuthService ──────────────────────────────────────────────────────────────
@@ -126,6 +128,8 @@ pub struct AuthService {
     /// Pending logins keyed by ticket; shared with the BaseService for Phase 3 validation.
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
     developer_mode: bool,
+    /// Database connection pool for credential validation.
+    db_pool: Option<Arc<PgPool>>,
 }
 
 impl AuthService {
@@ -146,7 +150,13 @@ impl AuthService {
             shards: Vec::new(),
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
             developer_mode: config.developer_mode,
+            db_pool: None,
         }
+    }
+
+    /// Set the database connection pool for credential validation.
+    pub fn set_db_pool(&mut self, pool: Arc<PgPool>) {
+        self.db_pool = Some(pool);
     }
 
     /// Register a BaseApp shard.
@@ -170,6 +180,7 @@ impl AuthService {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             pending_logins: Arc::clone(&self.pending_logins),
             developer_mode: self.developer_mode,
+            db: self.db_pool.clone(),
         });
 
         let app = Router::new()
@@ -263,10 +274,26 @@ async fn handle_user_auth(
     }
 
     // Credential check.
-    // In developer mode, any valid-format credentials are accepted (account_id = 1).
-    // TODO: query sgw.account for production use.
-    let account_id: u32 = if state.developer_mode {
-        tracing::debug!(user = %req.account_name, "developer mode: accepting credentials");
+    // If DB is available, validate against the account table.
+    // In developer mode without DB, any valid-format credentials are accepted.
+    let account_id: u32 = if let Some(ref db) = state.db {
+        match validate_credentials(db, &req.account_name, &req.password).await {
+            Ok(id) => id,
+            Err(AuthCredError::InvalidCredentials) => {
+                tracing::info!(user = %req.account_name, "Invalid credentials");
+                return login_error(3, "The account name or password is incorrect.");
+            }
+            Err(AuthCredError::AccountDisabled) => {
+                tracing::info!(user = %req.account_name, "Account disabled");
+                return login_error(5, "This account has been suspended.");
+            }
+            Err(AuthCredError::DbError(e)) => {
+                tracing::error!(user = %req.account_name, error = %e, "DB query failed");
+                return login_error(10, "A request to the database server failed.");
+            }
+        }
+    } else if state.developer_mode {
+        tracing::debug!(user = %req.account_name, "developer mode: accepting credentials (no DB)");
         1
     } else {
         return login_error(10, "A request to the database server failed.");
@@ -340,7 +367,7 @@ async fn handle_server_selection(
     // 64-char hex AES-256 session key, 20-char hex ticket.
     let session_key = random_hex(32);
     let ticket = random_hex(10);
-    tracing::debug!(session_key = %session_key, ticket = %ticket, "Phase 2 generated session_key + ticket");
+    tracing::debug!(ticket = %ticket, "Phase 2 generated session credentials");
 
     {
         state.pending_logins.lock().unwrap().insert(
@@ -486,6 +513,56 @@ fn server_location_xml(shard: &ShardInfo, session_key: &str, ticket: &str) -> St
         port = shard.port,
         ip = shard.host,
     )
+}
+
+// ── DB credential validation ──────────────────────────────────────────────────
+
+enum AuthCredError {
+    InvalidCredentials,
+    AccountDisabled,
+    DbError(String),
+}
+
+/// Validate credentials against the `account` table.
+///
+/// The client sends the password pre-hashed as a 40-char lowercase hex SHA1.
+/// The database stores the same format. We compare directly.
+async fn validate_credentials(
+    db: &PgPool,
+    account_name: &str,
+    client_password_hash: &str,
+) -> Result<u32, AuthCredError> {
+    #[derive(sqlx::FromRow)]
+    struct AccountRow {
+        account_id: i32,
+        password: String,
+        enabled: bool,
+    }
+
+    let row: Option<AccountRow> = sqlx::query_as(
+        "SELECT account_id, password, enabled FROM account WHERE account_name = $1",
+    )
+    .bind(account_name)
+    .fetch_optional(db)
+    .await
+    .map_err(|e| AuthCredError::DbError(e.to_string()))?;
+
+    let row = match row {
+        Some(r) => r,
+        None => return Err(AuthCredError::InvalidCredentials),
+    };
+
+    if !row.enabled {
+        return Err(AuthCredError::AccountDisabled);
+    }
+
+    // Compare password hashes (both are lowercase hex SHA1).
+    // The client sends uppercase; the DB stores lowercase.
+    if row.password.to_lowercase() != client_password_hash.to_lowercase() {
+        return Err(AuthCredError::InvalidCredentials);
+    }
+
+    Ok(row.account_id as u32)
 }
 
 /// Generate `byte_count` random bytes as uppercase hex.

@@ -46,6 +46,9 @@ hmac = "0.12"
 md-5 = "0.10"
 rand = "0.9"
 
+# Archive reading (CookedCharCreation.pak is a ZIP)
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
 # Auth
 jsonwebtoken = "9"
 

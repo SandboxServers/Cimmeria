@@ -12,39 +12,119 @@
 //!
 //! ## Phase 4 — character list
 //!
-//! 1. Client sends login confirmation (msg_id=0x01, **encrypted**).
-//! 2. Server decrypts, identifies msg_id=0x01, sends **encrypted** character list
-//!    (seq=3): game-state (0x05) + character list (0x82, count=1, "Wanderer").
-//! 3. Server spawns a per-connection tick-sync task that sends `BASEMSG_TICK_SYNC`
+//! 1. Client sends AUTHENTICATE (msg_id=0x01, **encrypted**) — server ignores it
+//!    (matches C++ reference: "Ignored msg" at line 131 of client_handler.cpp).
+//! 2. Client sends ENABLE_ENTITIES (msg_id=0x08) — server creates the Account
+//!    entity and sends the character list.
+//! 3. Server sends **encrypted** character list (seq=3): game-state (0x05) +
+//!    character list (0x82, count=N from DB).
+//! 4. Server spawns a per-connection tick-sync task that sends `BASEMSG_TICK_SYNC`
 //!    every 100 ms (seq=4, 5, …) to prevent REASON_INACTIVITY disconnects.
 //!
 //! ## Phase 5 — world entry
 //!
-//! 1. Client sends `playCharacter` (msg_id=0xC5, base method index 5) inside an
+//! 1. Client sends `playCharacter` (msg_id=0xC4, base method index 4) inside an
 //!    encrypted bundle (prefixed by authenticate msg_id=0x01).
-//! 2. Server sends compound packet: `createBasePlayer` (SGWPlayer, entityID=1) +
-//!    `spaceViewportInfo` + `createCellPlayer` + `forcedPosition`.
+//! 2. Server queries DB for character position, sends compound packet:
+//!    `createBasePlayer` (SGWPlayer) + `spaceViewportInfo` + `createCellPlayer` +
+//!    `forcedPosition`.
 //! 3. Client creates player entity and enters the game world.
+//!
+//! ## Character creation
+//!
+//! 1. Client sends `createCharacter` (msg_id=0xC4) with name, archetype, visuals.
+//! 2. Server INSERTs into `sgw_player`, sends updated character list on success.
+//!
+//! ## Cooked data serving
+//!
+//! 1. Client sends `versionInfoRequest` (0xC0) — server responds with `onVersionInfo`.
+//! 2. Client sends `elementDataRequest` (0xC1) — server fragments and sends XML
+//!    from CookedCharCreation.pak via `BASEMSG_RESOURCE_FRAGMENT`.
 //!
 //! See `docs/protocol/login-handshake.md` for the full wire-level spec.
 
 use std::collections::HashMap;
+use std::io::Read as IoRead;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
 use cimmeria_common::{EntityId, ServerConfig};
+use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE, FLAG_RELIABLE};
 
 use crate::auth::PendingLogin;
 use crate::mercury_ext::{
-    build_char_list_with_character, build_connect_reply, build_ongoing_tick_sync, build_time_sync,
-    build_world_entry,
+    build_char_list, build_char_create_failed, build_character_visuals,
+    build_connect_reply, build_logged_off, build_on_character_list,
+    build_ongoing_tick_sync, build_reset_entities, build_resource_fragment,
+    build_time_sync, build_version_info, build_world_entry, read_wstring,
+    CharacterInfo, WorldEntryInfo, DEFAULT_SPACE_ID,
+    FRAG_FIRST, FRAG_FIRST_AND_LAST, FRAG_LAST, FRAG_MIDDLE,
 };
+
+// ── CharDef lookup ───────────────────────────────────────────────────────────
+
+/// Given a CharDefId (1–23), return (alignment, archetype, gender, bodyset, world_location, pos_x, pos_y, pos_z).
+/// Returns None for unknown IDs.
+///
+/// Derived from `db/resources/Archetypes/Seed/char_creation.sql`.
+///
+/// Starting coordinates:
+/// - Praxis (Castle_CellBlock): (-334.231, 73.472, -228.026)
+/// - SGU (SGC_W1): (201.5, 1.31, 49.724)
+fn chardef_lookup(id: i32) -> Option<(i32, i32, i32, &'static str, &'static str, f32, f32, f32)> {
+    // (alignment, archetype, gender, bodyset, starting_world, pos_x, pos_y, pos_z)
+    // Alignment: 1=Praxis, 2=SGU
+    // Gender: 0=Male, 1=Female (EGender enum: GENDER_Male=0, GENDER_Female=1)
+    //   DB constraint requires 1-3, so we store gender+1: 1=Male, 2=Female
+    // Bodyset uses doubled format: "BS_X.BS_X" (matches DB varchar(64) column)
+    const PRAXIS_POS: (f32, f32, f32) = (-334.231, 73.472, -228.026);
+    const SGU_POS: (f32, f32, f32) = (201.5, 1.31, 49.724);
+
+    match id {
+        1  => Some((1, 1, 1, "BS_HumanMale.BS_HumanMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Soldier Male
+        2  => Some((2, 1, 1, "BS_HumanMale.BS_HumanMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Soldier Male
+        3  => Some((1, 2, 1, "BS_HumanMale.BS_HumanMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Commando Male
+        4  => Some((2, 2, 1, "BS_HumanMale.BS_HumanMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Commando Male
+        5  => Some((1, 4, 1, "BS_HumanMale.BS_HumanMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Archeologist Male
+        6  => Some((2, 4, 1, "BS_HumanMale.BS_HumanMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Archeologist Male
+        7  => Some((1, 8, 1, "BS_JaffaMale.BS_JaffaMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Jaffa Male
+        8  => Some((2, 7, 1, "BS_JaffaMale.BS_JaffaMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Shol'va Male
+        9  => Some((2, 5, 1, "BS_Asgard.BS_Asgard",           "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Asgard Male
+        10 => Some((1, 6, 1, "BS_GoauldMale.BS_GoauldMale",   "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Goa'uld Male
+        11 => Some((1, 1, 2, "BS_HumanFemale.BS_HumanFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Soldier Female
+        12 => Some((2, 1, 2, "BS_HumanFemale.BS_HumanFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Soldier Female
+        13 => Some((1, 2, 2, "BS_HumanFemale.BS_HumanFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Commando Female
+        14 => Some((2, 2, 2, "BS_HumanFemale.BS_HumanFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Commando Female
+        15 => Some((1, 4, 2, "BS_HumanFemale.BS_HumanFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Archeologist Female
+        16 => Some((2, 4, 2, "BS_HumanFemale.BS_HumanFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Archeologist Female
+        17 => Some((1, 8, 2, "BS_JaffaFemale.BS_JaffaFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Jaffa Female
+        18 => Some((2, 7, 2, "BS_JaffaFemale.BS_JaffaFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Shol'va Female
+        19 => Some((1, 6, 2, "BS_GoauldFemale.BS_GoauldFemale","Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Goa'uld Female
+        20 => Some((1, 3, 1, "BS_HumanMale.BS_HumanMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Scientist Male
+        21 => Some((2, 3, 1, "BS_HumanMale.BS_HumanMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Scientist Male
+        22 => Some((1, 3, 2, "BS_HumanFemale.BS_HumanFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Scientist Female
+        23 => Some((2, 3, 2, "BS_HumanFemale.BS_HumanFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Scientist Female
+        _  => None,
+    }
+}
+
+// ── Skin tint lookup (from python/common/Constants.py:SKIN_TINTS) ────────────
+
+/// 16 ARGB skin tint values indexed by SkinTintColorID (0-15).
+/// Source: `python/common/Constants.py:4-9` — `SKIN_TINTS` array.
+const SKIN_TINTS: [u32; 16] = [
+    0x2F1308FF, 0x180A08FF, 0x15100DFF, 0x9C4F22FF,
+    0x370405FF, 0x2F1219FF, 0x6C1F0DFF, 0x4F1A09FF,
+    0xB45B32FF, 0x632319FF, 0x3A2417FF, 0xF8B487FF,
+    0xD57D51FF, 0xC36141FF, 0xDF8250FF, 0x8D3F24FF,
+];
 
 // ── Hex dump helper ──────────────────────────────────────────────────────────
 
@@ -71,6 +151,128 @@ pub enum BaseError {
     Network(#[from] std::io::Error),
 }
 
+// ── Resource cache ───────────────────────────────────────────────────────────
+
+/// In-memory cache of cooked character creation data loaded from CookedCharCreation.pak.
+/// Per-category cooked data loaded from a PAK file.
+struct CategoryData {
+    /// MetaData value (u32 from the PAK's MetaData entry).
+    metadata: u32,
+    /// elementId → raw XML bytes.
+    elements: HashMap<u32, Vec<u8>>,
+}
+
+/// All cooked game data, loaded from `data/cache/*.pak` at startup.
+///
+/// Maps category_id → { elementId → raw XML bytes }.
+#[derive(Clone)]
+struct ResourceCache {
+    categories: Arc<HashMap<u32, CategoryData>>,
+}
+
+/// Category ID → PAK filename mapping (from `resource.cpp`).
+const CATEGORY_PAKS: &[(u32, &str)] = &[
+    (1, "CookedDataKismetSeqEvent.pak"),
+    (2, "CookedDataAbilities.pak"),
+    (3, "CookedDataMissions.pak"),
+    (4, "CookedDataItems.pak"),
+    (5, "CookedDataDialogs.pak"),
+    (6, "CookedDataKismetSetEvent.pak"),
+    (7, "CookedCharCreation.pak"),
+    (8, "CookedInteractionSet.pak"),
+    (9, "CookedDataEffects.pak"),
+    (10, "TextStrings.pak"),
+    (11, "ErrorStrings.pak"),
+    (12, "CookedWorldInfo.pak"),
+    (13, "CookedDataStargates.pak"),
+    (14, "CookedDataContainers.pak"),
+    (15, "CookedBlueprints.pak"),
+    (16, "CookedSciences.pak"),
+    (17, "CookedDisciplines.pak"),
+    (18, "CookedParadigm.pak"),
+    (19, "SpecialWords.pak"),
+    (20, "CookedInteractions.pak"),
+];
+
+impl ResourceCache {
+    /// Load all PAK files from the given directory.
+    fn load_all(data_dir: &str) -> Result<Self, String> {
+        let mut categories = HashMap::new();
+
+        for &(cat_id, filename) in CATEGORY_PAKS {
+            let pak_path = format!("{}/{}", data_dir, filename);
+            match Self::load_pak(&pak_path) {
+                Ok(cat_data) => {
+                    tracing::info!(
+                        category = cat_id,
+                        file = filename,
+                        elements = cat_data.elements.len(),
+                        metadata = cat_data.metadata,
+                        "Loaded PAK"
+                    );
+                    categories.insert(cat_id, cat_data);
+                }
+                Err(e) => {
+                    tracing::warn!(category = cat_id, file = filename, "Failed to load PAK: {e}");
+                }
+            }
+        }
+
+        tracing::info!(
+            categories = categories.len(),
+            total_elements = categories.values().map(|c| c.elements.len()).sum::<usize>(),
+            "Resource cache loaded"
+        );
+
+        Ok(Self {
+            categories: Arc::new(categories),
+        })
+    }
+
+    /// Load a single PAK file (ZIP archive) into a CategoryData.
+    fn load_pak(pak_path: &str) -> Result<CategoryData, String> {
+        let file = std::fs::File::open(pak_path)
+            .map_err(|e| format!("Failed to open {pak_path}: {e}"))?;
+        let mut archive = zip::ZipArchive::new(file)
+            .map_err(|e| format!("Failed to read ZIP {pak_path}: {e}"))?;
+
+        let mut elements = HashMap::new();
+        let mut metadata: u32 = 0;
+
+        for i in 0..archive.len() {
+            let mut entry = archive.by_index(i)
+                .map_err(|e| format!("ZIP entry {i}: {e}"))?;
+            let name = entry.name().to_string();
+
+            if name == "MetaData" {
+                let mut buf = [0u8; 4];
+                if entry.read_exact(&mut buf).is_ok() {
+                    metadata = u32::from_le_bytes(buf);
+                }
+            } else if let Some(id_str) = name.strip_prefix('_') {
+                if let Ok(id) = id_str.parse::<u32>() {
+                    let mut data = Vec::with_capacity(entry.size() as usize);
+                    entry.read_to_end(&mut data)
+                        .map_err(|e| format!("Failed to read entry {name}: {e}"))?;
+                    elements.insert(id, data);
+                }
+            }
+        }
+
+        Ok(CategoryData { metadata, elements })
+    }
+
+    /// Get a category's data.
+    fn category(&self, category_id: u32) -> Option<&CategoryData> {
+        self.categories.get(&category_id)
+    }
+
+    /// Get XML data for a given category + element.
+    fn get(&self, category_id: u32, element_id: u32) -> Option<&Vec<u8>> {
+        self.categories.get(&category_id)?.elements.get(&element_id)
+    }
+}
+
 // ── Per-connection state ──────────────────────────────────────────────────────
 
 /// State held for each client that has completed the Phase 3 handshake.
@@ -79,10 +281,17 @@ struct ConnectedClientState {
     enc: MercuryEncryption,
     /// Raw 32-byte AES-256 key (for spawning the tick-sync task).
     key: [u8; 32],
+    /// Account ID from the pending login (FK to account table).
+    account_id: u32,
     /// `true` once the Phase 4 character list has been sent to this client.
     char_list_sent: bool,
-    /// `true` once the Phase 5 world entry packet has been sent.
+    /// `true` once the Phase 5a world entry packet (viewport+cell+position+reset) has been sent.
     world_entry_sent: bool,
+    /// Player entity ID for Phase 5b (CREATE_BASE_PLAYER), set after Phase 5a.
+    /// Consumed by `handle_enable_entities` Phase 5b via `.take()`.
+    pending_player_entity_id: Option<u32>,
+    /// Allocated player entity ID (persisted for cleanup on disconnect).
+    player_entity_id: Option<u32>,
     /// Shared outgoing sequence counter.  Used by both the tick-sync loop
     /// and one-shot senders (Phase 4/5) to avoid seq collisions.
     next_seq: Arc<AtomicU32>,
@@ -93,16 +302,20 @@ struct ConnectedClientState {
     /// Timestamp of the last received packet from this client.
     /// Used by the tick-sync loop to detect dead clients.
     last_recv: Arc<Mutex<Instant>>,
+    /// Dynamically allocated Account entity ID for this session.
+    account_entity_id: u32,
+    /// Monotonic counter for resource fragment dataId values.
+    next_data_id: u16,
+    /// World entry info for Phase 5b (viewport + cell + position), set after Phase 5a.
+    /// Consumed by `handle_enable_entities` Phase 5b via `.take()`.
+    pending_world_entry: Option<WorldEntryInfo>,
+    /// Set to `true` by `handle_log_off` to signal the tick-sync loop to stop.
+    cancelled: Arc<AtomicBool>,
 }
 
 // ── BaseService ───────────────────────────────────────────────────────────────
 
 /// BaseApp service — manages persistent entity state and client connections.
-///
-/// In the original C++ architecture, this was the `BaseApp` process that:
-/// - Accepted client connections on `shard_port` (default 32832) via Mercury UDP
-/// - Managed base entity halves (persistent state)
-/// - Routed entity messages between clients and CellApp
 pub struct BaseService {
     /// Address the Mercury UDP listener binds to.
     pub listener_addr: SocketAddr,
@@ -113,6 +326,12 @@ pub struct BaseService {
     /// Pending login handoffs shared with AuthService (ticket → PendingLogin).
     /// Wired by the orchestrator before `start()` is called.
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
+
+    /// Database connection pool (None if not connected).
+    db_pool: Option<Arc<PgPool>>,
+
+    /// Path to the data directory for loading .pak files.
+    data_dir: String,
 }
 
 impl BaseService {
@@ -126,6 +345,8 @@ impl BaseService {
             listener_addr,
             is_running: false,
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
+            db_pool: None,
+            data_dir: "data/cache".to_string(),
         }
     }
 
@@ -137,6 +358,11 @@ impl BaseService {
         pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
     ) {
         self.pending_logins = pending_logins;
+    }
+
+    /// Set the database connection pool.
+    pub fn set_db_pool(&mut self, pool: Arc<PgPool>) {
+        self.db_pool = Some(pool);
     }
 
     /// Start the Mercury UDP listener on `listener_addr`.
@@ -151,11 +377,21 @@ impl BaseService {
         tracing::info!(addr = %socket.local_addr().unwrap(), "Base service UDP socket bound");
 
         let pending_logins = Arc::clone(&self.pending_logins);
+        let db_pool = self.db_pool.clone();
+
+        // Load all cooked data PAK files
+        let resource_cache = match ResourceCache::load_all(&self.data_dir) {
+            Ok(cache) => Some(Arc::new(cache)),
+            Err(e) => {
+                tracing::warn!("Failed to load resource cache: {e}");
+                None
+            }
+        };
 
         tracing::trace!("Spawning base service UDP receive loop");
         tokio::spawn(async move {
             tracing::trace!("Base service UDP receive loop started");
-            run_connect_loop(socket, pending_logins).await;
+            run_connect_loop(socket, pending_logins, db_pool, resource_cache).await;
             tracing::trace!("Base service UDP receive loop exited");
         });
 
@@ -166,7 +402,6 @@ impl BaseService {
     /// Stop the base service gracefully.
     pub async fn stop(&mut self) {
         tracing::info!("Stopping base service");
-        // TODO: signal the listener task to exit cleanly
         self.is_running = false;
         tracing::trace!("Base service stopped");
     }
@@ -196,10 +431,13 @@ impl BaseService {
 async fn run_connect_loop(
     socket: Arc<UdpSocket>,
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
+    db_pool: Option<Arc<PgPool>>,
+    resource_cache: Option<Arc<ResourceCache>>,
 ) {
-    // Per-connection state; allocated once per loop, shared across datagram handlers.
     let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
         Arc::new(Mutex::new(HashMap::new()));
+    let entity_manager: Arc<Mutex<EntityManager>> =
+        Arc::new(Mutex::new(EntityManager::new()));
 
     let mut buf = [0u8; 4096];
 
@@ -207,13 +445,15 @@ async fn run_connect_loop(
         match socket.recv_from(&mut buf).await {
             Ok((len, addr)) => {
                 tracing::trace!(%addr, len, hex = %to_hex(&buf[..len]), "UDP_IN");
-                // We immediately await the handler, so borrowing buf here is fine.
                 if let Err(e) = handle_datagram(
                     &socket,
                     addr,
                     &buf[..len],
                     &pending_logins,
                     &connected,
+                    &db_pool,
+                    &resource_cache,
+                    &entity_manager,
                 )
                 .await
                 {
@@ -236,23 +476,22 @@ async fn run_connect_loop(
 }
 
 /// Dispatch a single incoming UDP datagram.
-///
-/// Two paths:
-/// - **Established channel** (addr in `connected`) → decrypt and handle.
-/// - **Phase 3 login** (flags=0x41, addr not yet connected) → parse and respond.
 async fn handle_datagram(
     socket: &Arc<UdpSocket>,
     addr: SocketAddr,
     raw: &[u8],
     pending_logins: &Arc<Mutex<HashMap<String, PendingLogin>>>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    resource_cache: &Option<Arc<ResourceCache>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if raw.is_empty() {
         return Ok(());
     }
 
     // Check for an established encrypted channel first.
-    let channel_key: Option<(MercuryEncryption, [u8; 32], Arc<Mutex<Vec<u32>>>, Arc<Mutex<Instant>>)> = {
+    let channel_key: Option<(MercuryEncryption, [u8; 32], u32, Arc<Mutex<Vec<u32>>>, Arc<Mutex<Instant>>)> = {
         let clients = connected
             .lock()
             .map_err(|_| "connected lock poisoned")?;
@@ -260,17 +499,20 @@ async fn handle_datagram(
             (
                 c.enc.clone(),
                 c.key,
+                c.account_id,
                 Arc::clone(&c.pending_acks),
                 Arc::clone(&c.last_recv),
             )
         })
     };
 
-    if let Some((enc, key, pending_acks, last_recv)) = channel_key {
+    if let Some((enc, key, account_id, pending_acks, last_recv)) = channel_key {
         // Update last-recv timestamp on every packet from this client.
         *last_recv.lock().unwrap() = Instant::now();
-        return handle_encrypted_datagram(socket, addr, raw, enc, key, &pending_acks, connected)
-            .await;
+        return handle_encrypted_datagram(
+            socket, addr, raw, enc, key, account_id,
+            &pending_acks, connected, db_pool, resource_cache, entity_manager,
+        ).await;
     }
 
     // Not yet connected — only accept the unencrypted Phase 3 login (flags=0x41).
@@ -283,7 +525,7 @@ async fn handle_datagram(
     match parse_baseapp_login(raw) {
         Ok((request_id, ticket_str)) => {
             tracing::info!(%addr, ticket = %ticket_str, "baseAppLogin received");
-            handle_login(socket, addr, request_id, &ticket_str, pending_logins, connected).await
+            handle_login(socket, addr, request_id, &ticket_str, pending_logins, connected, entity_manager).await
         }
         Err(e) => {
             tracing::warn!(%addr, "Failed to parse baseAppLogin: {e}");
@@ -299,8 +541,12 @@ async fn handle_encrypted_datagram(
     raw: &[u8],
     enc: MercuryEncryption,
     key: [u8; 32],
+    account_id: u32,
     pending_acks: &Arc<Mutex<Vec<u32>>>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    resource_cache: &Option<Arc<ResourceCache>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let plaintext = match enc.decrypt(raw) {
         Ok(p) => p,
@@ -337,9 +583,7 @@ async fn handle_encrypted_datagram(
         }
     }
 
-    // Parse the client bundle.  Every encrypted client packet starts with
-    // authenticate (msg_id=0x01, WORD_LENGTH).  After skipping it, we look
-    // for entity method calls like playCharacter (0xC5).
+    // Parse the client bundle.
     let body = &pkt.body;
     if body.is_empty() {
         return Ok(());
@@ -347,58 +591,167 @@ async fn handle_encrypted_datagram(
 
     let mut offset = 0;
 
-    // First message should be authenticate (0x01, WORD_LENGTH).
+    // First message may be authenticate (0x01, WORD_LENGTH).
+    // The C++ reference server ignores this message — entity creation happens
+    // on ENABLE_ENTITIES (0x08) so the client's entity system is ready.
     if body[offset] == 0x01 {
         offset += 1; // skip msg_id
-        if offset + 2 > body.len() {
-            // Phase 4: login confirmation with just msg_id=0x01, no further data.
-            handle_login_confirmation(socket, addr, key, connected).await?;
-            return Ok(());
+        if offset + 2 <= body.len() {
+            let word_len = u16::from_le_bytes([body[offset], body[offset + 1]]) as usize;
+            offset += 2 + word_len;
         }
-        let word_len = u16::from_le_bytes([body[offset], body[offset + 1]]) as usize;
-        offset += 2 + word_len; // skip WORD_LENGTH prefix + payload
+        tracing::debug!(%addr, "AUTHENTICATE received — ignored (entity created on ENABLE_ENTITIES)");
 
         if offset >= body.len() {
-            // Only authenticate, no further messages — this is the Phase 4 trigger.
-            handle_login_confirmation(socket, addr, key, connected).await?;
             return Ok(());
         }
     }
 
     // Scan remaining messages in the bundle.
+    //
+    // Client messages come in two flavours:
+    //   - System messages (0x00–0x0D): use CONSTANT_LENGTH or WORD_LENGTH per the
+    //     ClientMessageList table in messages.cpp.
+    //   - Entity method calls (0xC0+): always WORD_LENGTH (u16 prefix).
     while offset < body.len() {
         let msg_id = body[offset];
         offset += 1;
-        tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Client bundle message");
 
+        // Determine payload length based on message format.
+        // System messages (0x00-0x0D) have defined formats; entity methods use WORD_LENGTH.
+        let payload_result = match msg_id {
+            // --- System messages with CONSTANT_LENGTH ---
+            // 0x02: AVATAR_UPD_IMPLICIT (CONSTANT_LENGTH = 36)
+            0x02 => read_constant_payload(body, &mut offset, 36),
+            // 0x03: AVATAR_UPDATE_EXPLICIT (CONSTANT_LENGTH = 40)
+            0x03 => read_constant_payload(body, &mut offset, 40),
+            // 0x04: AVATAR_UPDW_IMPLICIT (CONSTANT_LENGTH = 36)
+            0x04 => read_constant_payload(body, &mut offset, 36),
+            // 0x05: AVATAR_UPDW_EXPLICIT (CONSTANT_LENGTH = 40)
+            0x05 => read_constant_payload(body, &mut offset, 40),
+            // 0x06: SWITCH_INTERFACE (CONSTANT_LENGTH = 0)
+            0x06 => read_constant_payload(body, &mut offset, 0),
+            // 0x08: ENABLE_ENTITIES (CONSTANT_LENGTH = 8)
+            0x08 => read_constant_payload(body, &mut offset, 8),
+            // 0x09: VIEWPORT_ACK (CONSTANT_LENGTH = 8)
+            0x09 => read_constant_payload(body, &mut offset, 8),
+            // 0x0A: VEHICLE_ACK (CONSTANT_LENGTH = 8)
+            0x0A => read_constant_payload(body, &mut offset, 8),
+            // 0x0C: DISCONNECT (CONSTANT_LENGTH = 1)
+            0x0C => read_constant_payload(body, &mut offset, 1),
+
+            // --- System messages with WORD_LENGTH ---
+            // 0x07: REQUEST_ENTITY_UPDATE (WORD_LENGTH)
+            0x07 => read_word_length_payload(body, &mut offset),
+            // 0x0B: RESTORE_CLIENT_ACK (WORD_LENGTH)
+            0x0B => read_word_length_payload(body, &mut offset),
+
+            // --- Entity method calls (0xC0+): always WORD_LENGTH ---
+            _ => read_word_length_payload(body, &mut offset),
+        };
+
+        let payload = match payload_result {
+            Some(p) => p,
+            None => {
+                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Bundle truncated");
+                break;
+            }
+        };
+
+        tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Client bundle message");
+
+        // Dispatch message.
+        //
+        // Entity method indices use EXPOSED-ONLY ordering from entity defs.
+        // ClientCache interface: 0xC0=versionInfoRequest, 0xC1=elementDataRequest
+        // Account base methods (non-exposed logOffInternal & onPlayerFailedToLoad SKIPPED):
+        //   0xC2=logOff, 0xC3=createCharacter, 0xC4=playCharacter,
+        //   0xC5=deleteCharacter, 0xC6=requestCharacterVisuals, 0xC7=onClientVersion
         match msg_id {
-            // playCharacter (0xC5): base method index 5 → 0xC0 | 5
-            // Payload: INT32 playerId (4 bytes)
-            0xC5 => {
-                let player_id = if offset + 4 <= body.len() {
-                    let id = i32::from_le_bytes([
-                        body[offset],
-                        body[offset + 1],
-                        body[offset + 2],
-                        body[offset + 3],
-                    ]);
-                    offset += 4;
-                    id
+            // ── System messages ──
+            // ENABLE_ENTITIES (0x08) — client re-enables entity system after RESET_ENTITIES
+            0x08 => {
+                tracing::info!(%addr, "Client sent ENABLE_ENTITIES");
+                handle_enable_entities(socket, addr, key, account_id, connected, db_pool, entity_manager).await?;
+            }
+            // AVATAR_UPDATE_EXPLICIT (0x03) — client movement update (ignore for now)
+            0x03 => {
+                tracing::trace!(%addr, "Client sent AVATAR_UPDATE_EXPLICIT — ignoring");
+            }
+            // DISCONNECT (0x0C)
+            0x0C => {
+                tracing::info!(%addr, "Client sent DISCONNECT");
+                destroy_client_entities(connected, entity_manager, addr);
+            }
+            // VIEWPORT_ACK (0x09)
+            0x09 => {
+                tracing::trace!(%addr, "Client sent VIEWPORT_ACK");
+            }
+
+            // ── Entity method calls ──
+            // versionInfoRequest (ClientCache exposed index 0)
+            0xC0 => {
+                handle_version_info_request(
+                    socket, addr, key, payload, connected, resource_cache,
+                ).await?;
+            }
+            // elementDataRequest (ClientCache exposed index 1)
+            0xC1 => {
+                handle_element_data_request(
+                    socket, addr, key, payload, connected, resource_cache,
+                ).await?;
+            }
+            // logOff (Account exposed index 2)
+            0xC2 => {
+                handle_log_off(
+                    socket, addr, key, connected, entity_manager,
+                ).await?;
+            }
+            // createCharacter (Account exposed index 3)
+            0xC3 => {
+                tracing::info!(%addr, "Client requests createCharacter");
+                handle_create_character(
+                    socket, addr, key, account_id, payload,
+                    connected, db_pool,
+                ).await?;
+            }
+            // playCharacter (Account exposed index 4)
+            0xC4 => {
+                let player_id = if payload.len() >= 4 {
+                    i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
                 } else {
                     0
                 };
                 tracing::info!(%addr, player_id, "Client requests playCharacter");
-                handle_play_character(socket, addr, key, connected).await?;
+                handle_play_character(socket, addr, key, account_id, player_id, connected, db_pool, entity_manager).await?;
             }
-            // onClientVersion (0xC9): base method index 9 → 0xC0 | 9
-            // Payload: INT32 + WSTRING + INT32 — skip it for now.
-            0xC9 => {
-                tracing::debug!(%addr, "Client sent onClientVersion — skipping");
-                break; // can't easily parse variable-length WSTRING; stop scanning
+            // deleteCharacter (Account exposed index 5)
+            0xC5 => {
+                let player_id = if payload.len() >= 4 {
+                    i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
+                } else { 0 };
+                tracing::info!(%addr, player_id, "Client requests deleteCharacter");
+                handle_delete_character(
+                    socket, addr, key, account_id, player_id,
+                    connected, db_pool,
+                ).await?;
+            }
+            // requestCharacterVisuals (Account exposed index 6)
+            0xC6 => {
+                let player_id = if payload.len() >= 4 {
+                    i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
+                } else { 0 };
+                tracing::debug!(%addr, player_id, "Client sent requestCharacterVisuals");
+                handle_request_character_visuals(
+                    socket, addr, key, player_id, connected, db_pool,
+                ).await?;
+            }
+            // onClientVersion (Account exposed index 7)
+            0xC7 => {
+                tracing::debug!(%addr, "Client sent onClientVersion — acknowledged");
             }
             _ => {
-                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Unhandled client message — stopping scan");
-                break;
+                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Unhandled client message");
             }
         }
     }
@@ -406,80 +759,645 @@ async fn handle_encrypted_datagram(
     Ok(())
 }
 
-/// Send the character list (Phase 4) once, then start the tick-sync heartbeat.
-async fn handle_login_confirmation(
-    socket: &Arc<UdpSocket>,
-    addr: SocketAddr,
-    key: [u8; 32],
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Guard: only send once per connection.  Also grab shared state Arcs.
-    let arcs = {
-        let mut clients = connected
-            .lock()
-            .map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get_mut(&addr) {
-            if !c.char_list_sent {
-                c.char_list_sent = true;
-                Some((
-                    Arc::clone(&c.pending_acks),
-                    Arc::clone(&c.last_recv),
-                    Arc::clone(&c.next_seq),
-                ))
-            } else {
-                None
-            }
-        } else {
-            tracing::warn!(%addr, "login_confirmation: addr not in connected map");
-            None
+/// Read a CONSTANT_LENGTH payload (no length prefix, fixed size).
+fn read_constant_payload<'a>(body: &'a [u8], offset: &mut usize, size: usize) -> Option<&'a [u8]> {
+    if *offset + size > body.len() {
+        return None;
+    }
+    let payload = &body[*offset..*offset + size];
+    *offset += size;
+    Some(payload)
+}
+
+/// Read a WORD_LENGTH payload (u16 length prefix).
+fn read_word_length_payload<'a>(body: &'a [u8], offset: &mut usize) -> Option<&'a [u8]> {
+    if *offset + 2 > body.len() {
+        return None;
+    }
+    let word_len = u16::from_le_bytes([body[*offset], body[*offset + 1]]) as usize;
+    *offset += 2;
+    if *offset + word_len > body.len() {
+        return None;
+    }
+    let payload = &body[*offset..*offset + word_len];
+    *offset += word_len;
+    Some(payload)
+}
+
+// ── Phase 4: character list ───────────────────────────────────────────────────
+
+/// Query the character list from the database.
+async fn query_character_list(
+    db_pool: &Option<Arc<PgPool>>,
+    account_id: u32,
+) -> Vec<CharacterInfo> {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::debug!("No DB pool — returning empty character list");
+            return Vec::new();
         }
     };
 
-    let (pending_acks_arc, last_recv_arc, next_seq) = match arcs {
-        Some(a) => a,
-        None => return Ok(()),
+    #[derive(sqlx::FromRow)]
+    struct CharRow {
+        player_id: i32,
+        player_name: String,
+        extra_name: String,
+        alignment: i32,
+        level: i32,
+        gender: i32,
+        world_location: String,
+        archetype: i32,
+        title: i32,
+    }
+
+    tracing::debug!(account_id, "Querying sgw_player for character list");
+
+    match sqlx::query_as::<_, CharRow>(
+        "SELECT player_id, player_name, extra_name, alignment, level, gender, \
+         world_location, archetype, title \
+         FROM sgw_player WHERE account_id = $1 ORDER BY player_id",
+    )
+    .bind(account_id as i32)
+    .fetch_all(pool.as_ref())
+    .await
+    {
+        Ok(rows) => {
+            tracing::info!(account_id, count = rows.len(), "Character list query result");
+            rows.into_iter()
+                .map(|r| CharacterInfo {
+                    player_id: r.player_id,
+                    name: r.player_name,
+                    extra_name: r.extra_name,
+                    alignment: r.alignment as u8,
+                    level: r.level as u8,
+                    gender: r.gender as u8,
+                    world_location: r.world_location,
+                    archetype: r.archetype as u8,
+                    title: r.title as u8,
+                    player_type: 1,
+                    playable: 1,
+                })
+                .collect()
+        }
+        Err(e) => {
+            tracing::error!(account_id, "Failed to query character list: {e}");
+            Vec::new()
+        }
+    }
+}
+
+// ── Character creation ───────────────────────────────────────────────────────
+
+/// Handle `createCharacter` (0xC4) — parse args and INSERT into sgw_player.
+async fn handle_create_character(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    account_id: u32,
+    payload: &[u8],
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::warn!(%addr, "createCharacter: no DB pool");
+            send_char_create_failed(socket, addr, key, connected, 3).await?;
+            return Ok(());
+        }
     };
 
-    tracing::info!(%addr, "Phase 4: sending character list (1 character → select screen)");
+    // Parse createCharacter args (from Account.def):
+    // [WSTRING Name][WSTRING ExtraName][INT32 CharDefId][ARRAY<VisualChoices> VisualChoiceList][INT32 SkinTintColorID]
+    let mut off = 0;
 
-    // Drain any pending ACKs (at minimum the client's login confirmation seq=0).
-    let acks: Vec<u32> = {
-        let mut pending = pending_acks_arc.lock().unwrap();
-        pending.drain(..).collect()
+    let (name, consumed) = match read_wstring(payload, off) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(%addr, "createCharacter: failed to parse name: {e}");
+            send_char_create_failed(socket, addr, key, connected, 2).await?;
+            return Ok(());
+        }
     };
-    tracing::trace!(%addr, ?acks, "Piggybacking ACKs on char_list");
+    off += consumed;
 
-    // Character list at seq=3 (connect_reply=1, time_sync=2).
-    let seq = next_seq.fetch_add(1, Ordering::Relaxed);
-    let pkt = build_char_list_with_character(&key, seq, &acks);
-    tracing::trace!(%addr, len = pkt.len(), seq, hex = %to_hex(&pkt), "UDP_OUT char_list");
-    socket.send_to(&pkt, addr).await?;
+    // Name length validation (matches C++ Account.py: rejects names < 3 chars).
+    if name.len() < 3 {
+        tracing::info!(%addr, name_len = name.len(), "createCharacter: name too short");
+        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        return Ok(());
+    }
 
-    tracing::info!(%addr, "Phase 4 complete — spawning tick-sync task");
+    let (extra_name, consumed) = match read_wstring(payload, off) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(%addr, "createCharacter: failed to parse extraName: {e}");
+            send_char_create_failed(socket, addr, key, connected, 2).await?;
+            return Ok(());
+        }
+    };
+    off += consumed;
 
-    // Kick off the 100 ms heartbeat.
-    let socket_clone = Arc::clone(socket);
-    tokio::spawn(run_tick_loop(
-        socket_clone,
-        addr,
-        key,
-        Arc::clone(&next_seq),
-        pending_acks_arc,
-        last_recv_arc,
-    ));
+    if off + 4 > payload.len() {
+        tracing::warn!(%addr, "createCharacter: payload too short for CharDefId");
+        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        return Ok(());
+    }
+    let char_def_id = i32::from_le_bytes([
+        payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+    ]);
+    off += 4;
+
+    // Skip ARRAY<VisualChoices> — count + entries
+    if off + 4 > payload.len() {
+        tracing::warn!(%addr, "createCharacter: payload too short for visuals count");
+        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        return Ok(());
+    }
+    let visual_count = u32::from_le_bytes([
+        payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+    ]) as usize;
+    off += 4;
+    // Each VisualChoices = { VisGroupId: INT32, ChoiceId: INT32 } = 8 bytes
+    off += visual_count * 8;
+
+    if off + 4 > payload.len() {
+        tracing::warn!(%addr, "createCharacter: payload too short for SkinTintColorID");
+        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        return Ok(());
+    }
+    let skin_tint_color_id = i32::from_le_bytes([
+        payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+    ]);
+
+    // Derive alignment, archetype, gender, bodyset, starting position from CharDefId.
+    let (alignment, archetype, gender, bodyset, world_location, start_x, start_y, start_z) =
+        match chardef_lookup(char_def_id) {
+            Some(info) => info,
+            None => {
+                tracing::warn!(%addr, char_def_id, "createCharacter: unknown CharDefId");
+                send_char_create_failed(socket, addr, key, connected, 2).await?;
+                return Ok(());
+            }
+        };
+
+    tracing::info!(
+        %addr,
+        name = %name,
+        extra_name = %extra_name,
+        char_def_id,
+        alignment,
+        archetype,
+        gender,
+        bodyset,
+        visual_count,
+        skin_tint_color_id,
+        "Creating character"
+    );
+
+    // INSERT into sgw_player with starting coordinates from chardef
+    let result = sqlx::query_scalar::<_, i32>(
+        "INSERT INTO sgw_player \
+         (account_id, player_name, extra_name, alignment, archetype, gender, \
+          world_location, bodyset, level, title, pos_x, pos_y, pos_z, skin_color_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $10, $11, $12) \
+         RETURNING player_id",
+    )
+    .bind(account_id as i32)
+    .bind(&name)
+    .bind(&extra_name)
+    .bind(alignment)
+    .bind(archetype)
+    .bind(gender)
+    .bind(world_location)
+    .bind(bodyset)
+    .bind(start_x)
+    .bind(start_y)
+    .bind(start_z)
+    .bind(skin_tint_color_id)
+    .fetch_one(pool.as_ref())
+    .await;
+
+    match result {
+        Ok(player_id) => {
+            tracing::info!(%addr, player_id, name = %name, "Character created successfully");
+
+            // Send updated character list (Account entity already exists)
+            let characters = query_character_list(db_pool, account_id).await;
+            let account_eid = get_account_entity_id(connected, addr)?;
+            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+            let pkt = build_on_character_list(&key, seq, &acks, &characters, account_eid);
+            tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list");
+            socket.send_to(&pkt, addr).await?;
+        }
+        Err(e) => {
+            let error_str = e.to_string();
+            let error_code = if error_str.contains("sgw_player_player_name_key") {
+                tracing::info!(%addr, name = %name, "Character name already taken");
+                1 // name taken
+            } else {
+                tracing::error!(%addr, error = %e, "Character creation DB error");
+                3 // DB error
+            };
+            send_char_create_failed(socket, addr, key, connected, error_code).await?;
+        }
+    }
 
     Ok(())
 }
 
-/// Send the Phase 5 world entry packet when the client calls `playCharacter`.
-///
-/// Creates the SGWPlayer base+cell entities and positions the player in the
-/// default space (CombatSim).
-async fn handle_play_character(
+/// Send `onCharacterCreateFailed`.
+async fn send_char_create_failed(
     socket: &Arc<UdpSocket>,
     addr: SocketAddr,
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    error_code: i32,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let account_eid = get_account_entity_id(connected, addr)?;
+    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+    let pkt = build_char_create_failed(&key, seq, &acks, error_code, account_eid);
+    socket.send_to(&pkt, addr).await?;
+    Ok(())
+}
+
+// ── Character deletion ───────────────────────────────────────────────────────
+
+/// Handle `deleteCharacter` (0xC5) — delete a character and send updated list.
+async fn handle_delete_character(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    account_id: u32,
+    player_id: i32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::warn!(%addr, "deleteCharacter: no DB pool");
+            return Ok(());
+        }
+    };
+
+    // Delete the character (only if it belongs to this account).
+    let result = sqlx::query(
+        "DELETE FROM sgw_player WHERE player_id = $1 AND account_id = $2",
+    )
+    .bind(player_id)
+    .bind(account_id as i32)
+    .execute(pool.as_ref())
+    .await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                tracing::info!(%addr, player_id, account_id, "Character deleted");
+            } else {
+                tracing::warn!(%addr, player_id, account_id, "Character not found or not owned");
+            }
+        }
+        Err(e) => {
+            tracing::error!(%addr, player_id, "Failed to delete character: {e}");
+            return Ok(());
+        }
+    }
+
+    // Send updated character list (Account entity already exists).
+    let characters = query_character_list(db_pool, account_id).await;
+    let account_eid = get_account_entity_id(connected, addr)?;
+    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+    let pkt = build_on_character_list(&key, seq, &acks, &characters, account_eid);
+    tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list after delete");
+    socket.send_to(&pkt, addr).await?;
+
+    Ok(())
+}
+
+// ── Character visuals ────────────────────────────────────────────────────────
+
+/// Handle `requestCharacterVisuals` (0xC6).
+///
+/// Queries the DB for the player's bodyset, components, and skin color,
+/// then sends `onCharacterVisuals` (0x84) so the client can render the
+/// character model on the select screen.
+async fn handle_request_character_visuals(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    player_id: i32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::warn!(%addr, player_id, "requestCharacterVisuals: no DB pool");
+            return Ok(());
+        }
+    };
+
+    // Ownership check: only return visuals for characters belonging to this account.
+    let account_id = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        clients.get(&addr).ok_or("addr not in connected map")?.account_id
+    };
+
+    let row = sqlx::query_as::<_, (String, Vec<String>, i32)>(
+        "SELECT bodyset, components, skin_color_id FROM sgw_player WHERE player_id = $1 AND account_id = $2",
+    )
+    .bind(player_id)
+    .bind(account_id as i32)
+    .fetch_optional(pool.as_ref())
+    .await;
+
+    match row {
+        Ok(Some((bodyset, components, skin_color_id))) => {
+            tracing::debug!(
+                %addr, player_id, %bodyset,
+                component_count = components.len(),
+                skin_color_id,
+                "Sending character visuals"
+            );
+
+            let skin_tint = SKIN_TINTS.get(skin_color_id as usize).copied().unwrap_or(0x2F1308FF);
+            let account_eid = get_account_entity_id(connected, addr)?;
+            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+            let pkt = build_character_visuals(
+                &key, seq, &acks,
+                player_id,
+                &bodyset,
+                &components,
+                0xFF, // primaryTint (matches C++ Account.py)
+                0xFF, // secondaryTint (matches C++ Account.py)
+                skin_tint, // skinTint — RGBA from SKIN_TINTS lookup
+                account_eid,
+            );
+            tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT onCharacterVisuals");
+            socket.send_to(&pkt, addr).await?;
+        }
+        Ok(None) => {
+            tracing::warn!(%addr, player_id, "requestCharacterVisuals: player not found");
+        }
+        Err(e) => {
+            tracing::error!(%addr, player_id, error = %e, "requestCharacterVisuals: DB error");
+        }
+    }
+
+    Ok(())
+}
+
+// ── Cooked data serving ──────────────────────────────────────────────────────
+
+/// Handle `versionInfoRequest` (0xC0).
+///
+/// Client payload: [categoryId: u32][version: u32]
+/// Response: onVersionInfo — if we have data for this category, tell the client
+/// to invalidate and re-fetch; otherwise echo the client's version (cache OK).
+async fn handle_version_info_request(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    payload: &[u8],
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    resource_cache: &Option<Arc<ResourceCache>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if payload.len() < 8 {
+        tracing::warn!(%addr, "versionInfoRequest: payload too short");
+        return Ok(());
+    }
+
+    let category_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+    let client_version = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
+
+    // Version negotiation (from C++ Def.py logic):
+    // When we have data for a category, tell the client to invalidate its cache
+    // so it re-requests everything from us via elementDataRequest.
+    // The C++ server uses DB-stored version history; we simplify by always
+    // invalidating when we have data for the category (the client sends
+    // elementDataRequest on demand after invalidation).
+    let (version, required_updates, invalidate_all) = match resource_cache {
+        Some(cache) => match cache.category(category_id) {
+            Some(cat) => {
+                // We have data for this category — tell client to invalidate.
+                // Use version=1 (server version), required_updates = element count
+                // (triggers proactive push below), invalidate_all=true.
+                (1u32, cat.elements.len() as u32, true)
+            }
+            None => (client_version, 0u32, false),
+        },
+        None => (client_version, 0u32, false),
+    };
+
+    tracing::debug!(
+        %addr, category_id, client_version, version, required_updates,
+        "Responding to versionInfoRequest"
+    );
+
+    let account_eid = get_account_entity_id(connected, addr)?;
+    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+    let pkt = build_version_info(&key, seq, &acks, category_id, version, required_updates, invalidate_all, account_eid);
+    socket.send_to(&pkt, addr).await?;
+
+    // If updates are required, proactively send all resources for this category
+    // (the C++ server does this immediately after onVersionInfo, not waiting for
+    // elementDataRequests).
+    if required_updates > 0 {
+        if let Some(cache) = resource_cache {
+            if let Some(cat) = cache.category(category_id) {
+                tracing::info!(
+                    %addr, category_id, count = cat.elements.len(),
+                    "Proactively sending resource fragments"
+                );
+                send_category_resources(
+                    socket, addr, key, category_id, cat, connected,
+                ).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Proactively send all resources for a category as BASEMSG_RESOURCE_FRAGMENT packets.
+///
+/// The C++ server does this immediately after onVersionInfo when the client's cache
+/// is stale, rather than waiting for individual elementDataRequests.
+async fn send_category_resources(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    category_id: u32,
+    cat: &CategoryData,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    const MAX_CHUNK: usize = 1000;
+
+    // Sort element IDs for deterministic ordering.
+    let mut element_ids: Vec<u32> = cat.elements.keys().copied().collect();
+    element_ids.sort();
+
+    for &element_id in &element_ids {
+        let xml_data = match cat.elements.get(&element_id) {
+            Some(data) => data,
+            None => continue,
+        };
+
+        // Allocate a data_id for this transfer.
+        let data_id = {
+            let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+            if let Some(c) = clients.get_mut(&addr) {
+                let id = c.next_data_id;
+                c.next_data_id = c.next_data_id.wrapping_add(1);
+                id
+            } else {
+                return Ok(());
+            }
+        };
+
+        let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
+        let total_chunks = chunks.len();
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            let frag_flags = match (i == 0, i == total_chunks - 1) {
+                (true, true) => FRAG_FIRST_AND_LAST,
+                (true, false) => FRAG_FIRST,
+                (false, true) => FRAG_LAST,
+                (false, false) => FRAG_MIDDLE,
+            };
+
+            let (mt, cat_id, elem) = if i == 0 {
+                (Some(0u8), Some(category_id), Some(element_id))
+            } else {
+                (None, None, None)
+            };
+
+            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+            let pkt = build_resource_fragment(
+                &key, seq, &acks,
+                data_id, i as u8, frag_flags,
+                mt, cat_id, elem, chunk,
+            );
+            socket.send_to(&pkt, addr).await?;
+        }
+    }
+
+    tracing::debug!(
+        %addr, category_id, count = element_ids.len(),
+        "Proactively sent all resource fragments"
+    );
+
+    Ok(())
+}
+
+/// Handle `elementDataRequest` (0xC1).
+///
+/// Client payload: [categoryId: u32][key: u32]
+/// Response: fragment the XML data for the requested element.
+async fn handle_element_data_request(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    payload: &[u8],
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    resource_cache: &Option<Arc<ResourceCache>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if payload.len() < 8 {
+        tracing::warn!(%addr, "elementDataRequest: payload too short");
+        return Ok(());
+    }
+
+    let category_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+    let element_id = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
+
+    tracing::debug!(%addr, category_id, element_id, "elementDataRequest");
+
+    let cache = match resource_cache {
+        Some(c) => c,
+        None => {
+            tracing::warn!(%addr, "No resource cache loaded — cannot serve element data");
+            return Ok(());
+        }
+    };
+
+    let xml_data = match cache.get(category_id, element_id) {
+        Some(data) => data,
+        None => {
+            tracing::warn!(%addr, category_id, element_id, "Element not found in resource cache");
+            return Ok(());
+        }
+    };
+
+    // Allocate a data_id for this transfer
+    let data_id = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            let id = c.next_data_id;
+            c.next_data_id = c.next_data_id.wrapping_add(1);
+            id
+        } else {
+            return Ok(());
+        }
+    };
+
+    // Fragment into 1000-byte chunks
+    const MAX_CHUNK: usize = 1000;
+    let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
+    let total_chunks = chunks.len();
+
+    tracing::debug!(
+        %addr,
+        element_id,
+        total_size = xml_data.len(),
+        total_chunks,
+        data_id,
+        "Fragmenting resource data"
+    );
+
+    for (i, chunk) in chunks.iter().enumerate() {
+        let frag_flags = match (i == 0, i == total_chunks - 1) {
+            (true, true) => FRAG_FIRST_AND_LAST,
+            (true, false) => FRAG_FIRST,
+            (false, true) => FRAG_LAST,
+            (false, false) => FRAG_MIDDLE,
+        };
+
+        // First fragment includes msgType, categoryId, elementId
+        let (mt, cat, elem) = if i == 0 {
+            (Some(0u8), Some(category_id), Some(element_id))
+        } else {
+            (None, None, None)
+        };
+
+        let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+        let pkt = build_resource_fragment(
+            &key, seq, &acks,
+            data_id, i as u8, frag_flags,
+            mt, cat, elem, chunk,
+        );
+        socket.send_to(&pkt, addr).await?;
+    }
+
+    tracing::debug!(%addr, element_id, total_chunks, "Resource fragments sent");
+
+    Ok(())
+}
+
+// ── Phase 5: world entry ─────────────────────────────────────────────────────
+
+/// Send the Phase 5 world entry packet when the client calls `playCharacter`.
+async fn handle_play_character(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    account_id: u32,
+    player_id: i32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Guard: only send once per connection.
     let arcs = {
@@ -504,32 +1422,209 @@ async fn handle_play_character(
         None => return Ok(()),
     };
 
-    tracing::info!(%addr, "Phase 5: sending world entry (createBasePlayer + viewport + cell + position)");
+    // Query character data from DB
+    let entry_info = query_world_entry(db_pool, account_id, player_id, entity_manager).await;
 
-    // Drain any pending ACKs.
+    tracing::info!(
+        %addr,
+        player_id,
+        entity_id = entry_info.player_entity_id,
+        space_id = entry_info.space_id,
+        pos = ?entry_info.pos,
+        "Phase 5a: sending RESET_ENTITIES (entity teardown)"
+    );
+
     let acks: Vec<u32> = {
         let mut pending = pending_acks_arc.lock().unwrap();
         pending.drain(..).collect()
     };
-    tracing::trace!(%addr, ?acks, "Piggybacking ACKs on world_entry");
 
+    // Phase 5a: Send ONLY RESET_ENTITIES.
+    // The C++ server sends RESET_ENTITIES in its own flushed bundle. The client
+    // tears down all entities, then sends ENABLE_ENTITIES, which triggers
+    // Phase 5b (CREATE_BASE_PLAYER + viewport + cell + forced position).
     let seq = next_seq.fetch_add(1, Ordering::Relaxed);
-    let pkt = build_world_entry(&key, seq, &acks);
-    tracing::trace!(%addr, len = pkt.len(), seq, hex = %to_hex(&pkt), "UDP_OUT world_entry");
+    let pkt = build_reset_entities(&key, seq, &acks);
+    tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT RESET_ENTITIES (Phase 5a)");
     socket.send_to(&pkt, addr).await?;
 
-    tracing::info!(%addr, "Phase 5 complete — player entity created in world");
+    // Store the world entry info so Phase 5b can send the full cell/viewport data.
+    {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            c.pending_player_entity_id = Some(entry_info.player_entity_id);
+            c.player_entity_id = Some(entry_info.player_entity_id);
+            c.pending_world_entry = Some(entry_info);
+        }
+    }
+
+    tracing::info!(%addr, "Phase 5a sent — waiting for ENABLE_ENTITIES from client");
 
     Ok(())
 }
 
-/// Per-connection tick-sync heartbeat task.
+/// Handle `ENABLE_ENTITIES` (0x08) — dispatches Phase 4 or Phase 5b.
 ///
-/// Sends `BASEMSG_TICK_SYNC` every 100 ms to keep the client connection alive.
-/// Any pending client ACKs are piggybacked onto the next tick-sync packet.
-/// The task exits when:
-/// - The UDP send fails (socket closed or OS error).
-/// - No data has been received from the client for 60 seconds.
+/// - **Phase 4** (no `pending_player_entity_id`): First ENABLE_ENTITIES after connect.
+///   Creates the Account entity and sends the character list, then starts tick-sync.
+/// - **Phase 5b** (has `pending_player_entity_id`): After world entry RESET_ENTITIES.
+///   Sends `CREATE_BASE_PLAYER` for the SGWPlayer entity.
+async fn handle_enable_entities(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    account_id: u32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    _entity_manager: &Arc<Mutex<EntityManager>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Check if we have a pending world entry (Phase 5b).
+    let pending = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            match (c.pending_player_entity_id.take(), c.pending_world_entry.take()) {
+                (Some(eid), Some(entry)) => Some((eid, entry)),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    };
+
+    if let Some((_eid, entry_info)) = pending {
+        // ── Phase 5b: CREATE_BASE_PLAYER + viewport + cell + forced position ──
+        // In the C++ server, enableEntities() sends CREATE_BASE_PLAYER, then
+        // triggers the cell to send viewport/cell/position data.  Since we're
+        // single-process, we combine them into one packet.
+        let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+
+        tracing::info!(
+            %addr,
+            player_entity_id = entry_info.player_entity_id,
+            space_id = entry_info.space_id,
+            seq,
+            "Phase 5b: sending CREATE_BASE_PLAYER + viewport + cell + position"
+        );
+
+        let pkt = build_world_entry(&key, seq, &acks, &entry_info);
+        socket.send_to(&pkt, addr).await?;
+
+        tracing::info!(%addr, "Phase 5b complete — player in world");
+        return Ok(());
+    }
+
+    // ── Phase 4: initial entity creation — send Account entity + char list ──
+    // Account entity was already allocated in Phase 3 (handle_login).
+
+    // Guard: only send once per connection.
+    {
+        let mut clients = connected
+            .lock()
+            .map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            if c.char_list_sent {
+                return Ok(()); // already sent
+            }
+            c.char_list_sent = true;
+        } else {
+            tracing::warn!(%addr, "enable_entities: addr not in connected map");
+            return Ok(());
+        }
+    }
+
+    // Query characters from DB
+    let characters = query_character_list(db_pool, account_id).await;
+    let account_eid = get_account_entity_id(connected, addr)?;
+
+    tracing::info!(
+        %addr,
+        account_entity_id = account_eid,
+        count = characters.len(),
+        "Phase 4: sending character list ({})",
+        if characters.is_empty() { "creation screen" } else { "select screen" }
+    );
+
+    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+    let pkt = build_char_list(&key, seq, &acks, &characters, account_eid);
+    tracing::trace!(%addr, len = pkt.len(), seq, hex = %to_hex(&pkt), "UDP_OUT char_list");
+    socket.send_to(&pkt, addr).await?;
+
+    tracing::info!(%addr, "Phase 4 complete — char list sent");
+
+    Ok(())
+}
+
+/// Query the character's world entry data from the database and allocate a player entity ID.
+async fn query_world_entry(
+    db_pool: &Option<Arc<PgPool>>,
+    account_id: u32,
+    player_id: i32,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+) -> WorldEntryInfo {
+    let player_eid = entity_manager.lock().unwrap().create_entity("SGWPlayer").0 as u32;
+
+    let default_entry = || WorldEntryInfo {
+        player_entity_id: player_eid,
+        space_id: DEFAULT_SPACE_ID,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+    };
+
+    let pool = match db_pool {
+        Some(p) => p,
+        None => return default_entry(),
+    };
+
+    #[derive(sqlx::FromRow)]
+    struct EntryRow {
+        world_location: String,
+        pos_x: f32,
+        pos_y: f32,
+        pos_z: f32,
+    }
+
+    match sqlx::query_as::<_, EntryRow>(
+        "SELECT world_location, pos_x, pos_y, pos_z \
+         FROM sgw_player WHERE player_id = $1 AND account_id = $2",
+    )
+    .bind(player_id)
+    .bind(account_id as i32)
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(row)) => {
+            // Map world_location string to a space_id.
+            // IDs use (cellId << 16) | local_index; cellId=1 for all.
+            let space_id = match row.world_location.as_str() {
+                "Castle_CellBlock" => 65552, // (1 << 16) | 16
+                "SGC_W1"           => 65553, // (1 << 16) | 17
+                "CombatSim"        => 65554, // (1 << 16) | 18
+                other => {
+                    tracing::warn!("Unknown world_location: {other}, defaulting to Castle_CellBlock");
+                    65552
+                }
+            };
+            WorldEntryInfo {
+                player_entity_id: player_eid,
+                space_id,
+                pos: [row.pos_x, row.pos_y, row.pos_z],
+                rot: [0.0; 3],
+            }
+        }
+        Ok(None) => {
+            tracing::warn!(player_id, account_id, "Character not found for world entry");
+            default_entry()
+        }
+        Err(e) => {
+            tracing::error!("Failed to query world entry: {e}");
+            default_entry()
+        }
+    }
+}
+
+// ── Tick-sync heartbeat ──────────────────────────────────────────────────────
+
+/// Per-connection tick-sync heartbeat task.
 async fn run_tick_loop(
     socket: Arc<UdpSocket>,
     addr: SocketAddr,
@@ -537,6 +1632,9 @@ async fn run_tick_loop(
     next_seq: Arc<AtomicU32>,
     pending_acks: Arc<Mutex<Vec<u32>>>,
     last_recv: Arc<Mutex<Instant>>,
+    cancelled: Arc<AtomicBool>,
+    connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: Arc<Mutex<EntityManager>>,
 ) {
     const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -547,7 +1645,12 @@ async fn run_tick_loop(
     loop {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        // Check if the client has gone silent.
+        // Check if the session was torn down by handle_log_off.
+        if cancelled.load(Ordering::Relaxed) {
+            tracing::info!(%addr, "Tick-sync stopping: session cancelled (logOff)");
+            break;
+        }
+
         let idle = last_recv.lock().unwrap().elapsed();
         if idle > INACTIVITY_TIMEOUT {
             tracing::info!(
@@ -559,7 +1662,6 @@ async fn run_tick_loop(
             break;
         }
 
-        // Drain any ACKs queued by the receive loop.
         let acks: Vec<u32> = {
             let mut pending = pending_acks.lock().unwrap();
             pending.drain(..).collect()
@@ -581,6 +1683,117 @@ async fn run_tick_loop(
 
         tick = tick.wrapping_add(1);
     }
+
+    // Clean up entities for this disconnected client.
+    destroy_client_entities(&connected, &entity_manager, addr);
+}
+
+// ── LogOff handler ──────────────────────────────────────────────────────────
+
+/// Handle `logOff` (0xC2) — the client is leaving the session.
+///
+/// Both "Change Server" and "Back" buttons in the character select UI call this.
+/// The C++ reference (`Account.py:logOff`) was a no-op (`pass`), which meant the
+/// server never cleaned up — leaking sessions indefinitely.
+///
+/// Client flow (from Ghidra analysis of FUN_00def9f0):
+///   1. Both buttons emit `Event_NetOut_LogOff` → sends logOff (0xC2)
+///   2. `relogin()` also sets a relogin flag before step 1
+///   3. Client fires `gotoLogin` state transition
+///   4. Client waits for Mercury channel to die (server closes or timeout)
+///   5. `Event_Net_Disconnected` fires → disconnect callback (FUN_00de9bb0):
+///      - If relogin flag set → `EntityManager::disconnected()` + SOAP re-login
+///      - If not set → shows "disconnected from network" UI
+///
+/// We send `LOGGED_OFF` (0x37) to trigger an immediate channel teardown on the
+/// client side (via `ServerConnection::loggedOff → Mercury::disconnect`).
+/// Without it, the client waits 30s for the Mercury channel timeout.
+async fn handle_log_off(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tracing::info!(%addr, "Client requests logOff — sending LOGGED_OFF and cleaning up");
+
+    // Signal the tick-sync loop to stop and grab seq/acks for the final packet.
+    let (acks, seq) = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let client = clients.get_mut(&addr).ok_or("no session for addr")?;
+        client.cancelled.store(true, Ordering::Relaxed);
+        let acks: Vec<u32> = client.pending_acks.lock().unwrap().drain(..).collect();
+        let seq = client.next_seq.fetch_add(1, Ordering::Relaxed);
+        (acks, seq)
+    };
+
+    // Send LOGGED_OFF (0x37) with reason=0 to trigger immediate client-side
+    // channel teardown.  This fires ServerConnection::loggedOff → Event_Net_Disconnected
+    // which triggers the relogin flow (Change Server) or disconnect UI (Back).
+    let pkt = build_logged_off(&key, seq, &acks);
+    socket.send_to(&pkt, addr).await?;
+    tracing::debug!(%addr, seq, "Sent LOGGED_OFF (0x37)");
+
+    // Destroy entities and remove from connected map.
+    destroy_client_entities(connected, entity_manager, addr);
+
+    Ok(())
+}
+
+// ── Shared helpers ───────────────────────────────────────────────────────────
+
+/// Drain pending ACKs and allocate the next sequence number.
+fn drain_acks_and_seq(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> Result<(Vec<u32>, u32), Box<dyn std::error::Error + Send + Sync>> {
+    let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+    let c = clients
+        .get_mut(&addr)
+        .ok_or("addr not in connected map")?;
+    let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+    let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+    Ok((acks, seq))
+}
+
+/// Read the dynamically allocated account entity ID for a connected client.
+fn get_account_entity_id(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
+    let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+    let c = clients.get(&addr).ok_or("addr not in connected map")?;
+    Ok(c.account_entity_id)
+}
+
+/// Destroy all entities associated with a disconnecting client and remove it from the map.
+fn destroy_client_entities(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    addr: SocketAddr,
+) {
+    let (account_eid, player_eid) = {
+        let mut clients = match connected.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        if let Some(c) = clients.remove(&addr) {
+            (c.account_entity_id, c.player_entity_id)
+        } else {
+            return;
+        }
+    };
+
+    let mut mgr = entity_manager.lock().unwrap();
+    if account_eid != 0 {
+        tracing::debug!(%addr, account_entity_id = account_eid, "Destroying Account entity");
+        mgr.destroy_entity(EntityId(account_eid as i32));
+    }
+    if let Some(player_eid) = player_eid {
+        tracing::debug!(%addr, player_entity_id = player_eid, "Destroying Player entity");
+        mgr.destroy_entity(EntityId(player_eid as i32));
+    }
+    tracing::info!(%addr, "Client entities cleaned up");
 }
 
 // ── Phase 3 login helpers ─────────────────────────────────────────────────────
@@ -593,8 +1806,8 @@ async fn handle_login(
     ticket: &str,
     pending_logins: &Arc<Mutex<HashMap<String, PendingLogin>>>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Consume the pending login entry.
     let login = {
         let mut map = pending_logins
             .lock()
@@ -628,7 +1841,13 @@ async fn handle_login(
     socket.send_to(&sync, addr).await?;
 
     // Register for Phase 4 encrypted traffic.
-    {
+    let (pending_acks_arc, last_recv_arc, next_seq_arc, cancelled_arc) = {
+        let next_seq = Arc::new(AtomicU32::new(3));
+        let pending_acks = Arc::new(Mutex::new(Vec::new()));
+        let last_recv = Arc::new(Mutex::new(Instant::now()));
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let arcs = (Arc::clone(&pending_acks), Arc::clone(&last_recv), Arc::clone(&next_seq), Arc::clone(&cancelled));
+
         let mut clients = connected
             .lock()
             .map_err(|_| "connected lock poisoned")?;
@@ -637,35 +1856,46 @@ async fn handle_login(
             ConnectedClientState {
                 enc: MercuryEncryption::from_session_key(key),
                 key,
+                account_id: login.account_id,
                 char_list_sent: false,
                 world_entry_sent: false,
-                // Seq 1=connect_reply, 2=time_sync → next available is 3.
-                next_seq: Arc::new(AtomicU32::new(3)),
-                pending_acks: Arc::new(Mutex::new(Vec::new())),
-                last_recv: Arc::new(Mutex::new(Instant::now())),
+                pending_player_entity_id: None,
+                player_entity_id: None,
+                next_seq,
+                pending_acks,
+                last_recv,
+                account_entity_id: entity_manager.lock().unwrap().create_entity("Account").0 as u32,
+                next_data_id: 0,
+                pending_world_entry: None,
+                cancelled,
             },
         );
-    }
+        arcs
+    };
 
-    tracing::info!(%addr, "Phase 3 complete — channel registered");
+    tracing::info!(%addr, "Phase 3 complete — channel registered, starting tick-sync");
+
+    // Start tick-sync immediately after Phase 3 (matches C++ onConnected() behavior).
+    // The C++ server starts gameTick() as soon as the Account entity is created,
+    // BEFORE the client sends ENABLE_ENTITIES. This provides:
+    // 1. ACK delivery for client reliable messages (AUTHENTICATE, ENABLE_ENTITIES)
+    // 2. A running game clock so the client can play the stargate transition animation
+    tokio::spawn(run_tick_loop(
+        Arc::clone(socket),
+        addr,
+        key,
+        next_seq_arc,
+        pending_acks_arc,
+        last_recv_arc,
+        cancelled_arc,
+        Arc::clone(connected),
+        Arc::clone(entity_manager),
+    ));
+
     Ok(())
 }
 
 /// Parse the `baseAppLogin` packet body.
-///
-/// Wire layout (41 bytes total):
-/// ```text
-/// [0x41]              flags
-/// [0x00]              msg_id = CLIENTMSG_BASEAPP_LOGIN
-/// [u16 LE]            WORD_LENGTH = 25
-/// [u32 LE]            requestId
-/// [u16 LE]            nextReqOffset = 0
-/// [u32 LE]            accountId
-/// [u8]                ticketLen = 20
-/// [20 bytes]          ticket (20 ASCII hex chars)
-/// [u16 LE]            footer: first_req_offset = 1
-/// [u32 LE]            footer: seq_id
-/// ```
 fn parse_baseapp_login(
     raw: &[u8],
 ) -> Result<(u32, String), Box<dyn std::error::Error + Send + Sync>> {
@@ -691,7 +1921,6 @@ fn parse_baseapp_login(
     }
 
     let request_id = u32::from_le_bytes([body[3], body[4], body[5], body[6]]);
-    // body[7..8] = nextReqOffset — ignored
     let _account_id = u32::from_le_bytes([body[9], body[10], body[11], body[12]]);
     let ticket_len = body[13] as usize;
 
@@ -782,23 +2011,174 @@ mod tests {
 
     #[test]
     fn parse_baseapp_login_valid() {
-        // Construct a valid 41-byte baseAppLogin packet.
         let mut raw = Vec::new();
         raw.push(0x41u8); // flags
         raw.push(0x00u8); // msg_id
-        raw.extend_from_slice(&25u16.to_le_bytes()); // WORD_LENGTH
-        raw.extend_from_slice(&0xCAFEBABEu32.to_le_bytes()); // requestId
-        raw.extend_from_slice(&0u16.to_le_bytes()); // nextReqOffset
-        raw.extend_from_slice(&1u32.to_le_bytes()); // accountId
-        raw.push(20u8); // ticketLen
-        raw.extend_from_slice(b"ABCDEF1234567890ABCD"); // ticket
-        raw.extend_from_slice(&1u16.to_le_bytes()); // first_req_offset
-        raw.extend_from_slice(&3u32.to_le_bytes()); // seq_id
+        raw.extend_from_slice(&25u16.to_le_bytes());
+        raw.extend_from_slice(&0xCAFEBABEu32.to_le_bytes());
+        raw.extend_from_slice(&0u16.to_le_bytes());
+        raw.extend_from_slice(&1u32.to_le_bytes());
+        raw.push(20u8);
+        raw.extend_from_slice(b"ABCDEF1234567890ABCD");
+        raw.extend_from_slice(&1u16.to_le_bytes());
+        raw.extend_from_slice(&3u32.to_le_bytes());
 
         assert_eq!(raw.len(), 41);
 
         let (req_id, ticket) = parse_baseapp_login(&raw).unwrap();
         assert_eq!(req_id, 0xCAFEBABE);
         assert_eq!(ticket, "ABCDEF1234567890ABCD");
+    }
+
+    // ── chardef_lookup tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn chardef_lookup_alignment_values() {
+        // id 20 = Praxis Scientist Male → alignment 1
+        let entry20 = chardef_lookup(20).unwrap();
+        assert_eq!(entry20.0, 1, "chardef 20 should be Praxis (alignment=1)");
+
+        // id 22 = Praxis Scientist Female → alignment 1
+        let entry22 = chardef_lookup(22).unwrap();
+        assert_eq!(entry22.0, 1, "chardef 22 should be Praxis (alignment=1)");
+
+        // id 21 = SGU Scientist Male → alignment 2
+        let entry21 = chardef_lookup(21).unwrap();
+        assert_eq!(entry21.0, 2, "chardef 21 should be SGU (alignment=2)");
+
+        // id 23 = SGU Scientist Female → alignment 2
+        let entry23 = chardef_lookup(23).unwrap();
+        assert_eq!(entry23.0, 2, "chardef 23 should be SGU (alignment=2)");
+    }
+
+    #[test]
+    fn chardef_lookup_bodyset_doubled_format() {
+        // All bodysets use "BS_X.BS_X" doubled format for the DB varchar(64) column.
+        for id in [1, 9, 19] {
+            let entry = chardef_lookup(id).unwrap();
+            assert!(
+                entry.3.contains('.'),
+                "chardef {id} bodyset '{}' should contain a dot",
+                entry.3
+            );
+        }
+    }
+
+    #[test]
+    fn chardef_lookup_has_starting_coordinates() {
+        // Every valid chardef should have at least one non-zero coordinate.
+        for id in 1..=23 {
+            let entry = chardef_lookup(id).unwrap();
+            let (x, y, z) = (entry.5, entry.6, entry.7);
+            assert!(
+                x != 0.0 || y != 0.0 || z != 0.0,
+                "chardef {id} should have non-zero coordinates, got ({x}, {y}, {z})"
+            );
+        }
+    }
+
+    #[test]
+    fn chardef_lookup_praxis_starting_pos() {
+        // Praxis entries spawn near (-334.2, 73.5, -228.0) in Castle_CellBlock.
+        let entry = chardef_lookup(1).unwrap(); // Praxis Soldier Male
+        assert_eq!(entry.0, 1, "should be Praxis alignment");
+        assert!((entry.5 - (-334.231)).abs() < 1.0, "pos_x off: {}", entry.5);
+        assert!((entry.6 - 73.472).abs() < 1.0, "pos_y off: {}", entry.6);
+        assert!((entry.7 - (-228.026)).abs() < 1.0, "pos_z off: {}", entry.7);
+    }
+
+    #[test]
+    fn chardef_lookup_sgu_starting_pos() {
+        // SGU entries spawn near (201.5, 1.3, 49.7) in SGC_W1.
+        let entry = chardef_lookup(2).unwrap(); // SGU Soldier Male
+        assert_eq!(entry.0, 2, "should be SGU alignment");
+        assert!((entry.5 - 201.5).abs() < 1.0, "pos_x off: {}", entry.5);
+        assert!((entry.6 - 1.31).abs() < 1.0, "pos_y off: {}", entry.6);
+        assert!((entry.7 - 49.724).abs() < 1.0, "pos_z off: {}", entry.7);
+    }
+
+    #[test]
+    fn chardef_lookup_all_ids_valid() {
+        for id in 1..=23 {
+            assert!(
+                chardef_lookup(id).is_some(),
+                "chardef_lookup({id}) should return Some"
+            );
+        }
+    }
+
+    // ── SKIN_TINTS tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn skin_tints_array_length() {
+        assert_eq!(SKIN_TINTS.len(), 16);
+    }
+
+    #[test]
+    fn skin_tints_all_nonzero() {
+        for (i, &tint) in SKIN_TINTS.iter().enumerate() {
+            assert_ne!(tint, 0, "SKIN_TINTS[{i}] should not be zero");
+        }
+    }
+
+    #[test]
+    fn skin_tints_index_0_matches_python() {
+        // From python/common/Constants.py: SKIN_TINTS[0] = 0x2F1308FF
+        assert_eq!(SKIN_TINTS[0], 0x2F1308FF);
+    }
+
+    // ── Space ID tests ───────────────────────────────────────────────────────
+
+    #[test]
+    fn space_id_mapping_known_worlds() {
+        // Verify the three known space IDs are distinct and have high 16 bits == 1.
+        let castle_cellblock: u32 = 65552; // (1 << 16) | 16
+        let sgc_w1: u32 = 65553;           // (1 << 16) | 17
+        let combat_sim: u32 = 65554;       // (1 << 16) | 18
+
+        // All distinct
+        assert_ne!(castle_cellblock, sgc_w1);
+        assert_ne!(sgc_w1, combat_sim);
+        assert_ne!(castle_cellblock, combat_sim);
+
+        // High 16 bits == 1 for all three
+        assert_eq!(castle_cellblock >> 16, 1);
+        assert_eq!(sgc_w1 >> 16, 1);
+        assert_eq!(combat_sim >> 16, 1);
+    }
+
+    // ── Scanner payload reader tests ─────────────────────────────────────────
+
+    #[test]
+    fn scanner_constant_length_0x02() {
+        // AVATAR_UPD_IMPLICIT: CONSTANT_LENGTH = 36
+        let buf = vec![0xAAu8; 36];
+        let mut offset = 0usize;
+        let payload = read_constant_payload(&buf, &mut offset, 36);
+        assert!(payload.is_some());
+        assert_eq!(offset, 36);
+        assert_eq!(payload.unwrap().len(), 36);
+    }
+
+    #[test]
+    fn scanner_constant_length_0x04() {
+        // AVATAR_UPDW_IMPLICIT: CONSTANT_LENGTH = 36
+        let buf = vec![0xBBu8; 36];
+        let mut offset = 0usize;
+        let payload = read_constant_payload(&buf, &mut offset, 36);
+        assert!(payload.is_some());
+        assert_eq!(offset, 36);
+        assert_eq!(payload.unwrap().len(), 36);
+    }
+
+    #[test]
+    fn scanner_constant_length_0x05() {
+        // AVATAR_UPDW_EXPLICIT: CONSTANT_LENGTH = 40
+        let buf = vec![0xCCu8; 40];
+        let mut offset = 0usize;
+        let payload = read_constant_payload(&buf, &mut offset, 40);
+        assert!(payload.is_some());
+        assert_eq!(offset, 40);
+        assert_eq!(payload.unwrap().len(), 40);
     }
 }
