@@ -148,3 +148,6 @@ tools/ServerEd/Makefile
 tools/ServerEd/Makefile.Debug
 tools/ServerEd/Makefile.Release
 tools/ServerEd/ui_*.h
+cimmeria-server.exe
+notify.log
+src-tauri/gen/schemas/windows-schema.json
