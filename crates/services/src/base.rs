@@ -126,6 +126,42 @@ const SKIN_TINTS: [u32; 16] = [
     0xD57D51FF, 0xC36141FF, 0xDF8250FF, 0x8D3F24FF,
 ];
 
+// ── Inventory constants (from python/Atrea/enums.py + Account.py) ────────────
+
+const INV_BANDOLIER: i32 = 3;
+
+/// Order in which starter items fill inventory bags (Account.py:12-31).
+/// Equipment slots first so items get equipped and show on the char select screen.
+const BAG_FILL_ORDER: &[i32] = &[
+    4,  // Head
+    5,  // Face
+    6,  // Neck
+    7,  // Chest
+    8,  // Hands
+    9,  // Waist
+    10, // Back
+    11, // Legs
+    12, // Feet
+    13, // Artifact1
+    14, // Artifact2
+    3,  // Bandolier
+    2,  // Mission
+    1,  // Main
+    15, // Crafting
+];
+
+/// Max items per container (Constants.py:142-162).
+fn bag_max_slots(container_id: i32) -> i32 {
+    match container_id {
+        1 => 40,   // Main
+        2 => 100,  // Mission
+        3 => 4,    // Bandolier
+        4..=14 => 1,  // Equipment slots
+        15 => 100, // Crafting
+        _ => 0,
+    }
+}
+
 // ── Hex dump helper ──────────────────────────────────────────────────────────
 
 /// Format a byte slice as a hex string for trace logging.
@@ -910,7 +946,7 @@ async fn handle_create_character(
     ]);
     off += 4;
 
-    // Skip ARRAY<VisualChoices> — count + entries
+    // Parse ARRAY<VisualChoices> — count + entries
     if off + 4 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for visuals count");
         send_char_create_failed(socket, addr, key, connected, 2).await?;
@@ -921,7 +957,23 @@ async fn handle_create_character(
     ]) as usize;
     off += 4;
     // Each VisualChoices = { VisGroupId: INT32, ChoiceId: INT32 } = 8 bytes
-    off += visual_count * 8;
+    if off + visual_count * 8 > payload.len() {
+        tracing::warn!(%addr, "createCharacter: payload too short for visual choices");
+        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        return Ok(());
+    }
+    let mut visual_choices: Vec<(i32, i32)> = Vec::with_capacity(visual_count);
+    for _ in 0..visual_count {
+        let vis_group_id = i32::from_le_bytes([
+            payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+        ]);
+        off += 4;
+        let choice_id = i32::from_le_bytes([
+            payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+        ]);
+        off += 4;
+        visual_choices.push((vis_group_id, choice_id));
+    }
 
     if off + 4 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for SkinTintColorID");
@@ -952,17 +1004,177 @@ async fn handle_create_character(
         archetype,
         gender,
         bodyset,
-        visual_count,
+        visual_count = visual_choices.len(),
         skin_tint_color_id,
         "Creating character"
     );
 
-    // INSERT into sgw_player with starting coordinates from chardef
+    // ── Resolve visual choices (matches CharacterCreation.py:getAllChoices) ───
+
+    // Query all visual groups and their choices for this char_def_id
+    let vg_rows = sqlx::query_as::<_, (i32, String, Option<i32>, Option<String>, Option<i32>, Option<bool>, Option<i32>)>(
+        "SELECT vg.vis_group_id, vg.vis_type::text, \
+                c.choice_id, c.component, c.item_id, c.item_bound, c.item_durability \
+         FROM resources.char_creation_visgroups vg \
+         LEFT JOIN resources.char_creation_choices c ON c.vis_group_id = vg.vis_group_id \
+         WHERE vg.char_def_id = $1 \
+         ORDER BY vg.vis_group_id, c.choice_id",
+    )
+    .bind(char_def_id)
+    .fetch_all(pool.as_ref())
+    .await;
+
+    let vg_rows = match vg_rows {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(%addr, error = %e, "createCharacter: failed to query visgroups");
+            send_char_create_failed(socket, addr, key, connected, 3).await?;
+            return Ok(());
+        }
+    };
+
+    // Build visgroup map: vis_group_id → (vis_type, choices ordered by choice_id)
+    struct ChoiceData {
+        component: String,
+        item_id: Option<i32>,
+        item_bound: bool,
+        item_durability: i32,
+    }
+    struct VisGroup {
+        vis_type: String,
+        choices: std::collections::BTreeMap<i32, ChoiceData>,
+    }
+    let mut visgroups: std::collections::BTreeMap<i32, VisGroup> = std::collections::BTreeMap::new();
+    for (vg_id, vis_type, choice_id, component, item_id, item_bound, item_durability) in &vg_rows {
+        let group = visgroups.entry(*vg_id).or_insert_with(|| VisGroup {
+            vis_type: vis_type.clone(),
+            choices: std::collections::BTreeMap::new(),
+        });
+        if let (Some(cid), Some(comp)) = (choice_id, component) {
+            group.choices.insert(*cid, ChoiceData {
+                component: comp.clone(),
+                item_id: *item_id,
+                item_bound: item_bound.unwrap_or(false),
+                item_durability: item_durability.unwrap_or(-1),
+            });
+        }
+    }
+
+    // Validate client-provided choices and resolve forced groups
+    struct ResolvedChoice {
+        component: String,
+        item_id: Option<i32>,
+        item_bound: bool,
+        item_durability: i32,
+    }
+    let mut resolved: HashMap<i32, ResolvedChoice> = HashMap::new();
+
+    // Client choices must target VIS_Optional groups only
+    for &(vg_id, choice_id) in &visual_choices {
+        let group = match visgroups.get(&vg_id) {
+            Some(g) => g,
+            None => {
+                tracing::warn!(%addr, vg_id, char_def_id, "Invalid visual group");
+                send_char_create_failed(socket, addr, key, connected, 10003).await?;
+                return Ok(());
+            }
+        };
+        if group.vis_type != "VIS_Optional" {
+            tracing::warn!(%addr, vg_id, "Choice not allowed for forced visual group");
+            send_char_create_failed(socket, addr, key, connected, 10003).await?;
+            return Ok(());
+        }
+        let choice = match group.choices.get(&choice_id) {
+            Some(c) => c,
+            None => {
+                tracing::warn!(%addr, vg_id, choice_id, "Invalid choice for visual group");
+                send_char_create_failed(socket, addr, key, connected, 10003).await?;
+                return Ok(());
+            }
+        };
+        resolved.insert(vg_id, ResolvedChoice {
+            component: choice.component.clone(),
+            item_id: choice.item_id,
+            item_bound: choice.item_bound,
+            item_durability: choice.item_durability,
+        });
+    }
+
+    // Auto-select forced groups; reject missing optional groups
+    for (&vg_id, group) in &visgroups {
+        if !resolved.contains_key(&vg_id) {
+            if group.vis_type == "VIS_Forced" {
+                if let Some((_, choice)) = group.choices.iter().next() {
+                    resolved.insert(vg_id, ResolvedChoice {
+                        component: choice.component.clone(),
+                        item_id: choice.item_id,
+                        item_bound: choice.item_bound,
+                        item_durability: choice.item_durability,
+                    });
+                }
+            } else {
+                tracing::warn!(%addr, vg_id, char_def_id, "Missing choice for optional visual group");
+                send_char_create_failed(socket, addr, key, connected, 10000).await?;
+                return Ok(());
+            }
+        }
+    }
+
+    // ── Separate body components from item components (Account.py:156-161) ───
+
+    let mut body_components: Vec<String> = Vec::new();
+    struct ItemChoice { item_id: i32, item_bound: bool, item_durability: i32 }
+    let mut item_choices: Vec<ItemChoice> = Vec::new();
+
+    for choice in resolved.values() {
+        if let Some(item_id) = choice.item_id {
+            item_choices.push(ItemChoice {
+                item_id,
+                item_bound: choice.item_bound,
+                item_durability: choice.item_durability,
+            });
+        } else {
+            body_components.push(choice.component.clone());
+        }
+    }
+
+    // ── Look up world_id (Account.py:163) ───
+
+    let world_id: Option<i32> = sqlx::query_scalar(
+        "SELECT world_id FROM resources.worlds WHERE world = $1",
+    )
+    .bind(world_location)
+    .fetch_optional(pool.as_ref())
+    .await
+    .unwrap_or(None);
+
+    // ── Look up starting abilities (Account.py:166) ───
+
+    let abilities: Vec<i32> = sqlx::query_scalar(
+        "SELECT ability_id FROM resources.char_creation_abilities WHERE char_def_id = $1",
+    )
+    .bind(char_def_id)
+    .fetch_all(pool.as_ref())
+    .await
+    .unwrap_or_default();
+
+    tracing::debug!(
+        %addr, char_def_id,
+        components = ?body_components,
+        item_count = item_choices.len(),
+        world_id = ?world_id,
+        ability_count = abilities.len(),
+        "Resolved character creation visuals"
+    );
+
+    // ── INSERT into sgw_player with components, world_id, abilities ───
+
     let result = sqlx::query_scalar::<_, i32>(
         "INSERT INTO sgw_player \
          (account_id, player_name, extra_name, alignment, archetype, gender, \
-          world_location, bodyset, level, title, pos_x, pos_y, pos_z, skin_color_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $10, $11, $12) \
+          world_location, bodyset, level, title, pos_x, pos_y, pos_z, \
+          skin_color_id, components, world_id, abilities) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, 0, $9, $10, $11, $12, $13, $14, $15) \
          RETURNING player_id",
     )
     .bind(account_id as i32)
@@ -977,11 +1189,66 @@ async fn handle_create_character(
     .bind(start_y)
     .bind(start_z)
     .bind(skin_tint_color_id)
+    .bind(&body_components)
+    .bind(world_id)
+    .bind(&abilities)
     .fetch_one(pool.as_ref())
     .await;
 
     match result {
         Ok(player_id) => {
+            // ── Insert starter items into sgw_inventory (Account.py:182-207) ───
+            let mut slot_indices: HashMap<i32, i32> = HashMap::new();
+            for item in &item_choices {
+                // Look up which containers this item can go into
+                let container_sets = sqlx::query_scalar::<_, Vec<i32>>(
+                    "SELECT container_sets FROM resources.items WHERE item_id = $1",
+                )
+                .bind(item.item_id)
+                .fetch_optional(pool.as_ref())
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+
+                // Find the best container from BagFillOrder
+                let bag_id = match BAG_FILL_ORDER.iter().find(|&&bag| container_sets.contains(&bag)) {
+                    Some(&bag) => bag,
+                    None => {
+                        tracing::warn!(%addr, item_id = item.item_id, "No valid container for starter item");
+                        continue;
+                    }
+                };
+
+                let entry = slot_indices.entry(bag_id).or_insert_with(|| {
+                    if bag_id == INV_BANDOLIER { 1 } else { 0 }
+                });
+                let current_slot = *entry;
+                *entry += 1;
+
+                if *entry > bag_max_slots(bag_id) {
+                    tracing::warn!(%addr, bag_id, item_id = item.item_id, "Bag full, skipping starter item");
+                    continue;
+                }
+
+                if let Err(e) = sqlx::query(
+                    "INSERT INTO sgw_inventory \
+                     (container_id, slot_id, type_id, character_id, durability, bound) \
+                     VALUES ($1, $2, $3, $4, $5, $6)",
+                )
+                .bind(bag_id)
+                .bind(current_slot)
+                .bind(item.item_id)
+                .bind(player_id)
+                .bind(item.item_durability)
+                .bind(item.item_bound)
+                .execute(pool.as_ref())
+                .await
+                {
+                    tracing::error!(%addr, item_id = item.item_id, error = %e, "Failed to insert starter item");
+                }
+            }
+
             tracing::info!(%addr, player_id, name = %name, "Character created successfully");
 
             // Send updated character list (Account entity already exists)
@@ -1106,8 +1373,9 @@ async fn handle_request_character_visuals(
         clients.get(&addr).ok_or("addr not in connected map")?.account_id
     };
 
-    let row = sqlx::query_as::<_, (String, Vec<String>, i32)>(
-        "SELECT bodyset, components, skin_color_id FROM sgw_player WHERE player_id = $1 AND account_id = $2",
+    let row = sqlx::query_as::<_, (String, Vec<String>, i32, i32)>(
+        "SELECT bodyset, components, skin_color_id, bandolier_slot \
+         FROM sgw_player WHERE player_id = $1 AND account_id = $2",
     )
     .bind(player_id)
     .bind(account_id as i32)
@@ -1115,7 +1383,27 @@ async fn handle_request_character_visuals(
     .await;
 
     match row {
-        Ok(Some((bodyset, components, skin_color_id))) => {
+        Ok(Some((bodyset, mut components, skin_color_id, bandolier_slot))) => {
+            // Load item visual components from equipped inventory (Account.py:246-258)
+            let item_visuals: Vec<String> = sqlx::query_scalar(
+                "SELECT ri.visual_component \
+                 FROM sgw_inventory inv \
+                 JOIN resources.items ri ON ri.item_id = inv.type_id \
+                 WHERE inv.character_id = $1 \
+                   AND ri.visual_component IS NOT NULL \
+                   AND ( \
+                     (inv.container_id IN (3,4,5,6,7,8,9,10,11,12,13,14) AND inv.slot_id = 0) \
+                     OR (inv.container_id = 3 AND inv.slot_id = $2) \
+                   )",
+            )
+            .bind(player_id)
+            .bind(bandolier_slot)
+            .fetch_all(pool.as_ref())
+            .await
+            .unwrap_or_default();
+
+            components.extend(item_visuals);
+
             tracing::debug!(
                 %addr, player_id, %bodyset,
                 component_count = components.len(),
@@ -1173,26 +1461,24 @@ async fn handle_version_info_request(
     let category_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
     let client_version = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
-    // Version negotiation (from C++ Def.py logic):
-    // When we have data for a category, tell the client to invalidate its cache
-    // so it re-requests everything from us via elementDataRequest.
-    // The C++ server uses DB-stored version history; we simplify by always
-    // invalidating when we have data for the category (the client sends
-    // elementDataRequest on demand after invalidation).
+    // Version negotiation: echo back the PAK metadata version so the client
+    // sees a match and keeps its local cache. The C++ server does the same
+    // for categories not in `categoryMaps` (including category 7 char_creation).
+    // Only invalidate when there's an actual version mismatch.
     let (version, required_updates, invalidate_all) = match resource_cache {
         Some(cache) => match cache.category(category_id) {
             Some(cat) => {
-                // We have data for this category — tell client to invalidate.
-                // Use version=1 (server version), required_updates = element count
-                // (triggers proactive push below), invalidate_all=true.
-                (1u32, cat.elements.len() as u32, true)
+                // Never invalidate — we don't implement proactive resource push,
+                // so invalidation would leave the client with an empty cache.
+                // The client's shipped PAK files have the correct data.
+                (cat.metadata, 0u32, false)
             }
             None => (client_version, 0u32, false),
         },
         None => (client_version, 0u32, false),
     };
 
-    tracing::debug!(
+    tracing::info!(
         %addr, category_id, client_version, version, required_updates,
         "Responding to versionInfoRequest"
     );
@@ -1202,23 +1488,6 @@ async fn handle_version_info_request(
     let pkt = build_version_info(&key, seq, &acks, category_id, version, required_updates, invalidate_all, account_eid);
     socket.send_to(&pkt, addr).await?;
 
-    // If updates are required, proactively send all resources for this category
-    // (the C++ server does this immediately after onVersionInfo, not waiting for
-    // elementDataRequests).
-    if required_updates > 0 {
-        if let Some(cache) = resource_cache {
-            if let Some(cat) = cache.category(category_id) {
-                tracing::info!(
-                    %addr, category_id, count = cat.elements.len(),
-                    "Proactively sending resource fragments"
-                );
-                send_category_resources(
-                    socket, addr, key, category_id, cat, connected,
-                ).await?;
-            }
-        }
-    }
-
     Ok(())
 }
 
@@ -1226,6 +1495,9 @@ async fn handle_version_info_request(
 ///
 /// The C++ server does this immediately after onVersionInfo when the client's cache
 /// is stale, rather than waiting for individual elementDataRequests.
+/// Currently unused — on-demand delivery via handle_element_data_request is used instead.
+/// Kept for future use when flow-controlled proactive push is implemented.
+#[allow(dead_code)]
 async fn send_category_resources(
     socket: &Arc<UdpSocket>,
     addr: SocketAddr,

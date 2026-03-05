@@ -21,7 +21,7 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 | Boost | 1.55.0 | Asio, Python, Thread, DateTime, Filesystem |
 | Python | 3.4.1 | Embedded for entity scripting |
 | PostgreSQL | 9.2.3 | Via SOCI 3.2.1 ORM |
-| OpenSSL | 0.9.8i | Authentication encryption |
+| OpenSSL | 1.0.1e | Authentication encryption |
 | Qt | 5.x (early) | ServerEd tool only |
 | Recast/Detour | ~2013 era | Navigation meshes |
 | TinyXML2 | ~1.x | Config/entity XML parsing |
@@ -37,13 +37,13 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 - `data/cache/` - Cooked game data (.pak files)
 - `data/scripts/` - Effect, mission, and space scripts
 - `db/` - PostgreSQL schema files (split structure: `db/database.sql`, `db/resources/`, `db/sgw/`)
-- `docs/` - **111 documents** covering protocol, gameplay, engine, architecture, and RE findings
+- `docs/` - **116 documents** covering protocol, gameplay, engine, architecture, and RE findings
   - `docs/protocol/` - Mercury wire format, entity sync, login handshake, position updates
-  - `docs/gameplay/` - 24 per-system gameplay breakdowns (combat, abilities, inventory, missions, etc.)
+  - `docs/gameplay/` - 25 per-system gameplay breakdowns (combat, abilities, inventory, missions, etc.)
   - `docs/engine/` - BigWorld internals, CME framework, cooked data, space management
   - `docs/reverse-engineering/findings/` - 17 per-system wire format docs from Ghidra analysis
   - `docs/guides/` - Evidence standards, reading decompiled code, entity def guide
-  - `docs/client/` - Game client analysis (launcher, tools)
+  - `docs/client/` - Game client analysis (launcher, audio inventory, FaceFX, UI layouts)
   - `docs/tools/` - Development tool design docs (admin panel)
 - `tools/ServerEd/` - Qt editor tool source
 - `external/` - Vendored dependencies (NOT in git - see .gitignore)
@@ -212,7 +212,7 @@ Agents with deep expertise in the exact dependency versions currently in use.
 **Focus:** Authentication flow, encryption, network security
 
 **Expertise:**
-- OpenSSL 0.9.8i API (legacy, pre-1.0 interface)
+- OpenSSL 1.0.1e API (legacy, pre-1.1 interface, Heartbleed-vulnerable)
 - Authentication server protocol and session management
 - Shard authentication key exchange
 - Network packet encryption/decryption
@@ -307,10 +307,10 @@ Agents specialized in upgrading specific dependencies from current versions to m
 
 #### 13. OpenSSL Migration Agent
 
-**Migration path:** OpenSSL 0.9.8i -> 3.5.x
+**Migration path:** OpenSSL 1.0.1e -> 3.5.x
 
 **Expertise:**
-- CRITICAL: 0.9.8 has multiple known CVEs including Heartbleed-era vulnerabilities
+- CRITICAL: 1.0.1e is vulnerable to Heartbleed (CVE-2014-0160) and dozens of other CVEs
 - Complete API overhaul: `EVP_*` interface migration, provider model (3.0+)
 - Removed functions: `SSLv2_*`, `SSLv3_*`, many low-level crypto functions
 - `OPENSSL_init_ssl()` replacing `SSL_library_init()`
@@ -384,7 +384,7 @@ Agents specialized in upgrading specific dependencies from current versions to m
 ```
 Phase 1 (Foundation):
   1. MSVC Toolchain (v120 -> v145)       -- COMPLETE (VS2026)
-  2. OpenSSL (0.9.8 -> 3.x)             -- critical security fix
+  2. OpenSSL (1.0.1e -> 3.x)            -- critical security fix
 
 Phase 2 (Core Libraries):
   3. Boost (1.55 -> 1.85+)              -- major dependency

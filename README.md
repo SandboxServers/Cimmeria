@@ -138,7 +138,7 @@ Cimmeria/
 | OpenSSL | 1.0.1e | Authentication encryption |
 | Qt | 5.x | ServerEd tool only |
 | Recast/Detour | ~2013 era | Navigation meshes |
-| SDL | 1.2.15 | Audio/input (client-side remnant) |
+| SDL | 1.2.15 | Input handling (legacy dependency) |
 
 ## Configuration
 
@@ -156,8 +156,9 @@ The Python debug console is available on port 8989 (password-gated).
 ## Database
 
 PostgreSQL schemas are in `db/`:
-- `sgw.sql` — Main game schema (accounts, characters, items, missions)
-- `resources.sql` — Resource/asset tracking
+- `db/database.sql` — Database and role setup
+- `db/sgw/` — Game schema (accounts, characters, items, missions)
+- `db/resources/` — Resource/asset data (abilities, effects, loot, archetypes)
 
 Connection string is configured in `BaseService.config`.
 
@@ -174,18 +175,21 @@ Platform: `x64` (primary), `Win32` (legacy)
 
 ## Documentation
 
-The [docs/](docs/readme.md) directory contains **96 documents** covering every aspect of the project:
+The [docs/](docs/readme.md) directory contains **116 documents** covering every aspect of the project:
 
 | Category | Docs | Covers |
 |----------|------|--------|
 | [Top-level](docs/readme.md) | 10 | Technology overview, game systems survey, connection flow, project status, gap analysis |
 | [protocol/](docs/protocol/) | 5 | Mercury wire format, entity property sync, login handshake, position updates |
-| [gameplay/](docs/gameplay/) | 23 | Per-system breakdowns: combat, abilities, inventory, missions, NPC AI, spawning, loot, progression, character creation, crafting, etc. |
+| [gameplay/](docs/gameplay/) | 25 | Per-system breakdowns: combat, abilities, inventory, missions, NPC AI, spawning, loot, progression, character creation, crafting, cinematics, ring transport, etc. |
 | [engine/](docs/engine/) | 8 | BigWorld internals, CME framework, cooked data, space management, LOD, checkpointing |
-| [architecture/](docs/architecture/) | 2 | Cimmeria service topology, server-only infrastructure systems |
+| [architecture/](docs/architecture/) | 7 | Service topology, scaling analysis, tech stack replacement, data-driven content engine, Python console, Tauri rewrite |
 | [analysis/](docs/analysis/) | 2 | Event-net mapping (420 messages), BigWorld source cross-reference index |
-| [reverse-engineering/](docs/reverse-engineering/) | 21 | Ghidra annotation scripts, RE plan/status, 17 per-system wire format findings |
+| [reverse-engineering/](docs/reverse-engineering/) | 22 | RE plan/status, function naming, address map, launcher binary, 17 per-system wire format findings |
+| [content/](docs/content/) | 7 | Zone audit, mission chains, archetype content, association map, reconstruction priority |
+| [client/](docs/client/) | 4 | Launcher design, audio/voice inventory, FaceFX lip sync, UI layout inventory |
 | [guides/](docs/guides/) | 3 | Evidence standards, reading decompiled code, entity definition guide |
+| [tools/](docs/tools/) | 1 | Admin panel design |
 | [technical/](docs/technical/) | 16 | Legacy analysis documents from initial RE investigation |
 
 **Start here:**

@@ -1,6 +1,6 @@
 # Gameplay Systems Dashboard
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-03-05
 
 Overview of every game system in Stargate Worlds, with implementation status, key network events, entity interfaces, and Python scripts.
 
@@ -35,6 +35,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 | [Groups](#groups) | KM | GroupAuthority | — | MEDIUM |
 | [Contact Lists](#contact-lists) | KM | ContactListManager | — | LOW |
 | [Cinematics](#cinematics) | IM | SGWSpawnableEntity | SGWSpawnableEntity.py, RingTransporter.py | MEDIUM |
+| [Ring Transport](#ring-transport) | IM | GateTravel | RingTransporter.py | MEDIUM |
 
 ---
 
@@ -134,7 +135,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 
 ## Gate Travel
 
-**Status**: 20% — DHD UI opens, some gate addresses are known. Missing: actual gate travel (zone transition), gate animation sequences, ring transporters.
+**Status**: 30% — DHD UI opens, some gate addresses are known, ring transport partially implemented. Missing: actual gate travel (zone transition), gate animation sequences.
 
 **Key Events (NetOut)**: `onDialGate`, `DHD`, `SetRingTransporterDestination`
 **Key Events (NetIn)**: `setupStargateInfo`, `onStargatePassage`, `onDisplayDHD`, `onDHDReply`, `onRingTransporterList`
@@ -142,6 +143,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 **Interface**: `GateTravel.def` — 5 properties, 4 cell methods, 4 client methods, 2 base methods
 **Data**: 29 stargate addresses defined
 **RE doc**: [gate-travel.md](gate-travel.md)
+**See also**: [ring-transport-system.md](ring-transport-system.md)
 
 ---
 
@@ -334,6 +336,21 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 **Python**: `python/cell/SGWSpawnableEntity.py` (playSequence), `python/cell/AbilityManager.py` (combat sequences), `python/cell/RingTransporter.py` (ring transport), `python/cell/SGWPlayer.py` (stargates)
 **Data**: 1,973 sequences, 675 event sets, 2,042 NVPs, 2,767 item event sets, 66 event types
 **RE doc**: [cinematic-system.md](cinematic-system.md)
+
+---
+
+## Ring Transport
+
+**Status**: 40% — Ring transport Python implementation exists (RingTransporter.py). 8-state FSM documented. Console activation triggers teleport. Missing: full Kismet matinee animation sequence, multi-player sync (only first player gets animation), ring platform visual effects, proper activation UI (currently uses small console on ground).
+
+**Key Events (NetOut)**: `SetRingTransporterDestination`
+**Key Events (NetIn)**: `onRingTransporterList`, `onSequence` (Kismet matinee)
+
+**Architecture**: 8-state FSM: IDLE → SEND_WAIT → SEND_WARMUP → REMOTE_LOAD_WAIT → REMOTE_WARMUP → COOLDOWN. Timed transitions (3.5s hide, 4.0s teleport, 3.0s reveal, 2.5s unlock).
+
+**Interface**: `GateTravel.def` — ring transport methods
+**Python**: `python/cell/RingTransporter.py`
+**RE doc**: [ring-transport-system.md](ring-transport-system.md)
 
 ---
 

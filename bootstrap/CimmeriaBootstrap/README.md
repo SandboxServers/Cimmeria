@@ -99,7 +99,7 @@ The auth endpoint is `http://localhost:8081/SGWLogin/UserAuth`.
 - **Database**: `sgw`
 - **Role**: `w-testing` / `w-testing`
 - **Test account**: `test` / `test` (SHA1 hashed in the `account` table)
-- **Schemas**: `db/resources.sql` (resource types) then `db/sgw.sql` (game schema)
+- **Schemas**: `db/database.sql` (setup), `db/resources/` (resource types), `db/sgw/` (game schema)
 
 The `w-testing` credentials are intentional for local development. The PostgreSQL
 instance uses trust authentication, listens only on localhost, and runs on a
