@@ -4,201 +4,213 @@ A server emulator for [Stargate Worlds](https://en.wikipedia.org/wiki/Stargate_W
 
 Cimmeria reimplements the server infrastructure — authentication, world simulation, entity management, and game logic — allowing the original game client to connect and play.
 
-### Current State
+## Status
 
-The server emulator tracks **369 features** across 30 gameplay systems and 8 infrastructure systems. See the [Gap Analysis](docs/gap-analysis.md) for per-feature detail.
+The project tracks **369 features** across 38 systems. **47% have code** (175 of 369). See the [Gap Analysis](docs/gap-analysis.md) for the full breakdown.
 
-**Code exists for 47.4%** of tracked features (175 of 369). **52.6% remain missing** (194 features).
-
-**Confirmed Working** (CW) — tested end-to-end with the game client:
-- Full login/auth flow (HTTP → shard select → Mercury connect)
-- Mercury protocol transport (reliable UDP, AES-256 encryption)
+**Tested end-to-end with the game client:**
+- Login and authentication (HTTP SOAP → shard select → Mercury UDP)
+- Mercury reliable UDP transport with AES-256 encryption
 - Game data pipeline (22 resource categories, 112,626 DB rows)
 - World entry, entity spawning, grid-based Area of Interest
-- Build & setup (`pwsh setup-dependencies.ps1` — clone to running in one command)
+- One-command build and setup
 
-**Needs Test** (NT) — code exists but hasn't been verified with a live client:
-- Character creation (Account.py ~300 lines, 8 archetypes, full flow)
-- Inventory (21K-line Inventory.py, bag/equip/move)
-- Loot system (algorithm works, tables mostly empty)
-- Vendors (complete buy/sell/repair/recharge/buyback)
-- Chat, crafting (575 lines), trading (244 lines)
+**Code exists, needs verification:**
+Character creation (8 archetypes, 23 defs) | Inventory | Vendors | Chat | Crafting | Trading
 
-**Implemented** (IM) — code written with known gaps:
-- Combat & abilities (1,090-line AbilityManager, single-target only)
-- Effects framework (4 of 3,217 effects have scripts)
-- Missions (29K-line MissionManager, 1 zone tested)
-- NPC AI (2 of 12 states: Spawning, Fighting)
-- Stats, XP/leveling, stargate travel, movement
+**Implemented with known gaps:**
+Combat & abilities | Effects | Missions | NPC AI | Stats & leveling | Stargate travel
 
-**Known/Missing** (KM) — needs implementation:
-- Spawn system (100% empty stubs), NPC navigation
-- Organizations, mail, auction house, contact lists
-- Dueling, pets, groups
-- Server infrastructure (rate limiting, anti-cheat, session management)
+See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
-See [docs/project-status.md](docs/project-status.md) for detailed breakdown and [docs/](docs/readme.md) for full documentation.
+## Why Rust
+
+The original C++ server was built against a 2013-era dependency stack: Boost 1.55, Python 3.4, OpenSSL 1.0.1e (with known CVEs including Heartbleed), PostgreSQL 9.2, SOCI 3.2 — all end-of-life, all tightly coupled. Upgrading any single dependency triggers cascading breaks across the others. The build requires Visual Studio on Windows with precompiled headers and a specific MSVC toolset. The Python 3.4 embedding layer (via Boost.Python) is especially fragile — no type hints, no f-strings, no async, and Boost.Python itself hasn't tracked CPython's embedding API changes.
+
+Rather than fight through 10 phases of dependency upgrades to modernize a codebase that would still be C++11 at the end, we're rewriting the server in Rust:
+
+- **Single toolchain** — `cargo build` on any platform, no dependency bootstrapping
+- **Memory safety** — no use-after-free, no buffer overflows, no manual memory management
+- **Modern async** — Tokio for networking instead of Boost.Asio callback chains
+- **Protocol parity** — the Mercury protocol crate already handles encryption, packet framing, and reliable delivery
+- **Cross-platform** — Linux, Windows, macOS from the same source
+
+The C++ and Python code remains as the **reference implementation** — it's the ground truth for how the original server behaved, and we match its wire behavior exactly. But active development happens in Rust.
+
+## Quick Start
+
+### Rust Server
+
+```bash
+cargo run -p cimmeria-server
+```
+
+Handles login, Mercury protocol, character select, and world entry. Connect the game client to `localhost`.
+
+**Test account:** `test` / `test`
+
+### C++ Server (legacy)
+
+```powershell
+pwsh setup.ps1
+```
+
+Full pipeline: download dependencies → build → database → launch. Requires Windows 10/11, PowerShell 7+, Visual Studio with C++ tools. See [bootstrap/CimmeriaBootstrap/README.md](bootstrap/CimmeriaBootstrap/README.md) for options.
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────┐     ┌──────────┐
-│    Client    │────>│   Auth   │────>│ BaseApp  │
-│  (SG:W Game) │     │  Server  │     │          │
-└─────────────┘     │ :13001   │     │ :32832   │
-                    └──────────┘     └────┬─────┘
-                                         │
-                                    ┌────┴─────┐
-                                    │ CellApp  │  (one per world cell)
-                                    │          │
-                                    └──────────┘
+                          ┌─────────────────┐
+                          │   Game Client    │
+                          │  (UE3 + BigWorld)│
+                          └────────┬────────┘
+                                   │
+                    ┌──────────────┼──────────────┐
+                    │              │               │
+              HTTP :8081    Mercury UDP      Mercury UDP
+                    │         :32832              :?
+                    ▼              ▼               ▼
+            ┌──────────┐   ┌──────────┐    ┌──────────┐
+            │   Auth   │──▶│ BaseApp  │───▶│ CellApp  │
+            │  Server  │   │          │    │          │
+            └──────────┘   └──────────┘    └──────────┘
+            Login, accounts  Entities,      World cells,
+            Shard auth       persistence    movement, AoI
 ```
 
-- **AuthenticationServer** — Player login, account management, shard authentication
-- **BaseApp** — Persistent entity state, player base data, shard management
-- **CellApp** — Spatial entity simulation, world cells, movement, Area of Interest
+- **AuthenticationServer** — HTTP/SOAP login, account management, shard key exchange
+- **BaseApp** — Persistent entity state, player data, character management
+- **CellApp** — Spatial simulation, world cells, movement, Area of Interest
 - **NavBuilder** — Offline navigation mesh generation (Recast/Detour)
-- **ServerEd** — Qt-based editor tool for server administration
-- **UnifiedKernel** — Shared static library: networking (Boost.Asio), protocol, Mercury messaging
+- **ServerEd** — Qt-based server administration editor
 
-## Getting Started
+## Crate Dependency Graph
 
-### 1. Clone the repository
-
-```bash
-git clone <repo-url> Cimmeria
-cd Cimmeria
+```
+                    ┌──────────┐
+                    │  common  │  (no deps on other crates)
+                    └────┬─────┘
+                         │
+              ┌──────────┼───────────┐
+              ▼          ▼           ▼
+         ┌────────┐ ┌────────┐ ┌──────────┐
+         │mercury │ │  defs  │ │ commands │
+         └───┬────┘ └───┬────┘ └────┬─────┘
+             │          │           │
+             ▼          ▼           │
+         ┌───────────────────┐      │
+         │      entity       │◄─────┘
+         └────────┬──────────┘
+                  │
+         ┌────────┼──────────────┐
+         ▼        ▼              ▼
+    ┌────────┐ ┌────────────────┐│
+    │  game  │ │content-engine  ││
+    └───┬────┘ └───────┬────────┘│
+        │              │         │
+        ▼              ▼         ▼
+    ┌──────────────────────────────┐
+    │          services            │
+    └──────────────┬───────────────┘
+                   │
+          ┌────────┼────────┐
+          ▼        ▼        ▼
+    ┌────────┐┌─────────┐┌─────────┐
+    │ server ││admin-api││src-tauri│
+    └────────┘└─────────┘└─────────┘
 ```
 
-### 2. Bootstrap dependencies
-
-```powershell
-pwsh setup-dependencies.ps1
-```
-
-This downloads, patches, and builds all external dependencies automatically.
-See [bootstrap/README.md](bootstrap/README.md) for details and options.
-
-**Requirements:** Windows 10/11, PowerShell 7+, Visual Studio with C++ tools.
-The script will detect (or optionally install) VS for you.
-
-### 3. Build the solution
-
-Open `W-NG.sln` in Visual Studio and build `Debug|x64`.
-
-Or from a VS Developer Command Prompt:
-
-```cmd
-msbuild W-NG.sln /p:Configuration=Debug /p:Platform=x64
-```
+Each box is a separate Rust crate that compiles independently. **common** has the basic types everything needs. **mercury** handles the BigWorld reliable UDP protocol and AES-256 encryption. **defs** parses entity definitions from XML. **entity** manages game objects. **game** and **content-engine** implement gameplay rules and the data-driven content pipeline. **services** ties it all together into Auth, Base, and Cell services. The bottom row are entry points: **server** is the headless game server, **admin-api** exposes a REST API, and **src-tauri** wraps it in a desktop GUI.
 
 ## Project Structure
 
 ```
 Cimmeria/
-├── src/                    C++ source code
-│   ├── lib/                UnifiedKernel (shared library)
+├── crates/                 Rust server (active development)
+│   ├── common/             Shared types, config, error handling
+│   ├── mercury/            Mercury reliable UDP + AES-256 encryption
+│   ├── defs/               Entity definition parser (XML → Rust types)
+│   ├── entity/             Entity system (lifecycle, properties)
+│   ├── commands/           Server command framework
+│   ├── game/               Game mechanics and rules
+│   ├── content-engine/     Data-driven content pipeline
+│   ├── services/           Auth, Base, Cell service implementations
+│   ├── admin-api/          REST administration API
+│   └── server/             Binary entry point (cargo run -p cimmeria-server)
+├── src/                    C++ server (legacy reference implementation)
+│   ├── lib/                UnifiedKernel shared library
 │   ├── common/             Shared utilities
-│   └── server/
-│       ├── AuthenticationServer/
-│       ├── BaseApp/
-│       ├── CellApp/
-│       └── NavBuilder/
-├── python/                 Python entity scripts and game logic (164 files)
+│   └── server/             Auth, BaseApp, CellApp, NavBuilder
+├── python/                 Entity scripts and game logic (164 files)
 ├── entities/               XML entity definitions and type registry
-├── config/                 XML service configuration files
-├── data/
-│   ├── cache/              Cooked game data (.pak files)
-│   └── scripts/            Effect, mission, and space scripts
-├── db/                     PostgreSQL schema files
-├── projects/               Visual Studio .vcxproj files
-├── tools/ServerEd/         Qt editor tool source
-├── bootstrap/              Dependency setup automation
-│   ├── patches/            VS2015+ compatibility patches
-│   ├── templates/          Generated config templates
-│   ├── init-boost.bat      Bootstrap Boost.Build (b2)
-│   ├── build-boost.bat     Build Boost libraries
-│   ├── build-openssl.bat   Build OpenSSL libraries
-│   └── build-soci.bat      Build SOCI libraries
-├── external/               Vendored dependencies (not in git)
-├── bin64/                  Build output (not in git)
-├── lib64/                  Library output (not in git)
-├── W-NG.sln                Visual Studio solution
-└── setup-dependencies.ps1  Automated dependency bootstrap
+├── config/                 XML service configuration
+├── data/                   Cooked game data (.pak) and scripts
+├── db/                     PostgreSQL schemas
+│   ├── database.sql        Database and role setup
+│   ├── sgw/                Game schema (accounts, characters, items)
+│   └── resources/          Resource data (abilities, effects, archetypes)
+├── docs/                   123 documents
+├── tools/ServerEd/         Qt editor source
+├── bootstrap/              C++ dependency automation
+└── W-NG.sln                Visual Studio solution (C++ legacy build)
 ```
 
 ## Tech Stack
 
+### Rust Server (active)
+
+| Crate | Purpose |
+|---|---|
+| `cimmeria-mercury` | Mercury reliable UDP, AES-256-CBC + HMAC-MD5 |
+| `cimmeria-services` | Auth, Base, Cell service orchestration |
+| `cimmeria-defs` | Entity definition parsing from XML |
+| `cimmeria-content-engine` | Data-driven mission/effect/dialog runtime |
+| `tokio` | Async runtime and networking |
+| `axum` | HTTP/REST for auth and admin API |
+| `sqlx` | PostgreSQL async driver |
+| `quick-xml` | SOAP/XML parsing |
+
+### C++ Server (legacy reference)
+
 | Component | Version | Notes |
 |---|---|---|
-| MSVC Toolset | v145 (VS2026) | C++11 codebase, modern compiler |
-| Boost | 1.55.0 | Asio, Python, Thread, DateTime, Math |
-| Python | 3.4.1 | Embedded via Boost.Python for entity scripting |
-| PostgreSQL | 9.2.x | Via SOCI 3.2.1 ORM |
-| OpenSSL | 1.0.1e | Authentication encryption |
-| Qt | 5.x | ServerEd tool only |
-| Recast/Detour | ~2013 era | Navigation meshes |
-| SDL | 1.2.15 | Input handling (legacy dependency) |
+| MSVC Toolset | v145 (VS2026) | C++11 codebase |
+| Boost | 1.55.0 | Asio, Python, Thread, DateTime |
+| Python | 3.4.1 | Embedded via Boost.Python |
+| PostgreSQL | 9.2.x | Via SOCI 3.2.1 |
+| OpenSSL | 1.0.1e | Known CVEs — do not expose to internet |
 
 ## Configuration
 
-Config files live in `config/` with `.config` extension (XML format). Default
-values are suitable for local development. For real deployments, create
-`*.local` override files (not checked into git).
+Config files live in `config/` (XML format). Defaults work for local development.
 
-Key config files:
-- `AuthenticationService.config` — Auth server ports, encryption settings
+- `AuthenticationService.config` — Auth server ports, encryption
 - `BaseService.config` — Database connection, shard settings
 - `CellAppService.config` — World cell parameters, AoI distances
 
-The Python debug console is available on port 8989 (password-gated).
+The Rust server reads these same configs. Environment variables override XML values.
 
 ## Database
 
 PostgreSQL schemas are in `db/`:
-- `db/database.sql` — Database and role setup
+- `db/database.sql` — Database and role setup (port 5433, role `w-testing`)
 - `db/sgw/` — Game schema (accounts, characters, items, missions)
-- `db/resources/` — Resource/asset data (abilities, effects, loot, archetypes)
+- `db/resources/` — Resource data (abilities, effects, loot, archetypes)
 
-Connection string is configured in `BaseService.config`.
-
-## Build Configurations
-
-| Configuration | Use |
-|---|---|
-| Debug | Development — full symbols, debug CRT, assertions enabled |
-| Release | Production — optimized, no debug overhead |
-| UnoptRelease | Debugging release builds — release CRT but no optimization |
-| MinSizeRel | Minimize binary size |
-
-Platform: `x64` (primary), `Win32` (legacy)
+Test account: **test** / **test** (SHA1 hashed).
 
 ## Documentation
 
-The [docs/](docs/readme.md) directory contains **116 documents** covering every aspect of the project:
-
-| Category | Docs | Covers |
-|----------|------|--------|
-| [Top-level](docs/readme.md) | 10 | Technology overview, game systems survey, connection flow, project status, gap analysis |
-| [protocol/](docs/protocol/) | 5 | Mercury wire format, entity property sync, login handshake, position updates |
-| [gameplay/](docs/gameplay/) | 25 | Per-system breakdowns: combat, abilities, inventory, missions, NPC AI, spawning, loot, progression, character creation, crafting, cinematics, ring transport, etc. |
-| [engine/](docs/engine/) | 8 | BigWorld internals, CME framework, cooked data, space management, LOD, checkpointing |
-| [architecture/](docs/architecture/) | 7 | Service topology, scaling analysis, tech stack replacement, data-driven content engine, Python console, Tauri rewrite |
-| [analysis/](docs/analysis/) | 2 | Event-net mapping (420 messages), BigWorld source cross-reference index |
-| [reverse-engineering/](docs/reverse-engineering/) | 22 | RE plan/status, function naming, address map, launcher binary, 17 per-system wire format findings |
-| [content/](docs/content/) | 7 | Zone audit, mission chains, archetype content, association map, reconstruction priority |
-| [client/](docs/client/) | 4 | Launcher design, audio/voice inventory, FaceFX lip sync, UI layout inventory |
-| [guides/](docs/guides/) | 3 | Evidence standards, reading decompiled code, entity definition guide |
-| [tools/](docs/tools/) | 1 | Admin panel design |
-| [technical/](docs/technical/) | 16 | Legacy analysis documents from initial RE investigation |
+[docs/](docs/readme.md) contains **123 documents** covering protocol, gameplay, engine internals, architecture, and reverse engineering.
 
 **Start here:**
-- **[How SGW Works](docs/how-sgw-works.md)** — Technology overview of the BigWorld + UE3 hybrid architecture
-- **[Game Systems](docs/game-systems.md)** — Every game feature: combat, abilities, stargates, missions, crafting
-- **[Connection Flow](docs/connection-flow.md)** — End-to-end login and world entry sequence
-- **[Project Status](docs/project-status.md)** — What works, what's left, and the roadmap
+- [How SGW Works](docs/how-sgw-works.md) — BigWorld + UE3 hybrid architecture
+- [Game Systems](docs/game-systems.md) — Combat, abilities, stargates, missions, crafting
+- [Connection Flow](docs/connection-flow.md) — End-to-end login and world entry
+- [Project Status](docs/project-status.md) — What works and what's left
+- [Gap Analysis](docs/gap-analysis.md) — Per-feature completion tracking
 
-For reverse engineering work, see [docs/reverse-engineering/](docs/reverse-engineering/PLAN.md).
+For reverse engineering: [docs/reverse-engineering/](docs/reverse-engineering/PLAN.md)
 
 ## License
 

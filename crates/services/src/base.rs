@@ -2039,6 +2039,13 @@ fn get_account_entity_id(
 }
 
 /// Destroy all entities associated with a disconnecting client and remove it from the map.
+///
+/// Safe to call multiple times for the same address — returns silently if the
+/// session was already removed (e.g. DISCONNECT handler cleaned up, then the
+/// tick-sync inactivity timeout fires on the now-absent session).
+///
+/// Always sets `cancelled` on the session before removal so the tick-sync loop
+/// exits promptly instead of running until the 60-second inactivity timeout.
 fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
@@ -2049,11 +2056,16 @@ fn destroy_client_entities(
             Ok(c) => c,
             Err(_) => return,
         };
-        if let Some(c) = clients.remove(&addr) {
-            (c.account_entity_id, c.player_entity_id)
-        } else {
+        let Some(c) = clients.get(&addr) else {
+            tracing::debug!(%addr, "destroy_client_entities: no session, already cleaned up");
             return;
-        }
+        };
+        // Signal the tick-sync loop to exit before we remove the session.
+        c.cancelled.store(true, Ordering::Relaxed);
+        let account_eid = c.account_entity_id;
+        let player_eid = c.player_entity_id;
+        clients.remove(&addr);
+        (account_eid, player_eid)
     };
 
     let mut mgr = entity_manager.lock().unwrap();
@@ -2096,6 +2108,47 @@ async fn handle_login(
     };
 
     let key = decode_session_key(&login.session_key)?;
+
+    // ── Duplicate login detection (KI-7) ────────────────────────────────────
+    // If this account already has an active session, evict the old one first.
+    // C++ checks ChannelManager.isPlayerOnline() at play-character time
+    // (Account.py:286-290), but we also guard at login to prevent stale sessions.
+    {
+        let evict_addr: Option<(SocketAddr, [u8; 32])> = {
+            let clients = connected
+                .lock()
+                .map_err(|_| "connected lock poisoned")?;
+            clients.iter().find_map(|(existing_addr, c)| {
+                if c.account_id == login.account_id && *existing_addr != addr {
+                    Some((*existing_addr, c.key))
+                } else {
+                    None
+                }
+            })
+        };
+        if let Some((old_addr, old_key)) = evict_addr {
+            tracing::warn!(
+                account_id = login.account_id,
+                %old_addr,
+                %addr,
+                "Duplicate login — evicting old session"
+            );
+            // Send LOGGED_OFF to the old client so it gets an immediate teardown.
+            let (acks, seq) = {
+                let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+                if let Some(c) = clients.get_mut(&old_addr) {
+                    let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                    let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+                    (acks, seq)
+                } else {
+                    (vec![], 0)
+                }
+            };
+            let pkt = build_logged_off(&old_key, seq, &acks);
+            let _ = socket.send_to(&pkt, old_addr).await;
+            destroy_client_entities(connected, entity_manager, old_addr);
+        }
+    }
 
     tracing::info!(
         account_id = login.account_id,

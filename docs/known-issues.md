@@ -35,45 +35,39 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 **Severity**: Low
 **Description**: ACKs for client reliable messages are piggybacked on the next tick sync (100ms interval) rather than sent as a standalone unreliable ACK packet. This adds up to 100ms latency on ACK delivery but is functionally correct.
 
-### KI-5: DISCONNECT (0x0C) does not send a server response
+### ~~KI-5: DISCONNECT (0x0C) does not send a server response~~ — RESOLVED
 
-**Severity**: Low
-**Description**: When the client sends DISCONNECT, the server logs it but does not send a disconnect acknowledgment or perform session cleanup. The session eventually times out via inactivity.
+**Status**: Fixed. `destroy_client_entities()` now sets `cancelled` on the session before removal, so the tick-sync loop exits promptly instead of running until the 60-second inactivity timeout. DISCONNECT handler triggers full cleanup.
 
-### KI-6: No disconnect cleanup / session leak
+### ~~KI-6: No disconnect cleanup / session leak~~ — RESOLVED
 
-**Severity**: Medium
-**Description**: When a client disconnects, its entry in the `ConnectedClientState` HashMap is never removed. Entity IDs are not recycled. Over many connect/disconnect cycles this leaks memory. Requires implementing inactivity timeout eviction.
+**Status**: Fixed. `destroy_client_entities()` is now self-contained — it sets `cancelled`, reads entity IDs, removes the session from the HashMap, and destroys entities. Safe to call multiple times (returns silently if session already removed). The tick-sync loop also calls it on exit as a safety net, which is now a harmless no-op if cleanup already happened.
 
-### KI-7: No duplicate login detection
+### ~~KI-7: No duplicate login detection~~ — RESOLVED
 
-**Severity**: Medium
-**Description**: The same account can log in multiple times simultaneously. C++ tracks active sessions per account and disconnects the existing session on re-login.
+**Status**: Fixed. `handle_login()` now scans for existing sessions with the same `account_id`. If found, sends LOGGED_OFF (0x37) to the old client and evicts the old session before registering the new one.
 
 ### KI-8: No ticket expiration
 
 **Severity**: Medium (security)
 **Description**: SOAP login tickets never expire. C++ expires them after 30 seconds. A captured ticket can be replayed indefinitely.
 
-### KI-9: requestCharacterVisuals does not query inventory
+### ~~KI-9: requestCharacterVisuals does not query inventory~~ — RESOLVED
 
-**Severity**: Low (cosmetic)
-**Description**: Character select screen shows base model without equipped gear. C++ queries sgw_inventory for equipped items and appends their visual components.
+**Status**: Fixed by character creation visual pipeline. `requestCharacterVisuals` now queries `sgw_inventory` for equipped items and includes their visual components in the response.
 
-### KI-10: createCharacter does not store starting abilities
+### ~~KI-10: createCharacter does not store starting abilities~~ — RESOLVED
 
-**Severity**: Medium (gameplay)
-**Description**: New characters have an empty ability set. C++ stores charDef.abilities (starting abilities per archetype) on creation.
+**Status**: Fixed by character creation visual pipeline. `createCharacter` now stores starting abilities from archetype definitions.
 
 ### KI-11: createCharacter does not store access_level
 
 **Severity**: Low
 **Description**: GM accounts create normal characters instead of GM-flagged characters. C++ passes account access_level into the character INSERT.
 
-### KI-12: createCharacter does not validate visual choices
+### ~~KI-12: createCharacter does not validate visual choices~~ — RESOLVED
 
-**Severity**: Low
-**Description**: Server accepts any visual component combination without validating against charDef allowed components. Client-side validation is the primary guard.
+**Status**: Fixed by character creation visual pipeline. Server now validates visual component choices against charDef allowed components from the database.
 
 ### KI-13: Fragment reassembly not implemented
 
