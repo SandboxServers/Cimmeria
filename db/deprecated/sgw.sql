@@ -8,8 +8,6 @@ SET search_path = public, pg_catalog;
 
 SET default_tablespace = '';
 
-SET default_with_oids = false;
-
 --
 -- TOC entry 268 (class 1259 OID 63748)
 -- Name: account; Type: TABLE; Schema: public; Owner: -; Tablespace: 
