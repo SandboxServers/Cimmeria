@@ -4,7 +4,7 @@ function Initialize-CimmeriaDatabase {
         Initializes a local PostgreSQL instance and loads the Cimmeria database schemas.
 
     .DESCRIPTION
-        Uses the PostgreSQL 9.2 binaries from external/postgresql_server/ to:
+        Uses the PostgreSQL 17 binaries from external/postgresql_server/ to:
         1. Initialize a data directory in server/pgdata/ (if it doesn't exist)
         2. Start PostgreSQL on port 5433 (avoids conflicts with system PG)
         3. Create the "w-testing" role and "sgw" database
@@ -53,8 +53,27 @@ function Initialize-CimmeriaDatabase {
 
     Write-Step "INITIALIZING DATABASE"
 
-    # Step 1: initdb
-    if (-not (Test-Path (Join-Path $pgDataDir "PG_VERSION"))) {
+    # Step 1: initdb (with version mismatch detection)
+    $pgVersionFile = Join-Path $pgDataDir "PG_VERSION"
+    if (Test-Path $pgVersionFile) {
+        $dataVersion = (Get-Content $pgVersionFile -First 1).Trim()
+        # Determine the server's major version from postgres.exe --version
+        $pgServerVersion = & (Join-Path $pgBin "postgres.exe") --version 2>&1
+        if ($pgServerVersion -match '(\d+)\.') {
+            $serverMajor = $Matches[1]
+            $dataMajor = $dataVersion.Split('.')[0]
+            if ($dataMajor -ne $serverMajor) {
+                Write-Status "pgdata version mismatch: data=$dataVersion, server=PG $serverMajor" "Yellow"
+                Write-Status "Removing old pgdata/ directory (PG major version upgrade)..." "Yellow"
+                # pg_ctl stop in case it's somehow running with old binaries
+                $pgCtlCheck = Join-Path $pgBin "pg_ctl.exe"
+                & $pgCtlCheck stop -D $pgDataDir -m immediate 2>&1 | Out-Null
+                Remove-Item $pgDataDir -Recurse -Force
+                Write-Status "Old pgdata/ removed. Will re-initialize." "Green"
+            }
+        }
+    }
+    if (-not (Test-Path $pgVersionFile)) {
         if ($PSCmdlet.ShouldProcess("server/pgdata", "Initialize PostgreSQL data directory")) {
             Write-Status "Running initdb..." "White"
             $initdb = Join-Path $pgBin "initdb.exe"

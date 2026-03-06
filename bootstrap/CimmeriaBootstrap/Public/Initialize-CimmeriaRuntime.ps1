@@ -36,14 +36,21 @@ function Initialize-CimmeriaRuntime {
     $pythonDir = Join-Path $paths.ExternalDir "python"
 
     # DLL manifest: source path -> description
+    # Note: PG 17 bundles OpenSSL 3.x (libssl/libcrypto) instead of 1.0.x (ssleay32/libeay32)
     $dlls = @(
         @{ Name = "python34.dll";    Source = Join-Path $pythonDir "python34.dll";            Desc = "Python 3.4 runtime (Boost.Python)" }
         @{ Name = "libpq.dll";       Source = Join-Path $pgServerBin "libpq.dll";             Desc = "PostgreSQL client library (SOCI)" }
-        @{ Name = "libintl-8.dll";   Source = Join-Path $pgServerBin "libintl-8.dll";          Desc = "libpq dependency" }
-        @{ Name = "iconv.dll";       Source = Join-Path $pgServerBin "iconv.dll";             Desc = "libpq dependency" }
-        @{ Name = "ssleay32.dll";    Source = Join-Path $pgServerBin "ssleay32.dll";          Desc = "libpq dependency (PG OpenSSL)" }
-        @{ Name = "libeay32.dll";    Source = Join-Path $pgServerBin "libeay32.dll";          Desc = "libpq dependency (PG OpenSSL)" }
     )
+
+    # Discover libpq runtime dependencies from PG server bin (names vary by PG version)
+    if (Test-Path $pgServerBin) {
+        $pgDepPatterns = @("libintl*.dll", "libiconv*.dll", "iconv.dll", "libssl*.dll", "libcrypto*.dll", "ssleay32.dll", "libeay32.dll", "zlib*.dll")
+        foreach ($pattern in $pgDepPatterns) {
+            Get-ChildItem $pgServerBin -Filter $pattern -ErrorAction SilentlyContinue | ForEach-Object {
+                $dlls += @{ Name = $_.Name; Source = $_.FullName; Desc = "libpq dependency (auto-discovered)" }
+            }
+        }
+    }
 
     $staged = 0
     $skipped = 0

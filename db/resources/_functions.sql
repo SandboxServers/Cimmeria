@@ -18,11 +18,11 @@ begin
     from resources.resource_types
     where "table" = TG_TABLE_NAME;
 
-    select "version", pending or (snapshot = txid_current_snapshot()::varchar)
+    select "version", pending or (snapshot = pg_current_snapshot()::varchar)
     into strict _version, _pending
     from resources.resource_versions
     where "type" = _restype
-    order by (snapshot = txid_current_snapshot()::varchar) desc, "version" desc
+    order by (snapshot = pg_current_snapshot()::varchar) desc, "version" desc
     fetch first row only;
 
 

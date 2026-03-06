@@ -82,7 +82,7 @@ shim that calls `setup.ps1 -NoLaunch`. It preserves the original behavior
 |---|---|---|---|
 | Boost | 1.55.0 | ~85 MB | Source, built by b2 |
 | OpenSSL | 1.0.1e | ~5 MB | Source, built by nmake |
-| PostgreSQL | 9.2.24 | ~50 MB | Pre-built binaries (headers + libpq + server) |
+| PostgreSQL | 17.9 | ~50 MB | Pre-built binaries (headers + libpq + server) |
 | Python | 3.4.1 | ~20 MB | MSI (headers + import libs + python34.dll) |
 | SOCI | 3.2.1 | ~1 MB | Source, built by cl/lib |
 | SDL | 1.2.15 | ~2 MB | Pre-built (headers + libs) |

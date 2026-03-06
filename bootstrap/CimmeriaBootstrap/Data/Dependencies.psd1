@@ -19,12 +19,12 @@
     }
 
     PostgreSQL = @{
-        Version   = "9.2.24"
-        Url       = "https://get.enterprisedb.com/postgresql/postgresql-9.2.24-1-windows-x64-binaries.zip"
-        FileName  = "postgresql-9.2.24-x64-binaries.zip"
+        Version   = "17.9"
+        Url       = "https://get.enterprisedb.com/postgresql/postgresql-17.9-1-windows-x64-binaries.zip"
+        FileName  = "postgresql-17.9-x64-binaries.zip"
         Type      = "prebuilt"
         ExtractTo = "postgresql_pkg"
-        Notes     = "9.2.24 is the latest 9.2.x patch release - ABI compatible with 9.2.3."
+        Notes     = "17.9 is the latest 17.x patch release (Feb 2026). EOL Nov 2029. Upgrade from 9.2 requires pgdata re-init."
     }
 
     Python = @{
