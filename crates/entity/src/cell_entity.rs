@@ -13,7 +13,25 @@ use std::collections::{HashMap, HashSet};
 
 use cimmeria_common::{EntityId, SpaceId, Vector3};
 
+use crate::abilities::AbilityManager;
 use crate::base_entity::PropertyValue;
+use crate::missions::MissionManager;
+use crate::stats::StatList;
+
+/// Types of NPC interaction available when a player clicks on this entity.
+///
+/// Maps to the static interaction set IDs from `python/common/Constants.py`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NpcInteractionType {
+    /// Dialog NPC — shows `onDialogDisplay` with a dialog tree.
+    Dialog { dialog_id: i32 },
+    /// Vendor NPC — opens `onStoreOpen` with buy/sell lists.
+    Vendor,
+    /// Ability trainer — opens `onTrainerOpen` with trainable abilities.
+    Trainer { archetype_id: i32 },
+    /// Lootable entity — opens `onLootDisplay`.
+    Loot,
+}
 
 /// The cell-side half of a game entity.
 ///
@@ -48,6 +66,31 @@ pub struct CellEntity {
     /// Area-of-interest radius in world units. Other entities within this
     /// radius may become witnesses.
     pub aoi_radius: f32,
+
+    /// Whether this entity has a client controller (i.e., is a player).
+    /// Only player entities generate AoI notifications.
+    pub is_player: bool,
+
+    /// Entity class ID for CREATE_ENTITY wire format (0x02 = SGWPlayer, 0x04 = SGWMob).
+    pub class_id: u8,
+
+    /// Combat stats for this being entity.
+    /// Initialized from `SGWBeing.statsTemplate` defaults, overwritten by
+    /// archetype values for player entities.
+    pub stats: StatList,
+
+    /// Ability manager: known abilities, cooldowns, auto-cycle state.
+    pub abilities: AbilityManager,
+
+    /// NPC interaction type (what happens when a player interacts with this entity).
+    /// None = no interaction. Only meaningful for NPC entities.
+    pub interaction_type: Option<NpcInteractionType>,
+
+    /// Display name for NPCs (sent in dialog headers, etc.).
+    pub npc_name: Option<String>,
+
+    /// Mission tracking for player entities.
+    pub missions: MissionManager,
 }
 
 impl CellEntity {
@@ -62,6 +105,13 @@ impl CellEntity {
             properties: HashMap::new(),
             witnesses: HashSet::new(),
             aoi_radius: 100.0, // Default AoI radius (matches grid_vision_distance)
+            is_player: false,
+            class_id: 0x02, // SGWPlayer by default
+            stats: StatList::new(),
+            abilities: AbilityManager::new(),
+            interaction_type: None,
+            npc_name: None,
+            missions: MissionManager::new(),
         }
     }
 
@@ -108,6 +158,8 @@ impl std::fmt::Debug for CellEntity {
             .field("witness_count", &self.witnesses.len())
             .field("aoi_radius", &self.aoi_radius)
             .field("property_count", &self.properties.len())
+            .field("stats", &self.stats)
+            .field("known_abilities", &self.abilities.known_count())
             .finish()
     }
 }

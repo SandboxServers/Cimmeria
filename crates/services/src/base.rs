@@ -58,13 +58,20 @@ use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE, FLAG_RELIABLE};
 
+use tokio::sync::mpsc;
+
 use crate::auth::PendingLogin;
+use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::mercury_ext::{
-    build_char_list, build_char_create_failed, build_character_visuals,
-    build_connect_reply, build_logged_off, build_on_character_list,
-    build_ongoing_tick_sync, build_reset_entities, build_resource_fragment,
-    build_time_sync, build_version_info, build_world_entry, read_wstring,
-    CharacterInfo, WorldEntryInfo, DEFAULT_SPACE_ID,
+    build_avatar_update, build_char_list, build_char_create_failed,
+    build_character_visuals, build_connect_reply, build_create_entity,
+    build_entity_leave, build_entity_method_packet, build_logged_off,
+    build_map_loaded, build_on_character_list, build_ongoing_tick_sync,
+    build_reset_entities, build_resource_fragment,
+    build_time_sync, build_version_info,
+    build_world_entry, read_wstring,
+    archetype_ability_tree, CharacterInfo, PlayerLoadData, WorldEntryInfo,
+    DEFAULT_SPACE_ID, SKIN_TINTS,
     FRAG_FIRST, FRAG_FIRST_AND_LAST, FRAG_LAST, FRAG_MIDDLE,
 };
 
@@ -114,17 +121,6 @@ fn chardef_lookup(id: i32) -> Option<(i32, i32, i32, &'static str, &'static str,
         _  => None,
     }
 }
-
-// ── Skin tint lookup (from python/common/Constants.py:SKIN_TINTS) ────────────
-
-/// 16 ARGB skin tint values indexed by SkinTintColorID (0-15).
-/// Source: `python/common/Constants.py:4-9` — `SKIN_TINTS` array.
-const SKIN_TINTS: [u32; 16] = [
-    0x2F1308FF, 0x180A08FF, 0x15100DFF, 0x9C4F22FF,
-    0x370405FF, 0x2F1219FF, 0x6C1F0DFF, 0x4F1A09FF,
-    0xB45B32FF, 0x632319FF, 0x3A2417FF, 0xF8B487FF,
-    0xD57D51FF, 0xC36141FF, 0xDF8250FF, 0x8D3F24FF,
-];
 
 // ── Inventory constants (from python/Atrea/enums.py + Account.py) ────────────
 
@@ -345,8 +341,13 @@ struct ConnectedClientState {
     /// World entry info for Phase 5b (viewport + cell + position), set after Phase 5a.
     /// Consumed by `handle_enable_entities` Phase 5b via `.take()`.
     pending_world_entry: Option<WorldEntryInfo>,
+    /// Full player load data for the mapLoaded sequence, set after Phase 5a.
+    /// Consumed by `handle_enable_entities` Phase 5b via `.take()`.
+    pending_player_load_data: Option<PlayerLoadData>,
     /// Set to `true` by `handle_log_off` to signal the tick-sync loop to stop.
     cancelled: Arc<AtomicBool>,
+    /// Player character name, set during world entry for chat routing.
+    player_name: Option<String>,
 }
 
 // ── BaseService ───────────────────────────────────────────────────────────────
@@ -368,6 +369,12 @@ pub struct BaseService {
 
     /// Path to the data directory for loading .pak files.
     data_dir: String,
+
+    /// Sender for messages to CellService (set by orchestrator).
+    cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
+
+    /// Receiver for messages from CellService (set by orchestrator, taken at start).
+    cell_rx: Option<mpsc::Receiver<CellToBaseMsg>>,
 }
 
 impl BaseService {
@@ -383,6 +390,8 @@ impl BaseService {
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
             db_pool: None,
             data_dir: "data/cache".to_string(),
+            cell_tx: None,
+            cell_rx: None,
         }
     }
 
@@ -399,6 +408,16 @@ impl BaseService {
     /// Set the database connection pool.
     pub fn set_db_pool(&mut self, pool: Arc<PgPool>) {
         self.db_pool = Some(pool);
+    }
+
+    /// Wire in the Base↔Cell channels. Called by the orchestrator before `start()`.
+    pub fn set_cell_channel(
+        &mut self,
+        tx: mpsc::Sender<BaseToCellMsg>,
+        rx: mpsc::Receiver<CellToBaseMsg>,
+    ) {
+        self.cell_tx = Some(tx);
+        self.cell_rx = Some(rx);
     }
 
     /// Start the Mercury UDP listener on `listener_addr`.
@@ -424,12 +443,54 @@ impl BaseService {
             }
         };
 
+        let cell_tx = self.cell_tx.clone();
+        let cell_rx = self.cell_rx.take();
+
+        // Create shared state accessible by both the connect loop and cell message handler.
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let entity_manager: Arc<Mutex<EntityManager>> =
+            Arc::new(Mutex::new(EntityManager::new()));
+        // Reverse index: entity_id → SocketAddr (populated during Phase 5b).
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        // Clone shared state for the cell message handler before moving into connect loop.
+        let socket_for_cell = Arc::clone(&socket);
+        let connected_for_cell = Arc::clone(&connected);
+        let entity_to_addr_for_cell = Arc::clone(&entity_to_addr);
+        let cell_tx_for_cell = cell_tx.clone();
+        let db_pool_for_cell = self.db_pool.clone();
+
         tracing::trace!("Spawning base service UDP receive loop");
+        let cell_tx_for_loop = cell_tx.clone();
+        let connected_for_loop = Arc::clone(&connected);
+        let entity_manager_for_loop = Arc::clone(&entity_manager);
+        let entity_to_addr_for_loop = Arc::clone(&entity_to_addr);
         tokio::spawn(async move {
             tracing::trace!("Base service UDP receive loop started");
-            run_connect_loop(socket, pending_logins, db_pool, resource_cache).await;
+            run_connect_loop(
+                socket, pending_logins, db_pool, resource_cache,
+                cell_tx_for_loop, connected_for_loop,
+                entity_manager_for_loop, entity_to_addr_for_loop,
+            ).await;
             tracing::trace!("Base service UDP receive loop exited");
         });
+
+        // Spawn a task to process messages from CellService
+        if let Some(mut cell_rx) = cell_rx {
+            tokio::spawn(async move {
+                tracing::debug!("Base service CellToBase message handler started");
+                while let Some(msg) = cell_rx.recv().await {
+                    handle_cell_message(
+                        msg, &socket_for_cell, &connected_for_cell,
+                        &entity_to_addr_for_cell,
+                        &cell_tx_for_cell, &db_pool_for_cell,
+                    ).await;
+                }
+                tracing::debug!("Base service CellToBase message handler exited");
+            });
+        }
 
         self.is_running = true;
         Ok(())
@@ -469,11 +530,11 @@ async fn run_connect_loop(
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
     db_pool: Option<Arc<PgPool>>,
     resource_cache: Option<Arc<ResourceCache>>,
+    cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
+    connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: Arc<Mutex<EntityManager>>,
+    entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    let entity_manager: Arc<Mutex<EntityManager>> =
-        Arc::new(Mutex::new(EntityManager::new()));
 
     let mut buf = [0u8; 4096];
 
@@ -490,6 +551,8 @@ async fn run_connect_loop(
                     &db_pool,
                     &resource_cache,
                     &entity_manager,
+                    &cell_tx,
+                    &entity_to_addr,
                 )
                 .await
                 {
@@ -521,6 +584,8 @@ async fn handle_datagram(
     db_pool: &Option<Arc<PgPool>>,
     resource_cache: &Option<Arc<ResourceCache>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if raw.is_empty() {
         return Ok(());
@@ -547,7 +612,8 @@ async fn handle_datagram(
         *last_recv.lock().unwrap() = Instant::now();
         return handle_encrypted_datagram(
             socket, addr, raw, enc, key, account_id,
-            &pending_acks, connected, db_pool, resource_cache, entity_manager,
+            &pending_acks, connected, db_pool, resource_cache, entity_manager, cell_tx,
+            entity_to_addr,
         ).await;
     }
 
@@ -561,7 +627,7 @@ async fn handle_datagram(
     match parse_baseapp_login(raw) {
         Ok((request_id, ticket_str)) => {
             tracing::info!(%addr, ticket = %ticket_str, "baseAppLogin received");
-            handle_login(socket, addr, request_id, &ticket_str, pending_logins, connected, entity_manager).await
+            handle_login(socket, addr, request_id, &ticket_str, pending_logins, connected, entity_manager, cell_tx, entity_to_addr).await
         }
         Err(e) => {
             tracing::warn!(%addr, "Failed to parse baseAppLogin: {e}");
@@ -583,6 +649,8 @@ async fn handle_encrypted_datagram(
     db_pool: &Option<Arc<PgPool>>,
     resource_cache: &Option<Arc<ResourceCache>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let plaintext = match enc.decrypt(raw) {
         Ok(p) => p,
@@ -708,83 +776,172 @@ async fn handle_encrypted_datagram(
             // ENABLE_ENTITIES (0x08) — client re-enables entity system after RESET_ENTITIES
             0x08 => {
                 tracing::info!(%addr, "Client sent ENABLE_ENTITIES");
-                handle_enable_entities(socket, addr, key, account_id, connected, db_pool, entity_manager).await?;
+                handle_enable_entities(socket, addr, key, account_id, connected, db_pool, entity_manager, cell_tx, entity_to_addr).await?;
             }
-            // AVATAR_UPDATE_EXPLICIT (0x03) — client movement update (ignore for now)
+            // AVATAR_UPDATE_EXPLICIT (0x03) — client movement update (40 bytes)
             0x03 => {
-                tracing::trace!(%addr, "Client sent AVATAR_UPDATE_EXPLICIT — ignoring");
+                if payload.len() >= 40 {
+                    if let Some(ref tx) = cell_tx {
+                        let entity_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+                        // payload[4..8] = viewport_id (unused here)
+                        let pos = [
+                            f32::from_le_bytes([payload[8], payload[9], payload[10], payload[11]]),
+                            f32::from_le_bytes([payload[12], payload[13], payload[14], payload[15]]),
+                            f32::from_le_bytes([payload[16], payload[17], payload[18], payload[19]]),
+                        ];
+                        let vel = [
+                            f32::from_le_bytes([payload[20], payload[21], payload[22], payload[23]]),
+                            f32::from_le_bytes([payload[24], payload[25], payload[26], payload[27]]),
+                            f32::from_le_bytes([payload[28], payload[29], payload[30], payload[31]]),
+                        ];
+                        let dir = [payload[32] as i8, payload[33] as i8, payload[34] as i8];
+                        tracing::trace!(entity_id, ?pos, "AVATAR_UPDATE_EXPLICIT → CellService");
+                        let _ = tx.send(BaseToCellMsg::EntityMove {
+                            entity_id,
+                            position: pos,
+                            direction: dir,
+                            velocity: vel,
+                        }).await;
+                    }
+                }
             }
             // DISCONNECT (0x0C)
             0x0C => {
                 tracing::info!(%addr, "Client sent DISCONNECT");
-                destroy_client_entities(connected, entity_manager, addr);
+                destroy_client_entities(connected, entity_manager, addr, cell_tx, entity_to_addr);
             }
             // VIEWPORT_ACK (0x09)
             0x09 => {
                 tracing::trace!(%addr, "Client sent VIEWPORT_ACK");
             }
 
-            // ── Entity method calls ──
-            // versionInfoRequest (ClientCache exposed index 0)
-            0xC0 => {
-                handle_version_info_request(
-                    socket, addr, key, payload, connected, resource_cache,
-                ).await?;
-            }
-            // elementDataRequest (ClientCache exposed index 1)
-            0xC1 => {
-                handle_element_data_request(
-                    socket, addr, key, payload, connected, resource_cache,
-                ).await?;
-            }
-            // logOff (Account exposed index 2)
-            0xC2 => {
-                handle_log_off(
-                    socket, addr, key, connected, entity_manager,
-                ).await?;
-            }
-            // createCharacter (Account exposed index 3)
-            0xC3 => {
-                tracing::info!(%addr, "Client requests createCharacter");
-                handle_create_character(
-                    socket, addr, key, account_id, payload,
-                    connected, db_pool,
-                ).await?;
-            }
-            // playCharacter (Account exposed index 4)
-            0xC4 => {
-                let player_id = if payload.len() >= 4 {
-                    i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
-                } else {
-                    0
+            // ── Entity base method calls (0xC0+) ──
+            //
+            // The dispatch table changes based on which entity type the client controls:
+            //
+            // ACCOUNT entity (character select):
+            //   ClientCache: 0xC0=versionInfoRequest, 0xC1=elementDataRequest
+            //   Account:     0xC2=logOff, 0xC3=createCharacter, 0xC4=playCharacter,
+            //                0xC5=deleteCharacter, 0xC6=requestCharacterVisuals, 0xC7=onClientVersion
+            //
+            // SGWPLAYER entity (in-world):
+            //   Communicator: 0xC0=chatJoin, 0xC1=chatLeave, 0xC2=sendPlayerCommunication,
+            //                 0xC3=chatSetAFKMessage, 0xC4=chatSetDNDMessage, ...
+            //   (Other interfaces and SGWPlayer own methods at higher indices)
+            id if id >= 0xC0 => {
+                let (in_world, player_name) = {
+                    let clients = connected.lock().unwrap();
+                    match clients.get(&addr) {
+                        Some(c) => (c.player_entity_id.is_some(), c.player_name.clone()),
+                        None => (false, None),
+                    }
                 };
-                tracing::info!(%addr, player_id, "Client requests playCharacter");
-                handle_play_character(socket, addr, key, account_id, player_id, connected, db_pool, entity_manager).await?;
+
+                if in_world {
+                    // SGWPlayer base method dispatch
+                    dispatch_sgw_player_base_method(
+                        id, payload, &player_name, addr, socket, key,
+                        connected, entity_manager, cell_tx, entity_to_addr,
+                    ).await?;
+                } else {
+                    // Account base method dispatch
+                    match id {
+                        0xC0 => {
+                            handle_version_info_request(
+                                socket, addr, key, payload, connected, resource_cache,
+                            ).await?;
+                        }
+                        0xC1 => {
+                            handle_element_data_request(
+                                socket, addr, key, payload, connected, resource_cache,
+                            ).await?;
+                        }
+                        0xC2 => {
+                            handle_log_off(
+                                socket, addr, key, connected, entity_manager, cell_tx, entity_to_addr,
+                            ).await?;
+                        }
+                        0xC3 => {
+                            tracing::info!(%addr, "Client requests createCharacter");
+                            handle_create_character(
+                                socket, addr, key, account_id, payload,
+                                connected, db_pool,
+                            ).await?;
+                        }
+                        0xC4 => {
+                            let player_id = if payload.len() >= 4 {
+                                i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
+                            } else {
+                                0
+                            };
+                            tracing::info!(%addr, player_id, "Client requests playCharacter");
+                            handle_play_character(socket, addr, key, account_id, player_id, connected, db_pool, entity_manager, cell_tx).await?;
+                        }
+                        0xC5 => {
+                            let player_id = if payload.len() >= 4 {
+                                i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
+                            } else { 0 };
+                            tracing::info!(%addr, player_id, "Client requests deleteCharacter");
+                            handle_delete_character(
+                                socket, addr, key, account_id, player_id,
+                                connected, db_pool,
+                            ).await?;
+                        }
+                        0xC6 => {
+                            let player_id = if payload.len() >= 4 {
+                                i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
+                            } else { 0 };
+                            tracing::debug!(%addr, player_id, "Client sent requestCharacterVisuals");
+                            handle_request_character_visuals(
+                                socket, addr, key, player_id, connected, db_pool,
+                            ).await?;
+                        }
+                        0xC7 => {
+                            tracing::debug!(%addr, "Client sent onClientVersion — acknowledged");
+                        }
+                        _ => {
+                            tracing::trace!(%addr, msg_id = format_args!("{:#04x}", id), "Unhandled Account base method");
+                        }
+                    }
+                }
             }
-            // deleteCharacter (Account exposed index 5)
-            0xC5 => {
-                let player_id = if payload.len() >= 4 {
-                    i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
-                } else { 0 };
-                tracing::info!(%addr, player_id, "Client requests deleteCharacter");
-                handle_delete_character(
-                    socket, addr, key, account_id, player_id,
-                    connected, db_pool,
-                ).await?;
-            }
-            // requestCharacterVisuals (Account exposed index 6)
-            0xC6 => {
-                let player_id = if payload.len() >= 4 {
-                    i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
-                } else { 0 };
-                tracing::debug!(%addr, player_id, "Client sent requestCharacterVisuals");
-                handle_request_character_visuals(
-                    socket, addr, key, player_id, connected, db_pool,
-                ).await?;
-            }
-            // onClientVersion (Account exposed index 7)
-            0xC7 => {
-                tracing::debug!(%addr, "Client sent onClientVersion — acknowledged");
+            // ── Cell entity method calls (0x80-0xBF range) ──
+            // After world entry, the client sends cell method calls as:
+            //   Direct:   msg_id = cellMethodIndex | 0x80 (indices 0-60)
+            //   Extended: msg_id = 0xBD, payload contains subIndex
+            // These are forwarded to the CellService for dispatch.
+            id if (0x80..=0xBF).contains(&id) => {
+                let player_eid = {
+                    let clients = connected.lock().unwrap();
+                    clients.get(&addr).and_then(|c| c.player_entity_id)
+                };
+                if let Some(player_eid) = player_eid {
+                    if id == 0xBD {
+                        // Extended encoding: subIndex is first byte of payload
+                        if !payload.is_empty() {
+                            let sub_index = payload[0] as u16;
+                            let args = if payload.len() > 1 { payload[1..].to_vec() } else { Vec::new() };
+                            if let Some(ref tx) = cell_tx {
+                                let _ = tx.send(BaseToCellMsg::CellMethodCall {
+                                    entity_id: player_eid,
+                                    method_index: sub_index + 61,
+                                    args,
+                                }).await;
+                            }
+                        }
+                    } else {
+                        let method_index = (id - 0x80) as u16;
+                        if let Some(ref tx) = cell_tx {
+                            let _ = tx.send(BaseToCellMsg::CellMethodCall {
+                                entity_id: player_eid,
+                                method_index,
+                                args: payload.to_vec(),
+                            }).await;
+                        }
+                    }
+                } else {
+                    tracing::trace!(%addr, msg_id = format_args!("{:#04x}", id), "Cell method before world entry — ignored");
+                }
             }
             _ => {
                 tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Unhandled client message");
@@ -1670,6 +1827,7 @@ async fn handle_play_character(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     db_pool: &Option<Arc<PgPool>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Guard: only send once per connection.
     let arcs = {
@@ -1694,8 +1852,11 @@ async fn handle_play_character(
         None => return Ok(()),
     };
 
-    // Query character data from DB
-    let entry_info = query_world_entry(db_pool, account_id, player_id, entity_manager).await;
+    // Query character data from DB and resolve space via CellService
+    let entry_info = query_world_entry(db_pool, account_id, player_id, entity_manager, cell_tx).await;
+
+    // Also query the full player data needed for mapLoaded
+    let player_load_data = query_player_load_data(db_pool, account_id, player_id).await;
 
     tracing::info!(
         %addr,
@@ -1720,13 +1881,15 @@ async fn handle_play_character(
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT RESET_ENTITIES (Phase 5a)");
     socket.send_to(&pkt, addr).await?;
 
-    // Store the world entry info so Phase 5b can send the full cell/viewport data.
+    // Store the world entry info and player load data for Phase 5b.
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get_mut(&addr) {
             c.pending_player_entity_id = Some(entry_info.player_entity_id);
             c.player_entity_id = Some(entry_info.player_entity_id);
             c.pending_world_entry = Some(entry_info);
+            c.player_name = Some(player_load_data.player_name.clone());
+            c.pending_player_load_data = Some(player_load_data);
         }
     }
 
@@ -1749,6 +1912,8 @@ async fn handle_enable_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     db_pool: &Option<Arc<PgPool>>,
     _entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Check if we have a pending world entry (Phase 5b).
     let pending = {
@@ -1763,11 +1928,19 @@ async fn handle_enable_entities(
         }
     };
 
+    // Also retrieve the pending player load data
+    let pending_load = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            c.pending_player_load_data.take()
+        } else {
+            None
+        }
+    };
+
     if let Some((_eid, entry_info)) = pending {
         // ── Phase 5b: CREATE_BASE_PLAYER + viewport + cell + forced position ──
-        // In the C++ server, enableEntities() sends CREATE_BASE_PLAYER, then
-        // triggers the cell to send viewport/cell/position data.  Since we're
-        // single-process, we combine them into one packet.
+        // Packet 1: spatial setup (world entry)
         let (acks, seq) = drain_acks_and_seq(connected, addr)?;
 
         tracing::info!(
@@ -1775,11 +1948,33 @@ async fn handle_enable_entities(
             player_entity_id = entry_info.player_entity_id,
             space_id = entry_info.space_id,
             seq,
-            "Phase 5b: sending CREATE_BASE_PLAYER + viewport + cell + position"
+            "Phase 5b: sending world entry + mapLoaded sequence"
         );
 
         let pkt = build_world_entry(&key, seq, &acks, &entry_info);
         socket.send_to(&pkt, addr).await?;
+
+        // Packet 2: complete mapLoaded sequence (setupWorldParameters, stats,
+        // appearance, abilities, inventory, exp, and onPlayerDataLoaded).
+        let player_data = pending_load.unwrap_or_else(|| default_player_load_data());
+        let (acks2, seq2) = drain_acks_and_seq(connected, addr)?;
+        let pkt2 = build_map_loaded(&key, seq2, &acks2, entry_info.player_entity_id, &player_data);
+        tracing::debug!(%addr, len = pkt2.len(), seq = seq2, "UDP_OUT mapLoaded");
+        socket.send_to(&pkt2, addr).await?;
+
+        tracing::info!(%addr, player = %player_data.player_name,
+            level = player_data.level, archetype = player_data.archetype,
+            "Phase 5b: mapLoaded complete ({} bytes)", pkt2.len());
+
+        // Notify CellService that this entity now has a client controller
+        if let Some(ref tx) = cell_tx {
+            let _ = tx.send(BaseToCellMsg::ConnectEntity {
+                entity_id: entry_info.player_entity_id,
+            }).await;
+        }
+
+        // Register entity_id → addr so AoI messages can find this client's socket.
+        entity_to_addr.lock().unwrap().insert(entry_info.player_entity_id, addr);
 
         tracing::info!(%addr, "Phase 5b complete — player in world");
         return Ok(());
@@ -1826,12 +2021,498 @@ async fn handle_enable_entities(
     Ok(())
 }
 
+// ── Space registry (populated from CellService SpaceData messages) ───────────
+
+/// Thread-safe space registry mapping world_name → space_id.
+/// Populated at startup when CellService sends SpaceData for each space.
+static SPACE_REGISTRY: std::sync::LazyLock<Mutex<HashMap<String, u32>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Register a space in the global registry (called from CellToBase message handler).
+fn register_space(world_name: String, space_id: u32) {
+    tracing::debug!(world = %world_name, space_id, "Registered space in BaseApp registry");
+    SPACE_REGISTRY.lock().unwrap().insert(world_name, space_id);
+}
+
+/// Look up a space_id from the registry (populated by CellService).
+fn resolve_space_id_from_registry(world_name: &str) -> u32 {
+    SPACE_REGISTRY.lock().unwrap()
+        .get(world_name)
+        .copied()
+        .unwrap_or_else(|| {
+            tracing::warn!(world = %world_name, "Space not in registry — using fallback");
+            resolve_space_id_fallback(world_name)
+        })
+}
+
+/// Legacy hardcoded space ID fallback (used when CellService is unavailable).
+fn resolve_space_id_fallback(world_name: &str) -> u32 {
+    match world_name {
+        "Castle_CellBlock" => DEFAULT_SPACE_ID,     // 65552
+        "SGC_W1"           => DEFAULT_SPACE_ID + 1, // 65553
+        "CombatSim"        => DEFAULT_SPACE_ID + 2, // 65554
+        _ => {
+            tracing::warn!("Unknown world_location: {world_name}, defaulting to Castle_CellBlock");
+            DEFAULT_SPACE_ID
+        }
+    }
+}
+
+/// Handle a gate travel request from CellService.
+///
+/// This re-uses the Phase 5a/5b world entry flow:
+/// 1. Send RESET_ENTITIES to tear down the client entity system.
+/// 2. Set up pending world entry for the new world (reusing same entity_id).
+/// 3. Client responds with ENABLE_ENTITIES → Phase 5b sends the new world packets.
+///
+/// The CellService has already removed the entity from its old space.
+/// We tell it to create the entity in the new space, then send the client
+/// the full world-entry + mapLoaded sequence for the destination.
+async fn handle_gate_travel(
+    entity_id: u32,
+    target_world_name: &str,
+    position: [f32; 3],
+    rotation: [f32; 3],
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    db_pool: &Option<Arc<PgPool>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Look up client socket from entity_id
+    let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied()
+        .ok_or("Gate travel: no client addr for entity")?;
+
+    // Get client state
+    let (key, account_id, pending_acks_arc, next_seq) = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let c = clients.get(&addr).ok_or("Gate travel: client state not found")?;
+        (c.key, c.account_id, Arc::clone(&c.pending_acks), Arc::clone(&c.next_seq))
+    };
+
+    tracing::info!(
+        entity_id, %addr, world = %target_world_name,
+        "Gate travel: sending RESET_ENTITIES for world transition"
+    );
+
+    // Tell CellService to create the entity in the new space
+    if let Some(tx) = cell_tx {
+        let _ = tx.send(BaseToCellMsg::CreateEntity {
+            entity_id,
+            world_name: target_world_name.to_string(),
+            position,
+            rotation,
+        }).await;
+    }
+
+    // Resolve space_id from the space registry
+    let space_id = resolve_space_id_from_registry(target_world_name);
+
+    // Build the world entry info for the new destination
+    let entry_info = WorldEntryInfo {
+        player_entity_id: entity_id,
+        space_id,
+        pos: position,
+        rot: rotation,
+    };
+
+    // Query player load data from DB (same player, different world)
+    let player_id = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let c = clients.get(&addr).ok_or("client not found")?;
+        // We stored account_id but need player_id for the DB query.
+        // The player_id isn't stored in ConnectedClientState, so we query by
+        // account_id alone (the DB query uses account_id to find the active char).
+        c.account_id
+    };
+    let player_load_data = query_player_load_data_by_account(db_pool, account_id).await;
+
+    // Phase 5a: Send RESET_ENTITIES
+    let acks: Vec<u32> = {
+        let mut pending = pending_acks_arc.lock().unwrap();
+        pending.drain(..).collect()
+    };
+    let seq = next_seq.fetch_add(1, Ordering::Relaxed);
+    let pkt = build_reset_entities(&key, seq, &acks);
+    socket.send_to(&pkt, addr).await?;
+
+    // Store pending world entry for Phase 5b (ENABLE_ENTITIES handler)
+    {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            c.pending_player_entity_id = Some(entity_id);
+            c.pending_world_entry = Some(entry_info);
+            c.pending_player_load_data = Some(player_load_data);
+            // world_entry_sent stays true — we don't reset it, since
+            // handle_enable_entities checks pending_player_entity_id
+        }
+    }
+
+    tracing::info!(
+        entity_id, %addr, world = %target_world_name,
+        "Gate travel: RESET_ENTITIES sent — awaiting ENABLE_ENTITIES"
+    );
+
+    let _ = player_id; // account_id used above
+    Ok(())
+}
+
+/// Query player load data using just the account_id (for gate travel where we
+/// don't have the player_id readily available in ConnectedClientState).
+async fn query_player_load_data_by_account(
+    db_pool: &Option<Arc<PgPool>>,
+    account_id: u32,
+) -> PlayerLoadData {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => return default_player_load_data(),
+    };
+
+    #[derive(sqlx::FromRow)]
+    struct PlayerRow {
+        player_id: i32,
+    }
+
+    // Find the most recently used character for this account
+    match sqlx::query_as::<_, PlayerRow>(
+        "SELECT player_id FROM sgw_player WHERE account_id = $1 ORDER BY player_id LIMIT 1",
+    )
+    .bind(account_id as i32)
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(row)) => query_player_load_data(db_pool, account_id, row.player_id).await,
+        _ => default_player_load_data(),
+    }
+}
+
+/// Handle a mail request from CellService by querying the DB and sending results to the client.
+async fn handle_mail_request(
+    entity_id: u32,
+    op: crate::cell::messages::MailOp,
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
+) {
+    use crate::cell::messages::MailOp;
+    use crate::cell::mail;
+
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::debug!(entity_id, "Mail request: no DB pool available");
+            return;
+        }
+    };
+
+    // Get the player's character_id (player_id) from their account via entity lookup
+    let account_id = {
+        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+            Some(a) => a,
+            None => { tracing::warn!(entity_id, "Mail: no client addr"); return; }
+        };
+        let clients = connected.lock().unwrap();
+        match clients.get(&addr) {
+            Some(c) => c.account_id,
+            None => { tracing::warn!(entity_id, "Mail: client not found"); return; }
+        }
+    };
+
+    // Resolve player_id from account_id
+    let player_id = match sqlx::query_scalar::<_, i32>(
+        "SELECT player_id FROM sgw_player WHERE account_id = $1 ORDER BY player_id LIMIT 1",
+    )
+    .bind(account_id as i32)
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(pid)) => pid,
+        _ => {
+            tracing::warn!(entity_id, account_id, "Mail: could not resolve player_id");
+            return;
+        }
+    };
+
+    // Get player name for mail read responses
+    let player_name = {
+        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+            Some(a) => a,
+            None => { tracing::warn!(entity_id, "Mail: no addr for player name lookup"); return; }
+        };
+        let clients = connected.lock().unwrap();
+        clients.get(&addr)
+            .and_then(|c| c.player_name.clone())
+            .unwrap_or_default()
+    };
+
+    match op {
+        MailOp::RequestHeaders { b_archive } => {
+            tracing::debug!(entity_id, player_id, b_archive, "Mail: querying headers");
+
+            #[derive(sqlx::FromRow)]
+            struct MailRow {
+                mail_id: i32,
+                sender_name: String,
+                sender_id: Option<i32>,
+                subject: String,
+                cash: i64,
+                sent_time: i32,
+                read_time: i32,
+                flags: i32,
+            }
+
+            let rows = sqlx::query_as::<_, MailRow>(
+                "SELECT mail_id, sender_name, sender_id, subject, cash, sent_time, read_time, flags \
+                 FROM sgw_gate_mail WHERE character_id = $1 ORDER BY mail_id DESC",
+            )
+            .bind(player_id)
+            .fetch_all(pool.as_ref())
+            .await
+            .unwrap_or_default();
+
+            let headers: Vec<mail::MailHeader> = rows.iter().map(|r| mail::MailHeader {
+                id: r.mail_id,
+                from_text: r.sender_name.clone(),
+                from_id: r.sender_id.unwrap_or(0),
+                subject_text: r.subject.clone(),
+                cash: r.cash as i32,
+                sent_time: r.sent_time as f32,
+                read_time: r.read_time as f32,
+                flags: r.flags,
+            }).collect();
+
+            tracing::debug!(entity_id, count = headers.len(), "Mail: sending headers to client");
+
+            let args = mail::serialize_on_mail_header_info(b_archive, &headers);
+            send_to_witness(
+                socket, connected, entity_to_addr, entity_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(key, seq, acks, entity_id,
+                        crate::mercury_ext::method_idx::ON_MAIL_HEADER_INFO, &args)
+                },
+            ).await;
+        }
+
+        MailOp::RequestBody { mail_id } => {
+            tracing::debug!(entity_id, mail_id, "Mail: querying body");
+
+            #[derive(sqlx::FromRow)]
+            struct BodyRow {
+                message: String,
+            }
+
+            match sqlx::query_as::<_, BodyRow>(
+                "SELECT message FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2",
+            )
+            .bind(mail_id)
+            .bind(player_id)
+            .fetch_optional(pool.as_ref())
+            .await
+            {
+                Ok(Some(row)) => {
+                    // Mark as read (set read_time if not already set)
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i32;
+                    let _ = sqlx::query(
+                        "UPDATE sgw_gate_mail SET read_time = $1 WHERE mail_id = $2 AND read_time = 0",
+                    )
+                    .bind(now)
+                    .bind(mail_id)
+                    .execute(pool.as_ref())
+                    .await;
+
+                    let args = mail::serialize_on_mail_read(mail_id, &row.message, &player_name);
+                    send_to_witness(
+                        socket, connected, entity_to_addr, entity_id,
+                        |key, seq, acks| {
+                            build_entity_method_packet(key, seq, acks, entity_id,
+                                crate::mercury_ext::method_idx::ON_MAIL_READ, &args)
+                        },
+                    ).await;
+                }
+                _ => {
+                    tracing::warn!(entity_id, mail_id, "Mail body not found");
+                }
+            }
+        }
+
+        MailOp::Delete { mail_id } => {
+            tracing::debug!(entity_id, mail_id, "Mail: deleting");
+            let _ = sqlx::query(
+                "DELETE FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2",
+            )
+            .bind(mail_id)
+            .bind(player_id)
+            .execute(pool.as_ref())
+            .await;
+
+            // Notify client to remove the header
+            let args = mail::serialize_on_mail_header_remove(mail_id);
+            send_to_witness(
+                socket, connected, entity_to_addr, entity_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(key, seq, acks, entity_id,
+                        crate::mercury_ext::method_idx::ON_MAIL_HEADER_REMOVE, &args)
+                },
+            ).await;
+        }
+
+        MailOp::Archive { mail_id } => {
+            tracing::debug!(entity_id, mail_id, "Mail: archiving");
+            // Set the MAIL_Archive flag (bit 0)
+            let _ = sqlx::query(
+                "UPDATE sgw_gate_mail SET flags = flags | 1 WHERE mail_id = $1 AND character_id = $2",
+            )
+            .bind(mail_id)
+            .bind(player_id)
+            .execute(pool.as_ref())
+            .await;
+
+            // Notify client to remove the header from inbox
+            let args = mail::serialize_on_mail_header_remove(mail_id);
+            send_to_witness(
+                socket, connected, entity_to_addr, entity_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(key, seq, acks, entity_id,
+                        crate::mercury_ext::method_idx::ON_MAIL_HEADER_REMOVE, &args)
+                },
+            ).await;
+        }
+    }
+}
+
+/// Handle a message from CellService — dispatches AoI packets to witness clients.
+async fn handle_cell_message(
+    msg: CellToBaseMsg,
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    db_pool: &Option<Arc<PgPool>>,
+) {
+    match msg {
+        CellToBaseMsg::SpaceData { space_id, world_name } => {
+            register_space(world_name, space_id);
+        }
+        CellToBaseMsg::EntityCreated { entity_id, space_id, position } => {
+            tracing::debug!(entity_id, space_id, ?position, "CellService: entity created");
+        }
+        CellToBaseMsg::EnteredAoI { witness_id, entity_id, space_id: _, class_id, position, direction } => {
+            tracing::debug!(witness_id, entity_id, class_id, "AoI: entity entered witness range");
+            send_to_witness(
+                socket, connected, entity_to_addr, witness_id,
+                |key, seq, acks| {
+                    build_create_entity(
+                        key, seq, acks, entity_id,
+                        class_id, position, direction,
+                    )
+                },
+            ).await;
+        }
+        CellToBaseMsg::LeftAoI { witness_id, entity_id } => {
+            tracing::debug!(witness_id, entity_id, "AoI: entity left witness range");
+            send_to_witness(
+                socket, connected, entity_to_addr, witness_id,
+                |key, seq, acks| {
+                    build_entity_leave(key, seq, acks, entity_id)
+                },
+            ).await;
+        }
+        CellToBaseMsg::EntityMoved { witness_id, entity_id, space_id: _, position, direction, velocity } => {
+            tracing::trace!(witness_id, entity_id, "AoI: entity position update");
+            send_to_witness(
+                socket, connected, entity_to_addr, witness_id,
+                |key, seq, acks| {
+                    build_avatar_update(
+                        key, seq, acks, entity_id,
+                        position, velocity, direction,
+                    )
+                },
+            ).await;
+        }
+        CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } => {
+            tracing::debug!(entity_id, method_index, args_len = args.len(), "CellService→client entity method call");
+            send_to_witness(
+                socket, connected, entity_to_addr, entity_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
+                },
+            ).await;
+        }
+        CellToBaseMsg::GateTravel { entity_id, target_world_name, position, rotation } => {
+            if let Err(e) = handle_gate_travel(
+                entity_id, &target_world_name, position, rotation,
+                socket, connected, entity_to_addr, cell_tx, db_pool,
+            ).await {
+                tracing::error!(entity_id, world = %target_world_name, "Gate travel failed: {e}");
+            }
+        }
+        CellToBaseMsg::MailRequest { entity_id, op } => {
+            handle_mail_request(entity_id, op, socket, connected, entity_to_addr, db_pool).await;
+        }
+    }
+}
+
+/// Send an AoI packet to a specific witness's client.
+///
+/// Looks up the witness entity_id → SocketAddr, then finds the client state
+/// to get encryption key and sequence number. Calls the packet builder closure
+/// and sends the result via UDP.
+async fn send_to_witness<F>(
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    witness_id: u32,
+    build_packet: F,
+) where
+    F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
+{
+    // Extract all data from locks in a sync block so no MutexGuard crosses an await.
+    let send_data = {
+        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+            Some(a) => a,
+            None => {
+                tracing::trace!(witness_id, "AoI: no client addr for witness — skipping");
+                return;
+            }
+        };
+
+        let clients = connected.lock().unwrap();
+        match clients.get(&addr) {
+            Some(c) => {
+                let key = c.key;
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                Some((addr, key, seq, acks))
+            }
+            None => {
+                tracing::trace!(witness_id, %addr, "AoI: client disconnected — skipping");
+                None
+            }
+        }
+    };
+
+    if let Some((addr, key, seq, acks)) = send_data {
+        let packet = build_packet(&key, seq, &acks);
+        if let Err(e) = socket.send_to(&packet, addr).await {
+            tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
+        }
+    }
+}
+
 /// Query the character's world entry data from the database and allocate a player entity ID.
+///
+/// If a CellService channel is available, sends `CreateEntity` to resolve the space_id
+/// dynamically. Otherwise falls back to the hardcoded space ID table.
 async fn query_world_entry(
     db_pool: &Option<Arc<PgPool>>,
     account_id: u32,
     player_id: i32,
     entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) -> WorldEntryInfo {
     let player_eid = entity_manager.lock().unwrap().create_entity("SGWPlayer").0 as u32;
 
@@ -1865,21 +2546,37 @@ async fn query_world_entry(
     .await
     {
         Ok(Some(row)) => {
-            // Map world_location string to a space_id.
-            // IDs use (cellId << 16) | local_index; cellId=1 for all.
-            let space_id = match row.world_location.as_str() {
-                "Castle_CellBlock" => 65552, // (1 << 16) | 16
-                "SGC_W1"           => 65553, // (1 << 16) | 17
-                "CombatSim"        => 65554, // (1 << 16) | 18
-                other => {
-                    tracing::warn!("Unknown world_location: {other}, defaulting to Castle_CellBlock");
-                    65552
+            let pos = [row.pos_x, row.pos_y, row.pos_z];
+
+            // Resolve space_id via CellService if available, else fall back
+            // to the legacy hardcoded table.
+            let space_id = if let Some(tx) = cell_tx {
+                // Send CreateEntity to CellService — it will find or create the
+                // space and return the assigned space_id via EntityCreated.
+                if tx.send(BaseToCellMsg::CreateEntity {
+                    entity_id: player_eid,
+                    world_name: row.world_location.clone(),
+                    position: pos,
+                    rotation: [0.0; 3],
+                }).await.is_ok() {
+                    // We don't block on the response here; the CellService will
+                    // send EntityCreated asynchronously, but we still need a
+                    // space_id for the wire packet NOW. Use the space registry
+                    // (populated at startup from SpaceData messages) or fall back.
+                    // TODO: In a future phase, use a oneshot channel for synchronous
+                    // space_id resolution. For now, rely on the space registry.
+                    resolve_space_id_from_registry(&row.world_location)
+                } else {
+                    resolve_space_id_fallback(&row.world_location)
                 }
+            } else {
+                resolve_space_id_fallback(&row.world_location)
             };
+
             WorldEntryInfo {
                 player_entity_id: player_eid,
                 space_id,
-                pos: [row.pos_x, row.pos_y, row.pos_z],
+                pos,
                 rot: [0.0; 3],
             }
         }
@@ -1891,6 +2588,119 @@ async fn query_world_entry(
             tracing::error!("Failed to query world entry: {e}");
             default_entry()
         }
+    }
+}
+
+// ── Player load data query ───────────────────────────────────────────────────
+
+/// Query full player data from the database for the mapLoaded sequence.
+///
+/// Returns all fields needed by [`build_map_loaded`]: level, name, archetype,
+/// appearance, abilities, inventory stubs, experience, etc.
+async fn query_player_load_data(
+    db_pool: &Option<Arc<PgPool>>,
+    account_id: u32,
+    player_id: i32,
+) -> PlayerLoadData {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => return default_player_load_data(),
+    };
+
+    #[derive(sqlx::FromRow)]
+    struct PlayerRow {
+        level: i32,
+        player_name: String,
+        extra_name: String,
+        alignment: i32,
+        archetype: i32,
+        gender: i32,
+        bodyset: String,
+        components: Vec<String>,
+        exp: i32,
+        naquadah: i32,
+        known_stargates: Vec<i32>,
+        abilities: Vec<i32>,
+        training_points: i32,
+        applied_science_points: i32,
+        blueprint_ids: Vec<i32>,
+        first_login: i32,
+        access_level: i32,
+        skin_color_id: i32,
+    }
+
+    match sqlx::query_as::<_, PlayerRow>(
+        "SELECT level, player_name, extra_name, alignment, archetype, gender, \
+         bodyset, components, exp, naquadah, known_stargates, abilities, \
+         training_points, applied_science_points, blueprint_ids, first_login, \
+         access_level, skin_color_id \
+         FROM sgw_player WHERE player_id = $1 AND account_id = $2",
+    )
+    .bind(player_id)
+    .bind(account_id as i32)
+    .fetch_optional(pool.as_ref())
+    .await
+    {
+        Ok(Some(row)) => {
+            tracing::debug!(
+                player_id, level = row.level, archetype = row.archetype,
+                name = %row.player_name, "Loaded player data for mapLoaded"
+            );
+            PlayerLoadData {
+                level: row.level,
+                player_name: row.player_name,
+                extra_name: row.extra_name,
+                alignment: row.alignment,
+                archetype: row.archetype,
+                gender: row.gender,
+                bodyset: row.bodyset,
+                components: row.components,
+                exp: row.exp,
+                naquadah: row.naquadah,
+                known_stargates: row.known_stargates,
+                abilities: row.abilities,
+                training_points: row.training_points,
+                applied_science_points: row.applied_science_points,
+                blueprint_ids: row.blueprint_ids,
+                first_login: row.first_login,
+                access_level: row.access_level,
+                skin_color_id: row.skin_color_id,
+                ability_tree: archetype_ability_tree(row.archetype),
+            }
+        }
+        Ok(None) => {
+            tracing::warn!(player_id, account_id, "Player not found for mapLoaded");
+            default_player_load_data()
+        }
+        Err(e) => {
+            tracing::error!(player_id, "Failed to query player load data: {e}");
+            default_player_load_data()
+        }
+    }
+}
+
+/// Default player load data when the DB is unavailable.
+fn default_player_load_data() -> PlayerLoadData {
+    PlayerLoadData {
+        level: 1,
+        player_name: "Unknown".into(),
+        extra_name: String::new(),
+        alignment: 1,
+        archetype: 1,
+        gender: 1,
+        bodyset: "BS_HumanMale.BS_HumanMale".into(),
+        components: vec![],
+        exp: 0,
+        naquadah: 0,
+        known_stargates: vec![],
+        abilities: vec![],
+        training_points: 0,
+        applied_science_points: 0,
+        blueprint_ids: vec![],
+        first_login: 1,
+        access_level: 0,
+        skin_color_id: 0,
+        ability_tree: archetype_ability_tree(1),
     }
 }
 
@@ -1907,6 +2717,8 @@ async fn run_tick_loop(
     cancelled: Arc<AtomicBool>,
     connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: Arc<Mutex<EntityManager>>,
+    cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -1957,7 +2769,140 @@ async fn run_tick_loop(
     }
 
     // Clean up entities for this disconnected client.
-    destroy_client_entities(&connected, &entity_manager, addr);
+    destroy_client_entities(&connected, &entity_manager, addr, &cell_tx, &entity_to_addr);
+}
+
+// ── SGWPlayer base method dispatch ──────────────────────────────────────────
+
+/// SGWPlayer flattened EXPOSED BaseMethod indices.
+///
+/// After world entry, the client controls an SGWPlayer entity. Base method calls
+/// use `msg_id = flat_index + 0xC0`. The ordering is: interface methods first
+/// (in Implements order from SGWPlayer.def), then own methods.
+///
+/// ## Communicator interface (indices 0–14, msg_id 0xC0–0xCE)
+/// | Idx | Method | Args |
+/// |-----|--------|------|
+/// | 0 | chatJoin | WSTRING channelName, WSTRING password |
+/// | 1 | chatLeave | UINT8 channelId |
+/// | 2 | sendPlayerCommunication | UINT8 channel, WSTRING target, WSTRING text |
+/// | 3 | chatSetAFKMessage | WSTRING message |
+/// | 4 | chatSetDNDMessage | WSTRING message |
+/// | 5–14 | chatIgnore..announcePetition | (various, stub) |
+mod sgw_player_base {
+    pub const CHAT_JOIN: u8 = 0xC0;
+    pub const CHAT_LEAVE: u8 = 0xC1;
+    pub const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
+    pub const CHAT_SET_AFK: u8 = 0xC3;
+    pub const CHAT_SET_DND: u8 = 0xC4;
+}
+
+/// Dispatch an SGWPlayer base method call (after world entry).
+///
+/// The entity type switches from Account to SGWPlayer when the player enters the
+/// world. The same msg_id values (0xC0+) map to different methods.
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_sgw_player_base_method(
+    msg_id: u8,
+    payload: &[u8],
+    player_name: &Option<String>,
+    addr: SocketAddr,
+    socket: &Arc<UdpSocket>,
+    key: [u8; 32],
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    match msg_id {
+        sgw_player_base::SEND_PLAYER_COMMUNICATION => {
+            // sendPlayerCommunication(UINT8 channel, WSTRING target, WSTRING text)
+            if payload.is_empty() {
+                return Ok(());
+            }
+            let channel = payload[0];
+            let mut offset = 1;
+
+            // Parse target (WSTRING)
+            let (target, new_offset) = match read_wstring(payload, offset) {
+                Ok(v) => v,
+                Err(_) => return Ok(()),
+            };
+            offset = new_offset;
+
+            // Parse text (WSTRING)
+            let (text, _) = match read_wstring(payload, offset) {
+                Ok(v) => v,
+                Err(_) => return Ok(()),
+            };
+
+            let speaker = player_name.as_deref().unwrap_or("Unknown");
+
+            tracing::info!(
+                %addr,
+                speaker,
+                channel,
+                target = if target.is_empty() { "<none>" } else { &target },
+                text_len = text.len(),
+                "sendPlayerCommunication"
+            );
+
+            // Route to CellService for spatial channels (say/emote/yell)
+            let player_eid = {
+                let clients = connected.lock().unwrap();
+                clients.get(&addr).and_then(|c| c.player_entity_id)
+            };
+
+            if let Some(player_eid) = player_eid {
+                if let Some(ref tx) = cell_tx {
+                    let _ = tx.send(BaseToCellMsg::ChatMessage {
+                        entity_id: player_eid,
+                        speaker_name: speaker.to_string(),
+                        speaker_flags: 0, // TODO: compute from AFK/DND/GM status
+                        channel,
+                        text,
+                    }).await;
+                }
+            }
+        }
+
+        sgw_player_base::CHAT_JOIN => {
+            // chatJoin(WSTRING channelName, WSTRING password)
+            let (channel_name, offset) = match read_wstring(payload, 0) {
+                Ok(v) => v,
+                Err(_) => return Ok(()),
+            };
+            let (_password, _) = match read_wstring(payload, offset) {
+                Ok(v) => v,
+                Err(_) => return Ok(()),
+            };
+            tracing::debug!(%addr, channel_name, "chatJoin — acknowledged (channels auto-joined)");
+        }
+
+        sgw_player_base::CHAT_LEAVE => {
+            // chatLeave(UINT8 channelId)
+            let channel_id = if !payload.is_empty() { payload[0] } else { 0 };
+            tracing::debug!(%addr, channel_id, "chatLeave — acknowledged");
+        }
+
+        sgw_player_base::CHAT_SET_AFK | sgw_player_base::CHAT_SET_DND => {
+            tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Chat status update — acknowledged");
+        }
+
+        _ => {
+            tracing::trace!(
+                %addr,
+                msg_id = format_args!("{:#04x}", msg_id),
+                base_method_index = msg_id.wrapping_sub(0xC0),
+                "Unhandled SGWPlayer base method"
+            );
+        }
+    }
+
+    // Suppress unused warnings for parameters used in future handlers
+    let _ = (socket, key, entity_manager, entity_to_addr);
+
+    Ok(())
 }
 
 // ── LogOff handler ──────────────────────────────────────────────────────────
@@ -1986,6 +2931,8 @@ async fn handle_log_off(
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!(%addr, "Client requests logOff — sending LOGGED_OFF and cleaning up");
 
@@ -2007,7 +2954,7 @@ async fn handle_log_off(
     tracing::debug!(%addr, seq, "Sent LOGGED_OFF (0x37)");
 
     // Destroy entities and remove from connected map.
-    destroy_client_entities(connected, entity_manager, addr);
+    destroy_client_entities(connected, entity_manager, addr, cell_tx, entity_to_addr);
 
     Ok(())
 }
@@ -2050,6 +2997,8 @@ fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
     addr: SocketAddr,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let (account_eid, player_eid) = {
         let mut clients = match connected.lock() {
@@ -2076,6 +3025,16 @@ fn destroy_client_entities(
     if let Some(player_eid) = player_eid {
         tracing::debug!(%addr, player_entity_id = player_eid, "Destroying Player entity");
         mgr.destroy_entity(EntityId(player_eid as i32));
+
+        // Remove from entity→addr reverse index
+        entity_to_addr.lock().unwrap().remove(&player_eid);
+
+        // Notify CellService to disconnect and destroy the cell entity
+        if let Some(tx) = cell_tx {
+            let _ = tx.try_send(BaseToCellMsg::DisconnectEntity {
+                entity_id: player_eid,
+            });
+        }
     }
     tracing::info!(%addr, "Client entities cleaned up");
 }
@@ -2091,6 +3050,8 @@ async fn handle_login(
     pending_logins: &Arc<Mutex<HashMap<String, PendingLogin>>>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let login = {
         let mut map = pending_logins
@@ -2146,7 +3107,7 @@ async fn handle_login(
             };
             let pkt = build_logged_off(&old_key, seq, &acks);
             let _ = socket.send_to(&pkt, old_addr).await;
-            destroy_client_entities(connected, entity_manager, old_addr);
+            destroy_client_entities(connected, entity_manager, old_addr, cell_tx, entity_to_addr);
         }
     }
 
@@ -2192,7 +3153,9 @@ async fn handle_login(
                 account_entity_id: entity_manager.lock().unwrap().create_entity("Account").0 as u32,
                 next_data_id: 0,
                 pending_world_entry: None,
+                pending_player_load_data: None,
                 cancelled,
+                player_name: None,
             },
         );
         arcs
@@ -2215,6 +3178,8 @@ async fn handle_login(
         cancelled_arc,
         Arc::clone(connected),
         Arc::clone(entity_manager),
+        cell_tx.clone(),
+        Arc::clone(entity_to_addr),
     ));
 
     Ok(())

@@ -79,7 +79,42 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 **Severity**: Low
 **Description**: All players are created as SGWPlayer regardless of access_level. C++ creates SGWGmPlayer for accounts with access_level > 0.
 
-### KI-15: CellService is entirely stubbed
+### KI-15: CellService is entirely stubbed — RESOLVED
 
-**Severity**: High (future work)
-**Description**: The CellService has no real implementation. All cell-related data (viewport, cell player, forced position) is constructed directly in the BaseApp. This is sufficient for character select and initial world entry but will need a real CellService for gameplay (movement, combat, AoI).
+**Severity**: ~~High (future work)~~ Resolved
+**Description**: CellService now has a full implementation with space management (loaded from `entities/spaces.xml` + `entities/cell_spaces.xml`), cell entity tracking, client position updates (`avatarUpdateExplicit` 0x03), player lifecycle (ConnectEntity/DisconnectEntity), and basic Area of Interest (AoI). Players in the same space see each other appear/move/leave via `CREATE_ENTITY` (0x09), `UPDATE_AVATAR` (0x10), `ENTITY_INVISIBLE` (0x0B), and `LEAVE_AOI` (0x0C) wire packets. World entry now routes through CellService for space ID resolution and cell entity creation.
+
+### KI-16: CellService gameplay systems — combat, interactions, missions
+
+**Severity**: Medium (gameplay)
+**Status**: Implemented (Phases 6-10)
+**Description**: The CellService now implements the core gameplay loop:
+- **Ability system** (Phase 6): Known abilities, cooldowns, `onTimerUpdate`, `onKnownAbilitiesUpdate`, ability tree info
+- **NPC spawning** (Phase 7): Hardcoded spawn definitions for Agnos/Castle, `SGWMob` entities visible via AoI
+- **Combat** (Phase 8): QR damage calculation, `onEffectResults`, `onStatUpdate`, death state (`onStateFieldUpdate`), player respawn
+- **Interactions** (Phase 9): `interact()` dispatch with distance check, `onDialogDisplay`, `onStoreOpen`, `onTrainerOpen`, `onLootDisplay`
+- **Missions** (Phase 10): Mission state tracking, `onMissionUpdate`/`onStepUpdate`/`onObjectiveUpdate`, accept/abandon/complete flow
+**Remaining gaps**: No DB-driven spawn data, no populated vendor inventories, no mission reward selection, no crafting, no PvP
+
+### KI-17: Gate travel system
+
+**Severity**: Low (gameplay)
+**Status**: Implemented (Phase 11)
+**Description**: Gate travel (world transitions via stargates) is fully implemented. CellService validates stargate addresses from a lookup table (26 stargates from DB seed data), destroys the entity from the old space, and sends `GateTravel` to BaseApp. BaseApp sends `RESET_ENTITIES`, creates the entity in the new space, and reuses the Phase 5a/5b world entry flow. Client sends `ENABLE_ENTITIES` and receives the full mapLoaded sequence for the new world.
+
+### KI-18: Mail system
+
+**Severity**: Low (gameplay)
+**Status**: Implemented (Phase 11)
+**Description**: Mail system is functional for read operations. CellService forwards mail requests (`requestMailHeaders`, `requestMailBody`, `deleteMailMessage`, `archiveMailMessage`) to BaseApp via `CellToBaseMsg::MailRequest`. BaseApp queries `sgw_gate_mail` and sends results to the client via `onMailHeaderInfo`, `onMailRead`, `onMailHeaderRemove`. Send mail (`sendMailMessage`) is stubbed.
+
+### KI-19: Stub-only systems (matching Python reference)
+
+**Severity**: Low (gameplay)
+**Status**: Dispatch wired, handlers stubbed
+**Description**: The following systems have CellMethod dispatch wired but handlers are stubs (matching the Python reference implementation which also had stubs):
+- **Contact list** (friend/ignore): 6 CellMethods stubbed
+- **Organizations** (guilds): 12 CellMethods stubbed
+- **Minigames**: 15 CellMethods stubbed
+- **Black market**: 6 CellMethods stubbed
+- **Mail send/COD/return**: 5 CellMethods stubbed (read operations work)

@@ -12,11 +12,14 @@ use std::time::{Duration, Instant};
 use sqlx::PgPool;
 use tokio::sync::RwLock;
 
+use tokio::sync::mpsc;
+
 use cimmeria_common::ServerConfig;
 
 use crate::auth::{AuthService, ShardInfo};
 use crate::base::BaseService;
 use crate::cell::CellService;
+use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::database::DatabasePool;
 
 /// Errors specific to the orchestrator.
@@ -77,9 +80,15 @@ impl Orchestrator {
         tracing::trace!("Constructing AuthService");
         let auth = AuthService::new(&config);
         tracing::trace!("Constructing BaseService");
-        let base = BaseService::new(&config);
+        let mut base = BaseService::new(&config);
         tracing::trace!("Constructing CellService");
-        let cell = CellService::new(&config);
+        let mut cell = CellService::new(&config);
+
+        // Wire Base↔Cell inter-service channels
+        let (base_to_cell_tx, base_to_cell_rx) = mpsc::channel::<BaseToCellMsg>(256);
+        let (cell_to_base_tx, cell_to_base_rx) = mpsc::channel::<CellToBaseMsg>(256);
+        cell.set_channels(base_to_cell_rx, cell_to_base_tx);
+        base.set_cell_channel(base_to_cell_tx, cell_to_base_rx);
 
         let state = ServerState {
             auth,
