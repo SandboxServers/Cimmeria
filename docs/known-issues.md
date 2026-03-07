@@ -69,24 +69,23 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 
 **Status**: Fixed by character creation visual pipeline. Server now validates visual component choices against charDef allowed components from the database.
 
-### KI-13: Fragment reassembly not implemented
+### ~~KI-13: Fragment reassembly not implemented~~ — RESOLVED
 
-**Severity**: Medium
-**Description**: Mercury fragment reassembly is not implemented. Messages exceeding MAX_BODY (1348 bytes) will fail. Currently no messages hit this limit in practice.
+**Status**: Fixed. `FragmentAssembler` in `crates/mercury/src/unpacker.rs` handles multi-fragment messages with out-of-order delivery, stale entry cleanup, and bounds validation. Full test coverage.
 
 ### KI-14: SGWGmPlayer entity type never used
 
 **Severity**: Low
 **Description**: All players are created as SGWPlayer regardless of access_level. C++ creates SGWGmPlayer for accounts with access_level > 0.
 
-### KI-15: CellService is entirely stubbed — RESOLVED
+### ~~KI-15: CellService is entirely stubbed~~ — RESOLVED
 
 **Severity**: ~~High (future work)~~ Resolved
 **Description**: CellService now has a full implementation with space management (loaded from `entities/spaces.xml` + `entities/cell_spaces.xml`), cell entity tracking, client position updates (`avatarUpdateExplicit` 0x03), player lifecycle (ConnectEntity/DisconnectEntity), and basic Area of Interest (AoI). Players in the same space see each other appear/move/leave via `CREATE_ENTITY` (0x09), `UPDATE_AVATAR` (0x10), `ENTITY_INVISIBLE` (0x0B), and `LEAVE_AOI` (0x0C) wire packets. World entry now routes through CellService for space ID resolution and cell entity creation.
 
-### KI-16: CellService gameplay systems — combat, interactions, missions
+### ~~KI-16: CellService gameplay systems — combat, interactions, missions~~ — RESOLVED
 
-**Severity**: Medium (gameplay)
+**Severity**: ~~Medium (gameplay)~~ Resolved
 **Status**: Implemented (Phases 6-10)
 **Description**: The CellService now implements the core gameplay loop:
 - **Ability system** (Phase 6): Known abilities, cooldowns, `onTimerUpdate`, `onKnownAbilitiesUpdate`, ability tree info
@@ -96,15 +95,15 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 - **Missions** (Phase 10): Mission state tracking, `onMissionUpdate`/`onStepUpdate`/`onObjectiveUpdate`, accept/abandon/complete flow
 **Remaining gaps**: No DB-driven spawn data, no populated vendor inventories, no mission reward selection, no crafting, no PvP
 
-### KI-17: Gate travel system
+### ~~KI-17: Gate travel system~~ — RESOLVED
 
-**Severity**: Low (gameplay)
+**Severity**: ~~Low (gameplay)~~ Resolved
 **Status**: Implemented (Phase 11)
 **Description**: Gate travel (world transitions via stargates) is fully implemented. CellService validates stargate addresses from a lookup table (26 stargates from DB seed data), destroys the entity from the old space, and sends `GateTravel` to BaseApp. BaseApp sends `RESET_ENTITIES`, creates the entity in the new space, and reuses the Phase 5a/5b world entry flow. Client sends `ENABLE_ENTITIES` and receives the full mapLoaded sequence for the new world.
 
-### KI-18: Mail system
+### ~~KI-18: Mail system~~ — RESOLVED
 
-**Severity**: Low (gameplay)
+**Severity**: ~~Low (gameplay)~~ Resolved
 **Status**: Implemented (Phase 11)
 **Description**: Mail system is functional for read operations. CellService forwards mail requests (`requestMailHeaders`, `requestMailBody`, `deleteMailMessage`, `archiveMailMessage`) to BaseApp via `CellToBaseMsg::MailRequest`. BaseApp queries `sgw_gate_mail` and sends results to the client via `onMailHeaderInfo`, `onMailRead`, `onMailHeaderRemove`. Send mail (`sendMailMessage`) is stubbed.
 
