@@ -11,5 +11,5 @@ pub mod auth;
 pub mod base;
 pub mod cell;
 pub mod database;
-pub mod mercury_ext;
+pub mod mercury;
 pub mod orchestrator;

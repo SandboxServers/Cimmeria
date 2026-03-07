@@ -225,7 +225,7 @@ fn init_logging() -> Vec<WorkerGuard> {
         .with_ansi(false)
         .with_target(true)
         .with_filter(EnvFilter::new(
-            "off,cimmeria_services::base=trace,cimmeria_services::mercury_ext=trace,cimmeria_mercury=trace",
+            "off,cimmeria_services::base=trace,cimmeria_services::mercury=trace,cimmeria_mercury=trace",
         ));
 
     // ── Console (stdout, coloured, RUST_LOG or info) ─────────────────────

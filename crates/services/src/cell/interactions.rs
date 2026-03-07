@@ -140,7 +140,7 @@ async fn send_trainer_open(
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
     // Get the ability tree for this archetype so we know what to offer
-    let tree = crate::mercury_ext::archetype_ability_tree(archetype_id);
+    let tree = crate::mercury::archetype_ability_tree(archetype_id);
     let all_abilities: Vec<i32> = tree.trees.iter().flatten().copied().collect();
 
     // TODO: Check which abilities the player already knows and mark as trainable
