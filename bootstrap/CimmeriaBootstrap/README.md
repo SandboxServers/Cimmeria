@@ -6,7 +6,7 @@ fresh git clone to a running server accepting player connections.
 ## Quick Start
 
 ```powershell
-# Full pipeline: download -> build -> database -> launch
+# Full pipeline: prereqs -> build -> database -> launch
 pwsh setup.ps1
 
 # Or import the module and call functions individually:
@@ -17,32 +17,31 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 
 | Step | Function | What it does |
 |------|----------|--------------|
-| 1 | `Install-CimmeriaDependencies` | Download 7 archives, extract, apply MSVC patches |
-| 2 | `Build-CimmeriaLibraries` | Build Boost, OpenSSL, SOCI from source |
-| 3 | `Build-CimmeriaSolution` | MSBuild W-NG.sln (all 6 projects) |
-| 4 | `Initialize-CimmeriaDatabase` | PostgreSQL init + schema load (port 5433) |
-| 5 | `Initialize-CimmeriaRuntime` | Stage DLLs into bin64/ |
-| 6 | `Start-CimmeriaServer` | Launch Auth, Base, Cell servers |
+| 1 | `Assert-CimmeriaPrerequisites` | Check for Rust toolchain, optionally Node.js |
+| 2 | `Install-CimmeriaDependencies` | Download PostgreSQL (Windows) or verify system PG |
+| 3 | `Build-CimmeriaServer` | `cargo build --workspace` |
+| 4 | `Build-CimmeriaApp` | `npm install` + `cargo tauri build` (optional) |
+| 5 | `Initialize-CimmeriaDatabase` | PostgreSQL init + schema load (port 5433) |
+| 6 | `Start-CimmeriaServer` | Launch cimmeria-server binary |
 
 `Invoke-CimmeriaBootstrap` runs all steps in order with fail-fast semantics.
 
 ## Exported Functions
 
-### Setup & Build
+### Build
 
-- **`Install-CimmeriaDependencies`** - Download, extract, and patch all external dependencies
-- **`Build-CimmeriaLibraries`** - Build Boost, OpenSSL, and SOCI libraries
-- **`Build-CimmeriaSolution`** - Build the Visual Studio solution via MSBuild
+- **`Build-CimmeriaServer`** - Build the Rust server workspace via Cargo
+- **`Build-CimmeriaApp`** - Build the Tauri admin app (SolidJS frontend + Rust backend)
 
-### Database & Runtime
+### Setup & Database
 
+- **`Install-CimmeriaDependencies`** - Download/verify PostgreSQL
 - **`Initialize-CimmeriaDatabase`** - Set up PostgreSQL and load schemas
-- **`Initialize-CimmeriaRuntime`** - Stage runtime DLLs alongside executables
 
 ### Server Lifecycle
 
-- **`Start-CimmeriaServer`** - Launch all three game servers
-- **`Stop-CimmeriaServer`** - Gracefully shut down servers and PostgreSQL
+- **`Start-CimmeriaServer`** - Launch the cimmeria-server binary
+- **`Stop-CimmeriaServer`** - Stop the server and (Windows) PostgreSQL
 
 ### Client & Orchestration
 
@@ -52,6 +51,9 @@ Import-Module ./bootstrap/CimmeriaBootstrap
 ## Common Options
 
 ```powershell
+# Server only (no Tauri app, no Node.js needed):
+pwsh setup.ps1 -SkipApp
+
 # Skip downloads (use cached archives):
 pwsh setup.ps1 -SkipDownload
 
@@ -60,9 +62,6 @@ pwsh setup.ps1 -NoLaunch
 
 # Build Release instead of Debug:
 pwsh setup.ps1 -Configuration Release
-
-# Auto-install VS Community if not found:
-pwsh setup.ps1 -InstallVS
 ```
 
 ## Individual Function Usage
@@ -70,19 +69,27 @@ pwsh setup.ps1 -InstallVS
 ```powershell
 Import-Module ./bootstrap/CimmeriaBootstrap
 
-# Re-apply patches only (archives already downloaded):
-Install-CimmeriaDependencies -SkipDownload
-
 # Build release config:
-Build-CimmeriaSolution -Configuration Release
+Build-CimmeriaServer -Configuration Release
 
 # Manage server lifecycle:
 Start-CimmeriaServer
 Stop-CimmeriaServer
 
+# Wipe and reload database:
+Initialize-CimmeriaDatabase -Force
+
 # Patch game client:
 Update-CimmeriaClient
 ```
+
+## Cross-Platform Support
+
+| Platform | PostgreSQL | Notes |
+|----------|-----------|-------|
+| Windows | Auto-downloaded binary | Managed instance in `server/pgdata/` |
+| Linux | System package | Must be running before bootstrap |
+| macOS | Homebrew | Must be running before bootstrap |
 
 ## Connecting a Game Client
 
@@ -113,27 +120,24 @@ CimmeriaBootstrap/
 ├── CimmeriaBootstrap.psm1          # Module loader
 ├── README.md                       # This file
 ├── Data/
-│   └── Dependencies.psd1           # Dependency registry (versions, URLs)
-├── Public/                         # Exported functions (9 files)
+│   └── Dependencies.psd1           # Dependency registry (PostgreSQL)
+├── Public/                         # Exported functions (8 files)
 │   ├── Install-CimmeriaDependencies.ps1
-│   ├── Build-CimmeriaLibraries.ps1
-│   ├── Build-CimmeriaSolution.ps1
+│   ├── Build-CimmeriaServer.ps1
+│   ├── Build-CimmeriaApp.ps1
 │   ├── Initialize-CimmeriaDatabase.ps1
-│   ├── Initialize-CimmeriaRuntime.ps1
 │   ├── Start-CimmeriaServer.ps1
 │   ├── Stop-CimmeriaServer.ps1
 │   ├── Update-CimmeriaClient.ps1
 │   └── Invoke-CimmeriaBootstrap.ps1
-└── Private/                        # Internal helpers (11 files)
+└── Private/                        # Internal helpers (7 files)
+    ├── Assert-CimmeriaPrerequisites.ps1
     ├── Write-Step.ps1
     ├── Write-Status.ps1
     ├── Format-FileSize.ps1
     ├── Get-DownloadFile.ps1
     ├── Expand-DependencyArchive.ps1
-    ├── Find-VisualStudio.ps1
-    ├── Find-Perl.ps1
     ├── Find-PostgreSQL.ps1
-    ├── Invoke-BatchScript.ps1
     ├── Get-ProjectPaths.ps1
     └── Wait-ForPort.ps1
 ```

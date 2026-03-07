@@ -1,16 +1,14 @@
 function Start-CimmeriaServer {
     <#
     .SYNOPSIS
-        Launches the Cimmeria server stack (Auth, Base, Cell).
+        Launches the Cimmeria server (single binary: Auth + Base + Cell).
 
     .DESCRIPTION
-        Ensures PostgreSQL is running, then starts the three game server processes
-        in order, waiting for each to begin accepting connections before proceeding.
-
-        After launch, prints a status banner with connection details.
+        Ensures PostgreSQL is running, then starts the cimmeria-server binary.
+        The server reads configuration and starts all services in one process.
 
     .PARAMETER Configuration
-        Build configuration to run: "Debug" (default) or "Release".
+        Build configuration: "Debug" (default) or "Release".
 
     .PARAMETER Port
         PostgreSQL port. Default 5433.
@@ -30,91 +28,71 @@ function Start-CimmeriaServer {
     )
 
     $paths = Get-ProjectPaths
-    $binDir = Join-Path $paths.ProjectRoot "bin64"
+    $isWin = $IsWindows -or (-not (Test-Path variable:IsWindows))
 
     Write-Step "STARTING CIMMERIA SERVER"
 
     # Ensure PostgreSQL is running
-    $pgBin = Find-PostgreSQL
-    if ($pgBin) {
-        $pgCtl = Join-Path $pgBin "pg_ctl.exe"
-        $pgDataDir = Join-Path $paths.ServerDir "pgdata"
+    if ($isWin) {
+        $pgBin = Find-PostgreSQL
+        if ($pgBin) {
+            $pgCtl = Join-Path $pgBin "pg_ctl.exe"
+            $pgDataDir = Join-Path $paths.ServerDir "pgdata"
 
-        if (Test-Path $pgDataDir) {
-            $statusResult = & $pgCtl status -D $pgDataDir 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                Write-Status "Starting PostgreSQL..." "White"
-                $pgLogFile = Join-Path $paths.ServerDir "logs\postgresql.log"
-                New-Item -ItemType Directory -Path (Split-Path $pgLogFile) -Force | Out-Null
-                $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
-                Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
-                if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
-                    throw "Failed to start PostgreSQL. Check $pgLogFile"
+            if (Test-Path $pgDataDir) {
+                $statusResult = & $pgCtl status -D $pgDataDir 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Status "Starting PostgreSQL..." "White"
+                    $pgLogFile = Join-Path $paths.ServerDir "logs\postgresql.log"
+                    New-Item -ItemType Directory -Path (Split-Path $pgLogFile) -Force | Out-Null
+                    $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
+                    Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
+                    if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
+                        throw "Failed to start PostgreSQL. Check $pgLogFile"
+                    }
+                } else {
+                    Write-Status "PostgreSQL already running." "DarkGray"
                 }
             } else {
-                Write-Status "PostgreSQL already running." "DarkGray"
+                Write-Status "WARNING: pgdata not found. Run Initialize-CimmeriaDatabase first." "Yellow"
             }
+        }
+    } else {
+        # Linux/macOS: verify PG is reachable
+        if (Wait-ForPort -Port $Port -TimeoutSeconds 2) {
+            Write-Status "PostgreSQL reachable on port $Port." "DarkGray"
         } else {
-            Write-Status "WARNING: pgdata not found. Run Initialize-CimmeriaDatabase first." "Yellow"
+            Write-Status "WARNING: PostgreSQL not reachable on port $Port." "Yellow"
+            Write-Status "  Start it with: sudo systemctl start postgresql (Linux)" "Yellow"
+            Write-Status "  Or:            brew services start postgresql@17 (macOS)" "Yellow"
         }
     }
 
-    # Determine executable suffix
-    $suffix = if ($Configuration -eq "Debug") { "_d" } else { "" }
+    # Find server binary
+    $profile = if ($Configuration -eq "Release") { "release" } else { "debug" }
+    $exeSuffix = if ($isWin) { ".exe" } else { "" }
+    $serverBin = Join-Path $paths.ProjectRoot "target/$profile/cimmeria-server$exeSuffix"
 
-    # Verify executables exist
-    $authExe = Join-Path $binDir "AuthenticationServer${suffix}.exe"
-    $baseExe = Join-Path $binDir "BaseApp${suffix}.exe"
-    $cellExe = Join-Path $binDir "CellApp${suffix}.exe"
-
-    foreach ($exe in @($authExe, $baseExe, $cellExe)) {
-        if (-not (Test-Path $exe)) {
-            throw "Server executable not found: $exe. Run Build-CimmeriaSolution first."
-        }
+    if (-not (Test-Path $serverBin)) {
+        throw "Server binary not found: $serverBin. Run Build-CimmeriaServer first."
     }
 
-    # Start AuthenticationServer
-    Write-Status "Starting AuthenticationServer..." "White"
-    Start-Process -FilePath $authExe -WorkingDirectory $binDir -WindowStyle Normal
+    # Launch
+    Write-Status "Starting cimmeria-server ($Configuration)..." "White"
+    $serverProc = Start-Process -FilePath $serverBin -WorkingDirectory $paths.ProjectRoot -PassThru
+    if (-not $serverProc) {
+        throw "Failed to start cimmeria-server."
+    }
+
+    # Wait for auth service to be ready
     if (Wait-ForPort -Port 8081 -TimeoutSeconds 15) {
-        Write-Status "AuthenticationServer ready (port 8081)." "Green"
+        Write-Status "Auth service ready (port 8081)." "Green"
     } else {
-        Write-Status "WARNING: AuthenticationServer did not respond on port 8081 within 15s." "Yellow"
-        $authProc = Get-Process -Name "AuthenticationServer${suffix}" -ErrorAction SilentlyContinue
-        if ($authProc) {
-            Write-Status "  Process is alive (PID $($authProc.Id)) - may still be initializing." "Yellow"
+        $proc = Get-Process -Id $serverProc.Id -ErrorAction SilentlyContinue
+        if ($proc -and -not $proc.HasExited) {
+            Write-Status "Server is alive (PID $($serverProc.Id)) - may still be initializing." "Yellow"
         } else {
-            throw "AuthenticationServer failed to start."
-        }
-    }
-
-    # Start BaseApp
-    Write-Status "Starting BaseApp..." "White"
-    Start-Process -FilePath $baseExe -WorkingDirectory $binDir -WindowStyle Normal
-    if (Wait-ForPort -Port 32832 -TimeoutSeconds 15) {
-        Write-Status "BaseApp ready (port 32832)." "Green"
-    } else {
-        Write-Status "WARNING: BaseApp did not respond on port 32832 within 15s." "Yellow"
-        $baseProc = Get-Process -Name "BaseApp${suffix}" -ErrorAction SilentlyContinue
-        if ($baseProc) {
-            Write-Status "  Process is alive (PID $($baseProc.Id)) - may still be initializing." "Yellow"
-        } else {
-            throw "BaseApp failed to start."
-        }
-    }
-
-    # Start CellApp
-    Write-Status "Starting CellApp..." "White"
-    Start-Process -FilePath $cellExe -WorkingDirectory $binDir -WindowStyle Normal
-    if (Wait-ForPort -Port 8990 -TimeoutSeconds 10) {
-        Write-Status "CellApp ready (port 8990)." "Green"
-    } else {
-        # CellApp may not open console port if py_console_password is empty
-        $cellProc = Get-Process -Name "CellApp${suffix}" -ErrorAction SilentlyContinue
-        if ($cellProc) {
-            Write-Status "CellApp running (PID $($cellProc.Id)) - console port not detected (normal if py_console_password is unset)." "Yellow"
-        } else {
-            throw "CellApp failed to start."
+            throw "cimmeria-server exited unexpectedly."
         }
     }
 
@@ -123,6 +101,7 @@ function Start-CimmeriaServer {
     Write-Host "=============================================" -ForegroundColor Green
     Write-Host " Cimmeria Server Running" -ForegroundColor Green
     Write-Host "=============================================" -ForegroundColor Green
+    Write-Host " Server PID:    $($serverProc.Id)" -ForegroundColor White
     Write-Host " Auth server:   http://localhost:8081 (client login)" -ForegroundColor White
     Write-Host " Shard server:  localhost:32832 (game client)" -ForegroundColor White
     Write-Host " PostgreSQL:    localhost:$Port" -ForegroundColor White
