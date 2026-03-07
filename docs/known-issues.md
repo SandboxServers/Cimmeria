@@ -1,0 +1,119 @@
+# Known Issues
+
+Issues that exist in both the C++ reference emulator and the Rust rewrite, or are client-side limitations.
+
+## Client / Shared Issues
+
+### KI-1: "Change Server" / Return to Main Menu — fixed in Rust, broken in C++
+
+**Severity**: Was Low, now **FIXED** in Rust server
+**Affected**: C++ emulator only (Python `Account.logOff()` was `pass`)
+**Root cause**: The C++ emulator's `logOff` handler was a no-op. Both the "Change Server" and "Back" buttons in `CharacterSelect.lua` trigger a logoff:
+- "Change Server" calls `relogin()` → sends `logOff (0xC2)` → re-initiates SOAP login
+- "Back" calls `disconnect()` → sends `logOff (0xC2)` → shows LoginWin
+Without a server response, the client's internal state was inconsistent — the old Mercury session was never cleaned up, so the `relogin()` SOAP call would conflict.
+**Fix**: Rust server now sends `LOGGED_OFF (0x37)` with reason=0 when it receives `logOff (0xC2)`. This triggers `EntityManager::loggedOff()` on the client (partial cleanup: clears game entities, preserves login-screen entities). Server destroys entities and removes the session. The client's `relogin()` can then establish a fresh session.
+**Pcap evidence**: Sessions `2026-03-04_22-05` and `2026-03-04_22-10` confirmed both buttons send identical `logOff (0xC2)` with 0 bytes payload, and the C++ server only ACKed without any LOGGED_OFF response.
+
+---
+
+## Rust Rewrite — Not Yet Implemented
+
+Features from the C++ reference that are stubbed or missing in the Rust rewrite. These are not bugs — they are known gaps in the rewrite progress.
+
+### ~~KI-2: logOff (0xC2) is a no-op~~ — RESOLVED
+
+**Status**: Fixed. logOff now sends LOGGED_OFF (0x37), destroys entities, and removes the session.
+
+### KI-3: onClientVersion (0xC7) is a no-op
+
+**Severity**: Low
+**Description**: The onClientVersion handler logs but does not process the client's version report. In C++, this was used for version mismatch detection — not critical for a single-version emulator.
+
+### KI-4: No immediate ACK-only packet mechanism
+
+**Severity**: Low
+**Description**: ACKs for client reliable messages are piggybacked on the next tick sync (100ms interval) rather than sent as a standalone unreliable ACK packet. This adds up to 100ms latency on ACK delivery but is functionally correct.
+
+### ~~KI-5: DISCONNECT (0x0C) does not send a server response~~ — RESOLVED
+
+**Status**: Fixed. `destroy_client_entities()` now sets `cancelled` on the session before removal, so the tick-sync loop exits promptly instead of running until the 60-second inactivity timeout. DISCONNECT handler triggers full cleanup.
+
+### ~~KI-6: No disconnect cleanup / session leak~~ — RESOLVED
+
+**Status**: Fixed. `destroy_client_entities()` is now self-contained — it sets `cancelled`, reads entity IDs, removes the session from the HashMap, and destroys entities. Safe to call multiple times (returns silently if session already removed). The tick-sync loop also calls it on exit as a safety net, which is now a harmless no-op if cleanup already happened.
+
+### ~~KI-7: No duplicate login detection~~ — RESOLVED
+
+**Status**: Fixed. `handle_login()` now scans for existing sessions with the same `account_id`. If found, sends LOGGED_OFF (0x37) to the old client and evicts the old session before registering the new one.
+
+### KI-8: No ticket expiration
+
+**Severity**: Medium (security)
+**Description**: SOAP login tickets never expire. C++ expires them after 30 seconds. A captured ticket can be replayed indefinitely.
+
+### ~~KI-9: requestCharacterVisuals does not query inventory~~ — RESOLVED
+
+**Status**: Fixed by character creation visual pipeline. `requestCharacterVisuals` now queries `sgw_inventory` for equipped items and includes their visual components in the response.
+
+### ~~KI-10: createCharacter does not store starting abilities~~ — RESOLVED
+
+**Status**: Fixed by character creation visual pipeline. `createCharacter` now stores starting abilities from archetype definitions.
+
+### KI-11: createCharacter does not store access_level
+
+**Severity**: Low
+**Description**: GM accounts create normal characters instead of GM-flagged characters. C++ passes account access_level into the character INSERT.
+
+### ~~KI-12: createCharacter does not validate visual choices~~ — RESOLVED
+
+**Status**: Fixed by character creation visual pipeline. Server now validates visual component choices against charDef allowed components from the database.
+
+### ~~KI-13: Fragment reassembly not implemented~~ — RESOLVED
+
+**Status**: Fixed. `FragmentAssembler` in `crates/mercury/src/unpacker.rs` handles multi-fragment messages with out-of-order delivery, stale entry cleanup, and bounds validation. Full test coverage.
+
+### KI-14: SGWGmPlayer entity type never used
+
+**Severity**: Low
+**Description**: All players are created as SGWPlayer regardless of access_level. C++ creates SGWGmPlayer for accounts with access_level > 0.
+
+### ~~KI-15: CellService is entirely stubbed~~ — RESOLVED
+
+**Severity**: ~~High (future work)~~ Resolved
+**Description**: CellService now has a full implementation with space management (loaded from `entities/spaces.xml` + `entities/cell_spaces.xml`), cell entity tracking, client position updates (`avatarUpdateExplicit` 0x03), player lifecycle (ConnectEntity/DisconnectEntity), and basic Area of Interest (AoI). Players in the same space see each other appear/move/leave via `CREATE_ENTITY` (0x09), `UPDATE_AVATAR` (0x10), `ENTITY_INVISIBLE` (0x0B), and `LEAVE_AOI` (0x0C) wire packets. World entry now routes through CellService for space ID resolution and cell entity creation.
+
+### ~~KI-16: CellService gameplay systems — combat, interactions, missions~~ — RESOLVED
+
+**Severity**: ~~Medium (gameplay)~~ Resolved
+**Status**: Implemented (Phases 6-10)
+**Description**: The CellService now implements the core gameplay loop:
+- **Ability system** (Phase 6): Known abilities, cooldowns, `onTimerUpdate`, `onKnownAbilitiesUpdate`, ability tree info
+- **NPC spawning** (Phase 7): Hardcoded spawn definitions for Agnos/Castle, `SGWMob` entities visible via AoI
+- **Combat** (Phase 8): QR damage calculation, `onEffectResults`, `onStatUpdate`, death state (`onStateFieldUpdate`), player respawn
+- **Interactions** (Phase 9): `interact()` dispatch with distance check, `onDialogDisplay`, `onStoreOpen`, `onTrainerOpen`, `onLootDisplay`
+- **Missions** (Phase 10): Mission state tracking, `onMissionUpdate`/`onStepUpdate`/`onObjectiveUpdate`, accept/abandon/complete flow
+**Remaining gaps**: No DB-driven spawn data, no populated vendor inventories, no mission reward selection, no crafting, no PvP
+
+### ~~KI-17: Gate travel system~~ — RESOLVED
+
+**Severity**: ~~Low (gameplay)~~ Resolved
+**Status**: Implemented (Phase 11)
+**Description**: Gate travel (world transitions via stargates) is fully implemented. CellService validates stargate addresses from a lookup table (26 stargates from DB seed data), destroys the entity from the old space, and sends `GateTravel` to BaseApp. BaseApp sends `RESET_ENTITIES`, creates the entity in the new space, and reuses the Phase 5a/5b world entry flow. Client sends `ENABLE_ENTITIES` and receives the full mapLoaded sequence for the new world.
+
+### ~~KI-18: Mail system~~ — RESOLVED
+
+**Severity**: ~~Low (gameplay)~~ Resolved
+**Status**: Implemented (Phase 11)
+**Description**: Mail system is functional for read operations. CellService forwards mail requests (`requestMailHeaders`, `requestMailBody`, `deleteMailMessage`, `archiveMailMessage`) to BaseApp via `CellToBaseMsg::MailRequest`. BaseApp queries `sgw_gate_mail` and sends results to the client via `onMailHeaderInfo`, `onMailRead`, `onMailHeaderRemove`. Send mail (`sendMailMessage`) is stubbed.
+
+### KI-19: Stub-only systems (matching Python reference)
+
+**Severity**: Low (gameplay)
+**Status**: Dispatch wired, handlers stubbed
+**Description**: The following systems have CellMethod dispatch wired but handlers are stubs (matching the Python reference implementation which also had stubs):
+- **Contact list** (friend/ignore): 6 CellMethods stubbed
+- **Organizations** (guilds): 12 CellMethods stubbed
+- **Minigames**: 15 CellMethods stubbed
+- **Black market**: 6 CellMethods stubbed
+- **Mail send/COD/return**: 5 CellMethods stubbed (read operations work)

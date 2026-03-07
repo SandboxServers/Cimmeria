@@ -1,0 +1,13 @@
+[package]
+name = "cimmeria-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared types and utilities for the Cimmeria server emulator"
+
+[dependencies]
+serde = { workspace = true }
+bytes = { workspace = true }
+quick-xml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

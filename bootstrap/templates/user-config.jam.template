@@ -1,2 +1,0 @@
-using msvc : {{MSVC_TOOLSET_VERSION}} : "{{MSVC_CL_PATH}}" ;
-using python : 3.4 : : "{{PYTHON_INCLUDE_PATH}}" : "{{PYTHON_LIB_PATH}}" : <address-model>64 ;

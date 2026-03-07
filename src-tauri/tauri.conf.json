@@ -1,0 +1,24 @@
+{
+  "productName": "Cimmeria",
+  "version": "0.1.0",
+  "identifier": "com.cimmeria.server",
+  "build": {
+    "frontendDist": "../frontend/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "cd ../frontend && npm run dev",
+    "beforeBuildCommand": "cd ../frontend && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Cimmeria Admin",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

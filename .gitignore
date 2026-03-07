@@ -127,11 +127,18 @@ config/*.local
 # Server Runtime (PostgreSQL data, logs)
 # =============================================================================
 server/
+# Allow the server binary crate
+!crates/server/
 
 # =============================================================================
 # PostgreSQL Server Distribution (runtime only, not needed for compilation)
 # =============================================================================
 external/postgresql_server/
+
+# =============================================================================
+# Rust / Cargo Build Artifacts
+# =============================================================================
+target/
 
 # =============================================================================
 # Qt / qmake Build Artifacts (tools/ServerEd)
@@ -141,3 +148,6 @@ tools/ServerEd/Makefile
 tools/ServerEd/Makefile.Debug
 tools/ServerEd/Makefile.Release
 tools/ServerEd/ui_*.h
+cimmeria-server.exe
+notify.log
+src-tauri/gen/schemas/windows-schema.json

@@ -20,7 +20,7 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 | MSVC Toolset | v145 (VS2026) | C++11 (migration from v120 complete) |
 | Boost | 1.55.0 | Asio, Python, Thread, DateTime, Filesystem |
 | Python | 3.4.1 | Embedded for entity scripting |
-| PostgreSQL | 9.2.3 | Via SOCI 3.2.1 ORM |
+| PostgreSQL | 17.9 | Via SOCI 3.2.1 ORM |
 | OpenSSL | 0.9.8i | Authentication encryption |
 | Qt | 5.x (early) | ServerEd tool only |
 | Recast/Detour | ~2013 era | Navigation meshes |
@@ -120,7 +120,7 @@ Agents with deep expertise in the exact dependency versions currently in use.
 **Focus:** PostgreSQL schema, SOCI ORM layer, data persistence
 
 **Expertise:**
-- PostgreSQL 9.2.3 SQL dialect and features
+- PostgreSQL 17 SQL dialect and features (upgraded from 9.2)
 - SOCI 3.2.1 C++ database abstraction (session management, prepared statements, row mapping)
 - Schema design for MMO persistence (accounts, characters, items, missions, effects)
 - Connection pooling and transaction management
@@ -289,19 +289,17 @@ Agents specialized in upgrading specific dependencies from current versions to m
 
 #### 12. PostgreSQL Migration Agent
 
-**Migration path:** PostgreSQL 9.2.3 -> 17.x / 18.x
+**Migration path:** PostgreSQL 9.2.3 -> 17.9 — **COMPLETE**
+
+**Status:** Upgraded from 9.2.3 to 17.9 (EOL Nov 2029). Schema compatibility fixes applied (removed `default_with_oids`, `EXECUTE PROCEDURE` → `EXECUTE FUNCTION`). pgdata version mismatch auto-detection added to bootstrap. DLL staging updated to auto-discover libpq dependencies.
 
 **Expertise:**
-- Schema compatibility across 9 major versions
-- New features to leverage: JSONB (9.4+), parallel queries (9.6+), partitioning (10+), logical replication
+- Features now available: JSONB, parallel queries, partitioning, logical replication, generated columns, incremental sort, query pipelining
 - `pg_dump`/`pg_restore` cross-version migration procedures
-- SOCI 3.2.1 -> 4.1.2 migration (ORM layer must be upgraded in tandem)
+- SOCI 3.2.1 -> 4.1.2 migration (ORM layer upgrade is a separate task)
 - Connection string and authentication method changes (`md5` -> `scram-sha-256`)
-- Extension availability and version compatibility
-- Query planner improvements and index strategy updates
-- libpq client library upgrade (bundled in external/)
 
-**Priority:** MEDIUM - Current version works but is 9 major versions behind with no security patches.
+**Priority:** ~~MEDIUM~~ COMPLETE - Running PG 17.9 (current stable, EOL Nov 2029).
 
 ---
 
@@ -388,7 +386,7 @@ Phase 1 (Foundation):
 
 Phase 2 (Core Libraries):
   3. Boost (1.55 -> 1.85+)              -- major dependency
-  4. PostgreSQL + SOCI (9.2 -> 17+)     -- database layer
+  4. PostgreSQL + SOCI (9.2 -> 17)      -- COMPLETE (17.9)
 
 Phase 3 (Runtime & Scripting):
   5. Python (3.4 -> 3.12+)              -- scripting layer

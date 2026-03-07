@@ -20,7 +20,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | 111 |
+| Documentation files | 116 |
 
 
 ## Document Map
@@ -79,7 +79,7 @@ See also: [technical/mercury-protocol.md](technical/mercury-protocol.md), [techn
 
 ### `gameplay/` -- Game System Documentation
 
-Per-system breakdowns of game mechanics, derived from RE analysis, entity definitions, and Python scripts. 24 per-system documents covering combat, abilities, effects, stats, inventory, crafting, missions, travel, cinematics, minigames, social systems, NPC AI, spawning, loot, progression, and character creation.
+Per-system breakdowns of game mechanics, derived from RE analysis, entity definitions, and Python scripts. 25 per-system documents covering combat, abilities, effects, stats, inventory, crafting, missions, travel, cinematics, ring transport, minigames, social systems, NPC AI, spawning, loot, progression, and character creation.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -107,6 +107,7 @@ Per-system breakdowns of game mechanics, derived from RE analysis, entity defini
 | [loot-system.md](gameplay/loot-system.md) | Loot generation algorithm, loot tables, eligibility rules | Complete |
 | [progression-system.md](gameplay/progression-system.md) | XP curves, leveling, stat growth, training points, applied science | Complete |
 | [cinematic-system.md](gameplay/cinematic-system.md) | Kismet/Matinee sequences: stargate animations, ring transport, ability VFX, console activations, camera control | Complete |
+| [ring-transport-system.md](gameplay/ring-transport-system.md) | Ring transporter mechanics: 8-state FSM, activation flow, multi-player sync, Kismet integration | Complete |
 | [character-creation.md](gameplay/character-creation.md) | Character creation flow, archetypes, visual choices, starting loadout | Complete |
 
 See also: [game-systems.md](game-systems.md), [technical/game-systems.md](technical/game-systems.md), [technical/game-data-analysis.md](technical/game-data-analysis.md)
@@ -134,7 +135,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 6 documents.
+How the Cimmeria emulator itself is structured. 7 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -144,6 +145,7 @@ How the Cimmeria emulator itself is structured. 6 documents.
 | [scaling-analysis.md](architecture/scaling-analysis.md) | Scaling strategy: current single-instance reality, BigWorld vs Cimmeria comparison, 5-tier scaling roadmap, capacity estimates | Complete |
 | [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | Tech stack replacement analysis: 5 options (incremental upgrade through full C# rewrite), codebase audit, protocol feasibility, phased recommendation | Complete |
 | [data-driven-content-engine.md](architecture/data-driven-content-engine.md) | Data-driven content engine: replace per-script Python with DB-driven trigger/condition/action chains, full schema, worked examples, runtime implementation, migration path | Complete |
+| [tauri-rewrite.md](architecture/tauri-rewrite.md) | Tauri desktop app rewrite analysis: replacing Qt ServerEd with a modern Rust+TypeScript stack | Complete |
 
 See also: [building.md](building.md), [connection-flow.md](connection-flow.md)
 
@@ -151,11 +153,14 @@ See also: [building.md](building.md), [connection-flow.md](connection-flow.md)
 
 ### `client/` -- Game Client Analysis
 
-Analysis of game client binaries and launcher tools.
+Analysis of game client binaries, launcher tools, and client asset inventories. 4 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [sgw-launcher.md](client/sgw-launcher.md) | Custom launcher design: install pipeline, login redirect, implementation tech stacks | Complete |
+| [audio-voice-inventory.md](client/audio-voice-inventory.md) | Complete FMOD audio inventory: 280 .fev + 566 .fsb files, zone ambience, music, weapons, abilities, UI, dialog VO gap analysis | Complete |
+| [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
+| [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |
 
 See also: [client-tools.md](client-tools.md), [technical/launcher-exe.md](technical/launcher-exe.md), [technical/ateraloader-exe.md](technical/ateraloader-exe.md)
 

@@ -4,26 +4,17 @@ function Initialize-CimmeriaDatabase {
         Initializes a local PostgreSQL instance and loads the Cimmeria database schemas.
 
     .DESCRIPTION
-        Uses the PostgreSQL 9.2 binaries from external/postgresql_server/ to:
-        1. Initialize a data directory in server/pgdata/ (if it doesn't exist)
-        2. Start PostgreSQL on port 5433 (avoids conflicts with system PG)
-        3. Create the "w-testing" role and "sgw" database
-        4. Load db/database.sql (resources schema + public schema + test data)
-        5. Verify key tables exist
+        On Windows: uses PostgreSQL binaries from external/postgresql_server/ to
+        initialize pgdata, start PG on port 5433, and load schemas.
 
-        The test account (test/test) is created by the seed data in database.sql.
-        Port 5433 and the w-testing credentials match the config files checked into
-        the repo.
-
-        Use -Force to drop and recreate the sgw database before loading, giving a
-        completely clean slate without touching the PostgreSQL cluster itself.
+        On Linux/macOS: assumes PostgreSQL is already running (via systemd/brew)
+        and loads schemas into the configured database.
 
     .PARAMETER Port
         PostgreSQL port. Default 5433.
 
     .PARAMETER Force
         Drop and recreate the sgw database before loading schemas.
-        Bypasses the idempotency check — always performs a full clean load.
 
     .EXAMPLE
         Initialize-CimmeriaDatabase
@@ -38,75 +29,78 @@ function Initialize-CimmeriaDatabase {
     )
 
     $paths = Get-ProjectPaths
-
-    # Find PG binaries
-    $pgBin = Find-PostgreSQL
-    if (-not $pgBin) {
-        throw "PostgreSQL server binaries not found. Run Install-CimmeriaDependencies first."
-    }
-
-    $pgDataDir = Join-Path $paths.ServerDir "pgdata"
-    $pgLogDir = Join-Path $paths.ServerDir "logs"
-    $pgLogFile = Join-Path $pgLogDir "postgresql.log"
-
-    New-Item -ItemType Directory -Path $pgLogDir -Force | Out-Null
+    $isWin = $IsWindows -or (-not (Test-Path variable:IsWindows))
+    $exeSuffix = if ($isWin) { ".exe" } else { "" }
 
     Write-Step "INITIALIZING DATABASE"
 
-    # Step 1: initdb
-    if (-not (Test-Path (Join-Path $pgDataDir "PG_VERSION"))) {
-        if ($PSCmdlet.ShouldProcess("server/pgdata", "Initialize PostgreSQL data directory")) {
-            Write-Status "Running initdb..." "White"
-            $initdb = Join-Path $pgBin "initdb.exe"
-            & $initdb -D $pgDataDir -U postgres -A trust -E UTF8 2>&1 | ForEach-Object {
-                if ($_ -match 'Success|creating|copying') { Write-Status "  $_" "DarkGray" }
-            }
-            if ($LASTEXITCODE -ne 0) {
-                throw "initdb failed with exit code $LASTEXITCODE."
-            }
-            Write-Status "initdb complete." "Green"
+    if ($isWin) {
+        # Windows: managed PostgreSQL instance
+        $pgBin = Find-PostgreSQL
+        if (-not $pgBin) {
+            throw "PostgreSQL server binaries not found. Run Install-CimmeriaDependencies first."
         }
-    } else {
-        Write-Status "PostgreSQL data directory already initialized." "DarkGray"
-    }
 
-    # Step 2: Start PostgreSQL
-    $pgCtl = Join-Path $pgBin "pg_ctl.exe"
+        $pgDataDir = Join-Path $paths.ServerDir "pgdata"
+        $pgLogDir = Join-Path $paths.ServerDir "logs"
+        $pgLogFile = Join-Path $pgLogDir "postgresql.log"
+        New-Item -ItemType Directory -Path $pgLogDir -Force | Out-Null
 
-    # Check if already running: pg_ctl status is unreliable from WSL/non-Windows
-    # environments because it can't locate sibling .exe files.  Fall back to a
-    # direct TCP probe so we never attempt a double-start.
-    $statusResult = & $pgCtl status -D $pgDataDir 2>&1
-    $pgAlreadyRunning = ($LASTEXITCODE -eq 0) -or (Wait-ForPort -Port $Port -TimeoutSeconds 1)
-    if ($pgAlreadyRunning) {
-        Write-Status "PostgreSQL already running." "DarkGray"
-    } else {
-        if ($PSCmdlet.ShouldProcess("PostgreSQL on port $Port", "Start database server")) {
-            Write-Status "Starting PostgreSQL on port $Port..." "White"
-            # pg_ctl start spawns postgres which keeps handles open, blocking
-            # both pipes and Start-Process -Wait. Fire-and-forget, then poll.
-            $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
-            $spArgs = @{ FilePath = $pgCtl; ArgumentList = $pgCtlArgs }
-            # -WindowStyle is Windows-only; omit on Linux (e.g. WSL validation runs)
-            if ($IsWindows -or (-not (Test-Path variable:IsWindows))) {
-                $spArgs['WindowStyle'] = 'Hidden'
-            }
-            Start-Process @spArgs
-            if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
-                Write-Status "PostgreSQL failed to start. Check $pgLogFile" "Red"
-                if (Test-Path $pgLogFile) {
-                    Get-Content $pgLogFile -Tail 5 | ForEach-Object { Write-Status "  $_" "Red" }
+        # Step 1: initdb
+        if (-not (Test-Path (Join-Path $pgDataDir "PG_VERSION"))) {
+            if ($PSCmdlet.ShouldProcess("server/pgdata", "Initialize PostgreSQL data directory")) {
+                Write-Status "Running initdb..." "White"
+                $initdb = Join-Path $pgBin "initdb$exeSuffix"
+                & $initdb -D $pgDataDir -U postgres -A trust -E UTF8 2>&1 | ForEach-Object {
+                    if ($_ -match 'Success|creating|copying') { Write-Status "  $_" "DarkGray" }
                 }
-                throw "PostgreSQL did not start within 15 seconds."
+                if ($LASTEXITCODE -ne 0) {
+                    throw "initdb failed with exit code $LASTEXITCODE."
+                }
+                Write-Status "initdb complete." "Green"
             }
-            Write-Status "PostgreSQL started on port $Port." "Green"
+        } else {
+            Write-Status "PostgreSQL data directory already initialized." "DarkGray"
         }
+
+        # Step 2: Start PostgreSQL
+        $pgCtl = Join-Path $pgBin "pg_ctl$exeSuffix"
+        $statusResult = & $pgCtl status -D $pgDataDir 2>&1
+        $pgAlreadyRunning = ($LASTEXITCODE -eq 0) -or (Wait-ForPort -Port $Port -TimeoutSeconds 1)
+        if ($pgAlreadyRunning) {
+            Write-Status "PostgreSQL already running." "DarkGray"
+        } else {
+            if ($PSCmdlet.ShouldProcess("PostgreSQL on port $Port", "Start database server")) {
+                Write-Status "Starting PostgreSQL on port $Port..." "White"
+                $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
+                Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
+                if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
+                    Write-Status "PostgreSQL failed to start. Check $pgLogFile" "Red"
+                    if (Test-Path $pgLogFile) {
+                        Get-Content $pgLogFile -Tail 5 | ForEach-Object { Write-Status "  $_" "Red" }
+                    }
+                    throw "PostgreSQL did not start within 15 seconds."
+                }
+                Write-Status "PostgreSQL started on port $Port." "Green"
+            }
+        }
+
+        $psqlExe = Join-Path $pgBin "psql$exeSuffix"
+    } else {
+        # Linux/macOS: verify PG is reachable, use psql from PATH
+        if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 2)) {
+            throw "PostgreSQL is not reachable on port $Port. Start it first."
+        }
+        Write-Status "PostgreSQL reachable on port $Port." "DarkGray"
+
+        $psqlCmd = Get-Command psql -ErrorAction SilentlyContinue
+        if (-not $psqlCmd) {
+            throw "psql not found in PATH. Install PostgreSQL client tools."
+        }
+        $psqlExe = $psqlCmd.Source
     }
 
-    # Step 3: Create role and database
-    $psqlExe = Join-Path $pgBin "psql.exe"
-
-    # Wait for PostgreSQL to be ready for queries (TCP open != accepting queries)
+    # Step 3: Create role and database (cross-platform from here)
     Write-Status "Waiting for PostgreSQL to accept queries..." "DarkGray"
     $ready = $false
     for ($i = 0; $i -lt 15; $i++) {
@@ -118,18 +112,20 @@ function Initialize-CimmeriaDatabase {
         throw "PostgreSQL is not accepting queries after 15 seconds."
     }
 
-    # Check if database already exists
+    Write-Status "Ensuring w-testing role exists..." "DarkGray"
+    & $psqlExe -p $Port -U postgres -c "CREATE ROLE `"w-testing`" WITH LOGIN PASSWORD 'w-testing'" 2>&1 | ForEach-Object {
+        if ($_ -notmatch 'already exists') { Write-Status "  $_" "DarkGray" }
+    }
+    & $psqlExe -p $Port -U postgres -c "ALTER ROLE `"w-testing`" WITH LOGIN CREATEDB PASSWORD 'w-testing'" 2>&1 | Out-Null
+
     Write-Status "Checking for existing database..." "DarkGray"
     $dbCheck = & $psqlExe -p $Port -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='sgw'" 2>$null
     if ($dbCheck -match '1') {
         Write-Status "Database 'sgw' already exists." "DarkGray"
+        & $psqlExe -p $Port -U postgres -c "ALTER DATABASE sgw OWNER TO `"w-testing`"" 2>&1 | Out-Null
+        & $psqlExe -p $Port -U postgres -d sgw -c "GRANT ALL ON DATABASE sgw TO `"w-testing`"; GRANT ALL ON SCHEMA public TO `"w-testing`"" 2>&1 | Out-Null
     } else {
-        Write-Status "Creating role and database..." "White"
-
-        & $psqlExe -p $Port -U postgres -c "CREATE ROLE `"w-testing`" WITH LOGIN PASSWORD 'w-testing'" 2>&1 | ForEach-Object {
-            if ($_ -notmatch 'already exists') { Write-Status "  $_" "DarkGray" }
-        }
-
+        Write-Status "Creating database..." "White"
         & $psqlExe -p $Port -U postgres -c "CREATE DATABASE sgw OWNER `"w-testing`"" 2>&1 | ForEach-Object {
             Write-Status "  $_" "DarkGray"
         }
@@ -139,13 +135,12 @@ function Initialize-CimmeriaDatabase {
         Write-Status "Database 'sgw' created." "Green"
     }
 
-    # Step 4: Load schemas (strict order, fail fast)
+    # Step 4: Load schemas
     $databaseSql = Join-Path $paths.DbDir "database.sql"
 
-    # -Force: drop and recreate the database for a guaranteed clean load
     if ($Force) {
         if ($PSCmdlet.ShouldProcess("database 'sgw'", "Drop and recreate")) {
-            Write-Status "Force flag set — dropping and recreating database 'sgw'..." "Yellow"
+            Write-Status "Force flag set - dropping and recreating database 'sgw'..." "Yellow"
             & $psqlExe -p $Port -U postgres -c "DROP DATABASE IF EXISTS sgw" | Out-Null
             & $psqlExe -p $Port -U postgres -c "CREATE DATABASE sgw OWNER `"w-testing`"" | Out-Null
             if ($LASTEXITCODE -ne 0) {
@@ -153,10 +148,8 @@ function Initialize-CimmeriaDatabase {
             }
             Write-Status "Database 'sgw' recreated." "Green"
         }
-        # Bypass idempotency check — always load
         $tableCheck = ""
     } else {
-        # Check if schemas are already loaded by testing for a key table
         Write-Status "Checking for existing schemas..." "DarkGray"
         $tableCheck = & $psqlExe -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='account'" 2>$null
     }
@@ -164,21 +157,21 @@ function Initialize-CimmeriaDatabase {
     if ($tableCheck -match '1') {
         Write-Status "Schemas already loaded (account table exists). Use -Force to reload." "DarkGray"
     } else {
-        Write-Status "Loading database.sql (resources + public schemas, ~126K statements)..." "White"
+        Write-Status "Loading database.sql (resources + public schemas)..." "White"
         & $psqlExe -p $Port -U "w-testing" -d sgw -v ON_ERROR_STOP=1 -f $databaseSql 2>&1 | ForEach-Object {
             if ($_ -match 'ERROR|FATAL') {
                 Write-Status "  $_" "Red"
             }
         }
         if ($LASTEXITCODE -ne 0) {
-            throw "database.sql failed (exit code $LASTEXITCODE). Aborting — a partial schema is worse than none."
+            throw "database.sql failed (exit code $LASTEXITCODE)."
         }
         Write-Status "database.sql loaded." "Green"
     }
 
     # Step 5: Verify key tables
     Write-Status "Verifying schema..." "White"
-    $verifyTables = @("account", "sgw_player")
+    $verifyTables = @("account", "sgw_player", "shards")
     $allGood = $true
     foreach ($table in $verifyTables) {
         $check = & $psqlExe -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='$table'" 2>$null
@@ -199,5 +192,4 @@ function Initialize-CimmeriaDatabase {
     Write-Status "  Database:   sgw" "DarkGray"
     Write-Status "  Role:       w-testing" "DarkGray"
     Write-Status "  Test login: test / test (SHA1 hashed)" "DarkGray"
-    Write-Status "  Tip: use -Force to drop and reload from scratch." "DarkGray"
 }
