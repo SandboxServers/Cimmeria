@@ -11,15 +11,14 @@
     pwsh setup.ps1
 
 .EXAMPLE
-    pwsh setup.ps1 -SkipDownload -NoLaunch -Configuration Release
+    pwsh setup.ps1 -SkipApp -NoLaunch -Configuration Release
 #>
 param(
     [switch]$SkipDownload,
     [switch]$SkipBuild,
-    [switch]$InstallVS,
+    [switch]$SkipApp,
     [switch]$NoLaunch,
     [ValidateSet("Debug","Release")][string]$Configuration = "Debug",
-    [switch]$IncludeBigWorld,
     [switch]$ForceDatabase
 )
 

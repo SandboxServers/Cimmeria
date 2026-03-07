@@ -1,4 +1,4 @@
-# Bootstrap - Automated Dependency Setup & Server Launch
+# Bootstrap - Automated Server Setup & Launch
 
 This directory contains everything needed to go from a fresh git clone to a
 running Cimmeria server in a single command.
@@ -12,14 +12,12 @@ pwsh setup.ps1
 
 This will:
 
-1. Detect (or optionally install) Visual Studio
-2. Download all 7 dependency archives (~200 MB)
-3. Extract, arrange, and patch for modern MSVC
-4. Build Boost, OpenSSL, and SOCI libraries
-5. MSBuild the W-NG.sln solution
-6. Initialize PostgreSQL on port 5433 with game schemas
-7. Stage runtime DLLs into bin64/
-8. Launch Auth, Base, and Cell servers
+1. Check prerequisites (Rust toolchain, Node.js)
+2. Download PostgreSQL 17.9 server binaries (~50 MB, Windows only)
+3. Build the Rust server (`cargo build --workspace`)
+4. Build the Tauri admin app (optional, requires Node.js)
+5. Initialize PostgreSQL on port 5433 with game schemas
+6. Launch the cimmeria-server binary
 
 When it finishes, connect with the game client using **test** / **test**.
 
@@ -34,33 +32,32 @@ for full documentation of all exported functions.
 Import-Module ./bootstrap/CimmeriaBootstrap
 
 # Examples:
-Install-CimmeriaDependencies -SkipDownload    # Re-apply patches only
-Build-CimmeriaSolution -Configuration Release  # Build release
-Start-CimmeriaServer                           # Launch servers
-Stop-CimmeriaServer                            # Shut down everything
-Update-CimmeriaClient                          # Patch game client
+Build-CimmeriaServer -Configuration Release  # Build release
+Build-CimmeriaApp -Configuration Release     # Build Tauri admin app
+Initialize-CimmeriaDatabase -Force           # Wipe and reload database
+Start-CimmeriaServer                         # Launch server
+Stop-CimmeriaServer                          # Shut down everything
+Update-CimmeriaClient                        # Patch game client
 ```
 
 ## Prerequisites
 
 - **PowerShell 7.0+** (`pwsh`) - ships with Windows 11, or install from https://github.com/PowerShell/PowerShell
-- **Windows 10/11** or Windows Server
-- **~2 GB free disk space** (downloads + extracted sources + built libraries)
-- **Internet connection** (first run only; downloads are cached)
-
-Visual Studio and Perl are detected automatically. If VS isn't installed, pass
-`-InstallVS` to auto-install VS Community.
+- **Rust toolchain** - install from https://rustup.rs (stable channel)
+- **Node.js 18+** - install from https://nodejs.org (only needed for Tauri admin app; skip with `-SkipApp`)
+- **~1 GB free disk space** (Cargo target directory + PostgreSQL)
+- **Internet connection** (first run only; Cargo crate cache and PG download are reused)
 
 ## Script Options
 
 ```powershell
-# Auto-install VS Community if not found:
-pwsh setup.ps1 -InstallVS
+# Server only (no Tauri app, no Node.js required):
+pwsh setup.ps1 -SkipApp
 
-# Skip downloads (re-run after restart, or if archives are already cached):
+# Skip downloads (re-run after restart, or if PG is already cached):
 pwsh setup.ps1 -SkipDownload
 
-# Download + extract + patch + build only, don't launch servers:
+# Download + build only, don't launch server:
 pwsh setup.ps1 -NoLaunch
 
 # Skip all builds:
@@ -68,43 +65,25 @@ pwsh setup.ps1 -SkipBuild
 
 # Build Release configuration:
 pwsh setup.ps1 -Configuration Release
+
+# Wipe and reload the database:
+pwsh setup.ps1 -SkipBuild -ForceDatabase
 ```
+
+## Cross-Platform Support
+
+The bootstrap runs on **Windows**, **Linux**, and **macOS** via PowerShell 7.
+
+| Platform | PostgreSQL | Notes |
+|----------|-----------|-------|
+| Windows | Auto-downloaded binary distribution | Managed instance in `server/pgdata/` |
+| Linux | System package (`apt install postgresql-17`) | Must be running before bootstrap |
+| macOS | Homebrew (`brew install postgresql@17`) | Must be running before bootstrap |
 
 ## Legacy Script
 
 The original `setup-dependencies.ps1` in the project root is now a compatibility
-shim that calls `setup.ps1 -NoLaunch`. It preserves the original behavior
-(download + extract + patch + build libraries) for existing workflows.
-
-## What Gets Downloaded
-
-| Dependency | Version | Size | Type |
-|---|---|---|---|
-| Boost | 1.55.0 | ~85 MB | Source, built by b2 |
-| OpenSSL | 1.0.1e | ~5 MB | Source, built by nmake |
-| PostgreSQL | 9.2.24 | ~50 MB | Pre-built binaries (headers + libpq + server) |
-| Python | 3.4.1 | ~20 MB | MSI (headers + import libs + python34.dll) |
-| SOCI | 3.2.1 | ~1 MB | Source, built by cl/lib |
-| SDL | 1.2.15 | ~2 MB | Pre-built (headers + libs) |
-| Recast/Detour | main | ~2 MB | Source (built by solution vcxproj) |
-
-Archives are cached in `external/_downloads/` and reused on subsequent runs.
-
-## Patches
-
-The `patches/` directory contains fixed versions of files for modern MSVC compatibility.
-See [patches/README.md](patches/README.md) for details.
-
-## Build Scripts
-
-Standalone `.bat` scripts for manual use:
-
-| Script | What it builds |
-|---|---|
-| `init-boost.bat` | Bootstraps Boost.Build (b2) |
-| `build-boost.bat` | Builds Boost libraries |
-| `build-openssl.bat` | Builds OpenSSL debug + release static libraries |
-| `build-soci.bat` | Builds SOCI core + PostgreSQL backend libraries |
+shim that calls `setup.ps1 -NoLaunch -SkipApp`.
 
 ## Connecting a Game Client
 
@@ -115,15 +94,20 @@ Standalone `.bat` scripts for manual use:
 
 ## Troubleshooting
 
-**"Visual Studio with C++ tools not found"**
-Install VS with the "Desktop development with C++" workload, or re-run with `-InstallVS`.
+**"Missing required tools: cargo"**
+Install Rust from https://rustup.rs, restart your shell, and re-run.
 
-**"Perl not found"**
-Install [Git for Windows](https://git-scm.com/download/win) (bundles Perl) or
-[Strawberry Perl](https://strawberryperl.com/).
+**"Missing required tools: node"**
+Install Node.js from https://nodejs.org, or use `-SkipApp` to skip the Tauri app build.
 
-**Boost build fails**
-Check that `external/boost/user-config.jam` exists and points to a valid `cl.exe`.
+**"PostgreSQL not found"**
+On Linux: `sudo apt install postgresql-17`
+On macOS: `brew install postgresql@17`
+On Windows: re-run `Install-CimmeriaDependencies`
+
+**"cargo build failed"**
+Check `cargo build --workspace` output. Common issues: missing system libs on Linux
+(`libssl-dev`, `pkg-config`).
 
 **Want to start completely fresh?**
-Delete `external/`, `lib64/`, and `server/`, then re-run the script.
+Delete `target/`, `external/`, and `server/`, then re-run the script.
