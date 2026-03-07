@@ -19,5 +19,3 @@ SET search_path = resources, pg_catalog;
 
 SET default_tablespace = '';
 
-SET default_with_oids = false;
-
