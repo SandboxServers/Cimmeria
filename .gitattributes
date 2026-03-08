@@ -1,0 +1,4 @@
+# Force consistent line endings for generated lock files to prevent
+# cross-platform conflicts between WSL (LF) and Windows (CRLF).
+Cargo.lock text eol=lf
+frontend/package-lock.json text eol=lf
