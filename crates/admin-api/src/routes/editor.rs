@@ -9,8 +9,9 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use utoipa::ToSchema;
 
 use cimmeria_services::orchestrator::Orchestrator;
 
@@ -46,12 +47,13 @@ CREATE TABLE IF NOT EXISTS chain_editor_drafts (
 // Request / response types
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
+/// Request body for saving editor content or drafts.
+#[derive(Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct SaveRequest {
-    space_id: String,
-    mission_id: Option<String>,
-    payload: serde_json::Value,
+pub struct SaveRequest {
+    pub space_id: String,
+    pub mission_id: Option<String>,
+    pub payload: serde_json::Value,
 }
 
 // ---------------------------------------------------------------------------
@@ -60,12 +62,12 @@ struct SaveRequest {
 
 /// Build editor routes (nested under `/api/content/editor`).
 ///
-/// - `GET  /content/:space_id`              — load content (no mission filter)
-/// - `GET  /content/:space_id/:mission_id`  — load content for space+mission
-/// - `POST /content`                        — save content
-/// - `GET  /draft/:space_id`                — load draft (no mission filter)
-/// - `GET  /draft/:space_id/:mission_id`    — load draft for space+mission
-/// - `POST /draft`                          — save draft
+/// - `GET  /content/:space_id`              - load content (no mission filter)
+/// - `GET  /content/:space_id/:mission_id`  - load content for space+mission
+/// - `POST /content`                        - save content
+/// - `GET  /draft/:space_id`                - load draft (no mission filter)
+/// - `GET  /draft/:space_id/:mission_id`    - load draft for space+mission
+/// - `POST /draft`                          - save draft
 pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
         .route("/content/{space_id}", get(load_content))
@@ -80,21 +82,56 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
 // Content handlers
 // ---------------------------------------------------------------------------
 
-async fn load_content(
+/// Load editor content for a space.
+#[utoipa::path(
+    get,
+    path = "/api/content/editor/content/{space_id}",
+    params(
+        ("space_id" = String, Path, description = "Space identifier")
+    ),
+    responses(
+        (status = 200, description = "Editor content payload", body = serde_json::Value)
+    ),
+    tag = "Editor"
+)]
+pub async fn load_content(
     State(orchestrator): State<Arc<Orchestrator>>,
     Path(space_id): Path<String>,
 ) -> Json<serde_json::Value> {
     load_from_table(&orchestrator, "content_editor_scopes", &space_id, "").await
 }
 
-async fn load_content_with_mission(
+/// Load editor content for a space and mission.
+#[utoipa::path(
+    get,
+    path = "/api/content/editor/content/{space_id}/{mission_id}",
+    params(
+        ("space_id" = String, Path, description = "Space identifier"),
+        ("mission_id" = String, Path, description = "Mission identifier")
+    ),
+    responses(
+        (status = 200, description = "Editor content payload", body = serde_json::Value)
+    ),
+    tag = "Editor"
+)]
+pub async fn load_content_with_mission(
     State(orchestrator): State<Arc<Orchestrator>>,
     Path((space_id, mission_id)): Path<(String, String)>,
 ) -> Json<serde_json::Value> {
     load_from_table(&orchestrator, "content_editor_scopes", &space_id, &mission_id).await
 }
 
-async fn save_content(
+/// Save editor content.
+#[utoipa::path(
+    post,
+    path = "/api/content/editor/content",
+    request_body = SaveRequest,
+    responses(
+        (status = 200, description = "Save result", body = serde_json::Value)
+    ),
+    tag = "Editor"
+)]
+pub async fn save_content(
     State(orchestrator): State<Arc<Orchestrator>>,
     Json(body): Json<SaveRequest>,
 ) -> Json<serde_json::Value> {
@@ -105,21 +142,56 @@ async fn save_content(
 // Draft handlers
 // ---------------------------------------------------------------------------
 
-async fn load_draft(
+/// Load editor draft for a space.
+#[utoipa::path(
+    get,
+    path = "/api/content/editor/draft/{space_id}",
+    params(
+        ("space_id" = String, Path, description = "Space identifier")
+    ),
+    responses(
+        (status = 200, description = "Draft payload", body = serde_json::Value)
+    ),
+    tag = "Editor"
+)]
+pub async fn load_draft(
     State(orchestrator): State<Arc<Orchestrator>>,
     Path(space_id): Path<String>,
 ) -> Json<serde_json::Value> {
     load_from_table(&orchestrator, "chain_editor_drafts", &space_id, "").await
 }
 
-async fn load_draft_with_mission(
+/// Load editor draft for a space and mission.
+#[utoipa::path(
+    get,
+    path = "/api/content/editor/draft/{space_id}/{mission_id}",
+    params(
+        ("space_id" = String, Path, description = "Space identifier"),
+        ("mission_id" = String, Path, description = "Mission identifier")
+    ),
+    responses(
+        (status = 200, description = "Draft payload", body = serde_json::Value)
+    ),
+    tag = "Editor"
+)]
+pub async fn load_draft_with_mission(
     State(orchestrator): State<Arc<Orchestrator>>,
     Path((space_id, mission_id)): Path<(String, String)>,
 ) -> Json<serde_json::Value> {
     load_from_table(&orchestrator, "chain_editor_drafts", &space_id, &mission_id).await
 }
 
-async fn save_draft(
+/// Save editor draft.
+#[utoipa::path(
+    post,
+    path = "/api/content/editor/draft",
+    request_body = SaveRequest,
+    responses(
+        (status = 200, description = "Save result", body = serde_json::Value)
+    ),
+    tag = "Editor"
+)]
+pub async fn save_draft(
     State(orchestrator): State<Arc<Orchestrator>>,
     Json(body): Json<SaveRequest>,
 ) -> Json<serde_json::Value> {

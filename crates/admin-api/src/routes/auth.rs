@@ -25,7 +25,15 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
 }
 
 /// Authenticate with the admin API and receive a JWT token.
-async fn login(
+#[utoipa::path(
+    post,
+    path = "/api/auth/login",
+    responses(
+        (status = 200, description = "Login result with JWT token", body = serde_json::Value)
+    ),
+    tag = "Auth"
+)]
+pub async fn login(
     State(_orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     // TODO: Validate admin credentials, issue JWT
@@ -37,7 +45,15 @@ async fn login(
 }
 
 /// Invalidate the current JWT token.
-async fn logout(
+#[utoipa::path(
+    post,
+    path = "/api/auth/logout",
+    responses(
+        (status = 200, description = "Logout result", body = serde_json::Value)
+    ),
+    tag = "Auth"
+)]
+pub async fn logout(
     State(_orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     // TODO: Add token to denylist
@@ -48,7 +64,15 @@ async fn logout(
 }
 
 /// Get the currently authenticated admin user.
-async fn current_user(
+#[utoipa::path(
+    get,
+    path = "/api/auth/me",
+    responses(
+        (status = 200, description = "Current admin user info", body = serde_json::Value)
+    ),
+    tag = "Auth"
+)]
+pub async fn current_user(
     State(_orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     // TODO: Extract user from JWT in Authorization header

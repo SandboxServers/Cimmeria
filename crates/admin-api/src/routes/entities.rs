@@ -24,7 +24,15 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
 }
 
 /// List all active entities across all services.
-async fn list_entities(
+#[utoipa::path(
+    get,
+    path = "/api/entities",
+    responses(
+        (status = 200, description = "List of active entities", body = serde_json::Value)
+    ),
+    tag = "Entities"
+)]
+pub async fn list_entities(
     State(_orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     // TODO: Query entity manager for all active entities
@@ -36,7 +44,18 @@ async fn list_entities(
 }
 
 /// Get detailed information about a specific entity.
-async fn get_entity(
+#[utoipa::path(
+    get,
+    path = "/api/entities/{id}",
+    params(
+        ("id" = i32, Path, description = "Entity ID")
+    ),
+    responses(
+        (status = 200, description = "Entity details", body = serde_json::Value)
+    ),
+    tag = "Entities"
+)]
+pub async fn get_entity(
     State(_orchestrator): State<Arc<Orchestrator>>,
     Path(id): Path<i32>,
 ) -> Json<serde_json::Value> {
@@ -49,7 +68,18 @@ async fn get_entity(
 }
 
 /// Set a property value on a specific entity.
-async fn set_entity_property(
+#[utoipa::path(
+    post,
+    path = "/api/entities/{id}/property",
+    params(
+        ("id" = i32, Path, description = "Entity ID")
+    ),
+    responses(
+        (status = 200, description = "Property update result", body = serde_json::Value)
+    ),
+    tag = "Entities"
+)]
+pub async fn set_entity_property(
     State(_orchestrator): State<Arc<Orchestrator>>,
     Path(id): Path<i32>,
 ) -> Json<serde_json::Value> {

@@ -8,8 +8,47 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
+use serde::Serialize;
+use utoipa::ToSchema;
 
 use cimmeria_services::orchestrator::Orchestrator;
+
+/// Server configuration values.
+#[derive(Serialize, ToSchema)]
+pub struct ConfigValues {
+    pub auth_host: String,
+    pub auth_port: u16,
+    pub base_host: String,
+    pub base_port: u16,
+    pub cell_host: String,
+    pub cell_port: u16,
+    pub admin_port: u16,
+    pub developer_mode: bool,
+}
+
+/// Response for GET /api/config.
+#[derive(Serialize, ToSchema)]
+pub struct ConfigResponse {
+    pub status: String,
+    pub config: ConfigValues,
+}
+
+/// Service health status.
+#[derive(Serialize, ToSchema)]
+pub struct ServiceStatus {
+    pub auth: bool,
+    pub base: bool,
+    pub cell: bool,
+    pub database: bool,
+}
+
+/// Response for GET /api/config/status.
+#[derive(Serialize, ToSchema)]
+pub struct StatusResponse {
+    pub status: String,
+    pub uptime_seconds: u64,
+    pub services: ServiceStatus,
+}
 
 /// Build configuration routes.
 ///
@@ -23,7 +62,15 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
 }
 
 /// Get the current server configuration.
-async fn get_config(
+#[utoipa::path(
+    get,
+    path = "/api/config",
+    responses(
+        (status = 200, description = "Current server configuration", body = ConfigResponse)
+    ),
+    tag = "Config"
+)]
+pub async fn get_config(
     State(orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     let state = orchestrator.state();
@@ -44,7 +91,15 @@ async fn get_config(
 }
 
 /// Update server configuration.
-async fn update_config(
+#[utoipa::path(
+    post,
+    path = "/api/config",
+    responses(
+        (status = 200, description = "Configuration update result", body = serde_json::Value)
+    ),
+    tag = "Config"
+)]
+pub async fn update_config(
     State(_orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     // TODO: Parse config changes from body, apply where possible
@@ -55,7 +110,15 @@ async fn update_config(
 }
 
 /// Get server status including uptime and service health.
-async fn get_status(
+#[utoipa::path(
+    get,
+    path = "/api/config/status",
+    responses(
+        (status = 200, description = "Server status and uptime", body = StatusResponse)
+    ),
+    tag = "Config"
+)]
+pub async fn get_status(
     State(orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     let uptime = orchestrator.uptime().await;

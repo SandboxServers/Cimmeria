@@ -10,31 +10,32 @@ use axum::extract::{Path, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use cimmeria_services::orchestrator::Orchestrator;
 
-#[derive(Serialize)]
-struct PlayerSummary {
-    online_count: usize,
-    ready: bool,
+#[derive(Serialize, ToSchema)]
+pub struct PlayerSummary {
+    pub online_count: usize,
+    pub ready: bool,
 }
 
-#[derive(Serialize)]
-struct PlayerServiceState {
-    auth: bool,
-    base: bool,
-    cell: bool,
-    database: bool,
+#[derive(Serialize, ToSchema)]
+pub struct PlayerServiceState {
+    pub auth: bool,
+    pub base: bool,
+    pub cell: bool,
+    pub database: bool,
 }
 
-#[derive(Serialize)]
-struct PlayerListResponse {
-    status: &'static str,
-    available: bool,
-    reason: Option<&'static str>,
-    players: Vec<serde_json::Value>,
-    summary: PlayerSummary,
-    services: PlayerServiceState,
+#[derive(Serialize, ToSchema)]
+pub struct PlayerListResponse {
+    pub status: &'static str,
+    pub available: bool,
+    pub reason: Option<&'static str>,
+    pub players: Vec<serde_json::Value>,
+    pub summary: PlayerSummary,
+    pub services: PlayerServiceState,
 }
 
 /// Build player routes.
@@ -50,7 +51,15 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
 }
 
 /// List all currently online players.
-async fn list_players(
+#[utoipa::path(
+    get,
+    path = "/api/players",
+    responses(
+        (status = 200, description = "Online player roster", body = PlayerListResponse)
+    ),
+    tag = "Players"
+)]
+pub async fn list_players(
     State(orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<PlayerListResponse> {
     let state = orchestrator.state();
@@ -80,7 +89,18 @@ async fn list_players(
 }
 
 /// Get detailed information about a specific player.
-async fn get_player(
+#[utoipa::path(
+    get,
+    path = "/api/players/{id}",
+    params(
+        ("id" = i32, Path, description = "Player ID")
+    ),
+    responses(
+        (status = 200, description = "Player details", body = serde_json::Value)
+    ),
+    tag = "Players"
+)]
+pub async fn get_player(
     State(_orchestrator): State<Arc<Orchestrator>>,
     Path(id): Path<i32>,
 ) -> Json<serde_json::Value> {
@@ -93,7 +113,18 @@ async fn get_player(
 }
 
 /// Kick a player from the server.
-async fn kick_player(
+#[utoipa::path(
+    post,
+    path = "/api/players/{id}/kick",
+    params(
+        ("id" = i32, Path, description = "Player ID to kick")
+    ),
+    responses(
+        (status = 200, description = "Kick result", body = serde_json::Value)
+    ),
+    tag = "Players"
+)]
+pub async fn kick_player(
     State(_orchestrator): State<Arc<Orchestrator>>,
     Path(id): Path<i32>,
 ) -> Json<serde_json::Value> {

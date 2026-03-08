@@ -11,33 +11,34 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 use sqlx::FromRow;
+use utoipa::ToSchema;
 
 use cimmeria_services::orchestrator::Orchestrator;
 
-#[derive(Serialize, FromRow)]
-struct SpaceRecord {
-    world_id: i32,
-    world: String,
-    client_map: String,
-    has_script: bool,
-    flags: i32,
-    mission_count: i64,
+#[derive(Serialize, FromRow, ToSchema)]
+pub struct SpaceRecord {
+    pub world_id: i32,
+    pub world: String,
+    pub client_map: String,
+    pub has_script: bool,
+    pub flags: i32,
+    pub mission_count: i64,
 }
 
-#[derive(Serialize)]
-struct SpaceSummary {
-    total_spaces: usize,
-    scripted_spaces: usize,
-    mission_links: i64,
+#[derive(Serialize, ToSchema)]
+pub struct SpaceSummary {
+    pub total_spaces: usize,
+    pub scripted_spaces: usize,
+    pub mission_links: i64,
 }
 
-#[derive(Serialize)]
-struct SpaceListResponse {
-    status: &'static str,
-    available: bool,
-    reason: Option<String>,
-    spaces: Vec<SpaceRecord>,
-    summary: SpaceSummary,
+#[derive(Serialize, ToSchema)]
+pub struct SpaceListResponse {
+    pub status: &'static str,
+    pub available: bool,
+    pub reason: Option<String>,
+    pub spaces: Vec<SpaceRecord>,
+    pub summary: SpaceSummary,
 }
 
 /// Build space routes.
@@ -52,7 +53,15 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
 }
 
 /// List all active game spaces.
-async fn list_spaces(
+#[utoipa::path(
+    get,
+    path = "/api/spaces",
+    responses(
+        (status = 200, description = "List of all game spaces", body = SpaceListResponse)
+    ),
+    tag = "Spaces"
+)]
+pub async fn list_spaces(
     State(orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<SpaceListResponse> {
     let pool = {
@@ -124,7 +133,18 @@ async fn list_spaces(
 }
 
 /// Get detailed information about a specific space.
-async fn get_space(
+#[utoipa::path(
+    get,
+    path = "/api/spaces/{id}",
+    params(
+        ("id" = i32, Path, description = "World ID")
+    ),
+    responses(
+        (status = 200, description = "Space details", body = serde_json::Value)
+    ),
+    tag = "Spaces"
+)]
+pub async fn get_space(
     State(orchestrator): State<Arc<Orchestrator>>,
     Path(id): Path<i32>,
 ) -> Json<serde_json::Value> {
@@ -182,7 +202,15 @@ async fn get_space(
 }
 
 /// Create a new space instance.
-async fn create_space(
+#[utoipa::path(
+    post,
+    path = "/api/spaces",
+    responses(
+        (status = 200, description = "Space creation result", body = serde_json::Value)
+    ),
+    tag = "Spaces"
+)]
+pub async fn create_space(
     State(_orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     // TODO: Parse space definition from body, delegate to CellService

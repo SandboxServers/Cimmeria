@@ -11,72 +11,73 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 use sqlx::FromRow;
+use utoipa::ToSchema;
 
 use cimmeria_services::orchestrator::Orchestrator;
 
-#[derive(Serialize)]
-struct ContentSummary {
-    world_count: i64,
-    scripted_world_count: i64,
-    mission_count: i64,
-    story_mission_count: i64,
-    hidden_mission_count: i64,
-    scripted_mission_count: i64,
+#[derive(Serialize, ToSchema)]
+pub struct ContentSummary {
+    pub world_count: i64,
+    pub scripted_world_count: i64,
+    pub mission_count: i64,
+    pub story_mission_count: i64,
+    pub hidden_mission_count: i64,
+    pub scripted_mission_count: i64,
 }
 
-#[derive(Serialize, FromRow)]
-struct SpaceMissionCount {
-    scope: String,
-    mission_count: i64,
+#[derive(Serialize, FromRow, ToSchema)]
+pub struct SpaceMissionCount {
+    pub scope: String,
+    pub mission_count: i64,
 }
 
-#[derive(Serialize)]
-struct ContentSummaryResponse {
-    status: &'static str,
-    available: bool,
-    reason: Option<String>,
-    summary: ContentSummary,
-    top_space_mission_counts: Vec<SpaceMissionCount>,
+#[derive(Serialize, ToSchema)]
+pub struct ContentSummaryResponse {
+    pub status: &'static str,
+    pub available: bool,
+    pub reason: Option<String>,
+    pub summary: ContentSummary,
+    pub top_space_mission_counts: Vec<SpaceMissionCount>,
 }
 
-#[derive(Serialize, FromRow)]
-struct EditorPickerOption {
-    value: String,
-    label: String,
+#[derive(Serialize, FromRow, ToSchema)]
+pub struct EditorPickerOption {
+    pub value: String,
+    pub label: String,
 }
 
-#[derive(Serialize, FromRow)]
-struct EditorMissionOption {
-    value: String,
-    label: String,
-    space_id: String,
+#[derive(Serialize, FromRow, ToSchema)]
+pub struct EditorMissionOption {
+    pub value: String,
+    pub label: String,
+    pub space_id: String,
 }
 
-#[derive(Serialize, FromRow)]
-struct EditorRegionOption {
-    value: String,
-    label: String,
-    space_id: String,
+#[derive(Serialize, FromRow, ToSchema)]
+pub struct EditorRegionOption {
+    pub value: String,
+    pub label: String,
+    pub space_id: String,
 }
 
-#[derive(Serialize, FromRow)]
-struct EditorStepOption {
-    value: String,
-    label: String,
-    mission_id: String,
+#[derive(Serialize, FromRow, ToSchema)]
+pub struct EditorStepOption {
+    pub value: String,
+    pub label: String,
+    pub mission_id: String,
 }
 
-#[derive(Serialize)]
-struct EditorPickersResponse {
-    status: &'static str,
-    available: bool,
-    reason: Option<String>,
-    spaces: Vec<EditorPickerOption>,
-    missions: Vec<EditorMissionOption>,
-    dialogs: Vec<EditorPickerOption>,
-    items: Vec<EditorPickerOption>,
-    regions: Vec<EditorRegionOption>,
-    steps: Vec<EditorStepOption>,
+#[derive(Serialize, ToSchema)]
+pub struct EditorPickersResponse {
+    pub status: &'static str,
+    pub available: bool,
+    pub reason: Option<String>,
+    pub spaces: Vec<EditorPickerOption>,
+    pub missions: Vec<EditorMissionOption>,
+    pub dialogs: Vec<EditorPickerOption>,
+    pub items: Vec<EditorPickerOption>,
+    pub regions: Vec<EditorRegionOption>,
+    pub steps: Vec<EditorStepOption>,
 }
 
 /// Build content routes.
@@ -94,7 +95,15 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
 }
 
 /// List available content categories.
-async fn list_categories(
+#[utoipa::path(
+    get,
+    path = "/api/content",
+    responses(
+        (status = 200, description = "Available content categories", body = serde_json::Value)
+    ),
+    tag = "Content"
+)]
+pub async fn list_categories(
     State(_orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     Json(serde_json::json!({
@@ -108,7 +117,15 @@ async fn list_categories(
 }
 
 /// List all item definitions from the content engine.
-async fn list_items(
+#[utoipa::path(
+    get,
+    path = "/api/content/items",
+    responses(
+        (status = 200, description = "Item definition list", body = serde_json::Value)
+    ),
+    tag = "Content"
+)]
+pub async fn list_items(
     State(_orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<serde_json::Value> {
     // TODO: Query content engine for item definitions
@@ -120,7 +137,15 @@ async fn list_items(
 }
 
 /// Get high-level counts for the content browser/dashboard.
-async fn get_summary(
+#[utoipa::path(
+    get,
+    path = "/api/content/summary",
+    responses(
+        (status = 200, description = "Content summary statistics", body = ContentSummaryResponse)
+    ),
+    tag = "Content"
+)]
+pub async fn get_summary(
     State(orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<ContentSummaryResponse> {
     let pool = {
@@ -205,7 +230,16 @@ async fn get_summary(
     }
 }
 
-async fn get_editor_pickers(
+/// Get picker options for the chain editor UI.
+#[utoipa::path(
+    get,
+    path = "/api/content/editor-pickers",
+    responses(
+        (status = 200, description = "Editor picker options for spaces, missions, dialogs, items, regions, and steps", body = EditorPickersResponse)
+    ),
+    tag = "Content"
+)]
+pub async fn get_editor_pickers(
     State(orchestrator): State<Arc<Orchestrator>>,
 ) -> Json<EditorPickersResponse> {
     let pool = {
@@ -351,7 +385,18 @@ async fn get_editor_pickers(
 }
 
 /// Get a specific item definition by ID.
-async fn get_item(
+#[utoipa::path(
+    get,
+    path = "/api/content/items/{id}",
+    params(
+        ("id" = i32, Path, description = "Item definition ID")
+    ),
+    responses(
+        (status = 200, description = "Item definition details", body = serde_json::Value)
+    ),
+    tag = "Content"
+)]
+pub async fn get_item(
     State(_orchestrator): State<Arc<Orchestrator>>,
     Path(id): Path<i32>,
 ) -> Json<serde_json::Value> {
