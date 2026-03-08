@@ -48,11 +48,9 @@ function Build-CimmeriaServer {
         }
     }
 
-    $cargoArgs = @("build", "--workspace")
-    if (-not $nodeAvailable) {
-        $cargoArgs += @("--exclude", "cimmeria-app", "--exclude", "sgw-launcher")
-        Write-Status "Node.js not available — excluding Tauri apps (cimmeria-app, sgw-launcher) from build" "Yellow"
-    }
+    # Always exclude Tauri GUI apps from the server build — they have additional
+    # system dependencies (WebView2 SDK, etc.) and are built separately via Build-CimmeriaApp.
+    $cargoArgs = @("build", "--workspace", "--exclude", "cimmeria-app", "--exclude", "sgw-launcher")
     if ($Configuration -eq "Release") {
         $cargoArgs += "--release"
     }
