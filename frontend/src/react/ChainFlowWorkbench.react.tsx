@@ -55,6 +55,19 @@ import {
   type PersistedChainEditorDraft,
 } from './chainDraftPersistence';
 import { computePackedChainLayouts, resolveAutoLayoutNodePositions } from './chainLayout';
+import {
+  applyNodeTypeSelection,
+  buildFallbackEditorPickers,
+  getAdditionalProperties,
+  getFieldOptions,
+  getNodeSchema,
+  getNodeTypeValue,
+  getPropertyMap,
+  renamePropertyKey,
+  setPropertyValue,
+  type ChainEditorPickers,
+} from './chainNodeSchemas';
+import { fetchContentEditorPickers } from '../lib/admin-api';
 
 type PrimitiveFamily = 'anchor' | 'trigger' | 'condition' | 'action' | 'counter';
 
@@ -373,6 +386,8 @@ const missionCatalog: MissionOption[] = [
   { id: '684', label: '684 - Hallway03 Controller', spaceId: 'Castle_CellBlock' },
   { id: '687', label: '687 - Aftermath', spaceId: 'Castle_CellBlock' },
 ];
+
+const fallbackEditorPickers = buildFallbackEditorPickers(spaceCatalog, missionCatalog);
 
 const sequencePalette: SequenceStyle[] = [
   {
@@ -2167,6 +2182,7 @@ function FlowContent() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<SequenceEdgeData>(initialEdges);
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(spaceCatalog[0]?.id ?? '');
   const [selectedMissionId, setSelectedMissionId] = useState<string>('none');
+  const [editorPickers, setEditorPickers] = useState<ChainEditorPickers>(fallbackEditorPickers);
   const [selectedNodeId, setSelectedNodeId] = useState<string>('1');
   const [selectedChainId, setSelectedChainId] = useState<string>('chain-arm-yourself');
   const [selectedSequenceId, setSelectedSequenceId] = useState<string>('primary-thread');
@@ -2209,6 +2225,54 @@ function FlowContent() {
       setToasts((current) => current.filter((toast) => toast.id !== id));
     }, 6400);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPickers = async () => {
+      try {
+        const response = await fetchContentEditorPickers();
+
+        if (cancelled || !response.available) {
+          if (!cancelled && response.reason) {
+            pushToast(`Using local picker fallback because editor lookups failed: ${response.reason}`);
+          }
+          return;
+        }
+
+        setEditorPickers({
+          spaces: response.spaces,
+          missions: response.missions.map((mission) => ({
+            value: mission.value,
+            label: mission.label,
+            spaceId: mission.space_id,
+          })),
+          dialogs: response.dialogs,
+          items: response.items,
+          regions: response.regions.map((region) => ({
+            value: region.value,
+            label: region.label,
+            spaceId: region.space_id,
+          })),
+          steps: response.steps.map((step) => ({
+            value: step.value,
+            label: step.label,
+            missionId: step.mission_id,
+          })),
+        });
+      } catch (error) {
+        if (!cancelled) {
+          pushToast(`Using local picker fallback because editor lookups failed: ${(error as Error).message}`);
+        }
+      }
+    };
+
+    void loadPickers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pushToast]);
 
   const recordHistorySnapshot = useCallback(() => {
     undoHistoryRef.current.push(
@@ -2297,6 +2361,34 @@ function FlowContent() {
     [selectedNode],
   );
 
+  const selectedNodePropertyMap = useMemo(
+    () => (selectedNode ? getPropertyMap(selectedNode.data.properties) : {}),
+    [selectedNode],
+  );
+
+  const selectedNodeSchema = useMemo(
+    () => (selectedNode ? getNodeSchema(selectedNode.data.family) : null),
+    [selectedNode],
+  );
+
+  const selectedNodeTypeValue = useMemo(
+    () => (selectedNode ? getNodeTypeValue(selectedNode.data.family, selectedNode.data.properties) : ''),
+    [selectedNode],
+  );
+
+  const selectedNodeTypeSchema = useMemo(
+    () =>
+      selectedNodeSchema && selectedNodeTypeValue
+        ? selectedNodeSchema.types[selectedNodeTypeValue] ?? null
+        : null,
+    [selectedNodeSchema, selectedNodeTypeValue],
+  );
+
+  const selectedNodeAdditionalProperties = useMemo(
+    () => (selectedNode ? getAdditionalProperties(selectedNode.data.family, selectedNode.data.properties) : []),
+    [selectedNode],
+  );
+
   const visibleChains = useMemo(
     () =>
       chainSummaries.filter(
@@ -2317,9 +2409,11 @@ function FlowContent() {
     [selectedChainId, visibleChains],
   );
 
+  const availableSpaces = useMemo(() => editorPickers.spaces, [editorPickers.spaces]);
+
   const availableMissions = useMemo(
-    () => missionCatalog.filter((mission) => mission.spaceId === selectedSpaceId),
-    [selectedSpaceId],
+    () => editorPickers.missions.filter((mission) => mission.spaceId === selectedSpaceId),
+    [editorPickers.missions, selectedSpaceId],
   );
 
   const displayNodes = useMemo(() => {
@@ -2998,6 +3092,68 @@ function FlowContent() {
     [selectedNode, setNodes],
   );
 
+  const updateSelectedNodeProperty = useCallback(
+    (key: string, value: string) => {
+      if (!selectedNode) {
+        return;
+      }
+
+      updateSelectedNode({
+        properties: setPropertyValue(selectedNode.data.properties, key, value),
+      });
+    },
+    [selectedNode, updateSelectedNode],
+  );
+
+  const updateSelectedNodePropertyKey = useCallback(
+    (previousKey: string, nextKey: string) => {
+      if (!selectedNode) {
+        return;
+      }
+
+      updateSelectedNode({
+        properties: renamePropertyKey(selectedNode.data.properties, previousKey, nextKey),
+      });
+    },
+    [selectedNode, updateSelectedNode],
+  );
+
+  const addSelectedNodeProperty = useCallback(() => {
+    if (!selectedNode) {
+      return;
+    }
+
+    const existingKeys = new Set(selectedNode.data.properties.map((property) => property.label));
+    let suffix = existingKeys.size + 1;
+    let nextKey = `custom_${suffix}`;
+
+    while (existingKeys.has(nextKey)) {
+      suffix += 1;
+      nextKey = `custom_${suffix}`;
+    }
+
+    updateSelectedNode({
+      properties: [...selectedNode.data.properties, { label: nextKey, value: '' }],
+    });
+  }, [selectedNode, updateSelectedNode]);
+
+  const updateSelectedNodeType = useCallback(
+    (typeValue: string) => {
+      if (!selectedNode) {
+        return;
+      }
+
+      updateSelectedNode({
+        properties: applyNodeTypeSelection(
+          selectedNode.data.family,
+          selectedNode.data.properties,
+          typeValue,
+        ),
+      });
+    },
+    [selectedNode, updateSelectedNode],
+  );
+
   const updateSelectedChain = useCallback(
     (patch: Partial<ChainFrameData>) => {
       if (!selectedChainId) {
@@ -3311,11 +3467,19 @@ function FlowContent() {
   }, [selectedChainId, visibleChains]);
 
   useEffect(() => {
+    if (availableSpaces.some((space) => space.value === selectedSpaceId)) {
+      return;
+    }
+
+    setSelectedSpaceId(availableSpaces[0]?.value ?? fallbackEditorPickers.spaces[0]?.value ?? '');
+  }, [availableSpaces, selectedSpaceId]);
+
+  useEffect(() => {
     if (selectedMissionId === 'none') {
       return;
     }
 
-    if (availableMissions.some((mission) => mission.id === selectedMissionId)) {
+    if (availableMissions.some((mission) => mission.value === selectedMissionId)) {
       return;
     }
 
@@ -3397,8 +3561,8 @@ function FlowContent() {
                 }}
                 value={selectedSpaceId}
               >
-                {spaceCatalog.map((space) => (
-                  <option key={space.id} value={space.id}>
+                {availableSpaces.map((space) => (
+                  <option key={space.value} value={space.value}>
                     {space.label}
                   </option>
                 ))}
@@ -3716,6 +3880,141 @@ function FlowContent() {
             />
           </label>
 
+          {selectedNodeSchema ? (
+            <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+                    Typed configuration
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+                    Configure this card with content-engine field types and database-backed pickers
+                    instead of raw property strings.
+                  </p>
+                </div>
+                <span className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-xs font-medium text-[rgba(224,231,239,0.82)]">
+                  {selectedNodeSchema.typeLabel}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[rgba(160,174,192,0.68)]">
+                    {selectedNodeSchema.typeLabel}
+                  </span>
+                  <select
+                    className="w-full rounded-[18px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                    onChange={(event) => {
+                      updateSelectedNodeType(event.currentTarget.value);
+                      pushToast(`Updated ${selectedCardTitle} type in ${selectedChainName}.`);
+                    }}
+                    value={selectedNodeTypeValue}
+                  >
+                    <option value="">Select {selectedNodeSchema.typeLabel.toLowerCase()}</option>
+                    {selectedNodeSchema.typeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {selectedNodeTypeSchema ? (
+                  <>
+                    <div className="rounded-[18px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+                      {selectedNodeTypeSchema.description}
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {selectedNodeTypeSchema.fields.map((field) => {
+                        const fieldValue = selectedNodePropertyMap[field.key] ?? '';
+                        const fieldOptions = getFieldOptions(
+                          field,
+                          editorPickers,
+                          selectedNode.data.properties,
+                          selectedSpaceId,
+                        );
+                        const helperText =
+                          field.helperText ??
+                          (field.kind === 'picker' && fieldOptions.length === 0
+                            ? 'No database-backed options are available for the current selection yet.'
+                            : undefined);
+                        const fieldInputClass =
+                          'w-full rounded-[18px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]';
+
+                        return (
+                          <label
+                            className={field.kind === 'textarea' ? 'block md:col-span-2' : 'block'}
+                            key={field.key}
+                          >
+                            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[rgba(160,174,192,0.68)]">
+                              {field.label}
+                            </span>
+                            {field.kind === 'textarea' ? (
+                              <textarea
+                                className={`${fieldInputClass} min-h-28 leading-6`}
+                                onBlur={() =>
+                                  pushToast(`Updated ${field.label.toLowerCase()} on ${selectedCardTitle} in ${selectedChainName}.`)
+                                }
+                                onChange={(event) =>
+                                  updateSelectedNodeProperty(field.key, event.currentTarget.value)
+                                }
+                                placeholder={field.placeholder}
+                                value={fieldValue}
+                              />
+                            ) : field.kind === 'select' || field.kind === 'picker' ? (
+                              <select
+                                className={fieldInputClass}
+                                onBlur={() =>
+                                  pushToast(`Updated ${field.label.toLowerCase()} on ${selectedCardTitle} in ${selectedChainName}.`)
+                                }
+                                onChange={(event) =>
+                                  updateSelectedNodeProperty(field.key, event.currentTarget.value)
+                                }
+                                value={fieldValue}
+                              >
+                                <option value="">
+                                  {field.placeholder ?? `Select ${field.label.toLowerCase()}`}
+                                </option>
+                                {fieldOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.group ? `${option.group} - ${option.label}` : option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                className={fieldInputClass}
+                                onBlur={() =>
+                                  pushToast(`Updated ${field.label.toLowerCase()} on ${selectedCardTitle} in ${selectedChainName}.`)
+                                }
+                                onChange={(event) =>
+                                  updateSelectedNodeProperty(field.key, event.currentTarget.value)
+                                }
+                                placeholder={field.placeholder}
+                                type={field.kind === 'number' ? 'number' : 'text'}
+                                value={fieldValue}
+                              />
+                            )}
+                            {helperText ? (
+                              <span className="mt-2 block text-xs leading-5 text-[rgba(160,174,192,0.72)]">
+                                {helperText}
+                              </span>
+                            ) : null}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-[18px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm leading-6 text-[rgba(160,174,192,0.76)]">
+                    Choose a typed {selectedNodeSchema.typeLabel.toLowerCase()} to unlock the
+                    correct database-backed fields for this card.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid gap-3 md:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
@@ -3782,6 +4081,70 @@ function FlowContent() {
             >
               Add output
             </button>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+                Advanced custom properties
+              </p>
+              <button
+                className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] font-medium text-white transition-colors hover:bg-white/8"
+                onClick={() => {
+                  addSelectedNodeProperty();
+                  pushToast(`Added a custom property to ${selectedCardTitle} in ${selectedChainName}.`);
+                }}
+                type="button"
+              >
+                Add property
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {selectedNodeAdditionalProperties.length ? (
+                selectedNodeAdditionalProperties.map((property) => (
+                  <div
+                    className="grid gap-3 rounded-[20px] border border-white/8 bg-white/4 p-3 md:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)_auto]"
+                    key={`additional-property-${property.label}`}
+                  >
+                    <input
+                      className="rounded-[16px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                      onBlur={() =>
+                        pushToast(`Updated custom property key on ${selectedCardTitle} in ${selectedChainName}.`)
+                      }
+                      onChange={(event) =>
+                        updateSelectedNodePropertyKey(property.label, event.currentTarget.value)
+                      }
+                      value={property.label}
+                    />
+                    <input
+                      className="rounded-[16px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                      onBlur={() =>
+                        pushToast(`Updated custom property on ${selectedCardTitle} in ${selectedChainName}.`)
+                      }
+                      onChange={(event) =>
+                        updateSelectedNodeProperty(property.label, event.currentTarget.value)
+                      }
+                      value={property.value}
+                    />
+                    <button
+                      className="rounded-full border border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] px-3 py-1 text-[11px] font-medium text-[#ffd0cf] transition-colors hover:bg-[rgba(255,94,91,0.18)]"
+                      onClick={() => {
+                        updateSelectedNodeProperty(property.label, '');
+                        pushToast(`Removed custom property from ${selectedCardTitle} in ${selectedChainName}.`);
+                      }}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm leading-6 text-[rgba(160,174,192,0.72)]">
+                  Known content-engine properties are managed above. Use this section only for
+                  temporary engine-specific escape hatches.
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">

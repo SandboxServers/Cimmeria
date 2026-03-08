@@ -33,6 +33,7 @@ Keep this running list current as features are added:
 8. Draft save payload update
 9. Content-engine save payload update
 10. Scope filtering integrity
+11. Typed field selection and database-picker filtering
 
 When a new frontend capability is added, append the relevant REPL-UAT item(s) here if they are not already covered.
 

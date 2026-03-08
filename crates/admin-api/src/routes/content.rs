@@ -39,6 +39,46 @@ struct ContentSummaryResponse {
     top_space_mission_counts: Vec<SpaceMissionCount>,
 }
 
+#[derive(Serialize, FromRow)]
+struct EditorPickerOption {
+    value: String,
+    label: String,
+}
+
+#[derive(Serialize, FromRow)]
+struct EditorMissionOption {
+    value: String,
+    label: String,
+    space_id: String,
+}
+
+#[derive(Serialize, FromRow)]
+struct EditorRegionOption {
+    value: String,
+    label: String,
+    space_id: String,
+}
+
+#[derive(Serialize, FromRow)]
+struct EditorStepOption {
+    value: String,
+    label: String,
+    mission_id: String,
+}
+
+#[derive(Serialize)]
+struct EditorPickersResponse {
+    status: &'static str,
+    available: bool,
+    reason: Option<String>,
+    spaces: Vec<EditorPickerOption>,
+    missions: Vec<EditorMissionOption>,
+    dialogs: Vec<EditorPickerOption>,
+    items: Vec<EditorPickerOption>,
+    regions: Vec<EditorRegionOption>,
+    steps: Vec<EditorStepOption>,
+}
+
 /// Build content routes.
 ///
 /// - `GET /` - List content categories
@@ -48,6 +88,7 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
         .route("/", get(list_categories))
         .route("/summary", get(get_summary))
+        .route("/editor-pickers", get(get_editor_pickers))
         .route("/items", get(list_items))
         .route("/items/{id}", get(get_item))
 }
@@ -160,6 +201,151 @@ async fn get_summary(
             reason: Some(error.to_string()),
             summary: default_summary,
             top_space_mission_counts: Vec::new(),
+        }),
+    }
+}
+
+async fn get_editor_pickers(
+    State(orchestrator): State<Arc<Orchestrator>>,
+) -> Json<EditorPickersResponse> {
+    let pool = {
+        let state = orchestrator.state();
+        let state = state.read().await;
+        state.db.as_ref().map(|db| db.pool().clone())
+    };
+
+    let Some(pool) = pool else {
+        return Json(EditorPickersResponse {
+            status: "ok",
+            available: false,
+            reason: Some("Database unavailable.".to_string()),
+            spaces: Vec::new(),
+            missions: Vec::new(),
+            dialogs: Vec::new(),
+            items: Vec::new(),
+            regions: Vec::new(),
+            steps: Vec::new(),
+        });
+    };
+
+    let spaces = sqlx::query_as::<_, EditorPickerOption>(
+        r#"
+        SELECT
+            w.world AS value,
+            w.world AS label
+        FROM resources.worlds w
+        WHERE w.has_script
+        ORDER BY w.world ASC
+        "#,
+    )
+    .fetch_all(&pool)
+    .await;
+
+    let missions = sqlx::query_as::<_, EditorMissionOption>(
+        r#"
+        SELECT
+            m.mission_id::text AS value,
+            m.mission_id::text || ' - ' || m.mission_defn AS label,
+            COALESCE(NULLIF(m.script_spaces, ''), '') AS space_id
+        FROM resources.missions m
+        WHERE m.is_enabled
+        ORDER BY m.mission_id ASC
+        "#,
+    )
+    .fetch_all(&pool)
+    .await;
+
+    let dialogs = sqlx::query_as::<_, EditorPickerOption>(
+        r#"
+        SELECT
+            d.dialog_id::text AS value,
+            d.dialog_id::text || ' - ' || COALESCE(NULLIF(d.name, ''), 'Unnamed Dialog') AS label
+        FROM resources.dialogs d
+        ORDER BY d.dialog_id ASC
+        "#,
+    )
+    .fetch_all(&pool)
+    .await;
+
+    let items = sqlx::query_as::<_, EditorPickerOption>(
+        r#"
+        SELECT
+            i.item_id::text AS value,
+            i.item_id::text || ' - ' || i.name AS label
+        FROM resources.items i
+        ORDER BY i.item_id ASC
+        "#,
+    )
+    .fetch_all(&pool)
+    .await;
+
+    let regions = sqlx::query_as::<_, EditorRegionOption>(
+        r#"
+        SELECT
+            w.world || '.' || gr.tag AS value,
+            w.world || '.' || gr.tag AS label,
+            w.world AS space_id
+        FROM resources.generic_regions gr
+        INNER JOIN resources.worlds w
+            ON w.world_id = gr.world_id
+        WHERE gr.tag IS NOT NULL AND gr.tag <> ''
+        UNION
+        SELECT
+            w.world || '.' || rr.tag AS value,
+            w.world || '.' || rr.tag AS label,
+            w.world AS space_id
+        FROM resources.ring_transport_regions rr
+        INNER JOIN resources.worlds w
+            ON w.world_id = rr.world_id
+        WHERE rr.tag IS NOT NULL AND rr.tag <> ''
+        ORDER BY label ASC
+        "#,
+    )
+    .fetch_all(&pool)
+    .await;
+
+    let steps = sqlx::query_as::<_, EditorStepOption>(
+        r#"
+        SELECT
+            ms.step_id::text AS value,
+            ms.step_id::text || ' - ' || ms.step_display_log_text AS label,
+            ms.mission_id::text AS mission_id
+        FROM resources.mission_steps ms
+        ORDER BY ms.mission_id ASC, ms.index ASC NULLS LAST, ms.step_id ASC
+        "#,
+    )
+    .fetch_all(&pool)
+    .await;
+
+    match (spaces, missions, dialogs, items, regions, steps) {
+        (Ok(spaces), Ok(missions), Ok(dialogs), Ok(items), Ok(regions), Ok(steps)) => {
+            Json(EditorPickersResponse {
+                status: "ok",
+                available: true,
+                reason: None,
+                spaces,
+                missions,
+                dialogs,
+                items,
+                regions,
+                steps,
+            })
+        }
+        (Err(error), _, _, _, _, _)
+        | (_, Err(error), _, _, _, _)
+        | (_, _, Err(error), _, _, _)
+        | (_, _, _, Err(error), _, _)
+        | (_, _, _, _, Err(error), _)
+        | (_, _, _, _, _, Err(error)) => Json(EditorPickersResponse {
+            status: "ok",
+            available: false,
+            reason: Some(error.to_string()),
+            spaces: Vec::new(),
+            missions: Vec::new(),
+            dialogs: Vec::new(),
+            items: Vec::new(),
+            regions: Vec::new(),
+            steps: Vec::new(),
         }),
     }
 }
