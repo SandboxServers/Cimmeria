@@ -123,9 +123,22 @@ export function createEditorSnapshotFromPersistedContentGraph<TNodeData, TEdgeDa
   };
 }
 
+function isTauriRuntime(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  return '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
+}
+
 async function invokeTauri<T>(command: string, args: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<T>(command, args);
+}
+
+function buildContentStorageKey(spaceId: string, missionId: string | null): string {
+  return missionId
+    ? `chain-content:${spaceId}:${missionId}`
+    : `chain-content:${spaceId}`;
 }
 
 export async function loadChainEditorContent<
@@ -135,18 +148,39 @@ export async function loadChainEditorContent<
   spaceId: string,
   missionId: string | null,
 ): Promise<ChainContentLoadResult<TNodeData, TEdgeData>> {
-  const payload = await invokeTauri<PersistedContentGraph<TNodeData, TEdgeData> | null>(
-    'load_chain_editor_content',
-    {
-      missionId,
-      spaceId,
-    },
-  );
+  if (isTauriRuntime()) {
+    try {
+      const payload = await invokeTauri<PersistedContentGraph<TNodeData, TEdgeData> | null>(
+        'load_chain_editor_content',
+        {
+          missionId,
+          spaceId,
+        },
+      );
 
-  return {
-    graph:
-      payload && isPersistedContentGraph<TNodeData, TEdgeData>(payload) ? payload : null,
-  };
+      return {
+        graph:
+          payload && isPersistedContentGraph<TNodeData, TEdgeData>(payload) ? payload : null,
+      };
+    } catch {
+      // Fall through to browser storage
+    }
+  }
+
+  // Browser fallback: localStorage
+  try {
+    const raw = window.localStorage.getItem(buildContentStorageKey(spaceId, missionId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (isPersistedContentGraph<TNodeData, TEdgeData>(parsed)) {
+        return { graph: parsed };
+      }
+    }
+  } catch {
+    // Corrupted localStorage entry — treat as empty
+  }
+
+  return { graph: null };
 }
 
 export async function saveChainEditorContent<
@@ -155,9 +189,18 @@ export async function saveChainEditorContent<
 >(
   graph: PersistedContentGraph<TNodeData, TEdgeData>,
 ): Promise<void> {
-  await invokeTauri('save_chain_editor_content', {
-    missionId: graph.missionId,
-    payload: graph,
-    spaceId: graph.spaceId,
-  });
+  if (isTauriRuntime()) {
+    await invokeTauri('save_chain_editor_content', {
+      missionId: graph.missionId,
+      payload: graph,
+      spaceId: graph.spaceId,
+    });
+    return;
+  }
+
+  // Browser fallback: localStorage
+  window.localStorage.setItem(
+    buildContentStorageKey(graph.spaceId, graph.missionId),
+    JSON.stringify(graph),
+  );
 }
