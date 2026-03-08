@@ -13,6 +13,7 @@ import {
 import { Input } from '../components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useResource } from '../lib/hooks';
+import ConnectionStatus, { getConnectionError } from '../components/ConnectionStatus';
 import { fetchAdminStatus, fetchPlayers, formatUptime } from '../lib/admin-api';
 
 export default function Logs() {
@@ -92,6 +93,10 @@ export default function Logs() {
         title="Server event stream"
       />
 
+      {getConnectionError(status.error, players.error) && (
+        <ConnectionStatus onRetry={refreshAll} />
+      )}
+
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <CardHeader className="space-y-4">
@@ -121,7 +126,7 @@ export default function Logs() {
             </div>
           </CardHeader>
           <CardContent>
-            {(status.error || players.error) && (
+            {(status.error || players.error) && !getConnectionError(status.error, players.error) && (
               <div className="rounded-[28px] border border-destructive/20 bg-destructive/8 p-4 text-sm text-destructive">
                 {(status.error ?? players.error)?.message}
               </div>

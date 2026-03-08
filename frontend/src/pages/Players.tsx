@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { useResource } from '../lib/hooks';
+import ConnectionStatus, { getConnectionError } from '../components/ConnectionStatus';
 import { fetchPlayers } from '../lib/admin-api';
 import { getPlayerStatusVariant } from '../lib/view-models';
 
@@ -63,6 +64,10 @@ export default function Players() {
         title="Session and presence tracking"
       />
 
+      {getConnectionError(playersResource.error) && (
+        <ConnectionStatus onRetry={() => playersResource.refetch()} />
+      )}
+
       <section className="grid gap-4 xl:grid-cols-[1.35fr_0.85fr]">
         <Card>
           <CardHeader className="gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -82,7 +87,7 @@ export default function Players() {
             </div>
           </CardHeader>
           <CardContent className="px-0 pb-0">
-            {playersResource.error && (
+            {playersResource.error && !getConnectionError(playersResource.error) && (
               <div className="px-6 pb-6 text-sm text-destructive">
                 Failed to load player data: {playersResource.error.message}
               </div>

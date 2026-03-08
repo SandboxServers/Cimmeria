@@ -12,6 +12,7 @@ import {
 } from '../components/ui/card';
 import { Separator } from '../components/ui/separator';
 import { useResource } from '../lib/hooks';
+import ConnectionStatus, { getConnectionError } from '../components/ConnectionStatus';
 import {
   buildDashboardActivity,
   buildDashboardStats,
@@ -52,6 +53,7 @@ function ErrorCard({ title, detail }: { title: string; detail: string }) {
   );
 }
 
+
 export default function Dashboard() {
   const status = useResource(useCallback(fetchAdminStatus, []));
   const players = useResource(useCallback(fetchPlayers, []));
@@ -90,6 +92,7 @@ export default function Dashboard() {
   }, [status.data, players.data, spaces.data, content.data]);
   const isLoading = status.loading || players.loading || spaces.loading || content.loading;
   const loadError = status.error ?? players.error ?? spaces.error ?? content.error ?? null;
+  const connectionError = getConnectionError(status.error, players.error, spaces.error, content.error);
 
   const refreshAll = () => {
     status.refetch();
@@ -119,12 +122,14 @@ export default function Dashboard() {
         title="Command deck overview"
       />
 
-      {loadError && (
+      {connectionError ? (
+        <ConnectionStatus onRetry={refreshAll} />
+      ) : loadError ? (
         <ErrorCard
           detail={loadError.message}
           title="One or more dashboard data sources failed."
         />
-      )}
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-4">
         {stats.length > 0 ? (

@@ -12,6 +12,7 @@ import {
 } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { useResource } from '../lib/hooks';
+import ConnectionStatus, { getConnectionError } from '../components/ConnectionStatus';
 import { buildConfigSections, fetchAdminConfig, fetchAdminStatus, formatUptime } from '../lib/admin-api';
 
 export default function Config() {
@@ -46,9 +47,13 @@ export default function Config() {
         title="Runtime and environment controls"
       />
 
+      {getConnectionError(config.error, status.error) && (
+        <ConnectionStatus onRetry={refreshAll} />
+      )}
+
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="grid gap-4">
-          {config.error && (
+          {config.error && !getConnectionError(config.error) && (
             <Card className="border-destructive/22 bg-destructive/8">
               <CardHeader>
                 <Badge variant="destructive">Load Failed</Badge>

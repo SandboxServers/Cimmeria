@@ -12,6 +12,7 @@ import {
 } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
 import { useResource } from '../lib/hooks';
+import ConnectionStatus, { getConnectionError } from '../components/ConnectionStatus';
 import { fetchSpaces, type SpaceRecord } from '../lib/admin-api';
 
 export default function SpaceViewer() {
@@ -50,6 +51,10 @@ export default function SpaceViewer() {
         eyebrow="World View"
         title="Spatial monitoring surface"
       />
+
+      {getConnectionError(spacesResource.error) && (
+        <ConnectionStatus onRetry={() => spacesResource.refetch()} />
+      )}
 
       <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <Card className="overflow-hidden">
@@ -117,7 +122,7 @@ export default function SpaceViewer() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {spacesResource.error && (
+              {spacesResource.error && !getConnectionError(spacesResource.error) && (
                 <div className="text-sm text-destructive">{spacesResource.error.message}</div>
               )}
               {spacesResource.loading && !spacesResource.data && (
