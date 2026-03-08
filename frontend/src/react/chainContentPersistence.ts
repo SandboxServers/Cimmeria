@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import type { Edge, Node } from '@xyflow/react';
+import type { ChainEditorCollaborationMetadata } from './chainCollaboration';
 
 export type PersistedContentGraph<
   TNodeData = Record<string, unknown>,
@@ -13,6 +14,7 @@ export type PersistedContentGraph<
   selectedChainId: string;
   selectedNodeId: string;
   selectedSequenceId: string;
+  collaboration?: ChainEditorCollaborationMetadata;
 };
 
 export type ChainContentLoadResult<

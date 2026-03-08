@@ -12,6 +12,7 @@ import {
 import MissionCardLibrary from './MissionCardLibrary.react';
 import type { ScenarioTemplate as LibraryScenarioTemplate } from './missionCardCatalog';
 import ValidationPanel from './ValidationPanel.react';
+import { CollaborationSummary } from './CollaborationSummary.react';
 import {
   Background,
   BackgroundVariant,
@@ -48,6 +49,14 @@ import {
   loadChainEditorContent,
   saveChainEditorContent,
 } from './chainContentPersistence';
+import {
+  attachChainEditorCollaborationMetadata,
+  buildPersistedConflictState,
+  readChainEditorCollaborationMetadata,
+  resolveChainEditorActorName,
+  type ChainEditorCollaborationMetadata,
+  type PersistedConflictState,
+} from './chainCollaboration';
 import {
   clearChainEditorDraft,
   clearChainEditorAutosave,
@@ -197,6 +206,7 @@ type EditorSnapshot = {
 };
 
 type DraftPersistenceState = {
+  collaboration?: ChainEditorCollaborationMetadata | null;
   hydrated: boolean;
   lastSavedAt?: string;
   persistedDraft?: PersistedChainEditorDraft<EditorNodeData, SequenceEdgeData>;
@@ -207,6 +217,7 @@ type DraftPersistenceState = {
 
 const inspectorPanelIds: InspectorPanelId[] = ['validation', 'chain', 'sequence', 'node'];
 type ContentPersistenceState = {
+  collaboration?: ChainEditorCollaborationMetadata | null;
   hydrated: boolean;
   savedSignature: string;
 };
@@ -2265,6 +2276,12 @@ function FlowContent() {
   const [contentStateBySpace, setContentStateBySpace] = useState<
     Record<string, ContentPersistenceState>
   >({});
+  const [draftConflictBySpace, setDraftConflictBySpace] = useState<
+    Record<string, PersistedConflictState | null>
+  >({});
+  const [contentConflictBySpace, setContentConflictBySpace] = useState<
+    Record<string, PersistedConflictState | null>
+  >({});
   const [autosaveRecoveryBySpace, setAutosaveRecoveryBySpace] = useState<
     Record<string, ChainEditorAutosave<EditorNodeData, SequenceEdgeData> | null>
   >({});
@@ -2272,6 +2289,8 @@ function FlowContent() {
   const nextSequenceId = useRef(1);
   const nextToastId = useRef(1);
   const nextTemplateId = useRef(1);
+  const draftConflictToastSignaturesRef = useRef<Record<string, string>>({});
+  const contentConflictToastSignaturesRef = useRef<Record<string, string>>({});
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const undoHistoryRef = useRef<EditorSnapshot[]>([]);
@@ -2674,51 +2693,97 @@ function FlowContent() {
     [visibleChains, visibleEdges, visibleNodes],
   );
 
+  const actorName = useMemo(() => resolveChainEditorActorName(), []);
   const selectedChainName = selectedChain?.name ?? 'Untitled chain';
   const selectedCardTitle = selectedNode?.data.title ?? 'Selected card';
+  const activeDraftState = draftStateBySpace[selectedSpaceId];
+  const activeContentState = contentStateBySpace[selectedSpaceId];
+  const activeDraftConflict = draftConflictBySpace[selectedSpaceId] ?? null;
+  const activeContentConflict = contentConflictBySpace[selectedSpaceId] ?? null;
   const activeSpaceDraft = useMemo(() => {
     const scopedSnapshot = extractSpaceScopedEditorSnapshot(nodes, edges, selectedSpaceId);
 
-    return createPersistedChainEditorDraft<EditorNodeData, SequenceEdgeData>({
-      edges: scopedSnapshot.edges,
-      missionId: null,
-      nodes: scopedSnapshot.nodes,
-      selectedChainId,
-      selectedNodeId,
-      selectedSequenceId,
-      spaceId: selectedSpaceId,
-    });
-  }, [edges, nodes, selectedChainId, selectedNodeId, selectedSequenceId, selectedSpaceId]);
-
+    return {
+      ...createPersistedChainEditorDraft<EditorNodeData, SequenceEdgeData>({
+        edges: scopedSnapshot.edges,
+        missionId: null,
+        nodes: scopedSnapshot.nodes,
+        selectedChainId,
+        selectedNodeId,
+        selectedSequenceId,
+        spaceId: selectedSpaceId,
+      }),
+      collaboration: activeDraftState?.persistedDraft?.collaboration,
+    };
+  }, [
+    activeDraftState?.persistedDraft?.collaboration,
+    edges,
+    nodes,
+    selectedChainId,
+    selectedNodeId,
+    selectedSequenceId,
+    selectedSpaceId,
+  ]);
   const activeSpaceDraftSignature = useMemo(
     () => JSON.stringify(activeSpaceDraft),
     [activeSpaceDraft],
   );
-  const activeDraftState = draftStateBySpace[selectedSpaceId];
   const isDraftDirty = !!activeDraftState?.hydrated &&
     activeDraftState.savedSignature !== activeSpaceDraftSignature;
   const activeSpaceContent = useMemo(() => {
     const scopedSnapshot = extractSpaceScopedContentSnapshot(nodes, edges, selectedSpaceId);
 
-    return createPersistedContentGraph<EditorNodeData, SequenceEdgeData>({
-      edges: scopedSnapshot.edges,
-      missionId: null,
-      nodes: scopedSnapshot.nodes,
-      selectedChainId,
-      selectedNodeId,
-      selectedSequenceId,
-      spaceId: selectedSpaceId,
-    });
-  }, [edges, nodes, selectedChainId, selectedNodeId, selectedSequenceId, selectedSpaceId]);
+    return {
+      ...createPersistedContentGraph<EditorNodeData, SequenceEdgeData>({
+        edges: scopedSnapshot.edges,
+        missionId: null,
+        nodes: scopedSnapshot.nodes,
+        selectedChainId,
+        selectedNodeId,
+        selectedSequenceId,
+        spaceId: selectedSpaceId,
+      }),
+      collaboration: activeContentState?.collaboration,
+    };
+  }, [
+    activeContentState?.collaboration,
+    edges,
+    nodes,
+    selectedChainId,
+    selectedNodeId,
+    selectedSequenceId,
+    selectedSpaceId,
+  ]);
   const activeSpaceContentSignature = useMemo(
     () => JSON.stringify(activeSpaceContent),
     [activeSpaceContent],
   );
-  const activeContentState = contentStateBySpace[selectedSpaceId];
   const isContentDirty =
     !!activeContentState?.hydrated &&
     activeContentState.savedSignature !== activeSpaceContentSignature;
   const activeAutosaveRecovery = autosaveRecoveryBySpace[selectedSpaceId] ?? null;
+
+  const activeDraftMetadata =
+    activeDraftState?.collaboration ??
+    readChainEditorCollaborationMetadata(activeDraftState?.persistedDraft);
+  const activeContentMetadata = activeContentState?.collaboration ?? null;
+
+  const collaborationSummary = useMemo(
+    () => ({
+      actorName,
+      contentConflict: activeContentConflict,
+      contentMetadata: activeContentMetadata,
+      draftConflict: activeDraftConflict,
+      draftMetadata: activeDraftMetadata,
+    }),
+    [
+      actorName,
+      activeContentConflict,
+      activeContentMetadata,
+      activeDraftConflict,
+      activeDraftMetadata,
+    ],
+  );
 
   const beginDraftSequence = useCallback(() => {
     const id = `sequence-${nextSequenceId.current++}`;
@@ -2739,18 +2804,33 @@ function FlowContent() {
     setSavingDraft(true);
 
     try {
-      const result = await saveChainEditorDraft(activeSpaceDraft);
       const savedAt = new Date().toISOString();
+      const draftToPersist = attachChainEditorCollaborationMetadata(
+        activeSpaceDraft,
+        actorName,
+        savedAt,
+      );
+      const result = await saveChainEditorDraft(draftToPersist);
       setDraftStateBySpace((current) => ({
         ...current,
         [selectedSpaceId]: {
+          collaboration: readChainEditorCollaborationMetadata(draftToPersist),
           hydrated: true,
           lastSavedAt: savedAt,
-          persistedDraft: activeSpaceDraft,
+          persistedDraft: draftToPersist,
           recoveredFromAutosave: false,
-          savedSignature: activeSpaceDraftSignature,
+          savedSignature: JSON.stringify(draftToPersist),
           storage: result.storage,
         },
+      }));
+      setDraftConflictBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: buildPersistedConflictState({
+          latestMetadata: readChainEditorCollaborationMetadata(draftToPersist),
+          latestSignature: JSON.stringify(draftToPersist),
+          loadedSignature: JSON.stringify(draftToPersist),
+          timestamp: savedAt,
+        }),
       }));
       clearChainEditorAutosave(selectedSpaceId, null);
       setAutosaveRecoveryBySpace((current) => ({
@@ -2770,7 +2850,7 @@ function FlowContent() {
     } finally {
       setSavingDraft(false);
     }
-  }, [activeSpaceDraft, activeSpaceDraftSignature, pushToast, selectedSpaceId]);
+  }, [activeSpaceDraft, actorName, pushToast, selectedSpaceId]);
 
   const handleRevertDraft = useCallback(() => {
     const persistedDraft = activeDraftState?.persistedDraft;
@@ -3096,34 +3176,161 @@ function FlowContent() {
     return () => window.clearTimeout(timeoutId);
   }, [activeDraftState, activeSpaceDraft, isDraftDirty]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshCollaborationState() {
+      const checkedAt = new Date().toISOString();
+
+      if (activeDraftState?.hydrated) {
+        const latestDraftResult = await loadChainEditorDraft<EditorNodeData, SequenceEdgeData>(
+          selectedSpaceId,
+          null,
+        ).catch(() => null);
+
+        if (!cancelled) {
+          const latestDraft = latestDraftResult?.draft ?? null;
+          const latestSignature = latestDraft ? JSON.stringify(latestDraft) : null;
+          setDraftConflictBySpace((current) => ({
+            ...current,
+            [selectedSpaceId]: buildPersistedConflictState({
+              latestMetadata: readChainEditorCollaborationMetadata(latestDraft),
+              latestSignature,
+              loadedSignature: activeDraftState.savedSignature,
+              timestamp: checkedAt,
+            }),
+          }));
+        }
+      }
+
+      if (activeContentState?.hydrated) {
+        const latestContentResult = await loadChainEditorContent<EditorNodeData, SequenceEdgeData>(
+          selectedSpaceId,
+          null,
+        ).catch(() => null);
+
+        if (!cancelled) {
+          const latestContent = latestContentResult?.graph ?? null;
+          const latestSignature = latestContent ? JSON.stringify(latestContent) : null;
+          setContentConflictBySpace((current) => ({
+            ...current,
+            [selectedSpaceId]: buildPersistedConflictState({
+              latestMetadata: readChainEditorCollaborationMetadata(latestContent),
+              latestSignature,
+              loadedSignature: activeContentState.savedSignature,
+              timestamp: checkedAt,
+            }),
+          }));
+        }
+      }
+    }
+
+    void refreshCollaborationState();
+    const intervalId = window.setInterval(() => {
+      void refreshCollaborationState();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    activeContentState?.hydrated,
+    activeContentState?.savedSignature,
+    activeDraftState?.hydrated,
+    activeDraftState?.savedSignature,
+    selectedSpaceId,
+  ]);
+
+  useEffect(() => {
+    if (activeDraftConflict?.changedSinceLoad && activeDraftConflict.latestSignature) {
+      const priorSignature = draftConflictToastSignaturesRef.current[selectedSpaceId];
+      if (priorSignature !== activeDraftConflict.latestSignature) {
+        draftConflictToastSignaturesRef.current[selectedSpaceId] = activeDraftConflict.latestSignature;
+        pushToast(
+          `Warning: the persisted draft changed after load${
+            activeDraftConflict.latestMetadata
+              ? ` (latest save by ${activeDraftConflict.latestMetadata.lastEditedBy})`
+              : ''
+          }.`,
+        );
+      }
+    }
+
+    if (activeContentConflict?.changedSinceLoad && activeContentConflict.latestSignature) {
+      const priorSignature = contentConflictToastSignaturesRef.current[selectedSpaceId];
+      if (priorSignature !== activeContentConflict.latestSignature) {
+        contentConflictToastSignaturesRef.current[selectedSpaceId] =
+          activeContentConflict.latestSignature;
+        pushToast(
+          `Warning: content rows changed after load${
+            activeContentConflict.latestMetadata
+              ? ` (latest save by ${activeContentConflict.latestMetadata.lastEditedBy})`
+              : ''
+          }.`,
+        );
+      }
+    }
+  }, [activeContentConflict, activeDraftConflict, pushToast, selectedSpaceId]);
+
   const handleSaveContent = useCallback(async () => {
     setSavingContent(true);
 
     try {
-      await saveChainEditorContent(activeSpaceContent);
       const savedAt = new Date().toISOString();
+      const contentToPersist = attachChainEditorCollaborationMetadata(
+        activeSpaceContent,
+        actorName,
+        savedAt,
+      );
+      const draftToPersist = attachChainEditorCollaborationMetadata(
+        activeSpaceDraft,
+        actorName,
+        savedAt,
+      );
+      await saveChainEditorContent(contentToPersist);
       setContentStateBySpace((current) => ({
         ...current,
         [selectedSpaceId]: {
+          collaboration: readChainEditorCollaborationMetadata(contentToPersist),
           hydrated: true,
-          savedSignature: activeSpaceContentSignature,
+          savedSignature: JSON.stringify(contentToPersist),
         },
+      }));
+      setContentConflictBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: buildPersistedConflictState({
+          latestMetadata: readChainEditorCollaborationMetadata(contentToPersist),
+          latestSignature: JSON.stringify(contentToPersist),
+          loadedSignature: JSON.stringify(contentToPersist),
+          timestamp: savedAt,
+        }),
       }));
       pushToast(
         `Saved ${spaceCatalog.find((space) => space.id === selectedSpaceId)?.label ?? selectedSpaceId} to content engine rows.`,
       );
 
-      const draftResult = await saveChainEditorDraft(activeSpaceDraft);
+      const draftResult = await saveChainEditorDraft(draftToPersist);
       setDraftStateBySpace((current) => ({
         ...current,
         [selectedSpaceId]: {
+          collaboration: readChainEditorCollaborationMetadata(draftToPersist),
           hydrated: true,
           lastSavedAt: savedAt,
-          persistedDraft: activeSpaceDraft,
+          persistedDraft: draftToPersist,
           recoveredFromAutosave: false,
-          savedSignature: activeSpaceDraftSignature,
+          savedSignature: JSON.stringify(draftToPersist),
           storage: draftResult.storage,
         },
+      }));
+      setDraftConflictBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: buildPersistedConflictState({
+          latestMetadata: readChainEditorCollaborationMetadata(draftToPersist),
+          latestSignature: JSON.stringify(draftToPersist),
+          loadedSignature: JSON.stringify(draftToPersist),
+          timestamp: savedAt,
+        }),
       }));
       clearChainEditorAutosave(selectedSpaceId, null);
       setAutosaveRecoveryBySpace((current) => ({
@@ -3139,9 +3346,8 @@ function FlowContent() {
     }
   }, [
     activeSpaceContent,
-    activeSpaceContentSignature,
     activeSpaceDraft,
-    activeSpaceDraftSignature,
+    actorName,
     pushToast,
     selectedSpaceId,
   ]);
@@ -3195,6 +3401,7 @@ function FlowContent() {
           setContentStateBySpace((current) => ({
             ...current,
             [selectedSpaceId]: {
+              collaboration: readChainEditorCollaborationMetadata(contentResult.graph),
               hydrated: true,
               savedSignature: JSON.stringify(contentResult.graph),
             },
@@ -3234,7 +3441,9 @@ function FlowContent() {
         setDraftStateBySpace((current) => ({
           ...current,
           [selectedSpaceId]: {
+            collaboration: readChainEditorCollaborationMetadata(result.draft),
             hydrated: true,
+            lastSavedAt: readChainEditorCollaborationMetadata(result.draft)?.lastEditedAt,
             persistedDraft: result.draft,
             recoveredFromAutosave: false,
             savedSignature: JSON.stringify(result.draft),
@@ -3297,7 +3506,9 @@ function FlowContent() {
       setDraftStateBySpace((current) => ({
         ...current,
         [selectedSpaceId]: {
+          collaboration: readChainEditorCollaborationMetadata(basePersistedDraft),
           hydrated: true,
+          lastSavedAt: readChainEditorCollaborationMetadata(basePersistedDraft)?.lastEditedAt,
           persistedDraft: basePersistedDraft,
           recoveredFromAutosave: false,
           savedSignature: JSON.stringify(basePersistedDraft),
@@ -4977,7 +5188,7 @@ function FlowContent() {
                   {contentSummaryLabel}
                 </span>
                 <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
-                  {`Saved ${formatTimestampLabel(activeDraftState?.lastSavedAt)}`}
+                  {`Saved ${formatTimestampLabel(activeDraftState?.lastSavedAt ?? activeDraftMetadata?.lastEditedAt)}`}
                 </span>
                 {activeDraftState?.recoveredFromAutosave ? (
                   <span className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-3 py-2 text-[#a7f0eb]">
@@ -5102,6 +5313,10 @@ function FlowContent() {
                 Cross-chain link
               </button>
             </div>
+          </div>
+
+          <div className="border-b border-white/6 px-6 py-4">
+            <CollaborationSummary {...collaborationSummary} />
           </div>
 
           <div className="min-h-[980px] flex-1">
