@@ -39,7 +39,7 @@ function Install-CimmeriaDependencies {
     Write-Host "=============================================" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Rust crate dependencies are managed by Cargo automatically."
-    Write-Host "This step handles PostgreSQL server setup only."
+    Write-Host "This step handles PostgreSQL and sidecar binaries."
     Write-Host ""
 
     New-Item -ItemType Directory -Path $DownloadDir -Force | Out-Null
@@ -120,6 +120,60 @@ function Install-CimmeriaDependencies {
             Write-Status "PostgreSQL not found." "Red"
             Write-Status "  Install: brew install $($Dependencies.PostgreSQL.MacOS.BrewFormula)" "Yellow"
             throw "PostgreSQL not found. Install it and re-run."
+        }
+    }
+
+    # ── 7za.exe sidecar for sgw-launcher (Windows only) ────────────────────
+    if ($isWin) {
+        Write-Step "7-ZIP STANDALONE (SGW-LAUNCHER SIDECAR)"
+
+        $launcherBinDir = Join-Path $paths.ProjectRoot "crates\launcher\binaries"
+        $targetTriple = "x86_64-pc-windows-msvc"
+        $sidecarPath = Join-Path $launcherBinDir "7za-$targetTriple.exe"
+        $gnuSidecarPath = Join-Path $launcherBinDir "7za-x86_64-pc-windows-gnu.exe"
+
+        if ((Test-Path $sidecarPath) -and (Get-Item $sidecarPath).Length -gt 0) {
+            Write-Status "7za sidecar: already present" "DarkGray"
+        } else {
+            if (-not $SkipDownload) {
+                # Download 7zr.exe (bootstrap extractor) and the extra archive
+                $sevenZrPath = Join-Path $DownloadDir "7zr.exe"
+                $extraArchive = Join-Path $DownloadDir $Dependencies.SevenZip.ExtraFileName
+
+                Write-Status "Downloading 7zr.exe (bootstrap extractor)..." "White"
+                Get-DownloadFile $Dependencies.SevenZip.BootstrapUrl $sevenZrPath
+
+                Write-Status "Downloading 7-Zip Extra $($Dependencies.SevenZip.Version)..." "White"
+                Get-DownloadFile $Dependencies.SevenZip.ExtraUrl $extraArchive
+            }
+
+            $sevenZrPath = Join-Path $DownloadDir "7zr.exe"
+            $extraArchive = Join-Path $DownloadDir $Dependencies.SevenZip.ExtraFileName
+            $extractDir = Join-Path $DownloadDir "7z-extra"
+
+            Write-Status "Extracting 7za.exe from archive..." "White"
+            if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+            New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+            & $sevenZrPath x $extraArchive "-o$extractDir" -y 2>&1 | Out-Null
+
+            $extracted7za = Join-Path $extractDir "x64\7za.exe"
+            if (-not (Test-Path $extracted7za)) {
+                # Some versions put it in the root
+                $extracted7za = Join-Path $extractDir "7za.exe"
+            }
+
+            if (Test-Path $extracted7za) {
+                Copy-Item $extracted7za $sidecarPath -Force
+                Copy-Item $extracted7za $gnuSidecarPath -Force
+                $size = Format-FileSize (Get-Item $sidecarPath).Length
+                Write-Status "7za sidecar: installed ($size)" "Green"
+            } else {
+                Write-Status "WARNING: Could not find 7za.exe in extracted archive" "Yellow"
+                Write-Status "  sgw-launcher build will fail — place 7za.exe manually in:" "Yellow"
+                Write-Status "  $launcherBinDir" "Yellow"
+            }
+
+            Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 

@@ -16,4 +16,13 @@
         Type      = "prebuilt"
         Notes     = "17.9 is the latest 17.x patch release (Feb 2026). EOL Nov 2029."
     }
+
+    SevenZip = @{
+        Version       = "24.09"
+        ExtraUrl      = "https://www.7-zip.org/a/7z2409-extra.7z"
+        ExtraFileName = "7z2409-extra.7z"
+        # 7zr.exe is a standalone binary that can extract .7z archives (bootstrap only)
+        BootstrapUrl  = "https://www.7-zip.org/a/7zr.exe"
+        Notes         = "7-Zip Extra: standalone 7za.exe console version. Bundled with sgw-launcher."
+    }
 }
