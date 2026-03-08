@@ -10,6 +10,8 @@ name = "cimmeria-server"
 path = "src/main.rs"
 
 [dependencies]
+axum = { workspace = true }
+cimmeria-admin-api = { workspace = true }
 cimmeria-common = { workspace = true }
 cimmeria-services = { workspace = true }
 tokio = { workspace = true }

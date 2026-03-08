@@ -10,6 +10,16 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8443',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:8443',
+        ws: true,
+      },
+    },
   },
   build: {
     target: 'esnext',

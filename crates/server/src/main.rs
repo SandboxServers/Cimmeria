@@ -27,6 +27,7 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt;
@@ -65,8 +66,10 @@ async fn main() {
         "Starting Cimmeria server"
     );
 
+    let admin_port = config.admin_port;
+
     tracing::trace!("Creating orchestrator");
-    let orch = Orchestrator::new(config);
+    let orch = Arc::new(Orchestrator::new(config));
 
     tracing::trace!("Calling start_all");
     if let Err(e) = orch.start_all().await {
@@ -74,6 +77,26 @@ async fn main() {
         tracing::trace!(pid = std::process::id(), "Process exiting with code 1");
         std::process::exit(1);
     }
+
+    // Start the admin API (REST + WebSocket) on the configured port.
+    let admin_router = cimmeria_admin_api::build_router(Arc::clone(&orch));
+    let admin_addr = format!("0.0.0.0:{admin_port}");
+    let admin_listener = match tokio::net::TcpListener::bind(&admin_addr).await {
+        Ok(listener) => {
+            tracing::info!(addr = %admin_addr, "Admin API listening");
+            listener
+        }
+        Err(e) => {
+            tracing::error!(addr = %admin_addr, "Failed to bind admin API: {e}");
+            tracing::trace!(pid = std::process::id(), "Process exiting with code 1");
+            std::process::exit(1);
+        }
+    };
+    tokio::spawn(async move {
+        if let Err(e) = axum::serve(admin_listener, admin_router).await {
+            tracing::error!("Admin API server error: {e}");
+        }
+    });
 
     tracing::info!("Server ready. Press Ctrl-C to stop.");
 
@@ -279,6 +302,11 @@ fn config_from_env() -> ServerConfig {
     if let Ok(v) = std::env::var("CELL_PORT") {
         if let Ok(p) = v.parse() {
             cfg.cell_port = p;
+        }
+    }
+    if let Ok(v) = std::env::var("ADMIN_PORT") {
+        if let Ok(p) = v.parse() {
+            cfg.admin_port = p;
         }
     }
     if let Ok(v) = std::env::var("DB_URL") {

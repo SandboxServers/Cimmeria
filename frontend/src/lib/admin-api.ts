@@ -135,15 +135,13 @@ export type ServiceHealthCard = {
 };
 
 function getAdminApiOrigin() {
-  if (typeof window === 'undefined') {
+  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
     return 'http://127.0.0.1:8443';
   }
 
-  if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
-    return `${window.location.protocol}//${window.location.hostname || '127.0.0.1'}:8443`;
-  }
-
-  return 'http://127.0.0.1:8443';
+  // In browser dev/prod, use relative URLs so Vite proxy (dev) or
+  // same-origin deployment (prod) handles routing to the backend.
+  return '';
 }
 
 const ADMIN_API_ORIGIN =
