@@ -296,6 +296,7 @@ async fn execute_actions(
                     completed_step_ids: vec![],
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![step_id],
+                    failed_objective_ids: vec![],
                 }).await;
             }
             Action::CompleteMission { mission_id } => {
@@ -311,6 +312,7 @@ async fn execute_actions(
                     completed_step_ids: vec![],
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![],
+                    failed_objective_ids: vec![],
                 }).await;
             }
             Action::GrantItem { item_id, count, container_id } => {
@@ -327,7 +329,11 @@ async fn execute_actions(
             }
             Action::DisplayDialog { dialog_id } | Action::StartDialog { dialog_set_id: dialog_id } => {
                 tracing::info!(entity_id, dialog_id, chain_id, "Content: displaying dialog");
-                super::interactions::send_dialog_display(entity_id, 0, dialog_id, tx).await;
+                // The original Python scripts pass the player's own entity_id as the
+                // NPC entity for content-triggered dialogs (see Castle_CellBlock.py:16
+                // where n83_var_NPC = player). Passing 0 breaks world entry because
+                // the client can't resolve entity 0 during the loading transition.
+                super::interactions::send_dialog_display(entity_id, entity_id as i32, dialog_id, tx).await;
             }
             Action::PlaySequence { sequence_id } => {
                 tracing::info!(entity_id, sequence_id, chain_id, "Content: playing sequence");
@@ -351,6 +357,7 @@ async fn execute_actions(
                     completed_step_ids: vec![],
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![step_id],
+                    failed_objective_ids: vec![],
                 }).await;
             }
             Action::AddDialogSet { dialog_set_id, slot, mission_id: _ } => {

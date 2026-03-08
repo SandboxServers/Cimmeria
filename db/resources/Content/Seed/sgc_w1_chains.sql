@@ -16,7 +16,7 @@ INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled
 VALUES (3001, 'SGC_W1 - Load: accept mission 1559, show Gen Hammond', 'space', NULL, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (3001, 'player_loaded', NULL, 'player', false, 0);
+VALUES (3001, 'player_loaded', 'SGC_W1', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES (3001, 'mission_status', 1559, NULL, 'eq', 'not_active', 0);

@@ -26,7 +26,33 @@ function Build-CimmeriaServer {
 
     Write-Step "BUILDING CIMMERIA SERVER"
 
-    $cargoArgs = @("build", "--workspace", "--exclude", "cimmeria-app")
+    # Install frontend dependencies if Node.js is available (required for cimmeria-app Tauri build)
+    $frontendDir = Join-Path $paths.ProjectRoot "frontend"
+    $nodeAvailable = $null -ne (Get-Command node -ErrorAction SilentlyContinue)
+    if ($nodeAvailable -and (Test-Path (Join-Path $frontendDir "package.json"))) {
+        Write-Status "Installing frontend dependencies (npm install)..." "White"
+        Push-Location $frontendDir
+        try {
+            & npm install 2>&1 | ForEach-Object {
+                $line = "$_"
+                if ($line -match 'added|up to date|warn|error') { Write-Status "  $line" "DarkGray" }
+            }
+            if ($LASTEXITCODE -ne 0) {
+                Write-Status "npm install failed — cimmeria-app will be excluded from build" "Yellow"
+                $nodeAvailable = $false
+            } else {
+                Write-Status "Frontend dependencies installed." "Green"
+            }
+        } finally {
+            Pop-Location
+        }
+    }
+
+    $cargoArgs = @("build", "--workspace")
+    if (-not $nodeAvailable) {
+        $cargoArgs += @("--exclude", "cimmeria-app")
+        Write-Status "Node.js not available — excluding cimmeria-app from workspace build" "Yellow"
+    }
     if ($Configuration -eq "Release") {
         $cargoArgs += "--release"
     }

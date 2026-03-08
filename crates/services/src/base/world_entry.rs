@@ -205,6 +205,10 @@ pub(crate) async fn handle_map_loaded_phase_b(
         }
     }
 
+    // Register entity_id -> addr BEFORE notifying CellService, so any response
+    // messages (content engine actions, AoI events) can find the client socket.
+    entity_to_addr.lock().unwrap().insert(entry_info.player_entity_id, addr);
+
     // Notify CellService that this entity now has a client controller
     if let Some(ref tx) = cell_tx {
         let _ = tx.send(BaseToCellMsg::ConnectEntity {
@@ -218,9 +222,6 @@ pub(crate) async fn handle_map_loaded_phase_b(
             world_name: entry_info.world_name.clone(),
         }).await;
     }
-
-    // Register entity_id -> addr so AoI messages can find this client's socket
-    entity_to_addr.lock().unwrap().insert(entry_info.player_entity_id, addr);
 
     tracing::info!(%addr, "Phase 5b complete -- player in world");
     Ok(())
@@ -522,10 +523,12 @@ pub(crate) async fn handle_cell_message(
             handle_mail_request(entity_id, op, socket, connected, entity_to_addr, db_pool).await;
         }
         CellToBaseMsg::MissionUpdate { player_id, mission_id, status, current_step_id,
-                                        completed_step_ids, completed_objective_ids, active_objective_ids } => {
+                                        completed_step_ids, completed_objective_ids, active_objective_ids,
+                                        failed_objective_ids } => {
             handle_mission_update(
                 player_id, mission_id, status, current_step_id,
-                &completed_step_ids, &completed_objective_ids, &active_objective_ids, db_pool,
+                &completed_step_ids, &completed_objective_ids, &active_objective_ids,
+                &failed_objective_ids, db_pool,
             ).await;
         }
         CellToBaseMsg::GrantItem { entity_id: _, player_id, item_id, container_id, count } => {
@@ -543,6 +546,7 @@ async fn handle_mission_update(
     completed_step_ids: &[i32],
     completed_objective_ids: &[i32],
     active_objective_ids: &[i32],
+    failed_objective_ids: &[i32],
     db_pool: &Option<Arc<PgPool>>,
 ) {
     let pool = match db_pool {
@@ -555,14 +559,15 @@ async fn handle_mission_update(
 
     let result = sqlx::query(
         "INSERT INTO sgw_mission (player_id, mission_id, status, current_step_id, \
-         completed_step_ids, completed_objective_ids, active_objective_ids) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
          ON CONFLICT (player_id, mission_id) DO UPDATE SET \
          status = EXCLUDED.status, \
          current_step_id = EXCLUDED.current_step_id, \
          completed_step_ids = EXCLUDED.completed_step_ids, \
          completed_objective_ids = EXCLUDED.completed_objective_ids, \
-         active_objective_ids = EXCLUDED.active_objective_ids",
+         active_objective_ids = EXCLUDED.active_objective_ids, \
+         failed_objective_ids = EXCLUDED.failed_objective_ids",
     )
     .bind(player_id)
     .bind(mission_id)
@@ -571,6 +576,7 @@ async fn handle_mission_update(
     .bind(completed_step_ids)
     .bind(completed_objective_ids)
     .bind(active_objective_ids)
+    .bind(failed_objective_ids)
     .execute(pool.as_ref())
     .await;
 

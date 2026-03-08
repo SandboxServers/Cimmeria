@@ -171,6 +171,7 @@ pub enum CellToBaseMsg {
         completed_step_ids: Vec<i32>,
         completed_objective_ids: Vec<i32>,
         active_objective_ids: Vec<i32>,
+        failed_objective_ids: Vec<i32>,
     },
 
     /// Grant an item to a player and persist to `sgw_inventory`.

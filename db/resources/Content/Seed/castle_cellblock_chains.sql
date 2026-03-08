@@ -25,7 +25,7 @@ INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled
 VALUES (1001, '622 - Zone load: accept mission', 'mission', 622, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1001, 'player_loaded', NULL, 'player', false, 0);
+VALUES (1001, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES (1001, 'mission_status', 622, NULL, 'eq', 'not_active', 0);
@@ -41,7 +41,7 @@ INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled
 VALUES (1002, '622 - Zone load: already completed → cinematic', 'mission', 622, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (1002, 'player_loaded', NULL, 'player', false, 0);
+VALUES (1002, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES (1002, 'mission_status', 622, NULL, 'eq', 'completed', 0);

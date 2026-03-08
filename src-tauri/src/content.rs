@@ -1063,7 +1063,6 @@ fn parse_optional_i32(value: Option<&str>) -> Result<Option<i32>, String> {
                 .ok_or_else(|| format!("could not parse integer from {}", raw))?;
             digits
                 .parse::<i32>()
-                .map(Some)
                 .map_err(|error| format!("could not parse integer from {}: {}", raw, error))
         })
         .transpose()
