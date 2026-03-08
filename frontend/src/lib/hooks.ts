@@ -1,16 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** True when the error is a network-level failure (server unreachable). */
+/** True when the error is a connection-level failure (server unreachable). */
 export function isNetworkError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if (error instanceof DOMException && error.name === 'AbortError') return false;
-  // Raw fetch failure (no proxy)
-  if (error instanceof TypeError && /failed to fetch|network/i.test(error.message)) return true;
-  // Node/proxy error codes
-  if (/ECONNREFUSED|ERR_CONNECTION_REFUSED/i.test(error.message)) return true;
-  // Vite proxy returns 502 Bad Gateway when backend is down
-  if (/failed with (502|503|504)/i.test(error.message)) return true;
-  return false;
+  if (!error || typeof error !== 'object') return false;
+  return (error as Error).name === 'ConnectionError';
 }
 
 export function useResource<T>(fetcher: () => Promise<T>) {

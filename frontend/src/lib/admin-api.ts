@@ -147,12 +147,31 @@ function getAdminApiOrigin() {
 const ADMIN_API_ORIGIN =
   import.meta.env.VITE_ADMIN_API_ORIGIN ?? getAdminApiOrigin();
 
+export class ConnectionError extends Error {
+  constructor(path: string, cause?: unknown) {
+    super(`Server unreachable while fetching ${path}`);
+    this.name = 'ConnectionError';
+    this.cause = cause;
+  }
+}
+
 async function fetchAdminJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${ADMIN_API_ORIGIN}${path}`, {
-    headers: {
-      Accept: 'application/json',
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${ADMIN_API_ORIGIN}${path}`, {
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+  } catch (err) {
+    // Network-level failure (server down, DNS failure, CORS block, etc.)
+    throw new ConnectionError(path, err);
+  }
+
+  // Vite proxy returns 502 when backend is unreachable
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    throw new ConnectionError(path);
+  }
 
   if (!response.ok) {
     throw new Error(`Admin API ${path} failed with ${response.status}`);
