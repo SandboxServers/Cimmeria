@@ -265,9 +265,13 @@ fn init_logging(log_tx: broadcast::Sender<LogEntry>) -> Vec<WorkerGuard> {
     let console_layer = fmt::layer()
         .with_filter(console_filter);
 
-    // ── WebSocket broadcast (info+, all modules) ────────────────────────
+    // ── WebSocket broadcast (debug+, all modules) ─────────────────────
+    // Use debug so the stream captures meaningful traffic (HTTP requests,
+    // DB queries, service chatter) even when the server is otherwise idle.
     let broadcast_layer = BroadcastLayer::new(log_tx)
-        .with_filter(EnvFilter::new("info"));
+        .with_filter(EnvFilter::new(
+            "debug,tungstenite=info,tokio_tungstenite=info,hyper=info",
+        ));
 
     // Assemble the subscriber.
     tracing_subscriber::registry()

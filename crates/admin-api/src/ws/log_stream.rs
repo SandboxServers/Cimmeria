@@ -24,6 +24,22 @@ pub async fn log_ws_handler(
 
 async fn handle_log_socket(mut socket: WebSocket, mut log_rx: broadcast::Receiver<LogEntry>) {
     // Do not use tracing macros here — the BroadcastLayer would re-enter.
+
+    // Send a synthetic welcome entry so the client knows the stream is active.
+    let welcome = LogEntry {
+        timestamp_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64,
+        level: "INFO".to_string(),
+        target: "admin-api::ws".to_string(),
+        message: "Log stream connected. Streaming server events in real time.".to_string(),
+        fields: serde_json::Value::Object(Default::default()),
+    };
+    if let Ok(json) = serde_json::to_string(&welcome) {
+        let _ = socket.send(Message::Text(json.into())).await;
+    }
+
     loop {
         tokio::select! {
             // Forward log entries to the client
