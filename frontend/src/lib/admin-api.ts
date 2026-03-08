@@ -168,8 +168,8 @@ async function fetchAdminJson<T>(path: string): Promise<T> {
     throw new ConnectionError(path, err);
   }
 
-  // Vite proxy returns 502 when backend is unreachable
-  if (response.status === 502 || response.status === 503 || response.status === 504) {
+  // Vite proxy returns 500 (or 502/503/504) when backend is unreachable
+  if (response.status >= 500) {
     throw new ConnectionError(path);
   }
 
