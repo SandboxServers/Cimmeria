@@ -84,8 +84,8 @@ function isChainData(data: ValidationNodeData): data is ValidationChainFrameData
   return data.kind === 'chain';
 }
 
-function hasText(value: string | undefined | null) {
-  return Boolean(value?.trim());
+function hasText(value: unknown) {
+  return Boolean(stringifyValidationText(value).trim());
 }
 
 function countBySeverity(issues: ValidationIssue[], severity: ValidationSeverity) {
@@ -93,7 +93,34 @@ function countBySeverity(issues: ValidationIssue[], severity: ValidationSeverity
 }
 
 function createIssue(issue: ValidationIssue): ValidationIssue {
-  return issue;
+  return {
+    ...issue,
+    title: stringifyValidationText(issue.title),
+    message: stringifyValidationText(issue.message),
+    chainName: issue.chainName ? stringifyValidationText(issue.chainName) : issue.chainName,
+    nodeTitle: issue.nodeTitle ? stringifyValidationText(issue.nodeTitle) : issue.nodeTitle,
+    sequenceId: issue.sequenceId ? stringifyValidationText(issue.sequenceId) : issue.sequenceId,
+  };
+}
+
+function stringifyValidationText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 export function buildValidationReport(args: {
@@ -462,7 +489,7 @@ export function buildValidationReport(args: {
     warningCount: countBySeverity(issues, 'warning'),
     chainStatuses: args.chains.map((chain) => ({
       chainId: chain.nodeId,
-      chainName: chain.name,
+      chainName: stringifyValidationText(chain.name),
       errorCount: issues.filter(
         (issue) => issue.chainId === chain.nodeId && issue.severity === 'error',
       ).length,

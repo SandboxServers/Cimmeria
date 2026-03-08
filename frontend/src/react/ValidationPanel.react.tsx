@@ -4,6 +4,26 @@ import type { ValidationIssue, ValidationReport } from './chainValidation';
 
 type ValidationFilter = 'all' | 'errors' | 'warnings';
 
+function renderValidationText(value: unknown) {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 export default function ValidationPanel({
   onFocusIssue,
   report,
@@ -84,11 +104,13 @@ export default function ValidationPanel({
                         issue.severity === 'error' ? 'text-[#ffb6b3]' : 'text-[#ffd38a]'
                       }`}
                     >
-                      {issue.scope}
+                      {renderValidationText(issue.scope)}
                     </p>
-                    <p className="mt-2 text-sm font-semibold text-white">{issue.title}</p>
+                    <p className="mt-2 text-sm font-semibold text-white">
+                      {renderValidationText(issue.title)}
+                    </p>
                     <p className="mt-2 text-sm leading-6 text-[rgba(224,231,239,0.8)]">
-                      {issue.message}
+                      {renderValidationText(issue.message)}
                     </p>
                   </div>
                   <span className="rounded-full border border-white/8 bg-[rgba(11,19,29,0.72)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[rgba(224,231,239,0.76)]">
@@ -98,17 +120,17 @@ export default function ValidationPanel({
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-[rgba(160,174,192,0.78)]">
                   {issue.chainName ? (
                     <span className="rounded-full border border-white/8 bg-white/4 px-3 py-1">
-                      {issue.chainName}
+                      {renderValidationText(issue.chainName)}
                     </span>
                   ) : null}
                   {issue.nodeTitle ? (
                     <span className="rounded-full border border-white/8 bg-white/4 px-3 py-1">
-                      {issue.nodeTitle}
+                      {renderValidationText(issue.nodeTitle)}
                     </span>
                   ) : null}
                   {issue.sequenceId ? (
                     <span className="rounded-full border border-white/8 bg-white/4 px-3 py-1">
-                      {issue.sequenceId}
+                      {renderValidationText(issue.sequenceId)}
                     </span>
                   ) : null}
                   <span className="rounded-full border border-white/8 bg-white/4 px-3 py-1">
@@ -139,7 +161,9 @@ export default function ValidationPanel({
               key={chain.chainId}
             >
               <div>
-                <p className="text-sm font-medium text-white">{chain.chainName}</p>
+                <p className="text-sm font-medium text-white">
+                  {renderValidationText(chain.chainName)}
+                </p>
               </div>
               <div className="flex gap-2 text-xs">
                 <span className="rounded-full border border-[rgba(255,94,91,0.22)] bg-[rgba(255,94,91,0.12)] px-3 py-1 text-[#ffb6b3]">

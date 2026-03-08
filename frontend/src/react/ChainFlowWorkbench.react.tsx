@@ -9,9 +9,9 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
-import MissionCardLibrary from './MissionCardLibrary';
+import MissionCardLibrary from './MissionCardLibrary.react';
 import type { ScenarioTemplate as LibraryScenarioTemplate } from './missionCardCatalog';
-import ValidationPanel from './ValidationPanel';
+import ValidationPanel from './ValidationPanel.react';
 import {
   Background,
   BackgroundVariant,

@@ -183,4 +183,28 @@ describe('buildValidationReport', () => {
     expect(report.errorCount).toBe(0);
     expect(report.warningCount).toBe(0);
   });
+
+  it('normalizes non-string validation text into safe strings', () => {
+    const chain = chainSummary('chain-1', {
+      name: { label: 'Weird Chain' } as unknown as string,
+    });
+    const nodes: Node<ValidationNodeData>[] = [
+      missionNode('n1', 'chain-1', {
+        title: { label: 'Trigger Object' } as unknown as string,
+        detail: { description: 'Object detail' } as unknown as string,
+        scenario: { name: 'Object scenario' } as unknown as string,
+      }),
+    ];
+
+    const report = buildValidationReport({
+      chains: [{ ...chain, childIds: ['n1'] }],
+      nodes,
+      edges: [],
+    });
+
+    expect(typeof report.chainStatuses[0].chainName).toBe('string');
+    expect(report.chainStatuses[0].chainName).toContain('Weird Chain');
+    expect(report.issues.every((issue) => typeof issue.title === 'string')).toBe(true);
+    expect(report.issues.every((issue) => typeof issue.message === 'string')).toBe(true);
+  });
 });
