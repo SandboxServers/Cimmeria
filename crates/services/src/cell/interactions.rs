@@ -24,18 +24,20 @@ const MAX_INTERACT_DISTANCE: f32 = 5.0;
 /// 2. Check distance (max 5.0 units)
 /// 3. Look up target's interaction type
 /// 4. Send appropriate client method response
+///
+/// Returns `Some(dialog_id)` if a dialog was opened (for content engine events).
 pub async fn handle_interact(
     entity_id: u32,
     target_entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-) {
+) -> Option<i32> {
     // Validate player exists
     let player_pos = match space_mgr.get_entity(entity_id) {
         Some(e) => e.position,
         None => {
             tracing::warn!(entity_id, "interact: player entity not found");
-            return;
+            return None;
         }
     };
 
@@ -48,7 +50,7 @@ pub async fn handle_interact(
         ),
         None => {
             tracing::debug!(entity_id, target_entity_id, "interact: target not found");
-            return;
+            return None;
         }
     };
 
@@ -57,25 +59,30 @@ pub async fn handle_interact(
     if dist > MAX_INTERACT_DISTANCE {
         tracing::debug!(entity_id, target_entity_id, dist, "interact: too far away");
         // TODO: Send feedback message "You are too far away to interact."
-        return;
+        return None;
     }
 
     // Dispatch based on interaction type
     match interaction_type {
         Some(NpcInteractionType::Dialog { dialog_id }) => {
             send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx).await;
+            Some(dialog_id)
         }
         Some(NpcInteractionType::Vendor) => {
             send_store_open(entity_id, target_entity_id as i32, tx).await;
+            None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {
             send_trainer_open(entity_id, target_entity_id as i32, archetype_id, tx).await;
+            None
         }
         Some(NpcInteractionType::Loot) => {
             send_loot_display(entity_id, target_entity_id as i32, tx).await;
+            None
         }
         None => {
             tracing::debug!(entity_id, target_entity_id, "interact: target has no interaction");
+            None
         }
     }
 }
@@ -83,7 +90,7 @@ pub async fn handle_interact(
 /// Send `onDialogDisplay` (flat index 105) to the player.
 ///
 /// Wire: `entityId:i32, dialogId:i32, missionFlags:i32, isImmediate:u8, missionId:i32`.
-async fn send_dialog_display(
+pub async fn send_dialog_display(
     player_id: u32,
     npc_entity_id: i32,
     dialog_id: i32,

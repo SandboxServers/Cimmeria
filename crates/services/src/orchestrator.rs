@@ -138,10 +138,11 @@ impl Orchestrator {
             }
         };
 
-        // Pass DB pool to auth and base services
+        // Pass DB pool to auth, base, and cell services
         if let Some(ref pool) = db_pool {
             state.auth.set_db_pool(Arc::clone(pool));
             state.base.set_db_pool(Arc::clone(pool));
+            state.cell.set_db_pool(Arc::clone(pool));
         }
 
         // Register shards with auth before starting the HTTP listener so

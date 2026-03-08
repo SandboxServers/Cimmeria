@@ -33,6 +33,7 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::stats::{HEALTH, FOCUS};
 
 use super::combat;
@@ -144,6 +145,7 @@ pub async fn dispatch_cell_method(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     match method_index {
         CM_SET_TARGET_ID => {
@@ -309,9 +311,20 @@ pub async fn dispatch_cell_method(
             if args.len() >= 4 {
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::debug!(entity_id, target_entity_id, "interact");
-                super::interactions::handle_interact(
+                let dialog_id = super::interactions::handle_interact(
                     entity_id, target_entity_id as u32, tx, space_mgr,
                 ).await;
+
+                // Fire content engine event if a dialog was opened
+                if let Some(did) = dialog_id {
+                    // Get player_id from entity (0 fallback since DB persist uses entity lookup)
+                    let player_id = space_mgr.get_entity(entity_id)
+                        .and_then(|e| e.player_id)
+                        .unwrap_or(0);
+                    super::content::fire_dialog_open(
+                        entity_id, player_id, did, engine, tx, space_mgr,
+                    ).await;
+                }
             }
         }
 

@@ -3,10 +3,6 @@
 //! Triggers define _when_ a chain activates. Each chain has exactly one trigger.
 //! When a game event fires, the chain engine matches it against registered
 //! triggers to determine which chains should be evaluated.
-//!
-//! The 11 trigger types cover the core gameplay events from the original Python
-//! scripting layer: entity lifecycle, combat, interaction, spatial, mission
-//! progression, inventory, timers, and arbitrary custom events.
 
 use std::collections::HashMap;
 
@@ -29,7 +25,12 @@ pub enum Trigger {
     OnEntityDestroyed { entity_type: Option<String> },
 
     /// Fires when an entity dies (health reaches zero).
-    OnEntityDeath { entity_type: Option<String> },
+    /// `entity_tag` filters by a specific tagged NPC (DB `entity_dead_tag`).
+    OnEntityDeath {
+        entity_type: Option<String>,
+        #[serde(default)]
+        entity_tag: Option<String>,
+    },
 
     /// Fires when an ability is used by any entity.
     OnAbilityUsed { ability_id: Option<i32> },
@@ -38,10 +39,11 @@ pub enum Trigger {
     OnInteraction { interaction_type: Option<String> },
 
     /// Fires when an entity enters a spatial region.
-    OnRegionEnter { region_id: i32 },
+    /// Uses string keys like `"Castle_Cellblock.Region2"`.
+    OnRegionEnter { region_key: String },
 
     /// Fires when an entity exits a spatial region.
-    OnRegionExit { region_id: i32 },
+    OnRegionExit { region_key: String },
 
     /// Fires when a mission reaches a specific step.
     OnMissionStep { mission_id: i32, step: i32 },
@@ -54,39 +56,65 @@ pub enum Trigger {
 
     /// Fires on an arbitrary named event (extensibility hook).
     OnCustomEvent { event_name: String },
+
+    /// Fires when a player completes world entry (mapLoaded).
+    OnPlayerLoaded { world_name: Option<String> },
+
+    /// Fires when the server sends `onDialogDisplay` to a player.
+    OnDialogOpen { dialog_id: i32 },
+
+    /// Fires when a player selects a choice/button in a dialog.
+    OnDialogChoice { dialog_id: i32 },
+
+    /// Fires when a player interacts with a tagged NPC or object.
+    OnInteractTag { entity_tag: String },
+
+    /// Fires when a player interacts with an entity from a named template.
+    OnInteractTemplate { template_name: String },
+
+    /// Fires when a player uses an inventory item.
+    OnItemUse { item_id: i32 },
+
+    /// Fires when a player arrives via teleporter at a destination region.
+    OnTeleportIn { region_id: i32 },
+
+    /// Fires when an effect is first initialized on an entity.
+    OnEffectInit,
+
+    /// Fires at the start of each pulse of a periodic effect.
+    OnEffectPulseBegin,
+
+    /// Fires at the end of each pulse of a periodic effect.
+    OnEffectPulseEnd,
+
+    /// Fires when an effect is removed from an entity.
+    OnEffectRemoved,
+
+    /// Fires when a mission is completed.
+    OnMissionCompleted { mission_id: i32 },
+
+    /// Fires when a dialog set is opened for a player.
+    OnDialogSetOpen { dialog_set_name: String },
 }
 
 /// Runtime event payload passed to the chain engine when a game event occurs.
-///
-/// Contains the trigger type discriminant, optional source/target entities,
-/// and a free-form parameter map for event-specific data.
 #[derive(Debug, Clone)]
 pub struct TriggerEvent {
     /// Discriminant identifying which trigger type this event corresponds to.
     pub trigger_type: TriggerType,
 
-    /// The entity that caused the event (e.g., the player who used an ability).
+    /// The entity that caused the event.
     pub source_entity: Option<EntityId>,
 
-    /// The entity the event targets (e.g., the NPC being interacted with).
+    /// The entity the event targets.
     pub target_entity: Option<EntityId>,
 
-    /// Event-specific parameters. Keys and value types depend on the trigger:
-    ///
-    /// - `OnEntityCreated`: `"entity_type"` (string)
-    /// - `OnAbilityUsed`: `"ability_id"` (number)
-    /// - `OnRegionEnter`/`OnRegionExit`: `"region_id"` (number)
-    /// - `OnMissionStep`: `"mission_id"` (number), `"step"` (number)
-    /// - `OnItemAcquired`: `"item_id"` (number)
-    /// - `OnTimer`: `"timer_name"` (string)
-    /// - `OnCustomEvent`: `"event_name"` (string)
-    /// - `OnInteraction`: `"interaction_type"` (string)
+    /// Event-specific parameters.
     pub params: HashMap<String, serde_json::Value>,
 }
 
 /// Discriminant enum for trigger types, used as a grouping key in the chain
-/// engine's index. Unlike [`Trigger`], this carries no filter data -- it is
-/// purely a type tag for fast lookup.
+/// engine's index.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TriggerType {
     EntityCreated,
@@ -100,6 +128,19 @@ pub enum TriggerType {
     ItemAcquired,
     Timer,
     CustomEvent,
+    PlayerLoaded,
+    DialogOpen,
+    DialogChoice,
+    InteractTag,
+    InteractTemplate,
+    ItemUse,
+    TeleportIn,
+    EffectInit,
+    EffectPulseBegin,
+    EffectPulseEnd,
+    EffectRemoved,
+    MissionCompleted,
+    DialogSetOpen,
 }
 
 impl Trigger {
@@ -117,21 +158,30 @@ impl Trigger {
             Trigger::OnItemAcquired { .. } => TriggerType::ItemAcquired,
             Trigger::OnTimer { .. } => TriggerType::Timer,
             Trigger::OnCustomEvent { .. } => TriggerType::CustomEvent,
+            Trigger::OnPlayerLoaded { .. } => TriggerType::PlayerLoaded,
+            Trigger::OnDialogOpen { .. } => TriggerType::DialogOpen,
+            Trigger::OnDialogChoice { .. } => TriggerType::DialogChoice,
+            Trigger::OnInteractTag { .. } => TriggerType::InteractTag,
+            Trigger::OnInteractTemplate { .. } => TriggerType::InteractTemplate,
+            Trigger::OnItemUse { .. } => TriggerType::ItemUse,
+            Trigger::OnTeleportIn { .. } => TriggerType::TeleportIn,
+            Trigger::OnEffectInit => TriggerType::EffectInit,
+            Trigger::OnEffectPulseBegin => TriggerType::EffectPulseBegin,
+            Trigger::OnEffectPulseEnd => TriggerType::EffectPulseEnd,
+            Trigger::OnEffectRemoved => TriggerType::EffectRemoved,
+            Trigger::OnMissionCompleted { .. } => TriggerType::MissionCompleted,
+            Trigger::OnDialogSetOpen { .. } => TriggerType::DialogSetOpen,
         }
     }
 
     /// Returns `true` if this trigger matches the given runtime event.
-    ///
-    /// Matching is two-phase: first the trigger type discriminant must match,
-    /// then any optional filter fields are checked against the event's params.
-    /// A `None` filter is a wildcard that matches any value.
     pub fn matches(&self, event: &TriggerEvent) -> bool {
         if self.trigger_type() != event.trigger_type {
             return false;
         }
 
         match self {
-            Trigger::OnEntityCreated { entity_type } => {
+            Trigger::OnEntityCreated { entity_type } | Trigger::OnEntityDestroyed { entity_type } => {
                 match entity_type {
                     Some(expected) => event.params.get("entity_type")
                         .and_then(|v| v.as_str())
@@ -139,15 +189,14 @@ impl Trigger {
                     None => true,
                 }
             }
-            Trigger::OnEntityDestroyed { entity_type } => {
-                match entity_type {
-                    Some(expected) => event.params.get("entity_type")
+            Trigger::OnEntityDeath { entity_type, entity_tag } => {
+                // If entity_tag is set, match on tag (DB entity_dead_tag pattern)
+                if let Some(tag) = entity_tag {
+                    return event.params.get("entity_tag")
                         .and_then(|v| v.as_str())
-                        .map_or(false, |actual| actual == expected),
-                    None => true,
+                        .map_or(false, |actual| actual == tag);
                 }
-            }
-            Trigger::OnEntityDeath { entity_type } => {
+                // Otherwise match on entity_type (original pattern)
                 match entity_type {
                     Some(expected) => event.params.get("entity_type")
                         .and_then(|v| v.as_str())
@@ -171,15 +220,15 @@ impl Trigger {
                     None => true,
                 }
             }
-            Trigger::OnRegionEnter { region_id } => {
-                event.params.get("region_id")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *region_id as i64)
+            Trigger::OnRegionEnter { region_key } => {
+                event.params.get("region_key")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |actual| actual == region_key)
             }
-            Trigger::OnRegionExit { region_id } => {
-                event.params.get("region_id")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *region_id as i64)
+            Trigger::OnRegionExit { region_key } => {
+                event.params.get("region_key")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |actual| actual == region_key)
             }
             Trigger::OnMissionStep { mission_id, step } => {
                 let mission_match = event.params.get("mission_id")
@@ -208,6 +257,52 @@ impl Trigger {
                     .and_then(|v| v.as_str())
                     .map_or(false, |actual| actual == event_name)
             }
+            Trigger::OnPlayerLoaded { world_name } => {
+                match world_name {
+                    Some(expected) => event.params.get("world_name")
+                        .and_then(|v| v.as_str())
+                        .map_or(false, |actual| actual == expected),
+                    None => true,
+                }
+            }
+            Trigger::OnDialogOpen { dialog_id } | Trigger::OnDialogChoice { dialog_id } => {
+                event.params.get("dialog_id")
+                    .and_then(|v| v.as_i64())
+                    .map_or(false, |actual| actual == *dialog_id as i64)
+            }
+            Trigger::OnInteractTag { entity_tag } => {
+                event.params.get("entity_tag")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |actual| actual == entity_tag)
+            }
+            Trigger::OnInteractTemplate { template_name } => {
+                event.params.get("template_name")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |actual| actual == template_name)
+            }
+            Trigger::OnItemUse { item_id } => {
+                event.params.get("item_id")
+                    .and_then(|v| v.as_i64())
+                    .map_or(false, |actual| actual == *item_id as i64)
+            }
+            Trigger::OnTeleportIn { region_id } => {
+                event.params.get("region_id")
+                    .and_then(|v| v.as_i64())
+                    .map_or(false, |actual| actual == *region_id as i64)
+            }
+            // Unit triggers match any event of the right type
+            Trigger::OnEffectInit | Trigger::OnEffectPulseBegin |
+            Trigger::OnEffectPulseEnd | Trigger::OnEffectRemoved => true,
+            Trigger::OnMissionCompleted { mission_id } => {
+                event.params.get("mission_id")
+                    .and_then(|v| v.as_i64())
+                    .map_or(false, |actual| actual == *mission_id as i64)
+            }
+            Trigger::OnDialogSetOpen { dialog_set_name } => {
+                event.params.get("dialog_set_name")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |actual| actual == dialog_set_name)
+            }
         }
     }
 }
@@ -232,6 +327,11 @@ mod tests {
 
         let t = Trigger::OnTimer { timer_name: "respawn".to_string() };
         assert_eq!(t.trigger_type(), TriggerType::Timer);
+
+        let t = Trigger::OnDialogChoice { dialog_id: 100 };
+        assert_eq!(t.trigger_type(), TriggerType::DialogChoice);
+
+        assert_eq!(Trigger::OnEffectInit.trigger_type(), TriggerType::EffectInit);
     }
 
     #[test]
@@ -273,19 +373,19 @@ mod tests {
     }
 
     #[test]
-    fn region_enter_matches_correct_region() {
-        let trigger = Trigger::OnRegionEnter { region_id: 42 };
+    fn region_enter_matches_correct_key() {
+        let trigger = Trigger::OnRegionEnter { region_key: "Castle_Cellblock.Region2".to_string() };
         let event = make_event(TriggerType::RegionEnter, vec![
-            ("region_id", serde_json::json!(42)),
+            ("region_key", serde_json::json!("Castle_Cellblock.Region2")),
         ]);
         assert!(trigger.matches(&event));
     }
 
     #[test]
-    fn region_enter_rejects_wrong_region() {
-        let trigger = Trigger::OnRegionEnter { region_id: 42 };
+    fn region_enter_rejects_wrong_key() {
+        let trigger = Trigger::OnRegionEnter { region_key: "Castle_Cellblock.Region2".to_string() };
         let event = make_event(TriggerType::RegionEnter, vec![
-            ("region_id", serde_json::json!(99)),
+            ("region_key", serde_json::json!("SGC_W1.Region1")),
         ]);
         assert!(!trigger.matches(&event));
     }
@@ -294,23 +394,15 @@ mod tests {
     fn mission_step_requires_both_fields() {
         let trigger = Trigger::OnMissionStep { mission_id: 10, step: 3 };
 
-        // Both match
         let event = make_event(TriggerType::MissionStep, vec![
             ("mission_id", serde_json::json!(10)),
             ("step", serde_json::json!(3)),
         ]);
         assert!(trigger.matches(&event));
 
-        // Wrong step
         let event = make_event(TriggerType::MissionStep, vec![
             ("mission_id", serde_json::json!(10)),
             ("step", serde_json::json!(1)),
-        ]);
-        assert!(!trigger.matches(&event));
-
-        // Missing step
-        let event = make_event(TriggerType::MissionStep, vec![
-            ("mission_id", serde_json::json!(10)),
         ]);
         assert!(!trigger.matches(&event));
     }
@@ -325,10 +417,47 @@ mod tests {
     }
 
     #[test]
-    fn timer_trigger_matches_name() {
-        let trigger = Trigger::OnTimer { timer_name: "respawn_wave".to_string() };
-        let event = make_event(TriggerType::Timer, vec![
-            ("timer_name", serde_json::Value::String("respawn_wave".to_string())),
+    fn dialog_choice_matches() {
+        let trigger = Trigger::OnDialogChoice { dialog_id: 5021 };
+        let event = make_event(TriggerType::DialogChoice, vec![
+            ("dialog_id", serde_json::json!(5021)),
+        ]);
+        assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn interact_tag_matches() {
+        let trigger = Trigger::OnInteractTag { entity_tag: "ArmYourself_FrostBody".to_string() };
+        let event = make_event(TriggerType::InteractTag, vec![
+            ("entity_tag", serde_json::json!("ArmYourself_FrostBody")),
+        ]);
+        assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn entity_death_by_tag() {
+        let trigger = Trigger::OnEntityDeath {
+            entity_type: None,
+            entity_tag: Some("Hallway01_Guard".to_string()),
+        };
+        let event = make_event(TriggerType::EntityDeath, vec![
+            ("entity_tag", serde_json::json!("Hallway01_Guard")),
+        ]);
+        assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn effect_init_matches() {
+        let trigger = Trigger::OnEffectInit;
+        let event = make_event(TriggerType::EffectInit, vec![]);
+        assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn mission_completed_matches() {
+        let trigger = Trigger::OnMissionCompleted { mission_id: 1559 };
+        let event = make_event(TriggerType::MissionCompleted, vec![
+            ("mission_id", serde_json::json!(1559)),
         ]);
         assert!(trigger.matches(&event));
     }

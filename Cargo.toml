@@ -14,6 +14,7 @@ members = [
     "crates/admin-api",
     "crates/commands",
     "crates/server",
+    "crates/launcher",
     "src-tauri",
 ]
 default-members = [
@@ -60,6 +61,15 @@ cbc = "0.1"
 hmac = "0.12"
 md-5 = "0.10"
 rand = "0.9"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Hashing
+sha2 = "0.10"
+
+# Async utilities
+futures-util = "0.3"
 
 # Archive reading (CookedCharCreation.pak is a ZIP)
 zip = { version = "2", default-features = false, features = ["deflate"] }

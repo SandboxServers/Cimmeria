@@ -26,7 +26,7 @@ function Build-CimmeriaServer {
 
     Write-Step "BUILDING CIMMERIA SERVER"
 
-    $cargoArgs = @("build", "--workspace")
+    $cargoArgs = @("build", "--workspace", "--exclude", "cimmeria-app")
     if ($Configuration -eq "Release") {
         $cargoArgs += "--release"
     }
@@ -46,10 +46,14 @@ function Build-CimmeriaServer {
         throw "cargo build failed with exit code $LASTEXITCODE."
     }
 
-    # Verify binary
+    # Verify binary — check both default and target-specific output directories
     $profile = if ($Configuration -eq "Release") { "release" } else { "debug" }
     $exeSuffix = if ($IsWindows -or (-not (Test-Path variable:IsWindows))) { ".exe" } else { "" }
     $serverBin = Join-Path $paths.ProjectRoot "target/$profile/cimmeria-server$exeSuffix"
+    if (-not (Test-Path $serverBin)) {
+        # Cross-compile via --target puts output under target/<triple>/<profile>/
+        $serverBin = Join-Path $paths.ProjectRoot "target/x86_64-pc-windows-gnu/$profile/cimmeria-server.exe"
+    }
 
     if (Test-Path $serverBin) {
         $size = Format-FileSize (Get-Item $serverBin).Length

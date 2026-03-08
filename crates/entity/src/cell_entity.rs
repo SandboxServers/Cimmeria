@@ -91,6 +91,12 @@ pub struct CellEntity {
 
     /// Mission tracking for player entities.
     pub missions: MissionManager,
+
+    /// Database player_id (for persistence operations). Only set for player entities.
+    pub player_id: Option<i32>,
+
+    /// Archetype ID for content engine conditions. Set from character data on connect.
+    pub archetype_id: Option<i32>,
 }
 
 impl CellEntity {
@@ -112,6 +118,8 @@ impl CellEntity {
             interaction_type: None,
             npc_name: None,
             missions: MissionManager::new(),
+            player_id: None,
+            archetype_id: None,
         }
     }
 

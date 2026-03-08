@@ -1,27 +1,35 @@
 //! Action executors for chain effects.
 //!
 //! Actions are the "do" part of a chain -- they modify game state when a
-//! trigger fires and all conditions pass. The 21 action types cover the
-//! breadth of the original Python scripting layer: XP/item grants, effects,
+//! trigger fires and all conditions pass. The action types cover the breadth
+//! of the original Python scripting layer: XP/item grants, effects,
 //! teleportation, spawning, dialog, missions, loot, timers, and extensibility
 //! hooks.
+//!
+//! Actions are resolved by the engine but executed by the caller (CellService),
+//! which has access to game state. The `execute()` method on each action is
+//! preserved for backward compatibility but should not be called for DB-driven
+//! chains — use `ChainEngine::resolve_event()` instead.
 
 use serde::{Deserialize, Serialize};
 
 use crate::context::ExecutionContext;
 
 /// An action to execute when a chain's trigger fires and conditions pass.
-///
-/// Actions execute in order. Each returns an [`ActionResult`] that the chain
-/// engine collects. The special `ChainTrigger` result causes the engine to
-/// enqueue another chain for evaluation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
+    // ── Original generic actions ──────────────────────────────────────────
+
     /// Award experience points to the source entity.
     GrantXP { amount: u64 },
 
     /// Add items to the source entity's inventory.
-    GrantItem { item_id: i32, count: i32 },
+    GrantItem {
+        item_id: i32,
+        count: i32,
+        #[serde(default)]
+        container_id: Option<i32>,
+    },
 
     /// Remove items from the source entity's inventory.
     RemoveItem { item_id: i32, count: i32 },
@@ -38,13 +46,13 @@ pub enum Action {
     /// Spawn a new entity from a template at the given position.
     SpawnEntity { template_id: i32, position: [f32; 3] },
 
-    /// Despawn the target entity (remove from world).
+    /// Despawn the target entity (from context).
     DespawnEntity,
 
     /// Open a dialog set for the source entity (player).
     StartDialog { dialog_set_id: i32 },
 
-    /// Advance the specified mission to its next step.
+    /// Advance the specified mission to its next step (legacy; prefer AcceptMission/AdvanceStep).
     AdvanceMission { mission_id: i32 },
 
     /// Mark the specified mission as complete.
@@ -56,23 +64,23 @@ pub enum Action {
     /// Play a sound effect at the source entity's position.
     PlaySound { sound: String },
 
-    /// Send a text message on a named channel (system, chat, etc.).
+    /// Send a text message on a named channel.
     SendMessage { channel: String, message: String },
 
-    /// Modify a property on the source entity using the given operation.
+    /// Modify a property on the source entity.
     ModifyProperty {
         property: String,
         operation: PropertyOp,
         value: serde_json::Value,
     },
 
-    /// Roll a loot table and grant results to the source entity.
+    /// Roll a loot table and grant results.
     RollLootTable { table_id: i32 },
 
     /// Spawn a loot bag entity at the given position.
     SpawnLootBag { position: [f32; 3] },
 
-    /// Start a named timer that will fire an `OnTimer` trigger when it expires.
+    /// Start a named timer.
     StartTimer {
         name: String,
         duration_secs: f32,
@@ -82,26 +90,134 @@ pub enum Action {
     /// Cancel a running named timer.
     CancelTimer { name: String },
 
-    /// Trigger another chain by ID (allows chain composition).
+    /// Trigger another chain by ID.
     TriggerChain { chain_id: i64 },
 
-    /// Execute a custom handler function with arbitrary parameters.
+    /// Execute a custom handler function.
     ExecuteCustom {
         handler: String,
         params: serde_json::Value,
+    },
+
+    // ── DB-driven action types ────────────────────────────────────────────
+
+    /// Accept and start tracking a mission.
+    AcceptMission { mission_id: i32 },
+
+    /// Display a specific dialog to the player.
+    DisplayDialog { dialog_id: i32 },
+
+    /// Add a dialog set entry to an NPC.
+    AddDialogSet {
+        dialog_set_id: i32,
+        slot: i32,
+        mission_id: Option<i32>,
+    },
+
+    /// Remove a dialog set entry from an NPC.
+    RemoveDialogSet {
+        dialog_set_id: i32,
+        slot: i32,
+    },
+
+    /// Play a cinematic sequence/cutscene.
+    PlaySequence { sequence_id: i32 },
+
+    /// Advance a mission to a specific step.
+    AdvanceStep {
+        mission_id: i32,
+        step_id: i32,
+    },
+
+    /// Set or modify interaction type flags on a tagged entity.
+    SetInteractionType {
+        entity_tag: String,
+        operation: String,
+        mask: i64,
+    },
+
+    /// Start a minigame for the player.
+    StartMinigame {
+        minigame_type: String,
+        on_victory_chains: Vec<i64>,
+    },
+
+    /// Set the aggression level on a tagged NPC.
+    SetAggression {
+        entity_tag: String,
+        level: i32,
+    },
+
+    /// Destroy a tagged entity (remove from world).
+    DestroyTaggedEntity { entity_tag: String },
+
+    /// Activate a transporter to move the player to a region.
+    TriggerTransporter { region_id: i32 },
+
+    /// Send a system message to the player.
+    SystemMessage { message_id: i32 },
+
+    /// Apply QR combat damage to a stat.
+    QrCombatDamage {
+        stat_id: i32,
+        source_id: i32,
+        amount_nvp: String,
+    },
+
+    /// Change a stat on the entity.
+    ChangeStat {
+        stat_id: i32,
+        min: Option<i32>,
+        max: Option<i32>,
+        use_ammo_stat: Option<bool>,
+        set_to_max: Option<bool>,
+    },
+
+    /// Abandon an active mission.
+    AbandonMission { mission_id: i32 },
+
+    /// Fail a specific objective within a mission.
+    FailObjective {
+        mission_id: i32,
+        objective_id: i32,
+    },
+
+    /// Increment a named counter.
+    IncrementCounter {
+        counter_name: String,
+        amount: i32,
+    },
+
+    /// Reset a named counter to zero.
+    ResetCounter { counter_name: String },
+
+    /// Complete a specific objective within a mission.
+    CompleteObjective {
+        mission_id: i32,
+        objective_id: i32,
+    },
+
+    /// Set the visibility of a tagged entity.
+    SetVisible {
+        entity_tag: String,
+        visible: bool,
+    },
+
+    /// Move a tagged entity or the player to a destination.
+    MoveEntity {
+        entity_tag: Option<String>,
+        destination: [f32; 3],
+        world: Option<String>,
+        use_player: Option<bool>,
     },
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PropertyOp {
-    /// Replace the property value entirely.
     Set,
-    /// Add the value to the current property (numeric).
     Add,
-    /// Subtract the value from the current property (numeric).
     Subtract,
-    /// Multiply the current property by the value (numeric).
     Multiply,
 }
 
@@ -119,99 +235,16 @@ pub enum ActionResult {
 impl Action {
     /// Execute this action against the given execution context.
     ///
-    /// Returns an [`ActionResult`] indicating success, failure, or a request
-    /// to trigger another chain.
-    ///
-    /// # Current Status
-    ///
-    /// All variants currently delegate to `todo!()` placeholders. Real
-    /// implementations will call into game service interfaces (inventory,
-    /// combat, spatial, mission, etc.) to apply their effects.
+    /// Most variants are `todo!()` stubs — real execution happens in the
+    /// CellService via `resolve_event()` + `execute_actions()`.
     pub fn execute(&self, ctx: &mut ExecutionContext) -> ActionResult {
         let _ = ctx;
         match self {
-            Action::GrantXP { amount } => {
-                let _ = amount;
-                todo!("Action::GrantXP - award XP via combat/progression service")
-            }
-            Action::GrantItem { item_id, count } => {
-                let _ = (item_id, count);
-                todo!("Action::GrantItem - add items via inventory service")
-            }
-            Action::RemoveItem { item_id, count } => {
-                let _ = (item_id, count);
-                todo!("Action::RemoveItem - remove items via inventory service")
-            }
-            Action::ApplyEffect { effect_id, duration_secs } => {
-                let _ = (effect_id, duration_secs);
-                todo!("Action::ApplyEffect - apply effect via effects service")
-            }
-            Action::RemoveEffect { effect_id } => {
-                let _ = effect_id;
-                todo!("Action::RemoveEffect - remove effect via effects service")
-            }
-            Action::Teleport { space_id, position } => {
-                let _ = (space_id, position);
-                todo!("Action::Teleport - move entity via spatial service")
-            }
-            Action::SpawnEntity { template_id, position } => {
-                let _ = (template_id, position);
-                todo!("Action::SpawnEntity - create entity via entity manager")
-            }
-            Action::DespawnEntity => {
-                todo!("Action::DespawnEntity - destroy target entity via entity manager")
-            }
-            Action::StartDialog { dialog_set_id } => {
-                let _ = dialog_set_id;
-                todo!("Action::StartDialog - open dialog via dialog service")
-            }
-            Action::AdvanceMission { mission_id } => {
-                let _ = mission_id;
-                todo!("Action::AdvanceMission - advance mission via mission service")
-            }
-            Action::CompleteMission { mission_id } => {
-                let _ = mission_id;
-                todo!("Action::CompleteMission - complete mission via mission service")
-            }
-            Action::PlayAnimation { animation } => {
-                let _ = animation;
-                todo!("Action::PlayAnimation - send animation command to client")
-            }
-            Action::PlaySound { sound } => {
-                let _ = sound;
-                todo!("Action::PlaySound - send sound event to client")
-            }
-            Action::SendMessage { channel, message } => {
-                let _ = (channel, message);
-                todo!("Action::SendMessage - send text message via chat service")
-            }
-            Action::ModifyProperty { property, operation, value } => {
-                let _ = (property, operation, value);
-                todo!("Action::ModifyProperty - modify entity property via entity system")
-            }
-            Action::RollLootTable { table_id } => {
-                let _ = table_id;
-                todo!("Action::RollLootTable - roll loot table via loot service")
-            }
-            Action::SpawnLootBag { position } => {
-                let _ = position;
-                todo!("Action::SpawnLootBag - spawn loot bag entity at position")
-            }
-            Action::StartTimer { name, duration_secs, repeat } => {
-                let _ = (name, duration_secs, repeat);
-                todo!("Action::StartTimer - register timer via timer service")
-            }
-            Action::CancelTimer { name } => {
-                let _ = name;
-                todo!("Action::CancelTimer - cancel timer via timer service")
-            }
-            Action::TriggerChain { chain_id } => {
-                let _ = chain_id;
-                ActionResult::ChainTrigger(*chain_id)
-            }
-            Action::ExecuteCustom { handler, params } => {
-                let _ = (handler, params);
-                todo!("Action::ExecuteCustom - dispatch to custom handler registry")
+            Action::TriggerChain { chain_id } => ActionResult::ChainTrigger(*chain_id),
+            _ => {
+                // All other actions are executed by the CellService via resolve_event().
+                // Calling execute() directly on them is not supported for DB-driven chains.
+                ActionResult::Error(format!("Action {:?} must be executed via resolve_event()", self))
             }
         }
     }
@@ -281,6 +314,43 @@ mod tests {
                 assert_eq!(position, [100.0, 200.0, 300.0]);
             }
             _ => panic!("Expected Teleport variant"),
+        }
+    }
+
+    #[test]
+    fn grant_item_with_container() {
+        let action = Action::GrantItem { item_id: 55, count: 1, container_id: Some(3) };
+        let json = serde_json::to_string(&action).unwrap();
+        assert!(json.contains("container_id"));
+        let deserialized: Action = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            Action::GrantItem { item_id, count, container_id } => {
+                assert_eq!(item_id, 55);
+                assert_eq!(count, 1);
+                assert_eq!(container_id, Some(3));
+            }
+            _ => panic!("Expected GrantItem"),
+        }
+    }
+
+    #[test]
+    fn grant_item_without_container_defaults_none() {
+        let json = r#"{"GrantItem": {"item_id": 55, "count": 1}}"#;
+        let deserialized: Action = serde_json::from_str(json).unwrap();
+        match deserialized {
+            Action::GrantItem { container_id, .. } => assert_eq!(container_id, None),
+            _ => panic!("Expected GrantItem"),
+        }
+    }
+
+    #[test]
+    fn accept_mission_serialization() {
+        let action = Action::AcceptMission { mission_id: 622 };
+        let json = serde_json::to_string(&action).unwrap();
+        let deserialized: Action = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            Action::AcceptMission { mission_id } => assert_eq!(mission_id, 622),
+            _ => panic!("Expected AcceptMission"),
         }
     }
 }

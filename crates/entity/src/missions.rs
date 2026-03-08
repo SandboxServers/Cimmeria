@@ -140,6 +140,11 @@ impl MissionManager {
             .collect()
     }
 
+    /// Get all tracked missions regardless of status or hidden flag.
+    pub fn all_missions(&self) -> impl Iterator<Item = &MissionInstance> {
+        self.missions.values()
+    }
+
     /// Number of tracked missions.
     pub fn count(&self) -> usize {
         self.missions.len()

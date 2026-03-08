@@ -208,6 +208,50 @@ impl ChainEngine {
     }
 }
 
+/// Actions collected by [`ChainEngine::resolve_event`] without executing them.
+///
+/// Each entry pairs a chain ID with the action to execute, preserving the
+/// ordering (highest-priority chain first, actions in declaration order).
+pub struct ResolvedActions {
+    pub actions: Vec<(i64, Action)>,
+}
+
+impl ChainEngine {
+    /// Match triggers and evaluate conditions like [`fire_event`](Self::fire_event),
+    /// but return the actions instead of executing them.
+    ///
+    /// This lets the caller (CellService) execute actions in a context where it
+    /// has access to game state (SpaceManager, channels, etc.) that the engine
+    /// itself doesn't know about.
+    pub fn resolve_event(&self, event: &TriggerEvent, ctx: &ExecutionContext) -> ResolvedActions {
+        let mut resolved = ResolvedActions { actions: Vec::new() };
+
+        let chains = match self.chains_by_trigger.get(&event.trigger_type) {
+            Some(chains) => chains,
+            None => return resolved,
+        };
+
+        for chain in chains {
+            if !chain.enabled || !chain.trigger.matches(event) {
+                continue;
+            }
+
+            let conditions_met = chain.conditions.iter().all(|c| c.evaluate(ctx));
+            if !conditions_met {
+                debug!(chain_id = chain.id, chain_name = %chain.name, "resolve_event: conditions not met");
+                continue;
+            }
+
+            debug!(chain_id = chain.id, chain_name = %chain.name, actions = chain.actions.len(), "resolve_event: chain matched");
+            for action in &chain.actions {
+                resolved.actions.push((chain.id, action.clone()));
+            }
+        }
+
+        resolved
+    }
+}
+
 impl Default for ChainEngine {
     fn default() -> Self {
         Self::new()
@@ -364,6 +408,7 @@ mod tests {
             enabled: true,
             trigger: Trigger::OnEntityDeath {
                 entity_type: Some("SGWMob".to_string()),
+                entity_tag: None,
             },
             conditions: vec![Condition::HasItem {
                 item_id: 10,
@@ -374,6 +419,7 @@ mod tests {
                 Action::GrantItem {
                     item_id: 20,
                     count: 1,
+                    container_id: None,
                 },
             ],
             priority: 5,
@@ -401,13 +447,13 @@ mod tests {
         ));
         engine.register_chain(make_chain(
             2,
-            Trigger::OnEntityDeath { entity_type: None },
+            Trigger::OnEntityDeath { entity_type: None, entity_tag: None },
             vec![],
             0,
         ));
         engine.register_chain(make_chain(
             3,
-            Trigger::OnEntityDeath { entity_type: None },
+            Trigger::OnEntityDeath { entity_type: None, entity_tag: None },
             vec![],
             0,
         ));

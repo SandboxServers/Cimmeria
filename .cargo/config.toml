@@ -1,5 +1,7 @@
-[build]
-target = "x86_64-pc-windows-gnu"
+# When building from WSL (Linux), cross-compile to Windows GNU target.
+# When building from native Windows, use the default MSVC target (no override needed).
+# The [build] target is set conditionally via CARGO_BUILD_TARGET env var in WSL,
+# not hardcoded here, so both environments work.
 
 [alias]
 test-workspace = "test --workspace --exclude cimmeria-app"

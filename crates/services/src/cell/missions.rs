@@ -202,6 +202,80 @@ pub async fn complete_objective(
     }
 }
 
+/// Complete a mission directly (all objectives + step + mission update).
+///
+/// Used by the content engine when a chain action completes a mission
+/// without stepping through individual objectives.
+pub async fn complete_mission_direct(
+    entity_id: u32,
+    mission_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let entity = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e,
+        None => return,
+    };
+
+    let mission = match entity.missions.get_mission_mut(mission_id) {
+        Some(m) => m,
+        None => {
+            tracing::warn!(entity_id, mission_id, "complete_mission_direct: mission not found");
+            return;
+        }
+    };
+
+    // Complete all objectives
+    let objective_ids: Vec<i32> = mission.active_objectives.iter()
+        .map(|o| o.objective_id)
+        .collect();
+    for oid in &objective_ids {
+        mission.complete_objective(*oid);
+    }
+    mission.complete();
+
+    let step_id = mission.completed_steps.last().copied();
+
+    tracing::info!(entity_id, mission_id, "Mission completed directly");
+
+    // Send objective updates
+    for oid in &objective_ids {
+        let mut args = Vec::with_capacity(7);
+        args.extend_from_slice(&oid.to_le_bytes());
+        args.push(STATUS_COMPLETED as u8);
+        args.push(0); // hidden
+        args.push(0); // optional
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_OBJECTIVE_UPDATE,
+            args,
+        }).await;
+    }
+
+    // Send step completed
+    if let Some(sid) = step_id {
+        let mut args = Vec::with_capacity(5);
+        args.extend_from_slice(&sid.to_le_bytes());
+        args.push(STATUS_COMPLETED as u8);
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_STEP_UPDATE,
+            args,
+        }).await;
+    }
+
+    // Send mission completed
+    let mut args = Vec::with_capacity(9);
+    args.extend_from_slice(&mission_id.to_le_bytes());
+    args.push(STATUS_COMPLETED as u8);
+    args.extend_from_slice(&0i32.to_le_bytes());
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: ON_MISSION_UPDATE,
+        args,
+    }).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

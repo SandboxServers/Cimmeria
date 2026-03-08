@@ -7,6 +7,7 @@
 pub mod abilities;
 pub mod chat;
 pub mod combat;
+pub mod content;
 pub mod dispatch;
 pub mod gate_travel;
 pub mod interactions;
@@ -17,10 +18,13 @@ pub mod space_manager;
 pub mod spawner;
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
+use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_common::{EntityId, ServerConfig, SpaceId};
+use cimmeria_content_engine::chain::ChainEngine;
 
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::cell::space_manager::SpaceManager;
@@ -66,6 +70,9 @@ pub struct CellService {
 
     /// Path to the entities directory for loading space XML files.
     entities_dir: String,
+
+    /// Database pool for content engine loading (set by orchestrator).
+    db_pool: Option<Arc<PgPool>>,
 }
 
 impl CellService {
@@ -83,7 +90,13 @@ impl CellService {
             base_to_cell_rx: None,
             cell_to_base_tx: None,
             entities_dir: "entities".to_string(),
+            db_pool: None,
         }
+    }
+
+    /// Set the database pool for content engine loading.
+    pub fn set_db_pool(&mut self, pool: Arc<PgPool>) {
+        self.db_pool = Some(pool);
     }
 
     /// Wire in the Base↔Cell channels. Called by the orchestrator before `start()`.
@@ -136,13 +149,16 @@ impl CellService {
             }
         }
 
+        // Build the content engine — load from DB if available, else fallback
+        let engine = content::build_engine(self.db_pool.as_deref()).await;
+
         // Take ownership of channels for the message processing loop
         let rx = self.base_to_cell_rx.take();
         let tx = self.cell_to_base_tx.clone();
 
         if let (Some(mut rx), Some(tx)) = (rx, tx) {
             tokio::spawn(async move {
-                run_cell_loop(&mut rx, &tx, space_mgr).await;
+                run_cell_loop(&mut rx, &tx, space_mgr, engine).await;
             });
         } else {
             tracing::warn!("Cell service started without channels — operating in stub mode");
@@ -170,6 +186,7 @@ async fn run_cell_loop(
     rx: &mut mpsc::Receiver<BaseToCellMsg>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     mut space_mgr: SpaceManager,
+    engine: ChainEngine,
 ) {
     tracing::debug!("Cell service message loop started");
 
@@ -180,7 +197,7 @@ async fn run_cell_loop(
         tokio::select! {
             msg = rx.recv() => {
                 match msg {
-                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr).await,
+                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine).await,
                     None => {
                         tracing::info!("Cell service channel closed — shutting down");
                         break;
@@ -201,13 +218,26 @@ async fn handle_base_message(
     msg: BaseToCellMsg,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     match msg {
-        BaseToCellMsg::CreateEntity { entity_id, world_name, position, rotation } => {
+        BaseToCellMsg::CreateEntity { entity_id, world_name, position, rotation, reply_tx } => {
             tracing::debug!(entity_id, %world_name, ?position, "CreateEntity");
+
+            // Check if this is a new instanced space (no entities yet)
+            let is_new_space = !space_mgr.has_space_for_world(&world_name);
 
             match space_mgr.create_entity(entity_id, &world_name, position, rotation) {
                 Ok(space_id) => {
+                    // Spawn instance NPCs if the space was newly created
+                    if is_new_space {
+                        let npc_count = spawner::spawn_npcs_for_world(&world_name, space_mgr);
+                        if npc_count > 0 {
+                            tracing::info!(world = %world_name, npc_count, "Spawned instance NPCs");
+                        }
+                    }
+
+                    let _ = reply_tx.send(space_id);
                     let _ = tx.send(CellToBaseMsg::EntityCreated {
                         entity_id,
                         space_id,
@@ -241,11 +271,20 @@ async fn handle_base_message(
         }
 
         BaseToCellMsg::CellMethodCall { entity_id, method_index, args } => {
-            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr).await;
+            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine).await;
         }
 
         BaseToCellMsg::ChatMessage { entity_id, speaker_name, speaker_flags, channel, text } => {
             chat::handle_chat_message(entity_id, &speaker_name, speaker_flags, channel, &text, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::InitPlayerState { entity_id, player_id, world_name } => {
+            tracing::debug!(entity_id, player_id, %world_name, "InitPlayerState");
+            // Set player_id on the cell entity for later persistence lookups
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.player_id = Some(player_id);
+            }
+            content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
         }
     }
 }

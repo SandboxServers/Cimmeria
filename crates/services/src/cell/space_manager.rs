@@ -215,6 +215,11 @@ impl SpaceManager {
         self.spaces.insert(space_id, instance);
     }
 
+    /// Check if a space already exists for a world name.
+    pub fn has_space_for_world(&self, world_name: &str) -> bool {
+        self.world_spaces.contains_key(world_name)
+    }
+
     /// Find or create a space for the given world name.
     ///
     /// - Non-instanced worlds: return the existing startup space.

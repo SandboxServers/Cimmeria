@@ -18,14 +18,18 @@ pub enum MailOp {
 }
 
 /// Messages sent from BaseApp to CellApp.
-#[derive(Debug)]
+// Cannot derive Debug because oneshot::Sender doesn't implement Debug.
+// Manual impl would be possible but not worth the boilerplate.
 pub enum BaseToCellMsg {
     /// Create a cell entity in the named world at the given position/rotation.
+    /// The `reply_tx` oneshot returns the resolved `space_id` so the caller
+    /// can `.await` it before building the world-entry wire packet.
     CreateEntity {
         entity_id: u32,
         world_name: String,
         position: [f32; 3],
         rotation: [f32; 3],
+        reply_tx: tokio::sync::oneshot::Sender<u32>,
     },
 
     /// Destroy a cell entity (player left, entity despawned).
@@ -73,6 +77,14 @@ pub enum BaseToCellMsg {
         speaker_flags: u8,
         channel: u8,
         text: String,
+    },
+
+    /// Initialize player state after world entry (missions, etc.).
+    /// Sent after ConnectEntity so the CellService can populate per-player data.
+    InitPlayerState {
+        entity_id: u32,
+        player_id: i32,
+        world_name: String,
     },
 }
 
@@ -146,5 +158,27 @@ pub enum CellToBaseMsg {
         target_world_name: String,
         position: [f32; 3],
         rotation: [f32; 3],
+    },
+
+    /// Persist a mission state change to the database.
+    ///
+    /// Uses `INSERT ... ON CONFLICT DO UPDATE` on `sgw_mission`.
+    MissionUpdate {
+        player_id: i32,
+        mission_id: i32,
+        status: i8,
+        current_step_id: Option<i32>,
+        completed_step_ids: Vec<i32>,
+        completed_objective_ids: Vec<i32>,
+        active_objective_ids: Vec<i32>,
+    },
+
+    /// Grant an item to a player and persist to `sgw_inventory`.
+    GrantItem {
+        entity_id: u32,
+        player_id: i32,
+        item_id: i32,
+        container_id: i32,
+        count: i32,
     },
 }

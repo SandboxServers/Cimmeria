@@ -210,6 +210,13 @@ pub(crate) async fn handle_map_loaded_phase_b(
         let _ = tx.send(BaseToCellMsg::ConnectEntity {
             entity_id: entry_info.player_entity_id,
         }).await;
+
+        // Send InitPlayerState so CellService can fire content engine events
+        let _ = tx.send(BaseToCellMsg::InitPlayerState {
+            entity_id: entry_info.player_entity_id,
+            player_id: player_data.player_id,
+            world_name: entry_info.world_name.clone(),
+        }).await;
     }
 
     // Register entity_id -> addr so AoI messages can find this client's socket
@@ -514,6 +521,107 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::MailRequest { entity_id, op } => {
             handle_mail_request(entity_id, op, socket, connected, entity_to_addr, db_pool).await;
         }
+        CellToBaseMsg::MissionUpdate { player_id, mission_id, status, current_step_id,
+                                        completed_step_ids, completed_objective_ids, active_objective_ids } => {
+            handle_mission_update(
+                player_id, mission_id, status, current_step_id,
+                &completed_step_ids, &completed_objective_ids, &active_objective_ids, db_pool,
+            ).await;
+        }
+        CellToBaseMsg::GrantItem { entity_id: _, player_id, item_id, container_id, count } => {
+            handle_grant_item(player_id, item_id, container_id, count, db_pool).await;
+        }
+    }
+}
+
+/// Persist a mission state change to the database.
+async fn handle_mission_update(
+    player_id: i32,
+    mission_id: i32,
+    status: i8,
+    current_step_id: Option<i32>,
+    completed_step_ids: &[i32],
+    completed_objective_ids: &[i32],
+    active_objective_ids: &[i32],
+    db_pool: &Option<Arc<PgPool>>,
+) {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::debug!(player_id, mission_id, "MissionUpdate: no DB pool");
+            return;
+        }
+    };
+
+    let result = sqlx::query(
+        "INSERT INTO sgw_mission (player_id, mission_id, status, current_step_id, \
+         completed_step_ids, completed_objective_ids, active_objective_ids) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         ON CONFLICT (player_id, mission_id) DO UPDATE SET \
+         status = EXCLUDED.status, \
+         current_step_id = EXCLUDED.current_step_id, \
+         completed_step_ids = EXCLUDED.completed_step_ids, \
+         completed_objective_ids = EXCLUDED.completed_objective_ids, \
+         active_objective_ids = EXCLUDED.active_objective_ids",
+    )
+    .bind(player_id)
+    .bind(mission_id)
+    .bind(status as i16)
+    .bind(current_step_id)
+    .bind(completed_step_ids)
+    .bind(completed_objective_ids)
+    .bind(active_objective_ids)
+    .execute(pool.as_ref())
+    .await;
+
+    match result {
+        Ok(_) => tracing::debug!(player_id, mission_id, status, "Mission state persisted"),
+        Err(e) => tracing::error!(player_id, mission_id, "Failed to persist mission: {e}"),
+    }
+}
+
+/// Persist a granted item to the inventory database.
+async fn handle_grant_item(
+    player_id: i32,
+    item_id: i32,
+    container_id: i32,
+    count: i32,
+    db_pool: &Option<Arc<PgPool>>,
+) {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::debug!(player_id, item_id, "GrantItem: no DB pool");
+            return;
+        }
+    };
+
+    // Find the next available slot in this container
+    let next_slot: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(slot_id), -1) + 1 FROM sgw_inventory \
+         WHERE character_id = $1 AND container_id = $2",
+    )
+    .bind(player_id)
+    .bind(container_id)
+    .fetch_one(pool.as_ref())
+    .await
+    .unwrap_or(0);
+
+    let result = sqlx::query(
+        "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id, \
+         bound, durability, charges) VALUES ($1, $2, $3, $4, $5, false, 100, 0)",
+    )
+    .bind(player_id)
+    .bind(item_id)
+    .bind(count)
+    .bind(next_slot)
+    .bind(container_id)
+    .execute(pool.as_ref())
+    .await;
+
+    match result {
+        Ok(_) => tracing::debug!(player_id, item_id, container_id, slot = next_slot, "Item persisted to inventory"),
+        Err(e) => tracing::error!(player_id, item_id, "Failed to persist item: {e}"),
     }
 }
 

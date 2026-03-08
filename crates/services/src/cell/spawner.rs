@@ -55,6 +55,55 @@ const SPAWN_DEFS: &[SpawnDef] = &[
     },
 ];
 
+/// Per-instance spawn definitions for instanced worlds.
+///
+/// These NPCs are spawned when a player first enters an instanced space (e.g.,
+/// Castle_CellBlock tutorial). They differ from SPAWN_DEFS which are for
+/// persistent startup spaces.
+const INSTANCE_SPAWN_DEFS: &[SpawnDef] = &[
+    // Castle_CellBlock — tutorial instance
+    SpawnDef {
+        world_name: "Castle_CellBlock",
+        position: [-328.3, 73.472, -210.27],
+        direction: [0.0, 1.5708, 0.0],
+        name: "Frost's Body",
+        interaction: Some(NpcInteractionType::Dialog { dialog_id: 3995 }),
+    },
+];
+
+/// Spawn instance-specific NPCs for a world.
+///
+/// Called when an instanced space is first created. Returns the number of NPCs spawned.
+pub fn spawn_npcs_for_world(world_name: &str, space_mgr: &mut SpaceManager) -> usize {
+    let mut count = 0;
+
+    for def in INSTANCE_SPAWN_DEFS {
+        if def.world_name != world_name {
+            continue;
+        }
+
+        let npc_id = space_mgr.allocate_npc_id();
+        match space_mgr.spawn_npc(npc_id, def.world_name, def.position, def.direction) {
+            Ok(space_id) => {
+                if let Some(entity) = space_mgr.get_entity_mut(npc_id) {
+                    entity.interaction_type = def.interaction.clone();
+                    entity.npc_name = Some(def.name.to_string());
+                }
+                tracing::info!(
+                    npc_id, space_id, world = def.world_name, name = def.name,
+                    pos = ?def.position, "Spawned instance NPC"
+                );
+                count += 1;
+            }
+            Err(e) => {
+                tracing::warn!(world = def.world_name, name = def.name, "Failed to spawn instance NPC: {e}");
+            }
+        }
+    }
+
+    count
+}
+
 /// Spawn all predefined NPCs into the space manager.
 ///
 /// Returns the number of NPCs successfully spawned.

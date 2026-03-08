@@ -151,3 +151,13 @@ tools/ServerEd/ui_*.h
 cimmeria-server.exe
 notify.log
 src-tauri/gen/schemas/windows-schema.json
+
+# =============================================================================
+# SGW Launcher (crates/launcher)
+# =============================================================================
+crates/launcher/binaries/*.exe
+crates/launcher/gen/schemas/windows-schema.json
+
+
+frontend/node_modules/*
+docs/~$content-engine-data-template.xlsx

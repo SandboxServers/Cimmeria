@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stargate Worlds</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <h1>STARGATE WORLDS</h1>
+
+    <!-- Not Installed -->
+    <div id="state-not-installed" class="state" hidden>
+      <p class="subtitle">Install the game client to get started.</p>
+      <div class="field-row">
+        <label for="install-path">Install path</label>
+        <div class="path-input">
+          <input type="text" id="install-path" readonly>
+          <button id="btn-browse" class="btn-secondary">Browse</button>
+        </div>
+      </div>
+      <button id="btn-install" class="btn-primary">Download &amp; Install</button>
+    </div>
+
+    <!-- Downloading -->
+    <div id="state-downloading" class="state" hidden>
+      <p class="subtitle">Downloading game client...</p>
+      <div class="progress-container">
+        <div class="progress-bar"><div id="download-bar" class="progress-fill"></div></div>
+        <div class="progress-info">
+          <span id="download-percent">0%</span>
+          <span id="download-speed"></span>
+          <span id="download-eta"></span>
+        </div>
+      </div>
+      <button id="btn-cancel" class="btn-secondary">Cancel</button>
+    </div>
+
+    <!-- Extracting -->
+    <div id="state-extracting" class="state" hidden>
+      <p class="subtitle">Extracting game files...</p>
+      <div class="progress-container">
+        <div class="progress-bar"><div id="extract-bar" class="progress-fill"></div></div>
+        <div class="progress-info">
+          <span id="extract-phase"></span>
+          <span id="extract-file"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ready -->
+    <div id="state-ready" class="state" hidden>
+      <div class="field-row">
+        <label for="server-address">Server</label>
+        <input type="text" id="server-address" maxlength="22">
+      </div>
+      <button id="btn-play" class="btn-play">PLAY</button>
+      <div class="ready-actions">
+        <button id="btn-check-updates" class="btn-link">Check for updates</button>
+      </div>
+    </div>
+
+    <!-- Updating -->
+    <div id="state-updating" class="state" hidden>
+      <p class="subtitle">Updating game files...</p>
+      <div class="progress-container">
+        <div class="progress-bar"><div id="update-bar" class="progress-fill"></div></div>
+        <div class="progress-info">
+          <span id="update-count"></span>
+          <span id="update-file"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="state-error" class="state" hidden>
+      <p class="error-icon">!</p>
+      <p id="error-message" class="error-text"></p>
+      <button id="btn-retry" class="btn-secondary">Retry</button>
+    </div>
+  </div>
+
+  <script src="main.js" type="module"></script>
+</body>
+</html>

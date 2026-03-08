@@ -30,6 +30,19 @@ See [protocol-comparison.md](protocol-comparison.md) for detailed findings.
 - **Standalone forcedPosition** (client_handler.cpp:570): rotation.x, rotation.y, rotation.z (NOT swapped)
 - Rust world-entry path correctly uses the swapped order for both; if standalone forcedPosition is added later, it needs the unswapped order
 
+### Space Data & Terrain Loading (CRITICAL)
+- **SGW does NOT use SPACE_DATA (0x07)** for terrain loading. Code comment: "Only used in older builds, newer versions use SGWPlayer.onClientMapLoad"
+- **Terrain loading mechanism**: SGWPlayer `connected()` calls `self.client.onClientMapLoad(worldName, clientMap, worldId, location, direction)` -- this is an entity method RPC
+- **onClientMapLoad** is a ClientMethod on SGWPlayer (flattened index TBD), sends: WSTRING areaName, WSTRING mapPath, INT32 worldId, VECTOR3 Location, VECTOR3 Direction
+- **Ordering**: `onClientMapLoad` is sent from `connected()` which runs after the cell entity is created, BEFORE `mapLoaded()` (called from `onClientReady`)
+- **Rust rewrite is MISSING onClientMapLoad** in `build_map_loaded()` -- this is why no terrain loads
+
+### avatarUpdateExplicit (C->S 0x03) First Field is spaceID, NOT entityID
+- The first 4 bytes are **spaceID** (NOT entityId)
+- C++ server reads: `spaceId >> vehicleId >> position >> velocity >> direction >> flags >> cells >> updateId`
+- Rust server incorrectly reads payload[0..4] as entity_id -- this IS the spaceID
+- The client sends its current spaceID (from createCellPlayer), explaining "entity_id=65552" in logs
+
 ### Open Questions
 - Exposed method sub-slot mechanism (for > 62 methods per entity) -- unlikely needed for SGW entities
 
@@ -46,6 +59,8 @@ See [protocol-comparison.md](protocol-comparison.md) for detailed findings.
 - Packet flags/format: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/packet.hpp`
 - Sequence/channel types: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/misc.hpp`
 - Direction3D serialization: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/basictypes.cpp` (roll, pitch, yaw order)
+- **Space data types**: `external/engines/BigWorld-Engine-2.0.1/src/common/space_data_types.hpp`
+- **Client spaceData handler**: `external/engines/BigWorld-Engine-2.0.1/src/client/entity_manager.cpp:1382`
 
 ### Cimmeria C++ (SGW customizations)
 - Message IDs + format table: `src/baseapp/mercury/sgw/messages.hpp` and `messages.cpp`
