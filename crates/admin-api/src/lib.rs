@@ -20,7 +20,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use cimmeria_services::orchestrator::Orchestrator;
-use ws::broadcast_layer::LogEntry;
+use ws::broadcast_layer::{LogBuffer, LogEntry};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -121,12 +121,14 @@ struct ApiDoc;
 pub fn build_router(
     orchestrator: Arc<Orchestrator>,
     log_tx: broadcast::Sender<LogEntry>,
+    log_buffer: LogBuffer,
 ) -> Router {
     Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .nest("/api", routes::api_routes())
         .nest("/ws", ws::ws_routes())
         .layer(Extension(log_tx))
+        .layer(Extension(log_buffer))
         .layer(middleware::cors_layer())
         .with_state(orchestrator)
 }

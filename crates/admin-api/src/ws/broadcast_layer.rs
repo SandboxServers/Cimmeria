@@ -3,6 +3,12 @@
 //! Created once in `main()` and added to the tracing subscriber. All log
 //! events are serialised into [`LogEntry`] structs and sent to connected
 //! WebSocket clients via a `broadcast::Sender`.
+//!
+//! A [`LogBuffer`] ring buffer retains the most recent entries so that new
+//! WebSocket clients receive history on connect.
+
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tokio::sync::broadcast;
@@ -11,6 +17,9 @@ use tracing::Subscriber;
 use tracing_subscriber::layer::Context;
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
+
+/// Maximum number of entries kept in the ring buffer for new clients.
+const BUFFER_CAPACITY: usize = 500;
 
 /// A single log entry forwarded to WebSocket clients.
 #[derive(Clone, Debug, Serialize)]
@@ -27,7 +36,43 @@ pub struct LogEntry {
     pub fields: serde_json::Value,
 }
 
-/// Tracing layer that sends every event to a broadcast channel.
+/// Thread-safe ring buffer of recent log entries.
+///
+/// Shared between the tracing layer (writer) and WebSocket handlers (reader).
+/// Uses a `std::sync::Mutex` (not tokio) because the tracing layer runs in
+/// a synchronous context.
+#[derive(Clone)]
+pub struct LogBuffer {
+    inner: Arc<Mutex<VecDeque<LogEntry>>>,
+}
+
+impl LogBuffer {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(VecDeque::with_capacity(BUFFER_CAPACITY))),
+        }
+    }
+
+    /// Push an entry, evicting the oldest if at capacity.
+    fn push(&self, entry: LogEntry) {
+        if let Ok(mut buf) = self.inner.lock() {
+            if buf.len() >= BUFFER_CAPACITY {
+                buf.pop_front();
+            }
+            buf.push_back(entry);
+        }
+    }
+
+    /// Snapshot all buffered entries (oldest first).
+    pub fn snapshot(&self) -> Vec<LogEntry> {
+        self.inner
+            .lock()
+            .map(|buf| buf.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
+/// Tracing layer that sends every event to a broadcast channel and ring buffer.
 ///
 /// # Important
 ///
@@ -35,11 +80,12 @@ pub struct LogEntry {
 /// cause infinite recursion.
 pub struct BroadcastLayer {
     tx: broadcast::Sender<LogEntry>,
+    buffer: LogBuffer,
 }
 
 impl BroadcastLayer {
-    pub fn new(tx: broadcast::Sender<LogEntry>) -> Self {
-        Self { tx }
+    pub fn new(tx: broadcast::Sender<LogEntry>, buffer: LogBuffer) -> Self {
+        Self { tx, buffer }
     }
 }
 
@@ -66,7 +112,10 @@ where
             fields: serde_json::Value::Object(visitor.fields),
         };
 
-        // Ignore send errors — means no subscribers are connected.
+        // Store in ring buffer (always, even with no subscribers).
+        self.buffer.push(entry.clone());
+
+        // Forward to live subscribers. Ignore errors (no receivers connected).
         let _ = self.tx.send(entry);
     }
 }
