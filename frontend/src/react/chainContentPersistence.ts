@@ -167,7 +167,21 @@ export async function loadChainEditorContent<
     }
   }
 
-  // Browser fallback: localStorage
+  // Browser: try REST API first
+  try {
+    const missionParam = missionId ? `/${encodeURIComponent(missionId)}` : '';
+    const res = await fetch(
+      `/api/content/editor/content/${encodeURIComponent(spaceId)}${missionParam}`,
+    );
+    const json = await res.json();
+    if (json.available && json.payload && isPersistedContentGraph<TNodeData, TEdgeData>(json.payload)) {
+      return { graph: json.payload };
+    }
+  } catch {
+    // REST API unavailable — fall through to localStorage
+  }
+
+  // Last resort: localStorage
   try {
     const raw = window.localStorage.getItem(buildContentStorageKey(spaceId, missionId));
     if (raw) {
@@ -198,7 +212,25 @@ export async function saveChainEditorContent<
     return;
   }
 
-  // Browser fallback: localStorage
+  // Browser: try REST API first
+  try {
+    const res = await fetch('/api/content/editor/content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        spaceId: graph.spaceId,
+        missionId: graph.missionId,
+        payload: graph,
+      }),
+    });
+    if (res.ok) {
+      return;
+    }
+  } catch {
+    // REST API unavailable — fall through to localStorage
+  }
+
+  // Last resort: localStorage
   window.localStorage.setItem(
     buildContentStorageKey(graph.spaceId, graph.missionId),
     JSON.stringify(graph),

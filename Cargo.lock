@@ -546,6 +546,8 @@ dependencies = [
 name = "cimmeria-server"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "cimmeria-admin-api",
  "cimmeria-common",
  "cimmeria-services",
  "tokio",

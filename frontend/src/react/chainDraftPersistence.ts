@@ -326,6 +326,21 @@ export async function loadChainEditorDraft<TNodeData, TEdgeData>(
     }
   }
 
+  // Browser: try REST API first
+  try {
+    const missionParam = missionId ? `/${encodeURIComponent(missionId)}` : '';
+    const res = await fetch(
+      `/api/content/editor/draft/${encodeURIComponent(spaceId)}${missionParam}`,
+    );
+    const json = await res.json();
+    if (json.available && json.payload && isPersistedDraftShape<TNodeData, TEdgeData>(json.payload)) {
+      return { draft: json.payload, storage: 'database' };
+    }
+  } catch {
+    // REST API unavailable — fall through to localStorage
+  }
+
+  // Last resort: localStorage
   const browserDraft = readBrowserDraft<TNodeData, TEdgeData>(spaceId, missionId);
   return {
     draft: browserDraft,
@@ -355,6 +370,25 @@ export async function saveChainEditorDraft<TNodeData, TEdgeData>(
     }
   }
 
+  // Browser: try REST API first
+  try {
+    const res = await fetch('/api/content/editor/draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        spaceId: draft.spaceId,
+        missionId: draft.missionId,
+        payload: draft,
+      }),
+    });
+    if (res.ok) {
+      return { storage: 'database' };
+    }
+  } catch {
+    // REST API unavailable — fall through to localStorage
+  }
+
+  // Last resort: localStorage
   writeBrowserDraft(draft);
   return {
     storage: 'browser',
