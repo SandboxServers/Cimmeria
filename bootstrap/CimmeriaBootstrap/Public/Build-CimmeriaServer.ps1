@@ -50,8 +50,8 @@ function Build-CimmeriaServer {
 
     $cargoArgs = @("build", "--workspace")
     if (-not $nodeAvailable) {
-        $cargoArgs += @("--exclude", "cimmeria-app")
-        Write-Status "Node.js not available — excluding cimmeria-app from workspace build" "Yellow"
+        $cargoArgs += @("--exclude", "cimmeria-app", "--exclude", "sgw-launcher")
+        Write-Status "Node.js not available — excluding Tauri apps (cimmeria-app, sgw-launcher) from build" "Yellow"
     }
     if ($Configuration -eq "Release") {
         $cargoArgs += "--release"
