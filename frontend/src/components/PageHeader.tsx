@@ -6,7 +6,7 @@ type PageHeaderProps = {
   eyebrow: string;
   title: string;
   description: string;
-  badge?: string;
+  badge?: ReactNode;
   actions?: ReactNode;
   className?: string;
 };

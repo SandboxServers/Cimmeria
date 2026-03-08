@@ -5,6 +5,7 @@
 //! - Server log output
 //! - Game event notifications
 
+pub mod broadcast_layer;
 pub mod entity_stream;
 pub mod log_stream;
 pub mod event_stream;

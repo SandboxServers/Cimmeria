@@ -31,6 +31,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use tokio::sync::broadcast;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
@@ -38,13 +39,17 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
 
+use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogEntry};
 use cimmeria_common::ServerConfig;
 use cimmeria_services::orchestrator::Orchestrator;
 
 #[tokio::main]
 async fn main() {
+    // Create log broadcast channel (for WebSocket log streaming).
+    let (log_tx, _) = broadcast::channel::<LogEntry>(2048);
+
     // Initialise layered tracing — guards must live until shutdown.
-    let _guards = init_logging();
+    let _guards = init_logging(log_tx.clone());
 
     tracing::trace!(pid = std::process::id(), "Process spawned");
 
@@ -81,7 +86,7 @@ async fn main() {
     }
 
     // Start the admin API (REST + WebSocket) on the configured port.
-    let admin_router = cimmeria_admin_api::build_router(Arc::clone(&orch));
+    let admin_router = cimmeria_admin_api::build_router(Arc::clone(&orch), log_tx);
     let admin_addr = format!("0.0.0.0:{admin_port}");
     let admin_listener = match tokio::net::TcpListener::bind(&admin_addr).await {
         Ok(listener) => {
@@ -209,7 +214,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 /// - **`logs/server.log`**: JSON, all modules at `debug`.
 /// - **`logs/auth.log`**: plain text, `cimmeria_services::auth` at `trace`.
 /// - **`logs/base.log`**: plain text, base/mercury modules at `trace`.
-fn init_logging() -> Vec<WorkerGuard> {
+fn init_logging(log_tx: broadcast::Sender<LogEntry>) -> Vec<WorkerGuard> {
     // Move previous session's logs into archive/.
     archive_previous_logs();
 
@@ -260,12 +265,17 @@ fn init_logging() -> Vec<WorkerGuard> {
     let console_layer = fmt::layer()
         .with_filter(console_filter);
 
+    // ── WebSocket broadcast (info+, all modules) ────────────────────────
+    let broadcast_layer = BroadcastLayer::new(log_tx)
+        .with_filter(EnvFilter::new("info"));
+
     // Assemble the subscriber.
     tracing_subscriber::registry()
         .with(console_layer)
         .with(server_layer)
         .with(auth_layer)
         .with(base_layer)
+        .with(broadcast_layer)
         .init();
 
     guards

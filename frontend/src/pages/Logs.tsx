@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Bug, RefreshCw, ShieldAlert, Waves } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Circle, Pause, Play, RefreshCw, Trash2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -12,157 +12,207 @@ import {
 } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { useResource } from '../lib/hooks';
-import ConnectionStatus, { getConnectionError } from '../components/ConnectionStatus';
-import { fetchAdminStatus, fetchPlayers, formatUptime } from '../lib/admin-api';
+import { connectWs } from '../lib/ws';
+
+type LogEntry = {
+  timestamp_ms: number;
+  level: string;
+  target: string;
+  message: string;
+  fields: Record<string, unknown>;
+  /** Sent when the client falls behind the broadcast buffer. */
+  type?: string;
+  skipped?: number;
+};
+
+const MAX_ENTRIES = 2000;
+
+const LEVEL_COLORS: Record<string, string> = {
+  ERROR: 'bg-red-400/15 text-red-200',
+  WARN: 'bg-amber-300/15 text-amber-100',
+  INFO: 'bg-emerald-400/12 text-emerald-100',
+  DEBUG: 'bg-sky-400/12 text-sky-200',
+  TRACE: 'bg-slate-400/12 text-slate-300',
+};
+
+function formatTime(ms: number): string {
+  const d = new Date(ms);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function formatFields(fields: Record<string, unknown>): string {
+  const entries = Object.entries(fields);
+  if (entries.length === 0) return '';
+  return entries.map(([k, v]) => `${k}=${v}`).join(' ');
+}
 
 export default function Logs() {
   const [level, setLevel] = useState('ALL');
   const [query, setQuery] = useState('');
-  const status = useResource(useCallback(fetchAdminStatus, []));
-  const players = useResource(useCallback(fetchPlayers, []));
+  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [connected, setConnected] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const autoScroll = useRef(true);
 
-  const entries = useMemo(() => {
-    if (!status.data) {
-      return [];
+  // Track whether user has scrolled up
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    autoScroll.current = atBottom;
+  }, []);
+
+  // Auto-scroll on new entries
+  useEffect(() => {
+    if (autoScroll.current && !paused) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
     }
+  }, [entries, paused]);
 
-    return [
-      {
-        level: status.data.services.database ? 'INFO' : 'WARN',
-        timestamp: 'now',
-        source: 'admin-api',
-        message: `Orchestrator uptime is ${formatUptime(status.data.uptime_seconds)}.`,
+  // WebSocket connection
+  useEffect(() => {
+    const cleanup = connectWs(
+      '/ws/logs',
+      (data) => {
+        const entry = data as LogEntry;
+        if (entry.type === 'lagged') return; // Skip lag notices
+        setEntries((prev) => {
+          const next = [...prev, entry];
+          return next.length > MAX_ENTRIES ? next.slice(-MAX_ENTRIES) : next;
+        });
       },
-      {
-        level: status.data.services.database ? 'INFO' : 'ERROR',
-        timestamp: 'now',
-        source: 'database',
-        message: status.data.services.database
-          ? 'PostgreSQL is reachable for space and mission-backed surfaces.'
-          : 'Database is unavailable; data-backed pages are degraded.',
-      },
-      {
-        level: players.data?.available ? 'INFO' : 'WARN',
-        timestamp: 'now',
-        source: 'players',
-        message: players.data?.available
-          ? 'Live player roster is available.'
-          : players.data?.reason ?? 'Player roster route has not reported yet.',
-      },
-      {
-        level: 'WARN' as const,
-        timestamp: 'now',
-        source: 'ws/logs',
-        message: 'Log streaming transport is not implemented yet; this page currently exposes backend readiness instead of a live tail.',
-      },
-    ];
-  }, [status.data, players.data]);
+      setConnected,
+    );
+    return cleanup;
+  }, []);
 
-  const filteredEntries = useMemo(() =>
-    entries.filter((entry) => {
-      const matchesLevel = level === 'ALL' || entry.level === level;
-      const haystack = `${entry.source} ${entry.message}`.toLowerCase();
-      return matchesLevel && haystack.includes(query.trim().toLowerCase());
-    }),
-  [entries, level, query]);
+  const filteredEntries = useMemo(
+    () =>
+      entries.filter((entry) => {
+        if (paused) return true; // Show all when paused (frozen snapshot)
+        const matchesLevel = level === 'ALL' || entry.level === level;
+        const haystack = `${entry.target} ${entry.message}`.toLowerCase();
+        return matchesLevel && haystack.includes(query.trim().toLowerCase());
+      }),
+    [entries, level, query, paused],
+  );
 
-  const refreshAll = () => {
-    status.refetch();
-    players.refetch();
-  };
+  const displayEntries = paused ? filteredEntries : filteredEntries;
+
+  const levelCounts = useMemo(() => {
+    const counts: Record<string, number> = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, TRACE: 0 };
+    for (const e of entries) {
+      counts[e.level] = (counts[e.level] ?? 0) + 1;
+    }
+    return counts;
+  }, [entries]);
 
   return (
     <div className="space-y-6">
       <PageHeader
         actions={
           <>
-            <Button onClick={refreshAll} variant="secondary">
-              <RefreshCw className="size-4" />
-              Refresh snapshot
+            <Button
+              onClick={() => setPaused((p) => !p)}
+              variant={paused ? 'default' : 'secondary'}
+            >
+              {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
+              {paused ? 'Resume' : 'Pause'}
             </Button>
-            <Button disabled variant="outline">
-              <ShieldAlert className="size-4" />
-              Create incident
+            <Button onClick={() => setEntries([])} variant="outline">
+              <Trash2 className="size-4" />
+              Clear
             </Button>
           </>
         }
-        badge="Transport Readiness"
-        description="The old fake log tail is gone. This page now shows live backend-backed readiness and explicitly calls out that `/ws/logs` is not implemented yet."
+        badge={
+          <span className="inline-flex items-center gap-2">
+            <Circle
+              className={`size-2 ${connected ? 'fill-emerald-400 text-emerald-400' : 'fill-amber-400 text-amber-400'}`}
+            />
+            {connected ? 'Live' : 'Reconnecting...'}
+          </span>
+        }
+        description="Real-time server log stream via WebSocket. Entries are buffered client-side (max 2,000)."
         eyebrow="Logs"
         title="Server event stream"
       />
-
-      {getConnectionError(status.error, players.error) && (
-        <ConnectionStatus onRetry={refreshAll} />
-      )}
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <CardHeader className="space-y-4">
             <div className="space-y-2">
               <Badge variant="secondary">Tail View</Badge>
-              <CardTitle>Transport and readiness snapshot</CardTitle>
+              <CardTitle>Live log stream</CardTitle>
               <CardDescription>
-                Backed by `/api/config/status` and `/api/players`.
+                Connected to <code className="text-xs">/ws/logs</code>.
+                {entries.length > 0 && ` ${entries.length} entries buffered.`}
               </CardDescription>
             </div>
             <div className="flex flex-col gap-3">
               <Tabs defaultValue="ALL" onValueChange={setLevel}>
                 <TabsList className="justify-start">
                   <TabsTrigger value="ALL">All</TabsTrigger>
-                  <TabsTrigger value="INFO">Info</TabsTrigger>
-                  <TabsTrigger value="WARN">Warn</TabsTrigger>
                   <TabsTrigger value="ERROR">Error</TabsTrigger>
+                  <TabsTrigger value="WARN">Warn</TabsTrigger>
+                  <TabsTrigger value="INFO">Info</TabsTrigger>
+                  <TabsTrigger value="DEBUG">Debug</TabsTrigger>
+                  <TabsTrigger value="TRACE">Trace</TabsTrigger>
                 </TabsList>
               </Tabs>
               <div className="max-w-md">
                 <Input
                   onChange={(event) => setQuery(event.currentTarget.value)}
-                  placeholder="Search by source or message"
+                  placeholder="Search by target or message"
                   value={query}
                 />
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            {(status.error || players.error) && !getConnectionError(status.error, players.error) && (
-              <div className="rounded-[28px] border border-destructive/20 bg-destructive/8 p-4 text-sm text-destructive">
-                {(status.error ?? players.error)?.message}
-              </div>
-            )}
-            <div className="subtle-scrollbar rounded-[28px] border border-white/8 bg-[#09131d] p-4 font-mono text-xs text-slate-100 shadow-inner shadow-black/35">
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="subtle-scrollbar h-[600px] overflow-y-auto rounded-[28px] border border-white/8 bg-[#09131d] p-4 font-mono text-xs text-slate-100 shadow-inner shadow-black/35"
+            >
               <div className="mb-4 flex items-center gap-3">
                 <div
                   className={`size-2 rounded-full ${
-                    status.data?.services.database
+                    connected
                       ? 'bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.85)]'
                       : 'bg-amber-300 shadow-[0_0_14px_rgba(252,211,77,0.85)]'
                   }`}
                 />
                 <span className="uppercase tracking-[0.24em] text-slate-400">
-                  {status.data ? 'Backend snapshot loaded' : 'Loading backend snapshot'}
+                  {connected ? (paused ? 'Paused' : 'Streaming') : 'Connecting...'}
                 </span>
               </div>
-              <div className="space-y-3">
-                {filteredEntries.map((entry) => (
-                  <div key={entry.source} className="rounded-[20px] border border-white/6 bg-white/[0.03] p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-slate-500">{entry.timestamp}</span>
-                      <span
-                        className={`rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.22em] ${
-                          entry.level === 'ERROR'
-                            ? 'bg-red-400/15 text-red-200'
-                            : entry.level === 'WARN'
-                              ? 'bg-amber-300/15 text-amber-100'
-                              : 'bg-emerald-400/12 text-emerald-100'
-                        }`}
-                      >
-                        {entry.level}
-                      </span>
-                      <span className="text-slate-300">{entry.source}</span>
-                    </div>
-                    <p className="mt-2 leading-6 text-slate-100">{entry.message}</p>
+              <div className="space-y-1">
+                {displayEntries.length === 0 && (
+                  <div className="py-8 text-center text-slate-500">
+                    {connected
+                      ? 'Waiting for log entries...'
+                      : 'Connecting to server...'}
+                  </div>
+                )}
+                {displayEntries.map((entry, i) => (
+                  <div key={i} className="flex gap-2 leading-5 hover:bg-white/[0.03] rounded px-1">
+                    <span className="shrink-0 text-slate-500">{formatTime(entry.timestamp_ms)}</span>
+                    <span
+                      className={`shrink-0 w-12 text-center rounded px-1 text-[10px] font-semibold tracking-wider ${LEVEL_COLORS[entry.level] ?? LEVEL_COLORS.INFO}`}
+                    >
+                      {entry.level}
+                    </span>
+                    <span className="shrink-0 text-slate-400 max-w-[220px] truncate" title={entry.target}>
+                      {entry.target}
+                    </span>
+                    <span className="text-slate-100 break-all">
+                      {entry.message}
+                      {Object.keys(entry.fields ?? {}).length > 0 && (
+                        <span className="text-slate-500"> {formatFields(entry.fields)}</span>
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -173,50 +223,52 @@ export default function Logs() {
         <div className="space-y-4">
           <Card>
             <CardHeader className="space-y-3">
-              <Badge variant="outline">Incidents</Badge>
-              <CardTitle>Current focus</CardTitle>
+              <Badge variant="outline">Summary</Badge>
+              <CardTitle>Level breakdown</CardTitle>
               <CardDescription>
-                Live warnings based on current backend readiness.
+                Counts from the current buffer ({entries.length} entries).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-[24px] border border-destructive/18 bg-destructive/8 p-4">
-                <p className="text-sm font-medium text-foreground">Log stream unavailable</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                  `/ws/logs` does not yet provide a live event stream, so this page cannot tail real server logs today.
-                </p>
-              </div>
-              {status.data?.services.database === false && (
-                <div className="rounded-[24px] border border-primary/18 bg-primary/8 p-4">
-                  <p className="text-sm font-medium text-foreground">Database degraded</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                    Database-backed admin surfaces are running in degraded mode until PostgreSQL is reachable again.
-                  </p>
+              {(['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'] as const).map((lvl) => (
+                <div
+                  key={lvl}
+                  className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3"
+                >
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider ${LEVEL_COLORS[lvl]}`}
+                  >
+                    {lvl}
+                  </span>
+                  <span className="text-sm font-medium text-foreground tabular-nums">
+                    {levelCounts[lvl] ?? 0}
+                  </span>
                 </div>
-              )}
+              ))}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="space-y-3">
-              <Badge variant="secondary">Transport</Badge>
-              <CardTitle>Stream roadmap</CardTitle>
-              <CardDescription>
-                Reserved space for the eventual websocket log implementation.
-              </CardDescription>
+              <Badge variant="secondary">Connection</Badge>
+              <CardTitle>Stream status</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center gap-3 rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <Waves className="size-4 text-accent" />
-                <p className="text-sm text-muted-foreground">
-                  The client-side filtering controls are live; the transport is the remaining missing piece.
-                </p>
+              <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
+                <span className="text-sm text-muted-foreground">WebSocket</span>
+                <Badge variant={connected ? 'success' : 'outline'}>
+                  {connected ? 'Connected' : 'Disconnected'}
+                </Badge>
               </div>
-              <div className="flex items-center gap-3 rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <Bug className="size-4 text-primary" />
-                <p className="text-sm text-muted-foreground">
-                  Once `/ws/logs` exists, this page can swap from readiness snapshots to a real tail without a layout rewrite.
-                </p>
+              <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
+                <span className="text-sm text-muted-foreground">Buffer</span>
+                <span className="text-sm font-medium text-foreground tabular-nums">
+                  {entries.length} / {MAX_ENTRIES}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
+                <span className="text-sm text-muted-foreground">Auto-reconnect</span>
+                <Badge variant="success">Enabled</Badge>
               </div>
             </CardContent>
           </Card>

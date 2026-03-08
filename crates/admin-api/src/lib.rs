@@ -14,11 +14,13 @@ pub mod middleware;
 
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{Extension, Router};
+use tokio::sync::broadcast;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use cimmeria_services::orchestrator::Orchestrator;
+use ws::broadcast_layer::LogEntry;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -114,11 +116,17 @@ struct ApiDoc;
 ///
 /// * `orchestrator` - Shared reference to the service orchestrator, injected
 ///   as Axum state for all route handlers.
-pub fn build_router(orchestrator: Arc<Orchestrator>) -> Router {
+/// * `log_tx` - Broadcast sender for log entries, injected as an Axum Extension
+///   for the `/ws/logs` WebSocket handler.
+pub fn build_router(
+    orchestrator: Arc<Orchestrator>,
+    log_tx: broadcast::Sender<LogEntry>,
+) -> Router {
     Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .nest("/api", routes::api_routes())
         .nest("/ws", ws::ws_routes())
+        .layer(Extension(log_tx))
         .layer(middleware::cors_layer())
         .with_state(orchestrator)
 }

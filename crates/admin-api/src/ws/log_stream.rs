@@ -1,32 +1,63 @@
 //! Server log WebSocket stream.
 //!
-//! Streams real-time server log output to connected admin clients.
-//! Replaces the original Python console on port 8989 with a more
-//! structured approach.
+//! Streams real-time server log output to connected admin clients via a
+//! `broadcast` channel fed by the [`BroadcastLayer`](super::broadcast_layer::BroadcastLayer).
 
-use std::sync::Arc;
-
-use axum::extract::State;
-use axum::extract::ws::{WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
+use axum::Extension;
+use tokio::sync::broadcast;
 
-use cimmeria_services::orchestrator::Orchestrator;
+use super::broadcast_layer::LogEntry;
 
 /// WebSocket handler for log streams.
 ///
-/// Upgrades the HTTP connection to a WebSocket and begins streaming
-/// server log entries. Clients can send filter messages to set minimum
-/// log level or filter by service/module.
+/// Subscribes to the shared broadcast channel and forwards every log entry
+/// to the connected WebSocket client as a JSON text frame.
 pub async fn log_ws_handler(
     ws: WebSocketUpgrade,
-    State(_orchestrator): State<Arc<Orchestrator>>,
+    Extension(log_tx): Extension<broadcast::Sender<LogEntry>>,
 ) -> Response {
-    ws.on_upgrade(handle_log_socket)
+    let log_rx = log_tx.subscribe();
+    ws.on_upgrade(move |socket| handle_log_socket(socket, log_rx))
 }
 
-async fn handle_log_socket(mut _socket: WebSocket) {
-    // TODO: Subscribe to tracing layer for log events
-    // TODO: Send log entries as JSON messages
-    // TODO: Handle client filter messages (log level, module filter)
-    tracing::debug!("Log WebSocket connection established");
+async fn handle_log_socket(mut socket: WebSocket, mut log_rx: broadcast::Receiver<LogEntry>) {
+    // Do not use tracing macros here — the BroadcastLayer would re-enter.
+    loop {
+        tokio::select! {
+            // Forward log entries to the client
+            result = log_rx.recv() => {
+                match result {
+                    Ok(entry) => {
+                        let json = match serde_json::to_string(&entry) {
+                            Ok(j) => j,
+                            Err(_) => continue,
+                        };
+                        if socket.send(Message::Text(json.into())).await.is_err() {
+                            break; // Client disconnected
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        // Client fell behind — send a warning and continue
+                        let msg = serde_json::json!({
+                            "type": "lagged",
+                            "skipped": n,
+                        });
+                        let _ = socket.send(Message::Text(msg.to_string().into())).await;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break; // Server shutting down
+                    }
+                }
+            }
+            // Handle incoming messages from the client (e.g. close)
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    _ => {} // Ignore other client messages for now
+                }
+            }
+        }
+    }
 }

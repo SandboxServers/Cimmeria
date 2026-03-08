@@ -1,41 +1,70 @@
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8443';
+function getWsBaseUrl(): string {
+    if (import.meta.env.VITE_WS_URL) {
+        return import.meta.env.VITE_WS_URL;
+    }
+    // Tauri desktop app: connect directly to the server
+    if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        return 'ws://127.0.0.1:8443';
+    }
+    // Browser: derive from current page URL so Vite proxy works in dev
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${window.location.host}`;
+}
 
 /**
- * Create a WebSocket connection to the admin API event stream.
+ * Create a reconnecting WebSocket connection.
  *
- * @param path - WebSocket endpoint path (e.g. "/ws/events", "/ws/logs")
- * @param onMessage - Callback invoked for each incoming message
- * @returns A cleanup function that closes the socket
+ * @param path - WebSocket endpoint path (e.g. "/ws/logs")
+ * @param onMessage - Callback invoked for each incoming parsed JSON message
+ * @param onStatus - Optional callback for connection status changes
+ * @returns A cleanup function that closes the socket and stops reconnecting
  */
 export function connectWs(
     path: string,
     onMessage: (data: unknown) => void,
+    onStatus?: (connected: boolean) => void,
 ): () => void {
-    const url = `${WS_URL}${path}`;
-    const ws = new WebSocket(url);
+    const baseUrl = getWsBaseUrl();
+    const url = `${baseUrl}${path}`;
+    let ws: WebSocket | null = null;
+    let stopped = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
-    ws.onopen = () => {
-        console.log(`[ws] connected to ${url}`);
-    };
+    function connect() {
+        if (stopped) return;
 
-    ws.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            onMessage(data);
-        } catch {
-            onMessage(event.data);
-        }
-    };
+        ws = new WebSocket(url);
 
-    ws.onerror = (err) => {
-        console.error(`[ws] error on ${url}`, err);
-    };
+        ws.onopen = () => {
+            onStatus?.(true);
+        };
 
-    ws.onclose = () => {
-        console.log(`[ws] disconnected from ${url}`);
-    };
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                onMessage(data);
+            } catch {
+                onMessage(event.data);
+            }
+        };
+
+        ws.onerror = () => {
+            // Error is followed by close — reconnect handled there
+        };
+
+        ws.onclose = () => {
+            onStatus?.(false);
+            if (!stopped) {
+                reconnectTimer = setTimeout(connect, 3000);
+            }
+        };
+    }
+
+    connect();
 
     return () => {
-        ws.close();
+        stopped = true;
+        clearTimeout(reconnectTimer);
+        ws?.close();
     };
 }
