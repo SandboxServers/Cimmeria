@@ -9,6 +9,8 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
+import MissionCardLibrary from './MissionCardLibrary';
+import type { ScenarioTemplate as LibraryScenarioTemplate } from './missionCardCatalog';
 import {
   Background,
   BackgroundVariant,
@@ -3005,7 +3007,7 @@ function FlowContent() {
   }, [deleteSelectedNode, pushToast, selectedNodeId, setEdges, setNodes]);
 
   const addScenarioNode = useCallback(
-    (template: ScenarioTemplate) => {
+    (template: LibraryScenarioTemplate) => {
       const targetChain = nodesById.get(selectedChainId);
       if (!targetChain || !isChainData(targetChain.data)) {
         pushToast('Error: select a target content chain before adding a card.');
@@ -3882,88 +3884,10 @@ function FlowContent() {
         </aside>
       </div>
 
-      <section className="rounded-[32px] border border-white/8 bg-[rgba(9,18,28,0.8)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-        <div className="flex flex-wrap items-start gap-4">
-          <div className="min-w-[320px] flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[rgba(160,174,192,0.72)]">
-              Mission Card Library
-            </p>
-            <p className="mt-2 max-w-4xl text-sm leading-6 text-[rgba(224,231,239,0.76)]">
-              This library now follows the content-engine model. Select a chain frame first, then add anchors, trigger cards, condition cards, action cards, and counters into the correct lane of that chain.
-            </p>
-          </div>
-          <div className="flex min-h-[88px] min-w-[360px] flex-1 items-center justify-between rounded-[24px] border border-[rgba(245,170,49,0.2)] bg-[linear-gradient(135deg,rgba(245,170,49,0.14),rgba(19,162,164,0.08))] px-5 py-4 text-sm text-[rgba(224,231,239,0.9)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(245,170,49,0.82)]">
-                Adding Cards Into
-              </p>
-              <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-white">
-                {selectedChain?.name ?? 'No chain selected'}
-              </p>
-            </div>
-            <span className="rounded-full border border-white/10 bg-[rgba(9,18,28,0.46)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(224,231,239,0.76)]">
-              Active target
-            </span>
-          </div>
-        </div>
-
-        <div className="mt-6 grid gap-4 2xl:grid-cols-2">
-          <section className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
-              Sequence Anchors
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {sequenceAnchorCatalog.map((template) => (
-                <CatalogCard key={template.id} onAdd={addScenarioNode} template={template} />
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
-              Trigger Cards
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {triggerReferenceCatalog.map((template) => (
-                <CatalogCard key={template.id} onAdd={addScenarioNode} template={template} />
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
-              Condition Cards
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {conditionReferenceCatalog.map((template) => (
-                <CatalogCard key={template.id} onAdd={addScenarioNode} template={template} />
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
-              Action Cards
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {actionReferenceCatalog.map((template) => (
-                <CatalogCard key={template.id} onAdd={addScenarioNode} template={template} />
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
-              Counter Cards
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {counterReferenceCatalog.map((template) => (
-                <CatalogCard key={template.id} onAdd={addScenarioNode} template={template} />
-              ))}
-            </div>
-          </section>
-        </div>
-      </section>
+      <MissionCardLibrary
+        onAdd={addScenarioNode}
+        selectedChainName={selectedChain?.name ?? 'No chain selected'}
+      />
     </div>
   );
 }
