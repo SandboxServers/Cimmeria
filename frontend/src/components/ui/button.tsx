@@ -1,4 +1,4 @@
-import { type JSX, splitProps } from 'solid-js';
+import type { ButtonHTMLAttributes } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
 
@@ -30,22 +30,15 @@ export const buttonVariants = cva(
   },
 );
 
-type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> &
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants>;
 
-export function Button(props: ButtonProps) {
-  const [local, others] = splitProps(props, [
-    'class',
-    'variant',
-    'size',
-    'type',
-  ]);
-
+export function Button({ className, variant, size, type = 'button', ...rest }: ButtonProps) {
   return (
     <button
-      class={cn(buttonVariants({ variant: local.variant, size: local.size }), local.class)}
-      type={local.type ?? 'button'}
-      {...others}
+      className={cn(buttonVariants({ variant, size }), className)}
+      type={type}
+      {...rest}
     />
   );
 }

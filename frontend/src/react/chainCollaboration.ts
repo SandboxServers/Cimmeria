@@ -1,5 +1,3 @@
-/** @jsxImportSource react */
-
 export type ChainEditorCollaborationMetadata = {
   author: string;
   lastEditedAt: string;

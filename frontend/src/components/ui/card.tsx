@@ -1,53 +1,41 @@
-import { type JSX, splitProps } from 'solid-js';
+import type { HTMLAttributes } from 'react';
 import { cn } from '../../lib/utils';
 
-type DivProps = JSX.HTMLAttributes<HTMLDivElement>;
+type DivProps = HTMLAttributes<HTMLDivElement>;
 
-export function Card(props: DivProps) {
-  const [local, others] = splitProps(props, ['class']);
-
+export function Card({ className, ...rest }: DivProps) {
   return (
     <div
-      class={cn(
+      className={cn(
         'glass-panel rounded-[28px] border border-white/8 bg-card/82 text-card-foreground',
-        local.class,
+        className,
       )}
-      {...others}
+      {...rest}
     />
   );
 }
 
-export function CardHeader(props: DivProps) {
-  const [local, others] = splitProps(props, ['class']);
-
-  return <div class={cn('flex flex-col gap-2 p-6', local.class)} {...others} />;
+export function CardHeader({ className, ...rest }: DivProps) {
+  return <div className={cn('flex flex-col gap-2 p-6', className)} {...rest} />;
 }
 
-export function CardTitle(props: DivProps) {
-  const [local, others] = splitProps(props, ['class']);
-
+export function CardTitle({ className, ...rest }: DivProps) {
   return (
     <div
-      class={cn('text-lg font-semibold tracking-tight text-foreground', local.class)}
-      {...others}
+      className={cn('text-lg font-semibold tracking-tight text-foreground', className)}
+      {...rest}
     />
   );
 }
 
-export function CardDescription(props: DivProps) {
-  const [local, others] = splitProps(props, ['class']);
-
-  return <div class={cn('text-sm text-muted-foreground', local.class)} {...others} />;
+export function CardDescription({ className, ...rest }: DivProps) {
+  return <div className={cn('text-sm text-muted-foreground', className)} {...rest} />;
 }
 
-export function CardContent(props: DivProps) {
-  const [local, others] = splitProps(props, ['class']);
-
-  return <div class={cn('px-6 pb-6', local.class)} {...others} />;
+export function CardContent({ className, ...rest }: DivProps) {
+  return <div className={cn('px-6 pb-6', className)} {...rest} />;
 }
 
-export function CardFooter(props: DivProps) {
-  const [local, others] = splitProps(props, ['class']);
-
-  return <div class={cn('flex items-center gap-3 px-6 pb-6', local.class)} {...others} />;
+export function CardFooter({ className, ...rest }: DivProps) {
+  return <div className={cn('flex items-center gap-3 px-6 pb-6', className)} {...rest} />;
 }

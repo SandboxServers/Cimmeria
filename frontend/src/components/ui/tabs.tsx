@@ -1,21 +1,20 @@
 import {
-  type Accessor,
   createContext,
-  createEffect,
-  createSignal,
-  type JSX,
-  Show,
-  splitProps,
   useContext,
-} from 'solid-js';
+  useState,
+  useEffect,
+  type HTMLAttributes,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from 'react';
 import { cn } from '../../lib/utils';
 
 type TabsContextValue = {
-  value: Accessor<string>;
+  value: string;
   setValue: (value: string) => void;
 };
 
-const TabsContext = createContext<TabsContextValue>();
+const TabsContext = createContext<TabsContextValue | undefined>(undefined);
 
 function useTabsContext() {
   const context = useContext(TabsContext);
@@ -27,104 +26,95 @@ function useTabsContext() {
   return context;
 }
 
-type TabsProps = JSX.HTMLAttributes<HTMLDivElement> & {
+type TabsProps = HTMLAttributes<HTMLDivElement> & {
   defaultValue: string;
   value?: string;
   onValueChange?: (value: string) => void;
+  children?: ReactNode;
 };
 
-export function Tabs(props: TabsProps) {
-  const [local, others] = splitProps(props, [
-    'class',
-    'defaultValue',
-    'value',
-    'onValueChange',
-    'children',
-  ]);
-  const [internalValue, setInternalValue] = createSignal(
-    local.value ?? local.defaultValue,
-  );
+export function Tabs({ className, defaultValue, value, onValueChange, children, ...rest }: TabsProps) {
+  const [internalValue, setInternalValue] = useState(value ?? defaultValue);
 
-  createEffect(() => {
-    if (local.value !== undefined) {
-      setInternalValue(local.value);
+  useEffect(() => {
+    if (value !== undefined) {
+      setInternalValue(value);
     }
-  });
+  }, [value]);
 
-  const context: TabsContextValue = {
-    value: () => local.value ?? internalValue(),
+  const contextValue: TabsContextValue = {
+    value: value ?? internalValue,
     setValue: (next) => {
-      if (local.value === undefined) {
+      if (value === undefined) {
         setInternalValue(next);
       }
 
-      local.onValueChange?.(next);
+      onValueChange?.(next);
     },
   };
 
   return (
-    <TabsContext.Provider value={context}>
-      <div class={cn('space-y-5', local.class)} {...others}>
-        {local.children}
+    <TabsContext.Provider value={contextValue}>
+      <div className={cn('space-y-5', className)} {...rest}>
+        {children}
       </div>
     </TabsContext.Provider>
   );
 }
 
-export function TabsList(props: JSX.HTMLAttributes<HTMLDivElement>) {
-  const [local, others] = splitProps(props, ['class']);
-
+export function TabsList({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      class={cn(
+      className={cn(
         'inline-flex w-full flex-wrap items-center gap-2 rounded-[24px] border border-white/8 bg-white/4 p-2',
-        local.class,
+        className,
       )}
-      {...others}
+      {...rest}
     />
   );
 }
 
-type TabsTriggerProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & {
+type TabsTriggerProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   value: string;
 };
 
-export function TabsTrigger(props: TabsTriggerProps) {
+export function TabsTrigger({ className, value, children, ...rest }: TabsTriggerProps) {
   const context = useTabsContext();
-  const [local, others] = splitProps(props, ['class', 'value', 'children']);
-  const isActive = () => context.value() === local.value;
+  const isActive = context.value === value;
 
   return (
     <button
-      aria-selected={isActive()}
-      class={cn(
+      aria-selected={isActive}
+      className={cn(
         'inline-flex min-h-10 items-center justify-center rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground',
-        isActive() && 'bg-primary text-primary-foreground shadow-[0_8px_24px_rgba(245,170,49,0.24)]',
-        local.class,
+        isActive && 'bg-primary text-primary-foreground shadow-[0_8px_24px_rgba(245,170,49,0.24)]',
+        className,
       )}
-      data-state={isActive() ? 'active' : 'inactive'}
-      onClick={() => context.setValue(local.value)}
+      data-state={isActive ? 'active' : 'inactive'}
+      onClick={() => context.setValue(value)}
       type="button"
-      {...others}
+      {...rest}
     >
-      {local.children}
+      {children}
     </button>
   );
 }
 
-type TabsContentProps = JSX.HTMLAttributes<HTMLDivElement> & {
+type TabsContentProps = HTMLAttributes<HTMLDivElement> & {
   value: string;
+  children?: ReactNode;
 };
 
-export function TabsContent(props: TabsContentProps) {
+export function TabsContent({ className, value, children, ...rest }: TabsContentProps) {
   const context = useTabsContext();
-  const [local, others] = splitProps(props, ['class', 'value', 'children']);
+
+  if (context.value !== value) {
+    return null;
+  }
 
   return (
-    <Show when={context.value() === local.value}>
-      <div class={cn('space-y-5', local.class)} {...others}>
-        {local.children}
-      </div>
-    </Show>
+    <div className={cn('space-y-5', className)} {...rest}>
+      {children}
+    </div>
   );
 }

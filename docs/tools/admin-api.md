@@ -6,7 +6,7 @@ REST and WebSocket API for administering the Cimmeria server emulator. Built wit
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│       Tauri Desktop App (SolidJS + Vite)             │
+│       Tauri Desktop App (React + Vite)               │
 │                                                      │
 │   frontend/src/lib/admin-api.ts   (REST fetch)       │
 │   frontend/src/lib/ws.ts          (WebSocket)        │

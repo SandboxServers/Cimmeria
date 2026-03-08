@@ -1,22 +1,20 @@
-import { type JSX, splitProps } from 'solid-js';
+import type { HTMLAttributes } from 'react';
 import { cn } from '../../lib/utils';
 
-type SeparatorProps = JSX.HTMLAttributes<HTMLDivElement> & {
+type SeparatorProps = HTMLAttributes<HTMLDivElement> & {
   orientation?: 'horizontal' | 'vertical';
 };
 
-export function Separator(props: SeparatorProps) {
-  const [local, others] = splitProps(props, ['class', 'orientation']);
-
+export function Separator({ className, orientation, ...rest }: SeparatorProps) {
   return (
     <div
       aria-hidden="true"
-      class={cn(
-        local.orientation === 'vertical' ? 'h-full w-px' : 'h-px w-full',
+      className={cn(
+        orientation === 'vertical' ? 'h-full w-px' : 'h-px w-full',
         'shrink-0 bg-border/70',
-        local.class,
+        className,
       )}
-      {...others}
+      {...rest}
     />
   );
 }

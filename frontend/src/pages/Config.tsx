@@ -1,5 +1,5 @@
-import { For, Show, createMemo, createResource } from 'solid-js';
-import { Download, LockKeyhole, RefreshCw, Save } from 'lucide-solid';
+import { useCallback, useMemo } from 'react';
+import { Download, LockKeyhole, RefreshCw, Save } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -11,30 +11,31 @@ import {
   CardTitle,
 } from '../components/ui/card';
 import { Input } from '../components/ui/input';
+import { useResource } from '../lib/hooks';
 import { buildConfigSections, fetchAdminConfig, fetchAdminStatus, formatUptime } from '../lib/admin-api';
 
 export default function Config() {
-  const [config, { refetch: refetchConfig }] = createResource(fetchAdminConfig);
-  const [status, { refetch: refetchStatus }] = createResource(fetchAdminStatus);
+  const config = useResource(useCallback(fetchAdminConfig, []));
+  const status = useResource(useCallback(fetchAdminStatus, []));
 
-  const sections = createMemo(() => (config() ? buildConfigSections(config()!) : []));
+  const sections = useMemo(() => (config.data ? buildConfigSections(config.data) : []), [config.data]);
 
   const refreshAll = () => {
-    void refetchConfig();
-    void refetchStatus();
+    config.refetch();
+    status.refetch();
   };
 
   return (
-    <div class="space-y-6">
+    <div className="space-y-6">
       <PageHeader
         actions={
           <>
             <Button onClick={refreshAll} variant="secondary">
-              <RefreshCw class="size-4" />
+              <RefreshCw className="size-4" />
               Refresh config
             </Button>
             <Button disabled variant="outline">
-              <Save class="size-4" />
+              <Save className="size-4" />
               Save draft config
             </Button>
           </>
@@ -45,70 +46,68 @@ export default function Config() {
         title="Runtime and environment controls"
       />
 
-      <section class="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div class="grid gap-4">
-          <Show when={config.error}>
-            <Card class="border-destructive/22 bg-destructive/8">
+      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid gap-4">
+          {config.error && (
+            <Card className="border-destructive/22 bg-destructive/8">
               <CardHeader>
                 <Badge variant="destructive">Load Failed</Badge>
                 <CardTitle>Config route error</CardTitle>
-                <CardDescription>{config.error?.message}</CardDescription>
+                <CardDescription>{config.error.message}</CardDescription>
               </CardHeader>
             </Card>
-          </Show>
-          <Show when={sections().length > 0} fallback={<Card><CardContent class="pt-6 text-sm text-muted-foreground">{config.loading ? 'Loading configuration...' : 'Configuration unavailable.'}</CardContent></Card>}>
-            <For each={sections()}>
-              {(section) => (
-                <Card>
-                  <CardHeader class="space-y-3">
-                    <Badge variant="secondary">{section.title}</Badge>
-                    <CardTitle>{section.title} settings</CardTitle>
-                    <CardDescription>
-                      Directly loaded from `/api/config`.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent class="grid gap-4 md:grid-cols-2">
-                    <For each={section.items}>
-                      {(item) => (
-                        <div class="space-y-2">
-                          <label class="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                            {item.label}
-                          </label>
-                          <Input readonly value={item.value} />
-                        </div>
-                      )}
-                    </For>
-                  </CardContent>
-                </Card>
-              )}
-            </For>
-          </Show>
+          )}
+          {sections.length > 0 ? (
+            sections.map((section) => (
+              <Card key={section.title}>
+                <CardHeader className="space-y-3">
+                  <Badge variant="secondary">{section.title}</Badge>
+                  <CardTitle>{section.title} settings</CardTitle>
+                  <CardDescription>
+                    Directly loaded from `/api/config`.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                  {section.items.map((item) => (
+                    <div key={item.label} className="space-y-2">
+                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                        {item.label}
+                      </label>
+                      <Input readOnly value={item.value} />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <Card><CardContent className="pt-6 text-sm text-muted-foreground">{config.loading ? 'Loading configuration...' : 'Configuration unavailable.'}</CardContent></Card>
+          )}
         </div>
 
-        <div class="space-y-4">
+        <div className="space-y-4">
           <Card>
-            <CardHeader class="space-y-3">
+            <CardHeader className="space-y-3">
               <Badge variant="outline">Protection Model</Badge>
               <CardTitle>Runtime state</CardTitle>
               <CardDescription>
                 Backed by `/api/config/status`.
               </CardDescription>
             </CardHeader>
-            <CardContent class="space-y-3">
-              <div class="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <div class="flex items-center gap-3">
-                  <LockKeyhole class="size-4 text-primary" />
-                  <p class="text-sm font-medium text-foreground">Readonly defaults</p>
+            <CardContent className="space-y-3">
+              <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+                <div className="flex items-center gap-3">
+                  <LockKeyhole className="size-4 text-primary" />
+                  <p className="text-sm font-medium text-foreground">Readonly defaults</p>
                 </div>
-                <p class="mt-2 text-sm leading-6 text-muted-foreground">
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   Config editing is still intentionally locked until save hooks exist on the backend.
                 </p>
               </div>
-              <div class="rounded-[24px] border border-primary/20 bg-primary/8 p-4">
-                <p class="text-sm font-medium text-foreground">Uptime</p>
-                <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                  {status()
-                    ? `Server has been up for ${formatUptime(status()!.uptime_seconds)}.`
+              <div className="rounded-[24px] border border-primary/20 bg-primary/8 p-4">
+                <p className="text-sm font-medium text-foreground">Uptime</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {status.data
+                    ? `Server has been up for ${formatUptime(status.data.uptime_seconds)}.`
                     : 'Loading status...'}
                 </p>
               </div>
@@ -116,24 +115,24 @@ export default function Config() {
           </Card>
 
           <Card>
-            <CardHeader class="space-y-3">
+            <CardHeader className="space-y-3">
               <Badge variant="secondary">Pending Actions</Badge>
               <CardTitle>Apply path</CardTitle>
               <CardDescription>
                 Ready for the next phase once backend mutation endpoints exist.
               </CardDescription>
             </CardHeader>
-            <CardContent class="space-y-3">
-              <Button class="w-full justify-start" disabled variant="outline">
-                <Save class="size-4" />
+            <CardContent className="space-y-3">
+              <Button className="w-full justify-start" disabled variant="outline">
+                <Save className="size-4" />
                 Stage config patch
               </Button>
-              <Button class="w-full justify-start" disabled variant="outline">
-                <Download class="size-4" />
+              <Button className="w-full justify-start" disabled variant="outline">
+                <Download className="size-4" />
                 Diff against disk
               </Button>
-              <Button class="w-full justify-start" disabled variant="outline">
-                <LockKeyhole class="size-4" />
+              <Button className="w-full justify-start" disabled variant="outline">
+                <LockKeyhole className="size-4" />
                 Review restart impact
               </Button>
             </CardContent>

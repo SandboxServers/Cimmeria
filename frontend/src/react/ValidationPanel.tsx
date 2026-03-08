@@ -1,4 +1,3 @@
-/** @jsxImportSource react */
 import { useMemo, useState } from 'react';
 import type { ValidationIssue, ValidationReport } from './chainValidation';
 

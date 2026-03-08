@@ -1,5 +1,3 @@
-/** @jsxImportSource react */
-
 import type { ChainEditorCollaborationMetadata, PersistedConflictState } from './chainCollaboration';
 
 function formatTimestampLabel(timestamp?: string) {

@@ -1,7 +1,7 @@
-import ReactFlowIsland from '../components/ReactFlowIsland';
+import ChainFlowWorkbench from '../react/ChainFlowWorkbench';
 
 export default function ChainEditor() {
   return (
-    <ReactFlowIsland />
+    <ChainFlowWorkbench />
   );
 }

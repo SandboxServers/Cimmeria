@@ -1,4 +1,3 @@
-/** @jsxImportSource react */
 import {
   memo,
   useCallback,
@@ -9,9 +8,9 @@ import {
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from 'react';
-import MissionCardLibrary from './MissionCardLibrary.react';
+import MissionCardLibrary from './MissionCardLibrary';
 import type { ScenarioTemplate as LibraryScenarioTemplate } from './missionCardCatalog';
-import ValidationPanel from './ValidationPanel.react';
+import ValidationPanel from './ValidationPanel';
 import {
   Background,
   BackgroundVariant,

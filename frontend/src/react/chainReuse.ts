@@ -1,4 +1,3 @@
-/** @jsxImportSource react */
 import type { Edge, Node } from '@xyflow/react';
 
 type WithKind = {

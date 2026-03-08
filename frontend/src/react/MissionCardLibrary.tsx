@@ -1,4 +1,3 @@
-/** @jsxImportSource react */
 import { useEffect, useMemo, useState } from 'react';
 import {
   type CardRelevance,
