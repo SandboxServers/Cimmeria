@@ -1,8 +1,8 @@
 # CME Framework Layer
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-03-08
 > **RE Status**: Partially documented from Ghidra analysis + codebase references
-> **Sources**: Ghidra string analysis (STATUS.md), `docs/how-sgw-works.md`, `data/scripts/`
+> **Sources**: Ghidra string analysis (STATUS.md), `docs/how-sgw-works.md`, `data/scripts/`, UE3/BigWorld reference source
 
 ---
 
@@ -35,9 +35,9 @@ The EventSignal system is CME's central event bus. It connects all subsystems us
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Total unique event types | 750 | Unique `Event_*` strings in binary |
-| `Event_NetOut_*` | 253 | Client-to-server messages |
-| `Event_NetIn_*` | 167 | Server-to-client messages |
+| Total unique event types | 975+ | Unique `Event_*` strings in binary (script 04 final count) |
+| `Event_NetOut_*` | 479 | Client-to-server messages |
+| `Event_NetIn_*` | 496 | Server-to-client messages |
 | `Event_SlashCmd_*` | 256 | Slash command dispatch events |
 | `Event_Action_*` | 33 | Player input/movement actions |
 | `Event_Editor_*` | 29 | Editor and PIE mode events |
@@ -45,7 +45,7 @@ The EventSignal system is CME's central event bus. It connects all subsystems us
 | `Event_UI_*` | 2 | UI system dispatch |
 | `Event_Property_*` | 2 | Property change notifications |
 
-Note: the original "954" count included duplicate string references at different addresses. After deduplication, 750 unique event types exist.
+Note: Event counts updated from Ghidra annotation script 04 results (see STATUS.md). The earlier estimate of 253 NetOut / 167 NetIn was from initial string analysis; script 04 discovered additional events via data table scanning.
 
 ### Event_NetOut / Event_NetIn
 
@@ -446,6 +446,60 @@ SGW ships with two UI rendering systems, likely reflecting a mid-development tra
 
 The server doesn't need to know which UI system the client uses. Both systems receive the same EventSignal events and BigWorld entity data.
 
+## UE3↔BigWorld Entity Bridge
+
+CME bridges BigWorld's distributed entities with UE3's Actor system via two custom classes:
+
+### ABigWorldEntity (AActor subclass)
+
+`ABigWorldEntity` is the UE3 representation of a BigWorld entity. When the BW `EntityManager` creates/enters an entity, the CME bridge spawns an `ABigWorldEntity` actor in the UE3 level.
+
+```
+BigWorld Server → ServerConnection → EntityManager (BW 1.9.1)
+      ↓ position/rotation/properties          ↓
+GameEntityBase (CME bridge)  ────────→  ABigWorldEntity (UE3 Actor)
+      ↓ mActor (UE3 ptr)                     ↓ Location, Rotation
+AppearanceJob system ────spawns────→  UE3 World (rendered)
+```
+
+Key design decisions:
+- **Collision disabled**: ABigWorldEntity overrides `AttachComponent` to set `CollisionResponseFlags = 0xFFFFC004` on skeletal mesh components — collision is handled by BigWorld's spatial system, not UE3
+- **Minimal override**: Only 1 gameplay vtable override vs AActor (AttachComponent at vtable[71])
+- **Extension data**: 28 bytes beyond AActor (0x1A8 → 0x1C4), likely holding BW EntityID, TypeID, flags, and GameEntityBase pointer
+
+### Coordinate Conversion
+
+BigWorld uses meters/Y-up/radians; UE3 uses centimeters/Z-up/16-bit rotation units:
+
+| Constant | Value | Address | Conversion |
+|----------|-------|---------|------------|
+| `BW_TO_UE3_SCALE` | 100.0 | `0x018cad90` | BW meters → UE3 centimeters |
+| `RAD_TO_URU` | 10430.378 | `0x018cafcc` | Radians → UE3 rotation units (65536/2π) |
+| `URU_TO_RAD` | 9.58738e-05 | `0x018cae9c` | UE3 rotation units → radians (2π/65536) |
+
+**Axis swap** (BW Y-up → UE3 Z-up): `UE3_X = BW_Z * 100`, `UE3_Y = BW_X * 100`, `UE3_Z = BW_Y * 100`
+Rotation pitch/roll are **negated** for handedness conversion: `RotatorToRadians` (0x0084a8a0), `RadiansToRotator` (0x0084a9d0)
+
+### GameEntityBase — The Core Bridge
+
+The actual heavy lifting is in `GameEntityBase` (from `.\Src\GameEntityBase.cpp`), not ABigWorldEntity. Each BW entity has a GameEntityBase that holds:
+- `+0x08`: `AActor* mActor` — pointer to the UE3 ABigWorldEntity
+- `+0x04`: `CacheData* mCacheData` — position cache for entities not yet spawned
+- `+0x0C/0x10`: EntityID/TypeID
+- `+0x24/0x2C`: SpaceID/VehicleID
+
+Position update flow: `EntityManager::onEntityMoveWithError` (0x00dd1650) → scale ×100 + axis swap + `RadiansToRotator` → `GameEntityBase::ApplyTransform` (0x00e68a30) → writes to `AActor->Location` (+0xDC) and `AActor->Rotation` (+0xE8) with `PreLocationChange`/`PostLocationChange` notifications.
+
+### UBigWorldInfo
+
+`UBigWorldInfo` (UObject subclass, 0x44 bytes) holds BW connection parameters. Stored on GameInfo at offset 0x384. Config key: `Engine.BigWorldInfo.DefaultBigWorld`.
+
+### UBWNetDriver / UBWConnection
+
+CME replaced UE3's `IpNetDriver` with thin wrappers around BigWorld Mercury:
+- `UBWNetDriver` (IpDrv package, 0x130 bytes) — creates a `UBWConnection` in its constructor, overrides `InitListen` to return FALSE (BW clients never listen)
+- `UBWConnection` (Engine package, 0xB8 bytes) — pure wrapper, no extra data members; all state lives in `ServerConnection` (BW) and `Mercury::Channel`
+
 ## CME Network Extensions
 
 CME modified BigWorld's networking in several ways:
@@ -535,8 +589,8 @@ From Ghidra analysis, the following CME-specific string prefixes have been ident
 | `CME::` | 28 | CME namespace framework classes |
 | `Atrea` | ~20+ | Atrea-branded components |
 | `SGW` | ~100+ | Game-specific classes |
-| `Event_NetOut_` | 253 | Client-to-server event signals |
-| `Event_NetIn_` | 167 | Server-to-client event signals |
+| `Event_NetOut_` | 479 | Client-to-server event signals |
+| `Event_NetIn_` | 496 | Server-to-client event signals |
 | `Event_SlashCmd_` | 256 | Slash command event signals |
 | `Event_Action_` | 33 | Input action event signals |
 | `Event_Editor_` | 29 | Editor/PIE event signals |

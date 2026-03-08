@@ -1,14 +1,14 @@
 # BigWorld Architecture
 
-> **Last updated**: 2026-03-01
-> **RE Status**: Well understood from BigWorld 2.0.1 reference source + Cimmeria implementation
-> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/`, `src/`, `docs/how-sgw-works.md`
+> **Last updated**: 2026-03-08
+> **RE Status**: Well understood from BigWorld reference source + Cimmeria implementation
+> **Sources**: `external/engines/BigWorld-Engine-2.0.1/src/`, BigWorld-Engine-1.9.1 (client match), `src/`, `docs/how-sgw-works.md`
 
 ---
 
 ## Overview
 
-BigWorld Technology is an Australian MMO middleware platform that provides the networking, entity management, and server architecture for Stargate Worlds. SGW uses BigWorld ~1.9.x (between versions 1.9.1 and 2.0.1) with extensive modifications by Cheyenne Mountain Entertainment (CME).
+BigWorld Technology is an Australian MMO middleware platform that provides the networking, entity management, and server architecture for Stargate Worlds. SGW uses BigWorld ≥1.8.1 (confirmed via deprecation string `"The use of BW_RES_PATH environment variable is deprecated post 1.8.1"` in SGW.exe). Client-side Mercury networking matches BigWorld 1.9.1 source 1:1 (77+ debug strings verified). Server-side reference from BW 2.0.1 is also used. CME made extensive modifications to the application layer but left the Mercury networking core unmodified.
 
 This document describes the BigWorld architectural concepts as they apply to SGW and Cimmeria.
 
@@ -99,6 +99,49 @@ Client <-- Mercury/UDP (encrypted) --> BaseApp
 
 AuthServer <-- Mercury/TCP --> BaseApp
 ```
+
+### Mercury::Nub Threading Model (from SGW.exe RE)
+
+Mercury::Nub (ctor at `0x015841d0`) creates a background "NetworkThread for ExternalNub" that handles raw UDP I/O independently of the game thread:
+
+```
+NetworkThread                           Game Thread (UE3)
+-----------                             ----------------
+Nub::processPendingEvents()             UGameEngine::Tick()
+  recvfrom() loop                         TickDispatch()
+  parse packet headers/footers             pop from concurrent_queue
+  wrap as ClientMessage                    dispatch through interface handlers
+  push to tbb::concurrent_queue           try/catch NubException
+```
+
+Two `tbb::concurrent_queue<RefCountedObj<ClientMessage>>` at Nub offsets +0x138 and +0x150 bridge the threads.
+
+Socket errors (WSAETIMEDOUT, WSAECONNRESET, WSAECONNREFUSED) are also delivered as NubException objects through the queue. The game thread catches these in `ServerConnection::processInput` and handles:
+- `REASON_CORRUPTED (-4)` → drop packet, continue
+- `REASON_DISCONNECTED (-2)` / `REASON_TIMEOUT (-7)` → disconnect
+- Other → log and continue
+
+### SOAP Login Flow (from SGW.exe RE)
+
+CME replaced BigWorld's standard LoginApp with HTTP/SOAP authentication using curl/gSOAP:
+
+```
+1. UE3 creates UNetPendingLevel → UBWNetDriver → UBWConnection
+2. ServerConnection::logOnBegin:
+   └── curl POST to /SGWLogin/UserAuth (async via curl_multi)
+       └── SGWLoginRequest (gSOAP, namespace: sgwlogin)
+3. SGWLoginResponse → SGWLoginSuccess contains:
+   └── BaseAppAddress, ServerName, Load, Ticket, ShardList
+4. BaseAppLoginHandler → Mercury::Channel to BaseApp
+   └── Sends "baseAppLogin" message
+5. BaseApp replies → channel transferred to ServerConnection::pChannel_
+6. ServerConnection::logOn → sends "authenticate" message
+7. ServerConnection::enableEntities → entity streaming begins
+```
+
+SOAP namespace: `http://www.stargateworlds.com/xml/sgwlogin`
+Auth endpoint: `/SGWLogin/UserAuth`
+Server select: `/SGWLogin/ServerSelection`
 
 ## Entity System
 
