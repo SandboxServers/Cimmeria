@@ -255,8 +255,8 @@ function Install-RustToolchain {
 function Invoke-BootstrapRelaunch {
     <#
     .SYNOPSIS
-        Relaunches setup.ps1 in a new terminal window and exits the current process.
-        Used after installing tools that modify PATH (Rust, MSVC Build Tools).
+        Detects the hosting terminal, opens a new window of the same type with
+        setup.ps1, then closes the current terminal window.
     #>
 
     $paths = Get-ProjectPaths
@@ -270,24 +270,107 @@ function Invoke-BootstrapRelaunch {
 
     if ($isWin) {
         $relaunchCmd = "Set-Location '$($paths.ProjectRoot)'; & '$setupScript'"
-        Start-Process pwsh -ArgumentList @("-NoExit", "-Command", $relaunchCmd) -WorkingDirectory $paths.ProjectRoot
+
+        if ($env:WT_SESSION) {
+            # Running inside Windows Terminal — open a new WT window
+            Write-Status "Detected: Windows Terminal" "DarkGray"
+            Start-Process wt.exe -ArgumentList @(
+                "new-tab", "--title", "Cimmeria Bootstrap",
+                "-d", $paths.ProjectRoot,
+                "pwsh", "-NoExit", "-Command", $relaunchCmd
+            )
+        } elseif ($env:TERM_PROGRAM -eq 'vscode') {
+            # VS Code integrated terminal — can't open a new VS Code terminal programmatically,
+            # fall back to opening a standalone pwsh window
+            Write-Status "Detected: VS Code terminal (opening standalone PowerShell window)" "DarkGray"
+            Start-Process pwsh -ArgumentList @("-NoExit", "-Command", $relaunchCmd) -WorkingDirectory $paths.ProjectRoot
+        } else {
+            # Plain conhost / PowerShell console window
+            Write-Status "Detected: PowerShell console" "DarkGray"
+            Start-Process pwsh -ArgumentList @("-NoExit", "-Command", $relaunchCmd) -WorkingDirectory $paths.ProjectRoot
+        }
+
+        Write-Status "New terminal launched. Closing this window..." "Cyan"
+        Start-Sleep -Milliseconds 500
+
+        # Close the current console window via Win32 API
+        Close-CurrentConsoleWindow
+
     } else {
         $relaunchCmd = "cd '$($paths.ProjectRoot)' && pwsh '$setupScript'"
+        $launched = $false
 
-        if (Get-Command wt -ErrorAction SilentlyContinue) {
-            Start-Process wt -ArgumentList @("pwsh", "-NoExit", "-Command", $relaunchCmd)
-        } elseif (Get-Command gnome-terminal -ErrorAction SilentlyContinue) {
+        if ($env:WT_SESSION -and (Get-Command wt -ErrorAction SilentlyContinue)) {
+            Write-Status "Detected: Windows Terminal (WSL)" "DarkGray"
+            Start-Process wt -ArgumentList @("new-tab", "-d", $paths.ProjectRoot, "pwsh", "-NoExit", "-Command", $relaunchCmd)
+            $launched = $true
+        } elseif ($env:TERM_PROGRAM -eq 'vscode') {
+            Write-Status "Detected: VS Code terminal (opening standalone window)" "DarkGray"
+        } elseif ($env:GNOME_TERMINAL_SERVICE -or $env:COLORTERM -eq 'truecolor' -and (Get-Command gnome-terminal -ErrorAction SilentlyContinue)) {
+            Write-Status "Detected: GNOME Terminal" "DarkGray"
             Start-Process gnome-terminal -ArgumentList @("--", "pwsh", "-NoExit", "-Command", $relaunchCmd)
-        } elseif (Get-Command xterm -ErrorAction SilentlyContinue) {
-            Start-Process xterm -ArgumentList @("-e", "pwsh -NoExit -Command `"$relaunchCmd`"")
-        } elseif ($env:TERM_PROGRAM -eq "Apple_Terminal" -or (Get-Command open -ErrorAction SilentlyContinue)) {
+            $launched = $true
+        } elseif ($env:KONSOLE_VERSION -and (Get-Command konsole -ErrorAction SilentlyContinue)) {
+            Write-Status "Detected: Konsole" "DarkGray"
+            Start-Process konsole -ArgumentList @("-e", "pwsh", "-NoExit", "-Command", $relaunchCmd)
+            $launched = $true
+        } elseif ($env:TERM_PROGRAM -eq "iTerm.app") {
+            Write-Status "Detected: iTerm2" "DarkGray"
+            Start-Process open -ArgumentList @("-a", "iTerm", "pwsh", "--args", "-NoExit", "-Command", $relaunchCmd)
+            $launched = $true
+        } elseif ($env:TERM_PROGRAM -eq "Apple_Terminal" -or ($IsMacOS -and (Get-Command open -ErrorAction SilentlyContinue))) {
+            Write-Status "Detected: macOS Terminal" "DarkGray"
             Start-Process open -ArgumentList @("-a", "Terminal", "pwsh", "--args", "-NoExit", "-Command", $relaunchCmd)
-        } else {
-            Write-Status "Could not detect a terminal emulator to relaunch in." "Yellow"
+            $launched = $true
+        } elseif (Get-Command xterm -ErrorAction SilentlyContinue) {
+            Write-Status "Detected: xterm" "DarkGray"
+            Start-Process xterm -ArgumentList @("-e", "pwsh -NoExit -Command `"$relaunchCmd`"")
+            $launched = $true
+        }
+
+        if (-not $launched) {
+            Write-Status "Could not detect terminal emulator." "Yellow"
             Write-Status "Please open a new terminal and run:  pwsh setup.ps1" "Yellow"
+            [Environment]::Exit(0)
+        }
+
+        Write-Status "New terminal launched. Closing this window..." "Cyan"
+        Start-Sleep -Milliseconds 500
+        [Environment]::Exit(0)
+    }
+}
+
+function Close-CurrentConsoleWindow {
+    <#
+    .SYNOPSIS
+        Closes the current console window using Win32 API (Windows only).
+        Posts WM_CLOSE to the console window handle, which closes the tab/pane
+        in Windows Terminal or the whole window in conhost.
+    #>
+
+    try {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class ConsoleWindowHelper {
+    [DllImport("kernel32.dll")]
+    public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    public const uint WM_CLOSE = 0x0010;
+    public static void CloseConsole() {
+        IntPtr hwnd = GetConsoleWindow();
+        if (hwnd != IntPtr.Zero) {
+            PostMessage(hwnd, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
         }
     }
+}
+"@ -ErrorAction SilentlyContinue
 
-    Write-Status "New terminal launched. Closing this one." "Cyan"
-    [Environment]::Exit(0)
+        [ConsoleWindowHelper]::CloseConsole()
+    } catch {
+        # If P/Invoke fails for any reason, fall back to process exit
+        [Environment]::Exit(0)
+    }
 }
