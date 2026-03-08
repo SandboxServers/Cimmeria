@@ -440,6 +440,7 @@ dependencies = [
  "cimmeria-services",
  "serde",
  "serde_json",
+ "sqlx",
  "tauri",
  "tauri-build",
  "tokio",

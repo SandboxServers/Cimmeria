@@ -1,5 +1,8 @@
 [build]
 target = "x86_64-pc-windows-gnu"
 
+[alias]
+test-workspace = "test --workspace --exclude cimmeria-app"
+
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]

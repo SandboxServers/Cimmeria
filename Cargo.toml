@@ -16,6 +16,18 @@ members = [
     "crates/server",
     "src-tauri",
 ]
+default-members = [
+    "crates/common",
+    "crates/mercury",
+    "crates/defs",
+    "crates/entity",
+    "crates/game",
+    "crates/content-engine",
+    "crates/services",
+    "crates/admin-api",
+    "crates/commands",
+    "crates/server",
+]
 
 [workspace.package]
 version = "0.1.0"

@@ -20,19 +20,7 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { players } from '../data/admin';
-
-const getStatusVariant = (status: string) => {
-  switch (status) {
-    case 'Combat':
-      return 'destructive';
-    case 'In mission':
-      return 'default';
-    case 'Crafting':
-      return 'secondary';
-    default:
-      return 'success';
-  }
-};
+import { getPlayerStatusVariant } from '../lib/view-models';
 
 export default function Players() {
   const [query, setQuery] = createSignal('');
@@ -110,7 +98,7 @@ export default function Players() {
                           {player.zone}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={getStatusVariant(player.status)}>{player.status}</Badge>
+                          <Badge variant={getPlayerStatusVariant(player.status)}>{player.status}</Badge>
                         </TableCell>
                         <TableCell>{player.ping}ms</TableCell>
                         <TableCell class="text-muted-foreground">{player.session}</TableCell>

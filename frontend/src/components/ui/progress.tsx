@@ -1,5 +1,6 @@
 import { type JSX, splitProps } from 'solid-js';
 import { cn } from '../../lib/utils';
+import { clampProgressValue } from '../../lib/view-models';
 
 type ProgressProps = JSX.HTMLAttributes<HTMLDivElement> & {
   value: number;
@@ -7,7 +8,7 @@ type ProgressProps = JSX.HTMLAttributes<HTMLDivElement> & {
 
 export function Progress(props: ProgressProps) {
   const [local, others] = splitProps(props, ['class', 'value']);
-  const safeValue = () => Math.min(100, Math.max(0, local.value));
+  const safeValue = () => clampProgressValue(local.value);
 
   return (
     <div

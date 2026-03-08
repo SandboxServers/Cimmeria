@@ -37,6 +37,7 @@ const navItems: NavItem[] = [
 export default function AppShell(props: { children?: JSX.Element }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = createSignal(false);
+  const showPageChrome = createMemo(() => location.pathname !== '/chain-editor');
 
   const activeItem = createMemo(
     () => navItems.find((item) => item.path === location.pathname) ?? navItems[0],
@@ -128,57 +129,59 @@ export default function AppShell(props: { children?: JSX.Element }) {
         </Show>
 
         <main class="flex min-h-[calc(100vh-2rem)] min-w-0 flex-1 flex-col gap-6 rounded-[34px] border border-white/6 bg-slate-950/32 p-4 shadow-[0_30px_120px_rgba(0,0,0,0.24)] sm:p-5 lg:p-6">
-          <header class="glass-panel flex flex-col gap-4 rounded-[28px] border border-white/8 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
-            <div class="flex items-start gap-3">
-              <Button
-                class="lg:hidden"
-                onClick={() => setMobileOpen(true)}
-                size="icon"
-                variant="outline"
-              >
-                <Menu class="size-4" />
-              </Button>
-              <div class="space-y-2">
-                <div class="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">Admin Dashboard</Badge>
-                  <Badge variant="success">Realtime-ready</Badge>
-                </div>
-                <div>
-                  <h1 class="text-lg font-semibold tracking-[-0.03em] text-foreground sm:text-xl">
-                    {activeItem().label}
-                  </h1>
-                  <p class="text-sm text-muted-foreground">
-                    {activeItem().hint} with a Tailwind and shadcn-style operator interface.
-                  </p>
+          <Show when={showPageChrome()}>
+            <header class="glass-panel flex flex-col gap-4 rounded-[28px] border border-white/8 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+              <div class="flex items-start gap-3">
+                <Button
+                  class="lg:hidden"
+                  onClick={() => setMobileOpen(true)}
+                  size="icon"
+                  variant="outline"
+                >
+                  <Menu class="size-4" />
+                </Button>
+                <div class="space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">Admin Dashboard</Badge>
+                    <Badge variant="success">Realtime-ready</Badge>
+                  </div>
+                  <div>
+                    <h1 class="text-lg font-semibold tracking-[-0.03em] text-foreground sm:text-xl">
+                      {activeItem().label}
+                    </h1>
+                    <p class="text-sm text-muted-foreground">
+                      {activeItem().hint} with a Tailwind and shadcn-style operator interface.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="flex flex-wrap items-center gap-3">
-              <div class="rounded-full border border-white/8 bg-white/5 px-4 py-2">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  Cluster
-                </p>
-                <div class="mt-1 flex items-center gap-2 text-sm text-foreground">
-                  <Activity class="size-4 text-accent" />
-                  Dev shard stable
+              <div class="flex flex-wrap items-center gap-3">
+                <div class="rounded-full border border-white/8 bg-white/5 px-4 py-2">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                    Cluster
+                  </p>
+                  <div class="mt-1 flex items-center gap-2 text-sm text-foreground">
+                    <Activity class="size-4 text-accent" />
+                    Dev shard stable
+                  </div>
                 </div>
-              </div>
-              <div class="rounded-full border border-white/8 bg-white/5 px-4 py-2">
-                <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                  Surface
-                </p>
-                <div class="mt-1 flex items-center gap-2 text-sm text-foreground">
-                  <Cable class="size-4 text-primary" />
-                  Phase 4 complete
+                <div class="rounded-full border border-white/8 bg-white/5 px-4 py-2">
+                  <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+                    Surface
+                  </p>
+                  <div class="mt-1 flex items-center gap-2 text-sm text-foreground">
+                    <Cable class="size-4 text-primary" />
+                    Phase 4 complete
+                  </div>
                 </div>
+                <Button class="hidden sm:inline-flex" variant="secondary">
+                  <Sparkles class="size-4" />
+                  Release Window
+                </Button>
               </div>
-              <Button class="hidden sm:inline-flex" variant="secondary">
-                <Sparkles class="size-4" />
-                Release Window
-              </Button>
-            </div>
-          </header>
+            </header>
+          </Show>
 
           <div class="min-w-0 flex-1">{props.children}</div>
         </main>

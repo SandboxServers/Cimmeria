@@ -1,5 +1,14 @@
 /** @jsxImportSource react */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type ReactNode,
+} from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -19,10 +28,24 @@ import {
   ReactFlowProvider,
   addEdge,
   getBezierPath,
+  useUpdateNodeInternals,
   useEdgesState,
   useNodesState,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import {
+  getConnectionPortLabels,
+  getNodeHandleSignature,
+  validateConnectionRequest,
+} from './chainConnections';
+import {
+  createPersistedChainEditorDraft,
+  extractSpaceScopedEditorSnapshot,
+  loadChainEditorDraft,
+  mergeSpaceScopedEditorSnapshot,
+  saveChainEditorDraft,
+} from './chainDraftPersistence';
+import { computePackedChainLayouts, resolveAutoLayoutNodePositions } from './chainLayout';
 
 type PrimitiveFamily = 'anchor' | 'trigger' | 'condition' | 'action' | 'counter';
 
@@ -37,8 +60,11 @@ type MissionNodeData = {
   accent: string;
   threadColor?: string;
   threadName?: string;
+  manualPosition?: boolean;
+  sortOrder?: number;
   inputs?: string[];
   outputs?: string[];
+  outputConditions?: string[];
   properties: Array<{ label: string; value: string }>;
 };
 
@@ -106,6 +132,115 @@ type MissionOption = {
 };
 
 type NodeRecord = Node<EditorNodeData>;
+type InspectorPanelId = 'chain' | 'sequence' | 'node';
+
+type InspectorCollapsedState = Record<InspectorPanelId, boolean>;
+type ToastItem = {
+  id: number;
+  message: string;
+};
+
+type EditorSnapshot = {
+  edges: Edge<SequenceEdgeData>[];
+  nodes: Node<EditorNodeData>[];
+};
+
+type DraftPersistenceState = {
+  hydrated: boolean;
+  savedSignature: string;
+  storage: 'database' | 'browser' | 'seed';
+};
+
+const inspectorPanelIds: InspectorPanelId[] = ['chain', 'sequence', 'node'];
+const inspectorPanelOrderStorageKey = 'cimmeria.chain-editor.inspector-order';
+const inspectorPanelCollapseStorageKey = 'cimmeria.chain-editor.inspector-collapsed';
+const defaultInspectorCollapsedState: InspectorCollapsedState = {
+  chain: false,
+  sequence: false,
+  node: false,
+};
+
+function isInspectorPanelId(value: string): value is InspectorPanelId {
+  return inspectorPanelIds.includes(value as InspectorPanelId);
+}
+
+function readInspectorPanelOrder(): InspectorPanelId[] {
+  if (typeof window === 'undefined') {
+    return [...inspectorPanelIds];
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(inspectorPanelOrderStorageKey);
+    if (!rawValue) {
+      return [...inspectorPanelIds];
+    }
+
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return [...inspectorPanelIds];
+    }
+
+    const deduped = parsed.filter((value): value is InspectorPanelId => isInspectorPanelId(value));
+    const missing = inspectorPanelIds.filter((value) => !deduped.includes(value));
+    return [...deduped, ...missing];
+  } catch {
+    return [...inspectorPanelIds];
+  }
+}
+
+function readInspectorCollapsedState(): InspectorCollapsedState {
+  if (typeof window === 'undefined') {
+    return { ...defaultInspectorCollapsedState };
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(inspectorPanelCollapseStorageKey);
+    if (!rawValue) {
+      return { ...defaultInspectorCollapsedState };
+    }
+
+    const parsed = JSON.parse(rawValue);
+    if (!parsed || typeof parsed !== 'object') {
+      return { ...defaultInspectorCollapsedState };
+    }
+
+    return {
+      chain: Boolean((parsed as Partial<InspectorCollapsedState>).chain),
+      sequence: Boolean((parsed as Partial<InspectorCollapsedState>).sequence),
+      node: Boolean((parsed as Partial<InspectorCollapsedState>).node),
+    };
+  } catch {
+    return { ...defaultInspectorCollapsedState };
+  }
+}
+
+function reorderInspectorPanels(
+  currentOrder: InspectorPanelId[],
+  sourceId: InspectorPanelId,
+  targetId: InspectorPanelId,
+): InspectorPanelId[] {
+  if (sourceId === targetId) {
+    return currentOrder;
+  }
+
+  const nextOrder = currentOrder.filter((panelId) => panelId !== sourceId);
+  const targetIndex = nextOrder.indexOf(targetId);
+
+  if (targetIndex === -1) {
+    return [...nextOrder, sourceId];
+  }
+
+  nextOrder.splice(targetIndex, 0, sourceId);
+  return nextOrder;
+}
+
+function cloneEditorSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(snapshot);
+  }
+
+  return JSON.parse(JSON.stringify(snapshot)) as EditorSnapshot;
+}
 
 const familyLabel: Record<PrimitiveFamily, string> = {
   anchor: 'Sequence',
@@ -184,9 +319,10 @@ const AUTO_LAYOUT = {
   frameRightPadding: 72,
   frameTopPadding: 118,
   frameBottomPadding: 36,
+  frameVerticalGap: 80,
   rowLabelWidth: 176,
-  rowGap: 26,
-  cardColumnGap: 210,
+  rowGap: 72,
+  cardColumnGap: 420,
   cardWidth: 286,
   cardHeight: 252,
 } as const;
@@ -294,114 +430,6 @@ const sequenceAnchorCatalog: ScenarioTemplate[] = [
     properties: [
       { label: 'marker', value: 'END' },
       { label: 'behavior', value: 'Visual grouping' },
-    ],
-  },
-];
-
-const workbookScenarioCatalog: ScenarioTemplate[] = [
-  {
-    id: 'arm-yourself-region-entry',
-    family: 'trigger',
-    stage: 'Workbook',
-    title: 'Arm Yourself - Region Entry',
-    detail: 'Enter Region8 to accept mission 622, display dialog 2982, add option 5229, and seed the opening onboarding state.',
-    status: 'content_chains #1',
-    scenario: 'space scope',
-    accent: '#22c55e',
-    properties: [
-      { label: 'event_type', value: 'enter_region' },
-      { label: 'event_key', value: 'Castle_CellBlock.Region8' },
-      { label: 'scope_type', value: 'space' },
-    ],
-  },
-  {
-    id: 'arm-yourself-crate-interact',
-    family: 'trigger',
-    stage: 'Workbook',
-    title: 'Arm Yourself - Crate Interact',
-    detail: 'Interact with Cellblock_WoodenCrate while mission 622 step 2114 is active to advance the beat and grant the starter prop.',
-    status: 'content_chains #2',
-    scenario: 'mission scope',
-    accent: '#06b6d4',
-    properties: [
-      { label: 'event_type', value: 'interact_tag' },
-      { label: 'event_key', value: 'Cellblock_WoodenCrate' },
-      { label: 'target_key', value: '2114' },
-    ],
-  },
-  {
-    id: 'arm-yourself-completion',
-    family: 'action',
-    stage: 'Workbook',
-    title: 'Arm Yourself - Completion',
-    detail: 'When dialog 3995 opens and mission 622 is active, complete mission 622 and immediately bridge into mission 638.',
-    status: 'content_chains #3',
-    scenario: 'mission handoff',
-    accent: '#eab308',
-    properties: [
-      { label: 'event_type', value: 'dialog_open' },
-      { label: 'event_key', value: '3995' },
-      { label: 'action_type', value: 'complete_mission + accept_mission' },
-    ],
-  },
-  {
-    id: 'prisoner-jaffa-dialog',
-    family: 'trigger',
-    stage: 'Workbook',
-    title: 'Prisoner 329 - Jaffa Dialog',
-    detail: 'On 329_CellDoorButton interact, if mission 638 is active and archetype is gte 8, show the Jaffa branch dialog.',
-    status: 'content_chains #4',
-    scenario: 'archetype branch',
-    accent: '#8b5cf6',
-    properties: [
-      { label: 'event_type', value: 'interact_tag' },
-      { label: 'event_key', value: '329_CellDoorButton' },
-      { label: 'condition', value: 'archetype gte 8' },
-    ],
-  },
-  {
-    id: 'prisoner-human-dialog',
-    family: 'trigger',
-    stage: 'Workbook',
-    title: 'Prisoner 329 - Human Dialog',
-    detail: 'On the same button, if mission 638 is active and archetype is lt 5, route to the human branch dialog path.',
-    status: 'content_chains #5',
-    scenario: 'archetype branch',
-    accent: '#3b82f6',
-    properties: [
-      { label: 'event_type', value: 'interact_tag' },
-      { label: 'event_key', value: '329_CellDoorButton' },
-      { label: 'condition', value: 'archetype lt 5' },
-    ],
-  },
-  {
-    id: 'prisoner-door-unlock-5020',
-    family: 'action',
-    stage: 'Workbook',
-    title: 'Door Unlock - Choice 5020',
-    detail: 'Dialog choice 5020 advances the step, plays the unlock sequence, and completes mission 638 on the Jaffa branch.',
-    status: 'content_chains #6',
-    scenario: 'dialog choice',
-    accent: '#f59e0b',
-    properties: [
-      { label: 'event_type', value: 'dialog_choice' },
-      { label: 'event_key', value: '5020' },
-      { label: 'action_type', value: 'advance_step + complete_mission' },
-    ],
-  },
-  {
-    id: 'prisoner-door-unlock-5022',
-    family: 'action',
-    stage: 'Workbook',
-    title: 'Door Unlock - Choice 5022',
-    detail: 'Dialog choice 5022 advances the step, plays the unlock sequence, and completes mission 638 on the human branch.',
-    status: 'content_chains #7',
-    scenario: 'dialog choice',
-    accent: '#f97316',
-    properties: [
-      { label: 'event_type', value: 'dialog_choice' },
-      { label: 'event_key', value: '5022' },
-      { label: 'action_type', value: 'advance_step + complete_mission' },
     ],
   },
 ];
@@ -986,7 +1014,8 @@ const initialNodes: NodeRecord[] = [
       status: 'content_conditions',
       scenario: 'archetype gate',
       accent: '#f5aa31',
-      outputs: ['Jaffa >= 8', 'Human < 5'],
+      outputs: ['Jaffa path', 'Human path'],
+      outputConditions: ['archetype >= 8', 'archetype < 5'],
       properties: [
         { label: 'condition_type', value: 'archetype' },
         { label: 'operator', value: 'gte or lt' },
@@ -1011,6 +1040,7 @@ const initialNodes: NodeRecord[] = [
       accent: '#8b5cf6',
       inputs: ['Jaffa branch', 'Human branch'],
       outputs: ['Choice 5020', 'Choice 2299'],
+      outputConditions: ['dialog.choice 5020', 'dialog.choice 2299'],
       properties: [
         { label: 'event_type', value: 'dialog_choice' },
         { label: 'event_key', value: '5020 or 2299' },
@@ -1034,6 +1064,7 @@ const initialNodes: NodeRecord[] = [
       scenario: 'branch convergence',
       accent: '#22c55e',
       inputs: ['Resolve Jaffa', 'Resolve Human'],
+      outputConditions: [],
       properties: [
         { label: 'action_type', value: 'advance_step + complete_mission + accept_mission' },
         { label: 'target_id', value: '638 -> 639' },
@@ -1481,105 +1512,43 @@ function isChainData(data: EditorNodeData): data is ChainFrameData {
   return data.kind === 'chain';
 }
 
-function getActiveFamilies(childNodes: Array<Node<EditorNodeData>>) {
-  const present = new Set(
-    childNodes
-      .filter((node) => isMissionData(node.data))
-      .map((node) => node.data.family),
-  );
-
-  return orderedFamilies.filter((family) => present.has(family));
-}
-
-function getChainChildOrder(
-  childNodes: Array<Node<EditorNodeData>>,
-  edges: Array<Edge<SequenceEdgeData>>,
-) {
-  const childIds = new Set(childNodes.map((node) => node.id));
-  const orderIndex = new Map(childNodes.map((node, index) => [node.id, index] as const));
-  const incoming = new Map<string, number>();
-  const outgoing = new Map<string, string[]>();
-
-  for (const node of childNodes) {
-    incoming.set(node.id, 0);
-    outgoing.set(node.id, []);
-  }
-
-  for (const edge of edges) {
-    if (
-      edge.type !== 'sequenceThread' ||
-      !childIds.has(edge.source) ||
-      !childIds.has(edge.target)
-    ) {
-      continue;
-    }
-
-    outgoing.get(edge.source)?.push(edge.target);
-    incoming.set(edge.target, (incoming.get(edge.target) ?? 0) + 1);
-  }
-
-  const queue = childNodes
-    .filter((node) => (incoming.get(node.id) ?? 0) === 0)
-    .sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
-    .map((node) => node.id);
-  const result: string[] = [];
-
-  while (queue.length) {
-    const current = queue.shift();
-    if (!current) {
-      continue;
-    }
-
-    result.push(current);
-
-    const nextIds = [...(outgoing.get(current) ?? [])].sort(
-      (a, b) => (orderIndex.get(a) ?? 0) - (orderIndex.get(b) ?? 0),
-    );
-
-    for (const nextId of nextIds) {
-      const nextIncoming = (incoming.get(nextId) ?? 0) - 1;
-      incoming.set(nextId, nextIncoming);
-      if (nextIncoming === 0) {
-        queue.push(nextId);
-      }
-    }
-  }
-
-  for (const node of childNodes) {
-    if (!result.includes(node.id)) {
-      result.push(node.id);
-    }
-  }
-
-  return result;
-}
-
-function getLanePosition(
-  family: PrimitiveFamily,
-  order: number,
-  activeFamilies: PrimitiveFamily[],
-): { x: number; y: number } {
-  const laneIndex = Math.max(activeFamilies.indexOf(family), 0);
-  const x =
-    AUTO_LAYOUT.frameLeftPadding +
-    AUTO_LAYOUT.rowLabelWidth +
-    order * (AUTO_LAYOUT.cardWidth + AUTO_LAYOUT.cardColumnGap);
-  const y =
-    AUTO_LAYOUT.frameTopPadding +
-    laneIndex * (AUTO_LAYOUT.cardHeight + AUTO_LAYOUT.rowGap);
-
-  return { x, y };
-}
-
 function getPortLabels(data: MissionNodeData) {
-  const fallbackInputs = ['In'];
-  const fallbackOutputs =
-    data.family === 'anchor' && data.stage === 'End' ? [] : ['Out'];
+  return getConnectionPortLabels({ data });
+}
 
-  return {
-    inputs: data.inputs ?? fallbackInputs,
-    outputs: data.outputs ?? fallbackOutputs,
-  };
+function getOutputConditions(data: MissionNodeData) {
+  const { outputs } = getPortLabels(data);
+
+  return outputs.map((_, index) => data.outputConditions?.[index] ?? '');
+}
+
+function getOutputRuleText(data: MissionNodeData, handleId?: string | null) {
+  if (!handleId?.startsWith('output-')) {
+    return '';
+  }
+
+  const index = Number(handleId.replace('output-', ''));
+  if (Number.isNaN(index)) {
+    return '';
+  }
+
+  const { outputs } = getPortLabels(data);
+  const outputLabel = outputs[index] ?? '';
+  const outputCondition = getOutputConditions(data)[index] ?? '';
+
+  if (!outputLabel && !outputCondition) {
+    return '';
+  }
+
+  if (!outputCondition) {
+    return outputLabel;
+  }
+
+  if (!outputLabel) {
+    return outputCondition;
+  }
+
+  return `${outputLabel} · ${outputCondition}`;
 }
 
 function getPortTop(index: number, count: number) {
@@ -1588,6 +1557,86 @@ function getPortTop(index: number, count: number) {
   }
 
   return `${((index + 1) / (count + 1)) * 100}%`;
+}
+
+function getChainFrameOrder(
+  visibleChains: ChainSummary[],
+  nodesById: Map<string, Node<EditorNodeData>>,
+  edges: Array<Edge<SequenceEdgeData>>,
+) {
+  const visibleChainIds = new Set(visibleChains.map((chain) => chain.nodeId));
+  const adjacency = new Map<string, Set<string>>();
+  const incoming = new Map<string, number>();
+  const baseOrder = new Map(visibleChains.map((chain, index) => [chain.nodeId, index] as const));
+
+  for (const chain of visibleChains) {
+    adjacency.set(chain.nodeId, new Set());
+    incoming.set(chain.nodeId, 0);
+  }
+
+  for (const edge of edges) {
+    if (edge.type === 'sequenceThread') {
+      continue;
+    }
+
+    const sourceNode = nodesById.get(edge.source);
+    const targetNode = nodesById.get(edge.target);
+    const sourceChainId = sourceNode?.parentId;
+    const targetChainId = targetNode?.parentId;
+
+    if (
+      !sourceChainId ||
+      !targetChainId ||
+      sourceChainId === targetChainId ||
+      !visibleChainIds.has(sourceChainId) ||
+      !visibleChainIds.has(targetChainId)
+    ) {
+      continue;
+    }
+
+    const nextSet = adjacency.get(sourceChainId);
+    if (!nextSet || nextSet.has(targetChainId)) {
+      continue;
+    }
+
+    nextSet.add(targetChainId);
+    incoming.set(targetChainId, (incoming.get(targetChainId) ?? 0) + 1);
+  }
+
+  const queue = visibleChains
+    .filter((chain) => (incoming.get(chain.nodeId) ?? 0) === 0)
+    .sort((a, b) => (baseOrder.get(a.nodeId) ?? 0) - (baseOrder.get(b.nodeId) ?? 0))
+    .map((chain) => chain.nodeId);
+  const ordered: string[] = [];
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current) {
+      continue;
+    }
+
+    ordered.push(current);
+
+    const nextChains = [...(adjacency.get(current) ?? [])].sort(
+      (a, b) => (baseOrder.get(a) ?? 0) - (baseOrder.get(b) ?? 0),
+    );
+
+    for (const next of nextChains) {
+      const nextIncoming = (incoming.get(next) ?? 0) - 1;
+      incoming.set(next, nextIncoming);
+      if (nextIncoming === 0) {
+        queue.push(next);
+      }
+    }
+  }
+
+  for (const chain of visibleChains) {
+    if (!ordered.includes(chain.nodeId)) {
+      ordered.push(chain.nodeId);
+    }
+  }
+
+  return ordered;
 }
 
 const ChainFrameNode = memo(({ data, selected }: NodeProps<Node<EditorNodeData>>) => {
@@ -1711,10 +1760,16 @@ const ChainFrameNode = memo(({ data, selected }: NodeProps<Node<EditorNodeData>>
   );
 });
 
-const MissionNode = memo(({ data, selected }: NodeProps<Node<EditorNodeData>>) => {
+const MissionNode = memo(({ data, id, selected }: NodeProps<Node<EditorNodeData>>) => {
+  const updateNodeInternals = useUpdateNodeInternals();
   const missionData = data as MissionNodeData;
   const tint = familyTint[missionData.family];
   const { inputs, outputs } = getPortLabels(missionData);
+  const handleSignature = getNodeHandleSignature({ data: missionData });
+
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [handleSignature, id, updateNodeInternals]);
 
   return (
     <div
@@ -1982,6 +2037,101 @@ function CatalogCard({
   );
 }
 
+function ToastStack({
+  toasts,
+}: {
+  toasts: ToastItem[];
+}) {
+  return (
+    <div className="pointer-events-none fixed right-6 top-6 z-[70] flex w-full max-w-md flex-col gap-4">
+      {toasts.map((toast) => (
+        <div
+          className="rounded-[26px] border border-[rgba(245,170,49,0.24)] bg-[rgba(9,18,28,0.94)] px-5 py-4 shadow-[0_18px_48px_rgba(0,0,0,0.34)] backdrop-blur"
+          key={toast.id}
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[rgba(245,170,49,0.88)]">
+            Content Engine Update
+          </p>
+          <p className="mt-2 text-base leading-7 text-white">{toast.message}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function InspectorPanelShell({
+  eyebrow,
+  title,
+  badge,
+  collapsed,
+  dragging,
+  onToggle,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  badge: ReactNode;
+  collapsed: boolean;
+  dragging: boolean;
+  onToggle: () => void;
+  onDragStart: (event: ReactDragEvent<HTMLButtonElement>) => void;
+  onDragEnd: () => void;
+  onDragOver: (event: ReactDragEvent<HTMLElement>) => void;
+  onDrop: (event: ReactDragEvent<HTMLElement>) => void;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={`rounded-[32px] border bg-[rgba(9,18,28,0.8)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)] transition-colors ${
+        dragging ? 'border-[rgba(245,170,49,0.32)]' : 'border-white/8'
+      }`}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <button
+            aria-label={`Reorder ${title}`}
+            className="mt-0.5 flex h-10 w-10 shrink-0 cursor-grab items-center justify-center rounded-[16px] border border-white/8 bg-white/4 text-sm font-semibold text-[rgba(224,231,239,0.72)] transition-colors hover:border-[rgba(245,170,49,0.28)] hover:bg-[rgba(245,170,49,0.08)] active:cursor-grabbing"
+            draggable
+            onDragEnd={onDragEnd}
+            onDragStart={onDragStart}
+            type="button"
+          >
+            ::
+          </button>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[rgba(160,174,192,0.72)]">
+              {eyebrow}
+            </p>
+            <h3 className="mt-2 truncate text-xl font-semibold tracking-[-0.04em] text-white">
+              {title}
+            </h3>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2">
+          {badge}
+          <button
+            aria-expanded={!collapsed}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/8 bg-white/4 text-sm font-semibold text-[rgba(224,231,239,0.76)] transition-colors hover:border-[rgba(245,170,49,0.28)] hover:bg-[rgba(245,170,49,0.08)]"
+            onClick={onToggle}
+            type="button"
+          >
+            {collapsed ? 'v' : '^'}
+          </button>
+        </div>
+      </div>
+
+      {!collapsed ? <div className="mt-5 space-y-4">{children}</div> : null}
+    </section>
+  );
+}
+
 function FlowContent() {
   const [nodes, setNodes, onNodesChange] = useNodesState<EditorNodeData>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<SequenceEdgeData>(initialEdges);
@@ -1992,13 +2142,63 @@ function FlowContent() {
   const [selectedSequenceId, setSelectedSequenceId] = useState<string>('primary-thread');
   const [edgeMode, setEdgeMode] = useState<'default' | 'sequenceThread'>('sequenceThread');
   const [draftSequence, setDraftSequence] = useState<SequenceEdgeData | null>(null);
+  const [draggingNodeId, setDraggingNodeId] = useState<string>('');
+  const [panelOrder, setPanelOrder] = useState<InspectorPanelId[]>(() => readInspectorPanelOrder());
+  const [collapsedPanels, setCollapsedPanels] = useState<InspectorCollapsedState>(() =>
+    readInspectorCollapsedState(),
+  );
+  const [draggingPanelId, setDraggingPanelId] = useState<InspectorPanelId | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftStateBySpace, setDraftStateBySpace] = useState<Record<string, DraftPersistenceState>>(
+    {},
+  );
   const nextNodeId = useRef(200);
   const nextSequenceId = useRef(1);
+  const nextToastId = useRef(1);
   const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  const undoHistoryRef = useRef<EditorSnapshot[]>([]);
 
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
+  const pushToast = useCallback((message: string) => {
+    const id = nextToastId.current++;
+    setToasts((current) => [...current, { id, message }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 6400);
+  }, []);
+
+  const recordHistorySnapshot = useCallback(() => {
+    undoHistoryRef.current.push(
+      cloneEditorSnapshot({
+        edges: edgesRef.current,
+        nodes: nodesRef.current,
+      }),
+    );
+
+    if (undoHistoryRef.current.length > 50) {
+      undoHistoryRef.current.shift();
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(inspectorPanelOrderStorageKey, JSON.stringify(panelOrder));
+  }, [panelOrder]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      inspectorPanelCollapseStorageKey,
+      JSON.stringify(collapsedPanels),
+    );
+  }, [collapsedPanels]);
 
   const nodesById = useMemo(
     () => new Map(nodes.map((node) => [node.id, node] as const)),
@@ -2057,6 +2257,11 @@ function FlowContent() {
     [selectedNode],
   );
 
+  const selectedNodeOutputConditions = useMemo(
+    () => (selectedNode ? getOutputConditions(selectedNode.data) : []),
+    [selectedNode],
+  );
+
   const visibleChains = useMemo(
     () =>
       chainSummaries.filter(
@@ -2085,14 +2290,38 @@ function FlowContent() {
   const displayNodes = useMemo(() => {
     const anchorThreads = new Map<string, { color: string; label: string }>();
     const chainSummaryMap = new Map(chainSummaries.map((chain) => [chain.nodeId, chain] as const));
-    const chainLayouts = new Map<
-      string,
-      {
-        frameStyle: { width: number; height: number };
-        positions: Map<string, { x: number; y: number }>;
-        activeFamilies: PrimitiveFamily[];
+    const resolvedNodePositions = resolveAutoLayoutNodePositions(chainSummaries, nodes, edges, {
+      cardColumnGap: AUTO_LAYOUT.cardColumnGap,
+      cardHeight: AUTO_LAYOUT.cardHeight,
+      cardWidth: AUTO_LAYOUT.cardWidth,
+      frameLeftPadding: AUTO_LAYOUT.frameLeftPadding,
+      frameTopPadding: AUTO_LAYOUT.frameTopPadding,
+      orderedFamilies,
+      rowGap: AUTO_LAYOUT.rowGap,
+      rowLabelWidth: AUTO_LAYOUT.rowLabelWidth,
+    });
+
+    const layoutNodes = nodes.map((node) => {
+      if (isChainData(node.data)) {
+        return node;
       }
-    >();
+
+      return {
+        ...node,
+        position: resolvedNodePositions.get(node.id) ?? node.position,
+      };
+    });
+    const layoutNodesById = new Map(layoutNodes.map((node) => [node.id, node] as const));
+    const chainLayouts = computePackedChainLayouts(chainSummaries, layoutNodes, layoutNodesById, {
+      cardHeight: AUTO_LAYOUT.cardHeight,
+      cardWidth: AUTO_LAYOUT.cardWidth,
+      frameBottomPadding: AUTO_LAYOUT.frameBottomPadding,
+      frameRightPadding: AUTO_LAYOUT.frameRightPadding,
+      minFrameHeight: 350,
+      minFrameWidth: 1280,
+      topPadding: 20,
+      verticalGap: AUTO_LAYOUT.frameVerticalGap,
+    });
 
     for (const edge of edges) {
       if (edge.type !== 'sequenceThread' || !edge.data) {
@@ -2114,53 +2343,14 @@ function FlowContent() {
       }
     }
 
-    for (const chain of chainSummaries) {
-      const childNodes = nodes.filter(
-        (node) => node.parentId === chain.nodeId && isMissionData(node.data),
-      );
-      const activeFamilies = getActiveFamilies(childNodes);
-      const orderedChildIds = getChainChildOrder(childNodes, edges);
-      const positions = new Map<string, { x: number; y: number }>();
-
-      orderedChildIds.forEach((nodeId, order) => {
-        const childNode = nodesById.get(nodeId);
-        if (!childNode || !isMissionData(childNode.data)) {
-          return;
-        }
-
-        positions.set(nodeId, getLanePosition(childNode.data.family, order, activeFamilies));
-      });
-
-      const familyCount = Math.max(activeFamilies.length, 1);
-      const orderedCount = Math.max(orderedChildIds.length, 1);
-      const frameWidth =
-        AUTO_LAYOUT.frameLeftPadding +
-        AUTO_LAYOUT.rowLabelWidth +
-        orderedCount * AUTO_LAYOUT.cardWidth +
-        Math.max(orderedCount - 1, 0) * AUTO_LAYOUT.cardColumnGap +
-        AUTO_LAYOUT.frameRightPadding;
-      const frameHeight =
-        AUTO_LAYOUT.frameTopPadding +
-        familyCount * AUTO_LAYOUT.cardHeight +
-        Math.max(familyCount - 1, 0) * AUTO_LAYOUT.rowGap +
-        AUTO_LAYOUT.frameBottomPadding;
-
-      chainLayouts.set(chain.nodeId, {
-        frameStyle: {
-          width: frameWidth,
-          height: frameHeight,
-        },
-        positions,
-        activeFamilies,
-      });
-    }
-
     return nodes.map((node) => {
       if (isChainData(node.data)) {
         const summary = chainSummaryMap.get(node.id);
         const layout = chainLayouts.get(node.id);
         return {
           ...node,
+          draggable: false,
+          position: layout?.framePosition ?? node.position,
           style: {
             ...node.style,
             ...layout?.frameStyle,
@@ -2174,11 +2364,10 @@ function FlowContent() {
       }
 
       const thread = anchorThreads.get(node.id);
-      const layout = node.parentId ? chainLayouts.get(node.parentId) : undefined;
       return {
         ...node,
-        draggable: false,
-        position: layout?.positions.get(node.id) ?? node.position,
+        draggable: true,
+        position: resolvedNodePositions.get(node.id) ?? node.position,
         data: {
           ...node.data,
           threadColor: thread?.color,
@@ -2205,10 +2394,36 @@ function FlowContent() {
 
   const visibleEdges = useMemo(
     () =>
-      edges.filter(
-        (edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target),
-      ),
-    [edges, visibleNodeIds],
+      edges
+        .filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+        .map((edge) => {
+          if (edge.type !== 'sequenceThread' || !edge.data) {
+            return {
+              ...edge,
+              zIndex: 12,
+            };
+          }
+
+          const sourceNode = nodesById.get(edge.source);
+          if (!sourceNode || !isMissionData(sourceNode.data)) {
+            return edge;
+          }
+
+          const ruleLabel = getOutputRuleText(sourceNode.data, edge.sourceHandle);
+          if (!ruleLabel) {
+            return edge;
+          }
+
+          return {
+            ...edge,
+            zIndex: 20,
+            data: {
+              ...edge.data,
+              label: ruleLabel,
+            },
+          };
+        }),
+    [edges, nodesById, visibleNodeIds],
   );
 
   const sequences = useMemo(() => {
@@ -2236,6 +2451,30 @@ function FlowContent() {
     [selectedSequenceId, sequences],
   );
 
+  const selectedChainName = selectedChain?.name ?? 'Untitled chain';
+  const selectedCardTitle = selectedNode?.data.title ?? 'Selected card';
+  const activeSpaceDraft = useMemo(() => {
+    const scopedSnapshot = extractSpaceScopedEditorSnapshot(nodes, edges, selectedSpaceId);
+
+    return createPersistedChainEditorDraft<EditorNodeData, SequenceEdgeData>({
+      edges: scopedSnapshot.edges,
+      missionId: null,
+      nodes: scopedSnapshot.nodes,
+      selectedChainId,
+      selectedNodeId,
+      selectedSequenceId,
+      spaceId: selectedSpaceId,
+    });
+  }, [edges, nodes, selectedChainId, selectedNodeId, selectedSequenceId, selectedSpaceId]);
+
+  const activeSpaceDraftSignature = useMemo(
+    () => JSON.stringify(activeSpaceDraft),
+    [activeSpaceDraft],
+  );
+  const activeDraftState = draftStateBySpace[selectedSpaceId];
+  const isDraftDirty = !!activeDraftState?.hydrated &&
+    activeDraftState.savedSignature !== activeSpaceDraftSignature;
+
   const beginDraftSequence = useCallback(() => {
     const id = `sequence-${nextSequenceId.current++}`;
     const nextDraft = {
@@ -2248,15 +2487,157 @@ function FlowContent() {
     setDraftSequence(nextDraft);
     setSelectedSequenceId(id);
     setEdgeMode('sequenceThread');
-  }, []);
+    pushToast(`Created ${nextDraft.label} in ${selectedChainName}.`);
+  }, [pushToast, selectedChainName]);
+
+  const handleSaveDraft = useCallback(async () => {
+    setSavingDraft(true);
+
+    try {
+      const result = await saveChainEditorDraft(activeSpaceDraft);
+      setDraftStateBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: {
+          hydrated: true,
+          savedSignature: activeSpaceDraftSignature,
+          storage: result.storage,
+        },
+      }));
+
+      if (result.storage === 'database') {
+        pushToast(`Saved ${spaceCatalog.find((space) => space.id === selectedSpaceId)?.label ?? selectedSpaceId} draft to PostgreSQL.`);
+      } else if (result.warning) {
+        pushToast(`Saved ${selectedSpaceId} draft locally because database save failed: ${result.warning}.`);
+      } else {
+        pushToast(`Saved ${selectedSpaceId} draft to the browser fallback store.`);
+      }
+    } catch (error) {
+      pushToast(`Error: ${error instanceof Error ? error.message : 'could not save the current draft'}.`);
+    } finally {
+      setSavingDraft(false);
+    }
+  }, [activeSpaceDraft, activeSpaceDraftSignature, pushToast, selectedSpaceId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateSpaceDraft() {
+      const seedSnapshot = extractSpaceScopedEditorSnapshot(
+        nodesRef.current,
+        edgesRef.current,
+        selectedSpaceId,
+      );
+      const seedDraft = createPersistedChainEditorDraft<EditorNodeData, SequenceEdgeData>({
+        edges: seedSnapshot.edges,
+        missionId: null,
+        nodes: seedSnapshot.nodes,
+        selectedChainId,
+        selectedNodeId,
+        selectedSequenceId,
+        spaceId: selectedSpaceId,
+      });
+
+      const result = await loadChainEditorDraft<EditorNodeData, SequenceEdgeData>(
+        selectedSpaceId,
+        null,
+      );
+      if (cancelled) {
+        return;
+      }
+
+      if (result.draft) {
+        const mergedSnapshot = mergeSpaceScopedEditorSnapshot(
+          nodesRef.current,
+          edgesRef.current,
+          selectedSpaceId,
+          result.draft,
+        );
+
+        setNodes(mergedSnapshot.nodes);
+        setEdges(mergedSnapshot.edges);
+        setSelectedChainId(result.draft.selectedChainId || '');
+        setSelectedNodeId(result.draft.selectedNodeId || '');
+        setSelectedSequenceId(result.draft.selectedSequenceId || '');
+        setDraftStateBySpace((current) => ({
+          ...current,
+          [selectedSpaceId]: {
+            hydrated: true,
+            savedSignature: JSON.stringify(result.draft),
+            storage: result.storage,
+          },
+        }));
+
+        if (result.warning) {
+          pushToast(
+            `Loaded ${selectedSpaceId} from browser fallback because database load failed: ${result.warning}.`,
+          );
+        } else if (result.storage !== 'seed') {
+          pushToast(
+            `Loaded ${selectedSpaceId} draft from ${result.storage === 'database' ? 'PostgreSQL' : 'browser storage'}.`,
+          );
+        }
+        return;
+      }
+
+      setDraftStateBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: {
+          hydrated: true,
+          savedSignature: JSON.stringify(seedDraft),
+          storage: result.storage,
+        },
+      }));
+
+      if (result.warning) {
+        pushToast(
+          `Using seeded ${selectedSpaceId} content because draft load failed: ${result.warning}.`,
+        );
+      }
+    }
+
+    hydrateSpaceDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [pushToast, selectedSpaceId, setEdges, setNodes]);
 
   const handleConnect = useCallback<OnConnect>(
     (connection) => {
-      setEdges((current) => {
+      try {
+        const sourceNode = connection.source ? nodesById.get(connection.source) : undefined;
+        const targetNode = connection.target ? nodesById.get(connection.target) : undefined;
+
+        if (!connection.source || !connection.target) {
+          throw new Error('missing a source or target handle');
+        }
+
+        if (!sourceNode || !targetNode || !isMissionData(sourceNode.data) || !isMissionData(targetNode.data)) {
+          throw new Error('both endpoints must be mission cards');
+        }
+
+        if (connection.source === connection.target) {
+          throw new Error('a card cannot connect to itself');
+        }
+
+        validateConnectionRequest({
+          sourceHandle: connection.sourceHandle,
+          sourceId: connection.source,
+          sourceNode,
+          targetHandle: connection.targetHandle,
+          targetId: connection.target,
+          targetNode,
+        });
+
+        recordHistorySnapshot();
+
+        const branchLabel = getOutputRuleText(sourceNode.data, connection.sourceHandle);
+        const sourceTitle = sourceNode.data.title;
+        const targetTitle = targetNode.data.title;
+
         if (edgeMode === 'sequenceThread') {
           const activeSequence =
             draftSequence ??
-            current.find(
+            edges.find(
               (edge) =>
                 edge.type === 'sequenceThread' && edge.data?.sequenceId === selectedSequenceId,
             )?.data ?? {
@@ -2266,36 +2647,59 @@ function FlowContent() {
               color: '#94a3b8',
             };
 
-          return addEdge(
-            {
-              ...connection,
-              type: 'sequenceThread',
-              data: activeSequence,
-            },
-            current,
+          setEdges((current) =>
+            addEdge(
+              {
+                ...connection,
+                type: 'sequenceThread',
+                data: activeSequence,
+                label: branchLabel || undefined,
+                zIndex: 20,
+              },
+              current,
+            ),
           );
+          pushToast(`Connected ${sourceTitle} to ${targetTitle} in ${activeSequence.label}.`);
+        } else {
+          setEdges((current) =>
+            addEdge(
+              {
+                ...connection,
+                animated: true,
+                style: {
+                  stroke: '#5eb8b3',
+                  strokeDasharray: '8 8',
+                  strokeWidth: 2,
+                },
+                type: 'smoothstep',
+                zIndex: 12,
+              },
+              current,
+            ),
+          );
+          pushToast(`Linked ${sourceTitle} to ${targetTitle} across ${selectedChainName}.`);
         }
 
-        return addEdge(
-          {
-            ...connection,
-            animated: true,
-            style: {
-              stroke: '#5eb8b3',
-              strokeDasharray: '8 8',
-              strokeWidth: 2,
-            },
-            type: 'smoothstep',
-          },
-          current,
+        if (edgeMode === 'sequenceThread' && draftSequence) {
+          setDraftSequence(null);
+        }
+      } catch (error) {
+        pushToast(
+          `Error: ${error instanceof Error ? error.message : 'could not create the requested link'}.`,
         );
-      });
-
-      if (edgeMode === 'sequenceThread' && draftSequence) {
-        setDraftSequence(null);
       }
     },
-    [draftSequence, edgeMode, selectedSequenceId, setEdges],
+    [
+      draftSequence,
+      edgeMode,
+      edges,
+      nodesById,
+      pushToast,
+      recordHistorySnapshot,
+      selectedChainName,
+      selectedSequenceId,
+      setEdges,
+    ],
   );
 
   const handleNodesChange = useCallback<OnNodesChange>(
@@ -2329,6 +2733,68 @@ function FlowContent() {
   const handleEdgesChange = useCallback<OnEdgesChange>(
     (changes) => onEdgesChange(changes),
     [onEdgesChange],
+  );
+
+  const handleNodeDragStop = useCallback(
+    (_event: unknown, node: Node<EditorNodeData>) => {
+      setDraggingNodeId('');
+
+      if (!node.parentId || !isMissionData(node.data)) {
+        return;
+      }
+
+      recordHistorySnapshot();
+
+      const clampedPosition = {
+        x: Math.max(AUTO_LAYOUT.frameLeftPadding + AUTO_LAYOUT.rowLabelWidth, node.position.x),
+        y: Math.max(AUTO_LAYOUT.frameTopPadding, node.position.y),
+      };
+
+      const siblingNodes = displayNodes
+        .filter(
+          (entry) =>
+            entry.parentId === node.parentId &&
+            entry.id !== node.id &&
+            isMissionData(entry.data),
+        )
+        .sort((a, b) => a.position.x - b.position.x);
+
+      let insertAt = siblingNodes.length;
+      for (let index = 0; index < siblingNodes.length; index += 1) {
+        if (node.position.x < siblingNodes[index].position.x) {
+          insertAt = index;
+          break;
+        }
+      }
+
+      const nextOrder = [...siblingNodes];
+      nextOrder.splice(insertAt, 0, node);
+
+      setNodes((current) =>
+        current.map((entry) => {
+          if (entry.parentId !== node.parentId || !isMissionData(entry.data)) {
+            return entry;
+          }
+
+          const orderIndex = nextOrder.findIndex((orderedNode) => orderedNode.id === entry.id);
+          if (orderIndex === -1) {
+            return entry;
+          }
+
+          return {
+            ...entry,
+            position: entry.id === node.id ? clampedPosition : entry.position,
+            data: {
+              ...entry.data,
+              manualPosition: entry.id === node.id ? true : entry.data.manualPosition,
+              sortOrder: orderIndex,
+            },
+          };
+        }),
+      );
+      pushToast(`Reordered ${node.data.title} inside ${selectedChainName}.`);
+    },
+    [displayNodes, pushToast, recordHistorySnapshot, selectedChainName, setNodes],
   );
 
   const updateSelectedNode = useCallback(
@@ -2416,39 +2882,90 @@ function FlowContent() {
       return;
     }
 
+    recordHistorySnapshot();
     setNodes((current) => current.filter((entry) => entry.id !== selectedNodeId));
     setEdges((current) =>
       current.filter((edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId),
     );
     setSelectedNodeId('');
-  }, [nodesById, selectedNodeId, setEdges, setNodes]);
+    pushToast(`Deleted ${node.data.title} from ${selectedChainName}.`);
+  }, [nodesById, pushToast, recordHistorySnapshot, selectedChainName, selectedNodeId, setEdges, setNodes]);
 
   const applySequenceStyle = useCallback(
     (style: SequenceStyle) => {
+      recordHistorySnapshot();
       updateSelectedSequence({
         category: style.label,
         color: style.color,
       });
+      pushToast(`Updated ${selectedSequence?.label ?? 'sequence yarn'} to ${style.label} style.`);
     },
-    [updateSelectedSequence],
+    [pushToast, recordHistorySnapshot, selectedSequence, updateSelectedSequence],
   );
 
   const applyChainTint = useCallback(
     (style: SequenceStyle) => {
+      recordHistorySnapshot();
       updateSelectedChain({
         color: style.color,
         semantic: style.label,
       });
+      pushToast(`Updated ${selectedChainName} tint to ${style.label}.`);
     },
-    [updateSelectedChain],
+    [pushToast, recordHistorySnapshot, selectedChainName, updateSelectedChain],
   );
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Delete' && event.key !== 'Backspace') {
+  const togglePanelCollapsed = useCallback((panelId: InspectorPanelId) => {
+    setCollapsedPanels((current) => ({
+      ...current,
+      [panelId]: !current[panelId],
+    }));
+  }, []);
+
+  const handlePanelDragStart = useCallback(
+    (panelId: InspectorPanelId) => (event: ReactDragEvent<HTMLButtonElement>) => {
+      setDraggingPanelId(panelId);
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/inspector-panel', panelId);
+    },
+    [],
+  );
+
+  const handlePanelDragOver = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      if (!draggingPanelId) {
         return;
       }
 
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+    },
+    [draggingPanelId],
+  );
+
+  const handlePanelDrop = useCallback(
+    (targetId: InspectorPanelId) => (event: ReactDragEvent<HTMLElement>) => {
+      event.preventDefault();
+      const droppedPanelId =
+        draggingPanelId ?? event.dataTransfer.getData('text/inspector-panel');
+
+      if (!isInspectorPanelId(droppedPanelId) || droppedPanelId === targetId) {
+        setDraggingPanelId(null);
+        return;
+      }
+
+      setPanelOrder((current) => reorderInspectorPanels(current, droppedPanelId, targetId));
+      setDraggingPanelId(null);
+    },
+    [draggingPanelId],
+  );
+
+  const handlePanelDragEnd = useCallback(() => {
+    setDraggingPanelId(null);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const tagName = target?.tagName?.toLowerCase();
       const isEditingField =
@@ -2456,6 +2973,24 @@ function FlowContent() {
         tagName === 'textarea' ||
         tagName === 'select' ||
         target?.isContentEditable;
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !isEditingField) {
+        const previousSnapshot = undoHistoryRef.current.pop();
+        if (!previousSnapshot) {
+          pushToast('Error: nothing to undo.');
+          return;
+        }
+
+        event.preventDefault();
+        setNodes(previousSnapshot.nodes);
+        setEdges(previousSnapshot.edges);
+        pushToast('Undid the last editor change.');
+        return;
+      }
+
+      if (event.key !== 'Delete' && event.key !== 'Backspace') {
+        return;
+      }
 
       if (isEditingField || !selectedNodeId) {
         return;
@@ -2467,23 +3002,46 @@ function FlowContent() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [deleteSelectedNode, selectedNodeId]);
+  }, [deleteSelectedNode, pushToast, selectedNodeId, setEdges, setNodes]);
 
   const addScenarioNode = useCallback(
     (template: ScenarioTemplate) => {
       const targetChain = nodesById.get(selectedChainId);
       if (!targetChain || !isChainData(targetChain.data)) {
+        pushToast('Error: select a target content chain before adding a card.');
         return;
       }
       const id = `n${nextNodeId.current++}`;
+      const siblingNodes = nodes.filter(
+        (node) => node.parentId === selectedChainId && isMissionData(node.data),
+      );
+      const nextSortOrder = siblingNodes.reduce(
+        (maxOrder, node) => Math.max(maxOrder, node.data.sortOrder ?? -1),
+        -1,
+      ) + 1;
+      const familyNodes = siblingNodes.filter((node) => node.data.family === template.family);
+      const activeFamilies = Array.from(
+        new Set([...siblingNodes.map((node) => node.data.family), template.family]),
+      ).sort((a, b) => orderedFamilies.indexOf(a) - orderedFamilies.indexOf(b));
+      const fallbackPosition = getLanePosition(template.family, nextSortOrder, activeFamilies);
+      const nextPosition = familyNodes.length
+        ? {
+            x:
+              Math.max(...familyNodes.map((node) => node.position.x)) +
+              AUTO_LAYOUT.cardWidth +
+              Math.floor(AUTO_LAYOUT.cardColumnGap / 2),
+            y: familyNodes[0]?.position.y ?? fallbackPosition.y,
+          }
+        : fallbackPosition;
 
+      recordHistorySnapshot();
       setNodes((current) => [
         ...current,
         {
           id,
           parentId: selectedChainId,
           extent: 'parent',
-          position: { x: 0, y: 0 },
+          position: nextPosition,
           type: 'missionNode',
           data: {
             kind: 'mission',
@@ -2494,13 +3052,25 @@ function FlowContent() {
             status: template.status,
             scenario: template.scenario,
             accent: template.accent,
+            manualPosition: false,
+            sortOrder: nextSortOrder,
+            inputs:
+              template.family === 'anchor' && template.stage === 'Start'
+                ? []
+                : ['In'],
+            outputs:
+              template.family === 'anchor' && template.stage === 'End'
+                ? []
+                : ['Out'],
+            outputConditions: template.family === 'anchor' && template.stage === 'End' ? [] : [''],
             properties: template.properties.map((item) => ({ ...item })),
           },
         },
       ]);
       setSelectedNodeId(id);
+      pushToast(`Added ${template.title} to ${targetChain.data.name}.`);
     },
-    [nodesById, selectedChainId, setNodes],
+    [nodes, nodesById, pushToast, recordHistorySnapshot, selectedChainId, setNodes],
   );
 
   useEffect(() => {
@@ -2556,8 +3126,589 @@ function FlowContent() {
     setSelectedSequenceId(sequences[0].sequenceId);
   }, [selectedSequenceId, sequences]);
 
+  const inspectorPanels: Record<
+    InspectorPanelId,
+    {
+      eyebrow: string;
+      title: string;
+      badge: ReactNode;
+      content: ReactNode;
+    }
+  > = {
+    chain: {
+      eyebrow: 'Selected Chain',
+      title: selectedChain?.name ?? 'No chain selected',
+      badge: (
+        <span
+          className="rounded-full px-3 py-1 text-xs font-medium"
+          style={{
+            backgroundColor: `${selectedChain?.color ?? '#94a3b8'}22`,
+            color: selectedChain?.color ?? '#cbd5e1',
+          }}
+        >
+          {selectedChain?.semantic ?? 'Untinted'}
+        </span>
+      ),
+      content: (
+        <>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Chain name
+            </span>
+            <input
+              className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+              onChange={(event) => updateSelectedChain({ name: event.currentTarget.value })}
+              onBlur={() => pushToast(`Updated chain name to ${selectedChain?.name ?? 'Untitled chain'}.`)}
+              value={selectedChain?.name ?? ''}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Chain summary
+            </span>
+            <textarea
+              className="min-h-28 w-full rounded-[24px] border border-white/8 bg-white/4 px-4 py-3 text-sm leading-6 text-white outline-none transition-colors focus:border-[#f5aa31]"
+              onChange={(event) => updateSelectedChain({ summary: event.currentTarget.value })}
+              onBlur={() => pushToast(`Updated summary for ${selectedChain?.name ?? 'Untitled chain'}.`)}
+              value={selectedChain?.summary ?? ''}
+            />
+          </label>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+                Space
+              </span>
+              <select
+                className="w-full rounded-[20px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                onChange={(event) => {
+                  setSelectedSpaceId(event.currentTarget.value);
+                  setSelectedMissionId('none');
+                }}
+                value={selectedSpaceId}
+              >
+                {spaceCatalog.map((space) => (
+                  <option key={space.id} value={space.id}>
+                    {space.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+                Mission
+              </span>
+              <select
+                className="w-full rounded-[20px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                onChange={(event) => setSelectedMissionId(event.currentTarget.value)}
+                value={selectedMissionId}
+              >
+                <option value="none">None (space view)</option>
+                {availableMissions.map((mission) => (
+                  <option key={mission.id} value={mission.id}>
+                    {mission.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[rgba(224,231,239,0.76)]">
+            Content chains are treated as mission-scoped for now. Effect scope is intentionally omitted and tracked as a backlog item.
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+                Priority
+              </span>
+              <input
+                className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                onChange={(event) =>
+                  updateSelectedChain({
+                    priority: Number(event.currentTarget.value) || 0,
+                  })
+                }
+                onBlur={() => pushToast(`Updated priority for ${selectedChain?.name ?? 'Untitled chain'}.`)}
+                type="number"
+                value={selectedChain?.priority ?? 0}
+              />
+            </label>
+
+            <button
+              className={`mt-7 rounded-[20px] px-4 py-3 text-sm font-medium transition-colors ${
+                selectedChain?.enabled
+                  ? 'border border-[#22c55e]/30 bg-[rgba(34,197,94,0.14)] text-[#c7ffd5]'
+                  : 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.76)]'
+              }`}
+              onClick={() => {
+                updateSelectedChain({ enabled: !selectedChain?.enabled });
+                pushToast(
+                  `${selectedChain?.enabled ? 'Disabled' : 'Enabled'} ${selectedChain?.name ?? 'Untitled chain'}.`,
+                );
+              }}
+              type="button"
+            >
+              {selectedChain?.enabled ? 'Enabled' : 'Disabled'}
+            </button>
+          </div>
+
+          <div className="rounded-[24px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Chain frame tint
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+              <div
+                className="h-4 w-20 rounded-full"
+                style={{ backgroundColor: selectedChain?.color ?? '#94a3b8' }}
+              />
+              <p className="text-sm text-[rgba(224,231,239,0.76)]">
+                Use semantic tints to make space chains, mission hand-offs, and hidden controllers readable on the canvas.
+              </p>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {sequencePalette.map((style) => (
+                <button
+                  className="rounded-[18px] border border-white/8 bg-white/4 px-3 py-3 text-left transition-colors hover:border-[rgba(245,170,49,0.28)] hover:bg-[rgba(245,170,49,0.08)]"
+                  key={`chain-style-${style.id}`}
+                  onClick={() => applyChainTint(style)}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-white">{style.label}</span>
+                    <span
+                      className="h-3.5 w-3.5 rounded-full"
+                      style={{ backgroundColor: style.color }}
+                    />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Chain inventory
+            </p>
+            <div className="mt-3 space-y-2">
+              {visibleChains.map((chain) => (
+                <button
+                  className={`flex w-full items-center justify-between rounded-[18px] px-3 py-3 text-left transition-colors ${
+                    chain.nodeId === selectedChain?.nodeId ? 'bg-white/8' : 'bg-transparent hover:bg-white/4'
+                  }`}
+                  key={chain.nodeId}
+                  onClick={() => setSelectedChainId(chain.nodeId)}
+                  type="button"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="h-3 w-3 rounded-full" style={{ backgroundColor: chain.color }} />
+                    <div>
+                      <p className="text-sm font-medium text-white">{chain.name}</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">
+                        {chain.scopeType} / {chain.scopeId}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-[rgba(224,231,239,0.72)]">
+                    {chain.sequenceCount} yarn{chain.sequenceCount === 1 ? '' : 's'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      ),
+    },
+    sequence: {
+      eyebrow: 'Selected Sequence',
+      title: selectedSequence?.label ?? 'No sequence selected',
+      badge: (
+        <span
+          className="rounded-full px-3 py-1 text-xs font-medium"
+          style={{
+            backgroundColor: `${selectedSequence?.color ?? '#94a3b8'}22`,
+            color: selectedSequence?.color ?? '#cbd5e1',
+          }}
+        >
+          {selectedSequence?.category ?? 'Unstyled'}
+        </span>
+      ),
+      content: (
+        <>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Sequence name
+            </span>
+            <input
+              className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+              onChange={(event) => updateSelectedSequence({ label: event.currentTarget.value })}
+              onBlur={() => pushToast(`Updated sequence name to ${selectedSequence?.label ?? 'Untitled sequence'}.`)}
+              value={selectedSequence?.label ?? ''}
+            />
+          </label>
+
+          <div className="rounded-[24px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Sequence semantic style
+            </p>
+            <div
+              className="mt-3 flex items-center gap-3"
+              onDragOver={(event) => {
+                event.preventDefault();
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const styleId = event.dataTransfer.getData('text/sequence-style');
+                const style = sequencePalette.find((item) => item.id === styleId);
+                if (style) {
+                  applySequenceStyle(style);
+                }
+              }}
+            >
+              <div
+                className="h-4 w-20 rounded-full"
+                style={{ backgroundColor: selectedSequence?.color ?? '#94a3b8' }}
+              />
+              <p className="text-sm text-[rgba(224,231,239,0.76)]">
+                Drag a semantic chip here, or click a chip below to apply it to the whole yarn.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {sequencePalette.map((style) => (
+              <button
+                className="rounded-[22px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4 text-left transition-colors hover:border-[rgba(245,170,49,0.28)] hover:bg-[rgba(245,170,49,0.08)]"
+                draggable
+                key={style.id}
+                onClick={() => applySequenceStyle(style)}
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('text/sequence-style', style.id);
+                  event.dataTransfer.effectAllowed = 'copy';
+                }}
+                type="button"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-white">{style.label}</span>
+                  <span
+                    className="h-4 w-4 rounded-full shadow-[0_0_14px_rgba(255,255,255,0.12)]"
+                    style={{ backgroundColor: style.color }}
+                  />
+                </div>
+                <p className="mt-2 text-xs uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+                  {style.category}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+                  {style.description}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              className="flex-1 rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+              onClick={beginDraftSequence}
+              type="button"
+            >
+              New sequence yarn
+            </button>
+            <button
+              className="flex-1 rounded-[20px] border border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] px-4 py-3 text-sm font-medium text-[#ffd0cf] transition-colors hover:bg-[rgba(255,94,91,0.18)]"
+              onClick={deleteSelectedNode}
+              type="button"
+            >
+              Delete selected card
+            </button>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Sequence inventory
+            </p>
+            <div className="mt-3 space-y-2">
+              {sequences.map((sequence) => (
+                <button
+                  className={`flex w-full items-center justify-between rounded-[18px] px-3 py-3 text-left transition-colors ${
+                    sequence.sequenceId === selectedSequence?.sequenceId
+                      ? 'bg-white/8'
+                      : 'bg-transparent hover:bg-white/4'
+                  }`}
+                  key={sequence.sequenceId}
+                  onClick={() => {
+                    setSelectedSequenceId(sequence.sequenceId);
+                    if (draftSequence && draftSequence.sequenceId !== sequence.sequenceId) {
+                      setDraftSequence(null);
+                    }
+                  }}
+                  type="button"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: sequence.color }}
+                    />
+                    <div>
+                      <p className="text-sm font-medium text-white">{sequence.label}</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">
+                        {sequence.category}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-[rgba(224,231,239,0.72)]">
+                    {sequence.edgeCount} link{sequence.edgeCount === 1 ? '' : 's'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      ),
+    },
+    node: {
+      eyebrow: 'Selected Card',
+      title: selectedNode?.data.title ?? 'No selection',
+      badge: (
+        <span
+          className="rounded-full px-3 py-1 text-xs font-medium"
+          style={{
+            backgroundColor: selectedNode ? familyTint[selectedNode.data.family].chip : 'rgba(148,163,184,0.12)',
+            color: selectedNode ? familyTint[selectedNode.data.family].text : '#cbd5e1',
+          }}
+        >
+          {selectedNode ? familyLabel[selectedNode.data.family] : 'Card'}
+        </span>
+      ),
+      content: (
+        <>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Card title
+            </span>
+            <input
+              className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none ring-0 transition-colors focus:border-[#f5aa31]"
+              onChange={(event) => updateSelectedNode({ title: event.currentTarget.value })}
+              onBlur={() => pushToast(`Updated card title to ${selectedNode?.data.title ?? 'Untitled card'} in ${selectedChainName}.`)}
+              value={selectedNode?.data.title ?? ''}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Scenario
+            </span>
+            <input
+              className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none ring-0 transition-colors focus:border-[#f5aa31]"
+              onChange={(event) => updateSelectedNode({ scenario: event.currentTarget.value })}
+              onBlur={() => pushToast(`Updated scenario for ${selectedCardTitle} in ${selectedChainName}.`)}
+              value={selectedNode?.data.scenario ?? ''}
+            />
+          </label>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+                Inputs
+              </span>
+              <input
+                className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none ring-0 transition-colors focus:border-[#f5aa31]"
+                onChange={(event) =>
+                  updateSelectedNode({
+                    inputs: event.currentTarget.value
+                      .split(',')
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  })
+                }
+                onBlur={() => pushToast(`Updated inputs for ${selectedCardTitle} in ${selectedChainName}.`)}
+                value={selectedNodePorts.inputs.join(', ')}
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+                Outputs
+              </span>
+              <input
+                className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none ring-0 transition-colors focus:border-[#f5aa31]"
+                onChange={(event) =>
+                  updateSelectedNode({
+                    outputs: event.currentTarget.value
+                      .split(',')
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  })
+                }
+                onBlur={() => pushToast(`Updated outputs for ${selectedCardTitle} in ${selectedChainName}.`)}
+                value={selectedNodePorts.outputs.join(', ')}
+              />
+            </label>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              className="flex-1 rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+              onClick={() => {
+                updateSelectedNode({
+                  inputs: [...selectedNodePorts.inputs, `Input ${selectedNodePorts.inputs.length + 1}`],
+                });
+                pushToast(`Added input port to ${selectedCardTitle} in ${selectedChainName}.`);
+              }}
+              type="button"
+            >
+              Add input
+            </button>
+            <button
+              className="flex-1 rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+              onClick={() => {
+                updateSelectedNode({
+                  outputs: [...selectedNodePorts.outputs, `Output ${selectedNodePorts.outputs.length + 1}`],
+                  outputConditions: [...selectedNodeOutputConditions, ''],
+                });
+                pushToast(`Added output port to ${selectedCardTitle} in ${selectedChainName}.`);
+              }}
+              type="button"
+            >
+              Add output
+            </button>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Branch Rules
+            </p>
+            <div className="mt-4 space-y-3">
+              {selectedNodePorts.outputs.map((outputLabel, index) => (
+                <div
+                  className="rounded-[20px] border border-white/8 bg-white/4 p-3"
+                  key={`branch-rule-${index}`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">
+                      Output {index + 1}
+                    </span>
+                    <button
+                      className="rounded-full border border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] px-3 py-1 text-[11px] font-medium text-[#ffd0cf] transition-colors hover:bg-[rgba(255,94,91,0.18)]"
+                      onClick={() => {
+                        updateSelectedNode({
+                          outputs: selectedNodePorts.outputs.filter((_, itemIndex) => itemIndex !== index),
+                          outputConditions: selectedNodeOutputConditions.filter(
+                            (_, itemIndex) => itemIndex !== index,
+                          ),
+                        });
+                        pushToast(`Removed output ${index + 1} from ${selectedCardTitle} in ${selectedChainName}.`);
+                      }}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[rgba(160,174,192,0.68)]">
+                        Branch label
+                      </span>
+                      <input
+                        className="w-full rounded-[16px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                        onChange={(event) =>
+                          updateSelectedNode({
+                            outputs: selectedNodePorts.outputs.map((item, itemIndex) =>
+                              itemIndex === index ? event.currentTarget.value : item,
+                            ),
+                          })
+                        }
+                        onBlur={() => pushToast(`Updated branch label on ${selectedCardTitle} in ${selectedChainName}.`)}
+                        value={outputLabel}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[rgba(160,174,192,0.68)]">
+                        Condition
+                      </span>
+                      <input
+                        className="w-full rounded-[16px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                        onChange={(event) =>
+                          updateSelectedNode({
+                            outputConditions: selectedNodePorts.outputs.map((_, itemIndex) =>
+                              itemIndex === index
+                                ? event.currentTarget.value
+                                : selectedNodeOutputConditions[itemIndex] ?? '',
+                              ),
+                            })
+                          }
+                        onBlur={() => pushToast(`Updated branch rule on ${selectedCardTitle} in ${selectedChainName}.`)}
+                        placeholder="archetype >= 8"
+                        value={selectedNodeOutputConditions[index] ?? ''}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Input Ports
+            </p>
+            <div className="mt-4 space-y-3">
+              {selectedNodePorts.inputs.map((inputLabel, index) => (
+                <div
+                  className="flex items-center gap-3 rounded-[18px] border border-white/8 bg-white/4 p-3"
+                  key={`input-port-${index}`}
+                >
+                  <input
+                    className="flex-1 rounded-[16px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-3 py-2 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
+                    onChange={(event) =>
+                      updateSelectedNode({
+                        inputs: selectedNodePorts.inputs.map((item, itemIndex) =>
+                          itemIndex === index ? event.currentTarget.value : item,
+                        ),
+                      })
+                    }
+                    onBlur={() => pushToast(`Updated input port on ${selectedCardTitle} in ${selectedChainName}.`)}
+                    value={inputLabel}
+                  />
+                  <button
+                    className="rounded-full border border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] px-3 py-1 text-[11px] font-medium text-[#ffd0cf] transition-colors hover:bg-[rgba(255,94,91,0.18)]"
+                    onClick={() => {
+                      updateSelectedNode({
+                        inputs: selectedNodePorts.inputs.filter((_, itemIndex) => itemIndex !== index),
+                      });
+                      pushToast(`Removed input ${index + 1} from ${selectedCardTitle} in ${selectedChainName}.`);
+                    }}
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Detail
+            </span>
+            <textarea
+              className="min-h-32 w-full rounded-[24px] border border-white/8 bg-white/4 px-4 py-3 text-sm leading-6 text-white outline-none transition-colors focus:border-[#f5aa31]"
+              onChange={(event) => updateSelectedNode({ detail: event.currentTarget.value })}
+              onBlur={() => pushToast(`Updated detail for ${selectedCardTitle} in ${selectedChainName}.`)}
+              value={selectedNode?.data.detail ?? ''}
+            />
+          </label>
+        </>
+      ),
+    },
+  };
+
   return (
     <div className="space-y-4">
+      <ToastStack toasts={toasts} />
       <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.9fr)_420px]">
         <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[32px] border border-white/8 bg-[rgba(9,18,28,0.8)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/6 px-6 py-5">
@@ -2571,6 +3722,22 @@ function FlowContent() {
             </div>
             <div className="flex flex-wrap gap-2 text-xs text-[rgba(224,231,239,0.76)]">
               <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
+                {activeDraftState?.storage === 'database'
+                  ? 'PostgreSQL draft'
+                  : activeDraftState?.storage === 'browser'
+                    ? 'Browser draft'
+                    : 'Seed content'}
+              </span>
+              <span
+                className={`rounded-full border px-3 py-2 ${
+                  isDraftDirty
+                    ? 'border-[rgba(245,170,49,0.28)] bg-[rgba(245,170,49,0.12)] text-[#ffd38a]'
+                    : 'border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.12)] text-[#c7ffd5]'
+                }`}
+              >
+                {isDraftDirty ? 'Unsaved changes' : 'Saved'}
+              </span>
+              <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
                 {visibleChains.length} chains
               </span>
               <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
@@ -2579,6 +3746,22 @@ function FlowContent() {
               <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
                 {visibleEdges.length} links
               </span>
+              <button
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  savingDraft
+                    ? 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.6)]'
+                    : isDraftDirty
+                      ? 'border border-[#22c55e]/30 bg-[rgba(34,197,94,0.14)] text-[#c7ffd5]'
+                      : 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.82)]'
+                }`}
+                disabled={savingDraft}
+                onClick={() => {
+                  void handleSaveDraft();
+                }}
+                type="button"
+              >
+                {savingDraft ? 'Saving...' : 'Save draft'}
+              </button>
               <button
                 className={`rounded-full px-3 py-2 transition-colors ${
                   edgeMode === 'sequenceThread'
@@ -2645,6 +3828,12 @@ function FlowContent() {
                   setSelectedChainId(node.parentId);
                 }
               }}
+              onNodeDragStop={handleNodeDragStop}
+              onNodeDragStart={(_event, node) => {
+                if (!isChainData(node.data)) {
+                  setDraggingNodeId(node.id);
+                }
+              }}
               onNodesChange={handleNodesChange}
               proOptions={{ hideAttribution: true }}
             >
@@ -2669,441 +3858,33 @@ function FlowContent() {
         </section>
 
         <aside className="space-y-4">
-          <section className="rounded-[32px] border border-white/8 bg-[rgba(9,18,28,0.8)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[rgba(160,174,192,0.72)]">
-                  Selected Chain
-                </p>
-                <h3 className="mt-2 text-xl font-semibold tracking-[-0.04em] text-white">
-                  {selectedChain?.name ?? 'No chain selected'}
-                </h3>
-              </div>
-              <span
-                className="rounded-full px-3 py-1 text-xs font-medium"
-                style={{
-                  backgroundColor: `${selectedChain?.color ?? '#94a3b8'}22`,
-                  color: selectedChain?.color ?? '#cbd5e1',
-                }}
+          {panelOrder.map((panelId) => {
+            const panel = inspectorPanels[panelId];
+
+            return (
+              <InspectorPanelShell
+                badge={panel.badge}
+                collapsed={collapsedPanels[panelId]}
+                dragging={draggingPanelId === panelId}
+                eyebrow={panel.eyebrow}
+                key={panelId}
+                onDragEnd={handlePanelDragEnd}
+                onDragOver={handlePanelDragOver}
+                onDragStart={handlePanelDragStart(panelId)}
+                onDrop={handlePanelDrop(panelId)}
+                onToggle={() => togglePanelCollapsed(panelId)}
+                title={panel.title}
               >
-                {selectedChain?.semantic ?? 'Untinted'}
-              </span>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Chain name
-                </span>
-                <input
-                  className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
-                  onChange={(event) => updateSelectedChain({ name: event.currentTarget.value })}
-                  value={selectedChain?.name ?? ''}
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Chain summary
-                </span>
-                <textarea
-                  className="min-h-28 w-full rounded-[24px] border border-white/8 bg-white/4 px-4 py-3 text-sm leading-6 text-white outline-none transition-colors focus:border-[#f5aa31]"
-                  onChange={(event) => updateSelectedChain({ summary: event.currentTarget.value })}
-                  value={selectedChain?.summary ?? ''}
-                />
-              </label>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                    Space
-                  </span>
-                  <select
-                    className="w-full rounded-[20px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
-                    onChange={(event) => {
-                      setSelectedSpaceId(event.currentTarget.value);
-                      setSelectedMissionId('none');
-                    }}
-                    value={selectedSpaceId}
-                  >
-                    {spaceCatalog.map((space) => (
-                      <option key={space.id} value={space.id}>
-                        {space.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                    Mission
-                  </span>
-                  <select
-                    className="w-full rounded-[20px] border border-white/8 bg-[rgba(11,19,29,0.96)] px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
-                    onChange={(event) => setSelectedMissionId(event.currentTarget.value)}
-                    value={selectedMissionId}
-                  >
-                    <option value="none">None (space view)</option>
-                    {availableMissions.map((mission) => (
-                      <option key={mission.id} value={mission.id}>
-                        {mission.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[rgba(224,231,239,0.76)]">
-                Content chains are treated as mission-scoped for now. Effect scope is intentionally omitted and tracked as a backlog item.
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                    Priority
-                  </span>
-                  <input
-                    className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
-                    onChange={(event) =>
-                      updateSelectedChain({
-                        priority: Number(event.currentTarget.value) || 0,
-                      })
-                    }
-                    type="number"
-                    value={selectedChain?.priority ?? 0}
-                  />
-                </label>
-
-                <button
-                  className={`mt-7 rounded-[20px] px-4 py-3 text-sm font-medium transition-colors ${
-                    selectedChain?.enabled
-                      ? 'border border-[#22c55e]/30 bg-[rgba(34,197,94,0.14)] text-[#c7ffd5]'
-                      : 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.76)]'
-                  }`}
-                  onClick={() => updateSelectedChain({ enabled: !selectedChain?.enabled })}
-                  type="button"
-                >
-                  {selectedChain?.enabled ? 'Enabled' : 'Disabled'}
-                </button>
-              </div>
-
-              <div className="rounded-[24px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Chain frame tint
-                </p>
-                <div className="mt-3 flex items-center gap-3">
-                  <div
-                    className="h-4 w-20 rounded-full"
-                    style={{ backgroundColor: selectedChain?.color ?? '#94a3b8' }}
-                  />
-                  <p className="text-sm text-[rgba(224,231,239,0.76)]">
-                    Use semantic tints to make space chains, mission hand-offs, and hidden controllers readable on the canvas.
-                  </p>
-                </div>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  {sequencePalette.map((style) => (
-                    <button
-                      className="rounded-[18px] border border-white/8 bg-white/4 px-3 py-3 text-left transition-colors hover:border-[rgba(245,170,49,0.28)] hover:bg-[rgba(245,170,49,0.08)]"
-                      key={`chain-style-${style.id}`}
-                      onClick={() => applyChainTint(style)}
-                      type="button"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium text-white">{style.label}</span>
-                        <span
-                          className="h-3.5 w-3.5 rounded-full"
-                          style={{ backgroundColor: style.color }}
-                        />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Chain inventory
-                </p>
-                <div className="mt-3 space-y-2">
-                  {visibleChains.map((chain) => (
-                    <button
-                      className={`flex w-full items-center justify-between rounded-[18px] px-3 py-3 text-left transition-colors ${
-                        chain.nodeId === selectedChain?.nodeId ? 'bg-white/8' : 'bg-transparent hover:bg-white/4'
-                      }`}
-                      key={chain.nodeId}
-                      onClick={() => setSelectedChainId(chain.nodeId)}
-                      type="button"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: chain.color }} />
-                        <div>
-                          <p className="text-sm font-medium text-white">{chain.name}</p>
-                          <p className="text-xs uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">
-                            {chain.scopeType} / {chain.scopeId}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-xs text-[rgba(224,231,239,0.72)]">
-                        {chain.sequenceCount} yarn{chain.sequenceCount === 1 ? '' : 's'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[32px] border border-white/8 bg-[rgba(9,18,28,0.8)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[rgba(160,174,192,0.72)]">
-                  Selected Sequence
-                </p>
-                <h3 className="mt-2 text-xl font-semibold tracking-[-0.04em] text-white">
-                  {selectedSequence?.label ?? 'No sequence selected'}
-                </h3>
-              </div>
-              <span
-                className="rounded-full px-3 py-1 text-xs font-medium"
-                style={{
-                  backgroundColor: `${selectedSequence?.color ?? '#94a3b8'}22`,
-                  color: selectedSequence?.color ?? '#cbd5e1',
-                }}
-              >
-                {selectedSequence?.category ?? 'Unstyled'}
-              </span>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Sequence name
-                </span>
-                <input
-                  className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition-colors focus:border-[#f5aa31]"
-                  onChange={(event) => updateSelectedSequence({ label: event.currentTarget.value })}
-                  value={selectedSequence?.label ?? ''}
-                />
-              </label>
-
-              <div className="rounded-[24px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Sequence semantic style
-                </p>
-                <div
-                  className="mt-3 flex items-center gap-3"
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const styleId = event.dataTransfer.getData('text/sequence-style');
-                    const style = sequencePalette.find((item) => item.id === styleId);
-                    if (style) {
-                      applySequenceStyle(style);
-                    }
-                  }}
-                >
-                  <div
-                    className="h-4 w-20 rounded-full"
-                    style={{ backgroundColor: selectedSequence?.color ?? '#94a3b8' }}
-                  />
-                  <p className="text-sm text-[rgba(224,231,239,0.76)]">
-                    Drag a semantic chip here, or click a chip below to apply it to the whole yarn.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                {sequencePalette.map((style) => (
-                  <button
-                    className="rounded-[22px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4 text-left transition-colors hover:border-[rgba(245,170,49,0.28)] hover:bg-[rgba(245,170,49,0.08)]"
-                    draggable
-                    key={style.id}
-                    onClick={() => applySequenceStyle(style)}
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData('text/sequence-style', style.id);
-                      event.dataTransfer.effectAllowed = 'copy';
-                    }}
-                    type="button"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-white">{style.label}</span>
-                      <span
-                        className="h-4 w-4 rounded-full shadow-[0_0_14px_rgba(255,255,255,0.12)]"
-                        style={{ backgroundColor: style.color }}
-                      />
-                    </div>
-                    <p className="mt-2 text-xs uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                      {style.category}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-[rgba(224,231,239,0.76)]">
-                      {style.description}
-                    </p>
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  className="flex-1 rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
-                  onClick={beginDraftSequence}
-                  type="button"
-                >
-                  New sequence yarn
-                </button>
-                <button
-                  className="flex-1 rounded-[20px] border border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] px-4 py-3 text-sm font-medium text-[#ffd0cf] transition-colors hover:bg-[rgba(255,94,91,0.18)]"
-                  onClick={deleteSelectedNode}
-                  type="button"
-                >
-                  Delete selected card
-                </button>
-              </div>
-
-              <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Sequence inventory
-                </p>
-                <div className="mt-3 space-y-2">
-                  {sequences.map((sequence) => (
-                    <button
-                      className={`flex w-full items-center justify-between rounded-[18px] px-3 py-3 text-left transition-colors ${
-                        sequence.sequenceId === selectedSequence?.sequenceId
-                          ? 'bg-white/8'
-                          : 'bg-transparent hover:bg-white/4'
-                      }`}
-                      key={sequence.sequenceId}
-                      onClick={() => {
-                        setSelectedSequenceId(sequence.sequenceId);
-                        if (draftSequence && draftSequence.sequenceId !== sequence.sequenceId) {
-                          setDraftSequence(null);
-                        }
-                      }}
-                      type="button"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: sequence.color }}
-                        />
-                        <div>
-                          <p className="text-sm font-medium text-white">{sequence.label}</p>
-                          <p className="text-xs uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">
-                            {sequence.category}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-xs text-[rgba(224,231,239,0.72)]">
-                        {sequence.edgeCount} link{sequence.edgeCount === 1 ? '' : 's'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[32px] border border-white/8 bg-[rgba(9,18,28,0.8)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[rgba(160,174,192,0.72)]">
-                  Selected Card
-                </p>
-                <h3 className="mt-2 text-xl font-semibold tracking-[-0.04em] text-white">
-                  {selectedNode?.data.title ?? 'No selection'}
-                </h3>
-              </div>
-              <span
-                className="rounded-full px-3 py-1 text-xs font-medium"
-                style={{
-                  backgroundColor: selectedNode ? familyTint[selectedNode.data.family].chip : 'rgba(148,163,184,0.12)',
-                  color: selectedNode ? familyTint[selectedNode.data.family].text : '#cbd5e1',
-                }}
-              >
-                {selectedNode ? familyLabel[selectedNode.data.family] : 'Card'}
-              </span>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Card title
-                </span>
-                <input
-                  className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none ring-0 transition-colors focus:border-[#f5aa31]"
-                  onChange={(event) => updateSelectedNode({ title: event.currentTarget.value })}
-                  value={selectedNode?.data.title ?? ''}
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Scenario
-                </span>
-                <input
-                  className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none ring-0 transition-colors focus:border-[#f5aa31]"
-                  onChange={(event) => updateSelectedNode({ scenario: event.currentTarget.value })}
-                  value={selectedNode?.data.scenario ?? ''}
-                />
-              </label>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                    Inputs
-                  </span>
-                  <input
-                    className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none ring-0 transition-colors focus:border-[#f5aa31]"
-                    onChange={(event) =>
-                      updateSelectedNode({
-                        inputs: event.currentTarget.value
-                          .split(',')
-                          .map((item) => item.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                    value={selectedNodePorts.inputs.join(', ')}
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                    Outputs
-                  </span>
-                  <input
-                    className="w-full rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none ring-0 transition-colors focus:border-[#f5aa31]"
-                    onChange={(event) =>
-                      updateSelectedNode({
-                        outputs: event.currentTarget.value
-                          .split(',')
-                          .map((item) => item.trim())
-                          .filter(Boolean),
-                      })
-                    }
-                    value={selectedNodePorts.outputs.join(', ')}
-                  />
-                </label>
-              </div>
-
-              <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
-                  Detail
-                </span>
-                <textarea
-                  className="min-h-32 w-full rounded-[24px] border border-white/8 bg-white/4 px-4 py-3 text-sm leading-6 text-white outline-none transition-colors focus:border-[#f5aa31]"
-                  onChange={(event) => updateSelectedNode({ detail: event.currentTarget.value })}
-                  value={selectedNode?.data.detail ?? ''}
-                />
-              </label>
-            </div>
-          </section>
+                {panel.content}
+              </InspectorPanelShell>
+            );
+          })}
         </aside>
       </div>
 
       <section className="rounded-[32px] border border-white/8 bg-[rgba(9,18,28,0.8)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="min-w-[320px] flex-1">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[rgba(160,174,192,0.72)]">
               Mission Card Library
             </p>
@@ -3111,8 +3892,18 @@ function FlowContent() {
               This library now follows the content-engine model. Select a chain frame first, then add anchors, trigger cards, condition cards, action cards, and counters into the correct lane of that chain.
             </p>
           </div>
-          <div className="rounded-[20px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[rgba(224,231,239,0.76)]">
-            Adding cards into: <span className="font-medium text-white">{selectedChain?.name ?? 'No chain selected'}</span>
+          <div className="flex min-h-[88px] min-w-[360px] flex-1 items-center justify-between rounded-[24px] border border-[rgba(245,170,49,0.2)] bg-[linear-gradient(135deg,rgba(245,170,49,0.14),rgba(19,162,164,0.08))] px-5 py-4 text-sm text-[rgba(224,231,239,0.9)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(245,170,49,0.82)]">
+                Adding Cards Into
+              </p>
+              <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-white">
+                {selectedChain?.name ?? 'No chain selected'}
+              </p>
+            </div>
+            <span className="rounded-full border border-white/10 bg-[rgba(9,18,28,0.46)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(224,231,239,0.76)]">
+              Active target
+            </span>
           </div>
         </div>
 
@@ -3123,17 +3914,6 @@ function FlowContent() {
             </p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {sequenceAnchorCatalog.map((template) => (
-                <CatalogCard key={template.id} onAdd={addScenarioNode} template={template} />
-              ))}
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
-              Workbook Scenarios
-            </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {workbookScenarioCatalog.map((template) => (
                 <CatalogCard key={template.id} onAdd={addScenarioNode} template={template} />
               ))}
             </div>
