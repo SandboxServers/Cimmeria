@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -73,6 +73,8 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
         .route("/content/{space_id}", get(load_content))
         .route("/content/{space_id}/{mission_id}", get(load_content_with_mission))
         .route("/content", post(save_content))
+        .route("/content/{space_id}", delete(delete_content))
+        .route("/content/{space_id}/{mission_id}", delete(delete_content_with_mission))
         .route("/draft/{space_id}", get(load_draft))
         .route("/draft/{space_id}/{mission_id}", get(load_draft_with_mission))
         .route("/draft", post(save_draft))
@@ -136,6 +138,45 @@ pub async fn save_content(
     Json(body): Json<SaveRequest>,
 ) -> Json<serde_json::Value> {
     save_to_table(&orchestrator, "content_editor_scopes", body).await
+}
+
+/// Delete saved editor content for a space (reset to seed).
+#[utoipa::path(
+    delete,
+    path = "/api/content/editor/content/{space_id}",
+    params(
+        ("space_id" = String, Path, description = "Space identifier")
+    ),
+    responses(
+        (status = 200, description = "Delete result", body = serde_json::Value)
+    ),
+    tag = "Editor"
+)]
+pub async fn delete_content(
+    State(orchestrator): State<Arc<Orchestrator>>,
+    Path(space_id): Path<String>,
+) -> Json<serde_json::Value> {
+    delete_from_table(&orchestrator, "content_editor_scopes", &space_id, "").await
+}
+
+/// Delete saved editor content for a space and mission (reset to seed).
+#[utoipa::path(
+    delete,
+    path = "/api/content/editor/content/{space_id}/{mission_id}",
+    params(
+        ("space_id" = String, Path, description = "Space identifier"),
+        ("mission_id" = String, Path, description = "Mission identifier")
+    ),
+    responses(
+        (status = 200, description = "Delete result", body = serde_json::Value)
+    ),
+    tag = "Editor"
+)]
+pub async fn delete_content_with_mission(
+    State(orchestrator): State<Arc<Orchestrator>>,
+    Path((space_id, mission_id)): Path<(String, String)>,
+) -> Json<serde_json::Value> {
+    delete_from_table(&orchestrator, "content_editor_scopes", &space_id, &mission_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +355,52 @@ async fn save_to_table(
         Err(error) => Json(serde_json::json!({
             "status": "error",
             "saved": false,
+            "reason": error.to_string()
+        })),
+    }
+}
+
+/// Generic deleter for both content_editor_scopes and chain_editor_drafts.
+async fn delete_from_table(
+    orchestrator: &Orchestrator,
+    table: &str,
+    space_id: &str,
+    mission_id: &str,
+) -> Json<serde_json::Value> {
+    let Some(pool) = get_pool(orchestrator).await else {
+        return Json(serde_json::json!({
+            "status": "error",
+            "deleted": false,
+            "reason": "Database unavailable."
+        }));
+    };
+
+    if let Err(error) = ensure_table(&pool, table).await {
+        return Json(serde_json::json!({
+            "status": "error",
+            "deleted": false,
+            "reason": error
+        }));
+    }
+
+    let query = format!(
+        "DELETE FROM {table} WHERE space_id = $1 AND mission_id = $2"
+    );
+
+    match sqlx::query(&query)
+        .bind(space_id)
+        .bind(mission_id)
+        .execute(&pool)
+        .await
+    {
+        Ok(result) => Json(serde_json::json!({
+            "status": "ok",
+            "deleted": true,
+            "rows_affected": result.rows_affected()
+        })),
+        Err(error) => Json(serde_json::json!({
+            "status": "error",
+            "deleted": false,
             "reason": error.to_string()
         })),
     }

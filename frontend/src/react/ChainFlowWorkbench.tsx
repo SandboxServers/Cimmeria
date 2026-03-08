@@ -46,6 +46,7 @@ import {
   extractSpaceScopedContentSnapshot,
   loadChainEditorContent,
   saveChainEditorContent,
+  clearChainEditorContent,
 } from './chainContentPersistence';
 import {
   clearChainEditorDraft,
@@ -2810,10 +2811,11 @@ function FlowContent() {
     pushToast(`Dismissed autosave recovery for ${selectedSpaceId}.`);
   }, [pushToast, selectedSpaceId]);
 
-  const handleResetToSeed = useCallback(() => {
+  const handleResetToSeed = useCallback(async () => {
     clearChainEditorDraft(selectedSpaceId, null);
     clearChainEditorAutosave(selectedSpaceId, null);
-    pushToast(`Cleared local draft data for ${selectedSpaceId}. Reloading seed content...`);
+    await clearChainEditorContent(selectedSpaceId, null);
+    pushToast(`Cleared saved content for ${selectedSpaceId}. Reloading seed data...`);
     window.setTimeout(() => {
       window.location.reload();
     }, 150);

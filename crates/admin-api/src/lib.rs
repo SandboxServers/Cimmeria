@@ -45,6 +45,8 @@ use cimmeria_services::orchestrator::Orchestrator;
         routes::editor::load_content,
         routes::editor::load_content_with_mission,
         routes::editor::save_content,
+        routes::editor::delete_content,
+        routes::editor::delete_content_with_mission,
         routes::editor::load_draft,
         routes::editor::load_draft_with_mission,
         routes::editor::save_draft,

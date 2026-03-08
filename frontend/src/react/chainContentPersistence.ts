@@ -236,3 +236,26 @@ export async function saveChainEditorContent<
     JSON.stringify(graph),
   );
 }
+
+export async function clearChainEditorContent(
+  spaceId: string,
+  missionId: string | null,
+): Promise<void> {
+  // Clear from REST API (database)
+  try {
+    const missionParam = missionId ? `/${encodeURIComponent(missionId)}` : '';
+    await fetch(
+      `/api/content/editor/content/${encodeURIComponent(spaceId)}${missionParam}`,
+      { method: 'DELETE' },
+    );
+  } catch {
+    // API unavailable — continue clearing local storage
+  }
+
+  // Clear localStorage fallback too
+  try {
+    window.localStorage.removeItem(buildContentStorageKey(spaceId, missionId));
+  } catch {
+    // Ignore
+  }
+}
