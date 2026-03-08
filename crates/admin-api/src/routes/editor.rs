@@ -294,17 +294,31 @@ async fn load_from_table(
         .fetch_optional(&pool)
         .await
     {
-        Ok(payload) => Json(serde_json::json!({
-            "status": "ok",
-            "available": true,
-            "payload": payload
-        })),
-        Err(error) => Json(serde_json::json!({
-            "status": "error",
-            "available": true,
-            "reason": error.to_string(),
-            "payload": null
-        })),
+        Ok(Some(payload)) => {
+            tracing::info!(table, space_id, mission_id, "Editor load: found");
+            Json(serde_json::json!({
+                "status": "ok",
+                "available": true,
+                "payload": payload
+            }))
+        }
+        Ok(None) => {
+            tracing::info!(table, space_id, mission_id, "Editor load: not found");
+            Json(serde_json::json!({
+                "status": "ok",
+                "available": true,
+                "payload": null
+            }))
+        }
+        Err(error) => {
+            tracing::error!(table, space_id, mission_id, %error, "Editor load failed");
+            Json(serde_json::json!({
+                "status": "error",
+                "available": true,
+                "reason": error.to_string(),
+                "payload": null
+            }))
+        }
     }
 }
 
@@ -348,15 +362,21 @@ async fn save_to_table(
         .execute(&pool)
         .await
     {
-        Ok(_) => Json(serde_json::json!({
-            "status": "ok",
-            "saved": true
-        })),
-        Err(error) => Json(serde_json::json!({
-            "status": "error",
-            "saved": false,
-            "reason": error.to_string()
-        })),
+        Ok(_) => {
+            tracing::info!(table, space_id = %body.space_id, %mission_id, "Editor save: ok");
+            Json(serde_json::json!({
+                "status": "ok",
+                "saved": true
+            }))
+        }
+        Err(error) => {
+            tracing::error!(table, space_id = %body.space_id, %mission_id, %error, "Editor save failed");
+            Json(serde_json::json!({
+                "status": "error",
+                "saved": false,
+                "reason": error.to_string()
+            }))
+        }
     }
 }
 
@@ -393,16 +413,23 @@ async fn delete_from_table(
         .execute(&pool)
         .await
     {
-        Ok(result) => Json(serde_json::json!({
-            "status": "ok",
-            "deleted": true,
-            "rows_affected": result.rows_affected()
-        })),
-        Err(error) => Json(serde_json::json!({
-            "status": "error",
-            "deleted": false,
-            "reason": error.to_string()
-        })),
+        Ok(result) => {
+            let rows = result.rows_affected();
+            tracing::info!(table, space_id, mission_id, rows, "Editor delete: ok");
+            Json(serde_json::json!({
+                "status": "ok",
+                "deleted": true,
+                "rows_affected": rows
+            }))
+        }
+        Err(error) => {
+            tracing::error!(table, space_id, mission_id, %error, "Editor delete failed");
+            Json(serde_json::json!({
+                "status": "error",
+                "deleted": false,
+                "reason": error.to_string()
+            }))
+        }
     }
 }
 
