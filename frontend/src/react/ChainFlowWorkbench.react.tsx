@@ -65,6 +65,20 @@ import {
 } from './chainDraftPersistence';
 import { computePackedChainLayouts, resolveAutoLayoutNodePositions } from './chainLayout';
 import {
+  createCardReuseBundle,
+  createChainReuseBundle,
+  deleteChainTemplate,
+  duplicateCard,
+  duplicateChain,
+  instantiateReuseBundle,
+  loadChainTemplates,
+  loadReuseClipboard,
+  saveChainTemplate,
+  saveReuseClipboard,
+  type ChainReuseBundle,
+  type ChainTemplateRecord,
+} from './chainReuse';
+import {
   applyNodeTypeSelection,
   buildFallbackEditorPickers,
   getAdditionalProperties,
@@ -174,6 +188,8 @@ type ToastItem = {
   id: number;
   message: string;
 };
+
+type ChainTemplateState = ChainTemplateRecord<EditorNodeData, SequenceEdgeData>;
 
 type EditorSnapshot = {
   edges: Edge<SequenceEdgeData>[];
@@ -2235,6 +2251,12 @@ function FlowContent() {
   );
   const [draggingPanelId, setDraggingPanelId] = useState<InspectorPanelId | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [reuseClipboard, setReuseClipboard] = useState<
+    ChainReuseBundle<EditorNodeData, SequenceEdgeData> | null
+  >(() => loadReuseClipboard<EditorNodeData, SequenceEdgeData>());
+  const [savedTemplates, setSavedTemplates] = useState<ChainTemplateState[]>(() =>
+    loadChainTemplates<EditorNodeData, SequenceEdgeData>(),
+  );
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingContent, setSavingContent] = useState(false);
   const [draftStateBySpace, setDraftStateBySpace] = useState<Record<string, DraftPersistenceState>>(
@@ -2249,10 +2271,29 @@ function FlowContent() {
   const nextNodeId = useRef(200);
   const nextSequenceId = useRef(1);
   const nextToastId = useRef(1);
+  const nextTemplateId = useRef(1);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const undoHistoryRef = useRef<EditorSnapshot[]>([]);
   const redoHistoryRef = useRef<EditorSnapshot[]>([]);
+
+  useEffect(() => {
+    const highestTemplateId = savedTemplates.reduce((maxId, template) => {
+      const numericId = Number(template.id.replace(/^template-/, ''));
+      return Number.isFinite(numericId) ? Math.max(maxId, numericId) : maxId;
+    }, 0);
+    nextTemplateId.current = highestTemplateId + 1;
+  }, [savedTemplates]);
+
+  const createReuseAllocators = useCallback(
+    () => ({
+      nextChainId: () => `chain-${nextNodeId.current++}`,
+      nextNodeId: () => `n${nextNodeId.current++}`,
+      nextSequenceId: () => `sequence-${nextSequenceId.current++}`,
+      nextTemplateId: () => `template-${nextTemplateId.current++}`,
+    }),
+    [],
+  );
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -2819,6 +2860,224 @@ function FlowContent() {
       window.location.reload();
     }, 150);
   }, [pushToast, selectedSpaceId]);
+
+  const applyReuseInsertion = useCallback(
+    (
+      result: {
+        edges: Edge<SequenceEdgeData>[];
+        nodes: Node<EditorNodeData>[];
+        selectedChainId: string;
+        selectedNodeId: string;
+        selectedSequenceId: string;
+      },
+      successMessage: string,
+    ) => {
+      const contextualNodes = result.nodes.map((node) => {
+        if (!isChainData(node.data)) {
+          return node;
+        }
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            missionId: selectedMissionId === 'none' ? null : selectedMissionId,
+            scopeId: selectedMissionId === 'none' ? selectedSpaceId : selectedMissionId,
+            scopeType: selectedMissionId === 'none' ? 'space' : 'mission',
+            spaceId: selectedSpaceId,
+          },
+        };
+      });
+
+      setNodes((current) => [...current, ...contextualNodes]);
+      setEdges((current) => [...current, ...result.edges]);
+      if (result.selectedChainId) {
+        setSelectedChainId(result.selectedChainId);
+      }
+      if (result.selectedNodeId) {
+        setSelectedNodeId(result.selectedNodeId);
+      }
+      if (result.selectedSequenceId) {
+        setSelectedSequenceId(result.selectedSequenceId);
+      }
+      pushToast(successMessage);
+    },
+    [pushToast, selectedMissionId, selectedSpaceId, setEdges, setNodes],
+  );
+
+  const handleDuplicateSelectedCard = useCallback(() => {
+    if (!selectedNode || !selectedChainId) {
+      pushToast('Error: select a card before duplicating it.');
+      return;
+    }
+
+    try {
+      recordHistorySnapshot();
+      const result = duplicateCard<EditorNodeData, SequenceEdgeData>(
+        nodesRef.current,
+        selectedNode.id,
+        selectedChainId,
+        createReuseAllocators(),
+      );
+      applyReuseInsertion(result, `Duplicated ${selectedNode.data.title} inside ${selectedChainName}.`);
+    } catch (error) {
+      pushToast(`Error: ${error instanceof Error ? error.message : 'could not duplicate the selected card'}.`);
+    }
+  }, [
+    applyReuseInsertion,
+    createReuseAllocators,
+    pushToast,
+    recordHistorySnapshot,
+    selectedChainId,
+    selectedChainName,
+    selectedNode,
+  ]);
+
+  const handleDuplicateSelectedChain = useCallback(() => {
+    if (!selectedChainId) {
+      pushToast('Error: select a chain before duplicating it.');
+      return;
+    }
+
+    try {
+      recordHistorySnapshot();
+      const result = duplicateChain<EditorNodeData, SequenceEdgeData>(
+        nodesRef.current,
+        edgesRef.current,
+        selectedChainId,
+        createReuseAllocators(),
+      );
+      applyReuseInsertion(result, `Duplicated ${selectedChainName}.`);
+    } catch (error) {
+      pushToast(`Error: ${error instanceof Error ? error.message : 'could not duplicate the selected chain'}.`);
+    }
+  }, [
+    applyReuseInsertion,
+    createReuseAllocators,
+    pushToast,
+    recordHistorySnapshot,
+    selectedChainId,
+    selectedChainName,
+  ]);
+
+  const handleCopySelectedCard = useCallback(() => {
+    if (!selectedNode) {
+      pushToast('Error: select a card before copying it.');
+      return;
+    }
+
+    const bundle = createCardReuseBundle<EditorNodeData, SequenceEdgeData>(nodesRef.current, selectedNode.id);
+    if (!bundle) {
+      pushToast('Error: could not serialize the selected card.');
+      return;
+    }
+
+    bundle.label = selectedNode.data.title;
+    saveReuseClipboard(bundle);
+    setReuseClipboard(bundle);
+    pushToast(`Copied ${selectedNode.data.title} to the reuse clipboard.`);
+  }, [pushToast, selectedNode]);
+
+  const handleCopySelectedChain = useCallback(() => {
+    if (!selectedChainId) {
+      pushToast('Error: select a chain before copying it.');
+      return;
+    }
+
+    const bundle = createChainReuseBundle<EditorNodeData, SequenceEdgeData>(
+      nodesRef.current,
+      edgesRef.current,
+      selectedChainId,
+    );
+    if (!bundle) {
+      pushToast('Error: could not serialize the selected chain.');
+      return;
+    }
+
+    bundle.label = selectedChainName;
+    saveReuseClipboard(bundle);
+    setReuseClipboard(bundle);
+    pushToast(`Copied ${selectedChainName} to the reuse clipboard.`);
+  }, [pushToast, selectedChainId, selectedChainName]);
+
+  const handlePasteReuseClipboard = useCallback(() => {
+    const clipboard = loadReuseClipboard<EditorNodeData, SequenceEdgeData>();
+    if (!clipboard) {
+      pushToast('Error: the reuse clipboard is empty.');
+      return;
+    }
+
+    try {
+      recordHistorySnapshot();
+      const result = instantiateReuseBundle<EditorNodeData, SequenceEdgeData>(
+        clipboard,
+        createReuseAllocators(),
+        clipboard.kind === 'card' ? { targetChainId: selectedChainId } : undefined,
+      );
+      setReuseClipboard(clipboard);
+      applyReuseInsertion(
+        result,
+        clipboard.kind === 'card'
+          ? `Pasted ${clipboard.label} into ${selectedChainName}.`
+          : `Pasted ${clipboard.label} as a new chain.`,
+      );
+    } catch (error) {
+      pushToast(`Error: ${error instanceof Error ? error.message : 'could not paste from the reuse clipboard'}.`);
+    }
+  }, [
+    applyReuseInsertion,
+    createReuseAllocators,
+    pushToast,
+    recordHistorySnapshot,
+    selectedChainId,
+    selectedChainName,
+  ]);
+
+  const handleSaveSelectedChainTemplate = useCallback(() => {
+    if (!selectedChainId) {
+      pushToast('Error: select a chain before saving it as a template.');
+      return;
+    }
+
+    const bundle = createChainReuseBundle<EditorNodeData, SequenceEdgeData>(
+      nodesRef.current,
+      edgesRef.current,
+      selectedChainId,
+    );
+    if (!bundle) {
+      pushToast('Error: could not capture the selected chain as a template.');
+      return;
+    }
+
+    const template = saveChainTemplate(selectedChainName, bundle, createReuseAllocators());
+    setSavedTemplates(loadChainTemplates<EditorNodeData, SequenceEdgeData>());
+    pushToast(`Saved ${template.name} as a local template.`);
+  }, [createReuseAllocators, pushToast, selectedChainId, selectedChainName]);
+
+  const handleInsertChainTemplate = useCallback(
+    (template: ChainTemplateState) => {
+      try {
+        recordHistorySnapshot();
+        const result = instantiateReuseBundle<EditorNodeData, SequenceEdgeData>(
+          template.bundle,
+          createReuseAllocators(),
+        );
+        applyReuseInsertion(result, `Inserted template ${template.name}.`);
+      } catch (error) {
+        pushToast(`Error: ${error instanceof Error ? error.message : 'could not insert the selected template'}.`);
+      }
+    },
+    [applyReuseInsertion, createReuseAllocators, pushToast, recordHistorySnapshot],
+  );
+
+  const handleDeleteChainTemplate = useCallback(
+    (templateId: string, templateName: string) => {
+      deleteChainTemplate(templateId);
+      setSavedTemplates(loadChainTemplates<EditorNodeData, SequenceEdgeData>());
+      pushToast(`Removed template ${templateName}.`);
+    },
+    [pushToast],
+  );
 
   useEffect(() => {
     if (!activeDraftState?.hydrated || !isDraftDirty) {
@@ -3568,6 +3827,24 @@ function FlowContent() {
         return;
       }
 
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !isEditingField) {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleCopySelectedChain();
+        } else if (selectedNodeId) {
+          handleCopySelectedCard();
+        } else {
+          handleCopySelectedChain();
+        }
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !isEditingField) {
+        event.preventDefault();
+        handlePasteReuseClipboard();
+        return;
+      }
+
       if (event.key !== 'Delete' && event.key !== 'Backspace') {
         return;
       }
@@ -3582,7 +3859,16 @@ function FlowContent() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [deleteSelectedNode, pushToast, selectedNodeId, setEdges, setNodes]);
+  }, [
+    deleteSelectedNode,
+    handleCopySelectedCard,
+    handleCopySelectedChain,
+    handlePasteReuseClipboard,
+    pushToast,
+    selectedNodeId,
+    setEdges,
+    setNodes,
+  ]);
 
   const addScenarioNode = useCallback(
     (template: LibraryScenarioTemplate) => {
@@ -3934,6 +4220,92 @@ function FlowContent() {
                   </span>
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Reuse workflows
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <button
+                className="rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+                onClick={handleDuplicateSelectedChain}
+                type="button"
+              >
+                Duplicate chain
+              </button>
+              <button
+                className="rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+                onClick={handleCopySelectedChain}
+                type="button"
+              >
+                Copy chain
+              </button>
+              <button
+                className="rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+                disabled={reuseClipboard?.kind !== 'chain'}
+                onClick={handlePasteReuseClipboard}
+                type="button"
+              >
+                Paste copied chain
+              </button>
+              <button
+                className="rounded-[18px] border border-[#5eb8b3]/30 bg-[rgba(94,184,179,0.14)] px-4 py-3 text-sm font-medium text-[#a7f0eb] transition-colors hover:bg-[rgba(94,184,179,0.2)]"
+                onClick={handleSaveSelectedChainTemplate}
+                type="button"
+              >
+                Save as local template
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-[18px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+              {reuseClipboard
+                ? `Clipboard: ${reuseClipboard.kind === 'chain' ? 'Chain' : 'Card'} ${reuseClipboard.label}`
+                : 'Clipboard is empty. Copy a card or chain to reuse it elsewhere in this draft.'}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {savedTemplates.length ? (
+                savedTemplates.map((template) => (
+                  <div
+                    className="rounded-[18px] border border-white/8 bg-white/4 p-3"
+                    key={template.id}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-white">{template.name}</p>
+                        <p className="text-xs uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">
+                          Saved {formatTimestampLabel(template.savedAt)}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-white/8 bg-[rgba(11,19,29,0.96)] px-3 py-1 text-[11px] font-medium text-[rgba(224,231,239,0.76)]">
+                        {template.bundle.nodes.length - 1} cards
+                      </span>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        className="flex-1 rounded-[16px] border border-white/8 bg-white/4 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/8"
+                        onClick={() => handleInsertChainTemplate(template)}
+                        type="button"
+                      >
+                        Insert template
+                      </button>
+                      <button
+                        className="rounded-[16px] border border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] px-3 py-2 text-sm font-medium text-[#ffd0cf] transition-colors hover:bg-[rgba(255,94,91,0.18)]"
+                        onClick={() => handleDeleteChainTemplate(template.id, template.name)}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[18px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+                  Save a chain as a local template to reuse hand-offs, onboarding beats, and hidden controller patterns.
+                </div>
+              )}
             </div>
           </div>
         </>
@@ -4507,6 +4879,41 @@ function FlowContent() {
             </div>
           </div>
 
+          <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+              Reuse workflows
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <button
+                className="rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+                onClick={handleDuplicateSelectedCard}
+                type="button"
+              >
+                Duplicate card
+              </button>
+              <button
+                className="rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+                onClick={handleCopySelectedCard}
+                type="button"
+              >
+                Copy card
+              </button>
+              <button
+                className="rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-white/8"
+                disabled={reuseClipboard?.kind !== 'card'}
+                onClick={handlePasteReuseClipboard}
+                type="button"
+              >
+                Paste copied card
+              </button>
+              <div className="rounded-[18px] border border-dashed border-white/12 bg-[rgba(255,255,255,0.03)] px-4 py-3 text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+                {reuseClipboard?.kind === 'card'
+                  ? `Clipboard ready: ${reuseClipboard.label}`
+                  : 'Copy a card to reuse it elsewhere in the current content chain.'}
+              </div>
+            </div>
+          </div>
+
           <label className="block">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
               Detail
@@ -4596,6 +5003,11 @@ function FlowContent() {
                 <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
                   {countSummaryLabel}
                 </span>
+                {reuseClipboard ? (
+                  <span className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-3 py-2 text-[#a7f0eb]">
+                    {reuseClipboard.kind === 'chain' ? 'Chain clipboard ready' : 'Card clipboard ready'}
+                  </span>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
