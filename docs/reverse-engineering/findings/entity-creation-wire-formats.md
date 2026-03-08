@@ -635,6 +635,10 @@ Sent to terminate the session.
 | `EntityManager_connected` | `0x00dd32a0` | (connection callback) |
 | `FUN_015846a0` | `0x015846a0` | (reads 3 consecutive u32s from stream) |
 
+### UE3 Entity Bridge
+
+After BigWorld creates/enters an entity via `EntityManager`, the CME bridge spawns an `ABigWorldEntity` (AActor subclass at vtable `0x01895e3c`) in the UE3 level. Position conversion uses `BW_TO_UE3_SCALE = 100.0` (meters→cm) at `0x018cad90`, rotation uses `RAD_TO_URU = 10430.378` (radians→UE3 rotation units) at `0x018cafcc`. ABigWorldEntity disables UE3 collision (`CollisionResponseFlags = 0xFFFFC004`) because collision is handled by BigWorld's spatial system.
+
 ### Key Debug Strings
 
 | Address | String |
