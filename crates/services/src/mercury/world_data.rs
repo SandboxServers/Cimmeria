@@ -1,7 +1,7 @@
 //! World entry builders and data: map loading, world parameters, archetype stats,
 //! ability trees, and the `mapLoaded()` multi-packet sequence.
 
-use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
+use cimmeria_mercury::packet::{build_outgoing, build_fragmented_bundle, FLAG_HAS_ACKS};
 
 use super::{
     encrypt_packet, write_wstring, append_entity_method, method_idx,
@@ -319,6 +319,18 @@ fn level_exp(level: i32) -> i32 {
 /// only included on the first packet.
 ///
 /// Mirrors `python/cell/SGWPlayer.py:464-546`.
+/// Build the mapLoaded entity data as a single Mercury-fragmented bundle.
+///
+/// Constructs ALL entity method calls (stats, appearance, inventory, etc.) into
+/// one contiguous body, then uses Mercury fragmentation to split it across
+/// multiple encrypted UDP packets. The client reassembles fragments into a single
+/// bundle before processing, ensuring all entity data is handled atomically.
+///
+/// VIEWPORT + CELL + POSITION are sent separately by the caller via
+/// [`build_world_entry_phase_b`] — matching the C++ CellApp behavior where
+/// these are in a separate non-fragmented packet.
+///
+/// Returns `(encrypted_packets, sequence_ids_consumed)`.
 pub fn build_map_loaded(
     key: &[u8; 32],
     base_seq: u32,
@@ -326,47 +338,18 @@ pub fn build_map_loaded(
     entity_id: u32,
     data: &PlayerLoadData,
     world_entry: &WorldEntryInfo,
-) -> Vec<Vec<u8>> {
-    /// Max body bytes before we flush to a new packet. Leaves headroom for
-    /// Mercury header (1 byte flags + 4 byte seq + acks) and AES-CBC
-    /// encryption overhead (PKCS7 padding + 16-byte HMAC) below the 1411-byte
-    /// `MAX_BODY_LENGTH` limit.
-    const MAX_BODY_SIZE: usize = 1300;
-
+) -> (Vec<Vec<u8>>, u32) {
     let stats = archetype_stats(data.archetype);
-    let mut packets: Vec<Vec<u8>> = Vec::new();
-    let mut body = Vec::with_capacity(MAX_BODY_SIZE);
-    let mut current_seq = base_seq;
 
-    // Flush the current body as an encrypted packet and start fresh.
-    let flush = |body: &mut Vec<u8>, current_seq: &mut u32, packets: &mut Vec<Vec<u8>>, acks: &[u32]| {
-        if body.is_empty() {
-            return;
-        }
-        let pkt_acks: &[u32] = if packets.is_empty() { acks } else { &[] };
-        let flags = REPLY_FLAGS | if pkt_acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
-        let plaintext = build_outgoing(flags, body, Some(*current_seq), pkt_acks, None);
-        packets.push(encrypt_packet(&plaintext, key));
-        *current_seq += 1;
-        body.clear();
-    };
+    // Build ONE contiguous body with all entity method calls.
+    let mut body = Vec::with_capacity(8192);
 
-    // Helper: append a method call, flushing first if it would exceed the limit.
-    // We measure the method's encoded size first, then decide whether to flush.
+    // Helper: append an entity method call to the body.
     macro_rules! append_method {
         ($method_idx:expr, $args:expr) => {{
-            let mut tmp = Vec::new();
-            append_entity_method(&mut tmp, $method_idx, entity_id, $args);
-            if !body.is_empty() && body.len() + tmp.len() > MAX_BODY_SIZE {
-                flush(&mut body, &mut current_seq, &mut packets, acks);
-            }
-            body.extend_from_slice(&tmp);
+            append_entity_method(&mut body, $method_idx, entity_id, $args);
         }};
     }
-
-    // onClientMapLoad is sent in build_world_entry_phase_a(). VIEWPORT + CELL +
-    // POSITION are sent in build_world_entry_phase_b(). This function (build_map_loaded)
-    // contains only entity data (stats, abilities, inventory, etc.).
 
     // 0. setupWorldParameters (22 args: 5×i32 + 17×f32)
     append_method!(method_idx::SETUP_WORLD_PARAMETERS, &build_world_params_args(&world_entry.world_name));
@@ -592,10 +575,17 @@ pub fn build_map_loaded(
         append_method!(method_idx::ON_PLAYER_COMMUNICATION, &args);
     }
 
-    // Final flush for any remaining body content.
-    flush(&mut body, &mut current_seq, &mut packets, acks);
-
-    packets
+    // Fragment the single body into encrypted Mercury packets.
+    // The client reassembles all fragments into one bundle before processing,
+    // ensuring atomic handling of all entity data.
+    let key_copy = *key;
+    build_fragmented_bundle(
+        REPLY_FLAGS,
+        &body,
+        base_seq,
+        acks,
+        |plaintext| encrypt_packet(plaintext, &key_copy),
+    )
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -651,8 +641,9 @@ mod tests {
             items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 42, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into() };
-        let packets = build_map_loaded(&TEST_KEY, 5, &[], 42, &data, &entry);
-        assert!(packets.len() >= 2, "mapLoaded should split into multiple packets, got {}", packets.len());
+        let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 42, &data, &entry);
+        assert!(!packets.is_empty(), "mapLoaded should produce at least one packet");
+        assert_eq!(seqs as usize, packets.len(), "seqs_consumed should match packet count");
         for (i, pkt) in packets.iter().enumerate() {
             assert!(!pkt.is_empty(), "packet {} should not be empty", i);
         }
@@ -684,7 +675,7 @@ mod tests {
             items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into() };
-        let packets = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
+        let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         // Mercury MAX_BODY_LENGTH is 1411 bytes
         const MAX_PLAINTEXT: usize = 1411;
@@ -721,21 +712,23 @@ mod tests {
             items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into() };
-        let packets = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
+        let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
 
-        // Collect all decrypted body bytes across all packets
-        let mut all_body_bytes = Vec::new();
+        // Collect all decrypted plaintext across all packets
+        let mut all_bytes = Vec::new();
         for pkt in &packets {
             let pt = enc.decrypt(pkt).unwrap();
-            all_body_bytes.extend_from_slice(&pt[1..]); // skip flags byte
+            // Include everything after the flags byte (body + footers).
+            // We're just checking for presence of specific marker bytes.
+            all_bytes.extend_from_slice(&pt[1..]);
         }
         // setupWorldParameters = 0xFA should be present
-        assert!(all_body_bytes.contains(&0xFA), "should contain setupWorldParameters (0xFA)");
+        assert!(all_bytes.contains(&0xFA), "should contain setupWorldParameters (0xFA)");
         // onPlayerDataLoaded = 0xF3 should be present
-        assert!(all_body_bytes.contains(&0xF3), "should contain onPlayerDataLoaded (0xF3)");
+        assert!(all_bytes.contains(&0xF3), "should contain onPlayerDataLoaded (0xF3)");
         // onAbilityTreeInfo uses extended 0xBD
-        assert!(all_body_bytes.contains(&0xBD), "should contain extended encoding marker (0xBD)");
+        assert!(all_bytes.contains(&0xBD), "should contain extended encoding marker (0xBD)");
     }
 
     #[test]

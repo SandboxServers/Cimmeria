@@ -1,6 +1,5 @@
 /** @jsxImportSource react */
 import type { Edge, Node } from '@xyflow/react';
-import type { ChainEditorCollaborationMetadata } from './chainCollaboration';
 
 export type PersistedChainEditorDraft<
   TNodeData = Record<string, unknown>,
@@ -14,7 +13,6 @@ export type PersistedChainEditorDraft<
   selectedChainId: string;
   selectedNodeId: string;
   selectedSequenceId: string;
-  collaboration?: ChainEditorCollaborationMetadata;
 };
 
 export type ChainDraftLoadResult<

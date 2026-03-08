@@ -35,7 +35,6 @@ Keep this running list current as features are added:
 10. Scope filtering integrity
 11. Typed field selection and database-picker filtering
 12. Validation issue generation and focus transitions
-13. Copy, paste, duplicate, and local template reuse flows
 
 When a new frontend capability is added, append the relevant REPL-UAT item(s) here if they are not already covered.
 

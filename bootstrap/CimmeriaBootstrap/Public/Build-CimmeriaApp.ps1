@@ -57,11 +57,17 @@ function Build-CimmeriaApp {
         Write-Status "Running: cargo $($tauriArgs -join ' ')" "White"
 
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        & cargo @tauriArgs 2>&1 | ForEach-Object {
-            $line = "$_"
-            if ($line -match 'Compiling|Finished|error|warning|Running') {
-                Write-Status "  $line" "DarkGray"
+        $prevRustflags = $env:RUSTFLAGS
+        $env:RUSTFLAGS = "$prevRustflags -Awarnings"
+        try {
+            & cargo @tauriArgs 2>&1 | ForEach-Object {
+                $line = "$_"
+                if ($line -match 'Compiling|Finished|error|warning|Running') {
+                    Write-Status "  $line" "DarkGray"
+                }
             }
+        } finally {
+            $env:RUSTFLAGS = $prevRustflags
         }
         $sw.Stop()
 

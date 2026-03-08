@@ -12,8 +12,8 @@
 //! - [`build_version_info`]            — `onVersionInfo` for client cache version queries.
 //!
 //! Most functions return a `Vec<u8>` ready to write to the UDP socket.
-//! [`build_map_loaded`] returns `Vec<Vec<u8>>` (multiple packets) to stay
-//! within Mercury's 1411-byte plaintext body limit.
+//! [`build_map_loaded`] returns `(Vec<Vec<u8>>, u32)` — Mercury-fragmented
+//! packets that the client reassembles into a single bundle before processing.
 
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE};

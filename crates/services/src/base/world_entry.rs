@@ -164,26 +164,38 @@ pub(crate) async fn handle_map_loaded_phase_b(
         "Phase 5b-B: client ready -- sending VIEWPORT + CELL + POSITION + entity data"
     );
 
-    // Packet 1: VIEWPORT + CELL_PLAYER + FORCED_POSITION
+    // 1. Send VIEWPORT + CELL_PLAYER + FORCED_POSITION as a separate non-fragmented
+    //    packet (matches C++ pcap: seq=71, flags=0x58, 471B body).
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let pkt = build_world_entry_phase_b(&key, seq, &acks, &entry_info);
-    socket.send_to(&pkt, addr).await?;
+    let phase_b_pkt = build_world_entry_phase_b(&key, seq, &acks, &entry_info);
+    tracing::debug!(%addr, len = phase_b_pkt.len(), seq, "UDP_OUT VIEWPORT+CELL+FORCED");
+    socket.send_to(&phase_b_pkt, addr).await?;
 
-    // Packets 2+: mapLoaded entity data sequence
-    let (acks2, seq2) = drain_acks_and_seq(connected, addr)?;
-    let map_packets = build_map_loaded(
-        &key, seq2, &acks2, entry_info.player_entity_id, &player_data, &entry_info,
+    // drain_acks_and_seq already bumped counter by 1 for the VIEWPORT packet.
+    // Read the current counter value (seq+1) as the base for mapLoaded fragments.
+    let next_seq = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        clients.get(&addr)
+            .map(|c| c.next_seq.load(Ordering::Relaxed))
+            .unwrap_or(seq + 1)
+    };
+
+    // 2. Send all entity method calls as a Mercury-fragmented bundle.
+    //    The client reassembles fragments before processing, ensuring atomic init.
+    let (map_packets, seqs_consumed) = build_map_loaded(
+        &key, next_seq, &[], entry_info.player_entity_id, &player_data, &entry_info,
     );
-    let pkt_count = map_packets.len() as u32;
+    let pkt_count = map_packets.len();
     for (i, pkt_data) in map_packets.iter().enumerate() {
-        tracing::debug!(%addr, len = pkt_data.len(), seq = seq2 + i as u32,
+        tracing::debug!(%addr, len = pkt_data.len(), seq = next_seq + i as u32,
             part = i + 1, total = pkt_count, "UDP_OUT mapLoaded");
         socket.send_to(pkt_data, addr).await?;
     }
-    if pkt_count > 1 {
+    // Advance counter past all consumed fragment sequences.
+    {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get(&addr) {
-            c.next_seq.fetch_add(pkt_count - 1, Ordering::Relaxed);
+            c.next_seq.fetch_add(seqs_consumed, Ordering::Relaxed);
         }
     }
 
@@ -191,7 +203,7 @@ pub(crate) async fn handle_map_loaded_phase_b(
     tracing::info!(%addr, player = %player_data.player_name,
         level = player_data.level, archetype = player_data.archetype,
         packets = pkt_count,
-        "Phase 5b-B: mapLoaded complete ({} bytes across {} packets)", total_bytes, pkt_count);
+        "Phase 5b-B: mapLoaded complete ({} bytes across {} fragments)", total_bytes, pkt_count);
 
     // Clear first_login flag in DB after sending the intro movie
     if player_data.first_login != 0 {
@@ -1001,9 +1013,11 @@ pub(crate) async fn query_player_load_data(
     .await
     {
         Ok(Some(row)) => {
-            tracing::debug!(
+            tracing::info!(
                 player_id, level = row.level, archetype = row.archetype,
-                name = %row.player_name, "Loaded player data for mapLoaded"
+                name = %row.player_name, bodyset = %row.bodyset,
+                base_components = ?row.components,
+                "Loaded player data for mapLoaded"
             );
             // Query inventory items for this character
             let items = query_inventory_items(pool.as_ref(), player_id).await;
