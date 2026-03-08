@@ -276,6 +276,14 @@ export function clearChainEditorAutosave(spaceId: string, missionId: string | nu
   window.localStorage.removeItem(buildChainAutosaveStorageKey(spaceId, missionId));
 }
 
+export function clearChainEditorDraft(spaceId: string, missionId: string | null): void {
+  if (!canUseBrowserStorage()) {
+    return;
+  }
+
+  window.localStorage.removeItem(buildChainDraftStorageKey(spaceId, missionId));
+}
+
 async function invokeTauri<T>(command: string, args: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<T>(command, args);

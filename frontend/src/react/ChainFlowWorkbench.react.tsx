@@ -49,6 +49,7 @@ import {
   saveChainEditorContent,
 } from './chainContentPersistence';
 import {
+  clearChainEditorDraft,
   clearChainEditorAutosave,
   createChainEditorAutosave,
   createPersistedChainEditorDraft,
@@ -674,6 +675,27 @@ const counterReferenceCatalog: ScenarioTemplate[] = [
   },
 ];
 
+function normalizeSeedNode(node: NodeRecord): NodeRecord {
+  if (!isMissionData(node.data)) {
+    return node;
+  }
+
+  const isStartAnchor = node.data.family === 'anchor' && node.data.stage === 'Start';
+  const isEndAnchor = node.data.family === 'anchor' && node.data.stage === 'End';
+  const inputs = node.data.inputs ?? (isStartAnchor ? [] : ['In']);
+  const outputs = node.data.outputs ?? (isEndAnchor ? [] : ['Out']);
+
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      inputs,
+      outputs,
+      outputConditions: outputs.map((_, index) => node.data.outputConditions?.[index] ?? ''),
+    },
+  };
+}
+
 const initialNodes: NodeRecord[] = [
   {
     id: 'chain-arm-yourself',
@@ -1264,7 +1286,7 @@ const initialNodes: NodeRecord[] = [
       ],
     },
   },
-];
+].map(normalizeSeedNode);
 
 const initialEdges: Edge<SequenceEdgeData>[] = [
   {
@@ -2787,6 +2809,15 @@ function FlowContent() {
       [selectedSpaceId]: null,
     }));
     pushToast(`Dismissed autosave recovery for ${selectedSpaceId}.`);
+  }, [pushToast, selectedSpaceId]);
+
+  const handleResetToSeed = useCallback(() => {
+    clearChainEditorDraft(selectedSpaceId, null);
+    clearChainEditorAutosave(selectedSpaceId, null);
+    pushToast(`Cleared local draft data for ${selectedSpaceId}. Reloading seed content...`);
+    window.setTimeout(() => {
+      window.location.reload();
+    }, 150);
   }, [pushToast, selectedSpaceId]);
 
   useEffect(() => {
@@ -4492,6 +4523,21 @@ function FlowContent() {
     },
   };
 
+  const draftStorageLabel =
+    activeDraftState?.storage === 'database'
+      ? 'PostgreSQL draft'
+      : activeDraftState?.storage === 'browser'
+        ? 'Browser draft'
+        : 'Seed content';
+  const visibleCardCount = visibleNodes.filter((node) => isMissionData(node.data)).length;
+  const validationSummaryLabel =
+    validationReport.errorCount || validationReport.warningCount
+      ? `${validationReport.errorCount}E / ${validationReport.warningCount}W`
+      : 'Validation clean';
+  const draftSummaryLabel = isDraftDirty ? 'Unsaved changes' : 'Draft saved';
+  const contentSummaryLabel = isContentDirty ? 'Content out of sync' : 'Content synced';
+  const countSummaryLabel = `${visibleChains.length} chains / ${visibleCardCount} cards / ${visibleEdges.length} links`;
+
   return (
     <div className="space-y-4">
       <ToastStack toasts={toasts} />
@@ -4506,123 +4552,121 @@ function FlowContent() {
                 Castle CellBlock mission graph
               </h2>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-[rgba(224,231,239,0.76)]">
-              <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
-                {activeDraftState?.storage === 'database'
-                  ? 'PostgreSQL draft'
-                  : activeDraftState?.storage === 'browser'
-                    ? 'Browser draft'
-                    : 'Seed content'}
-              </span>
-              <span
-                className={`rounded-full border px-3 py-2 ${
-                  isContentDirty
-                    ? 'border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] text-[#a7f0eb]'
-                    : 'border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.12)] text-[#c7ffd5]'
-                }`}
-              >
-                {isContentDirty ? 'Content rows out of sync' : 'Content synced'}
-              </span>
-              <span
-                className={`rounded-full border px-3 py-2 ${
-                  isDraftDirty
-                    ? 'border-[rgba(245,170,49,0.28)] bg-[rgba(245,170,49,0.12)] text-[#ffd38a]'
-                    : 'border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.12)] text-[#c7ffd5]'
-                }`}
-              >
-                {isDraftDirty ? 'Unsaved changes' : 'Saved'}
-              </span>
-              <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
-                Last saved {formatTimestampLabel(activeDraftState?.lastSavedAt)}
-              </span>
-              {activeDraftState?.recoveredFromAutosave ? (
-                <span className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-3 py-2 text-[#a7f0eb]">
-                  Recovered from autosave
+            <div className="flex flex-wrap items-center justify-end gap-3 text-xs text-[rgba(224,231,239,0.76)]">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
+                  {draftStorageLabel}
                 </span>
-              ) : null}
-              {activeAutosaveRecovery ? (
-                <span className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-3 py-2 text-[#a7f0eb]">
-                  Autosave ready
-                </span>
-              ) : null}
-              <span
-                className={`rounded-full border px-3 py-2 ${
-                  validationReport.errorCount
-                    ? 'border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] text-[#ffb6b3]'
-                    : validationReport.warningCount
+                <span
+                  className={`rounded-full border px-3 py-2 ${
+                    isDraftDirty
                       ? 'border-[rgba(245,170,49,0.28)] bg-[rgba(245,170,49,0.12)] text-[#ffd38a]'
                       : 'border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.12)] text-[#c7ffd5]'
-                }`}
-              >
-                Validation {validationReport.errorCount}E / {validationReport.warningCount}W
-              </span>
-              <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
-                {visibleChains.length} chains
-              </span>
-              <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
-                {visibleNodes.filter((node) => isMissionData(node.data)).length} cards
-              </span>
-              <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
-                {visibleEdges.length} links
-              </span>
-              <button
-                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                  savingContent
-                    ? 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.6)]'
-                    : isContentDirty
-                      ? 'border border-[#5eb8b3]/30 bg-[rgba(94,184,179,0.14)] text-[#a7f0eb]'
-                      : 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.82)]'
-                }`}
-                disabled={savingContent}
-                onClick={() => {
-                  void handleSaveContent();
-                }}
-                type="button"
-              >
-                {savingContent ? 'Saving content...' : 'Save to content engine'}
-              </button>
-              <button
-                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                  savingDraft
-                    ? 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.6)]'
-                    : isDraftDirty
-                      ? 'border border-[#22c55e]/30 bg-[rgba(34,197,94,0.14)] text-[#c7ffd5]'
-                      : 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.82)]'
-                }`}
-                disabled={savingDraft}
-                onClick={() => {
-                  void handleSaveDraft();
-                }}
-                type="button"
-              >
-                {savingDraft ? 'Saving...' : 'Save draft'}
-              </button>
-              <button
-                className="rounded-full border border-white/8 bg-white/4 px-4 py-2 text-sm font-medium text-[rgba(224,231,239,0.82)] transition-colors hover:bg-white/8 disabled:text-[rgba(224,231,239,0.45)]"
-                disabled={!activeDraftState?.persistedDraft || !isDraftDirty}
-                onClick={handleRevertDraft}
-                type="button"
-              >
-                Revert draft
-              </button>
-              {activeAutosaveRecovery ? (
-                <>
-                  <button
-                    className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-4 py-2 text-sm font-medium text-[#a7f0eb] transition-colors hover:bg-[rgba(94,184,179,0.18)]"
-                    onClick={handleRecoverAutosave}
-                    type="button"
-                  >
-                    Recover autosave
-                  </button>
-                  <button
-                    className="rounded-full border border-white/8 bg-white/4 px-4 py-2 text-sm font-medium text-[rgba(224,231,239,0.82)] transition-colors hover:bg-white/8"
-                    onClick={dismissAutosaveRecovery}
-                    type="button"
-                  >
-                    Dismiss recovery
-                  </button>
-                </>
-              ) : null}
+                  }`}
+                >
+                  {draftSummaryLabel}
+                </span>
+                <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
+                  {contentSummaryLabel}
+                </span>
+                <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
+                  {`Saved ${formatTimestampLabel(activeDraftState?.lastSavedAt)}`}
+                </span>
+                {activeDraftState?.recoveredFromAutosave ? (
+                  <span className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-3 py-2 text-[#a7f0eb]">
+                    Recovered
+                  </span>
+                ) : null}
+                {activeAutosaveRecovery ? (
+                  <span className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-3 py-2 text-[#a7f0eb]">
+                    Autosave ready
+                  </span>
+                ) : null}
+                <span
+                  className={`rounded-full border px-3 py-2 ${
+                    validationReport.errorCount
+                      ? 'border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] text-[#ffb6b3]'
+                      : validationReport.warningCount
+                        ? 'border-[rgba(245,170,49,0.28)] bg-[rgba(245,170,49,0.12)] text-[#ffd38a]'
+                        : 'border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.12)] text-[#c7ffd5]'
+                  }`}
+                >
+                  {validationSummaryLabel}
+                </span>
+                <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
+                  {countSummaryLabel}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                    savingContent
+                      ? 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.6)]'
+                      : isContentDirty
+                        ? 'border border-[#5eb8b3]/30 bg-[rgba(94,184,179,0.14)] text-[#a7f0eb]'
+                        : 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.82)]'
+                  }`}
+                  disabled={savingContent}
+                  onClick={() => {
+                    void handleSaveContent();
+                  }}
+                  type="button"
+                >
+                  {savingContent ? 'Saving content...' : 'Save to content engine'}
+                </button>
+                <button
+                  className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                    savingDraft
+                      ? 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.6)]'
+                      : isDraftDirty
+                        ? 'border border-[#22c55e]/30 bg-[rgba(34,197,94,0.14)] text-[#c7ffd5]'
+                        : 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.82)]'
+                  }`}
+                  disabled={savingDraft}
+                  onClick={() => {
+                    void handleSaveDraft();
+                  }}
+                  type="button"
+                >
+                  {savingDraft ? 'Saving...' : 'Save draft'}
+                </button>
+                <button
+                  className="rounded-full border border-white/8 bg-white/4 px-4 py-2 text-sm font-medium text-[rgba(224,231,239,0.82)] transition-colors hover:bg-white/8 disabled:text-[rgba(224,231,239,0.45)]"
+                  disabled={!activeDraftState?.persistedDraft || !isDraftDirty}
+                  onClick={handleRevertDraft}
+                  type="button"
+                >
+                  Revert draft
+                </button>
+                <button
+                  className="rounded-full border border-white/8 bg-white/4 px-4 py-2 text-sm font-medium text-[rgba(224,231,239,0.82)] transition-colors hover:bg-white/8 disabled:text-[rgba(224,231,239,0.45)]"
+                  disabled={activeDraftState?.storage !== 'browser' && !activeAutosaveRecovery}
+                  onClick={handleResetToSeed}
+                  type="button"
+                >
+                  Reset to seed
+                </button>
+                {activeAutosaveRecovery ? (
+                  <>
+                    <button
+                      className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-4 py-2 text-sm font-medium text-[#a7f0eb] transition-colors hover:bg-[rgba(94,184,179,0.18)]"
+                      onClick={handleRecoverAutosave}
+                      type="button"
+                    >
+                      Recover autosave
+                    </button>
+                    <button
+                      className="rounded-full border border-white/8 bg-white/4 px-4 py-2 text-sm font-medium text-[rgba(224,231,239,0.82)] transition-colors hover:bg-white/8"
+                      onClick={dismissAutosaveRecovery}
+                      type="button"
+                    >
+                      Dismiss recovery
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs text-[rgba(224,231,239,0.76)]">
               <button
                 className={`rounded-full px-3 py-2 transition-colors ${
                   edgeMode === 'sequenceThread'
