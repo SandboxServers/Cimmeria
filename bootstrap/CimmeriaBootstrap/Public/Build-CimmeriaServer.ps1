@@ -1,11 +1,11 @@
 function Build-CimmeriaServer {
     <#
     .SYNOPSIS
-        Builds the Cimmeria server via cargo build.
+        Builds the full Cimmeria workspace via cargo build.
 
     .DESCRIPTION
-        Runs cargo build for the workspace. In Release mode, uses --release.
-        Verifies that the cimmeria-server binary is produced.
+        Runs cargo build for the entire workspace (server, admin API, launcher, Tauri app).
+        In Release mode, uses --release. Verifies that the cimmeria-server binary is produced.
 
     .PARAMETER Configuration
         Build configuration: "Debug" (default) or "Release".
@@ -24,7 +24,7 @@ function Build-CimmeriaServer {
 
     $paths = Get-ProjectPaths
 
-    Write-Step "BUILDING CIMMERIA SERVER"
+    Write-Step "BUILDING CIMMERIA WORKSPACE"
 
     # Install frontend dependencies if Node.js is available (required for cimmeria-app Tauri build)
     $frontendDir = Join-Path $paths.ProjectRoot "frontend"
@@ -48,9 +48,7 @@ function Build-CimmeriaServer {
         }
     }
 
-    # Always exclude Tauri GUI apps from the server build — they have additional
-    # system dependencies (WebView2 SDK, etc.) and are built separately via Build-CimmeriaApp.
-    $cargoArgs = @("build", "--workspace", "--exclude", "cimmeria-app", "--exclude", "sgw-launcher")
+    $cargoArgs = @("build", "--workspace")
     if ($Configuration -eq "Release") {
         $cargoArgs += "--release"
     }
@@ -58,10 +56,21 @@ function Build-CimmeriaServer {
     Write-Status "Running: cargo $($cargoArgs -join ' ')" "White"
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+    # Show ALL cargo output so build errors are visible (not just filtered lines)
     & cargo @cargoArgs 2>&1 | ForEach-Object {
         $line = "$_"
-        if ($line -match 'Compiling|Finished|error|warning') {
+        if ($line -match 'error') {
+            Write-Status "  $line" "Red"
+        } elseif ($line -match 'warning:.*generated|Finished') {
             Write-Status "  $line" "DarkGray"
+        } elseif ($line -match 'warning') {
+            Write-Status "  $line" "Yellow"
+        } elseif ($line -match 'Compiling') {
+            Write-Status "  $line" "DarkGray"
+        } else {
+            # Show everything else too — build script output, notes, etc.
+            Write-Status "  $line" "Gray"
         }
     }
     $sw.Stop()
@@ -86,5 +95,5 @@ function Build-CimmeriaServer {
         throw "cimmeria-server binary not found at: $serverBin"
     }
 
-    Write-Status "Build-CimmeriaServer complete ($Configuration, $("{0:N1}" -f $sw.Elapsed.TotalSeconds)s)." "Green"
+    Write-Status "Build complete ($Configuration, $("{0:N1}" -f $sw.Elapsed.TotalSeconds)s)." "Green"
 }
