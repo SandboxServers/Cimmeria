@@ -34,6 +34,7 @@ Keep this running list current as features are added:
 9. Content-engine save payload update
 10. Scope filtering integrity
 11. Typed field selection and database-picker filtering
+12. Validation issue generation and focus transitions
 
 When a new frontend capability is added, append the relevant REPL-UAT item(s) here if they are not already covered.
 

@@ -11,6 +11,7 @@ import {
 } from 'react';
 import MissionCardLibrary from './MissionCardLibrary';
 import type { ScenarioTemplate as LibraryScenarioTemplate } from './missionCardCatalog';
+import ValidationPanel from './ValidationPanel';
 import {
   Background,
   BackgroundVariant,
@@ -68,6 +69,10 @@ import {
   type ChainEditorPickers,
 } from './chainNodeSchemas';
 import { fetchContentEditorPickers } from '../lib/admin-api';
+import {
+  buildValidationReport,
+  type ValidationIssue,
+} from './chainValidation';
 
 type PrimitiveFamily = 'anchor' | 'trigger' | 'condition' | 'action' | 'counter';
 
@@ -154,7 +159,7 @@ type MissionOption = {
 };
 
 type NodeRecord = Node<EditorNodeData>;
-type InspectorPanelId = 'chain' | 'sequence' | 'node';
+type InspectorPanelId = 'chain' | 'sequence' | 'node' | 'validation';
 
 type InspectorCollapsedState = Record<InspectorPanelId, boolean>;
 type ToastItem = {
@@ -176,10 +181,11 @@ type DraftPersistenceState = {
   storage: 'database' | 'browser' | 'seed';
 };
 
-const inspectorPanelIds: InspectorPanelId[] = ['chain', 'sequence', 'node'];
+const inspectorPanelIds: InspectorPanelId[] = ['validation', 'chain', 'sequence', 'node'];
 const inspectorPanelOrderStorageKey = 'cimmeria.chain-editor.inspector-order';
 const inspectorPanelCollapseStorageKey = 'cimmeria.chain-editor.inspector-collapsed';
 const defaultInspectorCollapsedState: InspectorCollapsedState = {
+  validation: false,
   chain: false,
   sequence: false,
   node: false,
@@ -230,6 +236,7 @@ function readInspectorCollapsedState(): InspectorCollapsedState {
     }
 
     return {
+      validation: Boolean((parsed as Partial<InspectorCollapsedState>).validation),
       chain: Boolean((parsed as Partial<InspectorCollapsedState>).chain),
       sequence: Boolean((parsed as Partial<InspectorCollapsedState>).sequence),
       node: Boolean((parsed as Partial<InspectorCollapsedState>).node),
@@ -2579,6 +2586,15 @@ function FlowContent() {
     () => sequences.find((sequence) => sequence.sequenceId === selectedSequenceId) ?? sequences[0],
     [selectedSequenceId, sequences],
   );
+  const validationReport = useMemo(
+    () =>
+      buildValidationReport({
+        chains: visibleChains,
+        edges: visibleEdges,
+        nodes: visibleNodes,
+      }),
+    [visibleChains, visibleEdges, visibleNodes],
+  );
 
   const selectedChainName = selectedChain?.name ?? 'Untitled chain';
   const selectedCardTitle = selectedNode?.data.title ?? 'Selected card';
@@ -3298,6 +3314,19 @@ function FlowContent() {
     setDraggingPanelId(null);
   }, []);
 
+  const focusValidationIssue = useCallback((issue: ValidationIssue) => {
+    if (issue.chainId) {
+      setSelectedChainId(issue.chainId);
+    }
+    if (issue.sequenceId) {
+      setSelectedSequenceId(issue.sequenceId);
+    }
+    if (issue.nodeId) {
+      setSelectedNodeId(issue.nodeId);
+    }
+    pushToast(`Focused ${issue.title.toLowerCase()}.`);
+  }, [pushToast]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -3508,6 +3537,36 @@ function FlowContent() {
       content: ReactNode;
     }
   > = {
+    validation: {
+      eyebrow: 'Validation',
+      title:
+        validationReport.errorCount || validationReport.warningCount
+          ? `${validationReport.errorCount} errors / ${validationReport.warningCount} warnings`
+          : 'No issues in scope',
+      badge: (
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-medium ${
+            validationReport.errorCount
+              ? 'bg-[rgba(255,94,91,0.16)] text-[#ffb6b3]'
+              : validationReport.warningCount
+                ? 'bg-[rgba(245,170,49,0.16)] text-[#ffd38a]'
+                : 'bg-[rgba(34,197,94,0.16)] text-[#c7ffd5]'
+          }`}
+        >
+          {validationReport.errorCount
+            ? `${validationReport.errorCount} blocking`
+            : validationReport.warningCount
+              ? `${validationReport.warningCount} warnings`
+              : 'Clean'}
+        </span>
+      ),
+      content: (
+        <ValidationPanel
+          onFocusIssue={focusValidationIssue}
+          report={validationReport}
+        />
+      ),
+    },
     chain: {
       eyebrow: 'Selected Chain',
       title: selectedChain?.name ?? 'No chain selected',
@@ -4322,6 +4381,17 @@ function FlowContent() {
                   Autosave ready
                 </span>
               ) : null}
+              <span
+                className={`rounded-full border px-3 py-2 ${
+                  validationReport.errorCount
+                    ? 'border-[rgba(255,94,91,0.28)] bg-[rgba(255,94,91,0.12)] text-[#ffb6b3]'
+                    : validationReport.warningCount
+                      ? 'border-[rgba(245,170,49,0.28)] bg-[rgba(245,170,49,0.12)] text-[#ffd38a]'
+                      : 'border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.12)] text-[#c7ffd5]'
+                }`}
+              >
+                Validation {validationReport.errorCount}E / {validationReport.warningCount}W
+              </span>
               <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
                 {visibleChains.length} chains
               </span>
