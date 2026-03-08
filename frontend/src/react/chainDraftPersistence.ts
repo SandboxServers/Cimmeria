@@ -29,8 +29,18 @@ export type ChainDraftSaveResult = {
   warning?: string;
 };
 
+export type ChainEditorAutosave<
+  TNodeData = Record<string, unknown>,
+  TEdgeData = Record<string, unknown>,
+> = {
+  autosavedAt: string;
+  draft: PersistedChainEditorDraft<TNodeData, TEdgeData>;
+  savedSignature: string;
+};
+
 const CHAIN_EDITOR_DRAFT_VERSION = 1;
 const chainEditorDraftStoragePrefix = 'cimmeria.chain-editor.draft';
+const chainEditorAutosaveStoragePrefix = 'cimmeria.chain-editor.autosave';
 
 type MinimalChainData = {
   kind?: string;
@@ -60,6 +70,10 @@ function isPersistedDraftShape<TNodeData, TEdgeData>(
 
 export function buildChainDraftStorageKey(spaceId: string, missionId: string | null): string {
   return `${chainEditorDraftStoragePrefix}:${spaceId}:${missionId ?? 'all'}`;
+}
+
+export function buildChainAutosaveStorageKey(spaceId: string, missionId: string | null): string {
+  return `${chainEditorAutosaveStoragePrefix}:${spaceId}:${missionId ?? 'all'}`;
 }
 
 export function extractSpaceScopedEditorSnapshot<TNodeData, TEdgeData>(
@@ -180,6 +194,86 @@ function writeBrowserDraft<TNodeData, TEdgeData>(
     buildChainDraftStorageKey(draft.spaceId, draft.missionId),
     JSON.stringify(draft),
   );
+}
+
+function isChainEditorAutosaveShape<TNodeData, TEdgeData>(
+  value: unknown,
+): value is ChainEditorAutosave<TNodeData, TEdgeData> {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<ChainEditorAutosave<TNodeData, TEdgeData>>;
+  return (
+    typeof candidate.autosavedAt === 'string' &&
+    typeof candidate.savedSignature === 'string' &&
+    isPersistedDraftShape<TNodeData, TEdgeData>(candidate.draft)
+  );
+}
+
+export function createChainEditorAutosave<TNodeData, TEdgeData>({
+  autosavedAt,
+  draft,
+  savedSignature,
+}: {
+  autosavedAt: string;
+  draft: PersistedChainEditorDraft<TNodeData, TEdgeData>;
+  savedSignature: string;
+}): ChainEditorAutosave<TNodeData, TEdgeData> {
+  return {
+    autosavedAt,
+    draft,
+    savedSignature,
+  };
+}
+
+export function shouldRecoverAutosave<TNodeData, TEdgeData>(
+  autosave: ChainEditorAutosave<TNodeData, TEdgeData> | null,
+  currentSavedSignature: string,
+): boolean {
+  return !!autosave && autosave.savedSignature !== currentSavedSignature;
+}
+
+export function loadChainEditorAutosave<TNodeData, TEdgeData>(
+  spaceId: string,
+  missionId: string | null,
+): ChainEditorAutosave<TNodeData, TEdgeData> | null {
+  if (!canUseBrowserStorage()) {
+    return null;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(buildChainAutosaveStorageKey(spaceId, missionId));
+    if (!rawValue) {
+      return null;
+    }
+
+    const parsed = JSON.parse(rawValue);
+    return isChainEditorAutosaveShape<TNodeData, TEdgeData>(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveChainEditorAutosave<TNodeData, TEdgeData>(
+  autosave: ChainEditorAutosave<TNodeData, TEdgeData>,
+): void {
+  if (!canUseBrowserStorage()) {
+    return;
+  }
+
+  window.localStorage.setItem(
+    buildChainAutosaveStorageKey(autosave.draft.spaceId, autosave.draft.missionId),
+    JSON.stringify(autosave),
+  );
+}
+
+export function clearChainEditorAutosave(spaceId: string, missionId: string | null): void {
+  if (!canUseBrowserStorage()) {
+    return;
+  }
+
+  window.localStorage.removeItem(buildChainAutosaveStorageKey(spaceId, missionId));
 }
 
 async function invokeTauri<T>(command: string, args: Record<string, unknown>): Promise<T> {

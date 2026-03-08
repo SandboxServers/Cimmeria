@@ -41,11 +41,18 @@ import {
   validateConnectionRequest,
 } from './chainConnections';
 import {
+  clearChainEditorAutosave,
+  createChainEditorAutosave,
   createPersistedChainEditorDraft,
   extractSpaceScopedEditorSnapshot,
   loadChainEditorDraft,
+  loadChainEditorAutosave,
   mergeSpaceScopedEditorSnapshot,
+  saveChainEditorAutosave,
   saveChainEditorDraft,
+  shouldRecoverAutosave,
+  type ChainEditorAutosave,
+  type PersistedChainEditorDraft,
 } from './chainDraftPersistence';
 import { computePackedChainLayouts, resolveAutoLayoutNodePositions } from './chainLayout';
 
@@ -149,6 +156,9 @@ type EditorSnapshot = {
 
 type DraftPersistenceState = {
   hydrated: boolean;
+  lastSavedAt?: string;
+  persistedDraft?: PersistedChainEditorDraft<EditorNodeData, SequenceEdgeData>;
+  recoveredFromAutosave?: boolean;
   savedSignature: string;
   storage: 'database' | 'browser' | 'seed';
 };
@@ -242,6 +252,24 @@ function cloneEditorSnapshot(snapshot: EditorSnapshot): EditorSnapshot {
   }
 
   return JSON.parse(JSON.stringify(snapshot)) as EditorSnapshot;
+}
+
+function formatTimestampLabel(value?: string): string {
+  if (!value) {
+    return 'Not saved yet';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
 }
 
 const familyLabel: Record<PrimitiveFamily, string> = {
@@ -2155,12 +2183,16 @@ function FlowContent() {
   const [draftStateBySpace, setDraftStateBySpace] = useState<Record<string, DraftPersistenceState>>(
     {},
   );
+  const [autosaveRecoveryBySpace, setAutosaveRecoveryBySpace] = useState<
+    Record<string, ChainEditorAutosave<EditorNodeData, SequenceEdgeData> | null>
+  >({});
   const nextNodeId = useRef(200);
   const nextSequenceId = useRef(1);
   const nextToastId = useRef(1);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const undoHistoryRef = useRef<EditorSnapshot[]>([]);
+  const redoHistoryRef = useRef<EditorSnapshot[]>([]);
 
   useEffect(() => {
     nodesRef.current = nodes;
@@ -2185,6 +2217,7 @@ function FlowContent() {
         nodes: nodesRef.current,
       }),
     );
+    redoHistoryRef.current = [];
 
     if (undoHistoryRef.current.length > 50) {
       undoHistoryRef.current.shift();
@@ -2476,6 +2509,7 @@ function FlowContent() {
   const activeDraftState = draftStateBySpace[selectedSpaceId];
   const isDraftDirty = !!activeDraftState?.hydrated &&
     activeDraftState.savedSignature !== activeSpaceDraftSignature;
+  const activeAutosaveRecovery = autosaveRecoveryBySpace[selectedSpaceId] ?? null;
 
   const beginDraftSequence = useCallback(() => {
     const id = `sequence-${nextSequenceId.current++}`;
@@ -2497,13 +2531,22 @@ function FlowContent() {
 
     try {
       const result = await saveChainEditorDraft(activeSpaceDraft);
+      const savedAt = new Date().toISOString();
       setDraftStateBySpace((current) => ({
         ...current,
         [selectedSpaceId]: {
           hydrated: true,
+          lastSavedAt: savedAt,
+          persistedDraft: activeSpaceDraft,
+          recoveredFromAutosave: false,
           savedSignature: activeSpaceDraftSignature,
           storage: result.storage,
         },
+      }));
+      clearChainEditorAutosave(selectedSpaceId, null);
+      setAutosaveRecoveryBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: null,
       }));
 
       if (result.storage === 'database') {
@@ -2519,6 +2562,103 @@ function FlowContent() {
       setSavingDraft(false);
     }
   }, [activeSpaceDraft, activeSpaceDraftSignature, pushToast, selectedSpaceId]);
+
+  const handleRevertDraft = useCallback(() => {
+    const persistedDraft = activeDraftState?.persistedDraft;
+    if (!persistedDraft) {
+      pushToast('Error: no saved draft is available to revert.');
+      return;
+    }
+
+    recordHistorySnapshot();
+    const mergedSnapshot = mergeSpaceScopedEditorSnapshot(
+      nodesRef.current,
+      edgesRef.current,
+      selectedSpaceId,
+      persistedDraft,
+    );
+    setNodes(mergedSnapshot.nodes);
+    setEdges(mergedSnapshot.edges);
+    setSelectedChainId(persistedDraft.selectedChainId || '');
+    setSelectedNodeId(persistedDraft.selectedNodeId || '');
+    setSelectedSequenceId(persistedDraft.selectedSequenceId || '');
+    redoHistoryRef.current = [];
+    clearChainEditorAutosave(selectedSpaceId, null);
+    setAutosaveRecoveryBySpace((current) => ({
+      ...current,
+      [selectedSpaceId]: null,
+    }));
+    setDraftStateBySpace((current) => ({
+      ...current,
+      [selectedSpaceId]: current[selectedSpaceId]
+        ? {
+            ...current[selectedSpaceId],
+            recoveredFromAutosave: false,
+          }
+        : current[selectedSpaceId],
+    }));
+    pushToast(`Reverted ${selectedSpaceId} to the last saved draft.`);
+  }, [activeDraftState, pushToast, recordHistorySnapshot, selectedSpaceId, setEdges, setNodes]);
+
+  const handleRecoverAutosave = useCallback(() => {
+    if (!activeAutosaveRecovery) {
+      pushToast('Error: no autosave recovery snapshot is available.');
+      return;
+    }
+
+    recordHistorySnapshot();
+    const mergedSnapshot = mergeSpaceScopedEditorSnapshot(
+      nodesRef.current,
+      edgesRef.current,
+      selectedSpaceId,
+      activeAutosaveRecovery.draft,
+    );
+    setNodes(mergedSnapshot.nodes);
+    setEdges(mergedSnapshot.edges);
+    setSelectedChainId(activeAutosaveRecovery.draft.selectedChainId || '');
+    setSelectedNodeId(activeAutosaveRecovery.draft.selectedNodeId || '');
+    setSelectedSequenceId(activeAutosaveRecovery.draft.selectedSequenceId || '');
+    setAutosaveRecoveryBySpace((current) => ({
+      ...current,
+      [selectedSpaceId]: null,
+    }));
+    setDraftStateBySpace((current) => ({
+      ...current,
+      [selectedSpaceId]: current[selectedSpaceId]
+        ? {
+            ...current[selectedSpaceId],
+            recoveredFromAutosave: true,
+          }
+        : current[selectedSpaceId],
+    }));
+    pushToast(`Recovered autosave from ${formatTimestampLabel(activeAutosaveRecovery.autosavedAt)}.`);
+  }, [activeAutosaveRecovery, pushToast, recordHistorySnapshot, selectedSpaceId, setEdges, setNodes]);
+
+  const dismissAutosaveRecovery = useCallback(() => {
+    clearChainEditorAutosave(selectedSpaceId, null);
+    setAutosaveRecoveryBySpace((current) => ({
+      ...current,
+      [selectedSpaceId]: null,
+    }));
+    pushToast(`Dismissed autosave recovery for ${selectedSpaceId}.`);
+  }, [pushToast, selectedSpaceId]);
+
+  useEffect(() => {
+    if (!activeDraftState?.hydrated || !isDraftDirty) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const autosave = createChainEditorAutosave({
+        autosavedAt: new Date().toISOString(),
+        draft: activeSpaceDraft,
+        savedSignature: activeDraftState.savedSignature,
+      });
+      saveChainEditorAutosave(autosave);
+    }, 1200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeDraftState, activeSpaceDraft, isDraftDirty]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2564,9 +2704,24 @@ function FlowContent() {
           ...current,
           [selectedSpaceId]: {
             hydrated: true,
+            persistedDraft: result.draft,
+            recoveredFromAutosave: false,
             savedSignature: JSON.stringify(result.draft),
             storage: result.storage,
           },
+        }));
+        const autosave = loadChainEditorAutosave<EditorNodeData, SequenceEdgeData>(
+          selectedSpaceId,
+          null,
+        );
+        setAutosaveRecoveryBySpace((current) => ({
+          ...current,
+          [selectedSpaceId]: shouldRecoverAutosave(
+            autosave,
+            JSON.stringify(result.draft),
+          )
+            ? autosave
+            : null,
         }));
 
         if (result.warning) {
@@ -2578,6 +2733,9 @@ function FlowContent() {
             `Loaded ${selectedSpaceId} draft from ${result.storage === 'database' ? 'PostgreSQL' : 'browser storage'}.`,
           );
         }
+        if (shouldRecoverAutosave(autosave, JSON.stringify(result.draft))) {
+          pushToast(`Autosave recovery is available for ${selectedSpaceId}.`);
+        }
         return;
       }
 
@@ -2585,15 +2743,33 @@ function FlowContent() {
         ...current,
         [selectedSpaceId]: {
           hydrated: true,
+          persistedDraft: seedDraft,
+          recoveredFromAutosave: false,
           savedSignature: JSON.stringify(seedDraft),
           storage: result.storage,
         },
+      }));
+      const autosave = loadChainEditorAutosave<EditorNodeData, SequenceEdgeData>(
+        selectedSpaceId,
+        null,
+      );
+      setAutosaveRecoveryBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: shouldRecoverAutosave(
+          autosave,
+          JSON.stringify(seedDraft),
+        )
+          ? autosave
+          : null,
       }));
 
       if (result.warning) {
         pushToast(
           `Using seeded ${selectedSpaceId} content because draft load failed: ${result.warning}.`,
         );
+      }
+      if (shouldRecoverAutosave(autosave, JSON.stringify(seedDraft))) {
+        pushToast(`Autosave recovery is available for ${selectedSpaceId}.`);
       }
     }
 
@@ -2977,6 +3153,10 @@ function FlowContent() {
         target?.isContentEditable;
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !isEditingField) {
+        const currentSnapshot = cloneEditorSnapshot({
+          edges: edgesRef.current,
+          nodes: nodesRef.current,
+        });
         const previousSnapshot = undoHistoryRef.current.pop();
         if (!previousSnapshot) {
           pushToast('Error: nothing to undo.');
@@ -2984,9 +3164,36 @@ function FlowContent() {
         }
 
         event.preventDefault();
+        redoHistoryRef.current.push(currentSnapshot);
         setNodes(previousSnapshot.nodes);
         setEdges(previousSnapshot.edges);
         pushToast('Undid the last editor change.');
+        return;
+      }
+
+      const wantsRedo =
+        (event.ctrlKey && event.key.toLowerCase() === 'y') ||
+        ((event.metaKey || event.ctrlKey) &&
+          event.shiftKey &&
+          event.key.toLowerCase() === 'z');
+
+      if (wantsRedo && !isEditingField) {
+        const nextSnapshot = redoHistoryRef.current.pop();
+        if (!nextSnapshot) {
+          pushToast('Error: nothing to redo.');
+          return;
+        }
+
+        event.preventDefault();
+        undoHistoryRef.current.push(
+          cloneEditorSnapshot({
+            edges: edgesRef.current,
+            nodes: nodesRef.current,
+          }),
+        );
+        setNodes(nextSnapshot.nodes);
+        setEdges(nextSnapshot.edges);
+        pushToast('Redid the last editor change.');
         return;
       }
 
@@ -3740,6 +3947,19 @@ function FlowContent() {
                 {isDraftDirty ? 'Unsaved changes' : 'Saved'}
               </span>
               <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
+                Last saved {formatTimestampLabel(activeDraftState?.lastSavedAt)}
+              </span>
+              {activeDraftState?.recoveredFromAutosave ? (
+                <span className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-3 py-2 text-[#a7f0eb]">
+                  Recovered from autosave
+                </span>
+              ) : null}
+              {activeAutosaveRecovery ? (
+                <span className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-3 py-2 text-[#a7f0eb]">
+                  Autosave ready
+                </span>
+              ) : null}
+              <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
                 {visibleChains.length} chains
               </span>
               <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
@@ -3764,6 +3984,32 @@ function FlowContent() {
               >
                 {savingDraft ? 'Saving...' : 'Save draft'}
               </button>
+              <button
+                className="rounded-full border border-white/8 bg-white/4 px-4 py-2 text-sm font-medium text-[rgba(224,231,239,0.82)] transition-colors hover:bg-white/8 disabled:text-[rgba(224,231,239,0.45)]"
+                disabled={!activeDraftState?.persistedDraft || !isDraftDirty}
+                onClick={handleRevertDraft}
+                type="button"
+              >
+                Revert draft
+              </button>
+              {activeAutosaveRecovery ? (
+                <>
+                  <button
+                    className="rounded-full border border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] px-4 py-2 text-sm font-medium text-[#a7f0eb] transition-colors hover:bg-[rgba(94,184,179,0.18)]"
+                    onClick={handleRecoverAutosave}
+                    type="button"
+                  >
+                    Recover autosave
+                  </button>
+                  <button
+                    className="rounded-full border border-white/8 bg-white/4 px-4 py-2 text-sm font-medium text-[rgba(224,231,239,0.82)] transition-colors hover:bg-white/8"
+                    onClick={dismissAutosaveRecovery}
+                    type="button"
+                  >
+                    Dismiss recovery
+                  </button>
+                </>
+              ) : null}
               <button
                 className={`rounded-full px-3 py-2 transition-colors ${
                   edgeMode === 'sequenceThread'
