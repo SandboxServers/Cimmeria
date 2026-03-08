@@ -57,6 +57,8 @@ use cimmeria_common::{EntityId, ServerConfig};
 use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::MercuryEncryption;
 
+use serde::Serialize;
+
 use crate::auth::PendingLogin;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::mercury::{PlayerLoadData, WorldEntryInfo};
@@ -94,6 +96,34 @@ pub enum BaseError {
 
     #[error("Network error: {0}")]
     Network(#[from] std::io::Error),
+}
+
+// ── Public snapshot for admin API ─────────────────────────────────────────────
+
+/// A snapshot of one connected player, safe to serialize for the admin API.
+#[derive(Debug, Clone, Serialize)]
+pub struct OnlinePlayer {
+    pub id: u32,
+    pub name: String,
+    pub archetype: &'static str,
+    pub level: i32,
+    pub zone: String,
+    pub ping: Option<u32>,
+    pub status: &'static str,
+    pub session: String,
+}
+
+fn archetype_name(id: i32) -> &'static str {
+    match id {
+        1 => "Soldier",
+        2 => "Commando",
+        3 => "Scientist",
+        4 => "Archaeologist",
+        5 => "Asgard",
+        6 => "Goa'uld",
+        7 => "Jaffa",
+        _ => "Unknown",
+    }
 }
 
 // ── Per-connection state ──────────────────────────────────────────────────────
@@ -143,6 +173,12 @@ pub(crate) struct ConnectedClientState {
     pub cancelled: Arc<AtomicBool>,
     /// Player character name, set during world entry for chat routing.
     pub player_name: Option<String>,
+    /// Player level, set during world entry for admin display.
+    pub player_level: Option<i32>,
+    /// Archetype ID, set during world entry for admin display.
+    pub player_archetype: Option<i32>,
+    /// Current world name, set during world entry for admin display.
+    pub world_name: Option<String>,
 }
 
 // ── BaseService ───────────────────────────────────────────────────────────────
@@ -170,6 +206,9 @@ pub struct BaseService {
 
     /// Receiver for messages from CellService (set by orchestrator, taken at start).
     cell_rx: Option<mpsc::Receiver<CellToBaseMsg>>,
+
+    /// Shared connected-clients map, exposed for admin API read access.
+    connected_clients: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 }
 
 impl BaseService {
@@ -187,7 +226,30 @@ impl BaseService {
             data_dir: "data/cache".to_string(),
             cell_tx: None,
             cell_rx: None,
+            connected_clients: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Snapshot of all connected players for the admin API.
+    pub fn online_players(&self) -> Vec<OnlinePlayer> {
+        let clients = self.connected_clients.lock().unwrap();
+        clients.iter()
+            .filter(|(_, c)| c.world_entry_sent)
+            .map(|(addr, c)| OnlinePlayer {
+                id: c.player_entity_id.unwrap_or(0),
+                name: c.player_name.clone().unwrap_or_default(),
+                archetype: archetype_name(c.player_archetype.unwrap_or(0)),
+                level: c.player_level.unwrap_or(1),
+                zone: c.world_name.clone().unwrap_or_default(),
+                ping: None,
+                status: if c.pending_world_entry_phase_b.is_some() {
+                    "loading"
+                } else {
+                    "in_world"
+                },
+                session: format!("{addr}"),
+            })
+            .collect()
     }
 
     /// Wire in the `pending_logins` Arc from `AuthService`.
@@ -241,9 +303,8 @@ impl BaseService {
         let cell_tx = self.cell_tx.clone();
         let cell_rx = self.cell_rx.take();
 
-        // Create shared state accessible by both the connect loop and cell message handler.
-        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        // Shared state accessible by the connect loop, cell message handler, and admin API.
+        let connected = Arc::clone(&self.connected_clients);
         let entity_manager: Arc<Mutex<EntityManager>> =
             Arc::new(Mutex::new(EntityManager::new()));
         // Reverse index: entity_id -> SocketAddr (populated during Phase 5b).

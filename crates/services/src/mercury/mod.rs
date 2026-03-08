@@ -216,6 +216,18 @@ pub fn append_entity_method(body: &mut Vec<u8>, method_index: u16, entity_id: u3
         body.extend_from_slice(&entity_id.to_le_bytes());
     }
     body.extend_from_slice(args);
+
+    // Diagnostic logging for visual methods
+    if method_index == method_idx::BEING_APPEARANCE || method_index == method_idx::ON_ENTITY_TINT {
+        let method_name = if method_index == method_idx::BEING_APPEARANCE { "BeingAppearance" } else { "onEntityTint" };
+        tracing::debug!(
+            method_index,
+            method_name,
+            arg_bytes = args.len(),
+            args_hex = ?args,
+            "Entity method wire data"
+        );
+    }
 }
 
 // ── Serialization helpers ────────────────────────────────────────────────────

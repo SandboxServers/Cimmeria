@@ -117,8 +117,11 @@ pub(crate) async fn handle_play_character(
         if let Some(c) = clients.get_mut(&addr) {
             c.pending_player_entity_id = Some(entry_info.player_entity_id);
             c.player_entity_id = Some(entry_info.player_entity_id);
-            c.pending_world_entry = Some(entry_info);
             c.player_name = Some(player_load_data.player_name.clone());
+            c.player_level = Some(player_load_data.level);
+            c.player_archetype = Some(player_load_data.archetype);
+            c.world_name = Some(entry_info.world_name.clone());
+            c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
         }
     }
@@ -184,6 +187,13 @@ pub(crate) async fn handle_map_loaded_phase_b(
     //    The client reassembles fragments before processing, ensuring atomic init.
     let (map_packets, seqs_consumed) = build_map_loaded(
         &key, next_seq, &[], entry_info.player_entity_id, &player_data, &entry_info,
+    );
+    tracing::info!(
+        %addr,
+        fragment_count = map_packets.len(),
+        seqs_consumed,
+        first_frag_len = map_packets.first().map(|p| p.len()).unwrap_or(0),
+        "mapLoaded: fragmented bundle ready"
     );
     let pkt_count = map_packets.len();
     for (i, pkt_data) in map_packets.iter().enumerate() {
@@ -1046,6 +1056,14 @@ pub(crate) async fn query_player_load_data(
                 tracing::debug!(player_id, visuals = ?item_visuals, "Equipped item visual components");
             }
             components.extend(item_visuals);
+
+            tracing::info!(
+                player_id,
+                bodyset = %row.bodyset,
+                final_component_count = components.len(),
+                final_components = ?components,
+                "Player load data: final appearance after visual merge"
+            );
 
             PlayerLoadData {
                 player_id,

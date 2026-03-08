@@ -135,6 +135,9 @@ pub(crate) async fn handle_login(
                 pending_world_entry_phase_b: None,
                 cancelled,
                 player_name: None,
+                player_level: None,
+                player_archetype: None,
+                world_name: None,
             },
         );
         arcs

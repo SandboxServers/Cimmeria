@@ -1,7 +1,8 @@
 //! Cimmeria server binary.
 //!
-//! Starts all three services (Auth HTTP on 13001, Base UDP on 32832,
-//! Cell UDP on 32833) and waits for Ctrl-C.
+//! Starts all three game services (Auth HTTP on 13001, Base UDP on 32832,
+//! Cell UDP on 32833), the admin REST API (HTTP on 8443), and waits for
+//! Ctrl-C.
 //!
 //! # Environment variables
 //!
@@ -14,6 +15,7 @@
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
 //! | `CELL_PORT` | `50000` | CellApp port |
+//! | `ADMIN_PORT` | `8443` | Admin REST API port |
 //! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string |
 //! | `PROTOCOL_DIGEST` | `58AFA196...` | 32-char hex digest sent in auth response |
 //! | `DEVELOPER_MODE` | `true` | Enable relaxed auth / multi-login |
