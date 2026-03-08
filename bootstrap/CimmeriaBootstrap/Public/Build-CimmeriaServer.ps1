@@ -123,8 +123,10 @@ function Build-CimmeriaServer {
     } else {
         $launcherBin = Join-Path $paths.ProjectRoot "target/$profile/sgw-launcher$exeSuffix"
         if (Test-Path $launcherBin) {
-            $size = Format-FileSize (Get-Item $launcherBin).Length
-            Write-Status "  OK: sgw-launcher ($size)" "Green"
+            $dest = Join-Path $paths.ProjectRoot "sgw-launcher$exeSuffix"
+            Copy-Item $launcherBin $dest -Force
+            $size = Format-FileSize (Get-Item $dest).Length
+            Write-Status "  OK: sgw-launcher ($size) -> copied to project root" "Green"
         } else {
             Write-Status "  OK: sgw-launcher (built)" "Green"
         }
@@ -146,9 +148,13 @@ function Invoke-CargoBuild {
     <#
     .SYNOPSIS
         Runs cargo with the given arguments, showing all output with color-coded lines.
+        Warnings are suppressed to keep bootstrap output clean.
     #>
     param([string[]]$CargoArgs)
 
+    $prevRustflags = $env:RUSTFLAGS
+    $env:RUSTFLAGS = "$prevRustflags -Awarnings"
+    try {
     & cargo @CargoArgs 2>&1 | ForEach-Object {
         $line = "$_"
         if ($line -match 'error\[') {
@@ -164,5 +170,8 @@ function Invoke-CargoBuild {
         } else {
             Write-Status "  $line" "Gray"
         }
+    }
+    } finally {
+        $env:RUSTFLAGS = $prevRustflags
     }
 }
