@@ -1,5 +1,5 @@
-import { For, createMemo, createSignal } from 'solid-js';
-import { Crosshair, Search, Shield, TimerReset } from 'lucide-solid';
+import { For, Show, createMemo, createResource, createSignal } from 'solid-js';
+import { Crosshair, RefreshCw, Shield, TimerReset } from 'lucide-solid';
 import PageHeader from '../components/PageHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -19,36 +19,45 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table';
-import { players } from '../data/admin';
+import { fetchPlayers } from '../lib/admin-api';
 import { getPlayerStatusVariant } from '../lib/view-models';
 
 export default function Players() {
   const [query, setQuery] = createSignal('');
-  const filteredPlayers = createMemo(() =>
-    players.filter((player) =>
+  const [playersResource, { refetch }] = createResource(fetchPlayers);
+
+  const filteredPlayers = createMemo(() => {
+    const players = playersResource()?.players ?? [];
+    const needle = query().trim().toLowerCase();
+
+    if (!needle) {
+      return players;
+    }
+
+    return players.filter((player) =>
       `${player.name} ${player.archetype} ${player.zone}`
         .toLowerCase()
-        .includes(query().trim().toLowerCase()),
-    ),
-  );
+        .includes(needle),
+    );
+  });
 
   return (
     <div class="space-y-6">
       <PageHeader
         actions={
           <>
-            <Button variant="secondary">
-              <TimerReset class="size-4" />
+            <Button onClick={() => void refetch()} variant="secondary">
+              <RefreshCw class="size-4" />
               Sync sessions
             </Button>
-            <Button>
+            <Button disabled variant="outline">
               <Crosshair class="size-4" />
               Inspect selected
             </Button>
           </>
         }
         badge="Live Player Index"
-        description="This view covers the core phase 4 monitoring requirement: who is online, where they are, and whether their current gameplay state needs intervention."
+        description="The player page now reads from the backend player route. Until the live roster feed exists, it reports the true service state instead of a fake sample roster."
         eyebrow="Players"
         title="Session and presence tracking"
       />
@@ -60,13 +69,11 @@ export default function Players() {
               <Badge variant="secondary">Roster</Badge>
               <CardTitle>Live shard population</CardTitle>
               <CardDescription>
-                Searchable player list with status, location, level, and latency.
+                Searchable player list backed by `/api/players`.
               </CardDescription>
             </div>
-            <div class="relative w-full max-w-sm">
-              <Search class="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <div class="w-full max-w-sm">
               <Input
-                class="pl-11"
                 onInput={(event) => setQuery(event.currentTarget.value)}
                 placeholder="Search by player, archetype, or zone"
                 value={query()}
@@ -74,40 +81,57 @@ export default function Players() {
             </div>
           </CardHeader>
           <CardContent class="px-0 pb-0">
-            <div class="subtle-scrollbar overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Archetype</TableHead>
-                    <TableHead>Level</TableHead>
-                    <TableHead>Zone</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Ping</TableHead>
-                    <TableHead>Session</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <For each={filteredPlayers()}>
-                    {(player) => (
-                      <TableRow>
-                        <TableCell class="font-medium text-foreground">{player.name}</TableCell>
-                        <TableCell class="text-muted-foreground">{player.archetype}</TableCell>
-                        <TableCell>{player.level}</TableCell>
-                        <TableCell class="max-w-[220px] truncate text-muted-foreground">
-                          {player.zone}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={getPlayerStatusVariant(player.status)}>{player.status}</Badge>
-                        </TableCell>
-                        <TableCell>{player.ping}ms</TableCell>
-                        <TableCell class="text-muted-foreground">{player.session}</TableCell>
-                      </TableRow>
-                    )}
-                  </For>
-                </TableBody>
-              </Table>
-            </div>
+            <Show when={playersResource.error}>
+              <div class="px-6 pb-6 text-sm text-destructive">
+                Failed to load player data: {playersResource.error?.message}
+              </div>
+            </Show>
+            <Show when={playersResource.loading && !playersResource()}>
+              <div class="px-6 pb-6 text-sm text-muted-foreground">Loading live roster...</div>
+            </Show>
+            <Show when={playersResource() && !playersResource()!.available}>
+              <div class="px-6 pb-6 text-sm text-muted-foreground">
+                {playersResource()!.reason}
+              </div>
+            </Show>
+            <Show when={filteredPlayers().length > 0}>
+              <div class="subtle-scrollbar overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Archetype</TableHead>
+                      <TableHead>Level</TableHead>
+                      <TableHead>Zone</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Ping</TableHead>
+                      <TableHead>Session</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <For each={filteredPlayers()}>
+                      {(player) => (
+                        <TableRow>
+                          <TableCell class="font-medium text-foreground">{player.name}</TableCell>
+                          <TableCell class="text-muted-foreground">{player.archetype}</TableCell>
+                          <TableCell>{player.level}</TableCell>
+                          <TableCell class="max-w-[220px] truncate text-muted-foreground">
+                            {player.zone}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={getPlayerStatusVariant(player.status)}>
+                              {player.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{player.ping ?? 'n/a'}</TableCell>
+                          <TableCell class="text-muted-foreground">{player.session}</TableCell>
+                        </TableRow>
+                      )}
+                    </For>
+                  </TableBody>
+                </Table>
+              </div>
+            </Show>
           </CardContent>
         </Card>
 
@@ -115,22 +139,26 @@ export default function Players() {
           <Card>
             <CardHeader class="space-y-3">
               <Badge variant="outline">Watchlist</Badge>
-              <CardTitle>Intervention cues</CardTitle>
+              <CardTitle>Backend readiness</CardTitle>
               <CardDescription>
-                Targeted actions to speed up debugging and live support.
+                What the server can currently tell the page about sessions.
               </CardDescription>
             </CardHeader>
             <CardContent class="space-y-3">
-              <div class="rounded-[24px] border border-destructive/20 bg-destructive/8 p-4">
-                <p class="text-sm font-medium text-foreground">Combat spike</p>
+              <div class="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+                <p class="text-sm font-medium text-foreground">Roster route</p>
                 <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                  Kael Mercer has been in uninterrupted combat for 9m 12s in Castle / Cellblock.
+                  {playersResource()?.available
+                    ? 'Live roster feed is available.'
+                    : playersResource()?.reason ?? 'Waiting for player route response.'}
                 </p>
               </div>
               <div class="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <p class="text-sm font-medium text-foreground">Latency drift</p>
+                <p class="text-sm font-medium text-foreground">Base and cell services</p>
                 <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                  Round-trip pings remain stable overall, with one player above 60ms.
+                  {playersResource()?.summary.ready
+                    ? 'Runtime services are up, but detailed roster enumeration is still pending.'
+                    : 'Runtime services are not fully ready for a roster feed.'}
                 </p>
               </div>
             </CardContent>
@@ -141,19 +169,19 @@ export default function Players() {
               <Badge variant="secondary">Operator Actions</Badge>
               <CardTitle>Session controls</CardTitle>
               <CardDescription>
-                Action patterns the backend can attach to commands or websocket flows later.
+                Reserved for the backend commands once the player route exposes real entities.
               </CardDescription>
             </CardHeader>
             <CardContent class="space-y-3">
-              <Button class="w-full justify-start" variant="outline">
+              <Button class="w-full justify-start" disabled variant="outline">
                 <Shield class="size-4" />
                 Elevate player to GM monitor
               </Button>
-              <Button class="w-full justify-start" variant="outline">
+              <Button class="w-full justify-start" disabled variant="outline">
                 <Crosshair class="size-4" />
                 Teleport camera to player
               </Button>
-              <Button class="w-full justify-start" variant="outline">
+              <Button class="w-full justify-start" disabled variant="outline">
                 <TimerReset class="size-4" />
                 Reset stuck mission state
               </Button>

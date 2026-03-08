@@ -1,5 +1,5 @@
-import { For } from 'solid-js';
-import { Compass, Layers3, LocateFixed, Orbit } from 'lucide-solid';
+import { For, Show, createEffect, createMemo, createResource, createSignal } from 'solid-js';
+import { Compass, Layers3, LocateFixed, Orbit, RefreshCw } from 'lucide-solid';
 import PageHeader from '../components/PageHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -11,26 +11,40 @@ import {
   CardTitle,
 } from '../components/ui/card';
 import { Progress } from '../components/ui/progress';
-import { spaceLayers } from '../data/admin';
+import { fetchSpaces, type SpaceRecord } from '../lib/admin-api';
 
 export default function SpaceViewer() {
+  const [spacesResource, { refetch }] = createResource(fetchSpaces);
+  const [selectedSpaceId, setSelectedSpaceId] = createSignal<number | null>(null);
+
+  createEffect(() => {
+    const spaces = spacesResource()?.spaces ?? [];
+    if (spaces.length > 0 && selectedSpaceId() === null) {
+      setSelectedSpaceId(spaces[0]!.world_id);
+    }
+  });
+
+  const selectedSpace = createMemo<SpaceRecord | undefined>(() =>
+    spacesResource()?.spaces.find((space) => space.world_id === selectedSpaceId()),
+  );
+
   return (
     <div class="space-y-6">
       <PageHeader
         actions={
           <>
-            <Button variant="secondary">
-              <Orbit class="size-4" />
-              Orbit camera
+            <Button onClick={() => void refetch()} variant="secondary">
+              <RefreshCw class="size-4" />
+              Refresh spaces
             </Button>
-            <Button>
+            <Button disabled variant="outline">
               <LocateFixed class="size-4" />
               Follow entity
             </Button>
           </>
         }
-        badge="Phase 5 Preview"
-        description="The viewer route remains part of the shell, but its design now matches the phase 4 dashboard instead of feeling like a disconnected placeholder."
+        badge="Space Catalog"
+        description="The space viewer now uses the real space catalog from the backend instead of a static placeholder layer list."
         eyebrow="World View"
         title="Spatial monitoring surface"
       />
@@ -39,9 +53,9 @@ export default function SpaceViewer() {
         <Card class="overflow-hidden">
           <CardHeader class="space-y-3">
             <Badge variant="secondary">Viewport</Badge>
-            <CardTitle>Harset command center</CardTitle>
+            <CardTitle>{selectedSpace()?.world ?? 'Loading space catalog'}</CardTitle>
             <CardDescription>
-              Space viewer frame sized for the future Three.js scene, overlays, and entity markers.
+              Backed by `/api/spaces`.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -55,29 +69,34 @@ export default function SpaceViewer() {
                       Loaded space
                     </p>
                     <h3 class="mt-2 text-2xl font-semibold tracking-[-0.06em] text-foreground">
-                      Harset.nav
+                      {selectedSpace()?.world ?? 'Loading...'}
                     </h3>
+                    <p class="mt-2 text-sm text-muted-foreground">
+                      Client map: {selectedSpace()?.client_map ?? 'n/a'}
+                    </p>
                   </div>
-                  <Badge variant="success">Geometry stub ready</Badge>
+                  <Badge variant={selectedSpace()?.has_script ? 'success' : 'outline'}>
+                    {selectedSpace()?.has_script ? 'Script enabled' : 'No script'}
+                  </Badge>
                 </div>
 
                 <div class="grid gap-3 sm:grid-cols-3">
                   <div class="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                    <p class="text-xs uppercase tracking-[0.22em] text-muted-foreground">Cells</p>
+                    <p class="text-xs uppercase tracking-[0.22em] text-muted-foreground">World ID</p>
                     <p class="mt-2 text-2xl font-semibold tracking-[-0.06em] text-foreground">
-                      12
+                      {selectedSpace()?.world_id ?? '—'}
                     </p>
                   </div>
                   <div class="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                    <p class="text-xs uppercase tracking-[0.22em] text-muted-foreground">Tracked entities</p>
+                    <p class="text-xs uppercase tracking-[0.22em] text-muted-foreground">Mission Links</p>
                     <p class="mt-2 text-2xl font-semibold tracking-[-0.06em] text-foreground">
-                      84
+                      {selectedSpace()?.mission_count ?? 0}
                     </p>
                   </div>
                   <div class="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                    <p class="text-xs uppercase tracking-[0.22em] text-muted-foreground">Nav chunks</p>
+                    <p class="text-xs uppercase tracking-[0.22em] text-muted-foreground">Flags</p>
                     <p class="mt-2 text-2xl font-semibold tracking-[-0.06em] text-foreground">
-                      124
+                      {selectedSpace()?.flags ?? 0}
                     </p>
                   </div>
                 </div>
@@ -89,33 +108,52 @@ export default function SpaceViewer() {
         <div class="space-y-4">
           <Card>
             <CardHeader class="space-y-3">
-              <Badge variant="outline">Overlay Controls</Badge>
-              <CardTitle>Renderable layers</CardTitle>
+              <Badge variant="outline">Loaded Spaces</Badge>
+              <CardTitle>Catalog</CardTitle>
               <CardDescription>
-                UI slots for nav meshes, spawn points, players, and debug overlays.
+                Select a world row to inspect its current metadata.
               </CardDescription>
             </CardHeader>
             <CardContent class="space-y-4">
-              <For each={spaceLayers}>
-                {(layer) => (
-                  <div class="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+              <Show when={spacesResource.error}>
+                <div class="text-sm text-destructive">{spacesResource.error?.message}</div>
+              </Show>
+              <Show when={spacesResource.loading && !spacesResource()}>
+                <div class="text-sm text-muted-foreground">Loading space catalog...</div>
+              </Show>
+              <Show when={spacesResource() && !spacesResource()!.available}>
+                <div class="text-sm text-muted-foreground">{spacesResource()!.reason}</div>
+              </Show>
+              <For each={spacesResource()?.spaces ?? []}>
+                {(space) => (
+                  <button
+                    class={`w-full rounded-[24px] border p-4 text-left transition ${
+                      selectedSpaceId() === space.world_id
+                        ? 'border-primary/30 bg-primary/10'
+                        : 'border-white/8 bg-white/[0.03]'
+                    }`}
+                    onClick={() => setSelectedSpaceId(space.world_id)}
+                    type="button"
+                  >
                     <div class="flex items-center justify-between gap-3">
                       <div>
-                        <p class="text-sm font-medium text-foreground">{layer.label}</p>
-                        <p class="mt-1 text-sm text-muted-foreground">{layer.count} tracked</p>
+                        <p class="text-sm font-medium text-foreground">{space.world}</p>
+                        <p class="mt-1 text-sm text-muted-foreground">
+                          {space.mission_count} linked missions
+                        </p>
                       </div>
-                      <Badge variant={layer.enabled ? 'success' : 'outline'}>
-                        {layer.enabled ? 'Visible' : 'Hidden'}
+                      <Badge variant={space.has_script ? 'success' : 'outline'}>
+                        {space.has_script ? 'Script' : 'Data only'}
                       </Badge>
                     </div>
                     <div class="mt-4 space-y-2">
                       <div class="flex items-center justify-between text-xs uppercase tracking-[0.22em] text-muted-foreground">
-                        <span>Density</span>
-                        <span>{Math.min(layer.count, 100)}%</span>
+                        <span>Mission density</span>
+                        <span>{Math.min(space.mission_count, 100)}%</span>
                       </div>
-                      <Progress value={Math.min(layer.count, 100)} />
+                      <Progress value={Math.min(space.mission_count, 100)} />
                     </div>
-                  </div>
+                  </button>
                 )}
               </For>
             </CardContent>
@@ -126,20 +164,20 @@ export default function SpaceViewer() {
               <Badge variant="secondary">Inspection</Badge>
               <CardTitle>Camera modes</CardTitle>
               <CardDescription>
-                Controls positioned for the eventual Three.js integration.
+                UI reserved for the eventual scene integration.
               </CardDescription>
             </CardHeader>
             <CardContent class="space-y-3">
-              <Button class="w-full justify-start" variant="outline">
+              <Button class="w-full justify-start" disabled variant="outline">
                 <Compass class="size-4" />
                 Recenter on selected zone
               </Button>
-              <Button class="w-full justify-start" variant="outline">
+              <Button class="w-full justify-start" disabled variant="outline">
                 <Layers3 class="size-4" />
                 Toggle nav wireframe
               </Button>
-              <Button class="w-full justify-start" variant="outline">
-                <LocateFixed class="size-4" />
+              <Button class="w-full justify-start" disabled variant="outline">
+                <Orbit class="size-4" />
                 Lock to player path
               </Button>
             </CardContent>

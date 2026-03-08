@@ -9,8 +9,33 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use serde::Serialize;
 
 use cimmeria_services::orchestrator::Orchestrator;
+
+#[derive(Serialize)]
+struct PlayerSummary {
+    online_count: usize,
+    ready: bool,
+}
+
+#[derive(Serialize)]
+struct PlayerServiceState {
+    auth: bool,
+    base: bool,
+    cell: bool,
+    database: bool,
+}
+
+#[derive(Serialize)]
+struct PlayerListResponse {
+    status: &'static str,
+    available: bool,
+    reason: Option<&'static str>,
+    players: Vec<serde_json::Value>,
+    summary: PlayerSummary,
+    services: PlayerServiceState,
+}
 
 /// Build player routes.
 ///
@@ -26,14 +51,32 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
 
 /// List all currently online players.
 async fn list_players(
-    State(_orchestrator): State<Arc<Orchestrator>>,
-) -> Json<serde_json::Value> {
-    // TODO: Query base service for connected players
-    Json(serde_json::json!({
-        "status": "ok",
-        "message": "not implemented",
-        "players": []
-    }))
+    State(orchestrator): State<Arc<Orchestrator>>,
+) -> Json<PlayerListResponse> {
+    let state = orchestrator.state();
+    let state = state.read().await;
+
+    let db_connected = match &state.db {
+        Some(pool) => pool.health_check().await,
+        None => false,
+    };
+
+    Json(PlayerListResponse {
+        status: "ok",
+        available: false,
+        reason: Some("Live player roster is not implemented yet."),
+        players: Vec::new(),
+        summary: PlayerSummary {
+            online_count: 0,
+            ready: state.base.is_running && state.cell.is_running,
+        },
+        services: PlayerServiceState {
+            auth: state.auth.is_running,
+            base: state.base.is_running,
+            cell: state.cell.is_running,
+            database: db_connected,
+        },
+    })
 }
 
 /// Get detailed information about a specific player.
