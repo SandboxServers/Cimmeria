@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod content;
 mod drafts;
 mod ipc;
 mod state;
@@ -10,9 +11,7 @@ use std::sync::Arc;
 
 fn main() {
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     tracing::info!("Cimmeria Server starting...");
 
@@ -26,6 +25,9 @@ fn main() {
             ipc::get_server_status,
             ipc::get_player_count,
             ipc::get_uptime,
+            content::load_chain_editor_content,
+            content::save_chain_editor_content,
+            content::validate_chain_editor_content,
             drafts::load_chain_editor_draft,
             drafts::save_chain_editor_draft,
         ])

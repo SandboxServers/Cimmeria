@@ -42,6 +42,13 @@ import {
   validateConnectionRequest,
 } from './chainConnections';
 import {
+  createEditorSnapshotFromPersistedContentGraph,
+  createPersistedContentGraph,
+  extractSpaceScopedContentSnapshot,
+  loadChainEditorContent,
+  saveChainEditorContent,
+} from './chainContentPersistence';
+import {
   clearChainEditorAutosave,
   createChainEditorAutosave,
   createPersistedChainEditorDraft,
@@ -182,6 +189,10 @@ type DraftPersistenceState = {
 };
 
 const inspectorPanelIds: InspectorPanelId[] = ['validation', 'chain', 'sequence', 'node'];
+type ContentPersistenceState = {
+  hydrated: boolean;
+  savedSignature: string;
+};
 const inspectorPanelOrderStorageKey = 'cimmeria.chain-editor.inspector-order';
 const inspectorPanelCollapseStorageKey = 'cimmeria.chain-editor.inspector-collapsed';
 const defaultInspectorCollapsedState: InspectorCollapsedState = {
@@ -2203,9 +2214,13 @@ function FlowContent() {
   const [draggingPanelId, setDraggingPanelId] = useState<InspectorPanelId | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [savingContent, setSavingContent] = useState(false);
   const [draftStateBySpace, setDraftStateBySpace] = useState<Record<string, DraftPersistenceState>>(
     {},
   );
+  const [contentStateBySpace, setContentStateBySpace] = useState<
+    Record<string, ContentPersistenceState>
+  >({});
   const [autosaveRecoveryBySpace, setAutosaveRecoveryBySpace] = useState<
     Record<string, ChainEditorAutosave<EditorNodeData, SequenceEdgeData> | null>
   >({});
@@ -2619,6 +2634,27 @@ function FlowContent() {
   const activeDraftState = draftStateBySpace[selectedSpaceId];
   const isDraftDirty = !!activeDraftState?.hydrated &&
     activeDraftState.savedSignature !== activeSpaceDraftSignature;
+  const activeSpaceContent = useMemo(() => {
+    const scopedSnapshot = extractSpaceScopedContentSnapshot(nodes, edges, selectedSpaceId);
+
+    return createPersistedContentGraph<EditorNodeData, SequenceEdgeData>({
+      edges: scopedSnapshot.edges,
+      missionId: null,
+      nodes: scopedSnapshot.nodes,
+      selectedChainId,
+      selectedNodeId,
+      selectedSequenceId,
+      spaceId: selectedSpaceId,
+    });
+  }, [edges, nodes, selectedChainId, selectedNodeId, selectedSequenceId, selectedSpaceId]);
+  const activeSpaceContentSignature = useMemo(
+    () => JSON.stringify(activeSpaceContent),
+    [activeSpaceContent],
+  );
+  const activeContentState = contentStateBySpace[selectedSpaceId];
+  const isContentDirty =
+    !!activeContentState?.hydrated &&
+    activeContentState.savedSignature !== activeSpaceContentSignature;
   const activeAutosaveRecovery = autosaveRecoveryBySpace[selectedSpaceId] ?? null;
 
   const beginDraftSequence = useCallback(() => {
@@ -2770,10 +2806,61 @@ function FlowContent() {
     return () => window.clearTimeout(timeoutId);
   }, [activeDraftState, activeSpaceDraft, isDraftDirty]);
 
+  const handleSaveContent = useCallback(async () => {
+    setSavingContent(true);
+
+    try {
+      await saveChainEditorContent(activeSpaceContent);
+      const savedAt = new Date().toISOString();
+      setContentStateBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: {
+          hydrated: true,
+          savedSignature: activeSpaceContentSignature,
+        },
+      }));
+      pushToast(
+        `Saved ${spaceCatalog.find((space) => space.id === selectedSpaceId)?.label ?? selectedSpaceId} to content engine rows.`,
+      );
+
+      const draftResult = await saveChainEditorDraft(activeSpaceDraft);
+      setDraftStateBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: {
+          hydrated: true,
+          lastSavedAt: savedAt,
+          persistedDraft: activeSpaceDraft,
+          recoveredFromAutosave: false,
+          savedSignature: activeSpaceDraftSignature,
+          storage: draftResult.storage,
+        },
+      }));
+      clearChainEditorAutosave(selectedSpaceId, null);
+      setAutosaveRecoveryBySpace((current) => ({
+        ...current,
+        [selectedSpaceId]: null,
+      }));
+    } catch (error) {
+      pushToast(
+        `Error: ${error instanceof Error ? error.message : 'could not save to the content engine'}.`,
+      );
+    } finally {
+      setSavingContent(false);
+    }
+  }, [
+    activeSpaceContent,
+    activeSpaceContentSignature,
+    activeSpaceDraft,
+    activeSpaceDraftSignature,
+    pushToast,
+    selectedSpaceId,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function hydrateSpaceDraft() {
+      let loadedContent = false;
       const seedSnapshot = extractSpaceScopedEditorSnapshot(
         nodesRef.current,
         edgesRef.current,
@@ -2789,10 +2876,54 @@ function FlowContent() {
         spaceId: selectedSpaceId,
       });
 
-      const result = await loadChainEditorDraft<EditorNodeData, SequenceEdgeData>(
-        selectedSpaceId,
-        null,
-      );
+      let baseSnapshot = seedSnapshot;
+      let baseSelectedChainId = seedDraft.selectedChainId;
+      let baseSelectedNodeId = seedDraft.selectedNodeId;
+      let baseSelectedSequenceId = seedDraft.selectedSequenceId;
+
+      try {
+        const contentResult = await loadChainEditorContent<EditorNodeData, SequenceEdgeData>(
+          selectedSpaceId,
+          null,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (contentResult.graph) {
+          loadedContent = true;
+          const contentSnapshot = createEditorSnapshotFromPersistedContentGraph(contentResult.graph);
+          baseSnapshot = {
+            nodes: contentSnapshot.nodes,
+            edges: contentSnapshot.edges,
+          };
+          baseSelectedChainId = contentSnapshot.selectedChainId || baseSelectedChainId;
+          baseSelectedNodeId = contentSnapshot.selectedNodeId || baseSelectedNodeId;
+          baseSelectedSequenceId =
+            contentSnapshot.selectedSequenceId || baseSelectedSequenceId;
+          setContentStateBySpace((current) => ({
+            ...current,
+            [selectedSpaceId]: {
+              hydrated: true,
+              savedSignature: JSON.stringify(contentResult.graph),
+            },
+          }));
+          pushToast(`Loaded ${selectedSpaceId} content from PostgreSQL rows.`);
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        pushToast(
+          `Using seeded ${selectedSpaceId} content because content load failed: ${
+            error instanceof Error ? error.message : String(error)
+          }.`,
+        );
+      }
+
+      const result = await loadChainEditorDraft<EditorNodeData, SequenceEdgeData>(selectedSpaceId, null);
       if (cancelled) {
         return;
       }
@@ -2849,14 +2980,38 @@ function FlowContent() {
         return;
       }
 
+      const mergedBaseSnapshot = mergeSpaceScopedEditorSnapshot(
+        nodesRef.current,
+        edgesRef.current,
+        selectedSpaceId,
+        {
+          nodes: baseSnapshot.nodes,
+          edges: baseSnapshot.edges,
+        },
+      );
+
+      setNodes(mergedBaseSnapshot.nodes);
+      setEdges(mergedBaseSnapshot.edges);
+      setSelectedChainId(baseSelectedChainId || '');
+      setSelectedNodeId(baseSelectedNodeId || '');
+      setSelectedSequenceId(baseSelectedSequenceId || '');
+      const basePersistedDraft = createPersistedChainEditorDraft<EditorNodeData, SequenceEdgeData>({
+        edges: baseSnapshot.edges,
+        missionId: null,
+        nodes: baseSnapshot.nodes,
+        selectedChainId: baseSelectedChainId,
+        selectedNodeId: baseSelectedNodeId,
+        selectedSequenceId: baseSelectedSequenceId,
+        spaceId: selectedSpaceId,
+      });
       setDraftStateBySpace((current) => ({
         ...current,
         [selectedSpaceId]: {
           hydrated: true,
-          persistedDraft: seedDraft,
+          persistedDraft: basePersistedDraft,
           recoveredFromAutosave: false,
-          savedSignature: JSON.stringify(seedDraft),
-          storage: result.storage,
+          savedSignature: JSON.stringify(basePersistedDraft),
+          storage: loadedContent ? 'database' : result.storage,
         },
       }));
       const autosave = loadChainEditorAutosave<EditorNodeData, SequenceEdgeData>(
@@ -2867,7 +3022,7 @@ function FlowContent() {
         ...current,
         [selectedSpaceId]: shouldRecoverAutosave(
           autosave,
-          JSON.stringify(seedDraft),
+          JSON.stringify(basePersistedDraft),
         )
           ? autosave
           : null,
@@ -2878,7 +3033,7 @@ function FlowContent() {
           `Using seeded ${selectedSpaceId} content because draft load failed: ${result.warning}.`,
         );
       }
-      if (shouldRecoverAutosave(autosave, JSON.stringify(seedDraft))) {
+      if (shouldRecoverAutosave(autosave, JSON.stringify(basePersistedDraft))) {
         pushToast(`Autosave recovery is available for ${selectedSpaceId}.`);
       }
     }
@@ -4361,6 +4516,15 @@ function FlowContent() {
               </span>
               <span
                 className={`rounded-full border px-3 py-2 ${
+                  isContentDirty
+                    ? 'border-[rgba(94,184,179,0.28)] bg-[rgba(94,184,179,0.12)] text-[#a7f0eb]'
+                    : 'border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.12)] text-[#c7ffd5]'
+                }`}
+              >
+                {isContentDirty ? 'Content rows out of sync' : 'Content synced'}
+              </span>
+              <span
+                className={`rounded-full border px-3 py-2 ${
                   isDraftDirty
                     ? 'border-[rgba(245,170,49,0.28)] bg-[rgba(245,170,49,0.12)] text-[#ffd38a]'
                     : 'border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.12)] text-[#c7ffd5]'
@@ -4401,6 +4565,22 @@ function FlowContent() {
               <span className="rounded-full border border-white/8 bg-white/4 px-3 py-2">
                 {visibleEdges.length} links
               </span>
+              <button
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  savingContent
+                    ? 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.6)]'
+                    : isContentDirty
+                      ? 'border border-[#5eb8b3]/30 bg-[rgba(94,184,179,0.14)] text-[#a7f0eb]'
+                      : 'border border-white/8 bg-white/4 text-[rgba(224,231,239,0.82)]'
+                }`}
+                disabled={savingContent}
+                onClick={() => {
+                  void handleSaveContent();
+                }}
+                type="button"
+              >
+                {savingContent ? 'Saving content...' : 'Save to content engine'}
+              </button>
               <button
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   savingDraft
