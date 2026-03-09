@@ -129,7 +129,15 @@ pub struct SaveCounterInput {
 pub async fn list_spaces(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<SpaceEntry>, String> {
+    tracing::debug!("list_spaces called");
     let pool = state.pool()?;
+
+    // Debug: check what search_path is on this connection
+    let sp: (String,) = sqlx::query_as("SELECT current_setting('search_path')")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to query search_path: {e}"))?;
+    tracing::debug!("list_spaces: search_path = {:?}", sp.0);
 
     let rows = sqlx::query(
         r#"
@@ -144,8 +152,12 @@ pub async fn list_spaces(
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("Failed to list spaces: {e}"))?;
+    .map_err(|e| {
+        tracing::error!("Failed to list spaces: {e}");
+        format!("Failed to list spaces: {e}")
+    })?;
 
+    tracing::debug!("list_spaces returned {} rows", rows.len());
     Ok(rows
         .iter()
         .map(|row| SpaceEntry {

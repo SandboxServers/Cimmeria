@@ -56,6 +56,7 @@ pub async fn list_entity_templates(
     state: tauri::State<'_, AppState>,
     search: Option<String>,
 ) -> Result<Vec<EntityTemplateSummary>, String> {
+    tracing::debug!("list_entity_templates called, search={:?}", search);
     let pool = state.pool()?;
 
     let rows = sqlx::query(
@@ -71,8 +72,12 @@ pub async fn list_entity_templates(
     .bind(&search)
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("Failed to list entity templates: {e}"))?;
+    .map_err(|e| {
+        tracing::error!("Failed to list entity templates: {e}");
+        format!("Failed to list entity templates: {e}")
+    })?;
 
+    tracing::debug!("list_entity_templates returned {} rows", rows.len());
     Ok(rows
         .iter()
         .map(|r| EntityTemplateSummary {
@@ -90,6 +95,7 @@ pub async fn get_entity_template(
     state: tauri::State<'_, AppState>,
     template_id: i32,
 ) -> Result<EntityTemplate, String> {
+    tracing::debug!("get_entity_template called, template_id={template_id}");
     let pool = state.pool()?;
 
     let r = sqlx::query(
@@ -308,6 +314,7 @@ pub async fn list_items(
     state: tauri::State<'_, AppState>,
     search: Option<String>,
 ) -> Result<Vec<ItemSummary>, String> {
+    tracing::debug!("list_items called, search={:?}", search);
     let pool = state.pool()?;
 
     let rows = sqlx::query(
@@ -339,6 +346,7 @@ pub async fn get_item(
     state: tauri::State<'_, AppState>,
     item_id: i32,
 ) -> Result<Item, String> {
+    tracing::debug!("get_item called, item_id={item_id:?}");
     let pool = state.pool()?;
 
     // Cast enum columns and enum arrays to text so sqlx can decode them as strings.
@@ -394,6 +402,7 @@ pub async fn save_item(
     state: tauri::State<'_, AppState>,
     item: Item,
 ) -> Result<i32, String> {
+    tracing::debug!("save_item called");
     let pool = state.pool()?;
 
     // ammo_types comes in as Vec<String> -- cast each element back to EAmmoType via SQL.
@@ -475,6 +484,7 @@ pub async fn delete_item(
     state: tauri::State<'_, AppState>,
     item_id: i32,
 ) -> Result<(), String> {
+    tracing::debug!("delete_item called, item_id={item_id:?}");
     let pool = state.pool()?;
 
     sqlx::query("DELETE FROM items WHERE item_id = $1")
@@ -579,6 +589,7 @@ pub async fn list_missions(
     state: tauri::State<'_, AppState>,
     search: Option<String>,
 ) -> Result<Vec<MissionSummary>, String> {
+    tracing::debug!("list_missions called, search={:?}", search);
     let pool = state.pool()?;
 
     let rows = sqlx::query(
@@ -611,6 +622,7 @@ pub async fn get_mission(
     state: tauri::State<'_, AppState>,
     mission_id: i32,
 ) -> Result<Mission, String> {
+    tracing::debug!("get_mission called, mission_id={mission_id:?}");
     let pool = state.pool()?;
 
     // Fetch the mission header
@@ -777,6 +789,7 @@ pub async fn save_mission(
     state: tauri::State<'_, AppState>,
     mission: Mission,
 ) -> Result<i32, String> {
+    tracing::debug!("save_mission called");
     let pool = state.pool()?;
     let mut tx = pool
         .begin()
@@ -986,6 +999,7 @@ pub async fn delete_mission(
     state: tauri::State<'_, AppState>,
     mission_id: i32,
 ) -> Result<(), String> {
+    tracing::debug!("delete_mission called, mission_id={mission_id:?}");
     let pool = state.pool()?;
     let mut tx = pool
         .begin()
@@ -1079,6 +1093,7 @@ pub async fn list_loot_tables(
     state: tauri::State<'_, AppState>,
     search: Option<String>,
 ) -> Result<Vec<LootTableSummary>, String> {
+    tracing::debug!("list_loot_tables called, search={:?}", search);
     let pool = state.pool()?;
 
     let rows = sqlx::query(
@@ -1112,6 +1127,7 @@ pub async fn get_loot_table(
     state: tauri::State<'_, AppState>,
     loot_table_id: i32,
 ) -> Result<LootTable, String> {
+    tracing::debug!("get_loot_table called, loot_table_id={loot_table_id:?}");
     let pool = state.pool()?;
 
     let header = sqlx::query(
@@ -1155,6 +1171,7 @@ pub async fn save_loot_table(
     state: tauri::State<'_, AppState>,
     loot_table: LootTable,
 ) -> Result<i32, String> {
+    tracing::debug!("save_loot_table called");
     let pool = state.pool()?;
     let mut tx = pool
         .begin()
@@ -1216,6 +1233,7 @@ pub async fn delete_loot_table(
     state: tauri::State<'_, AppState>,
     loot_table_id: i32,
 ) -> Result<(), String> {
+    tracing::debug!("delete_loot_table called, loot_table_id={loot_table_id:?}");
     let pool = state.pool()?;
     let mut tx = pool
         .begin()
@@ -1319,6 +1337,7 @@ pub async fn list_abilities(
     state: tauri::State<'_, AppState>,
     search: Option<String>,
 ) -> Result<Vec<AbilitySummary>, String> {
+    tracing::debug!("list_abilities called, search={:?}", search);
     let pool = state.pool()?;
 
     let rows = sqlx::query(
@@ -1350,6 +1369,7 @@ pub async fn get_ability(
     state: tauri::State<'_, AppState>,
     ability_id: i32,
 ) -> Result<Ability, String> {
+    tracing::debug!("get_ability called, ability_id={ability_id:?}");
     let pool = state.pool()?;
 
     let ar = sqlx::query(
@@ -1470,6 +1490,7 @@ pub async fn save_ability(
     state: tauri::State<'_, AppState>,
     ability: Ability,
 ) -> Result<i32, String> {
+    tracing::debug!("save_ability called");
     let pool = state.pool()?;
     let mut tx = pool
         .begin()
@@ -1634,6 +1655,7 @@ pub async fn delete_ability(
     state: tauri::State<'_, AppState>,
     ability_id: i32,
 ) -> Result<(), String> {
+    tracing::debug!("delete_ability called, ability_id={ability_id:?}");
     let pool = state.pool()?;
     let mut tx = pool
         .begin()

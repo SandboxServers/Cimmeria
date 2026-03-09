@@ -1,5 +1,6 @@
 use crate::script::definitions::ScriptDefinitions;
-use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::{Executor, PgPool};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tokio::sync::{Mutex, OnceCell};
@@ -20,6 +21,8 @@ impl AppState {
             .expect("ContentEditor should live under tools/ in the repository root")
             .to_path_buf();
 
+        tracing::debug!("AppState initialized, repo_root={}", repo_root.display());
+
         Self {
             repo_root,
             pool: OnceCell::new(),
@@ -30,26 +33,37 @@ impl AppState {
     }
 
     pub async fn connect(&self, connection_string: &str) -> Result<&PgPool, String> {
+        tracing::info!("Connecting to PostgreSQL...");
+
         // If already connected, return existing pool
         if let Some(pool) = self.pool.get() {
+            tracing::debug!("Reusing existing database pool");
             return Ok(pool);
         }
 
-        let pool = PgPool::connect(connection_string)
+        // Build pool with after_connect hook to set search_path on EVERY connection
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    tracing::debug!("New pool connection: setting search_path to resources, public");
+                    conn.execute("SET search_path TO resources, public")
+                        .await?;
+                    Ok(())
+                })
+            })
+            .connect(connection_string)
             .await
             .map_err(|e| format!("Failed to connect to PostgreSQL: {e}"))?;
 
-        // Set search_path so queries find tables in the resources schema
-        sqlx::query("SET search_path TO resources, public")
-            .execute(&pool)
-            .await
-            .map_err(|e| format!("Failed to set search_path: {e}"))?;
+        tracing::info!("Connected to PostgreSQL, verifying...");
 
-        // Verify connection works
-        sqlx::query("SELECT 1")
-            .execute(&pool)
+        // Verify connection works and search_path is set
+        let row: (String,) = sqlx::query_as("SELECT current_setting('search_path')")
+            .fetch_one(&pool)
             .await
             .map_err(|e| format!("PostgreSQL health check failed: {e}"))?;
+        tracing::info!("PostgreSQL connected, search_path = {:?}", row.0);
 
         *self.connection_string.lock().await = Some(connection_string.to_string());
 
@@ -87,8 +101,11 @@ impl AppState {
         if let Some(defs) = self.script_defs.get() {
             return Ok(defs);
         }
+        tracing::debug!("Loading script definitions from {}", self.repo_root.display());
         let defs = crate::script::definitions::load_definitions(&self.repo_root)
             .map_err(|e| format!("Failed to load script definitions: {e}"))?;
+        tracing::info!("Loaded script definitions: {} nodes, {} enums",
+            defs.nodes.len(), defs.enums.len());
         // If another thread beat us, that's fine -- just return whichever won
         let _ = self.script_defs.set(defs);
         Ok(self.script_defs.get().unwrap())

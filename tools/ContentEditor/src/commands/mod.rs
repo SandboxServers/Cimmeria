@@ -25,11 +25,14 @@ pub async fn connect_db(
     connection_string: String,
     server_url: Option<String>,
 ) -> Result<ConnectionStatus, String> {
+    tracing::info!("connect_db called");
     if let Some(url) = server_url {
+        tracing::debug!("Setting server URL to {url}");
         state.set_server_url(url).await;
     }
 
     state.connect(&connection_string).await?;
+    tracing::info!("connect_db succeeded");
 
     Ok(ConnectionStatus {
         connected: true,

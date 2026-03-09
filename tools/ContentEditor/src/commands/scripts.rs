@@ -286,9 +286,11 @@ pub async fn list_scripts(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<ScriptEntry>, String> {
     let scripts_dir = state.scripts_dir();
+    tracing::debug!("list_scripts: scanning {}", scripts_dir.display());
     let mut entries = Vec::new();
 
     if !scripts_dir.exists() {
+        tracing::warn!("list_scripts: scripts_dir does not exist: {}", scripts_dir.display());
         return Ok(entries);
     }
 
@@ -349,6 +351,7 @@ pub async fn list_scripts(
 
     walk_dir(&scripts_dir, &scripts_dir, &mut entries);
     entries.sort_by(|a, b| a.path.cmp(&b.path));
+    tracing::debug!("list_scripts: found {} script files", entries.len());
     Ok(entries)
 }
 
@@ -359,7 +362,12 @@ pub async fn load_script(
     path: String,
 ) -> Result<ScriptFileDto, String> {
     let full_path = state.scripts_dir().join(&path);
-    let sf = xml_format::load_script(&full_path).map_err(|e| format!("Failed to load script: {e}"))?;
+    tracing::debug!("load_script: {}", full_path.display());
+    let sf = xml_format::load_script(&full_path).map_err(|e| {
+        tracing::error!("Failed to load script {}: {e}", full_path.display());
+        format!("Failed to load script: {e}")
+    })?;
+    tracing::debug!("load_script: loaded {} nodes, {} connections", sf.nodes.len(), sf.connections.len());
     Ok(script_file_to_dto(&sf))
 }
 
@@ -371,8 +379,12 @@ pub async fn save_script(
     script: ScriptFileDto,
 ) -> Result<(), String> {
     let full_path = state.scripts_dir().join(&path);
+    tracing::debug!("save_script: {}", full_path.display());
     let sf = dto_to_script_file(&script);
-    xml_format::save_script(&full_path, &sf).map_err(|e| format!("Failed to save script: {e}"))
+    xml_format::save_script(&full_path, &sf).map_err(|e| {
+        tracing::error!("Failed to save script {}: {e}", full_path.display());
+        format!("Failed to save script: {e}")
+    })
 }
 
 /// Compile a script to Python and return the output path + generated code.
@@ -382,6 +394,7 @@ pub async fn compile_script(
     path: String,
 ) -> Result<CompileResult, String> {
     let full_path = state.scripts_dir().join(&path);
+    tracing::debug!("compile_script: {}", full_path.display());
     let sf = xml_format::load_script(&full_path).map_err(|e| format!("Failed to load script: {e}"))?;
 
     let defs = state
@@ -409,9 +422,11 @@ pub async fn compile_script(
 pub async fn load_node_templates(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<NodeTemplateDto>, String> {
+    tracing::debug!("load_node_templates called");
     let defs = state
         .script_definitions()
         .map_err(|e| format!("Failed to load definitions: {e}"))?;
+    tracing::debug!("load_node_templates: returning {} templates", defs.nodes.len());
     Ok(defs.nodes.iter().map(NodeTemplateDto::from).collect())
 }
 
@@ -420,8 +435,10 @@ pub async fn load_node_templates(
 pub async fn load_enumerations(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<EnumDefinitionDto>, String> {
+    tracing::debug!("load_enumerations called");
     let defs = state
         .script_definitions()
         .map_err(|e| format!("Failed to load definitions: {e}"))?;
+    tracing::debug!("load_enumerations: returning {} enums", defs.enums.len());
     Ok(defs.enums.iter().map(EnumDefinitionDto::from).collect())
 }

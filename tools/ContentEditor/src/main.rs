@@ -7,7 +7,7 @@ mod state;
 use state::AppState;
 
 fn main() {
-    tracing_subscriber::fmt().with_env_filter("info").init();
+    tracing_subscriber::fmt().with_env_filter("debug,sqlx=info,tao=info,wry=info,tauri=info").init();
 
     tracing::info!("Cimmeria Content Editor starting...");
 
