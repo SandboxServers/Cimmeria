@@ -11,15 +11,22 @@ pub async fn export_to_seed_file(
 ) -> Result<String, String> {
     let pool = state.pool()?;
 
+    // space_id format: "scope_type:scope_id" e.g. "space:1" or "global:global"
+    let parts: Vec<&str> = space_id.splitn(2, ':').collect();
+    let scope_type = parts.first().copied().unwrap_or("space");
+    let scope_id: Option<i32> = parts.get(1).and_then(|s| s.parse().ok());
+
     let chain_rows = sqlx::query(
         r#"
-        SELECT chain_id, name, description, scope_type, scope_id, enabled, priority
+        SELECT chain_id, description, scope_type, scope_id, enabled, priority
         FROM content_chains
-        WHERE editor_data ->> 'spaceId' = $1
+        WHERE scope_type = $1
+          AND (($2::int IS NULL AND scope_id IS NULL) OR scope_id = $2)
         ORDER BY chain_id ASC
         "#,
     )
-    .bind(&space_id)
+    .bind(scope_type)
+    .bind(scope_id)
     .fetch_all(pool)
     .await
     .map_err(|e| format!("Failed to load chains for export: {e}"))?;
@@ -80,7 +87,7 @@ pub async fn export_to_seed_file(
 
         for trigger in &triggers {
             let event_type: String = trigger.get("event_type");
-            let event_key: String = trigger.get("event_key");
+            let event_key: Option<String> = trigger.get("event_key");
             let scope: String = trigger.get("scope");
             let once: bool = trigger.get("once");
             let sort_order: i32 = trigger.get("sort_order");
@@ -93,7 +100,8 @@ pub async fn export_to_seed_file(
             .unwrap();
             writeln!(
                 sql,
-                "VALUES ({chain_id}, '{event_type}', '{event_key}', '{scope}', {once}, {sort_order});"
+                "VALUES ({chain_id}, '{event_type}', {}, '{scope}', {once}, {sort_order});",
+                sql_str(event_key.as_deref()),
             )
             .unwrap();
         }
@@ -113,7 +121,7 @@ pub async fn export_to_seed_file(
             let target_id: Option<i32> = condition.get("target_id");
             let target_key: Option<String> = condition.get("target_key");
             let operator: String = condition.get("operator");
-            let value: String = condition.get("value");
+            let value: Option<String> = condition.get("value");
             let sort_order: i32 = condition.get("sort_order");
 
             writeln!(sql).unwrap();
@@ -124,9 +132,10 @@ pub async fn export_to_seed_file(
             .unwrap();
             writeln!(
                 sql,
-                "VALUES ({chain_id}, '{condition_type}', {}, {}, '{operator}', '{value}', {sort_order});",
+                "VALUES ({chain_id}, '{condition_type}', {}, {}, '{operator}', {}, {sort_order});",
                 sql_opt_i32(target_id),
                 sql_str(target_key.as_deref()),
+                sql_str(value.as_deref()),
             )
             .unwrap();
         }

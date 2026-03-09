@@ -101,11 +101,15 @@ pub async fn get_entity_template(
     let r = sqlx::query(
         r#"
         SELECT template_id, name, template_name, class, level, alignment, faction,
-               body_set, static_mesh, components, flags, interaction_type,
+               body_set, static_mesh,
+               COALESCE(components, '{}') AS components,
+               flags, interaction_type,
                event_set_id, buy_item_list, sell_item_list, repair_item_list,
                recharge_item_list, ability_set_id, ammo_type::text, loot_table_id,
                primary_color_id, secondary_color_id, skin_tint,
-               weapon_item_id, static_interaction_sets, trainer_ability_list_id,
+               weapon_item_id,
+               COALESCE(static_interaction_sets, '{}') AS static_interaction_sets,
+               trainer_ability_list_id,
                speaker_id, has_dynamic_properties, interaction_set_id,
                name_id, patrol_path_id, patrol_point_delay
         FROM entity_templates

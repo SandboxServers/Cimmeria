@@ -32,13 +32,11 @@ export interface SpaceEntry {
 
 export interface ChainData {
   chain_id: number;
-  name: string | null;
   description: string | null;
   scope_type: string;
   scope_id: number | null;
   enabled: boolean;
   priority: number;
-  editor_data: Record<string, unknown>;
   triggers: unknown[];
   conditions: unknown[];
   actions: unknown[];
@@ -93,7 +91,7 @@ export function AppLayout() {
 
   const selectedChainName = selectedNode?.type === 'chainFrame'
     ? (selectedNode.data as any)?.name ?? 'Unnamed chain'
-    : chains.find((c) => selectedNode?.parentId === `chain-${c.chain_id}`)?.name ?? 'No chain selected';
+    : chains.find((c) => selectedNode?.parentId === `chain-${c.chain_id}`)?.description ?? 'No chain selected';
 
   // ----- Load chain spaces on mount -----
   useEffect(() => {

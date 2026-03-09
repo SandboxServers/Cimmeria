@@ -97,8 +97,8 @@ export function chainsToFlow(
 
   for (const chain of chains) {
     const frameId = `chain-${chain.chain_id}`;
-    const savedLayout = (chain.editor_data?.layout as SavedLayout) ?? {};
-    const savedEdges = (chain.editor_data?.edges as SavedEdge[]) ?? [];
+    const savedLayout: SavedLayout = {};
+    const savedEdges: SavedEdge[] = [];
 
     const counts: Record<PrimitiveFamily, number> = {
       anchor: 2,
@@ -297,7 +297,7 @@ export function chainsToFlow(
       position: { x: 40, y: frameY },
       data: {
         kind: 'chain',
-        name: chain.name ?? `Chain #${chain.chain_id}`,
+        name: chain.description ?? `Chain #${chain.chain_id}`,
         summary: chain.description ?? '',
         scopeType: (chain.scope_type as ChainFrameData['scopeType']) || 'space',
         scopeId: String(chain.scope_id ?? ''),
@@ -413,13 +413,11 @@ export function flowToChains(
 
     return {
       chain_id: chainId,
-      name: frameData.name,
-      description: frameData.summary,
+      description: frameData.summary || frameData.name,
       scope_type: frameData.scopeType,
       scope_id: orig?.scope_id ?? null,
       enabled: frameData.enabled,
       priority: frameData.priority,
-      editor_data: { layout, edges: chainEdges },
       triggers,
       conditions,
       actions,
