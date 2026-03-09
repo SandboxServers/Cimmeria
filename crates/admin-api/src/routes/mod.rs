@@ -7,6 +7,7 @@ pub mod audit;
 pub mod entities;
 pub mod spaces;
 pub mod content;
+pub mod editor;
 pub mod players;
 pub mod config;
 pub mod auth;
@@ -27,6 +28,7 @@ pub fn api_routes() -> Router<Arc<Orchestrator>> {
         .nest("/content", content::routes())
         .nest("/players", players::routes())
         .nest("/config", config::routes())
+        .nest("/editor", editor::routes())
         .nest("/auth", auth::routes())
         .nest("/audit", audit::routes())
 }

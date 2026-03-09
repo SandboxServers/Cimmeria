@@ -50,6 +50,7 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
         .route("/", get(list_categories))
         .route("/summary", get(get_summary))
+        .route("/pickers", get(get_editor_pickers))
         .route("/items", get(list_items))
         .route("/items/{id}", get(get_item))
         .route("/reload", post(reload_content))
@@ -189,6 +190,136 @@ pub async fn get_summary(
             top_space_mission_counts: Vec::new(),
         }),
     }
+}
+
+// ── Editor picker types (used by the chain editor node‐schema dropdowns) ──
+
+#[derive(Serialize, ToSchema)]
+pub struct EditorPickerOption {
+    pub value: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct EditorMissionOption {
+    pub value: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_id: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct EditorRegionOption {
+    pub value: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space_id: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct EditorStepOption {
+    pub value: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mission_id: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct EditorPickersResponse {
+    pub spaces: Vec<EditorPickerOption>,
+    pub missions: Vec<EditorMissionOption>,
+    pub regions: Vec<EditorRegionOption>,
+    pub steps: Vec<EditorStepOption>,
+    pub items: Vec<EditorPickerOption>,
+    pub dialogs: Vec<EditorPickerOption>,
+}
+
+/// Get picker option lists for the chain editor node‐schema dropdowns.
+#[utoipa::path(
+    get,
+    path = "/api/content/pickers",
+    responses(
+        (status = 200, description = "Editor picker options", body = EditorPickersResponse)
+    ),
+    tag = "Content"
+)]
+pub async fn get_editor_pickers(
+    State(orchestrator): State<Arc<Orchestrator>>,
+) -> Json<EditorPickersResponse> {
+    let pool = {
+        let state = orchestrator.state();
+        let state = state.read().await;
+        state.db.as_ref().map(|db| db.pool().clone())
+    };
+
+    let empty = EditorPickersResponse {
+        spaces: Vec::new(),
+        missions: Vec::new(),
+        regions: Vec::new(),
+        steps: Vec::new(),
+        items: Vec::new(),
+        dialogs: Vec::new(),
+    };
+
+    let Some(pool) = pool else {
+        return Json(empty);
+    };
+
+    // Spaces
+    let spaces = sqlx::query_as::<_, (i32, String)>(
+        "SELECT world_id, world_name FROM resources.worlds ORDER BY world_name",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(id, name)| EditorPickerOption {
+        value: id.to_string(),
+        label: name,
+        group: None,
+    })
+    .collect();
+
+    // Missions
+    let missions = sqlx::query_as::<_, (i32, String, Option<String>)>(
+        "SELECT mission_id, mission_name, script_spaces FROM resources.missions ORDER BY mission_name",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(id, name, space)| EditorMissionOption {
+        value: id.to_string(),
+        label: name,
+        space_id: space,
+    })
+    .collect();
+
+    // Steps (mission_step_id, step label, parent mission)
+    let steps = sqlx::query_as::<_, (i32, String, i32)>(
+        "SELECT step_id, step_name, mission_id FROM resources.mission_steps ORDER BY mission_id, sort_order",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|(id, name, mid)| EditorStepOption {
+        value: id.to_string(),
+        label: name,
+        mission_id: Some(mid.to_string()),
+    })
+    .collect();
+
+    Json(EditorPickersResponse {
+        spaces,
+        missions,
+        regions: Vec::new(), // TODO: populate from region table when available
+        steps,
+        items: Vec::new(),   // TODO: populate from items table
+        dialogs: Vec::new(), // TODO: populate from dialogs table
+    })
 }
 
 /// Get a specific item definition by ID.
