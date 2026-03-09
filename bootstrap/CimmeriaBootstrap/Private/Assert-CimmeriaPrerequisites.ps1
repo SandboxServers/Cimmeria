@@ -58,6 +58,74 @@ function Assert-CimmeriaPrerequisites {
         # Does not return
     }
 
+    # --- Fast linker prerequisites ---
+    # mold + clang on Linux/WSL, llvm-tools-preview on Windows
+    # These are used by .cargo/config.toml to speed up incremental builds.
+    $isLinux = (Test-Path variable:IsLinux) -and $IsLinux
+
+    if ($isWin) {
+        # Windows: ensure llvm-tools-preview rustup component is installed (provides lld-link)
+        if ($rustup) {
+            $lldInstalled = (rustup component list 2>&1) -join "`n" | Select-String "llvm-tools.*installed"
+            if ($lldInstalled) {
+                Write-Status "Found rustup component: llvm-tools-preview (lld linker)" "Green"
+            } else {
+                Write-Status "Installing rustup component: llvm-tools-preview (faster linker)..." "Yellow"
+                rustup component add llvm-tools-preview 2>&1 | ForEach-Object {
+                    Write-Status "  $_" "DarkGray"
+                }
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Status "llvm-tools-preview installed successfully." "Green"
+                } else {
+                    Write-Status "WARNING: Failed to install llvm-tools-preview. Builds will use default linker." "Yellow"
+                }
+            }
+        }
+    } elseif ($isLinux) {
+        # Linux/WSL: check for mold and clang (used by .cargo/config.toml)
+        $moldCmd = Get-Command mold -ErrorAction SilentlyContinue
+        if ($moldCmd) {
+            $moldVersion = (mold --version 2>&1) -join ""
+            Write-Status "Found mold: $moldVersion" "Green"
+        } else {
+            Write-Status "mold linker not found — installing..." "Yellow"
+            & sudo apt-get install -y mold 2>&1 | ForEach-Object {
+                $line = "$_"
+                if ($line -match 'Setting up|is already') {
+                    Write-Status "  $line" "DarkGray"
+                }
+            }
+            $moldCmd = Get-Command mold -ErrorAction SilentlyContinue
+            if ($moldCmd) {
+                Write-Status "mold installed successfully." "Green"
+            } else {
+                Write-Status "WARNING: Failed to install mold. Builds will use default linker." "Yellow"
+                Write-Status "  Install manually: sudo apt install mold" "Yellow"
+            }
+        }
+
+        $clangCmd = Get-Command clang -ErrorAction SilentlyContinue
+        if ($clangCmd) {
+            $clangVersion = (clang --version 2>&1 | Select-Object -First 1) -join ""
+            Write-Status "Found clang: $clangVersion" "Green"
+        } else {
+            Write-Status "clang not found — installing..." "Yellow"
+            & sudo apt-get install -y clang 2>&1 | ForEach-Object {
+                $line = "$_"
+                if ($line -match 'Setting up|is already') {
+                    Write-Status "  $line" "DarkGray"
+                }
+            }
+            $clangCmd = Get-Command clang -ErrorAction SilentlyContinue
+            if ($clangCmd) {
+                Write-Status "clang installed successfully." "Green"
+            } else {
+                Write-Status "WARNING: Failed to install clang. Builds will use default linker." "Yellow"
+                Write-Status "  Install manually: sudo apt install clang" "Yellow"
+            }
+        }
+    }
+
     # Node.js (only when building Tauri app)
     if ($RequireNode) {
         $node = Get-Command node -ErrorAction SilentlyContinue

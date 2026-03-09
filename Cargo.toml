@@ -107,3 +107,11 @@ cimmeria-services = { path = "crates/services" }
 cimmeria-admin-api = { path = "crates/admin-api" }
 cimmeria-commands = { path = "crates/commands" }
 cimmeria-server = { path = "crates/server" }
+
+# ---------------------------------------------------------------------------
+# Profile: dev — optimise compile speed
+# ---------------------------------------------------------------------------
+
+[profile.dev]
+# Split debug info into a separate file — speeds up linking.
+split-debuginfo = "unpacked"
