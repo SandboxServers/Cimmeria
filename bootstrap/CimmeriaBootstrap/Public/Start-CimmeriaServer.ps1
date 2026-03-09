@@ -32,39 +32,63 @@ function Start-CimmeriaServer {
 
     Write-Step "STARTING CIMMERIA SERVER"
 
-    # Ensure PostgreSQL is running
-    if ($isWin) {
-        $pgBin = Find-PostgreSQL
-        if ($pgBin) {
-            $pgCtl = Join-Path $pgBin "pg_ctl.exe"
-            $pgDataDir = Join-Path $paths.ServerDir "pgdata"
+    # Ensure PostgreSQL is running (check Docker container first, then local)
+    $pgReady = $false
 
-            if (Test-Path $pgDataDir) {
-                $statusResult = & $pgCtl status -D $pgDataDir 2>&1
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Status "Starting PostgreSQL..." "White"
-                    $pgLogFile = Join-Path $paths.ServerDir "logs\postgresql.log"
-                    New-Item -ItemType Directory -Path (Split-Path $pgLogFile) -Force | Out-Null
-                    $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
-                    Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
-                    if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
-                        throw "Failed to start PostgreSQL. Check $pgLogFile"
-                    }
-                } else {
-                    Write-Status "PostgreSQL already running." "DarkGray"
-                }
-            } else {
-                Write-Status "WARNING: pgdata not found. Run Initialize-CimmeriaDatabase first." "Yellow"
+    # Check Docker container
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if ($docker) {
+        $containerStatus = & docker inspect --format '{{.State.Status}}' cimmeria-postgres 2>&1
+        if ($LASTEXITCODE -eq 0 -and $containerStatus -eq "running") {
+            Write-Status "PostgreSQL running via Docker container." "DarkGray"
+            $pgReady = $true
+        } elseif ($LASTEXITCODE -eq 0) {
+            # Container exists but not running — start it
+            Write-Status "Starting Docker PostgreSQL container..." "White"
+            & docker start cimmeria-postgres 2>&1 | Out-Null
+            if (Wait-ForPort -Port $Port -TimeoutSeconds 15) {
+                Write-Status "Docker PostgreSQL started." "Green"
+                $pgReady = $true
             }
         }
-    } else {
-        # Linux/macOS: verify PG is reachable
-        if (Wait-ForPort -Port $Port -TimeoutSeconds 2) {
-            Write-Status "PostgreSQL reachable on port $Port." "DarkGray"
+    }
+
+    # Fall back to local PostgreSQL
+    if (-not $pgReady) {
+        if ($isWin) {
+            $pgBin = Find-PostgreSQL
+            if ($pgBin) {
+                $pgCtl = Join-Path $pgBin "pg_ctl.exe"
+                $pgDataDir = Join-Path $paths.ServerDir "pgdata"
+
+                if (Test-Path $pgDataDir) {
+                    $statusResult = & $pgCtl status -D $pgDataDir 2>&1
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Status "Starting PostgreSQL..." "White"
+                        $pgLogFile = Join-Path $paths.ServerDir "logs\postgresql.log"
+                        New-Item -ItemType Directory -Path (Split-Path $pgLogFile) -Force | Out-Null
+                        $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
+                        Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
+                        if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
+                            throw "Failed to start PostgreSQL. Check $pgLogFile"
+                        }
+                    } else {
+                        Write-Status "PostgreSQL already running." "DarkGray"
+                    }
+                } else {
+                    Write-Status "WARNING: pgdata not found. Run Initialize-CimmeriaDatabase first." "Yellow"
+                }
+            }
         } else {
-            Write-Status "WARNING: PostgreSQL not reachable on port $Port." "Yellow"
-            Write-Status "  Start it with: sudo systemctl start postgresql (Linux)" "Yellow"
-            Write-Status "  Or:            brew services start postgresql@17 (macOS)" "Yellow"
+            # Linux/macOS: verify PG is reachable
+            if (Wait-ForPort -Port $Port -TimeoutSeconds 2) {
+                Write-Status "PostgreSQL reachable on port $Port." "DarkGray"
+            } else {
+                Write-Status "WARNING: PostgreSQL not reachable on port $Port." "Yellow"
+                Write-Status "  Start it with: sudo systemctl start postgresql (Linux)" "Yellow"
+                Write-Status "  Or:            brew services start postgresql@17 (macOS)" "Yellow"
+                Write-Status "  Or:            pwsh setup.ps1 -UseDocker" "Yellow"
+            }
         }
     }
 

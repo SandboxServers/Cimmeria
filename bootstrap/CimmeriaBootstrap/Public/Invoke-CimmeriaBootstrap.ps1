@@ -9,9 +9,10 @@ function Invoke-CimmeriaBootstrap {
         Step 1: Assert-CimmeriaPrerequisites    (Rust toolchain, optionally Node.js)
         Step 2: Install-CimmeriaDependencies     (PostgreSQL server binaries)
         Step 3: Build-CimmeriaServer             (cargo build --workspace)
-        Step 4: Build-CimmeriaApp                (npm install + cargo tauri build) [optional]
-        Step 5: Initialize-CimmeriaDatabase      (PostgreSQL + schema)
-        Step 6: Start-CimmeriaServer             (launch cimmeria-server)
+        Step 4: Build admin panel                (npm install + cargo build) [if -WithAdmin]
+        Step 5: Build launcher                   (cargo build sgw-launcher) [if -WithLauncher]
+        Step N: Initialize-CimmeriaDatabase      (PostgreSQL + schema)
+        Step N: Start-CimmeriaServer             (launch cimmeria-server)
 
         Each step is idempotent. Safe to re-run - completed work is skipped.
         On failure, the pipeline aborts with a clear error message.
@@ -20,10 +21,13 @@ function Invoke-CimmeriaBootstrap {
         Skip downloading PostgreSQL archives (use cached files).
 
     .PARAMETER SkipBuild
-        Skip building the server and app.
+        Skip building the server and apps.
 
-    .PARAMETER SkipApp
-        Skip building the Tauri admin app (no Node.js required).
+    .PARAMETER WithAdmin
+        Also build the Tauri admin panel (requires Node.js).
+
+    .PARAMETER WithLauncher
+        Also build the SGW game launcher.
 
     .PARAMETER NoLaunch
         Stop after setup - do not launch the server.
@@ -34,32 +38,50 @@ function Invoke-CimmeriaBootstrap {
     .PARAMETER ForceDatabase
         Drop and recreate the sgw database before loading schemas.
 
+    .PARAMETER ResetDatabase
+        Nuclear option: stop PostgreSQL, delete pgdata, re-initialize everything from scratch.
+
+    .PARAMETER UseDocker
+        Use a Docker container for PostgreSQL instead of local binaries.
+
     .EXAMPLE
         Invoke-CimmeriaBootstrap
-        # Full pipeline: check prereqs -> download PG -> build -> database -> launch
+        # Full pipeline: check prereqs -> download PG -> build server -> database -> launch
 
     .EXAMPLE
-        Invoke-CimmeriaBootstrap -SkipApp -NoLaunch
-        # Server only, no Tauri app, don't launch
+        Invoke-CimmeriaBootstrap -WithAdmin -WithLauncher
+        # Build everything including admin panel and launcher
 
     .EXAMPLE
-        Invoke-CimmeriaBootstrap -SkipDownload -SkipBuild -ForceDatabase
-        # Wipe and reload the database only
+        Invoke-CimmeriaBootstrap -SkipBuild -ResetDatabase -NoLaunch
+        # Wipe PostgreSQL and reload the database only
     #>
     [CmdletBinding()]
     param(
         [switch]$SkipDownload,
         [switch]$SkipBuild,
-        [switch]$SkipApp,
+        [switch]$WithAdmin,
+        [switch]$WithLauncher,
         [switch]$NoLaunch,
         [ValidateSet("Debug", "Release")]
         [string]$Configuration = "Debug",
-        [switch]$ForceDatabase
+        [switch]$ForceDatabase,
+        [switch]$ResetDatabase,
+        [switch]$UseDocker
     )
 
     $ErrorActionPreference = "Stop"
     $pipelineStart = Get-Date
-    $totalSteps = if ($SkipApp) { 5 } else { 6 }
+
+    # Count steps dynamically
+    $steps = @("Prerequisites", "Dependencies", "Build Server")
+    if (-not $SkipBuild) {
+        if ($WithAdmin) { $steps += "Build Admin Panel" }
+        if ($WithLauncher) { $steps += "Build Launcher" }
+    }
+    $steps += "Database"
+    if (-not $NoLaunch) { $steps += "Launch" }
+    $totalSteps = $steps.Count
 
     # Register cleanup handler for Ctrl+C / exit
     $cleanupEvent = Register-EngineEvent PowerShell.Exiting -Action {
@@ -71,6 +93,9 @@ function Invoke-CimmeriaBootstrap {
         Write-Host "=============================================" -ForegroundColor Yellow
         Write-Host " Cimmeria Bootstrap Pipeline (Rust)" -ForegroundColor Yellow
         Write-Host " Configuration: $Configuration" -ForegroundColor Yellow
+        if ($WithAdmin)    { Write-Host " + Admin Panel" -ForegroundColor Yellow }
+        if ($WithLauncher) { Write-Host " + Game Launcher" -ForegroundColor Yellow }
+        if ($UseDocker)    { Write-Host " + Docker PostgreSQL" -ForegroundColor Yellow }
         Write-Host "=============================================" -ForegroundColor Yellow
         Write-Host ""
 
@@ -78,7 +103,7 @@ function Invoke-CimmeriaBootstrap {
         $step = 1
         Write-Host "--- Step $step/$totalSteps`: Prerequisites ---" -ForegroundColor Cyan
         try {
-            Assert-CimmeriaPrerequisites -RequireNode:(-not $SkipApp)
+            Assert-CimmeriaPrerequisites -RequireNode:$WithAdmin
         } catch {
             Write-Host ""
             Write-Host "FAILED at Step $step`: Assert-CimmeriaPrerequisites" -ForegroundColor Red
@@ -105,7 +130,7 @@ function Invoke-CimmeriaBootstrap {
             Write-Host ""
             Write-Host "--- Step $step/$totalSteps`: Build Server ---" -ForegroundColor Cyan
             try {
-                Build-CimmeriaServer -Configuration $Configuration
+                Build-CimmeriaServer -Configuration $Configuration -WithAdmin:$WithAdmin -WithLauncher:$WithLauncher
             } catch {
                 Write-Host ""
                 Write-Host "FAILED at Step $step`: Build-CimmeriaServer" -ForegroundColor Red
@@ -113,18 +138,33 @@ function Invoke-CimmeriaBootstrap {
                 throw
             }
 
-            # Step 4: Build app (optional)
-            if (-not $SkipApp) {
+            # Step 4: Build admin panel (optional)
+            if ($WithAdmin) {
                 $step++
                 Write-Host ""
-                Write-Host "--- Step $step/$totalSteps`: Build App ---" -ForegroundColor Cyan
+                Write-Host "--- Step $step/$totalSteps`: Build Admin Panel ---" -ForegroundColor Cyan
                 try {
                     Build-CimmeriaApp -Configuration $Configuration
                 } catch {
                     Write-Host ""
                     Write-Host "WARNING: Step $step (Build-CimmeriaApp) failed - continuing" -ForegroundColor Yellow
                     Write-Host "  $_" -ForegroundColor Yellow
-                    Write-Host "  The Tauri app is optional. The game server will work without it." -ForegroundColor DarkGray
+                    Write-Host "  The admin panel is optional. The game server will work without it." -ForegroundColor DarkGray
+                }
+            }
+
+            # Step 5: Build launcher (optional)
+            if ($WithLauncher) {
+                $step++
+                Write-Host ""
+                Write-Host "--- Step $step/$totalSteps`: Build Launcher ---" -ForegroundColor Cyan
+                try {
+                    Build-CimmeriaLauncher -Configuration $Configuration
+                } catch {
+                    Write-Host ""
+                    Write-Host "WARNING: Step $step (Build-CimmeriaLauncher) failed - continuing" -ForegroundColor Yellow
+                    Write-Host "  $_" -ForegroundColor Yellow
+                    Write-Host "  The launcher is optional. Use Update-CimmeriaClient instead." -ForegroundColor DarkGray
                 }
             }
         } else {
@@ -137,7 +177,7 @@ function Invoke-CimmeriaBootstrap {
         Write-Host ""
         Write-Host "--- Step $step/$totalSteps`: Database ---" -ForegroundColor Cyan
         try {
-            Initialize-CimmeriaDatabase -Force:$ForceDatabase
+            Initialize-CimmeriaDatabase -Force:$ForceDatabase -ResetDatabase:$ResetDatabase -UseDocker:$UseDocker
         } catch {
             Write-Host ""
             Write-Host "FAILED at Step $step`: Initialize-CimmeriaDatabase" -ForegroundColor Red
