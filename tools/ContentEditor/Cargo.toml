@@ -1,0 +1,22 @@
+[package]
+name = "cimmeria-content-editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Standalone visual content editor for Cimmeria"
+
+[dependencies]
+tauri = { workspace = true, features = ["devtools"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+reqwest = { workspace = true }
+quick-xml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+[build-dependencies]
+tauri-build = { workspace = true }

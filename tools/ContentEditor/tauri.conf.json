@@ -1,0 +1,25 @@
+{
+  "productName": "Cimmeria Content Editor",
+  "version": "0.1.0",
+  "identifier": "com.cimmeria.content-editor",
+  "build": {
+    "frontendDist": "ui/dist",
+    "devUrl": "http://localhost:5174",
+    "beforeDevCommand": "cd ui && npm run dev",
+    "beforeBuildCommand": "cd ui && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Cimmeria Content Editor",
+        "width": 1440,
+        "height": 900,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

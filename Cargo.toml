@@ -17,6 +17,7 @@ members = [
     "crates/supervisor",
     "crates/launcher",
     "src-tauri",
+    "tools/ContentEditor",
 ]
 default-members = [
     "crates/common",

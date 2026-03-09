@@ -16,6 +16,8 @@ lib/
 !lib/.keep
 !frontend/src/lib/
 !frontend/src/lib/**
+!tools/ContentEditor/ui/src/lib/
+!tools/ContentEditor/ui/src/lib/**
 
 # Object files and intermediates
 *.obj
