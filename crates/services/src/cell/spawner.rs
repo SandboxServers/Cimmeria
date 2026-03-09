@@ -24,6 +24,8 @@ pub struct SpawnDef {
     pub name: &'static str,
     /// Interaction type (None = hostile/no interaction).
     pub interaction: Option<NpcInteractionType>,
+    /// Entity level (affects XP granted on kill).
+    pub level: u32,
 }
 
 /// Hardcoded spawn definitions for initial world population.
@@ -34,24 +36,24 @@ const SPAWN_DEFS: &[SpawnDef] = &[
     // Agnos — starter area NPCs near the Stargate
     SpawnDef {
         world_name: "Agnos", position: [30.0, 0.0, 50.0], direction: [0.0, 0.0, 0.0],
-        name: "Agnos Vendor", interaction: Some(NpcInteractionType::Vendor),
+        name: "Agnos Vendor", interaction: Some(NpcInteractionType::Vendor), level: 1,
     },
     SpawnDef {
         world_name: "Agnos", position: [40.0, 0.0, 55.0], direction: [0.0, 1.57, 0.0],
-        name: "Agnos Guide", interaction: Some(NpcInteractionType::Dialog { dialog_id: 1 }),
+        name: "Agnos Guide", interaction: Some(NpcInteractionType::Dialog { dialog_id: 1 }), level: 1,
     },
     SpawnDef {
         world_name: "Agnos", position: [25.0, 0.0, 65.0], direction: [0.0, 3.14, 0.0],
-        name: "Jaffa Warrior", interaction: None, // hostile
+        name: "Jaffa Warrior", interaction: None, level: 2,
     },
     // Castle — training area NPCs
     SpawnDef {
         world_name: "Castle", position: [100.0, 0.0, 100.0], direction: [0.0, 0.0, 0.0],
-        name: "Soldier Trainer", interaction: Some(NpcInteractionType::Trainer { archetype_id: 1 }),
+        name: "Soldier Trainer", interaction: Some(NpcInteractionType::Trainer { archetype_id: 1 }), level: 3,
     },
     SpawnDef {
         world_name: "Castle", position: [110.0, 0.0, 95.0], direction: [0.0, 0.78, 0.0],
-        name: "Castle Guard", interaction: None, // hostile
+        name: "Castle Guard", interaction: None, level: 4,
     },
 ];
 
@@ -68,6 +70,7 @@ const INSTANCE_SPAWN_DEFS: &[SpawnDef] = &[
         direction: [0.0, 1.5708, 0.0],
         name: "Frost's Body",
         interaction: Some(NpcInteractionType::Dialog { dialog_id: 3995 }),
+        level: 1,
     },
 ];
 
@@ -88,6 +91,7 @@ pub fn spawn_npcs_for_world(world_name: &str, space_mgr: &mut SpaceManager) -> u
                 if let Some(entity) = space_mgr.get_entity_mut(npc_id) {
                     entity.interaction_type = def.interaction.clone();
                     entity.npc_name = Some(def.name.to_string());
+                    entity.level = def.level;
                 }
                 tracing::info!(
                     npc_id, space_id, world = def.world_name, name = def.name,
@@ -118,6 +122,7 @@ pub fn spawn_initial_npcs(space_mgr: &mut SpaceManager) -> usize {
                 if let Some(entity) = space_mgr.get_entity_mut(npc_id) {
                     entity.interaction_type = def.interaction.clone();
                     entity.npc_name = Some(def.name.to_string());
+                    entity.level = def.level;
                 }
                 tracing::info!(
                     npc_id, space_id, world = def.world_name, name = def.name,
@@ -204,6 +209,18 @@ mod tests {
         let id2 = mgr.allocate_npc_id();
         assert_eq!(id1, 100_000);
         assert_eq!(id2, 100_001);
+    }
+
+    #[test]
+    fn spawned_npcs_have_level() {
+        let mut mgr = make_manager_with_worlds();
+        spawn_initial_npcs(&mut mgr);
+        // Jaffa Warrior (3rd spawn in Agnos) should be level 2
+        let npc = mgr.get_entity(100_002).unwrap();
+        assert_eq!(npc.level, 2);
+        // Castle Guard (5th spawn) should be level 4
+        let npc = mgr.get_entity(100_004).unwrap();
+        assert_eq!(npc.level, 4);
     }
 
     #[test]

@@ -434,6 +434,8 @@ pub fn build_map_loaded(
             intelligence: stats.intelligence,
             health: stats.health,
             focus: stats.focus,
+            health_per_level: stats.health_per_level,
+            focus_per_level: stats.focus_per_level,
         });
         // onStatUpdate: dynamic values (min, current, max)
         let stat_args = stat_list.serialize_all();

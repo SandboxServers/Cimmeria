@@ -173,6 +173,8 @@ pub mod method_idx {
     pub const ON_TIME_OF_DAY: u16 = 102;
     pub const ON_PLAYER_DATA_LOADED: u16 = 115;
     pub const ON_CLIENT_MAP_LOAD: u16 = 117;
+    pub const GIVE_ABILITY: u16 = 118;
+    pub const GIVE_XP_FOR_LEVEL: u16 = 119;
     pub const SETUP_WORLD_PARAMETERS: u16 = 122;
     pub const CLEAR_HINTED_REGIONS: u16 = 124;
     pub const ON_RESET_MAP_INFO: u16 = 126;

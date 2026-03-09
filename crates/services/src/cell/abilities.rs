@@ -190,7 +190,28 @@ pub async fn handle_use_ability(
             method_index: 19, // onStateFieldUpdate (SGWBeing interface, flat index 19)
             args: state_args,
         }).await;
+
+        // Grant XP to the attacker if the target is a non-player entity
+        if let Some(target) = space_mgr.get_entity(target_eid) {
+            if !target.is_player {
+                let xp = kill_xp(target.level);
+                tracing::info!(
+                    attacker = entity_id, target = target_eid,
+                    mob_level = target.level, xp, "Granting kill XP"
+                );
+                let _ = tx.send(CellToBaseMsg::GrantXP {
+                    entity_id,
+                    xp_amount: xp,
+                }).await;
+            }
+        }
     }
+}
+
+/// Calculate XP reward for killing a mob of the given level.
+/// Formula: 10 * mob_level.
+fn kill_xp(mob_level: u32) -> u64 {
+    10 * mob_level as u64
 }
 
 /// Generate a pseudo-random value in [0.0, 1.0) from entity/ability/sequence.

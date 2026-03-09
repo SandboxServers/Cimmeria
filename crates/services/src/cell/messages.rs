@@ -174,6 +174,16 @@ pub enum CellToBaseMsg {
         failed_objective_ids: Vec<i32>,
     },
 
+    /// Grant XP to a player entity (from a mob kill).
+    ///
+    /// The CellService computes the XP amount from the mob's level and sends
+    /// this to BaseApp, which updates the player's XP/level and sends client
+    /// notifications.
+    GrantXP {
+        entity_id: u32,
+        xp_amount: u64,
+    },
+
     /// Grant an item to a player and persist to `sgw_inventory`.
     GrantItem {
         entity_id: u32,

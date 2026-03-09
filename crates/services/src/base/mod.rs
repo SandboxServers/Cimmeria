@@ -179,6 +179,10 @@ pub(crate) struct ConnectedClientState {
     pub player_archetype: Option<i32>,
     /// Current world name, set during world entry for admin display.
     pub world_name: Option<String>,
+    /// Player XP, set during world entry and updated on GrantXP.
+    pub player_xp: Option<u64>,
+    /// Player training points, set during world entry and updated on GrantXP.
+    pub player_training_points: Option<u32>,
 }
 
 // ── BaseService ───────────────────────────────────────────────────────────────

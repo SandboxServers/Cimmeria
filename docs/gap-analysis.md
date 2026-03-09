@@ -406,24 +406,24 @@
 
 ### 18. XP and Leveling --- IM
 
-- **Confidence**: LOW (placeholder values)
-- **Documentation**: [progression-system.md](gameplay/progression-system.md)
-- **Server code**: `giveExperience()` in `SGWPlayer.py`. `LEVEL_EXP` table in `Constants.py`. Max level 20.
-- **Server-only notes**: XP accumulation and level-up are purely server-side calculations
-- **Path forward**: Code works but uses placeholder XP curve. No stat scaling on level-up.
+- **Confidence**: HIGH (Rust implementation with Python-accurate XP table)
+- **Documentation**: [progression-system.md](gameplay/progression-system.md), [xp-leveling-design.md](plans/2026-03-08-xp-leveling-design.md)
+- **Server code**: Python: `giveExperience()` in `SGWPlayer.py`. Rust: `PlayerState::grant_xp()` in `crates/game/src/player.rs`, `handle_grant_xp()` in `crates/services/src/base/world_entry.rs`.
+- **Server-only notes**: XP accumulation and level-up are purely server-side calculations. Kill XP flows Cell→Base via `CellToBaseMsg::GrantXP`.
+- **Path forward**: Core XP/leveling pipeline complete. Needs mission XP integration, ASP grants, and DB persistence wiring.
 
 | Feature | Status | Blocks | Code | Evidence / Notes |
 |---------|--------|--------|------|------------------|
-| XP accumulation | IM | -- | giveExperience() | Additive, sends client update |
-| Level-up detection | IM | -- | while loop | Supports multi-level-up |
-| Client notification | IM | -- | giveXPForLevel() | Animation + witnesses |
-| XP from missions | IM | Missions | mission.rewardXp | Working path |
-| Level cap (20) | IM | -- | MAX_LEVEL | Enforced in setLevel() |
-| DB persistence | IM | -- | sgw_player | level + exp columns |
-| XP from mob kills | KM | NPC AI, Tapping | -- | No giveExperience() on mob death |
-| XP curve | KM | -- | LEVEL_EXP | Placeholder values, TODO to replace |
-| Stat scaling on level-up | KM | Stats | -- | healthPerLevel/focusPerLevel unused |
-| Training points on level-up | KM | -- | -- | No TP grant on level |
+| XP accumulation | IM | -- | PlayerState::grant_xp() | Additive, sends onExpUpdate (Rust) |
+| Level-up detection | IM | -- | while loop | Multi-level-up supported, 16 tests |
+| Client notification | IM | -- | handle_grant_xp() | 5 wire messages: onExpUpdate, giveXPForLevel, onMaxExpUpdate, onLevelUpdate, onEntityProperty(TP) |
+| XP from missions | IM | Missions | mission.rewardXp | Python path only |
+| Level cap (20) | IM | -- | MAX_LEVEL | Enforced in grant_xp() |
+| DB persistence | IM | -- | sgw_player | level + exp columns (Python path) |
+| XP from mob kills | IM | -- | kill_xp() | 10 × mob_level, Cell→Base pipeline |
+| XP curve | IM | -- | LEVEL_XP[21] | Ported from Python Constants.LEVEL_EXP |
+| Stat scaling on level-up | IM | -- | StatList::scale_for_level() | health_per_level/focus_per_level, full heal on level-up |
+| Training points on level-up | IM | -- | TRAINING_POINTS_PER_LEVEL | 2 TP per level, 38 total by level 20 |
 | ASP on level-up | KM | -- | -- | No ASP grant on level |
 
 ### 19. Crafting --- NT
