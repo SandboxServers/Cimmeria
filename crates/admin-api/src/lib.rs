@@ -29,6 +29,8 @@ use ws::broadcast_layer::{LogBuffer, LogEntry};
         routes::config::get_config,
         routes::config::update_config,
         routes::config::get_status,
+        routes::config::start_services,
+        routes::config::stop_services,
         // Players
         routes::players::list_players,
         routes::players::get_player,

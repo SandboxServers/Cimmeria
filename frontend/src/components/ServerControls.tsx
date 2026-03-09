@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Flame, Power, Square } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Power, Square } from 'lucide-react';
 import { Button } from './ui/button';
 import { fetchAdminStatus, type AdminStatusResponse } from '../lib/admin-api';
 
@@ -24,6 +24,11 @@ function deriveHealth(status: AdminStatusResponse | null): ServerHealth {
   return 'degraded';
 }
 
+async function postAction(path: string): Promise<{ status: string; action: string; message: string }> {
+  const res = await fetch(path, { method: 'POST' });
+  return res.json();
+}
+
 /**
  * Persistent server status LED + Start/Stop/HotReload controls.
  * Shown in the AppShell header on every page.
@@ -31,7 +36,7 @@ function deriveHealth(status: AdminStatusResponse | null): ServerHealth {
 export default function ServerControls() {
   const [status, setStatus] = useState<AdminStatusResponse | null>(null);
   const [health, setHealth] = useState<ServerHealth>('offline');
-  const pollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
 
   const poll = useCallback(async () => {
     try {
@@ -51,20 +56,32 @@ export default function ServerControls() {
     return () => clearInterval(id);
   }, [poll]);
 
-  // TODO: Implement start/stop via admin API endpoints or Tauri IPC
-  const handleStart = () => {
-    // Placeholder — will call admin API or OS-level start command
+  const handleStart = async () => {
+    setBusy(true);
+    try {
+      await postAction('/api/config/start');
+      // Poll immediately to update status
+      await poll();
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleStop = () => {
-    // Placeholder — will call admin API shutdown endpoint
+  const handleStop = async () => {
+    setBusy(true);
+    try {
+      await postAction('/api/config/stop');
+      await poll();
+    } finally {
+      setBusy(false);
+    }
   };
 
   // TODO: Wire up hot reload logic (return to this when logic is supplied)
-  const handleHotReload = () => {
-    // Placeholder — hot reload command will be wired here.
-    // The specific reload logic will be supplied by the lead dev.
-  };
+  // The specific reload command will be provided by the lead dev.
+  const handleHotReload = () => {};
+
+  const servicesRunning = status?.services.auth || status?.services.base || status?.services.cell;
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -79,21 +96,21 @@ export default function ServerControls() {
         onClick={handleStart}
         variant="outline"
         size="sm"
-        disabled={health !== 'offline'}
-        title="Start server"
+        disabled={busy || (health !== 'offline' && !!servicesRunning)}
+        title="Start server services"
       >
         <Power className="size-3.5" />
-        Start
+        {busy ? 'Starting...' : 'Start'}
       </Button>
       <Button
         onClick={handleStop}
         variant="outline"
         size="sm"
-        disabled={health === 'offline'}
-        title="Stop server"
+        disabled={busy || health === 'offline' || !servicesRunning}
+        title="Stop server services"
       >
         <Square className="size-3.5" />
-        Stop
+        {busy ? 'Stopping...' : 'Stop'}
       </Button>
 
       {/* Hot Reload */}

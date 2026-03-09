@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -59,6 +59,8 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
         .route("/", get(get_config).post(update_config))
         .route("/status", get(get_status))
+        .route("/start", post(start_services))
+        .route("/stop", post(stop_services))
 }
 
 /// Get the current server configuration.
@@ -139,5 +141,85 @@ pub async fn get_status(
             "cell": state.cell.is_running,
             "database": db_connected
         }
+    }))
+}
+
+/// Start all server services. Idempotent — no-op if already running.
+#[utoipa::path(
+    post,
+    path = "/api/config/start",
+    responses(
+        (status = 200, description = "Start result", body = serde_json::Value)
+    ),
+    tag = "Config"
+)]
+pub async fn start_services(
+    State(orchestrator): State<Arc<Orchestrator>>,
+) -> Json<serde_json::Value> {
+    // Check if already running (idempotent)
+    {
+        let state = orchestrator.state();
+        let state = state.read().await;
+        if state.auth.is_running && state.base.is_running && state.cell.is_running {
+            return Json(serde_json::json!({
+                "status": "ok",
+                "action": "none",
+                "message": "All services already running."
+            }));
+        }
+    }
+
+    match orchestrator.start_all().await {
+        Ok(()) => {
+            tracing::info!("Services started via admin API");
+            Json(serde_json::json!({
+                "status": "ok",
+                "action": "started",
+                "message": "All services started successfully."
+            }))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to start services via admin API");
+            Json(serde_json::json!({
+                "status": "error",
+                "action": "failed",
+                "message": e.to_string()
+            }))
+        }
+    }
+}
+
+/// Stop all server services. Idempotent — no-op if already stopped.
+#[utoipa::path(
+    post,
+    path = "/api/config/stop",
+    responses(
+        (status = 200, description = "Stop result", body = serde_json::Value)
+    ),
+    tag = "Config"
+)]
+pub async fn stop_services(
+    State(orchestrator): State<Arc<Orchestrator>>,
+) -> Json<serde_json::Value> {
+    // Check if already stopped (idempotent)
+    {
+        let state = orchestrator.state();
+        let state = state.read().await;
+        if !state.auth.is_running && !state.base.is_running && !state.cell.is_running {
+            return Json(serde_json::json!({
+                "status": "ok",
+                "action": "none",
+                "message": "All services already stopped."
+            }));
+        }
+    }
+
+    orchestrator.stop_all().await;
+    tracing::info!("Services stopped via admin API");
+
+    Json(serde_json::json!({
+        "status": "ok",
+        "action": "stopped",
+        "message": "All services stopped."
     }))
 }
