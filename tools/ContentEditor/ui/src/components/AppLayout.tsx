@@ -7,6 +7,7 @@ import { Inspector } from './Inspector';
 import { Toolbar } from './Toolbar';
 import { ChainEditor, type ChainEditorHandle } from '../editors/ChainEditor';
 import { ScriptEditor, type ScriptEditorHandle } from '../editors/ScriptEditor';
+import DataEditor, { type DataEditorHandle } from '../editors/DataEditor';
 import MissionCardLibrary from './MissionCardLibrary';
 import ValidationPanel from './ValidationPanel';
 import ScriptNodePalette from './ScriptNodePalette';
@@ -52,7 +53,7 @@ type EditorTab = {
   missionId?: string;
 };
 
-type EditorMode = 'chains' | 'scripts';
+type EditorMode = 'chains' | 'scripts' | 'data';
 type BottomPanel = 'palette' | 'validation' | null;
 
 export function AppLayout() {
@@ -79,6 +80,9 @@ export function AppLayout() {
   const [scriptBottomPanel, setScriptBottomPanel] = useState<boolean>(false);
   const scriptEditorRef = useRef<ScriptEditorHandle>(null);
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
+
+  // ----- Data editor state -----
+  const dataEditorRef = useRef<DataEditorHandle>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
@@ -178,7 +182,7 @@ export function AppLayout() {
       } catch (e) {
         setStatus(`Save failed: ${e}`);
       }
-    } else {
+    } else if (mode === 'scripts') {
       if (!scriptEditorRef.current || !activeScriptPath) return;
       const scriptData = scriptEditorRef.current.getScriptData();
       setStatus('Saving script...');
@@ -188,6 +192,9 @@ export function AppLayout() {
       } catch (e) {
         setStatus(`Save failed: ${e}`);
       }
+    } else if (mode === 'data') {
+      if (!dataEditorRef.current) return;
+      await dataEditorRef.current.save();
     }
   }, [mode, activeScriptPath]);
 
@@ -379,6 +386,11 @@ export function AppLayout() {
             active={mode === 'scripts'}
             onClick={() => setMode('scripts')}
           />
+          <ModeTab
+            label="Data"
+            active={mode === 'data'}
+            onClick={() => setMode('data')}
+          />
         </div>
 
         {/* Toolbar (shared) */}
@@ -398,7 +410,10 @@ export function AppLayout() {
 
       {/* Main panels */}
       <div className="flex-1 overflow-hidden">
-        {mode === 'chains' ? (
+        {mode === 'data' ? (
+          /* ========== DATA EDITOR MODE ========== */
+          <DataEditor ref={dataEditorRef} onStatus={setStatus} />
+        ) : mode === 'chains' ? (
           /* ========== CHAIN EDITOR MODE ========== */
           <Allotment>
             {/* Left: Tree navigation */}
