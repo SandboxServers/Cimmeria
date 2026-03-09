@@ -2,7 +2,6 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useMemo, useState, type ComponentType } from 'react';
 import type { LucideProps } from 'lucide-react';
 import {
-  Activity,
   Boxes,
   Cable,
   ChevronRight,
@@ -15,6 +14,7 @@ import {
   Sparkles,
   UsersRound,
 } from 'lucide-react';
+import ServerControls from './ServerControls';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
@@ -165,30 +165,7 @@ export default function AppShell() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="rounded-full border border-white/8 bg-white/5 px-4 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                    Cluster
-                  </p>
-                  <div className="mt-1 flex items-center gap-2 text-sm text-foreground">
-                    <Activity className="size-4 text-accent" />
-                    Dev shard stable
-                  </div>
-                </div>
-                <div className="rounded-full border border-white/8 bg-white/5 px-4 py-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                    Surface
-                  </p>
-                  <div className="mt-1 flex items-center gap-2 text-sm text-foreground">
-                    <Cable className="size-4 text-primary" />
-                    Phase 4 complete
-                  </div>
-                </div>
-                <Button className="hidden sm:inline-flex" variant="secondary">
-                  <Sparkles className="size-4" />
-                  Release Window
-                </Button>
-              </div>
+              <ServerControls />
             </header>
           )}
 
