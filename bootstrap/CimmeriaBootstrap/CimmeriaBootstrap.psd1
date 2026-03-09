@@ -10,6 +10,7 @@
         'Install-CimmeriaDependencies',
         'Build-CimmeriaServer',
         'Build-CimmeriaApp',
+        'Build-CimmeriaLauncher',
         'Initialize-CimmeriaDatabase',
         'Start-CimmeriaServer',
         'Stop-CimmeriaServer',

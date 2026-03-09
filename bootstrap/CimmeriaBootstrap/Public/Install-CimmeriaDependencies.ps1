@@ -60,7 +60,48 @@ function Install-CimmeriaDependencies {
 
         $pgDir = Join-Path $ExternalDir "postgresql"
         $pgServerDir = Join-Path $ExternalDir "postgresql_server"
+        $targetMajor = ($Dependencies.PostgreSQL.Version -split '\.')[0]  # e.g. "17"
+
+        # Check if existing binaries match the target version
+        $needsExtract = $false
+        $postgresExe = Join-Path $pgServerDir "bin\postgres.exe"
         if (-not (Test-Path (Join-Path $pgDir "include")) -or -not (Test-Path (Join-Path $pgServerDir "bin"))) {
+            $needsExtract = $true
+        } elseif (Test-Path $postgresExe) {
+            $existingVersion = & $postgresExe --version 2>&1
+            if ($existingVersion -match 'PostgreSQL\)\s+(\d+)') {
+                $existingMajor = $Matches[1]
+                if ($existingMajor -ne $targetMajor) {
+                    Write-Status "PostgreSQL: existing version is $existingMajor but target is $targetMajor — upgrading..." "Yellow"
+
+                    # Stop PostgreSQL if it's running (files will be locked otherwise)
+                    $pgCtlExe = Join-Path $pgServerDir "bin\pg_ctl.exe"
+                    $pgDataDir = Join-Path (Get-ProjectPaths).ServerDir "pgdata"
+                    if ((Test-Path $pgCtlExe) -and (Test-Path $pgDataDir)) {
+                        $statusResult = & $pgCtlExe status -D $pgDataDir 2>&1
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Status "PostgreSQL: stopping old server before upgrade..." "Yellow"
+                            & $pgCtlExe stop -D $pgDataDir -m immediate 2>&1 | Out-Null
+                            Start-Sleep -Seconds 2
+                        }
+                    }
+                    # Also kill any stray postgres processes using the old binaries
+                    Get-Process -Name "postgres" -ErrorAction SilentlyContinue | ForEach-Object {
+                        if ($_.Path -and $_.Path.StartsWith($pgServerDir)) {
+                            Write-Status "PostgreSQL: killing stray process (PID $($_.Id))..." "Yellow"
+                            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+                        }
+                    }
+                    Start-Sleep -Seconds 1
+
+                    Remove-Item $pgServerDir -Recurse -Force
+                    Remove-Item $pgDir -Recurse -Force -ErrorAction SilentlyContinue
+                    $needsExtract = $true
+                }
+            }
+        }
+
+        if ($needsExtract) {
             Write-Status "PostgreSQL: extracting binary distribution..." "White"
             $pgTempDir = Join-Path $ExternalDir "postgresql_temp"
             Expand-DependencyArchive (Join-Path $DownloadDir $Dependencies.PostgreSQL.Windows.FileName) $pgTempDir
