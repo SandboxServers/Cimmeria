@@ -7,12 +7,13 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Serialize;
 use sqlx::FromRow;
 use utoipa::ToSchema;
 
+use cimmeria_services::cell::messages::BaseToCellMsg;
 use cimmeria_services::orchestrator::Orchestrator;
 
 #[derive(Serialize, ToSchema)]
@@ -51,6 +52,7 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
         .route("/summary", get(get_summary))
         .route("/items", get(list_items))
         .route("/items/{id}", get(get_item))
+        .route("/reload", post(reload_content))
 }
 
 /// List available content categories.
@@ -211,4 +213,51 @@ pub async fn get_item(
         "message": "not implemented",
         "item_id": id
     }))
+}
+
+/// Reload the content engine from the database.
+///
+/// Sends a `ReloadContentEngine` message to the CellService, which re-reads
+/// all content chains from the DB and rebuilds the in-memory engine.
+#[utoipa::path(
+    post,
+    path = "/api/content/reload",
+    responses(
+        (status = 200, description = "Content engine reload triggered", body = serde_json::Value),
+        (status = 503, description = "Cell service not available")
+    ),
+    tag = "Content"
+)]
+pub async fn reload_content(
+    State(orchestrator): State<Arc<Orchestrator>>,
+) -> Json<serde_json::Value> {
+    let cell_tx = {
+        let state = orchestrator.state();
+        let state = state.read().await;
+        state.cell_tx.clone()
+    };
+
+    let Some(tx) = cell_tx else {
+        return Json(serde_json::json!({
+            "status": "error",
+            "message": "Cell service channel not available"
+        }));
+    };
+
+    match tx.send(BaseToCellMsg::ReloadContentEngine).await {
+        Ok(()) => {
+            tracing::info!("Content engine reload triggered via admin API");
+            Json(serde_json::json!({
+                "status": "ok",
+                "message": "Content engine reload triggered"
+            }))
+        }
+        Err(e) => {
+            tracing::error!("Failed to send reload message to CellService: {e}");
+            Json(serde_json::json!({
+                "status": "error",
+                "message": format!("Failed to send reload: {e}")
+            }))
+        }
+    }
 }

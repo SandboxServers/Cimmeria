@@ -63,6 +63,9 @@ pub struct ServerState {
 
     /// Server configuration snapshot.
     pub config: ServerConfig,
+
+    /// Sender to the CellService message loop (for admin-triggered reload, etc.).
+    pub cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
 }
 
 /// Service orchestrator that coordinates startup, shutdown, and state access.
@@ -92,6 +95,7 @@ impl Orchestrator {
         // Wire Base↔Cell inter-service channels
         let (base_to_cell_tx, base_to_cell_rx) = mpsc::channel::<BaseToCellMsg>(256);
         let (cell_to_base_tx, cell_to_base_rx) = mpsc::channel::<CellToBaseMsg>(256);
+        let cell_tx_for_admin = base_to_cell_tx.clone();
         cell.set_channels(base_to_cell_rx, cell_to_base_tx);
         base.set_cell_channel(base_to_cell_tx, cell_to_base_rx);
 
@@ -102,6 +106,7 @@ impl Orchestrator {
             db: None,
             start_time: Instant::now(),
             config,
+            cell_tx: Some(cell_tx_for_admin),
         };
 
         tracing::trace!("Orchestrator constructed");

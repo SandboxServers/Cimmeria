@@ -86,6 +86,9 @@ pub enum BaseToCellMsg {
         player_id: i32,
         world_name: String,
     },
+
+    /// Reload the content engine from the database (triggered by admin API / Content Editor).
+    ReloadContentEngine,
 }
 
 /// Messages sent from CellApp to BaseApp.
