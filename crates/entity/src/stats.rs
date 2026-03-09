@@ -537,6 +537,27 @@ impl StatList {
         self.stats.iter_mut()
     }
 
+    /// Scale health and focus stats for a given character level.
+    ///
+    /// Formula: `max = base + per_level * (level - 1)`
+    /// Current value is restored to the new max (full heal on level-up).
+    ///
+    /// Reference: Missing `setLevel()` in Python — this is the implementation
+    /// that `python/cell/SGWPlayer.py:794` called but never defined.
+    pub fn scale_for_level(&mut self, level: u32, arch: &ArchetypeStatValues) {
+        let bonus_health = arch.health_per_level * (level as i32 - 1);
+        let new_health_max = arch.health + bonus_health;
+        if let Some(stat) = self.stats.get_mut(&HEALTH) {
+            stat.update(0, new_health_max, new_health_max);
+        }
+
+        let bonus_focus = arch.focus_per_level * (level as i32 - 1);
+        let new_focus_max = arch.focus + bonus_focus;
+        if let Some(stat) = self.stats.get_mut(&FOCUS) {
+            stat.update(0, new_focus_max, new_focus_max);
+        }
+    }
+
     /// Returns true if any stat has dirty or base_dirty set.
     pub fn has_dirty(&self) -> bool {
         self.stats.values().any(|s| s.dirty || s.base_dirty)
@@ -590,6 +611,8 @@ pub struct ArchetypeStatValues {
     pub intelligence: i32,
     pub health: i32,
     pub focus: i32,
+    pub health_per_level: i32,
+    pub focus_per_level: i32,
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -729,6 +752,8 @@ mod tests {
             intelligence: 11,
             health: 500,
             focus: 200,
+            health_per_level: 10,
+            focus_per_level: 70,
         };
         list.apply_archetype(&arch);
 
@@ -757,6 +782,7 @@ mod tests {
             coordination: 15, engagement: 10, fortitude: 12,
             morale: 13, perception: 14, intelligence: 11,
             health: 500, focus: 200,
+            health_per_level: 10, focus_per_level: 70,
         };
         list.apply_archetype(&arch);
 
@@ -827,6 +853,7 @@ mod tests {
             coordination: 15, engagement: 10, fortitude: 12,
             morale: 13, perception: 14, intelligence: 11,
             health: 500, focus: 200,
+            health_per_level: 10, focus_per_level: 70,
         };
         list.apply_archetype(&arch);
 
@@ -865,5 +892,44 @@ mod tests {
         assert_eq!(ROTATION_SPEED_MOD, 81);
         assert_eq!(ABSORB_PHYSICAL, 89);
         assert_eq!(SPEED_RELOAD, 104);
+    }
+
+    #[test]
+    fn scale_for_level_increases_health_and_focus() {
+        let mut list = StatList::new();
+        let arch = ArchetypeStatValues {
+            coordination: 5, engagement: 4, fortitude: 3, morale: 4,
+            perception: 3, intelligence: 2, health: 760, focus: 1570,
+            health_per_level: 10, focus_per_level: 70,
+        };
+        list.apply_archetype(&arch);
+
+        // Level 1: base values
+        assert_eq!(list.get(HEALTH).unwrap().max, 760);
+        assert_eq!(list.get(FOCUS).unwrap().max, 1570);
+
+        // Scale to level 5: health = 760 + 10*(5-1) = 800, focus = 1570 + 70*(5-1) = 1850
+        list.scale_for_level(5, &arch);
+        assert_eq!(list.get(HEALTH).unwrap().max, 800);
+        assert_eq!(list.get(HEALTH).unwrap().cur, 800);
+        assert_eq!(list.get(FOCUS).unwrap().max, 1850);
+        assert_eq!(list.get(FOCUS).unwrap().cur, 1850);
+        assert!(list.has_dirty());
+    }
+
+    #[test]
+    fn scale_for_level_1_is_base() {
+        let mut list = StatList::new();
+        let arch = ArchetypeStatValues {
+            coordination: 5, engagement: 4, fortitude: 3, morale: 4,
+            perception: 3, intelligence: 2, health: 760, focus: 1570,
+            health_per_level: 10, focus_per_level: 70,
+        };
+        list.apply_archetype(&arch);
+        list.clear_dirty();
+        list.scale_for_level(1, &arch);
+        // Level 1: no bonus
+        assert_eq!(list.get(HEALTH).unwrap().max, 760);
+        assert_eq!(list.get(FOCUS).unwrap().max, 1570);
     }
 }

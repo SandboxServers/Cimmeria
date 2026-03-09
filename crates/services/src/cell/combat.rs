@@ -290,6 +290,7 @@ mod tests {
         stats.apply_archetype(&ArchetypeStatValues {
             coordination: 5, engagement: 4, fortitude: 3, morale: 4,
             perception: 3, intelligence: 2, health: 760, focus: 1570,
+            health_per_level: 10, focus_per_level: 70,
         });
         stats
     }
@@ -299,6 +300,7 @@ mod tests {
         stats.apply_archetype(&ArchetypeStatValues {
             coordination: 3, engagement: 3, fortitude: 3, morale: 3,
             perception: 3, intelligence: 2, health: 500, focus: 500,
+            health_per_level: 10, focus_per_level: 70,
         });
         stats
     }

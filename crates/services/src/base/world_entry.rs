@@ -14,8 +14,9 @@ use crate::mercury::{
     archetype_ability_tree, build_avatar_update, build_char_list, build_create_entity,
     build_entity_leave, build_entity_method_packet, build_map_loaded,
     build_reset_entities, build_world_entry_phase_a, build_world_entry_phase_b,
-    PlayerLoadData, WorldEntryInfo, DEFAULT_SPACE_ID,
+    method_idx, PlayerLoadData, WorldEntryInfo, DEFAULT_SPACE_ID,
 };
+use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
 use super::ConnectedClientState;
 use super::character::query_character_list;
@@ -121,6 +122,8 @@ pub(crate) async fn handle_play_character(
             c.player_level = Some(player_load_data.level);
             c.player_archetype = Some(player_load_data.archetype);
             c.world_name = Some(entry_info.world_name.clone());
+            c.player_xp = Some(player_load_data.exp as u64);
+            c.player_training_points = Some(player_load_data.training_points as u32);
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
         }
@@ -553,9 +556,161 @@ pub(crate) async fn handle_cell_message(
                 &failed_objective_ids, db_pool,
             ).await;
         }
+        CellToBaseMsg::GrantXP { entity_id, xp_amount } => {
+            handle_grant_xp(entity_id, xp_amount, socket, connected, entity_to_addr).await;
+        }
         CellToBaseMsg::GrantItem { entity_id: _, player_id, item_id, container_id, count } => {
             handle_grant_item(player_id, item_id, container_id, count, db_pool).await;
         }
+    }
+}
+
+/// XP thresholds per level, matching `crates/game/src/player.rs` LEVEL_XP.
+const LEVEL_XP: [u64; 21] = [
+    0,
+    100, 200, 300, 600, 1_000, 1_600, 2_500, 4_000, 6_000, 9_000,
+    14_000, 18_000, 25_000, 40_000, 60_000, 90_000, 120_000, 180_000, 250_000, 400_000,
+];
+
+/// GENERICPROPERTY_TrainingPoints enum value from `entities/defs/enumerations.xml`.
+const GENERICPROPERTY_TRAINING_POINTS: i32 = 1;
+
+/// Handle XP grant from CellService — compute level-ups and send client notifications.
+///
+/// Matches the Python `giveExperience()` flow from `python/cell/SGWPlayer.py:787`:
+/// 1. Add XP
+/// 2. Send `onExpUpdate(total_xp)`
+/// 3. For each level-up: send `giveXPForLevel(level)` + `onMaxExpUpdate(threshold)`
+/// 4. Send `onLevelUpdate(level)` (for HUD)
+/// 5. Send `onEntityProperty(GENERICPROPERTY_TrainingPoints, tp)` (for TP UI)
+async fn handle_grant_xp(
+    entity_id: u32,
+    xp_amount: u64,
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    // Look up the player's session state via entity_id → addr → ConnectedClientState
+    let addr = {
+        let map = entity_to_addr.lock().unwrap();
+        match map.get(&entity_id) {
+            Some(a) => *a,
+            None => {
+                tracing::warn!(entity_id, "GrantXP: no address for entity");
+                return;
+            }
+        }
+    };
+
+    // Read current XP/level from session, compute level-ups, write back
+    let (total_xp, new_level, training_points, levels_gained) = {
+        let mut map = connected.lock().unwrap();
+        let state = match map.get_mut(&addr) {
+            Some(s) => s,
+            None => {
+                tracing::warn!(entity_id, "GrantXP: no connected state for entity");
+                return;
+            }
+        };
+
+        let mut xp = state.player_xp.unwrap_or(0);
+        let mut level = state.player_level.unwrap_or(1) as u32;
+        let mut tp = state.player_training_points.unwrap_or(0);
+
+        xp += xp_amount;
+
+        let mut gained = Vec::new();
+        while level < MAX_LEVEL && xp > LEVEL_XP[level as usize] {
+            level += 1;
+            tp += TRAINING_POINTS_PER_LEVEL;
+            gained.push(level);
+        }
+
+        // Write back
+        state.player_xp = Some(xp);
+        state.player_level = Some(level as i32);
+        state.player_training_points = Some(tp);
+
+        (xp, level, tp, gained)
+    };
+
+    tracing::info!(
+        entity_id, xp_amount, total_xp, new_level,
+        levels_up = levels_gained.len(),
+        "GrantXP processed"
+    );
+
+    // 1. onExpUpdate(INT32 total_xp) — XP bar
+    send_to_witness(
+        socket, connected, entity_to_addr, entity_id,
+        |key, seq, acks| {
+            build_entity_method_packet(
+                key, seq, acks, entity_id,
+                method_idx::ON_EXP_UPDATE,
+                &(total_xp as i32).to_le_bytes(),
+            )
+        },
+    ).await;
+
+    // 2. Per level-up: giveXPForLevel(INT32 level) + onMaxExpUpdate(INT32 threshold)
+    for &lvl in &levels_gained {
+        // giveXPForLevel — triggers level-up VFX/sound on client
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::GIVE_XP_FOR_LEVEL,
+                    &(lvl as i32).to_le_bytes(),
+                )
+            },
+        ).await;
+
+        // onMaxExpUpdate — update XP bar cap
+        let next_threshold = if lvl >= MAX_LEVEL {
+            LEVEL_XP[MAX_LEVEL as usize] as i32
+        } else {
+            LEVEL_XP[lvl as usize] as i32
+        };
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::ON_MAX_EXP_UPDATE,
+                    &next_threshold.to_le_bytes(),
+                )
+            },
+        ).await;
+    }
+
+    // 3. onLevelUpdate(INT32 level) — update level display in HUD
+    if !levels_gained.is_empty() {
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::ON_LEVEL_UPDATE,
+                    &(new_level as i32).to_le_bytes(),
+                )
+            },
+        ).await;
+
+        // 4. onEntityProperty(GENERICPROPERTY_TrainingPoints, tp) — TP UI
+        let mut tp_args = Vec::with_capacity(8);
+        tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
+        tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::ON_ENTITY_PROPERTY,
+                    &tp_args,
+                )
+            },
+        ).await;
     }
 }
 

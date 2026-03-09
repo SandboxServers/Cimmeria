@@ -97,6 +97,9 @@ pub struct CellEntity {
 
     /// Archetype ID for content engine conditions. Set from character data on connect.
     pub archetype_id: Option<i32>,
+
+    /// Entity level (for XP calculations on kill). Default 1.
+    pub level: u32,
 }
 
 impl CellEntity {
@@ -120,6 +123,7 @@ impl CellEntity {
             missions: MissionManager::new(),
             player_id: None,
             archetype_id: None,
+            level: 1,
         }
     }
 
