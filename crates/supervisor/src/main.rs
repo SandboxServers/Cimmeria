@@ -126,13 +126,12 @@ async fn fetch_services(port: u16) -> Option<serde_json::Value> {
         .ok()?
         .ok()?;
 
-    let request = format!("GET /api/config/status HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n");
-    let (mut reader, mut writer) = stream.into_split();
-    writer.write_all(request.as_bytes()).await.ok()?;
-    writer.shutdown().await.ok()?;
+    let request = format!("GET /api/config/status HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    let mut stream = stream;
+    stream.write_all(request.as_bytes()).await.ok()?;
 
     let mut buf = Vec::with_capacity(1024);
-    reader.read_to_end(&mut buf).await.ok()?;
+    stream.read_to_end(&mut buf).await.ok()?;
 
     let response = String::from_utf8_lossy(&buf);
     let body = response.split("\r\n\r\n").nth(1)?;
