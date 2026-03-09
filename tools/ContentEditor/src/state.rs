@@ -39,6 +39,12 @@ impl AppState {
             .await
             .map_err(|e| format!("Failed to connect to PostgreSQL: {e}"))?;
 
+        // Set search_path so queries find tables in the resources schema
+        sqlx::query("SET search_path TO resources, public")
+            .execute(&pool)
+            .await
+            .map_err(|e| format!("Failed to set search_path: {e}"))?;
+
         // Verify connection works
         sqlx::query("SELECT 1")
             .execute(&pool)
