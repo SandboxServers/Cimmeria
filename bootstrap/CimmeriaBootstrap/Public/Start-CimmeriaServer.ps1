@@ -133,11 +133,10 @@ function Start-CimmeriaServer {
     Write-Host "=============================================" -ForegroundColor Green
     Write-Host ""
     Write-Host " To connect a game client:" -ForegroundColor Gray
-    Write-Host "   1. Run: Update-CimmeriaClient" -ForegroundColor Gray
+    Write-Host "   1. Run: pwsh patch-client.ps1" -ForegroundColor White
     Write-Host "   2. Launch the game client" -ForegroundColor Gray
     Write-Host "   3. Login with: test / test" -ForegroundColor Gray
     Write-Host ""
-    Write-Host " Stop with:" -ForegroundColor Gray
-    Write-Host "   pwsh -c `"Import-Module ./bootstrap/CimmeriaBootstrap; Stop-CimmeriaServer`"" -ForegroundColor White
+    Write-Host " Stop with:  Ctrl+C or close this terminal" -ForegroundColor Gray
     Write-Host "=============================================" -ForegroundColor Green
 }

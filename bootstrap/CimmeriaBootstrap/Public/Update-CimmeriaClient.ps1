@@ -113,7 +113,7 @@ function Update-CimmeriaClient {
 
     Write-Host ""
     Write-Host "Client patched. To connect:" -ForegroundColor Green
-    Write-Host "  1. Start the server: pwsh setup.ps1" -ForegroundColor White
+    Write-Host "  1. Start the server:  pwsh setup.ps1" -ForegroundColor White
     Write-Host "  2. Launch the game client" -ForegroundColor White
     Write-Host "  3. Login with: test / test" -ForegroundColor White
 }
