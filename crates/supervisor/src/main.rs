@@ -8,6 +8,7 @@ use serde::Serialize;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
 
 #[derive(Serialize)]
 struct StatusResponse {
@@ -121,21 +122,42 @@ async fn fetch_services(port: u16) -> Option<serde_json::Value> {
     use tokio::net::TcpStream;
 
     let timeout = std::time::Duration::from_secs(2);
-    let stream = tokio::time::timeout(timeout, TcpStream::connect(format!("127.0.0.1:{port}")))
-        .await
-        .ok()?
-        .ok()?;
+    let stream = match tokio::time::timeout(timeout, TcpStream::connect(format!("127.0.0.1:{port}"))).await {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            tracing::debug!("Health proxy: connect failed: {e}");
+            return None;
+        }
+        Err(_) => {
+            tracing::debug!("Health proxy: connect timed out");
+            return None;
+        }
+    };
 
     let request = format!("GET /api/config/status HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
     let mut stream = stream;
-    stream.write_all(request.as_bytes()).await.ok()?;
+    if let Err(e) = stream.write_all(request.as_bytes()).await {
+        tracing::debug!("Health proxy: write failed: {e}");
+        return None;
+    }
 
-    let mut buf = Vec::with_capacity(1024);
-    stream.read_to_end(&mut buf).await.ok()?;
+    let mut buf = Vec::with_capacity(4096);
+    if let Err(e) = stream.read_to_end(&mut buf).await {
+        tracing::debug!("Health proxy: read failed: {e}");
+        return None;
+    }
 
     let response = String::from_utf8_lossy(&buf);
+    tracing::debug!("Health proxy: raw response ({} bytes):\n{response}", buf.len());
+
     let body = response.split("\r\n\r\n").nth(1)?;
-    let json: serde_json::Value = serde_json::from_str(body).ok()?;
+    let json: serde_json::Value = match serde_json::from_str(body) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::debug!("Health proxy: JSON parse failed: {e}");
+            return None;
+        }
+    };
     json.get("services").cloned()
 }
 
@@ -263,7 +285,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+                .unwrap_or_else(|_| "info,tower_http=debug".into()),
         )
         .init();
 
@@ -304,6 +326,7 @@ async fn main() {
         .route("/supervisor/start", post(post_start))
         .route("/supervisor/stop", post(post_stop))
         .route("/supervisor/rebuild", post(post_rebuild))
+        .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state);
 
