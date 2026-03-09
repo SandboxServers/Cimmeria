@@ -9,7 +9,7 @@ interface ConnectDialogProps {
 
 export function ConnectDialog({ onConnect, connecting, error }: ConnectDialogProps) {
   const [connectionString, setConnectionString] = useState(
-    'postgresql://cimmeria:cimmeria@localhost:5433/cimmeria'
+    'postgresql://w-testing:w-testing@localhost:5433/sgw'
   );
   const [serverUrl, setServerUrl] = useState('http://localhost:8443');
 
