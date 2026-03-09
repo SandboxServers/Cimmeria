@@ -367,6 +367,7 @@
 \ir sgw/Missions/Tables/sgw_mission.sql
 \ir sgw/Players/Tables/sgw_player.sql
 \ir sgw/Shards/Tables/shards.sql
+\ir sgw/Audit/Tables/login_audit.sql
 
 \ir sgw/_sequence_ownership.sql
 

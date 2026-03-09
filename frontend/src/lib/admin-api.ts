@@ -346,6 +346,42 @@ export async function fetchContentEditorPickers() {
   return fetchAdminJson<ContentEditorPickersResponse>('/api/content/editor-pickers');
 }
 
+// ── Login Audit API ──
+
+export type LoginAuditEvent = {
+  timestamp_ms: number;
+  account_name: string;
+  account_id: number | null;
+  ip_address: string;
+  phase: string;
+  outcome: string;
+  shard: string | null;
+  detail: string | null;
+};
+
+export type LoginAuditResponse = {
+  status: string;
+  events: Array<{
+    id: number;
+    event_time: string;
+    account_name: string;
+    account_id: number | null;
+    ip_address: string;
+    phase: string;
+    outcome: string;
+    shard: string | null;
+    detail: string | null;
+  }>;
+  count: number;
+  has_more: boolean;
+  reason?: string;
+};
+
+export async function fetchLoginAudit(limit?: number) {
+  const params = limit ? `?limit=${limit}` : '';
+  return fetchAdminJson<LoginAuditResponse>(`/api/audit/logins${params}`);
+}
+
 // ── Supervisor API ──
 
 export type SupervisorActionResponse = {

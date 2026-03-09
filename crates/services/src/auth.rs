@@ -15,17 +15,20 @@ use std::sync::{Arc, Mutex};
 
 use axum::{
     Router,
-    extract::State,
+    extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::post,
 };
+use tokio::sync::broadcast;
 use quick_xml::{Reader, events::Event};
 use rand::Rng;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
 
 use cimmeria_common::ServerConfig;
+
+use crate::audit::{LoginEventBuffer, LoginEvent, emit_login_event};
 
 // ── Protocol constants ───────────────────────────────────────────────────────
 
@@ -111,6 +114,8 @@ struct HandlerState {
     pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
     developer_mode: bool,
     db: Option<Arc<PgPool>>,
+    login_tx: Option<broadcast::Sender<LoginEvent>>,
+    login_buffer: Option<LoginEventBuffer>,
 }
 
 // ── AuthService ──────────────────────────────────────────────────────────────
@@ -130,6 +135,10 @@ pub struct AuthService {
     developer_mode: bool,
     /// Database connection pool for credential validation.
     db_pool: Option<Arc<PgPool>>,
+    /// Login event broadcast channel.
+    login_tx: Option<broadcast::Sender<LoginEvent>>,
+    /// Login event ring buffer for WebSocket replay.
+    login_buffer: Option<LoginEventBuffer>,
 }
 
 impl AuthService {
@@ -151,12 +160,24 @@ impl AuthService {
             pending_logins: Arc::new(Mutex::new(HashMap::new())),
             developer_mode: config.developer_mode,
             db_pool: None,
+            login_tx: None,
+            login_buffer: None,
         }
     }
 
     /// Set the database connection pool for credential validation.
     pub fn set_db_pool(&mut self, pool: Arc<PgPool>) {
         self.db_pool = Some(pool);
+    }
+
+    /// Set the login event broadcast channel and buffer.
+    pub fn set_login_event_tx(
+        &mut self,
+        tx: broadcast::Sender<LoginEvent>,
+        buffer: LoginEventBuffer,
+    ) {
+        self.login_tx = Some(tx);
+        self.login_buffer = Some(buffer);
     }
 
     /// Register a BaseApp shard.
@@ -181,6 +202,8 @@ impl AuthService {
             pending_logins: Arc::clone(&self.pending_logins),
             developer_mode: self.developer_mode,
             db: self.db_pool.clone(),
+            login_tx: self.login_tx.clone(),
+            login_buffer: self.login_buffer.clone(),
         });
 
         let app = Router::new()
@@ -198,7 +221,12 @@ impl AuthService {
         tracing::trace!("Spawning auth HTTP server task");
         tokio::spawn(async move {
             tracing::trace!("Auth HTTP server task started");
-            if let Err(e) = axum::serve(listener, app).await {
+            if let Err(e) = axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+            {
                 tracing::error!("Auth HTTP server error: {e}");
             }
             tracing::trace!("Auth HTTP server task exited");
@@ -238,10 +266,13 @@ impl AuthService {
 /// Phase 1: `POST /SGWLogin/UserAuth`
 async fn handle_user_auth(
     State(state): State<Arc<HandlerState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     body: String,
 ) -> Response {
     tracing::debug!("Phase 1: UserAuth");
     tracing::trace!(body = %body, "Phase 1 raw SOAP request");
+
+    let client_ip = addr.ip().to_string();
 
     let req = match parse_login_request(&body) {
         Ok(r) => r,
@@ -250,6 +281,22 @@ async fn handle_user_auth(
             return login_error(13, "Internal error.");
         }
     };
+
+    // Helper macro to emit audit events concisely.
+    macro_rules! audit {
+        ($outcome:expr) => {
+            if let (Some(tx), Some(buf)) = (&state.login_tx, &state.login_buffer) {
+                emit_login_event(tx, buf, &req.account_name, None, &client_ip,
+                    "credential_check", $outcome, None, None);
+            }
+        };
+        ($outcome:expr, id=$id:expr) => {
+            if let (Some(tx), Some(buf)) = (&state.login_tx, &state.login_buffer) {
+                emit_login_event(tx, buf, &req.account_name, Some($id), &client_ip,
+                    "credential_check", $outcome, None, None);
+            }
+        };
+    }
 
     if req.sku != "SGW_BETA" {
         return login_error(3, "The specified service does not exist.");
@@ -267,6 +314,7 @@ async fn handle_user_auth(
         && req.protocol_digest.to_uppercase() != PROTOCOL_DIGEST
     {
         tracing::warn!(got = %req.protocol_digest, expected = PROTOCOL_DIGEST, "Protocol digest mismatch");
+        audit!("protocol_mismatch");
         return login_error(
             17,
             "Protocol version mismatch; your client version is not supported.",
@@ -281,14 +329,17 @@ async fn handle_user_auth(
             Ok(id) => id,
             Err(AuthCredError::InvalidCredentials) => {
                 tracing::info!(user = %req.account_name, "Invalid credentials");
+                audit!("invalid_credentials");
                 return login_error(3, "The account name or password is incorrect.");
             }
             Err(AuthCredError::AccountDisabled) => {
                 tracing::info!(user = %req.account_name, "Account disabled");
+                audit!("account_disabled");
                 return login_error(5, "This account has been suspended.");
             }
             Err(AuthCredError::DbError(e)) => {
                 tracing::error!(user = %req.account_name, error = %e, "DB query failed");
+                audit!("db_error");
                 return login_error(10, "A request to the database server failed.");
             }
         }
@@ -296,10 +347,12 @@ async fn handle_user_auth(
         tracing::debug!(user = %req.account_name, "developer mode: accepting credentials (no DB)");
         1
     } else {
+        audit!("db_error");
         return login_error(10, "A request to the database server failed.");
     };
 
     if state.shards.is_empty() {
+        audit!("no_shards", id=account_id);
         return login_error(7, "No shards are available to the authentication server.");
     }
 
@@ -315,7 +368,8 @@ async fn handle_user_auth(
         );
     }
 
-    tracing::info!(user = %req.account_name, account_id, "Phase 1 success");
+    tracing::info!(user = %req.account_name, account_id, ip = %client_ip, "Phase 1 success");
+    audit!("success", id=account_id);
 
     let xml = login_success_xml(account_id, &state.shards);
     (
@@ -332,11 +386,14 @@ async fn handle_user_auth(
 /// Phase 2: `POST /SGWLogin/ServerSelection`
 async fn handle_server_selection(
     State(state): State<Arc<HandlerState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: String,
 ) -> Response {
     tracing::debug!("Phase 2: ServerSelection");
     tracing::trace!(body = %body, "Phase 2 raw SOAP request");
+
+    let client_ip = addr.ip().to_string();
 
     let sid = match extract_sid(&headers) {
         Some(s) => s,
@@ -383,8 +440,16 @@ async fn handle_server_selection(
     tracing::info!(
         user = %session.account_name,
         shard = %shard.name,
+        ip = %client_ip,
         "Phase 2 success"
     );
+
+    if let (Some(tx), Some(buf)) = (&state.login_tx, &state.login_buffer) {
+        emit_login_event(
+            tx, buf, &session.account_name, Some(session.account_id),
+            &client_ip, "shard_selection", "success", Some(&shard.name), None,
+        );
+    }
 
     let xml = server_location_xml(&shard, &session_key, &ticket);
     (

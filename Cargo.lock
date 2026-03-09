@@ -553,6 +553,7 @@ dependencies = [
  "cimmeria-admin-api",
  "cimmeria-common",
  "cimmeria-services",
+ "sqlx",
  "tokio",
  "tracing",
  "tracing-appender",

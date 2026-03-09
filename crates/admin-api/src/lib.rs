@@ -19,6 +19,7 @@ use tokio::sync::broadcast;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use cimmeria_services::audit::{LoginEvent, LoginEventBuffer};
 use cimmeria_services::orchestrator::Orchestrator;
 use ws::broadcast_layer::{LogBuffer, LogEntry};
 
@@ -124,6 +125,8 @@ pub fn build_router(
     orchestrator: Arc<Orchestrator>,
     log_tx: broadcast::Sender<LogEntry>,
     log_buffer: LogBuffer,
+    login_tx: broadcast::Sender<LoginEvent>,
+    login_buffer: LoginEventBuffer,
 ) -> Router {
     Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
@@ -131,6 +134,8 @@ pub fn build_router(
         .nest("/ws", ws::ws_routes())
         .layer(Extension(log_tx))
         .layer(Extension(log_buffer))
+        .layer(Extension(login_tx))
+        .layer(Extension(login_buffer))
         .layer(middleware::cors_layer())
         .with_state(orchestrator)
 }

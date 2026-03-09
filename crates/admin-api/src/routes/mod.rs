@@ -3,6 +3,7 @@
 //! Each sub-module defines routes for a specific domain. All routes receive
 //! the shared `Orchestrator` as Axum state for accessing server internals.
 
+pub mod audit;
 pub mod entities;
 pub mod spaces;
 pub mod content;
@@ -30,4 +31,5 @@ pub fn api_routes() -> Router<Arc<Orchestrator>> {
         .nest("/players", players::routes())
         .nest("/config", config::routes())
         .nest("/auth", auth::routes())
+        .nest("/audit", audit::routes())
 }

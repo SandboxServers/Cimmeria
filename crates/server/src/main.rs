@@ -41,6 +41,7 @@ use tracing_subscriber::Layer;
 
 use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogBuffer, LogEntry};
 use cimmeria_common::ServerConfig;
+use cimmeria_services::audit::{LoginEvent, LoginEventBuffer};
 use cimmeria_services::orchestrator::Orchestrator;
 
 #[tokio::main]
@@ -48,6 +49,10 @@ async fn main() {
     // Create log broadcast channel and ring buffer (for WebSocket log streaming).
     let (log_tx, _) = broadcast::channel::<LogEntry>(2048);
     let log_buffer = LogBuffer::new();
+
+    // Create login audit channel and ring buffer.
+    let (login_tx, _) = broadcast::channel::<LoginEvent>(256);
+    let login_buffer = LoginEventBuffer::new();
 
     // Initialise layered tracing — guards must live until shutdown.
     let _guards = init_logging(log_tx.clone(), log_buffer.clone());
@@ -77,7 +82,9 @@ async fn main() {
     let admin_port = config.admin_port;
 
     tracing::trace!("Creating orchestrator");
-    let orch = Arc::new(Orchestrator::new(config));
+    let mut orch = Orchestrator::new(config);
+    orch.set_login_event_channel(login_tx.clone(), login_buffer.clone());
+    let orch = Arc::new(orch);
 
     tracing::trace!("Calling start_all");
     if let Err(e) = orch.start_all().await {
@@ -86,8 +93,26 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // Spawn background audit writer to persist login events to the database.
+    {
+        let state = orch.state();
+        let state = state.read().await;
+        let audit_pool = state.db.as_ref().map(|db| db.pool().clone());
+        drop(state);
+        if let Some(pool) = audit_pool {
+            let audit_rx = login_tx.subscribe();
+            tokio::spawn(audit_writer_loop(pool, audit_rx));
+        }
+    }
+
     // Start the admin API (REST + WebSocket) on the configured port.
-    let admin_router = cimmeria_admin_api::build_router(Arc::clone(&orch), log_tx, log_buffer);
+    let admin_router = cimmeria_admin_api::build_router(
+        Arc::clone(&orch),
+        log_tx.clone(),
+        log_buffer,
+        login_tx.clone(),
+        login_buffer.clone(),
+    );
     let admin_addr = format!("0.0.0.0:{admin_port}");
     let admin_listener = match tokio::net::TcpListener::bind(&admin_addr).await {
         Ok(listener) => {
@@ -119,6 +144,46 @@ async fn main() {
     tracing::trace!("stop_all complete");
     tracing::info!("Goodbye.");
     tracing::trace!(pid = std::process::id(), "Process exiting with code 0");
+}
+
+// ── Audit persistence ────────────────────────────────────────────────────────
+
+/// Background task that persists [`LoginEvent`]s to the `login_audit` table.
+///
+/// Tolerates DB unavailability — logs a warning and keeps running.
+async fn audit_writer_loop(
+    pool: sqlx::PgPool,
+    mut rx: broadcast::Receiver<LoginEvent>,
+) {
+    tracing::info!("Audit writer started");
+    loop {
+        match rx.recv().await {
+            Ok(event) => {
+                if let Err(e) = sqlx::query(
+                    "INSERT INTO login_audit (event_time, account_name, account_id, ip_address, phase, outcome, shard, detail) \
+                     VALUES (TO_TIMESTAMP($1::DOUBLE PRECISION / 1000), $2, $3, $4::INET, $5, $6, $7, $8)"
+                )
+                .bind(event.timestamp_ms as f64)
+                .bind(&event.account_name)
+                .bind(event.account_id.map(|id| id as i32))
+                .bind(&event.ip_address)
+                .bind(&event.phase)
+                .bind(&event.outcome)
+                .bind(&event.shard)
+                .bind(&event.detail)
+                .execute(&pool)
+                .await
+                {
+                    tracing::warn!(error = %e, "Failed to write login audit event");
+                }
+            }
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                tracing::warn!(skipped = n, "Audit writer lagged, events dropped");
+            }
+            Err(broadcast::error::RecvError::Closed) => break,
+        }
+    }
+    tracing::info!("Audit writer shutting down");
 }
 
 // ── Logging ──────────────────────────────────────────────────────────────────

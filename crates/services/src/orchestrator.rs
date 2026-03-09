@@ -16,6 +16,9 @@ use tokio::sync::mpsc;
 
 use cimmeria_common::ServerConfig;
 
+use tokio::sync::broadcast;
+
+use crate::audit::{LoginEvent, LoginEventBuffer};
 use crate::auth::{AuthService, ShardInfo};
 use crate::base::BaseService;
 use crate::cell::CellService;
@@ -69,6 +72,8 @@ pub struct ServerState {
 /// correct order (database -> auth -> base -> cell) and shut them down cleanly.
 pub struct Orchestrator {
     state: Arc<RwLock<ServerState>>,
+    login_tx: Option<broadcast::Sender<LoginEvent>>,
+    login_buffer: Option<LoginEventBuffer>,
 }
 
 impl Orchestrator {
@@ -102,7 +107,21 @@ impl Orchestrator {
         tracing::trace!("Orchestrator constructed");
         Self {
             state: Arc::new(RwLock::new(state)),
+            login_tx: None,
+            login_buffer: None,
         }
+    }
+
+    /// Set the login event channel for audit logging.
+    ///
+    /// Must be called before [`start_all`] so auth handlers can emit events.
+    pub fn set_login_event_channel(
+        &mut self,
+        tx: broadcast::Sender<LoginEvent>,
+        buffer: LoginEventBuffer,
+    ) {
+        self.login_tx = Some(tx);
+        self.login_buffer = Some(buffer);
     }
 
     /// Start all services in dependency order.
@@ -143,6 +162,11 @@ impl Orchestrator {
             state.auth.set_db_pool(Arc::clone(pool));
             state.base.set_db_pool(Arc::clone(pool));
             state.cell.set_db_pool(Arc::clone(pool));
+        }
+
+        // Wire login audit channel into auth service
+        if let (Some(tx), Some(buf)) = (&self.login_tx, &self.login_buffer) {
+            state.auth.set_login_event_tx(tx.clone(), buf.clone());
         }
 
         // Register shards with auth before starting the HTTP listener so

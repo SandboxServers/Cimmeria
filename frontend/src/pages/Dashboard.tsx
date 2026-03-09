@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from 'react';
-import { ArrowUpRight, Gauge, RefreshCw, ShieldAlert, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowUpRight, Gauge, LogIn, RefreshCw, ShieldAlert, Sparkles } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -14,7 +14,6 @@ import { Separator } from '../components/ui/separator';
 import { useResource } from '../lib/hooks';
 import ConnectionStatus, { getConnectionError } from '../components/ConnectionStatus';
 import {
-  buildDashboardActivity,
   buildDashboardStats,
   buildServiceHealth,
   fetchAdminStatus,
@@ -22,6 +21,8 @@ import {
   fetchPlayers,
   fetchSpaces,
 } from '../lib/admin-api';
+import type { LoginAuditEvent } from '../lib/admin-api';
+import { connectWs } from '../lib/ws';
 
 function LoadingCard({ label }: { label: string }) {
   return (
@@ -53,6 +54,86 @@ function ErrorCard({ title, detail }: { title: string; detail: string }) {
   );
 }
 
+function formatLoginTime(timestampMs: number): string {
+  return new Date(timestampMs).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function RecentLoginsCard() {
+  const [events, setEvents] = useState<LoginAuditEvent[]>([]);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    const cleanup = connectWs(
+      '/ws/events',
+      (data) => {
+        const event = data as LoginAuditEvent;
+        if (event.timestamp_ms && event.account_name) {
+          setEvents((prev) => [event, ...prev].slice(0, 8));
+        }
+      },
+      setConnected,
+    );
+    return cleanup;
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-3">
+        <div className="space-y-2">
+          <Badge variant="secondary">Live Feed</Badge>
+          <CardTitle>Recent logins</CardTitle>
+          <CardDescription>
+            Real-time login events from the authentication service.
+          </CardDescription>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-white/5 p-3 text-accent">
+          <LogIn className="size-5" />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {events.length > 0 ? (
+          events.map((event, index) => (
+            <div
+              key={`${event.timestamp_ms}-${event.account_name}-${index}`}
+              className="flex items-center justify-between gap-3 rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {event.account_name}
+                </p>
+                <p className="truncate text-sm text-muted-foreground">
+                  {event.ip_address}
+                  {event.shard ? ` \u2022 ${event.shard}` : ''}
+                  {event.phase === 'shard_selection' ? ' \u2022 shard select' : ''}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <Badge
+                  variant={event.outcome === 'success' ? 'success' : 'destructive'}
+                >
+                  {event.outcome === 'success' ? 'OK' : event.outcome.replace(/_/g, ' ')}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {formatLoginTime(event.timestamp_ms)}
+                </span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-[24px] border border-white/8 bg-white/[0.03] px-4 py-4 text-sm text-muted-foreground">
+            {connected
+              ? 'No login events recorded yet.'
+              : 'Connecting to event stream...'}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const status = useResource(useCallback(fetchAdminStatus, []));
@@ -70,13 +151,6 @@ export default function Dashboard() {
   const serviceHealth = useMemo(
     () => (status.data ? buildServiceHealth(status.data) : []),
     [status.data],
-  );
-  const liveActivity = useMemo(
-    () =>
-      status.data && spaces.data && content.data
-        ? buildDashboardActivity(status.data, spaces.data, content.data)
-        : [],
-    [status.data, spaces.data, content.data],
   );
   const releaseChecklist = useMemo(() => {
     if (!status.data || !players.data || !spaces.data || !content.data) {
@@ -240,39 +314,7 @@ export default function Dashboard() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card>
-          <CardHeader className="space-y-3">
-            <Badge variant="secondary">Live Feed</Badge>
-            <CardTitle>Operational timeline</CardTitle>
-            <CardDescription>
-              Derived from the current service, space, and mission summaries.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {liveActivity.length > 0 ? (
-              liveActivity.map((event, index) => (
-                <div key={event.title} className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="rounded-full border border-accent/35 bg-accent/10 px-3 py-1 text-xs font-semibold tracking-[0.22em] text-accent">
-                      {event.time}
-                    </div>
-                    {index < liveActivity.length - 1 && (
-                      <div className="mt-2 h-full w-px bg-border/70" />
-                    )}
-                  </div>
-                  <div className="pb-5">
-                    <p className="text-sm font-medium text-foreground">{event.title}</p>
-                    <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                      {event.detail}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-sm text-muted-foreground">{isLoading ? 'Loading activity...' : 'No live activity available.'}</div>
-            )}
-          </CardContent>
-        </Card>
+        <RecentLoginsCard />
 
         <Card className="overflow-hidden">
           <CardHeader className="space-y-3">

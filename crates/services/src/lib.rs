@@ -7,6 +7,7 @@
 //! original C++ multi-process architecture where AuthenticationServer, BaseApp,
 //! and CellApp ran as separate services communicating over Mercury.
 
+pub mod audit;
 pub mod auth;
 pub mod base;
 pub mod cell;
