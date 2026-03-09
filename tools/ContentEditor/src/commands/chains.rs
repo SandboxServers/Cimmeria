@@ -6,12 +6,12 @@ use sqlx::Row;
 #[derive(Serialize)]
 pub struct SpaceEntry {
     pub space_id: String,
-    pub chain_count: i64,
+    pub chain_count: i64, // COUNT(*) returns bigint
 }
 
 #[derive(Serialize)]
 pub struct ChainRow {
-    pub chain_id: i64,
+    pub chain_id: i32,
     pub description: Option<String>,
     pub scope_type: String,
     pub scope_id: Option<i32>,
@@ -25,7 +25,7 @@ pub struct ChainRow {
 
 #[derive(Serialize)]
 pub struct TriggerRow {
-    pub trigger_id: i64,
+    pub trigger_id: i32,
     pub event_type: String,
     pub event_key: Option<String>,
     pub scope: String,
@@ -35,7 +35,7 @@ pub struct TriggerRow {
 
 #[derive(Serialize)]
 pub struct ConditionRow {
-    pub condition_id: i64,
+    pub condition_id: i32,
     pub condition_type: String,
     pub target_id: Option<i32>,
     pub target_key: Option<String>,
@@ -46,7 +46,7 @@ pub struct ConditionRow {
 
 #[derive(Serialize)]
 pub struct ActionRow {
-    pub action_id: i64,
+    pub action_id: i32,
     pub action_type: String,
     pub target_id: Option<i32>,
     pub target_key: Option<String>,
@@ -57,7 +57,7 @@ pub struct ActionRow {
 
 #[derive(Serialize)]
 pub struct CounterRow {
-    pub counter_id: i64,
+    pub counter_id: i32,
     pub counter_name: String,
     pub target_value: i32,
     pub reset_on: String,
@@ -65,7 +65,7 @@ pub struct CounterRow {
 
 #[derive(Deserialize)]
 pub struct SaveChainInput {
-    pub chain_id: Option<i64>,
+    pub chain_id: Option<i32>,
     pub description: Option<String>,
     pub scope_type: String,
     pub scope_id: Option<i32>,
@@ -180,7 +180,7 @@ pub async fn load_chains(
     let mut chains = Vec::new();
 
     for row in chain_rows {
-        let chain_id: i64 = row.get("chain_id");
+        let chain_id: i32 = row.get("chain_id");
 
         let triggers = sqlx::query(
             "SELECT trigger_id, event_type, event_key, scope, once, sort_order \
@@ -279,7 +279,7 @@ pub async fn load_chains(
 pub async fn save_chains(
     state: tauri::State<'_, AppState>,
     chains: Vec<SaveChainInput>,
-) -> Result<Vec<i64>, String> {
+) -> Result<Vec<i32>, String> {
     tracing::debug!("save_chains called, {} chains", chains.len());
     let pool = state.pool()?;
     let mut tx = pool
@@ -320,8 +320,8 @@ pub async fn save_chains(
         }
 
         // Insert chain
-        let chain_id: i64 = if let Some(existing_id) = chain.chain_id {
-            sqlx::query_scalar::<_, i64>(
+        let chain_id: i32 = if let Some(existing_id) = chain.chain_id {
+            sqlx::query_scalar::<_, i32>(
                 "INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority) \
                  VALUES ($1, $2, $3, $4, $5, $6) RETURNING chain_id",
             )
@@ -335,7 +335,7 @@ pub async fn save_chains(
             .await
             .map_err(|e| format!("Failed to insert chain: {e}"))?
         } else {
-            sqlx::query_scalar::<_, i64>(
+            sqlx::query_scalar::<_, i32>(
                 "INSERT INTO content_chains (description, scope_type, scope_id, enabled, priority) \
                  VALUES ($1, $2, $3, $4, $5) RETURNING chain_id",
             )
@@ -427,7 +427,7 @@ pub async fn save_chains(
 #[tauri::command]
 pub async fn delete_chain(
     state: tauri::State<'_, AppState>,
-    chain_id: i64,
+    chain_id: i32,
 ) -> Result<(), String> {
     tracing::debug!("delete_chain called, chain_id={chain_id}");
     let pool = state.pool()?;

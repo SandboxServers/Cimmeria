@@ -43,7 +43,7 @@ pub async fn export_to_seed_file(
     writeln!(sql).unwrap();
 
     for row in &chain_rows {
-        let chain_id: i64 = row.get("chain_id");
+        let chain_id: i32 = row.get("chain_id");
         let description: Option<String> = row.get("description");
         let scope_type: String = row.get("scope_type");
         let scope_id: Option<i32> = row.get("scope_id");
