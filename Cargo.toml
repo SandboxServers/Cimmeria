@@ -14,6 +14,7 @@ members = [
     "crates/admin-api",
     "crates/commands",
     "crates/server",
+    "crates/supervisor",
     "crates/launcher",
     "src-tauri",
 ]
@@ -28,6 +29,7 @@ default-members = [
     "crates/admin-api",
     "crates/commands",
     "crates/server",
+    "crates/supervisor",
 ]
 
 [workspace.package]

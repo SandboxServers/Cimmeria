@@ -19,6 +19,10 @@ export default defineConfig({
         target: 'ws://localhost:8443',
         ws: true,
       },
+      '/supervisor': {
+        target: 'http://localhost:8444',
+        changeOrigin: true,
+      },
     },
   },
   build: {

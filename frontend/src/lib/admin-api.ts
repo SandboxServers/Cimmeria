@@ -135,7 +135,7 @@ export type ServiceHealthCard = {
 };
 
 function getAdminApiOrigin() {
-  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
     return 'http://127.0.0.1:8443';
   }
 
@@ -344,4 +344,79 @@ export async function fetchContentSummary() {
 
 export async function fetchContentEditorPickers() {
   return fetchAdminJson<ContentEditorPickersResponse>('/api/content/editor-pickers');
+}
+
+// ── Supervisor API ──
+
+export type SupervisorActionResponse = {
+  status: string;
+  message: string;
+};
+
+export type SupervisorStatusResponse = {
+  process_running: boolean;
+  building: boolean;
+  build_output: string;
+  last_exit_code: number | null;
+  services: AdminStatusResponse['services'] | null;
+};
+
+function getSupervisorOrigin() {
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    return 'http://127.0.0.1:8444';
+  }
+  return '';
+}
+
+const SUPERVISOR_ORIGIN =
+  import.meta.env.VITE_SUPERVISOR_ORIGIN ?? getSupervisorOrigin();
+
+async function fetchSupervisorJson<T>(path: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${SUPERVISOR_ORIGIN}${path}`, {
+      headers: { Accept: 'application/json' },
+    });
+  } catch (err) {
+    throw new ConnectionError(path, err);
+  }
+  if (response.status >= 500) {
+    throw new ConnectionError(path);
+  }
+  if (!response.ok) {
+    throw new Error(`Supervisor API ${path} failed with ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
+async function postSupervisor(path: string): Promise<SupervisorActionResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${SUPERVISOR_ORIGIN}${path}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json' },
+    });
+  } catch (err) {
+    throw new ConnectionError(path, err);
+  }
+  if (!response.ok) {
+    throw new Error(`Supervisor API ${path} failed with ${response.status}`);
+  }
+  return response.json() as Promise<SupervisorActionResponse>;
+}
+
+export async function fetchSupervisorStatus() {
+  return fetchSupervisorJson<SupervisorStatusResponse>('/supervisor/status');
+}
+
+export async function supervisorStart() {
+  return postSupervisor('/supervisor/start');
+}
+
+export async function supervisorStop() {
+  return postSupervisor('/supervisor/stop');
+}
+
+export async function supervisorRebuild() {
+  return postSupervisor('/supervisor/rebuild');
 }

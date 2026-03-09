@@ -1,55 +1,64 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Power, Square } from 'lucide-react';
+import { Hammer, Power, Square } from 'lucide-react';
 import { Button } from './ui/button';
-import { fetchAdminStatus, type AdminStatusResponse } from '../lib/admin-api';
+import {
+  fetchSupervisorStatus,
+  supervisorStart,
+  supervisorStop,
+  supervisorRebuild,
+  type SupervisorStatusResponse,
+} from '../lib/admin-api';
 
-type ServerHealth = 'offline' | 'degraded' | 'healthy';
+type ServerHealth = 'offline' | 'building' | 'degraded' | 'healthy';
 
 const LED_STYLES: Record<ServerHealth, string> = {
   offline: 'bg-red-400 shadow-[0_0_12px_rgba(248,113,113,0.8)]',
+  building: 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]',
   degraded: 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]',
   healthy: 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]',
 };
 
 const STATUS_LABEL: Record<ServerHealth, string> = {
   offline: 'Offline',
+  building: 'Building...',
   degraded: 'Degraded',
   healthy: 'Online',
 };
 
-function deriveHealth(status: AdminStatusResponse | null): ServerHealth {
-  if (!status) return 'offline';
-  const s = status.services;
-  if (s.auth && s.base && s.cell && s.database) return 'healthy';
+function deriveHealth(sv: SupervisorStatusResponse | null): ServerHealth {
+  if (!sv) return 'offline';
+  if (sv.building) return 'building';
+  if (!sv.process_running) return 'offline';
+  if (sv.services) {
+    const s = sv.services;
+    if (s.auth && s.base && s.cell && s.database) return 'healthy';
+    return 'degraded';
+  }
+  // Process running but services not yet reported (startup)
   return 'degraded';
 }
 
-async function postAction(path: string): Promise<{ status: string; action: string; message: string }> {
-  const res = await fetch(path, { method: 'POST' });
-  return res.json();
-}
-
 /**
- * Persistent server status LED + Start/Stop/HotReload controls.
- * Shown in the AppShell header on every page.
+ * Persistent server status LED + Start/Stop/Rebuild controls.
+ * Polls the supervisor (port 8444) which is always available,
+ * even when the game server is down.
  */
 export default function ServerControls() {
-  const [status, setStatus] = useState<AdminStatusResponse | null>(null);
+  const [sv, setSv] = useState<SupervisorStatusResponse | null>(null);
   const [health, setHealth] = useState<ServerHealth>('offline');
   const [busy, setBusy] = useState(false);
 
   const poll = useCallback(async () => {
     try {
-      const data = await fetchAdminStatus();
-      setStatus(data);
+      const data = await fetchSupervisorStatus();
+      setSv(data);
       setHealth(deriveHealth(data));
     } catch {
-      setStatus(null);
+      setSv(null);
       setHealth('offline');
     }
   }, []);
 
-  // Poll every 5 seconds
   useEffect(() => {
     poll();
     const id = setInterval(poll, 5000);
@@ -59,8 +68,7 @@ export default function ServerControls() {
   const handleStart = async () => {
     setBusy(true);
     try {
-      await postAction('/api/config/start');
-      // Poll immediately to update status
+      await supervisorStart();
       await poll();
     } finally {
       setBusy(false);
@@ -70,18 +78,25 @@ export default function ServerControls() {
   const handleStop = async () => {
     setBusy(true);
     try {
-      await postAction('/api/config/stop');
+      await supervisorStop();
       await poll();
     } finally {
       setBusy(false);
     }
   };
 
-  // TODO: Wire up hot reload logic (return to this when logic is supplied)
-  // The specific reload command will be provided by the lead dev.
-  const handleHotReload = () => {};
+  const handleRebuild = async () => {
+    setBusy(true);
+    try {
+      await supervisorRebuild();
+    } finally {
+      setBusy(false);
+      await poll();
+    }
+  };
 
-  const servicesRunning = status?.services.auth || status?.services.base || status?.services.cell;
+  const isBuilding = sv?.building ?? false;
+  const processRunning = sv?.process_running ?? false;
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -91,37 +106,40 @@ export default function ServerControls() {
         <span className="text-sm font-medium text-foreground">{STATUS_LABEL[health]}</span>
       </div>
 
-      {/* Start / Stop */}
+      {/* Start */}
       <Button
         onClick={handleStart}
         variant="outline"
         size="sm"
-        disabled={busy || (health !== 'offline' && !!servicesRunning)}
-        title="Start server services"
+        disabled={busy || isBuilding || processRunning}
+        title="Start server process"
       >
         <Power className="size-3.5" />
-        {busy ? 'Starting...' : 'Start'}
+        Start
       </Button>
+
+      {/* Stop */}
       <Button
         onClick={handleStop}
         variant="outline"
         size="sm"
-        disabled={busy || health === 'offline' || !servicesRunning}
-        title="Stop server services"
+        disabled={busy || isBuilding || !processRunning}
+        title="Stop server process"
       >
         <Square className="size-3.5" />
-        {busy ? 'Stopping...' : 'Stop'}
+        Stop
       </Button>
 
-      {/* Hot Reload */}
+      {/* Rebuild */}
       <Button
-        onClick={handleHotReload}
+        onClick={handleRebuild}
         variant="secondary"
         size="sm"
-        disabled={health === 'offline'}
-        title="Hot reload server"
+        disabled={busy || isBuilding}
+        title="Stop, rebuild, and restart server"
       >
-        🔥 Hot Reload
+        <Hammer className="size-3.5" />
+        Rebuild
       </Button>
     </div>
   );
