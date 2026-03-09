@@ -1,6 +1,5 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import AppShell from './components/AppShell';
-import ChainEditor from './pages/ChainEditor';
 import Config from './pages/Config';
 import ContentEditor from './pages/ContentEditor';
 import Dashboard from './pages/Dashboard';
@@ -16,7 +15,6 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/players" element={<Players />} />
           <Route path="/content-editor" element={<ContentEditor />} />
-          <Route path="/chain-editor" element={<ChainEditor />} />
           <Route path="/space-viewer" element={<SpaceViewer />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/config" element={<Config />} />

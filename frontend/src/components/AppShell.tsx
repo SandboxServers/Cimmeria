@@ -3,7 +3,6 @@ import { useMemo, useState, type ComponentType } from 'react';
 import type { LucideProps } from 'lucide-react';
 import {
   Boxes,
-  Cable,
   ChevronRight,
   Compass,
   LayoutDashboard,
@@ -30,7 +29,6 @@ const navItems: NavItem[] = [
   { path: '/', label: 'Dashboard', hint: 'Fleet telemetry', icon: LayoutDashboard },
   { path: '/players', label: 'Players', hint: 'Live sessions', icon: UsersRound },
   { path: '/content-editor', label: 'Content Editor', hint: 'Game data', icon: Boxes },
-  { path: '/chain-editor', label: 'Chain Editor', hint: 'Mission logic', icon: Cable },
   { path: '/space-viewer', label: 'Space Viewer', hint: 'World map', icon: Compass },
   { path: '/logs', label: 'Logs', hint: 'Event stream', icon: ScrollText },
   { path: '/config', label: 'Config', hint: 'Runtime tuning', icon: Settings2 },
@@ -39,7 +37,7 @@ const navItems: NavItem[] = [
 export default function AppShell() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const showPageChrome = location.pathname !== '/chain-editor';
+  const showPageChrome = true;
 
   const activeItem = useMemo(
     () => navItems.find((item) => item.path === location.pathname) ?? navItems[0],

@@ -85,36 +85,6 @@ export type ContentSummaryResponse = {
   }>;
 };
 
-export type ContentEditorPickerOption = {
-  value: string;
-  label: string;
-  group?: string;
-};
-
-export type ContentEditorMissionOption = ContentEditorPickerOption & {
-  space_id: string;
-};
-
-export type ContentEditorRegionOption = ContentEditorPickerOption & {
-  space_id: string;
-};
-
-export type ContentEditorStepOption = ContentEditorPickerOption & {
-  mission_id: string;
-};
-
-export type ContentEditorPickersResponse = {
-  status: string;
-  available: boolean;
-  reason: string | null;
-  spaces: ContentEditorPickerOption[];
-  missions: ContentEditorMissionOption[];
-  dialogs: ContentEditorPickerOption[];
-  items: ContentEditorPickerOption[];
-  regions: ContentEditorRegionOption[];
-  steps: ContentEditorStepOption[];
-};
-
 export type DashboardStat = {
   label: string;
   value: string;
@@ -340,10 +310,6 @@ export async function fetchSpaces() {
 
 export async function fetchContentSummary() {
   return fetchAdminJson<ContentSummaryResponse>('/api/content/summary');
-}
-
-export async function fetchContentEditorPickers() {
-  return fetchAdminJson<ContentEditorPickersResponse>('/api/content/editor-pickers');
 }
 
 // ── Login Audit API ──

@@ -129,29 +129,6 @@ export const publishQueue = [
   { target: 'Weapons/ability_sets', author: 'combat/rye', state: 'Queued' },
 ];
 
-export const chainNodes = [
-  {
-    stage: 'Trigger',
-    title: 'Mission Accepted',
-    detail: 'On accept, seed prisoner objective and unlock hallway feed.',
-  },
-  {
-    stage: 'Condition',
-    title: 'Inventory Contains Keycard',
-    detail: 'Gate progression behind lootable recovery or GM override.',
-  },
-  {
-    stage: 'Action',
-    title: 'Broadcast Security Response',
-    detail: 'Spawn guards, push dialog cue, and mark alarm state.',
-  },
-  {
-    stage: 'Result',
-    title: 'Advance to EscapeTheCellblock',
-    detail: 'Persist quest state and reopen transport interaction.',
-  },
-];
-
 export const logEntries = [
   {
     level: 'INFO',
