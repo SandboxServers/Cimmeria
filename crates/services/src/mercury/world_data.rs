@@ -166,22 +166,42 @@ pub fn build_setup_world_parameters(
 pub(crate) fn world_id_for_name(world_name: &str) -> i32 {
     match world_name {
         "CombatSim" => 1,
+        "SandBox" => 2,
         "Tol-Alpha-00" => 3,
         "Tol-Alpha-01" => 4,
+        "Tol-Alpha-02" => 5,
+        "Ca-Alpha-00" => 6,
+        "Ca-Alpha-01" => 7,
+        "Castle" => 8,
+        "Tol-POI-06" => 9,
         "Agnos" => 10,
         "Anima_Vitrus" => 11,
         "Castle_CellBlock" => 12,
         "Hebridan" => 13,
+        "Kheb" => 14,
+        "Lucia" => 15,
+        "Naitac" => 16,
+        "PrimHatak" => 17,
+        "Omega_Site" => 18,
         "Tollana" => 19,
         "Agnos_Library" => 20,
         "Playground" => 21,
+        "TestSGC1" => 22,
         "Beta_Site_Evo_1" => 23,
         "Dakara" => 24,
-        "Castle" => 40,
-        "SGC" | "SGC_W1" => 41,
-        "Harset" => 42,
-        "Leonops" => 43,
-        "Lucia" | "Lucia_PVP" => 44,
+        "Harset" => 57,
+        "SGC_W1" => 58,
+        "Harset_CmdCenter" => 68,
+        "Menfa_Dark" => 77,
+        "Omega_Site_CmdCenter" => 80,
+        "Pertho" => 83,
+        "SGC" => 86,
+        "SGC_W2" => 87,
+        "Tollana_Curia" => 88,
+        "Temple" => 89,
+        "Yotunheim" => 90,
+        "Holding_Area" => 91,
+        "Vitrus" => 92,
         _ => {
             tracing::warn!(world = %world_name, "Unknown world_id — using 1 (CombatSim)");
             1
@@ -194,8 +214,13 @@ pub(crate) fn world_id_for_name(world_name: &str) -> i32 {
 pub(crate) fn client_map_for_world(world_name: &str) -> &str {
     match world_name {
         "CombatSim" => "Combat_Terrain_Test",
+        "SandBox" => "Harset_CmdCenter",
         "Tol-Alpha-00" => "Tol-Alpha_Pocket_00",
         "Tol-Alpha-01" => "Tol-Alpha_Pocket_01",
+        "Tol-Alpha-02" => "Tol-Alpha_Pocket_02",
+        "Ca-Alpha-00" => "Ca-Alpha_Pocket_00",
+        "Ca-Alpha-01" => "Ca-Alpha_Pocket_01",
+        "Tol-POI-06" => "Tol_POI_Test06",
         _ => world_name, // Most worlds: client_map == world_name
     }
 }
@@ -739,6 +764,84 @@ mod tests {
         assert!(all_bytes.contains(&0xF3), "should contain onPlayerDataLoaded (0xF3)");
         // onAbilityTreeInfo uses extended 0xBD
         assert!(all_bytes.contains(&0xBD), "should contain extended encoding marker (0xBD)");
+    }
+
+    #[test]
+    fn build_map_loaded_uses_mercury_fragmentation() {
+        use cimmeria_mercury::packet::{FLAG_FRAGMENTED, FLAG_HAS_SEQUENCE};
+
+        let data = PlayerLoadData {
+            player_id: 1,
+            level: 5,
+            player_name: "Warrior".into(),
+            extra_name: "The Brave".into(),
+            alignment: 2,
+            archetype: 2,
+            gender: 1,
+            bodyset: "BS_HumanMale.BS_HumanMale".into(),
+            components: vec!["head_test".into(), "torso_test".into()],
+            exp: 500,
+            naquadah: 100,
+            known_stargates: vec![1, 2],
+            abilities: vec![10, 20, 30],
+            training_points: 3,
+            applied_science_points: 1,
+            blueprint_ids: vec![],
+            first_login: 0,
+            access_level: 0,
+            skin_color_id: 5,
+            ability_tree: archetype_ability_tree(2),
+            items: vec![],
+        };
+        let entry = WorldEntryInfo {
+            player_entity_id: 100, space_id: 65552,
+            pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(),
+        };
+        let (packets, seqs) = build_map_loaded(&TEST_KEY, 10, &[], 100, &data, &entry);
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+
+        // Must produce multiple packets (body > 1300 bytes)
+        assert!(packets.len() > 1,
+            "Expected multiple fragments, got {} packet(s)", packets.len());
+        assert_eq!(seqs as usize, packets.len());
+
+        for (i, pkt) in packets.iter().enumerate() {
+            let pt = enc.decrypt(pkt).unwrap();
+            let flags = pt[0];
+
+            // Every fragment must have FLAG_FRAGMENTED (0x20) and FLAG_HAS_SEQUENCE (0x40)
+            assert!(flags & FLAG_FRAGMENTED != 0,
+                "Packet {} flags=0x{:02X} missing FLAG_FRAGMENTED (0x20)", i, flags);
+            assert!(flags & FLAG_HAS_SEQUENCE != 0,
+                "Packet {} flags=0x{:02X} missing FLAG_HAS_SEQUENCE (0x40)", i, flags);
+
+            // Parse footers from the end: seq_id (4), frag_end (4), frag_begin (4)
+            let len = pt.len();
+            let seq_id = u32::from_le_bytes(pt[len-4..len].try_into().unwrap());
+            let frag_end = u32::from_le_bytes(pt[len-8..len-4].try_into().unwrap());
+            let frag_begin = u32::from_le_bytes(pt[len-12..len-8].try_into().unwrap());
+
+            // frag_begin should be base_seq (10)
+            assert_eq!(frag_begin, 10,
+                "Packet {} frag_begin={} expected 10", i, frag_begin);
+            // frag_end should be base_seq + num_frags - 1
+            let expected_frag_end = 10 + packets.len() as u32 - 1;
+            assert_eq!(frag_end, expected_frag_end,
+                "Packet {} frag_end={} expected {}", i, frag_end, expected_frag_end);
+            // seq_id should be base_seq + i
+            assert_eq!(seq_id, 10 + i as u32,
+                "Packet {} seq_id={} expected {}", i, seq_id, 10 + i as u32);
+
+            // Body chunk size: for non-last fragments, should be FRAGMENT_BODY_SIZE (1300)
+            let body_len = len - 1 - 12; // flags(1) + footers(12) subtracted
+            if i < packets.len() - 1 {
+                assert_eq!(body_len, 1300,
+                    "Packet {} body_len={} expected 1300 (FRAGMENT_BODY_SIZE)", i, body_len);
+            }
+
+            eprintln!("Fragment {}: plaintext_len={} flags=0x{:02X} body={} seq={} frag=[{}-{}]",
+                i, pt.len(), flags, body_len, seq_id, frag_begin, frag_end);
+        }
     }
 
     #[test]

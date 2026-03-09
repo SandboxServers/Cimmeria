@@ -151,6 +151,7 @@ impl CellService {
 
         // Build the content engine — load from DB if available, else fallback
         let engine = content::build_engine(self.db_pool.as_deref()).await;
+        let db_pool = self.db_pool.clone();
 
         // Take ownership of channels for the message processing loop
         let rx = self.base_to_cell_rx.take();
@@ -158,7 +159,7 @@ impl CellService {
 
         if let (Some(mut rx), Some(tx)) = (rx, tx) {
             tokio::spawn(async move {
-                run_cell_loop(&mut rx, &tx, space_mgr, engine).await;
+                run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool).await;
             });
         } else {
             tracing::warn!("Cell service started without channels — operating in stub mode");
@@ -186,7 +187,8 @@ async fn run_cell_loop(
     rx: &mut mpsc::Receiver<BaseToCellMsg>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     mut space_mgr: SpaceManager,
-    engine: ChainEngine,
+    mut engine: ChainEngine,
+    db_pool: Option<Arc<PgPool>>,
 ) {
     tracing::debug!("Cell service message loop started");
 
@@ -197,6 +199,11 @@ async fn run_cell_loop(
         tokio::select! {
             msg = rx.recv() => {
                 match msg {
+                    Some(BaseToCellMsg::ReloadContentEngine) => {
+                        tracing::info!("Hot-reloading content engine from database");
+                        engine = content::build_engine(db_pool.as_deref()).await;
+                        tracing::info!(chains = engine.chain_count(), "Content engine reloaded");
+                    }
                     Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine).await,
                     None => {
                         tracing::info!("Cell service channel closed — shutting down");
@@ -286,6 +293,9 @@ async fn handle_base_message(
             }
             content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
         }
+
+        // Handled in run_cell_loop before dispatch; included for exhaustiveness.
+        BaseToCellMsg::ReloadContentEngine => {}
     }
 }
 
