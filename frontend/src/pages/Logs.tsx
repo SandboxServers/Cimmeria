@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Circle, Pause, Play, RefreshCw, Trash2 } from 'lucide-react';
+import { Circle, Pause, Play, Trash2 } from 'lucide-react';
 import PageHeader from '../components/PageHeader';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -25,6 +25,21 @@ type LogEntry = {
   skipped?: number;
 };
 
+type LogSource = 'server' | 'supervisor';
+
+const SOURCE_CONFIG: Record<LogSource, { label: string; wsPath: string; description: string }> = {
+  server: {
+    label: 'Game Server',
+    wsPath: '/ws/logs',
+    description: 'Game server process logs (auth, base, cell, database).',
+  },
+  supervisor: {
+    label: 'Supervisor',
+    wsPath: '/supervisor/ws/logs',
+    description: 'Supervisor process logs (start, stop, rebuild, health proxy).',
+  },
+};
+
 const MAX_ENTRIES = 2000;
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -47,6 +62,7 @@ function formatFields(fields: Record<string, unknown>): string {
 }
 
 export default function Logs() {
+  const [source, setSource] = useState<LogSource>('server');
   const [level, setLevel] = useState('ALL');
   const [query, setQuery] = useState('');
   const [entries, setEntries] = useState<LogEntry[]>([]);
@@ -70,13 +86,19 @@ export default function Logs() {
     }
   }, [entries, paused]);
 
-  // WebSocket connection
+  // WebSocket connection — reconnects when source changes
   useEffect(() => {
+    setEntries([]);
+    setConnected(false);
+    setPaused(false);
+    autoScroll.current = true;
+
+    const { wsPath } = SOURCE_CONFIG[source];
     const cleanup = connectWs(
-      '/ws/logs',
+      wsPath,
       (data) => {
         const entry = data as LogEntry;
-        if (entry.type === 'lagged') return; // Skip lag notices
+        if (entry.type === 'lagged') return;
         setEntries((prev) => {
           const next = [...prev, entry];
           return next.length > MAX_ENTRIES ? next.slice(-MAX_ENTRIES) : next;
@@ -85,12 +107,12 @@ export default function Logs() {
       setConnected,
     );
     return cleanup;
-  }, []);
+  }, [source]);
 
   const filteredEntries = useMemo(
     () =>
       entries.filter((entry) => {
-        if (paused) return true; // Show all when paused (frozen snapshot)
+        if (paused) return true;
         const matchesLevel = level === 'ALL' || entry.level === level;
         const haystack = `${entry.target} ${entry.message}`.toLowerCase();
         return matchesLevel && haystack.includes(query.trim().toLowerCase());
@@ -107,6 +129,8 @@ export default function Logs() {
     }
     return counts;
   }, [entries]);
+
+  const { label: sourceLabel, wsPath, description: sourceDescription } = SOURCE_CONFIG[source];
 
   return (
     <div className="space-y-6">
@@ -134,7 +158,7 @@ export default function Logs() {
             {connected ? 'Live' : 'Reconnecting...'}
           </span>
         }
-        description="Real-time server log stream via WebSocket. Entries are buffered client-side (max 2,000)."
+        description="Real-time log stream via WebSocket. Entries are buffered client-side (max 2,000)."
         eyebrow="Logs"
         title="Server event stream"
       />
@@ -146,11 +170,19 @@ export default function Logs() {
               <Badge variant="secondary">Tail View</Badge>
               <CardTitle>Live log stream</CardTitle>
               <CardDescription>
-                Connected to <code className="text-xs">/ws/logs</code>.
+                Connected to <code className="text-xs">{wsPath}</code>.
                 {entries.length > 0 && ` ${entries.length} entries buffered.`}
               </CardDescription>
             </div>
             <div className="flex flex-col gap-3">
+              {/* Source selector */}
+              <Tabs defaultValue="server" value={source} onValueChange={(v) => setSource(v as LogSource)}>
+                <TabsList className="justify-start">
+                  <TabsTrigger value="server">Game Server</TabsTrigger>
+                  <TabsTrigger value="supervisor">Supervisor</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {/* Level filter */}
               <Tabs defaultValue="ALL" onValueChange={setLevel}>
                 <TabsList className="justify-start">
                   <TabsTrigger value="ALL">All</TabsTrigger>
@@ -185,7 +217,7 @@ export default function Logs() {
                   }`}
                 />
                 <span className="uppercase tracking-[0.24em] text-slate-400">
-                  {connected ? (paused ? 'Paused' : 'Streaming') : 'Connecting...'}
+                  {connected ? (paused ? 'Paused' : `Streaming — ${sourceLabel}`) : 'Connecting...'}
                 </span>
               </div>
               <div className="space-y-1">
@@ -193,7 +225,7 @@ export default function Logs() {
                   <div className="py-8 text-center text-slate-500">
                     {connected
                       ? 'Waiting for log entries...'
-                      : 'Connecting to server...'}
+                      : `Connecting to ${sourceLabel.toLowerCase()}...`}
                   </div>
                 )}
                 {displayEntries.map((entry, i) => (
@@ -252,8 +284,13 @@ export default function Logs() {
             <CardHeader className="space-y-3">
               <Badge variant="secondary">Connection</Badge>
               <CardTitle>Stream status</CardTitle>
+              <CardDescription>{sourceDescription}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
+                <span className="text-sm text-muted-foreground">Source</span>
+                <Badge variant="outline">{sourceLabel}</Badge>
+              </div>
               <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
                 <span className="text-sm text-muted-foreground">WebSocket</span>
                 <Badge variant={connected ? 'success' : 'outline'}>

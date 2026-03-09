@@ -1,10 +1,11 @@
-function getWsBaseUrl(): string {
+function getWsBaseUrl(path: string): string {
     if (import.meta.env.VITE_WS_URL) {
         return import.meta.env.VITE_WS_URL;
     }
-    // Tauri desktop app: connect directly to the server
+    // Tauri desktop app: connect directly to the appropriate server
     if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
-        return 'ws://127.0.0.1:8443';
+        const port = path.startsWith('/supervisor/') ? 8444 : 8443;
+        return `ws://127.0.0.1:${port}`;
     }
     // Browser: derive from current page URL so Vite proxy works in dev
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -24,7 +25,7 @@ export function connectWs(
     onMessage: (data: unknown) => void,
     onStatus?: (connected: boolean) => void,
 ): () => void {
-    const baseUrl = getWsBaseUrl();
+    const baseUrl = getWsBaseUrl(path);
     const url = `${baseUrl}${path}`;
     let ws: WebSocket | null = null;
     let stopped = false;

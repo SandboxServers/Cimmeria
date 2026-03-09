@@ -1,14 +1,216 @@
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
+use axum::response::Response;
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use serde::Serialize;
 use tokio::process::{Child, Command};
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use tracing::field::{Field, Visit};
+use tracing::Subscriber;
+use tracing_subscriber::layer::Context;
+use tracing_subscriber::registry::LookupSpan;
+
+// ── Log broadcast infrastructure ──
+
+const BUFFER_CAPACITY: usize = 500;
+
+#[derive(Clone, Debug, Serialize)]
+struct LogEntry {
+    timestamp_ms: u64,
+    level: String,
+    target: String,
+    message: String,
+    fields: serde_json::Value,
+}
+
+#[derive(Clone)]
+struct LogBuffer {
+    inner: Arc<StdMutex<VecDeque<LogEntry>>>,
+}
+
+impl LogBuffer {
+    fn new() -> Self {
+        Self {
+            inner: Arc::new(StdMutex::new(VecDeque::with_capacity(BUFFER_CAPACITY))),
+        }
+    }
+
+    fn push(&self, entry: LogEntry) {
+        if let Ok(mut buf) = self.inner.lock() {
+            if buf.len() >= BUFFER_CAPACITY {
+                buf.pop_front();
+            }
+            buf.push_back(entry);
+        }
+    }
+
+    fn snapshot(&self) -> Vec<LogEntry> {
+        self.inner
+            .lock()
+            .map(|buf| buf.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
+struct BroadcastLayer {
+    tx: broadcast::Sender<LogEntry>,
+    buffer: LogBuffer,
+}
+
+impl BroadcastLayer {
+    fn new(tx: broadcast::Sender<LogEntry>, buffer: LogBuffer) -> Self {
+        Self { tx, buffer }
+    }
+}
+
+impl<S> tracing_subscriber::Layer<S> for BroadcastLayer
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+        let metadata = event.metadata();
+
+        let mut visitor = FieldVisitor::default();
+        event.record(&mut visitor);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        let entry = LogEntry {
+            timestamp_ms: now,
+            level: metadata.level().to_string(),
+            target: metadata.target().to_string(),
+            message: visitor.message,
+            fields: serde_json::Value::Object(visitor.fields),
+        };
+
+        self.buffer.push(entry.clone());
+        let _ = self.tx.send(entry);
+    }
+}
+
+#[derive(Default)]
+struct FieldVisitor {
+    message: String,
+    fields: serde_json::Map<String, serde_json::Value>,
+}
+
+impl Visit for FieldVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = format!("{:?}", value);
+        } else {
+            self.fields.insert(
+                field.name().to_string(),
+                serde_json::Value::String(format!("{:?}", value)),
+            );
+        }
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "message" {
+            self.message = value.to_string();
+        } else {
+            self.fields.insert(
+                field.name().to_string(),
+                serde_json::Value::String(value.to_string()),
+            );
+        }
+    }
+
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.fields.insert(
+            field.name().to_string(),
+            serde_json::Value::Number(value.into()),
+        );
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.fields.insert(
+            field.name().to_string(),
+            serde_json::Value::Number(value.into()),
+        );
+    }
+
+    fn record_bool(&mut self, field: &Field, value: bool) {
+        self.fields
+            .insert(field.name().to_string(), serde_json::Value::Bool(value));
+    }
+}
+
+// ── WebSocket log stream handler ──
+
+async fn log_ws_handler(
+    ws: WebSocketUpgrade,
+    Extension(log_tx): Extension<broadcast::Sender<LogEntry>>,
+    Extension(log_buffer): Extension<LogBuffer>,
+) -> Response {
+    let log_rx = log_tx.subscribe();
+    ws.on_upgrade(move |socket| handle_log_socket(socket, log_rx, log_buffer))
+}
+
+async fn handle_log_socket(
+    mut socket: WebSocket,
+    mut log_rx: broadcast::Receiver<LogEntry>,
+    log_buffer: LogBuffer,
+) {
+    // Replay buffered history.
+    for entry in log_buffer.snapshot() {
+        let json = match serde_json::to_string(&entry) {
+            Ok(j) => j,
+            Err(_) => continue,
+        };
+        if socket.send(Message::Text(json.into())).await.is_err() {
+            return;
+        }
+    }
+
+    // Stream live entries.
+    loop {
+        tokio::select! {
+            result = log_rx.recv() => {
+                match result {
+                    Ok(entry) => {
+                        let json = match serde_json::to_string(&entry) {
+                            Ok(j) => j,
+                            Err(_) => continue,
+                        };
+                        if socket.send(Message::Text(json.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        let msg = serde_json::json!({
+                            "type": "lagged",
+                            "skipped": n,
+                        });
+                        let _ = socket.send(Message::Text(msg.to_string().into())).await;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break;
+                    }
+                }
+            }
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+// ── Supervisor state and handlers ──
 
 #[derive(Serialize)]
 struct StatusResponse {
@@ -44,9 +246,8 @@ impl SupervisorState {
 async fn spawn_server(state: &SupervisorState) -> Result<(), String> {
     let mut guard = state.child.lock().await;
     if let Some(ref mut child) = *guard {
-        // Check if still alive
         match child.try_wait() {
-            Ok(Some(_)) => {} // exited, we can respawn
+            Ok(Some(_)) => {}
             Ok(None) => return Err("Server is already running".into()),
             Err(e) => return Err(format!("Failed to check child status: {e}")),
         }
@@ -74,7 +275,6 @@ async fn kill_server(state: &SupervisorState) -> Result<(), String> {
                 return Ok(());
             }
             Ok(None) => {
-                // Still running — kill it
                 child.kill().await.map_err(|e| format!("Failed to kill server: {e}"))?;
                 let exit = child
                     .wait()
@@ -88,7 +288,7 @@ async fn kill_server(state: &SupervisorState) -> Result<(), String> {
             Err(e) => Err(format!("Failed to check child status: {e}")),
         }
     } else {
-        Ok(()) // not running
+        Ok(())
     }
 }
 
@@ -98,12 +298,8 @@ async fn is_running(state: &SupervisorState) -> bool {
     if let Some(ref mut child) = *guard {
         match child.try_wait() {
             Ok(Some(exit)) => {
-                // Process exited — clean up
                 let code = exit.code();
-                // Drop lock before acquiring another to avoid deadlock,
-                // but we need to store the code. Use a local var.
                 *guard = None;
-                // Store exit code outside the child lock
                 drop(guard);
                 *state.last_exit_code.lock().await = code;
                 false
@@ -282,11 +478,25 @@ async fn post_rebuild(State(state): State<Arc<SupervisorState>>) -> Json<ActionR
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,tower_http=debug".into()),
-        )
+    // Set up broadcast channel and ring buffer for log streaming.
+    let (log_tx, _) = broadcast::channel::<LogEntry>(2048);
+    let log_buffer = LogBuffer::new();
+
+    // Build tracing subscriber with broadcast layer.
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info,tower_http=debug".into());
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+
+    let broadcast = BroadcastLayer::new(log_tx.clone(), log_buffer.clone());
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer)
+        .with(broadcast)
         .init();
 
     let port: u16 = std::env::var("SUPERVISOR_PORT")
@@ -326,6 +536,9 @@ async fn main() {
         .route("/supervisor/start", post(post_start))
         .route("/supervisor/stop", post(post_stop))
         .route("/supervisor/rebuild", post(post_rebuild))
+        .route("/supervisor/ws/logs", get(log_ws_handler))
+        .layer(Extension(log_tx))
+        .layer(Extension(log_buffer))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state);
