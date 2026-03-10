@@ -12,8 +12,10 @@ _psql() {
     PGPASSWORD="$DB_USER" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$@"
 }
 
-_psql_postgres() {
-    PGPASSWORD="$DB_USER" psql -h "$DB_HOST" -p "$DB_PORT" -U postgres "$@"
+# Admin connection — w-testing is the superuser in our Docker setup
+# (POSTGRES_USER=w-testing in docker-compose.yml)
+_psql_admin() {
+    PGPASSWORD="$DB_USER" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$@"
 }
 
 db_init() {
@@ -31,7 +33,7 @@ db_init() {
     log_status "Waiting for PostgreSQL to accept queries..."
     local ready=false
     for i in $(seq 1 15); do
-        if _psql_postgres -tAc "SELECT 1" &>/dev/null; then
+        if _psql_admin -tAc "SELECT 1" &>/dev/null; then
             ready=true
             break
         fi
@@ -44,8 +46,8 @@ db_init() {
     # Force mode: drop and recreate
     if [[ "$force" == "true" ]]; then
         log_warn "Force mode: dropping and recreating database '$DB_NAME'..."
-        _psql_postgres -c "DROP DATABASE IF EXISTS $DB_NAME" 2>/dev/null || true
-        _psql_postgres -c "CREATE DATABASE $DB_NAME OWNER \"$DB_USER\"" || die "Failed to recreate database."
+        _psql_admin -c "DROP DATABASE IF EXISTS $DB_NAME" 2>/dev/null || true
+        _psql_admin -c "CREATE DATABASE $DB_NAME OWNER \"$DB_USER\"" || die "Failed to recreate database."
         log_ok "Database '$DB_NAME' recreated."
     fi
 
@@ -64,13 +66,17 @@ db_init() {
     fi
 
     log_status "Loading database.sql..."
+    # Disable errexit so PIPESTATUS is reachable after the pipeline
+    set +e
     _psql -d "$DB_NAME" -v ON_ERROR_STOP=1 -f "$db_sql" 2>&1 | while IFS= read -r line; do
         if [[ "$line" == *ERROR* ]] || [[ "$line" == *FATAL* ]]; then
             log_err "  $line"
         fi
     done
+    local psql_exit=${PIPESTATUS[0]}
+    set -e
 
-    if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+    if [[ $psql_exit -ne 0 ]]; then
         die "database.sql failed. Aborting."
     fi
     log_ok "database.sql loaded."

@@ -13,10 +13,6 @@ add_executable(CellApp
     ../../cellapp/entity/navigation.cpp
 )
 
-target_include_directories(CellApp PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-)
-
 target_precompile_headers(CellApp REUSE_FROM unified_kernel)
 
 target_link_libraries(CellApp PRIVATE
