@@ -166,6 +166,9 @@ crates/launcher/gen/schemas/windows-schema.json
 frontend/node_modules/*
 docs/~$content-engine-data-template.xlsx
 sgw-launcher.exe
+sgw-launcher.exe
 
 docs/design/*
 .mcp.json
+
+.claude/worktrees/
