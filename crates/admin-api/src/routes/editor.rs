@@ -133,11 +133,9 @@ pub struct SaveCounterInput {
 /// Build editor routes.
 pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
-        .route("/content/{scope_id}", get(load_content))
-        .route("/content/{scope_id}/{mission_id}", get(load_content_with_mission))
+        .route("/content/{id}", get(load_content).delete(delete_content))
+        .route("/content/{scope_id}/{mission_id}", get(load_content_with_mission).delete(delete_content_with_mission))
         .route("/content", post(save_content))
-        .route("/content/{chain_id}", delete(delete_content))
-        .route("/content/{scope_id}/{mission_id}", delete(delete_content_with_mission))
         .route("/draft/{scope_id}", get(load_draft))
         .route("/draft/{scope_id}/{mission_id}", get(load_draft_with_mission))
         .route("/draft", post(save_draft))
@@ -275,14 +273,14 @@ fn parse_scope(scope_id: &str) -> (&str, Option<i32>) {
 /// Load all chains for a given scope.
 #[utoipa::path(
     get,
-    path = "/api/editor/content/{scope_id}",
-    params(("scope_id" = String, Path, description = "Scope identifier (e.g. space:1)")),
+    path = "/api/editor/content/{id}",
+    params(("id" = String, Path, description = "Scope identifier (e.g. space:1)")),
     responses((status = 200, description = "Chain list", body = serde_json::Value)),
     tag = "Editor"
 )]
 pub async fn load_content(
     State(orchestrator): State<Arc<Orchestrator>>,
-    Path(scope_id): Path<String>,
+    Path(id): Path<String>,
 ) -> Json<serde_json::Value> {
     let pool = {
         let state = orchestrator.state();
@@ -294,9 +292,9 @@ pub async fn load_content(
         return Json(serde_json::json!({ "error": "Database unavailable" }));
     };
 
-    let (scope_type, id) = parse_scope(&scope_id);
+    let (scope_type, scope_id) = parse_scope(&id);
 
-    match fetch_chains(&pool, scope_type, id).await {
+    match fetch_chains(&pool, scope_type, scope_id).await {
         Ok(chains) => Json(serde_json::json!({ "status": "ok", "chains": chains })),
         Err(e) => Json(serde_json::json!({ "error": e })),
     }
@@ -469,14 +467,14 @@ pub async fn save_content(
 /// Delete a single chain by ID.
 #[utoipa::path(
     delete,
-    path = "/api/editor/content/{chain_id}",
-    params(("chain_id" = i32, Path, description = "Chain ID to delete")),
+    path = "/api/editor/content/{id}",
+    params(("id" = i32, Path, description = "Chain ID to delete")),
     responses((status = 200, description = "Deletion result", body = serde_json::Value)),
     tag = "Editor"
 )]
 pub async fn delete_content(
     State(orchestrator): State<Arc<Orchestrator>>,
-    Path(chain_id): Path<i32>,
+    Path(id): Path<i32>,
 ) -> Json<serde_json::Value> {
     let pool = {
         let state = orchestrator.state();
@@ -490,12 +488,12 @@ pub async fn delete_content(
 
     for table in &["content_counters", "content_actions", "content_conditions", "content_triggers", "content_chains"] {
         let q = format!("DELETE FROM {table} WHERE chain_id = $1");
-        if let Err(e) = sqlx::query(&q).bind(chain_id).execute(&pool).await {
+        if let Err(e) = sqlx::query(&q).bind(id).execute(&pool).await {
             return Json(serde_json::json!({ "error": format!("Delete from {table} failed: {e}") }));
         }
     }
 
-    Json(serde_json::json!({ "status": "ok", "deleted": chain_id }))
+    Json(serde_json::json!({ "status": "ok", "deleted": id }))
 }
 
 /// Delete chains filtered by scope and mission.
