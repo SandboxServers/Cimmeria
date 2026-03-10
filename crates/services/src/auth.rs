@@ -521,14 +521,31 @@ fn extract_sid(headers: &HeaderMap) -> Option<String> {
         .map(|s| s["SID=".len()..].to_string())
 }
 
+/// Wrap an XML body in a SOAP 1.1 envelope.
+///
+/// The SGW client uses gSOAP for deserialization and expects responses wrapped
+/// in `<SOAP-ENV:Envelope><SOAP-ENV:Body>...</SOAP-ENV:Body></SOAP-ENV:Envelope>`.
+/// The original CME login server was a Java JAX-WS service that produced this
+/// wrapping automatically.
+fn soap_wrap(body: &str) -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+         <SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\">\
+         <SOAP-ENV:Body>\
+         {body}\
+         </SOAP-ENV:Body>\
+         </SOAP-ENV:Envelope>"
+    )
+}
+
 fn login_error(code: u32, msg: &str) -> Response {
-    let xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
-         <ns2:SGWLoginResponse {ns}>\
+    let inner = format!(
+        "<ns2:SGWLoginResponse {ns}>\
          <SGWLoginError ns3:ErrorStr=\"{msg}\" ns3:ErrorNum=\"{code}\" />\
          </ns2:SGWLoginResponse>",
         ns = LOGIN_NS,
     );
+    let xml = soap_wrap(&inner);
     (StatusCode::OK, [(header::CONTENT_TYPE, "text/xml".to_string())], xml).into_response()
 }
 
@@ -543,33 +560,32 @@ fn login_success_xml(account_id: u32, shards: &[ShardInfo]) -> String {
         })
         .collect();
 
-    format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
-         <ns2:SGWLoginResponse {ns}>\
+    let inner = format!(
+        "<ns2:SGWLoginResponse {ns}>\
          <SGWLoginSuccess>\
          <AccountInfo ExpireDate=\"0000-00-00T00:00:00.000Z\" AccountId=\"{account_id}\" />\
          <SGWShardListResp>{entries}</SGWShardListResp>\
          </SGWLoginSuccess>\
          </ns2:SGWLoginResponse>",
         ns = LOGIN_NS,
-    )
+    );
+    soap_wrap(&inner)
 }
 
 fn select_error(code: u32, msg: &str) -> Response {
-    let xml = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
-         <ns3:SGWServerLocationResponse {ns}>\
+    let inner = format!(
+        "<ns3:SGWServerLocationResponse {ns}>\
          <ServerSelectionError ns1:ErrorStr=\"{msg}\" ns1:ErrorNum=\"{code}\" />\
          </ns3:SGWServerLocationResponse>",
         ns = SELECT_NS,
     );
+    let xml = soap_wrap(&inner);
     (StatusCode::OK, [(header::CONTENT_TYPE, "text/xml".to_string())], xml).into_response()
 }
 
 fn server_location_xml(shard: &ShardInfo, session_key: &str, ticket: &str) -> String {
-    format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
-         <ns3:SGWServerLocationResponse {ns}>\
+    let inner = format!(
+        "<ns3:SGWServerLocationResponse {ns}>\
          <ServerLocation SessionKey=\"{session_key}\" Port=\"{port}\" IP=\"{ip}\" BWMailBox=\"1\">\
          <TICKET Ticket=\"{ticket}\" />\
          </ServerLocation>\
@@ -577,7 +593,8 @@ fn server_location_xml(shard: &ShardInfo, session_key: &str, ticket: &str) -> St
         ns = SELECT_NS,
         port = shard.port,
         ip = shard.host,
-    )
+    );
+    soap_wrap(&inner)
 }
 
 // ── DB credential validation ──────────────────────────────────────────────────
@@ -695,6 +712,8 @@ mod tests {
         let xml = login_success_xml(42, &shards);
         assert!(xml.contains(r#"AccountId="42""#));
         assert!(xml.contains(r#"ServerName="Shard""#));
+        assert!(xml.contains("SOAP-ENV:Envelope"));
+        assert!(xml.contains("SOAP-ENV:Body"));
     }
 
     #[test]
