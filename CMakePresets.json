@@ -22,7 +22,7 @@
             "inherits": "default",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "OPENSSL_ROOT_DIR": "/opt/homebrew/opt/openssl@3"
+                "OPENSSL_ROOT_DIR": "$penv{HOMEBREW_PREFIX}/opt/openssl@3"
             },
             "condition": {
                 "type": "equals",
@@ -36,7 +36,7 @@
             "inherits": "default",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "OPENSSL_ROOT_DIR": "/opt/homebrew/opt/openssl@3"
+                "OPENSSL_ROOT_DIR": "$penv{HOMEBREW_PREFIX}/opt/openssl@3"
             },
             "condition": {
                 "type": "equals",

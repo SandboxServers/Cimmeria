@@ -15,6 +15,7 @@ install_deps_macos() {
     local packages=(
         cmake
         boost
+        boost-python3
         openssl@3
         python@3.12
         postgresql@17

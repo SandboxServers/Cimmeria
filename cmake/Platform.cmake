@@ -22,10 +22,9 @@ endif()
 
 # --- Find packages ---
 
-# Boost
-set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost REQUIRED COMPONENTS
-    system
+# Boost (CONFIG mode — FindBoost was removed in CMake 4.x)
+# Note: system is header-only since Boost 1.69, so not listed as a component.
+find_package(Boost CONFIG REQUIRED COMPONENTS
     thread
     filesystem
     date_time

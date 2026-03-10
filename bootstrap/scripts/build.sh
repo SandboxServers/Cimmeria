@@ -23,6 +23,12 @@ cmake_configure() {
         if [[ "$OS" == "macos" ]]; then
             cmake_args+=(-DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3 2>/dev/null || echo '/opt/homebrew/opt/openssl@3')")
             cmake_args+=(-DPython3_ROOT_DIR="$(brew --prefix python@3.12 2>/dev/null || echo '/opt/homebrew/opt/python@3.12')")
+            # libpq (PostgreSQL client library) is keg-only in Homebrew
+            local pg_prefix
+            pg_prefix="$(brew --prefix libpq 2>/dev/null)" || true
+            if [[ -n "$pg_prefix" && -d "$pg_prefix/lib" ]]; then
+                cmake_args+=(-DPostgreSQL_ROOT="$pg_prefix")
+            fi
         fi
     fi
 

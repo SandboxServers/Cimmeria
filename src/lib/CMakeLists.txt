@@ -55,7 +55,6 @@ target_precompile_headers(unified_kernel PRIVATE
 
 # Link dependencies
 target_link_libraries(unified_kernel PUBLIC
-    Boost::system
     Boost::thread
     Boost::filesystem
     Boost::date_time

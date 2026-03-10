@@ -21,18 +21,23 @@ include(FetchContent)
 FetchContent_Declare(
     soci
     GIT_REPOSITORY https://github.com/SOCI/soci.git
-    GIT_TAG        v4.1.0
+    GIT_TAG        v4.1.2
 )
 set(SOCI_SHARED OFF CACHE BOOL "" FORCE)
 set(SOCI_STATIC ON CACHE BOOL "" FORCE)
 set(SOCI_TESTS OFF CACHE BOOL "" FORCE)
 set(SOCI_CXX11 ON CACHE BOOL "" FORCE)
+# Backend selection (using new SOCI_* names for SOCI 4.1.2+)
+set(SOCI_POSTGRESQL ON CACHE BOOL "" FORCE)
+set(SOCI_SQLITE3 OFF CACHE BOOL "" FORCE)
+set(SOCI_MYSQL OFF CACHE BOOL "" FORCE)
+set(SOCI_ODBC OFF CACHE BOOL "" FORCE)
+# Also set legacy names for backward compatibility
 set(WITH_POSTGRESQL ON CACHE BOOL "" FORCE)
 set(WITH_SQLITE3 OFF CACHE BOOL "" FORCE)
 set(WITH_MYSQL OFF CACHE BOOL "" FORCE)
 set(WITH_ODBC OFF CACHE BOOL "" FORCE)
 set(WITH_BOOST OFF CACHE BOOL "" FORCE)
-set(SOCI_POSTGRESQL_INCLUDE_DIR ${PostgreSQL_INCLUDE_DIRS} CACHE STRING "" FORCE)
 FetchContent_MakeAvailable(soci)
 
 # Recast/Detour (vendored in external/)
