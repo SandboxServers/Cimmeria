@@ -49,7 +49,7 @@ class Packet : public Mercury::MemoryStream
 		 */
 		const static uint32_t MAX_BODY_LENGTH = MAX_LENGTH - sizeof(SequenceId) * 3 - sizeof(Flags);
 	
-		typedef boost::shared_ptr<Packet> Ptr;
+		typedef std::shared_ptr<Packet> Ptr;
 
 		enum
 		{
@@ -125,7 +125,7 @@ class Packet : public Mercury::MemoryStream
 class ReceivedPacket : public Packet
 {
 	public:
-		typedef boost::shared_ptr<ReceivedPacket> Ptr;
+		typedef std::shared_ptr<ReceivedPacket> Ptr;
 
 		ReceivedPacket();
 		

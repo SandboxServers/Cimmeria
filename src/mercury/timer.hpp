@@ -8,7 +8,7 @@ template <typename _TIME>
 class TimerMgr
 {
 public:
-	typedef boost::function<void (TimerMgr &, _TIME, _TIME, void *)> TimerHandler;
+	typedef std::function<void (TimerMgr &, _TIME, _TIME, void *)> TimerHandler;
 	typedef uint32_t TimerId;
 
 	TimerMgr()

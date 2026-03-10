@@ -3,6 +3,8 @@
 #include <cstdio>
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 
 // Logging category name for entity events
@@ -26,7 +28,7 @@ LogMessageQueue::LogMessageQueue(unsigned int size, bool allowDroppingMessages)
 
 void LogMessageQueue::push(LogMessage const & entry)
 {
-	boost::mutex::scoped_lock lock(mutex_);
+	std::unique_lock<std::mutex> lock(mutex_);
 	if (buffer_.full())
 	{
 		if (allowDroppingMessages_)
@@ -36,41 +38,48 @@ void LogMessageQueue::push(LogMessage const & entry)
 		}
 		else
 		{
-			while (buffer_.full())
-			{
-				fullCond_.wait(lock);
-			}
+			fullCond_.wait(lock, [this]{ return !buffer_.full() || stopped_; });
+			if (stopped_) return;
 		}
 	}
 
 	SGW_ASSERT(!buffer_.full());
-	bool empty = buffer_.empty();
+	bool wasEmpty = buffer_.empty();
 	buffer_.push_back(entry);
 	lock.unlock();
-	if (empty)
+	if (wasEmpty)
 		emptyCond_.notify_one();
 }
 
-void LogMessageQueue::pop(LogMessage & entry)
+bool LogMessageQueue::pop(LogMessage & entry)
 {
-	boost::mutex::scoped_lock lock(mutex_);
-	while (buffer_.empty())
-	{
-		emptyCond_.wait(lock);
-	}
-	
-	bool full = buffer_.full();
+	std::unique_lock<std::mutex> lock(mutex_);
+	emptyCond_.wait(lock, [this]{ return !buffer_.empty() || stopped_; });
+
+	if (stopped_ && buffer_.empty())
+		return false;
+
+	bool wasFull = buffer_.full();
 	entry = buffer_.front();
 	buffer_.pop_front();
 	lock.unlock();
-	if (full && !allowDroppingMessages_)
+	if (wasFull && !allowDroppingMessages_)
 		fullCond_.notify_one();
+	return true;
 }
 
 bool LogMessageQueue::empty()
 {
-	boost::mutex::scoped_lock lock(mutex_);
+	std::lock_guard<std::mutex> lock(mutex_);
 	return buffer_.empty();
+}
+
+void LogMessageQueue::stop()
+{
+	std::lock_guard<std::mutex> lock(mutex_);
+	stopped_ = true;
+	emptyCond_.notify_all();
+	fullCond_.notify_all();
 }
 
 
@@ -104,13 +113,13 @@ void Logger::abort()
 	uint32_t * dummy = 0;
 	*dummy = 0;
 #else
-	abort();
+	::abort();
 #endif
 }
 
 Logger::Logger(unsigned int queueSize, bool allowDroppingMessages)
 	: queue_(queueSize, allowDroppingMessages), level_(LogMessage::LL_TRACE),
-	thread_(boost::bind(&Logger::processMessages, this))
+	thread_(&Logger::processMessages, this)
 {
 }
 
@@ -121,8 +130,8 @@ Logger::~Logger()
 	entry.category = "        ";
 	entry.message = "Shutting down logger";
 	queue_.push(entry);
-	
-	thread_.interrupt();
+
+	queue_.stop();
 	thread_.join();
 }
 
@@ -200,19 +209,9 @@ void Logger::outputMessage(LogMessage::Level level, std::string const & category
 
 void Logger::processMessages()
 {
-	try
+	LogMessage message;
+	while (queue_.pop(message))
 	{
-		LogMessage message;
-		for (;;)
-		{
-			queue_.pop(message);
-			outputMessage(message.level, message.category, message.message);
-		}
-	}
-	catch (boost::thread_interrupted &)
-	{
+		outputMessage(message.level, message.category, message.message);
 	}
 }
-
-
-

@@ -34,7 +34,7 @@ private:
 	uint32_t spaceId_;
 };
 
-class CellEntity : public Entity, public boost::enable_shared_from_this<CellEntity>
+class CellEntity : public Entity, public std::enable_shared_from_this<CellEntity>
 {
 public:
 	// How many ticks should the client wait until its first avatar
@@ -43,7 +43,7 @@ public:
 
 	static const int InvalidDatabaseId = -1;
 
-	typedef boost::shared_ptr<CellEntity> Ptr;
+	typedef std::shared_ptr<CellEntity> Ptr;
 
 	// Flags that specify the way our position changed since the last update
 	enum MovementUpdateFlag

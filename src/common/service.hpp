@@ -5,7 +5,7 @@
 #include <common/database.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include <boost/random.hpp>
-#include <soci.h>
+#include <soci/soci.h>
 
 class MessageWriter;
 

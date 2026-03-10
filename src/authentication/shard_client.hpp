@@ -53,7 +53,7 @@ class ShardClient : public Mercury::UnifiedConnection
 
 		// Sleep time after an operation failed (name lookup/connection/registration failed)
 		const static uint32_t ConnectionRecoveryTimeout = 30000;
-		typedef boost::shared_ptr<ShardClient> Ptr;
+		typedef std::shared_ptr<ShardClient> Ptr;
 
 		ShardClient();
 		~ShardClient();

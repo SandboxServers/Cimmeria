@@ -46,8 +46,8 @@ class LogonQueue
 			FailureMax = VersionMismatch
 		};
 
-		typedef boost::function<void (uint32_t /*accountId*/, std::string const &, uint32_t /*accessLevel*/)> SuccessCallback;
-		typedef boost::function<void (FailureCode /*errorMsg*/)> FailureCallback;
+		typedef std::function<void (uint32_t /*accountId*/, std::string const &, uint32_t /*accessLevel*/)> SuccessCallback;
+		typedef std::function<void (FailureCode /*errorMsg*/)> FailureCallback;
 
 		struct Request
 		{
@@ -64,7 +64,7 @@ class LogonQueue
 	private:
 		struct QueueItem
 		{
-			typedef boost::shared_ptr<QueueItem> Ptr;
+			typedef std::shared_ptr<QueueItem> Ptr;
 
 			Request request;
 			std::string dbPassword;

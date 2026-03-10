@@ -13,7 +13,7 @@
 class Entity
 {
 public:
-	typedef boost::shared_ptr<Entity> Ptr;
+	typedef std::shared_ptr<Entity> Ptr;
 
 	Entity();
 	~Entity();

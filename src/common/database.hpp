@@ -1,6 +1,6 @@
 #pragma once
 
-#include <soci.h>
+#include <soci/soci.h>
 
 enum DbErrorType
 {
@@ -8,9 +8,9 @@ enum DbErrorType
 	DATABASE_QUERY_FAILED = 2
 };
 
-typedef boost::function<void (soci::session & session)> DbExecFunction;
-typedef boost::function<void ()> DbRowFunction;
-typedef boost::function<void (DbErrorType type)> DbErrorFunction;
+typedef std::function<void (soci::session & session)> DbExecFunction;
+typedef std::function<void ()> DbRowFunction;
+typedef std::function<void (DbErrorType type)> DbErrorFunction;
 
 struct DbRequest
 {
@@ -42,7 +42,7 @@ class Database
 		boost::thread thread_;
 		soci::session * session_;
 		std::queue<DbRequest> queue_;
-		boost::mutex queueLock_;
+		std::mutex queueLock_;
 		
 		void performRequest();
 

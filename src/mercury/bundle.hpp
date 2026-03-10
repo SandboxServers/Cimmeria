@@ -20,7 +20,7 @@ public:
 	};
 
 	// All pointers to this type should be intrusive references
-	typedef boost::shared_ptr<Bundle> Ptr;
+	typedef std::shared_ptr<Bundle> Ptr;
 
 	Bundle(Message::Table const & table, bool reliable);
 	~Bundle();

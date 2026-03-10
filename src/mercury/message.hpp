@@ -43,7 +43,7 @@ class Message : public MemoryStream
 			Format const entityMessage;
 		};
 
-		typedef boost::shared_ptr<Message> Ptr;
+		typedef std::shared_ptr<Message> Ptr;
 		static const uint32_t MAX_HEADER_SIZE = 5;
 		
 		Message(uint32_t buf_size);

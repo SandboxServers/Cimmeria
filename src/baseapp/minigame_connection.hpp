@@ -3,10 +3,10 @@
 #include <baseapp/minigame.hpp>
 #include <mercury/tcp_server.hpp>
 
-class MinigameConnection : public boost::enable_shared_from_this<MinigameConnection>
+class MinigameConnection : public std::enable_shared_from_this<MinigameConnection>
 {
 	public:
-		typedef boost::shared_ptr<MinigameConnection> Ptr;
+		typedef std::shared_ptr<MinigameConnection> Ptr;
 
 		static MinigameConnection * Create(Mercury::TcpServer<MinigameConnection> & server, uint32_t connectionId);
 
@@ -67,7 +67,7 @@ class MinigameConnection : public boost::enable_shared_from_this<MinigameConnect
 		size_t messageReceived_;
 
 		// Mutex guarding the send queue
-		boost::mutex lock_;
+		std::mutex lock_;
 		// Messages that need to be sent
 		std::queue<std::string> sendQueue_;
 

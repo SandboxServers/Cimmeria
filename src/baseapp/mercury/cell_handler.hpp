@@ -10,7 +10,7 @@ namespace Mercury
 class CellAppConnection : public Mercury::UnifiedConnection
 {
 	public:
-		typedef boost::shared_ptr<CellAppConnection> Ptr;
+		typedef std::shared_ptr<CellAppConnection> Ptr;
 
 		static CellAppConnection * Create(Mercury::TcpServer<CellAppConnection> & server, uint32_t connectionId);
 

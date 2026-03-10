@@ -10,7 +10,7 @@ template <typename _T>
 class TcpServer
 {
 	public:
-		typedef boost::function<_T * (TcpServer<_T> & server, uint32_t connection_id)> ConnectionFactoryType;
+		typedef std::function<_T * (TcpServer<_T> & server, uint32_t connection_id)> ConnectionFactoryType;
 
 		TcpServer(uint16_t port, ConnectionFactoryType factory)
 			: service_(Service::instance().ioService()),

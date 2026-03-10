@@ -495,10 +495,10 @@ protected:
 	_Container & buffer_;
 };
 
-class UnifiedConnection : public boost::enable_shared_from_this<UnifiedConnection>
+class UnifiedConnection : public std::enable_shared_from_this<UnifiedConnection>
 {
 	public:
-		typedef boost::shared_ptr<UnifiedConnection> Ptr;
+		typedef std::shared_ptr<UnifiedConnection> Ptr;
 		typedef CircularBuffer<uint8_t> Buffer;
 		typedef uint8_t MessageId;
 

@@ -31,7 +31,7 @@ enum py_exec_response
 class py_client : public Mercury::UnifiedConnection
 {
 	public:
-		typedef boost::shared_ptr<py_client> Ptr;
+		typedef std::shared_ptr<py_client> Ptr;
 
 		static py_client * create(Mercury::TcpServer<py_client> & server, uint32_t connection_id);
 

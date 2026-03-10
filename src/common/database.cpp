@@ -1,7 +1,7 @@
 #include <stdafx.hpp>
 #include <common/service.hpp>
 #include <common/database.hpp>
-#include <soci-postgresql.h>
+#include <soci/postgresql/soci-postgresql.h>
 
 Database::Database()
 	: work_(service_), thread_(boost::bind(&boost::asio::io_service::run, &service_)),

@@ -20,7 +20,7 @@ enum MinigameCompletionStatus
 class MinigameRequestManager
 {
 public:
-	typedef boost::function<void (class Minigame *, MinigameCompletionStatus)> CompletionHandler;
+	typedef std::function<void (class Minigame *, MinigameCompletionStatus)> CompletionHandler;
 
 	struct QueueEntry
 	{
@@ -46,7 +46,7 @@ public:
 
 private:
 	std::map<uint32_t, QueueEntry> queue_;
-	boost::recursive_mutex lock_;
+	std::recursive_mutex lock_;
 };
 
 class MinigameMessageHandler
@@ -59,7 +59,7 @@ public:
 class Minigame : public MinigameMessageHandler
 {
 	public:
-		typedef boost::shared_ptr<Minigame> Ptr;
+		typedef std::shared_ptr<Minigame> Ptr;
 
 		enum AbortReason
 		{
@@ -90,7 +90,7 @@ class Minigame : public MinigameMessageHandler
 class PythonMinigame : public Minigame
 {
 public:
-	typedef boost::shared_ptr<PythonMinigame> Ptr;
+	typedef std::shared_ptr<PythonMinigame> Ptr;
 
 	static void registerClass();
 

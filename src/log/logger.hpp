@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdarg.h>
+#include <atomic>
+#include <thread>
 #include <boost/circular_buffer.hpp>
 
 #define ENABLE_RELEASE_ASSERTS
@@ -85,18 +87,21 @@ public:
 	LogMessageQueue(unsigned int size, bool allowDroppingMessages);
 
 	void push(LogMessage const & entry);
-	void pop(LogMessage & entry);
+	// Returns false if the queue was stopped (shutdown signal).
+	bool pop(LogMessage & entry);
 	bool empty();
+	void stop();
 
 private:
 	LogMessageQueue(LogMessageQueue const &);
 
-	boost::mutex mutex_;
-	boost::condition_variable emptyCond_;
-	boost::condition_variable fullCond_;
+	std::mutex mutex_;
+	std::condition_variable emptyCond_;
+	std::condition_variable fullCond_;
 	boost::circular_buffer<LogMessage> buffer_;
 	unsigned int droppedMessages_;
 	bool allowDroppingMessages_;
+	bool stopped_ = false;
 };
 
 class Logger
@@ -133,7 +138,7 @@ private:
 
 	LogMessageQueue queue_;
 	LogMessage::Level level_;
-	boost::thread thread_;
+	std::thread thread_;
 
 	static Logger * instance_;
 };

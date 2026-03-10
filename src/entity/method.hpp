@@ -15,7 +15,7 @@ public:
 
 	PyMethod const * method;
 	Mailbox::Ptr mailbox;
-	boost::function<void (MailboxRpcMethod const *, bp::object, bp::object)> handler;
+	std::function<void (MailboxRpcMethod const *, bp::object, bp::object)> handler;
 
 private:
 	static bp::object call(bp::tuple args, bp::dict kwargs);
@@ -24,7 +24,7 @@ private:
 class PyMethod
 {
 public:
-	typedef boost::function<void (MailboxRpcMethod const *, bp::object, bp::object)> Handler;
+	typedef std::function<void (MailboxRpcMethod const *, bp::object, bp::object)> Handler;
 
 	static PyMethod * fromDefinition(tinyxml2::XMLElement & element, uint16_t messageId, Service::EndpointType endpoint);
 	

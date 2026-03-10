@@ -3,7 +3,7 @@
 #include <common/vec3.hpp>
 #include <mercury/stream.hpp>
 #include <entity/pyutil.hpp>
-#include <soci.h>
+#include <soci/soci.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/python/class.hpp>
 #include <boost/python/def.hpp>
@@ -20,7 +20,7 @@ namespace tinyxml2 {
 
 struct Vector3 : public Vec3
 {
-	typedef boost::shared_ptr<Vector3> Ptr;
+	typedef std::shared_ptr<Vector3> Ptr;
 
 	inline Vector3(float _x, float _y, float _z)
 		: Vec3(_x, _y, _z)

@@ -79,7 +79,7 @@ public:
 		Deleted
 	};
 	
-	typedef boost::function<void (Space *, Event)> EventCallback;
+	typedef std::function<void (Space *, Event)> EventCallback;
 
 	static void initialize();
 	static SpaceManager & instance();

@@ -1,8 +1,8 @@
 #include <stdafx.hpp>
 #include <authentication/logon_queue.hpp>
 #include <authentication/service_main.hpp>
-#include <soci.h>
-#include <soci-postgresql.h>
+#include <soci/soci.h>
+#include <soci/postgresql/soci-postgresql.h>
 
 LogonQueue::LogonQueue()
 {

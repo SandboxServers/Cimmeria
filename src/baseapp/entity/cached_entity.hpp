@@ -8,7 +8,7 @@
 /*
  * A Cell entity with cached parts stored on the Base
  */
-class CachedEntity : public WorldGridMember<CachedEntity>, public boost::enable_shared_from_this<CachedEntity>
+class CachedEntity : public WorldGridMember<CachedEntity>, public std::enable_shared_from_this<CachedEntity>
 {
 public:
 	// Describes the version of the data a witness knows about an entity
@@ -37,7 +37,7 @@ public:
 		uint8_t serverFlags;
 	};
 
-	typedef boost::shared_ptr<CachedEntity> Ptr;
+	typedef std::shared_ptr<CachedEntity> Ptr;
 	typedef boost::weak_ptr<CachedEntity> WeakPtr;
 
 	static void staticInit();

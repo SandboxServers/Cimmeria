@@ -16,8 +16,8 @@ class FrontendConnection : public Mercury::UnifiedConnection
 			uint16_t port;
 		};
 
-		typedef boost::function<void (ShardSessionData /* session */)> LogonSuccessCallback;
-		typedef boost::function<void (LogonQueue::FailureCode /* error_code */)> LogonFailureCallback;
+		typedef std::function<void (ShardSessionData /* session */)> LogonSuccessCallback;
+		typedef std::function<void (LogonQueue::FailureCode /* error_code */)> LogonFailureCallback;
 
 		enum ConnectReplyCode
 		{
@@ -31,7 +31,7 @@ class FrontendConnection : public Mercury::UnifiedConnection
 		// Login requests to the BaseApp time out after this interval (milliseconds)
 		static const unsigned int LoginRequestTimeout = 5000;
 
-		typedef boost::shared_ptr<FrontendConnection> Ptr;
+		typedef std::shared_ptr<FrontendConnection> Ptr;
 
 		FrontendConnection(uint32_t connectionId);
 		~FrontendConnection();

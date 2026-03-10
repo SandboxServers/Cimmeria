@@ -36,10 +36,10 @@ private:
 	std::map<std::string, PyMethod *> methodsByName_;
 };
 
-class Mailbox : public boost::enable_shared_from_this<Mailbox>
+class Mailbox : public std::enable_shared_from_this<Mailbox>
 {
 public:
-	typedef boost::shared_ptr<Mailbox> Ptr;
+	typedef std::shared_ptr<Mailbox> Ptr;
 	static void registerType();
 
 	Mailbox(MailboxClass * cls, uint32_t entityId);

@@ -38,10 +38,10 @@ public:
 	virtual uint32_t addedSize() = 0;
 };
 
-class BaseChannel : public boost::enable_shared_from_this<BaseChannel>
+class BaseChannel : public std::enable_shared_from_this<BaseChannel>
 {
 	public:
-		typedef boost::shared_ptr<BaseChannel> Ptr;
+		typedef std::shared_ptr<BaseChannel> Ptr;
 
 		/*
 		 * Maximal number of sequences the receive window will hold

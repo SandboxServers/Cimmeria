@@ -8,7 +8,7 @@
 #include <boost/python/scope.hpp>
 #include <boost/asio/placeholders.hpp>
 #include <entity/pyutil.hpp>
-#include <soci-postgresql.h>
+#include <soci/postgresql/soci-postgresql.h>
 
 Service::Service()
 	: work_(service_), timer_(service_)

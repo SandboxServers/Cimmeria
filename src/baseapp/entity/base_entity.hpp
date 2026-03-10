@@ -24,10 +24,10 @@ public:
 	virtual void forcedPosition(uint32_t entityId, uint32_t spaceId, Vec3 const & position, Vec3 const & rotation, Vec3 const & velocity, uint8_t flags) = 0;
 };
 
-class BaseEntity : public Entity, public boost::enable_shared_from_this<BaseEntity>
+class BaseEntity : public Entity, public std::enable_shared_from_this<BaseEntity>
 {
 public:
-	typedef boost::shared_ptr<BaseEntity> Ptr;
+	typedef std::shared_ptr<BaseEntity> Ptr;
 	typedef boost::weak_ptr<BaseEntity> WeakPtr;
 
 	static void registerClass();

@@ -29,7 +29,7 @@ MinigameRequestManager::QueueEntry * MinigameRequestManager::queue(uint32_t enti
 		ent.key[i] = hextable[rand() % 16];
 	}
 
-	boost::lock_guard<boost::recursive_mutex> guard(lock_);
+	std::lock_guard<std::recursive_mutex> guard(lock_);
 	auto it = queue_.find(entityId);
 	if (it == queue_.end())
 	{
@@ -45,7 +45,7 @@ MinigameRequestManager::QueueEntry * MinigameRequestManager::queue(uint32_t enti
 
 MinigameRequestManager::QueueEntry * MinigameRequestManager::find(uint32_t entityId, const std::string & password)
 {
-	boost::lock_guard<boost::recursive_mutex> guard(lock_);
+	std::lock_guard<std::recursive_mutex> guard(lock_);
 	auto it = queue_.find(entityId);
 	if (it == queue_.end())
 		return nullptr;
@@ -58,7 +58,7 @@ MinigameRequestManager::QueueEntry * MinigameRequestManager::find(uint32_t entit
 
 bool MinigameRequestManager::cancel(uint32_t entityId)
 {
-	boost::lock_guard<boost::recursive_mutex> guard(lock_);
+	std::lock_guard<std::recursive_mutex> guard(lock_);
 	auto it = queue_.find(entityId);
 	if (it == queue_.end())
 		return false;
@@ -80,7 +80,7 @@ bool MinigameRequestManager::cancel(uint32_t entityId)
 
 void MinigameRequestManager::remove(uint32_t entityId)
 {
-	boost::lock_guard<boost::recursive_mutex> guard(lock_);
+	std::lock_guard<std::recursive_mutex> guard(lock_);
 	auto it = queue_.find(entityId);
 	if (it != queue_.end())
 		queue_.erase(it);

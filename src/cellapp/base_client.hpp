@@ -10,7 +10,7 @@ class BaseAppClient : public Mercury::UnifiedConnection
 	public:
 		// Sleep time after an operation failed (connection/registration failed)
 		const static uint32_t ConnectionRecoveryTimeout = 30000;
-		typedef boost::shared_ptr<BaseAppClient> Ptr;
+		typedef std::shared_ptr<BaseAppClient> Ptr;
 
 		BaseAppClient();
 		~BaseAppClient();

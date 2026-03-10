@@ -3,10 +3,10 @@
 #include <authentication/logon_queue.hpp>
 #include <authentication/frontend_connection.hpp>
 
-class LogonConnection : public boost::enable_shared_from_this<LogonConnection>
+class LogonConnection : public std::enable_shared_from_this<LogonConnection>
 {
 	public:
-		typedef boost::shared_ptr<LogonConnection> Ptr;
+		typedef std::shared_ptr<LogonConnection> Ptr;
 		// Max length of HTTP request in bytes
 		static const size_t MaxRequestLength = 0x10000;
 

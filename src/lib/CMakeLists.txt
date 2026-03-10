@@ -62,8 +62,8 @@ target_link_libraries(unified_kernel PUBLIC
     OpenSSL::Crypto
     Python3::Python
     PostgreSQL::PostgreSQL
-    soci_core_static
-    soci_postgresql_static
+    soci_core
+    soci_postgresql
 )
 
 # Platform-specific
