@@ -31,6 +31,11 @@ function Update-CimmeriaClient {
     .PARAMETER NoLaunch
         Skip launching SGW.exe after patching.
 
+    .PARAMETER Atrea
+        Launch via AtreaLoader instead of SGW.exe directly. Enables Mercury
+        protocol logging, PCAP capture, and AES session key dumping to
+        {ClientBinaries}/sessions/.
+
     .EXAMPLE
         Update-CimmeriaClient
 
@@ -39,6 +44,9 @@ function Update-CimmeriaClient {
 
     .EXAMPLE
         Update-CimmeriaClient -ServerAddress "http://play.cimmeria.gg:8081" -NoLaunch
+
+    .EXAMPLE
+        Update-CimmeriaClient -Atrea
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -46,7 +54,8 @@ function Update-CimmeriaClient {
         [string]$ServerAddress = "127.0.0.1:8081",
         [string]$ServerName = "Cimmeria",
         [switch]$Launch,
-        [switch]$NoLaunch
+        [switch]$NoLaunch,
+        [switch]$Atrea
     )
 
     Write-Step "PATCHING GAME CLIENT"
@@ -118,12 +127,20 @@ end
     Write-Status "Client configured successfully." "Green"
 
     if ($Launch -or (-not $NoLaunch)) {
-        Start-SgwClient -SgwExe $sgwExe
+        if ($Atrea) {
+            Start-SgwClientAtrea -SgwExe $sgwExe
+        } else {
+            Start-SgwClient -SgwExe $sgwExe
+        }
     } else {
         Write-Host ""
         Write-Host "Client configured. To connect:" -ForegroundColor Green
         Write-Host "  1. Start the server: pwsh setup.ps1" -ForegroundColor White
-        Write-Host "  2. Launch SGW.exe" -ForegroundColor White
+        if ($Atrea) {
+            Write-Host "  2. Launch via: pwsh patch-client.ps1 -Atrea" -ForegroundColor White
+        } else {
+            Write-Host "  2. Launch SGW.exe" -ForegroundColor White
+        }
         Write-Host "  3. Login with: test / test" -ForegroundColor White
     }
 }
@@ -235,5 +252,64 @@ function Start-SgwClient {
         Write-Host ""
     } else {
         Write-Status "WARNING: Failed to launch SGW.exe." "Yellow"
+    }
+}
+
+function Start-SgwClientAtrea {
+    <#
+    .SYNOPSIS
+        Launches SGW.exe via AtreaLoader with Mercury logging and PCAP capture.
+
+    .DESCRIPTION
+        AtreaLoader.exe injects AtreaRL.dll into the SGW process, enabling:
+        - Mercury protocol message logging
+        - Full network PCAP capture (sessions\*.pcap)
+        - AES session key extraction (sessions\*-keys.txt)
+
+        Output files are written to {binDir}\sessions\.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$SgwExe
+    )
+
+    $binDir = Split-Path $SgwExe -Parent
+    $atreaExe = Join-Path $binDir "AtreaLoader.exe"
+
+    if (-not (Test-Path $atreaExe)) {
+        Write-Host ""
+        Write-Status "ERROR: AtreaLoader.exe not found in: $binDir" "Red"
+        Write-Host ""
+        Write-Host "  The Atrea Remote Loader must be placed alongside SGW.exe." -ForegroundColor Gray
+        Write-Host "  Required files: AtreaLoader.exe, AtreaRL.dll, AtreaLoader.config" -ForegroundColor Gray
+        return
+    }
+
+    # Strip ASLR from SGW.exe if needed (idempotent -- modifies PE header once).
+    # Without this, AtreaLoader can't apply its patches and the sniffer won't work.
+    Write-Status "Ensuring ASLR is disabled on SGW.exe..." "DarkGray"
+    $fixProc = Start-Process -FilePath $atreaExe -ArgumentList "--fix-aslr" -WorkingDirectory $binDir -Wait -NoNewWindow -PassThru
+    if ($fixProc.ExitCode -ne 0) {
+        Write-Status "WARNING: --fix-aslr returned exit code $($fixProc.ExitCode)" "Yellow"
+    }
+
+    # Ensure sessions output directory exists
+    $sessionsDir = Join-Path $binDir "sessions"
+    New-Item -ItemType Directory -Path $sessionsDir -Force | Out-Null
+
+    Write-Host ""
+    Write-Step "LAUNCHING GAME CLIENT (ATREA)"
+    Write-Status "Starting via AtreaLoader with Mercury logging + PCAP capture..." "White"
+
+    $atreaArgs = "--enable-group=Mercury -SHOWLOG -LOG"
+    $proc = Start-Process -FilePath $atreaExe -ArgumentList $atreaArgs -WorkingDirectory $binDir -PassThru
+    if ($proc) {
+        Write-Status "AtreaLoader launched (PID $($proc.Id))." "Green"
+        Write-Host ""
+        Write-Host "  Login with: test / test" -ForegroundColor White
+        Write-Host "  PCAP + keys: $sessionsDir" -ForegroundColor Cyan
+        Write-Host ""
+    } else {
+        Write-Status "WARNING: Failed to launch AtreaLoader.exe." "Yellow"
     }
 }
