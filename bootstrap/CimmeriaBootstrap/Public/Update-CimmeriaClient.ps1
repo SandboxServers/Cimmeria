@@ -1,38 +1,62 @@
 function Update-CimmeriaClient {
     <#
     .SYNOPSIS
-        Patches the Stargate Worlds game client to connect to the local Cimmeria server.
+        Configures the Stargate Worlds game client to connect to the Cimmeria server.
 
     .DESCRIPTION
-        Finds the Stargate Worlds client installation and patches Login.lua to point
-        at the local AuthenticationServer (http://localhost:8081/SGWLogin/UserAuth).
+        Finds the Stargate Worlds client installation and drops a LoginInternal.lua
+        file that overrides the login server list. This is the mechanism the client
+        was designed for -- LoginInternal.lua defines LoginMod.loadServerSystems()
+        which populates the server dropdown on the login screen.
 
-        The original file is backed up as Login.lua.bak before patching.
+        If LoginInternal.lua is not present, the client falls back to Login.lua's
+        built-in server list (the original CME live servers, which no longer exist).
+
+        The file is placed at:
+          {ClientPath}/Working/SGWGame/Content/UI/Startup/Login/LoginInternal.lua
 
     .PARAMETER ClientPath
-        Path to the SGW client install directory. If not specified, searches common
-        install locations automatically.
+        Path to the SGW client root directory (e.g. "Stargate Worlds-QA").
+        If not specified, searches common install locations automatically.
 
-    .PARAMETER ServerUrl
-        Server URL to patch into Login.lua. Default: http://localhost:8081
+    .PARAMETER ServerAddress
+        Full URL of the login server. Default: 127.0.0.1:8081
+
+    .PARAMETER ServerName
+        Display name for the server in the login dropdown. Default: Cimmeria
+
+    .PARAMETER Launch
+        Launch SGW.exe after patching.
+
+    .PARAMETER NoLaunch
+        Skip launching SGW.exe after patching.
 
     .EXAMPLE
         Update-CimmeriaClient
 
     .EXAMPLE
-        Update-CimmeriaClient -ClientPath "D:\Games\Stargate Worlds-QA"
+        Update-CimmeriaClient -ClientPath "F:\Stargate Worlds-QA"
+
+    .EXAMPLE
+        Update-CimmeriaClient -ServerAddress "http://play.cimmeria.gg:8081" -NoLaunch
     #>
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [string]$ClientPath,
-        [string]$ServerUrl = "http://localhost:8081"
+        [string]$ServerAddress = "127.0.0.1:8081",
+        [string]$ServerName = "Cimmeria",
+        [switch]$Launch,
+        [switch]$NoLaunch
     )
 
     Write-Step "PATCHING GAME CLIENT"
 
     # Find client installation
     if (-not $ClientPath) {
+        # Search common install locations and sibling directories
+        $scriptDrive = (Split-Path $PSScriptRoot -Qualifier)
         $searchPaths = @(
+            "${scriptDrive}\Stargate Worlds-QA",
             "${env:ProgramFiles(x86)}\FireSky\Stargate Worlds-QA",
             "${env:ProgramFiles}\FireSky\Stargate Worlds-QA",
             "${env:ProgramFiles(x86)}\Cheyenne Mountain Entertainment\Stargate Worlds",
@@ -40,7 +64,7 @@ function Update-CimmeriaClient {
         )
 
         foreach ($search in $searchPaths) {
-            if (Test-Path $search) {
+            if (Find-SgwExe $search) {
                 $ClientPath = $search
                 Write-Status "Found client: $ClientPath" "Green"
                 break
@@ -52,68 +76,164 @@ function Update-CimmeriaClient {
             Write-Host "Stargate Worlds client not found in common locations." -ForegroundColor Yellow
             Write-Host ""
             Write-Host "Please specify the path manually:" -ForegroundColor White
-            Write-Host "  Update-CimmeriaClient -ClientPath 'C:\Path\To\Stargate Worlds-QA'" -ForegroundColor Gray
+            Write-Host "  pwsh patch-client.ps1 -ClientPath 'F:\Stargate Worlds-QA'" -ForegroundColor Gray
             Write-Host ""
-            Write-Host "The client directory should contain:" -ForegroundColor Gray
-            Write-Host "  Working\SGWGame\Content\UI\Startup\Login\Login.lua" -ForegroundColor Gray
+            Write-Host "The directory should contain Working\binaries\SGW.exe or SGW.exe." -ForegroundColor Gray
             return
         }
     }
 
-    $loginLua = Join-Path $ClientPath "Working\SGWGame\Content\UI\Startup\Login\Login.lua"
+    $sgwExe = Find-SgwExe $ClientPath
 
-    if (-not (Test-Path $loginLua)) {
-        throw "Login.lua not found at: $loginLua"
+    if (-not $sgwExe) {
+        throw "SGW.exe not found in: $ClientPath"
     }
 
-    # Read current content preserving original encoding (game expects ASCII, not UTF-8 BOM)
-    $contentBytes = [System.IO.File]::ReadAllBytes($loginLua)
-    $content = [System.Text.Encoding]::ASCII.GetString($contentBytes)
-    $authUrl = "$ServerUrl/SGWLogin/UserAuth"
+    # Write LoginInternal.lua
+    $luaDir = Join-Path $ClientPath "Working\SGWGame\Content\UI\Startup\Login"
+    $luaFile = Join-Path $luaDir "LoginInternal.lua"
 
-    # Check if already patched
-    if ($content -match [regex]::Escape($authUrl)) {
-        Write-Status "Login.lua already patched for $ServerUrl" "DarkGray"
+    $luaContent = @"
+-- LoginInternal.lua - Generated by Cimmeria bootstrap
+-- This overrides Login.lua's loadServerSystems() to point at the local server.
+-- If this file is removed, the client falls back to the original (dead) CME servers.
+
+LoginMod = {}
+
+function LoginMod.loadServerSystems()
+    LoginMod.servers = {}
+    LoginMod.servers["$ServerName"] = "$ServerAddress"
+end
+"@
+
+    if ($PSCmdlet.ShouldProcess($luaFile, "Write LoginInternal.lua")) {
+        New-Item -ItemType Directory -Path $luaDir -Force | Out-Null
+        Set-Content -Path $luaFile -Value $luaContent -Encoding UTF8 -NoNewline
+        Write-Status "LoginInternal.lua written: $ServerName -> $ServerAddress" "Green"
+    }
+
+    # Binary patch: disable remote desktop check
+    Patch-SgwRemoteDesktopCheck -SgwExe $sgwExe
+
+    Write-Status "Client configured successfully." "Green"
+
+    if ($Launch -or (-not $NoLaunch)) {
+        Start-SgwClient -SgwExe $sgwExe
+    } else {
+        Write-Host ""
+        Write-Host "Client configured. To connect:" -ForegroundColor Green
+        Write-Host "  1. Start the server: pwsh setup.ps1" -ForegroundColor White
+        Write-Host "  2. Launch SGW.exe" -ForegroundColor White
+        Write-Host "  3. Login with: test / test" -ForegroundColor White
+    }
+}
+
+function Find-SgwExe {
+    param([string]$BasePath)
+
+    # QA/development layout: Working\binaries\SGW.exe
+    $candidate = Join-Path $BasePath "Working\binaries\SGW.exe"
+    if (Test-Path $candidate) { return $candidate }
+
+    # Standard install layout: SGW.exe at root
+    $candidate = Join-Path $BasePath "SGW.exe"
+    if (Test-Path $candidate) { return $candidate }
+
+    return $null
+}
+
+function Patch-SgwRemoteDesktopCheck {
+    <#
+    .SYNOPSIS
+        NOPs out the remote desktop check in SGW.exe.
+
+    .DESCRIPTION
+        SGW.exe calls GetSystemMetrics(SM_REMOTESESSION) during FEngineLoop::Init
+        and refuses to launch if it detects a Remote Desktop session, showing
+        "Error_RemoteDesktop". This patch changes the conditional JZ to an
+        unconditional JMP so the error path is always skipped.
+
+        Patch site (VA 0x00418a77 in the QA build):
+          PUSH 0x1000              ; SM_REMOTESESSION
+          CALL [GetSystemMetrics]
+          TEST EAX,EAX
+          JZ   +0x6C              ; <-- patch: change JZ (0x74) to JMP (0xEB)
+
+        The patch is idempotent -- re-running on an already-patched binary is a no-op.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$SgwExe
+    )
+
+    $bytes = [System.IO.File]::ReadAllBytes($SgwExe)
+
+    # Search for: PUSH 0x1000 / CALL [IAT] / TEST EAX,EAX / JZ
+    # Pattern:    68 00 10 00 00 / FF 15 xx xx xx xx / 85 C0 / 74
+    # We match the fixed bytes and skip the 4-byte IAT address.
+    $patternPrefix = [byte[]]@(0x68, 0x00, 0x10, 0x00, 0x00, 0xFF, 0x15)
+    $patternSuffix = [byte[]]@(0x85, 0xC0)
+    # Total: 7 (prefix) + 4 (IAT addr) + 2 (suffix) = 13 bytes, then byte 13 is JZ/JMP
+
+    $patchOffset = -1
+    for ($i = 0; $i -lt $bytes.Length - 14; $i++) {
+        # Match prefix (push 0x1000 + call [indirect])
+        $match = $true
+        for ($j = 0; $j -lt $patternPrefix.Length; $j++) {
+            if ($bytes[$i + $j] -ne $patternPrefix[$j]) {
+                $match = $false
+                break
+            }
+        }
+        if (-not $match) { continue }
+
+        # Skip 4 bytes of IAT address (indices 7-10), then match TEST EAX,EAX
+        $suffixStart = $i + 7 + 4  # index 11
+        if ($bytes[$suffixStart] -ne 0x85 -or $bytes[$suffixStart + 1] -ne 0xC0) {
+            continue
+        }
+
+        # Byte at index 13 should be JZ (0x74) or already-patched JMP (0xEB)
+        $jmpByte = $bytes[$suffixStart + 2]
+        if ($jmpByte -eq 0x74 -or $jmpByte -eq 0xEB) {
+            $patchOffset = $suffixStart + 2
+            break
+        }
+    }
+
+    if ($patchOffset -lt 0) {
+        Write-Status "WARNING: Remote desktop check pattern not found in SGW.exe -- skipping patch." "Yellow"
         return
     }
 
-    # Backup original
-    $backupPath = "$loginLua.bak"
-    if (-not (Test-Path $backupPath)) {
-        if ($PSCmdlet.ShouldProcess($loginLua, "Create backup as Login.lua.bak")) {
-            Copy-Item -Path $loginLua -Destination $backupPath -Force
-            Write-Status "Backup created: $backupPath" "DarkGray"
-        }
+    if ($bytes[$patchOffset] -eq 0xEB) {
+        Write-Status "Remote desktop check already patched." "DarkGray"
+        return
     }
 
-    # Patch the auth URL
-    if ($PSCmdlet.ShouldProcess($loginLua, "Patch auth URL to $authUrl")) {
-        # Match patterns like: url = "https://something/SGWLogin/UserAuth" or similar
-        $patched = $content -replace '(https?://[^"'']*)/SGWLogin/UserAuth', "$ServerUrl/SGWLogin/UserAuth"
+    # Patch JZ -> JMP
+    $bytes[$patchOffset] = 0xEB
+    [System.IO.File]::WriteAllBytes($SgwExe, $bytes)
+    Write-Status "Patched: remote desktop check disabled (JZ -> JMP at file offset 0x$($patchOffset.ToString('X')))." "Green"
+}
 
-        if ($patched -eq $content) {
-            # If regex didn't match, try a broader approach
-            Write-Status "Standard URL pattern not found, searching for server URL references..." "Yellow"
-            # Look for any URL that looks like a server endpoint
-            $patched = $content -replace 'https?://[^"'']*SGWLogin', "$ServerUrl/SGWLogin"
-        }
+function Start-SgwClient {
+    param(
+        [string]$SgwExe
+    )
 
-        if ($patched -eq $content) {
-            Write-Status "WARNING: Could not find auth URL pattern in Login.lua" "Yellow"
-            Write-Status "You may need to edit Login.lua manually:" "Yellow"
-            Write-Status "  File: $loginLua" "Yellow"
-            Write-Status "  Set the auth URL to: $authUrl" "Yellow"
-            return
-        }
-
-        # Write back as ASCII to preserve original encoding (game Lua parser crashes on UTF-8 BOM)
-        [System.IO.File]::WriteAllBytes($loginLua, [System.Text.Encoding]::ASCII.GetBytes($patched))
-        Write-Status "Login.lua patched: auth -> $authUrl" "Green"
-    }
+    $binDir = Split-Path $SgwExe -Parent
 
     Write-Host ""
-    Write-Host "Client patched. To connect:" -ForegroundColor Green
-    Write-Host "  1. Start the server: pwsh setup.ps1" -ForegroundColor White
-    Write-Host "  2. Launch the game client" -ForegroundColor White
-    Write-Host "  3. Login with: test / test" -ForegroundColor White
+    Write-Step "LAUNCHING GAME CLIENT"
+    Write-Status "Starting SGW.exe..." "White"
+    $proc = Start-Process -FilePath $SgwExe -WorkingDirectory $binDir -PassThru
+    if ($proc) {
+        Write-Status "SGW.exe launched (PID $($proc.Id))." "Green"
+        Write-Host ""
+        Write-Host "  Login with: test / test" -ForegroundColor White
+        Write-Host ""
+    } else {
+        Write-Status "WARNING: Failed to launch SGW.exe." "Yellow"
+    }
 }
