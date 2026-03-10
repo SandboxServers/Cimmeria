@@ -8,9 +8,12 @@ namespace Mercury
  * When the buffer is filled, new data is written starting at the beginning of the buffer and overwriting the old.
  */
 template <typename _T>
-class CircularBuffer : boost::noncopyable
+class CircularBuffer
 {
 public:
+	CircularBuffer(CircularBuffer const &) = delete;
+	CircularBuffer & operator=(CircularBuffer const &) = delete;
+
 	CircularBuffer(std::size_t size)
 		: buffer_(new _T[size]), capacity_(size), begin_(0), end_(0)
 	{

@@ -45,9 +45,12 @@ struct WorldGridPosition
 };
 
 template <typename _T>
-class WorldGrid : public boost::noncopyable
+class WorldGrid
 {
 public:
+	WorldGrid(WorldGrid const &) = delete;
+	WorldGrid & operator=(WorldGrid const &) = delete;
+
 	static_assert(std::is_base_of<WorldGridMember<_T>, _T>::value, "Objects must be subclasses of WorldGridMember");
 
 	struct Params

@@ -187,28 +187,20 @@ public:
 				if (!PyUnicode_Check(pyo))
 					throw std::runtime_error("Failed to pack WSTRING: argument is not a valid PyUnicode instance!");
 
-				if (sizeof(Py_UNICODE) == sizeof(uint16_t))
-				{
-					size_t bytes = PyUnicode_GET_DATA_SIZE(pyo);
-					SGW_ASSERT(PyUnicode_AsUnicode(pyo));
-					stream << (uint32_t)(bytes >> 1);
-					stream.write(PyUnicode_AS_UNICODE(pyo), (uint32_t)bytes);
-				}
-				else
-				{
-					PyObject * bytes = PyUnicode_AsUTF16String(pyo);
-					SGW_ASSERT(bytes);
-					SGW_ASSERT(PyObject_CheckBuffer(bytes) == 1);
-					Py_buffer view;
-					int bufOk = PyObject_GetBuffer(bytes, &view, PyBUF_SIMPLE | PyBUF_ND | PyBUF_C_CONTIGUOUS);
-					SGW_ASSERT(bufOk == 0);
-					// Remove byte order mark (-2 bytes)
-					SGW_ASSERT(view.len >= 2);
-					stream << (uint32_t)((view.len - 2) >> 1);
-					stream.write((uint8_t *)view.buf + 2, (uint32_t)(view.len - 2));
-					PyBuffer_Release(&view);
-					Py_DECREF(bytes);
-				}
+				// Encode as little-endian UTF-16 via PyUnicode_AsUTF16String.
+				// (The old Py_UNICODE / PyUnicode_AsUnicode fast path was removed in Python 3.12.)
+				PyObject * utf16 = PyUnicode_AsUTF16String(pyo);
+				SGW_ASSERT(utf16);
+				SGW_ASSERT(PyObject_CheckBuffer(utf16) == 1);
+				Py_buffer view;
+				int bufOk = PyObject_GetBuffer(utf16, &view, PyBUF_SIMPLE | PyBUF_ND | PyBUF_C_CONTIGUOUS);
+				SGW_ASSERT(bufOk == 0);
+				// Remove byte order mark (-2 bytes)
+				SGW_ASSERT(view.len >= 2);
+				stream << (uint32_t)((view.len - 2) >> 1);
+				stream.write((uint8_t *)view.buf + 2, (uint32_t)(view.len - 2));
+				PyBuffer_Release(&view);
+				Py_DECREF(utf16);
 				break;
 			}
 

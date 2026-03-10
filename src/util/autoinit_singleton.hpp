@@ -1,14 +1,18 @@
-#include <boost/utility.hpp>
-#include <boost/thread/once.hpp>
-#include <boost/scoped_ptr.hpp>
+#pragma once
+
+#include <memory>
+#include <mutex>
 
 template <class _T>
-class autoinit_singleton : private boost::noncopyable
+class autoinit_singleton
 {
 	public:
+		autoinit_singleton(autoinit_singleton const &) = delete;
+		autoinit_singleton & operator=(autoinit_singleton const &) = delete;
+
 		static _T & instance()
 		{
-			boost::call_once(initialize, m_once_flag);
+			std::call_once(m_once_flag, initialize, nullptr);
 			return *m_ptr;
 		}
 
@@ -25,13 +29,12 @@ class autoinit_singleton : private boost::noncopyable
 		 autoinit_singleton() {}
 
 	private:
-		 static boost::once_flag m_once_flag;
-		 static boost::scoped_ptr<_T> m_ptr;
+		 static std::once_flag m_once_flag;
+		 static std::unique_ptr<_T> m_ptr;
 };
 
 template <class _T>
-boost::scoped_ptr<_T> autoinit_singleton<_T>::m_ptr(nullptr);
+std::unique_ptr<_T> autoinit_singleton<_T>::m_ptr(nullptr);
 
 template <class _T>
-boost::once_flag autoinit_singleton<_T>::m_once_flag = BOOST_ONCE_INIT;
-
+std::once_flag autoinit_singleton<_T>::m_once_flag;

@@ -1,6 +1,6 @@
 #include "stdafx.hpp"
 
-#include <windows.h>
+#include <filesystem>
 #include "mesh.hpp"
 #include "mesh_exporter.hpp"
 #include "chunk.hpp"
@@ -246,25 +246,23 @@ public:
 
 	void addChunks(std::string const & dir)
 	{
-		WIN32_FIND_DATAA findData;
-		std::string pattern = dir + "/*.*";
-		HANDLE h = FindFirstFileA(pattern.c_str(), &findData);
-		if (h == INVALID_HANDLE_VALUE || h == (HANDLE)0xffffffff)
+		namespace fs = std::filesystem;
+
+		if (!fs::is_directory(dir))
 		{
-			FAULT("Failed to add chunks to mesh: failed to enumerate directory '%s': %d!", 
-				dir.c_str(), GetLastError());
+			FAULT("Failed to add chunks to mesh: failed to enumerate directory '%s'!", dir.c_str());
 			throw std::runtime_error("Failed to add chunks to mesh!");
 		}
 
-		do
+		for (auto const & entry : fs::directory_iterator(dir))
 		{
-			std::string fname = findData.cFileName;
+			std::string fname = entry.path().filename().string();
 			if (fname.length() > 12 && fname.substr(fname.length() - 4) == ".obj")
 			{
 				std::string baseName = dir + "/" + fname.substr(0, fname.length() - 4);
 				addChunk(baseName);
 			}
-		} while (FindNextFileA(h, &findData) == TRUE);
+		}
 	}
 
 	void addChunk(std::string const & path)

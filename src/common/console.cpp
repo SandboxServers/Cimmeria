@@ -4,19 +4,14 @@
 #include <common/console.hpp>
 #include <entity/pyutil.hpp>
 #include <iostream>
+#include <thread>
 #ifdef _WIN32
 #include <Windows.h>
-#else
-#include <unistd.h>
 #endif
 
 void ConsoleThread()
 {
-#ifdef _WIN32
-	Sleep(1500);
-#else
-	usleep(1500000000);
-#endif
+	std::this_thread::sleep_for(std::chrono::milliseconds(1500));
 	while (true)
 	{
 		std::string cmd;
@@ -55,10 +50,10 @@ void ConsoleThread()
 			{
 #ifdef _WIN32
 				SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_INTENSITY);
-				PyUtil_ShowErr("Console exception");
 #else
-			std::cout << "\033[33m";
+				std::cout << "\033[33m";
 #endif
+				PyUtil_ShowErr("Console exception");
 			}
 			catch (std::exception & e)
 			{
