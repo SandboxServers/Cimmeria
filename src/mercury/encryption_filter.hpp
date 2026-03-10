@@ -2,19 +2,21 @@
 
 #include <mercury/packet.hpp>
 #include <mercury/channel.hpp>
-#include <openssl/aes.h>
-#include <openssl/hmac.h>
+#include <openssl/evp.h>
 
 namespace Mercury {
 
 /*
- * Implements an encryption scheme using AES-256 encryption,
+ * Implements an encryption scheme using AES-256-CBC encryption,
  * PKCS #7 padding and an HMAC-MD5 authentication code.
+ *
+ * Uses the OpenSSL 3.x EVP API (EVP_MAC for HMAC, EVP_CIPHER_CTX for AES).
  */
 class EncryptionFilter : public MessageFilter
 {
 public:
 	const static uint32_t MAX_PACKET_LENGTH = Packet::MAX_LENGTH + 32;
+	static const int BLOCK_SIZE = 16;
 
 	EncryptionFilter(uint8_t * key);
 	~EncryptionFilter();
@@ -26,9 +28,9 @@ public:
 	virtual uint32_t addedSize();
 
 private:
-	HMAC_CTX hmac_;
-	AES_KEY  encryptor_;
-	AES_KEY  decryptor_;
+	EVP_MAC * mac_;
+	EVP_MAC_CTX * hmac_;
+	uint8_t key_[32];
 };
 
 }

@@ -44,6 +44,14 @@ target_include_directories(unified_kernel PUBLIC
     ${CMAKE_SOURCE_DIR}/src
 )
 
+# On non-Windows, ensure system OpenSSL 3.x headers take precedence
+# over the vendored 0.9.8i headers in src/openssl/
+if(NOT WIN32)
+    target_include_directories(unified_kernel BEFORE PUBLIC
+        ${OPENSSL_INCLUDE_DIR}
+    )
+endif()
+
 target_compile_definitions(unified_kernel PUBLIC
     TIXML_USE_STL
 )
