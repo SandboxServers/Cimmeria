@@ -79,6 +79,7 @@ function Invoke-CimmeriaBootstrap {
         if ($WithAdmin) { $steps += "Build Admin Panel" }
         if ($WithLauncher) { $steps += "Build Launcher" }
     }
+    $steps += "Game Data"
     $steps += "Database"
     if (-not $NoLaunch) { $steps += "Launch" }
     $totalSteps = $steps.Count
@@ -170,6 +171,19 @@ function Invoke-CimmeriaBootstrap {
         } else {
             Write-Host ""
             Write-Host "--- Build steps: Skipped (-SkipBuild) ---" -ForegroundColor DarkGray
+        }
+
+        # Game Data (PAK files from client)
+        $step++
+        Write-Host ""
+        Write-Host "--- Step $step/$totalSteps`: Game Data ---" -ForegroundColor Cyan
+        try {
+            Sync-CimmeriaGameData
+        } catch {
+            Write-Host ""
+            Write-Host "WARNING: Step $step (Sync-CimmeriaGameData) failed - continuing" -ForegroundColor Yellow
+            Write-Host "  $_" -ForegroundColor Yellow
+            Write-Host "  PAK files can be copied manually to data\cache\." -ForegroundColor DarkGray
         }
 
         # Database
