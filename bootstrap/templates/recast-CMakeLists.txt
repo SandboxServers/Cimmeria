@@ -1,0 +1,32 @@
+# CMakeLists.txt for vendored Recast/Detour navigation library.
+# Placed into external/recast/ by the dependency installer.
+
+# --- Recast (navmesh generation) ---
+file(GLOB RECAST_SOURCES Recast/Source/*.cpp)
+add_library(recast STATIC ${RECAST_SOURCES})
+target_include_directories(recast PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Recast/Include
+)
+
+# --- Detour (pathfinding) ---
+file(GLOB DETOUR_SOURCES Detour/Source/*.cpp)
+add_library(detour STATIC ${DETOUR_SOURCES})
+target_include_directories(detour PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Detour/Include
+)
+
+# --- DetourCrowd ---
+file(GLOB DETOUR_CROWD_SOURCES DetourCrowd/Source/*.cpp)
+add_library(detour_crowd STATIC ${DETOUR_CROWD_SOURCES})
+target_include_directories(detour_crowd PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/DetourCrowd/Include
+)
+target_link_libraries(detour_crowd PUBLIC detour)
+
+# --- DetourTileCache ---
+file(GLOB DETOUR_TILECACHE_SOURCES DetourTileCache/Source/*.cpp)
+add_library(detour_tilecache STATIC ${DETOUR_TILECACHE_SOURCES})
+target_include_directories(detour_tilecache PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/DetourTileCache/Include
+)
+target_link_libraries(detour_tilecache PUBLIC detour)

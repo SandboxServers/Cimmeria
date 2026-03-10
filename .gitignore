@@ -7,13 +7,14 @@
 # =============================================================================
 # Compiled executables and runtime DLLs
 bin64/
+/build/
 !bin64/.keep
 
 # Compiled static/dynamic libraries
 lib64/
 !lib64/.keep
-lib/
-!lib/.keep
+/lib/
+!/lib/.keep
 
 # Object files and intermediates
 *.obj
@@ -126,7 +127,7 @@ config/*.local
 # =============================================================================
 # Server Runtime (PostgreSQL data, logs)
 # =============================================================================
-server/
+/server/
 
 # =============================================================================
 # PostgreSQL Server Distribution (runtime only, not needed for compilation)
