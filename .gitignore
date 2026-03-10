@@ -172,3 +172,5 @@ docs/design/*
 .mcp.json
 
 .claude/worktrees/
+
+data/cache/
