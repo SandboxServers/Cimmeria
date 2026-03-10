@@ -43,6 +43,24 @@ See [protocol-comparison.md](protocol-comparison.md) for detailed findings.
 - Rust server incorrectly reads payload[0..4] as entity_id -- this IS the spaceID
 - The client sends its current spaceID (from createCellPlayer), explaining "entity_id=65552" in logs
 
+### Entity Method Call Wire Format (S->C)
+- Entity method calls ALWAYS include entity_id as first payload field (not inferred from channel)
+- Wire: [msg_id:u8][length:u16 LE][entity_id:u32 LE][method args...]
+- This is because a single Mercury channel carries messages for ALL entities visible to a client
+- Confirmed in bundle.cpp:76 -- `beginEntityMessage` writes entityId after msg_id+length header
+
+### CookedData ServerSource Event Chain (from Ghidra RTTI)
+- Every ServerSource<N,K,V,R,Z> subscribes to 6 events:
+  1. Event_Net_Connected (init ZipStorage from local PAK)
+  2. Event_Entity_ProxyPlayerBaseCreated (triggers versionInfoRequest RPC)
+  3. Event_Net_Disconnected (cleanup)
+  4. Event_NetIn_onVersionInfo (process version response, load from PAK or wait for server push)
+  5. Event_Net_ProxyData (RESOURCE_FRAGMENT reassembled -> parse XML -> ElementReady)
+  6. Event_NetIn_onCookedDataError (error handling)
+- Category 7 (char_creation) is NOT in C++ server's categoryMaps -> never pushes resources
+- Client loads char_creation from local CookedCharCreation.pak when versions match
+- CharacterCreation UI subscribes to Event_Cache_ElementReady<long, CookedCharCreationData>
+
 ### Open Questions
 - Exposed method sub-slot mechanism (for > 62 methods per entity) -- unlikely needed for SGW entities
 
@@ -71,3 +89,10 @@ See [protocol-comparison.md](protocol-comparison.md) for detailed findings.
 - Mercury packet builder: `crates/mercury/src/packet.rs`
 - Encrypted message builders: `crates/services/src/mercury_ext.rs`
 - BaseApp handler: `crates/services/src/base.rs`
+- Cooked data handler: `crates/services/src/base/cooked_data.rs`
+- Version info builder: `crates/services/src/mercury/protocol.rs:391`
+
+### Python Game Logic
+- Account versionInfoRequest: `python/base/Account.py:322`
+- DefMgr.ResourceCategories: `python/common/defs/Def.py:42` (cat 7 = "character_creation")
+- Category 7 NOT in Account.py categoryMaps (lines 327-336) = no server-push for char_creation

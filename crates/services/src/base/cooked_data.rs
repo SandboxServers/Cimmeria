@@ -34,56 +34,51 @@ pub(crate) async fn handle_version_info_request(
     let category_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
     let client_version = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
-    // Version negotiation: send back the PAK metadata version.  When the
-    // client's version doesn't match (e.g. fresh client sends version 0),
-    // set invalidateAll=true so the client reloads from its PAK baseline
-    // and fires the "element ready" events that the UI depends on.
-    // The C++ Python server does the same via DefMgr.getChangesForVersion()
-    // which returns invalidateAll=True when the version gap is too large.
-    let (version, num_elements, invalidate_all, should_push) = match resource_cache {
+    // Match the C++ Python server behaviour (Account.py:322-352, Def.py:293-319):
+    //
+    // - If server has no data for this category, echo the client version
+    //   with invalidateAll=false so the client keeps its local cache.
+    // - If versions match, send invalidateAll=false (client is up to date).
+    // - If versions differ, send invalidateAll=true so the client reloads
+    //   from its bundled PAK files.
+    //
+    // requiredUpdates=0 because we don't proactively push resource fragments
+    // for most categories (category 7 is not in the C++ categoryMaps either).
+    // The client will send individual elementDataRequests if it needs
+    // server-sourced data beyond the PAK.
+    let (version, invalidate_all) = match resource_cache {
         Some(cache) => match cache.category(category_id) {
             Some(cat) => {
-                let invalidate = client_version != cat.metadata;
-                let count = cat.elements.len() as u32;
-                // Proactively push all elements when the client's cache is stale.
-                // The C++ Python server does this for categories 12-20 (its
-                // categoryMaps); we do it for ALL categories to ensure the client
-                // receives cooked data regardless of its local PAK state.
-                (cat.metadata, count, invalidate, invalidate)
+                let server_version = cat.metadata;
+                // C++ logic: invalidateAll only when versions differ
+                let invalidate = client_version != server_version;
+                (server_version, invalidate)
             }
-            None => (client_version, 0u32, false, false),
+            None => (client_version, false),
         },
-        None => (client_version, 0u32, false, false),
+        None => (client_version, false),
     };
 
-    let required_updates = if should_push { num_elements } else { 0 };
-
     tracing::info!(
-        %addr, category_id, client_version, version, required_updates, invalidate_all,
+        %addr, category_id, client_version, version, invalidate_all,
         "Responding to versionInfoRequest"
     );
 
     let account_eid = get_account_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let pkt = build_version_info(&key, seq, &acks, category_id, version, required_updates, invalidate_all, account_eid);
+    let pkt = build_version_info(&key, seq, &acks, category_id, version, 0, invalidate_all, account_eid);
     socket.send_to(&pkt, addr).await?;
-
-    // Proactively push all elements when the client needs to reload.
-    if should_push {
-        if let Some(cache) = resource_cache {
-            if let Some(cat) = cache.category(category_id) {
-                send_category_resources(socket, addr, key, category_id, cat, connected).await?;
-            }
-        }
-    }
 
     Ok(())
 }
 
 /// Proactively send all resources for a category as BASEMSG_RESOURCE_FRAGMENT packets.
 ///
-/// Called immediately after onVersionInfo when the client's cache is stale,
-/// rather than waiting for individual elementDataRequests.
+/// Not currently used.  The C++ server only pushes resources for certain
+/// "categoryMaps" categories (12-20) when invalidateAll=true and the
+/// client version is stale.  Category 7 (char_creation) is NOT in that
+/// map — the client loads it from its local PAK.  Kept for future use.
+#[allow(dead_code)]
 pub(crate) async fn send_category_resources(
     socket: &Arc<UdpSocket>,
     addr: SocketAddr,
