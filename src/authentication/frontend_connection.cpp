@@ -38,7 +38,9 @@ void FrontendConnection::logon(uint32_t accountId, std::string const & accountNa
 	pendingLogins_.insert(std::make_pair(requestId, req));
 	
 	uint64_t now = Service::instance().microTime();
-	pendingLogins_[requestId].replyTimer = Service::instance().addTimer(boost::bind(&FrontendConnection::onRequestTimeout, this, requestId), now + LoginRequestTimeout);
+	pendingLogins_[requestId].replyTimer = Service::instance().addTimer(
+		[this, requestId](auto &, auto, auto, auto *) { onRequestTimeout(requestId); },
+		now + LoginRequestTimeout);
 	
 	Writer request(*this);
 	request.beginMessage(Mercury::FES_REQUEST_LOGON);

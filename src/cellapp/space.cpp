@@ -543,7 +543,9 @@ SpaceManager::TimerMgr::TimerId SpaceManager::addEntityTimer(double completeTime
 {
 	PyUtil_AssertGIL();
 	Py_INCREF(callback);
-	return timer_.addTimer(boost::bind(&SpaceManager::expireEntityTimer, this, _4), completeTime, callback);
+	return timer_.addTimer(
+		[this](auto &, auto, auto, void * ud) { expireEntityTimer(ud); },
+		completeTime, callback);
 }
 
 void SpaceManager::cancelEntityTimer(SpaceManager::TimerMgr::TimerId timerId)
@@ -577,7 +579,9 @@ void SpaceManager::updateTickTimer(uint64_t now, unsigned int ticks)
 		lastTick_ += skipTicks * tickRate_;
 		time_ += skipTicks;
 	}
-	timerId_ = Service::instance().addTimer(boost::bind(&SpaceManager::tick, this, _1, _2, _3), now + (ticks * tickRate_) + drift);
+	timerId_ = Service::instance().addTimer(
+		[this](auto & mgr, uint64_t timerTime, uint64_t now, auto *) { tick(mgr, timerTime, now); },
+		now + (ticks * tickRate_) + drift);
 	lastTick_ += ticks * tickRate_;
 }
 

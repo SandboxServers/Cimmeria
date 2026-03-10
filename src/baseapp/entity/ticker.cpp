@@ -53,7 +53,9 @@ Ticker::TimerMgr::TimerId Ticker::addEntityTimer(double completeTime, PyObject *
 {
 	PyUtil_AssertGIL();
 	Py_INCREF(callback);
-	return timer_.addTimer(boost::bind(&Ticker::expireEntityTimer, this, _4), completeTime, callback);
+	return timer_.addTimer(
+		[this](auto &, auto, auto, void * ud) { expireEntityTimer(ud); },
+		completeTime, callback);
 }
 
 void Ticker::cancelEntityTimer(Ticker::TimerMgr::TimerId timerId)
@@ -87,7 +89,9 @@ void Ticker::updateTickTimer(uint64_t now, unsigned int ticks)
 		lastTick_ += skipTicks * tickRate_;
 		time_ += skipTicks;
 	}
-	timerId_ = nub_->timers().addTimer(boost::bind(&Ticker::tick, this, _1, _2, _3), now + (ticks * tickRate_) + drift);
+	timerId_ = nub_->timers().addTimer(
+		[this](auto & mgr, uint64_t timerTime, uint64_t now, auto *) { tick(mgr, timerTime, now); },
+		now + (ticks * tickRate_) + drift);
 	lastTick_ += ticks * tickRate_;
 }
 

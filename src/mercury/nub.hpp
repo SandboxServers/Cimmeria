@@ -3,7 +3,7 @@
 #include <mercury/packet.hpp>
 #include <mercury/channel.hpp>
 #include <mercury/timer.hpp>
-#include <boost/asio/deadline_timer.hpp>
+#include <boost/asio/steady_timer.hpp>
 
 namespace Mercury
 {
@@ -22,7 +22,7 @@ class Nub
 		typedef boost::asio::ip::udp::endpoint Address;
 		typedef TimerMgr<uint64_t> Timer;
 
-		Nub(boost::asio::io_service & service, unsigned short port, ClientlessPacketHandler * clientlessHandler);
+		Nub(boost::asio::io_context & service, unsigned short port, ClientlessPacketHandler * clientlessHandler);
 		~Nub();
 
 		Timer & timers();
@@ -56,7 +56,7 @@ class Nub
 		// System time when the last tick() call was made 
 		uint64_t lastTick_;
 
-		boost::asio::deadline_timer m_timer;
+		boost::asio::steady_timer m_timer;
 		ClientlessPacketHandler * clientlessHandler_;
 
 		struct PendingPacket

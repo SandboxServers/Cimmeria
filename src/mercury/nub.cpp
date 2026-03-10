@@ -4,12 +4,12 @@
 #include <mercury/channel.hpp>
 #include <mercury/condemned_channels.hpp>
 #include <common/service.hpp>
-#include <boost/asio/placeholders.hpp>
+#include <boost/asio/post.hpp>
 
 namespace Mercury
 {
 
-Nub::Nub(boost::asio::io_service & service, unsigned short port, ClientlessPacketHandler * clientlessHandler)
+Nub::Nub(boost::asio::io_context & service, unsigned short port, ClientlessPacketHandler * clientlessHandler)
 	: socket_(service, Address(boost::asio::ip::udp::v4(), port)),
 	  clientlessHandler_(clientlessHandler),
 	  m_timer(service),
@@ -29,10 +29,10 @@ Nub::Nub(boost::asio::io_service & service, unsigned short port, ClientlessPacke
 	boost::asio::ip::udp::socket::send_buffer_size txBufCmd(txBufSize);
 	if (socket_.set_option(txBufCmd, ec) != boost::system::errc::success)
 		WARNC(CATEGORY_MERCURY, "Nub: Failed to resize send buffer: %s", ec.message().c_str());
-	
+
 	receiveFrames();
-	m_timer.expires_from_now(boost::posix_time::milliseconds(tickInterval_));
-	m_timer.async_wait(boost::bind(&Nub::tick, this, boost::asio::placeholders::error));
+	m_timer.expires_after(std::chrono::milliseconds(tickInterval_));
+	m_timer.async_wait([this](const boost::system::error_code & err) { tick(err); });
 }
 
 Nub::~Nub()
@@ -142,11 +142,12 @@ void Nub::receiveFrames()
 	if (!receivedPacket_)
 		receivedPacket_.reset(new ReceivedPacket());
 
+	auto pkt = receivedPacket_;
 	socket_.async_receive_from(
 		boost::asio::buffer(receivedPacket_->buffer(), receivedPacket_->size()), receivedEndpoint_,
-		boost::bind(&Nub::frameHandler, this, boost::asio::placeholders::error,
-			boost::asio::placeholders::bytes_transferred,
-			boost::ref(receivedEndpoint_), receivedPacket_));
+		[this, pkt](const boost::system::error_code & err, size_t len) {
+			frameHandler(err, len, receivedEndpoint_, pkt);
+		});
 }
 
 void Nub::tick(const boost::system::error_code & error)
@@ -157,8 +158,8 @@ void Nub::tick(const boost::system::error_code & error)
 		return;
 	SGW_ASSERT(error == boost::system::errc::success);
 
-	m_timer.expires_from_now(boost::posix_time::milliseconds(tickInterval_));
-	m_timer.async_wait(boost::bind(&Nub::tick, this, boost::asio::placeholders::error));
+	m_timer.expires_after(std::chrono::milliseconds(tickInterval_));
+	m_timer.async_wait([this](const boost::system::error_code & err) { tick(err); });
 
 	lastTick_ = Service::instance().microTime();
 
@@ -232,8 +233,10 @@ void Nub::sendPacket(BaseChannel::Ptr channel, Packet::Ptr packet, Packet::Seque
 
 	socket_.async_send_to(
 		boost::asio::buffer(sendBuffer_.buffer(), sendBuffer_.offset()),
-		channel->address(), boost::bind(&Nub::onPacketSent, this, channel, 
-		packet, boost::asio::placeholders::error));
+		channel->address(),
+		[this, channel, packet](const boost::system::error_code & err) {
+			onPacketSent(channel, packet, err);
+		});
 }
 
 void Nub::onPacketSent(BaseChannel::Ptr channel, Packet::Ptr packet, const boost::system::error_code & errcode)

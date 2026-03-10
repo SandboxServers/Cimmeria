@@ -6,12 +6,11 @@
 #include <boost/python/import.hpp>
 #include <boost/python/object.hpp>
 #include <boost/python/scope.hpp>
-#include <boost/asio/placeholders.hpp>
 #include <entity/pyutil.hpp>
 #include <soci/postgresql/soci-postgresql.h>
 
 Service::Service()
-	: work_(service_), timer_(service_)
+	: work_(boost::asio::make_work_guard(service_)), timer_(service_)
 {
 	Logger::initialize();
 	atexit(&Service::exitHandler);
@@ -219,12 +218,11 @@ void Service::tick(const boost::system::error_code & error)
 	unsigned int next = TickInterval - ((microTime() - lastTick_) % TickInterval);
 	if (next == 0)
 		next = TickInterval;
-	timer_.expires_from_now(boost::posix_time::milliseconds(next));
-	timer_.async_wait(boost::bind(&Service::tick, this, boost::asio::placeholders::error));
+	timer_.expires_after(std::chrono::milliseconds(next));
+	timer_.async_wait([this](const boost::system::error_code & ec) { tick(ec); });
 }
 
 
 MessageWriter::~MessageWriter()
 {
 }
-

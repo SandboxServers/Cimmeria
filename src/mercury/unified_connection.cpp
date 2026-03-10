@@ -1,7 +1,6 @@
 #include <stdafx.hpp>
 #include <common/service.hpp>
 #include <mercury/unified_connection.hpp>
-#include <boost/asio/placeholders.hpp>
 #include <boost/python/errors.hpp>
 #include <entity/pyutil.hpp>
 
@@ -29,8 +28,10 @@ void UnifiedConnection::connect(const std::string & address, uint16_t port)
 	auto iter = resolver.resolve(boost::asio::ip::tcp::resolver::query(boost::asio::ip::tcp::v4(), address, "1"));
 	boost::asio::ip::tcp::endpoint ep = *iter;
 	ep.port(port);
-	socket_.async_connect(ep, boost::bind(&UnifiedConnection::connectionCallback, shared_from_this(),
-		boost::asio::placeholders::error));
+	auto self = shared_from_this();
+	socket_.async_connect(ep, [self](const boost::system::error_code & err) {
+		self->connectionCallback(err);
+	});
 }
 
 void UnifiedConnection::connected()
@@ -268,11 +269,12 @@ void UnifiedConnection::receive()
 		return;
 	}
 
+	auto self = shared_from_this();
 	socket_.async_receive(
 		boost::asio::buffer(received_.end(), received_.contiguousEndItems()),
-		boost::bind(&UnifiedConnection::onDataReceived, shared_from_this(),
-			boost::asio::placeholders::error,
-			boost::asio::placeholders::bytes_transferred));
+		[self](const boost::system::error_code & err, size_t len) {
+			self->onDataReceived(err, len);
+		});
 }
 
 /*
@@ -284,11 +286,12 @@ void UnifiedConnection::send()
 	SGW_ASSERT(writableBytes_ > 0 && writableBytes_ <= sending_.size());
 	std::size_t writeLength = (writableBytes_ < sending_.contiguousBeginItems()) ? writableBytes_ : sending_.contiguousBeginItems();
 
+	auto self = shared_from_this();
 	socket_.async_send(
 		boost::asio::buffer(sending_.begin(), writeLength),
-		boost::bind(&UnifiedConnection::onDataSent, shared_from_this(),
-			boost::asio::placeholders::error,
-			boost::asio::placeholders::bytes_transferred));
+		[self](const boost::system::error_code & err, size_t len) {
+			self->onDataSent(err, len);
+		});
 }
 
 }

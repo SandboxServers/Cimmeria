@@ -36,8 +36,11 @@ void BaseAppClient::reconnectIn(uint32_t msecs)
 {
 	registered_ = false;
 
-	recoveryTimer_.expires_from_now(boost::posix_time::milliseconds(msecs));
-	recoveryTimer_.async_wait(boost::bind(&BaseAppClient::reconnectTimerExpired, shared_this(), boost::asio::placeholders::error));
+	recoveryTimer_.expires_after(std::chrono::milliseconds(msecs));
+	auto self = shared_this();
+	recoveryTimer_.async_wait([self](const boost::system::error_code & err) {
+		self->reconnectTimerExpired(err);
+	});
 }
 
 void BaseAppClient::startup()

@@ -93,7 +93,7 @@ void CellService::initialize()
 			&py_client::create);
 	}
 
-	boost::thread * t = new boost::thread(&ConsoleThread);
+	std::thread * t = new std::thread(&ConsoleThread);
 	
 	INFO("Initializing Python Env");
 	PyRegisterModule(true);
@@ -156,7 +156,7 @@ void CellService::initialize()
 
 	INFO("Initializing Spaces");
 	SpaceManager::initialize();
-	SpaceManager::instance().setEventHandler(boost::bind(&CellService::onSpaceEvent, this, _1, _2));
+	SpaceManager::instance().setEventHandler([this](Space * space, SpaceManager::Event evt) { onSpaceEvent(space, evt); });
 	SpaceManager::instance().loadSpaces("../entities/cell_spaces.xml", "../entities/spaces.xml");
 	
 	try

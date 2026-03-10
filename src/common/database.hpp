@@ -1,5 +1,6 @@
 #pragma once
 
+#include <thread>
 #include <soci/soci.h>
 
 enum DbErrorType
@@ -37,13 +38,13 @@ class Database
 		void asyncPerform(std::string const & query);
 
 	private:
-		boost::asio::io_service service_;
-		boost::asio::io_service::work work_;
-		boost::thread thread_;
+		boost::asio::io_context service_;
+		boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_;
+		std::thread thread_;
 		soci::session * session_;
 		std::queue<DbRequest> queue_;
 		std::mutex queueLock_;
-		
+
 		void performRequest();
 
 		/*
@@ -59,4 +60,3 @@ class Database
 		 */
 		void sendKeepalive();
 };
-

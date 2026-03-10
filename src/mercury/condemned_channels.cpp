@@ -9,7 +9,7 @@ CondemnedChannels::CondemnedChannels(Nub & nub)
 	: nub_(nub)
 {
 	timerId_ = nub_.timers().addTimer(
-		boost::bind(&CondemnedChannels::pollChannels, this, _3),
+		[this](auto &, auto, uint64_t now, auto *) { pollChannels(now); },
 		nub_.lastTick() + PollInterval,
 		nullptr
 	);
@@ -52,7 +52,7 @@ void CondemnedChannels::pollChannels(uint64_t now)
 	}
 
 	timerId_ = nub_.timers().addTimer(
-		boost::bind(&CondemnedChannels::pollChannels, this, _3),
+		[this](auto &, auto, uint64_t now, auto *) { pollChannels(now); },
 		nub_.lastTick() + PollInterval,
 		nullptr
 	);

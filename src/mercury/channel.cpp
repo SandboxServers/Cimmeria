@@ -676,7 +676,9 @@ BaseChannel::Timer::TimerId BaseChannel::addResendTimer(Packet::SequenceId seq)
 	// Check if the resend timer is for a valid packet
 	SGW_ASSERT(seq < nextSendSequenceId_ && seq + 1 >= nextSendSequenceId_ - sendWindow_.size());
 
-	return nub_.timers().addTimer(boost::bind(&BaseChannel::expireTimer, shared_from_this(), seq),
+	auto self = shared_from_this();
+	return nub_.timers().addTimer(
+		[self, seq](auto &, auto, auto, auto *) { self->expireTimer(seq); },
 		nub_.lastTick() + AckTimeout);
 }
 

@@ -4,8 +4,9 @@
 #include <soci/postgresql/soci-postgresql.h>
 
 Database::Database()
-	: work_(service_), thread_(boost::bind(&boost::asio::io_service::run, &service_)),
-	  session_(NULL)
+	: work_(boost::asio::make_work_guard(service_)),
+	  thread_([this] { service_.run(); }),
+	  session_(nullptr)
 {
 }
 
@@ -30,7 +31,7 @@ void Database::fetchRow(DbExecFunction execf, DbRowFunction rowf, DbErrorFunctio
 	queue_.push(req);
 	queueLock_.unlock();
 
-	service_.post(boost::bind(&Database::performRequest, this));
+	boost::asio::post(service_, [this] { performRequest(); });
 }
 
 void Database::synchronousPerform(std::string const & query)
@@ -49,7 +50,7 @@ void Database::synchronousPerform(std::string const & query)
 
 void Database::asyncPerform(std::string const & query)
 {
-	service_.post(boost::bind(&Database::doQuery, this, query));
+	boost::asio::post(service_, [this, query] { doQuery(query); });
 }
 
 void Database::synchronousQuery(std::string const & query, bp::list & list)
@@ -82,7 +83,7 @@ void Database::synchronousQuery(std::string const & query, bp::list & list)
 						case soci::dt_date:
 							d[col_name] = r.get<std::string>(i);
 							break;
-						
+
 						case soci::dt_integer:
 							d[col_name] = r.get<int>(i);
 							break;
@@ -127,7 +128,7 @@ soci::session & Database::session()
 void Database::performRequest()
 {
 	SGW_ASSERT(!queue_.empty());
-	
+
 	queueLock_.lock();
 	DbRequest req = queue_.front();
 	queue_.pop();
@@ -135,7 +136,7 @@ void Database::performRequest()
 
 	try
 	{
-		if (session_ == NULL)
+		if (session_ == nullptr)
 			session_ = new soci::session(soci::postgresql, Service::instance().getConfigParameter("db_connection_string"));
 
 		soci::row r;
@@ -155,11 +156,6 @@ void Database::performRequest()
 }
 
 
-/*
- * Executes an SQL query on the worker thread and discards the results.
- *
- * @param query SQL query to execute
- */
 void Database::doQuery(std::string const query)
 {
 	try
@@ -175,13 +171,10 @@ void Database::doQuery(std::string const query)
 }
 
 
-/*
- * Sends a keepalive request to the database to make sure that the
- * connection isn't closed when there is no DB activity
- */
 void Database::sendKeepalive()
 {
 	asyncPerform("select 1");
 	uint64_t now = Service::instance().microTime();
-	Service::instance().addTimer(boost::bind(&Database::sendKeepalive, this), now + KeepaliveInterval);
+	Service::instance().addTimer([this](auto &, auto, auto, auto *) { sendKeepalive(); },
+		now + KeepaliveInterval);
 }

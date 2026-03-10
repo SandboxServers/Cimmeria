@@ -14,7 +14,7 @@
 #include <baseapp/mercury/cell_handler.hpp>
 #include <entity/defs.hpp>
 #include <baseapp/entity/base_entity.hpp>
-#include <boost/asio/deadline_timer.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <baseapp/mercury/sgw/resource.hpp>
 #include <baseapp/entity/base_py_util.hpp>
 #include <baseapp/entity/ticker.hpp>
@@ -263,7 +263,7 @@ void BaseService::initialize()
 
 	servicePort_ = internalPort();
 
-	boost::thread * t = new boost::thread(&ConsoleThread);
+	std::thread * t = new std::thread(&ConsoleThread);
 }
 
 void BaseService::cleanup()

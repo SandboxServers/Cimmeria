@@ -1,6 +1,5 @@
 #pragma once
 
-#include <boost/asio/placeholders.hpp>
 #include <common/service.hpp>
 
 namespace Mercury
@@ -39,7 +38,7 @@ class TcpServer
 
 	private:
 		boost::asio::ip::tcp::acceptor socket_;
-		boost::asio::io_service & service_;
+		boost::asio::io_context & service_;
 		ConnectionFactoryType connectionFactory_;
 		std::vector<typename _T::Ptr> connections_;
 		uint32_t nextConnectionId_;
@@ -47,9 +46,10 @@ class TcpServer
 		void acceptConnections()
 		{
 			typename _T::Ptr conn = typename _T::Ptr(connectionFactory_(*this, nextConnectionId_++));
-			socket_.async_accept(conn->socket(), 
-				boost::bind(&TcpServer<_T>::acceptedConnection, this,
-				boost::asio::placeholders::error, conn));
+			socket_.async_accept(conn->socket(),
+				[this, conn](const boost::system::error_code & err) {
+					acceptedConnection(err, conn);
+				});
 		}
 
 		void acceptedConnection(const boost::system::error_code & errcode, typename _T::Ptr conn)

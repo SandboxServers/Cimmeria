@@ -45,7 +45,7 @@ class MinigameConnection : public std::enable_shared_from_this<MinigameConnectio
 
 		inline Ptr shared_this()
 		{
-			return boost::static_pointer_cast<MinigameConnection>(shared_from_this());
+			return std::static_pointer_cast<MinigameConnection>(shared_from_this());
 		}
 
 		// Connection handle

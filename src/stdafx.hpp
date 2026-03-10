@@ -30,7 +30,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ip/udp.hpp>
-#include <boost/date_time/posix_time/posix_time_types.hpp>
+#include <chrono>
 #include <xml/tinyxml2.h>
 #include <log/logger.hpp>
 #include <soci/soci.h>

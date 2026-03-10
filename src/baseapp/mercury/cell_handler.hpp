@@ -268,7 +268,7 @@ class CellAppConnection : public Mercury::UnifiedConnection
 		 */
 		inline Ptr shared_this()
 		{
-			return boost::static_pointer_cast<CellAppConnection>(shared_from_this());
+			return std::static_pointer_cast<CellAppConnection>(shared_from_this());
 		}
 };
 

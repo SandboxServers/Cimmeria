@@ -205,7 +205,7 @@ class BaseAppClient : public Mercury::UnifiedConnection
 		virtual void unregisterConnection();
 
 	private:
-		boost::asio::deadline_timer recoveryTimer_;
+		boost::asio::steady_timer recoveryTimer_;
 		bool registered_;
 		uint32_t cacheEntityId_;
 		Writer * cacheWriter_;
@@ -276,7 +276,7 @@ class BaseAppClient : public Mercury::UnifiedConnection
 		 */
 		inline Ptr shared_this()
 		{
-			return boost::static_pointer_cast<BaseAppClient>(shared_from_this());
+			return std::static_pointer_cast<BaseAppClient>(shared_from_this());
 		}
 
 		CellEntity::Ptr createEntity(uint32_t entityId, uint32_t dbid, uint32_t spaceId, 

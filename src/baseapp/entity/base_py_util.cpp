@@ -159,7 +159,7 @@ std::string PyUtil_RegisterMinigameSession(uint32_t entityId, std::string const 
 {
 	MinigameRequestManager::QueueEntry * entry = BaseService::base_instance().minigameManager().queue(
 		entityId, gameName, difficulty, techCompetency, seed, abilitiesMask, intelligence, playerLevel, 
-		boost::bind(&PyUtil_MinigameCallback, _1, _2, callback));
+		[callback](Minigame * mg, MinigameCompletionStatus status) { PyUtil_MinigameCallback(mg, status, callback); });
 	if (!entry)
 		return "";
 

@@ -5,7 +5,6 @@
 #include <baseapp/cell_manager.hpp>
 #include <authentication/logon_queue.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/asio/placeholders.hpp>
 
 namespace authentication
 {
@@ -88,8 +87,11 @@ void ShardClient::reconnectIn(uint32_t msecs)
 {
 	state_ = STATE_NOT_CONNECTED;
 
-	recoveryTimer_.expires_from_now(boost::posix_time::milliseconds(msecs));
-	recoveryTimer_.async_wait(boost::bind(&ShardClient::reconnectTimerExpired, shared_this(), boost::asio::placeholders::error));
+	recoveryTimer_.expires_after(std::chrono::milliseconds(msecs));
+	auto self = shared_this();
+	recoveryTimer_.async_wait([self](const boost::system::error_code & err) {
+		self->reconnectTimerExpired(err);
+	});
 }
 
 void ShardClient::startup()
@@ -224,11 +226,10 @@ void ShardClient::sendRegistrationRequest()
 void ShardClient::generateRandom(std::string & s)
 {
 	const char charset[17] = "0123456789ABCDEF";
-	boost::uniform_int<> distribution(0, 15);
-	boost::variate_generator<boost::mt19937&, boost::uniform_int<> > chr(Service::instance().rng(), distribution);
+	std::uniform_int_distribution<> distribution(0, 15);
 
 	for (std::string::size_type i = 0; i < s.length(); i++)
-		s[i] = charset[chr()];
+		s[i] = charset[distribution(Service::instance().rng())];
 }
 
 

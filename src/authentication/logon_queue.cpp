@@ -57,7 +57,7 @@ void LogonQueue::processQueueItem()
 		// TRACE("Fetching data for user %s ...", req->user_name.c_str());
 
 		AuthenticationService::as_instance().dbMgr().fetchRow(
-			boost::bind(&doLogonQuery, _1, item),
+			[item](soci::session & s) { doLogonQuery(s, item); },
 			[item]()
 				{
 					if (item->request.password != item->dbPassword)

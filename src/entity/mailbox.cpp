@@ -8,7 +8,7 @@
 MailboxClass::MailboxClass(bp::object & module, PyClassDef * cls, Service::EndpointType mboxType, const char * namePostfix)
 	: class_(cls), mailboxType_(mboxType)
 {
-	class_->rebind(methods_, mboxType, boost::bind(&MailboxClass::onRpc, this, _1, _2, _3));
+	class_->rebind(methods_, mboxType, [this](MailboxRpcMethod const * m, bp::object args, bp::object kw) { onRpc(m, args, kw); });
 	for (auto it = methods_.begin(); it != methods_.end(); ++it)
 		methodsByName_.insert(std::make_pair((*it)->name(), *it));
 }

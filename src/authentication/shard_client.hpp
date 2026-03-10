@@ -2,7 +2,7 @@
 
 #include <mercury/unified_connection.hpp>
 #include <util/singleton.hpp>
-#include <boost/asio/deadline_timer.hpp>
+#include <boost/asio/steady_timer.hpp>
 
 namespace authentication
 {
@@ -87,7 +87,7 @@ class ShardClient : public Mercury::UnifiedConnection
 		virtual void unregisterConnection();
 
 	private:
-		boost::asio::deadline_timer recoveryTimer_;
+		boost::asio::steady_timer recoveryTimer_;
 		State state_;
 
 		void reconnectIn(uint32_t msecs);
@@ -129,7 +129,7 @@ class ShardClient : public Mercury::UnifiedConnection
 		 */
 		inline Ptr shared_this()
 		{
-			return boost::static_pointer_cast<ShardClient>(shared_from_this());
+			return std::static_pointer_cast<ShardClient>(shared_from_this());
 		}
 };
 

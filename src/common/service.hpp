@@ -3,8 +3,8 @@
 #include <util/singleton.hpp>
 #include <mercury/timer.hpp>
 #include <common/database.hpp>
-#include <boost/asio/deadline_timer.hpp>
-#include <boost/random.hpp>
+#include <boost/asio/steady_timer.hpp>
+#include <random>
 #include <soci/soci.h>
 
 class MessageWriter;
@@ -21,7 +21,7 @@ class Service : public singleton<Service>
 			ClientMailbox
 		};
 
-		typedef boost::mt19937 RandomNumberGenerator;
+		typedef std::mt19937 RandomNumberGenerator;
 		typedef Mercury::TimerMgr<uint64_t> TimerMgr;
 		// How often should we tick the master timer (in milliseconds)
 		static const unsigned int TickInterval = 10;
@@ -33,7 +33,7 @@ class Service : public singleton<Service>
 		void start();
 		void stop();
 
-		inline boost::asio::io_service & ioService()
+		inline boost::asio::io_context & ioService()
 		{
 			return service_;
 		}
@@ -86,27 +86,27 @@ class Service : public singleton<Service>
 		virtual void cleanup() = 0;
 		virtual std::string internalServiceName() = 0;
 		virtual uint16_t internalPort();
-		
+
 		std::string serviceName_;
 		uint16_t servicePort_;
 
 		// Configuration file version expected by the server
 		std::string configVersion_;
-		
+
 		/*
 		 * Exposes all configuration variables from the config .xml file via the Atrea.config module.
 		 */
 		void exposeConfiguration();
 
 	private:
-		boost::asio::io_service service_;
-		boost::asio::io_service::work work_;
+		boost::asio::io_context service_;
+		boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_;
 		std::map<std::string, std::string> configOptions_;
 		Database dbMgr_;
 		// Manages all application timers
 		TimerMgr timers_;
 		// ASIO timer that ticks all registered timers
-		boost::asio::deadline_timer timer_;
+		boost::asio::steady_timer timer_;
 		// When was the last timer tick?
 		uint64_t lastTick_;
 		// Shared RNG

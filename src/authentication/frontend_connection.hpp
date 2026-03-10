@@ -59,7 +59,7 @@ class FrontendConnection : public Mercury::UnifiedConnection
 
 		Ptr shared_this()
 		{
-			return boost::static_pointer_cast<FrontendConnection>(shared_from_this());
+			return std::static_pointer_cast<FrontendConnection>(shared_from_this());
 		}
 
 	protected:

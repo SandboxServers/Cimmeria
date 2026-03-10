@@ -60,7 +60,7 @@ public:
 			freeHandlers_.push(timer.handlerId);
 			timers_.pop();
 			if (callback)
-				callback(boost::ref(*this), timer.time, time, handlers_[timer.handlerId].second);
+				callback(std::ref(*this), timer.time, time, handlers_[timer.handlerId].second);
 		}
 	}
 	

@@ -1,9 +1,7 @@
 #include <stdafx.hpp>
 #include <baseapp/minigame_connection.hpp>
 #include <baseapp/base_service.hpp>
-#include <boost/thread/locks.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/asio/placeholders.hpp>
 
 #undef DEBUG_NET_MINIGAME
 
@@ -533,11 +531,12 @@ bool MinigameConnection::handleExtensionRequest(tinyxml2::XMLElement & body)
 
 void MinigameConnection::receiveMessage()
 {
+	auto self = shared_this();
 	socket_.async_receive(
 		boost::asio::buffer(&message_[messageReceived_], MaxMessageLength - messageReceived_),
-		boost::bind(&MinigameConnection::receivedMessage, shared_this(),
-		boost::asio::placeholders::error,
-		boost::asio::placeholders::bytes_transferred));
+		[self](const boost::system::error_code & err, size_t len) {
+			self->receivedMessage(err, len);
+		});
 }
 
 void MinigameConnection::receivedMessage(const boost::system::error_code & errcode, size_t receivedLength)
@@ -592,11 +591,12 @@ void MinigameConnection::sendMessage()
 #ifdef DEBUG_NET_MINIGAME
 	LOGF(LL_TRACE, "Sending msg (%d bytes sent, %d total)", sendOffset_, sendMessage_.length() + 1);
 #endif
+	auto self = shared_this();
 	socket_.async_send(
 		boost::asio::buffer(&sendMessage_[sendOffset_], sendMessage_.length() + 1 - sendOffset_),
-		boost::bind(&MinigameConnection::messageSent, shared_this(),
-		boost::asio::placeholders::error,
-		boost::asio::placeholders::bytes_transferred));
+		[self](const boost::system::error_code & err, size_t len) {
+			self->messageSent(err, len);
+		});
 }
 
 

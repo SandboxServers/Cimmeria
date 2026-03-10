@@ -1,12 +1,11 @@
 #include <stdafx.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/tokenizer.hpp>
-#include <boost/random.hpp>
+#include <random>
 #include <common/service.hpp>
 #include <mercury/tcp_server.hpp>
 #include <authentication/logon_connection.hpp>
 #include <authentication/service_main.hpp>
-#include <boost/asio/placeholders.hpp>
 
 const char * LogonFailureMessages[LogonQueue::FailureMax + 1] = 
 {
@@ -128,13 +127,12 @@ void LogonConnection::receive()
 {
 	assert(receiveOffset_ < MaxRequestLength);
 
+	auto self = shared_from_this();
 	socket_.async_receive(
 		boost::asio::buffer(&request_[receiveOffset_], MaxRequestLength - receiveOffset_),
-		boost::bind(
-			&LogonConnection::onReceived, shared_from_this(),
-			boost::asio::placeholders::error,
-			boost::asio::placeholders::bytes_transferred
-		)
+		[self](const boost::system::error_code & err, size_t len) {
+			self->onReceived(err, len);
+		}
 	);
 }
 
@@ -373,8 +371,13 @@ void LogonConnection::onUserAuthentication(const std::string & request)
 	req.serviceName = sku;
 	req.userName = accountName;
 	req.password = password;
-	req.successCb = boost::bind(&LogonConnection::onLogonSuccessful, shared_from_this(), _1, _2, _3);
-	req.errorCb = boost::bind(&LogonConnection::onLogonFailed, shared_from_this(), _1);
+	auto self = shared_from_this();
+	req.successCb = [self](uint32_t id, std::string const & name, uint32_t level) {
+		self->onLogonSuccessful(id, name, level);
+	};
+	req.errorCb = [self](LogonQueue::FailureCode code) {
+		self->onLogonFailed(code);
+	};
 	AuthenticationService::as_instance().logonQueue().queueRequest(req);
 }
 
@@ -431,9 +434,14 @@ void LogonConnection::onServerSelection(const std::string & request)
 	}
 
 	DEBUG2("%s: Logging on to shard '%s'", socket_.remote_endpoint().address().to_string().c_str(), shard);
+	auto self = shared_from_this();
 	frontend->logon(session->accountId, session->accountName, session->accessLevel,
-		boost::bind(&LogonConnection::onShardEnterSuccessful, shared_from_this(), _1, frontend),
-		boost::bind(&LogonConnection::onShardEnterFailed, shared_from_this(), _1));
+		[self, frontend](FrontendConnection::ShardSessionData data) {
+			self->onShardEnterSuccessful(data, frontend);
+		},
+		[self](LogonQueue::FailureCode code) {
+			self->onShardEnterFailed(code);
+		});
 }
 
 void LogonConnection::onShardEnterSuccessful(FrontendConnection::ShardSessionData & session, FrontendConnection::Ptr conn)
@@ -459,10 +467,9 @@ void LogonConnection::onLogonSuccessful(uint32_t accountId, std::string const & 
 {
 	std::string charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	requestSession_ = "";
-	boost::uniform_int<> charset_distribution(0, (int)charset.length() - 1);
-	boost::variate_generator<boost::mt19937&, boost::uniform_int<> > chr(Service::instance().rng(), charset_distribution);
+	std::uniform_int_distribution<> charset_distribution(0, (int)charset.length() - 1);
 	for (int i = 0; i < 40; i++)
-		requestSession_.push_back(charset[chr()]);
+		requestSession_.push_back(charset[charset_distribution(Service::instance().rng())]);
 
 	const std::vector<FrontendConnection::Ptr> & shardList = AuthenticationService::as_instance().shards();
 	if (shardList.empty())
@@ -505,11 +512,12 @@ void LogonConnection::sendResponse(size_t sendOffset)
 {
 	sendOffset_ = sendOffset;
 	assert(sendOffset_ < response_.length());
+	auto self = shared_from_this();
 	socket_.async_send(
 		boost::asio::buffer(&response_.data()[sendOffset_], response_.length() - sendOffset_),
-		boost::bind(&LogonConnection::onResponseSent, shared_from_this(),
-		boost::asio::placeholders::error,
-		boost::asio::placeholders::bytes_transferred));
+		[self](const boost::system::error_code & err, size_t len) {
+			self->onResponseSent(err, len);
+		});
 }
 
 void LogonConnection::onResponseSent(const boost::system::error_code & errcode, size_t sentLength)
