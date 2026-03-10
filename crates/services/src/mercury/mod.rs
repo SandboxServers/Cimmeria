@@ -98,7 +98,10 @@ pub(crate) const BASEMSG_RESOURCE_FRAGMENT: u8 = 0x36;
 /// Wire format: `[reason:u8]` (0 = normal logoff).
 pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 
-/// Account entity class ID (EntityTypeID 7 in entity definitions).
+/// Account entity class ID (EntityTypeID 7 — client skips ServerOnly entities).
+/// entities.xml has SGWBlackMarket(ServerOnly) at index 7, but client numbering
+/// excludes it: 0=SGWSpawnableEntity..6=SGWDuelMarker, 7=Account.
+/// Confirmed by C++ server pcap: `Base Player Create: type=7`.
 pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
 pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
