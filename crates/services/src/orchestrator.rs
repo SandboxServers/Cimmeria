@@ -179,15 +179,16 @@ impl Orchestrator {
         // the DB `shards` table; host/port are runtime config for now (only
         // one BaseApp process). When we support multiple BaseApps each shard
         // row will need its own host/port columns.
-        let shard_names = match &db_pool {
+        let shard_rows = match &db_pool {
             Some(pool) => query_all_shards(pool).await,
-            None => vec!["Shard".to_string()],
+            None => vec![ShardRow { name: "Shard".to_string(), protected: false }],
         };
-        for name in shard_names {
+        for row in shard_rows {
             let shard = ShardInfo {
-                name,
+                name: row.name,
                 host: state.config.base_external_host.clone(),
                 port: state.config.base_port,
+                protected: row.protected,
             };
             state.auth.register_shard(shard);
         }
@@ -281,26 +282,46 @@ impl Orchestrator {
 
 // ── Shard lookup ─────────────────────────────────────────────────────────────
 
-/// Query all shard names from the `shards` table, ordered by shard_id.
+/// Row returned by [`query_all_shards`].
+struct ShardRow {
+    name: String,
+    protected: bool,
+}
+
+/// Query all shards from the `shards` table, ordered by shard_id.
 /// Returns a fallback single-entry list on error.
-async fn query_all_shards(pool: &Arc<PgPool>) -> Vec<String> {
-    match sqlx::query_scalar::<_, String>(
-        "SELECT name FROM shards ORDER BY shard_id",
+async fn query_all_shards(pool: &Arc<PgPool>) -> Vec<ShardRow> {
+    #[derive(sqlx::FromRow)]
+    struct DbShardRow {
+        name: Option<String>,
+        protected: bool,
+    }
+
+    match sqlx::query_as::<_, DbShardRow>(
+        "SELECT name, protected FROM shards ORDER BY shard_id",
     )
     .fetch_all(pool.as_ref())
     .await
     {
-        Ok(names) if !names.is_empty() => {
-            tracing::info!(count = names.len(), "Loaded shards from database: {:?}", names);
-            names
-        }
-        Ok(_) => {
-            tracing::error!("No shards found in database — using fallback name 'Shard'. Run: INSERT INTO shards (shard_id, name, key, protected) VALUES (1, 'Test', '', false);");
-            vec!["Shard".to_string()]
+        Ok(rows) => {
+            let shards: Vec<ShardRow> = rows
+                .into_iter()
+                .filter_map(|r| {
+                    r.name.map(|n| ShardRow { name: n, protected: r.protected })
+                })
+                .collect();
+            if shards.is_empty() {
+                tracing::error!("No shards found in database — using fallback name 'Shard'. Run: INSERT INTO shards (shard_id, name, key, protected) VALUES (1, 'Test', '', false);");
+                vec![ShardRow { name: "Shard".to_string(), protected: false }]
+            } else {
+                tracing::info!(count = shards.len(), "Loaded shards from database: {:?}",
+                    shards.iter().map(|s| &s.name).collect::<Vec<_>>());
+                shards
+            }
         }
         Err(e) => {
             tracing::error!("Failed to query shards table: {e} — using fallback name 'Shard'. Ensure the 'shards' table exists (re-run Initialize-CimmeriaDatabase -Force).");
-            vec!["Shard".to_string()]
+            vec![ShardRow { name: "Shard".to_string(), protected: false }]
         }
     }
 }

@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use axum::{
     Router,
@@ -29,6 +30,20 @@ use tokio::net::TcpListener;
 use cimmeria_common::ServerConfig;
 
 use crate::audit::{LoginEventBuffer, LoginEvent, emit_login_event};
+
+// ── Expiration constants ─────────────────────────────────────────────────────
+
+/// How long a Phase 1 session cookie (SID) remains valid before Phase 2
+/// must consume it.  C++ had no explicit TTL but sessions were effectively
+/// short-lived; 5 minutes is generous.
+const SESSION_TTL: Duration = Duration::from_secs(300);
+
+/// How long a Phase 2 ticket remains valid before Phase 3 must consume it.
+/// Matches the C++ `ShardLogonQueue::TicketExpiration` (30 seconds).
+const TICKET_TTL: Duration = Duration::from_secs(30);
+
+/// How often the background reaper sweeps expired sessions and tickets.
+const REAPER_INTERVAL: Duration = Duration::from_secs(10);
 
 // ── Protocol constants ───────────────────────────────────────────────────────
 
@@ -74,6 +89,8 @@ pub struct ShardInfo {
     pub name: String,
     pub host: String,
     pub port: u16,
+    /// If true, only accounts with `access_level >= 2` may connect.
+    pub protected: bool,
 }
 
 /// A pending login handoff created by Phase 2 and consumed by Phase 3.
@@ -84,10 +101,14 @@ pub struct ShardInfo {
 #[derive(Clone)]
 pub struct PendingLogin {
     pub account_id: u32,
+    /// Account privilege level (0 = normal, 2+ = admin/GM).
+    pub access_level: u32,
     /// 20-char uppercase hex ticket ID.
     pub ticket: String,
     /// 64-char uppercase hex session key (32-byte AES-256 key).
     pub session_key: String,
+    /// When this ticket was created (for expiration).
+    pub created: Instant,
 }
 
 // ── Internal types ───────────────────────────────────────────────────────────
@@ -103,7 +124,9 @@ struct LoginReq {
 #[derive(Clone)]
 struct SessionRecord {
     account_id: u32,
+    access_level: u32,
     account_name: String,
+    created: Instant,
 }
 
 /// State shared between the axum HTTP handlers.
@@ -183,8 +206,17 @@ impl AuthService {
     /// Register a BaseApp shard.
     ///
     /// Must be called before [`start`] so the shard appears in Phase 1 responses.
+    /// Logs a warning and skips registration if a shard with the same name
+    /// already exists (matches C++ `ALREADY_REGISTERED` behaviour).
     pub fn register_shard(&mut self, info: ShardInfo) {
-        tracing::info!(name = %info.name, host = %info.host, port = info.port, "Registering shard");
+        if self.shards.iter().any(|s| s.name == info.name) {
+            tracing::warn!(name = %info.name, "Duplicate shard name — skipping registration");
+            return;
+        }
+        tracing::info!(
+            name = %info.name, host = %info.host, port = info.port,
+            protected = info.protected, "Registering shard"
+        );
         self.shards.push(info);
     }
 
@@ -196,10 +228,17 @@ impl AuthService {
         tracing::info!(addr = %self.logon_addr, "Starting auth HTTP listener");
         tracing::trace!(shard_count = self.shards.len(), developer_mode = self.developer_mode, "Auth service config");
 
+        let sessions = Arc::new(Mutex::new(HashMap::new()));
+        let pending_logins = Arc::clone(&self.pending_logins);
+
+        // Clone Arcs for the reaper task *before* moving into HandlerState.
+        let reaper_sessions = Arc::clone(&sessions);
+        let reaper_pending = Arc::clone(&pending_logins);
+
         let state = Arc::new(HandlerState {
             shards: self.shards.clone(),
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-            pending_logins: Arc::clone(&self.pending_logins),
+            sessions,
+            pending_logins,
             developer_mode: self.developer_mode,
             db: self.db_pool.clone(),
             login_tx: self.login_tx.clone(),
@@ -217,6 +256,38 @@ impl AuthService {
             e
         })?;
         tracing::info!(addr = %listener.local_addr().unwrap(), "Auth HTTP listener bound");
+
+        // Spawn the session/ticket reaper before the HTTP server so it's
+        // already running when the first request arrives.
+        {
+            let sessions = reaper_sessions;
+            let pending = reaper_pending;
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(REAPER_INTERVAL).await;
+                    let now = Instant::now();
+
+                    let expired_sessions = {
+                        let mut map = sessions.lock().unwrap();
+                        let before = map.len();
+                        map.retain(|_, s| now.duration_since(s.created) < SESSION_TTL);
+                        before - map.len()
+                    };
+                    let expired_tickets = {
+                        let mut map = pending.lock().unwrap();
+                        let before = map.len();
+                        map.retain(|_, p| now.duration_since(p.created) < TICKET_TTL);
+                        before - map.len()
+                    };
+                    if expired_sessions > 0 || expired_tickets > 0 {
+                        tracing::debug!(
+                            expired_sessions, expired_tickets,
+                            "Reaped expired auth entries"
+                        );
+                    }
+                }
+            });
+        }
 
         tracing::trace!("Spawning auth HTTP server task");
         tokio::spawn(async move {
@@ -324,13 +395,14 @@ async fn handle_user_auth(
     // Credential check.
     // If DB is available, validate against the account table.
     // In developer mode without DB, any valid-format credentials are accepted.
-    let account_id: u32 = if let Some(ref db) = state.db {
+    let (account_id, access_level): (u32, u32) = if let Some(ref db) = state.db {
         match validate_credentials(db, &req.account_name, &req.password).await {
-            Ok(id) => id,
+            Ok(acct) => (acct.account_id, acct.access_level),
             Err(AuthCredError::InvalidCredentials) => {
                 tracing::info!(user = %req.account_name, "Invalid credentials");
                 audit!("invalid_credentials");
-                return login_error(3, "The account name or password is incorrect.");
+                // C++ FailureCode::BadUserPassword = 4 (not 3, which is InvalidService).
+                return login_error(4, "The account name or password is incorrect.");
             }
             Err(AuthCredError::AccountDisabled) => {
                 tracing::info!(user = %req.account_name, "Account disabled");
@@ -345,7 +417,7 @@ async fn handle_user_auth(
         }
     } else if state.developer_mode {
         tracing::debug!(user = %req.account_name, "developer mode: accepting credentials (no DB)");
-        1
+        (1, 99) // dev mode: max access level
     } else {
         audit!("db_error");
         return login_error(10, "A request to the database server failed.");
@@ -356,19 +428,22 @@ async fn handle_user_auth(
         return login_error(7, "No shards are available to the authentication server.");
     }
 
-    let sid = random_hex(20);
+    // 40-char alphanumeric SID matching the C++ session cookie format.
+    let sid = random_alphanumeric(40);
     tracing::debug!(sid = %sid, "Phase 1 generated SID");
     {
         state.sessions.lock().unwrap().insert(
             sid.clone(),
             SessionRecord {
                 account_id,
+                access_level,
                 account_name: req.account_name.clone(),
+                created: Instant::now(),
             },
         );
     }
 
-    tracing::info!(user = %req.account_name, account_id, ip = %client_ip, "Phase 1 success");
+    tracing::info!(user = %req.account_name, account_id, access_level, ip = %client_ip, "Phase 1 success");
     audit!("success", id=account_id);
 
     let xml = login_success_xml(account_id, &state.shards);
@@ -400,11 +475,16 @@ async fn handle_server_selection(
         None => return select_error(15, "Your logon session has expired. Please log in again."),
     };
 
+    // Consume session (remove from map) — each SID is single-use for Phase 2.
     let session = {
-        state.sessions.lock().unwrap().get(&sid).cloned()
+        state.sessions.lock().unwrap().remove(&sid)
     };
     let session = match session {
-        Some(s) => s,
+        Some(s) if s.created.elapsed() < SESSION_TTL => s,
+        Some(_) => {
+            tracing::info!("Session expired for SID");
+            return select_error(15, "Your logon session has expired. Please log in again.");
+        }
         None => return select_error(15, "Your logon session has expired. Please log in again."),
     };
 
@@ -421,6 +501,16 @@ async fn handle_server_selection(
         None => return select_error(8, "No such shard."),
     };
 
+    // Protected shard access control (matches C++ AccessDenied behaviour).
+    if shard.protected && session.access_level < 2 {
+        tracing::info!(
+            user = %session.account_name, shard = %shard.name,
+            access_level = session.access_level,
+            "Access denied to protected shard"
+        );
+        return select_error(6, "Access denied.");
+    }
+
     // 64-char hex AES-256 session key, 20-char hex ticket.
     let session_key = random_hex(32);
     let ticket = random_hex(10);
@@ -431,8 +521,10 @@ async fn handle_server_selection(
             ticket.clone(),
             PendingLogin {
                 account_id: session.account_id,
+                access_level: session.access_level,
                 ticket: ticket.clone(),
                 session_key: session_key.clone(),
+                created: Instant::now(),
             },
         );
     }
@@ -521,31 +613,26 @@ fn extract_sid(headers: &HeaderMap) -> Option<String> {
         .map(|s| s["SID=".len()..].to_string())
 }
 
-/// Wrap an XML body in a SOAP 1.1 envelope.
+/// XML declaration prefix matching the original C++ auth server output.
 ///
-/// The SGW client uses gSOAP for deserialization and expects responses wrapped
-/// in `<SOAP-ENV:Envelope><SOAP-ENV:Body>...</SOAP-ENV:Body></SOAP-ENV:Envelope>`.
-/// The original CME login server was a Java JAX-WS service that produced this
-/// wrapping automatically.
-fn soap_wrap(body: &str) -> String {
-    format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
-         <SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://schemas.xmlsoap.org/soap/envelope/\">\
-         <SOAP-ENV:Body>\
-         {body}\
-         </SOAP-ENV:Body>\
-         </SOAP-ENV:Envelope>"
-    )
-}
+/// The SGW client uses gSOAP in document/literal mode and expects **bare XML**
+/// — no SOAP envelope wrapping.  The original C++ `LogonConnection` sends
+/// responses starting with this declaration followed by the root element
+/// directly.  Earlier versions of this code incorrectly wrapped responses in
+/// `<SOAP-ENV:Envelope>`, causing the client to fail to parse Phase 1
+/// responses and never proceed to Phase 2.
+const XML_DECL: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
 
-fn login_error(code: u32, msg: &str) -> Response {
-    let inner = format!(
-        "<ns2:SGWLoginResponse {ns}>\
-         <SGWLoginError ns3:ErrorStr=\"{msg}\" ns3:ErrorNum=\"{code}\" />\
+fn login_error(_code: u32, msg: &str) -> Response {
+    // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
+    // The client uses ErrorStr for display and ignores ErrorNum.
+    let xml = format!(
+        "{XML_DECL}\
+         <ns2:SGWLoginResponse {ns}>\
+         <SGWLoginError ns3:ErrorStr=\"{msg}\" ns3:ErrorNum=\"1\" />\
          </ns2:SGWLoginResponse>",
         ns = LOGIN_NS,
     );
-    let xml = soap_wrap(&inner);
     (StatusCode::OK, [(header::CONTENT_TYPE, "text/xml".to_string())], xml).into_response()
 }
 
@@ -560,32 +647,34 @@ fn login_success_xml(account_id: u32, shards: &[ShardInfo]) -> String {
         })
         .collect();
 
-    let inner = format!(
-        "<ns2:SGWLoginResponse {ns}>\
+    format!(
+        "{XML_DECL}\
+         <ns2:SGWLoginResponse {ns}>\
          <SGWLoginSuccess>\
          <AccountInfo ExpireDate=\"0000-00-00T00:00:00.000Z\" AccountId=\"{account_id}\" />\
          <SGWShardListResp>{entries}</SGWShardListResp>\
          </SGWLoginSuccess>\
          </ns2:SGWLoginResponse>",
         ns = LOGIN_NS,
-    );
-    soap_wrap(&inner)
+    )
 }
 
-fn select_error(code: u32, msg: &str) -> Response {
-    let inner = format!(
-        "<ns3:SGWServerLocationResponse {ns}>\
-         <ServerSelectionError ns1:ErrorStr=\"{msg}\" ns1:ErrorNum=\"{code}\" />\
+fn select_error(_code: u32, msg: &str) -> Response {
+    // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
+    let xml = format!(
+        "{XML_DECL}\
+         <ns3:SGWServerLocationResponse {ns}>\
+         <ServerSelectionError ns1:ErrorStr=\"{msg}\" ns1:ErrorNum=\"1\" />\
          </ns3:SGWServerLocationResponse>",
         ns = SELECT_NS,
     );
-    let xml = soap_wrap(&inner);
     (StatusCode::OK, [(header::CONTENT_TYPE, "text/xml".to_string())], xml).into_response()
 }
 
 fn server_location_xml(shard: &ShardInfo, session_key: &str, ticket: &str) -> String {
-    let inner = format!(
-        "<ns3:SGWServerLocationResponse {ns}>\
+    format!(
+        "{XML_DECL}\
+         <ns3:SGWServerLocationResponse {ns}>\
          <ServerLocation SessionKey=\"{session_key}\" Port=\"{port}\" IP=\"{ip}\" BWMailBox=\"1\">\
          <TICKET Ticket=\"{ticket}\" />\
          </ServerLocation>\
@@ -593,8 +682,7 @@ fn server_location_xml(shard: &ShardInfo, session_key: &str, ticket: &str) -> St
         ns = SELECT_NS,
         port = shard.port,
         ip = shard.host,
-    );
-    soap_wrap(&inner)
+    )
 }
 
 // ── DB credential validation ──────────────────────────────────────────────────
@@ -605,24 +693,33 @@ enum AuthCredError {
     DbError(String),
 }
 
+/// Validated account info returned by [`validate_credentials`].
+struct ValidatedAccount {
+    account_id: u32,
+    access_level: u32,
+}
+
 /// Validate credentials against the `account` table.
 ///
-/// The client sends the password pre-hashed as a 40-char lowercase hex SHA1.
-/// The database stores the same format. We compare directly.
+/// The C++ server stores passwords as uppercase hex SHA-1 and queries with
+/// `upper(password)`.  We normalise both sides to uppercase for comparison
+/// so it works regardless of how the DB row was inserted.
 async fn validate_credentials(
     db: &PgPool,
     account_name: &str,
     client_password_hash: &str,
-) -> Result<u32, AuthCredError> {
+) -> Result<ValidatedAccount, AuthCredError> {
     #[derive(sqlx::FromRow)]
     struct AccountRow {
         account_id: i32,
         password: String,
+        accesslevel: i32,
         enabled: bool,
     }
 
     let row: Option<AccountRow> = sqlx::query_as(
-        "SELECT account_id, password, enabled FROM account WHERE account_name = $1",
+        "SELECT account_id, password, accesslevel, enabled \
+         FROM account WHERE account_name = $1",
     )
     .bind(account_name)
     .fetch_optional(db)
@@ -631,6 +728,8 @@ async fn validate_credentials(
 
     let row = match row {
         Some(r) => r,
+        // Don't reveal whether the account exists — same error as bad password
+        // (matches C++ `BadUserPassword` behaviour).
         None => return Err(AuthCredError::InvalidCredentials),
     };
 
@@ -638,13 +737,15 @@ async fn validate_credentials(
         return Err(AuthCredError::AccountDisabled);
     }
 
-    // Compare password hashes (both are lowercase hex SHA1).
-    // The client sends uppercase; the DB stores lowercase.
-    if row.password.to_lowercase() != client_password_hash.to_lowercase() {
+    // Compare password hashes as uppercase hex (matches C++ `upper(password)`).
+    if row.password.to_uppercase() != client_password_hash.to_uppercase() {
         return Err(AuthCredError::InvalidCredentials);
     }
 
-    Ok(row.account_id as u32)
+    Ok(ValidatedAccount {
+        account_id: row.account_id as u32,
+        access_level: row.accesslevel.max(0) as u32,
+    })
 }
 
 /// Generate `byte_count` random bytes as uppercase hex.
@@ -652,6 +753,20 @@ fn random_hex(byte_count: usize) -> String {
     let mut rng = rand::rng();
     (0..byte_count)
         .map(|_| format!("{:02X}", rng.random::<u8>()))
+        .collect()
+}
+
+/// Generate a random alphanumeric string of the given character length.
+///
+/// Matches the C++ session ID format: 40-char string drawn from [0-9a-zA-Z].
+fn random_alphanumeric(char_count: usize) -> String {
+    const CHARSET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut rng = rand::rng();
+    (0..char_count)
+        .map(|_| {
+            let idx = rng.random_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
         .collect()
 }
 
@@ -681,9 +796,15 @@ mod tests {
 
     #[test]
     fn random_hex_length() {
-        assert_eq!(random_hex(20).len(), 40); // SID
         assert_eq!(random_hex(10).len(), 20); // ticket
         assert_eq!(random_hex(32).len(), 64); // session key
+    }
+
+    #[test]
+    fn random_alphanumeric_length_and_charset() {
+        let sid = random_alphanumeric(40);
+        assert_eq!(sid.len(), 40);
+        assert!(sid.chars().all(|c| c.is_ascii_alphanumeric()));
     }
 
     #[test]
@@ -708,12 +829,15 @@ mod tests {
             name: "Shard".into(),
             host: "127.0.0.1".into(),
             port: 32832,
+            protected: false,
         }];
         let xml = login_success_xml(42, &shards);
         assert!(xml.contains(r#"AccountId="42""#));
         assert!(xml.contains(r#"ServerName="Shard""#));
-        assert!(xml.contains("SOAP-ENV:Envelope"));
-        assert!(xml.contains("SOAP-ENV:Body"));
+        // Bare XML — no SOAP envelope (matches C++ LogonConnection output).
+        assert!(!xml.contains("SOAP-ENV:Envelope"));
+        assert!(xml.starts_with(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#));
+        assert!(xml.contains("ns2:SGWLoginResponse"));
     }
 
     #[test]
@@ -722,6 +846,7 @@ mod tests {
             name: "Shard".into(),
             host: "127.0.0.1".into(),
             port: 32832,
+            protected: false,
         };
         let xml = server_location_xml(&shard, "AAAA", "BBBB");
         assert!(xml.contains(r#"SessionKey="AAAA""#));

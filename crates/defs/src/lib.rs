@@ -9,6 +9,11 @@
 // generates empty stubs so this crate always compiles.
 
 // Include generated entity types, property structs, and static registry data.
-include!(concat!(env!("OUT_DIR"), "/generated_entities.rs"));
+// Property names mirror BigWorld entity defs (camelCase), not Rust conventions.
+#[allow(non_snake_case)]
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/generated_entities.rs"));
+}
+pub use generated::*;
 
 pub mod registry;

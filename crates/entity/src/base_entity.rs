@@ -12,7 +12,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use cimmeria_common::{EntityId, SpaceId, Vector3};
+use cimmeria_common::{EntityId, Vector3};
 
 use crate::mailbox::{CellMailbox, ClientMailbox};
 
@@ -157,6 +157,7 @@ impl fmt::Debug for BaseEntity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_common::SpaceId;
 
     #[test]
     fn new_entity_has_no_cell() {

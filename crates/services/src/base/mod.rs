@@ -136,6 +136,10 @@ pub(crate) struct ConnectedClientState {
     pub key: [u8; 32],
     /// Account ID from the pending login (FK to account table).
     pub account_id: u32,
+    /// Account privilege level (0 = normal, 2+ = admin/GM).
+    /// Will be used for GM command authorization.
+    #[allow(dead_code)]
+    pub access_level: u32,
     /// `true` once the Phase 4 character list has been sent to this client.
     pub char_list_sent: bool,
     /// `true` once the Phase 5a world entry packet (viewport+cell+position+reset) has been sent.

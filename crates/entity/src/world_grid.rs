@@ -80,7 +80,7 @@ impl WorldGrid {
     /// Examines all grid cells that could possibly overlap the query circle,
     /// then performs an exact squared-distance check on each candidate.
     pub fn query_radius(&self, pos: &Vector3, radius: f32) -> Vec<EntityId> {
-        let radius_sq = radius * radius;
+        let _radius_sq = radius * radius;
 
         // Determine the range of cells that overlap the query circle.
         // We only use X and Z for the 2D grid (Y is vertical / height).

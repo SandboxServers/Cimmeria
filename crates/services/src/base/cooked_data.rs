@@ -34,25 +34,32 @@ pub(crate) async fn handle_version_info_request(
     let category_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
     let client_version = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
-    // Version negotiation: echo back the PAK metadata version so the client
-    // sees a match and keeps its local cache. The C++ server does the same
-    // for categories not in `categoryMaps` (including category 7 char_creation).
-    // Only invalidate when there's an actual version mismatch.
-    let (version, required_updates, invalidate_all) = match resource_cache {
+    // Version negotiation: send back the PAK metadata version.  When the
+    // client's version doesn't match (e.g. fresh client sends version 0),
+    // set invalidateAll=true so the client reloads from its PAK baseline
+    // and fires the "element ready" events that the UI depends on.
+    // The C++ Python server does the same via DefMgr.getChangesForVersion()
+    // which returns invalidateAll=True when the version gap is too large.
+    let (version, num_elements, invalidate_all, should_push) = match resource_cache {
         Some(cache) => match cache.category(category_id) {
             Some(cat) => {
-                // Never invalidate -- we don't implement proactive resource push,
-                // so invalidation would leave the client with an empty cache.
-                // The client's shipped PAK files have the correct data.
-                (cat.metadata, 0u32, false)
+                let invalidate = client_version != cat.metadata;
+                let count = cat.elements.len() as u32;
+                // Proactively push all elements when the client's cache is stale.
+                // The C++ Python server does this for categories 12-20 (its
+                // categoryMaps); we do it for ALL categories to ensure the client
+                // receives cooked data regardless of its local PAK state.
+                (cat.metadata, count, invalidate, invalidate)
             }
-            None => (client_version, 0u32, false),
+            None => (client_version, 0u32, false, false),
         },
-        None => (client_version, 0u32, false),
+        None => (client_version, 0u32, false, false),
     };
 
+    let required_updates = if should_push { num_elements } else { 0 };
+
     tracing::info!(
-        %addr, category_id, client_version, version, required_updates,
+        %addr, category_id, client_version, version, required_updates, invalidate_all,
         "Responding to versionInfoRequest"
     );
 
@@ -61,16 +68,22 @@ pub(crate) async fn handle_version_info_request(
     let pkt = build_version_info(&key, seq, &acks, category_id, version, required_updates, invalidate_all, account_eid);
     socket.send_to(&pkt, addr).await?;
 
+    // Proactively push all elements when the client needs to reload.
+    if should_push {
+        if let Some(cache) = resource_cache {
+            if let Some(cat) = cache.category(category_id) {
+                send_category_resources(socket, addr, key, category_id, cat, connected).await?;
+            }
+        }
+    }
+
     Ok(())
 }
 
 /// Proactively send all resources for a category as BASEMSG_RESOURCE_FRAGMENT packets.
 ///
-/// The C++ server does this immediately after onVersionInfo when the client's cache
-/// is stale, rather than waiting for individual elementDataRequests.
-/// Currently unused -- on-demand delivery via handle_element_data_request is used instead.
-/// Kept for future use when flow-controlled proactive push is implemented.
-#[allow(dead_code)]
+/// Called immediately after onVersionInfo when the client's cache is stale,
+/// rather than waiting for individual elementDataRequests.
 pub(crate) async fn send_category_resources(
     socket: &Arc<UdpSocket>,
     addr: SocketAddr,

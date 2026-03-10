@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -508,7 +508,7 @@ pub async fn delete_content(
     tag = "Editor"
 )]
 pub async fn delete_content_with_mission(
-    State(orchestrator): State<Arc<Orchestrator>>,
+    State(_orchestrator): State<Arc<Orchestrator>>,
     Path((_scope_id, _mission_id)): Path<(String, i32)>,
 ) -> Json<serde_json::Value> {
     // TODO: implement mission-scoped deletion
