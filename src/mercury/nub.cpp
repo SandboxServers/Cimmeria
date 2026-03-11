@@ -237,7 +237,7 @@ void Nub::sendPacket(BaseChannel::Ptr channel, Packet::Ptr packet, Packet::Seque
 	socket_.async_send_to(
 		boost::asio::buffer(sendBuffer_.buffer(), sendBuffer_.offset()),
 		channel->address(),
-		[this, channel, packet](const boost::system::error_code & err) {
+		[this, channel, packet](const boost::system::error_code & err, std::size_t /*bytes*/) {
 			onPacketSent(channel, packet, err);
 		});
 }

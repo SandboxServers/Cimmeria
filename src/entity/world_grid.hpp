@@ -2,6 +2,7 @@
 
 #include <type_traits>
 #include <algorithm>
+#include <memory>
 
 #if defined(_DEBUG)
 #define DEBUG_WORLD_GRID
@@ -25,9 +26,9 @@ public:
 
 protected:
 	// Objects that are out of range but can still see us
-	std::set<std::weak_ptr<_T>> witnesses_;
+	std::set<std::weak_ptr<_T>, std::owner_less<std::weak_ptr<_T>>> witnesses_;
 	// Objects that are out of range but are still visible to us
-	std::set<std::weak_ptr<_T>> visionExceptions_;
+	std::set<std::weak_ptr<_T>, std::owner_less<std::weak_ptr<_T>>> visionExceptions_;
 	// Grid that we're a member of
 	WorldGrid<_T> * grid_;
 
@@ -70,9 +71,9 @@ public:
 	struct Chunk
 	{
 		// List of objects currently on this chunk
-		std::set<typename _T::WeakPtr> objects;
+		std::set<typename _T::WeakPtr, std::owner_less<typename _T::WeakPtr>> objects;
 		// List of objects that have visibility controllers
-		std::set<typename _T::WeakPtr> witnesses;
+		std::set<typename _T::WeakPtr, std::owner_less<typename _T::WeakPtr>> witnesses;
 
 		void insert(typename _T::WeakPtr object)
 		{

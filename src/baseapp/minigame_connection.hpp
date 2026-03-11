@@ -2,6 +2,7 @@
 
 #include <baseapp/minigame.hpp>
 #include <mercury/tcp_server.hpp>
+#include <array>
 
 class MinigameConnection : public std::enable_shared_from_this<MinigameConnection>
 {
@@ -45,7 +46,7 @@ class MinigameConnection : public std::enable_shared_from_this<MinigameConnectio
 
 		inline Ptr shared_this()
 		{
-			return std::static_pointer_cast<MinigameConnection>(shared_from_this());
+			return shared_from_this();
 		}
 
 		// Connection handle
@@ -62,7 +63,7 @@ class MinigameConnection : public std::enable_shared_from_this<MinigameConnectio
 		// Max length of minigame message (including the null terminator)
 		static const size_t MaxMessageLength = 0x1000;
 		// Buffer holding the current message and subsequent messages
-		boost::array<uint8_t, MaxMessageLength> message_;
+		std::array<uint8_t, MaxMessageLength> message_;
 		// Amount of readable bytes in message_
 		size_t messageReceived_;
 

@@ -1,4 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
+
+# CMake 4.x removed compatibility with policies < 3.5. Allow older
+# FetchContent dependencies (SOCI, Recast) that haven't updated yet.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+endif()
+
 project(Cimmeria CXX)
 
 # --- Global settings ---
@@ -54,12 +61,12 @@ else()
     set(RECASTNAVIGATION_EXAMPLES OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(recastnavigation)
 
-    # Alias targets to match the names used by CellApp/NavBuilder CMakeLists
-    if(NOT TARGET recast)
-        add_library(recast ALIAS RecastNavigation::Recast)
+    # Alias targets to match the lowercase names used by CellApp/NavBuilder
+    if(NOT TARGET recast AND TARGET Recast)
+        add_library(recast ALIAS Recast)
     endif()
-    if(NOT TARGET detour)
-        add_library(detour ALIAS RecastNavigation::Detour)
+    if(NOT TARGET detour AND TARGET Detour)
+        add_library(detour ALIAS Detour)
     endif()
 endif()
 

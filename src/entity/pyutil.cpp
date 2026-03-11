@@ -37,7 +37,7 @@ void PyUtil_ShowErr(char const * msg)
 
 		PyErr_Fetch(&ptype, &pvalue, &ptraceback);
 		PyObject * pystr = PyObject_Str(pvalue);
-		char * errorDesc = PyUnicode_AsUTF8(pystr);
+		const char * errorDesc = PyUnicode_AsUTF8(pystr);
 		std::string backtrace;
 
 		/* See if we can get a full traceback */

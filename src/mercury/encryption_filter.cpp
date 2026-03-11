@@ -24,7 +24,7 @@ void EncryptionFilter::setKey(uint8_t * key)
 
 	OSSL_PARAM params[] = {
 		OSSL_PARAM_construct_utf8_string("digest", const_cast<char *>("MD5"), 0),
-		OSSL_PARAM_construct_END()
+		OSSL_PARAM_construct_end()
 	};
 	EVP_MAC_init(hmac_, key_, 32, params);
 }

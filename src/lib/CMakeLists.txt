@@ -40,16 +40,24 @@ add_library(unified_kernel STATIC
     ../xml/tinyxml2.cpp
 )
 
-target_include_directories(unified_kernel PUBLIC
-    ${CMAKE_SOURCE_DIR}/src
-)
-
-# On non-Windows, ensure system OpenSSL 3.x headers take precedence
-# over the vendored 0.9.8i headers in src/openssl/
+# Include paths — on non-Windows, create a shadow include directory that
+# excludes the vendored OpenSSL 0.9.8i headers in src/openssl/.
+# These conflict with system OpenSSL 3.x because -I beats -isystem.
 if(NOT WIN32)
-    target_include_directories(unified_kernel BEFORE PUBLIC
-        ${OPENSSL_INCLUDE_DIR}
-    )
+    set(_shadow_inc ${CMAKE_BINARY_DIR}/include)
+    file(MAKE_DIRECTORY ${_shadow_inc})
+    file(GLOB _src_items LIST_DIRECTORIES true ${CMAKE_SOURCE_DIR}/src/*)
+    foreach(_item ${_src_items})
+        get_filename_component(_name ${_item} NAME)
+        if(NOT _name STREQUAL "openssl")
+            if(NOT EXISTS ${_shadow_inc}/${_name})
+                file(CREATE_LINK ${_item} ${_shadow_inc}/${_name} SYMBOLIC)
+            endif()
+        endif()
+    endforeach()
+    target_include_directories(unified_kernel PUBLIC ${_shadow_inc})
+else()
+    target_include_directories(unified_kernel PUBLIC ${CMAKE_SOURCE_DIR}/src)
 endif()
 
 target_compile_definitions(unified_kernel PUBLIC
