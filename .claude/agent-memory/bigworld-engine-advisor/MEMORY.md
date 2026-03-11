@@ -3,6 +3,7 @@
 ## Key Protocol Differences: Stock BigWorld vs SGW
 
 See [protocol-comparison.md](protocol-comparison.md) for detailed findings.
+See [aoi-entity-introduction.md](aoi-entity-introduction.md) for NPC AoI entity creation protocol.
 
 ### Wire Format Divergences (SGW vs Stock BigWorld 2.0.1)
 - **Packet flags**: SGW = 1 byte; stock BW = 2 bytes (uint16)
@@ -60,6 +61,21 @@ See [protocol-comparison.md](protocol-comparison.md) for detailed findings.
 - Category 7 (char_creation) is NOT in C++ server's categoryMaps -> never pushes resources
 - Client loads char_creation from local CookedCharCreation.pak when versions match
 - CharacterCreation UI subscribes to Event_Cache_ElementReady<long, CookedCharCreationData>
+
+### NPC Entity AoI Introduction (CRITICAL for Rust)
+- CREATE_ENTITY (0x09) does NOT include a space ID; client infers space from player's viewport
+- "Viewport for entity X is unknown" = svidFollow fails resolving entity->viewport chain in this+0xf90 map
+- Ghost entities get viewport association from UPDATE_AVATAR handler, NOT from CREATE_ENTITY
+- The avatarUpdate handler writes `entityId -> (0xFFFFFF00 | viewportByte)` into this+0xf90 before calling svidFollow
+- svidFollow has exactly 2 callers: addMove (C->S send) and FUN_00dd9d20 (from all 32 avatarUpdate receive handlers)
+- See [viewport-system.md](viewport-system.md) for full Ghidra decompilation analysis
+- Full C++ flow: CREATE_ENTITY + UPDATE_AVATAR + `createOnClient()` property cascade + `onVisible(1)`
+- `createOnClient()` is Python-driven (cell entity method), sends 8-17+ entity method calls per entity
+- Chain: SGWMob.createOnClient -> SGWBeing.createOnClient -> SGWSpawnableEntity.createOnClient
+- Minimum required: InteractionType, onEntityFlags, **onVisible(1)**, onLevelUpdate, onAlignmentUpdate, onFactionUpdate, onStateFieldUpdate
+- `enterAoI()` in client_handler.cpp:507 sends `onVisible(true)` via `beginEntityMessage(0x08, entityId)` = wire 0x88
+- The "ext[63]" messages in C++ pcap are CELL_BASE_CLIENT_MESSAGE (property cache updates from CellApp->BaseApp->Client)
+- See `cached_entity.cpp:173-236` (onEntityVisible) and `base_client.cpp:407-461` (onRequestEntityUpdate)
 
 ### Open Questions
 - Exposed method sub-slot mechanism (for > 62 methods per entity) -- unlikely needed for SGW entities
