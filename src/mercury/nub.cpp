@@ -5,6 +5,9 @@
 #include <mercury/condemned_channels.hpp>
 #include <common/service.hpp>
 #include <boost/asio/post.hpp>
+#ifndef _WIN32
+#include <cerrno>
+#endif
 
 namespace Mercury
 {
@@ -130,7 +133,7 @@ void Nub::frameHandler(const boost::system::error_code & error, size_t length, A
 	#ifdef _WIN32
 	else if (error.value() != WSAECONNREFUSED)
 	#else
-	else
+	else if (error.value() != ECONNREFUSED)
 	#endif
 		WARNC(CATEGORY_MERCURY, "Nub: Packet receive failed: %s", error.message().c_str());
 

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <boost/shared_ptr.hpp>
-#include <boost/thread/recursive_mutex.hpp>
 #include <boost/python/object.hpp>
 #include <random>
 

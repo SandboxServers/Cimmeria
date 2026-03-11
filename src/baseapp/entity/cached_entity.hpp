@@ -38,7 +38,7 @@ public:
 	};
 
 	typedef std::shared_ptr<CachedEntity> Ptr;
-	typedef boost::weak_ptr<CachedEntity> WeakPtr;
+	typedef std::weak_ptr<CachedEntity> WeakPtr;
 
 	static void staticInit();
 

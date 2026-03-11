@@ -6,8 +6,10 @@
 #define _WIN32_WINNT 0x0600
 #endif
 
+#ifdef _WIN32
 #ifndef BOOST_PYTHON_STATIC_LIB
 #define BOOST_PYTHON_STATIC_LIB
+#endif
 #endif
 
 #include <cstdint>

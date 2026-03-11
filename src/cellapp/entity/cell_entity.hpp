@@ -3,7 +3,7 @@
 #include <entity/entity.hpp>
 #include <entity/mailbox.hpp>
 #include <common/vec3.hpp>
-#include <boost/enable_shared_from_this.hpp>
+#include <memory>
 
 class CellMailboxClass : public MailboxClass
 {

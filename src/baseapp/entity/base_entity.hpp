@@ -4,7 +4,7 @@
 #include <entity/entity.hpp>
 #include <baseapp/entity/base_entity_manager.hpp>
 #include <common/vec3.hpp>
-#include <boost/enable_shared_from_this.hpp>
+#include <memory>
 
 class Controller
 {
@@ -28,7 +28,7 @@ class BaseEntity : public Entity, public std::enable_shared_from_this<BaseEntity
 {
 public:
 	typedef std::shared_ptr<BaseEntity> Ptr;
-	typedef boost::weak_ptr<BaseEntity> WeakPtr;
+	typedef std::weak_ptr<BaseEntity> WeakPtr;
 
 	static void registerClass();
 

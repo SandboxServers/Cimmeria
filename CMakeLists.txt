@@ -40,9 +40,27 @@ set(WITH_ODBC OFF CACHE BOOL "" FORCE)
 set(WITH_BOOST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(soci)
 
-# Recast/Detour (vendored in external/)
+# Recast/Detour navigation library
 if(EXISTS ${CMAKE_SOURCE_DIR}/external/recast/CMakeLists.txt)
     add_subdirectory(external/recast EXCLUDE_FROM_ALL)
+else()
+    FetchContent_Declare(
+        recastnavigation
+        GIT_REPOSITORY https://github.com/recastnavigation/recastnavigation.git
+        GIT_TAG        v1.6.0
+    )
+    set(RECASTNAVIGATION_DEMO OFF CACHE BOOL "" FORCE)
+    set(RECASTNAVIGATION_TESTS OFF CACHE BOOL "" FORCE)
+    set(RECASTNAVIGATION_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(recastnavigation)
+
+    # Alias targets to match the names used by CellApp/NavBuilder CMakeLists
+    if(NOT TARGET recast)
+        add_library(recast ALIAS RecastNavigation::Recast)
+    endif()
+    if(NOT TARGET detour)
+        add_library(detour ALIAS RecastNavigation::Detour)
+    endif()
 endif()
 
 # TinyXML2 is compiled as part of UnifiedKernel (src/xml/tinyxml2.cpp)

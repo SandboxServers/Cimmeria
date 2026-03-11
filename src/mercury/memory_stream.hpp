@@ -31,7 +31,7 @@ public:
 	template <typename _T>
 	MemoryStream & pop(_T & value)
 	{
-		static_assert(std::is_pod<_T>::value, "Cannot pop a non-POD type");
+		static_assert(std::is_trivially_copyable<_T>::value, "Cannot pop a non-POD type");
 		if (offset_ + sizeof(_T) > size_)
 			throw std::runtime_error("MemoryStream pop failed: reached end of stream");
 		size_ -= sizeof(_T);

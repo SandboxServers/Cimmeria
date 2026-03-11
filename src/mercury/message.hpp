@@ -59,7 +59,7 @@ class Message : public MemoryStream
 		template <typename _T>
 		void pyRead (_T & ref)
 		{
-			static_assert(boost::is_pod<_T>::value == true, "Cannot read a non-POD type");
+			static_assert(std::is_trivially_copyable<_T>::value, "Cannot read a non-POD type");
 			if (size_ - offset_ < sizeof(_T))
 				throw  Mercury::packet_processing_exception("Failed to read message: reached end of buffer");
 

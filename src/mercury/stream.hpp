@@ -147,7 +147,7 @@ class IOStream : public InputStream, public OutputStream {};
 template <typename _T>
 inline InputStream & operator >> (InputStream & stream, _T & value)
 {
-	static_assert(std::is_pod<_T>::value, "Cannot serialize non-POD type");
+	static_assert(std::is_trivially_copyable<_T>::value, "Cannot serialize non-POD type");
 	stream.fetch(&value, sizeof(_T));
 	return stream;
 }
@@ -155,7 +155,7 @@ inline InputStream & operator >> (InputStream & stream, _T & value)
 template <typename _T>
 inline OutputStream & operator << (OutputStream & stream, _T const & value)
 {
-	static_assert(std::is_pod<_T>::value, "Cannot serialize non-POD type");
+	static_assert(std::is_trivially_copyable<_T>::value, "Cannot serialize non-POD type");
 	*reinterpret_cast<_T *>(stream.expandAtomic(sizeof(_T))) = value;
 	return stream;
 }

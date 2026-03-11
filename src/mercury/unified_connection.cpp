@@ -25,8 +25,8 @@ void UnifiedConnection::connect(const std::string & address, uint16_t port)
 	SGW_ASSERT(!connected_);
 
 	boost::asio::ip::tcp::resolver resolver(Service::instance().ioService());
-	auto iter = resolver.resolve(boost::asio::ip::tcp::resolver::query(boost::asio::ip::tcp::v4(), address, "1"));
-	boost::asio::ip::tcp::endpoint ep = *iter;
+	auto results = resolver.resolve(address, "1");
+	boost::asio::ip::tcp::endpoint ep = *results.begin();
 	ep.port(port);
 	auto self = shared_from_this();
 	socket_.async_connect(ep, [self](const boost::system::error_code & err) {

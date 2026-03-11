@@ -268,7 +268,7 @@ public:
 	template <typename _T>
 	BufferWriter & operator << (_T const & value)
 	{
-		static_assert(std::is_pod<_T>::value, "Cannot serialize non-POD types to a buffer");
+		static_assert(std::is_trivially_copyable<_T>::value, "Cannot serialize non-POD types to a buffer");
 
 		if (buffer_.free() <= sizeof(_T))
 		{
@@ -402,7 +402,7 @@ public:
 	template <typename _T>
 	BufferReader & operator >> (_T & value)
 	{
-		static_assert(std::is_pod<_T>::value, "Cannot unserialize non-POD types from a buffer");
+		static_assert(std::is_trivially_copyable<_T>::value, "Cannot unserialize non-POD types from a buffer");
 
 		if (sizeof(_T) > buffer_.size())
 		{

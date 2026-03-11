@@ -41,7 +41,7 @@ public:
 	void * cancelTimer(TimerId timer)
 	{
 		SGW_ASSERT(timer < handlers_.size() && handlers_[timer].first);
-		handlers_[timer].first.clear();
+		handlers_[timer].first = nullptr;
 		return handlers_[timer].second;
 	}
 
@@ -56,7 +56,7 @@ public:
 		{
 			TimerQueueEntry timer = timers_.top();
 			TimerHandler callback = handlers_[timer.handlerId].first;
-			handlers_[timer.handlerId].first.clear();
+			handlers_[timer.handlerId].first = nullptr;
 			freeHandlers_.push(timer.handlerId);
 			timers_.pop();
 			if (callback)
