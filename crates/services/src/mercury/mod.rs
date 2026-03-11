@@ -44,9 +44,10 @@ pub use aoi::{
 };
 
 pub use world_data::{
-    build_world_entry_phase_a, build_world_entry_phase_b,
+    build_world_entry_phase_a, build_world_entry_phase_b, build_world_entry_phase_b_body,
     build_on_player_data_loaded, build_setup_world_parameters,
-    build_map_loaded, archetype_stats, archetype_ability_tree,
+    build_map_loaded, build_map_loaded_body, fragment_map_loaded, fragment_count,
+    archetype_stats, archetype_ability_tree,
 };
 
 // ── Constants ────────────────────────────────────────────────────────────────

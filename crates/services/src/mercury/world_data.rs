@@ -66,16 +66,14 @@ pub fn build_world_entry_phase_a(
     encrypt_packet(&plaintext, key)
 }
 
-/// Phase 5b-B: VIEWPORT + CELL_PLAYER + FORCED_POSITION.
+/// Build raw body bytes for Phase 5b-B: VIEWPORT + CELL_PLAYER + FORCED_POSITION.
 ///
-/// Sent after the client responds with `mapLoaded` (cell method index 25),
-/// confirming terrain geometry has loaded. This places the entity in the world.
-pub fn build_world_entry_phase_b(
-    key: &[u8; 32],
-    seq_id: u32,
-    acks: &[u32],
-    info: &WorldEntryInfo,
-) -> Vec<u8> {
+/// Returns just the Mercury message bytes (~99 bytes) without packet framing.
+/// The C++ server adds these messages to `channel_->bundle()` — the same bundle
+/// that contains the mapLoaded entity methods — rather than sending them as a
+/// separate packet. This function provides the raw bytes so the caller can
+/// prepend them to the mapLoaded body before fragmenting into a single bundle.
+pub fn build_world_entry_phase_b_body(info: &WorldEntryInfo) -> Vec<u8> {
     let mut body = Vec::with_capacity(128);
 
     // 1. spaceViewportInfo (0x08, CONSTANT_LENGTH = 13)
@@ -351,11 +349,57 @@ fn level_exp(level: i32) -> i32 {
 /// multiple encrypted UDP packets. The client reassembles fragments into a single
 /// bundle before processing, ensuring all entity data is handled atomically.
 ///
-/// VIEWPORT + CELL + POSITION are sent separately by the caller via
-/// [`build_world_entry_phase_b`] — matching the C++ CellApp behavior where
-/// these are in a separate non-fragmented packet.
+/// VIEWPORT + CELL + POSITION body bytes (from [`build_world_entry_phase_b_body`])
+/// are prepended to this body by the caller before fragmenting, matching the
+/// C++ CellApp behavior where these are in the same channel bundle.
 ///
 /// Returns `(encrypted_packets, sequence_ids_consumed)`.
+/// Build just the raw body bytes for the `mapLoaded()` entity method sequence.
+///
+/// Returns the unencrypted, unfragmented body that the caller can measure
+/// (to reserve sequence numbers atomically) before fragmenting + encrypting.
+pub fn build_map_loaded_body(
+    entity_id: u32,
+    data: &PlayerLoadData,
+    world_entry: &WorldEntryInfo,
+) -> Vec<u8> {
+    let stats = archetype_stats(data.archetype);
+    let mut body = Vec::with_capacity(8192);
+    build_map_loaded_body_inner(&mut body, entity_id, data, world_entry, &stats);
+    tracing::info!(entity_id, body_bytes = body.len(), "mapLoaded: body assembled");
+    body
+}
+
+/// Calculate how many Mercury fragment packets a body of `body_len` bytes requires.
+pub fn fragment_count(body_len: usize) -> u32 {
+    use cimmeria_mercury::packet::FRAGMENT_BODY_SIZE;
+    if body_len <= FRAGMENT_BODY_SIZE {
+        1
+    } else {
+        ((body_len + FRAGMENT_BODY_SIZE - 1) / FRAGMENT_BODY_SIZE) as u32
+    }
+}
+
+/// Fragment and encrypt a pre-built body into Mercury packets.
+///
+/// The caller must have already reserved `fragment_count(body.len())` sequence
+/// numbers starting at `base_seq` to avoid races with tick-sync.
+pub fn fragment_map_loaded(
+    key: &[u8; 32],
+    base_seq: u32,
+    acks: &[u32],
+    body: &[u8],
+) -> (Vec<Vec<u8>>, u32) {
+    let key_copy = *key;
+    build_fragmented_bundle(
+        REPLY_FLAGS,
+        body,
+        base_seq,
+        acks,
+        |plaintext| encrypt_packet(plaintext, &key_copy),
+    )
+}
+
 pub fn build_map_loaded(
     key: &[u8; 32],
     base_seq: u32,
@@ -364,15 +408,21 @@ pub fn build_map_loaded(
     data: &PlayerLoadData,
     world_entry: &WorldEntryInfo,
 ) -> (Vec<Vec<u8>>, u32) {
-    let stats = archetype_stats(data.archetype);
+    let body = build_map_loaded_body(entity_id, data, world_entry);
+    fragment_map_loaded(key, base_seq, acks, &body)
+}
 
-    // Build ONE contiguous body with all entity method calls.
-    let mut body = Vec::with_capacity(8192);
-
+fn build_map_loaded_body_inner(
+    body: &mut Vec<u8>,
+    entity_id: u32,
+    data: &PlayerLoadData,
+    world_entry: &WorldEntryInfo,
+    stats: &ArchetypeStats,
+) {
     // Helper: append an entity method call to the body.
     macro_rules! append_method {
         ($method_idx:expr, $args:expr) => {{
-            append_entity_method(&mut body, $method_idx, entity_id, $args);
+            append_entity_method(body, $method_idx, entity_id, $args);
         }};
     }
 
@@ -610,19 +660,6 @@ pub fn build_map_loaded(
         append_method!(method_idx::ON_PLAYER_COMMUNICATION, &args);
     }
 
-    tracing::info!(entity_id, body_bytes = body.len(), "mapLoaded: body assembled, fragmenting");
-
-    // Fragment the single body into encrypted Mercury packets.
-    // The client reassembles all fragments into one bundle before processing,
-    // ensuring atomic handling of all entity data.
-    let key_copy = *key;
-    build_fragmented_bundle(
-        REPLY_FLAGS,
-        &body,
-        base_seq,
-        acks,
-        |plaintext| encrypt_packet(plaintext, &key_copy),
-    )
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
