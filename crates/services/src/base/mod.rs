@@ -128,6 +128,16 @@ fn archetype_name(id: i32) -> &'static str {
 
 // ── Per-connection state ──────────────────────────────────────────────────────
 
+/// Deferred world-entry finalization that must wait for `SGWPlayer.onClientReady`.
+pub(crate) struct PendingClientReadyInfo {
+    /// Player entity ID to connect on the CellService.
+    pub entity_id: u32,
+    /// Persistent player ID used for DB-backed initialization.
+    pub player_id: i32,
+    /// World name used by content-engine `player.loaded` triggers.
+    pub world_name: String,
+}
+
 /// State held for each client that has completed the Phase 3 handshake.
 pub(crate) struct ConnectedClientState {
     /// Encryption context (for decrypting client packets).
@@ -173,6 +183,9 @@ pub(crate) struct ConnectedClientState {
     /// World entry info held between Phase 5b-A (CREATE_BASE_PLAYER + onClientMapLoad)
     /// and Phase 5b-B (VIEWPORT + CELL + POSITION), triggered by client `mapLoaded`.
     pub pending_world_entry_phase_b: Option<WorldEntryInfo>,
+    /// Player init that must wait until the client sends `SGWPlayer.onClientReady`
+    /// after receiving the full mapLoaded bundle.
+    pub pending_client_ready: Option<PendingClientReadyInfo>,
     /// Set to `true` by `handle_log_off` to signal the tick-sync loop to stop.
     pub cancelled: Arc<AtomicBool>,
     /// Player character name, set during world entry for chat routing.
@@ -250,7 +263,7 @@ impl BaseService {
                 level: c.player_level.unwrap_or(1),
                 zone: c.world_name.clone().unwrap_or_default(),
                 ping: None,
-                status: if c.pending_world_entry_phase_b.is_some() {
+                status: if c.pending_world_entry_phase_b.is_some() || c.pending_client_ready.is_some() {
                     "loading"
                 } else {
                     "in_world"

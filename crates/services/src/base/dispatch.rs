@@ -12,27 +12,18 @@ use crate::mercury::read_wstring;
 
 use super::ConnectedClientState;
 
-/// SGWPlayer flattened EXPOSED BaseMethod indices.
+/// SGWPlayer base-method message IDs we currently handle explicitly.
 ///
-/// After world entry, the client controls an SGWPlayer entity. Base method calls
-/// use `msg_id = flat_index + 0xC0`. The ordering is: interface methods first
-/// (in Implements order from SGWPlayer.def), then own methods.
-///
-/// ## Communicator interface (indices 0-14, msg_id 0xC0-0xCE)
-/// | Idx | Method | Args |
-/// |-----|--------|------|
-/// | 0 | chatJoin | WSTRING channelName, WSTRING password |
-/// | 1 | chatLeave | UINT8 channelId |
-/// | 2 | sendPlayerCommunication | UINT8 channel, WSTRING target, WSTRING text |
-/// | 3 | chatSetAFKMessage | WSTRING message |
-/// | 4 | chatSetDNDMessage | WSTRING message |
-/// | 5-14 | chatIgnore..announcePetition | (various, stub) |
+/// The client also sends protocol-level messages such as `versionInfoRequest`
+/// and `elementDataRequest` while in-world. Those are dispatched separately in
+/// `connect_loop.rs` and must not be treated as SGWPlayer methods.
 pub(crate) mod sgw_player_base {
     pub const CHAT_JOIN: u8 = 0xC0;
     pub const CHAT_LEAVE: u8 = 0xC1;
     pub const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
     pub const CHAT_SET_AFK: u8 = 0xC3;
     pub const CHAT_SET_DND: u8 = 0xC4;
+    pub const ON_CLIENT_READY: u8 = 0xD8;
 }
 
 /// Dispatch an SGWPlayer base method call (after world entry).

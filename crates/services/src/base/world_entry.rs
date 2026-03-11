@@ -12,13 +12,14 @@ use cimmeria_entity::manager::EntityManager;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg, MailOp};
 use crate::mercury::{
     archetype_ability_tree, build_avatar_update, build_char_list, build_create_entity,
-    build_entity_leave, build_entity_method_packet, build_map_loaded,
-    build_reset_entities, build_world_entry_phase_a, build_world_entry_phase_b,
+    build_entity_leave, build_entity_method_packet,
+    build_map_loaded_body, fragment_map_loaded, fragment_count,
+    build_reset_entities, build_world_entry_phase_a, build_world_entry_phase_b_body,
     method_idx, PlayerLoadData, WorldEntryInfo, DEFAULT_SPACE_ID,
 };
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
-use super::ConnectedClientState;
+use super::{ConnectedClientState, PendingClientReadyInfo};
 use super::character::query_character_list;
 use super::helpers::{drain_acks_and_seq, get_account_entity_id, send_to_witness};
 
@@ -126,6 +127,7 @@ pub(crate) async fn handle_play_character(
             c.player_training_points = Some(player_load_data.training_points as u32);
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
+            c.pending_client_ready = None;
         }
     }
 
@@ -148,7 +150,7 @@ pub(crate) async fn handle_map_loaded_phase_b(
     addr: SocketAddr,
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    _cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -232,25 +234,68 @@ pub(crate) async fn handle_map_loaded_phase_b(
         }
     }
 
-    // Register entity_id -> addr BEFORE notifying CellService, so any response
-    // messages (content engine actions, AoI events) can find the client socket.
+    // Register entity_id -> addr before the final onClientReady gate so any
+    // resource responses and future client-targeted traffic can resolve the
+    // socket, but defer CellService player initialization until the client
+    // explicitly signals readiness (matches C++ SGWPlayer.onClientReady).
     entity_to_addr.lock().unwrap().insert(entry_info.player_entity_id, addr);
 
-    // Notify CellService that this entity now has a client controller
-    if let Some(ref tx) = cell_tx {
-        let _ = tx.send(BaseToCellMsg::ConnectEntity {
-            entity_id: entry_info.player_entity_id,
-        }).await;
-
-        // Send InitPlayerState so CellService can fire content engine events
-        let _ = tx.send(BaseToCellMsg::InitPlayerState {
+    // The C++ server waits for the exposed SGWPlayer base method
+    // `onClientReady` (msg_id 0xD8) before calling into the cell-side
+    // post-load logic that eventually fires `player.loaded`.
+    {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        c.pending_client_ready = Some(PendingClientReadyInfo {
             entity_id: entry_info.player_entity_id,
             player_id: player_data.player_id,
             world_name: entry_info.world_name.clone(),
+        });
+    }
+
+    tracing::info!(%addr, "Phase 5b complete -- waiting for SGWPlayer.onClientReady");
+    Ok(())
+}
+
+/// Finalize world entry after the client sends `SGWPlayer.onClientReady`.
+pub(crate) async fn handle_on_client_ready(
+    addr: SocketAddr,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let pending = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        clients
+            .get_mut(&addr)
+            .and_then(|c| c.pending_client_ready.take())
+    };
+
+    let Some(pending) = pending else {
+        tracing::debug!(%addr, "SGWPlayer.onClientReady received with no pending world-entry finalization");
+        return Ok(());
+    };
+
+    tracing::info!(
+        %addr,
+        entity_id = pending.entity_id,
+        player_id = pending.player_id,
+        world = %pending.world_name,
+        "SGWPlayer.onClientReady received -- finalizing world entry"
+    );
+
+    if let Some(ref tx) = cell_tx {
+        let _ = tx.send(BaseToCellMsg::ConnectEntity {
+            entity_id: pending.entity_id,
+        }).await;
+
+        let _ = tx.send(BaseToCellMsg::InitPlayerState {
+            entity_id: pending.entity_id,
+            player_id: pending.player_id,
+            world_name: pending.world_name.clone(),
         }).await;
     }
 
-    tracing::info!(%addr, "Phase 5b complete -- player in world");
+    tracing::info!(%addr, entity_id = pending.entity_id, "World entry finalized");
     Ok(())
 }
 
@@ -316,12 +361,13 @@ pub(crate) async fn handle_enable_entities(
 
         // Store world entry + player data for Phase 5b-B (triggered by mapLoaded)
         {
-            let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-            if let Some(c) = clients.get_mut(&addr) {
-                c.pending_world_entry_phase_b = Some(entry_info);
-                c.pending_player_load_data = pending_load;
-            }
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            c.pending_world_entry_phase_b = Some(entry_info);
+            c.pending_player_load_data = pending_load;
+            c.pending_client_ready = None;
         }
+    }
 
         tracing::info!(%addr, "Phase 5b-A complete -- waiting for client mapLoaded");
         return Ok(());
@@ -466,6 +512,7 @@ pub(crate) async fn handle_gate_travel(
             c.pending_player_entity_id = Some(entity_id);
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
+            c.pending_client_ready = None;
             // world_entry_sent stays true -- we don't reset it, since
             // handle_enable_entities checks pending_player_entity_id
         }

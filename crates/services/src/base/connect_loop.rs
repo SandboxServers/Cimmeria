@@ -16,11 +16,13 @@ use crate::cell::messages::BaseToCellMsg;
 use super::ConnectedClientState;
 use super::character::{handle_create_character, handle_delete_character, handle_request_character_visuals};
 use super::cooked_data::{handle_element_data_request, handle_version_info_request};
-use super::dispatch::dispatch_sgw_player_base_method;
+use super::dispatch::{dispatch_sgw_player_base_method, sgw_player_base};
 use super::helpers::{destroy_client_entities, to_hex};
 use super::login::{handle_log_off, handle_login, parse_baseapp_login};
 use super::resources::ResourceCache;
-use super::world_entry::{handle_enable_entities, handle_map_loaded_phase_b, handle_play_character};
+use super::world_entry::{
+    handle_enable_entities, handle_map_loaded_phase_b, handle_on_client_ready, handle_play_character,
+};
 
 /// Main receive loop -- one per running `BaseService`.
 pub(crate) async fn run_connect_loop(
@@ -264,9 +266,11 @@ pub(crate) async fn handle_encrypted_datagram(
 
         // Dispatch message.
         //
-        // Entity method indices use EXPOSED-ONLY ordering from entity defs.
-        // ClientCache interface: 0xC0=versionInfoRequest, 0xC1=elementDataRequest
-        // Account base methods (non-exposed logOffInternal & onPlayerFailedToLoad SKIPPED):
+        // The client cache methods are protocol-level messages that keep the
+        // same wire IDs both at character select and in-world:
+        //   0xC0=versionInfoRequest, 0xC1=elementDataRequest
+        //
+        // Account base methods start after those protocol IDs:
         //   0xC2=logOff, 0xC3=createCharacter, 0xC4=playCharacter,
         //   0xC5=deleteCharacter, 0xC6=requestCharacterVisuals, 0xC7=onClientVersion
         match msg_id {
@@ -321,18 +325,30 @@ pub(crate) async fn handle_encrypted_datagram(
                 tracing::trace!(%addr, "Client sent VIEWPORT_ACK");
             }
 
+            // ── Protocol-level cooked-data messages ──
+            //
+            // These are not part of the active entity's base-method namespace.
+            // The client sends them both before and after entering the world.
+            0xC0 => {
+                handle_version_info_request(
+                    socket, addr, key, payload, connected, resource_cache,
+                ).await?;
+            }
+            0xC1 => {
+                handle_element_data_request(
+                    socket, addr, key, payload, connected, resource_cache,
+                ).await?;
+            }
+
             // ── Entity base method calls (0xC0+) ──
             //
-            // The dispatch table changes based on which entity type the client controls:
-            //
             // ACCOUNT entity (character select):
-            //   ClientCache: 0xC0=versionInfoRequest, 0xC1=elementDataRequest
             //   Account:     0xC2=logOff, 0xC3=createCharacter, 0xC4=playCharacter,
             //                0xC5=deleteCharacter, 0xC6=requestCharacterVisuals, 0xC7=onClientVersion
             //
             // SGWPLAYER entity (in-world):
-            //   Communicator: 0xC0=chatJoin, 0xC1=chatLeave, 0xC2=sendPlayerCommunication,
-            //                 0xC3=chatSetAFKMessage, 0xC4=chatSetDNDMessage, ...
+            //   SGWPlayer base methods use their own namespace after the global
+            //   protocol-level cache messages above.
             //   (Other interfaces and SGWPlayer own methods at higher indices)
             id if id >= 0xC0 => {
                 let (in_world, player_name) = {
@@ -344,37 +360,21 @@ pub(crate) async fn handle_encrypted_datagram(
                 };
 
                 if in_world {
-                    // ── Phase 5b-B trigger (same check as cell methods) ──
-                    let phase_b_pending = {
-                        let clients = connected.lock().unwrap();
-                        clients.get(&addr).map_or(false, |c| c.pending_world_entry_phase_b.is_some())
-                    };
-                    if phase_b_pending {
-                        if let Err(e) = handle_map_loaded_phase_b(
-                            socket, addr, key, connected, cell_tx, entity_to_addr, db_pool,
-                        ).await {
-                            tracing::error!(%addr, error = %e, "Phase 5b-B failed (base method trigger)");
+                    match id {
+                        sgw_player_base::ON_CLIENT_READY => {
+                            handle_on_client_ready(addr, connected, cell_tx).await?;
+                        }
+                        _ => {
+                            // SGWPlayer base method dispatch
+                            dispatch_sgw_player_base_method(
+                                id, payload, &player_name, addr, socket, key,
+                                connected, entity_manager, cell_tx, entity_to_addr,
+                            ).await?;
                         }
                     }
-
-                    // SGWPlayer base method dispatch
-                    dispatch_sgw_player_base_method(
-                        id, payload, &player_name, addr, socket, key,
-                        connected, entity_manager, cell_tx, entity_to_addr,
-                    ).await?;
                 } else {
                     // Account base method dispatch
                     match id {
-                        0xC0 => {
-                            handle_version_info_request(
-                                socket, addr, key, payload, connected, resource_cache,
-                            ).await?;
-                        }
-                        0xC1 => {
-                            handle_element_data_request(
-                                socket, addr, key, payload, connected, resource_cache,
-                            ).await?;
-                        }
                         0xC2 => {
                             handle_log_off(
                                 socket, addr, key, connected, entity_manager, cell_tx, entity_to_addr,
@@ -431,15 +431,15 @@ pub(crate) async fn handle_encrypted_datagram(
             // These are forwarded to the CellService for dispatch.
             id if (0x80..=0xBF).contains(&id) => {
                 // ── Phase 5b-B trigger ──
-                // After Phase 5b-A (CREATE_BASE_PLAYER + onClientMapLoad), the
-                // client loads terrain and then sends cell/base method calls.
-                // The first such call signals readiness -- send VIEWPORT + CELL +
-                // POSITION + the full entity data sequence.
+                // After Phase 5b-A, the client sends the exposed SGWPlayer cell
+                // method `mapLoaded` (index 25, msg_id 0x99). The C++ server
+                // waits for that specific method before sending VIEWPORT + CELL +
+                // POSITION + the full entity data bundle.
                 let phase_b_pending = {
                     let clients = connected.lock().unwrap();
                     clients.get(&addr).map_or(false, |c| c.pending_world_entry_phase_b.is_some())
                 };
-                if phase_b_pending {
+                if phase_b_pending && id == 0x99 {
                     if let Err(e) = handle_map_loaded_phase_b(
                         socket, addr, key, connected, cell_tx, entity_to_addr, db_pool,
                     ).await {
@@ -452,6 +452,14 @@ pub(crate) async fn handle_encrypted_datagram(
                     clients.get(&addr).and_then(|c| c.player_entity_id)
                 };
                 if let Some(player_eid) = player_eid {
+                    if phase_b_pending && id != 0x99 {
+                        tracing::trace!(
+                            %addr,
+                            msg_id = format_args!("{:#04x}", id),
+                            "Ignoring cell method until mapLoaded arrives"
+                        );
+                        continue;
+                    }
                     if id == 0xBD {
                         // Extended encoding: subIndex is first byte of payload
                         if !payload.is_empty() {

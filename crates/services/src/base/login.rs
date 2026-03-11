@@ -134,6 +134,7 @@ pub(crate) async fn handle_login(
                 pending_world_entry: None,
                 pending_player_load_data: None,
                 pending_world_entry_phase_b: None,
+                pending_client_ready: None,
                 cancelled,
                 player_name: None,
                 player_level: None,
