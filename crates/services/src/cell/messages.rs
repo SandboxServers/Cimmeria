@@ -125,6 +125,8 @@ pub enum CellToBaseMsg {
         class_id: u8,
         position: [f32; 3],
         direction: [f32; 3],
+        /// Entity level (for `onLevelUpdate`). Defaults to 1.
+        level: u32,
     },
 
     /// An entity left a witness's Area of Interest.

@@ -3,11 +3,11 @@
 
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
-use super::{encrypt_packet, append_entity_method, REPLY_FLAGS};
+use super::{encrypt_packet, append_entity_method, method_idx, REPLY_FLAGS};
 
 /// `BASEMSG_CREATE_ENTITY` — create a ghost (non-player) entity on the client (0x09).
 /// Sent when an entity enters a player's Area of Interest.
-/// Wire: `[msg_id:0x09][wordLen:u16=5][entityId:u32][idAlias:0xFF][classId:u8][0x00][0x00]`
+/// Wire: `[msg_id:0x09][wordLen:u16=8][entityId:u32][idAlias:0xFF][classId:u8][0x00][0x00]`
 pub(crate) const BASEMSG_CREATE_ENTITY: u8 = 0x09;
 /// `BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YAW_PITCH_ROLL` — position update
 /// for ghost entities (0x10, CONSTANT_LENGTH = 25).
@@ -17,11 +17,16 @@ pub(crate) const BASEMSG_ENTITY_INVISIBLE: u8 = 0x0B;
 /// `BASEMSG_LEAVE_AOI` — remove entity from client's AoI (0x0C, WORD_LENGTH).
 pub(crate) const BASEMSG_LEAVE_AOI: u8 = 0x0C;
 
-/// Build and encrypt `CREATE_ENTITY (0x09)` + `UPDATE_AVATAR (0x10)` for when
-/// an entity enters a witness's Area of Interest.
+/// Build and encrypt `CREATE_ENTITY (0x09)` + `UPDATE_AVATAR (0x10)` + property
+/// cascade for when an entity enters a witness's Area of Interest.
 ///
-/// Matches C++ `ClientHandler::createEntity()` + `moveEntity()` from
-/// `client_handler.cpp:492-504`.
+/// Matches C++ `ClientHandler::createEntity()` + `moveEntity()` + `enterAoI()`
+/// from `client_handler.cpp:492-514` and the Python `createOnClient()` cascade
+/// in `SGWSpawnableEntity.py`, `SGWBeing.py`, `SGWMob.py`.
+///
+/// The property cascade is critical: without at least `onVisible(1)`, the client
+/// creates a bare entity skeleton that isn't registered with the viewport/space
+/// system, causing "Viewport for entity X is unknown" on subsequent updates.
 pub fn build_create_entity(
     key: &[u8; 32],
     seq_id: u32,
@@ -30,12 +35,13 @@ pub fn build_create_entity(
     class_id: u8,
     position: [f32; 3],
     direction: [f32; 3],
+    level: u32,
 ) -> Vec<u8> {
-    let mut body = Vec::with_capacity(64);
+    let mut body = Vec::with_capacity(128);
 
     // CREATE_ENTITY (0x09, WORD_LENGTH)
     body.push(BASEMSG_CREATE_ENTITY);
-    body.extend_from_slice(&5u16.to_le_bytes()); // wordLength = 5
+    body.extend_from_slice(&8u16.to_le_bytes()); // wordLength = 8
     body.extend_from_slice(&entity_id.to_le_bytes());
     body.push(0xFF); // idAlias = no alias
     body.push(class_id);
@@ -57,6 +63,33 @@ pub fn build_create_entity(
     body.push(pack_angle(direction[1])); // yaw = rotation.y
     body.push(pack_angle(direction[0])); // pitch = rotation.x
     body.push(pack_angle(direction[2])); // roll = rotation.z
+
+    // ── createOnClient() property cascade ────────────────────────────────────
+    //
+    // Mirrors the Python `createOnClient()` chain:
+    //   SGWSpawnableEntity.createOnClient → onEntityFlags, onVisible(1)
+    //   SGWBeing.createOnClient → onLevelUpdate, onAlignmentUpdate, onFactionUpdate, onStateFieldUpdate
+    //
+    // Method indices are shared across SGWPlayer/SGWMob (same parent chain
+    // through SGWBeing with identical interface ordering).
+
+    // onEntityFlags(0) — default entity flags
+    append_entity_method(&mut body, method_idx::ON_ENTITY_FLAGS, entity_id, &0u64.to_le_bytes());
+
+    // onVisible(1) — CRITICAL: registers the entity with the client's viewport.
+    append_entity_method(&mut body, method_idx::ON_VISIBLE, entity_id, &[1u8]);
+
+    // onLevelUpdate(level) — entity level for display and combat
+    append_entity_method(&mut body, method_idx::ON_LEVEL_UPDATE, entity_id, &(level as i32).to_le_bytes());
+
+    // onStateFieldUpdate(0) — alive state
+    append_entity_method(&mut body, method_idx::ON_STATE_FIELD_UPDATE, entity_id, &0u32.to_le_bytes());
+
+    // onAlignmentUpdate(0) — neutral/default alignment
+    append_entity_method(&mut body, method_idx::ON_ALIGNMENT_UPDATE, entity_id, &[0u8]);
+
+    // onFactionUpdate(0) — hostile NPC default (friendly NPCs = 3)
+    append_entity_method(&mut body, method_idx::ON_FACTION_UPDATE, entity_id, &[0u8]);
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);

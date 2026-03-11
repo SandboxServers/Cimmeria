@@ -496,14 +496,14 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::EntityCreated { entity_id, space_id, position } => {
             tracing::debug!(entity_id, space_id, ?position, "CellService: entity created");
         }
-        CellToBaseMsg::EnteredAoI { witness_id, entity_id, space_id: _, class_id, position, direction } => {
-            tracing::debug!(witness_id, entity_id, class_id, "AoI: entity entered witness range");
+        CellToBaseMsg::EnteredAoI { witness_id, entity_id, space_id: _, class_id, position, direction, level } => {
+            tracing::debug!(witness_id, entity_id, class_id, level, "AoI: entity entered witness range");
             send_to_witness(
                 socket, connected, entity_to_addr, witness_id,
                 |key, seq, acks| {
                     build_create_entity(
                         key, seq, acks, entity_id,
-                        class_id, position, direction,
+                        class_id, position, direction, level,
                     )
                 },
             ).await;

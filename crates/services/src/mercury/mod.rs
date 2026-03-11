@@ -132,12 +132,19 @@ pub const FRAG_FIRST_AND_LAST: u8 = 0x43;
 // Direct encoding (0–127): msg_id = index | 0x80
 // Extended encoding (128+): msg_id = 0xBD, payload = entity_id + (index - 61) as u8 + args
 
-/// SGWPlayer flattened ClientMethod indices.
+/// Flattened ClientMethod indices.
+///
+/// Both SGWPlayer and SGWMob share indices 0–26 since they have the same
+/// parent chain through SGWBeing with identical interface ordering.
 pub mod method_idx {
     // SGWSpawnableEntity own (0–11)
+    pub const INTERACTION_TYPE: u16 = 3;
+    pub const ON_ENTITY_FLAGS: u16 = 4;
     pub const ON_ENTITY_PROPERTY: u16 = 7;
+    pub const ON_VISIBLE: u16 = 8;
     pub const ON_KISMET_EVENT_SET_UPDATE: u16 = 9;
     pub const ON_ENTITY_TINT: u16 = 10;
+    pub const ON_BEING_NAME_ID_UPDATE: u16 = 11;
 
     // SGWBeing interface (12–19)
     pub const ON_LEVEL_UPDATE: u16 = 15;

@@ -438,6 +438,7 @@ impl SpaceManager {
                                 class_id: other.class_id,
                                 position: [other.position.x, other.position.y, other.position.z],
                                 direction: [other.direction.x, other.direction.y, other.direction.z],
+                                level: other.level,
                             });
                         }
                     }
