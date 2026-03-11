@@ -1,0 +1,33 @@
+{
+  "productName": "SGW Launcher",
+  "version": "0.1.0",
+  "identifier": "com.cimmeria.sgw-launcher",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/icon.png"],
+    "externalBin": ["binaries/7za"]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Stargate Worlds",
+        "width": 600,
+        "height": 400,
+        "resizable": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": []
+    }
+  }
+}

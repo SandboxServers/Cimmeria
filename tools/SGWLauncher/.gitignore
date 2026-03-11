@@ -1,0 +1,8 @@
+# Sidecar binaries (downloaded, not committed)
+src-tauri/binaries/*.exe
+
+# Tauri build output
+src-tauri/target/
+
+# Placeholder sidecar for Linux dev builds
+src-tauri/binaries/7za-x86_64-unknown-linux-gnu

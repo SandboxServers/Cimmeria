@@ -1,0 +1,24 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for SGW Launcher",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/7za",
+          "sidecar": true,
+          "args": [
+            {
+              "validator": "\\S+"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

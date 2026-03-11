@@ -1,0 +1,114 @@
+# BigWorld Engine Advisor Memory
+
+## Key Protocol Differences: Stock BigWorld vs SGW
+
+See [protocol-comparison.md](protocol-comparison.md) for detailed findings.
+See [aoi-entity-introduction.md](aoi-entity-introduction.md) for NPC AoI entity creation protocol.
+
+### Wire Format Divergences (SGW vs Stock BigWorld 2.0.1)
+- **Packet flags**: SGW = 1 byte; stock BW = 2 bytes (uint16)
+- **Footer byte order**: SGW = little-endian; stock BW = big-endian (network order)
+- **Encryption**: SGW = AES-256-CBC + HMAC-MD5; stock BW = Blowfish ECB + XOR chaining + 0xdeadbeef magic
+- **EntityTypeID in createBasePlayer**: SGW = uint8 (1 byte); stock BW = uint16 (2 bytes)
+- **forcedPosition**: SGW = 49 bytes (adds velocity Vec3 + flags u8); stock BW = 36 bytes
+- **ENABLE_ENTITIES payload**: SGW = 8 bytes (uint64 dummy); stock BW = 1 byte (uint8 dummy)
+
+### Confirmed Correct in Rust Rewrite
+- EntityID type: i32 (matches stock BW `int32`)
+- NULL_ENTITY = 0
+- WSTRING encoding: u32 char count + UTF-16LE data
+- createBasePlayer: [entityID:u32][classID:u8][propCount:u8] (6 bytes)
+- createCellPlayer: [spaceID:u32][vehicleID:u32][pos:3xf32][rot:3xf32] (32 bytes)
+- Entity method dispatch: 0xC0+index = base methods, 0x80+index = client methods
+- resetEntities/enableEntities two-phase: server sends RESET, client auto-responds ENABLE
+
+### Known Bugs in Rust Rewrite
+- **RESOURCE_FRAGMENT length prefix**: `mercury_ext.rs` line 495 uses u32 (DWORD_LENGTH) but SGW message table says WORD_LENGTH (u16). Must be u16.
+
+### Rotation Order Inconsistency in C++ Reference
+- **createCellPlayer** (client_handler.cpp:400): rotX, rotZ, rotY (Y/Z swapped)
+- **forcedPosition in createCellPlayer context** (client_handler.cpp:411): rotX, rotZ, rotY (Y/Z swapped)
+- **Standalone forcedPosition** (client_handler.cpp:570): rotation.x, rotation.y, rotation.z (NOT swapped)
+- Rust world-entry path correctly uses the swapped order for both; if standalone forcedPosition is added later, it needs the unswapped order
+
+### Space Data & Terrain Loading (CRITICAL)
+- **SGW does NOT use SPACE_DATA (0x07)** for terrain loading. Code comment: "Only used in older builds, newer versions use SGWPlayer.onClientMapLoad"
+- **Terrain loading mechanism**: SGWPlayer `connected()` calls `self.client.onClientMapLoad(worldName, clientMap, worldId, location, direction)` -- this is an entity method RPC
+- **onClientMapLoad** is a ClientMethod on SGWPlayer (flattened index TBD), sends: WSTRING areaName, WSTRING mapPath, INT32 worldId, VECTOR3 Location, VECTOR3 Direction
+- **Ordering**: `onClientMapLoad` is sent from `connected()` which runs after the cell entity is created, BEFORE `mapLoaded()` (called from `onClientReady`)
+- **Rust rewrite is MISSING onClientMapLoad** in `build_map_loaded()` -- this is why no terrain loads
+
+### avatarUpdateExplicit (C->S 0x03) First Field is spaceID, NOT entityID
+- The first 4 bytes are **spaceID** (NOT entityId)
+- C++ server reads: `spaceId >> vehicleId >> position >> velocity >> direction >> flags >> cells >> updateId`
+- Rust server incorrectly reads payload[0..4] as entity_id -- this IS the spaceID
+- The client sends its current spaceID (from createCellPlayer), explaining "entity_id=65552" in logs
+
+### Entity Method Call Wire Format (S->C)
+- Entity method calls ALWAYS include entity_id as first payload field (not inferred from channel)
+- Wire: [msg_id:u8][length:u16 LE][entity_id:u32 LE][method args...]
+- This is because a single Mercury channel carries messages for ALL entities visible to a client
+- Confirmed in bundle.cpp:76 -- `beginEntityMessage` writes entityId after msg_id+length header
+
+### CookedData ServerSource Event Chain (from Ghidra RTTI)
+- Every ServerSource<N,K,V,R,Z> subscribes to 6 events:
+  1. Event_Net_Connected (init ZipStorage from local PAK)
+  2. Event_Entity_ProxyPlayerBaseCreated (triggers versionInfoRequest RPC)
+  3. Event_Net_Disconnected (cleanup)
+  4. Event_NetIn_onVersionInfo (process version response, load from PAK or wait for server push)
+  5. Event_Net_ProxyData (RESOURCE_FRAGMENT reassembled -> parse XML -> ElementReady)
+  6. Event_NetIn_onCookedDataError (error handling)
+- Category 7 (char_creation) is NOT in C++ server's categoryMaps -> never pushes resources
+- Client loads char_creation from local CookedCharCreation.pak when versions match
+- CharacterCreation UI subscribes to Event_Cache_ElementReady<long, CookedCharCreationData>
+
+### NPC Entity AoI Introduction (CRITICAL for Rust)
+- CREATE_ENTITY (0x09) does NOT include a space ID; client infers space from player's viewport
+- "Viewport for entity X is unknown" = svidFollow fails resolving entity->viewport chain in this+0xf90 map
+- Ghost entities get viewport association from UPDATE_AVATAR handler, NOT from CREATE_ENTITY
+- The avatarUpdate handler writes `entityId -> (0xFFFFFF00 | viewportByte)` into this+0xf90 before calling svidFollow
+- svidFollow has exactly 2 callers: addMove (C->S send) and FUN_00dd9d20 (from all 32 avatarUpdate receive handlers)
+- See [viewport-system.md](viewport-system.md) for full Ghidra decompilation analysis
+- Full C++ flow: CREATE_ENTITY + UPDATE_AVATAR + `createOnClient()` property cascade + `onVisible(1)`
+- `createOnClient()` is Python-driven (cell entity method), sends 8-17+ entity method calls per entity
+- Chain: SGWMob.createOnClient -> SGWBeing.createOnClient -> SGWSpawnableEntity.createOnClient
+- Minimum required: InteractionType, onEntityFlags, **onVisible(1)**, onLevelUpdate, onAlignmentUpdate, onFactionUpdate, onStateFieldUpdate
+- `enterAoI()` in client_handler.cpp:507 sends `onVisible(true)` via `beginEntityMessage(0x08, entityId)` = wire 0x88
+- The "ext[63]" messages in C++ pcap are CELL_BASE_CLIENT_MESSAGE (property cache updates from CellApp->BaseApp->Client)
+- See `cached_entity.cpp:173-236` (onEntityVisible) and `base_client.cpp:407-461` (onRequestEntityUpdate)
+
+### Open Questions
+- Exposed method sub-slot mechanism (for > 62 methods per entity) -- unlikely needed for SGW entities
+
+## Key Source Locations
+
+### BigWorld Engine 2.0.1
+- Entity ID types: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/basictypes.hpp`
+- ID allocation: `external/engines/BigWorld-Engine-2.0.1/src/lib/server/id_client.cpp`
+- Client interface: `external/engines/BigWorld-Engine-2.0.1/src/lib/connection/client_interface.hpp`
+- BaseApp ext interface: `external/engines/BigWorld-Engine-2.0.1/src/lib/connection/baseapp_ext_interface.hpp`
+- Server connection (resetEntities, createPlayer): `external/engines/BigWorld-Engine-2.0.1/src/lib/connection/server_connection.cpp`
+- Encryption filter (Blowfish): `external/engines/BigWorld-Engine-2.0.1/src/lib/network/encryption_filter.cpp`
+- Entity method descriptions (exposed ordering): `external/engines/BigWorld-Engine-2.0.1/src/lib/entitydef/entity_method_descriptions.cpp`
+- Packet flags/format: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/packet.hpp`
+- Sequence/channel types: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/misc.hpp`
+- Direction3D serialization: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/basictypes.cpp` (roll, pitch, yaw order)
+- **Space data types**: `external/engines/BigWorld-Engine-2.0.1/src/common/space_data_types.hpp`
+- **Client spaceData handler**: `external/engines/BigWorld-Engine-2.0.1/src/client/entity_manager.cpp:1382`
+
+### Cimmeria C++ (SGW customizations)
+- Message IDs + format table: `src/baseapp/mercury/sgw/messages.hpp` and `messages.cpp`
+- Client handler: `src/baseapp/mercury/sgw/client_handler.cpp`
+
+### Rust Rewrite
+- Entity types: `crates/common/src/types.rs`
+- Mercury packet builder: `crates/mercury/src/packet.rs`
+- Encrypted message builders: `crates/services/src/mercury_ext.rs`
+- BaseApp handler: `crates/services/src/base.rs`
+- Cooked data handler: `crates/services/src/base/cooked_data.rs`
+- Version info builder: `crates/services/src/mercury/protocol.rs:391`
+
+### Python Game Logic
+- Account versionInfoRequest: `python/base/Account.py:322`
+- DefMgr.ResourceCategories: `python/common/defs/Def.py:42` (cat 7 = "character_creation")
+- Category 7 NOT in Account.py categoryMaps (lines 327-336) = no server-push for char_creation

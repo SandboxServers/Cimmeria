@@ -1,0 +1,117 @@
+[workspace]
+resolver = "2"
+exclude = [
+    "tools/SGWLauncher/src-tauri",
+]
+members = [
+    "crates/common",
+    "crates/mercury",
+    "crates/defs",
+    "crates/entity",
+    "crates/game",
+    "crates/content-engine",
+    "crates/services",
+    "crates/admin-api",
+    "crates/commands",
+    "crates/server",
+    "crates/supervisor",
+    "crates/launcher",
+    "src-tauri",
+    "tools/ContentEditor",
+]
+default-members = [
+    "crates/common",
+    "crates/mercury",
+    "crates/defs",
+    "crates/entity",
+    "crates/game",
+    "crates/content-engine",
+    "crates/services",
+    "crates/admin-api",
+    "crates/commands",
+    "crates/server",
+    "crates/supervisor",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "macros"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bytes = "1"
+
+# XML parsing
+quick-xml = "0.37"
+
+# Cryptography (client requires AES-256-CBC + HMAC-MD5)
+aes = "0.8"
+cbc = "0.1"
+hmac = "0.12"
+md-5 = "0.10"
+rand = "0.9"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Hashing
+sha2 = "0.10"
+
+# Async utilities
+futures-util = "0.3"
+
+# Archive reading (CookedCharCreation.pak is a ZIP)
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Auth
+jsonwebtoken = "9"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Navigation
+# recast-detour-rs = "0.1"  # TODO: evaluate crate availability
+
+# Tauri
+tauri = { version = "2" }
+tauri-build = { version = "2" }
+
+# Internal crates
+cimmeria-common = { path = "crates/common" }
+cimmeria-mercury = { path = "crates/mercury" }
+cimmeria-defs = { path = "crates/defs" }
+cimmeria-entity = { path = "crates/entity" }
+cimmeria-game = { path = "crates/game" }
+cimmeria-content-engine = { path = "crates/content-engine" }
+cimmeria-services = { path = "crates/services" }
+cimmeria-admin-api = { path = "crates/admin-api" }
+cimmeria-commands = { path = "crates/commands" }
+cimmeria-server = { path = "crates/server" }
+
+# ---------------------------------------------------------------------------
+# Profile: dev — optimise compile speed
+# ---------------------------------------------------------------------------
+
+[profile.dev]
+# Split debug info into a separate file — speeds up linking.
+split-debuginfo = "unpacked"

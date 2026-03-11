@@ -251,6 +251,11 @@
 \ir resources/Worlds/Tables/spawnlist.sql
 \ir resources/Worlds/Tables/stargates.sql
 \ir resources/Worlds/Tables/worlds.sql
+\ir resources/Content/Tables/content_chains.sql
+\ir resources/Content/Tables/content_triggers.sql
+\ir resources/Content/Tables/content_conditions.sql
+\ir resources/Content/Tables/content_actions.sql
+\ir resources/Content/Tables/content_counters.sql
 
 \ir resources/_sequence_ownership.sql
 
@@ -327,6 +332,9 @@
 \ir resources/Worlds/Seed/spawnlist.sql
 \ir resources/Worlds/Seed/stargates.sql
 \ir resources/Worlds/Seed/worlds.sql
+\ir resources/Content/Seed/castle_cellblock_chains.sql
+\ir resources/Content/Seed/effects_chains.sql
+\ir resources/Content/Seed/sgc_w1_chains.sql
 
 \ir resources/_foreign_keys.sql
 
@@ -359,6 +367,7 @@
 \ir sgw/Missions/Tables/sgw_mission.sql
 \ir sgw/Players/Tables/sgw_player.sql
 \ir sgw/Shards/Tables/shards.sql
+\ir sgw/Audit/Tables/login_audit.sql
 
 \ir sgw/_sequence_ownership.sql
 

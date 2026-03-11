@@ -1,0 +1,20 @@
+# When building from WSL (Linux), cross-compile to Windows GNU target.
+# When building from native Windows, use the default MSVC target (no override needed).
+# The [build] target is set conditionally via CARGO_BUILD_TARGET env var in WSL,
+# not hardcoded here, so both environments work.
+
+[alias]
+test-workspace = "test --workspace --exclude cimmeria-app"
+
+# Use mold linker on Linux (WSL) for faster incremental builds.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# Windows MSVC: no special linker needed (link.exe is already fast).
+# If incremental builds are slow, consider installing lld and uncommenting:
+# [target.x86_64-pc-windows-msvc]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]
