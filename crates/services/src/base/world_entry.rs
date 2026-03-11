@@ -170,49 +170,51 @@ pub(crate) async fn handle_map_loaded_phase_b(
         "Phase 5b-B: client ready -- sending VIEWPORT + CELL + POSITION + entity data"
     );
 
-    // 1. Send VIEWPORT + CELL_PLAYER + FORCED_POSITION as a separate non-fragmented
-    //    packet (matches C++ pcap: seq=71, flags=0x58, 471B body).
-    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let phase_b_pkt = build_world_entry_phase_b(&key, seq, &acks, &entry_info);
-    tracing::debug!(%addr, len = phase_b_pkt.len(), seq, "UDP_OUT VIEWPORT+CELL+FORCED");
-    socket.send_to(&phase_b_pkt, addr).await?;
+    // Build combined body: VIEWPORT+CELL+FORCED prepended to mapLoaded entity methods.
+    // The C++ server adds these to the channel's current bundle (channel_->bundle())
+    // rather than sending them as a separate packet. Sending them separately caused
+    // the client to fail on instance spaces (Castle_CellBlock, flags=1) where the
+    // client processes createCellPlayer before the entity data bundle arrives,
+    // triggering a premature enableEntities and corrupting bundle reassembly.
+    let phase_b_body = build_world_entry_phase_b_body(&entry_info);
+    let map_body = build_map_loaded_body(
+        entry_info.player_entity_id, &player_data, &entry_info,
+    );
+    let mut combined_body = phase_b_body;
+    combined_body.extend_from_slice(&map_body);
 
-    // drain_acks_and_seq already bumped counter by 1 for the VIEWPORT packet.
-    // Read the current counter value (seq+1) as the base for mapLoaded fragments.
-    let next_seq = {
-        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients.get(&addr)
-            .map(|c| c.next_seq.load(Ordering::Relaxed))
-            .unwrap_or(seq + 1)
+    let num_frags = fragment_count(combined_body.len());
+
+    // Atomically drain acks and reserve the entire sequence range for all fragments.
+    // The tick-sync loop also does fetch_add(1) on the same counter, so this
+    // ensures no overlap: tick-sync will skip past our reserved range.
+    let (acks, base_seq) = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+        let seq = c.next_seq.fetch_add(num_frags, Ordering::Relaxed);
+        (acks, seq)
     };
 
-    // 2. Send all entity method calls as a Mercury-fragmented bundle.
-    //    The client reassembles fragments before processing, ensuring atomic init.
-    let (map_packets, seqs_consumed) = build_map_loaded(
-        &key, next_seq, &[], entry_info.player_entity_id, &player_data, &entry_info,
-    );
+    // Fragment and encrypt the combined body. Acks go on the first fragment.
+    let (packets, seqs_consumed) = fragment_map_loaded(&key, base_seq, &acks, &combined_body);
+    debug_assert_eq!(seqs_consumed, num_frags);
     tracing::info!(
         %addr,
-        fragment_count = map_packets.len(),
+        fragment_count = packets.len(),
         seqs_consumed,
-        first_frag_len = map_packets.first().map(|p| p.len()).unwrap_or(0),
-        "mapLoaded: fragmented bundle ready"
+        combined_body_len = combined_body.len(),
+        first_frag_len = packets.first().map(|p| p.len()).unwrap_or(0),
+        "mapLoaded: combined bundle ready (VIEWPORT+CELL+FORCED + entity data)"
     );
-    let pkt_count = map_packets.len();
-    for (i, pkt_data) in map_packets.iter().enumerate() {
-        tracing::debug!(%addr, len = pkt_data.len(), seq = next_seq + i as u32,
+    let pkt_count = packets.len();
+    for (i, pkt_data) in packets.iter().enumerate() {
+        tracing::debug!(%addr, len = pkt_data.len(), seq = base_seq + i as u32,
             part = i + 1, total = pkt_count, "UDP_OUT mapLoaded");
         socket.send_to(pkt_data, addr).await?;
     }
-    // Advance counter past all consumed fragment sequences.
-    {
-        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get(&addr) {
-            c.next_seq.fetch_add(seqs_consumed, Ordering::Relaxed);
-        }
-    }
 
-    let total_bytes: usize = map_packets.iter().map(|p| p.len()).sum();
+    let total_bytes: usize = packets.iter().map(|p| p.len()).sum();
     tracing::info!(%addr, player = %player_data.player_name,
         level = player_data.level, archetype = player_data.archetype,
         packets = pkt_count,

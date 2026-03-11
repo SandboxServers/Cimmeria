@@ -113,6 +113,21 @@ pub fn build_world_entry_phase_b_body(info: &WorldEntryInfo) -> Vec<u8> {
     body.extend_from_slice(&info.rot[1].to_le_bytes()); // rotY (swapped)
     body.push(0x01); // flags
 
+    body
+}
+
+/// Phase 5b-B: VIEWPORT + CELL_PLAYER + FORCED_POSITION as a standalone packet.
+///
+/// Wraps [`build_world_entry_phase_b_body`] in packet framing and encryption.
+/// Kept for tests/reference; the live path now embeds the body into the
+/// mapLoaded fragmented bundle instead.
+pub fn build_world_entry_phase_b(
+    key: &[u8; 32],
+    seq_id: u32,
+    acks: &[u32],
+    info: &WorldEntryInfo,
+) -> Vec<u8> {
+    let body = build_world_entry_phase_b_body(info);
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)
