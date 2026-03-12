@@ -151,7 +151,7 @@ void PythonMinigame::connectionClosed()
 }
 
 
-void PythonMinigame::abort(AbortReason reason)
+void PythonMinigame::abort(AbortReason /*reason*/)
 {
 	if (!running_)
 	{

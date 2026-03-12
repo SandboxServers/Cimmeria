@@ -26,7 +26,7 @@ bp::object PyUtil_CreateBaseEntityFromDb(std::string const & cls, int32_t dbid)
 	return ent->object();
 }
 
-void PyUtil_CreateCellEntity(uint32_t entityId, uint32_t spaceId, uint32_t dbid, 
+void PyUtil_CreateCellEntity(uint32_t entityId, uint32_t spaceId, uint32_t /*dbid*/,
 	float x, float y, float z, float yaw, float pitch, float roll,
 	std::string const & worldName)
 {
@@ -138,7 +138,7 @@ void PyUtil_SendResource(BaseEntity::Ptr entity, uint32_t categoryId, uint32_t e
 			entity->entityId());
 }
 
-void PyUtil_MinigameCallback(Minigame * minigame, MinigameCompletionStatus status, bp::object callback)
+void PyUtil_MinigameCallback(Minigame * /*minigame*/, MinigameCompletionStatus status, bp::object callback)
 {
 	PyGilGuard guard;
 	auto args = bp::make_tuple((int)status);

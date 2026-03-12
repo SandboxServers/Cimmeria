@@ -14,7 +14,7 @@ FrontendConnection::~FrontendConnection()
 {
 }
 
-FrontendConnection * FrontendConnection::construct(Mercury::TcpServer<FrontendConnection> & server, uint32_t connectionId)
+FrontendConnection * FrontendConnection::construct(Mercury::TcpServer<FrontendConnection> & /*server*/, uint32_t connectionId)
 {
 	return new FrontendConnection(connectionId);
 }
@@ -113,7 +113,7 @@ void FrontendConnection::onConnected(const boost::system::error_code & errcode)
 	status_ = FES_CONNECTED;
 }
 
-void FrontendConnection::onDisconnected(const boost::system::error_code & errcode)
+void FrontendConnection::onDisconnected(const boost::system::error_code & /*errcode*/)
 {
 	// INFO("Client disconnected");
 

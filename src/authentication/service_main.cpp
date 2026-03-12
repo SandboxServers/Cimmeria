@@ -174,7 +174,7 @@ AuthenticationService::LoginSession * AuthenticationService::getSession(const st
 }
 
 
-MessageWriter * AuthenticationService::messageWriter(EndpointType endpoint, uint32_t entityId)
+MessageWriter * AuthenticationService::messageWriter(EndpointType /*endpoint*/, uint32_t /*entityId*/)
 {
 	throw std::runtime_error("Entity messages not supported on the authentication server");
 }

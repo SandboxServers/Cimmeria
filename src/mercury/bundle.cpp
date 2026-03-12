@@ -12,15 +12,15 @@ Bundle::Bundle(Message::Table const & table, bool reliable)
 	table_(table),
 	onChannel_(true),
 	hasRequests_(false),
-	reliable_(reliable), 
-	finalized_(false), 
+	reliable_(reliable),
+	finalized_(false),
 	finalizedToDriver_(false),
-	driver_(-1), 
-	writingMessage_(false), 
-	messageLengthPtr_(nullptr), 
+	driver_(-1),
+	flushedTo_(0),
+	writingMessage_(false),
+	messageLengthPtr_(nullptr),
 	messageFormat_(nullptr),
-	numMessages_(0),
-	flushedTo_(0)
+	numMessages_(0)
 {
 }
 
@@ -156,7 +156,7 @@ void Bundle::finalize(bool all)
 
 	// No driver packet, don't finalize
 	// This shortcut is needed to avoid closing the last packet
-	if (!all && driver_ == -1)
+	if (!all && driver_ == static_cast<size_t>(-1))
 	{
 		finalizedToDriver_ = true;
 		return;

@@ -5,7 +5,7 @@
 #include <common/service.hpp>
 #include <mercury/base_cell_messages.hpp>
 
-MailboxClass::MailboxClass(bp::object & module, PyClassDef * cls, Service::EndpointType mboxType, const char * namePostfix)
+MailboxClass::MailboxClass(bp::object & /*module*/, PyClassDef * cls, Service::EndpointType mboxType, const char * /*namePostfix*/)
 	: class_(cls), mailboxType_(mboxType)
 {
 	class_->rebind(methods_, mboxType, [this](MailboxRpcMethod const * m, bp::object args, bp::object kw) { onRpc(m, args, kw); });
@@ -133,7 +133,7 @@ ClientMailboxClass::~ClientMailboxClass()
 }
 
 
-void ClientMailboxClass::doRpc(MailboxRpcMethod const * method, bp::object args, bp::object kw)
+void ClientMailboxClass::doRpc(MailboxRpcMethod const * method, bp::object args, bp::object /*kw*/)
 {
 	MessageWriter * writer = Service::instance().messageWriter(method->method->endpointType(), method->mailbox->entityId());
 	MessageWriter::DistributionPolicy policy;

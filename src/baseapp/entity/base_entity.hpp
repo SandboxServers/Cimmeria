@@ -33,7 +33,7 @@ public:
 	static void registerClass();
 
 	BaseEntity();
-	~BaseEntity();
+	virtual ~BaseEntity();
 
 
 	/*

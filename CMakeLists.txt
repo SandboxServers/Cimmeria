@@ -61,6 +61,13 @@ else()
     set(RECASTNAVIGATION_EXAMPLES OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(recastnavigation)
 
+    # Suppress warnings in third-party Recast/Detour code
+    foreach(_tgt Recast Detour DetourCrowd DetourTileCache)
+        if(TARGET ${_tgt})
+            target_compile_options(${_tgt} PRIVATE -w)
+        endif()
+    endforeach()
+
     # Alias targets to match the lowercase names used by CellApp/NavBuilder
     if(NOT TARGET recast AND TARGET Recast)
         add_library(recast ALIAS Recast)

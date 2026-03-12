@@ -20,7 +20,9 @@ bp::object PyEvalStringToObject(std::string const & str)
 void PyRegisterModule(bool cell)
 {
 	Py_Initialize();
+#if PY_VERSION_HEX < 0x03090000
 	PyEval_InitThreads();
+#endif
 	PyImport_AddModule("Atrea");
 	
 	{

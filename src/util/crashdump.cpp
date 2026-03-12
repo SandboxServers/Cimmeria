@@ -64,4 +64,54 @@ LONG WINAPI CrashHandler::onCrash(_EXCEPTION_POINTERS * exceptionPtrs)
 	return retval;
 }
 
+#else // !_WIN32
+
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <execinfo.h>
+#include <unistd.h>
+
+std::string CrashHandler::appName_;
+
+void CrashHandler::initialize(const std::string & appName)
+{
+	appName_ = appName;
+
+	struct sigaction sa;
+	sa.sa_handler = &CrashHandler::onSignal;
+	sa.sa_flags = SA_RESETHAND; // Reset to SIG_DFL after first invocation
+	sigemptyset(&sa.sa_mask);
+
+	sigaction(SIGSEGV, &sa, nullptr);
+	sigaction(SIGBUS,  &sa, nullptr);
+	sigaction(SIGABRT, &sa, nullptr);
+	sigaction(SIGFPE,  &sa, nullptr);
+}
+
+void CrashHandler::onSignal(int sig)
+{
+	// These calls are not fully async-signal-safe, but are best-effort
+	// for crash diagnostics. The handler will re-raise after printing.
+	const char * sigName = "UNKNOWN";
+	switch (sig)
+	{
+		case SIGSEGV: sigName = "SIGSEGV"; break;
+		case SIGBUS:  sigName = "SIGBUS";  break;
+		case SIGABRT: sigName = "SIGABRT"; break;
+		case SIGFPE:  sigName = "SIGFPE";  break;
+	}
+
+	fprintf(stderr, "\n *** %s CRASHED (signal %s) ***\n", appName_.c_str(), sigName);
+
+	void * frames[64];
+	int count = backtrace(frames, 64);
+	fprintf(stderr, "Backtrace (%d frames):\n", count);
+	backtrace_symbols_fd(frames, count, STDERR_FILENO);
+	fprintf(stderr, "\n");
+
+	// Re-raise with default handler to produce a core dump
+	raise(sig);
+}
+
 #endif

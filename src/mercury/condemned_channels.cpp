@@ -28,7 +28,7 @@ void CondemnedChannels::addChannel(BaseChannel::Ptr channel)
 
 void CondemnedChannels::pollChannels(uint64_t now)
 {
-	for (auto i = 0; i < channels_.size(); )
+	for (size_t i = 0; i < channels_.size(); )
 	{
 		auto & channel = *channels_[i];
 

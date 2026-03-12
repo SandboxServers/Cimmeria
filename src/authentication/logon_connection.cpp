@@ -30,7 +30,7 @@ const char * LogonFailureMessages[LogonQueue::FailureMax + 1] =
 };
 
 LogonConnection::LogonConnection(uint32_t connectionId)
-	: socket_(Service::instance().ioService()), connectionId_(connectionId), requestPending_(false)
+	: socket_(Service::instance().ioService()), requestPending_(false), connectionId_(connectionId)
 {
 }
 
@@ -39,7 +39,7 @@ LogonConnection::~LogonConnection()
 	TRACE("LogonConnection closed");
 }
 
-LogonConnection * LogonConnection::construct(Mercury::TcpServer<LogonConnection> & server, uint32_t connectionId)
+LogonConnection * LogonConnection::construct(Mercury::TcpServer<LogonConnection> & /*server*/, uint32_t connectionId)
 {
 	return new LogonConnection(connectionId);
 }
@@ -138,7 +138,7 @@ void LogonConnection::receive()
 
 size_t LogonConnection::headerEndOffset()
 {
-	for (int i = 0; i < ((receiveOffset_ > 4) ? (receiveOffset_ - 3) : 0); i++)
+	for (size_t i = 0; i < ((receiveOffset_ > 4) ? (receiveOffset_ - 3) : 0); i++)
 	{
 		if (request_[i] == '\r' && request_[i + 1] == '\n' && request_[i + 2] == '\r' && request_[i + 3] == '\n')
 			return i + 4;
@@ -314,7 +314,7 @@ void LogonConnection::processBody(std::string const & body)
 	requestSession_ = "";
 }
 
-void LogonConnection::onDisconnected(const boost::system::error_code & errcode)
+void LogonConnection::onDisconnected(const boost::system::error_code & /*errcode*/)
 {
 	// TRACE("Disconnected: %s", errcode.message().c_str());
 }
@@ -444,7 +444,7 @@ void LogonConnection::onServerSelection(const std::string & request)
 		});
 }
 
-void LogonConnection::onShardEnterSuccessful(FrontendConnection::ShardSessionData & session, FrontendConnection::Ptr conn)
+void LogonConnection::onShardEnterSuccessful(FrontendConnection::ShardSessionData & session, FrontendConnection::Ptr /*conn*/)
 {
 	sendReply(std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
 				"<ns3:SGWServerLocationResponse xmlns:ns3=\"http://www.stargateworlds.com/xml/sgwlogin\" xmlns:ns1=\"http://www.cheyenneme.com/xml/cmebase\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"sgwLogin http://www.stargateworlds.com/xml/sgwlogin\">"

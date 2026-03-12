@@ -34,7 +34,7 @@ void dbPerform(std::string const & q)
 }
 
 
-void BaseClientMessageWriter::write(Service::EndpointType endpoint, DistributionPolicy policy, uint32_t entityId, uint8_t messageId, bp::object args)
+void BaseClientMessageWriter::write(Service::EndpointType endpoint, DistributionPolicy /*policy*/, uint32_t entityId, uint8_t messageId, bp::object args)
 {
 	SGW_ASSERT(endpoint == Service::ClientMailbox);
 
@@ -107,7 +107,7 @@ void BaseClientMessageWriter::write(Service::EndpointType endpoint, Distribution
 }
 
 
-void BaseCellMessageWriter::write(Service::EndpointType endpoint, DistributionPolicy policy, uint32_t entityId, uint8_t messageId, bp::object args)
+void BaseCellMessageWriter::write(Service::EndpointType endpoint, DistributionPolicy /*policy*/, uint32_t entityId, uint8_t messageId, bp::object args)
 {
 	SGW_ASSERT(endpoint == Service::CellMailbox || endpoint == Service::CellExposedMailbox);
 
@@ -132,7 +132,7 @@ void BaseCellMessageWriter::write(Service::EndpointType endpoint, DistributionPo
 }
 
 
-void BaseCellMessageWriter::write(Service::EndpointType endpoint, DistributionPolicy policy, uint32_t entityId, uint8_t messageId, void * args, size_t argsSize)
+void BaseCellMessageWriter::write(Service::EndpointType endpoint, DistributionPolicy /*policy*/, uint32_t entityId, uint8_t messageId, void * args, size_t argsSize)
 {
 	SGW_ASSERT(endpoint == Service::CellMailbox || endpoint == Service::CellExposedMailbox);
 	
@@ -263,7 +263,7 @@ void BaseService::initialize()
 
 	servicePort_ = internalPort();
 
-	std::thread * t = new std::thread(&ConsoleThread);
+	new std::thread(&ConsoleThread);
 }
 
 void BaseService::cleanup()
@@ -279,7 +279,7 @@ std::string BaseService::internalServiceName()
 	return "BaseService";
 }
 
-MessageWriter * BaseService::messageWriter(EndpointType endpoint, uint32_t entityId)
+MessageWriter * BaseService::messageWriter(EndpointType endpoint, uint32_t /*entityId*/)
 {
 	if (endpoint == ClientMailbox)
 		return &clientWriter_;

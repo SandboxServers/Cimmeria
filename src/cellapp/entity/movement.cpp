@@ -5,7 +5,7 @@
 #include <cellapp/cell_service.hpp>
 #include <cellapp/base_client.hpp>
 
-MovementController::MovementController(CellEntity * entity)
+MovementController::MovementController(CellEntity * /*entity*/)
 	: deleting_(false)
 {
 }
@@ -85,7 +85,7 @@ void DebugController::reset()
 	lastTick_ = SpaceManager::instance().time();
 }
 
-void DebugController::tick(uint64_t time, uint32_t gameTimeInTicks)
+void DebugController::tick(uint64_t /*time*/, uint32_t gameTimeInTicks)
 {
 	float timeMul = (float)(gameTimeInTicks - lastTick_) * (float)SpaceManager::instance().tickRate() / 1000;
 	TRACE("DebugCtrl: ticked %d, timeMul %f", gameTimeInTicks - lastTick_, timeMul);
@@ -113,7 +113,7 @@ void WaypointController::reset()
 	lastTick_ = SpaceManager::instance().time();
 }
 
-void WaypointController::tick(uint64_t time, uint32_t gameTimeInTicks)
+void WaypointController::tick(uint64_t /*time*/, uint32_t gameTimeInTicks)
 {
 	bool linear = true;
 	if (nextWaypoint_ == -1)

@@ -113,11 +113,7 @@ private:
 	bool isInterface_;
 	bool serverOnly_;
 	PyClassDef * parent_;
-	bool persistent_;
-	bool hasIdentifier_;
 	std::vector<PyClassDef *> interfaces_;
-	// Is the def loaded on a cell?
-	bool cell_;
 
 	class MailboxClass * baseMailbox_, * cellMailbox_, * clientMailbox_;
 	bp::object class_;

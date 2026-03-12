@@ -13,7 +13,7 @@
 namespace Mercury
 {
 	
-CellAppConnection * CellAppConnection::Create(Mercury::TcpServer<CellAppConnection> & server, uint32_t connectionId)
+CellAppConnection * CellAppConnection::Create(Mercury::TcpServer<CellAppConnection> & /*server*/, uint32_t /*connectionId*/)
 {
 	return new CellAppConnection();
 }
@@ -367,7 +367,7 @@ void CellAppConnection::onMessageReceived(Reader & msg)
  *
  * @param errcode Error code; connection was successful if code == errc::success
  */
-void CellAppConnection::onConnected(const boost::system::error_code & errcode)
+void CellAppConnection::onConnected(const boost::system::error_code & /*errcode*/)
 {
 }
 
@@ -377,7 +377,7 @@ void CellAppConnection::onConnected(const boost::system::error_code & errcode)
  *
  * @param errcode Reason why the connection was lost
  */
-void CellAppConnection::onDisconnected(const boost::system::error_code & errcode)
+void CellAppConnection::onDisconnected(const boost::system::error_code & /*errcode*/)
 {
 	if (registered_)
 	{

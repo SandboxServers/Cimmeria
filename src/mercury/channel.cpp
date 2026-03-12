@@ -180,7 +180,7 @@ void BaseChannel::setLastActivity(uint64_t time)
 /*
  * Handles a packet received from a client on this channel.
  */
-void BaseChannel::handlePacket(boost::asio::ip::udp::socket & socket, ReceivedPacket::Ptr & packet, uint64_t timestamp)
+void BaseChannel::handlePacket(boost::asio::ip::udp::socket & /*socket*/, ReceivedPacket::Ptr & packet, uint64_t timestamp)
 {
 	#ifdef CHANNEL_VERBOSE_DEBUG
 	TRACEC(CATEGORY_MERCURY, "Received packet: flags 0x%02x, seq #%d", packet->flags(), packet->sequenceId());
@@ -575,7 +575,7 @@ void BaseChannel::processBundle(BundleUnpacker & unpacker)
 	Message::Ptr msg;
 	try
 	{
-		while (msg = unpacker.next())
+		while ((msg = unpacker.next()))
 			processMessage(msg);
 	}
 	catch (std::exception & e)

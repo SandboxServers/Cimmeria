@@ -135,7 +135,7 @@ private:
 	struct CacheMessage
 	{
 		CacheMessage(uint8_t _messageId, uint8_t _flags, void * _args, uint16_t _argsLength)
-			: messageId(_messageId), flags(_flags), args(new uint8_t[_argsLength]), argsLength(_argsLength)
+			: messageId(_messageId), flags(_flags), argsLength(_argsLength), args(new uint8_t[_argsLength])
 		{
 			memcpy(args, _args, argsLength);
 		}

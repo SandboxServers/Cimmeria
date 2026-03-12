@@ -985,7 +985,7 @@ void BaseAppClient::onConnected(const boost::system::error_code & errcode)
  *
  * @param errcode Reason why the connection was lost
  */
-void BaseAppClient::onDisconnected(const boost::system::error_code & errcode)
+void BaseAppClient::onDisconnected(const boost::system::error_code & /*errcode*/)
 {
 	FAULTC(CATEGORY_MERCURY, "Lost connection to BaseApp");
 	FAULTC(CATEGORY_MERCURY, "Disconnected; removing all player entities");

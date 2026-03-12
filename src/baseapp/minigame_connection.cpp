@@ -86,14 +86,14 @@ void MinigameRequestManager::remove(uint32_t entityId)
 		FAULT("No such queued request: %d", entityId);
 }
 
-MinigameConnection * MinigameConnection::Create(Mercury::TcpServer<MinigameConnection> & server, uint32_t connectionId)
+MinigameConnection * MinigameConnection::Create(Mercury::TcpServer<MinigameConnection> & /*server*/, uint32_t connectionId)
 {
 	return new MinigameConnection(connectionId);
 }
 
 MinigameConnection::MinigameConnection(uint32_t connectionId)
-	: socket_(BaseService::instance().ioService()), connectionId_(connectionId), registered_(false),
-	  disconnected_(true), messageReceived_(0), entityId_(0)
+	: socket_(BaseService::instance().ioService()), registered_(false),
+	  disconnected_(true), connectionId_(connectionId), messageReceived_(0), entityId_(0)
 {
 }
 
@@ -130,7 +130,7 @@ Minigame::Ptr MinigameConnection::minigame() const
 	return minigame_;
 }
 
-void MinigameConnection::close(const boost::system::error_code & errcode)
+void MinigameConnection::close(const boost::system::error_code & /*errcode*/)
 {
 	if (!disconnected_)
 		disconnected();

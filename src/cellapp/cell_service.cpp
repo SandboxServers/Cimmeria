@@ -45,7 +45,7 @@ void CellMessageWriter::write(Service::EndpointType endpoint, DistributionPolicy
 }
 
 
-void CellMessageWriter::write(Service::EndpointType endpoint, DistributionPolicy policy, uint32_t entityId, uint8_t messageId, void * args, size_t argsSize)
+void CellMessageWriter::write(Service::EndpointType /*endpoint*/, DistributionPolicy /*policy*/, uint32_t /*entityId*/, uint8_t /*messageId*/, void * /*args*/, size_t /*argsSize*/)
 {
 	throw std::runtime_error("Unsupported write type!");
 }
@@ -93,7 +93,7 @@ void CellService::initialize()
 			&py_client::create);
 	}
 
-	std::thread * t = new std::thread(&ConsoleThread);
+	new std::thread(&ConsoleThread);
 	
 	INFO("Initializing Python Env");
 	PyRegisterModule(true);
@@ -204,7 +204,7 @@ void CellService::loadCellClasses()
 	}
 }
 
-MessageWriter * CellService::messageWriter(EndpointType endpoint, uint32_t entityId)
+MessageWriter * CellService::messageWriter(EndpointType endpoint, uint32_t /*entityId*/)
 {
 	if (endpoint == BaseMailbox || endpoint == ClientMailbox)
 		return &writer_;

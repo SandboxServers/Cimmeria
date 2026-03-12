@@ -151,9 +151,8 @@ void PyClassDef::setClientMailbox(class MailboxClass * mailbox)
 /*
  * Creates a class from an entity definition XML node
  */
-PyClassDef::PyClassDef(tinyxml2::XMLElement & root, std::string const & name, bool isInterface, bool cell)
-	: index_(-1), name_(name), isInterface_(isInterface), serverOnly_(false), parent_(nullptr),
-	  persistent_(false), hasIdentifier_(false), cell_(cell)
+PyClassDef::PyClassDef(tinyxml2::XMLElement & root, std::string const & name, bool isInterface, bool /*cell*/)
+	: index_(-1), name_(name), isInterface_(isInterface), serverOnly_(false), parent_(nullptr)
 {
 	tinyxml2::XMLElement * serverOnly = root.FirstChildElement("ServerOnly");
 	if (serverOnly)

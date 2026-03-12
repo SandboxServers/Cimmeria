@@ -42,7 +42,7 @@ unsigned int MeshObjExporter::addVertex(float x, float y, float z)
 	if (writeBufLen_ >= writeBufFlushSize_)
 		flushWriteBuffer();
 
-	writeBufLen_ += sprintf(&writeBuf_[writeBufLen_], "v %f %f %f\r\n", x, y, z);
+	writeBufLen_ += snprintf(&writeBuf_[writeBufLen_], writeBufSize_ - writeBufLen_, "v %f %f %f\r\n", x, y, z);
 	// outFile_ << "v " << x << " " << y << " " << z << std::endl;
 	return vertexIndex_++;
 }
@@ -53,7 +53,7 @@ void MeshObjExporter::addFace(unsigned int a, unsigned int b, unsigned int c)
 		flushWriteBuffer();
 
 	SGW_ASSERT(a < vertexIndex_ && b < vertexIndex_ && c < vertexIndex_);
-	writeBufLen_ += sprintf(&writeBuf_[writeBufLen_], "f %d %d %d\r\n", a, b, c);
+	writeBufLen_ += snprintf(&writeBuf_[writeBufLen_], writeBufSize_ - writeBufLen_, "f %d %d %d\r\n", a, b, c);
 	// outFile_ << "f " << a << " " << b << " " << c << std::endl;
 }
 
@@ -117,7 +117,7 @@ void MeshBufferExporter::addFace(unsigned int a, unsigned int b, unsigned int c)
 	faceIndex_++;
 }
 
-void MeshBufferExporter::addComment(std::string const & comment)
+void MeshBufferExporter::addComment(std::string const & /*comment*/)
 {
 }
 

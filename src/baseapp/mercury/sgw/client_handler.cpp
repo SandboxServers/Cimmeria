@@ -109,7 +109,7 @@ void ClientHandler::onDisconnected()
 	connectionSetup_ = false;
 }
 
-void ClientHandler::tick(uint64_t time)
+void ClientHandler::tick(uint64_t /*time*/)
 {
 	// Check if there are resources that must be sent when there is free space in the send buffer
 	// and re-queue them when some space is freed up

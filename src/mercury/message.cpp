@@ -8,12 +8,12 @@ namespace Mercury
 {
 
 Message::Message(uint32_t buf_size)
-	: references_(0), messageId_(0xffff), requestId_(0), Mercury::MemoryStream(buf_size)
+	: Mercury::MemoryStream(buf_size), references_(0), messageId_(0xffff), requestId_(0)
 {
 }
 
 Message::Message(uint8_t * buf, uint32_t buf_size)
-	: references_(0), messageId_(0xffff), requestId_(0), Mercury::MemoryStream(buf, buf_size)
+	: Mercury::MemoryStream(buf, buf_size), references_(0), messageId_(0xffff), requestId_(0)
 {
 }
 

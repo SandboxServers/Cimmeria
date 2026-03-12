@@ -8,7 +8,7 @@
 #include <entity/pyutil.hpp>
 #include <common/service.hpp>
 
-py_client * py_client::create(Mercury::TcpServer<py_client> & server, uint32_t connection_id)
+py_client * py_client::create(Mercury::TcpServer<py_client> & /*server*/, uint32_t /*connection_id*/)
 {
 	return new py_client();
 }
@@ -183,12 +183,12 @@ void py_client::onMessageReceived(Reader & msg)
 	}
 }
 
-void py_client::onConnected(const boost::system::error_code & errcode)
+void py_client::onConnected(const boost::system::error_code & /*errcode*/)
 {
 	state_ = PY_CLIENT_AUTH_WAIT;
 }
 
-void py_client::onDisconnected(const boost::system::error_code & errcode)
+void py_client::onDisconnected(const boost::system::error_code & /*errcode*/)
 {
 }
 

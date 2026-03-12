@@ -8,9 +8,10 @@ namespace Mercury
 {
 
 UnifiedConnection::UnifiedConnection(uint32_t connectionId)
-	: socket_(Service::instance().ioService()), connectionId_(connectionId), registered_(false),
-	  connected_(false), writingMessage_(false), headerOffset_(0), writableBytes_(0),
-	  received_(0x100000), sending_(0x100000)
+	: socket_(Service::instance().ioService()), registered_(false),
+	  connected_(false), writingMessage_(false), headerOffset_(0),
+	  received_(0x100000), sending_(0x100000), writableBytes_(0),
+	  connectionId_(connectionId)
 {
 }
 

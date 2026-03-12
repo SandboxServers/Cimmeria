@@ -21,6 +21,8 @@ class Bundle;
 class MessageFilter
 {
 public:
+	virtual ~MessageFilter() = default;
+
 	/*
 	 * Transforms the packet in "packet" and writes the result to "buffer".
 	 * Returns true if filtering was successful, false on failure.

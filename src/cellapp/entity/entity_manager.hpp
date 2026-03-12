@@ -142,3 +142,6 @@ private:
 	uint32_t nextId_;
 };
 
+template <typename _T>
+CellEntityManager<_T> * CellEntityManager<_T>::instance_ = nullptr;
+

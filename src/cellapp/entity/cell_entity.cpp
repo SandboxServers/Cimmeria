@@ -14,9 +14,6 @@
 #include <boost/python/handle.hpp>
 #include <boost/python/call_method.hpp>
 
-template <>
-CellEntityManager<CellEntity> * CellEntityManager<CellEntity>::instance_ = nullptr;
-
 void CellEntity::registerClass()
 {
 	bp::object mod = bp::import(bp::str("Atrea"));
@@ -289,7 +286,7 @@ void CellEntity::enteredAoI(CellEntity::Ptr entity)
 void CellEntity::updatedPosition(uint32_t flags)
 {
 	// Nothing changed, don't send an update
-	if (!(flags & ChangedPosition | ChangedRotation | ChangedVelocity))
+	if (!(flags & (ChangedPosition | ChangedRotation | ChangedVelocity)))
 		return;
 
 	// TODO: Skip ticks if possible
@@ -649,7 +646,7 @@ CellMailboxClass::~CellMailboxClass()
 }
 
 
-void CellMailboxClass::doRpc(MailboxRpcMethod const * method, bp::object args, bp::object kw)
+void CellMailboxClass::doRpc(MailboxRpcMethod const * method, bp::object args, bp::object /*kw*/)
 {
 	MessageWriter * writer = Service::instance().messageWriter(method->method->endpointType(), method->mailbox->entityId());
 	MessageWriter::DistributionPolicy policy;

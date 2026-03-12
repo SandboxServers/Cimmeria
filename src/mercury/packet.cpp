@@ -205,7 +205,7 @@ ReceivedPacket::ReceivedPacket()
 */
 bool ReceivedPacket::unserialize(bool isOnChannel, bool warn)
 {
-	#define WARN_BAD_PACKET(msg, ...) { if (warn) WARNC(CATEGORY_MERCURY, msg, ##__VA_ARGS__); }
+	#define WARN_BAD_PACKET(...) do { if (warn) WARNC(CATEGORY_MERCURY, __VA_ARGS__); } while(0)
 
 	// Simplify read operation syntax
 	Mercury::MemoryStream & buf = *this;

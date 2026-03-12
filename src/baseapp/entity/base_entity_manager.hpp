@@ -69,3 +69,6 @@ private:
 	// (spaceId, entity) map
 	std::multimap<uint32_t, typename _T::Ptr> spaceMap_;
 };
+
+template <typename _T>
+BaseEntityManager<_T> * BaseEntityManager<_T>::instance_ = nullptr;

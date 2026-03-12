@@ -15,8 +15,8 @@ void CachedEntity::staticInit()
 }
 
 CachedEntity::CachedEntity(uint32_t entityId, uint8_t classId, uint32_t generationId, uint8_t flags)
-	: entityId_(entityId), classId_(classId), generationId_(generationId), flags_(flags), 
-	space_(nullptr), writingPropertySet_(InvalidPropertySetId)
+	: entityId_(entityId), classId_(classId), space_(nullptr),
+	generationId_(generationId), flags_(flags), writingPropertySet_(InvalidPropertySetId)
 {
 	if (isAWitness())
 	{
@@ -279,10 +279,9 @@ void CachedEntity::endCacheStamp()
 {
 	SGW_ASSERT(writingPropertySet_ != InvalidPropertySetId);
 	auto const & set = propertySets_[writingPropertySet_];
-	unsigned ver = set.lastVersion();
-	
+
 	// This function will be called for each witness that can see us
-	auto visitor = [this, &set, &ver] (WeakPtr entity)
+	auto visitor = [this, &set] (WeakPtr entity)
 	{
 		Ptr witness = entity.lock();
 		SGW_ASSERT(witness->isAWitness());

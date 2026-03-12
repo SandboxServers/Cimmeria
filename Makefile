@@ -73,6 +73,13 @@ db-reset: docker-up  ## Drop and reload database schemas
 runtime:  ## Verify runtime library resolution
 	@bash $(SCRIPTS)/runtime.sh
 
+# --- Test ---
+
+.PHONY: smoke-test
+
+smoke-test: build  ## Smoke-test: start AuthenticationServer, verify port, stop
+	@bash $(SCRIPTS)/smoke-test.sh
+
 # --- Server ---
 
 .PHONY: start stop

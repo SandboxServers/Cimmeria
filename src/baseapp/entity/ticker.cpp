@@ -95,7 +95,7 @@ void Ticker::updateTickTimer(uint64_t now, unsigned int ticks)
 	lastTick_ += ticks * tickRate_;
 }
 
-void Ticker::tick(Mercury::Nub::Timer & mgr, uint64_t timerTime, uint64_t now)
+void Ticker::tick(Mercury::Nub::Timer & /*mgr*/, uint64_t /*timerTime*/, uint64_t now)
 {
 	updateTickTimer(now, 1);
 	time_++;

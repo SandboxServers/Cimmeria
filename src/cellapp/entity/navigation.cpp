@@ -305,8 +305,8 @@ void NavigationPath::fixupCorridor(const dtPolyRef * visited, const int nvisited
 	pathLength_ = req + size;
 }
 
-void NavigationPath::smooth(Vec3 & startingPoint, dtPolyRef startingPoly, Vec3 & dstPoint, 
-	dtPolyRef dstPoly, dtNavMeshQuery & query, dtQueryFilter & filter,
+void NavigationPath::smooth(Vec3 & startingPoint, dtPolyRef startingPoly, Vec3 & dstPoint,
+	dtPolyRef /*dstPoly*/, dtNavMeshQuery & query, dtQueryFilter & filter,
 	NavigationQueryParams const & params)
 {
 	// Iterate over the path to find smooth path on the detail mesh surface.
@@ -326,7 +326,7 @@ void NavigationPath::smooth(Vec3 & startingPoint, dtPolyRef startingPoly, Vec3 &
 	
 	// Move towards target a small advancement at a time until target reached or
 	// when ran out of memory to store the path.
-	while (pathLength_ && smoothLength_ < MaxSmoothingSteps)
+	while (pathLength_ && (unsigned int)smoothLength_ < MaxSmoothingSteps)
 	{
 		// Find location to steer towards.
 		Vec3 steerPos;
@@ -371,7 +371,7 @@ void NavigationPath::smooth(Vec3 & startingPoint, dtPolyRef startingPoly, Vec3 &
 		{
 			// Reached end of path.
 			iterPos = targetPos;
-			if (smoothLength_ < MaxSmoothingSteps)
+			if ((unsigned int)smoothLength_ < MaxSmoothingSteps)
 			{
 				smoothPath_[smoothLength_] = iterPos;
 				smoothLength_++;
@@ -380,7 +380,7 @@ void NavigationPath::smooth(Vec3 & startingPoint, dtPolyRef startingPoly, Vec3 &
 		}
 					
 		// Store results.
-		if (smoothLength_ < MaxSmoothingSteps)
+		if ((unsigned int)smoothLength_ < MaxSmoothingSteps)
 		{
 			smoothPath_[smoothLength_] = iterPos;
 			smoothLength_++;
@@ -441,8 +441,8 @@ int NavigationPath::pointsCount() const
 	return smoothLength_;
 }
 
-bool NavigationPath::getSteerTarget(dtNavMeshQuery & query, dtQueryFilter & filter, const Vec3 & startPos, 
-	const Vec3 & endPos, float minTargetDist, Vec3 & steerPos, unsigned char & steerPosFlag, 
+bool NavigationPath::getSteerTarget(dtNavMeshQuery & query, dtQueryFilter & /*filter*/, const Vec3 & startPos,
+	const Vec3 & endPos, float minTargetDist, Vec3 & steerPos, unsigned char & steerPosFlag,
 	dtPolyRef & steerPosRef)							 
 {
 	// Find steer target.

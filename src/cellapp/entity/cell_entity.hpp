@@ -61,14 +61,14 @@ public:
 	static void registerClass();
 
 	CellEntity();
-	~CellEntity();
+	virtual ~CellEntity();
 	
 	
 	template <typename _T>
 	void backup(_T & stream)
 	{
 		SGW_ASSERT(classDef() && "Cannot backup server-only entities");
-		bool player;
+		bool player = false;
 		stream << (uint32_t)43;
 		stream << position_.x << position_.y << position_.z;
 		stream << rotation_.x << rotation_.y << rotation_.z;

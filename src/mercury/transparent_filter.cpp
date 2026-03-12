@@ -21,7 +21,7 @@ bool TransparentFilter::sendMessage(Packet & packet, Mercury::MemoryStream & buf
 	return true;
 }
 
-bool TransparentFilter::receiveMessage(ReceivedPacket & packet)
+bool TransparentFilter::receiveMessage(ReceivedPacket & /*packet*/)
 {
 	return true;
 }

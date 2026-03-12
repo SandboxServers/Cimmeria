@@ -12,8 +12,8 @@ class TcpServer
 		typedef std::function<_T * (TcpServer<_T> & server, uint32_t connection_id)> ConnectionFactoryType;
 
 		TcpServer(uint16_t port, ConnectionFactoryType factory)
-			: service_(Service::instance().ioService()),
-			  socket_(Service::instance().ioService(), boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)),
+			: socket_(Service::instance().ioService(), boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)),
+			  service_(Service::instance().ioService()),
 			  connectionFactory_(factory),
 			  nextConnectionId_(1)
 		{

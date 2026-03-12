@@ -364,7 +364,7 @@ public:
 		uint8_t * ptr_;
 		mutable bool owned_;
 		
-		inline ContiguousBuffer & operator = (ContiguousBuffer & src) 
+		inline ContiguousBuffer & operator = (ContiguousBuffer & /*src*/)
 		{
 			return *this;
 		}

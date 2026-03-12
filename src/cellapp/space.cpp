@@ -55,7 +55,7 @@ void Space::setCreatorId(uint32_t entityId)
 
 void Space::findEntitiesByDbid(int32_t databaseId, std::vector<CellEntity::Ptr> & entities)
 {
-	for (auto dbit = dbEntities_.find(databaseId); dbit != dbEntities_.end() && dbit->first == databaseId; ++dbit)
+	for (auto dbit = dbEntities_.find(databaseId); dbit != dbEntities_.end() && dbit->first == (uint32_t)databaseId; ++dbit)
 	{
 		entities.push_back(dbit->second);
 	}
@@ -118,9 +118,9 @@ bool Space::removeEntity(uint32_t entityId)
 	{
 		auto dbit = dbEntities_.find(dbid);
 		SGW_ASSERT(dbit != dbEntities_.end());
-		while (dbit != dbEntities_.end() && dbit->first == dbid && dbit->second != it->second)
+		while (dbit != dbEntities_.end() && dbit->first == (uint32_t)dbid && dbit->second != it->second)
 			++dbit;
-		SGW_ASSERT(dbit != dbEntities_.end() && dbit->first == dbid && dbit->second == it->second);
+		SGW_ASSERT(dbit != dbEntities_.end() && dbit->first == (uint32_t)dbid && dbit->second == it->second);
 		dbEntities_.erase(dbit);
 	}
 
@@ -585,7 +585,7 @@ void SpaceManager::updateTickTimer(uint64_t now, unsigned int ticks)
 	lastTick_ += ticks * tickRate_;
 }
 
-void SpaceManager::tick(Service::TimerMgr & mgr, uint64_t timerTime, uint64_t now)
+void SpaceManager::tick(Service::TimerMgr & /*mgr*/, uint64_t /*timerTime*/, uint64_t now)
 {
 	updateTickTimer(now, 1);
 	time_++;

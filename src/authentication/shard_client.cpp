@@ -288,7 +288,7 @@ void ShardClient::onConnected(const boost::system::error_code & errcode)
  *
  * @param errcode Reason why the connection was lost
  */
-void ShardClient::onDisconnected(const boost::system::error_code & errcode)
+void ShardClient::onDisconnected(const boost::system::error_code & /*errcode*/)
 {
 	WARN("Lost connection to Authentication Service");
 	reconnectIn(ConnectionRecoveryTimeout);

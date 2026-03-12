@@ -142,7 +142,7 @@ unsigned int Mesh::translateFaceIndex(std::string const & index)
 	else
 		val = atol(index.c_str());
 
-	if (val == 0 || (val > 0 && val > vertices_.size()) || (val < 0 && -val > vertices_.size()))
+	if (val == 0 || (val > 0 && static_cast<size_t>(val) > vertices_.size()) || (val < 0 && static_cast<size_t>(-val) > vertices_.size()))
 		throw std::runtime_error("Invalid vertex index in object!");
 
 	if (val < 0)

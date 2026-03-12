@@ -21,8 +21,13 @@ class CrashHandler
 class CrashHandler
 {
 	public:
-		// TODO!
-		inline static void initialize(const std::string & dumpFilename) {}
+		static void initialize(const std::string & appName);
+
+	private:
+		inline CrashHandler() {}
+
+		static void onSignal(int sig);
+		static std::string appName_;
 };
 
 #endif

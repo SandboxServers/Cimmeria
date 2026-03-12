@@ -14,10 +14,10 @@ namespace Mercury
 
 Nub::Nub(boost::asio::io_context & service, unsigned short port, ClientlessPacketHandler * clientlessHandler)
 	: socket_(service, Address(boost::asio::ip::udp::v4(), port)),
-	  clientlessHandler_(clientlessHandler),
-	  m_timer(service),
-	  lastTick_(0),
 	  tickInterval_(50),
+	  lastTick_(0),
+	  m_timer(service),
+	  clientlessHandler_(clientlessHandler),
 	  sendQueue_(TxSendQueueMaxSize),
 	  isSending_(false),
 	  sendBuffer_(MaxPacketLength)
@@ -65,7 +65,7 @@ void Nub::connectChannel(BaseChannel::Ptr channel, Address const & ep)
 	channel->bind(ep);
 }
 
-void Nub::unregisterChannel(BaseChannel * channel, Address const & ep)
+void Nub::unregisterChannel(BaseChannel * /*channel*/, Address const & ep)
 {
 	auto iter = channels_.find(ep);
 	if (iter != channels_.end())
@@ -105,13 +105,11 @@ void Nub::frameHandler(const boost::system::error_code & error, size_t length, A
 
 		try
 		{
-			bool handled = false;
 			auto iter = channels_.find(address);
 			if (iter != channels_.end())
 			{
 				if (iter->second->filter()->receiveMessage(*packet) && packet->unserialize(true))
 					iter->second->handlePacket(socket_, packet, lastTick_);
-				handled = true;
 			}
 			else
 			{
@@ -242,7 +240,7 @@ void Nub::sendPacket(BaseChannel::Ptr channel, Packet::Ptr packet, Packet::Seque
 		});
 }
 
-void Nub::onPacketSent(BaseChannel::Ptr channel, Packet::Ptr packet, const boost::system::error_code & errcode)
+void Nub::onPacketSent(BaseChannel::Ptr /*channel*/, Packet::Ptr /*packet*/, const boost::system::error_code & errcode)
 {
 	SGW_ASSERT(isSending_);
 	isSending_ = false;

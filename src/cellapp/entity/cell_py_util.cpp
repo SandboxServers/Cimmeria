@@ -113,7 +113,7 @@ bp::object PyUtil_FindEntities(uint32_t spaceId)
 	auto const & all = CellEntityManager<CellEntity>::instance().all();
 	for (auto it = all.begin(); it != all.end(); ++it)
 	{
-		if (spaceId == 0xffffffff || it->second->space() && it->second->space()->spaceId() == spaceId)
+		if (spaceId == 0xffffffff || (it->second->space() && it->second->space()->spaceId() == spaceId))
 			list.append(it->second->object());
 	}
 	return list;

@@ -8,9 +8,6 @@
 #include <boost/python/scope.hpp>
 #include <boost/python/handle.hpp>
 
-template <>
-BaseEntityManager<BaseEntity> * BaseEntityManager<BaseEntity>::instance_ = nullptr;
-
 void BaseEntity::registerClass()
 {
 	bp::object mod = bp::import(bp::str("Atrea"));

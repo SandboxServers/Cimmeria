@@ -5,7 +5,7 @@
 #include <util/crashdump.hpp>
 #include <entity/pyutil.hpp>
 
-int main(int argc, char* argv[])
+int main(int /*argc*/, char* /*argv*/[])
 {
 	try
 	{
