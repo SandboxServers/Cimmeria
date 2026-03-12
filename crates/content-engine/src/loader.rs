@@ -351,6 +351,23 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
             let use_player = params.get("use_player").and_then(|v| v.as_bool());
             Some(Action::MoveEntity { entity_tag, destination, world, use_player })
         }
+        "move_waypoint" => {
+            let entity_tag = row.target_key.as_deref()?.to_string();
+            let dest_str = params.get("destination").and_then(|v| v.as_str()).unwrap_or("0,0,0");
+            let destination = parse_destination(dest_str);
+            let speed = params.get("speed").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
+            Some(Action::MoveWaypoint { entity_tag, destination, speed })
+        }
+        "set_active_slot" => {
+            let bag_id = params.get("bag_id").and_then(|v| v.as_i64()).unwrap_or(3) as i32;
+            let slot = params.get("slot").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            Some(Action::SetActiveSlot { bag_id, slot })
+        }
+        "launch_ability" => {
+            let ability_id = row.target_id?;
+            let entity_tag = row.target_key.as_deref().map(|s| s.to_string());
+            Some(Action::LaunchAbility { ability_id, entity_tag })
+        }
         _ => None,
     }
 }
@@ -546,6 +563,91 @@ mod tests {
         match trigger {
             Trigger::OnInteractTag { entity_tag } => assert_eq!(entity_tag, "ArmYourself_FrostBody"),
             other => panic!("Expected OnInteractTag, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn convert_move_waypoint_action() {
+        let row = DbActionRow {
+            chain_id: 1,
+            action_type: "move_waypoint".to_string(),
+            target_id: None,
+            target_key: Some("NID_Guard_01".to_string()),
+            params: serde_json::json!({"destination": "-296.715,68.511,-166.125", "speed": 1.5}),
+            delay_ms: 0,
+            sort_order: 0,
+        };
+        let action = convert_action(&row).unwrap();
+        match action {
+            Action::MoveWaypoint { entity_tag, destination, speed } => {
+                assert_eq!(entity_tag, "NID_Guard_01");
+                assert_eq!(destination, [-296.715, 68.511, -166.125]);
+                assert!((speed - 1.5).abs() < f32::EPSILON);
+            }
+            other => panic!("Expected MoveWaypoint, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn convert_set_active_slot_action() {
+        let row = DbActionRow {
+            chain_id: 1,
+            action_type: "set_active_slot".to_string(),
+            target_id: None,
+            target_key: None,
+            params: serde_json::json!({"bag_id": 3, "slot": 0}),
+            delay_ms: 0,
+            sort_order: 0,
+        };
+        let action = convert_action(&row).unwrap();
+        match action {
+            Action::SetActiveSlot { bag_id, slot } => {
+                assert_eq!(bag_id, 3);
+                assert_eq!(slot, 0);
+            }
+            other => panic!("Expected SetActiveSlot, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn convert_set_active_slot_defaults_bandolier() {
+        let row = DbActionRow {
+            chain_id: 1,
+            action_type: "set_active_slot".to_string(),
+            target_id: None,
+            target_key: None,
+            params: serde_json::json!({"slot": 2}),
+            delay_ms: 0,
+            sort_order: 0,
+        };
+        let action = convert_action(&row).unwrap();
+        match action {
+            Action::SetActiveSlot { bag_id, slot } => {
+                assert_eq!(bag_id, 3); // defaults to Bandolier
+                assert_eq!(slot, 2);
+            }
+            other => panic!("Expected SetActiveSlot, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn convert_launch_ability_action() {
+        let row = DbActionRow {
+            chain_id: 1,
+            action_type: "launch_ability".to_string(),
+            target_id: Some(1372),
+            target_key: Some("NID_Guard_01".to_string()),
+            params: serde_json::json!({}),
+            delay_ms: 0,
+            sort_order: 0,
+        };
+        let action = convert_action(&row).unwrap();
+        match action {
+            Action::LaunchAbility { ability_id, entity_tag } => {
+                assert_eq!(ability_id, 1372);
+                assert_eq!(entity_tag, Some("NID_Guard_01".to_string()));
+            }
+            other => panic!("Expected LaunchAbility, got {:?}", other),
         }
     }
 
