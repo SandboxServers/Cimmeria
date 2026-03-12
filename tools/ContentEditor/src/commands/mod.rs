@@ -1,10 +1,12 @@
 mod chains;
+mod convert;
 mod data;
 mod hot_reload;
 mod scripts;
 mod seed_export;
 
 pub use chains::*;
+pub use convert::*;
 pub use data::*;
 pub use hot_reload::*;
 pub use scripts::*;

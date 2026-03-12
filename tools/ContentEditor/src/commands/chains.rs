@@ -63,7 +63,7 @@ pub struct CounterRow {
     pub reset_on: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SaveChainInput {
     pub chain_id: Option<i32>,
     pub description: Option<String>,
@@ -77,7 +77,7 @@ pub struct SaveChainInput {
     pub counters: Vec<SaveCounterInput>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SaveTriggerInput {
     pub event_type: String,
     pub event_key: Option<String>,
@@ -86,7 +86,7 @@ pub struct SaveTriggerInput {
     pub sort_order: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SaveConditionInput {
     pub condition_type: String,
     pub target_id: Option<i32>,
@@ -96,7 +96,7 @@ pub struct SaveConditionInput {
     pub sort_order: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SaveActionInput {
     pub action_type: String,
     pub target_id: Option<i32>,
@@ -106,7 +106,7 @@ pub struct SaveActionInput {
     pub sort_order: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SaveCounterInput {
     pub counter_name: String,
     pub target_value: i32,

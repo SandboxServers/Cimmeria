@@ -210,6 +210,28 @@ pub enum Action {
         world: Option<String>,
         use_player: Option<bool>,
     },
+
+    // ── Space script action types ────────────────────────────────────────
+
+    /// Animated NPC pathing — moves a tagged entity along a path with walk animation.
+    /// Unlike MoveEntity (instant teleport), this triggers movement over time.
+    MoveWaypoint {
+        entity_tag: String,
+        destination: [f32; 3],
+        speed: f32,
+    },
+
+    /// Equip an item to an equipment slot (typically Bandolier bag_id=3).
+    SetActiveSlot {
+        bag_id: i32,
+        slot: i32,
+    },
+
+    /// Force-fire an ability on an entity (or self if entity_tag is None).
+    LaunchAbility {
+        ability_id: i32,
+        entity_tag: Option<String>,
+    },
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].
@@ -340,6 +362,69 @@ mod tests {
         match deserialized {
             Action::GrantItem { container_id, .. } => assert_eq!(container_id, None),
             _ => panic!("Expected GrantItem"),
+        }
+    }
+
+    #[test]
+    fn move_waypoint_serialization() {
+        let action = Action::MoveWaypoint {
+            entity_tag: "NID_Guard_01".to_string(),
+            destination: [-296.715, 68.511, -166.125],
+            speed: 1.5,
+        };
+        let json = serde_json::to_string(&action).unwrap();
+        let deserialized: Action = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            Action::MoveWaypoint { entity_tag, destination, speed } => {
+                assert_eq!(entity_tag, "NID_Guard_01");
+                assert_eq!(destination, [-296.715, 68.511, -166.125]);
+                assert!((speed - 1.5).abs() < f32::EPSILON);
+            }
+            _ => panic!("Expected MoveWaypoint"),
+        }
+    }
+
+    #[test]
+    fn set_active_slot_serialization() {
+        let action = Action::SetActiveSlot { bag_id: 3, slot: 0 };
+        let json = serde_json::to_string(&action).unwrap();
+        let deserialized: Action = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            Action::SetActiveSlot { bag_id, slot } => {
+                assert_eq!(bag_id, 3);
+                assert_eq!(slot, 0);
+            }
+            _ => panic!("Expected SetActiveSlot"),
+        }
+    }
+
+    #[test]
+    fn launch_ability_serialization() {
+        let action = Action::LaunchAbility {
+            ability_id: 1372,
+            entity_tag: Some("NID_Guard_01".to_string()),
+        };
+        let json = serde_json::to_string(&action).unwrap();
+        let deserialized: Action = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            Action::LaunchAbility { ability_id, entity_tag } => {
+                assert_eq!(ability_id, 1372);
+                assert_eq!(entity_tag, Some("NID_Guard_01".to_string()));
+            }
+            _ => panic!("Expected LaunchAbility"),
+        }
+    }
+
+    #[test]
+    fn launch_ability_without_entity_tag() {
+        let json = r#"{"LaunchAbility": {"ability_id": 500}}"#;
+        let deserialized: Action = serde_json::from_str(json).unwrap();
+        match deserialized {
+            Action::LaunchAbility { ability_id, entity_tag } => {
+                assert_eq!(ability_id, 500);
+                assert_eq!(entity_tag, None);
+            }
+            _ => panic!("Expected LaunchAbility"),
         }
     }
 
