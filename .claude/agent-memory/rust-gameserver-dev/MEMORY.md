@@ -39,3 +39,12 @@ See [audit-findings.md](audit-findings.md) for full details.
 - Looks up item defs for visualComponent
 - Sends primaryTint=0xFF, secondaryTint=0xFF, skinTint=SKIN_TINTS[skin_color_id]
 - Rust sends primaryTint=0, secondaryTint=0, skinTint=skin_color_id (raw index, not mapped)
+
+### SGW v486 StaticMesh Binary Format (2026-03-12)
+See [staticmesh-format.md](staticmesh-format.md) for full details.
+- Serialized after tagged properties: Bounds, BodySetup, kDOPTree, InternalVersion, LODs
+- kDOPNode=32 bytes (6 floats + 2 u32), kDOPTriangle=8 bytes (3 u16 + 1 u16)
+- Vertex buffer uses 40-byte combined format (pos+tangents+color+UV), NOT separate buffers
+- Index buffer is u16 with NumVertices(i32)+IndexCount(i32) header
+- FStaticMeshElement is 7 i32 fields (28 bytes): Material, EnableCollision, OldEnableCollision, FirstIndex, NumTriangles, MinVertexIndex, MaxVertexIndex
+- Implementation: `crates/upk-objects/src/static_mesh.rs`
