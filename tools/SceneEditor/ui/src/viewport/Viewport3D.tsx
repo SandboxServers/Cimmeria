@@ -1,8 +1,8 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import { invoke } from '../lib/tauri';
-import type { ActorListEntry, MeshData, RenderMode, ZoneBounds } from '../lib/types';
-import { ACTOR_COLORS } from '../lib/types';
+import type { ActorListEntry, MeshData, RenderMode, ZoneBounds, DbEntity } from '../lib/types';
+import { ACTOR_COLORS, DB_ENTITY_COLORS } from '../lib/types';
 import { createGizmo, updateGizmoScale, highlightGizmoAxis, pickGizmoAxis, type GizmoMode } from './TransformGizmo';
 import { getClassGeometry } from './ActorVisuals';
 
@@ -27,6 +27,8 @@ interface Viewport3DProps {
   placementMode?: boolean;
   onPlaceSpawn?: (x: number, y: number, z: number) => void;
   selectedTemplateName?: string | null;
+  dbEntities?: DbEntity[];
+  selectedDbEntityIds?: Set<number>;
 }
 
 interface GizmoDragState {
@@ -201,6 +203,8 @@ export function Viewport3D({
   placementMode,
   onPlaceSpawn,
   selectedTemplateName,
+  dbEntities = [],
+  selectedDbEntityIds = new Set(),
 }: Viewport3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -213,6 +217,7 @@ export function Viewport3D({
   const outlineGroupRef = useRef<THREE.Group | null>(null);
   const radiusGroupRef = useRef<THREE.Group | null>(null);
   const connectionGroupRef = useRef<THREE.Group | null>(null);
+  const dbEntityGroupRef = useRef<THREE.Group | null>(null);
   const gizmoRef = useRef<THREE.Group | null>(null);
   const gizmoModeRef = useRef<GizmoMode>(transformMode);
   const hoveredAxisRef = useRef<'x' | 'y' | 'z' | null>(null);
@@ -343,6 +348,10 @@ export function Viewport3D({
     const connectionGroup = new THREE.Group();
     scene.add(connectionGroup);
     connectionGroupRef.current = connectionGroup;
+
+    const dbEntityGroup = new THREE.Group();
+    scene.add(dbEntityGroup);
+    dbEntityGroupRef.current = dbEntityGroup;
 
     const grid = new THREE.GridHelper(100000, 100, 0x333333, 0x222222);
     scene.add(grid);
@@ -640,6 +649,78 @@ export function Viewport3D({
       Promise.all(promises).then(placeAllMeshActors);
     }
   }, [actors, renderMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- DB entity visualization (spawns, regions, stargates) ----
+  useEffect(() => {
+    const group = dbEntityGroupRef.current;
+    if (!group) return;
+
+    // Clear old
+    while (group.children.length > 0) {
+      disposeMaterials(group.children[0]);
+      group.remove(group.children[0]);
+    }
+
+    const regionGeo = new THREE.CylinderGeometry(1, 1, 1, 16);
+    const spawnGeo = new THREE.OctahedronGeometry(30);
+    const gateGeo = new THREE.TorusGeometry(80, 12, 8, 24);
+
+    for (const ent of dbEntities) {
+      const isSelected = selectedDbEntityIds.has(ent.id);
+      const colorHex = DB_ENTITY_COLORS[ent.entity_type] ?? DB_ENTITY_COLORS._default ?? '#888888';
+      const color = new THREE.Color(colorHex);
+
+      if (ent.source_table === 'generic_regions' && ent.radius && ent.height) {
+        // Render as translucent cylinder
+        const mat = new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: isSelected ? 0.35 : 0.15,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(regionGeo, mat);
+        mesh.scale.set(ent.radius, ent.height, ent.radius);
+        mesh.position.set(ent.x, ent.z + ent.height / 2, -ent.y);
+        group.add(mesh);
+
+        // Wireframe outline
+        const wireMat = new THREE.MeshBasicMaterial({
+          color,
+          wireframe: true,
+          transparent: true,
+          opacity: isSelected ? 0.6 : 0.3,
+        });
+        const wire = new THREE.Mesh(regionGeo, wireMat);
+        wire.scale.copy(mesh.scale);
+        wire.position.copy(mesh.position);
+        group.add(wire);
+      } else if (ent.source_table === 'stargates') {
+        // Render as torus (gate ring)
+        const mat = new THREE.MeshBasicMaterial({
+          color: isSelected ? 0x00ffff : 0x2299ff,
+          transparent: true,
+          opacity: 0.6,
+        });
+        const mesh = new THREE.Mesh(gateGeo, mat);
+        mesh.position.set(ent.x, ent.z, -ent.y);
+        mesh.rotation.x = Math.PI / 2;
+        group.add(mesh);
+      } else {
+        // Render spawns/spawn_points as diamond markers
+        const mat = new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: isSelected ? 0.9 : 0.5,
+        });
+        const mesh = new THREE.Mesh(spawnGeo, mat);
+        mesh.position.set(ent.x, ent.z, -ent.y);
+        group.add(mesh);
+      }
+    }
+
+    needsRender.current = true;
+  }, [dbEntities, selectedDbEntityIds]);
 
   // ---- Radius visualization and connection lines ----
   useEffect(() => {

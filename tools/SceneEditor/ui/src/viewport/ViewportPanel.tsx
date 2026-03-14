@@ -122,6 +122,8 @@ export function ViewportPanel({
             placementMode={placementMode}
             onPlaceSpawn={onPlaceSpawn}
             selectedTemplateName={selectedTemplateName}
+            dbEntities={dbEntities}
+            selectedDbEntityIds={selectedDbEntityIds}
           />
         ) : (
           <ViewportCanvas
