@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, Database } from 'lucide-react';
+import { Search, Database, MapPin } from 'lucide-react';
 import type { EntityTemplate } from '../lib/types';
 import { DB_ENTITY_COLORS } from '../lib/types';
 
@@ -8,9 +8,11 @@ interface EntityPaletteProps {
   selectedTemplate: EntityTemplate | null;
   onSelectTemplate: (template: EntityTemplate | null) => void;
   connected: boolean;
+  placementMode: boolean;
+  onTogglePlacement: () => void;
 }
 
-export function EntityPalette({ templates, selectedTemplate, onSelectTemplate, connected }: EntityPaletteProps) {
+export function EntityPalette({ templates, selectedTemplate, onSelectTemplate, connected, placementMode, onTogglePlacement }: EntityPaletteProps) {
   const [search, setSearch] = useState('');
 
   // Group templates by class, filtered by search
@@ -65,6 +67,28 @@ export function EntityPalette({ templates, selectedTemplate, onSelectTemplate, c
           {templates.length}
         </span>
       </div>
+
+      {/* Place button */}
+      {selectedTemplate && (
+        <div className="border-b px-2 py-1.5">
+          <button
+            onClick={onTogglePlacement}
+            className={`flex w-full items-center justify-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+              placementMode
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+            }`}
+          >
+            <MapPin size={12} />
+            {placementMode ? 'Placing: ' : 'Place: '}{selectedTemplate.template_name}
+          </button>
+          {placementMode && (
+            <p className="mt-1 text-center text-[10px] text-muted-foreground">
+              Click in viewport to place. Esc to cancel.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative border-b px-2 py-1">

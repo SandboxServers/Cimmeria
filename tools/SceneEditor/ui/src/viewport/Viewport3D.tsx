@@ -24,6 +24,9 @@ interface Viewport3DProps {
   onScaleActors: (keys: string[], newDS: number[], newDSX: number[], newDSY: number[], newDSZ: number[]) => void;
   onBoxSelect: (keys: string[]) => void;
   onContextMenu?: (x: number, y: number) => void;
+  placementMode?: boolean;
+  onPlaceSpawn?: (x: number, y: number, z: number) => void;
+  selectedTemplateName?: string | null;
 }
 
 interface GizmoDragState {
@@ -195,6 +198,9 @@ export function Viewport3D({
   onScaleActors,
   onBoxSelect,
   onContextMenu: onContextMenuProp,
+  placementMode,
+  onPlaceSpawn,
+  selectedTemplateName,
 }: Viewport3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -223,6 +229,10 @@ export function Viewport3D({
   actorsRef.current = actors;
   const selectedKeysRef = useRef(selectedKeys);
   selectedKeysRef.current = selectedKeys;
+  const placementModeRef = useRef(placementMode);
+  placementModeRef.current = placementMode;
+  const onPlaceSpawnRef = useRef(onPlaceSpawn);
+  onPlaceSpawnRef.current = onPlaceSpawn;
 
   // O(1) actor lookup map — avoids O(n) .find() on large actor lists
   const actorByKey = useMemo(() => {
@@ -877,8 +887,21 @@ export function Viewport3D({
           onSelect(key);
         }
       } else {
-        // Empty space — start tracking for potential box select
-        boxSelectRef.current = { startX: e.clientX, startY: e.clientY, active: false };
+        // Empty space click
+        if (placementModeRef.current && onPlaceSpawnRef.current) {
+          // In placement mode: raycast to ground plane (Y=0) to get position
+          const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+          const intersection = new THREE.Vector3();
+          if (raycaster.ray.intersectPlane(groundPlane, intersection)) {
+            // Convert Three.js coords (X-right, Y-up, Z-forward) back to UE3
+            // In our viewport: Three.js X = UE3 X, Three.js Y = UE3 Z, Three.js Z = -UE3 Y
+            // But the viewport already uses UE3 coordinates directly
+            onPlaceSpawnRef.current(intersection.x, intersection.z, intersection.y);
+          }
+        } else {
+          // Normal mode: start tracking for potential box select
+          boxSelectRef.current = { startX: e.clientX, startY: e.clientY, active: false };
+        }
       }
     }
   }, [onSelect, onToggleSelect, onAddSelect]);
@@ -1252,7 +1275,7 @@ export function Viewport3D({
         }
       }}
       onContextMenu={e => e.preventDefault()}
-      style={{ cursor: gizmoDragRef.current ? 'grabbing' : hoveredAxisRef.current ? 'grab' : 'crosshair' }}
+      style={{ cursor: placementMode ? 'cell' : gizmoDragRef.current ? 'grabbing' : hoveredAxisRef.current ? 'grab' : 'crosshair' }}
     >
       {boxSelectRect && (
         <div
@@ -1263,6 +1286,9 @@ export function Viewport3D({
       {/* Viewport HUD — transform mode + grid snap */}
       <div className="pointer-events-none absolute left-2 top-2 z-10 flex flex-col gap-0.5 text-[10px] font-mono text-white/40">
         <span>{transformMode.charAt(0).toUpperCase() + transformMode.slice(1)} | Grid: {gridSnap}</span>
+        {placementMode && selectedTemplateName && (
+          <span className="text-emerald-400">Placing: {selectedTemplateName}</span>
+        )}
       </div>
       {/* Drag delta display */}
       {dragInfo && (

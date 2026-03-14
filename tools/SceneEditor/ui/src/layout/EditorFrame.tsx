@@ -68,6 +68,9 @@ interface EditorFrameProps {
   onSelectDbEntity: (id: number) => void;
   onDeleteDbEntity: (id: number) => void;
   onSelectTemplate: (template: EntityTemplate | null) => void;
+  placementMode: boolean;
+  onTogglePlacement: () => void;
+  onPlaceSpawn: (x: number, y: number, z: number) => void;
   onExportDbSql: () => void;
   // Content Browser
   showContentBrowser: boolean;
@@ -123,6 +126,9 @@ export function EditorFrame({
   onSelectDbEntity,
   onDeleteDbEntity,
   onSelectTemplate,
+  placementMode,
+  onTogglePlacement,
+  onPlaceSpawn,
   onExportDbSql,
   showContentBrowser,
   onToggleContentBrowser,
@@ -205,7 +211,11 @@ export function EditorFrame({
           }
           break;
         case 'Escape':
-          onSelectActor(null);
+          if (placementMode) {
+            onTogglePlacement();
+          } else {
+            onSelectActor(null);
+          }
           break;
         case 'a':
           if (e.ctrlKey || e.metaKey) {
@@ -415,6 +425,9 @@ export function EditorFrame({
                   onInvertSelection={handleInvertSelection}
                   dbEntities={dbEntities}
                   selectedDbEntityIds={selectedDbEntityIds}
+                  placementMode={placementMode}
+                  onPlaceSpawn={onPlaceSpawn}
+                  selectedTemplateName={selectedTemplate?.template_name ?? null}
                 />
               </Allotment.Pane>
 
@@ -435,6 +448,8 @@ export function EditorFrame({
                       selectedTemplate={selectedTemplate}
                       onSelectTemplate={onSelectTemplate}
                       connected={dbStatus?.connected ?? false}
+                      placementMode={placementMode}
+                      onTogglePlacement={onTogglePlacement}
                     />
                   </Allotment.Pane>
                 </Allotment>

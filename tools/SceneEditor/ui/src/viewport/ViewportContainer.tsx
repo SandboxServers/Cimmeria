@@ -29,6 +29,9 @@ interface ViewportContainerProps {
   onInvertSelection: () => void;
   dbEntities?: DbEntity[];
   selectedDbEntityIds?: Set<number>;
+  placementMode?: boolean;
+  onPlaceSpawn?: (x: number, y: number, z: number) => void;
+  selectedTemplateName?: string | null;
 }
 
 export function ViewportContainer({
@@ -55,6 +58,9 @@ export function ViewportContainer({
   onInvertSelection,
   dbEntities,
   selectedDbEntityIds,
+  placementMode,
+  onPlaceSpawn,
+  selectedTemplateName,
 }: ViewportContainerProps) {
   // null = show all 4, string = maximized viewport
   const [maximized, setMaximized] = useState<Slot | null>(null);
@@ -93,6 +99,9 @@ export function ViewportContainer({
           onInvertSelection={onInvertSelection}
           dbEntities={dbEntities}
           selectedDbEntityIds={selectedDbEntityIds}
+          placementMode={placementMode}
+          onPlaceSpawn={onPlaceSpawn}
+          selectedTemplateName={selectedTemplateName}
         />
       </div>
     );
@@ -128,6 +137,9 @@ export function ViewportContainer({
           onInvertSelection={onInvertSelection}
           dbEntities={dbEntities}
           selectedDbEntityIds={selectedDbEntityIds}
+          placementMode={placementMode}
+          onPlaceSpawn={onPlaceSpawn}
+          selectedTemplateName={selectedTemplateName}
         />
       ))}
     </div>

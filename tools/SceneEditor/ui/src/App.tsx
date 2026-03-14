@@ -49,6 +49,51 @@ export default function App() {
   const [showDbDialog, setShowDbDialog] = useState(false);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
 
+  // ---- Placement mode ----
+  const [placementMode, setPlacementMode] = useState(false);
+
+  // Place a spawn at the clicked world position (called from viewport)
+  const handlePlaceSpawn = useCallback(async (x: number, y: number, z: number) => {
+    if (!selectedTemplate || !loadedZone || !dbStatus?.connected) return;
+
+    // Find the world_id for the current zone
+    const zoneName = loadedZone.zone_name;
+    const matchedWorld = worlds.find(w =>
+      w.client_map.toLowerCase() === zoneName.toLowerCase() ||
+      w.world_name.toLowerCase() === zoneName.toLowerCase()
+    );
+    if (!matchedWorld) {
+      console.warn(`No world found matching zone "${zoneName}"`);
+      return;
+    }
+
+    try {
+      const entity = await invoke<DbEntity>('create_spawn', {
+        worldId: matchedWorld.world_id,
+        templateId: selectedTemplate.template_id,
+        x, y, z,
+        heading: 0,
+        tag: null,
+      });
+      // Add to local DB entity list
+      setDbEntities(prev => [...prev, entity]);
+      console.log(`Placed ${selectedTemplate.template_name} at (${x.toFixed(0)}, ${y.toFixed(0)}, ${z.toFixed(0)})`);
+    } catch (e) {
+      console.error('create_spawn failed:', e);
+    }
+  }, [selectedTemplate, loadedZone, dbStatus, worlds]);
+
+  // Toggle placement mode (Escape to cancel)
+  const handleTogglePlacement = useCallback(() => {
+    setPlacementMode(prev => !prev);
+  }, []);
+
+  // Cancel placement when template is deselected
+  const handleSelectTemplate = useCallback((template: EntityTemplate | null) => {
+    setSelectedTemplate(template);
+    if (!template) setPlacementMode(false);
+  }, []);
+
   // ---- DB connection handler ----
   const handleDbConnect = useCallback(async (host: string, port: number, dbname: string, username: string, password: string) => {
     const status = await invoke<DbStatus>('connect_db', { host, port, dbname, username, password });
@@ -561,7 +606,10 @@ export default function App() {
         onRefreshDbEntities={handleRefreshDbEntities}
         onSelectDbEntity={handleSelectDbEntity}
         onDeleteDbEntity={handleDeleteDbEntity}
-        onSelectTemplate={setSelectedTemplate}
+        onSelectTemplate={handleSelectTemplate}
+        placementMode={placementMode}
+        onTogglePlacement={handleTogglePlacement}
+        onPlaceSpawn={handlePlaceSpawn}
         onExportDbSql={handleExportDbSql}
         showContentBrowser={showContentBrowser}
         onToggleContentBrowser={() => setShowContentBrowser(prev => !prev)}

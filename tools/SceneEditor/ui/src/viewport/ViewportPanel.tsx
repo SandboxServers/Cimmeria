@@ -32,6 +32,9 @@ interface ViewportPanelProps {
   onInvertSelection?: () => void;
   dbEntities?: DbEntity[];
   selectedDbEntityIds?: Set<number>;
+  placementMode?: boolean;
+  onPlaceSpawn?: (x: number, y: number, z: number) => void;
+  selectedTemplateName?: string | null;
 }
 
 export function ViewportPanel({
@@ -61,6 +64,9 @@ export function ViewportPanel({
   onInvertSelection,
   dbEntities,
   selectedDbEntityIds,
+  placementMode,
+  onPlaceSpawn,
+  selectedTemplateName,
 }: ViewportPanelProps) {
   const [viewType, setViewType] = useState<ViewportType>(initialType);
   const [realtime, setRealtime] = useState(false);
@@ -113,6 +119,9 @@ export function ViewportPanel({
             onScaleActors={onScaleActors}
             onBoxSelect={onBoxSelect}
             onContextMenu={handle3DContextMenu}
+            placementMode={placementMode}
+            onPlaceSpawn={onPlaceSpawn}
+            selectedTemplateName={selectedTemplateName}
           />
         ) : (
           <ViewportCanvas
