@@ -35,6 +35,8 @@ interface ViewportPanelProps {
   placementMode?: boolean;
   onPlaceSpawn?: (x: number, y: number, z: number) => void;
   selectedTemplateName?: string | null;
+  onSelectDbEntity?: (id: number) => void;
+  onUpdateSpawnPosition?: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
 }
 
 export function ViewportPanel({
@@ -67,6 +69,8 @@ export function ViewportPanel({
   placementMode,
   onPlaceSpawn,
   selectedTemplateName,
+  onSelectDbEntity,
+  onUpdateSpawnPosition,
 }: ViewportPanelProps) {
   const [viewType, setViewType] = useState<ViewportType>(initialType);
   const [realtime, setRealtime] = useState(false);
@@ -124,6 +128,8 @@ export function ViewportPanel({
             selectedTemplateName={selectedTemplateName}
             dbEntities={dbEntities}
             selectedDbEntityIds={selectedDbEntityIds}
+            onSelectDbEntity={onSelectDbEntity}
+            onUpdateSpawnPosition={onUpdateSpawnPosition}
           />
         ) : (
           <ViewportCanvas

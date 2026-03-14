@@ -71,6 +71,7 @@ interface EditorFrameProps {
   placementMode: boolean;
   onTogglePlacement: () => void;
   onPlaceSpawn: (x: number, y: number, z: number) => void;
+  onUpdateSpawnPosition: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
   onExportDbSql: () => void;
   // Content Browser
   showContentBrowser: boolean;
@@ -129,6 +130,7 @@ export function EditorFrame({
   placementMode,
   onTogglePlacement,
   onPlaceSpawn,
+  onUpdateSpawnPosition,
   onExportDbSql,
   showContentBrowser,
   onToggleContentBrowser,
@@ -428,6 +430,8 @@ export function EditorFrame({
                   placementMode={placementMode}
                   onPlaceSpawn={onPlaceSpawn}
                   selectedTemplateName={selectedTemplate?.template_name ?? null}
+                  onSelectDbEntity={onSelectDbEntity}
+                  onUpdateSpawnPosition={onUpdateSpawnPosition}
                 />
               </Allotment.Pane>
 

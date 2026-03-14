@@ -94,6 +94,22 @@ export default function App() {
     if (!template) setPlacementMode(false);
   }, []);
 
+  // ---- Update spawn position (called when DB entity is moved in viewport) ----
+  const handleUpdateSpawnPosition = useCallback(async (spawnId: number, x: number, y: number, z: number, heading: number) => {
+    try {
+      await invoke('update_spawn_position', { spawnId, x, y, z, heading });
+      // Update local state to reflect the move
+      setDbEntities(prev => prev.map(e =>
+        e.id === spawnId && e.source_table === 'spawnlist'
+          ? { ...e, x, y, z, heading }
+          : e
+      ));
+      console.log(`Updated spawn ${spawnId} position`);
+    } catch (e) {
+      console.error('update_spawn_position failed:', e);
+    }
+  }, []);
+
   // ---- DB connection handler ----
   const handleDbConnect = useCallback(async (host: string, port: number, dbname: string, username: string, password: string) => {
     const status = await invoke<DbStatus>('connect_db', { host, port, dbname, username, password });
@@ -219,6 +235,23 @@ export default function App() {
       const actorList = await invoke<ActorListEntry[]>('list_actors', { classFilter: null });
       setActors(actorList);
       setShowZoneSelector(false);
+
+      // Auto-load DB entities if connected
+      if (dbStatus?.connected && worlds.length > 0) {
+        const matchedWorld = worlds.find(w =>
+          w.client_map.toLowerCase() === summary.zone_name.toLowerCase() ||
+          w.world_name.toLowerCase() === summary.zone_name.toLowerCase()
+        );
+        if (matchedWorld) {
+          try {
+            const entities = await invoke<DbEntity[]>('load_db_entities', { worldId: matchedWorld.world_id });
+            setDbEntities(entities);
+            setSelectedDbEntityIds(new Set());
+          } catch (e) {
+            console.warn('Auto-load DB entities failed:', e);
+          }
+        }
+      }
 
       // Batch-preload unique meshes
       const uniqueMeshes = [...new Set(
@@ -610,6 +643,7 @@ export default function App() {
         placementMode={placementMode}
         onTogglePlacement={handleTogglePlacement}
         onPlaceSpawn={handlePlaceSpawn}
+        onUpdateSpawnPosition={handleUpdateSpawnPosition}
         onExportDbSql={handleExportDbSql}
         showContentBrowser={showContentBrowser}
         onToggleContentBrowser={() => setShowContentBrowser(prev => !prev)}

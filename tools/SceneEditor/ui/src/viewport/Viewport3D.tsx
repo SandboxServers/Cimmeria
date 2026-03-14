@@ -29,6 +29,8 @@ interface Viewport3DProps {
   selectedTemplateName?: string | null;
   dbEntities?: DbEntity[];
   selectedDbEntityIds?: Set<number>;
+  onSelectDbEntity?: (id: number) => void;
+  onUpdateSpawnPosition?: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
 }
 
 interface GizmoDragState {
@@ -205,6 +207,8 @@ export function Viewport3D({
   selectedTemplateName,
   dbEntities = [],
   selectedDbEntityIds = new Set(),
+  onSelectDbEntity,
+  onUpdateSpawnPosition,
 }: Viewport3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -682,6 +686,7 @@ export function Viewport3D({
         const mesh = new THREE.Mesh(regionGeo, mat);
         mesh.scale.set(ent.radius, ent.height, ent.radius);
         mesh.position.set(ent.x, ent.z + ent.height / 2, -ent.y);
+        mesh.userData = { dbEntityId: ent.id, dbSourceTable: ent.source_table };
         group.add(mesh);
 
         // Wireframe outline
@@ -694,6 +699,7 @@ export function Viewport3D({
         const wire = new THREE.Mesh(regionGeo, wireMat);
         wire.scale.copy(mesh.scale);
         wire.position.copy(mesh.position);
+        wire.userData = { dbEntityId: ent.id, dbSourceTable: ent.source_table };
         group.add(wire);
       } else if (ent.source_table === 'stargates') {
         // Render as torus (gate ring)
@@ -705,6 +711,7 @@ export function Viewport3D({
         const mesh = new THREE.Mesh(gateGeo, mat);
         mesh.position.set(ent.x, ent.z, -ent.y);
         mesh.rotation.x = Math.PI / 2;
+        mesh.userData = { dbEntityId: ent.id, dbSourceTable: ent.source_table };
         group.add(mesh);
       } else {
         // Render spawns/spawn_points as diamond markers
@@ -715,6 +722,7 @@ export function Viewport3D({
         });
         const mesh = new THREE.Mesh(spawnGeo, mat);
         mesh.position.set(ent.x, ent.z, -ent.y);
+        mesh.userData = { dbEntityId: ent.id, dbSourceTable: ent.source_table };
         group.add(mesh);
       }
     }
@@ -968,6 +976,17 @@ export function Viewport3D({
           onSelect(key);
         }
       } else {
+        // Check if a DB entity was clicked
+        const dbGroup = dbEntityGroupRef.current;
+        if (dbGroup && dbGroup.children.length > 0) {
+          const dbHits = raycaster.intersectObjects(dbGroup.children, false);
+          if (dbHits.length > 0 && dbHits[0].object.userData?.dbEntityId != null) {
+            const dbId = dbHits[0].object.userData.dbEntityId as number;
+            if (onSelectDbEntity) onSelectDbEntity(dbId);
+            return; // Don't fall through to placement or deselect
+          }
+        }
+
         // Empty space click
         if (placementModeRef.current && onPlaceSpawnRef.current) {
           // In placement mode: raycast to ground plane (Y=0) to get position

@@ -32,6 +32,8 @@ interface ViewportContainerProps {
   placementMode?: boolean;
   onPlaceSpawn?: (x: number, y: number, z: number) => void;
   selectedTemplateName?: string | null;
+  onSelectDbEntity?: (id: number) => void;
+  onUpdateSpawnPosition?: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
 }
 
 export function ViewportContainer({
@@ -61,6 +63,8 @@ export function ViewportContainer({
   placementMode,
   onPlaceSpawn,
   selectedTemplateName,
+  onSelectDbEntity,
+  onUpdateSpawnPosition,
 }: ViewportContainerProps) {
   // null = show all 4, string = maximized viewport
   const [maximized, setMaximized] = useState<Slot | null>(null);
@@ -102,6 +106,8 @@ export function ViewportContainer({
           placementMode={placementMode}
           onPlaceSpawn={onPlaceSpawn}
           selectedTemplateName={selectedTemplateName}
+          onSelectDbEntity={onSelectDbEntity}
+          onUpdateSpawnPosition={onUpdateSpawnPosition}
         />
       </div>
     );
@@ -140,6 +146,8 @@ export function ViewportContainer({
           placementMode={placementMode}
           onPlaceSpawn={onPlaceSpawn}
           selectedTemplateName={selectedTemplateName}
+          onSelectDbEntity={onSelectDbEntity}
+          onUpdateSpawnPosition={onUpdateSpawnPosition}
         />
       ))}
     </div>
