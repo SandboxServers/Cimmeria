@@ -200,6 +200,13 @@ pub(crate) struct ConnectedClientState {
     pub player_xp: Option<u64>,
     /// Player training points, set during world entry and updated on GrantXP.
     pub player_training_points: Option<u32>,
+    /// Persistent character ID (FK to sgw_player.player_id).
+    /// Set during world entry, used for DB write-back on XP/position saves.
+    pub player_id: Option<i32>,
+    /// Whether the player has set AFK status. Set via `chatSetAFK`.
+    pub is_afk: bool,
+    /// Whether the player has set DND (do not disturb) status. Set via `chatSetDND`.
+    pub is_dnd: bool,
 }
 
 // ── BaseService ───────────────────────────────────────────────────────────────

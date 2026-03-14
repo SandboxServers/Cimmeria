@@ -197,4 +197,14 @@ pub enum CellToBaseMsg {
         container_id: i32,
         count: i32,
     },
+
+    /// Save player state to database on disconnect/gate travel.
+    ///
+    /// Sent by CellService just before destroying a player entity.
+    /// BaseApp persists the final position and world to `sgw_player`.
+    SavePlayerState {
+        player_id: i32,
+        world_name: String,
+        position: [f32; 3],
+    },
 }

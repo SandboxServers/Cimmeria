@@ -73,6 +73,20 @@ pub const CM_MINIGAME_LAST: u16 = 34;
 /// GateTravel: onDialGate(INT32 TargetAddressId, INT32 SourceAddressId)
 pub const CM_ON_DIAL_GATE: u16 = 35;
 // SGWInventoryManager: indices 36–42 (7 exposed)
+/// SGWInventoryManager: removeItem(ItemID, INT16 quantity)
+pub const CM_REMOVE_ITEM: u16 = 36;
+/// SGWInventoryManager: listItems()
+pub const CM_LIST_ITEMS: u16 = 37;
+/// SGWInventoryManager: moveItem(INT32 itemId, INT32 targetBag, INT32 targetSlot, INT32 quantity)
+pub const CM_MOVE_ITEM: u16 = 38;
+/// SGWInventoryManager: useItem(INT32 itemId, INT32 targetId)
+pub const CM_USE_ITEM: u16 = 39;
+/// SGWInventoryManager: repairItemRequest(INT32 itemId, FLOAT repairRatio)
+pub const CM_REPAIR_ITEM: u16 = 40;
+/// SGWInventoryManager: requestActiveSlotChange(INT32 bagId, INT32 slotId)
+pub const CM_REQUEST_ACTIVE_SLOT_CHANGE: u16 = 41;
+/// SGWInventoryManager: requestAmmoChange(INT32 itemId, INT32 ammoType)
+pub const CM_REQUEST_AMMO_CHANGE: u16 = 42;
 // SGWMailManager: indices 43–51 (9 exposed)
 /// SGWMailManager: requestMailHeaders(UINT8)
 pub const CM_REQUEST_MAIL_HEADERS: u16 = 43;
@@ -146,13 +160,18 @@ pub async fn dispatch_cell_method(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
+    ability_registry: &std::sync::Arc<cimmeria_entity::abilities::AbilityRegistry>,
 ) {
     match method_index {
         CM_SET_TARGET_ID => {
             if args.len() >= 4 {
                 let target_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::debug!(entity_id, target_id, "setTargetID");
-                // TODO: Update entity target and notify witnesses via onTargetUpdate
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.target_id = if target_id > 0 { Some(target_id) } else { None };
+                }
+                // Notify witnesses via onTargetUpdate (method_index 11)
+                notify_witnesses(entity_id, 11, args.to_vec(), tx, space_mgr).await;
             }
         }
 
@@ -160,7 +179,11 @@ pub async fn dispatch_cell_method(
             if !args.is_empty() {
                 let movement_type = args[0];
                 tracing::debug!(entity_id, movement_type, "setMovementType");
-                // TODO: Update entity movement type and notify witnesses
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.movement_type = movement_type;
+                }
+                // Notify witnesses via onMovementTypeUpdate (method_index 15)
+                notify_witnesses(entity_id, 15, args.to_vec(), tx, space_mgr).await;
             }
         }
 
@@ -168,7 +191,11 @@ pub async fn dispatch_cell_method(
             if !args.is_empty() {
                 let enabled = args[0] != 0;
                 tracing::debug!(entity_id, enabled, "setCrouched");
-                // TODO: Update entity crouch state, notify witnesses via onCrouchToggled
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.is_crouched = enabled;
+                }
+                // Notify witnesses via onCrouchToggled (method_index 16)
+                notify_witnesses(entity_id, 16, args.to_vec(), tx, space_mgr).await;
             }
         }
 
@@ -176,7 +203,11 @@ pub async fn dispatch_cell_method(
             if !args.is_empty() {
                 let holster = args[0] != 0;
                 tracing::debug!(entity_id, holster, "requestHolsterWeapon");
-                // TODO: Update entity holster state, notify witnesses
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.is_holstered = holster;
+                }
+                // Notify witnesses via onHolsterWeapon (method_index 18)
+                notify_witnesses(entity_id, 18, args.to_vec(), tx, space_mgr).await;
             }
         }
 
@@ -185,7 +216,8 @@ pub async fn dispatch_cell_method(
                 let effect_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let accepted = args[4] != 0;
                 tracing::debug!(entity_id, effect_id, accepted, "confirmationResponse");
-                // TODO: Process effect confirmation
+                // Effect confirmations are acknowledged — no further action needed
+                // until the effect confirmation system is fully implemented.
             }
         }
 
@@ -198,7 +230,7 @@ pub async fn dispatch_cell_method(
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, ability_id, target_id, "useAbility");
-                super::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr).await;
+                super::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr, ability_registry).await;
             }
         }
 
@@ -273,9 +305,122 @@ pub async fn dispatch_cell_method(
             }
         }
 
-        CM_SEND_MAIL_MESSAGE | CM_RETURN_MAIL_MESSAGE |
+        CM_SEND_MAIL_MESSAGE => {
+            // sendMailMessage(INT32 flags, ARRAY<WSTRING> recipients, WSTRING subject,
+            //                 WSTRING body, INT32 cash, UINT8 bCOD, INT32 itemId, INT32 itemQuantity)
+            if args.len() >= 8 {
+                let _recipient_flags = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                // Parse recipients array: u32 count + N × WSTRING
+                let mut offset = 4;
+                if offset + 4 > args.len() { return; }
+                let recipient_count = u32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]) as usize;
+                offset += 4;
+                let mut recipients = Vec::with_capacity(recipient_count);
+                for _ in 0..recipient_count {
+                    if offset + 4 > args.len() { break; }
+                    let str_len = u32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]) as usize;
+                    offset += 4;
+                    if offset + str_len * 2 > args.len() { break; }
+                    let utf16: Vec<u16> = (0..str_len).map(|i| {
+                        u16::from_le_bytes([args[offset + i*2], args[offset + i*2 + 1]])
+                    }).collect();
+                    recipients.push(String::from_utf16_lossy(&utf16));
+                    offset += str_len * 2;
+                }
+                tracing::info!(entity_id, ?recipients, "sendMailMessage");
+                // TODO: Parse subject, body, cash, etc. and persist to sgw_gate_mail
+            }
+        }
+
+        CM_RETURN_MAIL_MESSAGE |
         CM_TAKE_CASH_FROM_MAIL | CM_TAKE_ITEM_FROM_MAIL | CM_PAY_COD_FOR_MAIL => {
             tracing::debug!(entity_id, method_index, "Mail operation (not yet implemented)");
+        }
+
+        CM_REMOVE_ITEM => {
+            if args.len() >= 6 {
+                let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let quantity = i16::from_le_bytes([args[4], args[5]]);
+                tracing::debug!(entity_id, item_id, quantity, "removeItem");
+                // Forward to BaseApp for DB removal + send onRemoveItem to client
+                let player_id = space_mgr.get_entity(entity_id)
+                    .and_then(|e| e.player_id)
+                    .unwrap_or(0);
+                let _ = tx.send(CellToBaseMsg::GrantItem {
+                    entity_id,
+                    player_id,
+                    item_id,
+                    container_id: 0, // BaseApp will resolve
+                    count: -(quantity as i32), // negative = removal
+                }).await;
+                // Send onRemoveItem(ARRAY<INT32>) to client
+                let mut rm_args = Vec::with_capacity(8);
+                rm_args.extend_from_slice(&1u32.to_le_bytes()); // array count = 1
+                rm_args.extend_from_slice(&item_id.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 73, // onRemoveItem
+                    args: rm_args,
+                }).await;
+            }
+        }
+
+        CM_LIST_ITEMS => {
+            tracing::debug!(entity_id, "listItems");
+            // Request full inventory resend from BaseApp
+            // For now, this is a no-op — inventory is sent during world entry
+        }
+
+        CM_MOVE_ITEM => {
+            if args.len() >= 16 {
+                let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let target_bag = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                let target_slot = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+                let quantity = i32::from_le_bytes([args[12], args[13], args[14], args[15]]);
+                tracing::debug!(entity_id, item_id, target_bag, target_slot, quantity, "moveItem");
+                // TODO: Validate move, update DB, send onUpdateItem to client
+            }
+        }
+
+        CM_USE_ITEM => {
+            if args.len() >= 8 {
+                let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                tracing::debug!(entity_id, item_id, target_id, "useItem");
+                // TODO: Look up item effect and apply (consumable, equip, etc.)
+            }
+        }
+
+        CM_REPAIR_ITEM => {
+            if args.len() >= 8 {
+                let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let repair_ratio = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                tracing::debug!(entity_id, item_id, repair_ratio, "repairItemRequest");
+                // TODO: Calculate repair cost, update durability, send onUpdateItem
+            }
+        }
+
+        CM_REQUEST_ACTIVE_SLOT_CHANGE => {
+            if args.len() >= 8 {
+                let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let slot_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                tracing::debug!(entity_id, bag_id, slot_id, "requestActiveSlotChange");
+                // Send onActiveSlotUpdate to client (acknowledge the change)
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 71, // onActiveSlotUpdate
+                    args: args.to_vec(),
+                }).await;
+            }
+        }
+
+        CM_REQUEST_AMMO_CHANGE => {
+            if args.len() >= 8 {
+                let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let ammo_type = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                tracing::debug!(entity_id, item_id, ammo_type, "requestAmmoChange");
+                // TODO: Validate ammo type is known, update weapon, send onUpdateItem
+            }
         }
 
         CM_CONTACT_LIST_CREATE | CM_CONTACT_LIST_DELETE | CM_CONTACT_LIST_RENAME |
@@ -368,6 +513,13 @@ pub fn cell_method_name(index: u16) -> &'static str {
         CM_CONTACT_LIST_FLAGS_UPDATE => "contactListFlagsUpdate",
         CM_CONTACT_LIST_ADD_MEMBERS => "contactListAddMembers",
         CM_CONTACT_LIST_REMOVE_MEMBERS => "contactListRemoveMembers",
+        CM_REMOVE_ITEM => "removeItem",
+        CM_LIST_ITEMS => "listItems",
+        CM_MOVE_ITEM => "moveItem",
+        CM_USE_ITEM => "useItem",
+        CM_REPAIR_ITEM => "repairItemRequest",
+        CM_REQUEST_ACTIVE_SLOT_CHANGE => "requestActiveSlotChange",
+        CM_REQUEST_AMMO_CHANGE => "requestAmmoChange",
         CM_ON_DIAL_GATE => "onDialGate",
         CM_ABANDON_MISSION => "abandonMission",
         CM_SHARE_MISSION => "shareMission",
@@ -379,6 +531,33 @@ pub fn cell_method_name(index: u16) -> &'static str {
         CM_INTERACT => "interact",
         CM_SET_AUTO_CYCLE => "setAutoCycle",
         _ => "unknown",
+    }
+}
+
+// ── Witness Notification ──────────────────────────────────────────────────────
+
+/// Send a client method call to all entities that have `entity_id` in their AoI.
+///
+/// Used for state changes (target, movement type, crouch, holster) that need
+/// to be relayed to nearby players so they can update their view of this entity.
+async fn notify_witnesses(
+    entity_id: u32,
+    method_index: u16,
+    args: Vec<u8>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let witnesses: Vec<u32> = match space_mgr.get_entity(entity_id) {
+        Some(e) => e.witnesses.iter().map(|eid| eid.0 as u32).collect(),
+        None => return,
+    };
+
+    for witness_id in witnesses {
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id: witness_id,
+            method_index,
+            args: args.clone(),
+        }).await;
     }
 }
 

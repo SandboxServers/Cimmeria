@@ -8,8 +8,10 @@
 
 use tokio::sync::mpsc;
 
+use std::sync::Arc;
+
 use cimmeria_entity::abilities::{
-    TIMER_ABILITY_COOLDOWN, DT_PHYSICAL,
+    AbilityRegistry, TIMER_ABILITY_COOLDOWN, DT_PHYSICAL,
     serialize_timer_update, serialize_effect_results,
 };
 use cimmeria_entity::stats::HEALTH;
@@ -24,9 +26,9 @@ use super::space_manager::SpaceManager;
 /// 1. Look up entity in space manager
 /// 2. Check entity has the ability
 /// 3. Check ability not on cooldown
-/// 4. Start cooldown timer
+/// 4. Start cooldown timer (from AbilityDef or default)
 /// 5. Send `onTimerUpdate` to client
-/// 6. If target exists, resolve combat damage
+/// 6. If target exists, resolve combat damage using effect definitions
 /// 7. Send `onEffectResults` to attacker's client and witnesses
 /// 8. Send `onStatUpdate` to target if stats changed
 /// 9. Check for death and send `onStateFieldUpdate` if target died
@@ -36,6 +38,7 @@ pub async fn handle_use_ability(
     target_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    ability_registry: &Arc<AbilityRegistry>,
 ) {
     // ── Validation (requires attacker entity) ──
 
@@ -59,11 +62,17 @@ pub async fn handle_use_ability(
         return;
     }
 
-    // Apply a default cooldown (2 seconds) since we don't have full ability
-    // definitions loaded from DB yet. Real cooldown comes from AbilityDef.cooldown.
-    let cooldown_secs = 2.0f32;
+    // Look up ability definition for real cooldown, or fall back to default
+    let ability_def = ability_registry.get_ability(ability_id);
+    let cooldown_secs = ability_def.map_or(2.0f32, |a| a.cooldown);
     let cooldown_duration = std::time::Duration::from_secs_f32(cooldown_secs);
-    entity.abilities.start_ability_cooldown(ability_id, cooldown_duration);
+
+    // Start cooldowns (ability + moniker groups if def available)
+    if let Some(def) = ability_def {
+        entity.abilities.start_cooldowns(def, cooldown_secs);
+    } else {
+        entity.abilities.start_ability_cooldown(ability_id, cooldown_duration);
+    }
 
     // Get effect sequence ID for this ability invocation
     let effect_seq = entity.abilities.next_effect_id();
@@ -109,7 +118,8 @@ pub async fn handle_use_ability(
             return;
         }
     };
-    let qr = combat::calculate_qr(&attacker_stats, &target.stats, true);
+    let is_ranged = ability_def.map_or(true, |a| a.is_ranged);
+    let qr = combat::calculate_qr(&attacker_stats, &target.stats, is_ranged);
 
     // Generate random value for this hit (seeded from ability invocation)
     // For now use a deterministic hash to be reproducible in tests.
@@ -117,8 +127,16 @@ pub async fn handle_use_ability(
     let random_value = pseudo_random(entity_id, ability_id, effect_seq as u32);
     let qr_result = combat::calculate_result(qr, random_value);
 
-    // Default base damage (stub — real value comes from AbilityDef.effects[].params)
-    let base_damage: i32 = 50;
+    // Get base damage and damage type from the ability's first damage effect,
+    // or fall back to defaults if no effect definitions are loaded.
+    let (base_damage, damage_type, stat_id) = {
+        let effects = ability_registry.get_ability_effects(ability_id);
+        if let Some(effect) = effects.first() {
+            (effect.base_damage().max(1), effect.damage_type(), effect.stat_id())
+        } else {
+            (50i32, DT_PHYSICAL, HEALTH) // fallback when no DB data
+        }
+    };
 
     // Apply damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
@@ -127,7 +145,7 @@ pub async fn handle_use_ability(
     };
 
     let (effect_results, _total_damage) = combat::calculate_damage(
-        &qr_result, base_damage, DT_PHYSICAL, HEALTH,
+        &qr_result, base_damage, damage_type, stat_id,
         &attacker_stats, &mut target.stats,
     );
 
@@ -203,6 +221,13 @@ pub async fn handle_use_ability(
                     entity_id,
                     xp_amount: xp,
                 }).await;
+
+                // Queue NPC for respawn (30 seconds)
+                space_mgr.queue_npc_respawn(target_eid, 30.0);
+
+                // Remove dead NPC from space after a short delay
+                // (so death animation can play on witnesses)
+                space_mgr.destroy_entity(target_eid);
             }
         }
     }

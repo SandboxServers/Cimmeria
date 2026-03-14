@@ -131,9 +131,31 @@ impl CellService {
             }
         }
 
-        // Spawn initial NPC population
-        let npc_count = spawner::spawn_initial_npcs(&mut space_mgr);
-        tracing::info!(npc_count, "NPC population initialized");
+        // Spawn NPC population — try DB first, fall back to hardcoded
+        let npc_count = if let Some(ref pool) = self.db_pool {
+            match spawner::load_spawn_defs_from_db(pool).await {
+                Ok(defs) if !defs.is_empty() => {
+                    let db_count = spawner::spawn_db_npcs(&defs, &mut space_mgr);
+                    // Also spawn hardcoded NPCs as supplementary
+                    let hardcoded_count = spawner::spawn_initial_npcs(&mut space_mgr);
+                    tracing::info!(db_count, hardcoded_count, "NPC population initialized (DB + hardcoded)");
+                    db_count + hardcoded_count
+                }
+                Ok(_) => {
+                    let count = spawner::spawn_initial_npcs(&mut space_mgr);
+                    tracing::info!(count, "NPC population initialized (hardcoded — no DB spawns found)");
+                    count
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load spawns from DB: {e} — using hardcoded");
+                    let count = spawner::spawn_initial_npcs(&mut space_mgr);
+                    count
+                }
+            }
+        } else {
+            spawner::spawn_initial_npcs(&mut space_mgr)
+        };
+        tracing::info!(npc_count, "NPC population ready");
 
         // Send SpaceData for all startup spaces to BaseApp
         if let Some(ref tx) = self.cell_to_base_tx {
@@ -151,6 +173,27 @@ impl CellService {
 
         // Build the content engine — load from DB if available, else fallback
         let engine = content::build_engine(self.db_pool.as_deref()).await;
+
+        // Load ability registry from DB
+        let ability_registry = if let Some(ref pool) = self.db_pool {
+            match load_ability_registry(pool).await {
+                Ok(reg) => {
+                    tracing::info!(
+                        abilities = reg.ability_count(),
+                        effects = reg.effect_count(),
+                        "Ability registry loaded from database"
+                    );
+                    Arc::new(reg)
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load ability registry: {e} — using empty");
+                    Arc::new(cimmeria_entity::abilities::AbilityRegistry::new())
+                }
+            }
+        } else {
+            Arc::new(cimmeria_entity::abilities::AbilityRegistry::new())
+        };
+
         let db_pool = self.db_pool.clone();
 
         // Take ownership of channels for the message processing loop
@@ -159,7 +202,7 @@ impl CellService {
 
         if let (Some(mut rx), Some(tx)) = (rx, tx) {
             tokio::spawn(async move {
-                run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool).await;
+                run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool, ability_registry).await;
             });
         } else {
             tracing::warn!("Cell service started without channels — operating in stub mode");
@@ -182,6 +225,89 @@ impl CellService {
     }
 }
 
+/// Load ability definitions and effects from the database into a registry.
+async fn load_ability_registry(
+    pool: &PgPool,
+) -> Result<cimmeria_entity::abilities::AbilityRegistry, sqlx::Error> {
+    use sqlx::Row;
+    use cimmeria_entity::abilities::{AbilityDef, AbilityRegistry, EffectDef};
+
+    let mut registry = AbilityRegistry::new();
+
+    // Load abilities
+    let ability_rows = sqlx::query(
+        "SELECT ability_id, name, cooldown, warmup, flags, is_ranged, \
+                min_range, max_range, target_type_id, effect_ids, \
+                moniker_ids, required_ammo \
+         FROM resources.abilities ORDER BY ability_id"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for r in &ability_rows {
+        let effect_ids: Vec<i32> = r.get("effect_ids");
+        let moniker_ids: Vec<i64> = r.get("moniker_ids");
+
+        registry.register_ability(AbilityDef {
+            ability_id: r.get("ability_id"),
+            name: r.get("name"),
+            cooldown: r.get("cooldown"),
+            warmup: r.get("warmup"),
+            flags: r.get::<i32, _>("flags") as u32,
+            is_ranged: r.get("is_ranged"),
+            min_range: r.get("min_range"),
+            max_range: r.get("max_range"),
+            target_type_id: r.get("target_type_id"),
+            effect_ids,
+            moniker_ids,
+            required_ammo: r.get("required_ammo"),
+        });
+    }
+
+    // Load effects
+    let effect_rows = sqlx::query(
+        "SELECT effect_id, ability_id, name, delay, effect_sequence, \
+                pulse_count, pulse_duration, is_channeled, flags \
+         FROM resources.effects ORDER BY ability_id, effect_sequence"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    // Load effect NVPs into a map
+    let nvp_rows = sqlx::query(
+        "SELECT effect_id, name, value FROM resources.effect_nvps ORDER BY effect_id"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut nvp_map: std::collections::HashMap<i32, std::collections::HashMap<String, String>> =
+        std::collections::HashMap::new();
+    for r in &nvp_rows {
+        let effect_id: i32 = r.get("effect_id");
+        let name: String = r.get("name");
+        let value: String = r.get("value");
+        nvp_map.entry(effect_id).or_default().insert(name, value);
+    }
+
+    for r in &effect_rows {
+        let effect_id: i32 = r.get("effect_id");
+        registry.register_effect(EffectDef {
+            effect_id,
+            ability_id: r.get("ability_id"),
+            name: r.get("name"),
+            delay: r.get("delay"),
+            sequence: r.get("effect_sequence"),
+            pulse_count: r.get("pulse_count"),
+            pulse_duration: r.get("pulse_duration"),
+            is_channeled: r.get("is_channeled"),
+            flags: r.get("flags"),
+            params: nvp_map.remove(&effect_id).unwrap_or_default(),
+        });
+    }
+
+    Ok(registry)
+}
+
 /// Main CellService message processing loop.
 async fn run_cell_loop(
     rx: &mut mpsc::Receiver<BaseToCellMsg>,
@@ -189,6 +315,7 @@ async fn run_cell_loop(
     mut space_mgr: SpaceManager,
     mut engine: ChainEngine,
     db_pool: Option<Arc<PgPool>>,
+    ability_registry: Arc<cimmeria_entity::abilities::AbilityRegistry>,
 ) {
     tracing::debug!("Cell service message loop started");
 
@@ -204,7 +331,7 @@ async fn run_cell_loop(
                         engine = content::build_engine(db_pool.as_deref()).await;
                         tracing::info!(chains = engine.chain_count(), "Content engine reloaded");
                     }
-                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine).await,
+                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine, &ability_registry).await,
                     None => {
                         tracing::info!("Cell service channel closed — shutting down");
                         break;
@@ -213,6 +340,7 @@ async fn run_cell_loop(
             }
             _ = tick_interval.tick() => {
                 run_aoi_tick(tx, &mut space_mgr).await;
+                space_mgr.process_respawns();
             }
         }
     }
@@ -226,6 +354,7 @@ async fn handle_base_message(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
+    ability_registry: &Arc<cimmeria_entity::abilities::AbilityRegistry>,
 ) {
     match msg {
         BaseToCellMsg::CreateEntity { entity_id, world_name, position, rotation, reply_tx } => {
@@ -278,7 +407,7 @@ async fn handle_base_message(
         }
 
         BaseToCellMsg::CellMethodCall { entity_id, method_index, args } => {
-            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine).await;
+            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine, ability_registry).await;
         }
 
         BaseToCellMsg::ChatMessage { entity_id, speaker_name, speaker_flags, channel, text } => {
