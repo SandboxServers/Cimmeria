@@ -1,0 +1,12 @@
+[package]
+name = "cimmeria-upk"
+version = "0.1.0"
+edition = "2021"
+description = "UE3 package parser for SGW .upk/.umap files"
+
+[dependencies]
+byteorder = "1"
+thiserror = "2"
+lzokay-native = "0.1"
+
+[dev-dependencies]
