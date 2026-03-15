@@ -481,6 +481,10 @@ export function EditorFrame({
         selectionCount={selectedKeys.size}
         meshProgress={meshProgress}
         transformMode={transformMode}
+        dbStatus={dbStatus}
+        dbEntityCount={dbEntities.length}
+        placementMode={placementMode}
+        placementTemplateName={selectedTemplate?.template_name ?? null}
       />
 
       {showSearch && (

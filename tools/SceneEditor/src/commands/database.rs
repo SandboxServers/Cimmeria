@@ -581,3 +581,119 @@ pub async fn delete_spawn(
     tracing::info!("Deleted spawn {}", spawn_id);
     Ok(())
 }
+
+/// Create a new generic region in the database.
+///
+/// Position is in UE3 centimeters — converted to BigWorld meters before INSERT.
+/// Radius and height are also in UE3 centimeters.
+#[tauri::command]
+pub async fn create_region(
+    state: tauri::State<'_, AppState>,
+    world_id: i32,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
+    height: f64,
+    handler: String,
+    tag: Option<String>,
+) -> Result<DbEntity, String> {
+    let pool = get_pool(&state)?;
+    let (bw_x, bw_y, bw_z) = ue3_to_bw(x, y, z);
+
+    let row = sqlx::query(
+        "INSERT INTO resources.generic_regions (x1, y1, z1, radius, height, flags, handler, world_id, tag)
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8)
+         RETURNING region_id",
+    )
+    .bind(bw_x as f32)
+    .bind(bw_y as f32)
+    .bind(bw_z as f32)
+    .bind((radius / 100.0) as f32)  // UE3 cm → BW meters
+    .bind((height / 100.0) as f32)
+    .bind(&handler)
+    .bind(world_id)
+    .bind(&tag)
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| format!("Failed to insert region: {e}"))?;
+
+    let region_id: i32 = row.get("region_id");
+
+    let entity = DbEntity {
+        id: region_id,
+        source_table: "generic_regions".into(),
+        entity_type: "Region".into(),
+        name: handler.clone(),
+        x,
+        y,
+        z,
+        heading: 0.0,
+        world_id,
+        template_id: None,
+        tag,
+        radius: Some(radius),
+        height: Some(height),
+        handler: Some(handler),
+        gate_address: None,
+    };
+
+    tracing::info!("Created region {} (handler={})", region_id, entity.handler.as_deref().unwrap_or(""));
+    Ok(entity)
+}
+
+/// Delete a generic region from the database.
+#[tauri::command]
+pub async fn delete_region(
+    state: tauri::State<'_, AppState>,
+    region_id: i32,
+) -> Result<(), String> {
+    let pool = get_pool(&state)?;
+
+    let result = sqlx::query("DELETE FROM resources.generic_regions WHERE region_id = $1")
+        .bind(region_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to delete region: {e}"))?;
+
+    if result.rows_affected() == 0 {
+        return Err(format!("Region {} not found", region_id));
+    }
+
+    tracing::info!("Deleted region {}", region_id);
+    Ok(())
+}
+
+/// Delete a DB entity by its source table and ID.
+///
+/// Dispatches to the correct table-specific delete based on `source_table`.
+#[tauri::command]
+pub async fn delete_db_entity(
+    state: tauri::State<'_, AppState>,
+    entity_id: i32,
+    source_table: Option<String>,
+) -> Result<(), String> {
+    let pool = get_pool(&state)?;
+    let table = source_table.as_deref().unwrap_or("spawnlist");
+
+    let query = match table {
+        "spawnlist" => "DELETE FROM resources.spawnlist WHERE spawn_id = $1",
+        "generic_regions" => "DELETE FROM resources.generic_regions WHERE region_id = $1",
+        "spawn_points" => "DELETE FROM resources.spawn_points WHERE point_id = $1",
+        "stargates" => "DELETE FROM resources.stargates WHERE stargate_id = $1",
+        _ => return Err(format!("Unknown source table: {table}")),
+    };
+
+    let result = sqlx::query(query)
+        .bind(entity_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to delete {table} entity {entity_id}: {e}"))?;
+
+    if result.rows_affected() == 0 {
+        return Err(format!("{table} entity {} not found", entity_id));
+    }
+
+    tracing::info!("Deleted {table} entity {entity_id}");
+    Ok(())
+}

@@ -177,8 +177,11 @@ export default function App() {
 
   // ---- Delete DB entity ----
   const handleDeleteDbEntity = useCallback(async (id: number) => {
+    // Find the entity to get its source_table for table-aware deletion
+    const entity = dbEntities.find(e => e.id === id);
+    const sourceTable = entity?.source_table ?? 'spawnlist';
     try {
-      await invoke('delete_db_entity', { entityId: id });
+      await invoke('delete_db_entity', { entityId: id, sourceTable });
       setDbEntities(prev => prev.filter(e => e.id !== id));
       setSelectedDbEntityIds(prev => {
         const next = new Set(prev);
@@ -188,7 +191,7 @@ export default function App() {
     } catch (e) {
       console.error('delete_db_entity failed:', e);
     }
-  }, []);
+  }, [dbEntities]);
 
   // ---- Export DB entities to SQL ----
   const handleExportDbSql = useCallback(async () => {

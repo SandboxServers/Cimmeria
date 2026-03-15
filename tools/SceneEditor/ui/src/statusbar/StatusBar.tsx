@@ -1,4 +1,4 @@
-import type { ZoneSummary, ActorEntry } from '../lib/types';
+import type { ZoneSummary, ActorEntry, DbStatus } from '../lib/types';
 
 interface StatusBarProps {
   zone: ZoneSummary | null;
@@ -10,9 +10,13 @@ interface StatusBarProps {
   selectionCount: number;
   meshProgress: { loaded: number; total: number } | null;
   transformMode: 'move' | 'rotate' | 'scale';
+  dbStatus: DbStatus | null;
+  dbEntityCount: number;
+  placementMode: boolean;
+  placementTemplateName: string | null;
 }
 
-export function StatusBar({ zone, mousePos, selectedActor, gridSnap, actorCount, totalActorCount, selectionCount, meshProgress, transformMode }: StatusBarProps) {
+export function StatusBar({ zone, mousePos, selectedActor, gridSnap, actorCount, totalActorCount, selectionCount, meshProgress, transformMode, dbStatus, dbEntityCount, placementMode, placementTemplateName }: StatusBarProps) {
   return (
     <div className="flex h-7 shrink-0 items-center gap-0 border-t bg-card text-[11px] select-none">
       {/* Zone info */}
@@ -63,6 +67,24 @@ export function StatusBar({ zone, mousePos, selectedActor, gridSnap, actorCount,
                 Meshes: {meshProgress.loaded}/{meshProgress.total}
               </span>
             </span>
+          </StatusField>
+        </>
+      )}
+
+      {/* DB status */}
+      <StatusDivider />
+      <StatusField>
+        {dbStatus?.connected
+          ? <span className="text-emerald-500">DB: {dbEntityCount} entities</span>
+          : <span className="text-muted-foreground/40">DB: offline</span>}
+      </StatusField>
+
+      {/* Placement mode */}
+      {placementMode && placementTemplateName && (
+        <>
+          <StatusDivider />
+          <StatusField>
+            <span className="text-amber-400">Placing: {placementTemplateName}</span>
           </StatusField>
         </>
       )}

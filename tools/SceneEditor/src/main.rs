@@ -47,6 +47,9 @@ fn main() {
             commands::create_spawn,
             commands::update_spawn_position,
             commands::delete_spawn,
+            commands::create_region,
+            commands::delete_region,
+            commands::delete_db_entity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running scene editor");
