@@ -11,7 +11,8 @@ use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg, MailOp};
 use crate::mercury::{
-    archetype_ability_tree, build_avatar_update, build_char_list, build_create_entity,
+    archetype_ability_tree, build_avatar_update, build_char_list,
+    build_create_entity_base, build_create_entity_cascade,
     build_entity_leave, build_entity_method_packet,
     build_map_loaded_body, fragment_map_loaded, fragment_count,
     build_reset_entities, build_world_entry_phase_a, build_world_entry_phase_b_body,
@@ -543,14 +544,25 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::EntityCreated { entity_id, space_id, position } => {
             tracing::debug!(entity_id, space_id, ?position, "CellService: entity created");
         }
-        CellToBaseMsg::EnteredAoI { witness_id, entity_id, space_id: _, class_id, position, direction, level } => {
+        CellToBaseMsg::EnteredAoI { witness_id, entity_id, space_id: _, class_id, position, direction, level, npc_data } => {
             tracing::debug!(witness_id, entity_id, class_id, level, "AoI: entity entered witness range");
+            // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate)
             send_to_witness(
                 socket, connected, entity_to_addr, witness_id,
                 |key, seq, acks| {
-                    build_create_entity(
+                    build_create_entity_base(
                         key, seq, acks, entity_id,
-                        class_id, position, direction, level,
+                        class_id, position, direction,
+                    )
+                },
+            ).await;
+            // Packet 2: createOnClient() property cascade (CellApp round-trip)
+            send_to_witness(
+                socket, connected, entity_to_addr, witness_id,
+                |key, seq, acks| {
+                    build_create_entity_cascade(
+                        key, seq, acks, entity_id,
+                        class_id, level, npc_data.as_ref(),
                     )
                 },
             ).await;
@@ -610,6 +622,15 @@ pub(crate) async fn handle_cell_message(
         }
         CellToBaseMsg::GrantItem { entity_id: _, player_id, item_id, container_id, count } => {
             handle_grant_item(player_id, item_id, container_id, count, db_pool).await;
+        }
+        CellToBaseMsg::WitnessEntityMethod { witness_id, entity_id, method_index, args } => {
+            tracing::debug!(witness_id, entity_id, method_index, "Broadcast entity method to witness");
+            send_to_witness(
+                socket, connected, entity_to_addr, witness_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
+                },
+            ).await;
         }
     }
 }

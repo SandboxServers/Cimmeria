@@ -93,6 +93,16 @@ fn convert_script(script: &ScriptFile, options: &ConvertOptions) -> ConvertResul
         outgoing.entry(conn.out_node).or_default().push(conn);
     }
 
+    // Build reverse adjacency: (in_node, in_port) → (out_node, out_port)
+    // Used for backward resolution in Cmp_Int nodes
+    let mut incoming: HashMap<(u32, String), (u32, String)> = HashMap::new();
+    for conn in &script.connections {
+        incoming.insert(
+            (conn.in_node, conn.in_port.clone()),
+            (conn.out_node, conn.out_port.clone()),
+        );
+    }
+
     // Find all event nodes (triggers)
     let event_nodes: Vec<&ScriptNode> = script
         .nodes
@@ -151,6 +161,7 @@ fn convert_script(script: &ScriptFile, options: &ConvertOptions) -> ConvertResul
                     target_conn.in_node,
                     &node_map,
                     &outgoing,
+                    &incoming,
                     &mut conditions,
                     &mut actions,
                     &mut entity_tag_context,
@@ -207,6 +218,7 @@ fn walk_chain(
     node_id: u32,
     node_map: &HashMap<u32, &ScriptNode>,
     outgoing: &HashMap<u32, Vec<&ScriptConnection>>,
+    incoming: &HashMap<(u32, String), (u32, String)>,
     conditions: &mut Vec<SaveConditionInput>,
     actions: &mut Vec<SaveActionInput>,
     entity_tag_ctx: &mut Option<String>,
@@ -222,22 +234,23 @@ fn walk_chain(
 
     let ref_name = node.ref_name.as_str();
 
-    // Handle condition nodes (Act_GetMission, Act_GetMissionStep, etc.)
+    // Variable nodes are data-only — don't follow their output connections
+    if ref_name.starts_with("Var_") {
+        return;
+    }
+
+    // Handle condition/resolver nodes
     match ref_name {
         "Act_GetMission" => {
             let mission_id = node_prop_i32(node, "Mission Id");
-            // Follow each output port to determine the condition path
             if let Some(conns) = outgoing.get(&node_id) {
                 for conn in conns {
                     let condition_value = match conn.out_port.as_str() {
                         "Not Accepted" => "not_active",
                         "Active" => "active",
                         "Completed" => "completed",
-                        "Failed" => "completed", // treat failed as completed for now
-                        _ => {
-                            // "Player" port just passes through
-                            continue;
-                        }
+                        "Failed" => "completed",
+                        _ => continue,
                     };
                     conditions.push(SaveConditionInput {
                         condition_type: "mission_status".to_string(),
@@ -248,13 +261,8 @@ fn walk_chain(
                         sort_order: 0,
                     });
                     walk_chain(
-                        conn.in_node,
-                        node_map,
-                        outgoing,
-                        conditions,
-                        actions,
-                        entity_tag_ctx,
-                        warnings,
+                        conn.in_node, node_map, outgoing, incoming,
+                        conditions, actions, entity_tag_ctx, warnings,
                     );
                 }
             }
@@ -280,38 +288,72 @@ fn walk_chain(
                         sort_order: 0,
                     });
                     walk_chain(
-                        conn.in_node,
-                        node_map,
-                        outgoing,
-                        conditions,
-                        actions,
-                        entity_tag_ctx,
-                        warnings,
+                        conn.in_node, node_map, outgoing, incoming,
+                        conditions, actions, entity_tag_ctx, warnings,
                     );
                 }
             }
             return;
         }
         "Act_GetEntity" => {
-            // Resolve entity_tag for subsequent actions
             let tag = node_prop(node, "Tag");
             if let Some(t) = &tag {
                 *entity_tag_ctx = Some(t.clone());
             }
-            // Follow "Found" output
             if let Some(conns) = outgoing.get(&node_id) {
                 for conn in conns {
                     if conn.out_port == "Found" || conn.out_port == "Out" {
                         walk_chain(
-                            conn.in_node,
-                            node_map,
-                            outgoing,
-                            conditions,
-                            actions,
-                            entity_tag_ctx,
-                            warnings,
+                            conn.in_node, node_map, outgoing, incoming,
+                            conditions, actions, entity_tag_ctx, warnings,
                         );
                     }
+                }
+            }
+            return;
+        }
+        "Act_GetProperty" => {
+            // Resolver — follow only flow outputs (Successful), skip data ports
+            if let Some(conns) = outgoing.get(&node_id) {
+                for conn in conns {
+                    if conn.out_port == "Successful" || conn.out_port == "Out" {
+                        walk_chain(
+                            conn.in_node, node_map, outgoing, incoming,
+                            conditions, actions, entity_tag_ctx, warnings,
+                        );
+                    }
+                }
+            }
+            return;
+        }
+        "Cmp_Int" => {
+            // Conditional branch — resolve what property/value is being compared
+            let (property_name, compare_value) =
+                resolve_cmp_inputs(node_id, incoming, node_map);
+
+            if let Some(conns) = outgoing.get(&node_id) {
+                for conn in conns {
+                    let operator = match conn.out_port.as_str() {
+                        "A == B" => "eq",
+                        "A != B" => "ne",
+                        "A < B" => "lt",
+                        "A > B" => "gt",
+                        _ => continue,
+                    };
+                    if let Some(ref prop) = property_name {
+                        conditions.push(SaveConditionInput {
+                            condition_type: prop.to_lowercase(),
+                            target_id: None,
+                            target_key: None,
+                            operator: operator.to_string(),
+                            value: compare_value.as_ref().map(|v| v.to_string()),
+                            sort_order: 0,
+                        });
+                    }
+                    walk_chain(
+                        conn.in_node, node_map, outgoing, incoming,
+                        conditions, actions, entity_tag_ctx, warnings,
+                    );
                 }
             }
             return;
@@ -328,18 +370,12 @@ fn walk_chain(
     if let Some(conns) = outgoing.get(&node_id) {
         for conn in conns {
             let port = conn.out_port.as_str();
-            // Skip ports that represent failure/error paths
             if port == "Failed" || port == "Player" || port == "Entity" || port == "Entity Id" {
                 continue;
             }
             walk_chain(
-                conn.in_node,
-                node_map,
-                outgoing,
-                conditions,
-                actions,
-                entity_tag_ctx,
-                warnings,
+                conn.in_node, node_map, outgoing, incoming,
+                conditions, actions, entity_tag_ctx, warnings,
             );
         }
     }
@@ -620,6 +656,38 @@ fn convert_node_to_action(
                 sort_order: 0,
             })
         }
+        "Act_AddDialog" => {
+            let dialog_set_id = node_prop_i32(node, "Dialog Set Map");
+            let entity_template = node_prop_i32(node, "Entity Template");
+            let mission_id = node_prop_i32(node, "Mission Id");
+            let mut params = serde_json::json!({});
+            if let Some(et) = entity_template {
+                params["entity_template"] = serde_json::json!(et);
+            }
+            if let Some(mid) = mission_id {
+                params["mission_id"] = serde_json::json!(mid);
+            }
+            Some(SaveActionInput {
+                action_type: "add_dialog".to_string(),
+                target_id: dialog_set_id,
+                target_key: None,
+                params,
+                delay_ms: 0,
+                sort_order: 0,
+            })
+        }
+        "Act_GenerateThreat" => {
+            let threat_level = node_prop_i32(node, "Threat Level").unwrap_or(0);
+            let entity_tag = entity_tag_ctx.clone();
+            Some(SaveActionInput {
+                action_type: "generate_threat".to_string(),
+                target_id: None,
+                target_key: entity_tag,
+                params: serde_json::json!({"threat_level": threat_level}),
+                delay_ms: 0,
+                sort_order: 0,
+            })
+        }
         "Act_Log" => {
             // Log nodes are debug-only, skip
             None
@@ -642,6 +710,46 @@ fn convert_node_to_action(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Trace backward from a Cmp_Int node's A and B inputs to determine
+/// what property is being compared and to what value.
+///
+/// Pattern: Act_GetProperty → "Archetype" → Var_Int → Cmp_Int.A
+///          Var_Int(constant) → Cmp_Int.B
+fn resolve_cmp_inputs(
+    cmp_node_id: u32,
+    incoming: &HashMap<(u32, String), (u32, String)>,
+    node_map: &HashMap<u32, &ScriptNode>,
+) -> (Option<String>, Option<String>) {
+    let mut property_name = None;
+    let mut compare_value = None;
+
+    // Trace input A: Cmp_Int.A ← Var_Int.Value ← Act_GetProperty.{PropertyName}
+    if let Some((var_node_id, _)) = incoming.get(&(cmp_node_id, "A".to_string())) {
+        if let Some(var_node) = node_map.get(var_node_id) {
+            if var_node.ref_name.starts_with("Var_") {
+                // Trace further: what feeds this Var_Int's "Set" input?
+                if let Some((_prop_node_id, out_port)) =
+                    incoming.get(&(*var_node_id, "Set".to_string()))
+                {
+                    // out_port is the property name (e.g., "Archetype", "Level")
+                    property_name = Some(out_port.clone());
+                }
+            }
+        }
+    }
+
+    // Trace input B: Cmp_Int.B ← Var_Int with constant "Value" property
+    if let Some((var_node_id, _)) = incoming.get(&(cmp_node_id, "B".to_string())) {
+        if let Some(var_node) = node_map.get(var_node_id) {
+            if var_node.ref_name.starts_with("Var_") {
+                compare_value = node_prop(var_node, "Value");
+            }
+        }
+    }
+
+    (property_name, compare_value)
+}
 
 /// Get a property value from a node by name.
 fn node_prop(node: &ScriptNode, name: &str) -> Option<String> {
@@ -901,6 +1009,124 @@ mod tests {
     fn empty_script_produces_no_chains() {
         let script = make_script(vec![], vec![]);
         let result = convert_script(&script, &default_options());
+        assert!(result.chains.is_empty());
+        assert!(result.warnings.is_empty());
+    }
+
+    #[test]
+    fn add_dialog_action() {
+        let script = make_script(
+            vec![
+                make_node(1, "Event_Loaded", vec![("Enabled", "true")]),
+                make_node(
+                    2,
+                    "Act_AddDialog",
+                    vec![
+                        ("Enabled", "true"),
+                        ("Dialog Set Map", "5866"),
+                        ("Entity Template", "17"),
+                        ("Mission Id", "622"),
+                    ],
+                ),
+            ],
+            vec![make_conn(1, "Out", 2, "In")],
+        );
+
+        let result = convert_script(&script, &default_options());
+        assert_eq!(result.chains.len(), 1);
+        assert_eq!(result.chains[0].actions[0].action_type, "add_dialog");
+        assert_eq!(result.chains[0].actions[0].target_id, Some(5866));
+        assert_eq!(result.chains[0].actions[0].params["entity_template"], 17);
+        assert_eq!(result.chains[0].actions[0].params["mission_id"], 622);
+    }
+
+    #[test]
+    fn generate_threat_action() {
+        let script = make_script(
+            vec![
+                make_node(1, "Event_Loaded", vec![("Enabled", "true")]),
+                make_node(
+                    2,
+                    "Act_GenerateThreat",
+                    vec![("Enabled", "true"), ("Threat Level", "1000")],
+                ),
+            ],
+            vec![make_conn(1, "Out", 2, "In")],
+        );
+
+        let result = convert_script(&script, &default_options());
+        assert_eq!(result.chains.len(), 1);
+        assert_eq!(result.chains[0].actions[0].action_type, "generate_threat");
+        assert_eq!(
+            result.chains[0].actions[0].params["threat_level"],
+            1000
+        );
+    }
+
+    #[test]
+    fn cmp_int_archetype_branch() {
+        // Pattern: Event → GetProperty → Var_Int(archetype) → Cmp_Int(A=archetype, B=8) → AddDialog
+        let script = make_script(
+            vec![
+                make_node(1, "Event_EntityInteract", vec![("Enabled", "true"), ("Tag", "Guard")]),
+                make_node(2, "Act_GetProperty", vec![("Enabled", "true")]),
+                make_node(3, "Var_Int", vec![("Enabled", "true")]),       // stores archetype
+                make_node(4, "Var_Int", vec![("Enabled", "true"), ("Value", "8")]), // constant
+                make_node(5, "Cmp_Int", vec![("Enabled", "true")]),
+                make_node(
+                    6,
+                    "Act_AddDialog",
+                    vec![("Enabled", "true"), ("Dialog Set Map", "5866"), ("Entity Template", "17")],
+                ),
+            ],
+            vec![
+                make_conn(1, "Out", 2, "In"),
+                make_conn(2, "Archetype", 3, "Set"),   // GetProperty.Archetype → Var_Int.Set
+                make_conn(2, "Successful", 5, "In"),    // GetProperty.Successful → Cmp_Int.In
+                make_conn(3, "Value", 5, "A"),          // Var_Int → Cmp_Int.A
+                make_conn(4, "Value", 5, "B"),          // Var_Int(8) → Cmp_Int.B
+                make_conn(5, "A == B", 6, "In"),        // Cmp_Int.A==B → AddDialog
+            ],
+        );
+
+        let result = convert_script(&script, &default_options());
+        assert_eq!(result.chains.len(), 1);
+        assert_eq!(result.warnings.len(), 0);
+
+        let chain = &result.chains[0];
+        // Should have an archetype condition
+        let arch_cond = chain.conditions.iter().find(|c| c.condition_type == "archetype");
+        assert!(arch_cond.is_some(), "expected archetype condition");
+        let cond = arch_cond.unwrap();
+        assert_eq!(cond.operator, "eq");
+        assert_eq!(cond.value, Some("8".to_string()));
+
+        // Should have the add_dialog action
+        assert_eq!(chain.actions.len(), 1);
+        assert_eq!(chain.actions[0].action_type, "add_dialog");
+    }
+
+    #[test]
+    fn var_nodes_dont_forward() {
+        // Var_Int nodes should NOT follow their output connections
+        let script = make_script(
+            vec![
+                make_node(1, "Event_Loaded", vec![("Enabled", "true")]),
+                make_node(2, "Var_Int", vec![("Enabled", "true"), ("Value", "42")]),
+                make_node(
+                    3,
+                    "Act_SysMsg",
+                    vec![("Enabled", "true"), ("String Id", "100")],
+                ),
+            ],
+            vec![
+                make_conn(1, "Out", 2, "In"),
+                make_conn(2, "Value", 3, "In"),
+            ],
+        );
+
+        let result = convert_script(&script, &default_options());
+        // The Var_Int should stop the walk — no chain produced (no actions)
         assert!(result.chains.is_empty());
         assert!(result.warnings.is_empty());
     }

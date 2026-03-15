@@ -100,6 +100,56 @@ pub struct CellEntity {
 
     /// Entity level (for XP calculations on kill). Default 1.
     pub level: u32,
+
+    // ── Template-driven fields (populated from DB spawnlist + entity_templates) ──
+
+    /// Source template ID from `entity_templates.template_id`.
+    pub template_id: Option<i32>,
+
+    /// Spawn tag from `spawnlist.tag` — used by content chains to target this entity
+    /// (e.g., `"ArmYourself_FrostBody"`, `"Preparation_Terminal"`).
+    pub tag: Option<String>,
+
+    /// Localized name string ID from `entity_templates.name_id`.
+    pub name_id: Option<i32>,
+
+    /// Speaker ID for dialog from `entity_templates.speaker_id`.
+    pub speaker_id: Option<i32>,
+
+    /// Event set ID for behavior triggers from `entity_templates.event_set_id`.
+    pub event_set_id: Option<i32>,
+
+    /// Raw INT_* interaction type bitfield from `entity_templates.interaction_type`.
+    /// Modified at runtime by `SetInteractionType` content actions (OR/AND-NOT).
+    pub interaction_type_flags: i64,
+
+    /// Entity flags from `entity_templates.flags`.
+    pub entity_flags: u64,
+
+    /// Faction ID from `entity_templates.faction` (0=neutral, 1=Tau'ri, 3=SGC, 10=hostile).
+    pub faction: u8,
+
+    /// Alignment ID from `entity_templates.alignment`.
+    pub alignment: u8,
+
+    /// Always-available interaction set IDs from `entity_templates.static_interaction_sets`.
+    pub static_interaction_sets: Vec<i32>,
+
+    /// Whether space scripts modify this entity's properties dynamically.
+    pub has_dynamic_properties: bool,
+
+    /// Per-player available interactions: template_id → Vec<(dialog_set_map_id, dialog_id, interaction_flags)>.
+    /// Populated by `add_dialog_set` content action. Only used for player entities.
+    pub available_interactions: HashMap<i32, Vec<(i32, i32, i64)>>,
+
+    /// Static mesh path for non-humanoid entities (e.g., `"CA-Props.CA-PrisonerCorpse00"`).
+    pub static_mesh: Option<String>,
+
+    /// Body set path from `entity_templates.body_set`.
+    pub body_set: Option<String>,
+
+    /// Visual component paths from `entity_templates.components`.
+    pub components: Vec<String>,
 }
 
 impl CellEntity {
@@ -124,6 +174,21 @@ impl CellEntity {
             player_id: None,
             archetype_id: None,
             level: 1,
+            template_id: None,
+            tag: None,
+            name_id: None,
+            speaker_id: None,
+            event_set_id: None,
+            interaction_type_flags: 0,
+            entity_flags: 0,
+            faction: 0,
+            alignment: 0,
+            static_interaction_sets: Vec::new(),
+            has_dynamic_properties: false,
+            available_interactions: HashMap::new(),
+            static_mesh: None,
+            body_set: None,
+            components: Vec::new(),
         }
     }
 
@@ -172,6 +237,8 @@ impl std::fmt::Debug for CellEntity {
             .field("property_count", &self.properties.len())
             .field("stats", &self.stats)
             .field("known_abilities", &self.abilities.known_count())
+            .field("template_id", &self.template_id)
+            .field("tag", &self.tag)
             .finish()
     }
 }

@@ -232,6 +232,19 @@ pub enum Action {
         ability_id: i32,
         entity_tag: Option<String>,
     },
+
+    /// Map a dialog set to an NPC entity template (archetype-conditional dialog).
+    AddDialog {
+        dialog_set_id: i32,
+        entity_template: Option<i32>,
+        mission_id: Option<i32>,
+    },
+
+    /// Generate threat/aggro on a target entity from the instigator.
+    GenerateThreat {
+        entity_tag: Option<String>,
+        threat_level: i32,
+    },
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].

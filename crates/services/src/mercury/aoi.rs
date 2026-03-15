@@ -3,7 +3,11 @@
 
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
-use super::{encrypt_packet, append_entity_method, method_idx, REPLY_FLAGS};
+use crate::cell::messages::NpcAoIData;
+use super::{encrypt_packet, append_entity_method, write_wstring, method_idx, REPLY_FLAGS};
+
+/// `GENERICPROPERTY_DatabaseId` — maps to speaker_id for dialog-capable entities.
+const GENERICPROPERTY_DATABASE_ID: i32 = 9;
 
 /// `BASEMSG_CREATE_ENTITY` — create a ghost (non-player) entity on the client (0x09).
 /// Sent when an entity enters a player's Area of Interest.
@@ -17,17 +21,14 @@ pub(crate) const BASEMSG_ENTITY_INVISIBLE: u8 = 0x0B;
 /// `BASEMSG_LEAVE_AOI` — remove entity from client's AoI (0x0C, WORD_LENGTH).
 pub(crate) const BASEMSG_LEAVE_AOI: u8 = 0x0C;
 
-/// Build and encrypt `CREATE_ENTITY (0x09)` + `UPDATE_AVATAR (0x10)` + property
-/// cascade for when an entity enters a witness's Area of Interest.
+/// Build and encrypt `CREATE_ENTITY (0x09)` + `UPDATE_AVATAR (0x10)` — phase 1.
 ///
-/// Matches C++ `ClientHandler::createEntity()` + `moveEntity()` + `enterAoI()`
-/// from `client_handler.cpp:492-514` and the Python `createOnClient()` cascade
-/// in `SGWSpawnableEntity.py`, `SGWBeing.py`, `SGWMob.py`.
-///
-/// The property cascade is critical: without at least `onVisible(1)`, the client
-/// creates a bare entity skeleton that isn't registered with the viewport/space
-/// system, causing "Viewport for entity X is unknown" on subsequent updates.
-pub fn build_create_entity(
+/// In the C++ server, CREATE_ENTITY + UPDATE_AVATAR are sent by the BaseApp
+/// immediately (`cached_entity.cpp:199`), while the property cascade arrives
+/// later from the CellApp after a round trip (`base_client.cpp:448`).
+/// Splitting into separate packets matches that timing so the client creates
+/// the entity object before entity methods try to configure it.
+pub fn build_create_entity_base(
     key: &[u8; 32],
     seq_id: u32,
     acks: &[u32],
@@ -35,9 +36,8 @@ pub fn build_create_entity(
     class_id: u8,
     position: [f32; 3],
     direction: [f32; 3],
-    level: u32,
 ) -> Vec<u8> {
-    let mut body = Vec::with_capacity(128);
+    let mut body = Vec::with_capacity(48);
 
     // CREATE_ENTITY (0x09, WORD_LENGTH)
     body.push(BASEMSG_CREATE_ENTITY);
@@ -54,42 +54,116 @@ pub fn build_create_entity(
     for &c in &position {
         body.extend_from_slice(&c.to_le_bytes());
     }
-    // Velocity XYZ = zero → 5 zero bytes (packXYZ encodes (0,0,0) as all zeros)
-    body.extend_from_slice(&[0u8; 5]);
-    // Physics mode flags = 0x01 (standard walking)
-    body.push(0x01);
-    // Direction: yaw, pitch, roll — each u8, quantized to 256 steps per circle
-    // rotation.y = yaw, rotation.x = pitch, rotation.z = roll (C++ convention)
-    body.push(pack_angle(direction[1])); // yaw = rotation.y
-    body.push(pack_angle(direction[0])); // pitch = rotation.x
-    body.push(pack_angle(direction[2])); // roll = rotation.z
+    body.extend_from_slice(&[0u8; 5]); // velocity = zero
+    body.push(0x01); // physics mode
+    body.push(pack_angle(direction[1])); // yaw
+    body.push(pack_angle(direction[0])); // pitch
+    body.push(pack_angle(direction[2])); // roll
 
-    // ── createOnClient() property cascade ────────────────────────────────────
-    //
-    // Mirrors the Python `createOnClient()` chain:
-    //   SGWSpawnableEntity.createOnClient → onEntityFlags, onVisible(1)
-    //   SGWBeing.createOnClient → onLevelUpdate, onAlignmentUpdate, onFactionUpdate, onStateFieldUpdate
-    //
-    // Method indices are shared across SGWPlayer/SGWMob (same parent chain
-    // through SGWBeing with identical interface ordering).
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
 
-    // onEntityFlags(0) — default entity flags
-    append_entity_method(&mut body, method_idx::ON_ENTITY_FLAGS, entity_id, &0u64.to_le_bytes());
+/// Build and encrypt the `createOnClient()` property cascade — phase 2.
+///
+/// Sent in a separate packet after [`build_create_entity_base`] so the client
+/// has processed CREATE_ENTITY first. Mirrors the CellApp's `createOnClient()`
+/// + `SGWBeing.createOnClient()` Python cascade that arrives after the
+/// BaseApp→CellApp `sendRequestEntityUpdate` round trip.
+pub fn build_create_entity_cascade(
+    key: &[u8; 32],
+    seq_id: u32,
+    acks: &[u32],
+    entity_id: u32,
+    class_id: u8,
+    level: u32,
+    npc_data: Option<&NpcAoIData>,
+) -> Vec<u8> {
+    let mut body = Vec::with_capacity(128);
 
-    // onVisible(1) — CRITICAL: registers the entity with the client's viewport.
+    // Per-entity values from template data (or defaults for players)
+    let entity_flags = npc_data.map_or(0u64, |d| d.entity_flags);
+    let align = npc_data.map_or(0u8, |d| d.alignment);
+    let fac = npc_data.map_or(0u8, |d| d.faction);
+
+    // ── SGWSpawnableEntity.createOnClient ──
+
+    // 1. onEntityProperty(GENERICPROPERTY_DatabaseId, speakerId)
+    if let Some(d) = npc_data {
+        if let Some(speaker_id) = d.speaker_id {
+            let mut args = Vec::with_capacity(8);
+            args.extend_from_slice(&GENERICPROPERTY_DATABASE_ID.to_le_bytes());
+            args.extend_from_slice(&speaker_id.to_le_bytes());
+            append_entity_method(&mut body, method_idx::ON_ENTITY_PROPERTY, entity_id, &args);
+        }
+    }
+
+    // 2. onKismetEventSetUpdate(eventSetId)
+    if let Some(d) = npc_data {
+        if let Some(event_set_id) = d.event_set_id {
+            if event_set_id != 0 {
+                append_entity_method(
+                    &mut body, method_idx::ON_KISMET_EVENT_SET_UPDATE, entity_id,
+                    &event_set_id.to_le_bytes(),
+                );
+            }
+        }
+    }
+
+    // 3. createAppearanceOnClient — BeingAppearance (humanoid) OR onStaticMeshNameUpdate (prop)
+    if let Some(d) = npc_data {
+        append_appearance(&mut body, entity_id, d);
+    }
+
+    // 4. InteractionType(interactionType) — base flags (dynamic merged flags sent separately)
+    if let Some(d) = npc_data {
+        append_entity_method(
+            &mut body, method_idx::INTERACTION_TYPE, entity_id,
+            &(d.interaction_type as u64).to_le_bytes(),
+        );
+    }
+
+    // 5. onBeingNameIDUpdate(nameId)
+    if let Some(d) = npc_data {
+        if let Some(name_id) = d.name_id {
+            if name_id != 0 {
+                append_entity_method(
+                    &mut body, method_idx::ON_BEING_NAME_ID_UPDATE, entity_id,
+                    &name_id.to_le_bytes(),
+                );
+            }
+        }
+    }
+
+    // 6. onEntityFlags
+    append_entity_method(&mut body, method_idx::ON_ENTITY_FLAGS, entity_id, &entity_flags.to_le_bytes());
+
+    // 7. onVisible(1) — CRITICAL: registers entity with the client's viewport
     append_entity_method(&mut body, method_idx::ON_VISIBLE, entity_id, &[1u8]);
 
-    // onLevelUpdate(level) — entity level for display and combat
-    append_entity_method(&mut body, method_idx::ON_LEVEL_UPDATE, entity_id, &(level as i32).to_le_bytes());
+    // ── SGWBeing.createOnClient ──
+    if class_id != 0x00 {
+        // 8. onLevelUpdate(level)
+        append_entity_method(&mut body, method_idx::ON_LEVEL_UPDATE, entity_id, &(level as i32).to_le_bytes());
+        // 9. onTargetUpdate(0) — no current target
+        // C++ sends this; missing it may leave the entity partially uninitialized.
+        append_entity_method(&mut body, method_idx::ON_TARGET_UPDATE, entity_id, &0i32.to_le_bytes());
+        // 10. onAlignmentUpdate
+        append_entity_method(&mut body, method_idx::ON_ALIGNMENT_UPDATE, entity_id, &[align]);
+        // 11. onFactionUpdate
+        append_entity_method(&mut body, method_idx::ON_FACTION_UPDATE, entity_id, &[fac]);
+        // 12. onStateFieldUpdate(0) — alive state
+        append_entity_method(&mut body, method_idx::ON_STATE_FIELD_UPDATE, entity_id, &0u32.to_le_bytes());
 
-    // onStateFieldUpdate(0) — alive state
-    append_entity_method(&mut body, method_idx::ON_STATE_FIELD_UPDATE, entity_id, &0u32.to_le_bytes());
-
-    // onAlignmentUpdate(0) — neutral/default alignment
-    append_entity_method(&mut body, method_idx::ON_ALIGNMENT_UPDATE, entity_id, &[0u8]);
-
-    // onFactionUpdate(0) — hostile NPC default (friendly NPCs = 3)
-    append_entity_method(&mut body, method_idx::ON_FACTION_UPDATE, entity_id, &[0u8]);
+        // 13-14. onStatBaseUpdate + onStatUpdate — NPC stat data
+        // C++ sends 180 bytes each (4-byte count + 11×16-byte stats = 180).
+        // Without populated stats, the client doesn't consider the entity
+        // "ready" for interaction (right-click blocked).
+        let stat_data = build_default_npc_stats();
+        append_entity_method(&mut body, method_idx::ON_STAT_BASE_UPDATE, entity_id, &stat_data);
+        append_entity_method(&mut body, method_idx::ON_STAT_UPDATE, entity_id, &stat_data);
+    }
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
@@ -176,6 +250,79 @@ pub fn build_entity_method_packet(
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq), acks, None);
     encrypt_packet(&plaintext, key)
+}
+
+/// Build default NPC stat data matching `SGWBeing.statsTemplate`.
+///
+/// Wire format: `ARRAY<StatUpdate>` = `[count: u32 LE][StatUpdate, ...]`
+/// where `StatUpdate = { StatId: i32, Min: i32, Current: i32, Max: i32 }` (16 bytes each).
+/// 11 stats × 16 bytes + 4 byte count = 180 bytes total.
+fn build_default_npc_stats() -> Vec<u8> {
+    use cimmeria_entity::stats::*;
+    // (stat_id, min, current, max) — from SGWBeing.statsTemplate defaults
+    let stats: &[(i32, i32, i32, i32)] = &[
+        (HEALTH,            0,    100, 100),
+        (FOCUS,             0,      0,   0),
+        (COORDINATION,      0,      1,   1),
+        (ENGAGEMENT,        0,      1,   1),
+        (FORTITUDE,         0,      1,   1),
+        (MORALE,            0,      1,   1),
+        (PERCEPTION,        0,      1,   1),
+        (INTELLIGENCE,      0,      1,   1),
+        (ACCURACY,      -1000,      0, 1000),
+        (MOVEMENT_SPEED_MOD, 0,   100, 500),
+        (DEFENSE,           0,      0,   0),
+    ];
+    let mut buf = Vec::with_capacity(4 + stats.len() * 16);
+    buf.extend_from_slice(&(stats.len() as u32).to_le_bytes());
+    for &(id, min, cur, max) in stats {
+        buf.extend_from_slice(&id.to_le_bytes());
+        buf.extend_from_slice(&min.to_le_bytes());
+        buf.extend_from_slice(&cur.to_le_bytes());
+        buf.extend_from_slice(&max.to_le_bytes());
+    }
+    buf
+}
+
+/// Append appearance data for an NPC entity (BeingAppearance or onStaticMeshNameUpdate).
+///
+/// Mirrors `SGWBeing.createAppearanceOnClient()` / `SGWSpawnableEntity.createAppearanceOnClient()`:
+/// - If bodySet + components (humanoid): `BeingAppearance(bodySet, componentList)` + `onEntityTint(0,0,0)`
+/// - Else if staticMesh + bodySet: `onStaticMeshNameUpdate(staticMesh, bodySet)`
+fn append_appearance(body: &mut Vec<u8>, entity_id: u32, d: &NpcAoIData) {
+    if let Some(ref body_set) = d.body_set {
+        if !body_set.is_empty() && !d.components.is_empty() {
+            // Humanoid: BeingAppearance(bodySet: WSTRING, componentList: ARRAY<WSTRING>)
+            let mut args = Vec::with_capacity(128);
+            write_wstring(&mut args, body_set);
+            // ARRAY<WSTRING>: [count: u32 LE][WSTRING, WSTRING, ...]
+            args.extend_from_slice(&(d.components.len() as u32).to_le_bytes());
+            for comp in &d.components {
+                write_wstring(&mut args, comp);
+            }
+            append_entity_method(body, method_idx::BEING_APPEARANCE, entity_id, &args);
+
+            // onEntityTint(primaryColorId=0, secondaryColorId=0, skinTint=0)
+            let mut tint_args = Vec::with_capacity(12);
+            tint_args.extend_from_slice(&0u32.to_le_bytes());
+            tint_args.extend_from_slice(&0u32.to_le_bytes());
+            tint_args.extend_from_slice(&0u32.to_le_bytes());
+            append_entity_method(body, method_idx::ON_ENTITY_TINT, entity_id, &tint_args);
+            return;
+        }
+    }
+
+    // Non-humanoid: onStaticMeshNameUpdate(staticMeshName: WSTRING, bodySet: WSTRING)
+    if let Some(ref static_mesh) = d.static_mesh {
+        if !static_mesh.is_empty() {
+            let body_set_str = d.body_set.as_deref().unwrap_or("");
+            let mut args = Vec::with_capacity(64);
+            write_wstring(&mut args, static_mesh);
+            write_wstring(&mut args, body_set_str);
+            // onStaticMeshNameUpdate is method index 0
+            append_entity_method(body, 0, entity_id, &args);
+        }
+    }
 }
 
 /// Pack a float angle (radians) into a single byte (256 steps per circle).

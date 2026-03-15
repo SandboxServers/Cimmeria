@@ -425,10 +425,10 @@ pub(crate) async fn handle_encrypted_datagram(
                 }
             }
             // ── Cell entity method calls (0x80-0xBF range) ──
-            // After world entry, the client sends cell method calls as:
-            //   Direct:   msg_id = cellMethodIndex | 0x80 (indices 0-60)
-            //   Extended: msg_id = 0xBD, payload contains subIndex
-            // These are forwarded to the CellService for dispatch.
+            // Wire format (from bundle.cpp + entity_message_handler.cpp):
+            //   Direct (0-60):  [msg_id = methodId + 0x80][word_len][entityId: u32][args]
+            //   Sub-slot (61+): [msg_id = 0xBD][word_len][entityId: u32][sub_index: u8][args]
+            // The 4-byte entityId prefix is ALWAYS present and must be stripped.
             id if (0x80..=0xBF).contains(&id) => {
                 // ── Phase 5b-B trigger ──
                 // After Phase 5b-A, the client sends the exposed SGWPlayer cell
@@ -460,11 +460,28 @@ pub(crate) async fn handle_encrypted_datagram(
                         );
                         continue;
                     }
+
+                    // Strip 4-byte entityId prefix (always present per entity_message_handler.cpp:18-20)
+                    if payload.len() < 4 {
+                        tracing::warn!(%addr, msg_id = format_args!("{:#04x}", id), payload_len = payload.len(), "Cell method payload too short for entityId prefix");
+                        continue;
+                    }
+                    let entity_id_from_client = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+                    let method_payload = &payload[4..];
+
                     if id == 0xBD {
-                        // Extended encoding: subIndex is first byte of payload
-                        if !payload.is_empty() {
-                            let sub_index = payload[0] as u16;
-                            let args = if payload.len() > 1 { payload[1..].to_vec() } else { Vec::new() };
+                        // Extended encoding: sub_index is first byte AFTER entityId
+                        if !method_payload.is_empty() {
+                            let sub_index = method_payload[0] as u16;
+                            let args = if method_payload.len() > 1 { method_payload[1..].to_vec() } else { Vec::new() };
+                            tracing::debug!(
+                                %addr,
+                                entity_id = entity_id_from_client,
+                                sub_index,
+                                method_index = sub_index + 61,
+                                payload_hex = %payload[..payload.len().min(12)].iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+                                "Extended cell method (0xBD)"
+                            );
                             if let Some(ref tx) = cell_tx {
                                 let _ = tx.send(BaseToCellMsg::CellMethodCall {
                                     entity_id: player_eid,
@@ -479,7 +496,7 @@ pub(crate) async fn handle_encrypted_datagram(
                             let _ = tx.send(BaseToCellMsg::CellMethodCall {
                                 entity_id: player_eid,
                                 method_index,
-                                args: payload.to_vec(),
+                                args: method_payload.to_vec(),
                             }).await;
                         }
                     }

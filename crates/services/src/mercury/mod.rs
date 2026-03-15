@@ -39,7 +39,8 @@ pub use protocol::{
 };
 
 pub use aoi::{
-    build_create_entity, build_entity_leave, build_avatar_update,
+    build_create_entity_base, build_create_entity_cascade,
+    build_entity_leave, build_avatar_update,
     build_entity_method_packet,
 };
 

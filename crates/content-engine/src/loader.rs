@@ -368,6 +368,17 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
             let entity_tag = row.target_key.as_deref().map(|s| s.to_string());
             Some(Action::LaunchAbility { ability_id, entity_tag })
         }
+        "add_dialog" => {
+            let dialog_set_id = row.target_id?;
+            let entity_template = params.get("entity_template").and_then(|v| v.as_i64()).map(|v| v as i32);
+            let mission_id = params.get("mission_id").and_then(|v| v.as_i64()).map(|v| v as i32);
+            Some(Action::AddDialog { dialog_set_id, entity_template, mission_id })
+        }
+        "generate_threat" => {
+            let entity_tag = row.target_key.as_deref().map(|s| s.to_string());
+            let threat_level = params.get("threat_level").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            Some(Action::GenerateThreat { entity_tag, threat_level })
+        }
         _ => None,
     }
 }

@@ -13,6 +13,7 @@ import ValidationPanel from './ValidationPanel';
 import ScriptNodePalette from './ScriptNodePalette';
 import ScriptPropertyPanel from './ScriptPropertyPanel';
 import ScriptBrowser from './ScriptBrowser';
+import ConvertScriptDialog from './ConvertScriptDialog';
 import { buildValidationReport, type ValidationIssue } from '../lib/chainValidation';
 import { invoke } from '../lib/tauri';
 import type { EditorNodeData } from '../editors/types';
@@ -78,6 +79,7 @@ export function AppLayout() {
   const [scriptBottomPanel, setScriptBottomPanel] = useState<boolean>(false);
   const scriptEditorRef = useRef<ScriptEditorHandle>(null);
   const [scriptsLoaded, setScriptsLoaded] = useState(false);
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
 
   // ----- Data editor state -----
   const dataEditorRef = useRef<DataEditorHandle>(null);
@@ -521,7 +523,7 @@ export function AppLayout() {
                         templates={scriptTemplates}
                         onNodeSelect={handleScriptNodeSelect}
                       />
-                      {/* Floating palette toggle */}
+                      {/* Floating palette toggle + convert button */}
                       <div className="absolute bottom-3 left-3 z-20 flex gap-2">
                         <button
                           className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] shadow-lg transition-colors ${
@@ -534,6 +536,15 @@ export function AppLayout() {
                         >
                           Node Palette
                         </button>
+                        {activeScript?.script_type === 'Level' && (
+                          <button
+                            className="rounded-full border border-[rgba(255,255,255,0.1)] bg-[rgba(9,18,28,0.92)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[rgba(224,231,239,0.72)] shadow-lg transition-colors hover:border-[rgba(59,130,246,0.4)] hover:bg-[rgba(59,130,246,0.18)] hover:text-[#93c5fd]"
+                            onClick={() => setShowConvertDialog(true)}
+                            type="button"
+                          >
+                            Convert to Chains
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -570,6 +581,15 @@ export function AppLayout() {
           </Allotment>
         )}
       </div>
+
+      {/* Convert script dialog */}
+      {showConvertDialog && activeScriptPath && (
+        <ConvertScriptDialog
+          scriptPath={activeScriptPath}
+          onClose={() => setShowConvertDialog(false)}
+          onStatus={setStatus}
+        />
+      )}
     </div>
   );
 }

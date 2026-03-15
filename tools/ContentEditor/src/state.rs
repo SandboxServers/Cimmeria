@@ -15,11 +15,36 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Self {
-        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(|tools| tools.parent())
-            .expect("ContentEditor should live under tools/ in the repository root")
-            .to_path_buf();
+        // Try runtime exe location first (works on Windows), fall back to compile-time path (works in WSL dev)
+        let repo_root = std::env::current_exe()
+            .ok()
+            .and_then(|exe| {
+                // Walk up from exe to find repo root by looking for CLAUDE.md or entities/
+                let mut dir = exe.parent()?.to_path_buf();
+                for _ in 0..10 {
+                    if dir.join("entities").is_dir() && dir.join("data").join("scripts").is_dir() {
+                        return Some(dir);
+                    }
+                    dir = dir.parent()?.to_path_buf();
+                }
+                None
+            })
+            .or_else(|| {
+                // Fall back to compile-time path (dev builds from WSL)
+                let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .and_then(|tools| tools.parent())?
+                    .to_path_buf();
+                if p.join("entities").is_dir() {
+                    Some(p)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| {
+                // Last resort: current working directory
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+            });
 
         tracing::debug!("AppState initialized, repo_root={}", repo_root.display());
 

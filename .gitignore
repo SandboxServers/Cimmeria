@@ -174,3 +174,4 @@ docs/design/*
 .claude/worktrees/
 
 data/cache/
+cimmeria-content-editor.exe
