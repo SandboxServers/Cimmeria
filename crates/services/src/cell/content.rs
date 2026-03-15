@@ -1,21 +1,19 @@
 //! Content engine bridge for the CellService.
 //!
 //! Wires the data-driven chain engine into the game loop. Loads chains from the
-//! database at startup (falling back to hardcoded chains if DB is unavailable),
-//! fires events from gameplay actions, and executes the resolved actions against
-//! the game state.
+//! database at startup, fires events from gameplay actions, and executes the
+//! resolved actions against the game state.
 
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{Chain, ChainEngine, ResolvedActions};
-use cimmeria_content_engine::conditions::{ComparisonOp, Condition, MissionStatusValue};
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::loader::{
     DbActionRow, DbChainRow, DbConditionRow, DbTriggerRow, build_chains_from_rows,
 };
-use cimmeria_content_engine::triggers::{Trigger, TriggerEvent, TriggerType};
+use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 
 use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
 
@@ -26,8 +24,8 @@ use super::space_manager::SpaceManager;
 
 /// Build the content engine by loading chains from the database.
 ///
-/// Falls back to a minimal hardcoded engine if the DB pool is unavailable
-/// or the content tables don't exist yet.
+/// Returns an empty engine if the DB pool is unavailable or the content
+/// tables don't exist yet — all chain data lives in the database.
 pub async fn build_engine(db_pool: Option<&PgPool>) -> ChainEngine {
     if let Some(pool) = db_pool {
         match load_chains_from_db(pool).await {
@@ -40,60 +38,14 @@ pub async fn build_engine(db_pool: Option<&PgPool>) -> ChainEngine {
                 return engine;
             }
             Err(e) => {
-                tracing::warn!("Failed to load content chains from DB: {e} — using hardcoded fallback");
+                tracing::error!("Failed to load content chains from DB: {e} — content engine will be empty");
             }
         }
     } else {
-        tracing::info!("No DB pool available — using hardcoded content engine");
+        tracing::warn!("No DB pool available — content engine will be empty");
     }
 
-    build_fallback_engine()
-}
-
-/// Build a minimal fallback engine with hardcoded Mission 622 chains.
-pub fn build_initial_engine() -> ChainEngine {
-    build_fallback_engine()
-}
-
-fn build_fallback_engine() -> ChainEngine {
-    let mut engine = ChainEngine::new();
-
-    // Chain 1: Auto-accept mission 622 when player loads (any world)
-    engine.register_chain(Chain {
-        id: 1,
-        name: "Mission 622: Auto-accept on load (fallback)".to_string(),
-        enabled: true,
-        trigger: Trigger::OnPlayerLoaded { world_name: None },
-        conditions: vec![
-            Condition::MissionStatus {
-                mission_id: 622,
-                operator: ComparisonOp::Eq,
-                expected_status: MissionStatusValue::NotActive,
-            },
-        ],
-        actions: vec![
-            Action::AcceptMission { mission_id: 622 },
-        ],
-        priority: 0,
-    });
-
-    // Chain 2: Complete mission 622 when FrostBody dialog opens
-    engine.register_chain(Chain {
-        id: 2,
-        name: "Mission 622: Complete on FrostBody interact (fallback)".to_string(),
-        enabled: true,
-        trigger: Trigger::OnDialogOpen { dialog_id: 3995 },
-        conditions: vec![],
-        actions: vec![
-            Action::GrantItem { item_id: 55, count: 1, container_id: Some(3) },
-            Action::GrantItem { item_id: 3730, count: 1, container_id: Some(0) },
-            Action::CompleteMission { mission_id: 622 },
-        ],
-        priority: 0,
-    });
-
-    tracing::info!(chains = engine.chain_count(), "Content engine initialized (fallback)");
-    engine
+    ChainEngine::new()
 }
 
 // ── DB loading ──────────────────────────────────────────────────────────────
@@ -215,7 +167,26 @@ pub async fn fire_player_loaded(
     };
 
     let resolved = engine.resolve_event(&event, &ctx);
+    if resolved.actions.is_empty() {
+        tracing::info!(entity_id, player_id, %world_name, "fire_player_loaded: no chains matched");
+    } else {
+        for (chain_id, action) in &resolved.actions {
+            tracing::info!(entity_id, player_id, %world_name, chain_id, action = ?action, "fire_player_loaded: matched action");
+        }
+    }
     execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+
+    // Diagnostic: confirm mission 622 state after chain execution
+    if let Some(entity) = space_mgr.get_entity(entity_id) {
+        let m622_active = entity.missions.get_mission(622)
+            .map_or(false, |m| m.status == 1);
+        tracing::info!(
+            entity_id, player_id, %world_name,
+            mission_622_active = m622_active,
+            total_missions = entity.missions.count(),
+            "fire_player_loaded: post-execute state"
+        );
+    }
 }
 
 /// Fire the `DialogOpen` event when a dialog is displayed to a player.
@@ -235,6 +206,17 @@ pub async fn fire_dialog_open(
         populate_mission_context(entity, &mut ctx);
     }
 
+    // Diagnostic: show mission 622 state and chain count before resolution
+    let mission_status = ctx.params.get("mission_622_status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("<not set>");
+    tracing::info!(
+        entity_id, player_id, dialog_id,
+        mission_622_status = %mission_status,
+        dialog_open_chains = engine.chains_for_trigger(&TriggerType::DialogOpen),
+        "fire_dialog_open: resolving"
+    );
+
     let event = TriggerEvent {
         trigger_type: TriggerType::DialogOpen,
         source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
@@ -243,7 +225,112 @@ pub async fn fire_dialog_open(
     };
 
     let resolved = engine.resolve_event(&event, &ctx);
+
+    tracing::info!(
+        entity_id, dialog_id,
+        matched_actions = resolved.actions.len(),
+        "fire_dialog_open: resolved"
+    );
+
     execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+}
+
+/// Fire `OnInteractTag` event when a player interacts with a tagged entity.
+///
+/// Returns `true` if a content chain handled the interaction (caller should
+/// NOT fall through to the default `handle_interact()` logic).
+///
+/// Reference: `python/cell/SGWPlayer.py:1191-1194`
+/// ```python
+/// if target.tag is not None and self.first('entity.interact.tag::' + target.tag, ...):
+///     return
+/// ```
+pub async fn fire_interact_tag(
+    entity_id: u32,
+    player_id: i32,
+    tag: &str,
+    target_entity_id: u32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let mut ctx = ExecutionContext::new()
+        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    ctx.set_param("entity_tag".to_string(), serde_json::json!(tag));
+    ctx.set_param("target_entity_id".to_string(), serde_json::json!(target_entity_id));
+
+    if let Some(entity) = space_mgr.get_entity(entity_id) {
+        populate_mission_context(entity, &mut ctx);
+        if let Some(archetype_id) = entity.archetype_id {
+            ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+        }
+    }
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::InteractTag,
+        source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+        target_entity: Some(cimmeria_common::EntityId(target_entity_id as i32)),
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let matched = !resolved.actions.is_empty();
+    if matched {
+        tracing::info!(entity_id, player_id, %tag, actions = resolved.actions.len(), "fire_interact_tag: matched");
+        execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    } else {
+        tracing::debug!(entity_id, %tag, "fire_interact_tag: no chains matched");
+    }
+    matched
+}
+
+/// Fire `OnInteractTemplate` event when a player interacts with a templated entity.
+///
+/// Returns `true` if a content chain handled the interaction.
+///
+/// Reference: `python/cell/SGWPlayer.py:1196-1200`
+/// ```python
+/// if target.template is not None:
+///     if self.first('entity.interact.template::' + target.template.templateName, ...):
+///         return
+/// ```
+pub async fn fire_interact_template(
+    entity_id: u32,
+    player_id: i32,
+    template_name: &str,
+    target_entity_id: u32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> bool {
+    let mut ctx = ExecutionContext::new()
+        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    ctx.set_param("template_name".to_string(), serde_json::json!(template_name));
+    ctx.set_param("target_entity_id".to_string(), serde_json::json!(target_entity_id));
+
+    if let Some(entity) = space_mgr.get_entity(entity_id) {
+        populate_mission_context(entity, &mut ctx);
+        if let Some(archetype_id) = entity.archetype_id {
+            ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+        }
+    }
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::InteractTemplate,
+        source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+        target_entity: Some(cimmeria_common::EntityId(target_entity_id as i32)),
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let matched = !resolved.actions.is_empty();
+    if matched {
+        tracing::info!(entity_id, player_id, %template_name, actions = resolved.actions.len(), "fire_interact_template: matched");
+        execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    } else {
+        tracing::debug!(entity_id, %template_name, "fire_interact_template: no chains matched");
+    }
+    matched
 }
 
 /// Populate mission status and step status context params from entity state.
@@ -284,20 +371,32 @@ async fn execute_actions(
         match action {
             Action::AcceptMission { mission_id } | Action::AdvanceMission { mission_id } => {
                 tracing::info!(entity_id, mission_id, chain_id, "Content: accepting mission");
-                let (step_id, objectives) = mission_data(mission_id);
-                super::missions::accept_mission(
-                    entity_id, mission_id, step_id, objectives, tx, space_mgr,
-                ).await;
-                let _ = tx.send(CellToBaseMsg::MissionUpdate {
-                    player_id,
-                    mission_id,
-                    status: 1,
-                    current_step_id: Some(step_id),
-                    completed_step_ids: vec![],
-                    completed_objective_ids: vec![],
-                    active_objective_ids: vec![step_id],
-                    failed_objective_ids: vec![],
-                }).await;
+                if let Some(def) = space_mgr.mission_defs.get(&mission_id) {
+                    let step_id = def.step_id;
+                    let objectives: Vec<MissionObjective> = def.objectives.iter().map(|o| {
+                        MissionObjective {
+                            objective_id: o.objective_id,
+                            status: STATUS_ACTIVE,
+                            hidden: o.is_hidden,
+                            optional: o.is_optional,
+                        }
+                    }).collect();
+                    super::missions::accept_mission(
+                        entity_id, mission_id, step_id, objectives, tx, space_mgr,
+                    ).await;
+                    let _ = tx.send(CellToBaseMsg::MissionUpdate {
+                        player_id,
+                        mission_id,
+                        status: 1,
+                        current_step_id: Some(step_id),
+                        completed_step_ids: vec![],
+                        completed_objective_ids: vec![],
+                        active_objective_ids: vec![step_id],
+                        failed_objective_ids: vec![],
+                    }).await;
+                } else {
+                    tracing::warn!(mission_id, chain_id, "No mission_defs entry — cannot accept mission");
+                }
             }
             Action::CompleteMission { mission_id } => {
                 tracing::info!(entity_id, mission_id, chain_id, "Content: completing mission");
@@ -337,12 +436,22 @@ async fn execute_actions(
             }
             Action::PlaySequence { sequence_id } => {
                 tracing::info!(entity_id, sequence_id, chain_id, "Content: playing sequence");
-                // Send onPlaySequence (method_index 22) to client
-                let mut args = Vec::with_capacity(4);
-                args.extend_from_slice(&sequence_id.to_le_bytes());
+                // onSequence (index 1, SGWSpawnableEntity) — 8 args:
+                //   KismetEventSetSeqID, SourceID, TargetID, PrimaryTarget,
+                //   ImpactTime, NameValuePairs[], ViewType, InstanceId
+                // NOTE: method 22 is onMeleeRangeUpdate, NOT a sequence method!
+                let mut args = Vec::with_capacity(26);
+                args.extend_from_slice(&sequence_id.to_le_bytes()); // KismetEventSetSeqID
+                args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+                args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID
+                args.push(1);                                       // PrimaryTarget = true
+                args.extend_from_slice(&0.0f32.to_le_bytes());     // ImpactTime
+                args.extend_from_slice(&0u32.to_le_bytes());        // NameValuePairs count = 0
+                args.push(0);                                       // ViewType = 0
+                args.extend_from_slice(&0i32.to_le_bytes());        // InstanceId
                 let _ = tx.send(CellToBaseMsg::EntityMethodCall {
                     entity_id,
-                    method_index: 22, // onPlaySequence
+                    method_index: 1, // onSequence (SGWSpawnableEntity)
                     args,
                 }).await;
             }
@@ -361,32 +470,179 @@ async fn execute_actions(
                 }).await;
             }
             Action::AddDialogSet { dialog_set_id, slot, mission_id: _ } => {
+                // slot = template_id of the NPC entity to make interactable
+                // dialog_set_id = dialog_set_map_id (e.g. 5229 for Frost's body)
                 tracing::info!(entity_id, dialog_set_id, slot, chain_id, "Content: adding dialog set");
-                // TODO: Send onAddDialogSet to client
+
+                if let Some(entry) = space_mgr.dialog_set_maps.get(&dialog_set_id).cloned() {
+                    tracing::info!(
+                        entity_id, dialog_set_id, slot,
+                        dialog_id = entry.dialog_id,
+                        interaction_flags = entry.interaction_flags,
+                        "add_dialog_set: resolved dialog_set_map entry"
+                    );
+
+                    // Store in player entity's available_interactions
+                    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+                        player.available_interactions
+                            .entry(slot)
+                            .or_default()
+                            .push((dialog_set_id, entry.dialog_id, entry.interaction_flags));
+
+                        tracing::info!(
+                            entity_id, slot,
+                            interactions_count = player.available_interactions.get(&slot).map_or(0, |v| v.len()),
+                            "add_dialog_set: stored in available_interactions"
+                        );
+                    }
+
+                    // Find the target NPC entity with this template_id in the player's world.
+                    if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                        if let Some(&target_id) = space_mgr.find_entities_by_template(&world_name, slot).first() {
+                            let target_eid = cimmeria_common::EntityId(target_id as i32);
+                            let in_witness_set = space_mgr.get_entity(entity_id)
+                                .map_or(false, |p| p.witnesses.contains(&target_eid));
+
+                            if in_witness_set {
+                                // Compute merged InteractionType for THIS player
+                                let base_flags = space_mgr.get_entity(target_id)
+                                    .map(|e| e.interaction_type_flags).unwrap_or(0);
+                                let merged = base_flags | entry.interaction_flags;
+
+                                tracing::debug!(
+                                    entity_id, target_id, dialog_set_id,
+                                    dialog_id = entry.dialog_id, base_flags, merged,
+                                    "Sending per-player InteractionType for add_dialog_set"
+                                );
+
+                                let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+                                    witness_id: entity_id,
+                                    entity_id: target_id,
+                                    method_index: 3, // InteractionType
+                                    args: (merged as u64).to_le_bytes().to_vec(),
+                                }).await;
+                            } else {
+                                tracing::debug!(
+                                    entity_id, target_id, dialog_set_id,
+                                    "NPC not yet in player AoI — deferring InteractionType to AoI create"
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    tracing::warn!(dialog_set_id, "dialog_set_maps cache miss for add_dialog_set");
+                }
             }
             Action::RemoveDialogSet { dialog_set_id, slot } => {
                 tracing::info!(entity_id, dialog_set_id, slot, chain_id, "Content: removing dialog set");
-                // TODO: Send onRemoveDialogSet to client
+
+                // Remove entry from player's available_interactions
+                let removed_flags = if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+                    if let Some(entries) = player.available_interactions.get_mut(&slot) {
+                        entries.retain(|&(dsm_id, _, _)| dsm_id != dialog_set_id);
+                        if entries.is_empty() {
+                            player.available_interactions.remove(&slot);
+                        }
+                    }
+                    // Recompute merged flags from remaining entries for this slot
+                    player.available_interactions.get(&slot)
+                        .map(|entries| entries.iter().fold(0i64, |acc, &(_, _, flags)| acc | flags))
+                } else {
+                    None
+                };
+
+                // Send updated InteractionType only if NPC already in player's AoI
+                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                    if let Some(&target_id) = space_mgr.find_entities_by_template(&world_name, slot).first() {
+                        let target_eid = cimmeria_common::EntityId(target_id as i32);
+                        let in_witness_set = space_mgr.get_entity(entity_id)
+                            .map_or(false, |p| p.witnesses.contains(&target_eid));
+
+                        if in_witness_set {
+                            let base_flags = space_mgr.get_entity(target_id)
+                                .map(|e| e.interaction_type_flags).unwrap_or(0);
+                            let merged = base_flags | removed_flags.unwrap_or(0);
+
+                            let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+                                witness_id: entity_id,
+                                entity_id: target_id,
+                                method_index: 3, // InteractionType
+                                args: (merged as u64).to_le_bytes().to_vec(),
+                            }).await;
+                        }
+                    }
+                }
             }
             Action::RemoveItem { item_id, count } => {
                 tracing::info!(entity_id, item_id, count, chain_id, "Content: removing item");
                 // TODO: Send onRemoveItem + DB persist
             }
             Action::SetInteractionType { entity_tag, operation, mask } => {
-                tracing::debug!(entity_id, %entity_tag, %operation, mask, chain_id, "Content: set interaction type");
-                // TODO: Find tagged entity and modify interaction flags
+                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
+                        let new_flags = if let Some(target) = space_mgr.get_entity_mut(target_id) {
+                            let old = target.interaction_type_flags;
+                            match operation.as_str() {
+                                "add" => target.interaction_type_flags |= mask,
+                                "remove" => target.interaction_type_flags &= !mask,
+                                "set" => target.interaction_type_flags = mask,
+                                _ => tracing::warn!(%operation, "Unknown interaction type operation"),
+                            }
+                            tracing::debug!(
+                                entity_id, %entity_tag, target_id, %operation, mask,
+                                old, new = target.interaction_type_flags, chain_id,
+                                "Content: set interaction type"
+                            );
+                            Some(target.interaction_type_flags)
+                        } else {
+                            None
+                        };
+
+                        // Broadcast InteractionType(u64) to all players witnessing this entity
+                        // Mirrors Python: self.witnesses.InteractionType(self.interactionType)
+                        if let Some(flags) = new_flags {
+                            let witnesses = space_mgr.get_witnesses_of(target_id);
+                            for witness_id in witnesses {
+                                let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+                                    witness_id,
+                                    entity_id: target_id,
+                                    method_index: 3, // InteractionType
+                                    args: (flags as u64).to_le_bytes().to_vec(),
+                                }).await;
+                            }
+                        }
+                    } else {
+                        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetInteractionType");
+                    }
+                }
             }
             Action::StartMinigame { minigame_type, on_victory_chains } => {
                 tracing::info!(entity_id, %minigame_type, ?on_victory_chains, chain_id, "Content: starting minigame");
                 // TODO: Send onStartMinigame to client, track victory chains
             }
-            Action::SetAggression { entity_tag, level } => {
-                tracing::debug!(entity_id, %entity_tag, level, chain_id, "Content: set aggression");
-                // TODO: Find tagged NPC and set aggression level
+            Action::SetAggression { entity_tag, level: agg_level } => {
+                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
+                        tracing::debug!(entity_id, %entity_tag, target_id, agg_level, chain_id, "Content: set aggression");
+                        // Store aggression level as a property for future combat use
+                        if let Some(target) = space_mgr.get_entity_mut(target_id) {
+                            target.properties.insert(
+                                "aggression".to_string(),
+                                cimmeria_entity::base_entity::PropertyValue::Int32(agg_level),
+                            );
+                        }
+                    }
+                }
             }
             Action::DestroyTaggedEntity { entity_tag } => {
-                tracing::info!(entity_id, %entity_tag, chain_id, "Content: destroying tagged entity");
-                // TODO: Find and destroy tagged entity in space
+                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
+                        tracing::info!(entity_id, %entity_tag, target_id, chain_id, "Content: destroying tagged entity");
+                        space_mgr.destroy_entity(target_id);
+                    } else {
+                        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for DestroyTaggedEntity");
+                    }
+                }
             }
             Action::TriggerTransporter { region_id } => {
                 tracing::info!(entity_id, region_id, chain_id, "Content: triggering transporter");
@@ -415,6 +671,101 @@ async fn execute_actions(
             Action::SendMessage { channel, message } => {
                 tracing::info!(entity_id, %channel, %message, chain_id, "Content: sending message");
             }
+            Action::AddDialog { dialog_set_id, entity_template, mission_id: _ } => {
+                // entity_template = template_id of the NPC (same role as AddDialogSet.slot)
+                let slot = match entity_template {
+                    Some(tmpl) => tmpl,
+                    None => {
+                        tracing::warn!(entity_id, dialog_set_id, chain_id, "AddDialog: missing entity_template — skipping");
+                        continue;
+                    }
+                };
+
+                tracing::info!(entity_id, dialog_set_id, slot, chain_id, "Content: add dialog (via entity_template)");
+
+                if let Some(entry) = space_mgr.dialog_set_maps.get(&dialog_set_id).cloned() {
+                    tracing::info!(
+                        entity_id, dialog_set_id, slot,
+                        dialog_id = entry.dialog_id,
+                        interaction_flags = entry.interaction_flags,
+                        "add_dialog: resolved dialog_set_map entry"
+                    );
+
+                    // Store in player entity's available_interactions
+                    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+                        player.available_interactions
+                            .entry(slot)
+                            .or_default()
+                            .push((dialog_set_id, entry.dialog_id, entry.interaction_flags));
+                    }
+
+                    // Find the target NPC entity with this template_id in the player's world.
+                    if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                        if let Some(&target_id) = space_mgr.find_entities_by_template(&world_name, slot).first() {
+                            let target_eid = cimmeria_common::EntityId(target_id as i32);
+                            let in_witness_set = space_mgr.get_entity(entity_id)
+                                .map_or(false, |p| p.witnesses.contains(&target_eid));
+
+                            if in_witness_set {
+                                let base_flags = space_mgr.get_entity(target_id)
+                                    .map(|e| e.interaction_type_flags).unwrap_or(0);
+                                let merged = base_flags | entry.interaction_flags;
+
+                                tracing::debug!(
+                                    entity_id, target_id, dialog_set_id,
+                                    dialog_id = entry.dialog_id, base_flags, merged,
+                                    "Sending per-player InteractionType for add_dialog"
+                                );
+
+                                let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+                                    witness_id: entity_id,
+                                    entity_id: target_id,
+                                    method_index: 3, // InteractionType
+                                    args: (merged as u64).to_le_bytes().to_vec(),
+                                }).await;
+                            } else {
+                                tracing::debug!(
+                                    entity_id, target_id, dialog_set_id,
+                                    "NPC not yet in player AoI — deferring InteractionType to AoI create"
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    tracing::warn!(dialog_set_id, "dialog_set_maps cache miss for add_dialog");
+                }
+            }
+            Action::GenerateThreat { entity_tag, threat_level } => {
+                tracing::debug!(entity_id, ?entity_tag, threat_level, chain_id, "Content: generate threat");
+                // Threat/aggro is a combat-system concept — log for now
+            }
+            Action::SetVisible { entity_tag, visible } => {
+                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
+                        tracing::debug!(entity_id, %entity_tag, target_id, visible, chain_id, "Content: set visible");
+                        let vis_byte: u8 = if visible { 1 } else { 0 };
+                        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                            entity_id: target_id,
+                            method_index: 11, // onVisible
+                            args: vec![vis_byte],
+                        }).await;
+                    }
+                }
+            }
+            Action::MoveWaypoint { entity_tag, destination, speed: _ } => {
+                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
+                        tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
+                        // Update the entity's position (instant for now — animated pathing is a future enhancement)
+                        space_mgr.update_entity_position(
+                            target_id,
+                            destination,
+                            [0, 0, 0], // direction unchanged
+                            [0.0; 3],  // velocity
+                        );
+                    }
+                }
+            }
             Action::TriggerChain { chain_id: target_chain_id } => {
                 tracing::debug!(entity_id, target_chain_id, chain_id, "Content: trigger chain (caller must re-dispatch)");
             }
@@ -436,6 +787,12 @@ fn item_container(item_id: i32) -> i32 {
 }
 
 /// Send an `onUpdateItem` (method_index 72) to grant an item at runtime.
+///
+/// Wire format: `ARRAY<InvItem>` where InvItem is a FIXED_DICT with:
+///   id, dbid, stackSize, slotID, containerID, isBound, durability,
+///   ammoTypes (ARRAY<INT32>), curAmmoType, charges.
+/// The array count prefix is REQUIRED — without it the client reads the
+/// first field (instance_id) as the count and crashes.
 async fn grant_item_runtime(
     entity_id: u32,
     item_id: i32,
@@ -446,132 +803,31 @@ async fn grant_item_runtime(
     let instance_id = item_id * 1000 + 1;
     let slot_id: i32 = 1;
 
-    let mut args = Vec::with_capacity(40);
-    args.extend_from_slice(&instance_id.to_le_bytes());
-    args.extend_from_slice(&item_id.to_le_bytes());
-    args.extend_from_slice(&count.to_le_bytes());
-    args.extend_from_slice(&slot_id.to_le_bytes());
-    args.extend_from_slice(&container_id.to_le_bytes());
-    args.push(0); // isBound = false
-    args.extend_from_slice(&100i32.to_le_bytes()); // durability
-    args.extend_from_slice(&0u32.to_le_bytes());   // ammoTypes count = 0
-    args.extend_from_slice(&0i32.to_le_bytes());   // curAmmoType
-    args.extend_from_slice(&0i32.to_le_bytes());   // charges
+    let mut args = Vec::with_capacity(44);
+    // ARRAY count prefix (1 item)
+    args.extend_from_slice(&1u32.to_le_bytes());
+    // InvItem FIXED_DICT fields
+    args.extend_from_slice(&instance_id.to_le_bytes());  // id
+    args.extend_from_slice(&item_id.to_le_bytes());      // dbid
+    args.extend_from_slice(&count.to_le_bytes());         // stackSize
+    args.extend_from_slice(&slot_id.to_le_bytes());       // slotID
+    args.extend_from_slice(&container_id.to_le_bytes());  // containerID
+    args.push(0);                                          // isBound = false
+    args.extend_from_slice(&100i32.to_le_bytes());        // durability
+    args.extend_from_slice(&0u32.to_le_bytes());          // ammoTypes count = 0
+    args.extend_from_slice(&0i32.to_le_bytes());          // curAmmoType
+    args.extend_from_slice(&0i32.to_le_bytes());          // charges
 
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
-        method_index: 72,
+        method_index: 72, // onUpdateItem
         args,
     }).await;
-}
-
-/// Return the step ID and objectives for a known mission.
-fn mission_data(mission_id: i32) -> (i32, Vec<MissionObjective>) {
-    match mission_id {
-        622 => (
-            2113,
-            vec![MissionObjective {
-                objective_id: 2113,
-                status: STATUS_ACTIVE,
-                hidden: false,
-                optional: false,
-            }],
-        ),
-        _ => {
-            tracing::warn!(mission_id, "No mission data for ID — using empty objectives");
-            (0, vec![])
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-
-    #[test]
-    fn fallback_engine_has_two_chains() {
-        let engine = build_initial_engine();
-        assert_eq!(engine.chain_count(), 2);
-    }
-
-    #[test]
-    fn chain_1_matches_player_loaded_with_mission_not_active() {
-        let engine = build_initial_engine();
-
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param("mission_622_status".to_string(), serde_json::json!("not_active"));
-
-        let event = TriggerEvent {
-            trigger_type: TriggerType::PlayerLoaded,
-            source_entity: None,
-            target_entity: None,
-            params: ctx.params.clone(),
-        };
-
-        let resolved = engine.resolve_event(&event, &ctx);
-        assert_eq!(resolved.actions.len(), 1);
-        match &resolved.actions[0].1 {
-            Action::AcceptMission { mission_id } => assert_eq!(*mission_id, 622),
-            other => panic!("Expected AcceptMission, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn chain_1_skips_when_mission_already_active() {
-        let engine = build_initial_engine();
-
-        let mut ctx = ExecutionContext::new();
-        ctx.set_param("mission_622_status".to_string(), serde_json::json!("active"));
-
-        let event = TriggerEvent {
-            trigger_type: TriggerType::PlayerLoaded,
-            source_entity: None,
-            target_entity: None,
-            params: ctx.params.clone(),
-        };
-
-        let resolved = engine.resolve_event(&event, &ctx);
-        assert_eq!(resolved.actions.len(), 0);
-    }
-
-    #[test]
-    fn chain_2_matches_frostbody_dialog() {
-        let engine = build_initial_engine();
-
-        let mut params = HashMap::new();
-        params.insert("dialog_id".to_string(), serde_json::json!(3995));
-
-        let event = TriggerEvent {
-            trigger_type: TriggerType::DialogOpen,
-            source_entity: None,
-            target_entity: None,
-            params,
-        };
-
-        let ctx = ExecutionContext::new();
-        let resolved = engine.resolve_event(&event, &ctx);
-        assert_eq!(resolved.actions.len(), 3);
-    }
-
-    #[test]
-    fn chain_2_does_not_match_other_dialog() {
-        let engine = build_initial_engine();
-
-        let mut params = HashMap::new();
-        params.insert("dialog_id".to_string(), serde_json::json!(1));
-
-        let event = TriggerEvent {
-            trigger_type: TriggerType::DialogOpen,
-            source_entity: None,
-            target_entity: None,
-            params,
-        };
-
-        let ctx = ExecutionContext::new();
-        let resolved = engine.resolve_event(&event, &ctx);
-        assert_eq!(resolved.actions.len(), 0);
-    }
 
     #[test]
     fn item_container_mapping() {
@@ -579,13 +835,5 @@ mod tests {
         assert_eq!(item_container(21), 3);
         assert_eq!(item_container(3730), 1);
         assert_eq!(item_container(999), 1);
-    }
-
-    #[test]
-    fn mission_622_data() {
-        let (step, objectives) = mission_data(622);
-        assert_eq!(step, 2113);
-        assert_eq!(objectives.len(), 1);
-        assert_eq!(objectives[0].objective_id, 2113);
     }
 }
