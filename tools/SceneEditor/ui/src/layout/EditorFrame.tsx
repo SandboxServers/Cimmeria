@@ -18,6 +18,7 @@ import { StatusBar } from '../statusbar/StatusBar';
 import { ActorSearch } from '../panels/ActorSearch';
 import { EntityPalette } from '../panels/EntityPalette';
 import { DbEntityList } from '../panels/DbEntityList';
+import { DbEntityDetail } from '../panels/DbEntityDetail';
 import { ContentBrowser } from '../panels/ContentBrowser';
 
 interface EditorFrameProps {
@@ -446,6 +447,13 @@ export function EditorFrame({
                       onScaleActor={onScaleOneActor}
                     />
                   </Allotment.Pane>
+                  {selectedDbEntityIds.size === 1 && (
+                    <Allotment.Pane preferredSize={180} minSize={100}>
+                      <DbEntityDetail
+                        entity={dbEntities.find(e => e.id === [...selectedDbEntityIds][0]) ?? null}
+                      />
+                    </Allotment.Pane>
+                  )}
                   <Allotment.Pane preferredSize={200}>
                     <EntityPalette
                       templates={entityTemplates}
