@@ -147,6 +147,10 @@ pub const CM_USE_ABILITY_ON_GROUND: u16 = 69;
 pub const CM_RESPAWN: u16 = 70;
 /// SGWPlayer: interact(INT32 entityId)
 pub const CM_INTERACT: u16 = 74;
+/// SGWPlayer: dialogButtonChoice(INT32 dialogId, INT32 buttonId)
+pub const CM_DIALOG_BUTTON_CHOICE: u16 = 75;
+/// SGWPlayer: initialResponse(INT32 dialogSetMapId)
+pub const CM_INITIAL_RESPONSE: u16 = 76;
 /// SGWPlayer: trainAbility(INT32 AbilityID)
 pub const CM_TRAIN_ABILITY: u16 = 77;
 /// SGWPlayer: purchaseItems(ARRAY<{INT32, INT32}>)
@@ -159,6 +163,7 @@ pub const CM_BUYBACK_ITEMS: u16 = 80;
 pub const CM_REPAIR_ITEMS: u16 = 81;
 /// SGWPlayer: rechargeItems(ARRAY<INT32>)
 pub const CM_RECHARGE_ITEMS: u16 = 82;
+// lootItem index TBD — needs exact position counting from .def
 /// SGWPlayer: setAutoCycle(INT8 enabled)
 pub const CM_SET_AUTO_CYCLE: u16 = 83;
 
@@ -286,6 +291,37 @@ pub async fn dispatch_cell_method(
                         entity.abilities.auto_cycle_ability_id = None;
                     }
                 }
+            }
+        }
+
+        CM_DIALOG_BUTTON_CHOICE => {
+            if args.len() >= 8 {
+                let dialog_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let button_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                tracing::debug!(entity_id, dialog_id, button_id, "dialogButtonChoice");
+
+                // Fire content engine event for this dialog button press
+                let player_id = space_mgr.get_entity(entity_id)
+                    .and_then(|e| e.player_id)
+                    .unwrap_or(0);
+                super::content::fire_dialog_open(
+                    entity_id, player_id, dialog_id, engine, tx, space_mgr,
+                ).await;
+            }
+        }
+
+        CM_INITIAL_RESPONSE => {
+            if args.len() >= 4 {
+                let dialog_set_map_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::debug!(entity_id, dialog_set_map_id, "initialResponse");
+
+                // Fire content engine event
+                let player_id = space_mgr.get_entity(entity_id)
+                    .and_then(|e| e.player_id)
+                    .unwrap_or(0);
+                super::content::fire_dialog_open(
+                    entity_id, player_id, dialog_set_map_id, engine, tx, space_mgr,
+                ).await;
             }
         }
 
@@ -597,6 +633,14 @@ pub fn cell_method_name(index: u16) -> &'static str {
         CM_REPAIR_ITEM => "repairItemRequest",
         CM_REQUEST_ACTIVE_SLOT_CHANGE => "requestActiveSlotChange",
         CM_REQUEST_AMMO_CHANGE => "requestAmmoChange",
+        CM_DIALOG_BUTTON_CHOICE => "dialogButtonChoice",
+        CM_INITIAL_RESPONSE => "initialResponse",
+        CM_TRAIN_ABILITY => "trainAbility",
+        CM_PURCHASE_ITEMS => "purchaseItems",
+        CM_SELL_ITEMS => "sellItems",
+        CM_BUYBACK_ITEMS => "buybackItems",
+        CM_REPAIR_ITEMS => "repairItems",
+        CM_RECHARGE_ITEMS => "rechargeItems",
         CM_ON_DIAL_GATE => "onDialGate",
         CM_ABANDON_MISSION => "abandonMission",
         CM_SHARE_MISSION => "shareMission",

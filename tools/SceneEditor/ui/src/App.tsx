@@ -14,6 +14,7 @@ import type {
 import { EditorFrame } from './layout/EditorFrame';
 import { ZoneSelector } from './panels/ZoneSelector';
 import { DbConnectionDialog } from './panels/DbConnectionDialog';
+import { CreateRegionDialog } from './panels/CreateRegionDialog';
 
 export default function App() {
   // ---- Zone state ----
@@ -93,6 +94,22 @@ export default function App() {
     setSelectedTemplate(template);
     if (!template) setPlacementMode(false);
   }, []);
+
+  // ---- Region creation ----
+  const [showRegionDialog, setShowRegionDialog] = useState(false);
+
+  const handleCreateRegion = useCallback((entity: DbEntity) => {
+    setDbEntities(prev => [...prev, entity]);
+  }, []);
+
+  const currentWorldId = useMemo(() => {
+    if (!loadedZone || worlds.length === 0) return null;
+    const matched = worlds.find(w =>
+      w.client_map.toLowerCase() === loadedZone.zone_name.toLowerCase() ||
+      w.world_name.toLowerCase() === loadedZone.zone_name.toLowerCase()
+    );
+    return matched?.world_id ?? null;
+  }, [loadedZone, worlds]);
 
   // ---- Update spawn position (called when DB entity is moved in viewport) ----
   const handleUpdateSpawnPosition = useCallback(async (spawnId: number, x: number, y: number, z: number, heading: number) => {
@@ -658,6 +675,15 @@ export default function App() {
           onConnect={handleDbConnect}
           onDisconnect={handleDbDisconnect}
           onClose={() => setShowDbDialog(false)}
+        />
+      )}
+      {showRegionDialog && (
+        <CreateRegionDialog
+          position={mouseWorldPos}
+          worlds={worlds}
+          currentWorldId={currentWorldId}
+          onCreated={handleCreateRegion}
+          onClose={() => setShowRegionDialog(false)}
         />
       )}
     </>
