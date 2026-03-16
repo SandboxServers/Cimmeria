@@ -1133,7 +1133,7 @@ pub(crate) async fn handle_mail_request(
             ).await;
         }
 
-        MailOp::Send { sender_name, recipients, subject, body, cash, is_cod, item_id, item_quantity } => {
+        MailOp::Send { sender_name, recipients, subject, body, cash, is_cod, item_id: _, item_quantity: _ } => {
             tracing::info!(entity_id, %sender_name, ?recipients, %subject, cash, "Mail: sending");
 
             // Resolve each recipient name to a player_id
