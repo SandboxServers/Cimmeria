@@ -117,6 +117,39 @@ impl VendorCache {
         Ok(stock)
     }
 
+    /// Look up the buy price for a given design_id across all cached vendors.
+    ///
+    /// Returns the first matching `unit_price` from any vendor's buy list.
+    /// This is a simple linear scan — fine for the small number of vendors
+    /// typical in a zone.
+    pub async fn find_buy_price(&self, design_id: i32) -> Option<i32> {
+        let inner = self.inner.read().await;
+        for stock in inner.values() {
+            for item in &stock.buy_list {
+                if item.item_type_id == design_id {
+                    return Some(item.unit_price);
+                }
+            }
+        }
+        None
+    }
+
+    /// Look up the sell price for a given design_id across all cached vendors.
+    ///
+    /// Sell lists may be empty (vendor buys anything). When a vendor has no
+    /// sell list entry for an item, a default sell ratio is applied by the caller.
+    pub async fn find_sell_price(&self, design_id: i32) -> Option<i32> {
+        let inner = self.inner.read().await;
+        for stock in inner.values() {
+            for item in &stock.sell_list {
+                if item.item_type_id == design_id {
+                    return Some(item.unit_price);
+                }
+            }
+        }
+        None
+    }
+
     /// Bulk-load all vendor stocks referenced by the given template IDs.
     ///
     /// Call this at startup after spawning DB NPCs to pre-warm the cache.

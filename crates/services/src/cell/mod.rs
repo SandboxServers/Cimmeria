@@ -378,7 +378,7 @@ async fn run_cell_loop(
                         engine = content::build_engine(db_pool.as_deref()).await;
                         tracing::info!(chains = engine.chain_count(), "Content engine reloaded");
                     }
-                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine, &ability_registry, &loot_cache, &vendor_cache).await,
+                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine, &ability_registry, &loot_cache, &vendor_cache, &mut effect_mgr).await,
                     None => {
                         tracing::info!("Cell service channel closed — shutting down");
                         break;
@@ -405,6 +405,7 @@ async fn handle_base_message(
     ability_registry: &Arc<cimmeria_entity::abilities::AbilityRegistry>,
     loot_cache: &Arc<loot::LootCache>,
     vendor_cache: &vendor::VendorCache,
+    effect_mgr: &mut effects::EffectManager,
 ) {
     match msg {
         BaseToCellMsg::CreateEntity { entity_id, world_name, position, rotation, reply_tx } => {
@@ -457,7 +458,7 @@ async fn handle_base_message(
         }
 
         BaseToCellMsg::CellMethodCall { entity_id, method_index, args } => {
-            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine, ability_registry, loot_cache, vendor_cache).await;
+            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine, ability_registry, loot_cache, vendor_cache, effect_mgr).await;
         }
 
         BaseToCellMsg::ChatMessage { entity_id, speaker_name, speaker_flags, channel, text } => {

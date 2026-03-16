@@ -40,6 +40,7 @@ pub async fn handle_use_ability(
     space_mgr: &mut SpaceManager,
     ability_registry: &Arc<AbilityRegistry>,
     loot_cache: &Arc<super::loot::LootCache>,
+    effect_mgr: &mut super::effects::EffectManager,
 ) {
     // ── Validation (requires attacker entity) ──
 
@@ -198,6 +199,41 @@ pub async fn handle_use_ability(
         method_index: 20, // onStatUpdate (SGWCombatant interface, flat index 20)
         args: target_stat_update,
     }).await;
+
+    // ── Apply duration effects (buffs/debuffs) from ability ──
+    if !target_died {
+        let effects = ability_registry.get_ability_effects(ability_id);
+        for effect_def in &effects {
+            // Duration effects have pulse_duration > 0
+            if effect_def.pulse_duration > 0.0 {
+                let heal = effect_def.heal_amount();
+                let dmg = effect_def.base_damage();
+                let sid = effect_def.stat_id();
+
+                // Build stat modifiers from the effect's NVPs
+                let mut modifiers = Vec::new();
+                if heal > 0 {
+                    modifiers.push(super::effects::StatModifier {
+                        stat_id: sid,
+                        delta: heal, // positive = buff/heal
+                    });
+                } else if dmg > 0 {
+                    modifiers.push(super::effects::StatModifier {
+                        stat_id: sid,
+                        delta: -dmg, // negative = debuff/DoT
+                    });
+                }
+
+                if !modifiers.is_empty() {
+                    effect_mgr.apply_effect(
+                        target_eid, entity_id, ability_id,
+                        modifiers, effect_def.pulse_duration,
+                        tx, space_mgr,
+                    ).await;
+                }
+            }
+        }
+    }
 
     // ── Send state field update if target died ──
 

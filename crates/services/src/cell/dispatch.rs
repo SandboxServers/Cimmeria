@@ -180,6 +180,7 @@ pub async fn dispatch_cell_method(
     ability_registry: &std::sync::Arc<cimmeria_entity::abilities::AbilityRegistry>,
     loot_cache: &std::sync::Arc<super::loot::LootCache>,
     vendor_cache: &super::vendor::VendorCache,
+    effect_mgr: &mut super::effects::EffectManager,
 ) {
     match method_index {
         CM_SET_TARGET_ID => {
@@ -249,7 +250,7 @@ pub async fn dispatch_cell_method(
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, ability_id, target_id, "useAbility");
-                super::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr, ability_registry, loot_cache).await;
+                super::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr, ability_registry, loot_cache, effect_mgr).await;
             }
         }
 
@@ -275,7 +276,7 @@ pub async fn dispatch_cell_method(
                 for target_id in nearby {
                     super::abilities::handle_use_ability(
                         entity_id, ability_id, target_id as i32,
-                        tx, space_mgr, ability_registry, loot_cache,
+                        tx, space_mgr, ability_registry, loot_cache, effect_mgr,
                     ).await;
                 }
             }
@@ -366,9 +367,23 @@ pub async fn dispatch_cell_method(
             }
         }
 
-        CM_PURCHASE_ITEMS | CM_SELL_ITEMS | CM_BUYBACK_ITEMS |
+        CM_PURCHASE_ITEMS => {
+            handle_purchase_items(entity_id, args, tx, space_mgr, vendor_cache).await;
+        }
+
+        CM_SELL_ITEMS => {
+            handle_sell_items(entity_id, args, tx, space_mgr, vendor_cache).await;
+        }
+
+        CM_BUYBACK_ITEMS => {
+            // Buyback uses the same wire format as purchase: ARRAY of {designId, quantity}
+            // For now, treat identically to purchase — the buyback list is populated
+            // client-side from items previously sold in this session.
+            handle_purchase_items(entity_id, args, tx, space_mgr, vendor_cache).await;
+        }
+
         CM_REPAIR_ITEMS | CM_RECHARGE_ITEMS => {
-            tracing::debug!(entity_id, method_index, "Store transaction (stub)");
+            tracing::debug!(entity_id, method_index, "Store repair/recharge (stub)");
         }
 
         CM_RESPAWN => {
@@ -739,6 +754,183 @@ async fn handle_respawn(
     }).await;
 }
 
+// ── Store Transactions ───────────────────────────────────────────────────────
+
+/// Parse an ARRAY of {INT32, INT32} pairs from the wire.
+///
+/// Wire format: `count:u32, [field_a:i32, field_b:i32] * count`
+fn parse_i32_pair_array(args: &[u8]) -> Vec<(i32, i32)> {
+    if args.len() < 4 {
+        return Vec::new();
+    }
+    let count = u32::from_le_bytes([args[0], args[1], args[2], args[3]]) as usize;
+    let mut offset = 4;
+    let mut pairs = Vec::with_capacity(count);
+    for _ in 0..count {
+        if offset + 8 > args.len() {
+            break;
+        }
+        let a = i32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]);
+        let b = i32::from_le_bytes([args[offset+4], args[offset+5], args[offset+6], args[offset+7]]);
+        pairs.push((a, b));
+        offset += 8;
+    }
+    pairs
+}
+
+/// Send `onCashChanged(INT32 newBalance)` to the client.
+///
+/// TODO: The cell doesn't track the player's naquadah balance, so we send
+/// a delta here. The BaseApp should ideally maintain the authoritative balance
+/// and send the absolute value. For now this gets the wire message flowing.
+async fn send_cash_changed(
+    entity_id: u32,
+    delta: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: 75, // onCashChanged
+        args: delta.to_le_bytes().to_vec(),
+    }).await;
+}
+
+/// Handle `purchaseItems(ARRAY<{INT32 designId, INT32 quantity}>)`.
+///
+/// For each item in the request:
+/// 1. Look up the unit price from the vendor cache
+/// 2. Grant the item via CellToBaseMsg::GrantItem
+/// 3. After all items, send onCashChanged with the total cost (negative delta)
+///
+/// Reference: `python/cell/SGWPlayer.py` purchaseItems
+async fn handle_purchase_items(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+    vendor_cache: &super::vendor::VendorCache,
+) {
+    let items = parse_i32_pair_array(args);
+    if items.is_empty() {
+        return;
+    }
+
+    let player_id = space_mgr.get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0);
+
+    let mut total_cost: i64 = 0;
+
+    for (design_id, quantity) in &items {
+        let quantity = (*quantity).max(1);
+
+        // Look up price from any cached vendor's buy list
+        let unit_price = vendor_cache.find_buy_price(*design_id).await.unwrap_or(0);
+        total_cost += unit_price as i64 * quantity as i64;
+
+        tracing::debug!(
+            entity_id, design_id, quantity, unit_price,
+            "purchaseItems: granting item"
+        );
+
+        // Grant each item to the player
+        let _ = tx.send(CellToBaseMsg::GrantItem {
+            entity_id,
+            player_id,
+            item_id: *design_id,
+            container_id: 0, // BaseApp resolves the target container
+            count: quantity,
+        }).await;
+    }
+
+    // Notify the client about the cash change (negative = spent)
+    let cost_i32 = (total_cost.min(i32::MAX as i64)) as i32;
+    send_cash_changed(entity_id, -cost_i32, tx).await;
+
+    tracing::info!(
+        entity_id, item_count = items.len(), total_cost,
+        "Purchase complete"
+    );
+}
+
+/// Handle `sellItems(ARRAY<{INT32 instanceId, INT32 quantity}>)`.
+///
+/// For each item in the request:
+/// 1. Send onRemoveItem to remove it from the client's inventory
+/// 2. After all items, send onCashChanged with the sell value (positive delta)
+///
+/// Reference: `python/cell/SGWPlayer.py` sellItems
+async fn handle_sell_items(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+    vendor_cache: &super::vendor::VendorCache,
+) {
+    let items = parse_i32_pair_array(args);
+    if items.is_empty() {
+        return;
+    }
+
+    let player_id = space_mgr.get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0);
+
+    let mut total_value: i64 = 0;
+    let mut remove_ids: Vec<i32> = Vec::with_capacity(items.len());
+
+    for (instance_id, quantity) in &items {
+        let quantity = (*quantity).max(1);
+
+        // Sell price: check vendor sell list, fall back to a flat default.
+        // The instance_id is an inventory row ID, not a design_id, so we can't
+        // easily look up the exact item type here without DB access. Use a
+        // placeholder sell value until BaseApp-side inventory validation is wired.
+        // TODO: Look up the item's design_id from inventory to get the real price.
+        let sell_price = vendor_cache.find_sell_price(*instance_id).await.unwrap_or(1);
+        total_value += sell_price as i64 * quantity as i64;
+
+        tracing::debug!(
+            entity_id, instance_id, quantity, sell_price,
+            "sellItems: removing item"
+        );
+
+        remove_ids.push(*instance_id);
+
+        // Tell BaseApp to remove from DB (negative count = removal)
+        let _ = tx.send(CellToBaseMsg::GrantItem {
+            entity_id,
+            player_id,
+            item_id: *instance_id,
+            container_id: 0,
+            count: -(quantity),
+        }).await;
+    }
+
+    // Send onRemoveItem(ARRAY<INT32>) to the client — batch all removed IDs
+    if !remove_ids.is_empty() {
+        let mut rm_args = Vec::with_capacity(4 + remove_ids.len() * 4);
+        rm_args.extend_from_slice(&(remove_ids.len() as u32).to_le_bytes());
+        for id in &remove_ids {
+            rm_args.extend_from_slice(&id.to_le_bytes());
+        }
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: 73, // onRemoveItem
+            args: rm_args,
+        }).await;
+    }
+
+    // Notify the client about the cash gained (positive = earned)
+    let value_i32 = (total_value.min(i32::MAX as i64)) as i32;
+    send_cash_changed(entity_id, value_i32, tx).await;
+
+    tracing::info!(
+        entity_id, item_count = items.len(), total_value,
+        "Sell complete"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -768,5 +960,53 @@ mod tests {
         assert_eq!(CM_SET_CROUCHED, 5);
         assert_eq!(CM_TOGGLE_HEAL_DEBUG, 6);
         assert_eq!(CM_REQUEST_HOLSTER_WEAPON, 7);
+    }
+
+    #[test]
+    fn parse_i32_pair_array_empty() {
+        assert!(parse_i32_pair_array(&[]).is_empty());
+        // count = 0
+        assert!(parse_i32_pair_array(&[0, 0, 0, 0]).is_empty());
+    }
+
+    #[test]
+    fn parse_i32_pair_array_single() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&1u32.to_le_bytes()); // count = 1
+        buf.extend_from_slice(&100i32.to_le_bytes()); // designId = 100
+        buf.extend_from_slice(&3i32.to_le_bytes());   // quantity = 3
+
+        let pairs = parse_i32_pair_array(&buf);
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0], (100, 3));
+    }
+
+    #[test]
+    fn parse_i32_pair_array_multiple() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&2u32.to_le_bytes()); // count = 2
+        buf.extend_from_slice(&10i32.to_le_bytes()); // pair 0: a=10
+        buf.extend_from_slice(&1i32.to_le_bytes());  //         b=1
+        buf.extend_from_slice(&20i32.to_le_bytes()); // pair 1: a=20
+        buf.extend_from_slice(&5i32.to_le_bytes());  //         b=5
+
+        let pairs = parse_i32_pair_array(&buf);
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs[0], (10, 1));
+        assert_eq!(pairs[1], (20, 5));
+    }
+
+    #[test]
+    fn parse_i32_pair_array_truncated() {
+        // count says 2 but only 1 pair of data present
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&2u32.to_le_bytes());
+        buf.extend_from_slice(&42i32.to_le_bytes());
+        buf.extend_from_slice(&7i32.to_le_bytes());
+        // missing second pair
+
+        let pairs = parse_i32_pair_array(&buf);
+        assert_eq!(pairs.len(), 1); // gracefully stops at available data
+        assert_eq!(pairs[0], (42, 7));
     }
 }
