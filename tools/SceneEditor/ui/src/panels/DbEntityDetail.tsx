@@ -1,11 +1,30 @@
+import { useState, useEffect } from 'react';
 import type { DbEntity } from '../lib/types';
 import { DB_ENTITY_COLORS } from '../lib/types';
 
 interface DbEntityDetailProps {
   entity: DbEntity | null;
+  onUpdatePosition?: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
 }
 
-export function DbEntityDetail({ entity }: DbEntityDetailProps) {
+export function DbEntityDetail({ entity, onUpdatePosition }: DbEntityDetailProps) {
+  const [editX, setEditX] = useState('');
+  const [editY, setEditY] = useState('');
+  const [editZ, setEditZ] = useState('');
+  const [editHeading, setEditHeading] = useState('');
+  const [dirty, setDirty] = useState(false);
+
+  // Sync editable fields when entity changes
+  useEffect(() => {
+    if (entity) {
+      setEditX(entity.x.toFixed(1));
+      setEditY(entity.y.toFixed(1));
+      setEditZ(entity.z.toFixed(1));
+      setEditHeading(entity.heading.toFixed(1));
+      setDirty(false);
+    }
+  }, [entity?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!entity) {
     return (
       <div className="flex h-full flex-col bg-card">
@@ -20,6 +39,24 @@ export function DbEntityDetail({ entity }: DbEntityDetailProps) {
   }
 
   const color = DB_ENTITY_COLORS[entity.entity_type] ?? DB_ENTITY_COLORS._default;
+  const canEdit = entity.source_table === 'spawnlist' && onUpdatePosition;
+
+  const handleSave = () => {
+    if (!canEdit) return;
+    const x = parseFloat(editX);
+    const y = parseFloat(editY);
+    const z = parseFloat(editZ);
+    const heading = parseFloat(editHeading);
+    if (!isNaN(x) && !isNaN(y) && !isNaN(z) && !isNaN(heading)) {
+      onUpdatePosition!(entity.id, x, y, z, heading);
+      setDirty(false);
+    }
+  };
+
+  const handleFieldChange = (setter: (v: string) => void, value: string) => {
+    setter(value);
+    setDirty(true);
+  };
 
   return (
     <div className="flex h-full flex-col bg-card">
@@ -49,11 +86,30 @@ export function DbEntityDetail({ entity }: DbEntityDetailProps) {
           )}
         </PropertySection>
 
-        <PropertySection title="Position (UE3 cm)">
-          <PropertyRow label="X" value={entity.x.toFixed(1)} mono />
-          <PropertyRow label="Y" value={entity.y.toFixed(1)} mono />
-          <PropertyRow label="Z" value={entity.z.toFixed(1)} mono />
-          <PropertyRow label="Heading" value={`${entity.heading.toFixed(1)}°`} mono />
+        <PropertySection title={canEdit ? 'Position (editable)' : 'Position (UE3 cm)'}>
+          {canEdit ? (
+            <>
+              <EditableRow label="X" value={editX} onChange={v => handleFieldChange(setEditX, v)} />
+              <EditableRow label="Y" value={editY} onChange={v => handleFieldChange(setEditY, v)} />
+              <EditableRow label="Z" value={editZ} onChange={v => handleFieldChange(setEditZ, v)} />
+              <EditableRow label="Heading" value={editHeading} onChange={v => handleFieldChange(setEditHeading, v)} />
+              {dirty && (
+                <button
+                  onClick={handleSave}
+                  className="mt-1 w-full rounded bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Save Position to DB
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <PropertyRow label="X" value={entity.x.toFixed(1)} mono />
+              <PropertyRow label="Y" value={entity.y.toFixed(1)} mono />
+              <PropertyRow label="Z" value={entity.z.toFixed(1)} mono />
+              <PropertyRow label="Heading" value={`${entity.heading.toFixed(1)}°`} mono />
+            </>
+          )}
         </PropertySection>
 
         {(entity.radius != null || entity.height != null) && (
@@ -96,6 +152,20 @@ function PropertyRow({ label, value, mono }: { label: string; value: string; mon
       <span className={`truncate text-foreground ${mono ? 'font-mono text-[10px]' : ''}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function EditableRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex items-center gap-2 py-0.5 text-[11px]">
+      <span className="w-20 shrink-0 text-muted-foreground">{label}</span>
+      <input
+        type="number"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full rounded bg-input px-1.5 py-0.5 font-mono text-[10px] text-foreground outline-none"
+      />
     </div>
   );
 }

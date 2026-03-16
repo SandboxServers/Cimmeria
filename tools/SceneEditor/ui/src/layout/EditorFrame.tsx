@@ -451,6 +451,7 @@ export function EditorFrame({
                     <Allotment.Pane preferredSize={180} minSize={100}>
                       <DbEntityDetail
                         entity={dbEntities.find(e => e.id === [...selectedDbEntityIds][0]) ?? null}
+                        onUpdatePosition={onUpdateSpawnPosition}
                       />
                     </Allotment.Pane>
                   )}
