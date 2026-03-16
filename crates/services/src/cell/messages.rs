@@ -190,7 +190,7 @@ pub enum CellToBaseMsg {
     /// The CellService has already validated the stargate address and removed
     /// the entity from the old space. BaseApp must send RESET_ENTITIES to the
     /// client, then re-create the entity in the new world via the standard
-    /// Phase 5a/5b world entry flow.
+    /// World entry flow (teardown -> create player -> enter world).
     GateTravel {
         entity_id: u32,
         target_world_name: String,

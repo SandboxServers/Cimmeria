@@ -133,7 +133,7 @@ pub(crate) async fn handle_login(
                 next_data_id: 0,
                 pending_world_entry: None,
                 pending_player_load_data: None,
-                pending_world_entry_phase_b: None,
+                pending_map_loaded: None,
                 pending_client_ready: None,
                 cached_appearance_args: None,
                 cached_tint_args: None,

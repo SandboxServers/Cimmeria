@@ -1,341 +1,30 @@
-//! Authentication service — HTTP/SOAP login handshake (Phases 1 and 2).
-//!
-//! Phase 1: client POSTs `SGWLoginRequest` to `/SGWLogin/UserAuth`. Server
-//! validates credentials and returns the shard list.
-//!
-//! Phase 2: client POSTs `SGWSelectServerRequest` to
-//! `/SGWLogin/ServerSelection`. Server generates a session key and ticket and
-//! returns the BaseApp connection info.
-//!
-//! See `docs/protocol/login-handshake.md` for the full protocol spec.
+//! HTTP/SOAP handlers for Phase 1 (UserAuth) and Phase 2 (ServerSelection),
+//! plus XML parsing, credential validation, and random generators.
 
-use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
 use axum::{
-    Router,
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
-    routing::post,
 };
-use tokio::sync::broadcast;
 use quick_xml::{Reader, events::Event};
 use rand::Rng;
 use sqlx::PgPool;
-use tokio::net::TcpListener;
 
-use cimmeria_common::ServerConfig;
+use crate::audit::emit_login_event;
 
-use crate::audit::{LoginEventBuffer, LoginEvent, emit_login_event};
-
-// ── Expiration constants ─────────────────────────────────────────────────────
-
-/// How long a Phase 1 session cookie (SID) remains valid before Phase 2
-/// must consume it.  C++ had no explicit TTL but sessions were effectively
-/// short-lived; 5 minutes is generous.
-const SESSION_TTL: Duration = Duration::from_secs(300);
-
-/// How long a Phase 2 ticket remains valid before Phase 3 must consume it.
-/// Matches the C++ `ShardLogonQueue::TicketExpiration` (30 seconds).
-const TICKET_TTL: Duration = Duration::from_secs(30);
-
-/// How often the background reaper sweeps expired sessions and tickets.
-const REAPER_INTERVAL: Duration = Duration::from_secs(10);
-
-// ── Protocol constants ───────────────────────────────────────────────────────
-
-/// Expected MD5 digest of the entity definitions sent by the client.
-const PROTOCOL_DIGEST: &str = "58AFA196AD3AC4F65CADD99BFF23B799";
-
-const LOGIN_NS: &str = concat!(
-    r#"xmlns:ns2="http://www.stargateworlds.com/xml/sgwlogin" "#,
-    r#"xmlns:ns3="http://www.cheyenneme.com/xml/cmebase" "#,
-    r#"xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" "#,
-    r#"xsi:schemaLocation="sgwLogin http://www.stargateworlds.com/xml/sgwlogin""#
-);
-
-const SELECT_NS: &str = concat!(
-    r#"xmlns:ns3="http://www.stargateworlds.com/xml/sgwlogin" "#,
-    r#"xmlns:ns1="http://www.cheyenneme.com/xml/cmebase" "#,
-    r#"xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" "#,
-    r#"xsi:schemaLocation="sgwLogin http://www.stargateworlds.com/xml/sgwlogin""#
-);
-
-// ── Error types ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, thiserror::Error)]
-pub enum AuthError {
-    #[error("Invalid credentials for user '{0}'")]
-    InvalidCredentials(String),
-
-    #[error("Account '{0}' is locked")]
-    AccountLocked(String),
-
-    #[error("Service not running")]
-    NotRunning,
-
-    #[error("Network error: {0}")]
-    Network(#[from] std::io::Error),
-}
-
-// ── Public types ─────────────────────────────────────────────────────────────
-
-/// Info about a registered BaseApp shard.
-#[derive(Clone, Debug)]
-pub struct ShardInfo {
-    pub name: String,
-    pub host: String,
-    pub port: u16,
-    /// If true, only accounts with `access_level >= 2` may connect.
-    pub protected: bool,
-}
-
-/// A pending login handoff created by Phase 2 and consumed by Phase 3.
-///
-/// After the client selects a shard, the auth server generates a session key
-/// and ticket and stores a `PendingLogin` here. The BaseApp validates the
-/// ticket when the client connects via Mercury UDP (`baseAppLogin` message).
-#[derive(Clone)]
-pub struct PendingLogin {
-    pub account_id: u32,
-    /// Account privilege level (0 = normal, 2+ = admin/GM).
-    pub access_level: u32,
-    /// 20-char uppercase hex ticket ID.
-    pub ticket: String,
-    /// 64-char uppercase hex session key (32-byte AES-256 key).
-    pub session_key: String,
-    /// When this ticket was created (for expiration).
-    pub created: Instant,
-}
-
-// ── Internal types ───────────────────────────────────────────────────────────
-
-#[derive(Default)]
-struct LoginReq {
-    sku: String,
-    account_name: String,
-    password: String,
-    protocol_digest: String,
-}
-
-#[derive(Clone)]
-struct SessionRecord {
-    account_id: u32,
-    access_level: u32,
-    account_name: String,
-    created: Instant,
-}
-
-/// State shared between the axum HTTP handlers.
-#[derive(Clone)]
-struct HandlerState {
-    shards: Vec<ShardInfo>,
-    sessions: Arc<Mutex<HashMap<String, SessionRecord>>>,
-    pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
-    developer_mode: bool,
-    db: Option<Arc<PgPool>>,
-    login_tx: Option<broadcast::Sender<LoginEvent>>,
-    login_buffer: Option<LoginEventBuffer>,
-}
-
-// ── AuthService ──────────────────────────────────────────────────────────────
-
-/// Authentication service managing player login via HTTP/SOAP.
-pub struct AuthService {
-    /// Internal TCP port for BaseApp registration messages (13001).
-    pub listener_addr: SocketAddr,
-    /// HTTP port for client SOAP login requests (8081).
-    pub logon_addr: SocketAddr,
-    /// Whether the HTTP listener is running.
-    pub is_running: bool,
-    /// Registered BaseApp shards included in Phase 1 responses.
-    pub shards: Vec<ShardInfo>,
-    /// Pending logins keyed by ticket; shared with the BaseService for Phase 3 validation.
-    pending_logins: Arc<Mutex<HashMap<String, PendingLogin>>>,
-    developer_mode: bool,
-    /// Database connection pool for credential validation.
-    db_pool: Option<Arc<PgPool>>,
-    /// Login event broadcast channel.
-    login_tx: Option<broadcast::Sender<LoginEvent>>,
-    /// Login event ring buffer for WebSocket replay.
-    login_buffer: Option<LoginEventBuffer>,
-}
-
-impl AuthService {
-    pub fn new(config: &ServerConfig) -> Self {
-        let listener_addr = SocketAddr::from(([127, 0, 0, 1], config.auth_port));
-        let logon_addr = SocketAddr::new(
-            config
-                .auth_host
-                .parse()
-                .unwrap_or_else(|_| [0, 0, 0, 0].into()),
-            config.logon_port,
-        );
-
-        Self {
-            listener_addr,
-            logon_addr,
-            is_running: false,
-            shards: Vec::new(),
-            pending_logins: Arc::new(Mutex::new(HashMap::new())),
-            developer_mode: config.developer_mode,
-            db_pool: None,
-            login_tx: None,
-            login_buffer: None,
-        }
-    }
-
-    /// Set the database connection pool for credential validation.
-    pub fn set_db_pool(&mut self, pool: Arc<PgPool>) {
-        self.db_pool = Some(pool);
-    }
-
-    /// Set the login event broadcast channel and buffer.
-    pub fn set_login_event_tx(
-        &mut self,
-        tx: broadcast::Sender<LoginEvent>,
-        buffer: LoginEventBuffer,
-    ) {
-        self.login_tx = Some(tx);
-        self.login_buffer = Some(buffer);
-    }
-
-    /// Register a BaseApp shard.
-    ///
-    /// Must be called before [`start`] so the shard appears in Phase 1 responses.
-    /// Logs a warning and skips registration if a shard with the same name
-    /// already exists (matches C++ `ALREADY_REGISTERED` behaviour).
-    pub fn register_shard(&mut self, info: ShardInfo) {
-        if self.shards.iter().any(|s| s.name == info.name) {
-            tracing::warn!(name = %info.name, "Duplicate shard name — skipping registration");
-            return;
-        }
-        tracing::info!(
-            name = %info.name, host = %info.host, port = info.port,
-            protected = info.protected, "Registering shard"
-        );
-        self.shards.push(info);
-    }
-
-    /// Start the HTTP/SOAP login listener on `logon_addr`.
-    ///
-    /// Spawns an axum server as a background tokio task. Returns once the
-    /// listener is bound; the task runs until the process exits.
-    pub async fn start(&mut self) -> Result<(), AuthError> {
-        tracing::info!(addr = %self.logon_addr, "Starting auth HTTP listener");
-        tracing::trace!(shard_count = self.shards.len(), developer_mode = self.developer_mode, "Auth service config");
-
-        let sessions = Arc::new(Mutex::new(HashMap::new()));
-        let pending_logins = Arc::clone(&self.pending_logins);
-
-        // Clone Arcs for the reaper task *before* moving into HandlerState.
-        let reaper_sessions = Arc::clone(&sessions);
-        let reaper_pending = Arc::clone(&pending_logins);
-
-        let state = Arc::new(HandlerState {
-            shards: self.shards.clone(),
-            sessions,
-            pending_logins,
-            developer_mode: self.developer_mode,
-            db: self.db_pool.clone(),
-            login_tx: self.login_tx.clone(),
-            login_buffer: self.login_buffer.clone(),
-        });
-
-        let app = Router::new()
-            .route("/SGWLogin/UserAuth", post(handle_user_auth))
-            .route("/SGWLogin/ServerSelection", post(handle_server_selection))
-            .with_state(state);
-
-        tracing::trace!(addr = %self.logon_addr, "Binding TCP listener for auth HTTP");
-        let listener = TcpListener::bind(self.logon_addr).await.map_err(|e| {
-            tracing::error!(addr = %self.logon_addr, error = %e, "Failed to bind auth TCP listener");
-            e
-        })?;
-        tracing::info!(addr = %listener.local_addr().unwrap(), "Auth HTTP listener bound");
-
-        // Spawn the session/ticket reaper before the HTTP server so it's
-        // already running when the first request arrives.
-        {
-            let sessions = reaper_sessions;
-            let pending = reaper_pending;
-            tokio::spawn(async move {
-                loop {
-                    tokio::time::sleep(REAPER_INTERVAL).await;
-                    let now = Instant::now();
-
-                    let expired_sessions = {
-                        let mut map = sessions.lock().unwrap();
-                        let before = map.len();
-                        map.retain(|_, s| now.duration_since(s.created) < SESSION_TTL);
-                        before - map.len()
-                    };
-                    let expired_tickets = {
-                        let mut map = pending.lock().unwrap();
-                        let before = map.len();
-                        map.retain(|_, p| now.duration_since(p.created) < TICKET_TTL);
-                        before - map.len()
-                    };
-                    if expired_sessions > 0 || expired_tickets > 0 {
-                        tracing::debug!(
-                            expired_sessions, expired_tickets,
-                            "Reaped expired auth entries"
-                        );
-                    }
-                }
-            });
-        }
-
-        tracing::trace!("Spawning auth HTTP server task");
-        tokio::spawn(async move {
-            tracing::trace!("Auth HTTP server task started");
-            if let Err(e) = axum::serve(
-                listener,
-                app.into_make_service_with_connect_info::<SocketAddr>(),
-            )
-            .await
-            {
-                tracing::error!("Auth HTTP server error: {e}");
-            }
-            tracing::trace!("Auth HTTP server task exited");
-        });
-
-        self.is_running = true;
-        Ok(())
-    }
-
-    /// Stop the auth service.
-    pub async fn stop(&mut self) {
-        tracing::info!("Stopping authentication service");
-        // TODO: signal the HTTP server task to exit cleanly
-        self.is_running = false;
-        tracing::trace!("Authentication service stopped");
-    }
-
-    /// Consume a pending login by ticket.
-    ///
-    /// Called by the BaseService when a `baseAppLogin` Mercury message arrives.
-    /// Returns `None` if the ticket is unknown or has already been consumed.
-    pub fn take_pending_login(&self, ticket: &str) -> Option<PendingLogin> {
-        self.pending_logins.lock().ok()?.remove(ticket)
-    }
-
-    /// Return a cloned `Arc` pointing to the pending-logins map.
-    ///
-    /// Used by the orchestrator to wire the shared map into `BaseService`
-    /// before starting services, so the BaseService can validate Phase 3 tickets.
-    pub fn pending_logins_arc(&self) -> Arc<Mutex<HashMap<String, PendingLogin>>> {
-        Arc::clone(&self.pending_logins)
-    }
-}
+use super::{
+    HandlerState, PendingLogin, SessionRecord, LoginReq,
+    SESSION_TTL, PROTOCOL_DIGEST, LOGIN_NS, SELECT_NS, XML_DECL,
+};
 
 // ── Axum handlers ────────────────────────────────────────────────────────────
 
 /// Phase 1: `POST /SGWLogin/UserAuth`
-async fn handle_user_auth(
+pub(super) async fn handle_user_auth(
     State(state): State<Arc<HandlerState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     body: String,
@@ -459,7 +148,7 @@ async fn handle_user_auth(
 }
 
 /// Phase 2: `POST /SGWLogin/ServerSelection`
-async fn handle_server_selection(
+pub(super) async fn handle_server_selection(
     State(state): State<Arc<HandlerState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -613,16 +302,6 @@ fn extract_sid(headers: &HeaderMap) -> Option<String> {
         .map(|s| s["SID=".len()..].to_string())
 }
 
-/// XML declaration prefix matching the original C++ auth server output.
-///
-/// The SGW client uses gSOAP in document/literal mode and expects **bare XML**
-/// — no SOAP envelope wrapping.  The original C++ `LogonConnection` sends
-/// responses starting with this declaration followed by the root element
-/// directly.  Earlier versions of this code incorrectly wrapped responses in
-/// `<SOAP-ENV:Envelope>`, causing the client to fail to parse Phase 1
-/// responses and never proceed to Phase 2.
-const XML_DECL: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
-
 fn login_error(_code: u32, msg: &str) -> Response {
     // C++ always sends ErrorNum="1" regardless of the actual FailureCode.
     // The client uses ErrorStr for display and ignores ErrorNum.
@@ -636,7 +315,7 @@ fn login_error(_code: u32, msg: &str) -> Response {
     (StatusCode::OK, [(header::CONTENT_TYPE, "text/xml".to_string())], xml).into_response()
 }
 
-fn login_success_xml(account_id: u32, shards: &[ShardInfo]) -> String {
+fn login_success_xml(account_id: u32, shards: &[super::ShardInfo]) -> String {
     let entries: String = shards
         .iter()
         .map(|s| {
@@ -671,7 +350,7 @@ fn select_error(_code: u32, msg: &str) -> Response {
     (StatusCode::OK, [(header::CONTENT_TYPE, "text/xml".to_string())], xml).into_response()
 }
 
-fn server_location_xml(shard: &ShardInfo, session_key: &str, ticket: &str) -> String {
+fn server_location_xml(shard: &super::ShardInfo, session_key: &str, ticket: &str) -> String {
     format!(
         "{XML_DECL}\
          <ns3:SGWServerLocationResponse {ns}>\
@@ -749,7 +428,7 @@ async fn validate_credentials(
 }
 
 /// Generate `byte_count` random bytes as uppercase hex.
-fn random_hex(byte_count: usize) -> String {
+pub(super) fn random_hex(byte_count: usize) -> String {
     let mut rng = rand::rng();
     (0..byte_count)
         .map(|_| format!("{:02X}", rng.random::<u8>()))
@@ -759,7 +438,7 @@ fn random_hex(byte_count: usize) -> String {
 /// Generate a random alphanumeric string of the given character length.
 ///
 /// Matches the C++ session ID format: 40-char string drawn from [0-9a-zA-Z].
-fn random_alphanumeric(char_count: usize) -> String {
+pub(super) fn random_alphanumeric(char_count: usize) -> String {
     const CHARSET: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let mut rng = rand::rng();
     (0..char_count)
@@ -775,24 +454,6 @@ fn random_alphanumeric(char_count: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn new_service_is_not_running() {
-        let config = ServerConfig::default();
-        let svc = AuthService::new(&config);
-        assert!(!svc.is_running);
-        assert_eq!(svc.listener_addr.port(), 13001);
-        assert_eq!(svc.logon_addr.port(), 8081);
-    }
-
-    #[tokio::test]
-    async fn start_sets_running() {
-        let mut config = ServerConfig::default();
-        config.logon_port = 0; // OS-assigned port to avoid conflicts in tests
-        let mut svc = AuthService::new(&config);
-        svc.start().await.unwrap();
-        assert!(svc.is_running);
-    }
 
     #[test]
     fn random_hex_length() {
@@ -825,7 +486,7 @@ mod tests {
 
     #[test]
     fn login_success_xml_contains_shard() {
-        let shards = vec![ShardInfo {
+        let shards = vec![super::super::ShardInfo {
             name: "Shard".into(),
             host: "127.0.0.1".into(),
             port: 32832,
@@ -842,7 +503,7 @@ mod tests {
 
     #[test]
     fn server_location_xml_contains_key_and_ticket() {
-        let shard = ShardInfo {
+        let shard = super::super::ShardInfo {
             name: "Shard".into(),
             host: "127.0.0.1".into(),
             port: 32832,

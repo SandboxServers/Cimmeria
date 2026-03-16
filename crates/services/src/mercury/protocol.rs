@@ -195,11 +195,11 @@ pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u
     encrypt_packet(&plaintext, key)
 }
 
-/// Build and encrypt Phase 5a: RESET_ENTITIES only.
+/// Build and encrypt the entity teardown step: RESET_ENTITIES only.
 ///
 /// The C++ server sends RESET_ENTITIES in its own flushed bundle, separate from
 /// the cell/viewport data.  The client tears down all entities, then sends
-/// ENABLE_ENTITIES, at which point Phase 5b fires.
+/// ENABLE_ENTITIES, at which point the create-player step fires.
 pub fn build_reset_entities(
     key: &[u8; 32],
     seq_id: u32,
