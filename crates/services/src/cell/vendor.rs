@@ -184,9 +184,7 @@ pub async fn load_vendor_stock(
     };
 
     // Step 2: Load items from each list
-    // TODO: Adjust table/column names to match actual schema. The query assumes
-    // a table like `resources.item_list_entries` with columns:
-    //   list_id, item_type_id, quantity, unit_price
+    // Load items from resources.item_list_items (keyed by item_list_id)
     let buy_list = if let Some(list_id) = buy_list_id {
         load_item_list(pool, list_id).await?
     } else {
@@ -207,7 +205,9 @@ pub async fn load_vendor_stock(
 
 /// Load items from a single item list by list_id.
 ///
-/// TODO: Placeholder query — adjust table and column names to match real schema.
+/// Load items for a vendor list from `resources.item_list_items`.
+///
+/// Schema: item_list_items(item_id, item_list_id, design_id, quantity, naquadah)
 async fn load_item_list(
     pool: &PgPool,
     list_id: i32,
@@ -215,10 +215,10 @@ async fn load_item_list(
     use sqlx::Row;
 
     let rows = sqlx::query(
-        "SELECT item_type_id, quantity, unit_price \
-         FROM resources.item_list_entries \
-         WHERE list_id = $1 \
-         ORDER BY item_type_id"
+        "SELECT design_id, quantity, naquadah \
+         FROM resources.item_list_items \
+         WHERE item_list_id = $1 \
+         ORDER BY design_id"
     )
     .bind(list_id)
     .fetch_all(pool)
@@ -226,9 +226,9 @@ async fn load_item_list(
 
     let items = rows.into_iter().map(|r| {
         VendorItem {
-            item_type_id: r.get("item_type_id"),
+            item_type_id: r.get("design_id"),
             quantity: r.get("quantity"),
-            unit_price: r.get("unit_price"),
+            unit_price: r.get("naquadah"),
         }
     }).collect();
 
