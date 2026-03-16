@@ -348,7 +348,25 @@ async fn execute_actions(
             }
             Action::AdvanceStep { mission_id, step_id } => {
                 tracing::info!(entity_id, mission_id, step_id, chain_id, "Content: advancing step");
-                // TODO: Update mission manager step tracking + send wire update
+                // Update local mission state
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    if let Some(mission) = entity.missions.get_mission_mut(mission_id) {
+                        if let Some(current) = mission.current_step_id {
+                            mission.completed_steps.push(current);
+                        }
+                        mission.current_step_id = Some(step_id);
+                    }
+                }
+                // Send step update to client
+                let mut step_args = Vec::with_capacity(5);
+                step_args.extend_from_slice(&step_id.to_le_bytes());
+                step_args.push(cimmeria_entity::missions::STATUS_ACTIVE as u8);
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 81, // onStepUpdate
+                    args: step_args,
+                }).await;
+                // Persist to DB
                 let _ = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,

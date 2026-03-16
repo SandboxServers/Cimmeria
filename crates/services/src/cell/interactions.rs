@@ -61,7 +61,27 @@ pub async fn handle_interact(
     let dist = player_pos.distance_squared_to(&target_pos).sqrt();
     if dist > MAX_INTERACT_DISTANCE {
         tracing::debug!(entity_id, target_entity_id, dist, "interact: too far away");
-        // TODO: Send feedback message "You are too far away to interact."
+        // Send feedback: "You are too far away to interact."
+        // onPlayerCommunication with feedback channel (8) and system source
+        let msg = "You are too far away to interact.";
+        let utf16: Vec<u16> = msg.encode_utf16().collect();
+        let mut fb_args = Vec::with_capacity(12 + utf16.len() * 2);
+        // Speaker: empty WSTRING
+        fb_args.extend_from_slice(&0u32.to_le_bytes());
+        // SpeakerFlags: 0
+        fb_args.push(0);
+        // Channel: 8 (feedback)
+        fb_args.push(8);
+        // Text: WSTRING
+        fb_args.extend_from_slice(&(utf16.len() as u32).to_le_bytes());
+        for &ch in &utf16 {
+            fb_args.extend_from_slice(&ch.to_le_bytes());
+        }
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: 28, // onPlayerCommunication
+            args: fb_args,
+        }).await;
         return None;
     }
 
@@ -302,7 +322,16 @@ mod tests {
         let vc = VendorCache::new();
         handle_interact(1, npc_id, &tx, &mut mgr, &vc).await;
 
-        // Should NOT send any response (too far)
+        // Should send feedback message "too far away" but NO dialog/store response
+        let msg = rx.try_recv().expect("Expected feedback message for too-far interaction");
+        match msg {
+            CellToBaseMsg::EntityMethodCall { entity_id: eid, method_index, .. } => {
+                assert_eq!(eid, 1); // sent to the player
+                assert_eq!(method_index, 28); // onPlayerCommunication (feedback)
+            }
+            _ => panic!("Expected EntityMethodCall feedback"),
+        }
+        // No further messages
         assert!(rx.try_recv().is_err());
     }
 

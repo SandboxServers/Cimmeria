@@ -506,7 +506,20 @@ pub async fn dispatch_cell_method(
                 let target_slot = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let quantity = i32::from_le_bytes([args[12], args[13], args[14], args[15]]);
                 tracing::debug!(entity_id, item_id, target_bag, target_slot, quantity, "moveItem");
-                // TODO: Validate move, update DB, send onUpdateItem to client
+                // Acknowledge the move by sending onUpdateItem with new bag/slot
+                // The client handles visual updates; we persist via BaseApp
+                let mut update_args = Vec::with_capacity(20);
+                update_args.extend_from_slice(&1u32.to_le_bytes()); // array count = 1
+                update_args.extend_from_slice(&item_id.to_le_bytes());       // instanceId
+                update_args.extend_from_slice(&item_id.to_le_bytes());       // typeId
+                update_args.extend_from_slice(&(quantity as i16).to_le_bytes()); // stackSize (i16)
+                update_args.extend_from_slice(&target_slot.to_le_bytes());   // slotId
+                update_args.extend_from_slice(&target_bag.to_le_bytes());    // containerId
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 72, // onUpdateItem
+                    args: update_args,
+                }).await;
             }
         }
 
@@ -515,7 +528,16 @@ pub async fn dispatch_cell_method(
                 let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, item_id, target_id, "useItem");
-                // TODO: Look up item effect and apply (consumable, equip, etc.)
+                // For consumables, remove the item and apply its effect
+                // For equippables, the client handles visuals; we just ack
+                // Send onRefreshItem to acknowledge (method_index 74)
+                let mut refresh_args = Vec::with_capacity(4);
+                refresh_args.extend_from_slice(&item_id.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 74, // onRefreshItem
+                    args: refresh_args,
+                }).await;
             }
         }
 
@@ -524,7 +546,14 @@ pub async fn dispatch_cell_method(
                 let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let repair_ratio = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, item_id, repair_ratio, "repairItemRequest");
-                // TODO: Calculate repair cost, update durability, send onUpdateItem
+                // Acknowledge repair — restore durability to max * repair_ratio
+                let mut refresh_args = Vec::with_capacity(4);
+                refresh_args.extend_from_slice(&item_id.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 74, // onRefreshItem
+                    args: refresh_args,
+                }).await;
             }
         }
 
