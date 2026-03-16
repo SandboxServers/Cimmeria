@@ -147,6 +147,18 @@ pub const CM_USE_ABILITY_ON_GROUND: u16 = 69;
 pub const CM_RESPAWN: u16 = 70;
 /// SGWPlayer: interact(INT32 entityId)
 pub const CM_INTERACT: u16 = 74;
+/// SGWPlayer: trainAbility(INT32 AbilityID)
+pub const CM_TRAIN_ABILITY: u16 = 77;
+/// SGWPlayer: purchaseItems(ARRAY<{INT32, INT32}>)
+pub const CM_PURCHASE_ITEMS: u16 = 78;
+/// SGWPlayer: sellItems(ARRAY<{INT32, INT32}>)
+pub const CM_SELL_ITEMS: u16 = 79;
+/// SGWPlayer: buybackItems(ARRAY<{INT32, INT32}>)
+pub const CM_BUYBACK_ITEMS: u16 = 80;
+/// SGWPlayer: repairItems(ARRAY<INT32>)
+pub const CM_REPAIR_ITEMS: u16 = 81;
+/// SGWPlayer: rechargeItems(ARRAY<INT32>)
+pub const CM_RECHARGE_ITEMS: u16 = 82;
 /// SGWPlayer: setAutoCycle(INT8 enabled)
 pub const CM_SET_AUTO_CYCLE: u16 = 83;
 
@@ -275,6 +287,52 @@ pub async fn dispatch_cell_method(
                     }
                 }
             }
+        }
+
+        CM_TRAIN_ABILITY => {
+            if args.len() >= 4 {
+                let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::debug!(entity_id, ability_id, "trainAbility");
+
+                // Look up ability for training cost
+                let cost = ability_registry.get_ability(ability_id)
+                    .map_or(1i32, |a| a.training_cost as i32);
+
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    // Check if entity already knows this ability
+                    if entity.abilities.has_ability(ability_id) {
+                        tracing::debug!(entity_id, ability_id, "trainAbility: already known");
+                    } else {
+                        // Add ability to known set
+                        entity.abilities.add_ability(ability_id);
+                        tracing::info!(entity_id, ability_id, cost, "Ability trained");
+
+                        // Send onKnownAbilitiesUpdate to client
+                        let known_args = entity.abilities.serialize_known_abilities();
+                        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                            entity_id,
+                            method_index: 13, // onKnownAbilitiesUpdate
+                            args: known_args,
+                        }).await;
+
+                        // Deduct training points via BaseApp
+                        // Send onEntityProperty(GENERICPROPERTY_TrainingPoints, -cost)
+                        let mut tp_args = Vec::with_capacity(8);
+                        tp_args.extend_from_slice(&1i32.to_le_bytes()); // GENERICPROPERTY_TrainingPoints
+                        tp_args.extend_from_slice(&(-cost).to_le_bytes());
+                        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                            entity_id,
+                            method_index: 95, // onEntityProperty (delta mode)
+                            args: tp_args,
+                        }).await;
+                    }
+                }
+            }
+        }
+
+        CM_PURCHASE_ITEMS | CM_SELL_ITEMS | CM_BUYBACK_ITEMS |
+        CM_REPAIR_ITEMS | CM_RECHARGE_ITEMS => {
+            tracing::debug!(entity_id, method_index, "Store transaction (stub)");
         }
 
         CM_RESPAWN => {

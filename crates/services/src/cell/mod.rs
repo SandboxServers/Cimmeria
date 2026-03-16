@@ -278,7 +278,7 @@ async fn load_ability_registry(
     let ability_rows = sqlx::query(
         "SELECT ability_id, name, cooldown, warmup, flags, is_ranged, \
                 min_range, max_range, target_type_id, effect_ids, \
-                moniker_ids, required_ammo \
+                moniker_ids, required_ammo, training_cost \
          FROM resources.abilities ORDER BY ability_id"
     )
     .fetch_all(pool)
@@ -301,6 +301,7 @@ async fn load_ability_registry(
             effect_ids,
             moniker_ids,
             required_ammo: r.get("required_ammo"),
+            training_cost: r.get("training_cost"),
         });
     }
 

@@ -76,6 +76,8 @@ pub struct AbilityDef {
     pub effect_ids: Vec<i32>,
     pub moniker_ids: Vec<i64>,
     pub required_ammo: i32,
+    /// Training cost in training points (from resources.abilities).
+    pub training_cost: i32,
 }
 
 // ── AbilityTreeData ───────────────────────────────────────────────────────
@@ -519,6 +521,7 @@ mod tests {
             effect_ids: vec![100, 101],
             moniker_ids: vec![42],
             required_ammo: 1,
+            training_cost: 1,
         }
     }
 
