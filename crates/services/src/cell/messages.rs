@@ -15,6 +15,17 @@ pub enum MailOp {
     Delete { mail_id: i32 },
     /// Archive a mail message.
     Archive { mail_id: i32 },
+    /// Send a new mail message.
+    Send {
+        sender_name: String,
+        recipients: Vec<String>,
+        subject: String,
+        body: String,
+        cash: i32,
+        is_cod: bool,
+        item_id: i32,
+        item_quantity: i32,
+    },
 }
 
 /// Messages sent from BaseApp to CellApp.

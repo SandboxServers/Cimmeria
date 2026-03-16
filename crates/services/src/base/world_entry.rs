@@ -1132,6 +1132,54 @@ pub(crate) async fn handle_mail_request(
                 },
             ).await;
         }
+
+        MailOp::Send { sender_name, recipients, subject, body, cash, is_cod, item_id, item_quantity } => {
+            tracing::info!(entity_id, %sender_name, ?recipients, %subject, cash, "Mail: sending");
+
+            // Resolve each recipient name to a player_id
+            for recipient in &recipients {
+                let recipient_row: Option<(i32,)> = sqlx::query_as(
+                    "SELECT player_id FROM sgw_player WHERE player_name = $1",
+                )
+                .bind(recipient)
+                .fetch_optional(pool.as_ref())
+                .await
+                .unwrap_or(None);
+
+                if let Some((recipient_id,)) = recipient_row {
+                    // Insert the mail into the database
+                    let result = sqlx::query(
+                        "INSERT INTO sgw_gate_mail \
+                         (character_id, sender_id, from_text, subject_text, body_text, \
+                          cash, flags, sent_time) \
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, extract(epoch from now())::real)"
+                    )
+                    .bind(recipient_id)
+                    .bind(player_id)
+                    .bind(&sender_name)
+                    .bind(&subject)
+                    .bind(&body)
+                    .bind(cash)
+                    .bind(if is_cod { 2i32 } else { 0i32 }) // flags: bit 1 = COD
+                    .execute(pool.as_ref())
+                    .await;
+
+                    match result {
+                        Ok(_) => tracing::debug!(
+                            sender = %sender_name, recipient = %recipient,
+                            recipient_id, "Mail delivered to database"
+                        ),
+                        Err(e) => tracing::warn!(
+                            sender = %sender_name, recipient = %recipient,
+                            "Failed to deliver mail: {e}"
+                        ),
+                    }
+                } else {
+                    tracing::debug!(recipient = %recipient, "Mail recipient not found");
+                    // Could send feedback to sender: "Player not found"
+                }
+            }
+        }
     }
 }
 

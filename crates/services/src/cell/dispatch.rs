@@ -455,8 +455,49 @@ pub async fn dispatch_cell_method(
                     recipients.push(String::from_utf16_lossy(&utf16));
                     offset += str_len * 2;
                 }
-                tracing::info!(entity_id, ?recipients, "sendMailMessage");
-                // TODO: Parse subject, body, cash, etc. and persist to sgw_gate_mail
+                // Parse subject (WSTRING)
+                let (subject, new_offset) = parse_wstring(args, offset);
+                offset = new_offset;
+                // Parse body (WSTRING)
+                let (body, new_offset) = parse_wstring(args, offset);
+                offset = new_offset;
+                // Parse remaining fields
+                let cash = if offset + 4 <= args.len() {
+                    let v = i32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]);
+                    offset += 4; v
+                } else { 0 };
+                let is_cod = if offset < args.len() {
+                    let v = args[offset] != 0;
+                    offset += 1; v
+                } else { false };
+                let item_id = if offset + 4 <= args.len() {
+                    let v = i32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]);
+                    offset += 4; v
+                } else { 0 };
+                let item_quantity = if offset + 4 <= args.len() {
+                    i32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]])
+                } else { 0 };
+
+                let sender_name = space_mgr.get_entity(entity_id)
+                    .and_then(|e| e.npc_name.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                tracing::info!(entity_id, ?recipients, %subject, cash, "sendMailMessage");
+
+                // Forward to BaseApp for DB persistence
+                let _ = tx.send(CellToBaseMsg::MailRequest {
+                    entity_id,
+                    op: super::messages::MailOp::Send {
+                        sender_name,
+                        recipients,
+                        subject,
+                        body,
+                        cash,
+                        is_cod,
+                        item_id,
+                        item_quantity,
+                    },
+                }).await;
             }
         }
 
@@ -784,6 +825,25 @@ async fn handle_respawn(
 }
 
 // ── Store Transactions ───────────────────────────────────────────────────────
+
+/// Parse a WSTRING from the wire at the given offset.
+///
+/// Returns the decoded string and the new offset past the WSTRING data.
+fn parse_wstring(args: &[u8], mut offset: usize) -> (String, usize) {
+    if offset + 4 > args.len() {
+        return (String::new(), offset);
+    }
+    let char_count = u32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]) as usize;
+    offset += 4;
+    if offset + char_count * 2 > args.len() {
+        return (String::new(), offset);
+    }
+    let utf16: Vec<u16> = (0..char_count).map(|i| {
+        u16::from_le_bytes([args[offset + i*2], args[offset + i*2 + 1]])
+    }).collect();
+    offset += char_count * 2;
+    (String::from_utf16_lossy(&utf16), offset)
+}
 
 /// Parse an ARRAY of {INT32, INT32} pairs from the wire.
 ///
