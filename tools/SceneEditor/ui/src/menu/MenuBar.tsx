@@ -33,6 +33,7 @@ interface MenuBarProps {
   onLoadDbEntities?: () => void;
   onRefreshDbEntities?: () => void;
   onExportDbSql?: () => void;
+  onCreateRegion?: () => void;
 }
 
 type MenuId = 'file' | 'edit' | 'view' | 'build' | 'database' | 'tools' | 'help' | null;
@@ -67,6 +68,7 @@ export function MenuBar({
   onLoadDbEntities,
   onRefreshDbEntities,
   onExportDbSql,
+  onCreateRegion,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -231,6 +233,12 @@ export function MenuBar({
             label="Refresh Entities"
             onClick={() => closeAndRun(() => onRefreshDbEntities?.())}
             disabled={!dbConnected || !hasDbEntities}
+          />
+          <MenuSeparator />
+          <MenuItem
+            label="Create Region..."
+            onClick={() => closeAndRun(() => onCreateRegion?.())}
+            disabled={!dbConnected}
           />
           <MenuSeparator />
           <MenuItem

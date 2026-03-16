@@ -664,6 +664,7 @@ export default function App() {
         onTogglePlacement={handleTogglePlacement}
         onPlaceSpawn={handlePlaceSpawn}
         onUpdateSpawnPosition={handleUpdateSpawnPosition}
+        onCreateRegion={() => setShowRegionDialog(true)}
         onExportDbSql={handleExportDbSql}
         showContentBrowser={showContentBrowser}
         onToggleContentBrowser={() => setShowContentBrowser(prev => !prev)}

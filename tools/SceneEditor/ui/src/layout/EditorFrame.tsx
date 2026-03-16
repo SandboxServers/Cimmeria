@@ -73,6 +73,7 @@ interface EditorFrameProps {
   onTogglePlacement: () => void;
   onPlaceSpawn: (x: number, y: number, z: number) => void;
   onUpdateSpawnPosition: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
+  onCreateRegion: () => void;
   onExportDbSql: () => void;
   // Content Browser
   showContentBrowser: boolean;
@@ -132,6 +133,7 @@ export function EditorFrame({
   onTogglePlacement,
   onPlaceSpawn,
   onUpdateSpawnPosition,
+  onCreateRegion,
   onExportDbSql,
   showContentBrowser,
   onToggleContentBrowser,
@@ -356,6 +358,7 @@ export function EditorFrame({
         onLoadDbEntities={onLoadDbEntities}
         onRefreshDbEntities={onRefreshDbEntities}
         onExportDbSql={onExportDbSql}
+        onCreateRegion={onCreateRegion}
         onToggleContentBrowser={onToggleContentBrowser}
       />
 

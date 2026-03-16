@@ -389,6 +389,10 @@ async fn run_cell_loop(
                 run_aoi_tick(tx, &mut space_mgr).await;
                 space_mgr.process_respawns();
                 effect_mgr.tick(tx, &mut space_mgr).await;
+                // Periodically clean up expired cooldowns on all entities
+                for entity in space_mgr.all_entities_mut() {
+                    entity.abilities.cleanup_expired();
+                }
             }
         }
     }

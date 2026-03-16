@@ -562,6 +562,11 @@ impl SpaceManager {
         self.spaces.values().flat_map(|s| s.entities.values())
     }
 
+    /// Iterate mutably over all entities across all spaces.
+    pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut CellEntity> {
+        self.spaces.values_mut().flat_map(|s| s.entities.values_mut())
+    }
+
     /// Find all non-player entities near a world position within a given radius.
     ///
     /// Used for AoE abilities — finds hostile entities near the ground target point.
