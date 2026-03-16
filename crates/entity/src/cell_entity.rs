@@ -118,6 +118,10 @@ pub struct CellEntity {
 
     /// Entity tag for content engine lookups (e.g., "FrostBody", "Guard_01").
     pub entity_tag: Option<String>,
+
+    /// Database template_id from `resources.entity_templates`. Used for vendor
+    /// stock lookup and other template-driven behavior.
+    pub template_id: Option<i32>,
 }
 
 impl CellEntity {
@@ -148,6 +152,7 @@ impl CellEntity {
             is_holstered: false,
             counters: HashMap::new(),
             entity_tag: None,
+            template_id: None,
         }
     }
 

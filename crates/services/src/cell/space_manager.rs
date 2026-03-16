@@ -557,6 +557,11 @@ impl SpaceManager {
         self.spaces.get(&space_id).map(|s| &s.entities)
     }
 
+    /// Iterate over all entities across all spaces.
+    pub fn all_entities(&self) -> impl Iterator<Item = &CellEntity> {
+        self.spaces.values().flat_map(|s| s.entities.values())
+    }
+
     /// Get the world name for an entity's current space.
     pub fn get_entity_world_name(&self, entity_id: u32) -> Option<String> {
         let &space_id = self.entity_space.get(&entity_id)?;

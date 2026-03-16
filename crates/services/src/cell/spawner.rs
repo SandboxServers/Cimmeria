@@ -67,6 +67,10 @@ pub struct DbSpawnDef {
     pub level: u32,
     /// Content engine tag.
     pub tag: Option<String>,
+    /// Database template_id for vendor stock / template-driven lookups.
+    pub template_id: Option<i32>,
+    /// Loot table ID for drop generation on kill.
+    pub loot_table_id: Option<i32>,
 }
 
 /// Hardcoded spawn definitions for initial world population.
@@ -175,6 +179,13 @@ pub fn spawn_db_npcs(defs: &[DbSpawnDef], space_mgr: &mut SpaceManager) -> usize
                     entity.npc_name = Some(def.name.clone());
                     entity.level = def.level;
                     entity.entity_tag = def.tag.clone();
+                    entity.template_id = def.template_id;
+                    if let Some(loot_id) = def.loot_table_id {
+                        entity.properties.insert(
+                            "loot_table_id".to_string(),
+                            cimmeria_entity::base_entity::PropertyValue::Int32(loot_id),
+                        );
+                    }
                     let npc_arch = npc_stats_for_level(def.level);
                     entity.stats.apply_archetype(&npc_arch);
                     entity.stats.scale_for_level(def.level, &npc_arch);
@@ -209,6 +220,7 @@ pub async fn load_spawn_defs_from_db(pool: &sqlx::PgPool) -> Result<Vec<DbSpawnD
     let rows = sqlx::query(
         "SELECT s.x, s.y, s.z, s.heading, s.tag, \
                 w.world AS world_name, \
+                t.template_id, t.loot_table_id, \
                 t.name AS display_name, t.level, t.interaction_type, \
                 t.interaction_set_id, t.trainer_ability_list_id, t.class \
          FROM resources.spawnlist s \
@@ -220,6 +232,8 @@ pub async fn load_spawn_defs_from_db(pool: &sqlx::PgPool) -> Result<Vec<DbSpawnD
     .await?;
 
     let defs: Vec<DbSpawnDef> = rows.into_iter().map(|r| {
+        let template_id: Option<i32> = r.get("template_id");
+        let loot_table_id: Option<i32> = r.get("loot_table_id");
         let interaction_type_raw: i64 = r.get("interaction_type");
         let interaction_set_id: Option<i32> = r.get("interaction_set_id");
         let trainer_ability_list_id: Option<i32> = r.get("trainer_ability_list_id");
@@ -254,6 +268,8 @@ pub async fn load_spawn_defs_from_db(pool: &sqlx::PgPool) -> Result<Vec<DbSpawnD
             interaction,
             level: level.unwrap_or(1) as u32,
             tag: r.get("tag"),
+            template_id,
+            loot_table_id,
         }
     }).collect();
 

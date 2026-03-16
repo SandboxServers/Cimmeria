@@ -11,11 +11,13 @@ pub mod content;
 pub mod dispatch;
 pub mod gate_travel;
 pub mod interactions;
+pub mod loot;
 pub mod mail;
 pub mod messages;
 pub mod missions;
 pub mod space_manager;
 pub mod spawner;
+pub mod vendor;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -194,6 +196,44 @@ impl CellService {
             Arc::new(cimmeria_entity::abilities::AbilityRegistry::new())
         };
 
+        // Load loot cache from DB
+        let loot_cache = if let Some(ref pool) = self.db_pool {
+            match loot::load_loot_cache(pool).await {
+                Ok(cache) => {
+                    tracing::info!(tables = cache.table_count(), "Loot cache loaded from database");
+                    Arc::new(cache)
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load loot cache: {e} — using empty");
+                    Arc::new(loot::LootCache::new())
+                }
+            }
+        } else {
+            Arc::new(loot::LootCache::new())
+        };
+
+        // Pre-load vendor stock cache for all vendor NPCs
+        let vendor_cache = vendor::VendorCache::new();
+        if let Some(ref pool) = self.db_pool {
+            // Collect template_ids from all vendor NPCs currently spawned
+            let vendor_template_ids: Vec<i32> = space_mgr
+                .all_entities()
+                .filter_map(|e| {
+                    if matches!(e.interaction_type, Some(cimmeria_entity::cell_entity::NpcInteractionType::Vendor)) {
+                        e.template_id
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if !vendor_template_ids.is_empty() {
+                match vendor_cache.preload(pool, &vendor_template_ids).await {
+                    Ok(count) => tracing::info!(count, templates = vendor_template_ids.len(), "Vendor stock cache ready"),
+                    Err(e) => tracing::warn!("Failed to preload vendor stocks: {e}"),
+                }
+            }
+        }
+
         let db_pool = self.db_pool.clone();
 
         // Take ownership of channels for the message processing loop
@@ -202,7 +242,7 @@ impl CellService {
 
         if let (Some(mut rx), Some(tx)) = (rx, tx) {
             tokio::spawn(async move {
-                run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool, ability_registry).await;
+                run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool, ability_registry, loot_cache, vendor_cache).await;
             });
         } else {
             tracing::warn!("Cell service started without channels — operating in stub mode");
@@ -316,6 +356,8 @@ async fn run_cell_loop(
     mut engine: ChainEngine,
     db_pool: Option<Arc<PgPool>>,
     ability_registry: Arc<cimmeria_entity::abilities::AbilityRegistry>,
+    loot_cache: Arc<loot::LootCache>,
+    vendor_cache: vendor::VendorCache,
 ) {
     tracing::debug!("Cell service message loop started");
 
@@ -331,7 +373,7 @@ async fn run_cell_loop(
                         engine = content::build_engine(db_pool.as_deref()).await;
                         tracing::info!(chains = engine.chain_count(), "Content engine reloaded");
                     }
-                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine, &ability_registry).await,
+                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine, &ability_registry, &loot_cache, &vendor_cache).await,
                     None => {
                         tracing::info!("Cell service channel closed — shutting down");
                         break;
@@ -355,6 +397,8 @@ async fn handle_base_message(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
     ability_registry: &Arc<cimmeria_entity::abilities::AbilityRegistry>,
+    loot_cache: &Arc<loot::LootCache>,
+    vendor_cache: &vendor::VendorCache,
 ) {
     match msg {
         BaseToCellMsg::CreateEntity { entity_id, world_name, position, rotation, reply_tx } => {
@@ -407,7 +451,7 @@ async fn handle_base_message(
         }
 
         BaseToCellMsg::CellMethodCall { entity_id, method_index, args } => {
-            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine, ability_registry).await;
+            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine, ability_registry, vendor_cache).await;
         }
 
         BaseToCellMsg::ChatMessage { entity_id, speaker_name, speaker_flags, channel, text } => {

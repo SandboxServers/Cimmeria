@@ -161,6 +161,7 @@ pub async fn dispatch_cell_method(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
     ability_registry: &std::sync::Arc<cimmeria_entity::abilities::AbilityRegistry>,
+    vendor_cache: &super::vendor::VendorCache,
 ) {
     match method_index {
         CM_SET_TARGET_ID => {
@@ -457,7 +458,7 @@ pub async fn dispatch_cell_method(
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::debug!(entity_id, target_entity_id, "interact");
                 let dialog_id = super::interactions::handle_interact(
-                    entity_id, target_entity_id as u32, tx, space_mgr,
+                    entity_id, target_entity_id as u32, tx, space_mgr, vendor_cache,
                 ).await;
 
                 // Fire content engine event if a dialog was opened
