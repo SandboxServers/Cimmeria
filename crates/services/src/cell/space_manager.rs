@@ -562,6 +562,36 @@ impl SpaceManager {
         self.spaces.values().flat_map(|s| s.entities.values())
     }
 
+    /// Find all non-player entities near a world position within a given radius.
+    ///
+    /// Used for AoE abilities — finds hostile entities near the ground target point.
+    /// Excludes the source entity and player entities (AoE only hits NPCs).
+    pub fn get_entities_near_point(
+        &self,
+        source_entity_id: u32,
+        point: &cimmeria_common::Vector3,
+        radius: f32,
+    ) -> Vec<u32> {
+        let space_id = match self.entity_space.get(&source_entity_id) {
+            Some(&id) => id,
+            None => return Vec::new(),
+        };
+        let space = match self.spaces.get(&space_id) {
+            Some(s) => s,
+            None => return Vec::new(),
+        };
+
+        let r_sq = radius * radius;
+        space.entities.iter()
+            .filter(|(&eid, entity)| {
+                eid != source_entity_id
+                    && !entity.is_player
+                    && point.distance_squared_to(&entity.position) <= r_sq
+            })
+            .map(|(&eid, _)| eid)
+            .collect()
+    }
+
     /// Get the world name for an entity's current space.
     pub fn get_entity_world_name(&self, entity_id: u32) -> Option<String> {
         let &space_id = self.entity_space.get(&entity_id)?;

@@ -243,7 +243,24 @@ pub async fn dispatch_cell_method(
                 let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
                 tracing::debug!(entity_id, ability_id, x, y, z, "useAbilityOnGroundTarget");
-                // TODO: Ground-target AoE ability handling
+
+                // Look up ability for range/AoE radius
+                let aoe_radius = ability_registry.get_ability(ability_id)
+                    .map_or(5.0f32, |a| a.max_range as f32);
+
+                // Find all hostile entities within AoE radius of the target point
+                let target_pos = cimmeria_common::Vector3::new(x, y, z);
+                let nearby = space_mgr.get_entities_near_point(entity_id, &target_pos, aoe_radius);
+
+                tracing::debug!(entity_id, ability_id, targets = nearby.len(), aoe_radius, "AoE targets found");
+
+                // Apply ability to each target
+                for target_id in nearby {
+                    super::abilities::handle_use_ability(
+                        entity_id, ability_id, target_id as i32,
+                        tx, space_mgr, ability_registry, loot_cache,
+                    ).await;
+                }
             }
         }
 
