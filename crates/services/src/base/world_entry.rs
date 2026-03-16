@@ -15,8 +15,11 @@ use crate::mercury::{
     build_create_entity_base, build_create_entity_cascade,
     build_entity_leave, build_entity_method_packet,
     build_map_loaded_body, fragment_map_loaded, fragment_count,
-    build_reset_entities, build_world_entry_phase_a, build_world_entry_phase_b_body,
-    method_idx, PlayerLoadData, WorldEntryInfo, DEFAULT_SPACE_ID,
+    build_reset_entities, build_world_entry_phase_a,
+    build_world_entry_phase_b,
+    method_idx, write_wstring, PlayerLoadData, WorldEntryInfo,
+    DEFAULT_SPACE_ID, SKIN_TINTS,
+    SGWPLAYER_CLASS_ID, SGWGMPLAYER_CLASS_ID,
 };
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
@@ -86,10 +89,29 @@ pub(crate) async fn handle_play_character(
     };
 
     // Query character data from DB and resolve space via CellService
-    let entry_info = query_world_entry(db_pool, account_id, player_id, entity_manager, cell_tx).await;
+    let mut entry_info = query_world_entry(db_pool, account_id, player_id, entity_manager, cell_tx).await;
 
     // Also query the full player data needed for mapLoaded
     let player_load_data = query_player_load_data(db_pool, account_id, player_id).await;
+
+    // Set entity class based on access_level (matches python/base/Account.py:293-296):
+    // access_level > 0 → SGWGmPlayer (0x03), else SGWPlayer (0x02).
+    {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get(&addr) {
+            entry_info.class_id = if c.access_level > 0 {
+                SGWGMPLAYER_CLASS_ID
+            } else {
+                SGWPLAYER_CLASS_ID
+            };
+            tracing::info!(
+                %addr, access_level = c.access_level,
+                class_id = entry_info.class_id,
+                entity_type = if c.access_level > 0 { "SGWGmPlayer" } else { "SGWPlayer" },
+                "Selected entity class for world entry"
+            );
+        }
+    }
 
     tracing::info!(
         %addr,
@@ -97,6 +119,7 @@ pub(crate) async fn handle_play_character(
         entity_id = entry_info.player_entity_id,
         space_id = entry_info.space_id,
         pos = ?entry_info.pos,
+        class_id = entry_info.class_id,
         "Phase 5a: sending RESET_ENTITIES (entity teardown)"
     );
 
@@ -173,55 +196,66 @@ pub(crate) async fn handle_map_loaded_phase_b(
         "Phase 5b-B: client ready -- sending VIEWPORT + CELL + POSITION + entity data"
     );
 
-    // Build combined body: VIEWPORT+CELL+FORCED prepended to mapLoaded entity methods.
-    // The C++ server adds these to the channel's current bundle (channel_->bundle())
-    // rather than sending them as a separate packet. Sending them separately caused
-    // the client to fail on instance spaces (Castle_CellBlock, flags=1) where the
-    // client processes createCellPlayer before the entity data bundle arrives,
-    // triggering a premature enableEntities and corrupting bundle reassembly.
-    let phase_b_body = build_world_entry_phase_b_body(&entry_info);
+    // Send Phase 5b-B as TWO separate bundles, matching the C++ server:
+    //
+    // 1. VIEWPORT + CELL_PLAYER + FORCED_POSITION — standalone 99-byte packet.
+    //    This creates the cell entity, puts it in the world, and the entity enters
+    //    a brief "transaction" state during creation.
+    //
+    // 2. Entity methods (mapLoaded body) — separate fragmented bundle.
+    //    By arriving in a new bundle, these are processed after the entity's
+    //    creation transaction completes, so BeingAppearance hits the
+    //    "SCHEDULING JOB" path instead of "HOLD FOR TRANSACTION".
+    //
+    // Previously we combined everything into one fragmented bundle, which caused
+    // BeingAppearance to be silently dropped (HOLD FOR TRANSACTION) because the
+    // entity was still in its creation transaction during bundle processing.
     let map_body = build_map_loaded_body(
         entry_info.player_entity_id, &player_data, &entry_info,
     );
-    let mut combined_body = phase_b_body;
-    combined_body.extend_from_slice(&map_body);
 
-    let num_frags = fragment_count(combined_body.len());
+    let map_frags = fragment_count(map_body.len());
+    // Reserve 1 seq for the standalone phase_b packet + N seqs for map fragments.
+    let total_seqs = 1 + map_frags;
 
-    // Atomically drain acks and reserve the entire sequence range for all fragments.
-    // The tick-sync loop also does fetch_add(1) on the same counter, so this
-    // ensures no overlap: tick-sync will skip past our reserved range.
     let (acks, base_seq) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
         let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-        let seq = c.next_seq.fetch_add(num_frags, Ordering::Relaxed);
+        let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed);
         (acks, seq)
     };
 
-    // Fragment and encrypt the combined body. Acks go on the first fragment.
-    let (packets, seqs_consumed) = fragment_map_loaded(&key, base_seq, &acks, &combined_body);
-    debug_assert_eq!(seqs_consumed, num_frags);
+    // Packet 1: VIEWPORT + CELL_PLAYER + FORCED_POSITION (standalone, ~99 bytes)
+    let phase_b_pkt = build_world_entry_phase_b(&key, base_seq, &acks, &entry_info);
+    tracing::debug!(%addr, len = phase_b_pkt.len(), seq = base_seq,
+        "UDP_OUT Phase 5b-B: VIEWPORT+CELL+FORCED (standalone)");
+    socket.send_to(&phase_b_pkt, addr).await?;
+
+    // Packet 2+: Entity methods (mapLoaded body, possibly fragmented)
+    let map_base_seq = base_seq + 1;
+    let (map_packets, map_seqs) = fragment_map_loaded(&key, map_base_seq, &[], &map_body);
+    debug_assert_eq!(map_seqs, map_frags);
     tracing::info!(
         %addr,
-        fragment_count = packets.len(),
-        seqs_consumed,
-        combined_body_len = combined_body.len(),
-        first_frag_len = packets.first().map(|p| p.len()).unwrap_or(0),
-        "mapLoaded: combined bundle ready (VIEWPORT+CELL+FORCED + entity data)"
+        phase_b_seq = base_seq,
+        map_base_seq,
+        map_fragments = map_packets.len(),
+        map_body_len = map_body.len(),
+        "mapLoaded: split send (standalone VIEWPORT+CELL + separate entity methods)"
     );
-    let pkt_count = packets.len();
-    for (i, pkt_data) in packets.iter().enumerate() {
-        tracing::debug!(%addr, len = pkt_data.len(), seq = base_seq + i as u32,
-            part = i + 1, total = pkt_count, "UDP_OUT mapLoaded");
+    for (i, pkt_data) in map_packets.iter().enumerate() {
+        tracing::debug!(%addr, len = pkt_data.len(), seq = map_base_seq + i as u32,
+            part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
         socket.send_to(pkt_data, addr).await?;
     }
 
-    let total_bytes: usize = packets.iter().map(|p| p.len()).sum();
+    let total_bytes: usize = phase_b_pkt.len() + map_packets.iter().map(|p| p.len()).sum::<usize>();
+    let pkt_count = 1 + map_packets.len();
     tracing::info!(%addr, player = %player_data.player_name,
         level = player_data.level, archetype = player_data.archetype,
         packets = pkt_count,
-        "Phase 5b-B: mapLoaded complete ({} bytes across {} fragments)", total_bytes, pkt_count);
+        "Phase 5b-B: mapLoaded complete ({} bytes across {} packets)", total_bytes, pkt_count);
 
     // Clear first_login flag in DB after sending the intro movie
     if player_data.first_login != 0 {
@@ -241,16 +275,45 @@ pub(crate) async fn handle_map_loaded_phase_b(
     // explicitly signals readiness (matches C++ SGWPlayer.onClientReady).
     entity_to_addr.lock().unwrap().insert(entry_info.player_entity_id, addr);
 
+    // Cache BeingAppearance + onEntityTint args for resend after onClientReady.
+    // The first copy in the mapLoaded bundle may be dropped because the entity is
+    // still in a "transaction" during bundle processing (all messages in a reassembled
+    // bundle are processed in one frame). The C++ server sends BeingAppearance 3-5
+    // times via createCacheStamp replays; this second send mimics that.
+    let mut appearance_args = Vec::new();
+    write_wstring(&mut appearance_args, &player_data.bodyset);
+    appearance_args.extend_from_slice(&(player_data.components.len() as u32).to_le_bytes());
+    for comp in &player_data.components {
+        write_wstring(&mut appearance_args, comp);
+    }
+
+    let skin_tint = if (player_data.skin_color_id as usize) < SKIN_TINTS.len() {
+        SKIN_TINTS[player_data.skin_color_id as usize]
+    } else {
+        SKIN_TINTS[0]
+    };
+    let mut tint_args = Vec::with_capacity(12);
+    tint_args.extend_from_slice(&0u32.to_le_bytes());
+    tint_args.extend_from_slice(&0u32.to_le_bytes());
+    tint_args.extend_from_slice(&skin_tint.to_le_bytes());
+
     // The C++ server waits for the exposed SGWPlayer base method
     // `onClientReady` (msg_id 0xD8) before calling into the cell-side
     // post-load logic that eventually fires `player.loaded`.
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        // Cache appearance data for resend after cinematic (cancelMovie).
+        // PendingClientReadyInfo is consumed by onClientReady, but cancelMovie
+        // may arrive later (after the cinematic ends).
+        c.cached_appearance_args = Some(appearance_args.clone());
+        c.cached_tint_args = Some(tint_args.clone());
         c.pending_client_ready = Some(PendingClientReadyInfo {
             entity_id: entry_info.player_entity_id,
             player_id: player_data.player_id,
             world_name: entry_info.world_name.clone(),
+            appearance_args,
+            tint_args,
         });
     }
 
@@ -259,10 +322,17 @@ pub(crate) async fn handle_map_loaded_phase_b(
 }
 
 /// Finalize world entry after the client sends `SGWPlayer.onClientReady`.
+///
+/// Also resends BeingAppearance + onEntityTint. The first copy was sent in the
+/// mapLoaded bundle but may have been dropped because the entity was still in a
+/// "transaction" during bundle processing. The C++ server sends BeingAppearance
+/// 3-5 times via createCacheStamp replays; this second send mimics that.
 pub(crate) async fn handle_on_client_ready(
     addr: SocketAddr,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    socket: &Arc<UdpSocket>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pending = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
@@ -276,9 +346,11 @@ pub(crate) async fn handle_on_client_ready(
         return Ok(());
     };
 
+    let entity_id = pending.entity_id;
+
     tracing::info!(
         %addr,
-        entity_id = pending.entity_id,
+        entity_id,
         player_id = pending.player_id,
         world = %pending.world_name,
         "SGWPlayer.onClientReady received -- finalizing world entry"
@@ -286,18 +358,90 @@ pub(crate) async fn handle_on_client_ready(
 
     if let Some(ref tx) = cell_tx {
         let _ = tx.send(BaseToCellMsg::ConnectEntity {
-            entity_id: pending.entity_id,
+            entity_id,
         }).await;
 
         let _ = tx.send(BaseToCellMsg::InitPlayerState {
-            entity_id: pending.entity_id,
+            entity_id,
             player_id: pending.player_id,
             world_name: pending.world_name.clone(),
         }).await;
     }
 
-    tracing::info!(%addr, entity_id = pending.entity_id, "World entry finalized");
+    // Resend BeingAppearance + onEntityTint now that the entity is fully ready.
+    let appearance_args = pending.appearance_args;
+    let tint_args = pending.tint_args;
+    send_to_witness(
+        socket, connected, entity_to_addr, entity_id,
+        |key, seq, acks| {
+            build_entity_method_packet(
+                key, seq, acks, entity_id,
+                method_idx::BEING_APPEARANCE, &appearance_args,
+            )
+        },
+    ).await;
+    send_to_witness(
+        socket, connected, entity_to_addr, entity_id,
+        |key, seq, acks| {
+            build_entity_method_packet(
+                key, seq, acks, entity_id,
+                method_idx::ON_ENTITY_TINT, &tint_args,
+            )
+        },
+    ).await;
+
+    tracing::info!(%addr, entity_id, "World entry finalized (BeingAppearance resent)");
     Ok(())
+}
+
+/// Resend BeingAppearance + onEntityTint after the first-login cinematic finishes.
+///
+/// The client sends `cancelMovie` (exposed cell method index 108) when the intro
+/// cinematic ends. By this point both previous BeingAppearance sends (in the
+/// mapLoaded bundle and after onClientReady) may have been lost because the
+/// cinematic was rendering full-screen. This third send ensures the model loads.
+pub(crate) async fn handle_cancel_movie(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    entity_id: u32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    let cached = {
+        let clients = connected.lock().unwrap();
+        clients.get(&addr).and_then(|c| {
+            match (&c.cached_appearance_args, &c.cached_tint_args) {
+                (Some(a), Some(t)) => Some((a.clone(), t.clone())),
+                _ => None,
+            }
+        })
+    };
+
+    let Some((appearance_args, tint_args)) = cached else {
+        tracing::debug!(%addr, entity_id, "cancelMovie: no cached appearance data -- skipping resend");
+        return;
+    };
+
+    send_to_witness(
+        socket, connected, entity_to_addr, entity_id,
+        |key, seq, acks| {
+            build_entity_method_packet(
+                key, seq, acks, entity_id,
+                method_idx::BEING_APPEARANCE, &appearance_args,
+            )
+        },
+    ).await;
+    send_to_witness(
+        socket, connected, entity_to_addr, entity_id,
+        |key, seq, acks| {
+            build_entity_method_packet(
+                key, seq, acks, entity_id,
+                method_idx::ON_ENTITY_TINT, &tint_args,
+            )
+        },
+    ).await;
+
+    tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent after cinematic");
 }
 
 /// Handle `ENABLE_ENTITIES` (0x08) -- dispatches Phase 4 or Phase 5b-A.
@@ -441,10 +585,10 @@ pub(crate) async fn handle_gate_travel(
         .ok_or("Gate travel: no client addr for entity")?;
 
     // Get client state
-    let (key, account_id, pending_acks_arc, next_seq) = {
+    let (key, account_id, access_level, pending_acks_arc, next_seq) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get(&addr).ok_or("Gate travel: client state not found")?;
-        (c.key, c.account_id, Arc::clone(&c.pending_acks), Arc::clone(&c.next_seq))
+        (c.key, c.account_id, c.access_level, Arc::clone(&c.pending_acks), Arc::clone(&c.next_seq))
     };
 
     tracing::info!(
@@ -484,6 +628,7 @@ pub(crate) async fn handle_gate_travel(
         pos: position,
         rot: rotation,
         world_name: target_world_name.to_string(),
+        class_id: if access_level > 0 { SGWGMPLAYER_CLASS_ID } else { SGWPLAYER_CLASS_ID },
     };
 
     // Query player load data from DB (same player, different world)
@@ -1123,6 +1268,7 @@ pub(crate) async fn query_world_entry(
         pos: [0.0; 3],
         rot: [0.0; 3],
         world_name: "CombatSim".to_string(),
+        class_id: SGWPLAYER_CLASS_ID,
     };
 
     let pool = match db_pool {
@@ -1183,6 +1329,7 @@ pub(crate) async fn query_world_entry(
                 pos,
                 rot: [0.0; 3],
                 world_name: row.world_location.clone(),
+                class_id: SGWPLAYER_CLASS_ID,
             }
         }
         Ok(None) => {

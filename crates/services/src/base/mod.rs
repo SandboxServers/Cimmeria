@@ -136,6 +136,12 @@ pub(crate) struct PendingClientReadyInfo {
     pub player_id: i32,
     /// World name used by content-engine `player.loaded` triggers.
     pub world_name: String,
+    /// Cached BeingAppearance args (bodySet + components) for resend after onClientReady.
+    /// The first copy sent in mapLoaded may be dropped if the entity is still in a
+    /// transaction during bundle processing.
+    pub appearance_args: Vec<u8>,
+    /// Cached onEntityTint args (primary, secondary, skin) for resend after onClientReady.
+    pub tint_args: Vec<u8>,
 }
 
 /// State held for each client that has completed the Phase 3 handshake.
@@ -186,6 +192,10 @@ pub(crate) struct ConnectedClientState {
     /// Player init that must wait until the client sends `SGWPlayer.onClientReady`
     /// after receiving the full mapLoaded bundle.
     pub pending_client_ready: Option<PendingClientReadyInfo>,
+    /// Cached BeingAppearance args for resend after cinematic (cancelMovie).
+    pub cached_appearance_args: Option<Vec<u8>>,
+    /// Cached onEntityTint args for resend after cinematic (cancelMovie).
+    pub cached_tint_args: Option<Vec<u8>>,
     /// Set to `true` by `handle_log_off` to signal the tick-sync loop to stop.
     pub cancelled: Arc<AtomicBool>,
     /// Player character name, set during world entry for chat routing.

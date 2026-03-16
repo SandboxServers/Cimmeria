@@ -1,0 +1,405 @@
+# SGWPlayer Exposed CellMethod Dispatch Table
+
+Client-to-server cell method calls. Only methods with `<Exposed/>` in the .def file
+get a wire index. Non-exposed methods are server-internal and **skipped** in numbering.
+
+## Wire Encoding
+
+- **Direct** (index 0-60): `[msg_id = index | 0x80][word_len: u16][entity_id: u32][args...]`
+- **Extended** (index 61+): `[0xBD][word_len: u16][entity_id: u32][sub_index: u8 = index - 61][args...]`
+
+The 4-byte `entity_id` prefix is always present and must be stripped before reading args.
+
+---
+
+## Entity Hierarchy
+
+```
+SGWSpawnableEntity          (parent, 0 exposed CellMethods)
+  -> SGWBeing               (parent of SGWPlayer)
+       implements: SGWBeing (interface), SGWAbilityManager, SGWCombatant
+     -> SGWPlayer
+          implements: Communicator, OrganizationMember, MinigamePlayer,
+                      GateTravel, SGWInventoryManager, SGWMailManager,
+                      Missionary, SGWPoller, ContactListManager,
+                      SGWBlackMarketManager, ClientCache
+```
+
+Interfaces are traversed in the order listed in `<Implements>`, depth-first.
+SGWBeing's interfaces come first (from SGWBeing.def), then SGWPlayer's (from SGWPlayer.def).
+
+---
+
+## Interface CellMethods (Indices 0-66)
+
+### SGWBeing (interface) -- 2 exposed / 14 total
+
+Source: `entities/defs/interfaces/SGWBeing.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 0 | setTargetID | YES | INT32 targetId |
+| 1 | setMovementType | YES | INT8 movementType |
+| - | onPetSpawn | no | |
+| - | onPetDeath | no | |
+| - | onPetDetection | no | |
+| - | toggleStateField | no | |
+| - | setStateField | no | |
+| - | registerVisionChangeCallback | no | |
+| - | unregisterVisionChangeCallback | no | |
+| - | enableDisguise | no | |
+| - | enableDisguiseByDef | no | |
+| - | reduceDisguiseRating | no | |
+| - | stopMovement | no | |
+| - | restoreMovement | no | |
+
+### SGWAbilityManager (interface) -- 3 exposed
+
+Source: `entities/defs/interfaces/SGWAbilityManager.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 2 | toggleCombatDebug | YES | (none) |
+| 3 | toggleCombatVerboseDebug | YES | (none) |
+| 4 | confirmationResponse | YES | INT8 choice |
+| - | onHealthZeroed | no | |
+| - | invokeAbility | no | |
+| - | resolveAbility | no | |
+| - | resolveEffect | no | |
+| - | onKillCredit | no | |
+| - | (+ others) | no | |
+
+### SGWCombatant (interface) -- 3 exposed
+
+Source: `entities/defs/interfaces/SGWCombatant.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 5 | setCrouched | YES | INT8 crouched |
+| 6 | toggleHealDebug | YES | (none) |
+| 7 | requestHolsterWeapon | YES | INT8 holstered |
+| - | onAttacked | no | |
+| - | onAddedToThreatList | no | |
+| - | (+ others) | no | |
+
+### Communicator (interface) -- 0 exposed
+
+Source: `entities/defs/interfaces/Communicator.def`
+
+No exposed CellMethods (only BaseMethods). One non-exposed: `processPlayerCommunication`.
+
+### OrganizationMember (interface) -- 12 exposed
+
+Source: `entities/defs/interfaces/OrganizationMember.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| - | onOrganizationJoined | no | |
+| - | organizationInvite | no | |
+| - | organizationInviteByType | no | |
+| - | organizationKick | no | |
+| - | organizationRankChange | no | |
+| - | onMemberRankChange | no | |
+| - | onOrganizationMOTDUpdate | no | |
+| - | onOrganizationNoteUpdate | no | |
+| - | onOrganizationOfficerNoteUpdate | no | |
+| - | onOrganizationRankPermissionsUpdate | no | |
+| - | onOrganizationSingleRankNameUpdate | no | |
+| - | onSquadLootModeUpdate | no | |
+| - | onOrganizationInvite | no | |
+| 8 | organizationInviteResponse | YES | INT32 requestId, UINT8 response |
+| - | organizationInviteResults | no | |
+| - | organizationInviteAccepted | no | |
+| 9 | organizationLeave | YES | INT32 organizationId |
+| - | onOrganizationMemberJoined | no | |
+| - | initialOrganizationMemberInfo | no | |
+| - | onOrganizationMemberInfoUpdate | no | |
+| 10 | BroadcastMinimapPing | YES | INT32 orgId, VECTOR3 location |
+| - | receivedMinimapPing | no | |
+| - | onStrikeTeamUpdate | no | |
+| 11 | strikeTeamResponse | YES | INT32 orgId, UINT8 response |
+| 12 | pvpOrganizationLeaveResponse | YES | INT32 orgId, UINT8 response |
+| - | onOrganizationHeaderUpdate | no | |
+| - | onOrganizationCashUpdate | no | |
+| - | orgUpdatePlayerCash | no | |
+| - | onOrganizationRankUpdate | no | |
+| - | onOrganizationRankNameUpdate | no | |
+| 13 | organizationMOTD | YES | INT32 orgId, WSTRING motd |
+| 14 | organizationNote | YES | INT32 orgId, WSTRING note |
+| 15 | organizationOfficerNote | YES | INT32 orgId, WSTRING name, WSTRING note |
+| 16 | organizationSetRankPermissions | YES | INT32 orgId, INT32 rank, INT32 permissions |
+| 17 | organizationSetRankName | YES | INT32 orgId, INT32 rank, WSTRING name |
+| 18 | squadSetLootMode | YES | INT32 lootMode |
+| 19 | organizationTransferCash | YES | INT32 orgId, INT32 cash |
+
+### MinigamePlayer (interface) -- 15 exposed
+
+Source: `entities/defs/interfaces/MinigamePlayer.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 20 | debugStartMinigame | YES | INT32 gameId |
+| 21 | debugSpectateMinigame | YES | INT32 gameId |
+| 22 | debugJoinMinigame | YES | INT32 gameId |
+| 23 | debugMinigameInstance | YES | INT32 instanceId |
+| 24 | startMinigame | YES | INT32 hostEntityId, INT32 gameDefId |
+| 25 | endCurrentMinigame | YES | INT32 gameId, INT32 winnerId, INT32 loserId |
+| 26 | requestSpectateList | YES | INT32 gameId |
+| 27 | spectateMinigame | YES | INT32 gameId |
+| 28 | registerToMinigameHelp | YES | INT32 gameDefId, INT32 helpLevel |
+| 29 | updateRegisterToMinigameHelp | YES | INT32 gameDefId, INT32 helpLevel |
+| 30 | minigameStartCancel | YES | INT32 gameId |
+| 31 | minigameCallAccept | YES | INT32 gameId |
+| 32 | minigameCallDecline | YES | INT32 gameId |
+| 33 | minigameCallAbort | YES | INT32 gameId |
+| 34 | minigameContactRequest | YES | INT32 targetEntityId, INT32 gameDefId |
+
+### GateTravel (interface) -- 1 exposed
+
+Source: `entities/defs/interfaces/GateTravel.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 35 | onDialGate | YES | INT32 targetAddressId, INT32 sourceAddressId |
+| - | giveStargateAddressStr | no | |
+| - | removeStargateAddressStr | no | |
+| - | closeGatesTo | no | |
+| - | processGateTravel | no | |
+
+### SGWInventoryManager (interface) -- 7 exposed
+
+Source: `entities/defs/interfaces/SGWInventoryManager.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 36 | removeItem | YES | ItemID itemId, INT16 quantity |
+| 37 | listItems | YES | (none) |
+| 38 | moveItem | YES | INT32 itemId, INT32 targetBag, INT32 targetSlot, INT32 quantity |
+| 39 | useItem | YES | INT32 itemId, INT32 targetId |
+| 40 | repairItemRequest | YES | INT32 itemId, FLOAT repairRatio |
+| 41 | requestActiveSlotChange | YES | INT32 bagId, INT32 slotId |
+| 42 | requestAmmoChange | YES | INT32 itemId, INT32 ammoType |
+| - | giveCash | no | |
+| - | requestGiveItem | no | |
+| - | requestRemoveItem | no | |
+| - | (+ others) | no | |
+
+### SGWMailManager (interface) -- 9 exposed
+
+Source: `entities/defs/interfaces/SGWMailManager.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 43 | requestMailHeaders | YES | UINT8 bArchive |
+| 44 | sendMailMessage | YES | INT32 recipientFlags, ARRAY\<WSTRING\> recipients, WSTRING subject, WSTRING body, INT32 cash, UINT8 bCOD, INT32 itemId, INT32 itemQuantity |
+| 45 | archiveMailMessage | YES | INT32 mailId |
+| 46 | deleteMailMessage | YES | INT32 mailId |
+| 47 | returnMailMessage | YES | INT32 mailId |
+| 48 | requestMailBody | YES | INT32 mailId |
+| 49 | takeCashFromMailMessage | YES | INT32 mailId |
+| 50 | takeItemFromMailMessage | YES | INT32 mailId, INT32 containerId, INT32 slotId |
+| 51 | payCODForMailMessage | YES | INT32 mailId |
+| - | onNewMail | no | |
+
+### Missionary (interface) -- 3 exposed
+
+Source: `entities/defs/interfaces/Missionary.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 52 | abandonMission | YES | INT32 missionId |
+| 53 | shareMission | YES | INT32 missionId |
+| 54 | shareMissionResponse | YES | INT8 choice |
+| - | shareMissionOffer | no | |
+| - | (+ many server-internal methods) | no | |
+
+### SGWPoller (interface) -- 0 exposed
+
+Source: `entities/defs/interfaces/SGWPoller.def`
+
+Empty CellMethods section.
+
+### ContactListManager (interface) -- 6 exposed
+
+Source: `entities/defs/interfaces/ContactListManager.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 55 | contactListCreate | YES | WSTRING listName, UINT32 flags |
+| 56 | contactListDelete | YES | INT32 listId |
+| 57 | contactListRename | YES | INT32 listId, WSTRING newName |
+| 58 | contactListFlagsUpdate | YES | INT32 listId, UINT32 flags |
+| 59 | contactListAddMembers | YES | INT32 listId, ARRAY\<WSTRING\> members |
+| 60 | contactListRemoveMembers | YES | INT32 listId, ARRAY\<WSTRING\> members |
+
+### SGWBlackMarketManager (interface) -- 6 exposed
+
+Source: `entities/defs/interfaces/SGWBlackMarketManager.def`
+
+| Index | Method | Exposed | Args |
+|-------|--------|---------|------|
+| 61 | BMSearch | YES | BMSearchOptions searchOptions |
+| 62 | BMCreateAuction | YES | INT32 itemId, INT32 initialBid, INT32 buyoutPrice, INT32 durationDays |
+| 63 | BMPlaceBid | YES | INT32 auctionId, INT32 bidAmount |
+| 64 | BMCancelAuction | YES | INT32 auctionId |
+| 65 | BMStartWatchingItem | YES | INT32 auctionId |
+| 66 | BMStopWatchingItem | YES | INT32 auctionId |
+
+### ClientCache (interface) -- 0 exposed CellMethods
+
+Source: `entities/defs/interfaces/ClientCache.def`
+
+No CellMethods. Only BaseMethods (versionInfoRequest, elementDataRequest) and
+ClientMethods (onVersionInfo, onCookedDataError).
+
+---
+
+## SGWPlayer Own CellMethods (Indices 67-108)
+
+Source: `entities/defs/SGWPlayer.def` lines 564-1109
+
+42 exposed methods out of ~80 total.
+
+| Index | Method | Exposed | Args | .def line |
+|-------|--------|---------|------|-----------|
+| 67 | callForAid | YES | INT32 respawnerID | 566 |
+| - | awardSquadXP | no | | 572 |
+| 68 | useAbility | YES | INT32 abilityId, INT32 targetId | 580 |
+| 69 | useAbilityOnGroundTarget | YES | INT32 abilityId, FLOAT x, FLOAT y, FLOAT z | 586 |
+| 70 | respawn | YES | (none) | 594 |
+| 71 | unstuck | YES | (none) | 598 |
+| 72 | resetMyAbilities | YES | (none) | 602 |
+| 73 | who | YES | WSTRING name, WSTRING archetype, WSTRING alignment, WSTRING playerType | 606 |
+| 74 | interact | YES | INT32 overrideTarget | 615 |
+| 75 | dialogButtonChoice | YES | INT32 dialogId, INT32 buttonId | 621 |
+| 76 | initialResponse | YES | INT32 dialogSetMapId | 629 |
+| 77 | trainAbility | YES | INT32 abilityId | 635 |
+| - | giveTrainingPoints | no | | 640 |
+| 78 | purchaseItems | YES | ARRAY\<INT32\> itemIndices, ARRAY\<INT32\> quantities | 644 |
+| 79 | sellItems | YES | ARRAY\<INT32\> itemIds, ARRAY\<INT32\> quantities | 650 |
+| 80 | buybackItems | YES | ARRAY\<INT32\> itemIds, ARRAY\<INT32\> quantities | 656 |
+| 81 | repairItems | YES | ARRAY\<INT32\> itemIds | 662 |
+| 82 | rechargeItems | YES | ARRAY\<INT32\> itemIds | 667 |
+| - | requestAdditionalLoot | no | | 672 |
+| - | operateGateLoc | no | | 680 |
+| - | onSendCombatDebug | no | | 685 |
+| - | onSendEventDebug | no | | 690 |
+| - | startAutoCycleAbility | no | | 694 |
+| - | clearAbilities | no | | 698 |
+| 83 | setAutoCycle | YES | INT8 enabled | 701 |
+| - | stopAutoCycle | no | | 706 |
+| - | sendGreetWindowToClient | no | | 710 |
+| - | sendDialogDisplayToClient | no | | 717 |
+| - | sendLootToClient | no | | 728 |
+| - | closeLootWindow | no | | 734 |
+| 84 | lootItem | YES | INT32 index | 738 |
+| - | setDesignerFlag | no | | 743 |
+| - | onClientReady (cell) | no | | 749 |
+| - | setGateAddressLoc | no | | 752 |
+| - | setGateAddressPoint | no | | 758 |
+| 85 | triggerClientHintedGenericRegion | YES | INT32 id, UINT8 bEntering, VECTOR3 position | 766 |
+| - | onTeleportStart | no | | 775 |
+| - | onTeleportFinished | no | | 781 |
+| - | gmRequestInfo | no | | 784 |
+| - | onSetSpeed | no | | 790 |
+| 86 | requestReload | YES | UINT8 reloadType | 794 |
+| - | removeWaypoint | no | | 799 |
+| - | onMissionRewardsDisplay | no | | 807 |
+| - | onMissionOfferDisplay | no | | 814 |
+| 87 | chosenRewards | YES | RewardChoices choices, INT32 missionId | 821 |
+| 88 | petInvokeAbility | YES | INT32 entityId, INT32 abilityId, INT32 targetId | 827 |
+| 89 | petAbilityToggle | YES | INT32 entityId, INT32 abilityId, INT8 toggle | 834 |
+| 90 | petChangeStance | YES | INT32 entityId, INT8 stance | 841 |
+| 91 | setRingTransporterDestination | YES | INT32 regionId, INT32 destinationId | 848 |
+| - | onSquadMemberRingTransport | no | | 855 |
+| - | onSquadMemberRingTransportFinished | no | | 861 |
+| - | onReady | no | | 865 |
+| 92 | onWorldInstanceReset | YES | (none) | 868 |
+| 93 | updateSystemOptions | YES | ARRAY\<NameValuePair\> options | 872 |
+| 94 | onOrganizationCreation | YES | WSTRING organizationName | 877 |
+| - | callForAidFinish | no | | 882 |
+| - | onRegisterSpawnRegionUpdates | no | | 886 |
+| - | onDeregisterSpawnRegionUpdates | no | | 890 |
+| - | gainRacialParadigmLevels | no | | 894 |
+| - | gainExpertise | no | | 900 |
+| - | gainAppliedSciencePoints | no | | 906 |
+| - | updateCraftingFlags | no | | 911 |
+| 95 | spendAppliedSciencePoints | YES | INT32 disciplineSeqId | 916 |
+| 96 | craft | YES | INT32 craftId, ARRAY\<ItemID\> items, INT32 quantity | 921 |
+| 97 | research | YES | ItemID itemId, ARRAY\<ItemID\> kickers | 928 |
+| 98 | reverseEngineer | YES | ItemID itemId | 934 |
+| 99 | alloying | YES | INT32 craftId, ItemID currentTierItemId, ARRAY\<ItemID\> lowerTierItems | 939 |
+| 100 | respecCrafting | YES | (none) | 946 |
+| - | gmGotoCallback | no | | 950 |
+| 101 | onClientChallengeResponse | YES | INT32 challenge, WSTRING version, INT32 type, WSTRING object, INT32 id1, INT32 id2, WSTRING value | 955 |
+| - | showPlayer | no | | 966 |
+| - | sendDuelChallenge | no | | 970 |
+| 102 | sendDuelResponse | YES | INT8 response | 975 |
+| - | duelChallenge | no | | 980 |
+| - | duelResponse | no | | 985 |
+| - | duelEntityDefeat | no | | 991 |
+| - | startSquadDuel | no | | 996 |
+| - | duelAbort | no | | 1000 |
+| - | onDuelDefeat | no | | 1003 |
+| - | registerDuelMarker | no | | 1007 |
+| - | startDuel | no | | 1011 |
+| 103 | duelForfeit | YES | (none) | 1015 |
+| - | perfStats | no | | 1019 |
+| 104 | tradeRequest | YES | INT32 entityId, LocalTradeProposal proposal | 1034 |
+| - | tradeRequestFromEntity | no | | 1041 |
+| 105 | tradeRequestCancel | YES | INT32 entityId | 1047 |
+| 106 | tradeUpdateProposal | YES | INT32 entityId, LocalTradeProposal proposal | 1053 |
+| - | updateTradeState | no | | 1060 |
+| 107 | tradeLockState | YES | INT32 localVersionId, INT32 remoteVersionId, INT8 lockState | 1067 |
+| - | learnPlayerRespawner | no | | 1075 |
+| - | updateTradeLockState | no | | 1080 |
+| - | tradeCancel | no | | 1087 |
+| - | setPvPFlag | no | | 1091 |
+| - | startPvPTimer | no | | 1096 |
+| - | cancelPvPTimer | no | | 1101 |
+| 108 | cancelMovie | YES | WSTRING movieName | 1104 |
+
+---
+
+## Summary
+
+| Range | Source | Exposed Count |
+|-------|--------|---------------|
+| 0-1 | SGWBeing (interface) | 2 |
+| 2-4 | SGWAbilityManager | 3 |
+| 5-7 | SGWCombatant | 3 |
+| - | Communicator | 0 |
+| 8-19 | OrganizationMember | 12 |
+| 20-34 | MinigamePlayer | 15 |
+| 35 | GateTravel | 1 |
+| 36-42 | SGWInventoryManager | 7 |
+| 43-51 | SGWMailManager | 9 |
+| 52-54 | Missionary | 3 |
+| - | SGWPoller | 0 |
+| 55-60 | ContactListManager | 6 |
+| 61-66 | SGWBlackMarketManager | 6 |
+| - | ClientCache | 0 |
+| 67-108 | SGWPlayer (own) | 42 |
+| **Total** | | **109** |
+
+## Key Methods for Server Implementation
+
+| Index | Method | Wire | Notes |
+|-------|--------|------|-------|
+| 0 | setTargetID | 0x80 | Target selection |
+| 1 | setMovementType | 0x81 | Walk/run/crouch |
+| 5 | setCrouched | 0x85 | Crouch toggle |
+| 35 | onDialGate | 0xBD+0 | Stargate travel (extended) |
+| 52 | abandonMission | 0xB4 | Mission abandon |
+| 68 | useAbility | 0xBD+7 | Combat ability use (extended) |
+| 70 | respawn | 0xBD+9 | Death respawn (extended) |
+| 74 | interact | 0xBD+13 | NPC interaction (extended) |
+| 83 | setAutoCycle | 0xBD+22 | Auto-attack toggle (extended) |
+| 108 | cancelMovie | 0xBD+47 | Cinematic finished (extended) |
+
+## Validation
+
+This table was derived by reading every `<CellMethods>` section across the entity
+hierarchy .def files, counting only `<Exposed/>` methods in file order.
+Triple-checked 2026-03-16. The OrganizationMember interface has **12** exposed
+methods (not 11 -- `organizationLeave` at line 287 is easily missed).

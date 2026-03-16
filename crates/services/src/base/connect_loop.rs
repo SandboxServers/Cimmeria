@@ -21,7 +21,8 @@ use super::helpers::{destroy_client_entities, to_hex};
 use super::login::{handle_log_off, handle_login, parse_baseapp_login};
 use super::resources::ResourceCache;
 use super::world_entry::{
-    handle_enable_entities, handle_map_loaded_phase_b, handle_on_client_ready, handle_play_character,
+    handle_enable_entities, handle_map_loaded_phase_b, handle_on_client_ready,
+    handle_play_character, handle_cancel_movie,
 };
 
 /// Main receive loop -- one per running `BaseService`.
@@ -362,7 +363,9 @@ pub(crate) async fn handle_encrypted_datagram(
                 if in_world {
                     match id {
                         sgw_player_base::ON_CLIENT_READY => {
-                            handle_on_client_ready(addr, connected, cell_tx).await?;
+                            handle_on_client_ready(
+                                addr, connected, cell_tx, socket, entity_to_addr,
+                            ).await?;
                         }
                         _ => {
                             // SGWPlayer base method dispatch
@@ -473,19 +476,30 @@ pub(crate) async fn handle_encrypted_datagram(
                         // Extended encoding: sub_index is first byte AFTER entityId
                         if !method_payload.is_empty() {
                             let sub_index = method_payload[0] as u16;
+                            let method_index = sub_index + 61;
                             let args = if method_payload.len() > 1 { method_payload[1..].to_vec() } else { Vec::new() };
                             tracing::debug!(
                                 %addr,
                                 entity_id = entity_id_from_client,
                                 sub_index,
-                                method_index = sub_index + 61,
+                                method_index,
                                 payload_hex = %payload[..payload.len().min(12)].iter().map(|b| format!("{:02x}", b)).collect::<String>(),
                                 "Extended cell method (0xBD)"
                             );
+
+                            // cancelMovie (index 108): client sends this when a
+                            // cinematic finishes. Resend BeingAppearance + onEntityTint
+                            // so the model loads after the first-login intro movie.
+                            const CM_CANCEL_MOVIE: u16 = 108;
+                            if method_index == CM_CANCEL_MOVIE {
+                                tracing::info!(%addr, entity_id = player_eid, "cancelMovie received — resending BeingAppearance + onEntityTint");
+                                handle_cancel_movie(socket, addr, player_eid, connected, entity_to_addr).await;
+                            }
+
                             if let Some(ref tx) = cell_tx {
                                 let _ = tx.send(BaseToCellMsg::CellMethodCall {
                                     entity_id: player_eid,
-                                    method_index: sub_index + 61,
+                                    method_index,
                                     args,
                                 }).await;
                             }
