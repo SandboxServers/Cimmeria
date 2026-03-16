@@ -94,24 +94,12 @@ pub(crate) async fn handle_play_character(
     // Also query the full player data needed for mapLoaded
     let player_load_data = query_player_load_data(db_pool, account_id, player_id).await;
 
-    // Set entity class based on access_level (matches python/base/Account.py:293-296):
-    // access_level > 0 → SGWGmPlayer (0x03), else SGWPlayer (0x02).
-    {
-        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get(&addr) {
-            entry_info.class_id = if c.access_level > 0 {
-                SGWGMPLAYER_CLASS_ID
-            } else {
-                SGWPLAYER_CLASS_ID
-            };
-            tracing::info!(
-                %addr, access_level = c.access_level,
-                class_id = entry_info.class_id,
-                entity_type = if c.access_level > 0 { "SGWGmPlayer" } else { "SGWPlayer" },
-                "Selected entity class for world entry"
-            );
-        }
-    }
+    // NOTE: C++ Account.py:293-296 uses SGWGmPlayer (0x03) for access_level > 0,
+    // but SGWGmPlayer adds 6 ClientMethods and 80+ CellMethods that shift ALL
+    // flattened method indices. Our hardcoded method_idx constants (BeingAppearance=26,
+    // etc.) only work for SGWPlayer. Until we build a separate SGWGmPlayer index
+    // table, always use SGWPlayer (0x02) regardless of access_level.
+    // TODO: Build SGWGmPlayer method index table to enable GM entity type.
 
     tracing::info!(
         %addr,
@@ -267,6 +255,35 @@ pub(crate) async fn handle_map_loaded_phase_b(
             .execute(pool.as_ref())
             .await;
         }
+
+        // The first-login cinematic (onPlayMovie) blocks the client from
+        // processing BeingAppearance. cancelMovie fires if the player presses
+        // Escape, but NOT if the cinematic plays to completion.
+        // Spawn a delayed resend to cover the natural-end case.
+        // Duplicates with cancelMovie are harmless — client just re-applies.
+        let delay_socket = Arc::clone(socket);
+        let delay_connected = Arc::clone(connected);
+        let delay_entity_to_addr = Arc::clone(entity_to_addr);
+        let delay_entity_id = entry_info.player_entity_id;
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            tracing::info!(entity_id = delay_entity_id,
+                "Cinematic timer: resending BeingAppearance after 10s delay");
+            handle_cancel_movie(
+                &delay_socket,
+                // Look up addr from entity_to_addr since it's stable
+                {
+                    let map = delay_entity_to_addr.lock().unwrap();
+                    match map.get(&delay_entity_id).copied() {
+                        Some(a) => a,
+                        None => return,
+                    }
+                },
+                delay_entity_id,
+                &delay_connected,
+                &delay_entity_to_addr,
+            ).await;
+        });
     }
 
     // Register entity_id -> addr before the final onClientReady gate so any
@@ -628,7 +645,7 @@ pub(crate) async fn handle_gate_travel(
         pos: position,
         rot: rotation,
         world_name: target_world_name.to_string(),
-        class_id: if access_level > 0 { SGWGMPLAYER_CLASS_ID } else { SGWPLAYER_CLASS_ID },
+        class_id: SGWPLAYER_CLASS_ID, // See NOTE above — SGWGmPlayer shifts method indices
     };
 
     // Query player load data from DB (same player, different world)
