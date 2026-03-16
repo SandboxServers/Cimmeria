@@ -91,8 +91,9 @@ export function StatusBar({ zone, mousePos, selectedActor, gridSnap, actorCount,
 
       {/* Keyboard hints (right-aligned) */}
       <div className="ml-auto flex items-center gap-1 px-2">
-        <KbdHint keys="Ctrl+1-9" label="Bookmark" />
         <KbdHint keys="W/E/R" label="Move/Rot/Scale" />
+        <KbdHint keys="P" label="Place" />
+        <KbdHint keys="G" label="Grid" />
       </div>
     </div>
   );

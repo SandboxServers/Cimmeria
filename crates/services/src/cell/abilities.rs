@@ -11,7 +11,8 @@ use tokio::sync::mpsc;
 use std::sync::Arc;
 
 use cimmeria_entity::abilities::{
-    AbilityRegistry, TIMER_ABILITY_COOLDOWN, DT_PHYSICAL,
+    AbilityRegistry, TIMER_ABILITY_COOLDOWN, DT_PHYSICAL, DT_UNTYPED,
+    ClientEffectResult, RC_HIT, SRC_NONE,
     serialize_timer_update, serialize_effect_results,
 };
 use cimmeria_entity::stats::HEALTH;
@@ -102,13 +103,62 @@ pub async fn handle_use_ability(
         args: timer_args,
     }).await;
 
-    // ── Combat resolution (if target specified) ──
+    // ── Heal resolution (self-heal when target_id <= 0) ──
 
     if target_id <= 0 {
-        return; // Self-buff or no-target ability — skip damage
+        // Check if this ability has any heal effects — if so, apply to caster.
+        // Non-heal self-buff abilities (e.g., stat buffs) are handled by the
+        // duration effect system below and don't need special treatment here.
+        let effects = ability_registry.get_ability_effects(ability_id);
+        let total_heal: i32 = effects.iter().map(|e| e.heal_amount()).sum();
+
+        if total_heal > 0 {
+            apply_heal(
+                entity_id, entity_id, ability_id, effect_seq,
+                total_heal, HEALTH, tx, space_mgr,
+            ).await;
+        }
+
+        // Still run duration effects for self-targeted abilities
+        apply_duration_effects(
+            entity_id, entity_id, ability_id,
+            ability_registry, effect_mgr, tx, space_mgr,
+        ).await;
+
+        return;
     }
 
     let target_eid = target_id as u32;
+
+    // ── Friendly heal (target is a player) ──
+    // If the target is a friendly player, check for heal effects instead of
+    // running the damage pipeline. Heals skip QR entirely — they always land.
+    let target_is_player = space_mgr.get_entity(target_eid)
+        .map_or(false, |e| e.is_player);
+
+    if target_is_player {
+        let effects = ability_registry.get_ability_effects(ability_id);
+        let total_heal: i32 = effects.iter().map(|e| e.heal_amount()).sum();
+
+        if total_heal > 0 {
+            apply_heal(
+                entity_id, target_eid, ability_id, effect_seq,
+                total_heal, HEALTH, tx, space_mgr,
+            ).await;
+
+            // Duration heal-over-time effects on the friendly target
+            apply_duration_effects(
+                entity_id, target_eid, ability_id,
+                ability_registry, effect_mgr, tx, space_mgr,
+            ).await;
+
+            return;
+        }
+        // If a friendly-targeted ability has no heal effects, fall through
+        // to damage path (e.g., friendly-fire or debuff abilities).
+    }
+
+    // ── Combat resolution (hostile target) ──
 
     // We need both attacker and target stats. Since we can't borrow two
     // entities mutably at once, we snapshot the attacker stats first.
@@ -205,39 +255,12 @@ pub async fn handle_use_ability(
         args: target_stat_update,
     }).await;
 
-    // ── Apply duration effects (buffs/debuffs) from ability ──
+    // ── Apply duration effects (buffs/debuffs/HoTs) from ability ──
     if !target_died {
-        let effects = ability_registry.get_ability_effects(ability_id);
-        for effect_def in &effects {
-            // Duration effects have pulse_duration > 0
-            if effect_def.pulse_duration > 0.0 {
-                let heal = effect_def.heal_amount();
-                let dmg = effect_def.base_damage();
-                let sid = effect_def.stat_id();
-
-                // Build stat modifiers from the effect's NVPs
-                let mut modifiers = Vec::new();
-                if heal > 0 {
-                    modifiers.push(super::effects::StatModifier {
-                        stat_id: sid,
-                        delta: heal, // positive = buff/heal
-                    });
-                } else if dmg > 0 {
-                    modifiers.push(super::effects::StatModifier {
-                        stat_id: sid,
-                        delta: -dmg, // negative = debuff/DoT
-                    });
-                }
-
-                if !modifiers.is_empty() {
-                    effect_mgr.apply_effect(
-                        target_eid, entity_id, ability_id,
-                        modifiers, effect_def.pulse_duration,
-                        tx, space_mgr,
-                    ).await;
-                }
-            }
-        }
+        apply_duration_effects(
+            entity_id, target_eid, ability_id,
+            ability_registry, effect_mgr, tx, space_mgr,
+        ).await;
     }
 
     // ── Send state field update if target died ──
@@ -275,6 +298,137 @@ pub async fn handle_use_ability(
                 // Remove dead NPC from space after a short delay
                 // (so death animation can play on witnesses)
                 space_mgr.destroy_entity(target_eid);
+            }
+        }
+    }
+}
+
+/// Apply an instant heal to a target entity. Sends `onEffectResults` (green
+/// numbers) to both caster and target, and `onStatUpdate` to the target.
+///
+/// Heals always land (RC_HIT) — there is no QR roll for friendly abilities.
+async fn apply_heal(
+    caster_id: u32,
+    target_id: u32,
+    ability_id: i32,
+    effect_seq: i32,
+    heal_amount: i32,
+    stat_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let entity = match space_mgr.get_entity_mut(target_id) {
+        Some(e) => e,
+        None => {
+            tracing::warn!(target_id, "apply_heal: target entity not found");
+            return;
+        }
+    };
+
+    // Apply healing (positive delta, clamped to max by Stat::change)
+    let actual_heal = match entity.stats.get_mut(stat_id) {
+        Some(stat) => stat.change(heal_amount),
+        None => {
+            tracing::warn!(target_id, stat_id, "apply_heal: target missing stat");
+            return;
+        }
+    };
+    if actual_heal == 0 {
+        tracing::debug!(target_id, heal_amount, "apply_heal: target already at full");
+        // Still send effect results so the client sees "0" heal feedback
+    }
+
+    tracing::info!(
+        caster = caster_id, target = target_id,
+        ability_id, heal_amount, actual_heal,
+        "Heal applied"
+    );
+
+    let stat_update = entity.stats.serialize_dirty();
+    entity.stats.clear_dirty();
+
+    // Build effect results with positive delta (client renders green numbers)
+    let effect_results = vec![ClientEffectResult {
+        stat_id: stat_id as i8,
+        delta: actual_heal,
+        damage_code: DT_UNTYPED, // heals have no damage type
+        stat_result_code: SRC_NONE,
+    }];
+
+    let effect_args = serialize_effect_results(
+        caster_id as i32,
+        ability_id,
+        effect_seq as i32,
+        target_id as i32,
+        RC_HIT,
+        &effect_results,
+    );
+
+    // onEffectResults to caster (so they see heal numbers on target)
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id: caster_id,
+        method_index: 14,
+        args: effect_args.clone(),
+    }).await;
+
+    // onEffectResults to target (so they see incoming heal)
+    if target_id != caster_id {
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id: target_id,
+            method_index: 14,
+            args: effect_args,
+        }).await;
+    }
+
+    // onStatUpdate to target
+    if !stat_update.is_empty() {
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id: target_id,
+            method_index: 20,
+            args: stat_update,
+        }).await;
+    }
+}
+
+/// Apply duration effects (HoTs, DoTs, buffs, debuffs) from an ability's
+/// effect definitions. Extracted so it can be used by both heal and damage paths.
+async fn apply_duration_effects(
+    caster_id: u32,
+    target_id: u32,
+    ability_id: i32,
+    ability_registry: &Arc<AbilityRegistry>,
+    effect_mgr: &mut super::effects::EffectManager,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let effects = ability_registry.get_ability_effects(ability_id);
+    for effect_def in &effects {
+        // Duration effects have pulse_duration > 0
+        if effect_def.pulse_duration > 0.0 {
+            let heal = effect_def.heal_amount();
+            let dmg = effect_def.base_damage();
+            let sid = effect_def.stat_id();
+
+            // Build stat modifiers from the effect's NVPs
+            let mut modifiers = Vec::new();
+            if heal > 0 {
+                modifiers.push(super::effects::StatModifier {
+                    stat_id: sid,
+                    delta: heal, // positive = buff/heal
+                });
+            } else if dmg > 0 {
+                modifiers.push(super::effects::StatModifier {
+                    stat_id: sid,
+                    delta: -dmg, // negative = debuff/DoT
+                });
+            }
+
+            if !modifiers.is_empty() {
+                effect_mgr.apply_effect(
+                    target_id, caster_id, ability_id,
+                    modifiers, effect_def.pulse_duration,
+                    tx, space_mgr,
+                ).await;
             }
         }
     }

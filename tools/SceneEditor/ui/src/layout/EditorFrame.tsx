@@ -239,7 +239,19 @@ export function EditorFrame({
           break;
         case 'r':
         case 'R':
-          if (!e.ctrlKey && !e.metaKey) setTransformMode('scale');
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+            e.preventDefault();
+            onCreateRegion();
+          } else if (!e.ctrlKey && !e.metaKey) {
+            setTransformMode('scale');
+          }
+          break;
+        case 'p':
+        case 'P':
+          // Toggle placement mode if a template is selected
+          if (!e.ctrlKey && !e.metaKey && selectedTemplate) {
+            onTogglePlacement();
+          }
           break;
         case 'g':
         case 'G':
