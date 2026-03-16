@@ -381,7 +381,7 @@ impl SpaceManager {
         entity_id: u32,
         position: [f32; 3],
         direction: [i8; 3],
-        _velocity: [f32; 3],
+        velocity: [f32; 3],
     ) {
         let space_id = match self.entity_space.get(&entity_id) {
             Some(&id) => id,
@@ -403,6 +403,7 @@ impl SpaceManager {
                 direction[1] as f32,
                 direction[2] as f32,
             );
+            cell_entity.velocity = Vector3::new(velocity[0], velocity[1], velocity[2]);
 
             // Update the spatial grid
             space.space.grid.update_position(
@@ -496,7 +497,7 @@ impl SpaceManager {
                                 space_id: space.space_id,
                                 position: [other.position.x, other.position.y, other.position.z],
                                 direction: [other.direction.x, other.direction.y, other.direction.z],
-                                velocity: [0.0; 3], // TODO: track velocity
+                                velocity: [other.velocity.x, other.velocity.y, other.velocity.z],
                             });
                         }
                     }

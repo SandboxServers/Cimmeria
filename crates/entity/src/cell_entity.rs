@@ -51,6 +51,9 @@ pub struct CellEntity {
     /// Facing direction (unit vector or yaw/pitch/roll encoded).
     pub direction: Vector3,
 
+    /// Current velocity vector (from last client movement update).
+    pub velocity: Vector3,
+
     /// Whether the entity is currently on the ground (affects movement mode).
     pub is_on_ground: bool,
 
@@ -132,6 +135,7 @@ impl CellEntity {
             space_id,
             position,
             direction: Vector3::zero(),
+            velocity: Vector3::zero(),
             is_on_ground: true,
             properties: HashMap::new(),
             witnesses: HashSet::new(),
