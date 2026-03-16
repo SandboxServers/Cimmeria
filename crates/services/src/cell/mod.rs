@@ -9,6 +9,7 @@ pub mod chat;
 pub mod combat;
 pub mod content;
 pub mod dispatch;
+pub mod effects;
 pub mod gate_travel;
 pub mod interactions;
 pub mod loot;
@@ -362,6 +363,9 @@ async fn run_cell_loop(
 ) {
     tracing::debug!("Cell service message loop started");
 
+    // Effect manager for duration-based buffs/debuffs
+    let mut effect_mgr = effects::EffectManager::new();
+
     // Tick loop: process messages and run AoI checks
     let mut tick_interval = tokio::time::interval(std::time::Duration::from_millis(100));
 
@@ -384,6 +388,7 @@ async fn run_cell_loop(
             _ = tick_interval.tick() => {
                 run_aoi_tick(tx, &mut space_mgr).await;
                 space_mgr.process_respawns();
+                effect_mgr.tick(tx, &mut space_mgr).await;
             }
         }
     }
