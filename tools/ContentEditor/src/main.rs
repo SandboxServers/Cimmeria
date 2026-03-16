@@ -24,6 +24,8 @@ fn main() {
             // Seed export & hot reload
             commands::export_to_seed_file,
             commands::hot_reload,
+            // Script conversion
+            commands::convert_script_to_chains,
             // Visual scripts
             commands::list_scripts,
             commands::load_script,

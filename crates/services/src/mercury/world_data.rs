@@ -6,7 +6,7 @@ use cimmeria_mercury::packet::{build_outgoing, build_fragmented_bundle, FLAG_HAS
 use super::{
     encrypt_packet, write_wstring, append_entity_method, method_idx,
     REPLY_FLAGS, BASEMSG_CREATE_BASE_PLAYER, BASEMSG_SPACE_VIEWPORT_INFO,
-    BASEMSG_CREATE_CELL_PLAYER, BASEMSG_FORCED_POSITION, SGWPLAYER_CLASS_ID,
+    BASEMSG_CREATE_CELL_PLAYER, BASEMSG_FORCED_POSITION,
     SKIN_TINTS,
 };
 use super::types::{ArchetypeStats, PlayerLoadData, WorldEntryInfo};
@@ -32,11 +32,12 @@ pub fn build_world_entry_phase_a(
 ) -> Vec<u8> {
     let mut body = Vec::with_capacity(256);
 
-    // 1. CREATE_BASE_PLAYER for SGWPlayer (WORD_LENGTH = 6)
+    // 1. CREATE_BASE_PLAYER (WORD_LENGTH = 6)
+    // class_id: SGWPlayer (0x02) or SGWGmPlayer (0x03) based on access_level.
     body.push(BASEMSG_CREATE_BASE_PLAYER);
     body.extend_from_slice(&6u16.to_le_bytes());
     body.extend_from_slice(&info.player_entity_id.to_le_bytes());
-    body.push(SGWPLAYER_CLASS_ID);
+    body.push(info.class_id);
     body.push(0x00); // propertyCount = 0
 
     // 2. onClientMapLoad — tells the client which terrain to load.
@@ -729,7 +730,7 @@ mod tests {
             ability_tree: Default::default(),
             items: vec![],
         };
-        let entry = WorldEntryInfo { player_entity_id: 42, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into() };
+        let entry = WorldEntryInfo { player_entity_id: 42, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02 };
         let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 42, &data, &entry);
         assert!(!packets.is_empty(), "mapLoaded should produce at least one packet");
         assert_eq!(seqs as usize, packets.len(), "seqs_consumed should match packet count");
@@ -763,7 +764,7 @@ mod tests {
             ability_tree: archetype_ability_tree(2),
             items: vec![],
         };
-        let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into() };
+        let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02 };
         let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         // Mercury MAX_BODY_LENGTH is 1411 bytes
@@ -800,7 +801,7 @@ mod tests {
             ability_tree: archetype_ability_tree(2),
             items: vec![],
         };
-        let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into() };
+        let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02 };
         let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
 
@@ -849,7 +850,7 @@ mod tests {
         };
         let entry = WorldEntryInfo {
             player_entity_id: 100, space_id: 65552,
-            pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(),
+            pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02,
         };
         let (packets, seqs) = build_map_loaded(&TEST_KEY, 10, &[], 100, &data, &entry);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);

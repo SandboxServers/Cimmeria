@@ -77,6 +77,12 @@ See [aoi-entity-introduction.md](aoi-entity-introduction.md) for NPC AoI entity 
 - The "ext[63]" messages in C++ pcap are CELL_BASE_CLIENT_MESSAGE (property cache updates from CellApp->BaseApp->Client)
 - See `cached_entity.cpp:173-236` (onEntityVisible) and `base_client.cpp:407-461` (onRequestEntityUpdate)
 
+### Cache Stamp vs Cooked Data Versioning (TWO SEPARATE SYSTEMS)
+- See [cache-stamp-system.md](cache-stamp-system.md) for full analysis
+- Entity cache stamps: CellApp -> BaseApp -> Client, for NPC AoI property replay (propertySetId 0-1)
+- Cooked data versions: versionInfoRequest/onVersionInfo, for items/abilities/missions PAK data
+- These are completely separate -- entity cache stamps have NO interaction with versionInfoRequest
+
 ### Open Questions
 - Exposed method sub-slot mechanism (for > 62 methods per entity) -- unlikely needed for SGW entities
 

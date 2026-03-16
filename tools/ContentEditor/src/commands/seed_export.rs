@@ -2,6 +2,7 @@ use crate::state::AppState;
 use serde_json::Value;
 use sqlx::Row;
 use std::fmt::Write;
+use std::path::Path;
 
 #[tauri::command]
 pub async fn export_to_seed_file(
@@ -188,7 +189,7 @@ pub async fn export_to_seed_file(
     let filename = filename.unwrap_or_else(|| {
         format!(
             "{}_chains.sql",
-            space_id.to_lowercase().replace(' ', "_")
+            space_id.to_lowercase().replace(' ', "_").replace(':', "_")
         )
     });
     let output_path = state.seed_dir().join(&filename);
@@ -196,10 +197,53 @@ pub async fn export_to_seed_file(
     std::fs::write(&output_path, &sql)
         .map_err(|e| format!("Failed to write seed file {}: {e}", output_path.display()))?;
 
+    // Auto-wire into database.sql if not already present
+    let ir_line = format!("\\ir resources/Content/Seed/{filename}");
+    wire_into_database_sql(&state.repo_root, &ir_line);
+
     let path_str = output_path.display().to_string();
     tracing::info!("Exported {} chains to {path_str}", chain_rows.len());
 
     Ok(path_str)
+}
+
+/// Add a `\ir` line to `db/database.sql` if not already present.
+/// Inserts after the last existing Content/Seed line.
+fn wire_into_database_sql(repo_root: &Path, ir_line: &str) {
+    let db_sql_path = repo_root.join("db").join("database.sql");
+    let content = match std::fs::read_to_string(&db_sql_path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("Could not read database.sql to auto-wire seed: {e}");
+            return;
+        }
+    };
+
+    if content.contains(ir_line) {
+        tracing::debug!("database.sql already contains {ir_line}");
+        return;
+    }
+
+    // Find the last Content/Seed \ir line and insert after it
+    let mut lines: Vec<&str> = content.lines().collect();
+    let mut insert_idx = None;
+    for (i, line) in lines.iter().enumerate() {
+        if line.contains("resources/Content/Seed/") {
+            insert_idx = Some(i + 1);
+        }
+    }
+
+    if let Some(idx) = insert_idx {
+        lines.insert(idx, ir_line);
+        let new_content = lines.join("\n") + "\n";
+        if let Err(e) = std::fs::write(&db_sql_path, new_content) {
+            tracing::warn!("Failed to auto-wire {ir_line} into database.sql: {e}");
+        } else {
+            tracing::info!("Auto-wired {ir_line} into database.sql");
+        }
+    } else {
+        tracing::warn!("Could not find Content/Seed section in database.sql to insert {ir_line}");
+    }
 }
 
 fn sql_str(value: Option<&str>) -> String {

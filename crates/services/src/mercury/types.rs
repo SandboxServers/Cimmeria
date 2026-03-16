@@ -30,6 +30,9 @@ pub struct WorldEntryInfo {
     /// The world resource name (e.g. "Castle_CellBlock") — used by `onClientMapLoad`
     /// to tell the client which terrain to load for this space_id.
     pub world_name: String,
+    /// Entity class ID for CREATE_BASE_PLAYER: SGWPlayer (0x02) or SGWGmPlayer (0x03).
+    /// Matches `python/base/Account.py:293-296`: access_level > 0 → SGWGmPlayer.
+    pub class_id: u8,
 }
 
 /// Archetype base stat values (from `db/resources/Archetypes/Seed/archetypes.sql`).

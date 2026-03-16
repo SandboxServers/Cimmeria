@@ -310,20 +310,51 @@ pub async fn dispatch_cell_method(
         CM_INTERACT => {
             if args.len() >= 4 {
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::debug!(entity_id, target_entity_id, "interact");
-                let dialog_id = super::interactions::handle_interact(
-                    entity_id, target_entity_id as u32, tx, space_mgr,
-                ).await;
+                tracing::info!(entity_id, target_entity_id, "interact");
 
-                // Fire content engine event if a dialog was opened
-                if let Some(did) = dialog_id {
-                    // Get player_id from entity (0 fallback since DB persist uses entity lookup)
+                // ── Step 1: Fire interact_tag event ──
+                // Python: self.first('entity.interact.tag::' + target.tag, ...)
+                let mut handled = false;
+                if let Some(target) = space_mgr.get_entity(target_entity_id as u32) {
+                    let tag = target.tag.clone();
+                    let template_name = target.npc_name.clone();
                     let player_id = space_mgr.get_entity(entity_id)
-                        .and_then(|e| e.player_id)
-                        .unwrap_or(0);
-                    super::content::fire_dialog_open(
-                        entity_id, player_id, did, engine, tx, space_mgr,
+                        .and_then(|e| e.player_id).unwrap_or(0);
+
+                    if let Some(ref tag) = tag {
+                        handled = super::content::fire_interact_tag(
+                            entity_id, player_id, tag, target_entity_id as u32,
+                            engine, tx, space_mgr,
+                        ).await;
+                    }
+
+                    // ── Step 2: Fire interact_template event ──
+                    // Python: self.first('entity.interact.template::' + target.template.templateName, ...)
+                    if !handled {
+                        if let Some(ref name) = template_name {
+                            handled = super::content::fire_interact_template(
+                                entity_id, player_id, name, target_entity_id as u32,
+                                engine, tx, space_mgr,
+                            ).await;
+                        }
+                    }
+                }
+
+                // ── Step 3: Fall through to available_interactions / static interaction ──
+                // Python: target.onInteract(self)
+                if !handled {
+                    let dialog_id = super::interactions::handle_interact(
+                        entity_id, target_entity_id as u32, tx, space_mgr,
                     ).await;
+
+                    if let Some(did) = dialog_id {
+                        let player_id = space_mgr.get_entity(entity_id)
+                            .and_then(|e| e.player_id)
+                            .unwrap_or(0);
+                        super::content::fire_dialog_open(
+                            entity_id, player_id, did, engine, tx, space_mgr,
+                        ).await;
+                    }
                 }
             }
         }

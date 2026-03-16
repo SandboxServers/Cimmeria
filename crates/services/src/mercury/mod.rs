@@ -39,7 +39,8 @@ pub use protocol::{
 };
 
 pub use aoi::{
-    build_create_entity, build_entity_leave, build_avatar_update,
+    build_create_entity_base, build_create_entity_cascade,
+    build_entity_leave, build_avatar_update,
     build_entity_method_packet,
 };
 
@@ -106,6 +107,9 @@ pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
 pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
+/// SGWGmPlayer entity class ID (EntityTypeID 3 in entity definitions).
+/// Used for accounts with access_level > 0, per `python/base/Account.py:293-296`.
+pub(crate) const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
 /// Default space ID for CombatSim (matches reference server pcap: 0x10010 = 65552).
 pub const DEFAULT_SPACE_ID: u32 = 65552;
 

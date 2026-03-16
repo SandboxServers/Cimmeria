@@ -44,6 +44,8 @@ use cimmeria_common::ServerConfig;
 use cimmeria_services::audit::{LoginEvent, LoginEventBuffer};
 use cimmeria_services::orchestrator::Orchestrator;
 
+mod cosmos_log;
+
 #[tokio::main]
 async fn main() {
     // Create log broadcast channel and ring buffer (for WebSocket log streaming).
@@ -54,8 +56,35 @@ async fn main() {
     let (login_tx, _) = broadcast::channel::<LoginEvent>(256);
     let login_buffer = LoginEventBuffer::new();
 
+    // Generate a session ID for this server run.
+    let session_id = generate_session_id();
+
+    // Cosmos DB log sink (optional — requires COSMOS_LOG_ENDPOINT + COSMOS_LOG_KEY).
+    let cosmos_parts = match (
+        std::env::var("COSMOS_LOG_ENDPOINT"),
+        std::env::var("COSMOS_LOG_KEY"),
+    ) {
+        (Ok(endpoint), Ok(key)) => {
+            let (layer, receiver) = cosmos_log::create_cosmos_log_sink(session_id.clone());
+            Some((layer, receiver, endpoint, key))
+        }
+        _ => None,
+    };
+
+    // Split out the layer (needed for subscriber) from the receiver (spawned after).
+    let (cosmos_layer, cosmos_writer_parts) = match cosmos_parts {
+        Some((layer, receiver, endpoint, key)) => (Some(layer), Some((receiver, endpoint, key))),
+        None => (None, None),
+    };
+
     // Initialise layered tracing — guards must live until shutdown.
-    let _guards = init_logging(log_tx.clone(), log_buffer.clone());
+    let _guards = init_logging(log_tx.clone(), log_buffer.clone(), cosmos_layer);
+
+    // Spawn the Cosmos DB writer task now that the subscriber is active.
+    if let Some((receiver, endpoint, key)) = cosmos_writer_parts {
+        tokio::spawn(cosmos_log::cosmos_log_writer(receiver, endpoint, key));
+        eprintln!("[cosmos-log] Streaming to Cosmos DB (session: {session_id})");
+    }
 
     tracing::trace!(pid = std::process::id(), "Process spawned");
 
@@ -280,7 +309,11 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 /// - **`logs/server.log`**: JSON, all modules at `debug`.
 /// - **`logs/auth.log`**: plain text, `cimmeria_services::auth` at `trace`.
 /// - **`logs/base.log`**: plain text, base/mercury modules at `trace`.
-fn init_logging(log_tx: broadcast::Sender<LogEntry>, log_buffer: LogBuffer) -> Vec<WorkerGuard> {
+fn init_logging(
+    log_tx: broadcast::Sender<LogEntry>,
+    log_buffer: LogBuffer,
+    cosmos_layer: Option<cosmos_log::CosmosLogLayer>,
+) -> Vec<WorkerGuard> {
     // Move previous session's logs into archive/.
     archive_previous_logs();
 
@@ -339,6 +372,18 @@ fn init_logging(log_tx: broadcast::Sender<LogEntry>, log_buffer: LogBuffer) -> V
             "debug,tungstenite=info,tokio_tungstenite=info,hyper=info",
         ));
 
+    // ── Cosmos DB (optional, filtered to useful events only) ─────────
+    // DEBUG+ minus the per-packet noise (connect_loop, encryption, tick_sync).
+    let cosmos_layer = cosmos_layer.map(|layer| {
+        layer.with_filter(EnvFilter::new(
+            "debug,\
+             cimmeria_services::base::connect_loop=info,\
+             cimmeria_mercury::encryption=info,\
+             cimmeria_services::base::tick_sync=info,\
+             tungstenite=off,tokio_tungstenite=off,hyper=off",
+        ))
+    });
+
     // Assemble the subscriber.
     tracing_subscriber::registry()
         .with(console_layer)
@@ -346,12 +391,24 @@ fn init_logging(log_tx: broadcast::Sender<LogEntry>, log_buffer: LogBuffer) -> V
         .with(auth_layer)
         .with(base_layer)
         .with(broadcast_layer)
+        .with(cosmos_layer)
         .init();
 
     guards
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────
+
+/// Generate a human-readable session ID: `2026-03-13T22-56-15_a3f1`.
+///
+/// Combines the archive timestamp format with a short random suffix to
+/// avoid collisions on rapid restarts. Used as the Cosmos DB partition key.
+fn generate_session_id() -> String {
+    use rand::Rng;
+    let ts = chrono_timestamp();
+    let suffix: u16 = rand::rng().random();
+    format!("{}_{:04x}", ts, suffix)
+}
 
 /// Build a [`ServerConfig`] from environment variables, falling back to defaults.
 fn config_from_env() -> ServerConfig {

@@ -42,46 +42,73 @@ pub async fn handle_interact(
     };
 
     // Validate target exists and get interaction data
-    let (target_pos, interaction_type, _npc_name) = match space_mgr.get_entity(target_entity_id) {
+    let (target_pos, interaction_type, npc_name, target_template_id) = match space_mgr.get_entity(target_entity_id) {
         Some(e) => (
             e.position,
             e.interaction_type.clone(),
             e.npc_name.clone().unwrap_or_default(),
+            e.template_id,
         ),
         None => {
-            tracing::debug!(entity_id, target_entity_id, "interact: target not found");
+            tracing::info!(entity_id, target_entity_id, "interact: target entity not found");
             return None;
         }
     };
 
+    tracing::info!(
+        entity_id, target_entity_id, %npc_name,
+        ?interaction_type, ?target_template_id,
+        "interact: target resolved"
+    );
+
     // Distance check
     let dist = player_pos.distance_squared_to(&target_pos).sqrt();
     if dist > MAX_INTERACT_DISTANCE {
-        tracing::debug!(entity_id, target_entity_id, dist, "interact: too far away");
-        // TODO: Send feedback message "You are too far away to interact."
+        tracing::info!(entity_id, target_entity_id, dist, "interact: too far away");
         return None;
     }
 
-    // Dispatch based on interaction type
+    // Check per-player available interactions (from add_dialog_set content actions).
+    // These take priority over static interaction_type.
+    if let Some(tmpl_id) = target_template_id {
+        let dialog_id = space_mgr.get_entity(entity_id)
+            .and_then(|p| p.available_interactions.get(&tmpl_id))
+            .and_then(|entries| entries.first())
+            .map(|&(_, dialog_id, _)| dialog_id);
+
+        if let Some(dialog_id) = dialog_id {
+            tracing::info!(entity_id, target_entity_id, tmpl_id, dialog_id, "interact: per-player dialog set → onDialogDisplay");
+            send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx).await;
+            return Some(dialog_id);
+        } else {
+            tracing::info!(entity_id, tmpl_id, "interact: no per-player interactions for template");
+        }
+    }
+
+    // Dispatch based on static interaction type
     match interaction_type {
         Some(NpcInteractionType::Dialog { dialog_id }) => {
+            tracing::info!(entity_id, target_entity_id, dialog_id, "interact: static dialog → onDialogDisplay");
             send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx).await;
             Some(dialog_id)
         }
         Some(NpcInteractionType::Vendor) => {
+            tracing::info!(entity_id, target_entity_id, "interact: vendor → onStoreOpen");
             send_store_open(entity_id, target_entity_id as i32, tx).await;
             None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {
+            tracing::info!(entity_id, target_entity_id, archetype_id, "interact: trainer → onTrainerOpen");
             send_trainer_open(entity_id, target_entity_id as i32, archetype_id, tx).await;
             None
         }
         Some(NpcInteractionType::Loot) => {
+            tracing::info!(entity_id, target_entity_id, "interact: loot → onLootDisplay");
             send_loot_display(entity_id, target_entity_id as i32, tx).await;
             None
         }
         None => {
-            tracing::debug!(entity_id, target_entity_id, "interact: target has no interaction");
+            tracing::info!(entity_id, target_entity_id, "interact: target has no static interaction type");
             None
         }
     }

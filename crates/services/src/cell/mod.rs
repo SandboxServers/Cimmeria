@@ -131,9 +131,60 @@ impl CellService {
             }
         }
 
-        // Spawn initial NPC population
-        let npc_count = spawner::spawn_initial_npcs(&mut space_mgr);
+        // Load spawn records from DB and populate startup spaces
+        let spawn_records = if let Some(ref pool) = self.db_pool {
+            match spawner::load_spawns_from_db(pool).await {
+                Ok(records) => {
+                    tracing::info!(count = records.len(), "Loaded spawn records from database");
+                    records
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load spawn records: {e} — using hardcoded fallback");
+                    vec![]
+                }
+            }
+        } else {
+            vec![]
+        };
+
+        let npc_count = spawner::spawn_npcs_from_records(&spawn_records, &mut space_mgr);
         tracing::info!(npc_count, "NPC population initialized");
+
+        // Load dialog_set_maps cache for per-player interaction system
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_dialog_set_maps(pool).await {
+                Ok(maps) => {
+                    space_mgr.dialog_set_maps = maps;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load dialog_set_maps: {e}");
+                }
+            }
+        }
+
+        // Load mission definitions cache for AcceptMission content actions
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_mission_defs(pool).await {
+                Ok(defs) => {
+                    space_mgr.mission_defs = defs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load mission_defs: {e}");
+                }
+            }
+        }
+
+        // Load stargate destinations cache for gate travel
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_stargates(pool).await {
+                Ok(gates) => {
+                    space_mgr.stargates = gates;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load stargates: {e}");
+                }
+            }
+        }
 
         // Send SpaceData for all startup spaces to BaseApp
         if let Some(ref tx) = self.cell_to_base_tx {
@@ -159,7 +210,7 @@ impl CellService {
 
         if let (Some(mut rx), Some(tx)) = (rx, tx) {
             tokio::spawn(async move {
-                run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool).await;
+                run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool, spawn_records).await;
             });
         } else {
             tracing::warn!("Cell service started without channels — operating in stub mode");
@@ -189,6 +240,7 @@ async fn run_cell_loop(
     mut space_mgr: SpaceManager,
     mut engine: ChainEngine,
     db_pool: Option<Arc<PgPool>>,
+    spawn_records: Vec<spawner::SpawnRecord>,
 ) {
     tracing::debug!("Cell service message loop started");
 
@@ -204,7 +256,7 @@ async fn run_cell_loop(
                         engine = content::build_engine(db_pool.as_deref()).await;
                         tracing::info!(chains = engine.chain_count(), "Content engine reloaded");
                     }
-                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine).await,
+                    Some(msg) => handle_base_message(msg, tx, &mut space_mgr, &engine, &spawn_records).await,
                     None => {
                         tracing::info!("Cell service channel closed — shutting down");
                         break;
@@ -226,6 +278,7 @@ async fn handle_base_message(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
+    spawn_records: &[spawner::SpawnRecord],
 ) {
     match msg {
         BaseToCellMsg::CreateEntity { entity_id, world_name, position, rotation, reply_tx } => {
@@ -238,7 +291,7 @@ async fn handle_base_message(
                 Ok(space_id) => {
                     // Spawn instance NPCs if the space was newly created
                     if is_new_space {
-                        let npc_count = spawner::spawn_npcs_for_world(&world_name, space_mgr);
+                        let npc_count = spawner::spawn_instance_npcs_from_records(spawn_records, &world_name, space_mgr);
                         if npc_count > 0 {
                             tracing::info!(world = %world_name, npc_count, "Spawned instance NPCs");
                         }
