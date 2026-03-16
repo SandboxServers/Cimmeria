@@ -451,7 +451,7 @@ async fn handle_base_message(
         }
 
         BaseToCellMsg::CellMethodCall { entity_id, method_index, args } => {
-            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine, ability_registry, vendor_cache).await;
+            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine, ability_registry, loot_cache, vendor_cache).await;
         }
 
         BaseToCellMsg::ChatMessage { entity_id, speaker_name, speaker_flags, channel, text } => {

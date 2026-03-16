@@ -161,6 +161,7 @@ pub async fn dispatch_cell_method(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
     ability_registry: &std::sync::Arc<cimmeria_entity::abilities::AbilityRegistry>,
+    loot_cache: &std::sync::Arc<super::loot::LootCache>,
     vendor_cache: &super::vendor::VendorCache,
 ) {
     match method_index {
@@ -231,7 +232,7 @@ pub async fn dispatch_cell_method(
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, ability_id, target_id, "useAbility");
-                super::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr, ability_registry).await;
+                super::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr, ability_registry, loot_cache).await;
             }
         }
 

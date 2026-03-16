@@ -39,6 +39,7 @@ pub async fn handle_use_ability(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     ability_registry: &Arc<AbilityRegistry>,
+    loot_cache: &Arc<super::loot::LootCache>,
 ) {
     // ── Validation (requires attacker entity) ──
 
@@ -221,6 +222,11 @@ pub async fn handle_use_ability(
                     entity_id,
                     xp_amount: xp,
                 }).await;
+
+                // Generate and send loot drops
+                super::loot::generate_and_send_loot(
+                    entity_id, target_eid, loot_cache, tx, space_mgr,
+                ).await;
 
                 // Queue NPC for respawn (30 seconds)
                 space_mgr.queue_npc_respawn(target_eid, 30.0);
