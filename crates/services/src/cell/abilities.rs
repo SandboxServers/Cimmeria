@@ -79,6 +79,11 @@ pub async fn handle_use_ability(
     // Get effect sequence ID for this ability invocation
     let effect_seq = entity.abilities.next_effect_id();
 
+    // Track this ability for auto-cycle repeat
+    if entity.abilities.auto_cycle {
+        entity.abilities.auto_cycle_ability_id = Some(ability_id);
+    }
+
     tracing::info!(entity_id, ability_id, target_id, cooldown_secs, "useAbility: launched");
 
     // ── Send cooldown timer to attacker ──

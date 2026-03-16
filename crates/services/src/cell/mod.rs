@@ -389,9 +389,34 @@ async fn run_cell_loop(
                 run_aoi_tick(tx, &mut space_mgr).await;
                 space_mgr.process_respawns();
                 effect_mgr.tick(tx, &mut space_mgr).await;
-                // Periodically clean up expired cooldowns on all entities
+                // Periodically clean up expired cooldowns and process auto-cycle
+                let mut auto_cycle_commands: Vec<(u32, i32, i32)> = Vec::new();
                 for entity in space_mgr.all_entities_mut() {
                     entity.abilities.cleanup_expired();
+
+                    // Auto-cycle: if enabled and ability is off cooldown, queue re-fire
+                    if entity.abilities.auto_cycle {
+                        if let Some(ability_id) = entity.abilities.auto_cycle_ability_id {
+                            if !entity.abilities.is_on_cooldown(ability_id) {
+                                let target_id = entity.target_id.unwrap_or(0);
+                                if target_id > 0 {
+                                    auto_cycle_commands.push((
+                                        entity.entity_id.0 as u32,
+                                        ability_id,
+                                        target_id,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Execute auto-cycle ability fires outside the borrow
+                for (eid, ability_id, target_id) in auto_cycle_commands {
+                    abilities::handle_use_ability(
+                        eid, ability_id, target_id, tx, &mut space_mgr,
+                        &ability_registry, &loot_cache, &mut effect_mgr,
+                    ).await;
                 }
             }
         }
