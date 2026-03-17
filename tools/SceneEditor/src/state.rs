@@ -40,6 +40,7 @@ pub enum UndoAction {
 /// A fully loaded zone with all extracted actor data.
 pub struct LoadedZone {
     pub zone_name: String,
+    pub zone_path: String,
     pub tile_count: u32,
     pub actors: Vec<ActorEntry>,
     pub class_counts: HashMap<String, usize>,

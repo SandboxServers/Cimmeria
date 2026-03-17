@@ -35,6 +35,7 @@ interface MenuBarProps {
   onExportDbSql?: () => void;
   onCreateRegion?: () => void;
   onProceduralPlacement?: () => void;
+  onToggleKismetViewer?: () => void;
 }
 
 type MenuId = 'file' | 'edit' | 'view' | 'build' | 'database' | 'tools' | 'help' | null;
@@ -71,6 +72,7 @@ export function MenuBar({
   onExportDbSql,
   onCreateRegion,
   onProceduralPlacement,
+  onToggleKismetViewer,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -164,6 +166,11 @@ export function MenuBar({
             label="Content Browser"
             onClick={() => closeAndRun(() => onToggleContentBrowser?.())}
             shortcut="Ctrl+Shift+F"
+          />
+          <MenuItem
+            label="Kismet Viewer"
+            onClick={() => closeAndRun(() => onToggleKismetViewer?.())}
+            shortcut="K"
           />
           <MenuSeparator />
           <MenuItem

@@ -75,6 +75,7 @@ interface EditorFrameProps {
   onUpdateSpawnPosition: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
   onCreateRegion: () => void;
   onPropertyChange: (key: string, propName: string, newValue: string) => void;
+  onToggleKismetViewer: () => void;
   onProceduralPlacement: () => void;
   navMeshData: import('../lib/types').NavMeshData | null;
   onExportDbSql: () => void;
@@ -138,6 +139,7 @@ export function EditorFrame({
   onUpdateSpawnPosition,
   onCreateRegion,
   onPropertyChange,
+  onToggleKismetViewer,
   onProceduralPlacement,
   navMeshData,
   onExportDbSql,
@@ -457,6 +459,13 @@ export function EditorFrame({
             }
           }
           break;
+        // Kismet viewer (K key)
+        case 'k':
+        case 'K':
+          if (!e.ctrlKey && !e.metaKey) {
+            onToggleKismetViewer();
+          }
+          break;
         // Toggle log window
         case '`':
           setShowLog(prev => !prev);
@@ -534,6 +543,7 @@ export function EditorFrame({
         onExportDbSql={onExportDbSql}
         onCreateRegion={onCreateRegion}
         onProceduralPlacement={onProceduralPlacement}
+        onToggleKismetViewer={onToggleKismetViewer}
         onToggleContentBrowser={onToggleContentBrowser}
       />
 

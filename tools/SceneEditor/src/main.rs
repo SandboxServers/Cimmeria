@@ -22,6 +22,7 @@ fn main() {
             commands::pick_actor,
             commands::load_mesh,
             commands::list_mesh_refs,
+            commands::get_mesh_materials,
             commands::delete_actors,
             commands::duplicate_actors,
             commands::move_actors,
@@ -59,6 +60,8 @@ fn main() {
             // NavMesh commands
             commands::load_navmesh,
             commands::list_navmeshes,
+            // Kismet commands
+            commands::extract_kismet_graph,
         ])
         .run(tauri::generate_context!())
         .expect("error while running scene editor");

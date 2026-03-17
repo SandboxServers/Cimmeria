@@ -18,6 +18,7 @@ import { ZoneSelector } from './panels/ZoneSelector';
 import { DbConnectionDialog } from './panels/DbConnectionDialog';
 import { CreateRegionDialog } from './panels/CreateRegionDialog';
 import { ProceduralPlacementDialog } from './panels/ProceduralPlacementDialog';
+import { KismetViewer } from './panels/KismetViewer';
 
 export default function App() {
   // ---- Zone state ----
@@ -55,6 +56,9 @@ export default function App() {
 
   // ---- NavMesh state ----
   const [navMeshData, setNavMeshData] = useState<NavMeshData | null>(null);
+
+  // ---- Kismet viewer state ----
+  const [showKismetViewer, setShowKismetViewer] = useState(false);
 
   // ---- Placement mode ----
   const [placementMode, setPlacementMode] = useState(false);
@@ -714,6 +718,7 @@ export default function App() {
         onUpdateSpawnPosition={handleUpdateSpawnPosition}
         onCreateRegion={() => setShowRegionDialog(true)}
         onPropertyChange={handlePropertyChange}
+        onToggleKismetViewer={() => setShowKismetViewer(prev => !prev)}
         onProceduralPlacement={() => setShowProceduralDialog(true)}
         navMeshData={navMeshData}
         onExportDbSql={handleExportDbSql}
@@ -729,6 +734,10 @@ export default function App() {
           onClose={() => setShowDbDialog(false)}
         />
       )}
+      <KismetViewer
+        visible={showKismetViewer}
+        onClose={() => setShowKismetViewer(false)}
+      />
       {showProceduralDialog && (
         <ProceduralPlacementDialog
           sourceKey={selectedKeys.size === 1 ? [...selectedKeys][0] : null}

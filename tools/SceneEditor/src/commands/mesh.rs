@@ -7,6 +7,14 @@ use cimmeria_upk_objects::PackageIndex;
 use serde::Serialize;
 use std::path::Path;
 
+/// Material info for a single mesh section, returned to the frontend.
+#[derive(Serialize, Clone, Debug)]
+pub struct MeshSectionMaterial {
+    pub section_index: usize,
+    pub material_name: String,
+    pub texture_name: Option<String>,
+}
+
 /// Minimal mesh data sent to the frontend for 3D rendering.
 #[derive(Serialize, Clone)]
 pub struct MeshData {
@@ -279,4 +287,175 @@ fn walk_upk_recursive(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
             }
         }
     }
+}
+
+/// Resolve material references on a StaticMesh's sections.
+///
+/// For each MeshSection, resolves `material_ref` to a material name and
+/// attempts to find a matching Texture2D in the package index via heuristic
+/// name matching. The frontend uses the returned texture names to call
+/// `get_texture_thumbnail` for Three.js material setup.
+#[tauri::command]
+pub async fn get_mesh_materials(
+    state: tauri::State<'_, AppState>,
+    mesh_name: String,
+) -> Result<Vec<MeshSectionMaterial>, String> {
+    let cooked_pc = {
+        let guard = state.cooked_pc_path.lock().unwrap();
+        guard.clone().ok_or("CookedPC path not set")?
+    };
+
+    ensure_package_index(&state, &cooked_pc);
+
+    // Locate the mesh package file and export index
+    let (pkg, _export_index) = {
+        let idx_guard = state.package_index.lock().unwrap();
+        if let Some(idx) = idx_guard.as_ref() {
+            let meshes = idx.find_by_class("StaticMesh");
+            let loc = meshes
+                .iter()
+                .find_map(|(pkg_name, obj_name)| {
+                    if obj_name == &mesh_name {
+                        idx.find(pkg_name, obj_name)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| format!("StaticMesh '{}' not found in package index", mesh_name))?;
+
+            let pkg = Package::open(&loc.file_path)
+                .map_err(|e| format!("Open package {}: {e}", loc.file_path.display()))?;
+            (pkg, loc.export_index)
+        } else {
+            return Err("Package index not available".into());
+        }
+    };
+
+    // Find the StaticMesh export and deserialize it
+    let export = pkg
+        .exports
+        .iter()
+        .find(|e| {
+            pkg.export_class_name(e) == "StaticMesh" && e.object_name == mesh_name
+        })
+        .ok_or_else(|| format!("StaticMesh '{}' not found in package exports", mesh_name))?;
+
+    let data = pkg
+        .read_export_data(export)
+        .map_err(|e| format!("Read export: {e}"))?;
+
+    let mesh = deserialize_static_mesh(&data, &pkg.names)
+        .map_err(|e| format!("Deserialize: {e}"))?;
+
+    if mesh.lod_models.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let lod = &mesh.lod_models[0];
+
+    // Collect all Texture2D exports from the package index for heuristic matching
+    let texture_entries: Vec<(String, String)> = {
+        let idx_guard = state.package_index.lock().unwrap();
+        if let Some(idx) = idx_guard.as_ref() {
+            idx.find_by_class("Texture2D").to_vec()
+        } else {
+            Vec::new()
+        }
+    };
+
+    let mut results = Vec::with_capacity(lod.sections.len());
+
+    for (i, section) in lod.sections.iter().enumerate() {
+        let material_name = pkg.resolve_object_name(section.material_ref).to_string();
+
+        // Try to find a matching texture by heuristic name matching
+        let texture_name = find_texture_for_material(&material_name, &texture_entries);
+
+        results.push(MeshSectionMaterial {
+            section_index: i,
+            material_name,
+            texture_name,
+        });
+    }
+
+    Ok(results)
+}
+
+/// Heuristic texture lookup: strip material prefixes and find a Texture2D
+/// whose name contains the resulting base string.
+///
+/// UE3 naming conventions typically use prefixes like `MI_`, `M_`, `MIC_`,
+/// `Mat_` for materials and the corresponding texture has a matching base
+/// name with a `T_` prefix or `_D` (diffuse) / `_N` (normal) suffix.
+fn find_texture_for_material(
+    material_name: &str,
+    texture_entries: &[(String, String)],
+) -> Option<String> {
+    if material_name == "None" || material_name.starts_with('<') {
+        return None;
+    }
+
+    // Strip known material prefixes to get the base name
+    let base = strip_material_prefix(material_name);
+    if base.is_empty() {
+        return None;
+    }
+
+    let base_lower = base.to_lowercase();
+
+    // First pass: look for an exact texture name match (e.g., base name == texture name)
+    for (_pkg_name, obj_name) in texture_entries {
+        let obj_lower = obj_name.to_lowercase();
+        if obj_lower == base_lower {
+            return Some(obj_name.clone());
+        }
+    }
+
+    // Second pass: look for textures containing the base name, preferring diffuse (_D suffix)
+    let mut best_match: Option<&str> = None;
+    let mut best_score: u32 = 0;
+
+    for (_pkg_name, obj_name) in texture_entries {
+        let obj_lower = obj_name.to_lowercase();
+
+        if !obj_lower.contains(&base_lower) {
+            continue;
+        }
+
+        // Score: prefer shorter names (closer match) and diffuse textures
+        let mut score = 1;
+        if obj_lower.ends_with("_d") || obj_lower.ends_with("_diff") || obj_lower.ends_with("_diffuse") {
+            score += 10;
+        }
+        // Penalize normal maps, spec maps, etc.
+        if obj_lower.ends_with("_n") || obj_lower.ends_with("_norm") || obj_lower.ends_with("_normal") {
+            continue;
+        }
+        if obj_lower.ends_with("_s") || obj_lower.ends_with("_spec") {
+            continue;
+        }
+        // Prefer shorter names (closer to an exact match)
+        if obj_name.len() <= base.len() + 5 {
+            score += 5;
+        }
+
+        if score > best_score {
+            best_score = score;
+            best_match = Some(obj_name.as_str());
+        }
+    }
+
+    best_match.map(|s| s.to_string())
+}
+
+/// Strip common UE3 material prefixes: MI_, M_, MIC_, Mat_
+fn strip_material_prefix(name: &str) -> &str {
+    // Try longest prefixes first
+    for prefix in &["MIC_", "Mat_", "MI_", "M_"] {
+        if let Some(rest) = name.strip_prefix(prefix) {
+            return rest;
+        }
+    }
+    // No recognized prefix -- use the full name as the base
+    name
 }

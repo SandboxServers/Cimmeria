@@ -233,6 +233,7 @@ pub async fn load_zone(
 
     *state.loaded_zone.lock().unwrap() = Some(LoadedZone {
         zone_name,
+        zone_path: zone_path.clone(),
         tile_count,
         actors: all_actors,
         class_counts,
