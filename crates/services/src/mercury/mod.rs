@@ -193,6 +193,7 @@ pub mod method_idx {
     pub const GIVE_XP_FOR_LEVEL: u16 = 119;
     pub const SETUP_WORLD_PARAMETERS: u16 = 122;
     pub const CLEAR_HINTED_REGIONS: u16 = 124;
+    pub const ADD_CLIENT_HINTED_GENERIC_REGION: u16 = 125;
     pub const ON_RESET_MAP_INFO: u16 = 126;
 
     // Extended encoding (>= 128)

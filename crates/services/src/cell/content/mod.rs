@@ -360,22 +360,24 @@ pub async fn fire_entity_death(
 }
 
 /// Fire the `RegionEnter` event when the client enters a Kismet region.
+///
+/// `region_tag` is the DB `point_sets.name` value (e.g., "Castle_Cellblock.Region2")
+/// which doubles as the content engine trigger key. The Python reference fires
+/// `client_hinted_region::{tag}` — our content engine matches on `region_key`.
 pub async fn fire_enter_region(
     entity_id: u32,
     player_id: i32,
-    region_id: i32,
+    region_tag: &str,
     engine: &ChainEngine,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let world_name = space_mgr.get_entity_world_name(entity_id)
-        .unwrap_or_else(|| "Unknown".to_string());
-    let region_key = format!("{}.Region{}", world_name, region_id);
-
     let mut ctx = ExecutionContext::new()
         .with_source(cimmeria_common::EntityId(entity_id as i32));
-    ctx.set_param("region_key".to_string(), serde_json::json!(&region_key));
-    ctx.set_param("region_id".to_string(), serde_json::json!(region_id));
+    ctx.set_param("region_key".to_string(), serde_json::json!(region_tag));
+
+    let world_name = space_mgr.get_entity_world_name(entity_id)
+        .unwrap_or_else(|| "Unknown".to_string());
     ctx.set_param("world_name".to_string(), serde_json::json!(&world_name));
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
@@ -394,30 +396,30 @@ pub async fn fire_enter_region(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
-        tracing::info!(entity_id, player_id, %region_key, actions = resolved.actions.len(), "fire_enter_region: matched");
+        tracing::info!(entity_id, player_id, %region_tag, actions = resolved.actions.len(), "fire_enter_region: matched");
     } else {
-        tracing::debug!(entity_id, %region_key, "fire_enter_region: no chains matched");
+        tracing::debug!(entity_id, %region_tag, "fire_enter_region: no chains matched");
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
 }
 
 /// Fire the `RegionExit` event when the client exits a Kismet region.
+///
+/// See [`fire_enter_region`] for parameter documentation.
 pub async fn fire_exit_region(
     entity_id: u32,
     player_id: i32,
-    region_id: i32,
+    region_tag: &str,
     engine: &ChainEngine,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let world_name = space_mgr.get_entity_world_name(entity_id)
-        .unwrap_or_else(|| "Unknown".to_string());
-    let region_key = format!("{}.Region{}", world_name, region_id);
-
     let mut ctx = ExecutionContext::new()
         .with_source(cimmeria_common::EntityId(entity_id as i32));
-    ctx.set_param("region_key".to_string(), serde_json::json!(&region_key));
-    ctx.set_param("region_id".to_string(), serde_json::json!(region_id));
+    ctx.set_param("region_key".to_string(), serde_json::json!(region_tag));
+
+    let world_name = space_mgr.get_entity_world_name(entity_id)
+        .unwrap_or_else(|| "Unknown".to_string());
     ctx.set_param("world_name".to_string(), serde_json::json!(&world_name));
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
@@ -436,9 +438,9 @@ pub async fn fire_exit_region(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
-        tracing::info!(entity_id, player_id, %region_key, actions = resolved.actions.len(), "fire_exit_region: matched");
+        tracing::info!(entity_id, player_id, %region_tag, actions = resolved.actions.len(), "fire_exit_region: matched");
     } else {
-        tracing::debug!(entity_id, %region_key, "fire_exit_region: no chains matched");
+        tracing::debug!(entity_id, %region_tag, "fire_exit_region: no chains matched");
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
 }
@@ -553,7 +555,7 @@ mod tests {
     // ── fire_enter_region / fire_exit_region ──────────────────────────────
 
     #[tokio::test]
-    async fn fire_enter_region_constructs_correct_key() {
+    async fn fire_enter_region_uses_tag_as_key() {
         let mut mgr = make_test_space_mgr();
         mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
         mgr.get_entity_mut(1).unwrap().player_id = Some(100);
@@ -561,22 +563,22 @@ mod tests {
         let engine = ChainEngine::new();
         let (tx, mut rx) = mpsc::channel(16);
 
-        // Region 2 in Castle_CellBlock → key should be "Castle_CellBlock.Region2"
-        fire_enter_region(1, 100, 2, &engine, &tx, &mut mgr).await;
+        // Tag comes directly from the DB point_sets.name field
+        fire_enter_region(1, 100, "Castle_Cellblock.Region2", &engine, &tx, &mut mgr).await;
 
         // No chains registered, so no messages — but no panic confirms key construction
         assert!(rx.try_recv().is_err());
     }
 
     #[tokio::test]
-    async fn fire_exit_region_constructs_correct_key() {
+    async fn fire_exit_region_uses_tag_as_key() {
         let mut mgr = make_test_space_mgr();
         mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
 
         let engine = ChainEngine::new();
         let (tx, _rx) = mpsc::channel(16);
 
-        fire_exit_region(1, 100, 3, &engine, &tx, &mut mgr).await;
+        fire_exit_region(1, 100, "Castle_Cellblock.Region3", &engine, &tx, &mut mgr).await;
         // No panic = success
     }
 

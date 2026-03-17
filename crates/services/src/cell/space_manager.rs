@@ -15,6 +15,34 @@ use super::messages::CellToBaseMsg;
 /// Grid cell size for spatial hashing (world units).
 const GRID_CELL_SIZE: f32 = 50.0;
 
+/// Flag indicating this region should be sent to the client for client-side
+/// hit testing. Matches `Atrea.enums.REGION_FLAG_ClientHinted`.
+pub const REGION_FLAG_CLIENT_HINTED: i32 = 1;
+
+/// A registered generic region from the database.
+///
+/// Loaded from `resources.point_sets` (type='AreaSet') + `resources.point_set_points`.
+/// Each region is assigned a server-side runtime ID (auto-incrementing from 1)
+/// that the client sends back in `triggerClientHintedGenericRegion` calls.
+///
+/// Reference: `python/cell/GenericRegion.py`
+#[derive(Debug, Clone)]
+pub struct RegionData {
+    pub runtime_id: u32,
+    pub db_set_id: i32,
+    /// Region tag from `point_sets.name` — used as the content engine event key
+    /// (e.g., "Castle_Cellblock.Region2"). This IS the key the content engine
+    /// matches on, NOT a constructed `{world}.Region{id}` string.
+    pub tag: String,
+    pub world_name: String,
+    pub height: f32,
+    pub radius: f32,
+    pub flags: i32,
+    /// Polygon vertices from `point_set_points`. After the cylinder→bbox workaround,
+    /// all regions should have exactly 4 points.
+    pub points: Vec<[f32; 3]>,
+}
+
 /// World definition parsed from `entities/spaces.xml`.
 #[derive(Debug, Clone)]
 pub struct WorldDef {
@@ -61,6 +89,12 @@ pub struct SpaceManager {
     /// Cached stargate destinations: stargate_id → (world_name, position, yaw).
     /// Populated at startup from `resources.stargates` + `resources.worlds`.
     pub stargates: HashMap<i32, super::spawner::StargateEntry>,
+    /// Registered generic regions keyed by runtime_id (auto-incrementing from 1).
+    /// Loaded from `resources.point_sets` (type='AreaSet') at startup.
+    pub regions: HashMap<u32, RegionData>,
+    /// Next runtime region ID (auto-incrementing, starts at 1).
+    /// Matches Python `GenericRegionManager.lastRegionId`.
+    pub next_region_id: u32,
 }
 
 impl SpaceManager {
@@ -77,6 +111,8 @@ impl SpaceManager {
             dialog_set_maps: HashMap::new(),
             mission_defs: HashMap::new(),
             stargates: HashMap::new(),
+            regions: HashMap::new(),
+            next_region_id: 1,
         }
     }
 
@@ -601,6 +637,18 @@ impl SpaceManager {
         let &space_id = self.entity_space.get(&entity_id)?;
         let space = self.spaces.get(&space_id)?;
         Some(space.world_name.clone())
+    }
+
+    /// Look up a registered region by its runtime ID.
+    pub fn get_region(&self, runtime_id: u32) -> Option<&RegionData> {
+        self.regions.get(&runtime_id)
+    }
+
+    /// Return all registered regions for a given world name.
+    pub fn regions_for_world(&self, world_name: &str) -> Vec<&RegionData> {
+        self.regions.values()
+            .filter(|r| r.world_name == world_name)
+            .collect()
     }
 
     /// Collect all NPC entity IDs (class_id=0x04, not players) across all spaces.

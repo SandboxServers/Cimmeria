@@ -152,6 +152,33 @@ impl CellService {
             }
         }
 
+        // Load generic regions from DB and register with auto-incrementing runtime IDs.
+        // Reference: python/cell/GenericRegion.py — GenericRegionManager.load() + registerRegion()
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_regions_from_db(pool).await {
+                Ok(region_data) => {
+                    for rd in region_data {
+                        let runtime_id = space_mgr.next_region_id;
+                        space_mgr.next_region_id += 1;
+                        space_mgr.regions.insert(runtime_id, super::space_manager::RegionData {
+                            runtime_id,
+                            db_set_id: rd.set_id,
+                            tag: rd.name,
+                            world_name: rd.world_name,
+                            height: rd.height,
+                            radius: rd.radius,
+                            flags: rd.flags,
+                            points: rd.points,
+                        });
+                    }
+                    tracing::info!(count = space_mgr.regions.len(), "Registered generic regions");
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load generic regions: {e}");
+                }
+            }
+        }
+
         // Send SpaceData for all startup spaces to BaseApp
         if let Some(ref tx) = self.cell_to_base_tx {
             for (space_id, world_name) in space_mgr.all_spaces() {
@@ -348,6 +375,46 @@ async fn handle_base_message(
                 }
                 entity.saved_missions_loaded = true;
             }
+
+            // Send addClientHintedGenericRegion for each client-hinted region in
+            // this world. Matches Python Space.playerEntered() → queryRegions():
+            // clearClientHintedGenericRegions was already sent in mapLoaded body,
+            // now register all regions so the client can fire triggerRegion events.
+            {
+                use super::space_manager::REGION_FLAG_CLIENT_HINTED;
+                let world_regions: Vec<_> = space_mgr.regions_for_world(&world_name)
+                    .iter()
+                    .filter(|r| r.flags & REGION_FLAG_CLIENT_HINTED != 0)
+                    .map(|r| (r.runtime_id, r.height, r.radius, r.flags, r.points.clone()))
+                    .collect();
+
+                let region_count = world_regions.len();
+                for (rid, height, radius, flags, points) in world_regions {
+                    let mut args = Vec::with_capacity(16 + points.len() * 12);
+                    args.extend_from_slice(&(rid as i32).to_le_bytes());
+                    args.extend_from_slice(&height.to_le_bytes());
+                    args.extend_from_slice(&radius.to_le_bytes());
+                    args.extend_from_slice(&flags.to_le_bytes());
+                    args.extend_from_slice(&(points.len() as u32).to_le_bytes()); // ARRAY count
+                    for p in &points {
+                        args.extend_from_slice(&p[0].to_le_bytes()); // x
+                        args.extend_from_slice(&p[1].to_le_bytes()); // y
+                        args.extend_from_slice(&p[2].to_le_bytes()); // z
+                    }
+                    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                        entity_id,
+                        method_index: 125, // addClientHintedGenericRegion
+                        args,
+                    }).await;
+                }
+                if region_count > 0 {
+                    tracing::info!(
+                        entity_id, player_id, world = %world_name,
+                        count = region_count, "Sent region registrations"
+                    );
+                }
+            }
+
             content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
         }
 

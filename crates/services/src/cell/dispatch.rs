@@ -352,19 +352,28 @@ pub async fn dispatch_cell_method(
                 let _y = f32::from_le_bytes([args[9], args[10], args[11], args[12]]);
                 let _z = f32::from_le_bytes([args[13], args[14], args[15], args[16]]);
 
-                tracing::info!(entity_id, region_id, b_entering, "triggerClientHintedGenericRegion");
+                // Look up the region tag from the auto-incrementing runtime ID.
+                // The runtime ID is NOT the DB set_id or the number from the tag.
+                let region_tag = space_mgr.get_region(region_id as u32)
+                    .map(|r| r.tag.clone());
 
-                let player_id = space_mgr.get_entity(entity_id)
-                    .and_then(|e| e.player_id).unwrap_or(0);
+                if let Some(tag) = region_tag {
+                    tracing::info!(entity_id, region_id, %tag, b_entering, "triggerClientHintedGenericRegion");
 
-                if b_entering {
-                    super::content::fire_enter_region(
-                        entity_id, player_id, region_id, engine, tx, space_mgr,
-                    ).await;
+                    let player_id = space_mgr.get_entity(entity_id)
+                        .and_then(|e| e.player_id).unwrap_or(0);
+
+                    if b_entering {
+                        super::content::fire_enter_region(
+                            entity_id, player_id, &tag, engine, tx, space_mgr,
+                        ).await;
+                    } else {
+                        super::content::fire_exit_region(
+                            entity_id, player_id, &tag, engine, tx, space_mgr,
+                        ).await;
+                    }
                 } else {
-                    super::content::fire_exit_region(
-                        entity_id, player_id, region_id, engine, tx, space_mgr,
-                    ).await;
+                    tracing::warn!(entity_id, region_id, "Unknown region ID in triggerClientHintedGenericRegion");
                 }
             }
         }
@@ -644,11 +653,24 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_trigger_region_enter_fires_event() {
+        use crate::cell::space_manager::RegionData;
         let mut mgr = make_test_space_mgr();
         mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
         if let Some(e) = mgr.get_entity_mut(1) {
             e.player_id = Some(100);
         }
+
+        // Register a region with runtime_id=2 so the dispatch can look it up
+        mgr.regions.insert(2, RegionData {
+            runtime_id: 2,
+            db_set_id: 42,
+            tag: "Castle_Cellblock.Region2".to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 0.0,
+            radius: 0.0,
+            flags: 1,
+            points: vec![[0.0; 3]; 4],
+        });
 
         let engine = cimmeria_content_engine::chain::ChainEngine::new();
         let (tx, mut rx) = mpsc::channel(16);
@@ -669,8 +691,21 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_trigger_region_exit() {
+        use crate::cell::space_manager::RegionData;
         let mut mgr = make_test_space_mgr();
         mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        // Register a region with runtime_id=3
+        mgr.regions.insert(3, RegionData {
+            runtime_id: 3,
+            db_set_id: 43,
+            tag: "Castle_Cellblock.Region3".to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 0.0,
+            radius: 0.0,
+            flags: 1,
+            points: vec![[0.0; 3]; 4],
+        });
 
         let engine = cimmeria_content_engine::chain::ChainEngine::new();
         let (tx, _rx) = mpsc::channel(16);
@@ -682,6 +717,25 @@ mod tests {
 
         dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
         // No panic = success
+    }
+
+    #[tokio::test]
+    async fn dispatch_trigger_region_unknown_id_warns() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        // No regions registered — runtime_id 99 should be unknown
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        let mut args = Vec::new();
+        args.extend_from_slice(&99i32.to_le_bytes());
+        args.push(1);
+        args.extend_from_slice(&[0u8; 12]);
+
+        dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+        // Should warn but not panic, and produce no messages
+        assert!(rx.try_recv().is_err());
     }
 
     #[tokio::test]
