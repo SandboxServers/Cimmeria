@@ -65,6 +65,7 @@ pub(crate) async fn handle_on_client_ready(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     socket: &Arc<UdpSocket>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<sqlx::PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let pending = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
@@ -88,6 +89,11 @@ pub(crate) async fn handle_on_client_ready(
         "SGWPlayer.onClientReady received -- finalizing world entry"
     );
 
+    // Query saved missions from DB before sending InitPlayerState
+    let saved_missions = super::world_entry_player::query_saved_missions(
+        db_pool, pending.player_id,
+    ).await;
+
     if let Some(ref tx) = cell_tx {
         let _ = tx.send(BaseToCellMsg::ConnectEntity {
             entity_id,
@@ -97,6 +103,7 @@ pub(crate) async fn handle_on_client_ready(
             entity_id,
             player_id: pending.player_id,
             world_name: pending.world_name.clone(),
+            saved_missions,
         }).await;
     }
 

@@ -208,6 +208,7 @@ async fn run_cell_loop(
     tracing::debug!("Cell service message loop started");
 
     let mut tick_interval = tokio::time::interval(std::time::Duration::from_millis(100));
+    let mut aoi_tick_counter: u32 = 0;
 
     loop {
         tokio::select! {
@@ -227,6 +228,12 @@ async fn run_cell_loop(
             }
             _ = tick_interval.tick() => {
                 run_aoi_tick(tx, &mut space_mgr).await;
+
+                // NPC AI runs every 20th AoI tick (2 seconds at 100ms intervals)
+                aoi_tick_counter = aoi_tick_counter.wrapping_add(1);
+                if aoi_tick_counter % 20 == 0 {
+                    npc_ai_tick(tx, &mut space_mgr).await;
+                }
             }
         }
     }
@@ -298,10 +305,48 @@ async fn handle_base_message(
             chat::handle_chat_message(entity_id, &speaker_name, speaker_flags, channel, &text, tx, space_mgr).await;
         }
 
-        BaseToCellMsg::InitPlayerState { entity_id, player_id, world_name } => {
-            tracing::debug!(entity_id, player_id, %world_name, "InitPlayerState");
+        BaseToCellMsg::InitPlayerState { entity_id, player_id, world_name, saved_missions } => {
+            tracing::debug!(entity_id, player_id, %world_name, saved_count = saved_missions.len(), "InitPlayerState");
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.player_id = Some(player_id);
+
+                // Restore saved missions BEFORE content engine fires, so that
+                // chain conditions correctly see existing mission state and
+                // don't re-trigger already-active or completed missions.
+                for saved in &saved_missions {
+                    use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED};
+                    let objectives: Vec<MissionObjective> = saved.active_objective_ids.iter()
+                        .map(|&oid| {
+                            let status = if saved.completed_objective_ids.contains(&oid) {
+                                STATUS_COMPLETED
+                            } else {
+                                STATUS_ACTIVE
+                            };
+                            MissionObjective {
+                                objective_id: oid,
+                                status,
+                                hidden: false,
+                                optional: false,
+                            }
+                        })
+                        .collect();
+
+                    let mut mission = MissionInstance::new(
+                        saved.mission_id,
+                        saved.current_step_id.unwrap_or(0),
+                        objectives,
+                    );
+                    mission.status = saved.status;
+                    mission.completed_steps = saved.completed_step_ids.clone();
+                    mission.completed_objectives = saved.completed_objective_ids.clone();
+
+                    entity.missions.add_mission(mission);
+                    tracing::debug!(
+                        entity_id, mission_id = saved.mission_id,
+                        status = saved.status, "Restored saved mission"
+                    );
+                }
+                entity.saved_missions_loaded = true;
             }
             content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
         }
@@ -322,4 +367,171 @@ async fn run_aoi_tick(
             return;
         }
     }
+}
+
+/// NPC AI tick — runs every 2 seconds (every 20th AoI tick).
+///
+/// For each NPC in Fighting state: find top threat target, check leash
+/// distance, and attack with default ability. For NPCs in Leashing state:
+/// reset to Idle when close enough to spawn point, restore health.
+async fn npc_ai_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+
+    // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
+    // while calling handle_use_ability (which needs &mut SpaceManager).
+    let npc_snapshot: Vec<(u32, AiState)> = space_mgr.all_npc_entity_ids()
+        .iter()
+        .filter_map(|&eid| {
+            space_mgr.get_entity(eid).map(|e| (eid, e.ai_state))
+        })
+        .filter(|(_, state)| *state == AiState::Fighting || *state == AiState::Leashing)
+        .collect();
+
+    for (npc_id, ai_state) in npc_snapshot {
+        match ai_state {
+            AiState::Fighting => {
+                npc_ai_fight(npc_id, tx, space_mgr).await;
+            }
+            AiState::Leashing => {
+                npc_ai_leash(npc_id, tx, space_mgr).await;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
+async fn npc_ai_fight(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+    use super::combat;
+
+    // Read NPC state (immutable borrow)
+    let (top_target, spawn_pos, _npc_pos) = {
+        let npc = match space_mgr.get_entity(npc_id) {
+            Some(e) => e,
+            None => return,
+        };
+
+        // Find highest-threat target
+        let top = npc.threat_list.iter()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(&eid, _)| eid);
+
+        (top, npc.spawn_position, npc.position)
+    };
+
+    let target_id = match top_target {
+        Some(tid) => tid,
+        None => {
+            // No threat targets left — reset to idle
+            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                npc.ai_state = AiState::Idle;
+                npc.threat_list.clear();
+                tracing::debug!(npc_id, "NPC AI: no threat targets, resetting to Idle");
+            }
+            return;
+        }
+    };
+
+    // Check if target still exists
+    let target_pos = match space_mgr.get_entity(target_id) {
+        Some(t) => t.position,
+        None => {
+            // Target gone (disconnected), remove from threat and re-evaluate
+            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                npc.threat_list.remove(&target_id);
+            }
+            return;
+        }
+    };
+
+    // Leash check: if target is too far from NPC's spawn point, disengage
+    if let Some(spawn) = spawn_pos {
+        let dist_to_spawn = spawn.distance_to(&target_pos);
+        if dist_to_spawn > combat::LEASH_DISTANCE {
+            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                npc.ai_state = AiState::Leashing;
+                npc.threat_list.clear();
+                tracing::info!(
+                    npc_id, target = target_id,
+                    distance = dist_to_spawn,
+                    "NPC AI: target too far from spawn, leashing"
+                );
+            }
+            return;
+        }
+    }
+
+    // Attack the target with the default ability
+    tracing::debug!(npc_id, target = target_id, "NPC AI: attacking top threat target");
+    super::abilities::handle_use_ability(
+        npc_id,
+        combat::NPC_DEFAULT_ABILITY,
+        target_id as i32,
+        tx,
+        space_mgr,
+    ).await;
+}
+
+/// NPC leashing behavior: reset to Idle and restore health.
+///
+/// In a full implementation this would pathfind the NPC back to spawn.
+/// For now we snap back instantly and restore health.
+async fn npc_ai_leash(
+    npc_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    use cimmeria_entity::cell_entity::AiState;
+
+    let npc = match space_mgr.get_entity_mut(npc_id) {
+        Some(e) => e,
+        None => return,
+    };
+
+    // Snap back to spawn position
+    if let Some(spawn_pos) = npc.spawn_position {
+        npc.position = spawn_pos;
+    }
+
+    // Restore health to max
+    if let Some(health) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+        health.set_current(health.max);
+    }
+
+    // Clear dead state flag
+    npc.ai_state = AiState::Idle;
+    npc.threat_list.clear();
+    npc.abilities.clear_all_cooldowns();
+
+    tracing::info!(npc_id, "NPC AI: leash complete, reset to Idle with full health");
+
+    // Send stat update to witnesses so they see health restored
+    let stat_update = npc.stats.serialize_dirty();
+    npc.stats.clear_dirty();
+
+    // State field update (clear dead flag)
+    let mut state_field = 0u32;
+    super::combat::clear_dead_state(&mut state_field);
+
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id: npc_id,
+        method_index: 20, // onStatUpdate
+        args: stat_update,
+    }).await;
+
+    let mut state_args = Vec::with_capacity(4);
+    state_args.extend_from_slice(&state_field.to_le_bytes());
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id: npc_id,
+        method_index: 19, // onStateFieldUpdate
+        args: state_args,
+    }).await;
 }

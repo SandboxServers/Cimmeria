@@ -179,6 +179,11 @@ impl AbilityManager {
         self.known_abilities.insert(ability_id);
     }
 
+    /// Get the first known ability (for NPCs using their default attack).
+    pub fn first_known_ability(&self) -> Option<i32> {
+        self.known_abilities.iter().next().copied()
+    }
+
     /// Remove a known ability.
     pub fn remove_ability(&mut self, ability_id: i32) {
         self.known_abilities.remove(&ability_id);

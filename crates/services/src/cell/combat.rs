@@ -263,6 +263,34 @@ fn calculate_absorption(defender: &StatList, damage_type: i8) -> i32 {
     }
 }
 
+/// Leash distance in world units — if an NPC's target moves further than this
+/// from the NPC's spawn position, the NPC resets and walks home.
+pub const LEASH_DISTANCE: f32 = 50.0;
+
+/// Default NPC attack ability ID (QA data: generic ranged attack).
+pub const NPC_DEFAULT_ABILITY: i32 = 597;
+
+/// Generate threat on an NPC target from a player attacker.
+///
+/// Transitions the NPC from Idle to Fighting on first hit, and accumulates
+/// threat so the NPC knows who to attack back.
+pub fn generate_threat(space_mgr: &mut super::space_manager::SpaceManager, attacker_id: u32, target_id: u32, threat_amount: f32) {
+    use cimmeria_entity::cell_entity::AiState;
+
+    if let Some(target) = space_mgr.get_entity_mut(target_id) {
+        if !target.is_player {
+            if target.ai_state == AiState::Idle {
+                target.ai_state = AiState::Fighting;
+                tracing::info!(
+                    npc_id = target_id, attacker = attacker_id,
+                    "NPC aggro: Idle -> Fighting"
+                );
+            }
+            *target.threat_list.entry(attacker_id).or_insert(0.0) += threat_amount;
+        }
+    }
+}
+
 /// Check if a state field indicates the entity is dead.
 pub fn is_dead_state(state_field: u32) -> bool {
     state_field & (1 << BSF_DEAD) != 0

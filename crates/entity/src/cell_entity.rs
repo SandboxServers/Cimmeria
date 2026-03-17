@@ -150,6 +150,39 @@ pub struct CellEntity {
 
     /// Visual component paths from `entity_templates.components`.
     pub components: Vec<String>,
+
+    // ── Ammo state ────────────────────────────────────────────────────────────
+    /// Current ammo count for active bandolier weapon.
+    pub current_ammo: i32,
+    /// Maximum ammo for the active weapon (clip size).
+    pub max_ammo: i32,
+    /// Ammo type enum value for `onEntityProperty(AmmoTypeId)`.
+    pub ammo_type: i32,
+
+    // ── NPC AI state ──────────────────────────────────────────────────────────
+    /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
+    pub ai_state: AiState,
+    /// Threat list: entity_id → accumulated threat value.
+    pub threat_list: HashMap<u32, f32>,
+    /// Position where this NPC was spawned (for leashing).
+    pub spawn_position: Option<Vector3>,
+    /// Ticks until next AI action (count-down from ai tick interval).
+    pub ai_cooldown_ticks: u32,
+
+    // ── Saved mission state (for re-login) ────────────────────────────────────
+    /// Saved missions loaded from DB, to be populated before content engine fires.
+    pub saved_missions_loaded: bool,
+}
+
+/// NPC AI state machine.
+///
+/// Reference: `python/Atrea/enums.py:228-239`
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiState {
+    Idle,
+    Fighting,
+    Dead,
+    Leashing,
 }
 
 impl CellEntity {
@@ -189,6 +222,14 @@ impl CellEntity {
             static_mesh: None,
             body_set: None,
             components: Vec::new(),
+            current_ammo: 0,
+            max_ammo: 0,
+            ammo_type: 0,
+            ai_state: AiState::Idle,
+            threat_list: HashMap::new(),
+            spawn_position: None,
+            ai_cooldown_ticks: 0,
+            saved_missions_loaded: false,
         }
     }
 

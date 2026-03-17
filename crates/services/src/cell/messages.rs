@@ -48,6 +48,18 @@ pub struct NpcAoIData {
     pub components: Vec<String>,
 }
 
+/// A saved mission loaded from the database for re-login.
+#[derive(Debug, Clone)]
+pub struct SavedMission {
+    pub mission_id: i32,
+    pub status: i8,
+    pub current_step_id: Option<i32>,
+    pub completed_step_ids: Vec<i32>,
+    pub completed_objective_ids: Vec<i32>,
+    pub active_objective_ids: Vec<i32>,
+    pub failed_objective_ids: Vec<i32>,
+}
+
 /// Messages sent from BaseApp to CellApp.
 // Cannot derive Debug because oneshot::Sender doesn't implement Debug.
 // Manual impl would be possible but not worth the boilerplate.
@@ -116,6 +128,8 @@ pub enum BaseToCellMsg {
         entity_id: u32,
         player_id: i32,
         world_name: String,
+        /// Saved missions loaded from DB, to be restored before content engine fires.
+        saved_missions: Vec<SavedMission>,
     },
 
     /// Reload the content engine from the database (triggered by admin API / Content Editor).

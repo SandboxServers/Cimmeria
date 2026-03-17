@@ -669,8 +669,11 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::GrantXP { entity_id, xp_amount } => {
             handle_grant_xp(entity_id, xp_amount, socket, connected, entity_to_addr).await;
         }
-        CellToBaseMsg::GrantItem { entity_id: _, player_id, item_id, container_id, count } => {
-            handle_grant_item(player_id, item_id, container_id, count, db_pool).await;
+        CellToBaseMsg::GrantItem { entity_id, player_id, item_id, container_id, count } => {
+            handle_grant_item(
+                entity_id, player_id, item_id, container_id, count,
+                db_pool, socket, connected, entity_to_addr,
+            ).await;
         }
         CellToBaseMsg::WitnessEntityMethod { witness_id, entity_id, method_index, args } => {
             tracing::debug!(witness_id, entity_id, method_index, "Broadcast entity method to witness");

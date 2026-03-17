@@ -603,6 +603,19 @@ impl SpaceManager {
         Some(space.world_name.clone())
     }
 
+    /// Collect all NPC entity IDs (class_id=0x04, not players) across all spaces.
+    pub fn all_npc_entity_ids(&self) -> Vec<u32> {
+        let mut ids = Vec::new();
+        for space in self.spaces.values() {
+            for entity in space.entities.values() {
+                if !entity.is_player && entity.class_id == 0x04 {
+                    ids.push(entity.entity_id.0 as u32);
+                }
+            }
+        }
+        ids
+    }
+
     /// Spawn an NPC entity in the named world at the given position.
     ///
     /// Returns the space_id the NPC was placed in.
@@ -627,6 +640,8 @@ impl SpaceManager {
         cell_entity.direction = dir;
         cell_entity.class_id = 0x04; // SGWMob
         cell_entity.is_player = false;
+        cell_entity.spawn_position = Some(pos);
+        cell_entity.abilities.add_ability(super::combat::NPC_DEFAULT_ABILITY);
 
         let space = self.spaces.get_mut(&space_id)
             .ok_or_else(|| format!("Space {space_id} disappeared"))?;
@@ -689,6 +704,21 @@ impl SpaceManager {
         e.static_mesh = record.static_mesh.clone();
         e.body_set = Some(record.body_set.clone());
         e.components = record.components.clone().unwrap_or_default();
+        e.spawn_position = Some(pos);
+
+        // Give NPCs a default combat ability and stats so they can fight back
+        e.abilities.add_ability(597); // generic combat ability
+        // Initialize NPC health based on level (simple scaling)
+        use cimmeria_entity::stats::{HEALTH, FOCUS};
+        let hp = 200 + (e.level as i32 * 50);
+        if let Some(stat) = e.stats.get_mut(HEALTH) {
+            stat.max = hp;
+            stat.set_current(hp);
+        }
+        if let Some(stat) = e.stats.get_mut(FOCUS) {
+            stat.max = 200;
+            stat.set_current(200);
+        }
 
         let space = self.spaces.get_mut(&space_id)
             .ok_or_else(|| format!("Space {space_id} disappeared"))?;

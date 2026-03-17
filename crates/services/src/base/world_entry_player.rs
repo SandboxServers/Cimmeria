@@ -506,6 +506,64 @@ pub(crate) async fn handle_grant_xp(
     }
 }
 
+// ── Mission loading ──────────────────────────────────────────────────────────
+
+/// Query saved missions from the database for a player re-login.
+///
+/// Returns missions with status = active (1) so the CellService can restore
+/// them before the content engine fires. Completed (2) missions are also loaded
+/// so the content engine sees them and doesn't re-trigger.
+pub(crate) async fn query_saved_missions(
+    db_pool: &Option<Arc<PgPool>>,
+    player_id: i32,
+) -> Vec<crate::cell::messages::SavedMission> {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => return vec![],
+    };
+
+    #[derive(sqlx::FromRow)]
+    struct MissionRow {
+        mission_id: i32,
+        status: i16,
+        current_step_id: Option<i32>,
+        completed_step_ids: Vec<i32>,
+        completed_objective_ids: Vec<i32>,
+        active_objective_ids: Vec<i32>,
+        failed_objective_ids: Vec<i32>,
+    }
+
+    match sqlx::query_as::<_, MissionRow>(
+        "SELECT mission_id, status, current_step_id, \
+         completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids \
+         FROM sgw_mission WHERE player_id = $1",
+    )
+    .bind(player_id)
+    .fetch_all(pool.as_ref())
+    .await
+    {
+        Ok(rows) => {
+            let missions: Vec<_> = rows.into_iter().map(|r| {
+                crate::cell::messages::SavedMission {
+                    mission_id: r.mission_id,
+                    status: r.status as i8,
+                    current_step_id: r.current_step_id,
+                    completed_step_ids: r.completed_step_ids,
+                    completed_objective_ids: r.completed_objective_ids,
+                    active_objective_ids: r.active_objective_ids,
+                    failed_objective_ids: r.failed_objective_ids,
+                }
+            }).collect();
+            tracing::info!(player_id, count = missions.len(), "Loaded saved missions from DB");
+            missions
+        }
+        Err(e) => {
+            tracing::error!(player_id, "Failed to query saved missions: {e}");
+            vec![]
+        }
+    }
+}
+
 // ── Mission persistence ─────────────────────────────────────────────────────
 
 /// Persist a mission state change to the database.
@@ -559,13 +617,17 @@ pub(crate) async fn handle_mission_update(
 
 // ── Item persistence ────────────────────────────────────────────────────────
 
-/// Persist a granted item to the inventory database.
+/// Persist a granted item to the inventory database and send visual updates if equipped.
 pub(crate) async fn handle_grant_item(
+    entity_id: u32,
     player_id: i32,
     item_id: i32,
     container_id: i32,
     count: i32,
     db_pool: &Option<Arc<PgPool>>,
+    socket: &Arc<tokio::net::UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let pool = match db_pool {
         Some(p) => p,
@@ -601,6 +663,85 @@ pub(crate) async fn handle_grant_item(
     match result {
         Ok(_) => tracing::debug!(player_id, item_id, container_id, slot = next_slot, "Item persisted to inventory"),
         Err(e) => tracing::error!(player_id, item_id, "Failed to persist item: {e}"),
+    }
+
+    // If this is an equipped container (3=bandolier, 4-14=equipment), send visual updates
+    let is_equipped = (3..=14).contains(&container_id);
+    if !is_equipped {
+        return;
+    }
+
+    // For bandolier (container_id=3), send onActiveSlotUpdate(bagId, slotId)
+    if container_id == 3 {
+        let mut args = Vec::with_capacity(8);
+        args.extend_from_slice(&container_id.to_le_bytes()); // bagId
+        args.extend_from_slice(&(next_slot + 1).to_le_bytes()); // slotId (1-indexed on wire)
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::ON_ACTIVE_SLOT_UPDATE, &args,
+                )
+            },
+        ).await;
+    }
+
+    // Look up the item's visual_component from the resources.items table
+    let visual: Option<String> = sqlx::query_scalar(
+        "SELECT visual_component FROM resources.items WHERE item_id = $1 AND visual_component IS NOT NULL",
+    )
+    .bind(item_id)
+    .fetch_optional(pool.as_ref())
+    .await
+    .unwrap_or(None);
+
+    if let Some(ref visual_component) = visual {
+        tracing::info!(
+            entity_id, player_id, item_id, container_id, %visual_component,
+            "Equipped item has visual — resending BeingAppearance"
+        );
+
+        // Re-query the full appearance (bodyset + all equipped visuals + base components)
+        // and resend BeingAppearance so the client updates the model immediately.
+        let account_id = {
+            let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+                Some(a) => a,
+                None => return,
+            };
+            let clients = connected.lock().unwrap();
+            match clients.get(&addr) {
+                Some(c) => c.account_id,
+                None => return,
+            }
+        };
+
+        let player_data = query_player_load_data(db_pool, account_id, player_id).await;
+        let appearance_args = super::world_entry_appearance::build_appearance_args(
+            &player_data.bodyset, &player_data.components,
+        );
+
+        // Update cached appearance for future resends (cancelMovie, etc.)
+        {
+            let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+                Some(a) => a,
+                None => return,
+            };
+            let mut clients = connected.lock().unwrap();
+            if let Some(c) = clients.get_mut(&addr) {
+                c.cached_appearance_args = Some(appearance_args.clone());
+            }
+        }
+
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::BEING_APPEARANCE, &appearance_args,
+                )
+            },
+        ).await;
     }
 }
 

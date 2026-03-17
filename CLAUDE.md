@@ -52,6 +52,22 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 
 ### Build
 
+#### Rust Server (primary)
+
+**Always build for Windows** — the server runs on Windows alongside the game client. On Linux/WSL, cross-compile:
+```bash
+cargo build -p cimmeria-server --target x86_64-pc-windows-gnu --release
+cp target/x86_64-pc-windows-gnu/release/cimmeria-server.exe .
+```
+On Windows natively:
+```bash
+cargo build -p cimmeria-server --release
+cp target/release/cimmeria-server.exe .
+```
+After building, always copy the exe to the project root.
+
+#### C++ (legacy reference)
+
 Solution: `W-NG.sln` (Visual Studio 2026, MSVC v145)
 Configurations: Debug, Release, UnoptRelease, MinSizeRel
 Platforms: Win32, x64

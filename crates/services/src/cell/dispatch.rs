@@ -135,6 +135,10 @@ pub const CM_RESPAWN: u16 = 70;
 pub const CM_INTERACT: u16 = 74;
 /// SGWPlayer: setAutoCycle(INT8 enabled)
 pub const CM_SET_AUTO_CYCLE: u16 = 83;
+/// SGWPlayer: triggerClientHintedGenericRegion(INT32 id, UINT8 bEntering, VECTOR3 position)
+pub const CM_TRIGGER_REGION: u16 = 85;
+/// SGWPlayer: requestReload(UINT8 reloadType)
+pub const CM_REQUEST_RELOAD: u16 = 86;
 
 // ── Dispatch ────────────────────────────────────────────────────────────────
 
@@ -199,6 +203,38 @@ pub async fn dispatch_cell_method(
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, ability_id, target_id, "useAbility");
                 super::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr).await;
+
+                // Check if target NPC died -- fire entity_death for content chains
+                // and set AI state to Dead so the NPC stops acting.
+                if target_id > 0 {
+                    let target_eid = target_id as u32;
+                    let death_info = space_mgr.get_entity(target_eid).and_then(|target| {
+                        let is_dead = target.stats.get(cimmeria_entity::stats::HEALTH)
+                            .map_or(false, |s| s.cur <= 0);
+                        if is_dead && !target.is_player {
+                            Some((target.tag.clone(), target.is_player))
+                        } else {
+                            None
+                        }
+                    });
+
+                    if let Some((tag, _is_player)) = death_info {
+                        // Set AI state to Dead and clear threat
+                        if let Some(target) = space_mgr.get_entity_mut(target_eid) {
+                            target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
+                            target.threat_list.clear();
+                        }
+
+                        // Fire entity_death for content engine (mission kill chains)
+                        if let Some(tag) = tag {
+                            let player_id = space_mgr.get_entity(entity_id)
+                                .and_then(|e| e.player_id).unwrap_or(0);
+                            super::content::fire_entity_death(
+                                entity_id, player_id, &tag, engine, tx, space_mgr,
+                            ).await;
+                        }
+                    }
+                }
             }
         }
 
@@ -307,6 +343,40 @@ pub async fn dispatch_cell_method(
             }
         }
 
+        CM_TRIGGER_REGION => {
+            // triggerClientHintedGenericRegion(INT32 id, UINT8 bEntering, VECTOR3 position)
+            if args.len() >= 17 {
+                let region_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let b_entering = args[4] != 0;
+                let _x = f32::from_le_bytes([args[5], args[6], args[7], args[8]]);
+                let _y = f32::from_le_bytes([args[9], args[10], args[11], args[12]]);
+                let _z = f32::from_le_bytes([args[13], args[14], args[15], args[16]]);
+
+                tracing::info!(entity_id, region_id, b_entering, "triggerClientHintedGenericRegion");
+
+                let player_id = space_mgr.get_entity(entity_id)
+                    .and_then(|e| e.player_id).unwrap_or(0);
+
+                if b_entering {
+                    super::content::fire_enter_region(
+                        entity_id, player_id, region_id, engine, tx, space_mgr,
+                    ).await;
+                } else {
+                    super::content::fire_exit_region(
+                        entity_id, player_id, region_id, engine, tx, space_mgr,
+                    ).await;
+                }
+            }
+        }
+
+        CM_REQUEST_RELOAD => {
+            if !args.is_empty() {
+                let reload_type = args[0];
+                tracing::debug!(entity_id, reload_type, "requestReload");
+                handle_reload(entity_id, tx, space_mgr).await;
+            }
+        }
+
         CM_INTERACT => {
             if args.len() >= 4 {
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -409,6 +479,8 @@ pub fn cell_method_name(index: u16) -> &'static str {
         CM_RESPAWN => "respawn",
         CM_INTERACT => "interact",
         CM_SET_AUTO_CYCLE => "setAutoCycle",
+        CM_TRIGGER_REGION => "triggerClientHintedGenericRegion",
+        CM_REQUEST_RELOAD => "requestReload",
         _ => "unknown",
     }
 }
@@ -451,6 +523,9 @@ async fn handle_respawn(
     // Clear all ability cooldowns
     entity.abilities.clear_all_cooldowns();
 
+    // Reset position to spawn point if available
+    // (Future: read spawn point from DB or initial position)
+
     tracing::info!(entity_id, "Player respawned");
 
     // Send onStatUpdate (index 20) — restored health/focus
@@ -467,6 +542,47 @@ async fn handle_respawn(
         entity_id,
         method_index: 19,
         args: state_args,
+    }).await;
+}
+
+// ── Reload ────────────────────────────────────────────────────────────────────
+
+/// Handle player weapon reload: reset ammo to max and send stat update.
+///
+/// Reference: `python/cell/SGWPlayer.py:1482-1498`
+async fn handle_reload(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let entity = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e,
+        None => {
+            tracing::warn!(entity_id, "requestReload: entity not found");
+            return;
+        }
+    };
+
+    // Reset ammo to max
+    let old = entity.current_ammo;
+    entity.current_ammo = entity.max_ammo;
+
+    if old == entity.max_ammo {
+        tracing::debug!(entity_id, "requestReload: already at max ammo");
+        return;
+    }
+
+    tracing::info!(entity_id, old, new = entity.max_ammo, "Weapon reloaded");
+
+    // Send onEntityProperty(GENERICPROPERTY_AmmoTypeId, ammo_type)
+    // This tells the client to update the ammo display
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&7i32.to_le_bytes()); // GENERICPROPERTY_AmmoTypeId = 7
+    args.extend_from_slice(&entity.ammo_type.to_le_bytes());
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: 7, // onEntityProperty (SGWSpawnableEntity, flat index 7)
+        args,
     }).await;
 }
 

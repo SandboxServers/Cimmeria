@@ -365,7 +365,7 @@ pub(crate) async fn handle_encrypted_datagram(
                     match id {
                         sgw_player_base::ON_CLIENT_READY => {
                             handle_on_client_ready(
-                                addr, connected, cell_tx, socket, entity_to_addr,
+                                addr, connected, cell_tx, socket, entity_to_addr, db_pool,
                             ).await?;
                         }
                         _ => {
