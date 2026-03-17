@@ -576,6 +576,18 @@ export default function App() {
     }
   }, [refreshActors]);
 
+  // ---- Property change handler ----
+  const handlePropertyChange = useCallback(async (key: string, propName: string, newValue: string) => {
+    try {
+      await invoke('update_actor_property', { key, propertyName: propName, newValue });
+      // Refresh actor detail
+      const detail = await invoke<ActorEntry>('get_actor_details', { key });
+      setSelectedActorDetail(detail);
+    } catch (e) {
+      console.error('update_actor_property failed:', e);
+    }
+  }, []);
+
   // ---- Toggle class filter ----
   const handleToggleClass = useCallback((className: string) => {
     setClassFilter(prev => {
@@ -701,6 +713,7 @@ export default function App() {
         onPlaceSpawn={handlePlaceSpawn}
         onUpdateSpawnPosition={handleUpdateSpawnPosition}
         onCreateRegion={() => setShowRegionDialog(true)}
+        onPropertyChange={handlePropertyChange}
         onProceduralPlacement={() => setShowProceduralDialog(true)}
         navMeshData={navMeshData}
         onExportDbSql={handleExportDbSql}

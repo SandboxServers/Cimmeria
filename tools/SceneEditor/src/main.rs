@@ -27,6 +27,7 @@ fn main() {
             commands::move_actors,
             commands::rotate_actors,
             commands::scale_actors,
+            commands::update_actor_property,
             commands::undo,
             commands::redo,
             commands::export_sql,

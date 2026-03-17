@@ -9,6 +9,8 @@ interface PropertyWindowProps {
   onMoveActor?: (key: string, x: number, y: number, z: number) => void;
   onRotateActor?: (key: string, pitch: number, yaw: number, roll: number) => void;
   onScaleActor?: (key: string, drawScale: number, dsX: number, dsY: number, dsZ: number) => void;
+  onPropertyChange?: (key: string, propName: string, newValue: string) => void;
+  isLocked?: boolean;
 }
 
 interface PropertyCategory {
@@ -86,6 +88,8 @@ function buildCategories(actor: ActorEntry): PropertyCategory[] {
       entries: sgwProps.map(p => ({
         label: p.name,
         value: p.value,
+        editable: true,
+        editKey: `prop:${p.name}`,
       })),
     });
   }
@@ -102,6 +106,8 @@ function buildCategories(actor: ActorEntry): PropertyCategory[] {
       entries: extraProps.map(p => ({
         label: p.name,
         value: p.value,
+        editable: true,
+        editKey: `prop:${p.name}`,
       })),
     });
   }
@@ -109,8 +115,9 @@ function buildCategories(actor: ActorEntry): PropertyCategory[] {
   return categories;
 }
 
-export function PropertyWindow({ actor, selectionCount, onMoveActor, onRotateActor, onScaleActor }: PropertyWindowProps) {
+export function PropertyWindow({ actor, selectionCount, onMoveActor, onRotateActor, onScaleActor, onPropertyChange, isLocked }: PropertyWindowProps) {
   const handleEdit = (editKey: string, newValue: number) => {
+    if (isLocked) return;
     if (!actor) return;
     const k = actor.key;
 
@@ -127,6 +134,20 @@ export function PropertyWindow({ actor, selectionCount, onMoveActor, onRotateAct
     else if (editKey === 'ds_x') onScaleActor?.(k, actor.draw_scale, newValue, actor.draw_scale_y, actor.draw_scale_z);
     else if (editKey === 'ds_y') onScaleActor?.(k, actor.draw_scale, actor.draw_scale_x, newValue, actor.draw_scale_z);
     else if (editKey === 'ds_z') onScaleActor?.(k, actor.draw_scale, actor.draw_scale_x, actor.draw_scale_y, newValue);
+    // Generic property changes
+    else if (editKey.startsWith('prop:')) {
+      const propName = editKey.slice(5);
+      onPropertyChange?.(k, propName, String(newValue));
+    }
+  };
+
+  // Handle string property edits (for non-numeric properties)
+  const handleStringEdit = (editKey: string, newValue: string) => {
+    if (isLocked || !actor) return;
+    if (editKey.startsWith('prop:')) {
+      const propName = editKey.slice(5);
+      onPropertyChange?.(actor.key, propName, newValue);
+    }
   };
 
   return (

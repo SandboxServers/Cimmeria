@@ -32,6 +32,9 @@ pub enum UndoAction {
     RotateActors(Vec<(String, f32, f32, f32)>),
     /// Actors were scaled; stores (key, old_draw_scale, old_dsx, old_dsy, old_dsz).
     ScaleActors(Vec<(String, f32, f32, f32, f32)>),
+    /// A property was changed; stores (key, property_name, old_value).
+    /// old_value is None if the property didn't exist before (was created).
+    PropertyChange(String, String, Option<String>),
 }
 
 /// A fully loaded zone with all extracted actor data.

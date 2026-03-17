@@ -614,6 +614,41 @@ pub async fn undo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
             }
             UndoAction::ScaleActors(new_scales)
         }
+        UndoAction::PropertyChange(key, prop_name, old_value) => {
+            if let Some(actor) = zone.actors.iter_mut().find(|a| a.key == key) {
+                match old_value {
+                    Some(old_val) => {
+                        // Property existed before — swap current value back
+                        let current_val = actor
+                            .properties
+                            .iter_mut()
+                            .find(|p| p.name == prop_name)
+                            .map(|p| {
+                                let cur = p.value.clone();
+                                p.value = old_val;
+                                cur
+                            })
+                            .unwrap_or_default();
+                        UndoAction::PropertyChange(key, prop_name, Some(current_val))
+                    }
+                    None => {
+                        // Property was created — remove it, stash the current value for redo
+                        let current_val = actor
+                            .properties
+                            .iter()
+                            .find(|p| p.name == prop_name)
+                            .map(|p| p.value.clone())
+                            .unwrap_or_default();
+                        actor.properties.retain(|p| p.name != prop_name);
+                        // Redo should re-create with the value that was there
+                        UndoAction::PropertyChange(key, prop_name, Some(current_val))
+                    }
+                }
+            } else {
+                // Actor gone — nothing to redo
+                UndoAction::PropertyChange(key, prop_name, old_value)
+            }
+        }
     };
 
     drop(guard);
@@ -698,6 +733,36 @@ pub async fn redo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
             }
             UndoAction::ScaleActors(old_scales)
         }
+        UndoAction::PropertyChange(key, prop_name, old_value) => {
+            if let Some(actor) = zone.actors.iter_mut().find(|a| a.key == key) {
+                match old_value {
+                    Some(val) => {
+                        // Redo: set property to the stored value
+                        let current_val = if let Some(prop) =
+                            actor.properties.iter_mut().find(|p| p.name == prop_name)
+                        {
+                            let cur = prop.value.clone();
+                            prop.value = val;
+                            Some(cur)
+                        } else {
+                            // Property was removed by undo — recreate it
+                            actor.properties.push(PropertyPair {
+                                name: prop_name.clone(),
+                                value: val,
+                            });
+                            None
+                        };
+                        UndoAction::PropertyChange(key, prop_name, current_val)
+                    }
+                    None => {
+                        // This shouldn't happen in normal redo flow, but handle gracefully
+                        UndoAction::PropertyChange(key, prop_name, None)
+                    }
+                }
+            } else {
+                UndoAction::PropertyChange(key, prop_name, old_value)
+            }
+        }
     };
 
     drop(guard);
@@ -705,6 +770,44 @@ pub async fn redo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
 
     tracing::info!("Redo performed");
     Ok(true)
+}
+
+/// Update a single property on an actor by key. Creates the property if it
+/// doesn't exist. Returns the old value (or null if the property was created).
+#[tauri::command]
+pub async fn update_actor_property(
+    state: tauri::State<'_, AppState>,
+    key: String,
+    property_name: String,
+    new_value: String,
+) -> Result<Option<String>, String> {
+    let mut guard = state.loaded_zone.lock().unwrap();
+    let zone = guard.as_mut().ok_or("No zone loaded")?;
+
+    let actor = zone
+        .actors
+        .iter_mut()
+        .find(|a| a.key == key)
+        .ok_or_else(|| format!("Actor not found: {key}"))?;
+
+    let old_value = if let Some(prop) = actor.properties.iter_mut().find(|p| p.name == property_name)
+    {
+        let old = prop.value.clone();
+        prop.value = new_value;
+        Some(old)
+    } else {
+        // Property doesn't exist yet — create it
+        actor.properties.push(PropertyPair {
+            name: property_name.clone(),
+            value: new_value,
+        });
+        None
+    };
+
+    drop(guard);
+    state.push_undo(UndoAction::PropertyChange(key, property_name, old_value.clone()));
+
+    Ok(old_value)
 }
 
 // ---------------------------------------------------------------------------

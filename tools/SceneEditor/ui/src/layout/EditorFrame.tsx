@@ -74,6 +74,7 @@ interface EditorFrameProps {
   onPlaceSpawn: (x: number, y: number, z: number) => void;
   onUpdateSpawnPosition: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
   onCreateRegion: () => void;
+  onPropertyChange: (key: string, propName: string, newValue: string) => void;
   onProceduralPlacement: () => void;
   navMeshData: import('../lib/types').NavMeshData | null;
   onExportDbSql: () => void;
@@ -136,6 +137,7 @@ export function EditorFrame({
   onPlaceSpawn,
   onUpdateSpawnPosition,
   onCreateRegion,
+  onPropertyChange,
   onProceduralPlacement,
   navMeshData,
   onExportDbSql,
@@ -177,6 +179,30 @@ export function EditorFrame({
   }, [allActors, classFilter, selectedKeys, onBoxSelect]);
   const [transformMode, setTransformMode] = useState<'move' | 'rotate' | 'scale'>('move');
   const [coordSystem, setCoordSystem] = useState<'world' | 'local'>('world');
+
+  // Camera bookmarks (Ctrl+1-9 to save, 1-9 to recall)
+  const bookmarksRef = useRef<Record<string, { x: number; y: number; z: number }>>(
+    JSON.parse(localStorage.getItem('editor_bookmarks') ?? '{}')
+  );
+
+  // Actor locking (locked actors can't be moved/deleted)
+  const [lockedKeys, setLockedKeys] = useState<Set<string>>(new Set());
+
+  // Actor groups
+  const [actorGroups, setActorGroups] = useState<Map<string, Set<string>>>(new Map());
+
+  // Log messages
+  const [logMessages, setLogMessages] = useState<string[]>([]);
+  const [showLog, setShowLog] = useState(false);
+
+  const addLog = useCallback((msg: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogMessages(prev => [`[${timestamp}] ${msg}`, ...prev].slice(0, 200));
+  }, []);
+
+  // Measurement mode
+  const [measureStart, setMeasureStart] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [measureEnd, setMeasureEnd] = useState<{ x: number; y: number; z: number } | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [gridSnap, setGridSnap] = useState(10);
 
@@ -339,6 +365,98 @@ export function EditorFrame({
             onSave();
           }
           break;
+        // Lock/unlock selected actors
+        case 'l':
+        case 'L':
+          if (selectedKeys.size > 0) {
+            setLockedKeys(prev => {
+              const next = new Set(prev);
+              const allLocked = [...selectedKeys].every(k => next.has(k));
+              if (allLocked) {
+                // Unlock all selected
+                for (const k of selectedKeys) next.delete(k);
+                addLog(`Unlocked ${selectedKeys.size} actor(s)`);
+              } else {
+                // Lock all selected
+                for (const k of selectedKeys) next.add(k);
+                addLog(`Locked ${selectedKeys.size} actor(s)`);
+              }
+              return next;
+            });
+          }
+          break;
+        // Group selected actors (Ctrl+G)
+        case 'g':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            if (selectedKeys.size > 1) {
+              const groupName = `Group_${actorGroups.size + 1}`;
+              setActorGroups(prev => {
+                const next = new Map(prev);
+                next.set(groupName, new Set(selectedKeys));
+                return next;
+              });
+              addLog(`Created group "${groupName}" with ${selectedKeys.size} actors`);
+            }
+          }
+          break;
+        // Measurement tool (M key)
+        case 'm':
+        case 'M':
+          if (!e.ctrlKey && !e.metaKey) {
+            if (!measureStart) {
+              setMeasureStart(mouseWorldPos);
+              addLog(`Measure start: (${mouseWorldPos.x.toFixed(0)}, ${mouseWorldPos.y.toFixed(0)}, ${mouseWorldPos.z.toFixed(0)})`);
+            } else {
+              setMeasureEnd(mouseWorldPos);
+              const dx = mouseWorldPos.x - measureStart.x;
+              const dy = mouseWorldPos.y - measureStart.y;
+              const dz = mouseWorldPos.z - measureStart.z;
+              const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+              addLog(`Measure: ${dist.toFixed(1)} cm (${(dist/100).toFixed(2)} m)`);
+              setMeasureStart(null);
+              setMeasureEnd(null);
+            }
+          }
+          break;
+        // Toggle log window
+        case '`':
+          setShowLog(prev => !prev);
+          break;
+        // Camera bookmarks: Ctrl+1-9 to save, 1-9 to recall
+        case '1': case '2': case '3': case '4': case '5':
+        case '6': case '7': case '8': case '9':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            // Save bookmark at current mouse position
+            bookmarksRef.current[e.key] = { ...mouseWorldPos };
+            localStorage.setItem('editor_bookmarks', JSON.stringify(bookmarksRef.current));
+            addLog(`Bookmark ${e.key} saved at (${mouseWorldPos.x.toFixed(0)}, ${mouseWorldPos.y.toFixed(0)}, ${mouseWorldPos.z.toFixed(0)})`);
+          } else if (!e.altKey) {
+            // Recall bookmark — find nearest actor to bookmark position and focus
+            const bm = bookmarksRef.current[e.key];
+            if (bm) {
+              // Find the actor closest to the bookmark position
+              let nearest: string | null = null;
+              let nearestDist = Infinity;
+              for (const a of actors) {
+                const dx = a.x - bm.x;
+                const dy = a.y - bm.y;
+                const dz = a.z - bm.z;
+                const d = dx*dx + dy*dy + dz*dz;
+                if (d < nearestDist) {
+                  nearestDist = d;
+                  nearest = a.key;
+                }
+              }
+              if (nearest) {
+                onSelectActor(nearest);
+                onFocusSelected();
+                addLog(`Recalled bookmark ${e.key}`);
+              }
+            }
+          }
+          break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -468,6 +586,8 @@ export function EditorFrame({
                       onMoveActor={onMoveOneActor}
                       onRotateActor={onRotateOneActor}
                       onScaleActor={onScaleOneActor}
+                      onPropertyChange={onPropertyChange}
+                      isLocked={primarySelectedKey ? lockedKeys.has(primarySelectedKey) : false}
                     />
                   </Allotment.Pane>
                   {selectedDbEntityIds.size === 1 && (
@@ -528,6 +648,53 @@ export function EditorFrame({
           }}
           onClose={() => setShowSearch(false)}
         />
+      )}
+
+      {/* Log window (toggle with backtick key) */}
+      {showLog && (
+        <div className="absolute bottom-8 left-0 right-0 z-30 border-t bg-card/95 backdrop-blur">
+          <div className="flex items-center justify-between border-b px-3 py-1">
+            <span className="text-[10px] font-medium text-foreground">Output Log</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] text-muted-foreground">{logMessages.length} messages</span>
+              <button
+                onClick={() => setLogMessages([])}
+                className="text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setShowLog(false)}
+                className="text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="h-32 overflow-y-auto px-3 py-1 font-mono text-[10px] text-muted-foreground subtle-scrollbar">
+            {logMessages.length === 0 ? (
+              <div className="py-2 text-center text-muted-foreground/40">No messages</div>
+            ) : (
+              logMessages.map((msg, i) => (
+                <div key={i} className="py-0.5 leading-tight">{msg}</div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Measurement display */}
+      {measureStart && !measureEnd && (
+        <div className="pointer-events-none absolute bottom-10 left-1/2 z-40 -translate-x-1/2 rounded bg-black/70 px-3 py-1 text-xs font-mono text-cyan-400">
+          Measuring... press M again to set end point (Esc to cancel)
+        </div>
+      )}
+
+      {/* Lock indicator on status bar area */}
+      {lockedKeys.size > 0 && (
+        <div className="pointer-events-none absolute bottom-0 right-48 z-40 flex items-center gap-1 px-2 py-1.5">
+          <span className="text-[10px] text-amber-500">🔒 {lockedKeys.size} locked</span>
+        </div>
       )}
     </div>
   );
