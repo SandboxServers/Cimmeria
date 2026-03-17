@@ -23,6 +23,10 @@ pub(crate) mod sgw_player_base {
     pub const SEND_PLAYER_COMMUNICATION: u8 = 0xC2;
     pub const CHAT_SET_AFK: u8 = 0xC3;
     pub const CHAT_SET_DND: u8 = 0xC4;
+    /// SGWPlayer.logOff(INT8 Disconnect) — 0=return to char select, 1=full exit
+    pub const LOG_OFF: u8 = 0xD6;
+    /// SGWPlayer.cancelLogOff() — cancel pending logoff timer
+    pub const CANCEL_LOG_OFF: u8 = 0xD7;
     pub const ON_CLIENT_READY: u8 = 0xD8;
 }
 
@@ -118,6 +122,75 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Chat status update -- acknowledged");
         }
 
+        sgw_player_base::LOG_OFF => {
+            let disconnect = if !payload.is_empty() { payload[0] } else { 0 };
+            tracing::info!(%addr, disconnect, "SGWPlayer.logOff");
+
+            // Get entity info before cleanup
+            let entity_id = {
+                let clients = connected.lock().unwrap();
+                clients.get(&addr).and_then(|c| c.player_entity_id)
+            };
+
+            if let Some(entity_id) = entity_id {
+                // Tell CellService to disconnect and destroy the entity
+                if let Some(ref tx) = cell_tx {
+                    let _ = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await;
+                    let _ = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await;
+                }
+
+                // Remove entity→addr mapping
+                entity_to_addr.lock().unwrap().remove(&entity_id);
+            }
+
+            if disconnect != 0 {
+                // Full exit: send loggedOff system message (msg_id 0x06) and let client disconnect
+                tracing::info!(%addr, "logOff: full exit — sending loggedOff");
+                let (acks, seq) = super::helpers::drain_acks_and_seq(connected, addr)?;
+                let pkt = crate::mercury::build_logged_off(&key, seq, &acks);
+                socket.send_to(&pkt, addr).await?;
+            } else {
+                // Return to character select: reset state and send RESET_ENTITIES + char list
+                tracing::info!(%addr, "logOff: returning to character select");
+
+                // Reset client state for character select
+                {
+                    let mut clients = connected.lock().unwrap();
+                    if let Some(c) = clients.get_mut(&addr) {
+                        c.player_entity_id = None;
+                        c.player_name = None;
+                        c.player_level = None;
+                        c.player_archetype = None;
+                        c.world_name = None;
+                        c.player_xp = None;
+                        c.player_training_points = None;
+                        c.pending_world_entry = None;
+                        c.pending_player_load_data = None;
+                        c.pending_map_loaded = None;
+                        c.pending_client_ready = None;
+                        c.pending_player_entity_id = None;
+                        c.cached_appearance_args = None;
+                        c.cached_tint_args = None;
+                        c.world_entry_sent = false;
+                        c.char_list_sent = false;
+                    }
+                }
+
+                // Send RESET_ENTITIES to tear down the world
+                let (acks, seq) = super::helpers::drain_acks_and_seq(connected, addr)?;
+                let pkt = crate::mercury::build_reset_entities(&key, seq, &acks);
+                socket.send_to(&pkt, addr).await?;
+
+                // The client responds with ENABLE_ENTITIES, which triggers the
+                // char list flow (same as initial login). The char_list_sent flag
+                // was cleared above so handle_enable_entities will re-send.
+            }
+        }
+
+        sgw_player_base::CANCEL_LOG_OFF => {
+            tracing::debug!(%addr, "SGWPlayer.cancelLogOff — acknowledged");
+        }
+
         _ => {
             tracing::trace!(
                 %addr,
@@ -129,7 +202,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
     }
 
     // Suppress unused warnings for parameters used in future handlers
-    let _ = (socket, key, entity_manager, entity_to_addr);
+    let _ = entity_manager;
 
     Ok(())
 }
