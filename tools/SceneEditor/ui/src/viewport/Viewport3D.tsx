@@ -131,7 +131,63 @@ function projectMouseToAngle(
 const ROT_TO_RAD = (2 * Math.PI) / 65536;
 // fallback only — class-specific geo is in ActorVisuals.ts
 const geometryCache = new Map<string, THREE.BufferGeometry>();
+const textureCache = new Map<string, THREE.Texture>();
 const loadingMeshes = new Set<string>();
+const loadingTextures = new Set<string>();
+
+interface MeshMaterialInfo {
+  section_index: number;
+  material_name: string;
+  texture_name: string | null;
+}
+
+interface TextureThumbnailData {
+  width: number;
+  height: number;
+  format: string;
+  data_base64: string;
+}
+
+/** Load texture for a mesh and cache it. */
+async function loadMeshTexture(meshName: string): Promise<void> {
+  if (textureCache.has(meshName) || loadingTextures.has(meshName)) return;
+  loadingTextures.add(meshName);
+
+  try {
+    // Get material info for this mesh
+    const materials = await invoke<MeshMaterialInfo[]>('get_mesh_materials', { meshName });
+    if (!materials || materials.length === 0) return;
+
+    // Use the first section's texture
+    const firstTex = materials.find(m => m.texture_name);
+    if (!firstTex?.texture_name) return;
+
+    // Load the texture thumbnail as base64 PNG
+    const thumb = await invoke<TextureThumbnailData>('get_texture_thumbnail', {
+      packageName: firstTex.texture_name.split('.')[0] || firstTex.texture_name,
+      objectName: firstTex.texture_name,
+    });
+
+    if (thumb?.data_base64) {
+      const loader = new THREE.TextureLoader();
+      const tex = await new Promise<THREE.Texture>((resolve, reject) => {
+        loader.load(
+          `data:image/png;base64,${thumb.data_base64}`,
+          resolve,
+          undefined,
+          reject,
+        );
+      });
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      textureCache.set(meshName, tex);
+    }
+  } catch {
+    // Texture loading is best-effort — silently skip failures
+  } finally {
+    loadingTextures.delete(meshName);
+  }
+}
 
 function createGeometryFromMeshData(data: MeshData): THREE.BufferGeometry {
   const geo = new THREE.BufferGeometry();
@@ -143,15 +199,21 @@ function createGeometryFromMeshData(data: MeshData): THREE.BufferGeometry {
   return geo;
 }
 
-function getMeshMaterial(renderMode: RenderMode, isSelected: boolean): THREE.Material {
-  const color = isSelected ? 0xf59e0b : 0x8899aa;
+function getMeshMaterial(renderMode: RenderMode, isSelected: boolean, texture?: THREE.Texture): THREE.Material {
+  const color = isSelected ? 0xf59e0b : texture ? 0xffffff : 0x8899aa;
   switch (renderMode) {
     case 'wireframe':
       return new THREE.MeshBasicMaterial({ color, wireframe: true });
     case 'unlit':
-      return new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+      return new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, map: texture ?? null });
     case 'lit':
-      return new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.1, side: THREE.DoubleSide });
+      return new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.7,
+        metalness: 0.1,
+        side: THREE.DoubleSide,
+        map: texture ?? null,
+      });
   }
 }
 
@@ -646,7 +708,8 @@ export function Viewport3D({
         const cached = geometryCache.get(actor.static_mesh);
         const geo = cached ?? new THREE.BoxGeometry(50, 50, 50);
         const isSelected = selectedKeys.has(actor.key);
-        const mat = cached ? getMeshMaterial(mode, isSelected) : getIndicatorMaterial(actor.class_name, isSelected, false);
+        const tex = textureCache.get(actor.static_mesh);
+        const mat = cached ? getMeshMaterial(mode, isSelected, tex) : getIndicatorMaterial(actor.class_name, isSelected, false);
         const mesh = new THREE.Mesh(geo, mat);
         placeObject(mesh, actor);
         mesh.userData = { actorKey: actor.key };
@@ -671,7 +734,19 @@ export function Viewport3D({
 
     placeAllMeshActors();
     if (promises.length > 0) {
-      Promise.all(promises).then(placeAllMeshActors);
+      Promise.all(promises).then(() => {
+        placeAllMeshActors();
+        // Start loading textures for all unique meshes (background, non-blocking)
+        const texPromises: Promise<void>[] = [];
+        for (const name of uniqueNames) {
+          if (!textureCache.has(name)) {
+            texPromises.push(loadMeshTexture(name));
+          }
+        }
+        if (texPromises.length > 0) {
+          Promise.all(texPromises).then(placeAllMeshActors);
+        }
+      });
     }
   }, [actors, renderMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
