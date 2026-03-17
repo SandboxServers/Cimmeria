@@ -34,6 +34,7 @@ interface ViewportContainerProps {
   selectedTemplateName?: string | null;
   onSelectDbEntity?: (id: number) => void;
   onUpdateSpawnPosition?: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
+  navMeshData?: import('../lib/types').NavMeshData | null;
 }
 
 export function ViewportContainer({
@@ -65,6 +66,7 @@ export function ViewportContainer({
   selectedTemplateName,
   onSelectDbEntity,
   onUpdateSpawnPosition,
+  navMeshData,
 }: ViewportContainerProps) {
   // null = show all 4, string = maximized viewport
   const [maximized, setMaximized] = useState<Slot | null>(null);
@@ -108,6 +110,7 @@ export function ViewportContainer({
           selectedTemplateName={selectedTemplateName}
           onSelectDbEntity={onSelectDbEntity}
           onUpdateSpawnPosition={onUpdateSpawnPosition}
+          navMeshData={navMeshData}
         />
       </div>
     );
@@ -148,6 +151,7 @@ export function ViewportContainer({
           selectedTemplateName={selectedTemplateName}
           onSelectDbEntity={onSelectDbEntity}
           onUpdateSpawnPosition={onUpdateSpawnPosition}
+          navMeshData={navMeshData}
         />
       ))}
     </div>

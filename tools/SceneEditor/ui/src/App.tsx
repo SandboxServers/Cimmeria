@@ -10,6 +10,8 @@ import type {
   DbEntity,
   EntityTemplate,
   WorldInfo,
+  NavMeshData,
+  NavMeshInfo,
 } from './lib/types';
 import { EditorFrame } from './layout/EditorFrame';
 import { ZoneSelector } from './panels/ZoneSelector';
@@ -50,6 +52,9 @@ export default function App() {
   const [selectedTemplate, setSelectedTemplate] = useState<EntityTemplate | null>(null);
   const [showDbDialog, setShowDbDialog] = useState(false);
   const [worlds, setWorlds] = useState<WorldInfo[]>([]);
+
+  // ---- NavMesh state ----
+  const [navMeshData, setNavMeshData] = useState<NavMeshData | null>(null);
 
   // ---- Placement mode ----
   const [placementMode, setPlacementMode] = useState(false);
@@ -285,6 +290,23 @@ export default function App() {
             console.warn('Auto-load DB entities failed:', e);
           }
         }
+      }
+
+      // Try to load navmesh for this zone
+      try {
+        const navmeshes = await invoke<NavMeshInfo[]>('list_navmeshes');
+        const zoneLower = summary.zone_name.toLowerCase();
+        const match = navmeshes.find(n => zoneLower.includes(n.name.toLowerCase()));
+        if (match) {
+          const nmData = await invoke<NavMeshData>('load_navmesh', { navPath: match.path });
+          setNavMeshData(nmData);
+          console.log(`Loaded navmesh: ${match.name} (${nmData.tri_count} tris)`);
+        } else {
+          setNavMeshData(null);
+        }
+      } catch (e) {
+        console.warn('NavMesh load failed:', e);
+        setNavMeshData(null);
       }
 
       // Batch-preload unique meshes
@@ -680,6 +702,7 @@ export default function App() {
         onUpdateSpawnPosition={handleUpdateSpawnPosition}
         onCreateRegion={() => setShowRegionDialog(true)}
         onProceduralPlacement={() => setShowProceduralDialog(true)}
+        navMeshData={navMeshData}
         onExportDbSql={handleExportDbSql}
         showContentBrowser={showContentBrowser}
         onToggleContentBrowser={() => setShowContentBrowser(prev => !prev)}

@@ -75,6 +75,7 @@ interface EditorFrameProps {
   onUpdateSpawnPosition: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
   onCreateRegion: () => void;
   onProceduralPlacement: () => void;
+  navMeshData: import('../lib/types').NavMeshData | null;
   onExportDbSql: () => void;
   // Content Browser
   showContentBrowser: boolean;
@@ -136,6 +137,7 @@ export function EditorFrame({
   onUpdateSpawnPosition,
   onCreateRegion,
   onProceduralPlacement,
+  navMeshData,
   onExportDbSql,
   showContentBrowser,
   onToggleContentBrowser,
@@ -453,6 +455,7 @@ export function EditorFrame({
                   selectedTemplateName={selectedTemplate?.template_name ?? null}
                   onSelectDbEntity={onSelectDbEntity}
                   onUpdateSpawnPosition={onUpdateSpawnPosition}
+                  navMeshData={navMeshData}
                 />
               </Allotment.Pane>
 

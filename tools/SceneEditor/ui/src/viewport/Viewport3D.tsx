@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import { invoke } from '../lib/tauri';
-import type { ActorListEntry, MeshData, RenderMode, ZoneBounds, DbEntity } from '../lib/types';
+import type { ActorListEntry, MeshData, RenderMode, ZoneBounds, DbEntity, NavMeshData } from '../lib/types';
 import { ACTOR_COLORS, DB_ENTITY_COLORS } from '../lib/types';
 import { createGizmo, updateGizmoScale, highlightGizmoAxis, pickGizmoAxis, type GizmoMode } from './TransformGizmo';
 import { getClassGeometry } from './ActorVisuals';
@@ -31,6 +31,7 @@ interface Viewport3DProps {
   selectedDbEntityIds?: Set<number>;
   onSelectDbEntity?: (id: number) => void;
   onUpdateSpawnPosition?: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
+  navMeshData?: NavMeshData | null;
 }
 
 interface GizmoDragState {
@@ -209,6 +210,7 @@ export function Viewport3D({
   selectedDbEntityIds = new Set(),
   onSelectDbEntity,
   onUpdateSpawnPosition,
+  navMeshData = null,
 }: Viewport3DProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -222,6 +224,7 @@ export function Viewport3D({
   const radiusGroupRef = useRef<THREE.Group | null>(null);
   const connectionGroupRef = useRef<THREE.Group | null>(null);
   const dbEntityGroupRef = useRef<THREE.Group | null>(null);
+  const navMeshGroupRef = useRef<THREE.Group | null>(null);
   const gizmoRef = useRef<THREE.Group | null>(null);
   const gizmoModeRef = useRef<GizmoMode>(transformMode);
   const hoveredAxisRef = useRef<'x' | 'y' | 'z' | null>(null);
@@ -356,6 +359,10 @@ export function Viewport3D({
     const dbEntityGroup = new THREE.Group();
     scene.add(dbEntityGroup);
     dbEntityGroupRef.current = dbEntityGroup;
+
+    const navMeshGroup = new THREE.Group();
+    scene.add(navMeshGroup);
+    navMeshGroupRef.current = navMeshGroup;
 
     const grid = new THREE.GridHelper(100000, 100, 0x333333, 0x222222);
     scene.add(grid);
@@ -743,6 +750,78 @@ export function Viewport3D({
 
     needsRender.current = true;
   }, [dbEntities, selectedDbEntityIds]);
+
+  // ---- NavMesh visualization ----
+  useEffect(() => {
+    const group = navMeshGroupRef.current;
+    if (!group) return;
+
+    // Clear old
+    while (group.children.length > 0) {
+      disposeMaterials(group.children[0]);
+      group.remove(group.children[0]);
+    }
+
+    if (!navMeshData || navMeshData.vertices.length === 0) {
+      needsRender.current = true;
+      return;
+    }
+
+    // Area ID → color mapping
+    const areaColors: Record<number, number> = {
+      0: 0xff2222, // blocked = red
+      1: 0x22cc44, // ground = green
+      2: 0x2266ff, // custom = blue
+      3: 0xcccc22, // yellow
+    };
+
+    // Build a buffer geometry from the triangle vertices
+    const positions = new Float32Array(navMeshData.vertices);
+    const colors = new Float32Array(navMeshData.vertices.length);
+
+    // Assign colors per-vertex (3 verts per tri, each tri has an area_id)
+    for (let t = 0; t < navMeshData.area_ids.length; t++) {
+      const areaId = navMeshData.area_ids[t];
+      const colorHex = areaColors[areaId] ?? 0x888888;
+      const r = ((colorHex >> 16) & 0xff) / 255;
+      const g = ((colorHex >> 8) & 0xff) / 255;
+      const b = (colorHex & 0xff) / 255;
+      for (let v = 0; v < 3; v++) {
+        const ci = (t * 3 + v) * 3;
+        colors[ci] = r;
+        colors[ci + 1] = g;
+        colors[ci + 2] = b;
+      }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+
+    // Translucent fill
+    const fillMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.25,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const fillMesh = new THREE.Mesh(geo, fillMat);
+    group.add(fillMesh);
+
+    // Wireframe overlay
+    const wireMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.4,
+    });
+    const wireMesh = new THREE.Mesh(geo, wireMat);
+    group.add(wireMesh);
+
+    needsRender.current = true;
+  }, [navMeshData]);
 
   // ---- Radius visualization and connection lines ----
   useEffect(() => {
@@ -1419,6 +1498,9 @@ export function Viewport3D({
         <span>{transformMode.charAt(0).toUpperCase() + transformMode.slice(1)} | Grid: {gridSnap}</span>
         {placementMode && selectedTemplateName && (
           <span className="text-emerald-400">Placing: {selectedTemplateName}</span>
+        )}
+        {navMeshData && (
+          <span className="text-cyan-400">NavMesh: {navMeshData.tri_count.toLocaleString()} tris</span>
         )}
       </div>
       {/* Drag delta display */}

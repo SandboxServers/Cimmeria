@@ -55,6 +55,9 @@ fn main() {
             commands::delete_region,
             commands::delete_db_entity,
             commands::export_db_entities_sql,
+            // NavMesh commands
+            commands::load_navmesh,
+            commands::list_navmeshes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running scene editor");

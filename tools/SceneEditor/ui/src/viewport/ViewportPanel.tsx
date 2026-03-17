@@ -37,6 +37,7 @@ interface ViewportPanelProps {
   selectedTemplateName?: string | null;
   onSelectDbEntity?: (id: number) => void;
   onUpdateSpawnPosition?: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
+  navMeshData?: import('../lib/types').NavMeshData | null;
 }
 
 export function ViewportPanel({
@@ -71,6 +72,7 @@ export function ViewportPanel({
   selectedTemplateName,
   onSelectDbEntity,
   onUpdateSpawnPosition,
+  navMeshData,
 }: ViewportPanelProps) {
   const [viewType, setViewType] = useState<ViewportType>(initialType);
   const [realtime, setRealtime] = useState(false);
@@ -130,6 +132,7 @@ export function ViewportPanel({
             selectedDbEntityIds={selectedDbEntityIds}
             onSelectDbEntity={onSelectDbEntity}
             onUpdateSpawnPosition={onUpdateSpawnPosition}
+            navMeshData={navMeshData}
           />
         ) : (
           <ViewportCanvas
