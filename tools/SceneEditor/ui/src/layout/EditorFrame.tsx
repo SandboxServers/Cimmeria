@@ -203,6 +203,11 @@ export function EditorFrame({
   // Measurement mode
   const [measureStart, setMeasureStart] = useState<{ x: number; y: number; z: number } | null>(null);
   const [measureEnd, setMeasureEnd] = useState<{ x: number; y: number; z: number } | null>(null);
+
+  // Prefab system
+  const prefabsRef = useRef<Map<string, string[]>>(
+    new Map(Object.entries(JSON.parse(localStorage.getItem('editor_prefabs') ?? '{}')))
+  );
   const [showGrid, setShowGrid] = useState(true);
   const [gridSnap, setGridSnap] = useState(10);
 
@@ -385,9 +390,19 @@ export function EditorFrame({
             });
           }
           break;
-        // Group selected actors (Ctrl+G)
+        // Group/Prefab (Ctrl+G = group, Ctrl+Shift+G = save prefab)
         case 'g':
-          if (e.ctrlKey || e.metaKey) {
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+            e.preventDefault();
+            if (selectedKeys.size > 0) {
+              const name = prompt('Prefab name:', `Prefab_${prefabsRef.current.size + 1}`);
+              if (name) {
+                prefabsRef.current.set(name, [...selectedKeys]);
+                localStorage.setItem('editor_prefabs', JSON.stringify(Object.fromEntries(prefabsRef.current)));
+                addLog(`Saved prefab "${name}" with ${selectedKeys.size} actors`);
+              }
+            }
+          } else if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
             if (selectedKeys.size > 1) {
               const groupName = `Group_${actorGroups.size + 1}`;
@@ -416,6 +431,29 @@ export function EditorFrame({
               addLog(`Measure: ${dist.toFixed(1)} cm (${(dist/100).toFixed(2)} m)`);
               setMeasureStart(null);
               setMeasureEnd(null);
+            }
+          }
+          break;
+        // Drop to ground (End key — matches UnrealEd)
+        case 'End':
+          if (selectedKeys.size > 0) {
+            const keys: string[] = [];
+            const newX: number[] = [];
+            const newY: number[] = [];
+            const newZ: number[] = [];
+            for (const key of selectedKeys) {
+              if (lockedKeys.has(key)) continue;
+              const actor = actorByKey.get(key);
+              if (actor) {
+                keys.push(key);
+                newX.push(actor.x);
+                newY.push(actor.y);
+                newZ.push(0); // Snap Z to ground plane (0)
+              }
+            }
+            if (keys.length > 0) {
+              onMoveActors(keys, newX, newY, newZ);
+              addLog(`Dropped ${keys.length} actor(s) to ground`);
             }
           }
           break;
