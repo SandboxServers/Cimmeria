@@ -74,6 +74,7 @@ interface EditorFrameProps {
   onPlaceSpawn: (x: number, y: number, z: number) => void;
   onUpdateSpawnPosition: (spawnId: number, x: number, y: number, z: number, heading: number) => void;
   onCreateRegion: () => void;
+  onProceduralPlacement: () => void;
   onExportDbSql: () => void;
   // Content Browser
   showContentBrowser: boolean;
@@ -134,6 +135,7 @@ export function EditorFrame({
   onPlaceSpawn,
   onUpdateSpawnPosition,
   onCreateRegion,
+  onProceduralPlacement,
   onExportDbSql,
   showContentBrowser,
   onToggleContentBrowser,
@@ -248,8 +250,10 @@ export function EditorFrame({
           break;
         case 'p':
         case 'P':
-          // Toggle placement mode if a template is selected
-          if (!e.ctrlKey && !e.metaKey && selectedTemplate) {
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+            e.preventDefault();
+            onProceduralPlacement();
+          } else if (!e.ctrlKey && !e.metaKey && selectedTemplate) {
             onTogglePlacement();
           }
           break;
@@ -371,6 +375,7 @@ export function EditorFrame({
         onRefreshDbEntities={onRefreshDbEntities}
         onExportDbSql={onExportDbSql}
         onCreateRegion={onCreateRegion}
+        onProceduralPlacement={onProceduralPlacement}
         onToggleContentBrowser={onToggleContentBrowser}
       />
 

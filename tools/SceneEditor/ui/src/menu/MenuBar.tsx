@@ -34,6 +34,7 @@ interface MenuBarProps {
   onRefreshDbEntities?: () => void;
   onExportDbSql?: () => void;
   onCreateRegion?: () => void;
+  onProceduralPlacement?: () => void;
 }
 
 type MenuId = 'file' | 'edit' | 'view' | 'build' | 'database' | 'tools' | 'help' | null;
@@ -69,6 +70,7 @@ export function MenuBar({
   onRefreshDbEntities,
   onExportDbSql,
   onCreateRegion,
+  onProceduralPlacement,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -252,6 +254,12 @@ export function MenuBar({
       {openMenu === 'tools' && (
         <MenuDropdown left={248}>
           <MenuItem label="Search Actors" onClick={() => closeAndRun(onSearch)} shortcut="Ctrl+F" />
+          <MenuSeparator />
+          <MenuItem
+            label="Procedural Placement..."
+            onClick={() => closeAndRun(() => onProceduralPlacement?.())}
+            shortcut="Ctrl+Shift+P"
+          />
         </MenuDropdown>
       )}
 

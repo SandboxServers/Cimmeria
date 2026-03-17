@@ -31,6 +31,10 @@ fn main() {
             commands::redo,
             commands::export_sql,
             commands::save_zone,
+            // Procedural placement commands
+            commands::place_grid,
+            commands::place_circle,
+            commands::place_spiral,
             // Asset browsing commands
             commands::scan_packages,
             commands::list_packages,

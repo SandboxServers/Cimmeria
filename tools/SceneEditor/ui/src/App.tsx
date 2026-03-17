@@ -15,6 +15,7 @@ import { EditorFrame } from './layout/EditorFrame';
 import { ZoneSelector } from './panels/ZoneSelector';
 import { DbConnectionDialog } from './panels/DbConnectionDialog';
 import { CreateRegionDialog } from './panels/CreateRegionDialog';
+import { ProceduralPlacementDialog } from './panels/ProceduralPlacementDialog';
 
 export default function App() {
   // ---- Zone state ----
@@ -97,6 +98,19 @@ export default function App() {
 
   // ---- Region creation ----
   const [showRegionDialog, setShowRegionDialog] = useState(false);
+
+  // ---- Procedural placement ----
+  const [showProceduralDialog, setShowProceduralDialog] = useState(false);
+
+  const handleProceduralPlaced = useCallback(async (_newActors: ActorListEntry[]) => {
+    // Refresh actor list after procedural placement
+    try {
+      const actorList = await invoke<ActorListEntry[]>('list_actors', { classFilter: null });
+      setActors(actorList);
+    } catch (e) {
+      console.error('list_actors failed:', e);
+    }
+  }, []);
 
   const handleCreateRegion = useCallback((entity: DbEntity) => {
     setDbEntities(prev => [...prev, entity]);
@@ -665,6 +679,7 @@ export default function App() {
         onPlaceSpawn={handlePlaceSpawn}
         onUpdateSpawnPosition={handleUpdateSpawnPosition}
         onCreateRegion={() => setShowRegionDialog(true)}
+        onProceduralPlacement={() => setShowProceduralDialog(true)}
         onExportDbSql={handleExportDbSql}
         showContentBrowser={showContentBrowser}
         onToggleContentBrowser={() => setShowContentBrowser(prev => !prev)}
@@ -676,6 +691,13 @@ export default function App() {
           onConnect={handleDbConnect}
           onDisconnect={handleDbDisconnect}
           onClose={() => setShowDbDialog(false)}
+        />
+      )}
+      {showProceduralDialog && (
+        <ProceduralPlacementDialog
+          sourceKey={selectedKeys.size === 1 ? [...selectedKeys][0] : null}
+          onPlaced={handleProceduralPlaced}
+          onClose={() => setShowProceduralDialog(false)}
         />
       )}
       {showRegionDialog && (

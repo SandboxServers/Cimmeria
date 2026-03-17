@@ -708,6 +708,215 @@ pub async fn redo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Procedural placement commands
+// ---------------------------------------------------------------------------
+
+/// Helper: find a source actor by key, clone it N times at the given positions,
+/// assign new keys, update zone state, push undo, and return list entries.
+fn place_copies(
+    state: &AppState,
+    source_key: &str,
+    positions: Vec<(f32, f32, f32)>,
+) -> Result<Vec<ActorListEntry>, String> {
+    let mut guard = state.loaded_zone.lock().unwrap();
+    let zone = guard.as_mut().ok_or("No zone loaded")?;
+
+    let src = zone
+        .actors
+        .iter()
+        .find(|a| a.key == source_key)
+        .cloned()
+        .ok_or_else(|| format!("Source actor not found: {source_key}"))?;
+
+    let mut new_entries = Vec::with_capacity(positions.len());
+    let mut new_keys = Vec::with_capacity(positions.len());
+    let mut id = state.next_actor_id.lock().unwrap();
+
+    for (x, y, z) in positions {
+        let new_key = format!("dup:{}", *id);
+        *id += 1;
+
+        let new_actor = ActorEntry {
+            key: new_key.clone(),
+            object_name: format!("{}_dup", src.object_name),
+            x,
+            y,
+            z,
+            ..src.clone()
+        };
+
+        new_entries.push(ActorListEntry {
+            key: new_actor.key.clone(),
+            class_name: new_actor.class_name.clone(),
+            object_name: new_actor.object_name.clone(),
+            tile: new_actor.tile.clone(),
+            x: new_actor.x,
+            y: new_actor.y,
+            z: new_actor.z,
+            yaw: new_actor.yaw,
+            pitch: new_actor.pitch,
+            roll: new_actor.roll,
+            draw_scale: new_actor.draw_scale,
+            draw_scale_x: new_actor.draw_scale_x,
+            draw_scale_y: new_actor.draw_scale_y,
+            draw_scale_z: new_actor.draw_scale_z,
+            static_mesh: new_actor.static_mesh.clone(),
+        });
+
+        *zone
+            .class_counts
+            .entry(new_actor.class_name.clone())
+            .or_insert(0) += 1;
+        new_keys.push(new_key);
+        zone.actors.push(new_actor);
+    }
+
+    drop(id);
+    drop(guard);
+    state.push_undo(UndoAction::CreateActors(new_keys));
+
+    Ok(new_entries)
+}
+
+/// Place copies of an actor in a grid pattern.
+/// The source actor's position is used as the grid origin (row 0, col 0).
+#[tauri::command]
+pub async fn place_grid(
+    state: tauri::State<'_, AppState>,
+    source_key: String,
+    spacing_x: f64,
+    spacing_y: f64,
+    rows: u32,
+    cols: u32,
+) -> Result<Vec<ActorListEntry>, String> {
+    if rows == 0 || cols == 0 {
+        return Err("rows and cols must be > 0".into());
+    }
+
+    // Read the source position so the grid is anchored there
+    let (origin_x, origin_y, origin_z) = {
+        let guard = state.loaded_zone.lock().unwrap();
+        let zone = guard.as_ref().ok_or("No zone loaded")?;
+        let src = zone
+            .actors
+            .iter()
+            .find(|a| a.key == source_key)
+            .ok_or_else(|| format!("Source actor not found: {source_key}"))?;
+        (src.x as f64, src.y as f64, src.z as f64)
+    };
+
+    let mut positions = Vec::with_capacity((rows * cols) as usize);
+    for row in 0..rows {
+        for col in 0..cols {
+            // Skip (0,0) — that's the source actor itself
+            if row == 0 && col == 0 {
+                continue;
+            }
+            let x = origin_x + col as f64 * spacing_x;
+            let y = origin_y + row as f64 * spacing_y;
+            positions.push((x as f32, y as f32, origin_z as f32));
+        }
+    }
+
+    let result = place_copies(&state, &source_key, positions)?;
+    tracing::info!(
+        "place_grid: {} new actors ({}x{}, spacing {}/{})",
+        result.len(),
+        rows,
+        cols,
+        spacing_x,
+        spacing_y
+    );
+    Ok(result)
+}
+
+/// Place copies of an actor evenly around a circle.
+#[tauri::command]
+pub async fn place_circle(
+    state: tauri::State<'_, AppState>,
+    source_key: String,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    count: u32,
+    start_angle: f64,
+) -> Result<Vec<ActorListEntry>, String> {
+    if count == 0 {
+        return Err("count must be > 0".into());
+    }
+
+    let step = std::f64::consts::TAU / count as f64;
+    let start_rad = start_angle.to_radians();
+
+    let positions: Vec<(f32, f32, f32)> = (0..count)
+        .map(|i| {
+            let angle = start_rad + i as f64 * step;
+            let x = center_x + radius * angle.cos();
+            let y = center_y + radius * angle.sin();
+            (x as f32, y as f32, center_z as f32)
+        })
+        .collect();
+
+    let result = place_copies(&state, &source_key, positions)?;
+    tracing::info!(
+        "place_circle: {} actors, radius={}, start={}deg",
+        result.len(),
+        radius,
+        start_angle
+    );
+    Ok(result)
+}
+
+/// Place copies of an actor along an Archimedean spiral.
+#[tauri::command]
+pub async fn place_spiral(
+    state: tauri::State<'_, AppState>,
+    source_key: String,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    start_radius: f64,
+    end_radius: f64,
+    turns: f64,
+    count: u32,
+) -> Result<Vec<ActorListEntry>, String> {
+    if count == 0 {
+        return Err("count must be > 0".into());
+    }
+    if turns <= 0.0 {
+        return Err("turns must be > 0".into());
+    }
+
+    let total_angle = turns * std::f64::consts::TAU;
+
+    let positions: Vec<(f32, f32, f32)> = (0..count)
+        .map(|i| {
+            let t = if count == 1 {
+                0.0
+            } else {
+                i as f64 / (count - 1) as f64
+            };
+            let angle = t * total_angle;
+            let r = start_radius + t * (end_radius - start_radius);
+            let x = center_x + r * angle.cos();
+            let y = center_y + r * angle.sin();
+            (x as f32, y as f32, center_z as f32)
+        })
+        .collect();
+
+    let result = place_copies(&state, &source_key, positions)?;
+    tracing::info!(
+        "place_spiral: {} actors, radius {}..{}, {} turns",
+        result.len(),
+        start_radius,
+        end_radius,
+        turns
+    );
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------------
 // Export / Save commands
 // ---------------------------------------------------------------------------
 

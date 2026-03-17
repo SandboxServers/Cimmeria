@@ -547,26 +547,40 @@ export function Viewport3D({
       gizmoRef.current = null;
     }
 
-    if (selectedKeys.size === 0) {
+    // Show gizmo for zone actors OR for a selected DB entity (spawnlist only)
+    let px = 0, py = 0, pz = 0, count = 0;
+    let isDbEntityGizmo = false;
+
+    if (selectedKeys.size > 0) {
+      // Zone actor gizmo
+      for (const key of selectedKeys) {
+        const actor = actorByKey.get(key);
+        if (actor) {
+          px += actor.x; py += actor.z; pz += actor.y; // UE3->Three.js swap
+          count++;
+        }
+      }
+    } else if (selectedDbEntityIds.size === 1) {
+      // DB entity gizmo (only for spawnlist entities — they're movable)
+      const dbId = [...selectedDbEntityIds][0];
+      const dbEnt = dbEntities.find(e => e.id === dbId);
+      if (dbEnt && dbEnt.source_table === 'spawnlist') {
+        px = dbEnt.x; py = dbEnt.z; pz = -dbEnt.y;
+        count = 1;
+        isDbEntityGizmo = true;
+      }
+    }
+
+    if (count === 0) {
       needsRender.current = true;
       return;
     }
-
-    // Compute pivot position (average of selected actors, in Three.js coords)
-    let px = 0, py = 0, pz = 0, count = 0;
-    for (const key of selectedKeys) {
-      const actor = actorByKey.get(key);
-      if (actor) {
-        px += actor.x; py += actor.z; pz += actor.y; // UE3->Three.js swap
-        count++;
-      }
-    }
-    if (count === 0) return;
     px /= count; py /= count; pz /= count;
 
-    const gizmo = createGizmo(transformMode);
+    const gizmo = createGizmo(isDbEntityGizmo ? 'move' : transformMode);
     gizmo.position.set(px, py, pz);
-    gizmoModeRef.current = transformMode;
+    gizmo.userData = { isDbEntityGizmo };
+    gizmoModeRef.current = isDbEntityGizmo ? 'move' : transformMode;
 
     // Scale to camera distance
     const camera = cameraRef.current;
@@ -575,7 +589,7 @@ export function Viewport3D({
     scene.add(gizmo);
     gizmoRef.current = gizmo;
     needsRender.current = true;
-  }, [selectedKeys, actors, transformMode]);
+  }, [selectedKeys, actors, transformMode, selectedDbEntityIds, dbEntities]);
 
   // ---- Place all actors ----
   useEffect(() => {
@@ -913,8 +927,10 @@ export function Viewport3D({
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
 
-      // Check gizmo hit first
-      if (gizmo && selectedKeysRef.current.size > 0) {
+      // Check gizmo hit first (zone actors OR DB entity selected)
+      const hasGizmoTarget = selectedKeysRef.current.size > 0 ||
+        (gizmo?.userData?.isDbEntityGizmo && selectedDbEntityIds.size === 1);
+      if (gizmo && hasGizmoTarget) {
         const axis = pickGizmoAxis(gizmo, ndc, camera);
         if (axis) {
           const mode = gizmoModeRef.current;
@@ -1224,7 +1240,22 @@ export function Viewport3D({
           newY.push(orig.y + dy);
           newZ.push(orig.z + dz);
         }
-        onMoveActors(keys, newX, newY, newZ);
+        // Check if this was a DB entity gizmo drag
+        if (gizmoRef.current?.userData?.isDbEntityGizmo && onUpdateSpawnPosition && selectedDbEntityIds.size === 1) {
+          const dbId = [...selectedDbEntityIds][0];
+          const dbEnt = dbEntities.find(e => e.id === dbId);
+          if (dbEnt) {
+            // Compute new UE3 position from the Three.js gizmo final position
+            const gPos = gizmoRef.current.position;
+            // Three.js: X=ue3_x, Y=ue3_z, Z=-ue3_y
+            const newUe3X = gPos.x;
+            const newUe3Y = -gPos.z;
+            const newUe3Z = gPos.y;
+            onUpdateSpawnPosition(dbId, newUe3X, newUe3Y, newUe3Z, dbEnt.heading);
+          }
+        } else {
+          onMoveActors(keys, newX, newY, newZ);
+        }
       } else if (drag.mode === 'rotate') {
         const currentAngle = projectMouseToAngle(e.clientX, e.clientY, rect, camera, drag.axisDir, drag.pivotStart);
         let deltaRad = currentAngle !== null ? currentAngle - drag.startParam : 0;
