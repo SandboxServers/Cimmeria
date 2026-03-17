@@ -207,10 +207,29 @@ export function MenuBar({
 
       {openMenu === 'build' && (
         <MenuDropdown left={132}>
-          <MenuItem label="Build All" disabled />
-          <MenuItem label="Build Geometry" disabled />
-          <MenuItem label="Build Lighting" disabled />
-          <MenuItem label="Build Paths" disabled />
+          <MenuItem
+            label="Rebuild NavMesh"
+            onClick={() => closeAndRun(() => {
+              alert('NavMesh rebuild requires running NavBuilder externally.\n\n' +
+                    'Usage: NavBuilder.exe <spaces_dir> <output_dir>\n\n' +
+                    'Output .nav files go to data/spaces/');
+            })}
+          />
+          <MenuSeparator />
+          <MenuItem
+            label="Validate Zone"
+            onClick={() => closeAndRun(() => {
+              alert('Zone validation checks:\n' +
+                    '• Missing StaticMesh references\n' +
+                    '• Actors outside world bounds\n' +
+                    '• Overlapping spawn points\n\n' +
+                    '(Not yet implemented — run via CLI tools)');
+            })}
+          />
+          <MenuItem
+            label="Export Actor Placement SQL"
+            onClick={() => closeAndRun(onExportSql)}
+          />
         </MenuDropdown>
       )}
 
