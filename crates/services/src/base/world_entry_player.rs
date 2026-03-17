@@ -525,7 +525,7 @@ pub(crate) async fn query_saved_missions(
     #[derive(sqlx::FromRow)]
     struct MissionRow {
         mission_id: i32,
-        status: i16,
+        status: i32,
         current_step_id: Option<i32>,
         completed_step_ids: Vec<i32>,
         completed_objective_ids: Vec<i32>,
@@ -600,7 +600,7 @@ pub(crate) async fn handle_mission_update(
     )
     .bind(player_id)
     .bind(mission_id)
-    .bind(status as i16)
+    .bind(status as i32)
     .bind(current_step_id)
     .bind(completed_step_ids)
     .bind(completed_objective_ids)
