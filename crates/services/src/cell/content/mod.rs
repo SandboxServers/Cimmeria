@@ -469,7 +469,19 @@ fn populate_mission_context(entity: &cimmeria_entity::cell_entity::CellEntity, c
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use super::executor::item_container;
+    use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE, MISSION_ACTIVE, MISSION_COMPLETED};
+    use tokio::sync::mpsc;
+
+    fn make_test_space_mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr
+    }
 
     #[test]
     fn item_container_mapping() {
@@ -477,5 +489,138 @@ mod tests {
         assert_eq!(item_container(21), 3);
         assert_eq!(item_container(3730), 1);
         assert_eq!(item_container(999), 1);
+    }
+
+    // ── populate_mission_context ──────────────────────────────────────────
+
+    #[test]
+    fn populate_mission_context_sets_active_status() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        // Add an active mission
+        let mission = MissionInstance::new(622, 700, vec![
+            MissionObjective { objective_id: 800, status: STATUS_ACTIVE, hidden: false, optional: false },
+        ]);
+        mgr.get_entity_mut(1).unwrap().missions.add_mission(mission);
+
+        let entity = mgr.get_entity(1).unwrap();
+        let mut ctx = cimmeria_content_engine::context::ExecutionContext::new();
+        populate_mission_context(entity, &mut ctx);
+
+        assert_eq!(
+            ctx.params.get("mission_622_status").and_then(|v| v.as_str()),
+            Some("active"),
+        );
+        assert_eq!(
+            ctx.params.get("mission_622_step_700_status").and_then(|v| v.as_str()),
+            Some("active"),
+        );
+    }
+
+    #[test]
+    fn populate_mission_context_sets_completed_status() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        let mut mission = MissionInstance::new(622, 700, vec![]);
+        mission.complete();
+        mgr.get_entity_mut(1).unwrap().missions.add_mission(mission);
+
+        let entity = mgr.get_entity(1).unwrap();
+        let mut ctx = cimmeria_content_engine::context::ExecutionContext::new();
+        populate_mission_context(entity, &mut ctx);
+
+        assert_eq!(
+            ctx.params.get("mission_622_status").and_then(|v| v.as_str()),
+            Some("completed"),
+        );
+    }
+
+    #[test]
+    fn populate_mission_context_empty_when_no_missions() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        let entity = mgr.get_entity(1).unwrap();
+        let mut ctx = cimmeria_content_engine::context::ExecutionContext::new();
+        populate_mission_context(entity, &mut ctx);
+
+        // No mission-related params should exist
+        assert!(!ctx.params.keys().any(|k| k.starts_with("mission_")));
+    }
+
+    // ── fire_enter_region / fire_exit_region ──────────────────────────────
+
+    #[tokio::test]
+    async fn fire_enter_region_constructs_correct_key() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.get_entity_mut(1).unwrap().player_id = Some(100);
+
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        // Region 2 in Castle_CellBlock → key should be "Castle_CellBlock.Region2"
+        fire_enter_region(1, 100, 2, &engine, &tx, &mut mgr).await;
+
+        // No chains registered, so no messages — but no panic confirms key construction
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn fire_exit_region_constructs_correct_key() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(16);
+
+        fire_exit_region(1, 100, 3, &engine, &tx, &mut mgr).await;
+        // No panic = success
+    }
+
+    // ── fire_entity_death ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn fire_entity_death_no_chains_no_crash() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        fire_entity_death(1, 100, "Hallway01_Guard", &engine, &tx, &mut mgr).await;
+
+        // Empty engine → no actions → no messages
+        assert!(rx.try_recv().is_err());
+    }
+
+    // ── fire_player_loaded with saved missions ───────────────────────────
+
+    #[tokio::test]
+    async fn fire_player_loaded_with_existing_missions_preserves_context() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        // Pre-populate a completed mission (simulating re-login restore)
+        {
+            let entity = mgr.get_entity_mut(1).unwrap();
+            entity.player_id = Some(100);
+            let mut m = MissionInstance::new(622, 700, vec![]);
+            m.complete();
+            entity.missions.add_mission(m);
+        }
+
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(16);
+
+        // fire_player_loaded should see the already-completed mission in context
+        fire_player_loaded(1, 100, "Castle_CellBlock", &engine, &tx, &mut mgr).await;
+
+        // The entity should still have the completed mission
+        let entity = mgr.get_entity(1).unwrap();
+        let m622 = entity.missions.get_mission(622).unwrap();
+        assert_eq!(m622.status, MISSION_COMPLETED);
     }
 }

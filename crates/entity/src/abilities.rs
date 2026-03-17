@@ -585,4 +585,28 @@ mod tests {
         mgr.cleanup_expired();
         assert_eq!(mgr.ability_cooldowns.len(), 0);
     }
+
+    // ── first_known_ability ──────────────────────────────────────────────
+
+    #[test]
+    fn first_known_ability_returns_some() {
+        let mgr = AbilityManager::with_abilities(&[597, 600, 605]);
+        let first = mgr.first_known_ability();
+        assert!(first.is_some());
+        // HashSet iteration order is non-deterministic, but it must be one of the three
+        assert!([597, 600, 605].contains(&first.unwrap()));
+    }
+
+    #[test]
+    fn first_known_ability_returns_none_when_empty() {
+        let mgr = AbilityManager::new();
+        assert!(mgr.first_known_ability().is_none());
+    }
+
+    #[test]
+    fn first_known_ability_single_element() {
+        let mut mgr = AbilityManager::new();
+        mgr.add_ability(597);
+        assert_eq!(mgr.first_known_ability(), Some(597));
+    }
 }

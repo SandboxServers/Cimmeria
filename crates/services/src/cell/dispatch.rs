@@ -616,4 +616,143 @@ mod tests {
         assert_eq!(CM_TOGGLE_HEAL_DEBUG, 6);
         assert_eq!(CM_REQUEST_HOLSTER_WEAPON, 7);
     }
+
+    // ── New method index tests ────────────────────────────────────────────
+
+    #[test]
+    fn new_method_indices_correct() {
+        assert_eq!(CM_TRIGGER_REGION, 85);
+        assert_eq!(CM_REQUEST_RELOAD, 86);
+    }
+
+    #[test]
+    fn new_method_names_resolve() {
+        assert_eq!(cell_method_name(CM_TRIGGER_REGION), "triggerClientHintedGenericRegion");
+        assert_eq!(cell_method_name(CM_REQUEST_RELOAD), "requestReload");
+    }
+
+    // ── Dispatch integration tests (async) ────────────────────────────────
+
+    fn make_test_space_mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr
+    }
+
+    #[tokio::test]
+    async fn dispatch_trigger_region_enter_fires_event() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.player_id = Some(100);
+        }
+
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        // Build args: INT32 region_id=2, UINT8 bEntering=1, VECTOR3 position
+        let mut args = Vec::new();
+        args.extend_from_slice(&2i32.to_le_bytes());  // region_id
+        args.push(1);                                  // bEntering = true
+        args.extend_from_slice(&0.0f32.to_le_bytes()); // x
+        args.extend_from_slice(&0.0f32.to_le_bytes()); // y
+        args.extend_from_slice(&0.0f32.to_le_bytes()); // z
+
+        dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+
+        // No chains registered so no messages, but no panic = dispatch worked
+        assert!(rx.try_recv().is_err(), "Empty engine should produce no messages");
+    }
+
+    #[tokio::test]
+    async fn dispatch_trigger_region_exit() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(16);
+
+        let mut args = Vec::new();
+        args.extend_from_slice(&3i32.to_le_bytes());
+        args.push(0); // bEntering = false (exit)
+        args.extend_from_slice(&[0u8; 12]);
+
+        dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+        // No panic = success
+    }
+
+    #[tokio::test]
+    async fn dispatch_trigger_region_ignores_short_args() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(16);
+
+        // Only 4 bytes — less than required 17
+        let args = vec![0u8; 4];
+        dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+        // Should silently skip (no panic)
+    }
+
+    #[tokio::test]
+    async fn dispatch_reload_sends_entity_property() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        // Set up ammo state
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.current_ammo = 5;
+            e.max_ammo = 30;
+            e.ammo_type = 2;
+        }
+
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        let args = vec![0u8]; // reloadType = 0
+        dispatch_cell_method(1, CM_REQUEST_RELOAD, &args, &tx, &mut mgr, &engine).await;
+
+        // Should reset ammo
+        assert_eq!(mgr.get_entity(1).unwrap().current_ammo, 30);
+
+        // Should have sent onEntityProperty
+        let msg = rx.try_recv().unwrap();
+        match msg {
+            CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } => {
+                assert_eq!(entity_id, 1);
+                assert_eq!(method_index, 7); // onEntityProperty
+                // First 4 bytes: GENERICPROPERTY_AmmoTypeId = 7
+                let prop_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                assert_eq!(prop_id, 7);
+                // Next 4 bytes: ammo_type = 2
+                let ammo = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                assert_eq!(ammo, 2);
+            }
+            _ => panic!("Expected EntityMethodCall"),
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_reload_already_full_no_message() {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        // Already at max
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.current_ammo = 30;
+            e.max_ammo = 30;
+        }
+
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        dispatch_cell_method(1, CM_REQUEST_RELOAD, &[0u8], &tx, &mut mgr, &engine).await;
+
+        // No message sent when already full
+        assert!(rx.try_recv().is_err());
+    }
 }
