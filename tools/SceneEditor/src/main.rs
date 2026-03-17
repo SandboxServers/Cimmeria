@@ -50,6 +50,7 @@ fn main() {
             commands::create_region,
             commands::delete_region,
             commands::delete_db_entity,
+            commands::export_db_entities_sql,
         ])
         .run(tauri::generate_context!())
         .expect("error while running scene editor");

@@ -697,3 +697,81 @@ pub async fn delete_db_entity(
     tracing::info!("Deleted {table} entity {entity_id}");
     Ok(())
 }
+
+/// Export cached DB entities as SQL INSERT statements to a file.
+///
+/// Writes one INSERT per entity, converting UE3 coordinates back to BigWorld
+/// meters for the SQL output.
+#[tauri::command]
+pub async fn export_db_entities_sql(
+    state: tauri::State<'_, AppState>,
+    file_path: String,
+) -> Result<usize, String> {
+    let entities = state.db_entities.lock().unwrap().clone();
+
+    if entities.is_empty() {
+        return Err("No DB entities loaded to export".to_string());
+    }
+
+    let mut lines = Vec::with_capacity(entities.len() + 2);
+    lines.push("-- Cimmeria Scene Editor: DB entity export".to_string());
+    lines.push(format!("-- {} entities\n", entities.len()));
+
+    for ent in &entities {
+        let (bw_x, bw_y, bw_z) = ue3_to_bw(ent.x, ent.y, ent.z);
+        let heading_rad = ent.heading.to_radians();
+
+        match ent.source_table.as_str() {
+            "spawnlist" => {
+                lines.push(format!(
+                    "INSERT INTO resources.spawnlist (x, y, z, heading, world_id, template_id, tag) \
+                     VALUES ({:.4}, {:.4}, {:.4}, {:.4}, {}, {}, {});",
+                    bw_x, bw_y, bw_z, heading_rad,
+                    ent.world_id,
+                    ent.template_id.unwrap_or(0),
+                    ent.tag.as_ref().map_or("NULL".to_string(), |t| format!("'{}'", t.replace('\'', "''"))),
+                ));
+            }
+            "generic_regions" => {
+                let radius_bw = ent.radius.unwrap_or(0.0) / 100.0;
+                let height_bw = ent.height.unwrap_or(0.0) / 100.0;
+                let handler = ent.handler.as_deref().unwrap_or("OnEnterRegion");
+                lines.push(format!(
+                    "INSERT INTO resources.generic_regions (x1, y1, z1, radius, height, flags, handler, world_id, tag) \
+                     VALUES ({:.4}, {:.4}, {:.4}, {:.4}, {:.4}, 0, '{}', {}, {});",
+                    bw_x, bw_y, bw_z, radius_bw, height_bw,
+                    handler.replace('\'', "''"),
+                    ent.world_id,
+                    ent.tag.as_ref().map_or("NULL".to_string(), |t| format!("'{}'", t.replace('\'', "''"))),
+                ));
+            }
+            "stargates" => {
+                let addr = ent.gate_address.as_deref().unwrap_or("0-0-0-0-0-0");
+                let parts: Vec<&str> = addr.split('-').collect();
+                if parts.len() == 6 {
+                    lines.push(format!(
+                        "-- Stargate '{}' at ({:.2}, {:.2}, {:.2}) address {}",
+                        ent.name, bw_x, bw_y, bw_z, addr,
+                    ));
+                }
+            }
+            "spawn_points" => {
+                lines.push(format!(
+                    "INSERT INTO resources.spawn_points (x, y, z, orientation, spawn_set_name, spawn_table_name) \
+                     VALUES ({:.4}, {:.4}, {:.4}, {:.4}, '{}', '{}');",
+                    bw_x, bw_y, bw_z, heading_rad,
+                    ent.name.replace('\'', "''"),
+                    ent.name.replace('\'', "''"),
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    let content = lines.join("\n");
+    std::fs::write(&file_path, &content)
+        .map_err(|e| format!("Failed to write {file_path}: {e}"))?;
+
+    tracing::info!("Exported {} DB entities to {}", entities.len(), file_path);
+    Ok(entities.len())
+}

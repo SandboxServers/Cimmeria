@@ -166,11 +166,11 @@ export default function App() {
       return;
     }
     try {
-      const entities = await invoke<DbEntity[]>('list_db_entities', { worldId: matchedWorld.world_id });
+      const entities = await invoke<DbEntity[]>('load_db_entities', { worldId: matchedWorld.world_id });
       setDbEntities(entities);
       setSelectedDbEntityIds(new Set());
     } catch (e) {
-      console.error('list_db_entities failed:', e);
+      console.error('load_db_entities failed:', e);
     }
   }, [loadedZone, dbStatus, worlds]);
 
