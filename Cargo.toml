@@ -18,6 +18,9 @@ members = [
     "crates/launcher",
     "src-tauri",
     "tools/ContentEditor",
+    "tools/SceneEditor",
+    "crates/upk",
+    "crates/upk-objects",
 ]
 default-members = [
     "crates/common",
@@ -96,6 +99,11 @@ anyhow = "1"
 tauri = { version = "2" }
 tauri-build = { version = "2" }
 
+# Image processing (scene editor texture thumbnails)
+image = { version = "0.25", default-features = false, features = ["png"] }
+texture2ddecoder = "0.0.5"
+base64 = "0.22"
+
 # Internal crates
 cimmeria-common = { path = "crates/common" }
 cimmeria-mercury = { path = "crates/mercury" }
@@ -107,6 +115,8 @@ cimmeria-services = { path = "crates/services" }
 cimmeria-admin-api = { path = "crates/admin-api" }
 cimmeria-commands = { path = "crates/commands" }
 cimmeria-server = { path = "crates/server" }
+cimmeria-upk = { path = "crates/upk" }
+cimmeria-upk-objects = { path = "crates/upk-objects" }
 
 # ---------------------------------------------------------------------------
 # Profile: dev — optimise compile speed
