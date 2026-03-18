@@ -76,6 +76,8 @@ pub struct AbilityDef {
     pub effect_ids: Vec<i32>,
     pub moniker_ids: Vec<i64>,
     pub required_ammo: i32,
+    /// Training cost in training points (from resources.abilities).
+    pub training_cost: i32,
 }
 
 // ── AbilityTreeData ───────────────────────────────────────────────────────
@@ -298,6 +300,140 @@ impl Default for AbilityManager {
     }
 }
 
+// ── EffectDef ────────────────────────────────────────────────────────────
+
+/// An effect definition loaded from the database.
+///
+/// Effects define what happens when an ability resolves: stat changes (damage,
+/// healing), buffs, debuffs, etc. Each effect has name-value parameters (NVPs)
+/// that control behavior.
+///
+/// Reference: `python/common/defs/Effect.py`
+#[derive(Debug, Clone)]
+pub struct EffectDef {
+    pub effect_id: i32,
+    pub ability_id: i32,
+    pub name: String,
+    pub delay: i32,
+    pub sequence: i32,
+    pub pulse_count: i32,
+    pub pulse_duration: f32,
+    pub is_channeled: bool,
+    pub flags: i32,
+    /// Name-value parameters: "baseDamage", "damageType", "statId", etc.
+    pub params: HashMap<String, String>,
+}
+
+impl EffectDef {
+    /// Get the base damage for this effect (from NVP "baseDamage").
+    pub fn base_damage(&self) -> i32 {
+        self.params.get("baseDamage")
+            .or_else(|| self.params.get("damage"))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+    }
+
+    /// Get the damage type (from NVP "damageType").
+    pub fn damage_type(&self) -> i8 {
+        self.params.get("damageType")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DT_PHYSICAL)
+    }
+
+    /// Get the target stat (from NVP "statId").
+    pub fn stat_id(&self) -> i32 {
+        self.params.get("statId")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(crate::stats::HEALTH)
+    }
+
+    /// Get the heal amount (from NVP "healAmount").
+    pub fn heal_amount(&self) -> i32 {
+        self.params.get("healAmount")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+    }
+}
+
+// ── AbilityRegistry ─────────────────────────────────────────────────────
+
+/// Shared ability definition registry.
+///
+/// Loaded from the database at startup and shared across all entities.
+/// Provides O(1) lookup of ability definitions and their effects.
+pub struct AbilityRegistry {
+    abilities: HashMap<i32, AbilityDef>,
+    effects: HashMap<i32, EffectDef>,
+}
+
+impl AbilityRegistry {
+    /// Create an empty registry.
+    pub fn new() -> Self {
+        Self {
+            abilities: HashMap::new(),
+            effects: HashMap::new(),
+        }
+    }
+
+    /// Register an ability definition.
+    pub fn register_ability(&mut self, ability: AbilityDef) {
+        self.abilities.insert(ability.ability_id, ability);
+    }
+
+    /// Register an effect definition.
+    pub fn register_effect(&mut self, effect: EffectDef) {
+        self.effects.insert(effect.effect_id, effect);
+    }
+
+    /// Look up an ability by ID.
+    pub fn get_ability(&self, ability_id: i32) -> Option<&AbilityDef> {
+        self.abilities.get(&ability_id)
+    }
+
+    /// Look up an effect by ID.
+    pub fn get_effect(&self, effect_id: i32) -> Option<&EffectDef> {
+        self.effects.get(&effect_id)
+    }
+
+    /// Get all effects for an ability, ordered by sequence.
+    pub fn get_ability_effects(&self, ability_id: i32) -> Vec<&EffectDef> {
+        let ability = match self.abilities.get(&ability_id) {
+            Some(a) => a,
+            None => return Vec::new(),
+        };
+        let mut effects: Vec<&EffectDef> = ability.effect_ids.iter()
+            .filter_map(|id| self.effects.get(id))
+            .collect();
+        effects.sort_by_key(|e| e.sequence);
+        effects
+    }
+
+    /// Number of registered abilities.
+    pub fn ability_count(&self) -> usize {
+        self.abilities.len()
+    }
+
+    /// Number of registered effects.
+    pub fn effect_count(&self) -> usize {
+        self.effects.len()
+    }
+}
+
+impl Default for AbilityRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for AbilityRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AbilityRegistry")
+            .field("abilities", &self.abilities.len())
+            .field("effects", &self.effects.len())
+            .finish()
+    }
+}
+
 // ── Wire format helpers ───────────────────────────────────────────────────
 
 /// A single stat change result sent to the client in `onEffectResults`.
@@ -385,6 +521,7 @@ mod tests {
             effect_ids: vec![100, 101],
             moniker_ids: vec![42],
             required_ammo: 1,
+            training_cost: 1,
         }
     }
 

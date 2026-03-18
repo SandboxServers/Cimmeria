@@ -136,12 +136,6 @@ pub(crate) struct PendingClientReadyInfo {
     pub player_id: i32,
     /// World name used by content-engine `player.loaded` triggers.
     pub world_name: String,
-    /// Cached BeingAppearance args (bodySet + components) for resend after onClientReady.
-    /// The first copy sent in mapLoaded may be dropped if the entity is still in a
-    /// transaction during bundle processing.
-    pub appearance_args: Vec<u8>,
-    /// Cached onEntityTint args (primary, secondary, skin) for resend after onClientReady.
-    pub tint_args: Vec<u8>,
 }
 
 /// State held for each client that has completed the Phase 3 handshake.
@@ -192,10 +186,6 @@ pub(crate) struct ConnectedClientState {
     /// Player init that must wait until the client sends `SGWPlayer.onClientReady`
     /// after receiving the full mapLoaded bundle.
     pub pending_client_ready: Option<PendingClientReadyInfo>,
-    /// Cached BeingAppearance args for resend after cinematic (cancelMovie).
-    pub cached_appearance_args: Option<Vec<u8>>,
-    /// Cached onEntityTint args for resend after cinematic (cancelMovie).
-    pub cached_tint_args: Option<Vec<u8>>,
     /// Set to `true` by `handle_log_off` to signal the tick-sync loop to stop.
     pub cancelled: Arc<AtomicBool>,
     /// Player character name, set during world entry for chat routing.
@@ -210,6 +200,13 @@ pub(crate) struct ConnectedClientState {
     pub player_xp: Option<u64>,
     /// Player training points, set during world entry and updated on GrantXP.
     pub player_training_points: Option<u32>,
+    /// Persistent character ID (FK to sgw_player.player_id).
+    /// Set during world entry, used for DB write-back on XP/position saves.
+    pub player_id: Option<i32>,
+    /// Whether the player has set AFK status. Set via `chatSetAFK`.
+    pub is_afk: bool,
+    /// Whether the player has set DND (do not disturb) status. Set via `chatSetDND`.
+    pub is_dnd: bool,
 }
 
 // ── BaseService ───────────────────────────────────────────────────────────────

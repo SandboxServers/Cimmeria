@@ -21,8 +21,7 @@ use super::helpers::{destroy_client_entities, to_hex};
 use super::login::{handle_log_off, handle_login, parse_baseapp_login};
 use super::resources::ResourceCache;
 use super::world_entry::{
-    handle_enable_entities, handle_map_loaded_phase_b, handle_on_client_ready,
-    handle_play_character, handle_cancel_movie,
+    handle_enable_entities, handle_map_loaded_phase_b, handle_on_client_ready, handle_play_character,
 };
 
 /// Main receive loop -- one per running `BaseService`.
@@ -363,9 +362,7 @@ pub(crate) async fn handle_encrypted_datagram(
                 if in_world {
                     match id {
                         sgw_player_base::ON_CLIENT_READY => {
-                            handle_on_client_ready(
-                                addr, connected, cell_tx, socket, entity_to_addr,
-                            ).await?;
+                            handle_on_client_ready(addr, connected, cell_tx).await?;
                         }
                         _ => {
                             // SGWPlayer base method dispatch
@@ -428,10 +425,10 @@ pub(crate) async fn handle_encrypted_datagram(
                 }
             }
             // ── Cell entity method calls (0x80-0xBF range) ──
-            // Wire format (from bundle.cpp + entity_message_handler.cpp):
-            //   Direct (0-60):  [msg_id = methodId + 0x80][word_len][entityId: u32][args]
-            //   Sub-slot (61+): [msg_id = 0xBD][word_len][entityId: u32][sub_index: u8][args]
-            // The 4-byte entityId prefix is ALWAYS present and must be stripped.
+            // After world entry, the client sends cell method calls as:
+            //   Direct:   msg_id = cellMethodIndex | 0x80 (indices 0-60)
+            //   Extended: msg_id = 0xBD, payload contains subIndex
+            // These are forwarded to the CellService for dispatch.
             id if (0x80..=0xBF).contains(&id) => {
                 // ── Phase 5b-B trigger ──
                 // After Phase 5b-A, the client sends the exposed SGWPlayer cell
@@ -463,43 +460,15 @@ pub(crate) async fn handle_encrypted_datagram(
                         );
                         continue;
                     }
-
-                    // Strip 4-byte entityId prefix (always present per entity_message_handler.cpp:18-20)
-                    if payload.len() < 4 {
-                        tracing::warn!(%addr, msg_id = format_args!("{:#04x}", id), payload_len = payload.len(), "Cell method payload too short for entityId prefix");
-                        continue;
-                    }
-                    let entity_id_from_client = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
-                    let method_payload = &payload[4..];
-
                     if id == 0xBD {
-                        // Extended encoding: sub_index is first byte AFTER entityId
-                        if !method_payload.is_empty() {
-                            let sub_index = method_payload[0] as u16;
-                            let method_index = sub_index + 61;
-                            let args = if method_payload.len() > 1 { method_payload[1..].to_vec() } else { Vec::new() };
-                            tracing::debug!(
-                                %addr,
-                                entity_id = entity_id_from_client,
-                                sub_index,
-                                method_index,
-                                payload_hex = %payload[..payload.len().min(12)].iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-                                "Extended cell method (0xBD)"
-                            );
-
-                            // cancelMovie (index 108): client sends this when a
-                            // cinematic finishes. Resend BeingAppearance + onEntityTint
-                            // so the model loads after the first-login intro movie.
-                            const CM_CANCEL_MOVIE: u16 = 108;
-                            if method_index == CM_CANCEL_MOVIE {
-                                tracing::info!(%addr, entity_id = player_eid, "cancelMovie received — resending BeingAppearance + onEntityTint");
-                                handle_cancel_movie(socket, addr, player_eid, connected, entity_to_addr).await;
-                            }
-
+                        // Extended encoding: subIndex is first byte of payload
+                        if !payload.is_empty() {
+                            let sub_index = payload[0] as u16;
+                            let args = if payload.len() > 1 { payload[1..].to_vec() } else { Vec::new() };
                             if let Some(ref tx) = cell_tx {
                                 let _ = tx.send(BaseToCellMsg::CellMethodCall {
                                     entity_id: player_eid,
-                                    method_index,
+                                    method_index: sub_index + 61,
                                     args,
                                 }).await;
                             }
@@ -510,7 +479,7 @@ pub(crate) async fn handle_encrypted_datagram(
                             let _ = tx.send(BaseToCellMsg::CellMethodCall {
                                 entity_id: player_eid,
                                 method_index,
-                                args: method_payload.to_vec(),
+                                args: payload.to_vec(),
                             }).await;
                         }
                     }

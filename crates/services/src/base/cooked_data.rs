@@ -10,7 +10,7 @@ use crate::mercury::{
 };
 
 use super::ConnectedClientState;
-use super::helpers::{drain_acks_and_seq, get_active_entity_id};
+use super::helpers::{drain_acks_and_seq, get_account_entity_id};
 use super::resources::{CategoryData, ResourceCache};
 
 /// Handle `versionInfoRequest` (0xC0).
@@ -64,9 +64,9 @@ pub(crate) async fn handle_version_info_request(
         "Responding to versionInfoRequest"
     );
 
-    let active_eid = get_active_entity_id(connected, addr)?;
+    let account_eid = get_account_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let pkt = build_version_info(&key, seq, &acks, category_id, version, 0, invalidate_all, active_eid);
+    let pkt = build_version_info(&key, seq, &acks, category_id, version, 0, invalidate_all, account_eid);
     socket.send_to(&pkt, addr).await?;
 
     Ok(())

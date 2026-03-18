@@ -135,8 +135,6 @@ pub(crate) async fn handle_login(
                 pending_player_load_data: None,
                 pending_world_entry_phase_b: None,
                 pending_client_ready: None,
-                cached_appearance_args: None,
-                cached_tint_args: None,
                 cancelled,
                 player_name: None,
                 player_level: None,
@@ -144,6 +142,9 @@ pub(crate) async fn handle_login(
                 world_name: None,
                 player_xp: None,
                 player_training_points: None,
+                player_id: None,
+                is_afk: false,
+                is_dnd: false,
             },
         );
         arcs

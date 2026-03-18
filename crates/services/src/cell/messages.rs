@@ -15,37 +15,17 @@ pub enum MailOp {
     Delete { mail_id: i32 },
     /// Archive a mail message.
     Archive { mail_id: i32 },
-}
-
-/// NPC-specific data included in AoI enter events.
-///
-/// Carries template-driven values that the client needs for correct rendering
-/// and interaction display. Only populated for NPC entities (not players).
-///
-/// Mirrors the full `createOnClient()` cascade from the Python scripts:
-/// `SGWSpawnableEntity.createOnClient()` → `SGWBeing.createOnClient()`.
-#[derive(Debug, Clone, Default)]
-pub struct NpcAoIData {
-    /// Localized name string ID from `entity_templates.name_id`.
-    pub name_id: Option<i32>,
-    /// Faction ID (0=neutral, 1=Tau'ri, 3=SGC, 10=hostile).
-    pub faction: u8,
-    /// Alignment ID.
-    pub alignment: u8,
-    /// Entity flags from `entity_templates.flags`.
-    pub entity_flags: u64,
-    /// Interaction type flags (UINT64 bitmask for cursor/interaction UI).
-    pub interaction_type: i64,
-    /// Speaker ID for `onEntityProperty(GENERICPROPERTY_DatabaseId, speakerId)`.
-    pub speaker_id: Option<i32>,
-    /// Kismet event set ID for `onKismetEventSetUpdate`.
-    pub event_set_id: Option<i32>,
-    /// Static mesh name (for `onStaticMeshNameUpdate` — non-humanoid entities).
-    pub static_mesh: Option<String>,
-    /// Body set name (for `BeingAppearance` — humanoid entities, or `onStaticMeshNameUpdate`).
-    pub body_set: Option<String>,
-    /// Body components (for `BeingAppearance` — humanoid entities with body parts).
-    pub components: Vec<String>,
+    /// Send a new mail message.
+    Send {
+        sender_name: String,
+        recipients: Vec<String>,
+        subject: String,
+        body: String,
+        cash: i32,
+        is_cod: bool,
+        item_id: i32,
+        item_quantity: i32,
+    },
 }
 
 /// Messages sent from BaseApp to CellApp.
@@ -158,8 +138,6 @@ pub enum CellToBaseMsg {
         direction: [f32; 3],
         /// Entity level (for `onLevelUpdate`). Defaults to 1.
         level: u32,
-        /// NPC-specific data (faction, alignment, flags, name). None for players.
-        npc_data: Option<NpcAoIData>,
     },
 
     /// An entity left a witness's Area of Interest.
@@ -231,15 +209,13 @@ pub enum CellToBaseMsg {
         count: i32,
     },
 
-    /// Send a ghost entity method call to a specific witness player.
+    /// Save player state to database on disconnect/gate travel.
     ///
-    /// Used for broadcasting property updates (InteractionType, SetVisible, etc.)
-    /// to players who have the entity in their AoI. The `entity_id` is the ghost
-    /// entity the method is called on; `witness_id` is the player to send to.
-    WitnessEntityMethod {
-        witness_id: u32,
-        entity_id: u32,
-        method_index: u16,
-        args: Vec<u8>,
+    /// Sent by CellService just before destroying a player entity.
+    /// BaseApp persists the final position and world to `sgw_player`.
+    SavePlayerState {
+        player_id: i32,
+        world_name: String,
+        position: [f32; 3],
     },
 }

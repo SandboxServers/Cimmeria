@@ -41,21 +41,6 @@ pub(crate) fn get_account_entity_id(
     Ok(c.account_entity_id)
 }
 
-/// Read the currently active entity ID for a connected client.
-///
-/// After world entry, the Account entity is destroyed and replaced by the
-/// SGWPlayer entity. Protocol messages like `onVersionInfo` must be addressed
-/// to whichever entity the client currently owns, otherwise the client
-/// silently drops the response.
-pub(crate) fn get_active_entity_id(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    addr: SocketAddr,
-) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
-    let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-    let c = clients.get(&addr).ok_or("addr not in connected map")?;
-    Ok(c.player_entity_id.unwrap_or(c.account_entity_id))
-}
-
 /// Destroy all entities associated with a disconnecting client and remove it from the map.
 ///
 /// Safe to call multiple times for the same address -- returns silently if the

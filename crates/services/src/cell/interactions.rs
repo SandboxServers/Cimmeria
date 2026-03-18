@@ -12,6 +12,7 @@ use cimmeria_entity::cell_entity::NpcInteractionType;
 
 use super::messages::CellToBaseMsg;
 use super::space_manager::SpaceManager;
+use super::vendor::{self, VendorCache, VendorStock};
 
 /// Maximum distance for NPC interaction (world units).
 /// From `python/common/Constants.py: MAX_INTERACT_DISTANCE = 5`.
@@ -31,6 +32,7 @@ pub async fn handle_interact(
     target_entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    vendor_cache: &VendorCache,
 ) -> Option<i32> {
     // Validate player exists
     let player_pos = match space_mgr.get_entity(entity_id) {
@@ -42,7 +44,7 @@ pub async fn handle_interact(
     };
 
     // Validate target exists and get interaction data
-    let (target_pos, interaction_type, npc_name, target_template_id) = match space_mgr.get_entity(target_entity_id) {
+    let (target_pos, interaction_type, _npc_name, template_id) = match space_mgr.get_entity(target_entity_id) {
         Some(e) => (
             e.position,
             e.interaction_type.clone(),
@@ -50,65 +52,65 @@ pub async fn handle_interact(
             e.template_id,
         ),
         None => {
-            tracing::info!(entity_id, target_entity_id, "interact: target entity not found");
+            tracing::debug!(entity_id, target_entity_id, "interact: target not found");
             return None;
         }
     };
 
-    tracing::info!(
-        entity_id, target_entity_id, %npc_name,
-        ?interaction_type, ?target_template_id,
-        "interact: target resolved"
-    );
-
     // Distance check
     let dist = player_pos.distance_squared_to(&target_pos).sqrt();
     if dist > MAX_INTERACT_DISTANCE {
-        tracing::info!(entity_id, target_entity_id, dist, "interact: too far away");
+        tracing::debug!(entity_id, target_entity_id, dist, "interact: too far away");
+        // Send feedback: "You are too far away to interact."
+        // onPlayerCommunication with feedback channel (8) and system source
+        let msg = "You are too far away to interact.";
+        let utf16: Vec<u16> = msg.encode_utf16().collect();
+        let mut fb_args = Vec::with_capacity(12 + utf16.len() * 2);
+        // Speaker: empty WSTRING
+        fb_args.extend_from_slice(&0u32.to_le_bytes());
+        // SpeakerFlags: 0
+        fb_args.push(0);
+        // Channel: 8 (feedback)
+        fb_args.push(8);
+        // Text: WSTRING
+        fb_args.extend_from_slice(&(utf16.len() as u32).to_le_bytes());
+        for &ch in &utf16 {
+            fb_args.extend_from_slice(&ch.to_le_bytes());
+        }
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: 28, // onPlayerCommunication
+            args: fb_args,
+        }).await;
         return None;
     }
 
-    // Check per-player available interactions (from add_dialog_set content actions).
-    // These take priority over static interaction_type.
-    if let Some(tmpl_id) = target_template_id {
-        let dialog_id = space_mgr.get_entity(entity_id)
-            .and_then(|p| p.available_interactions.get(&tmpl_id))
-            .and_then(|entries| entries.first())
-            .map(|&(_, dialog_id, _)| dialog_id);
-
-        if let Some(dialog_id) = dialog_id {
-            tracing::info!(entity_id, target_entity_id, tmpl_id, dialog_id, "interact: per-player dialog set → onDialogDisplay");
-            send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx).await;
-            return Some(dialog_id);
-        } else {
-            tracing::info!(entity_id, tmpl_id, "interact: no per-player interactions for template");
-        }
-    }
-
-    // Dispatch based on static interaction type
+    // Dispatch based on interaction type
     match interaction_type {
         Some(NpcInteractionType::Dialog { dialog_id }) => {
-            tracing::info!(entity_id, target_entity_id, dialog_id, "interact: static dialog → onDialogDisplay");
             send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx).await;
             Some(dialog_id)
         }
         Some(NpcInteractionType::Vendor) => {
-            tracing::info!(entity_id, target_entity_id, "interact: vendor → onStoreOpen");
-            send_store_open(entity_id, target_entity_id as i32, tx).await;
+            // Look up vendor stock from cache. Falls back to empty stock if
+            // the NPC has no template_id or isn't in the cache.
+            let stock = match template_id {
+                Some(tid) => vendor_cache.get(tid).await.unwrap_or_default(),
+                None => VendorStock::default(),
+            };
+            send_store_open(entity_id, target_entity_id as i32, &stock, tx).await;
             None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {
-            tracing::info!(entity_id, target_entity_id, archetype_id, "interact: trainer → onTrainerOpen");
             send_trainer_open(entity_id, target_entity_id as i32, archetype_id, tx).await;
             None
         }
         Some(NpcInteractionType::Loot) => {
-            tracing::info!(entity_id, target_entity_id, "interact: loot → onLootDisplay");
             send_loot_display(entity_id, target_entity_id as i32, tx).await;
             None
         }
         None => {
-            tracing::info!(entity_id, target_entity_id, "interact: target has no static interaction type");
+            tracing::debug!(entity_id, target_entity_id, "interact: target has no interaction");
             None
         }
     }
@@ -138,24 +140,24 @@ pub async fn send_dialog_display(
     }).await;
 }
 
-/// Send `onStoreOpen` (flat index 109) to the player with empty inventory.
+/// Send `onStoreOpen` (flat index 109) to the player with vendor stock.
 ///
 /// Wire: `entityId:i32, vendorType:i32, buyList:ARRAY, sellList:ARRAY,
 ///        buybackList:ARRAY, repairList:ARRAY, rechargeList:ARRAY`.
 async fn send_store_open(
     player_id: u32,
     npc_entity_id: i32,
+    stock: &VendorStock,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
-    let mut args = Vec::with_capacity(28);
-    args.extend_from_slice(&npc_entity_id.to_le_bytes());  // EntityId
-    args.extend_from_slice(&1i32.to_le_bytes());            // VendorType (1 = general)
-    // 5 empty arrays (buy, sell, buyback, repair, recharge)
-    for _ in 0..5 {
-        args.extend_from_slice(&0u32.to_le_bytes());        // count = 0
-    }
+    let args = vendor::build_store_open_args(npc_entity_id, stock);
 
-    tracing::debug!(player_id, npc_entity_id, "Sending onStoreOpen (empty)");
+    tracing::debug!(
+        player_id, npc_entity_id,
+        buy_count = stock.buy_list.len(),
+        sell_count = stock.sell_list.len(),
+        "Sending onStoreOpen"
+    );
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id: player_id,
         method_index: 109, // onStoreOpen
@@ -317,9 +319,19 @@ mod tests {
         }
 
         let (tx, mut rx) = mpsc::channel(16);
-        handle_interact(1, npc_id, &tx, &mut mgr).await;
+        let vc = VendorCache::new();
+        handle_interact(1, npc_id, &tx, &mut mgr, &vc).await;
 
-        // Should NOT send any response (too far)
+        // Should send feedback message "too far away" but NO dialog/store response
+        let msg = rx.try_recv().expect("Expected feedback message for too-far interaction");
+        match msg {
+            CellToBaseMsg::EntityMethodCall { entity_id: eid, method_index, .. } => {
+                assert_eq!(eid, 1); // sent to the player
+                assert_eq!(method_index, 28); // onPlayerCommunication (feedback)
+            }
+            _ => panic!("Expected EntityMethodCall feedback"),
+        }
+        // No further messages
         assert!(rx.try_recv().is_err());
     }
 
@@ -343,7 +355,8 @@ mod tests {
         }
 
         let (tx, mut rx) = mpsc::channel(16);
-        handle_interact(1, npc_id, &tx, &mut mgr).await;
+        let vc = VendorCache::new();
+        handle_interact(1, npc_id, &tx, &mut mgr, &vc).await;
 
         // Should receive onDialogDisplay
         let msg = rx.try_recv().unwrap();
@@ -377,7 +390,8 @@ mod tests {
         }
 
         let (tx, mut rx) = mpsc::channel(16);
-        handle_interact(1, npc_id, &tx, &mut mgr).await;
+        let vc = VendorCache::new();
+        handle_interact(1, npc_id, &tx, &mut mgr, &vc).await;
 
         let msg = rx.try_recv().unwrap();
         match msg {
@@ -405,7 +419,8 @@ mod tests {
         // interaction_type = None (hostile)
 
         let (tx, mut rx) = mpsc::channel(16);
-        handle_interact(1, npc_id, &tx, &mut mgr).await;
+        let vc = VendorCache::new();
+        handle_interact(1, npc_id, &tx, &mut mgr, &vc).await;
 
         // No response for hostile NPCs
         assert!(rx.try_recv().is_err());

@@ -52,15 +52,20 @@ pub struct SpaceManager {
     next_local_id: u32,
     /// Next NPC entity ID (starts at 100_000 to avoid player ID collision).
     next_npc_id: u32,
-    /// Cached dialog_set_maps: dialog_set_map_id → (dialog_id, interaction_flags).
-    /// Populated at startup from `resources.dialog_set_maps`.
-    pub dialog_set_maps: HashMap<i32, super::spawner::DialogSetMapEntry>,
-    /// Cached mission definitions: mission_id → (first step_id, objectives).
-    /// Populated at startup from `resources.mission_steps` + `resources.mission_objectives`.
-    pub mission_defs: HashMap<i32, super::spawner::MissionDefEntry>,
-    /// Cached stargate destinations: stargate_id → (world_name, position, yaw).
-    /// Populated at startup from `resources.stargates` + `resources.worlds`.
-    pub stargates: HashMap<i32, super::spawner::StargateEntry>,
+    /// Pending NPC respawns: (respawn_instant, world_name, position, direction, name, interaction, level, tag).
+    pub pending_respawns: Vec<(std::time::Instant, RespawnEntry)>,
+}
+
+/// Data needed to respawn an NPC after death.
+#[derive(Debug, Clone)]
+pub struct RespawnEntry {
+    pub world_name: String,
+    pub position: [f32; 3],
+    pub direction: [f32; 3],
+    pub name: String,
+    pub interaction: Option<cimmeria_entity::cell_entity::NpcInteractionType>,
+    pub level: u32,
+    pub tag: Option<String>,
 }
 
 impl SpaceManager {
@@ -74,9 +79,7 @@ impl SpaceManager {
             entity_space: HashMap::new(),
             next_local_id: 0,
             next_npc_id: 100_000,
-            dialog_set_maps: HashMap::new(),
-            mission_defs: HashMap::new(),
-            stargates: HashMap::new(),
+            pending_respawns: Vec::new(),
         }
     }
 
@@ -320,6 +323,9 @@ impl SpaceManager {
     }
 
     /// Remove client controller and clean up AoI witnesses.
+    ///
+    /// Sends `SavePlayerState` with the entity's final position before destroying,
+    /// so BaseApp can persist the player's location to the database.
     pub async fn disconnect_entity(
         &mut self,
         entity_id: u32,
@@ -329,8 +335,21 @@ impl SpaceManager {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);
 
-                // Notify all entities that had this one in their AoI
+                // Save player state before destruction
                 if let Some(cell_entity) = space.entities.get(&entity_id) {
+                    if let Some(player_id) = cell_entity.player_id {
+                        let _ = tx.send(CellToBaseMsg::SavePlayerState {
+                            player_id,
+                            world_name: space.world_name.clone(),
+                            position: [
+                                cell_entity.position.x,
+                                cell_entity.position.y,
+                                cell_entity.position.z,
+                            ],
+                        }).await;
+                    }
+
+                    // Notify all entities that had this one in their AoI
                     let witnesses: Vec<u32> = cell_entity.witnesses
                         .iter()
                         .map(|eid| eid.0 as u32)
@@ -362,7 +381,7 @@ impl SpaceManager {
         entity_id: u32,
         position: [f32; 3],
         direction: [i8; 3],
-        _velocity: [f32; 3],
+        velocity: [f32; 3],
     ) {
         let space_id = match self.entity_space.get(&entity_id) {
             Some(&id) => id,
@@ -384,6 +403,7 @@ impl SpaceManager {
                 direction[1] as f32,
                 direction[2] as f32,
             );
+            cell_entity.velocity = Vector3::new(velocity[0], velocity[1], velocity[2]);
 
             // Update the spatial grid
             space.space.grid.update_position(
@@ -409,8 +429,8 @@ impl SpaceManager {
             let player_ids: Vec<u32> = space.players.iter().copied().collect();
 
             for &player_id in &player_ids {
-                let (player_pos, aoi_radius, player_interactions) = match space.entities.get(&player_id) {
-                    Some(e) => (e.position, e.aoi_radius, e.available_interactions.clone()),
+                let (player_pos, aoi_radius) = match space.entities.get(&player_id) {
+                    Some(e) => (e.position, e.aoi_radius),
                     None => continue,
                 };
 
@@ -443,26 +463,6 @@ impl SpaceManager {
                 for &eid in &current_aoi {
                     if !previous_aoi.contains(&eid) {
                         if let Some(other) = space.entities.get(&eid) {
-                            let npc_data = if !other.is_player {
-                                Some(super::messages::NpcAoIData {
-                                    name_id: other.name_id,
-                                    faction: other.faction,
-                                    alignment: other.alignment,
-                                    entity_flags: other.entity_flags,
-                                    // Send the BASE interaction type in the cascade (not merged).
-                                    // Dynamic per-player flags are sent as a separate
-                                    // InteractionType update below, matching the C++ server's
-                                    // createOnClient(base) → dynamicUpdate(merged) flow.
-                                    interaction_type: other.interaction_type_flags,
-                                    speaker_id: other.speaker_id,
-                                    event_set_id: other.event_set_id,
-                                    static_mesh: other.static_mesh.clone(),
-                                    body_set: other.body_set.clone(),
-                                    components: other.components.clone(),
-                                })
-                            } else {
-                                None
-                            };
                             events.push(CellToBaseMsg::EnteredAoI {
                                 witness_id: player_id,
                                 entity_id: eid,
@@ -471,50 +471,7 @@ impl SpaceManager {
                                 position: [other.position.x, other.position.y, other.position.z],
                                 direction: [other.direction.x, other.direction.y, other.direction.z],
                                 level: other.level,
-                                npc_data,
                             });
-
-                            // ── dynamicUpdate: standalone InteractionType update ──
-                            //
-                            // In the C++ server, createOnClient() sends InteractionType
-                            // with the entity's BASE flags (often 0). Then dynamicUpdate()
-                            // fires and sends InteractionType with the MERGED per-player
-                            // flags as a separate message. The client treats this as a
-                            // state change that enables right-click interaction.
-                            //
-                            // Reference: src/cellapp/base_client.cpp:455-458
-                            if other.has_dynamic_properties {
-                                if let Some(tmpl_id) = other.template_id {
-                                    if let Some(entries) = player_interactions.get(&tmpl_id) {
-                                        let base = other.interaction_type_flags;
-                                        let merged = base | entries.iter().fold(0i64, |acc, &(_, _, f)| acc | f);
-                                        if merged != base {
-                                            tracing::info!(
-                                                player_id, entity_id = eid,
-                                                template_id = tmpl_id, base, merged,
-                                                "AoI: dynamicUpdate InteractionType (base→merged)"
-                                            );
-                                        }
-                                        events.push(CellToBaseMsg::WitnessEntityMethod {
-                                            witness_id: player_id,
-                                            entity_id: eid,
-                                            method_index: 3, // InteractionType
-                                            args: (merged as u64).to_le_bytes().to_vec(),
-                                        });
-
-                                        // Register the entity as interactable on the client.
-                                        // GameBeing::isInteractable() checks player+0x16c;
-                                        // onDuelEntitiesRemove (method 152) adds to this set.
-                                        // Must arrive AFTER CREATE_ENTITY so the client can
-                                        // find the entity and refresh its interaction state.
-                                        events.push(CellToBaseMsg::EntityMethodCall {
-                                            entity_id: player_id,
-                                            method_index: 152, // onDuelEntitiesRemove
-                                            args: (eid as i32).to_le_bytes().to_vec(),
-                                        });
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -540,7 +497,7 @@ impl SpaceManager {
                                 space_id: space.space_id,
                                 position: [other.position.x, other.position.y, other.position.z],
                                 direction: [other.direction.x, other.direction.y, other.direction.z],
-                                velocity: [0.0; 3], // TODO: track velocity
+                                velocity: [other.velocity.x, other.velocity.y, other.velocity.z],
                             });
                         }
                     }
@@ -596,6 +553,51 @@ impl SpaceManager {
         space.entities.get(&entity_id)
     }
 
+    /// Iterate over all entities in a specific space.
+    pub fn iter_space_entities(&self, space_id: u32) -> Option<&HashMap<u32, CellEntity>> {
+        self.spaces.get(&space_id).map(|s| &s.entities)
+    }
+
+    /// Iterate over all entities across all spaces.
+    pub fn all_entities(&self) -> impl Iterator<Item = &CellEntity> {
+        self.spaces.values().flat_map(|s| s.entities.values())
+    }
+
+    /// Iterate mutably over all entities across all spaces.
+    pub fn all_entities_mut(&mut self) -> impl Iterator<Item = &mut CellEntity> {
+        self.spaces.values_mut().flat_map(|s| s.entities.values_mut())
+    }
+
+    /// Find all non-player entities near a world position within a given radius.
+    ///
+    /// Used for AoE abilities — finds hostile entities near the ground target point.
+    /// Excludes the source entity and player entities (AoE only hits NPCs).
+    pub fn get_entities_near_point(
+        &self,
+        source_entity_id: u32,
+        point: &cimmeria_common::Vector3,
+        radius: f32,
+    ) -> Vec<u32> {
+        let space_id = match self.entity_space.get(&source_entity_id) {
+            Some(&id) => id,
+            None => return Vec::new(),
+        };
+        let space = match self.spaces.get(&space_id) {
+            Some(s) => s,
+            None => return Vec::new(),
+        };
+
+        let r_sq = radius * radius;
+        space.entities.iter()
+            .filter(|(&eid, entity)| {
+                eid != source_entity_id
+                    && !entity.is_player
+                    && point.distance_squared_to(&entity.position) <= r_sq
+            })
+            .map(|(&eid, _)| eid)
+            .collect()
+    }
+
     /// Get the world name for an entity's current space.
     pub fn get_entity_world_name(&self, entity_id: u32) -> Option<String> {
         let &space_id = self.entity_space.get(&entity_id)?;
@@ -639,6 +641,100 @@ impl SpaceManager {
         Ok(space_id)
     }
 
+    /// Queue a dead NPC for respawn after a delay.
+    ///
+    /// Snapshots the NPC's spawn data from its current state and schedules
+    /// it for respawn after `delay` seconds.
+    pub fn queue_npc_respawn(&mut self, entity_id: u32, delay_secs: f32) {
+        let entity = match self.get_entity(entity_id) {
+            Some(e) => e,
+            None => return,
+        };
+
+        // Only queue non-player entities
+        if entity.is_player {
+            return;
+        }
+
+        let world_name = match self.get_entity_world_name(entity_id) {
+            Some(w) => w,
+            None => return,
+        };
+
+        let entry = RespawnEntry {
+            world_name,
+            position: [entity.position.x, entity.position.y, entity.position.z],
+            direction: [entity.direction.x, entity.direction.y, entity.direction.z],
+            name: entity.npc_name.clone().unwrap_or_default(),
+            interaction: entity.interaction_type.clone(),
+            level: entity.level,
+            tag: entity.entity_tag.clone(),
+        };
+
+        tracing::debug!(
+            entity_id, delay_secs,
+            name = %entry.name,
+            "NPC queued for respawn"
+        );
+
+        let respawn_at = std::time::Instant::now() + std::time::Duration::from_secs_f32(delay_secs);
+        self.pending_respawns.push((respawn_at, entry));
+    }
+
+    /// Process pending respawns — called from the tick loop.
+    ///
+    /// Spawns NPCs whose respawn timer has expired. Returns the count of respawned NPCs.
+    pub fn process_respawns(&mut self) -> usize {
+        use cimmeria_entity::stats::ArchetypeStatValues;
+
+        let now = std::time::Instant::now();
+        let mut count = 0;
+        let mut i = 0;
+
+        while i < self.pending_respawns.len() {
+            if now >= self.pending_respawns[i].0 {
+                let (_, entry) = self.pending_respawns.swap_remove(i);
+                let npc_id = self.allocate_npc_id();
+
+                match self.spawn_npc(npc_id, &entry.world_name, entry.position, entry.direction) {
+                    Ok(_space_id) => {
+                        if let Some(entity) = self.get_entity_mut(npc_id) {
+                            entity.interaction_type = entry.interaction;
+                            entity.npc_name = Some(entry.name.clone());
+                            entity.level = entry.level;
+                            entity.entity_tag = entry.tag;
+                            // Initialize stats
+                            let npc_arch = ArchetypeStatValues {
+                                coordination: 3 + entry.level as i32,
+                                engagement: 3 + entry.level as i32,
+                                fortitude: 2 + entry.level as i32,
+                                morale: 3,
+                                perception: 2 + entry.level as i32,
+                                intelligence: 2,
+                                health: 200 + (entry.level as i32 * 100),
+                                focus: 100 + (entry.level as i32 * 50),
+                                health_per_level: 50,
+                                focus_per_level: 25,
+                            };
+                            entity.stats.apply_archetype(&npc_arch);
+                            entity.stats.scale_for_level(entry.level, &npc_arch);
+                            entity.stats.clear_dirty();
+                        }
+                        tracing::info!(npc_id, name = %entry.name, level = entry.level, "NPC respawned");
+                        count += 1;
+                    }
+                    Err(e) => {
+                        tracing::warn!(name = %entry.name, "Failed to respawn NPC: {e}");
+                    }
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        count
+    }
+
     /// Get the next NPC entity ID from a reserved range.
     ///
     /// NPC IDs start at 100_000 to avoid collision with player entity IDs
@@ -647,107 +743,6 @@ impl SpaceManager {
         let id = self.next_npc_id;
         self.next_npc_id += 1;
         id
-    }
-
-    /// Spawn an NPC entity from a database spawn record with full template data.
-    ///
-    /// Sets class_id, interaction flags, name, faction, alignment, and all other
-    /// template-driven fields. Returns the space_id the NPC was placed in.
-    pub fn spawn_npc_from_record(
-        &mut self,
-        entity_id: u32,
-        record: &super::spawner::SpawnRecord,
-    ) -> Result<u32, String> {
-        let space_id = self.find_or_create_space(&record.world_name)?;
-        let pos = Vector3::new(record.x, record.y, record.z);
-        // heading is yaw (rotation.y), x and z rotation are 0
-        let dir = Vector3::new(0.0, record.heading, 0.0);
-
-        let mut e = CellEntity::new(
-            EntityId(entity_id as i32),
-            SpaceId(space_id as i32),
-            pos,
-        );
-        e.direction = dir;
-        e.class_id = super::spawner::class_id_for_class(&record.class);
-        e.is_player = false;
-        e.level = record.level.unwrap_or(1) as u32;
-        e.npc_name = Some(record.template_name.clone());
-
-        // Template-driven fields
-        e.template_id = Some(record.template_id);
-        e.tag = record.tag.clone();
-        e.name_id = record.name_id;
-        e.speaker_id = record.speaker_id;
-        e.event_set_id = record.event_set_id;
-        e.interaction_type_flags = record.interaction_type;
-        e.entity_flags = record.flags as u64;
-        e.faction = record.faction.unwrap_or(0) as u8;
-        e.alignment = record.alignment.unwrap_or(0) as u8;
-        e.static_interaction_sets = record.static_interaction_sets.clone();
-        e.has_dynamic_properties = record.has_dynamic_properties;
-        e.static_mesh = record.static_mesh.clone();
-        e.body_set = Some(record.body_set.clone());
-        e.components = record.components.clone().unwrap_or_default();
-
-        let space = self.spaces.get_mut(&space_id)
-            .ok_or_else(|| format!("Space {space_id} disappeared"))?;
-
-        space.space.add_entity(EntityId(entity_id as i32), &pos);
-        space.entities.insert(entity_id, e);
-        self.entity_space.insert(entity_id, space_id);
-
-        Ok(space_id)
-    }
-
-    /// Return all player entity IDs that currently have `target_entity_id` in their AoI.
-    ///
-    /// Used for broadcasting property updates (InteractionType, SetVisible, etc.)
-    /// to players who can see the entity.
-    pub fn get_witnesses_of(&self, target_entity_id: u32) -> Vec<u32> {
-        let Some(&space_id) = self.entity_space.get(&target_entity_id) else {
-            return vec![];
-        };
-        let Some(space) = self.spaces.get(&space_id) else {
-            return vec![];
-        };
-        let target_eid = EntityId(target_entity_id as i32);
-        space.players.iter().filter(|&&pid| {
-            space.entities.get(&pid)
-                .map_or(false, |p| p.witnesses.contains(&target_eid))
-        }).copied().collect()
-    }
-
-    /// Find an NPC entity by its spawn tag within a specific world.
-    ///
-    /// Used by content chain actions (SetInteractionType, DestroyTaggedEntity, etc.)
-    /// to locate entities by their `spawnlist.tag` value.
-    pub fn find_entity_by_tag(&self, world_name: &str, tag: &str) -> Option<u32> {
-        let &space_id = self.world_spaces.get(world_name)?;
-        let space = self.spaces.get(&space_id)?;
-        for (&eid, entity) in &space.entities {
-            if entity.tag.as_deref() == Some(tag) {
-                return Some(eid);
-            }
-        }
-        None
-    }
-
-    /// Find all entities with a given `template_id` in a specific world.
-    ///
-    /// Used by `add_dialog_set` to locate NPC entities that match the slot
-    /// (template_id) so per-player InteractionType updates can be sent.
-    pub fn find_entities_by_template(&self, world_name: &str, template_id: i32) -> Vec<u32> {
-        let Some(&space_id) = self.world_spaces.get(world_name) else {
-            return vec![];
-        };
-        let Some(space) = self.spaces.get(&space_id) else {
-            return vec![];
-        };
-        space.entities.iter()
-            .filter(|(_, e)| e.template_id == Some(template_id))
-            .map(|(&eid, _)| eid)
-            .collect()
     }
 }
 

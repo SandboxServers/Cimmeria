@@ -105,7 +105,6 @@ tauri-build = { version = "2" }
 # Image processing (scene editor texture thumbnails)
 image = { version = "0.25", default-features = false, features = ["png"] }
 texture2ddecoder = "0.0.5"
-base64 = "0.22"
 
 # Internal crates
 cimmeria-common = { path = "crates/common" }
