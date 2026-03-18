@@ -1,0 +1,83 @@
+@import "@fontsource/space-grotesk";
+@import "@fontsource/ibm-plex-mono";
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Space Grotesk", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+}
+
+:root {
+  --background: 210 31% 8%;
+  --foreground: 204 28% 94%;
+  --card: 212 30% 12%;
+  --card-foreground: 204 28% 94%;
+  --primary: 38 92% 58%;
+  --primary-foreground: 210 31% 8%;
+  --secondary: 197 37% 20%;
+  --secondary-foreground: 193 80% 90%;
+  --muted: 215 24% 17%;
+  --muted-foreground: 205 16% 72%;
+  --accent: 179 52% 45%;
+  --accent-foreground: 210 31% 8%;
+  --destructive: 0 68% 56%;
+  --border: 211 23% 24%;
+  --input: 213 24% 19%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply h-screen overflow-hidden bg-background font-sans text-foreground antialiased;
+  }
+
+  #root {
+    @apply h-screen;
+  }
+}
+
+@utility subtle-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+@layer utilities {
+  .subtle-scrollbar::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+  }
+
+  .subtle-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background-clip: padding-box;
+  }
+
+  .subtle-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

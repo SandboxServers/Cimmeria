@@ -1,0 +1,22 @@
+[package]
+name = "cimmeria-upk-objects"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UE3 object deserializers for SGW package files"
+
+[dependencies]
+cimmeria-upk = { workspace = true }
+byteorder = "1"
+serde = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+bincode = "1"
+
+[[bin]]
+name = "build-package-index"
+path = "src/bin/build_package_index.rs"
+
+[[bin]]
+name = "inspect-export"
+path = "src/bin/inspect_export.rs"
