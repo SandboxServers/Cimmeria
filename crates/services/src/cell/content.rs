@@ -348,7 +348,25 @@ async fn execute_actions(
             }
             Action::AdvanceStep { mission_id, step_id } => {
                 tracing::info!(entity_id, mission_id, step_id, chain_id, "Content: advancing step");
-                // TODO: Update mission manager step tracking + send wire update
+                // Update local mission state
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    if let Some(mission) = entity.missions.get_mission_mut(mission_id) {
+                        if let Some(current) = mission.current_step_id {
+                            mission.completed_steps.push(current);
+                        }
+                        mission.current_step_id = Some(step_id);
+                    }
+                }
+                // Send step update to client
+                let mut step_args = Vec::with_capacity(5);
+                step_args.extend_from_slice(&step_id.to_le_bytes());
+                step_args.push(cimmeria_entity::missions::STATUS_ACTIVE as u8);
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 81, // onStepUpdate
+                    args: step_args,
+                }).await;
+                // Persist to DB
                 let _ = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,
@@ -362,39 +380,130 @@ async fn execute_actions(
             }
             Action::AddDialogSet { dialog_set_id, slot, mission_id: _ } => {
                 tracing::info!(entity_id, dialog_set_id, slot, chain_id, "Content: adding dialog set");
-                // TODO: Send onAddDialogSet to client
+                // onAddDialogSet(INT32 dialogSetId, INT32 slot) — method index 106
+                let mut args = Vec::with_capacity(8);
+                args.extend_from_slice(&dialog_set_id.to_le_bytes());
+                args.extend_from_slice(&slot.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 106,
+                    args,
+                }).await;
             }
             Action::RemoveDialogSet { dialog_set_id, slot } => {
                 tracing::info!(entity_id, dialog_set_id, slot, chain_id, "Content: removing dialog set");
-                // TODO: Send onRemoveDialogSet to client
+                // onRemoveDialogSet(INT32 dialogSetId, INT32 slot) — method index 107
+                let mut args = Vec::with_capacity(8);
+                args.extend_from_slice(&dialog_set_id.to_le_bytes());
+                args.extend_from_slice(&slot.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 107,
+                    args,
+                }).await;
             }
             Action::RemoveItem { item_id, count } => {
                 tracing::info!(entity_id, item_id, count, chain_id, "Content: removing item");
-                // TODO: Send onRemoveItem + DB persist
+                // onRemoveItem(INT32 itemInstanceId) — method index 73
+                let instance_id = item_id * 1000 + 1;
+                let mut args = Vec::with_capacity(4);
+                args.extend_from_slice(&instance_id.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 73,
+                    args,
+                }).await;
+                // Persist removal via BaseApp
+                let _ = tx.send(CellToBaseMsg::GrantItem {
+                    entity_id,
+                    player_id,
+                    item_id,
+                    container_id: item_container(item_id),
+                    count: -count, // negative count = removal
+                }).await;
             }
             Action::SetInteractionType { entity_tag, operation, mask } => {
                 tracing::debug!(entity_id, %entity_tag, %operation, mask, chain_id, "Content: set interaction type");
-                // TODO: Find tagged entity and modify interaction flags
+                if let Some(tagged_id) = find_tagged_entity(entity_id, &entity_tag, space_mgr) {
+                    if let Some(tagged) = space_mgr.get_entity_mut(tagged_id) {
+                        match operation.as_str() {
+                            "set" => {
+                                // Set dialog interaction with mask as dialog_id
+                                tagged.interaction_type = Some(
+                                    cimmeria_entity::cell_entity::NpcInteractionType::Dialog {
+                                        dialog_id: mask as i32,
+                                    },
+                                );
+                            }
+                            "clear" => {
+                                tagged.interaction_type = None;
+                            }
+                            _ => {
+                                tracing::debug!(%operation, "Unknown interaction type operation");
+                            }
+                        }
+                    }
+                }
             }
             Action::StartMinigame { minigame_type, on_victory_chains } => {
                 tracing::info!(entity_id, %minigame_type, ?on_victory_chains, chain_id, "Content: starting minigame");
-                // TODO: Send onStartMinigame to client, track victory chains
+                // onStartMinigame(INT32 minigameType) — method index 115
+                let type_id = match minigame_type.as_str() {
+                    "lockpick" => 1i32,
+                    "hacking" => 2,
+                    "puzzle" => 3,
+                    _ => 0,
+                };
+                let mut args = Vec::with_capacity(4);
+                args.extend_from_slice(&type_id.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 115,
+                    args,
+                }).await;
             }
             Action::SetAggression { entity_tag, level } => {
                 tracing::debug!(entity_id, %entity_tag, level, chain_id, "Content: set aggression");
-                // TODO: Find tagged NPC and set aggression level
+                if let Some(tagged_id) = find_tagged_entity(entity_id, &entity_tag, space_mgr) {
+                    if let Some(tagged) = space_mgr.get_entity_mut(tagged_id) {
+                        tagged.properties.insert(
+                            "aggressionLevel".to_string(),
+                            cimmeria_entity::base_entity::PropertyValue::Int32(level),
+                        );
+                    }
+                }
             }
             Action::DestroyTaggedEntity { entity_tag } => {
                 tracing::info!(entity_id, %entity_tag, chain_id, "Content: destroying tagged entity");
-                // TODO: Find and destroy tagged entity in space
+                if let Some(tagged_id) = find_tagged_entity(entity_id, &entity_tag, space_mgr) {
+                    space_mgr.destroy_entity(tagged_id);
+                    tracing::debug!(tagged_id, %entity_tag, "Tagged entity destroyed");
+                }
             }
             Action::TriggerTransporter { region_id } => {
                 tracing::info!(entity_id, region_id, chain_id, "Content: triggering transporter");
-                // TODO: Trigger ring transport sequence
+                // onTransporterActivate(INT32 regionId) — method index 23
+                let mut args = Vec::with_capacity(4);
+                args.extend_from_slice(&region_id.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 23,
+                    args,
+                }).await;
             }
             Action::SystemMessage { message_id } => {
                 tracing::info!(entity_id, message_id, chain_id, "Content: system message");
-                // TODO: Send onPlayerCommunication with message_id
+                // onPlayerCommunication(INT32 messageId, INT32 sourceId, WSTRING message)
+                // — method index 17
+                let mut args = Vec::with_capacity(12);
+                args.extend_from_slice(&message_id.to_le_bytes());
+                args.extend_from_slice(&0i32.to_le_bytes()); // sourceId = 0 (system)
+                args.extend_from_slice(&0u32.to_le_bytes()); // empty WSTRING (count=0)
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 17,
+                    args,
+                }).await;
             }
             Action::AbandonMission { mission_id } => {
                 tracing::info!(entity_id, mission_id, chain_id, "Content: abandoning mission");
@@ -402,21 +511,47 @@ async fn execute_actions(
             }
             Action::IncrementCounter { counter_name, amount } => {
                 tracing::debug!(entity_id, %counter_name, amount, chain_id, "Content: increment counter");
-                // TODO: Increment per-entity counter tracking
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    let counter = entity.counters.entry(counter_name.clone()).or_insert(0);
+                    *counter += amount;
+                    tracing::debug!(entity_id, %counter_name, new_value = *counter, "Counter incremented");
+                }
             }
             Action::ResetCounter { counter_name } => {
                 tracing::debug!(entity_id, %counter_name, chain_id, "Content: reset counter");
-                // TODO: Reset per-entity counter
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.counters.remove(&counter_name);
+                }
             }
             Action::CompleteObjective { mission_id, objective_id } => {
                 tracing::info!(entity_id, mission_id, objective_id, chain_id, "Content: complete objective");
-                // TODO: Complete specific objective in mission manager
+                super::missions::complete_objective(entity_id, mission_id, objective_id, tx, space_mgr).await;
             }
             Action::SendMessage { channel, message } => {
                 tracing::info!(entity_id, %channel, %message, chain_id, "Content: sending message");
+                // Route as a system chat message
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 17, // onPlayerCommunication
+                    args: {
+                        let mut a = Vec::with_capacity(12 + message.len() * 2);
+                        a.extend_from_slice(&0i32.to_le_bytes()); // messageId = 0
+                        a.extend_from_slice(&0i32.to_le_bytes()); // sourceId = 0
+                        // WSTRING: u32 count + UTF-16LE
+                        let utf16: Vec<u16> = message.encode_utf16().collect();
+                        a.extend_from_slice(&(utf16.len() as u32).to_le_bytes());
+                        for c in &utf16 {
+                            a.extend_from_slice(&c.to_le_bytes());
+                        }
+                        a
+                    },
+                }).await;
             }
-            Action::TriggerChain { chain_id: target_chain_id } => {
-                tracing::debug!(entity_id, target_chain_id, chain_id, "Content: trigger chain (caller must re-dispatch)");
+            Action::TriggerChain { chain_id: _target_chain_id } => {
+                tracing::debug!(entity_id, _target_chain_id, chain_id, "Content: trigger chain — not yet recursive");
+                // TriggerChain requires re-dispatching through the engine, which needs
+                // the engine reference. For now, log and skip — the calling code should
+                // handle chain triggers at the engine level.
             }
             other => {
                 tracing::debug!(entity_id, chain_id, action = ?other, "Content: unhandled action");
@@ -426,6 +561,38 @@ async fn execute_actions(
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Find an entity by tag in the same space as the source entity.
+///
+/// Searches the space that `source_entity_id` is in for an entity whose
+/// `entity_tag` matches the given tag string.
+fn find_tagged_entity(source_entity_id: u32, tag: &str, space_mgr: &SpaceManager) -> Option<u32> {
+    // Get the space the source entity is in
+    let world_name = space_mgr.get_entity_world_name(source_entity_id)?;
+    let space_id = space_mgr.space_id_for_world(&world_name)?;
+
+    // Search all entities in that space for the tag
+    // (SpaceManager doesn't expose space entities directly, so we iterate
+    // through the entity_space index — but we only have space_id_for_world
+    // and get_entity. Use a brute-force scan via the space instance.)
+    // For now, check NPC name as a fallback for entity_tag.
+    for (eid, entity) in space_mgr.iter_space_entities(space_id)? {
+        if let Some(ref et) = entity.entity_tag {
+            if et == tag {
+                return Some(*eid);
+            }
+        }
+        // Fallback: match NPC name
+        if let Some(ref name) = entity.npc_name {
+            if name == tag {
+                return Some(*eid);
+            }
+        }
+    }
+
+    tracing::debug!(source_entity_id, %tag, "Tagged entity not found in space");
+    None
+}
 
 /// Determine the inventory container for an item.
 fn item_container(item_id: i32) -> i32 {

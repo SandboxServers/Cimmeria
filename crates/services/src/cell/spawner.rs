@@ -8,8 +8,28 @@
 //! Reference: `python/base/SGWSpawnSet.py`, `python/cell/SGWMob.py`
 
 use cimmeria_entity::cell_entity::NpcInteractionType;
+use cimmeria_entity::stats::ArchetypeStatValues;
 
 use super::space_manager::SpaceManager;
+
+/// Default NPC stat values based on level.
+///
+/// NPCs don't have archetypes — they use a generic stat template scaled by level.
+/// Reference: `python/cell/SGWMob.py:initStats()` — uses level-based scaling.
+fn npc_stats_for_level(level: u32) -> ArchetypeStatValues {
+    ArchetypeStatValues {
+        coordination: 3 + level as i32,
+        engagement: 3 + level as i32,
+        fortitude: 2 + level as i32,
+        morale: 3,
+        perception: 2 + level as i32,
+        intelligence: 2,
+        health: 200 + (level as i32 * 100),
+        focus: 100 + (level as i32 * 50),
+        health_per_level: 50,
+        focus_per_level: 25,
+    }
+}
 
 /// A spawn point definition.
 #[derive(Debug, Clone)]
@@ -26,6 +46,31 @@ pub struct SpawnDef {
     pub interaction: Option<NpcInteractionType>,
     /// Entity level (affects XP granted on kill).
     pub level: u32,
+    /// Content engine tag for entity lookup (used by SetInteractionType, DestroyTaggedEntity, etc.).
+    pub tag: Option<&'static str>,
+}
+
+/// A runtime spawn definition loaded from the database.
+#[derive(Debug, Clone)]
+pub struct DbSpawnDef {
+    /// World name the NPC spawns in.
+    pub world_name: String,
+    /// World-space position [x, y, z].
+    pub position: [f32; 3],
+    /// Facing direction [x, y, z] (rotation radians).
+    pub direction: [f32; 3],
+    /// Display name.
+    pub name: String,
+    /// Interaction type (None = hostile/no interaction).
+    pub interaction: Option<NpcInteractionType>,
+    /// Entity level.
+    pub level: u32,
+    /// Content engine tag.
+    pub tag: Option<String>,
+    /// Database template_id for vendor stock / template-driven lookups.
+    pub template_id: Option<i32>,
+    /// Loot table ID for drop generation on kill.
+    pub loot_table_id: Option<i32>,
 }
 
 /// Hardcoded spawn definitions for initial world population.
@@ -37,23 +82,28 @@ const SPAWN_DEFS: &[SpawnDef] = &[
     SpawnDef {
         world_name: "Agnos", position: [30.0, 0.0, 50.0], direction: [0.0, 0.0, 0.0],
         name: "Agnos Vendor", interaction: Some(NpcInteractionType::Vendor), level: 1,
+        tag: Some("AV_01"),
     },
     SpawnDef {
         world_name: "Agnos", position: [40.0, 0.0, 55.0], direction: [0.0, 1.57, 0.0],
         name: "Agnos Guide", interaction: Some(NpcInteractionType::Dialog { dialog_id: 1 }), level: 1,
+        tag: Some("AG_01"),
     },
     SpawnDef {
         world_name: "Agnos", position: [25.0, 0.0, 65.0], direction: [0.0, 3.14, 0.0],
         name: "Jaffa Warrior", interaction: None, level: 2,
+        tag: None,
     },
     // Castle — training area NPCs
     SpawnDef {
         world_name: "Castle", position: [100.0, 0.0, 100.0], direction: [0.0, 0.0, 0.0],
         name: "Soldier Trainer", interaction: Some(NpcInteractionType::Trainer { archetype_id: 1 }), level: 3,
+        tag: Some("ST_01"),
     },
     SpawnDef {
         world_name: "Castle", position: [110.0, 0.0, 95.0], direction: [0.0, 0.78, 0.0],
         name: "Castle Guard", interaction: None, level: 4,
+        tag: None,
     },
 ];
 
@@ -71,6 +121,7 @@ const INSTANCE_SPAWN_DEFS: &[SpawnDef] = &[
         name: "Frost's Body",
         interaction: Some(NpcInteractionType::Dialog { dialog_id: 3995 }),
         level: 1,
+        tag: Some("FrostBody"),
     },
 ];
 
@@ -92,6 +143,11 @@ pub fn spawn_npcs_for_world(world_name: &str, space_mgr: &mut SpaceManager) -> u
                     entity.interaction_type = def.interaction.clone();
                     entity.npc_name = Some(def.name.to_string());
                     entity.level = def.level;
+                    entity.entity_tag = def.tag.map(|t| t.to_string());
+                    let npc_arch = npc_stats_for_level(def.level);
+                    entity.stats.apply_archetype(&npc_arch);
+                    entity.stats.scale_for_level(def.level, &npc_arch);
+                    entity.stats.clear_dirty();
                 }
                 tracing::info!(
                     npc_id, space_id, world = def.world_name, name = def.name,
@@ -108,6 +164,119 @@ pub fn spawn_npcs_for_world(world_name: &str, space_mgr: &mut SpaceManager) -> u
     count
 }
 
+/// Spawn NPCs from database definitions into the appropriate spaces.
+///
+/// Returns the number of NPCs successfully spawned.
+pub fn spawn_db_npcs(defs: &[DbSpawnDef], space_mgr: &mut SpaceManager) -> usize {
+    let mut count = 0;
+
+    for def in defs {
+        let npc_id = space_mgr.allocate_npc_id();
+        match space_mgr.spawn_npc(npc_id, &def.world_name, def.position, def.direction) {
+            Ok(space_id) => {
+                if let Some(entity) = space_mgr.get_entity_mut(npc_id) {
+                    entity.interaction_type = def.interaction.clone();
+                    entity.npc_name = Some(def.name.clone());
+                    entity.level = def.level;
+                    entity.entity_tag = def.tag.clone();
+                    entity.template_id = def.template_id;
+                    if let Some(loot_id) = def.loot_table_id {
+                        entity.properties.insert(
+                            "loot_table_id".to_string(),
+                            cimmeria_entity::base_entity::PropertyValue::Int32(loot_id),
+                        );
+                    }
+                    let npc_arch = npc_stats_for_level(def.level);
+                    entity.stats.apply_archetype(&npc_arch);
+                    entity.stats.scale_for_level(def.level, &npc_arch);
+                    entity.stats.clear_dirty();
+                }
+                tracing::debug!(
+                    npc_id, space_id, world = %def.world_name, name = %def.name,
+                    "Spawned DB NPC"
+                );
+                count += 1;
+            }
+            Err(e) => {
+                tracing::warn!(world = %def.world_name, name = %def.name, "Failed to spawn DB NPC: {e}");
+            }
+        }
+    }
+
+    if count > 0 {
+        tracing::info!(count, "Spawned NPCs from database");
+    }
+    count
+}
+
+/// Load NPC spawn definitions from the database.
+///
+/// Joins `resources.spawnlist` with `resources.entity_templates` and
+/// `resources.worlds` to build spawn definitions with resolved names,
+/// interaction types, and world coordinates.
+pub async fn load_spawn_defs_from_db(pool: &sqlx::PgPool) -> Result<Vec<DbSpawnDef>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT s.x, s.y, s.z, s.heading, s.tag, \
+                w.world AS world_name, \
+                t.template_id, t.loot_table_id, \
+                t.name AS display_name, t.level, t.interaction_type, \
+                t.interaction_set_id, t.trainer_ability_list_id, t.class \
+         FROM resources.spawnlist s \
+         JOIN resources.worlds w ON w.world_id = s.world_id \
+         JOIN resources.entity_templates t ON t.template_id = s.template_id \
+         ORDER BY w.world, t.name"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let defs: Vec<DbSpawnDef> = rows.into_iter().map(|r| {
+        let template_id: Option<i32> = r.get("template_id");
+        let loot_table_id: Option<i32> = r.get("loot_table_id");
+        let interaction_type_raw: i64 = r.get("interaction_type");
+        let interaction_set_id: Option<i32> = r.get("interaction_set_id");
+        let trainer_ability_list_id: Option<i32> = r.get("trainer_ability_list_id");
+        let class: String = r.get("class");
+        let heading: f32 = r.get("heading");
+
+        // Determine interaction from entity_templates fields
+        let interaction = if trainer_ability_list_id.is_some() {
+            // Trainer NPCs have a trainer_ability_list_id set
+            Some(NpcInteractionType::Trainer {
+                archetype_id: trainer_ability_list_id.unwrap_or(0),
+            })
+        } else if class == "SGWVendor" || interaction_type_raw & 0x02 != 0 {
+            Some(NpcInteractionType::Vendor)
+        } else if let Some(set_id) = interaction_set_id {
+            // Default interactive NPCs open a dialog
+            Some(NpcInteractionType::Dialog { dialog_id: set_id })
+        } else if interaction_type_raw == 0 && class == "SGWMob" {
+            None // Hostile mob, no interaction
+        } else {
+            None
+        };
+
+        let level: Option<i32> = r.get("level");
+        let name: Option<String> = r.get("display_name");
+
+        DbSpawnDef {
+            world_name: r.get("world_name"),
+            position: [r.get("x"), r.get("y"), r.get("z")],
+            direction: [0.0, heading, 0.0],
+            name: name.unwrap_or_else(|| "NPC".to_string()),
+            interaction,
+            level: level.unwrap_or(1) as u32,
+            tag: r.get("tag"),
+            template_id,
+            loot_table_id,
+        }
+    }).collect();
+
+    tracing::info!(count = defs.len(), "Loaded NPC spawn definitions from database");
+    Ok(defs)
+}
+
 /// Spawn all predefined NPCs into the space manager.
 ///
 /// Returns the number of NPCs successfully spawned.
@@ -118,11 +287,17 @@ pub fn spawn_initial_npcs(space_mgr: &mut SpaceManager) -> usize {
         let npc_id = space_mgr.allocate_npc_id();
         match space_mgr.spawn_npc(npc_id, def.world_name, def.position, def.direction) {
             Ok(space_id) => {
-                // Set interaction data on the entity
+                // Set interaction data and stats on the entity
                 if let Some(entity) = space_mgr.get_entity_mut(npc_id) {
                     entity.interaction_type = def.interaction.clone();
                     entity.npc_name = Some(def.name.to_string());
                     entity.level = def.level;
+                    entity.entity_tag = def.tag.map(|t| t.to_string());
+                    // Initialize combat stats based on level
+                    let npc_arch = npc_stats_for_level(def.level);
+                    entity.stats.apply_archetype(&npc_arch);
+                    entity.stats.scale_for_level(def.level, &npc_arch);
+                    entity.stats.clear_dirty();
                 }
                 tracing::info!(
                     npc_id, space_id, world = def.world_name, name = def.name,

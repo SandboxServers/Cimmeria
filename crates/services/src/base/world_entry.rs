@@ -125,6 +125,7 @@ pub(crate) async fn handle_play_character(
             c.world_name = Some(entry_info.world_name.clone());
             c.player_xp = Some(player_load_data.exp as u64);
             c.player_training_points = Some(player_load_data.training_points as u32);
+            c.player_id = Some(player_load_data.player_id);
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
             c.pending_client_ready = None;
@@ -606,10 +607,13 @@ pub(crate) async fn handle_cell_message(
             ).await;
         }
         CellToBaseMsg::GrantXP { entity_id, xp_amount } => {
-            handle_grant_xp(entity_id, xp_amount, socket, connected, entity_to_addr).await;
+            handle_grant_xp(entity_id, xp_amount, socket, connected, entity_to_addr, db_pool).await;
         }
         CellToBaseMsg::GrantItem { entity_id: _, player_id, item_id, container_id, count } => {
             handle_grant_item(player_id, item_id, container_id, count, db_pool).await;
+        }
+        CellToBaseMsg::SavePlayerState { player_id, world_name, position } => {
+            handle_save_player_state(player_id, &world_name, position, db_pool).await;
         }
     }
 }
@@ -638,6 +642,7 @@ async fn handle_grant_xp(
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
 ) {
     // Look up the player's session state via entity_id → addr → ConnectedClientState
     let addr = {
@@ -761,6 +766,38 @@ async fn handle_grant_xp(
             },
         ).await;
     }
+
+    // ── Persist XP/level/TP to database ──
+    let pid = {
+        let addr = entity_to_addr.lock().unwrap();
+        let a = match addr.get(&entity_id) {
+            Some(a) => *a,
+            None => return,
+        };
+        let clients = connected.lock().unwrap();
+        clients.get(&a).and_then(|c| c.player_id)
+    };
+
+    if let (Some(player_id), Some(pool)) = (pid, db_pool) {
+        let exp_i32 = total_xp as i32;
+        let level_i32 = new_level as i32;
+        let tp_i32 = training_points as i32;
+        if let Err(e) = sqlx::query(
+            "UPDATE sgw_player SET exp = $1, level = $2, training_points = $3 \
+             WHERE player_id = $4"
+        )
+        .bind(exp_i32)
+        .bind(level_i32)
+        .bind(tp_i32)
+        .bind(player_id)
+        .execute(pool.as_ref())
+        .await
+        {
+            tracing::warn!(player_id, entity_id, "Failed to persist XP/level: {e}");
+        } else {
+            tracing::debug!(player_id, entity_id, total_xp, new_level, "Persisted XP/level to database");
+        }
+    }
 }
 
 /// Persist a mission state change to the database.
@@ -854,6 +891,50 @@ async fn handle_grant_item(
     match result {
         Ok(_) => tracing::debug!(player_id, item_id, container_id, slot = next_slot, "Item persisted to inventory"),
         Err(e) => tracing::error!(player_id, item_id, "Failed to persist item: {e}"),
+    }
+}
+
+/// Persist player position and world to the database on disconnect/gate travel.
+async fn handle_save_player_state(
+    player_id: i32,
+    world_name: &str,
+    position: [f32; 3],
+    db_pool: &Option<Arc<PgPool>>,
+) {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::debug!(player_id, "SavePlayerState: no DB pool");
+            return;
+        }
+    };
+
+    let result = sqlx::query(
+        "UPDATE sgw_player SET pos_x = $1, pos_y = $2, pos_z = $3, world_location = $4 \
+         WHERE player_id = $5"
+    )
+    .bind(position[0])
+    .bind(position[1])
+    .bind(position[2])
+    .bind(world_name)
+    .bind(player_id)
+    .execute(pool.as_ref())
+    .await;
+
+    match result {
+        Ok(r) if r.rows_affected() > 0 => {
+            tracing::debug!(
+                player_id, %world_name,
+                pos = ?position,
+                "Player position saved to database"
+            );
+        }
+        Ok(_) => {
+            tracing::warn!(player_id, "SavePlayerState: no rows updated (player not found?)");
+        }
+        Err(e) => {
+            tracing::error!(player_id, "Failed to save player position: {e}");
+        }
     }
 }
 
@@ -1050,6 +1131,54 @@ pub(crate) async fn handle_mail_request(
                         crate::mercury::method_idx::ON_MAIL_HEADER_REMOVE, &args)
                 },
             ).await;
+        }
+
+        MailOp::Send { sender_name, recipients, subject, body, cash, is_cod, item_id: _, item_quantity: _ } => {
+            tracing::info!(entity_id, %sender_name, ?recipients, %subject, cash, "Mail: sending");
+
+            // Resolve each recipient name to a player_id
+            for recipient in &recipients {
+                let recipient_row: Option<(i32,)> = sqlx::query_as(
+                    "SELECT player_id FROM sgw_player WHERE player_name = $1",
+                )
+                .bind(recipient)
+                .fetch_optional(pool.as_ref())
+                .await
+                .unwrap_or(None);
+
+                if let Some((recipient_id,)) = recipient_row {
+                    // Insert the mail into the database
+                    let result = sqlx::query(
+                        "INSERT INTO sgw_gate_mail \
+                         (character_id, sender_id, from_text, subject_text, body_text, \
+                          cash, flags, sent_time) \
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, extract(epoch from now())::real)"
+                    )
+                    .bind(recipient_id)
+                    .bind(player_id)
+                    .bind(&sender_name)
+                    .bind(&subject)
+                    .bind(&body)
+                    .bind(cash)
+                    .bind(if is_cod { 2i32 } else { 0i32 }) // flags: bit 1 = COD
+                    .execute(pool.as_ref())
+                    .await;
+
+                    match result {
+                        Ok(_) => tracing::debug!(
+                            sender = %sender_name, recipient = %recipient,
+                            recipient_id, "Mail delivered to database"
+                        ),
+                        Err(e) => tracing::warn!(
+                            sender = %sender_name, recipient = %recipient,
+                            "Failed to deliver mail: {e}"
+                        ),
+                    }
+                } else {
+                    tracing::debug!(recipient = %recipient, "Mail recipient not found");
+                    // Could send feedback to sender: "Player not found"
+                }
+            }
         }
     }
 }

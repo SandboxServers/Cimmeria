@@ -83,11 +83,24 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             };
 
             if let Some(player_eid) = player_eid {
+                // Compute speaker_flags from session state
+                // Bit 0 = AFK, Bit 1 = DND, Bit 2 = GM (access_level >= 2)
+                let speaker_flags = {
+                    let clients = connected.lock().unwrap();
+                    clients.get(&addr).map_or(0u8, |c| {
+                        let mut flags = 0u8;
+                        if c.is_afk { flags |= 0x01; }
+                        if c.is_dnd { flags |= 0x02; }
+                        if c.access_level >= 2 { flags |= 0x04; }
+                        flags
+                    })
+                };
+
                 if let Some(ref tx) = cell_tx {
                     let _ = tx.send(BaseToCellMsg::ChatMessage {
                         entity_id: player_eid,
                         speaker_name: speaker.to_string(),
-                        speaker_flags: 0, // TODO: compute from AFK/DND/GM status
+                        speaker_flags,
                         channel,
                         text,
                     }).await;
@@ -114,8 +127,24 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             tracing::debug!(%addr, channel_id, "chatLeave -- acknowledged");
         }
 
-        sgw_player_base::CHAT_SET_AFK | sgw_player_base::CHAT_SET_DND => {
-            tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Chat status update -- acknowledged");
+        sgw_player_base::CHAT_SET_AFK => {
+            // setAFK(UINT8 enabled)
+            let enabled = payload.first().copied().unwrap_or(0) != 0;
+            tracing::debug!(%addr, enabled, "setAFK");
+            let mut clients = connected.lock().unwrap();
+            if let Some(c) = clients.get_mut(&addr) {
+                c.is_afk = enabled;
+            }
+        }
+
+        sgw_player_base::CHAT_SET_DND => {
+            // setDND(UINT8 enabled)
+            let enabled = payload.first().copied().unwrap_or(0) != 0;
+            tracing::debug!(%addr, enabled, "setDND");
+            let mut clients = connected.lock().unwrap();
+            if let Some(c) = clients.get_mut(&addr) {
+                c.is_dnd = enabled;
+            }
         }
 
         _ => {

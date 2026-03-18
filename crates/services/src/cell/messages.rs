@@ -15,6 +15,17 @@ pub enum MailOp {
     Delete { mail_id: i32 },
     /// Archive a mail message.
     Archive { mail_id: i32 },
+    /// Send a new mail message.
+    Send {
+        sender_name: String,
+        recipients: Vec<String>,
+        subject: String,
+        body: String,
+        cash: i32,
+        is_cod: bool,
+        item_id: i32,
+        item_quantity: i32,
+    },
 }
 
 /// Messages sent from BaseApp to CellApp.
@@ -196,5 +207,15 @@ pub enum CellToBaseMsg {
         item_id: i32,
         container_id: i32,
         count: i32,
+    },
+
+    /// Save player state to database on disconnect/gate travel.
+    ///
+    /// Sent by CellService just before destroying a player entity.
+    /// BaseApp persists the final position and world to `sgw_player`.
+    SavePlayerState {
+        player_id: i32,
+        world_name: String,
+        position: [f32; 3],
     },
 }

@@ -51,6 +51,9 @@ pub struct CellEntity {
     /// Facing direction (unit vector or yaw/pitch/roll encoded).
     pub direction: Vector3,
 
+    /// Current velocity vector (from last client movement update).
+    pub velocity: Vector3,
+
     /// Whether the entity is currently on the ground (affects movement mode).
     pub is_on_ground: bool,
 
@@ -100,6 +103,28 @@ pub struct CellEntity {
 
     /// Entity level (for XP calculations on kill). Default 1.
     pub level: u32,
+
+    /// Current combat target entity ID. Set via `setTargetID` cell method.
+    pub target_id: Option<i32>,
+
+    /// Movement type (0 = walk, 1 = run, etc.). Set via `setMovementType`.
+    pub movement_type: u8,
+
+    /// Whether the entity is crouched (affects combat QR). Set via `setCrouched`.
+    pub is_crouched: bool,
+
+    /// Whether the weapon is holstered. Set via `requestHolsterWeapon`.
+    pub is_holstered: bool,
+
+    /// Per-entity counters for content engine tracking (e.g., kill counts, interact counts).
+    pub counters: HashMap<String, i32>,
+
+    /// Entity tag for content engine lookups (e.g., "FrostBody", "Guard_01").
+    pub entity_tag: Option<String>,
+
+    /// Database template_id from `resources.entity_templates`. Used for vendor
+    /// stock lookup and other template-driven behavior.
+    pub template_id: Option<i32>,
 }
 
 impl CellEntity {
@@ -110,6 +135,7 @@ impl CellEntity {
             space_id,
             position,
             direction: Vector3::zero(),
+            velocity: Vector3::zero(),
             is_on_ground: true,
             properties: HashMap::new(),
             witnesses: HashSet::new(),
@@ -124,6 +150,13 @@ impl CellEntity {
             player_id: None,
             archetype_id: None,
             level: 1,
+            target_id: None,
+            movement_type: 0,
+            is_crouched: false,
+            is_holstered: false,
+            counters: HashMap::new(),
+            entity_tag: None,
+            template_id: None,
         }
     }
 
