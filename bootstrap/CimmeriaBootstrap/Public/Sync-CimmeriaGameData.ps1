@@ -31,17 +31,33 @@ function Sync-CimmeriaGameData {
 
     # Find client installation (reuses same search logic as Update-CimmeriaClient)
     if (-not $ClientPath) {
-        $scriptDrive = (Split-Path $PSScriptRoot -Qualifier)
-        $searchPaths = @(
-            "${scriptDrive}\Stargate Worlds-QA",
-            "${env:ProgramFiles(x86)}\FireSky\Stargate Worlds-QA",
-            "${env:ProgramFiles}\FireSky\Stargate Worlds-QA",
-            "${env:ProgramFiles(x86)}\Cheyenne Mountain Entertainment\Stargate Worlds",
-            "${env:ProgramFiles}\Cheyenne Mountain Entertainment\Stargate Worlds"
-        )
+        $isWin = $IsWindows -or (-not (Test-Path variable:IsWindows))
+        $searchPaths = @()
+
+        if ($isWin) {
+            $scriptDrive = (Split-Path $PSScriptRoot -Qualifier)
+            $searchPaths += "${scriptDrive}\Stargate Worlds-QA"
+            $searchPaths += "${env:ProgramFiles(x86)}\FireSky\Stargate Worlds-QA"
+            $searchPaths += "${env:ProgramFiles}\FireSky\Stargate Worlds-QA"
+            $searchPaths += "${env:ProgramFiles(x86)}\Cheyenne Mountain Entertainment\Stargate Worlds"
+            $searchPaths += "${env:ProgramFiles}\Cheyenne Mountain Entertainment\Stargate Worlds"
+        }
+
+        if ($script:IsWSL) {
+            # Search Windows filesystem via WSL mount points
+            $searchPaths += "/mnt/c/Stargate Worlds-QA"
+            $searchPaths += "/mnt/c/Program Files (x86)/FireSky/Stargate Worlds-QA"
+            $searchPaths += "/mnt/c/Program Files/FireSky/Stargate Worlds-QA"
+            $searchPaths += "/mnt/c/Program Files (x86)/Cheyenne Mountain Entertainment/Stargate Worlds"
+            $searchPaths += "/mnt/c/Program Files/Cheyenne Mountain Entertainment/Stargate Worlds"
+            # Also check D: drive
+            if (Test-Path "/mnt/d") {
+                $searchPaths += "/mnt/d/Stargate Worlds-QA"
+            }
+        }
 
         foreach ($search in $searchPaths) {
-            $candidate = Join-Path $search "Working\SGWGame\Cache.en-US"
+            $candidate = Join-Path $search "Working/SGWGame/Cache.en-US"
             if (Test-Path $candidate) {
                 $ClientPath = $search
                 break
@@ -50,12 +66,12 @@ function Sync-CimmeriaGameData {
 
         if (-not $ClientPath) {
             Write-Status "SGW client not found -- skipping game data sync." "Yellow"
-            Write-Host "  PAK files must be placed manually in data\cache\." -ForegroundColor Gray
+            Write-Host "  PAK files must be placed manually in data/cache/." -ForegroundColor Gray
             return
         }
     }
 
-    $sourceDir = Join-Path $ClientPath "Working\SGWGame\Cache.en-US"
+    $sourceDir = Join-Path $ClientPath "Working/SGWGame/Cache.en-US"
     if (-not (Test-Path $sourceDir)) {
         Write-Status "Client cache directory not found: $sourceDir" "Yellow"
         return
@@ -63,7 +79,7 @@ function Sync-CimmeriaGameData {
 
     # Resolve server data/cache directory (relative to the repo root, two levels up from bootstrap module)
     $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    $destDir = Join-Path $repoRoot "data\cache"
+    $destDir = Join-Path $repoRoot "data/cache"
     New-Item -ItemType Directory -Path $destDir -Force | Out-Null
 
     $sourcePaks = Get-ChildItem -Path $sourceDir -Filter "*.pak"

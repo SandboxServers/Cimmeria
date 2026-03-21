@@ -60,14 +60,35 @@ function Initialize-CimmeriaDatabase {
     }
 
     # ── Local mode ────────────────────────────────────────────────────────────
+    # Determine whether to manage a private PG instance or use an external one.
+    # On Windows: always managed (PG binaries are downloaded by Install-CimmeriaDependencies).
+    # On Linux/macOS: managed if server/pgdata/ exists or no external PG is reachable;
+    #                 uses external PG (systemd, brew services) if already running.
+    $pgDataDir = Join-Path $paths.ServerDir "pgdata"
+    $managePg = $false
+
     if ($isWin) {
-        # Windows: managed PostgreSQL instance
+        $managePg = $true
+    } elseif (Test-Path $pgDataDir) {
+        # We have an existing managed pgdata directory — keep using it
+        $managePg = $true
+    } elseif (-not (Wait-ForPort -Port $Port -TimeoutSeconds 2)) {
+        # No PG running externally — create a managed instance
+        $managePg = $true
+    }
+    # else: external PG is running and no managed pgdata — use it
+
+    if ($managePg) {
+        # ── Managed PostgreSQL instance ───────────────────────────────────
         $pgBin = Find-PostgreSQL
         if (-not $pgBin) {
-            throw "PostgreSQL server binaries not found. Run Install-CimmeriaDependencies first."
+            if ($isWin) {
+                throw "PostgreSQL server binaries not found. Run Install-CimmeriaDependencies first."
+            } else {
+                throw "PostgreSQL is not running on port $Port and pg_ctl was not found.`n  Install: sudo apt install postgresql-17`n  Or use:  pwsh setup.ps1 -UseDocker"
+            }
         }
 
-        $pgDataDir = Join-Path $paths.ServerDir "pgdata"
         $pgLogDir = Join-Path $paths.ServerDir "logs"
         $pgLogFile = Join-Path $pgLogDir "postgresql.log"
         New-Item -ItemType Directory -Path $pgLogDir -Force | Out-Null
@@ -137,8 +158,14 @@ function Initialize-CimmeriaDatabase {
         } else {
             if ($PSCmdlet.ShouldProcess("PostgreSQL on port $Port", "Start database server")) {
                 Write-Status "Starting PostgreSQL on port $Port..." "White"
-                $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
-                Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
+                if ($isWin) {
+                    $pgCtlArgs = "start -D `"$pgDataDir`" -l `"$pgLogFile`" -o `"-p $Port`""
+                    Start-Process -FilePath $pgCtl -ArgumentList $pgCtlArgs -WindowStyle Hidden
+                } else {
+                    & $pgCtl start -D $pgDataDir -l $pgLogFile -o "-p $Port" 2>&1 | ForEach-Object {
+                        Write-Status "  $_" "DarkGray"
+                    }
+                }
                 if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 15)) {
                     Write-Status "PostgreSQL failed to start. Check $pgLogFile" "Red"
                     if (Test-Path $pgLogFile) {
@@ -151,11 +178,14 @@ function Initialize-CimmeriaDatabase {
         }
 
         $psqlExe = Join-Path $pgBin "psql$exeSuffix"
-    } else {
-        # Linux/macOS: verify PG is reachable, use psql from PATH
-        if (-not (Wait-ForPort -Port $Port -TimeoutSeconds 2)) {
-            throw "PostgreSQL is not reachable on port $Port. Start it first."
+        if (-not (Test-Path $psqlExe)) {
+            # On some Linux installs, psql may be in a different location than pg_ctl
+            $psqlCmd = Get-Command psql -ErrorAction SilentlyContinue
+            if ($psqlCmd) { $psqlExe = $psqlCmd.Source }
+            else { throw "psql not found in PATH or PostgreSQL bin directory." }
         }
+    } else {
+        # ── External PostgreSQL (systemd, brew services, etc.) ────────────
         Write-Status "PostgreSQL reachable on port $Port." "DarkGray"
 
         $psqlCmd = Get-Command psql -ErrorAction SilentlyContinue
@@ -196,11 +226,13 @@ function Initialize-DockerPostgreSQL {
 
     Write-Status "Docker is available." "Green"
 
-    # Reset: remove existing container
+    # Reset: remove existing container and volume
+    $volumeName = "cimmeria-pgdata"
     if ($ResetDatabase) {
-        Write-Status "Removing existing container '$containerName'..." "Yellow"
+        Write-Status "Removing existing container and volume..." "Yellow"
         & docker rm -f $containerName 2>&1 | Out-Null
-        Write-Status "Container removed." "Yellow"
+        & docker volume rm $volumeName 2>&1 | Out-Null
+        Write-Status "Container and volume removed." "Yellow"
     }
 
     # Check if container exists and is running
@@ -217,10 +249,11 @@ function Initialize-DockerPostgreSQL {
             Write-Status "Container started." "Green"
         }
     } else {
-        # Create and start new container
+        # Create and start new container with a named volume for data persistence
         Write-Status "Creating PostgreSQL container '$containerName' on port $Port..." "White"
         & docker run -d `
             --name $containerName `
+            -v "${volumeName}:/var/lib/postgresql/data" `
             -e POSTGRES_USER=postgres `
             -e POSTGRES_PASSWORD=postgres `
             -e POSTGRES_HOST_AUTH_METHOD=trust `
@@ -273,6 +306,77 @@ function Find-PsqlExecutable {
     }
 
     throw "psql not found in PATH."
+}
+
+# ─── SQL Include Resolver ────────────────────────────────────────────────────
+
+function Resolve-SqlIncludes {
+    <#
+    .SYNOPSIS
+        Resolves psql \ir (include-relative) directives into a single concatenated SQL file.
+        This avoids per-file round-trips when loading through Docker or remote connections.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$SqlFile
+    )
+
+    $baseDir = Split-Path $SqlFile -Parent
+    $outputFile = Join-Path ([System.IO.Path]::GetTempPath()) "cimmeria-database-resolved.sql"
+    $writer = [System.IO.StreamWriter]::new($outputFile, $false, [System.Text.Encoding]::UTF8)
+
+    try {
+        $writer.WriteLine("-- Auto-resolved from: $SqlFile")
+        $writer.WriteLine("-- Generated at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
+        $writer.WriteLine("")
+        $writer.WriteLine("BEGIN;")
+        $writer.WriteLine("")
+
+        Expand-SqlFile $SqlFile $baseDir $writer
+
+        $writer.WriteLine("")
+        $writer.WriteLine("COMMIT;")
+    } finally {
+        $writer.Close()
+    }
+
+    return $outputFile
+}
+
+function Expand-SqlFile {
+    <#
+    .SYNOPSIS
+        Recursively expands a SQL file, inlining all \ir and \i directives.
+    #>
+    param(
+        [string]$FilePath,
+        [string]$BaseDir,
+        [System.IO.StreamWriter]$Writer
+    )
+
+    foreach ($line in [System.IO.File]::ReadLines($FilePath)) {
+        if ($line -match '^\s*\\ir\s+(.+)$') {
+            # \ir = include relative to the current file's directory
+            $includeDir = Split-Path $FilePath -Parent
+            $includePath = Join-Path $includeDir $Matches[1].Trim()
+            if (Test-Path $includePath) {
+                $Writer.WriteLine("-- \\ir $($Matches[1].Trim())")
+                Expand-SqlFile $includePath $BaseDir $Writer
+            } else {
+                $Writer.WriteLine("-- WARNING: include not found: $includePath")
+            }
+        } elseif ($line -match '^\s*\\i\s+(.+)$') {
+            # \i = include relative to the base directory
+            $includePath = Join-Path $BaseDir $Matches[1].Trim()
+            if (Test-Path $includePath) {
+                $Writer.WriteLine("-- \\i $($Matches[1].Trim())")
+                Expand-SqlFile $includePath $BaseDir $Writer
+            } else {
+                $Writer.WriteLine("-- WARNING: include not found: $includePath")
+            }
+        } else {
+            $Writer.WriteLine($line)
+        }
+    }
 }
 
 # ─── Schema Loading (shared by local and Docker modes) ──────────────────────
@@ -383,7 +487,8 @@ function Invoke-SchemaLoad {
     } elseif ($schemaExists -and -not $seedDataExists) {
         Write-Status "Schema exists but seed data is incomplete." "Yellow"
         Write-Status "  Attempting to reload database.sql (may show constraint errors for existing objects)..." "Yellow"
-        & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -f $databaseSql 2>&1 | ForEach-Object {
+        $resolvedSql = Resolve-SqlIncludes $databaseSql
+        & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -f $resolvedSql 2>&1 | ForEach-Object {
             if ($_ -match 'ERROR|FATAL') {
                 # Only show errors that aren't "already exists" — those are expected
                 if ($_ -notmatch 'already exists|duplicate key') {
@@ -391,18 +496,25 @@ function Invoke-SchemaLoad {
                 }
             }
         }
+        Remove-Item $resolvedSql -ErrorAction SilentlyContinue
         Write-Status "Schema reload attempted." "Yellow"
     } else {
-        Write-Status "Loading database.sql (resources + public schemas)..." "White"
-        & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -v ON_ERROR_STOP=1 -f $databaseSql 2>&1 | ForEach-Object {
+        Write-Status "Loading database schema and seed data..." "White"
+        $resolvedSql = Resolve-SqlIncludes $databaseSql
+        $resolvedSize = Format-FileSize (Get-Item $resolvedSql).Length
+        $includeCount = (Select-String -Path $databaseSql -Pattern '\ir' -SimpleMatch).Count
+        Write-Status "  Resolved $resolvedSize from $includeCount includes into single file" "DarkGray"
+        & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -v ON_ERROR_STOP=1 -f $resolvedSql 2>&1 | ForEach-Object {
             if ($_ -match 'ERROR|FATAL') {
                 Write-Status "  $_" "Red"
             }
         }
-        if ($LASTEXITCODE -ne 0) {
-            throw "database.sql failed (exit code $LASTEXITCODE)."
+        $loadResult = $LASTEXITCODE
+        Remove-Item $resolvedSql -ErrorAction SilentlyContinue
+        if ($loadResult -ne 0) {
+            throw "database.sql failed (exit code $loadResult)."
         }
-        Write-Status "database.sql loaded." "Green"
+        Write-Status "Database loaded." "Green"
     }
 
     # ── Verify key tables ─────────────────────────────────────────────────

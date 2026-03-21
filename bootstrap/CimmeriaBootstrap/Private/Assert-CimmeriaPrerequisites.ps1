@@ -31,9 +31,11 @@ function Assert-CimmeriaPrerequisites {
 
     # --- Rust toolchain ---
     # Ensure default Rust install location is on PATH
-    $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+    $cargoHome = if ($isWin) { $env:USERPROFILE } else { $env:HOME }
+    $cargoBin = Join-Path $cargoHome ".cargo/bin"
     if ((Test-Path $cargoBin) -and ($env:PATH -notlike "*$cargoBin*")) {
-        $env:PATH = "$cargoBin;$env:PATH"
+        $pathSep = if ($isWin) { ";" } else { ":" }
+        $env:PATH = "${cargoBin}${pathSep}$env:PATH"
         Write-Status "Added $cargoBin to PATH for this session" "Cyan"
     }
 

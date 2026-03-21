@@ -67,7 +67,8 @@ function Invoke-CimmeriaBootstrap {
         [string]$Configuration = "Debug",
         [switch]$ForceDatabase,
         [switch]$ResetDatabase,
-        [switch]$UseDocker
+        [switch]$UseDocker,
+        [string]$LogLevel
     )
 
     $ErrorActionPreference = "Stop"
@@ -90,6 +91,16 @@ function Invoke-CimmeriaBootstrap {
     }
 
     try {
+        # Kill any previously running server instance
+        $staleProcs = Get-Process -Name "cimmeria-server" -ErrorAction SilentlyContinue
+        if ($staleProcs) {
+            foreach ($proc in $staleProcs) {
+                Write-Host "Stopping previous cimmeria-server (PID $($proc.Id))..." -ForegroundColor Yellow
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Milliseconds 500
+        }
+
         Write-Host ""
         Write-Host "=============================================" -ForegroundColor Yellow
         Write-Host " Cimmeria Bootstrap Pipeline (Rust)" -ForegroundColor Yellow
@@ -117,7 +128,7 @@ function Invoke-CimmeriaBootstrap {
         Write-Host ""
         Write-Host "--- Step $step/$totalSteps`: Dependencies ---" -ForegroundColor Cyan
         try {
-            Install-CimmeriaDependencies -SkipDownload:$SkipDownload
+            Install-CimmeriaDependencies -SkipDownload:$SkipDownload -UseDocker:$UseDocker
         } catch {
             Write-Host ""
             Write-Host "FAILED at Step $step`: Install-CimmeriaDependencies" -ForegroundColor Red
@@ -205,7 +216,7 @@ function Invoke-CimmeriaBootstrap {
             Write-Host ""
             Write-Host "--- Step $step/$totalSteps`: Launch ---" -ForegroundColor Cyan
             try {
-                Start-CimmeriaServer -Configuration $Configuration
+                Start-CimmeriaServer -Configuration $Configuration -LogLevel $LogLevel
             } catch {
                 Write-Host ""
                 Write-Host "FAILED at Step $step`: Start-CimmeriaServer" -ForegroundColor Red

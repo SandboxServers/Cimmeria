@@ -198,7 +198,8 @@ param(
     [ValidateSet("Debug","Release")][string]$Configuration = "Debug",
     [switch]$ForceDatabase,
     [switch]$ResetDatabase,
-    [switch]$UseDocker
+    [switch]$UseDocker,
+    [string]$LogLevel
 )
 
 Import-Module (Join-Path $PSScriptRoot "bootstrap/CimmeriaBootstrap") -Force

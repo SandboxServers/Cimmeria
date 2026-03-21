@@ -34,7 +34,26 @@ function Find-PostgreSQL {
             return $pgBin
         }
 
-        Write-Status "pg_ctl not found in PATH." "Yellow"
+        # Search common Debian/Ubuntu locations (pg_ctl is often not in PATH)
+        foreach ($ver in @(17, 16, 15)) {
+            $candidate = "/usr/lib/postgresql/$ver/bin"
+            if (Test-Path (Join-Path $candidate "pg_ctl")) {
+                Write-Status "Found PostgreSQL: $candidate" "Green"
+                return $candidate
+            }
+        }
+
+        # Try pg_config to discover the bin directory
+        $pgConfig = Get-Command pg_config -ErrorAction SilentlyContinue
+        if ($pgConfig) {
+            $pgBinDir = (& pg_config --bindir 2>&1).Trim()
+            if ($pgBinDir -and (Test-Path (Join-Path $pgBinDir "pg_ctl"))) {
+                Write-Status "Found PostgreSQL: $pgBinDir (via pg_config)" "Green"
+                return $pgBinDir
+            }
+        }
+
+        Write-Status "pg_ctl not found in PATH or common locations." "Yellow"
         Write-Status "  Install PostgreSQL 17+ via your system package manager." "Yellow"
         return $null
     }

@@ -66,6 +66,31 @@ cp target/release/cimmeria-server.exe .
 ```
 After building, always copy the exe to the project root.
 
+#### Rust Build Memory Management (WSL)
+
+The Rust linker consumes ~47 GB RAM when linking the full `cimmeria-server` binary. On WSL with limited memory this causes OOM crashes. Follow these rules:
+
+1. **Use `cargo check -p cimmeria-services`** for iterative development — it skips linking (1.5s, <2 GB RAM). Only use full `cargo build` or `cargo test` when you specifically need a binary or test results.
+2. **Never run multiple cargo/rustc processes concurrently.** No background builds, no parallel `cargo check` + `cargo test`. One at a time. Kill any stale `rustc` processes before starting a new build: `pkill -f rustc`
+3. **Target specific crates** — use `-p cimmeria-services` or `-p cimmeria-game` instead of `--workspace`. Only build the full workspace for final validation.
+4. **Check for stale processes** before building: `ps aux | grep -E "cargo|rustc" | grep -v grep`
+5. `CARGO_BUILD_JOBS=2` is set in `.bashrc` to limit parallel compile jobs.
+
+**Quick reference:**
+```bash
+# Iterative dev (fast, low memory):
+cargo check -p cimmeria-services
+
+# Run tests for one crate:
+cargo test -p cimmeria-services
+
+# Full workspace validation (rare, high memory):
+cargo check --workspace --exclude cimmeria-app --exclude sgw-launcher --exclude cimmeria-content-editor --exclude cimmeria-scene-editor
+
+# Kill stale builds:
+pkill -f "cargo|rustc"
+```
+
 #### C++ (legacy reference)
 
 Solution: `W-NG.sln` (Visual Studio 2026, MSVC v145)

@@ -33,6 +33,12 @@ default-members = [
     "crates/supervisor",
 ]
 
+# Optimize dependencies even in dev builds — reduces artifact size and link time
+# significantly (from ~47 GB linker RSS to ~8 GB). Our own crates stay at opt-level 0
+# for fast incremental recompilation.
+[profile.dev.package."*"]
+opt-level = 1
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
