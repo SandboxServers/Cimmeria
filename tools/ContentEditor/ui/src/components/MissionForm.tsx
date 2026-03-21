@@ -125,7 +125,7 @@ export default function MissionForm({ data, onChange }: MissionFormProps) {
             value={data.mission_defn ?? ''}
             onChange={(e) => set('mission_defn', e.target.value || null)}
             rows={2}
-            className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
+            className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface focus:border-primary focus:outline-none"
           />
         </Field>
         <Field label="History Text">
@@ -133,7 +133,7 @@ export default function MissionForm({ data, onChange }: MissionFormProps) {
             value={data.history_text ?? ''}
             onChange={(e) => set('history_text', e.target.value || null)}
             rows={2}
-            className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
+            className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface focus:border-primary focus:outline-none"
           />
         </Field>
         <Field label="Level">
@@ -202,20 +202,20 @@ export default function MissionForm({ data, onChange }: MissionFormProps) {
       </Section>
 
       {/* Steps */}
-      <div className="rounded border border-border/50">
+      <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
             Steps ({data.steps.length})
           </span>
           <button
             type="button"
             onClick={addStep}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
           >
             <Plus className="h-3 w-3" /> Add Step
           </button>
         </div>
-        <div className="flex flex-col gap-1 border-t border-border/30 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-1 border-t border-[rgba(77,70,53,0.15)]/30 px-1 pb-1 pt-1">
           {data.steps.map((step, si) => (
             <StepEditor
               key={step.step_id}
@@ -226,7 +226,7 @@ export default function MissionForm({ data, onChange }: MissionFormProps) {
             />
           ))}
           {data.steps.length === 0 && (
-            <div className="px-2 py-2 text-center text-[11px] text-muted-foreground">
+            <div className="px-2 py-2 text-center text-[11px] text-on-surface-variant">
               No steps defined
             </div>
           )}
@@ -234,20 +234,20 @@ export default function MissionForm({ data, onChange }: MissionFormProps) {
       </div>
 
       {/* Reward Groups */}
-      <div className="rounded border border-border/50">
+      <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
             Reward Groups ({data.reward_groups.length})
           </span>
           <button
             type="button"
             onClick={addRewardGroup}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
           >
             <Plus className="h-3 w-3" /> Add Group
           </button>
         </div>
-        <div className="flex flex-col gap-1 border-t border-border/30 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-1 border-t border-[rgba(77,70,53,0.15)]/30 px-1 pb-1 pt-1">
           {data.reward_groups.map((group, gi) => (
             <RewardGroupEditor
               key={group.group_id}
@@ -257,7 +257,7 @@ export default function MissionForm({ data, onChange }: MissionFormProps) {
             />
           ))}
           {data.reward_groups.length === 0 && (
-            <div className="px-2 py-2 text-center text-[11px] text-muted-foreground">
+            <div className="px-2 py-2 text-center text-[11px] text-on-surface-variant">
               No reward groups defined
             </div>
           )}
@@ -321,24 +321,24 @@ function StepEditor({
   };
 
   return (
-    <div className="rounded border border-border/40 bg-card/50">
+    <div className="rounded border border-[rgba(77,70,53,0.15)]/40 bg-surface-low/50">
       <div className="flex items-center gap-1 px-1.5 py-1">
-        <button type="button" onClick={() => setExpanded((e) => !e)} className="text-muted-foreground">
+        <button type="button" onClick={() => setExpanded((e) => !e)} className="text-on-surface-variant">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
-        <span className="flex-1 text-[11px] font-medium text-foreground">
+        <span className="flex-1 text-[11px] font-medium text-on-surface">
           Step {index} (ID: {step.step_id})
         </span>
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-destructive hover:bg-destructive/10"
+          className="rounded p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
       {expanded && (
-        <div className="border-t border-border/30 px-2 pb-2 pt-1">
+        <div className="border-t border-[rgba(77,70,53,0.15)]/30 px-2 pb-2 pt-1">
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
             <Field label="Index">
               <NumberInput value={step.index} onChange={(v) => setNum('index', v)} />
@@ -361,15 +361,15 @@ function StepEditor({
           </div>
 
           {/* Objectives */}
-          <div className="mt-2 rounded border border-border/30">
+          <div className="mt-2 border border-[rgba(77,70,53,0.15)]/30">
             <div className="flex items-center justify-between px-2 py-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                 Objectives ({step.objectives.length})
               </span>
               <button
                 type="button"
                 onClick={addObjective}
-                className="flex items-center gap-0.5 text-[10px] text-primary hover:bg-primary/10 rounded px-1 py-0.5"
+                className="flex items-center gap-0.5 text-[10px] text-primary hover:bg-primary/10 px-1 py-0.5"
               >
                 <Plus className="h-2.5 w-2.5" /> Add
               </button>
@@ -438,24 +438,24 @@ function ObjectiveEditor({
   };
 
   return (
-    <div className="mx-1 mb-1 rounded border border-border/30 bg-background/30">
+    <div className="mx-1 mb-1 border border-[rgba(77,70,53,0.15)]/30 bg-surface/30">
       <div className="flex items-center gap-1 px-1.5 py-0.5">
-        <button type="button" onClick={() => setExpanded((e) => !e)} className="text-muted-foreground">
+        <button type="button" onClick={() => setExpanded((e) => !e)} className="text-on-surface-variant">
           {expanded ? <ChevronDown className="h-2.5 w-2.5" /> : <ChevronRight className="h-2.5 w-2.5" />}
         </button>
-        <span className="flex-1 text-[10px] text-foreground">
+        <span className="flex-1 text-[10px] text-on-surface">
           Objective {objective.objective_id}
         </span>
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-destructive hover:bg-destructive/10"
+          className="rounded p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-2.5 w-2.5" />
         </button>
       </div>
       {expanded && (
-        <div className="border-t border-border/20 px-2 pb-1.5 pt-1">
+        <div className="border-t border-[rgba(77,70,53,0.15)]/20 px-2 pb-1.5 pt-1">
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
             <Field label="Award XP">
               <NumberInput value={objective.award_xp} onChange={(v) => setNum('award_xp', v)} />
@@ -481,15 +481,15 @@ function ObjectiveEditor({
           </div>
 
           {/* Tasks */}
-          <div className="mt-1.5 rounded border border-border/20">
+          <div className="mt-1.5 border border-[rgba(77,70,53,0.15)]/20">
             <div className="flex items-center justify-between px-2 py-0.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                 Tasks ({objective.tasks.length})
               </span>
               <button
                 type="button"
                 onClick={addTask}
-                className="flex items-center gap-0.5 text-[10px] text-primary hover:bg-primary/10 rounded px-1 py-0.5"
+                className="flex items-center gap-0.5 text-[10px] text-primary hover:bg-primary/10 px-1 py-0.5"
               >
                 <Plus className="h-2.5 w-2.5" /> Add
               </button>
@@ -526,40 +526,40 @@ function TaskEditor({
   };
 
   return (
-    <div className="mx-1 mb-0.5 flex flex-wrap items-center gap-2 rounded border border-border/20 bg-card/30 px-2 py-1">
-      <span className="text-[10px] text-muted-foreground">Task {task.task_id}</span>
-      <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+    <div className="mx-1 mb-0.5 flex flex-wrap items-center gap-2 border border-[rgba(77,70,53,0.15)]/20 bg-surface-low/30 px-2 py-1">
+      <span className="text-[10px] text-on-surface-variant">Task {task.task_id}</span>
+      <label className="flex items-center gap-1 text-[10px] text-on-surface-variant">
         Type
         <input
           type="text"
           value={task.task_type ?? ''}
           onChange={(e) => onChange({ ...task, task_type: e.target.value || null })}
-          className="w-20 rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground focus:border-primary focus:outline-none"
+          className="w-20 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface focus:border-primary focus:outline-none"
         />
       </label>
-      <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <label className="flex items-center gap-1 text-[10px] text-on-surface-variant">
         XP
         <input
           type="number"
           value={task.award_xp ?? ''}
           onChange={(e) => setNum('award_xp', e.target.value)}
-          className="w-14 rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground focus:border-primary focus:outline-none"
+          className="w-14 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface focus:border-primary focus:outline-none"
         />
       </label>
-      <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+      <label className="flex items-center gap-1 text-[10px] text-on-surface-variant">
         Diff
         <input
           type="number"
           value={task.difficulty ?? ''}
           onChange={(e) => setNum('difficulty', e.target.value)}
-          className="w-14 rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground focus:border-primary focus:outline-none"
+          className="w-14 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface focus:border-primary focus:outline-none"
         />
       </label>
       <Checkbox checked={task.is_enabled} onChange={(v) => onChange({ ...task, is_enabled: v })} />
       <button
         type="button"
         onClick={onRemove}
-        className="ml-auto rounded p-0.5 text-destructive hover:bg-destructive/10"
+        className="ml-auto p-0.5 text-error hover:bg-error/10"
       >
         <Trash2 className="h-2.5 w-2.5" />
       </button>
@@ -604,31 +604,31 @@ function RewardGroupEditor({
   };
 
   return (
-    <div className="rounded border border-border/40 bg-card/50">
+    <div className="rounded border border-[rgba(77,70,53,0.15)]/40 bg-surface-low/50">
       <div className="flex items-center gap-1 px-1.5 py-1">
-        <button type="button" onClick={() => setExpanded((e) => !e)} className="text-muted-foreground">
+        <button type="button" onClick={() => setExpanded((e) => !e)} className="text-on-surface-variant">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
-        <span className="flex-1 text-[11px] font-medium text-foreground">
+        <span className="flex-1 text-[11px] font-medium text-on-surface">
           Group {group.group_id} ({group.rewards.length} rewards, {group.choices} choice{group.choices !== 1 ? 's' : ''})
         </span>
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-destructive hover:bg-destructive/10"
+          className="rounded p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
       {expanded && (
-        <div className="border-t border-border/30 px-2 pb-2 pt-1">
+        <div className="border-t border-[rgba(77,70,53,0.15)]/30 px-2 pb-2 pt-1">
           <div className="mb-2 flex items-center gap-2">
-            <label className="text-[11px] text-muted-foreground">Choices</label>
+            <label className="text-[11px] text-on-surface-variant">Choices</label>
             <input
               type="number"
               value={group.choices}
               onChange={(e) => onChange({ ...group, choices: Number(e.target.value) || 0 })}
-              className="w-16 rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
+              className="w-16 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface focus:border-primary focus:outline-none"
             />
           </div>
 
@@ -636,10 +636,10 @@ function RewardGroupEditor({
             {group.rewards.map((reward, ri) => (
               <div
                 key={reward.reward_id}
-                className="flex items-center gap-2 rounded border border-border/20 bg-background/30 px-2 py-1"
+                className="flex items-center gap-2 border border-[rgba(77,70,53,0.15)]/20 bg-surface/30 px-2 py-1"
               >
-                <span className="text-[10px] text-muted-foreground">#{reward.reward_id}</span>
-                <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <span className="text-[10px] text-on-surface-variant">#{reward.reward_id}</span>
+                <label className="flex items-center gap-1 text-[10px] text-on-surface-variant">
                   Item ID
                   <input
                     type="number"
@@ -647,13 +647,13 @@ function RewardGroupEditor({
                     onChange={(e) =>
                       updateReward(ri, { ...reward, item_id: Number(e.target.value) || 0 })
                     }
-                    className="w-20 rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground focus:border-primary focus:outline-none"
+                    className="w-20 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface focus:border-primary focus:outline-none"
                   />
                 </label>
                 <button
                   type="button"
                   onClick={() => removeReward(ri)}
-                  className="ml-auto rounded p-0.5 text-destructive hover:bg-destructive/10"
+                  className="ml-auto p-0.5 text-error hover:bg-error/10"
                 >
                   <Trash2 className="h-2.5 w-2.5" />
                 </button>
@@ -664,7 +664,7 @@ function RewardGroupEditor({
           <button
             type="button"
             onClick={addReward}
-            className="mt-1 flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+            className="mt-1 flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
           >
             <Plus className="h-2.5 w-2.5" /> Add Reward
           </button>

@@ -72,10 +72,10 @@ export const MissionNode = memo(function MissionNode({
 
   return (
     <div
-      className={`relative min-w-[250px] rounded-[28px] border px-5 py-4 shadow-[0_22px_50px_rgba(0,0,0,0.28)] backdrop-blur-lg transition-all ${
+      className={`obsidian-panel relative min-w-[250px] border px-5 py-4 shadow-[0_22px_50px_rgba(0,0,0,0.28)] backdrop-blur-lg transition-all ${
         selected
           ? 'border-[#f5aa31] bg-[rgba(245,170,49,0.14)]'
-          : 'border-[rgba(255,255,255,0.08)] bg-[rgba(9,18,28,0.9)]'
+          : 'border-[rgba(77,70,53,0.15)]'
       }`}
       style={{
         boxShadow: selected
@@ -92,7 +92,7 @@ export const MissionNode = memo(function MissionNode({
       {/* Thread color top bar for Start/End anchors */}
       {missionData.threadColor && (missionData.stage === 'Start' || missionData.stage === 'End') ? (
         <div
-          className="absolute inset-x-0 top-0 h-1 rounded-t-[28px]"
+          className="absolute inset-x-0 top-0 h-1"
           style={{ backgroundColor: missionData.threadColor }}
         />
       ) : null}
@@ -120,10 +120,10 @@ export const MissionNode = memo(function MissionNode({
       </div>
 
       {/* Title + scenario */}
-      <h3 className="mt-4 text-lg font-semibold tracking-[-0.04em] text-white">
+      <h3 className="mt-4 text-lg font-semibold tracking-[-0.04em] text-on-surface font-headline">
         {missionData.title}
       </h3>
-      <p className="mt-1 text-xs uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
+      <p className="mt-1 text-xs uppercase tracking-[0.22em] text-on-surface-variant/60 font-dense">
         {missionData.scenario}
       </p>
 
@@ -144,16 +144,16 @@ export const MissionNode = memo(function MissionNode({
       ) : null}
 
       {/* Detail text */}
-      <p className="mt-3 text-sm leading-6 text-[rgba(224,231,239,0.76)]">{missionData.detail}</p>
+      <p className="mt-3 text-sm leading-6 text-on-surface">{missionData.detail}</p>
 
       {/* Properties panel (up to 3 rows) */}
-      <div className="mt-4 space-y-2 rounded-[20px] border border-[rgba(255,255,255,0.06)] bg-[rgba(0,0,0,0.18)] p-3">
+      <div className="mt-4 space-y-2 border border-[rgba(77,70,53,0.15)] bg-[rgba(0,0,0,0.18)] p-3">
         {missionData.properties.slice(0, 3).map((item) => (
           <div className="flex items-center justify-between gap-3 text-xs" key={item.label}>
-            <span className="uppercase tracking-[0.2em] text-[rgba(160,174,192,0.74)]">
+            <span className="uppercase tracking-[0.2em] text-on-surface-variant/60 font-dense">
               {item.label}
             </span>
-            <span className="font-mono text-[rgba(244,247,250,0.92)]">{item.value}</span>
+            <span className="font-mono text-on-surface">{item.value}</span>
           </div>
         ))}
       </div>

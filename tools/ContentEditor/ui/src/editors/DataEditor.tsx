@@ -442,16 +442,16 @@ const DataEditor = forwardRef<DataEditorHandle, { onStatus?: (msg: string | null
     return (
       <div className="flex h-full flex-col">
         {/* Category tabs */}
-        <div className="flex items-center gap-0 border-b border-border bg-card">
+        <div className="flex items-center gap-0 border-b border-[rgba(77,70,53,0.15)] bg-surface-low">
           {CATEGORIES.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               type="button"
               onClick={() => switchCategory(key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-2 font-headline text-sm uppercase tracking-widest transition-colors ${
                 category === key
-                  ? 'border-b-2 border-primary bg-background text-foreground'
-                  : 'text-muted-foreground hover:bg-secondary/30 hover:text-foreground'
+                  ? 'text-primary bg-secondary-container/30 shadow-[inset_0_-2px_0_0_#F2CA50]'
+                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-highest'
               }`}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -464,7 +464,7 @@ const DataEditor = forwardRef<DataEditorHandle, { onStatus?: (msg: string | null
             <button
               type="button"
               onClick={handleNew}
-              className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-primary hover:bg-primary/10"
+              className="flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-on-surface-variant hover:text-primary hover:bg-surface-highest"
               title="New record"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -474,10 +474,10 @@ const DataEditor = forwardRef<DataEditorHandle, { onStatus?: (msg: string | null
               type="button"
               onClick={handleSave}
               disabled={!dirty}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${
+              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-medium transition-colors ${
                 dirty
                   ? 'bg-primary/15 text-primary hover:bg-primary/25'
-                  : 'text-muted-foreground/50 cursor-not-allowed'
+                  : 'text-on-surface-variant/50 cursor-not-allowed'
               }`}
               title="Save record"
             >
@@ -488,10 +488,10 @@ const DataEditor = forwardRef<DataEditorHandle, { onStatus?: (msg: string | null
               type="button"
               onClick={handleDelete}
               disabled={selectedId == null}
-              className={`flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors ${
+              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-medium transition-colors ${
                 selectedId != null
-                  ? 'text-destructive hover:bg-destructive/10'
-                  : 'text-muted-foreground/50 cursor-not-allowed'
+                  ? 'text-error hover:bg-error/10'
+                  : 'text-on-surface-variant/50 cursor-not-allowed'
               }`}
               title="Delete record"
             >
@@ -504,16 +504,16 @@ const DataEditor = forwardRef<DataEditorHandle, { onStatus?: (msg: string | null
         {/* Main content: list + detail */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left: data grid */}
-          <div className="w-[340px] shrink-0 border-r border-border bg-card">
+          <div className="w-[340px] shrink-0 border-r border-[rgba(77,70,53,0.15)] bg-surface-low">
             {renderGrid()}
           </div>
 
           {/* Right: detail form */}
-          <div className="flex-1 overflow-hidden bg-background">
+          <div className="flex-1 overflow-hidden bg-surface">
             {hasDetail ? (
               renderDetail()
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              <div className="flex h-full items-center justify-center text-sm text-on-surface-variant">
                 {selectedId != null
                   ? 'Loading...'
                   : 'Select a record from the list to edit'}

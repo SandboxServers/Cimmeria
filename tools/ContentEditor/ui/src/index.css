@@ -1,49 +1,68 @@
+@import "@fontsource-variable/newsreader";
 @import "@fontsource/space-grotesk";
+@import "@fontsource/inter";
 @import "@fontsource/ibm-plex-mono";
 @import "tailwindcss";
 
 @theme inline {
+  --font-headline: "Newsreader", serif;
   --font-sans: "Space Grotesk", "Segoe UI", sans-serif;
+  --font-dense: "Inter", sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", monospace;
 
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-}
+  /* Celestial Monolith palette */
+  --color-surface: #131313;
+  --color-surface-lowest: #0e0e0e;
+  --color-surface-low: #1c1b1b;
+  --color-surface-mid: #201f1f;
+  --color-surface-high: #2a2a2a;
+  --color-surface-highest: #353534;
 
-:root {
-  --background: 210 31% 8%;
-  --foreground: 204 28% 94%;
-  --card: 212 30% 12%;
-  --card-foreground: 204 28% 94%;
-  --primary: 38 92% 58%;
-  --primary-foreground: 210 31% 8%;
-  --secondary: 197 37% 20%;
-  --secondary-foreground: 193 80% 90%;
-  --muted: 215 24% 17%;
-  --muted-foreground: 205 16% 72%;
-  --accent: 179 52% 45%;
-  --accent-foreground: 210 31% 8%;
-  --destructive: 0 68% 56%;
-  --border: 211 23% 24%;
-  --input: 213 24% 19%;
+  --color-primary: #f2ca50;
+  --color-primary-container: #d4af37;
+  --color-on-primary: #3c2f00;
+
+  --color-secondary: #a7c8ff;
+  --color-secondary-container: #1f477b;
+
+  --color-tertiary: #7fdedd;
+  --color-on-tertiary-container: #004e4e;
+
+  --color-on-surface: #e5e2e1;
+  --color-on-surface-variant: #d0c5af;
+
+  --color-outline-variant: #4d4635;
+  --color-error: #ffb4ab;
+
+  /* Semantic aliases for backwards compat with existing classes */
+  --color-background: #131313;
+  --color-foreground: #e5e2e1;
+  --color-card: #1c1b1b;
+  --color-card-foreground: #e5e2e1;
+  --color-muted: #2a2a2a;
+  --color-muted-foreground: #d0c5af;
+  --color-accent: #7fdedd;
+  --color-accent-foreground: #131313;
+  --color-destructive: #ffb4ab;
+  --color-border: rgba(77, 70, 53, 0.15);
+  --color-input: #0e0e0e;
+  --color-primary-foreground: #3c2f00;
+  --color-secondary-foreground: #a7c8ff;
+
+  /* Kill all border radius */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
 }
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: rgba(77, 70, 53, 0.15);
   }
 
   html {
@@ -51,7 +70,7 @@
   }
 
   body {
-    @apply h-screen overflow-hidden bg-background font-sans text-foreground antialiased;
+    @apply h-screen overflow-hidden bg-surface font-sans text-on-surface antialiased;
   }
 
   #root {
@@ -59,25 +78,64 @@
   }
 }
 
+/* ── Utility classes ── */
+
 @utility subtle-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  scrollbar-color: #4d4635 #0e0e0e;
+}
+
+@utility obsidian-panel {
+  background: linear-gradient(145deg, #1c1b1b 0%, #0e0e0e 100%);
+}
+
+@utility bevel-stone {
+  box-shadow: inset 2px 2px 0px rgba(255, 255, 255, 0.05), inset -2px -2px 0px rgba(0, 0, 0, 0.5);
+}
+
+@utility hieroglyph-bg {
+  background-image: linear-gradient(rgba(242, 202, 80, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(242, 202, 80, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+@utility vial-fill {
+  background: linear-gradient(90deg, #7fdedd 0%, #004e4e 100%);
+}
+
+@utility gold-glow {
+  text-shadow: 0 0 10px rgba(242, 202, 80, 0.4);
 }
 
 @layer utilities {
   .subtle-scrollbar::-webkit-scrollbar {
-    height: 10px;
-    width: 10px;
+    height: 4px;
+    width: 4px;
   }
 
   .subtle-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border: 2px solid transparent;
-    border-radius: 9999px;
-    background-clip: padding-box;
+    background: #4d4635;
   }
 
   .subtle-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
+    background: #0e0e0e;
+  }
+}
+
+/* ── Allotment sash overrides ── */
+
+@layer base {
+  .split-view-view .sash-container .sash {
+    background: rgba(77, 70, 53, 0.1) !important;
+  }
+  .split-view-view .sash-container .sash:hover {
+    background: rgba(242, 202, 80, 0.2) !important;
+  }
+}
+
+/* ── xyflow overrides ── */
+
+@layer base {
+  .react-flow__attribution {
+    display: none !important;
   }
 }

@@ -80,15 +80,15 @@ export default function DataGrid<T>({
   return (
     <div className="flex h-full flex-col">
       {/* Search bar */}
-      <div className="border-b border-border px-2 py-1.5">
+      <div className="border-b border-[rgba(77,70,53,0.15)] px-2 py-1.5">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-on-surface-variant" />
           <input
             type="text"
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}
-            className="w-full rounded border border-border bg-input py-1 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+            className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest py-1 pl-7 pr-2 text-xs text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
           />
         </div>
       </div>
@@ -96,12 +96,12 @@ export default function DataGrid<T>({
       {/* Table */}
       <div className="subtle-scrollbar flex-1 overflow-auto">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 z-10 bg-card">
+          <thead className="sticky top-0 z-10 bg-surface-high">
             <tr>
               {columns.map((col) => (
                 <th
                   key={String(col.key)}
-                  className="cursor-pointer select-none border-b border-border px-2 py-1.5 text-left font-medium text-muted-foreground hover:text-foreground"
+                  className="cursor-pointer select-none border-b border-[rgba(77,70,53,0.15)] px-2 py-1.5 text-left font-headline uppercase tracking-wider text-xs text-primary hover:text-on-surface"
                   style={col.width ? { width: col.width } : undefined}
                   onClick={() => handleSort(col.key)}
                 >
@@ -118,16 +118,16 @@ export default function DataGrid<T>({
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row) => {
+            {sorted.map((row, idx) => {
               const rowId = row[idKey] as unknown as number;
               const isSelected = rowId === selectedId;
               return (
                 <tr
                   key={rowId}
-                  className={`cursor-pointer border-b border-border/50 transition-colors ${
+                  className={`cursor-pointer border-b border-[rgba(77,70,53,0.15)]/50 transition-colors ${
                     isSelected
-                      ? 'bg-primary/15 text-foreground'
-                      : 'text-muted-foreground hover:bg-secondary/30'
+                      ? 'bg-secondary-container/30 text-on-surface'
+                      : `${idx % 2 === 0 ? 'bg-surface' : 'bg-surface-low'} text-on-surface-variant hover:bg-surface-highest`
                   }`}
                   onClick={() => onSelect(row)}
                 >
@@ -147,7 +147,7 @@ export default function DataGrid<T>({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-4 py-6 text-center text-muted-foreground"
+                  className="px-4 py-6 text-center text-on-surface-variant"
                 >
                   {data.length === 0 ? 'No data loaded' : 'No matching records'}
                 </td>
@@ -158,7 +158,7 @@ export default function DataGrid<T>({
       </div>
 
       {/* Footer count */}
-      <div className="border-t border-border px-2 py-1 text-[10px] text-muted-foreground">
+      <div className="border-t border-[rgba(77,70,53,0.15)] px-2 py-1 text-[10px] text-on-surface-variant">
         {sorted.length} / {data.length} records
       </div>
     </div>

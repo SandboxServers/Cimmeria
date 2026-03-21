@@ -8,10 +8,16 @@ interface ConnectionStatus {
   database: string | null;
 }
 
+export interface ConnectionMeta {
+  db: string;
+  server: string;
+}
+
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionMeta, setConnectionMeta] = useState<ConnectionMeta | null>(null);
 
   const handleConnect = useCallback(async (connectionString: string, serverUrl: string) => {
     setConnecting(true);
@@ -21,12 +27,25 @@ export default function App() {
         connectionString,
         serverUrl: serverUrl || undefined,
       });
+      if (status.connected) {
+        // Extract db name from connection string (e.g. postgresql://user:pass@host:port/dbname)
+        const dbMatch = connectionString.match(/\/([^/?]+)(?:\?|$)/);
+        const dbName = dbMatch?.[1] ?? 'unknown';
+        const hostMatch = connectionString.match(/@([^/]+)/);
+        const host = hostMatch?.[1] ?? 'localhost';
+        setConnectionMeta({ db: `${dbName}@${host}`, server: serverUrl });
+      }
       setConnected(status.connected);
     } catch (e) {
       setError(String(e));
     } finally {
       setConnecting(false);
     }
+  }, []);
+
+  const handleDisconnect = useCallback(() => {
+    setConnected(false);
+    setConnectionMeta(null);
   }, []);
 
   if (!connected) {
@@ -39,5 +58,10 @@ export default function App() {
     );
   }
 
-  return <AppLayout />;
+  return (
+    <AppLayout
+      connectionMeta={connectionMeta}
+      onDisconnect={handleDisconnect}
+    />
+  );
 }

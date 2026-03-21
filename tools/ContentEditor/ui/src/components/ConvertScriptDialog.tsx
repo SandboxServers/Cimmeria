@@ -80,23 +80,23 @@ export default function ConvertScriptDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="relative w-[520px] rounded-lg border border-border bg-card shadow-2xl"
+        className="relative w-[520px] border border-[rgba(77,70,53,0.15)] bg-surface-low shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+        <div className="flex items-center justify-between border-b border-[rgba(77,70,53,0.15)] px-5 py-4">
           <div className="flex items-center gap-2.5">
             <ArrowRightLeft className="h-5 w-5 text-primary" />
-            <h2 className="text-sm font-semibold">Convert Script to Chains</h2>
+            <h2 className="font-headline text-sm uppercase tracking-widest text-primary">Convert Script to Chains</h2>
           </div>
-          <button onClick={onClose} className="rounded p-1 hover:bg-secondary/50">
-            <X className="h-4 w-4 text-muted-foreground" />
+          <button onClick={onClose} className="p-1 hover:bg-surface-highest">
+            <X className="h-4 w-4 text-on-surface-variant" />
           </button>
         </div>
 
         {/* Body */}
         <div className="space-y-4 px-5 py-4">
-          <div className="rounded border border-border bg-secondary/20 px-3 py-2 text-xs text-muted-foreground">
+          <div className="border border-[rgba(77,70,53,0.15)] bg-secondary-container/20 px-3 py-2 text-xs text-on-surface-variant">
             {fileName}
           </div>
 
@@ -104,24 +104,24 @@ export default function ConvertScriptDialog({
           {!result && (
             <div className="grid grid-cols-3 gap-3">
               <label className="space-y-1">
-                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <span className="text-xs font-dense uppercase tracking-widest text-primary">
                   Start Chain ID
                 </span>
                 <input
                   type="number"
                   value={startChainId}
                   onChange={(e) => setStartChainId(e.target.value)}
-                  className="w-full rounded border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-2.5 py-1.5 text-sm text-on-surface focus:border-primary focus:outline-none"
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <span className="text-xs font-dense uppercase tracking-widest text-primary">
                   Scope Type
                 </span>
                 <select
                   value={scopeType}
                   onChange={(e) => setScopeType(e.target.value)}
-                  className="w-full rounded border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+                  className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-2.5 py-1.5 text-sm text-on-surface focus:border-primary focus:outline-none"
                 >
                   <option value="space">space</option>
                   <option value="mission">mission</option>
@@ -129,7 +129,7 @@ export default function ConvertScriptDialog({
                 </select>
               </label>
               <label className="space-y-1">
-                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <span className="text-xs font-dense uppercase tracking-widest text-primary">
                   Scope ID
                 </span>
                 <input
@@ -137,7 +137,7 @@ export default function ConvertScriptDialog({
                   value={scopeId}
                   onChange={(e) => setScopeId(e.target.value)}
                   placeholder="e.g. 8"
-                  className="w-full rounded border border-border bg-background px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+                  className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-2.5 py-1.5 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:outline-none"
                 />
               </label>
             </div>
@@ -145,7 +145,7 @@ export default function ConvertScriptDialog({
 
           {/* Error */}
           {error && (
-            <div className="rounded border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div className="border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
               {error}
             </div>
           )}
@@ -167,9 +167,9 @@ export default function ConvertScriptDialog({
                     <AlertTriangle className="h-3.5 w-3.5" />
                     {result.warnings.length} warning{result.warnings.length !== 1 ? 's' : ''}
                   </div>
-                  <div className="subtle-scrollbar max-h-32 overflow-y-auto rounded border border-border bg-secondary/20 px-3 py-2">
+                  <div className="subtle-scrollbar max-h-32 overflow-y-auto border border-[rgba(77,70,53,0.15)] bg-secondary-container/20 px-3 py-2">
                     {result.warnings.map((w, i) => (
-                      <div key={i} className="text-[11px] text-muted-foreground">
+                      <div key={i} className="text-[11px] text-on-surface-variant">
                         {w}
                       </div>
                     ))}
@@ -181,19 +181,19 @@ export default function ConvertScriptDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-[rgba(77,70,53,0.15)] px-5 py-3">
           {!result ? (
             <>
               <button
                 onClick={onClose}
-                className="rounded px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary/50"
+                className="bg-surface-high px-3 py-1.5 text-sm text-on-surface-variant hover:bg-surface-highest"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConvert}
                 disabled={converting}
-                className="flex items-center gap-1.5 rounded bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                className="flex items-center gap-1.5 bg-primary-container px-4 py-1.5 text-sm font-medium text-on-primary bevel-stone transition-colors hover:bg-primary-container/90 disabled:opacity-50"
               >
                 <ArrowRightLeft className="h-3.5 w-3.5" />
                 {converting ? 'Converting...' : 'Convert'}
@@ -203,20 +203,20 @@ export default function ConvertScriptDialog({
             <>
               <button
                 onClick={() => { setResult(null); setError(null); }}
-                className="rounded px-3 py-1.5 text-sm text-muted-foreground hover:bg-secondary/50"
+                className="bg-surface-high px-3 py-1.5 text-sm text-on-surface-variant hover:bg-surface-highest"
               >
                 Back
               </button>
               <button
                 onClick={handleSaveToDB}
-                className="flex items-center gap-1.5 rounded bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                className="flex items-center gap-1.5 bg-primary-container px-4 py-1.5 text-sm font-medium text-on-primary bevel-stone transition-colors hover:bg-primary-container/90"
               >
                 <Database className="h-3.5 w-3.5" />
                 Save to DB
               </button>
               <button
                 onClick={handleExportSQL}
-                className="flex items-center gap-1.5 rounded border border-border px-4 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary/50"
+                className="flex items-center gap-1.5 border border-[rgba(77,70,53,0.15)] bg-surface-high px-4 py-1.5 text-sm font-medium text-on-surface transition-colors hover:bg-surface-highest"
               >
                 <Download className="h-3.5 w-3.5" />
                 Export SQL

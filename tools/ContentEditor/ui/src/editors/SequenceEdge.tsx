@@ -70,11 +70,11 @@ export const SequenceThreadEdge = memo(function SequenceThreadEdge({
       <foreignObject height={48} width={220} x={labelX - 110} y={labelY - 24}>
         <div className="flex h-full items-center justify-center">
           <span
-            className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] shadow-[0_10px_26px_rgba(0,0,0,0.45)]"
+            className="inline-flex items-center gap-2 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] shadow-[0_10px_26px_rgba(0,0,0,0.45)]"
             style={{
-              backgroundColor: 'rgba(4, 10, 18, 0.97)',
+              backgroundColor: '#0e0e0e',
               border: `1px solid ${color}66`,
-              color: '#f8fafc',
+              color: '#e5e2e1',
             }}
           >
             <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />

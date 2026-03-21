@@ -38,7 +38,7 @@ interface InspectorProps {
 export function Inspector({ selectedNode }: InspectorProps) {
   if (!selectedNode) {
     return (
-      <div className="flex h-full items-center justify-center border-l border-border bg-card text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center border-l border-[rgba(77,70,53,0.15)] bg-surface-low text-sm text-on-surface-variant">
         Select a node to inspect
       </div>
     );
@@ -57,16 +57,16 @@ export function Inspector({ selectedNode }: InspectorProps) {
 
 function ChainInspector({ data, nodeId }: { data: ChainFrameData; nodeId: string }) {
   return (
-    <div className="subtle-scrollbar flex h-full flex-col overflow-y-auto border-l border-border bg-card">
-      <div className="border-b border-border px-4 py-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="subtle-scrollbar flex h-full flex-col overflow-y-auto border-l border-[rgba(77,70,53,0.15)] bg-surface-low">
+      <div className="border-b border-[rgba(77,70,53,0.15)] px-4 py-2">
+        <h2 className="font-headline text-primary uppercase tracking-widest text-xs">
           Chain Inspector
         </h2>
       </div>
 
       <div className="space-y-4 p-4">
         <section>
-          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-on-surface">
             <Layers className="h-3.5 w-3.5" />
             {data.name || '(unnamed)'}
           </h3>
@@ -86,19 +86,19 @@ function ChainInspector({ data, nodeId }: { data: ChainFrameData; nodeId: string
         {/* Per-family counts */}
         {data.counts && (
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <h3 className="font-headline text-primary uppercase tracking-widest mb-2 text-xs">
               Primitive Counts
             </h3>
             <div className="grid grid-cols-2 gap-2">
               {(Object.entries(data.counts) as [PrimitiveFamily, number][]).map(
                 ([family, count]) => (
                   <div
-                    className="flex items-center gap-2 rounded border border-border bg-muted/50 px-3 py-1.5 text-xs"
+                    className="flex items-center gap-2 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-3 py-1.5 text-xs"
                     key={family}
                   >
                     <span className={familyColor[family]}>{familyIcon[family]}</span>
-                    <span className="capitalize text-foreground">{family}</span>
-                    <span className="ml-auto font-mono text-muted-foreground">{count}</span>
+                    <span className="font-dense capitalize text-on-surface">{family}</span>
+                    <span className="ml-auto font-mono text-on-surface-variant">{count}</span>
                   </div>
                 ),
               )}
@@ -108,15 +108,15 @@ function ChainInspector({ data, nodeId }: { data: ChainFrameData; nodeId: string
 
         {/* Color swatch */}
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="font-headline text-primary uppercase tracking-widest mb-2 text-xs">
             Chain Color
           </h3>
           <div className="flex items-center gap-2">
             <div
-              className="h-6 w-6 rounded-full border border-white/10"
+              className="h-6 w-6 border border-on-surface/10"
               style={{ backgroundColor: data.color }}
             />
-            <span className="font-mono text-xs text-muted-foreground">{data.color}</span>
+            <span className="font-mono text-xs text-on-surface-variant">{data.color}</span>
           </div>
         </section>
       </div>
@@ -128,9 +128,9 @@ function ChainInspector({ data, nodeId }: { data: ChainFrameData; nodeId: string
 
 function MissionInspector({ data, nodeId }: { data: MissionNodeData; nodeId: string }) {
   return (
-    <div className="subtle-scrollbar flex h-full flex-col overflow-y-auto border-l border-border bg-card">
-      <div className="border-b border-border px-4 py-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="subtle-scrollbar flex h-full flex-col overflow-y-auto border-l border-[rgba(77,70,53,0.15)] bg-surface-low">
+      <div className="border-b border-[rgba(77,70,53,0.15)] px-4 py-2">
+        <h2 className="font-headline text-primary uppercase tracking-widest text-xs">
           Node Inspector
         </h2>
       </div>
@@ -154,32 +154,32 @@ function MissionInspector({ data, nodeId }: { data: MissionNodeData; nodeId: str
         {/* Detail */}
         {data.detail && (
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <h3 className="font-headline text-primary uppercase tracking-widest mb-2 text-xs">
               Detail
             </h3>
-            <p className="text-sm leading-6 text-muted-foreground">{data.detail}</p>
+            <p className="text-sm leading-6 text-on-surface-variant">{data.detail}</p>
           </section>
         )}
 
         {/* Properties */}
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="font-headline text-primary uppercase tracking-widest mb-2 text-xs">
             Properties ({data.properties.length})
           </h3>
           <div className="space-y-1.5">
             {data.properties.map((prop) => (
               <div
-                className="rounded border border-border bg-muted/50 px-3 py-1.5 text-xs"
+                className="border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-3 py-1.5 text-xs"
                 key={prop.label}
               >
-                <span className="uppercase tracking-[0.2em] text-muted-foreground">
+                <span className="font-dense uppercase tracking-[0.2em] text-on-surface-variant">
                   {prop.label}
                 </span>
-                <span className="ml-2 font-mono text-foreground">{prop.value}</span>
+                <span className="ml-2 font-mono text-on-surface">{prop.value}</span>
               </div>
             ))}
             {data.properties.length === 0 && (
-              <p className="text-xs text-muted-foreground">No properties defined</p>
+              <p className="text-xs text-on-surface-variant">No properties defined</p>
             )}
           </div>
         </section>
@@ -187,30 +187,30 @@ function MissionInspector({ data, nodeId }: { data: MissionNodeData; nodeId: str
         {/* Thread info */}
         {data.threadColor && (
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <h3 className="font-headline text-primary uppercase tracking-widest mb-2 text-xs">
               Thread
             </h3>
             <div className="flex items-center gap-2">
               <div
-                className="h-4 w-4 rounded-full border border-white/10"
+                className="h-4 w-4 border border-on-surface/10"
                 style={{ backgroundColor: data.threadColor }}
               />
-              <span className="text-xs text-foreground">{data.threadName ?? 'Unnamed thread'}</span>
+              <span className="text-xs text-on-surface">{data.threadName ?? 'Unnamed thread'}</span>
             </div>
           </section>
         )}
 
         {/* Accent color */}
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="font-headline text-primary uppercase tracking-widest mb-2 text-xs">
             Accent
           </h3>
           <div className="flex items-center gap-2">
             <div
-              className="h-4 w-4 rounded-full border border-white/10"
+              className="h-4 w-4 border border-on-surface/10"
               style={{ backgroundColor: data.accent }}
             />
-            <span className="font-mono text-xs text-muted-foreground">{data.accent}</span>
+            <span className="font-mono text-xs text-on-surface-variant">{data.accent}</span>
           </div>
         </section>
       </div>
@@ -223,8 +223,8 @@ function MissionInspector({ data, nodeId }: { data: MissionNodeData; nodeId: str
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-mono text-xs text-foreground">{value}</span>
+      <span className="font-dense text-on-surface-variant">{label}</span>
+      <span className="text-right font-mono text-xs text-on-surface">{value}</span>
     </div>
   );
 }

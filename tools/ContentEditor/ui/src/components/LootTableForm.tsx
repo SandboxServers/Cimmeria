@@ -66,21 +66,21 @@ export default function LootTableForm({ data, onChange }: LootTableFormProps) {
             value={data.description ?? ''}
             onChange={(e) => set('description', (e.target.value || null) as LootTable['description'])}
             rows={2}
-            className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
+            className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface focus:border-primary focus:outline-none"
           />
         </Field>
       </Section>
 
       {/* Entries */}
-      <div className="rounded border border-border/50">
+      <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
             Entries ({data.entries.length})
           </span>
           <button
             type="button"
             onClick={addEntry}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
           >
             <Plus className="h-3 w-3" /> Add Entry
           </button>
@@ -88,8 +88,8 @@ export default function LootTableForm({ data, onChange }: LootTableFormProps) {
 
         {/* Probability summary */}
         <div
-          className={`flex items-center gap-1.5 border-t border-border/30 px-2 py-1 text-[10px] ${
-            probValid ? 'text-muted-foreground' : 'text-destructive'
+          className={`flex items-center gap-1.5 border-t border-[rgba(77,70,53,0.15)]/30 px-2 py-1 text-[10px] ${
+            probValid ? 'text-on-surface-variant' : 'text-error'
           }`}
         >
           {!probValid && <AlertTriangle className="h-3 w-3" />}
@@ -101,10 +101,10 @@ export default function LootTableForm({ data, onChange }: LootTableFormProps) {
 
         {/* Entry table */}
         {data.entries.length > 0 && (
-          <div className="border-t border-border/30">
+          <div className="border-t border-[rgba(77,70,53,0.15)]/30">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-[10px] font-medium text-muted-foreground">
+                <tr className="text-left text-[10px] font-medium text-on-surface-variant">
                   <th className="px-2 py-1">ID</th>
                   <th className="px-2 py-1">Design ID</th>
                   <th className="px-2 py-1">Min Qty</th>
@@ -128,7 +128,7 @@ export default function LootTableForm({ data, onChange }: LootTableFormProps) {
         )}
 
         {data.entries.length === 0 && (
-          <div className="border-t border-border/30 px-2 py-4 text-center text-[11px] text-muted-foreground">
+          <div className="border-t border-[rgba(77,70,53,0.15)]/30 px-2 py-4 text-center text-[11px] text-on-surface-variant">
             No loot entries defined
           </div>
         )}
@@ -147,14 +147,14 @@ function LootEntryRow({
   onRemove: () => void;
 }) {
   return (
-    <tr className="border-t border-border/20">
-      <td className="px-2 py-0.5 text-[10px] text-muted-foreground">{entry.loot_id}</td>
+    <tr className="border-t border-[rgba(77,70,53,0.15)]/20">
+      <td className="px-2 py-0.5 text-[10px] text-on-surface-variant">{entry.loot_id}</td>
       <td className="px-1 py-0.5">
         <input
           type="number"
           value={entry.design_id}
           onChange={(e) => onChange({ ...entry, design_id: Number(e.target.value) || 0 })}
-          className="w-full rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground focus:border-primary focus:outline-none"
+          className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface focus:border-primary focus:outline-none"
         />
       </td>
       <td className="px-1 py-0.5">
@@ -162,7 +162,7 @@ function LootEntryRow({
           type="number"
           value={entry.min_quantity}
           onChange={(e) => onChange({ ...entry, min_quantity: Number(e.target.value) || 0 })}
-          className="w-full rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground focus:border-primary focus:outline-none"
+          className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface focus:border-primary focus:outline-none"
         />
       </td>
       <td className="px-1 py-0.5">
@@ -170,7 +170,7 @@ function LootEntryRow({
           type="number"
           value={entry.max_quantity}
           onChange={(e) => onChange({ ...entry, max_quantity: Number(e.target.value) || 0 })}
-          className="w-full rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground focus:border-primary focus:outline-none"
+          className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface focus:border-primary focus:outline-none"
         />
       </td>
       <td className="px-1 py-0.5">
@@ -179,14 +179,14 @@ function LootEntryRow({
           value={entry.probability}
           step="0.01"
           onChange={(e) => onChange({ ...entry, probability: Number(e.target.value) || 0 })}
-          className="w-full rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground focus:border-primary focus:outline-none"
+          className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface focus:border-primary focus:outline-none"
         />
       </td>
       <td className="px-1 py-0.5">
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-destructive hover:bg-destructive/10"
+          className="rounded p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-3 w-3" />
         </button>

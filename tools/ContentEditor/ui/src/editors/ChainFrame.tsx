@@ -31,10 +31,11 @@ export const ChainFrameNode = memo(function ChainFrameNode({
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden rounded-[34px] border shadow-[0_30px_90px_rgba(0,0,0,0.34)] backdrop-blur-xl"
+      className="relative h-full w-full overflow-hidden border shadow-[0_30px_90px_rgba(0,0,0,0.34)] backdrop-blur-xl"
       style={{
-        borderColor: selected ? `${chainData.color}88` : `${chainData.color}44`,
-        background: 'linear-gradient(180deg, rgba(9,18,28,0.94), rgba(7,14,22,0.9))',
+        borderColor: selected ? `${chainData.color}88` : 'rgba(77,70,53,0.15)',
+        borderStyle: 'dashed',
+        background: 'rgba(19,19,19,0.5)',
         boxShadow: selected
           ? `0 0 0 1px ${chainData.color}44, 0 28px 90px rgba(0,0,0,0.34)`
           : '0 28px 90px rgba(0,0,0,0.34)',
@@ -49,7 +50,7 @@ export const ChainFrameNode = memo(function ChainFrameNode({
       />
 
       {/* Header */}
-      <div className="relative z-10 flex items-start justify-between gap-4 border-b border-white/6 px-6 py-5">
+      <div className="relative z-10 flex items-start justify-between gap-4 border-b border-[rgba(77,70,53,0.15)] px-6 py-5">
         <div>
           {/* Badge row */}
           <div className="flex flex-wrap items-center gap-2">
@@ -62,25 +63,25 @@ export const ChainFrameNode = memo(function ChainFrameNode({
             >
               {chainData.semantic}
             </span>
-            <span className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[rgba(228,235,240,0.72)]">
+            <span className="border border-[rgba(77,70,53,0.15)] bg-white/4 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-on-surface-variant">
               {chainData.scopeType} / {chainData.scopeId}
             </span>
-            <span className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[rgba(228,235,240,0.72)]">
+            <span className="border border-[rgba(77,70,53,0.15)] bg-white/4 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-on-surface-variant">
               priority {chainData.priority}
             </span>
           </div>
 
           {/* Chain name + summary */}
-          <h3 className="mt-3 text-2xl font-semibold tracking-[-0.05em] text-white">
+          <h3 className="mt-3 text-2xl font-semibold tracking-widest uppercase text-primary font-headline">
             {chainData.name}
           </h3>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-on-surface">
             {chainData.summary}
           </p>
         </div>
 
         {/* Right-side metadata */}
-        <div className="grid min-w-[250px] gap-2 text-right text-xs text-[rgba(224,231,239,0.72)]">
+        <div className="grid min-w-[250px] gap-2 text-right text-xs text-on-surface-variant">
           <span
             className="justify-self-end rounded-full px-3 py-1 font-medium"
             style={{
@@ -90,13 +91,13 @@ export const ChainFrameNode = memo(function ChainFrameNode({
           >
             {chainData.enabled ? 'Enabled' : 'Disabled'}
           </span>
-          <span className="uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">
+          <span className="uppercase tracking-[0.18em] text-on-surface-variant/60 font-dense">
             {chainData.source}
           </span>
           <div className="flex flex-wrap justify-end gap-2">
             {orderedFamilies.map((family) => (
               <span
-                className="rounded-full border border-white/8 bg-white/4 px-3 py-1"
+                className="border border-[rgba(77,70,53,0.15)] bg-white/4 px-3 py-1"
                 key={family}
               >
                 {familyLabel[family]} {chainData.counts?.[family] ?? 0}
@@ -121,7 +122,7 @@ export const ChainFrameNode = memo(function ChainFrameNode({
                 key={lane.family}
               >
                 {/* Lane label card */}
-                <div className="rounded-[28px] border border-white/6 bg-[rgba(255,255,255,0.02)] px-4 py-4">
+                <div className="border border-[rgba(77,70,53,0.15)] bg-[rgba(255,255,255,0.02)] px-4 py-4">
                   <span
                     className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]"
                     style={{
@@ -131,14 +132,14 @@ export const ChainFrameNode = memo(function ChainFrameNode({
                   >
                     {lane.title}
                   </span>
-                  <p className="mt-3 text-xs leading-5 text-[rgba(214,223,232,0.66)]">
+                  <p className="mt-3 text-xs leading-5 text-on-surface-variant">
                     {lane.blurb}
                   </p>
                 </div>
 
                 {/* Lane drop zone */}
                 <div
-                  className="rounded-[28px] border border-dashed border-white/6 bg-[rgba(255,255,255,0.015)]"
+                  className="border border-dashed border-[rgba(77,70,53,0.15)] bg-[rgba(255,255,255,0.015)]"
                   style={{
                     boxShadow: `inset 0 0 0 1px ${familyTint[lane.family].glow}`,
                   }}

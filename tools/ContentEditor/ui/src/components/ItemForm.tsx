@@ -44,7 +44,7 @@ export default function ItemForm({ data, onChange }: ItemFormProps) {
             value={data.description ?? ''}
             onChange={(e) => set('description', e.target.value || null)}
             rows={3}
-            className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+            className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
           />
         </Field>
         <Field label="Icon Location">

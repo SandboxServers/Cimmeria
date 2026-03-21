@@ -91,7 +91,7 @@ export default function AbilityForm({ data, onChange }: AbilityFormProps) {
             value={data.description ?? ''}
             onChange={(e) => set('description', e.target.value || null)}
             rows={2}
-            className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground focus:border-primary focus:outline-none"
+            className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface focus:border-primary focus:outline-none"
           />
         </Field>
         <Field label="Icon">
@@ -172,20 +172,20 @@ export default function AbilityForm({ data, onChange }: AbilityFormProps) {
       </Section>
 
       {/* Effects */}
-      <div className="rounded border border-border/50">
+      <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
             Effects ({data.effects.length})
           </span>
           <button
             type="button"
             onClick={addEffect}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
           >
             <Plus className="h-3 w-3" /> Add Effect
           </button>
         </div>
-        <div className="flex flex-col gap-1 border-t border-border/30 px-1 pb-1 pt-1">
+        <div className="flex flex-col gap-1 border-t border-[rgba(77,70,53,0.15)]/30 px-1 pb-1 pt-1">
           {data.effects.map((effect, ei) => (
             <EffectEditor
               key={effect.effect_id}
@@ -195,7 +195,7 @@ export default function AbilityForm({ data, onChange }: AbilityFormProps) {
             />
           ))}
           {data.effects.length === 0 && (
-            <div className="px-2 py-2 text-center text-[11px] text-muted-foreground">
+            <div className="px-2 py-2 text-center text-[11px] text-on-surface-variant">
               No effects defined
             </div>
           )}
@@ -247,24 +247,24 @@ function EffectEditor({
   };
 
   return (
-    <div className="rounded border border-border/40 bg-card/50">
+    <div className="rounded border border-[rgba(77,70,53,0.15)]/40 bg-surface-low/50">
       <div className="flex items-center gap-1 px-1.5 py-1">
-        <button type="button" onClick={() => setExpanded((e) => !e)} className="text-muted-foreground">
+        <button type="button" onClick={() => setExpanded((e) => !e)} className="text-on-surface-variant">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
-        <span className="flex-1 text-[11px] font-medium text-foreground">
+        <span className="flex-1 text-[11px] font-medium text-on-surface">
           Effect {effect.effect_id}: {effect.name ?? 'Unnamed'}
         </span>
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-destructive hover:bg-destructive/10"
+          className="rounded p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
       {expanded && (
-        <div className="border-t border-border/30 px-2 pb-2 pt-1">
+        <div className="border-t border-[rgba(77,70,53,0.15)]/30 px-2 pb-2 pt-1">
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
             <Field label="Name">
               <TextInput value={effect.name} onChange={(v) => onChange({ ...effect, name: v || null })} />
@@ -314,15 +314,15 @@ function EffectEditor({
           </div>
 
           {/* NVPs */}
-          <div className="mt-2 rounded border border-border/30">
+          <div className="mt-2 border border-[rgba(77,70,53,0.15)]/30">
             <div className="flex items-center justify-between px-2 py-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                 Name-Value Pairs ({effect.nvps.length})
               </span>
               <button
                 type="button"
                 onClick={addNvp}
-                className="flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+                className="flex items-center gap-0.5 px-1 py-0.5 text-[10px] text-primary hover:bg-primary/10"
               >
                 <Plus className="h-2.5 w-2.5" /> Add
               </button>
@@ -330,26 +330,26 @@ function EffectEditor({
             {effect.nvps.map((nvp, ni) => (
               <div
                 key={nvp.nvp_id}
-                className="flex items-center gap-2 border-t border-border/20 px-2 py-0.5"
+                className="flex items-center gap-2 border-t border-[rgba(77,70,53,0.15)]/20 px-2 py-0.5"
               >
                 <input
                   type="text"
                   value={nvp.name}
                   onChange={(e) => updateNvp(ni, { ...nvp, name: e.target.value })}
                   placeholder="Name"
-                  className="w-1/3 rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  className="w-1/3 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
                 />
                 <input
                   type="text"
                   value={nvp.value}
                   onChange={(e) => updateNvp(ni, { ...nvp, value: e.target.value })}
                   placeholder="Value"
-                  className="flex-1 rounded border border-border bg-input px-1 py-0 text-[10px] text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                  className="flex-1 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1 py-0 text-[10px] text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={() => removeNvp(ni)}
-                  className="rounded p-0.5 text-destructive hover:bg-destructive/10"
+                  className="rounded p-0.5 text-error hover:bg-error/10"
                 >
                   <Trash2 className="h-2.5 w-2.5" />
                 </button>

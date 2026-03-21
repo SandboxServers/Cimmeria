@@ -38,7 +38,7 @@ export default function ScriptPropertyPanel({
 }: ScriptPropertyPanelProps) {
   if (!nodeData) {
     return (
-      <div className="flex h-full items-center justify-center border-l border-border bg-card text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center border-l border-[rgba(77,70,53,0.15)] bg-surface-low text-sm text-on-surface-variant">
         Select a script node to inspect
       </div>
     );
@@ -47,10 +47,10 @@ export default function ScriptPropertyPanel({
   const colors = nodeTypeColors[nodeData.nodeType] ?? nodeTypeColors.Action;
 
   return (
-    <div className="subtle-scrollbar flex h-full flex-col overflow-y-auto border-l border-border bg-card">
+    <div className="subtle-scrollbar flex h-full flex-col overflow-y-auto border-l border-[rgba(77,70,53,0.15)] bg-surface-low">
       {/* Header */}
-      <div className="border-b border-border px-4 py-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="border-b border-[rgba(77,70,53,0.15)] px-4 py-2">
+        <h2 className="font-headline text-xs uppercase tracking-widest text-primary">
           Script Node Inspector
         </h2>
       </div>
@@ -60,7 +60,7 @@ export default function ScriptPropertyPanel({
         <section>
           <div className="flex items-center gap-2">
             <Info className="h-3.5 w-3.5" style={{ color: colors.text }} />
-            <h3 className="text-sm font-medium" style={{ color: colors.text }}>
+            <h3 className="font-dense text-sm font-medium" style={{ color: colors.text }}>
               {nodeData.displayName}
             </h3>
           </div>
@@ -71,7 +71,7 @@ export default function ScriptPropertyPanel({
             {nodeData.category && <Field label="Category" value={nodeData.category} />}
           </div>
           {nodeData.description && (
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">{nodeData.description}</p>
+            <p className="mt-2 text-xs leading-5 text-on-surface-variant">{nodeData.description}</p>
           )}
         </section>
 
@@ -93,12 +93,12 @@ export default function ScriptPropertyPanel({
 
         {/* Comment */}
         <section>
-          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-dense uppercase tracking-widest text-primary">
             <MessageSquare className="h-3.5 w-3.5" />
             Comment
           </h3>
           <textarea
-            className="w-full rounded-[12px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-3 py-2 text-xs text-white outline-none placeholder:text-[rgba(160,174,192,0.56)] focus:border-[rgba(245,170,49,0.3)]"
+            className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-3 py-2 text-xs text-on-surface outline-none placeholder:text-on-surface-variant/50 focus:border-primary"
             rows={2}
             value={nodeData.comment}
             onChange={(e) => onPropertyChange(nodeData.nodeId, '_comment', e.target.value)}
@@ -109,7 +109,7 @@ export default function ScriptPropertyPanel({
         {/* Properties */}
         {template && template.properties.length > 0 && (
           <section>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <h3 className="mb-2 text-xs font-dense uppercase tracking-widest text-primary">
               Properties ({template.properties.length})
             </h3>
             <div className="space-y-2">
@@ -130,7 +130,7 @@ export default function ScriptPropertyPanel({
 
         {/* Ports info (read-only) */}
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="mb-2 text-xs font-dense uppercase tracking-widest text-primary">
             Input Ports ({nodeData.inputPorts.length})
           </h3>
           <div className="space-y-1">
@@ -138,13 +138,13 @@ export default function ScriptPropertyPanel({
               <PortRow key={`in-${p.name}`} name={p.name} portType={p.portType} visible={p.visible} />
             ))}
             {nodeData.inputPorts.length === 0 && (
-              <p className="text-xs text-muted-foreground">No input ports</p>
+              <p className="text-xs text-on-surface-variant">No input ports</p>
             )}
           </div>
         </section>
 
         <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="mb-2 text-xs font-dense uppercase tracking-widest text-primary">
             Output Ports ({nodeData.outputPorts.length})
           </h3>
           <div className="space-y-1">
@@ -152,7 +152,7 @@ export default function ScriptPropertyPanel({
               <PortRow key={`out-${p.name}`} name={p.name} portType={p.portType} visible={p.visible} />
             ))}
             {nodeData.outputPorts.length === 0 && (
-              <p className="text-xs text-muted-foreground">No output ports</p>
+              <p className="text-xs text-on-surface-variant">No output ports</p>
             )}
           </div>
         </section>
@@ -166,8 +166,8 @@ export default function ScriptPropertyPanel({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-mono text-xs text-foreground">{value}</span>
+      <span className="font-dense text-on-surface-variant">{label}</span>
+      <span className="text-right font-mono text-xs text-on-surface">{value}</span>
     </div>
   );
 }
@@ -185,17 +185,17 @@ function ToggleField({
 }) {
   return (
     <button
-      className="flex w-full items-center gap-2 rounded-[12px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-3 py-2 text-xs transition-colors hover:bg-[rgba(255,255,255,0.06)]"
+      className="flex w-full items-center gap-2 border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-3 py-2 text-xs transition-colors hover:bg-surface-highest"
       onClick={() => onChange(!value)}
       type="button"
     >
-      <span className={value ? 'text-[#86efac]' : 'text-muted-foreground'}>{icon}</span>
-      <span className="uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">{label}</span>
+      <span className={value ? 'text-[#86efac]' : 'text-on-surface-variant'}>{icon}</span>
+      <span className="font-dense uppercase tracking-widest text-on-surface-variant">{label}</span>
       <span className="ml-auto">
         {value ? (
           <ToggleRight className="h-4 w-4 text-[#86efac]" />
         ) : (
-          <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+          <ToggleLeft className="h-4 w-4 text-on-surface-variant" />
         )}
       </span>
     </button>
@@ -228,10 +228,10 @@ function PropertyField({
   const enumDef = databaseRef ? enums.find((e) => e.name === databaseRef) : null;
 
   return (
-    <div className="rounded-[12px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-3 py-2">
-      <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-[rgba(160,174,192,0.72)]">
+    <div className="border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-3 py-2">
+      <span className="block text-[10px] font-dense uppercase tracking-widest text-primary">
         {name}
-        <span className="ml-2 font-normal normal-case tracking-normal text-[rgba(160,174,192,0.48)]">
+        <span className="ml-2 font-mono font-normal normal-case tracking-normal text-on-surface-variant/50">
           ({propType})
         </span>
       </span>
@@ -245,13 +245,13 @@ function PropertyField({
           {value === 'true' ? (
             <ToggleRight className="h-4 w-4 text-[#86efac]" />
           ) : (
-            <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+            <ToggleLeft className="h-4 w-4 text-on-surface-variant" />
           )}
-          <span className="text-xs text-foreground">{value}</span>
+          <span className="text-xs text-on-surface">{value}</span>
         </button>
       ) : enumDef ? (
         <select
-          className="mt-1 w-full bg-transparent text-sm text-white outline-none"
+          className="mt-1 w-full bg-transparent text-sm text-on-surface outline-none"
           value={value}
           onChange={handleChange}
         >
@@ -263,7 +263,7 @@ function PropertyField({
         </select>
       ) : propType === 'Integer' ? (
         <input
-          className="mt-1 w-full bg-transparent font-mono text-sm text-white outline-none placeholder:text-[rgba(160,174,192,0.48)]"
+          className="mt-1 w-full bg-transparent font-mono text-sm text-on-surface outline-none placeholder:text-on-surface-variant/50"
           type="number"
           step="1"
           value={value}
@@ -271,7 +271,7 @@ function PropertyField({
         />
       ) : propType === 'Float' ? (
         <input
-          className="mt-1 w-full bg-transparent font-mono text-sm text-white outline-none placeholder:text-[rgba(160,174,192,0.48)]"
+          className="mt-1 w-full bg-transparent font-mono text-sm text-on-surface outline-none placeholder:text-on-surface-variant/50"
           type="number"
           step="0.01"
           value={value}
@@ -279,7 +279,7 @@ function PropertyField({
         />
       ) : (
         <input
-          className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-[rgba(160,174,192,0.48)]"
+          className="mt-1 w-full bg-transparent text-sm text-on-surface outline-none placeholder:text-on-surface-variant/50"
           type="text"
           value={value}
           onChange={handleChange}
@@ -301,17 +301,17 @@ function PortRow({
   const color = portTypeColors[portType] ?? '#64748b';
   return (
     <div
-      className="flex items-center gap-2 rounded border border-border bg-muted/50 px-3 py-1.5 text-xs"
+      className="flex items-center gap-2 border border-[rgba(77,70,53,0.15)] bg-surface-high/50 px-3 py-1.5 text-xs"
       style={{ opacity: visible ? 1 : 0.45 }}
     >
       <span
         className="h-2 w-2 rounded-full"
         style={{ backgroundColor: color }}
       />
-      <span className="text-foreground">{name}</span>
-      <span className="ml-auto font-mono text-muted-foreground">{portType}</span>
+      <span className="font-dense text-on-surface">{name}</span>
+      <span className="ml-auto font-mono text-on-surface-variant">{portType}</span>
       {!visible && (
-        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">hidden</span>
+        <span className="text-[9px] uppercase tracking-wider text-on-surface-variant">hidden</span>
       )}
     </div>
   );

@@ -23,22 +23,22 @@ export const ChainNode = memo(function ChainNode({
 
   return (
     <div
-      className={`min-w-[280px] rounded-lg border shadow-lg transition-all ${
+      className={`obsidian-panel min-w-[280px] border shadow-lg transition-all ${
         selected
           ? 'border-primary shadow-primary/20'
           : d.enabled
-            ? 'border-border'
-            : 'border-border/50 opacity-60'
-      } bg-card`}
+            ? 'border-[rgba(77,70,53,0.15)]'
+            : 'border-[rgba(77,70,53,0.15)]/50 opacity-60'
+      }`}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 rounded-t-lg border-b border-border bg-secondary/30 px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-[rgba(77,70,53,0.15)] bg-secondary/30 px-3 py-2">
         <div
           className={`h-2 w-2 rounded-full ${
             d.enabled ? 'bg-green-400' : 'bg-muted-foreground'
           }`}
         />
-        <span className="flex-1 truncate text-sm font-medium text-foreground">
+        <span className="flex-1 truncate text-sm font-medium text-primary font-headline">
           {d.name}
         </span>
         <span className="text-xs text-muted-foreground">#{d.chainId}</span>
