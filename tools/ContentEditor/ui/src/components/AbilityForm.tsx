@@ -172,9 +172,9 @@ export default function AbilityForm({ data, onChange }: AbilityFormProps) {
       </Section>
 
       {/* Effects */}
-      <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
+      <div className="border border-[rgba(77,70,53,0.15)]">
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+          <span className="font-headline text-[11px] uppercase tracking-widest text-on-surface-variant">
             Effects ({data.effects.length})
           </span>
           <button
@@ -247,7 +247,7 @@ function EffectEditor({
   };
 
   return (
-    <div className="rounded border border-[rgba(77,70,53,0.15)]/40 bg-surface-low/50">
+    <div className="border border-[rgba(77,70,53,0.15)] bg-surface-low/50">
       <div className="flex items-center gap-1 px-1.5 py-1">
         <button type="button" onClick={() => setExpanded((e) => !e)} className="text-on-surface-variant">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -258,7 +258,7 @@ function EffectEditor({
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-error hover:bg-error/10"
+          className="p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -349,7 +349,7 @@ function EffectEditor({
                 <button
                   type="button"
                   onClick={() => removeNvp(ni)}
-                  className="rounded p-0.5 text-error hover:bg-error/10"
+                  className="p-0.5 text-error hover:bg-error/10"
                 >
                   <Trash2 className="h-2.5 w-2.5" />
                 </button>

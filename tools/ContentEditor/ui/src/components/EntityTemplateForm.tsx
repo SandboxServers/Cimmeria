@@ -170,10 +170,10 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
+    <div className="border border-[rgba(77,70,53,0.15)]">
       <button
         type="button"
-        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant hover:text-on-surface"
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 font-headline text-[11px] uppercase tracking-widest text-on-surface-variant hover:text-on-surface"
         onClick={() => setOpen((o) => !o)}
       >
         {open ? (
@@ -195,7 +195,7 @@ function Section({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
-      <label className="self-center text-[11px] text-on-surface-variant">{label}</label>
+      <label className="self-center text-xs font-dense uppercase tracking-widest text-primary">{label}</label>
       <div>{children}</div>
     </>
   );

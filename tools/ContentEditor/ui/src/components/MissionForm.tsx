@@ -202,9 +202,9 @@ export default function MissionForm({ data, onChange }: MissionFormProps) {
       </Section>
 
       {/* Steps */}
-      <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
+      <div className="border border-[rgba(77,70,53,0.15)]">
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+          <span className="font-headline text-[11px] uppercase tracking-widest text-on-surface-variant">
             Steps ({data.steps.length})
           </span>
           <button
@@ -234,9 +234,9 @@ export default function MissionForm({ data, onChange }: MissionFormProps) {
       </div>
 
       {/* Reward Groups */}
-      <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
+      <div className="border border-[rgba(77,70,53,0.15)]">
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+          <span className="font-headline text-[11px] uppercase tracking-widest text-on-surface-variant">
             Reward Groups ({data.reward_groups.length})
           </span>
           <button
@@ -321,7 +321,7 @@ function StepEditor({
   };
 
   return (
-    <div className="rounded border border-[rgba(77,70,53,0.15)]/40 bg-surface-low/50">
+    <div className="border border-[rgba(77,70,53,0.15)] bg-surface-low/50">
       <div className="flex items-center gap-1 px-1.5 py-1">
         <button type="button" onClick={() => setExpanded((e) => !e)} className="text-on-surface-variant">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -332,7 +332,7 @@ function StepEditor({
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-error hover:bg-error/10"
+          className="p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -361,7 +361,7 @@ function StepEditor({
           </div>
 
           {/* Objectives */}
-          <div className="mt-2 border border-[rgba(77,70,53,0.15)]/30">
+          <div className="mt-2 border border-[rgba(77,70,53,0.15)]">
             <div className="flex items-center justify-between px-2 py-1">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
                 Objectives ({step.objectives.length})
@@ -449,7 +449,7 @@ function ObjectiveEditor({
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-error hover:bg-error/10"
+          className="p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-2.5 w-2.5" />
         </button>
@@ -604,7 +604,7 @@ function RewardGroupEditor({
   };
 
   return (
-    <div className="rounded border border-[rgba(77,70,53,0.15)]/40 bg-surface-low/50">
+    <div className="border border-[rgba(77,70,53,0.15)] bg-surface-low/50">
       <div className="flex items-center gap-1 px-1.5 py-1">
         <button type="button" onClick={() => setExpanded((e) => !e)} className="text-on-surface-variant">
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -615,7 +615,7 @@ function RewardGroupEditor({
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-error hover:bg-error/10"
+          className="p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-3 w-3" />
         </button>

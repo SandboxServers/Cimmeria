@@ -72,9 +72,9 @@ export default function LootTableForm({ data, onChange }: LootTableFormProps) {
       </Section>
 
       {/* Entries */}
-      <div className="rounded border border-[rgba(77,70,53,0.15)]/50">
+      <div className="border border-[rgba(77,70,53,0.15)]">
         <div className="flex items-center justify-between px-2 py-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+          <span className="font-headline text-[11px] uppercase tracking-widest text-on-surface-variant">
             Entries ({data.entries.length})
           </span>
           <button
@@ -186,7 +186,7 @@ function LootEntryRow({
         <button
           type="button"
           onClick={onRemove}
-          className="rounded p-0.5 text-error hover:bg-error/10"
+          className="p-0.5 text-error hover:bg-error/10"
         >
           <Trash2 className="h-3 w-3" />
         </button>
