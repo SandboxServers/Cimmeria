@@ -150,6 +150,39 @@ pub struct CellEntity {
 
     /// Visual component paths from `entity_templates.components`.
     pub components: Vec<String>,
+
+    // ── Ammo state ────────────────────────────────────────────────────────────
+    /// Current ammo count for active bandolier weapon.
+    pub current_ammo: i32,
+    /// Maximum ammo for the active weapon (clip size).
+    pub max_ammo: i32,
+    /// Ammo type enum value for `onEntityProperty(AmmoTypeId)`.
+    pub ammo_type: i32,
+
+    // ── NPC AI state ──────────────────────────────────────────────────────────
+    /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
+    pub ai_state: AiState,
+    /// Threat list: entity_id → accumulated threat value.
+    pub threat_list: HashMap<u32, f32>,
+    /// Position where this NPC was spawned (for leashing).
+    pub spawn_position: Option<Vector3>,
+    /// Ticks until next AI action (count-down from ai tick interval).
+    pub ai_cooldown_ticks: u32,
+
+    // ── Saved mission state (for re-login) ────────────────────────────────────
+    /// Saved missions loaded from DB, to be populated before content engine fires.
+    pub saved_missions_loaded: bool,
+}
+
+/// NPC AI state machine.
+///
+/// Reference: `python/Atrea/enums.py:228-239`
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiState {
+    Idle,
+    Fighting,
+    Dead,
+    Leashing,
 }
 
 impl CellEntity {
@@ -189,6 +222,14 @@ impl CellEntity {
             static_mesh: None,
             body_set: None,
             components: Vec::new(),
+            current_ammo: 0,
+            max_ammo: 0,
+            ammo_type: 0,
+            ai_state: AiState::Idle,
+            threat_list: HashMap::new(),
+            spawn_position: None,
+            ai_cooldown_ticks: 0,
+            saved_missions_loaded: false,
         }
     }
 
@@ -320,5 +361,72 @@ mod tests {
         // Point exactly 10 units away on the X axis
         let boundary = Vector3::new(20.0, 0.0, 20.0);
         assert!(entity.is_in_aoi(&boundary));
+    }
+
+    // ── New field defaults ─────────────────────────────────────────────────
+
+    #[test]
+    fn new_entity_ammo_defaults_zero() {
+        let entity = make_entity();
+        assert_eq!(entity.current_ammo, 0);
+        assert_eq!(entity.max_ammo, 0);
+        assert_eq!(entity.ammo_type, 0);
+    }
+
+    #[test]
+    fn new_entity_ai_state_defaults_idle() {
+        let entity = make_entity();
+        assert_eq!(entity.ai_state, AiState::Idle);
+        assert!(entity.threat_list.is_empty());
+        assert!(entity.spawn_position.is_none());
+        assert_eq!(entity.ai_cooldown_ticks, 0);
+    }
+
+    #[test]
+    fn new_entity_saved_missions_loaded_false() {
+        let entity = make_entity();
+        assert!(!entity.saved_missions_loaded);
+    }
+
+    #[test]
+    fn ai_state_equality() {
+        assert_eq!(AiState::Idle, AiState::Idle);
+        assert_eq!(AiState::Fighting, AiState::Fighting);
+        assert_eq!(AiState::Dead, AiState::Dead);
+        assert_eq!(AiState::Leashing, AiState::Leashing);
+        assert_ne!(AiState::Idle, AiState::Fighting);
+        assert_ne!(AiState::Dead, AiState::Leashing);
+    }
+
+    #[test]
+    fn threat_list_operations() {
+        let mut entity = make_entity();
+        entity.threat_list.insert(10, 50.0);
+        entity.threat_list.insert(20, 100.0);
+        assert_eq!(entity.threat_list.len(), 2);
+        assert_eq!(entity.threat_list[&20], 100.0);
+
+        // Accumulate threat
+        *entity.threat_list.entry(10).or_insert(0.0) += 25.0;
+        assert_eq!(entity.threat_list[&10], 75.0);
+
+        // Top threat target
+        let top = entity.threat_list.iter()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(&id, _)| id);
+        assert_eq!(top, Some(20));
+
+        entity.threat_list.clear();
+        assert!(entity.threat_list.is_empty());
+    }
+
+    #[test]
+    fn spawn_position_stores_and_retrieves() {
+        let mut entity = make_entity();
+        assert!(entity.spawn_position.is_none());
+
+        let spawn = Vector3::new(100.0, 5.0, 200.0);
+        entity.spawn_position = Some(spawn);
+        assert_eq!(entity.spawn_position.unwrap(), spawn);
     }
 }

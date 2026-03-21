@@ -55,7 +55,7 @@ function Build-CimmeriaServer {
     Write-Status "" "White"
     Write-Status "[$currentStep/$buildSteps] Building cimmeria-server..." "Cyan"
 
-    $serverArgs = @("build", "--workspace", "--exclude", "cimmeria-app", "--exclude", "sgw-launcher") + $releaseFlag
+    $serverArgs = @("build", "--workspace", "--exclude", "cimmeria-app", "--exclude", "sgw-launcher", "--exclude", "cimmeria-content-editor", "--exclude", "cimmeria-scene-editor") + $releaseFlag
     Write-Status "  cargo $($serverArgs -join ' ')" "DarkGray"
 
     Invoke-CargoBuild $serverArgs

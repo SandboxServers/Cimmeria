@@ -36,6 +36,13 @@ default-members = [
     "crates/supervisor",
 ]
 
+# Optimize dependencies and strip their debug info in dev builds.
+# This dramatically reduces .rlib sizes so the linker doesn't OOM on WSL
+# (~8 GB linker RSS instead of ~47 GB). Our own crates keep full debug info.
+[profile.dev.package."*"]
+opt-level = 1
+debug = false
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"

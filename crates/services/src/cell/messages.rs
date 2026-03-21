@@ -48,6 +48,18 @@ pub struct NpcAoIData {
     pub components: Vec<String>,
 }
 
+/// A saved mission loaded from the database for re-login.
+#[derive(Debug, Clone)]
+pub struct SavedMission {
+    pub mission_id: i32,
+    pub status: i8,
+    pub current_step_id: Option<i32>,
+    pub completed_step_ids: Vec<i32>,
+    pub completed_objective_ids: Vec<i32>,
+    pub active_objective_ids: Vec<i32>,
+    pub failed_objective_ids: Vec<i32>,
+}
+
 /// Messages sent from BaseApp to CellApp.
 // Cannot derive Debug because oneshot::Sender doesn't implement Debug.
 // Manual impl would be possible but not worth the boilerplate.
@@ -116,6 +128,8 @@ pub enum BaseToCellMsg {
         entity_id: u32,
         player_id: i32,
         world_name: String,
+        /// Saved missions loaded from DB, to be restored before content engine fires.
+        saved_missions: Vec<SavedMission>,
     },
 
     /// Reload the content engine from the database (triggered by admin API / Content Editor).
@@ -190,7 +204,7 @@ pub enum CellToBaseMsg {
     /// The CellService has already validated the stargate address and removed
     /// the entity from the old space. BaseApp must send RESET_ENTITIES to the
     /// client, then re-create the entity in the new world via the standard
-    /// Phase 5a/5b world entry flow.
+    /// World entry flow (teardown -> create player -> enter world).
     GateTravel {
         entity_id: u32,
         target_world_name: String,
@@ -242,4 +256,74 @@ pub enum CellToBaseMsg {
         method_index: u16,
         args: Vec<u8>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_mission_debug_prints() {
+        let m = SavedMission {
+            mission_id: 622,
+            status: 1,
+            current_step_id: Some(700),
+            completed_step_ids: vec![],
+            completed_objective_ids: vec![],
+            active_objective_ids: vec![800, 801],
+            failed_objective_ids: vec![],
+        };
+        let debug = format!("{:?}", m);
+        assert!(debug.contains("622"));
+        assert!(debug.contains("800"));
+    }
+
+    #[test]
+    fn saved_mission_clone() {
+        let m = SavedMission {
+            mission_id: 622,
+            status: 1,
+            current_step_id: Some(700),
+            completed_step_ids: vec![699],
+            completed_objective_ids: vec![801],
+            active_objective_ids: vec![800],
+            failed_objective_ids: vec![],
+        };
+        let cloned = m.clone();
+        assert_eq!(cloned.mission_id, 622);
+        assert_eq!(cloned.status, 1);
+        assert_eq!(cloned.current_step_id, Some(700));
+        assert_eq!(cloned.completed_step_ids, vec![699]);
+        assert_eq!(cloned.completed_objective_ids, vec![801]);
+        assert_eq!(cloned.active_objective_ids, vec![800]);
+        assert!(cloned.failed_objective_ids.is_empty());
+    }
+
+    #[test]
+    fn saved_mission_completed_status() {
+        let m = SavedMission {
+            mission_id: 622,
+            status: 2, // MISSION_COMPLETED
+            current_step_id: None,
+            completed_step_ids: vec![700],
+            completed_objective_ids: vec![800, 801],
+            active_objective_ids: vec![],
+            failed_objective_ids: vec![],
+        };
+        assert_eq!(m.status, 2);
+        assert!(m.current_step_id.is_none());
+        assert_eq!(m.completed_step_ids.len(), 1);
+        assert_eq!(m.completed_objective_ids.len(), 2);
+    }
+
+    #[test]
+    fn npc_aoi_data_default() {
+        let data = NpcAoIData::default();
+        assert_eq!(data.faction, 0);
+        assert_eq!(data.alignment, 0);
+        assert_eq!(data.entity_flags, 0);
+        assert_eq!(data.interaction_type, 0);
+        assert!(data.name_id.is_none());
+        assert!(data.components.is_empty());
+    }
 }

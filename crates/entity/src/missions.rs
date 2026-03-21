@@ -356,4 +356,102 @@ mod tests {
         // Completed missions are not resent
         assert!(mgr.serialize_resend().is_empty());
     }
+
+    // ── Mission restoration from saved data (re-login) ───────────────────
+
+    #[test]
+    fn restore_active_mission_from_saved() {
+        let mut mgr = MissionManager::new();
+
+        // Simulate what CellService does on InitPlayerState
+        let objectives = vec![
+            MissionObjective { objective_id: 800, status: STATUS_ACTIVE, hidden: false, optional: false },
+            MissionObjective { objective_id: 801, status: STATUS_COMPLETED, hidden: false, optional: false },
+        ];
+        let mut mission = MissionInstance::new(622, 700, objectives);
+        mission.status = MISSION_ACTIVE;
+        mission.completed_objectives = vec![801];
+
+        mgr.add_mission(mission);
+
+        assert_eq!(mgr.count(), 1);
+        let m = mgr.get_mission(622).unwrap();
+        assert_eq!(m.status, MISSION_ACTIVE);
+        assert_eq!(m.current_step_id, Some(700));
+        assert_eq!(m.active_objectives.len(), 2);
+        assert_eq!(m.active_objectives[0].status, STATUS_ACTIVE);
+        assert_eq!(m.active_objectives[1].status, STATUS_COMPLETED);
+    }
+
+    #[test]
+    fn restore_completed_mission_prevents_reacceptance() {
+        let mut mgr = MissionManager::new();
+
+        let mut mission = MissionInstance::new(622, 700, vec![]);
+        mission.status = MISSION_COMPLETED;
+        mission.completed_steps = vec![700];
+        mgr.add_mission(mission);
+
+        // Completed mission is in the manager
+        assert_eq!(mgr.count(), 1);
+        assert_eq!(mgr.get_mission(622).unwrap().status, MISSION_COMPLETED);
+
+        // But it should NOT appear in active_missions (for resend)
+        assert!(mgr.active_missions().is_empty());
+
+        // serialize_resend should skip it
+        assert!(mgr.serialize_resend().is_empty());
+    }
+
+    #[test]
+    fn restore_multiple_missions_preserves_all() {
+        let mut mgr = MissionManager::new();
+
+        // Active mission 622
+        let m1 = MissionInstance::new(622, 700, vec![
+            MissionObjective { objective_id: 800, status: STATUS_ACTIVE, hidden: false, optional: false },
+        ]);
+        mgr.add_mission(m1);
+
+        // Completed mission 638
+        let mut m2 = MissionInstance::new(638, 710, vec![]);
+        m2.status = MISSION_COMPLETED;
+        mgr.add_mission(m2);
+
+        // Active mission 681
+        let m3 = MissionInstance::new(681, 720, vec![
+            MissionObjective { objective_id: 900, status: STATUS_ACTIVE, hidden: false, optional: false },
+        ]);
+        mgr.add_mission(m3);
+
+        assert_eq!(mgr.count(), 3);
+        assert_eq!(mgr.active_missions().len(), 2); // 622 and 681
+
+        // Resend should only include the 2 active missions
+        let resend = mgr.serialize_resend();
+        // Each active mission = 1 mission update + 1 step update + 1 objective = 3 messages
+        // 622: 3 messages, 681: 3 messages = 6 total
+        assert_eq!(resend.len(), 6);
+    }
+
+    #[test]
+    fn all_missions_includes_every_status() {
+        let mut mgr = MissionManager::new();
+
+        let m1 = MissionInstance::new(1, 10, vec![]);
+        let mut m2 = MissionInstance::new(2, 20, vec![]);
+        m2.complete();
+        let mut m3 = MissionInstance::new(3, 30, vec![]);
+        m3.fail();
+
+        mgr.add_mission(m1);
+        mgr.add_mission(m2);
+        mgr.add_mission(m3);
+
+        let all: Vec<i32> = mgr.all_missions().map(|m| m.mission_id).collect();
+        assert_eq!(all.len(), 3);
+        assert!(all.contains(&1));
+        assert!(all.contains(&2));
+        assert!(all.contains(&3));
+    }
 }

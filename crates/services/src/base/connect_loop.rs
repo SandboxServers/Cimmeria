@@ -14,14 +14,15 @@ use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUE
 use crate::cell::messages::BaseToCellMsg;
 
 use super::ConnectedClientState;
-use super::character::{handle_create_character, handle_delete_character, handle_request_character_visuals};
+use super::character::{handle_delete_character, handle_request_character_visuals};
+use super::character_create::handle_create_character;
 use super::cooked_data::{handle_element_data_request, handle_version_info_request};
 use super::dispatch::{dispatch_sgw_player_base_method, sgw_player_base};
 use super::helpers::{destroy_client_entities, to_hex};
 use super::login::{handle_log_off, handle_login, parse_baseapp_login};
 use super::resources::ResourceCache;
 use super::world_entry::{
-    handle_enable_entities, handle_map_loaded_phase_b, handle_on_client_ready,
+    handle_enable_entities, handle_map_loaded, handle_on_client_ready,
     handle_play_character, handle_cancel_movie,
 };
 
@@ -364,7 +365,7 @@ pub(crate) async fn handle_encrypted_datagram(
                     match id {
                         sgw_player_base::ON_CLIENT_READY => {
                             handle_on_client_ready(
-                                addr, connected, cell_tx, socket, entity_to_addr,
+                                addr, connected, cell_tx, socket, entity_to_addr, db_pool,
                             ).await?;
                         }
                         _ => {
@@ -433,20 +434,20 @@ pub(crate) async fn handle_encrypted_datagram(
             //   Sub-slot (61+): [msg_id = 0xBD][word_len][entityId: u32][sub_index: u8][args]
             // The 4-byte entityId prefix is ALWAYS present and must be stripped.
             id if (0x80..=0xBF).contains(&id) => {
-                // ── Phase 5b-B trigger ──
-                // After Phase 5b-A, the client sends the exposed SGWPlayer cell
-                // method `mapLoaded` (index 25, msg_id 0x99). The C++ server
-                // waits for that specific method before sending VIEWPORT + CELL +
-                // POSITION + the full entity data bundle.
-                let phase_b_pending = {
+                // ── Enter world trigger ──
+                // After the create-player step, the client sends the exposed
+                // SGWPlayer cell method `mapLoaded` (index 25, msg_id 0x99).
+                // The C++ server waits for that specific method before sending
+                // VIEWPORT + CELL + POSITION + the full entity data bundle.
+                let map_loaded_pending = {
                     let clients = connected.lock().unwrap();
-                    clients.get(&addr).map_or(false, |c| c.pending_world_entry_phase_b.is_some())
+                    clients.get(&addr).map_or(false, |c| c.pending_map_loaded.is_some())
                 };
-                if phase_b_pending && id == 0x99 {
-                    if let Err(e) = handle_map_loaded_phase_b(
+                if map_loaded_pending && id == 0x99 {
+                    if let Err(e) = handle_map_loaded(
                         socket, addr, key, connected, cell_tx, entity_to_addr, db_pool,
                     ).await {
-                        tracing::error!(%addr, error = %e, "Phase 5b-B failed");
+                        tracing::error!(%addr, error = %e, "Enter world (mapLoaded) failed");
                     }
                 }
 
@@ -455,7 +456,7 @@ pub(crate) async fn handle_encrypted_datagram(
                     clients.get(&addr).and_then(|c| c.player_entity_id)
                 };
                 if let Some(player_eid) = player_eid {
-                    if phase_b_pending && id != 0x99 {
+                    if map_loaded_pending && id != 0x99 {
                         tracing::trace!(
                             %addr,
                             msg_id = format_args!("{:#04x}", id),

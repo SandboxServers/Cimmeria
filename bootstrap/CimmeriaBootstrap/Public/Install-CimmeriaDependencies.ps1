@@ -17,6 +17,10 @@ function Install-CimmeriaDependencies {
     .PARAMETER SkipDownload
         Skip downloading archives (use already-cached files).
 
+    .PARAMETER UseDocker
+        When set, only requires client libraries (libpq-dev, psql) on Linux
+        rather than the full PostgreSQL server.
+
     .EXAMPLE
         Install-CimmeriaDependencies
 
@@ -25,7 +29,8 @@ function Install-CimmeriaDependencies {
     #>
     [CmdletBinding()]
     param(
-        [switch]$SkipDownload
+        [switch]$SkipDownload,
+        [switch]$UseDocker
     )
 
     $paths = Get-ProjectPaths
@@ -133,8 +138,12 @@ function Install-CimmeriaDependencies {
             Write-Status "PostgreSQL: already extracted" "DarkGray"
         }
     } elseif ($isLinux) {
-        # Linux: verify system PostgreSQL
-        Write-Step "POSTGRESQL (SYSTEM PACKAGE)"
+        # Linux: verify or install system PostgreSQL
+        # When -UseDocker: only need client libs (libpq-dev) for Rust compilation + psql for schema loading
+        # Without Docker: need full server (pg_ctl, initdb, postgres) for managed local instance
+        $needServer = -not $UseDocker
+        $stepLabel = if ($UseDocker) { "POSTGRESQL CLIENT LIBRARIES" } else { "POSTGRESQL (SYSTEM PACKAGE)" }
+        Write-Step $stepLabel
 
         $pgConfig = Get-Command pg_config -ErrorAction SilentlyContinue
         if ($pgConfig) {
@@ -144,10 +153,113 @@ function Install-CimmeriaDependencies {
                 Write-Status "WARNING: PostgreSQL 17+ recommended. Found: $pgVersion" "Yellow"
             }
         } else {
-            Write-Status "PostgreSQL not found in PATH." "Red"
-            Write-Status "  Install: sudo apt install $($Dependencies.PostgreSQL.Linux.PackageName)" "Yellow"
-            Write-Status "  Or:      sudo dnf install $($Dependencies.PostgreSQL.Linux.PackageName)-server" "Yellow"
-            throw "PostgreSQL not found. Install it and re-run."
+            # Also check common Debian/Ubuntu locations (pg_config may not be in PATH)
+            foreach ($ver in @(17, 16, 15)) {
+                $candidate = "/usr/lib/postgresql/$ver/bin/pg_config"
+                if (Test-Path $candidate) {
+                    $pgVersion = (& $candidate --version 2>&1) -join ""
+                    Write-Status "Found: $pgVersion (not in PATH)" "Green"
+                    Write-Status "  Hint: add /usr/lib/postgresql/$ver/bin to your PATH" "DarkGray"
+                    $pgConfig = Get-Item $candidate
+                    break
+                }
+            }
+        }
+
+        if (-not $pgConfig) {
+            # Determine what packages to install
+            $packages = if ($needServer) { "postgresql-17 libpq-dev" } else { "libpq-dev postgresql-client-17" }
+
+            # Attempt to install on Debian/Ubuntu
+            $aptGet = Get-Command apt-get -ErrorAction SilentlyContinue
+            if ($aptGet) {
+                Write-Status "PostgreSQL not found — attempting to install via apt..." "Yellow"
+
+                # Test if sudo works (may need a password or not be available)
+                $sudoTest = & sudo -n true 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Status "Cannot run sudo non-interactively." "Yellow"
+                    Write-Host ""
+                    Write-Host "  Install the required packages manually:" -ForegroundColor White
+                    Write-Host "    sudo apt install $packages" -ForegroundColor Cyan
+                    if ($needServer) {
+                        Write-Host ""
+                        Write-Host "  Or use Docker instead:" -ForegroundColor White
+                        Write-Host "    pwsh setup.ps1 -UseDocker" -ForegroundColor Cyan
+                    }
+                    Write-Host ""
+                    throw "PostgreSQL not found. Install it and re-run$(if ($needServer) { ', or use -UseDocker' })."
+                }
+
+                # Add the official PostgreSQL apt repository for PG 17
+                $pgaptInstalled = Test-Path "/etc/apt/sources.list.d/pgdg.list"
+                if (-not $pgaptInstalled) {
+                    Write-Status "  Adding PostgreSQL apt repository..." "DarkGray"
+                    & sudo apt-get install -y curl ca-certificates 2>&1 | Out-Null
+                    & sudo install -d /usr/share/postgresql-common/pgdg
+                    & sudo sh -c 'curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' 2>&1
+                    $codename = (lsb_release -cs 2>&1).Trim()
+                    & sudo sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $codename-pgdg main' > /etc/apt/sources.list.d/pgdg.list" 2>&1
+                    & sudo apt-get update 2>&1 | Out-Null
+                }
+                & sudo apt-get install -y $packages.Split(' ') 2>&1 | ForEach-Object {
+                    $line = "$_"
+                    if ($line -match 'Setting up|is already|Unpacking') {
+                        Write-Status "  $line" "DarkGray"
+                    }
+                }
+
+                # Verify installation
+                $pgConfig = Get-Command pg_config -ErrorAction SilentlyContinue
+                if (-not $pgConfig) {
+                    foreach ($ver in @(17, 16, 15)) {
+                        $candidate = "/usr/lib/postgresql/$ver/bin/pg_config"
+                        if (Test-Path $candidate) {
+                            $pgConfig = Get-Item $candidate
+                            break
+                        }
+                    }
+                }
+
+                if ($pgConfig) {
+                    $pgVersion = (& $pgConfig --version 2>&1) -join ""
+                    Write-Status "PostgreSQL installed: $pgVersion" "Green"
+
+                    if ($needServer) {
+                        # Stop the system-managed cluster — we manage our own in server/pgdata/
+                        Write-Status "Stopping system PostgreSQL cluster (bootstrap manages its own)..." "DarkGray"
+                        & sudo pg_ctlcluster 17 main stop 2>&1 | Out-Null
+                        & sudo systemctl disable postgresql 2>&1 | Out-Null
+                    }
+                } else {
+                    throw "PostgreSQL installation failed. Install manually: sudo apt install $packages"
+                }
+            } else {
+                Write-Status "PostgreSQL not found." "Red"
+                Write-Status "  Debian/Ubuntu: sudo apt install $packages" "Yellow"
+                Write-Status "  Fedora/RHEL:   sudo dnf install postgresql17-server libpq-devel" "Yellow"
+                Write-Status "  Or use Docker: pwsh setup.ps1 -UseDocker" "Yellow"
+                throw "PostgreSQL not found. Install it and re-run, or use -UseDocker."
+            }
+        }
+
+        # Ensure libpq-dev is installed (required for Rust pq-sys crate compilation)
+        $dpkg = Get-Command dpkg -ErrorAction SilentlyContinue
+        if ($dpkg) {
+            $libpqCheck = & dpkg -s libpq-dev 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Status "libpq-dev not found (required for Rust PostgreSQL driver)." "Yellow"
+                $sudoTest = & sudo -n true 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Status "Installing libpq-dev..." "Yellow"
+                    & sudo apt-get install -y libpq-dev 2>&1 | ForEach-Object {
+                        $line = "$_"
+                        if ($line -match 'Setting up|is already') { Write-Status "  $line" "DarkGray" }
+                    }
+                } else {
+                    Write-Status "  Install manually: sudo apt install libpq-dev" "Yellow"
+                }
+            }
         }
     } elseif ($isMac) {
         # macOS: verify Homebrew PostgreSQL

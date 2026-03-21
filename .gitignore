@@ -183,3 +183,5 @@ docs/design/*
 data/cache/
 cimmeria-content-editor.exe
 cimmeria-server
+
+pak/*

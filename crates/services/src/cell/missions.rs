@@ -48,6 +48,99 @@ pub async fn resend_missions(
     }
 }
 
+/// Advance a mission to a new step: complete old objectives, set new step, load new objectives.
+pub async fn advance_step(
+    entity_id: u32,
+    mission_id: i32,
+    new_step_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    // Load new step objectives from the cache before borrowing entity mutably
+    let new_objectives: Vec<MissionObjective> = space_mgr
+        .get_step_objectives(new_step_id)
+        .into_iter()
+        .map(|o| MissionObjective {
+            objective_id: o.objective_id,
+            status: STATUS_ACTIVE,
+            hidden: o.is_hidden,
+            optional: o.is_optional,
+        })
+        .collect();
+
+    let entity = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e,
+        None => return,
+    };
+
+    let mission = match entity.missions.get_mission_mut(mission_id) {
+        Some(m) => m,
+        None => {
+            tracing::warn!(entity_id, mission_id, new_step_id, "advance_step: mission not found");
+            return;
+        }
+    };
+
+    // Complete all active objectives in the current step
+    let old_objective_ids: Vec<i32> = mission.active_objectives.iter()
+        .filter(|o| o.status != STATUS_COMPLETED)
+        .map(|o| o.objective_id)
+        .collect();
+    for oid in &old_objective_ids {
+        mission.complete_objective(*oid);
+    }
+
+    let old_step_id = mission.current_step_id;
+
+    // Complete the old step
+    if let Some(sid) = old_step_id {
+        mission.completed_steps.push(sid);
+    }
+
+    // Set the new step
+    mission.current_step_id = Some(new_step_id);
+    mission.active_objectives = new_objectives.clone();
+
+    tracing::info!(entity_id, mission_id, ?old_step_id, new_step_id,
+        new_objectives = new_objectives.len(), "Mission step advanced");
+
+    // Send onStepUpdate(old_step_id, COMPLETED)
+    if let Some(sid) = old_step_id {
+        let mut args = Vec::with_capacity(5);
+        args.extend_from_slice(&sid.to_le_bytes());
+        args.push(STATUS_COMPLETED as u8);
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_STEP_UPDATE,
+            args,
+        }).await;
+    }
+
+    // Send onStepUpdate(new_step_id, ACTIVE)
+    let mut args = Vec::with_capacity(5);
+    args.extend_from_slice(&new_step_id.to_le_bytes());
+    args.push(STATUS_ACTIVE as u8);
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: ON_STEP_UPDATE,
+        args,
+    }).await;
+
+    // Send onObjectiveUpdate for each new objective
+    for obj in &new_objectives {
+        let mut args = Vec::with_capacity(7);
+        args.extend_from_slice(&obj.objective_id.to_le_bytes());
+        args.push(STATUS_ACTIVE as u8);
+        args.push(if obj.hidden { 1 } else { 0 });
+        args.push(if obj.optional { 1 } else { 0 });
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_OBJECTIVE_UPDATE,
+            args,
+        }).await;
+    }
+}
+
 /// Accept a mission: create a MissionInstance and send initial state to client.
 pub async fn accept_mission(
     entity_id: u32,

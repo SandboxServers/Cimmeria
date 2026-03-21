@@ -206,6 +206,11 @@ pub async fn handle_use_ability(
             }
         }
     }
+
+    // Generate threat on surviving NPCs so they aggro back
+    if !target_died {
+        combat::generate_threat(space_mgr, entity_id, target_eid, _total_damage as f32);
+    }
 }
 
 /// Calculate XP reward for killing a mob of the given level.

@@ -1,7 +1,7 @@
 function Stop-CimmeriaServer {
     <#
     .SYNOPSIS
-        Stops the Cimmeria server process and (on Windows) the local PostgreSQL instance.
+        Stops the Cimmeria server process and the managed PostgreSQL instance (if present).
         Also stops the Docker PostgreSQL container if present.
 
     .EXAMPLE
@@ -41,25 +41,24 @@ function Stop-CimmeriaServer {
         }
     }
 
-    # Stop local PostgreSQL (Windows managed instance only)
-    if ($isWin) {
-        $pgDataDir = Join-Path $paths.ServerDir "pgdata"
-        if (Test-Path $pgDataDir) {
-            $pgBin = Find-PostgreSQL
-            if ($pgBin) {
-                $pgCtl = Join-Path $pgBin "pg_ctl.exe"
-                $statusResult = & $pgCtl status -D $pgDataDir 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    if ($PSCmdlet.ShouldProcess("PostgreSQL", "Stop database server")) {
-                        Write-Status "Stopping PostgreSQL..." "White"
-                        & $pgCtl stop -D $pgDataDir -m fast 2>&1 | ForEach-Object {
-                            Write-Status "  $_" "DarkGray"
-                        }
-                        Write-Status "PostgreSQL stopped." "Green"
+    # Stop local PostgreSQL (managed instance on any platform)
+    $pgDataDir = Join-Path $paths.ServerDir "pgdata"
+    if (Test-Path $pgDataDir) {
+        $pgBin = Find-PostgreSQL
+        if ($pgBin) {
+            $exeSuffix = if ($isWin) { ".exe" } else { "" }
+            $pgCtl = Join-Path $pgBin "pg_ctl$exeSuffix"
+            $statusResult = & $pgCtl status -D $pgDataDir 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                if ($PSCmdlet.ShouldProcess("PostgreSQL", "Stop database server")) {
+                    Write-Status "Stopping PostgreSQL..." "White"
+                    & $pgCtl stop -D $pgDataDir -m fast 2>&1 | ForEach-Object {
+                        Write-Status "  $_" "DarkGray"
                     }
-                } else {
-                    Write-Status "PostgreSQL: not running" "DarkGray"
+                    Write-Status "PostgreSQL stopped." "Green"
                 }
+            } else {
+                Write-Status "PostgreSQL: not running" "DarkGray"
             }
         }
     }

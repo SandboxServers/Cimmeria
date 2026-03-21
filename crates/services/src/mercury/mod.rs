@@ -5,8 +5,8 @@
 //! - [`build_time_sync`]               — three time-sync messages in one packet (Phase 3).
 //! - [`build_char_list`]               — game-state + character list (Phase 4, dynamic count).
 //! - [`build_ongoing_tick_sync`]       — single tick-sync for the 100 ms heartbeat.
-//! - [`build_world_entry_phase_a`]     — createBasePlayer + onClientMapLoad (Phase 5b-A).
-//! - [`build_world_entry_phase_b`]     — viewport + cell + position (Phase 5b-B, after client loads terrain).
+//! - [`build_create_player`]           — createBasePlayer + onClientMapLoad (player creation + map load).
+//! - [`build_enter_world`]             — viewport + cell + position (world entry, after client loads terrain).
 //! - [`build_char_create_failed`]      — `onCharacterCreateFailed` error response.
 //! - [`build_resource_fragment`]       — `BASEMSG_RESOURCE_FRAGMENT` for cooked data serving.
 //! - [`build_version_info`]            — `onVersionInfo` for client cache version queries.
@@ -45,7 +45,7 @@ pub use aoi::{
 };
 
 pub use world_data::{
-    build_world_entry_phase_a, build_world_entry_phase_b, build_world_entry_phase_b_body,
+    build_create_player, build_enter_world, build_enter_world_body,
     build_on_player_data_loaded, build_setup_world_parameters,
     build_map_loaded, build_map_loaded_body, fragment_map_loaded, fragment_count,
     archetype_stats, archetype_ability_tree,
@@ -174,6 +174,7 @@ pub mod method_idx {
 
     // SGWInventoryManager interface (69–75)
     pub const ON_BAG_INFO: u16 = 69;
+    pub const ON_ACTIVE_SLOT_UPDATE: u16 = 70;
     pub const ON_UPDATE_ITEM: u16 = 72;
     pub const ON_CASH_CHANGED: u16 = 75;
 
@@ -192,6 +193,7 @@ pub mod method_idx {
     pub const GIVE_XP_FOR_LEVEL: u16 = 119;
     pub const SETUP_WORLD_PARAMETERS: u16 = 122;
     pub const CLEAR_HINTED_REGIONS: u16 = 124;
+    pub const ADD_CLIENT_HINTED_GENERIC_REGION: u16 = 125;
     pub const ON_RESET_MAP_INFO: u16 = 126;
 
     // Extended encoding (>= 128)

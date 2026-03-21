@@ -62,15 +62,29 @@ function Update-CimmeriaClient {
 
     # Find client installation
     if (-not $ClientPath) {
-        # Search common install locations and sibling directories
-        $scriptDrive = (Split-Path $PSScriptRoot -Qualifier)
-        $searchPaths = @(
-            "${scriptDrive}\Stargate Worlds-QA",
-            "${env:ProgramFiles(x86)}\FireSky\Stargate Worlds-QA",
-            "${env:ProgramFiles}\FireSky\Stargate Worlds-QA",
-            "${env:ProgramFiles(x86)}\Cheyenne Mountain Entertainment\Stargate Worlds",
-            "${env:ProgramFiles}\Cheyenne Mountain Entertainment\Stargate Worlds"
-        )
+        $isWin = $IsWindows -or (-not (Test-Path variable:IsWindows))
+        $searchPaths = @()
+
+        if ($isWin) {
+            $scriptDrive = (Split-Path $PSScriptRoot -Qualifier)
+            $searchPaths += "${scriptDrive}\Stargate Worlds-QA"
+            $searchPaths += "${env:ProgramFiles(x86)}\FireSky\Stargate Worlds-QA"
+            $searchPaths += "${env:ProgramFiles}\FireSky\Stargate Worlds-QA"
+            $searchPaths += "${env:ProgramFiles(x86)}\Cheyenne Mountain Entertainment\Stargate Worlds"
+            $searchPaths += "${env:ProgramFiles}\Cheyenne Mountain Entertainment\Stargate Worlds"
+        }
+
+        if ($script:IsWSL) {
+            # Search Windows filesystem via WSL mount points
+            $searchPaths += "/mnt/c/Stargate Worlds-QA"
+            $searchPaths += "/mnt/c/Program Files (x86)/FireSky/Stargate Worlds-QA"
+            $searchPaths += "/mnt/c/Program Files/FireSky/Stargate Worlds-QA"
+            $searchPaths += "/mnt/c/Program Files (x86)/Cheyenne Mountain Entertainment/Stargate Worlds"
+            $searchPaths += "/mnt/c/Program Files/Cheyenne Mountain Entertainment/Stargate Worlds"
+            if (Test-Path "/mnt/d") {
+                $searchPaths += "/mnt/d/Stargate Worlds-QA"
+            }
+        }
 
         foreach ($search in $searchPaths) {
             if (Find-SgwExe $search) {
