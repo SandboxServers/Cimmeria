@@ -98,6 +98,38 @@ pub async fn load_mission_defs(
     Ok(map)
 }
 
+/// Load step objectives for all steps from the database.
+///
+/// Maps `step_id → Vec<MissionObjectiveDef>` so that `AdvanceStep` can
+/// look up the objectives for a new step without per-action DB queries.
+pub async fn load_step_objectives(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, Vec<MissionObjectiveDef>>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT step_id, objective_id, is_hidden, is_optional \
+         FROM resources.mission_objectives ORDER BY step_id, objective_id"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map: std::collections::HashMap<i32, Vec<MissionObjectiveDef>> =
+        std::collections::HashMap::new();
+    for r in &rows {
+        let step_id: i32 = r.get("step_id");
+        let obj = MissionObjectiveDef {
+            objective_id: r.get("objective_id"),
+            is_hidden: r.get("is_hidden"),
+            is_optional: r.get("is_optional"),
+        };
+        map.entry(step_id).or_default().push(obj);
+    }
+
+    tracing::info!(steps = map.len(), "Loaded step_objectives cache");
+    Ok(map)
+}
+
 // ── Dialog set map cache ─────────────────────────────────────────────────────
 
 /// Cached row from `resources.dialog_set_maps`, used by `add_dialog_set` content actions.

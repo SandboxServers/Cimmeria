@@ -89,6 +89,10 @@ pub struct SpaceManager {
     /// Cached stargate destinations: stargate_id → (world_name, position, yaw).
     /// Populated at startup from `resources.stargates` + `resources.worlds`.
     pub stargates: HashMap<i32, super::spawner::StargateEntry>,
+    /// Cached step objectives: step_id → objectives for that step.
+    /// Populated at startup from `resources.mission_objectives`.
+    /// Used by `advance_step` to load new objectives when advancing a mission step.
+    pub step_objectives: HashMap<i32, Vec<super::spawner::MissionObjectiveDef>>,
     /// Registered generic regions keyed by runtime_id (auto-incrementing from 1).
     /// Loaded from `resources.point_sets` (type='AreaSet') at startup.
     pub regions: HashMap<u32, RegionData>,
@@ -111,6 +115,7 @@ impl SpaceManager {
             dialog_set_maps: HashMap::new(),
             mission_defs: HashMap::new(),
             stargates: HashMap::new(),
+            step_objectives: HashMap::new(),
             regions: HashMap::new(),
             next_region_id: 1,
         }
@@ -637,6 +642,16 @@ impl SpaceManager {
         let &space_id = self.entity_space.get(&entity_id)?;
         let space = self.spaces.get(&space_id)?;
         Some(space.world_name.clone())
+    }
+
+    /// Get the objectives for a given step from the step_objectives cache.
+    ///
+    /// Returns an empty vec if the step has no objectives in the cache.
+    pub fn get_step_objectives(&self, step_id: i32) -> Vec<super::spawner::MissionObjectiveDef> {
+        self.step_objectives
+            .get(&step_id)
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Look up a registered region by its runtime ID.

@@ -101,6 +101,7 @@ pub(super) async fn execute_actions(
             }
             Action::AdvanceStep { mission_id, step_id } => {
                 tracing::info!(entity_id, mission_id, step_id, chain_id, "Content: advancing step");
+                crate::cell::missions::advance_step(entity_id, mission_id, step_id, tx, space_mgr).await;
                 let _ = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,
@@ -249,6 +250,16 @@ pub(super) async fn execute_actions(
             }
             Action::SystemMessage { message_id } => {
                 tracing::info!(entity_id, message_id, chain_id, "Content: system message");
+                let mut args = Vec::with_capacity(16);
+                args.push(11u8); // channel = 11 (system)
+                args.extend_from_slice(&message_id.to_le_bytes());
+                args.extend_from_slice(&0u32.to_le_bytes()); // senderName = "" (empty WSTRING)
+                args.extend_from_slice(&0u32.to_le_bytes()); // args array = []
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 28, // ON_PLAYER_COMMUNICATION
+                    args,
+                }).await;
             }
             Action::AbandonMission { mission_id } => {
                 tracing::info!(entity_id, mission_id, chain_id, "Content: abandoning mission");
@@ -262,6 +273,7 @@ pub(super) async fn execute_actions(
             }
             Action::CompleteObjective { mission_id, objective_id } => {
                 tracing::info!(entity_id, mission_id, objective_id, chain_id, "Content: complete objective");
+                crate::cell::missions::complete_objective(entity_id, mission_id, objective_id, tx, space_mgr).await;
             }
             Action::SendMessage { channel, message } => {
                 tracing::info!(entity_id, %channel, %message, chain_id, "Content: sending message");

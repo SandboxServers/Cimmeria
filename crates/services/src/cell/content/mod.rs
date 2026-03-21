@@ -445,6 +445,76 @@ pub async fn fire_exit_region(
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
 }
 
+/// Fire `OnDialogChoice` event when a player clicks a dialog button.
+pub async fn fire_dialog_choice(
+    entity_id: u32,
+    player_id: i32,
+    dialog_id: i32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let mut ctx = ExecutionContext::new()
+        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    ctx.set_param("dialog_id".to_string(), serde_json::json!(dialog_id));
+
+    if let Some(entity) = space_mgr.get_entity(entity_id) {
+        populate_mission_context(entity, &mut ctx);
+    }
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::DialogChoice,
+        source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    if !resolved.actions.is_empty() {
+        tracing::info!(entity_id, player_id, dialog_id, actions = resolved.actions.len(), "fire_dialog_choice: matched");
+    } else {
+        tracing::debug!(entity_id, dialog_id, "fire_dialog_choice: no chains matched");
+    }
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+}
+
+/// Fire `OnItemUse` event when a player uses an inventory item.
+pub async fn fire_item_use(
+    entity_id: u32,
+    player_id: i32,
+    item_id: i32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let mut ctx = ExecutionContext::new()
+        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    ctx.set_param("item_id".to_string(), serde_json::json!(item_id));
+
+    if let Some(entity) = space_mgr.get_entity(entity_id) {
+        populate_mission_context(entity, &mut ctx);
+        if let Some(archetype_id) = entity.archetype_id {
+            ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+        }
+    }
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::ItemUse,
+        source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let matched = !resolved.actions.is_empty();
+    if matched {
+        tracing::info!(entity_id, player_id, item_id, actions = resolved.actions.len(), "fire_item_use: matched");
+    } else {
+        tracing::debug!(entity_id, item_id, "fire_item_use: no chains matched");
+    }
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+}
+
 /// Populate mission status and step status context params from entity state.
 fn populate_mission_context(entity: &cimmeria_entity::cell_entity::CellEntity, ctx: &mut ExecutionContext) {
     for mission in entity.missions.all_missions() {

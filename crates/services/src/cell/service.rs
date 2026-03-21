@@ -140,6 +140,18 @@ impl CellService {
             }
         }
 
+        // Load step objectives cache for AdvanceStep content actions
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_step_objectives(pool).await {
+                Ok(objs) => {
+                    space_mgr.step_objectives = objs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load step_objectives: {e}");
+                }
+            }
+        }
+
         // Load stargate destinations cache for gate travel
         if let Some(ref pool) = self.db_pool {
             match spawner::load_stargates(pool).await {

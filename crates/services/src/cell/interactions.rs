@@ -8,6 +8,7 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::cell_entity::NpcInteractionType;
 
 use super::messages::CellToBaseMsg;
@@ -217,6 +218,50 @@ async fn send_loot_display(
         method_index: 114, // onLootDisplay
         args,
     }).await;
+}
+
+/// Handle initial interaction response: find a matching dialog for the given
+/// `interaction_set_map_id` in the player's available interactions and display it.
+///
+/// Called when the client sends an `initialResponse` cell method, typically
+/// after clicking an NPC whose InteractionType was set by a content chain.
+pub async fn handle_initial_response(
+    entity_id: u32,
+    interaction_set_map_id: i32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    // Search all per-player available_interactions for a matching dialog_set_map_id
+    let dialog_id = space_mgr.get_entity(entity_id)
+        .and_then(|p| {
+            for entries in p.available_interactions.values() {
+                for &(dsm_id, dialog_id, _) in entries {
+                    if dsm_id == interaction_set_map_id {
+                        return Some(dialog_id);
+                    }
+                }
+            }
+            None
+        });
+
+    let player_id = space_mgr.get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0);
+
+    if let Some(dialog_id) = dialog_id {
+        tracing::info!(
+            entity_id, interaction_set_map_id, dialog_id,
+            "handle_initial_response: found dialog, sending onDialogDisplay"
+        );
+        send_dialog_display(entity_id, entity_id as i32, dialog_id, tx).await;
+        super::content::fire_dialog_open(entity_id, player_id, dialog_id, engine, tx, space_mgr).await;
+    } else {
+        tracing::debug!(
+            entity_id, interaction_set_map_id,
+            "handle_initial_response: no matching dialog_set_map_id in available_interactions"
+        );
+    }
 }
 
 #[cfg(test)]
