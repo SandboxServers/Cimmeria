@@ -93,6 +93,9 @@ function Initialize-CimmeriaDatabase {
         }
         Write-Status "PostgreSQL reachable on port $Port." "DarkGray"
 
+        # Force TCP connection (required for Docker — no Unix socket on non-default port)
+        $env:PGHOST = "localhost"
+
         $psqlCmd = Get-Command psql -ErrorAction SilentlyContinue
         if (-not $psqlCmd) {
             throw "psql not found in PATH. Install PostgreSQL client tools."
