@@ -306,9 +306,25 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 ///
 /// Layers:
 /// - **Console** (stdout): coloured, human-readable, level from `RUST_LOG` (default `info`).
-/// - **`logs/server.log`**: JSON, all modules at `debug`.
-/// - **`logs/auth.log`**: plain text, `cimmeria_services::auth` at `trace`.
-/// - **`logs/base.log`**: plain text, base/mercury modules at `trace`.
+/// - **`logs/server.log`**: JSON, all modules at `info` (high-level milestones only).
+/// - **`logs/auth.log`**: auth module at `trace`.
+/// - **`logs/base.log`**: connection lifecycle (service, connect_loop, login, tick_sync, helpers) at `trace`.
+/// - **`logs/world_entry.log`**: player world entry, DB queries, appearance at `trace`.
+/// - **`logs/character.log`**: char list, creation, visuals, PAK serving at `trace`.
+/// - **`logs/protocol.log`**: wire-level packet building, encryption at `trace`.
+/// - **`logs/aoi.log`**: AoI tick, entity create/destroy, spatial grid at `trace`.
+/// - **`logs/combat.log`**: damage, abilities, NPC AI, death/respawn at `trace`.
+/// - **`logs/content.log`**: content chain triggers, conditions, actions at `trace`.
+/// - **`logs/missions.log`**: mission accept/complete/abandon, objectives at `trace`.
+/// - **`logs/interactions.log`**: dialogs, vendors, trainers, loot, chat, mail at `trace`.
+/// - **`logs/spawner.log`**: NPC spawning, stargate travel at `trace`.
+/// - **`logs/dispatch.log`**: method routing (cell + base method dispatch) at `trace`.
+/// - **WebSocket broadcast**: `debug` for admin panel streaming.
+/// - **Cosmos DB** (optional): `debug` minus per-packet noise.
+///
+/// Correlation: most tracing calls include `entity_id`, `player_id`, or
+/// `witness_id` as structured fields.  To follow a player across files:
+/// `grep entity_id=42 logs/*.log`.
 fn init_logging(
     log_tx: broadcast::Sender<LogEntry>,
     log_buffer: LogBuffer,
@@ -322,7 +338,21 @@ fn init_logging(
 
     let mut guards = Vec::new();
 
-    // ── server.log (JSON, all modules, debug) ────────────────────────────
+    // Helper: create a plain-text, non-ANSI log file layer with a specific filter.
+    macro_rules! log_layer {
+        ($filename:expr, $filter:expr) => {{
+            let file = tracing_appender::rolling::never("logs", $filename);
+            let (writer, guard) = tracing_appender::non_blocking(file);
+            guards.push(guard);
+            fmt::layer()
+                .with_writer(writer)
+                .with_ansi(false)
+                .with_target(true)
+                .with_filter(EnvFilter::new($filter))
+        }};
+    }
+
+    // ── server.log (JSON, all modules, info) ─────────────────────────────
     let server_file = tracing_appender::rolling::never("logs", "server.log");
     let (server_writer, guard) = tracing_appender::non_blocking(server_file);
     guards.push(guard);
@@ -331,31 +361,92 @@ fn init_logging(
         .json()
         .with_writer(server_writer)
         .with_target(true)
-        .with_filter(EnvFilter::new("trace"));
+        .with_filter(EnvFilter::new("info"));
 
-    // ── auth.log (plain text, auth module, trace) ────────────────────────
-    let auth_file = tracing_appender::rolling::never("logs", "auth.log");
-    let (auth_writer, guard) = tracing_appender::non_blocking(auth_file);
-    guards.push(guard);
+    // ── Per-system log files ─────────────────────────────────────────────
 
-    let auth_layer = fmt::layer()
-        .with_writer(auth_writer)
-        .with_ansi(false)
-        .with_target(true)
-        .with_filter(EnvFilter::new("off,cimmeria_services::auth=trace"));
+    let auth_layer = log_layer!("auth.log", "off,cimmeria_services::auth=trace");
 
-    // ── base.log (plain text, base/mercury modules, trace) ───────────────
-    let base_file = tracing_appender::rolling::never("logs", "base.log");
-    let (base_writer, guard) = tracing_appender::non_blocking(base_file);
-    guards.push(guard);
+    let base_layer = log_layer!(
+        "base.log",
+        "off,\
+         cimmeria_services::base::service=trace,\
+         cimmeria_services::base::connect_loop=trace,\
+         cimmeria_services::base::login=trace,\
+         cimmeria_services::base::tick_sync=trace,\
+         cimmeria_services::base::helpers=trace"
+    );
 
-    let base_layer = fmt::layer()
-        .with_writer(base_writer)
-        .with_ansi(false)
-        .with_target(true)
-        .with_filter(EnvFilter::new(
-            "off,cimmeria_services::base=trace,cimmeria_services::mercury=trace,cimmeria_mercury=trace",
-        ));
+    let world_entry_layer = log_layer!(
+        "world_entry.log",
+        "off,\
+         cimmeria_services::base::world_entry=trace,\
+         cimmeria_services::base::world_entry_player=trace,\
+         cimmeria_services::base::world_entry_appearance=trace"
+    );
+
+    let character_layer = log_layer!(
+        "character.log",
+        "off,\
+         cimmeria_services::base::character=trace,\
+         cimmeria_services::base::character_create=trace,\
+         cimmeria_services::base::chardef=trace,\
+         cimmeria_services::base::cooked_data=trace,\
+         cimmeria_services::base::resources=trace"
+    );
+
+    let protocol_layer = log_layer!(
+        "protocol.log",
+        "off,\
+         cimmeria_services::mercury=trace,\
+         cimmeria_mercury=trace"
+    );
+
+    let aoi_layer = log_layer!(
+        "aoi.log",
+        "off,\
+         cimmeria_services::cell::service=trace,\
+         cimmeria_services::cell::space_manager=trace"
+    );
+
+    let combat_layer = log_layer!(
+        "combat.log",
+        "off,\
+         cimmeria_services::cell::combat=trace,\
+         cimmeria_services::cell::abilities=trace"
+    );
+
+    let content_layer = log_layer!(
+        "content.log",
+        "off,cimmeria_services::cell::content=trace"
+    );
+
+    let missions_layer = log_layer!(
+        "missions.log",
+        "off,cimmeria_services::cell::missions=trace"
+    );
+
+    let interactions_layer = log_layer!(
+        "interactions.log",
+        "off,\
+         cimmeria_services::cell::interactions=trace,\
+         cimmeria_services::cell::chat=trace,\
+         cimmeria_services::cell::mail=trace"
+    );
+
+    let spawner_layer = log_layer!(
+        "spawner.log",
+        "off,\
+         cimmeria_services::cell::spawner=trace,\
+         cimmeria_services::cell::gate_travel=trace"
+    );
+
+    let dispatch_layer = log_layer!(
+        "dispatch.log",
+        "off,\
+         cimmeria_services::cell::dispatch=trace,\
+         cimmeria_services::base::dispatch=trace"
+    );
 
     // ── Console (stdout, coloured, RUST_LOG or info) ─────────────────────
     let console_filter = EnvFilter::try_from_default_env()
@@ -390,6 +481,16 @@ fn init_logging(
         .with(server_layer)
         .with(auth_layer)
         .with(base_layer)
+        .with(world_entry_layer)
+        .with(character_layer)
+        .with(protocol_layer)
+        .with(aoi_layer)
+        .with(combat_layer)
+        .with(content_layer)
+        .with(missions_layer)
+        .with(interactions_layer)
+        .with(spawner_layer)
+        .with(dispatch_layer)
         .with(broadcast_layer)
         .with(cosmos_layer)
         .init();
