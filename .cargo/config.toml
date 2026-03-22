@@ -3,6 +3,12 @@
 # The [build] target is set conditionally via CARGO_BUILD_TARGET env var in WSL,
 # not hardcoded here, so both environments work.
 
+[build]
+# Limit parallel rustc jobs to prevent OOM on 64 GB machines.
+# The full link step for cimmeria-server can consume 40-50 GB alone;
+# multiple concurrent compilations push well past 64 GB.
+#jobs = 4
+
 [alias]
 test-workspace = "test --workspace --exclude cimmeria-app"
 
@@ -11,10 +17,10 @@ test-workspace = "test --workspace --exclude cimmeria-app"
 linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
-# Windows MSVC: no special linker needed (link.exe is already fast).
-# If incremental builds are slow, consider installing lld and uncommenting:
-# [target.x86_64-pc-windows-msvc]
-# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+# Windows MSVC: use lld-link for dramatically lower memory usage and faster linking.
+# lld-link is the MSVC-compatible lld frontend. Install via `rustup component add llvm-tools`.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "linker=C:\\Users\\Steve\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\bin\\rust-lld.exe"]
 
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]

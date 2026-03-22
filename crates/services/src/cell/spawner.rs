@@ -446,19 +446,19 @@ pub async fn load_regions_from_db(
         std::collections::HashMap::new();
     for r in &point_rows {
         let set_id: i32 = r.get("set_id");
-        let x: f64 = r.get("x");
-        let y: f64 = r.get("y");
-        let z: f64 = r.get("z");
+        let x: f32 = r.get("x");
+        let y: f32 = r.get("y");
+        let z: f32 = r.get("z");
         points_by_set.entry(set_id)
             .or_default()
-            .push([x as f32, y as f32, z as f32]);
+            .push([x, y, z]);
     }
 
     let mut regions = Vec::with_capacity(region_rows.len());
     for r in &region_rows {
         let set_id: i32 = r.get("set_id");
-        let radius: f64 = r.try_get::<f64, _>("radius").unwrap_or(0.0);
-        let height: f64 = r.try_get::<f64, _>("height").unwrap_or(0.0);
+        let radius: f32 = r.try_get::<f32, _>("radius").unwrap_or(0.0);
+        let height: f32 = r.try_get::<f32, _>("height").unwrap_or(0.0);
         let mut points = points_by_set.remove(&set_id).unwrap_or_default();
 
         // Python workaround: single-point cylinder → 4-point bounding box
@@ -466,8 +466,8 @@ pub async fn load_regions_from_db(
         // expand to an axis-aligned box centered on the point.
         if points.len() == 1 && radius > 0.0 {
             let [px, py, pz] = points[0];
-            let r = radius as f32;
-            let h = height as f32;
+            let r = radius;
+            let h = height;
             points = vec![
                 [px - r, py,     pz - r],
                 [px - r, py,     pz + r],

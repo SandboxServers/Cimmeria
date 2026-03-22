@@ -188,8 +188,8 @@ pub(super) async fn execute_actions(
                         let new_flags = if let Some(target) = space_mgr.get_entity_mut(target_id) {
                             let old = target.interaction_type_flags;
                             match operation.as_str() {
-                                "add" => target.interaction_type_flags |= mask,
-                                "remove" => target.interaction_type_flags &= !mask,
+                                "add" | "|" => target.interaction_type_flags |= mask,
+                                "remove" | "~" => target.interaction_type_flags &= !mask,
                                 "set" => target.interaction_type_flags = mask,
                                 _ => tracing::warn!(%operation, "Unknown interaction type operation"),
                             }

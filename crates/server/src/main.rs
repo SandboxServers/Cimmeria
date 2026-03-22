@@ -338,36 +338,50 @@ fn init_logging(
 
     let mut guards = Vec::new();
 
+    type BoxLayer = Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>;
+
     // Helper: create a plain-text, non-ANSI log file layer with a specific filter.
+    // Returns a boxed layer to avoid deeply nested generic types that cause
+    // the Rust type-checker to consume 50+ GB of RAM.
     macro_rules! log_layer {
         ($filename:expr, $filter:expr) => {{
             let file = tracing_appender::rolling::never("logs", $filename);
             let (writer, guard) = tracing_appender::non_blocking(file);
             guards.push(guard);
-            fmt::layer()
-                .with_writer(writer)
-                .with_ansi(false)
-                .with_target(true)
-                .with_filter(EnvFilter::new($filter))
+            Box::new(
+                fmt::layer()
+                    .with_writer(writer)
+                    .with_ansi(false)
+                    .with_target(true)
+                    .with_filter(EnvFilter::new($filter)),
+            ) as BoxLayer
         }};
     }
+
+    // ── Collect all layers into a Vec<BoxLayer> ─────────────────────────
+    let mut layers: Vec<BoxLayer> = Vec::new();
+
+    // ── Console (stdout, coloured, RUST_LOG or info) ─────────────────────
+    let console_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+    layers.push(Box::new(fmt::layer().with_filter(console_filter)));
 
     // ── server.log (JSON, all modules, info) ─────────────────────────────
     let server_file = tracing_appender::rolling::never("logs", "server.log");
     let (server_writer, guard) = tracing_appender::non_blocking(server_file);
     guards.push(guard);
-
-    let server_layer = fmt::layer()
-        .json()
-        .with_writer(server_writer)
-        .with_target(true)
-        .with_filter(EnvFilter::new("info"));
+    layers.push(Box::new(
+        fmt::layer()
+            .json()
+            .with_writer(server_writer)
+            .with_target(true)
+            .with_filter(EnvFilter::new("info")),
+    ));
 
     // ── Per-system log files ─────────────────────────────────────────────
+    layers.push(log_layer!("auth.log", "off,cimmeria_services::auth=trace"));
 
-    let auth_layer = log_layer!("auth.log", "off,cimmeria_services::auth=trace");
-
-    let base_layer = log_layer!(
+    layers.push(log_layer!(
         "base.log",
         "off,\
          cimmeria_services::base::service=trace,\
@@ -375,17 +389,17 @@ fn init_logging(
          cimmeria_services::base::login=trace,\
          cimmeria_services::base::tick_sync=trace,\
          cimmeria_services::base::helpers=trace"
-    );
+    ));
 
-    let world_entry_layer = log_layer!(
+    layers.push(log_layer!(
         "world_entry.log",
         "off,\
          cimmeria_services::base::world_entry=trace,\
          cimmeria_services::base::world_entry_player=trace,\
          cimmeria_services::base::world_entry_appearance=trace"
-    );
+    ));
 
-    let character_layer = log_layer!(
+    layers.push(log_layer!(
         "character.log",
         "off,\
          cimmeria_services::base::character=trace,\
@@ -393,106 +407,85 @@ fn init_logging(
          cimmeria_services::base::chardef=trace,\
          cimmeria_services::base::cooked_data=trace,\
          cimmeria_services::base::resources=trace"
-    );
+    ));
 
-    let protocol_layer = log_layer!(
+    layers.push(log_layer!(
         "protocol.log",
         "off,\
          cimmeria_services::mercury=trace,\
          cimmeria_mercury=trace"
-    );
+    ));
 
-    let aoi_layer = log_layer!(
+    layers.push(log_layer!(
         "aoi.log",
         "off,\
          cimmeria_services::cell::service=trace,\
          cimmeria_services::cell::space_manager=trace"
-    );
+    ));
 
-    let combat_layer = log_layer!(
+    layers.push(log_layer!(
         "combat.log",
         "off,\
          cimmeria_services::cell::combat=trace,\
          cimmeria_services::cell::abilities=trace"
-    );
+    ));
 
-    let content_layer = log_layer!(
+    layers.push(log_layer!(
         "content.log",
         "off,cimmeria_services::cell::content=trace"
-    );
+    ));
 
-    let missions_layer = log_layer!(
+    layers.push(log_layer!(
         "missions.log",
         "off,cimmeria_services::cell::missions=trace"
-    );
+    ));
 
-    let interactions_layer = log_layer!(
+    layers.push(log_layer!(
         "interactions.log",
         "off,\
          cimmeria_services::cell::interactions=trace,\
          cimmeria_services::cell::chat=trace,\
          cimmeria_services::cell::mail=trace"
-    );
+    ));
 
-    let spawner_layer = log_layer!(
+    layers.push(log_layer!(
         "spawner.log",
         "off,\
          cimmeria_services::cell::spawner=trace,\
          cimmeria_services::cell::gate_travel=trace"
-    );
+    ));
 
-    let dispatch_layer = log_layer!(
+    layers.push(log_layer!(
         "dispatch.log",
         "off,\
          cimmeria_services::cell::dispatch=trace,\
          cimmeria_services::base::dispatch=trace"
-    );
-
-    // ── Console (stdout, coloured, RUST_LOG or info) ─────────────────────
-    let console_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
-
-    let console_layer = fmt::layer()
-        .with_filter(console_filter);
+    ));
 
     // ── WebSocket broadcast (debug+, all modules) ─────────────────────
-    // Use debug so the stream captures meaningful traffic (HTTP requests,
-    // DB queries, service chatter) even when the server is otherwise idle.
-    let broadcast_layer = BroadcastLayer::new(log_tx, log_buffer)
-        .with_filter(EnvFilter::new(
-            "debug,tungstenite=info,tokio_tungstenite=info,hyper=info",
-        ));
+    layers.push(Box::new(
+        BroadcastLayer::new(log_tx, log_buffer)
+            .with_filter(EnvFilter::new(
+                "debug,tungstenite=info,tokio_tungstenite=info,hyper=info",
+            )),
+    ));
 
     // ── Cosmos DB (optional, filtered to useful events only) ─────────
-    // DEBUG+ minus the per-packet noise (connect_loop, encryption, tick_sync).
-    let cosmos_layer = cosmos_layer.map(|layer| {
-        layer.with_filter(EnvFilter::new(
-            "debug,\
-             cimmeria_services::base::connect_loop=info,\
-             cimmeria_mercury::encryption=info,\
-             cimmeria_services::base::tick_sync=info,\
-             tungstenite=off,tokio_tungstenite=off,hyper=off",
-        ))
-    });
+    if let Some(layer) = cosmos_layer {
+        layers.push(Box::new(
+            layer.with_filter(EnvFilter::new(
+                "debug,\
+                 cimmeria_services::base::connect_loop=info,\
+                 cimmeria_mercury::encryption=info,\
+                 cimmeria_services::base::tick_sync=info,\
+                 tungstenite=off,tokio_tungstenite=off,hyper=off",
+            )),
+        ));
+    }
 
-    // Assemble the subscriber.
+    // Assemble the subscriber — one `.with()` call on the whole Vec.
     tracing_subscriber::registry()
-        .with(console_layer)
-        .with(server_layer)
-        .with(auth_layer)
-        .with(base_layer)
-        .with(world_entry_layer)
-        .with(character_layer)
-        .with(protocol_layer)
-        .with(aoi_layer)
-        .with(combat_layer)
-        .with(content_layer)
-        .with(missions_layer)
-        .with(interactions_layer)
-        .with(spawner_layer)
-        .with(dispatch_layer)
-        .with(broadcast_layer)
-        .with(cosmos_layer)
+        .with(layers)
         .init();
 
     guards
