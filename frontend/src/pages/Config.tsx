@@ -75,17 +75,17 @@ export default function Config() {
                 <CardContent className="grid gap-4 md:grid-cols-2">
                   {section.items.map((item) => (
                     <div key={item.label} className="space-y-2">
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      <label className="font-headline text-primary uppercase tracking-widest text-xs">
                         {item.label}
                       </label>
-                      <Input readOnly value={item.value} />
+                      <Input className="bg-surface-lowest border-[rgba(77,70,53,0.15)] text-on-surface focus:border-primary" readOnly value={item.value} />
                     </div>
                   ))}
                 </CardContent>
               </Card>
             ))
           ) : (
-            <Card><CardContent className="pt-6 text-sm text-muted-foreground">{config.loading ? 'Loading configuration...' : 'Configuration unavailable.'}</CardContent></Card>
+            <Card><CardContent className="pt-6 text-sm text-on-surface-variant">{config.loading ? 'Loading configuration...' : 'Configuration unavailable.'}</CardContent></Card>
           )}
         </div>
 
@@ -99,18 +99,18 @@ export default function Config() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+              <div className="border border-[rgba(77,70,53,0.15)] bg-surface-high p-4">
                 <div className="flex items-center gap-3">
                   <LockKeyhole className="size-4 text-primary" />
-                  <p className="text-sm font-medium text-foreground">Readonly defaults</p>
+                  <p className="text-sm font-medium text-on-surface">Readonly defaults</p>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                <p className="mt-2 text-sm leading-6 text-on-surface-variant">
                   Config editing is still intentionally locked until save hooks exist on the backend.
                 </p>
               </div>
-              <div className="rounded-[24px] border border-primary/20 bg-primary/8 p-4">
-                <p className="text-sm font-medium text-foreground">Uptime</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              <div className="border border-primary/20 bg-primary/8 p-4">
+                <p className="text-sm font-medium text-on-surface">Uptime</p>
+                <p className="mt-2 text-sm leading-6 text-on-surface-variant">
                   {status.data
                     ? `Server has been up for ${formatUptime(status.data.uptime_seconds)}.`
                     : 'Loading status...'}

@@ -32,11 +32,11 @@ function LoadingCard({ label }: { label: string }) {
           <Badge variant="outline">{label}</Badge>
           <Sparkles className="size-4 text-primary/80" />
         </div>
-        <div className="h-10 w-28 animate-pulse rounded-2xl bg-white/8" />
-        <div className="h-4 w-3/4 animate-pulse rounded-full bg-white/6" />
+        <div className="h-10 w-28 animate-pulse bg-surface-high" />
+        <div className="h-4 w-3/4 animate-pulse bg-surface-high" />
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="h-8 w-24 animate-pulse rounded-full bg-white/6" />
+        <div className="h-8 w-24 animate-pulse bg-surface-high" />
       </CardContent>
     </Card>
   );
@@ -90,7 +90,7 @@ function RecentLoginsCard() {
             Real-time login events from the authentication service.
           </CardDescription>
         </div>
-        <div className="rounded-2xl border border-white/8 bg-white/5 p-3 text-accent">
+        <div className="border border-[rgba(77,70,53,0.15)] bg-surface-high p-3 text-accent">
           <LogIn className="size-5" />
         </div>
       </CardHeader>
@@ -99,13 +99,13 @@ function RecentLoginsCard() {
           events.map((event, index) => (
             <div
               key={`${event.timestamp_ms}-${event.account_name}-${index}`}
-              className="flex items-center justify-between gap-3 rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3"
+              className="flex items-center justify-between gap-3 border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">
+                <p className="truncate text-sm font-medium text-on-surface">
                   {event.account_name}
                 </p>
-                <p className="truncate text-sm text-muted-foreground">
+                <p className="truncate text-sm text-on-surface-variant">
                   {event.ip_address}
                   {event.shard ? ` \u2022 ${event.shard}` : ''}
                   {event.phase === 'shard_selection' ? ' \u2022 shard select' : ''}
@@ -117,14 +117,14 @@ function RecentLoginsCard() {
                 >
                   {event.outcome === 'success' ? 'OK' : event.outcome.replace(/_/g, ' ')}
                 </Badge>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-on-surface-variant">
                   {formatLoginTime(event.timestamp_ms)}
                 </span>
               </div>
             </div>
           ))
         ) : (
-          <div className="rounded-[24px] border border-white/8 bg-white/[0.03] px-4 py-4 text-sm text-muted-foreground">
+          <div className="border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-4 text-sm text-on-surface-variant">
             {connected
               ? 'No login events recorded yet.'
               : 'Connecting to event stream...'}
@@ -214,7 +214,7 @@ export default function Dashboard() {
                   <Badge variant="outline">{stat.label}</Badge>
                   <Sparkles className="size-4 text-primary/80" />
                 </div>
-                <CardTitle className="text-4xl tracking-[-0.08em]">{stat.value}</CardTitle>
+                <CardTitle className="font-headline text-primary text-4xl tracking-[-0.08em]">{stat.value}</CardTitle>
                 <CardDescription>{stat.detail}</CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
@@ -242,25 +242,25 @@ export default function Dashboard() {
                 Directly backed by `/api/config/status`.
               </CardDescription>
             </div>
-            <div className="rounded-2xl border border-white/8 bg-white/5 p-3 text-accent">
+            <div className="border border-[rgba(77,70,53,0.15)] bg-surface-high p-3 text-accent">
               <Gauge className="size-5" />
             </div>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             {serviceHealth.length > 0 ? (
               serviceHealth.map((service) => (
-                <div key={service.name} className="rounded-[24px] border border-white/6 bg-white/[0.03] p-4">
+                <div key={service.name} className="border border-[rgba(77,70,53,0.15)] bg-surface-low p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-base font-medium text-foreground">{service.name}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{service.detail}</p>
+                      <p className="text-base font-medium text-on-surface">{service.name}</p>
+                      <p className="mt-1 text-sm text-on-surface-variant">{service.detail}</p>
                     </div>
                     <Badge variant={service.variant}>{service.status}</Badge>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-sm text-muted-foreground">{isLoading ? 'Loading service status...' : 'Service status unavailable.'}</div>
+              <div className="text-sm text-on-surface-variant">{isLoading ? 'Loading service status...' : 'Service status unavailable.'}</div>
             )}
           </CardContent>
         </Card>
@@ -279,16 +279,16 @@ export default function Dashboard() {
                 <div key={item.label}>
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-foreground">{item.label}</p>
-                      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      <p className="text-sm font-medium text-on-surface">{item.label}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.2em] text-on-surface-variant">
                         {item.complete ? 'Ready' : 'Degraded'}
                       </p>
                     </div>
                     <div
                       className={`size-3 rounded-full ${
                         item.complete
-                          ? 'bg-emerald-300 shadow-[0_0_20px_rgba(110,231,183,0.8)]'
-                          : 'bg-amber-300 shadow-[0_0_18px_rgba(252,211,77,0.65)]'
+                          ? 'bg-tertiary shadow-[0_0_20px_rgba(127,222,221,0.8)]'
+                          : 'bg-primary shadow-[0_0_18px_rgba(242,202,80,0.65)]'
                       }`}
                     />
                   </div>
@@ -296,14 +296,14 @@ export default function Dashboard() {
                 </div>
               ))
             ) : (
-              <div className="text-sm text-muted-foreground">{isLoading ? 'Loading readiness checks...' : 'Readiness data unavailable.'}</div>
+              <div className="text-sm text-on-surface-variant">{isLoading ? 'Loading readiness checks...' : 'Readiness data unavailable.'}</div>
             )}
-            <div className="rounded-[24px] border border-primary/16 bg-primary/8 p-4">
+            <div className="border border-primary/16 bg-primary/8 p-4">
               <div className="flex items-start gap-3">
                 <ShieldAlert className="mt-0.5 size-4 text-primary" />
                 <div>
-                  <p className="text-sm font-medium text-foreground">What remains mocked</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  <p className="text-sm font-medium text-on-surface">What remains mocked</p>
+                  <p className="mt-1 text-sm leading-6 text-on-surface-variant">
                     Live players and websocket logs still surface explicit unavailable states because the underlying server feeds are not implemented yet.
                   </p>
                 </div>
@@ -327,23 +327,23 @@ export default function Dashboard() {
           <CardContent className="space-y-3">
             {players.data?.players.length ? (
               players.data.players.map((player) => (
-                <div key={player.name} className="flex items-center justify-between gap-3 rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
+                <div key={player.name} className="flex items-center justify-between gap-3 border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{player.name}</p>
-                    <p className="truncate text-sm text-muted-foreground">
+                    <p className="truncate text-sm font-medium text-on-surface">{player.name}</p>
+                    <p className="truncate text-sm text-on-surface-variant">
                       {player.archetype} • {player.zone}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium text-primary">{player.status}</p>
-                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                    <p className="text-xs uppercase tracking-[0.18em] text-on-surface-variant">
                       {player.ping ?? 0}ms
                     </p>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="rounded-[24px] border border-white/8 bg-white/[0.03] px-4 py-4 text-sm text-muted-foreground">
+              <div className="border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-4 text-sm text-on-surface-variant">
                 {players.data?.reason ?? 'Live player roster is not available yet.'}
               </div>
             )}

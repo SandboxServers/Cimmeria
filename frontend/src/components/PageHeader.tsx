@@ -15,7 +15,7 @@ export default function PageHeader(props: PageHeaderProps) {
   return (
     <div
       className={cn(
-        'flex flex-col gap-5 rounded-[32px] border border-white/8 bg-gradient-to-br from-white/9 via-white/[0.04] to-transparent p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)] lg:flex-row lg:items-end lg:justify-between',
+        'flex flex-col gap-5 obsidian-panel border border-[rgba(77,70,53,0.15)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)] lg:flex-row lg:items-end lg:justify-between',
         props.className,
       )}
     >
@@ -25,10 +25,10 @@ export default function PageHeader(props: PageHeaderProps) {
           {props.badge && <Badge variant="outline">{props.badge}</Badge>}
         </div>
         <div className="space-y-2">
-          <h1 className="text-3xl font-semibold tracking-[-0.04em] text-foreground sm:text-4xl">
+          <h1 className="text-3xl font-headline uppercase tracking-widest text-on-surface sm:text-4xl">
             {props.title}
           </h1>
-          <p className="max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base">
+          <p className="max-w-3xl text-sm leading-7 text-on-surface-variant sm:text-base">
             {props.description}
           </p>
         </div>

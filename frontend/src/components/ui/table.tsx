@@ -9,7 +9,7 @@ export const Table = forwardRef<HTMLTableElement, TableHTMLAttributes<HTMLTableE
 
 export const TableHeader = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTMLTableSectionElement>>(
   ({ className, ...rest }, ref) => (
-    <thead ref={ref} className={cn('[&_tr]:border-b [&_tr]:border-white/6', className)} {...rest} />
+    <thead ref={ref} className={cn('[&_tr]:border-b [&_tr]:border-[rgba(77,70,53,0.15)]', className)} {...rest} />
   ),
 );
 
@@ -21,13 +21,13 @@ export const TableBody = forwardRef<HTMLTableSectionElement, HTMLAttributes<HTML
 
 export const TableRow = forwardRef<HTMLTableRowElement, HTMLAttributes<HTMLTableRowElement>>(
   ({ className, ...rest }, ref) => (
-    <tr ref={ref} className={cn('border-b border-white/6 transition-colors hover:bg-white/[0.03]', className)} {...rest} />
+    <tr ref={ref} className={cn('border-b border-[rgba(77,70,53,0.15)] transition-colors hover:bg-surface-high', className)} {...rest} />
   ),
 );
 
 export const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...rest }, ref) => (
-    <th ref={ref} className={cn('h-12 px-4 text-left align-middle text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground', className)} {...rest} />
+    <th ref={ref} className={cn('h-12 px-4 text-left align-middle text-xs font-semibold uppercase tracking-[0.24em] text-on-surface-variant', className)} {...rest} />
   ),
 );
 

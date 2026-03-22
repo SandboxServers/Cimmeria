@@ -66,7 +66,7 @@ export function TabsList({ className, ...rest }: HTMLAttributes<HTMLDivElement>)
   return (
     <div
       className={cn(
-        'inline-flex w-full flex-wrap items-center gap-2 rounded-[24px] border border-white/8 bg-white/4 p-2',
+        'inline-flex w-full flex-wrap items-center gap-2 border border-[rgba(77,70,53,0.15)] bg-surface-high p-2',
         className,
       )}
       {...rest}
@@ -86,8 +86,8 @@ export function TabsTrigger({ className, value, children, ...rest }: TabsTrigger
     <button
       aria-selected={isActive}
       className={cn(
-        'inline-flex min-h-10 items-center justify-center rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground',
-        isActive && 'bg-primary text-primary-foreground shadow-[0_8px_24px_rgba(245,170,49,0.24)]',
+        'inline-flex min-h-10 items-center justify-center px-4 py-2 text-sm font-medium text-on-surface-variant transition-colors hover:text-on-surface',
+        isActive && 'bg-primary-container text-on-primary bevel-stone',
         className,
       )}
       data-state={isActive ? 'active' : 'inactive'}

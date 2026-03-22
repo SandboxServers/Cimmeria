@@ -66,19 +66,19 @@ export default function SpaceViewer() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="relative overflow-hidden rounded-[28px] border border-white/8 bg-slate-950">
+            <div className="relative overflow-hidden border border-[rgba(77,70,53,0.15)] bg-surface-lowest">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(245,170,49,0.2),transparent_18%),radial-gradient(circle_at_75%_22%,rgba(19,162,164,0.22),transparent_24%),linear-gradient(180deg,rgba(15,27,39,0.82),rgba(7,12,20,1))]" />
               <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.045)_1px,transparent_1px)] bg-[size:42px_42px] opacity-40" />
               <div className="relative flex h-[520px] flex-col justify-between p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.26em] text-muted-foreground">
+                    <p className="font-headline text-primary uppercase tracking-widest text-xs">
                       Loaded space
                     </p>
-                    <h3 className="mt-2 text-2xl font-semibold tracking-[-0.06em] text-foreground">
+                    <h3 className="mt-2 text-2xl font-semibold tracking-[-0.06em] text-on-surface">
                       {selectedSpace?.world ?? 'Loading...'}
                     </h3>
-                    <p className="mt-2 text-sm text-muted-foreground">
+                    <p className="mt-2 text-sm text-on-surface-variant">
                       Client map: {selectedSpace?.client_map ?? 'n/a'}
                     </p>
                   </div>
@@ -88,21 +88,21 @@ export default function SpaceViewer() {
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                    <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">World ID</p>
-                    <p className="mt-2 text-2xl font-semibold tracking-[-0.06em] text-foreground">
+                  <div className="border border-[rgba(77,70,53,0.15)] bg-surface-high p-4">
+                    <p className="font-headline text-primary uppercase tracking-widest text-xs">World ID</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-[-0.06em] text-on-surface">
                       {selectedSpace?.world_id ?? '—'}
                     </p>
                   </div>
-                  <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                    <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">Mission Links</p>
-                    <p className="mt-2 text-2xl font-semibold tracking-[-0.06em] text-foreground">
+                  <div className="border border-[rgba(77,70,53,0.15)] bg-surface-high p-4">
+                    <p className="font-headline text-primary uppercase tracking-widest text-xs">Mission Links</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-[-0.06em] text-on-surface">
                       {selectedSpace?.mission_count ?? 0}
                     </p>
                   </div>
-                  <div className="rounded-[24px] border border-white/8 bg-black/25 p-4">
-                    <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">Flags</p>
-                    <p className="mt-2 text-2xl font-semibold tracking-[-0.06em] text-foreground">
+                  <div className="border border-[rgba(77,70,53,0.15)] bg-surface-high p-4">
+                    <p className="font-headline text-primary uppercase tracking-widest text-xs">Flags</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-[-0.06em] text-on-surface">
                       {selectedSpace?.flags ?? 0}
                     </p>
                   </div>
@@ -126,26 +126,26 @@ export default function SpaceViewer() {
                 <div className="text-sm text-destructive">{spacesResource.error.message}</div>
               )}
               {spacesResource.loading && !spacesResource.data && (
-                <div className="text-sm text-muted-foreground">Loading space catalog...</div>
+                <div className="text-sm text-on-surface-variant">Loading space catalog...</div>
               )}
               {spacesResource.data && !spacesResource.data.available && (
-                <div className="text-sm text-muted-foreground">{spacesResource.data.reason}</div>
+                <div className="text-sm text-on-surface-variant">{spacesResource.data.reason}</div>
               )}
               {(spacesResource.data?.spaces ?? []).map((space) => (
                 <button
                   key={space.world_id}
-                  className={`w-full rounded-[24px] border p-4 text-left transition ${
+                  className={`w-full border p-4 text-left transition ${
                     selectedSpaceId === space.world_id
                       ? 'border-primary/30 bg-primary/10'
-                      : 'border-white/8 bg-white/[0.03]'
+                      : 'border-[rgba(77,70,53,0.15)] bg-surface-high'
                   }`}
                   onClick={() => setSelectedSpaceId(space.world_id)}
                   type="button"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-foreground">{space.world}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
+                      <p className="text-sm font-medium text-on-surface">{space.world}</p>
+                      <p className="mt-1 text-sm text-on-surface-variant">
                         {space.mission_count} linked missions
                       </p>
                     </div>
@@ -154,7 +154,7 @@ export default function SpaceViewer() {
                     </Badge>
                   </div>
                   <div className="mt-4 space-y-2">
-                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                    <div className="flex items-center justify-between font-headline text-primary uppercase tracking-widest text-xs">
                       <span>Mission density</span>
                       <span>{Math.min(space.mission_count, 100)}%</span>
                     </div>

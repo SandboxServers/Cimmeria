@@ -41,6 +41,9 @@ export function connectWs(
         };
 
         ws.onmessage = (event) => {
+            // Receiving a message is proof of connection — ensure status is true
+            // even if onopen fired/batched before React processed it.
+            onStatus?.(true);
             try {
                 const data = JSON.parse(event.data);
                 onMessage(data);
