@@ -70,6 +70,19 @@ pub(super) async fn execute_actions(
                 tracing::info!(entity_id, item_id, count, chain_id, "Content: granting item");
                 let cid = container_id.unwrap_or_else(|| item_container(item_id));
                 grant_item_runtime(entity_id, item_id, cid, count, tx).await;
+
+                // If this is a weapon (bandolier), set ammo state on the entity.
+                // Weapons start unloaded — the player must press R to reload.
+                if cid == 3 {
+                    if let Some(clip) = weapon_clip_size(item_id) {
+                        if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                            entity.max_ammo = clip;
+                            entity.current_ammo = 0;
+                            tracing::info!(entity_id, item_id, clip, "Weapon granted unloaded");
+                        }
+                    }
+                }
+
                 let _ = tx.send(CellToBaseMsg::GrantItem {
                     entity_id,
                     player_id,
@@ -221,6 +234,13 @@ pub(super) async fn execute_actions(
             }
             Action::StartMinigame { minigame_type, on_victory_chains } => {
                 tracing::info!(entity_id, %minigame_type, ?on_victory_chains, chain_id, "Content: starting minigame");
+                let _ = tx.send(CellToBaseMsg::StartMinigame {
+                    entity_id,
+                    player_id,
+                    game_name: minigame_type.clone(),
+                    difficulty: 1, // TODO: parse from chain params when difficulty field is added
+                    on_victory_chains: on_victory_chains.clone(),
+                }).await;
             }
             Action::SetAggression { entity_tag, level: agg_level } => {
                 if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
@@ -249,17 +269,12 @@ pub(super) async fn execute_actions(
                 tracing::info!(entity_id, region_id, chain_id, "Content: triggering transporter");
             }
             Action::SystemMessage { message_id } => {
-                tracing::info!(entity_id, message_id, chain_id, "Content: system message");
-                let mut args = Vec::with_capacity(16);
-                args.push(11u8); // channel = 11 (system)
-                args.extend_from_slice(&message_id.to_le_bytes());
-                args.extend_from_slice(&0u32.to_le_bytes()); // senderName = "" (empty WSTRING)
-                args.extend_from_slice(&0u32.to_le_bytes()); // args array = []
-                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index: 28, // ON_PLAYER_COMMUNICATION
-                    args,
-                }).await;
+                // TODO: Wire format for system messages is unknown. The previous
+                // implementation incorrectly used onPlayerCommunication (method 28)
+                // which caused garbled chat spam ("[] says") and client freezes.
+                // Needs RE to find the correct client method for localized string
+                // ID display (possibly onErrorCode or a UI-specific method).
+                tracing::info!(entity_id, message_id, chain_id, "Content: system message (stub — correct wire format TBD)");
             }
             Action::AbandonMission { mission_id } => {
                 tracing::info!(entity_id, mission_id, chain_id, "Content: abandoning mission");
@@ -310,7 +325,26 @@ pub(super) async fn execute_actions(
                 }
             }
             Action::GenerateThreat { entity_tag, threat_level } => {
-                tracing::debug!(entity_id, ?entity_tag, threat_level, chain_id, "Content: generate threat");
+                // Generate threat on the NPC (found by tag) from the player.
+                // If no entity_tag, the threat is on the player entity itself (ignored by combat).
+                if let Some(tag) = &entity_tag {
+                    if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+                        if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, tag) {
+                            tracing::info!(
+                                entity_id, %tag, target_id, threat_level, chain_id,
+                                "Content: generate threat on NPC from player"
+                            );
+                            crate::cell::combat::generate_threat(
+                                space_mgr,
+                                entity_id,  // attacker = the player
+                                target_id,  // target = the NPC
+                                threat_level as f32,
+                            );
+                        }
+                    }
+                } else {
+                    tracing::debug!(entity_id, threat_level, chain_id, "Content: generate threat (no target tag, skipped)");
+                }
             }
             Action::SetVisible { entity_tag, visible } => {
                 if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
@@ -355,6 +389,16 @@ pub(super) fn item_container(item_id: i32) -> i32 {
     match item_id {
         55 | 21 => 3, // weapons → bandolier
         _ => 1,       // general inventory
+    }
+}
+
+/// Return the clip size for known weapon items (from items.clip_size in DB).
+/// Weapons granted via content chains start unloaded (current_ammo = 0).
+fn weapon_clip_size(item_id: i32) -> Option<i32> {
+    match item_id {
+        55 => Some(15),  // SI 3 9mm Pistol
+        21 => Some(30),  // TODO: verify clip size from DB
+        _ => None,
     }
 }
 

@@ -168,6 +168,11 @@ pub struct CellEntity {
     pub spawn_position: Option<Vector3>,
     /// Ticks until next AI action (count-down from ai tick interval).
     pub ai_cooldown_ticks: u32,
+    /// Navmesh path waypoints the NPC is currently following.
+    /// Empty = not moving. Each tick consumes the next waypoint.
+    pub nav_path: Vec<Vector3>,
+    /// Movement speed in world units per tick.
+    pub move_speed: f32,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -229,6 +234,8 @@ impl CellEntity {
             threat_list: HashMap::new(),
             spawn_position: None,
             ai_cooldown_ticks: 0,
+            nav_path: Vec::new(),
+            move_speed: 3.0, // ~3 world units per tick (walking speed)
             saved_missions_loaded: false,
         }
     }

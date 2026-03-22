@@ -59,6 +59,10 @@ pub struct ServerConfig {
     /// Enable developer mode (relaxed auth, elevated logging, multi-login).
     /// Default: true in dev builds (from `BaseService.config:developer_mode`)
     pub developer_mode: bool,
+
+    /// Port the minigame SmartFoxServer TCP listener binds to.
+    /// Default: 30000
+    pub minigame_port: u16,
 }
 
 impl Default for ServerConfig {
@@ -77,6 +81,7 @@ impl Default for ServerConfig {
                 "host=localhost port=5433 user=w-testing password=w-testing dbname=sgw".to_string(),
             protocol_digest: "58AFA196AD3AC4F65CADD99BFF23B799".to_string(),
             developer_mode: false,
+            minigame_port: 30000,
         }
     }
 }

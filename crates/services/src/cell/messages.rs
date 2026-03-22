@@ -134,6 +134,13 @@ pub enum BaseToCellMsg {
 
     /// Reload the content engine from the database (triggered by admin API / Content Editor).
     ReloadContentEngine,
+
+    /// Minigame result callback (forwarded from BaseApp after minigame server reports).
+    MinigameResult {
+        entity_id: u32,
+        result_code: u8,
+        on_victory_chains: Vec<i64>,
+    },
 }
 
 /// Messages sent from CellApp to BaseApp.
@@ -255,6 +262,22 @@ pub enum CellToBaseMsg {
         entity_id: u32,
         method_index: u16,
         args: Vec<u8>,
+    },
+
+    /// Start a minigame session for a player (Cell → Base).
+    StartMinigame {
+        entity_id: u32,
+        player_id: i32,
+        game_name: String,
+        difficulty: u32,
+        on_victory_chains: Vec<i64>,
+    },
+
+    /// Minigame result callback (minigame server → Cell via Base).
+    MinigameResult {
+        entity_id: u32,
+        result_code: u8,
+        on_victory_chains: Vec<i64>,
     },
 }
 

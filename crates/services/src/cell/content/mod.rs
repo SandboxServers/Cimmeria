@@ -539,6 +539,31 @@ fn populate_mission_context(entity: &cimmeria_entity::cell_entity::CellEntity, c
     }
 }
 
+/// Fire a content chain directly by ID, bypassing trigger matching.
+///
+/// Used for minigame victory callbacks — the chain has no trigger row,
+/// it's invoked explicitly by the minigame result handler.
+pub async fn fire_chain_by_id(
+    chain_id: i64,
+    entity_id: u32,
+    player_id: i32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let actions = engine.get_chain_actions(chain_id);
+    if actions.is_empty() {
+        tracing::warn!(chain_id, entity_id, "fire_chain_by_id: chain not found or has no actions");
+        return;
+    }
+
+    tracing::info!(chain_id, entity_id, action_count = actions.len(), "fire_chain_by_id: executing");
+    let resolved = cimmeria_content_engine::chain::ResolvedActions {
+        actions: actions.into_iter().map(|a| (chain_id, a)).collect(),
+    };
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

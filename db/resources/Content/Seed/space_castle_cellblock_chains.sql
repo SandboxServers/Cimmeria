@@ -82,12 +82,8 @@ VALUES (5002, 'enter_region', 'Castle_CellBlock.Region8', 'player', true, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (5002, 'move_waypoint', NULL, 'ArmYourself_NIDGuard',
-   '{"destination":"0,0,0","speed":1}', 0, 0),
-  (5002, 'set_aggression', NULL, 'ArmYourself_NIDGuard',
-   '{"level":0}', 0, 1),
   (5002, 'generate_threat', NULL, 'ArmYourself_NIDGuard',
-   '{"threat_level":5000}', 0, 2);
+   '{"threat_level":5000}', 0, 0);
 
 -- Chain 5003: Castle_CellBlock → Event_GenericRegion (node 116)
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -181,29 +177,9 @@ VALUES
   (5007, 'system_message', 5180, NULL,
    '{}', 0, 0);
 
--- Chain 5008: Castle_CellBlock → Event_GenericRegion (node 130)
-INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (5008, 'Castle_CellBlock → Event_GenericRegion (node 130)', 'space', 8, true, 0);
-
-INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (5008, 'enter_region', 'Castle_Cellblock.Region2', 'player', false, 0);
-
-INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES
-  (5008, 'system_message', 5040, NULL,
-   '{}', 0, 0);
-
--- Chain 5009: Castle_CellBlock → Event_GenericRegion (node 130)
-INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (5009, 'Castle_CellBlock → Event_GenericRegion (node 130)', 'space', 8, true, 0);
-
-INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (5009, 'enter_region', 'Castle_Cellblock.Region2', 'player', false, 0);
-
-INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES
-  (5009, 'system_message', 5040, NULL,
-   '{}', 0, 0);
+-- Chains 5008 and 5009 removed: duplicates of chain 1011's system_message(5040)
+-- on Castle_Cellblock.Region2 (node 130). They caused triple chat spam and
+-- client freezes on every region crossing.
 
 -- Chain 5010: Castle_CellBlock → Event_GenericRegion (node 135)
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)

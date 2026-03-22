@@ -13,4 +13,5 @@ pub mod base;
 pub mod cell;
 pub mod database;
 pub mod mercury;
+pub mod minigame;
 pub mod orchestrator;

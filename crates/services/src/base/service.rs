@@ -13,6 +13,7 @@ use cimmeria_entity::manager::EntityManager;
 
 use crate::auth::PendingLogin;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
+use crate::minigame::SessionRegistry;
 
 use super::{
     BaseError, ConnectedClientState, OnlinePlayer, archetype_name,
@@ -47,6 +48,13 @@ pub struct BaseService {
 
     /// Shared connected-clients map, exposed for admin API read access.
     connected_clients: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+
+    /// Minigame session registry (shared with minigame TCP server).
+    pub minigame_registry: SessionRegistry,
+
+    /// Minigame server external host/port for URL construction.
+    minigame_external_host: String,
+    minigame_external_port: u16,
 }
 
 impl BaseService {
@@ -65,6 +73,9 @@ impl BaseService {
             cell_tx: None,
             cell_rx: None,
             connected_clients: Arc::new(Mutex::new(HashMap::new())),
+            minigame_registry: SessionRegistry::new(),
+            minigame_external_host: config.base_external_host.clone(),
+            minigame_external_port: config.minigame_port,
         }
     }
 
@@ -149,6 +160,9 @@ impl BaseService {
         let entity_to_addr_for_cell = Arc::clone(&entity_to_addr);
         let cell_tx_for_cell = cell_tx.clone();
         let db_pool_for_cell = self.db_pool.clone();
+        let mg_registry_for_cell = Some(self.minigame_registry.clone());
+        let mg_host_for_cell = self.minigame_external_host.clone();
+        let mg_port_for_cell = self.minigame_external_port;
 
         tracing::trace!("Spawning base service UDP receive loop");
         let cell_tx_for_loop = cell_tx.clone();
@@ -173,6 +187,7 @@ impl BaseService {
                         msg, &socket_for_cell, &connected_for_cell,
                         &entity_to_addr_for_cell,
                         &cell_tx_for_cell, &db_pool_for_cell,
+                        &mg_registry_for_cell, &mg_host_for_cell, mg_port_for_cell,
                     ).await;
                 }
                 tracing::debug!("Base service CellToBase message handler exited");

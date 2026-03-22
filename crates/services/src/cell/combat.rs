@@ -267,6 +267,10 @@ fn calculate_absorption(defender: &StatList, damage_type: i8) -> i32 {
 /// from the NPC's spawn position, the NPC resets and walks home.
 pub const LEASH_DISTANCE: f32 = 50.0;
 
+/// Maximum attack range in world units for NPC ranged attacks.
+/// NPCs won't fire until the target is within this distance.
+pub const NPC_ATTACK_RANGE: f32 = 30.0;
+
 /// Default NPC attack ability ID (QA data: generic ranged attack).
 pub const NPC_DEFAULT_ABILITY: i32 = 597;
 

@@ -585,6 +585,9 @@ pub(crate) async fn handle_cell_message(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     db_pool: &Option<Arc<PgPool>>,
+    minigame_registry: &Option<crate::minigame::SessionRegistry>,
+    minigame_external_host: &str,
+    minigame_external_port: u16,
 ) {
     match msg {
         CellToBaseMsg::SpaceData { space_id, world_name } => {
@@ -683,6 +686,65 @@ pub(crate) async fn handle_cell_message(
                     build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
                 },
             ).await;
+        }
+        CellToBaseMsg::StartMinigame { entity_id, player_id, game_name, difficulty, on_victory_chains } => {
+            tracing::info!(entity_id, player_id, %game_name, difficulty, "Starting minigame session");
+            if let Some(registry) = minigame_registry {
+                let seed = rand::random::<u32>();
+                let ticket = registry.register(
+                    entity_id, player_id, game_name.clone(), difficulty,
+                    1, // tech_competency — TODO: read from player entity
+                    seed, 0, 0, 1, // abilities, intelligence, player_level
+                    on_victory_chains,
+                ).await;
+
+                if let Some(ticket) = ticket {
+                    // Build URL: http://unused/{ip}/{port}/{gameName}/{entityId}/{ticket}
+                    let url = format!(
+                        "http://unused/{}/{}/{}/{}/{}",
+                        minigame_external_host, minigame_external_port,
+                        game_name, entity_id, ticket
+                    );
+                    tracing::info!(entity_id, %url, "Sending onStartMinigame to client");
+
+                    // onStartMinigame(URL: WSTRING) — MinigamePlayer client method
+                    // Method index for onStartMinigame in the SGWPlayer flat dispatch table
+                    let url_utf16: Vec<u16> = url.encode_utf16().collect();
+                    let mut args = Vec::with_capacity(4 + url_utf16.len() * 2);
+                    args.extend_from_slice(&(url_utf16.len() as u32).to_le_bytes());
+                    for ch in &url_utf16 {
+                        args.extend_from_slice(&ch.to_le_bytes());
+                    }
+                    let method = crate::cell::dispatch::CLIENT_MG_ON_START_MINIGAME;
+                    send_to_witness(
+                        socket, connected, entity_to_addr, entity_id,
+                        |key, seq, acks| {
+                            build_entity_method_packet(key, seq, acks, entity_id, method, &args)
+                        },
+                    ).await;
+                } else {
+                    tracing::warn!(entity_id, "Failed to register minigame session (duplicate?)");
+                }
+            }
+        }
+        CellToBaseMsg::MinigameResult { entity_id, result_code, on_victory_chains } => {
+            tracing::info!(entity_id, result_code, "Minigame result received");
+            // Send onEndMinigame to client
+            let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
+            send_to_witness(
+                socket, connected, entity_to_addr, entity_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(key, seq, acks, entity_id, method, &[])
+                },
+            ).await;
+            // Forward to CellApp for victory chain processing
+            if let Some(cell_tx) = cell_tx {
+                let _ = cell_tx.send(BaseToCellMsg::MinigameResult {
+                    entity_id,
+                    result_code,
+                    on_victory_chains,
+                }).await;
+            }
         }
     }
 }

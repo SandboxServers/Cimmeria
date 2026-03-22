@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use cimmeria_common::{EntityId, SpaceId, Vector3};
 use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::navigation::NavMesh;
 use cimmeria_entity::space::Space;
 
 use super::messages::CellToBaseMsg;
@@ -62,6 +63,8 @@ pub struct SpaceInstance {
     pub entities: HashMap<u32, CellEntity>,
     /// Entity IDs that have a client controller (players).
     pub players: HashSet<u32>,
+    /// Navigation mesh for this space (if loaded).
+    pub navmesh: Option<NavMesh>,
 }
 
 /// Manages spaces and cell entities for one CellApp.
@@ -257,12 +260,28 @@ impl SpaceManager {
             world_name.to_string(),
             GRID_CELL_SIZE,
         );
+        // Try to load navmesh for this space
+        let nav_name = world_name.to_lowercase().replace(' ', "_");
+        let nav_path = format!("data/spaces/{nav_name}.nav");
+        let navmesh = match NavMesh::load(std::path::Path::new(&nav_path)) {
+            Ok(nm) => {
+                tracing::info!(space_id, world = %world_name, polys = nm.poly_count(),
+                    "NavMesh loaded for space");
+                Some(nm)
+            }
+            Err(e) => {
+                tracing::debug!(space_id, world = %world_name, path = %nav_path,
+                    error = %e, "No navmesh for space (optional)");
+                None
+            }
+        };
         let instance = SpaceInstance {
             space_id,
             world_name: world_name.to_string(),
             space,
             entities: HashMap::new(),
             players: HashSet::new(),
+            navmesh,
         };
         tracing::debug!(space_id, world = %world_name, "Created space instance");
         self.spaces.insert(space_id, instance);
@@ -841,6 +860,59 @@ impl SpaceManager {
             .filter(|(_, e)| e.template_id == Some(template_id))
             .map(|(&eid, _)| eid)
             .collect()
+    }
+
+    // ── NavMesh queries ──────────────────────────────────────────────────
+
+    /// Line-of-sight check between two entities using the navmesh.
+    /// Returns `true` if there is clear LoS (or if no navmesh is loaded).
+    pub fn has_line_of_sight(&self, entity_a: u32, entity_b: u32) -> bool {
+        let space_id = match self.entity_space.get(&entity_a) {
+            Some(&sid) => sid,
+            None => return true, // No space info — assume LoS
+        };
+        let space = match self.spaces.get(&space_id) {
+            Some(s) => s,
+            None => return true,
+        };
+        let navmesh = match &space.navmesh {
+            Some(nm) => nm,
+            None => return true, // No navmesh — can't check, assume LoS
+        };
+        let pos_a = match space.entities.get(&entity_a) {
+            Some(e) => e.position,
+            None => return true,
+        };
+        let pos_b = match space.entities.get(&entity_b) {
+            Some(e) => e.position,
+            None => return true,
+        };
+        navmesh.raycast(&pos_a, &pos_b)
+    }
+
+    /// Find a path between two positions within the space containing `entity_id`.
+    /// Returns waypoints or `None` if no path exists or no navmesh is loaded.
+    pub fn find_path(&self, entity_id: u32, start: &Vector3, end: &Vector3) -> Option<Vec<Vector3>> {
+        let space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(space_id)?;
+        let navmesh = space.navmesh.as_ref()?;
+        navmesh.find_path(start, end)
+    }
+
+    /// Check if a position is on walkable navmesh in the space containing `entity_id`.
+    pub fn is_position_valid(&self, entity_id: u32, pos: &Vector3) -> bool {
+        let space_id = match self.entity_space.get(&entity_id) {
+            Some(&sid) => sid,
+            None => return true,
+        };
+        let space = match self.spaces.get(&space_id) {
+            Some(s) => s,
+            None => return true,
+        };
+        match &space.navmesh {
+            Some(nm) => nm.is_point_valid(pos),
+            None => true,
+        }
     }
 }
 

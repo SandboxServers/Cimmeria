@@ -91,6 +91,19 @@ impl ChainEngine {
         self.chains_by_trigger.values().map(|v| v.len()).sum()
     }
 
+    /// Get the actions for a chain by its ID, bypassing trigger matching.
+    /// Used for direct invocation (e.g., minigame victory callbacks).
+    pub fn get_chain_actions(&self, chain_id: i64) -> Vec<Action> {
+        for chains in self.chains_by_trigger.values() {
+            for chain in chains {
+                if chain.id == chain_id {
+                    return chain.actions.clone();
+                }
+            }
+        }
+        vec![]
+    }
+
     /// Return the number of registered chains for a specific trigger type.
     pub fn chains_for_trigger(&self, trigger_type: &TriggerType) -> usize {
         self.chains_by_trigger

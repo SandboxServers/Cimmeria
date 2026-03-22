@@ -18,6 +18,51 @@ use super::combat;
 use super::messages::CellToBaseMsg;
 use super::space_manager::SpaceManager;
 
+/// Send an entity method call, routing to the entity's client if it's a player,
+/// or broadcasting to all witnessing players if it's an NPC (ghost entity).
+///
+/// In BigWorld, method calls on ghost entities are forwarded to all players who
+/// have that entity in their AoI. This is how players see NPC attack animations,
+/// health changes, death states, etc.
+pub(crate) async fn send_entity_method(
+    entity_id: u32,
+    method_index: u16,
+    args: Vec<u8>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let is_player = space_mgr.get_entity(entity_id)
+        .map_or(false, |e| e.is_player);
+
+    if is_player {
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        }).await;
+    } else {
+        let witnesses = space_mgr.get_witnesses_of(entity_id);
+        if witnesses.is_empty() {
+            tracing::warn!(
+                entity_id, method_index,
+                "send_entity_method: NPC has no witnesses, method dropped"
+            );
+        }
+        for witness_id in witnesses {
+            tracing::debug!(
+                witness_id, entity_id, method_index,
+                "send_entity_method: routing NPC method to witness"
+            );
+            let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+                witness_id,
+                entity_id,
+                method_index,
+                args: args.clone(),
+            }).await;
+        }
+    }
+}
+
 /// Handle a `useAbility(abilityId, targetId)` cell method call.
 ///
 /// Flow:
@@ -80,11 +125,7 @@ pub async fn handle_use_ability(
         0.0, // TODO: bigWorldTimeComplete = gameTime + cooldown
     );
 
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: 12, // onTimerUpdate (SGWBeing interface, flat index 12)
-        args: timer_args,
-    }).await;
+    send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
 
     // ── Combat resolution (if target specified) ──
 
@@ -158,38 +199,22 @@ pub async fn handle_use_ability(
         qr_result.result_code,
         &effect_results,
     );
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: 14, // onEffectResults (SGWBeing interface, flat index 14)
-        args: effect_args.clone(),
-    }).await;
+    send_entity_method(entity_id, 14, effect_args.clone(), tx, space_mgr).await;
 
     // onEffectResults to target (so they see incoming damage)
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id: target_eid,
-        method_index: 14,
-        args: effect_args,
-    }).await;
+    send_entity_method(target_eid, 14, effect_args, tx, space_mgr).await;
 
     // ── Send stat updates ──
 
     // onStatUpdate to target (their health bar changes)
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id: target_eid,
-        method_index: 20, // onStatUpdate (SGWCombatant interface, flat index 20)
-        args: target_stat_update,
-    }).await;
+    send_entity_method(target_eid, 20, target_stat_update, tx, space_mgr).await;
 
     // ── Send state field update if target died ──
 
     if target_died {
         let mut state_args = Vec::with_capacity(4);
         state_args.extend_from_slice(&state_field.to_le_bytes());
-        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-            entity_id: target_eid,
-            method_index: 19, // onStateFieldUpdate (SGWBeing interface, flat index 19)
-            args: state_args,
-        }).await;
+        send_entity_method(target_eid, 19, state_args, tx, space_mgr).await;
 
         // Grant XP to the attacker if the target is a non-player entity
         if let Some(target) = space_mgr.get_entity(target_eid) {

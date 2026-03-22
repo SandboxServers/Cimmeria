@@ -306,6 +306,40 @@ pub const CM_TRADE_LOCK_STATE: u16 = 107;
 /// SGWPlayer: cancelMovie(WSTRING movieName)
 pub const CM_CANCEL_MOVIE: u16 = 108;
 
+// ── Flattened ClientMethod indices (server→client) ──────────────────────────
+//
+// These are the indices used in entity method call packets sent FROM the server
+// TO the client. They are a DIFFERENT flat index space from the CellMethod
+// indices above (which are client→server).
+//
+// BigWorld .def parse order (from entity_description.cpp:parseInterface):
+//   For each entity in the inheritance chain (root→leaf):
+//     1. Parse <Implements> interfaces FIRST (recursively, in document order)
+//     2. Then parse the entity's OWN <ClientMethods>
+//
+// For SGWPlayer the full order is:
+//   SGWSpawnableEntity own (12)    → indices 0-11
+//   SGWBeing interface (8)         → indices 12-19
+//   SGWCombatant interface (6)     → indices 20-25
+//   SGWBeing own (1)               → index 26
+//   Communicator (7)               → indices 27-33
+//   OrganizationMember (18)        → indices 34-51
+//   MinigamePlayer (13)            → indices 52-64
+//   GateTravel (4)                 → indices 65-68
+//   SGWInventoryManager (7)        → indices 69-75
+//   SGWMailManager (4)             → indices 76-79
+//   Missionary (5)                 → indices 80-84
+//   ContactListManager (5)         → indices 85-89
+//   SGWBlackMarketManager (6)      → indices 90-95
+//   ClientCache (2)                → indices 96-97
+//   SGWPlayer own (59)             → indices 98-156
+//
+// See docs/protocol/client-method-dispatch-table.md for the complete table.
+
+// MinigamePlayer ClientMethods: see `client_methods::minigame` (indices 52-64)
+pub use super::client_methods::minigame::ON_START_MINIGAME as CLIENT_MG_ON_START_MINIGAME;
+pub use super::client_methods::minigame::ON_END_MINIGAME as CLIENT_MG_ON_END_MINIGAME;
+
 // ── Dispatch ────────────────────────────────────────────────────────────────
 
 /// Dispatch a client->server cell method call to the appropriate handler.

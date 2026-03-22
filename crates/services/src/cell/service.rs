@@ -75,6 +75,11 @@ impl CellService {
         self.cell_to_base_tx = Some(tx);
     }
 
+    /// Get a clone of the CellToBase sender (for minigame result routing).
+    pub fn cell_to_base_tx(&self) -> Option<mpsc::Sender<CellToBaseMsg>> {
+        self.cell_to_base_tx.clone()
+    }
+
     /// Start the cell service.
     ///
     /// Loads space definitions from XML, creates startup spaces, and begins
@@ -268,8 +273,14 @@ async fn run_cell_loop(
             _ = tick_interval.tick() => {
                 run_aoi_tick(tx, &mut space_mgr).await;
 
-                // NPC AI runs every 20th AoI tick (2 seconds at 100ms intervals)
                 aoi_tick_counter = aoi_tick_counter.wrapping_add(1);
+
+                // NPC movement runs every 5th AoI tick (500ms) for smooth pathing
+                if aoi_tick_counter % 5 == 0 {
+                    npc_movement_tick(&mut space_mgr);
+                }
+
+                // NPC AI runs every 20th AoI tick (2 seconds at 100ms intervals)
                 if aoi_tick_counter % 20 == 0 {
                     npc_ai_tick(tx, &mut space_mgr).await;
                 }
@@ -431,6 +442,23 @@ async fn handle_base_message(
         }
 
         BaseToCellMsg::ReloadContentEngine => {}
+
+        BaseToCellMsg::MinigameResult { entity_id, result_code, on_victory_chains } => {
+            tracing::info!(entity_id, result_code, chains = ?on_victory_chains, "Minigame result");
+            if result_code == 1 {
+                // Victory — fire on_victory_chains through the content engine
+                let player_id = space_mgr.get_entity(entity_id)
+                    .and_then(|e| e.player_id)
+                    .unwrap_or(0);
+                for chain_id in &on_victory_chains {
+                    content::fire_chain_by_id(
+                        *chain_id as i64,
+                        entity_id, player_id,
+                        engine, tx, space_mgr,
+                    ).await;
+                }
+            }
+        }
     }
 }
 
@@ -453,6 +481,70 @@ async fn run_aoi_tick(
 /// For each NPC in Fighting state: find top threat target, check leash
 /// distance, and attack with default ability. For NPCs in Leashing state:
 /// reset to Idle when close enough to spawn point, restore health.
+/// Advance NPCs along their nav_path waypoints.
+///
+/// Each tick, if an NPC has a non-empty `nav_path`, move it toward the next
+/// waypoint by `move_speed` units. When it reaches (or overshoots) a waypoint,
+/// consume it and continue to the next. Position updates propagate to witnesses
+/// via the AoI tick's `EntityMoved` messages.
+fn npc_movement_tick(space_mgr: &mut SpaceManager) {
+    // Collect NPCs that have active paths
+    let moving_npcs: Vec<u32> = space_mgr.all_npc_entity_ids()
+        .iter()
+        .filter(|&&eid| {
+            space_mgr.get_entity(eid)
+                .map_or(false, |e| !e.nav_path.is_empty())
+        })
+        .copied()
+        .collect();
+
+    for npc_id in moving_npcs {
+        // Read the next waypoint and move_speed
+        let (next_wp, move_speed, cur_pos) = {
+            let npc = match space_mgr.get_entity(npc_id) {
+                Some(e) if !e.nav_path.is_empty() => e,
+                _ => continue,
+            };
+            (npc.nav_path[0], npc.move_speed, npc.position)
+        };
+
+        let dx = next_wp.x - cur_pos.x;
+        let dy = next_wp.y - cur_pos.y;
+        let dz = next_wp.z - cur_pos.z;
+        let dist = (dx * dx + dy * dy + dz * dz).sqrt();
+
+        if dist <= move_speed {
+            // Reached (or overshot) the waypoint — snap to it and consume
+            space_mgr.update_entity_position(
+                npc_id,
+                [next_wp.x, next_wp.y, next_wp.z],
+                [0, 0, 0],
+                [0.0; 3],
+            );
+            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                npc.nav_path.remove(0);
+            }
+        } else {
+            // Move toward waypoint by move_speed
+            let t = move_speed / dist;
+            let new_x = cur_pos.x + dx * t;
+            let new_y = cur_pos.y + dy * t;
+            let new_z = cur_pos.z + dz * t;
+
+            // Face the direction of movement
+            let dir_x = (dx / dist * 127.0) as i8;
+            let dir_z = (dz / dist * 127.0) as i8;
+
+            space_mgr.update_entity_position(
+                npc_id,
+                [new_x, new_y, new_z],
+                [dir_x, 0, dir_z],
+                [0.0; 3],
+            );
+        }
+    }
+}
+
 async fn npc_ai_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -492,7 +584,7 @@ async fn npc_ai_fight(
     use super::combat;
 
     // Read NPC state (immutable borrow)
-    let (top_target, spawn_pos, _npc_pos) = {
+    let (top_target, spawn_pos, npc_pos) = {
         let npc = match space_mgr.get_entity(npc_id) {
             Some(e) => e,
             None => return,
@@ -519,9 +611,21 @@ async fn npc_ai_fight(
         }
     };
 
-    // Check if target still exists
+    // Check if target still exists and is alive
     let target_pos = match space_mgr.get_entity(target_id) {
-        Some(t) => t.position,
+        Some(t) => {
+            // Don't attack dead targets
+            let is_dead = t.stats.get(cimmeria_entity::stats::HEALTH)
+                .map_or(true, |s| s.cur <= 0);
+            if is_dead {
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    npc.threat_list.remove(&target_id);
+                    tracing::debug!(npc_id, target = target_id, "NPC AI: target is dead, removing from threat");
+                }
+                return;
+            }
+            t.position
+        }
         None => {
             // Target gone (disconnected), remove from threat and re-evaluate
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
@@ -548,8 +652,42 @@ async fn npc_ai_fight(
         }
     }
 
+    // Range check: don't attack until target is within weapon range
+    let dist_to_target = npc_pos.distance_to(&target_pos);
+    let in_range = dist_to_target <= combat::NPC_ATTACK_RANGE;
+    let has_los = space_mgr.has_line_of_sight(npc_id, target_id);
+
+    if !in_range || !has_los {
+        // Can't attack — pathfind toward target
+        if let Some(path) = space_mgr.find_path(npc_id, &npc_pos, &target_pos) {
+            if path.len() > 1 {
+                // Skip first waypoint (current position), store the rest
+                let waypoints: Vec<_> = path.into_iter().skip(1).collect();
+                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                    npc.nav_path = waypoints;
+                }
+                tracing::debug!(
+                    npc_id, target = target_id,
+                    in_range, has_los,
+                    "NPC AI: pathfinding toward target"
+                );
+            }
+        } else {
+            tracing::debug!(
+                npc_id, target = target_id,
+                "NPC AI: no path to target"
+            );
+        }
+        return;
+    }
+
+    // In range and have LoS — stop moving and attack
+    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+        npc.nav_path.clear();
+    }
+
     // Attack the target with the default ability
-    tracing::debug!(npc_id, target = target_id, "NPC AI: attacking top threat target");
+    tracing::debug!(npc_id, target = target_id, distance = dist_to_target, "NPC AI: attacking top threat target");
     super::abilities::handle_use_ability(
         npc_id,
         combat::NPC_DEFAULT_ABILITY,
@@ -600,17 +738,9 @@ async fn npc_ai_leash(
     let mut state_field = 0u32;
     super::combat::clear_dead_state(&mut state_field);
 
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id: npc_id,
-        method_index: 20, // onStatUpdate
-        args: stat_update,
-    }).await;
+    super::abilities::send_entity_method(npc_id, 20, stat_update, tx, space_mgr).await;
 
     let mut state_args = Vec::with_capacity(4);
     state_args.extend_from_slice(&state_field.to_le_bytes());
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id: npc_id,
-        method_index: 19, // onStateFieldUpdate
-        args: state_args,
-    }).await;
+    super::abilities::send_entity_method(npc_id, 19, state_args, tx, space_mgr).await;
 }
