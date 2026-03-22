@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Script Version="1.4" DatasetVersion="1.2" Module="Castle_CellBlock" Type="Level" NextId="230">
-	<Node Id="13" Ref="Event_Loaded" X="-1817" Y="-366">
+	<Node Id="13" Ref="Event_Loaded" X="-1956" Y="-480">
 		<Property Name="Comment" Value=""/>
 		<Property Name="Debug" Value="false"/>
 		<Property Name="Enabled" Value="true"/>
@@ -541,7 +541,7 @@
 	<Connection OutNode="161" OutPort="Archetype" InNode="162" InPort="Set"/>
 	<Connection OutNode="162" OutPort="Value" InNode="163" InPort="A"/>
 	<Connection OutNode="164" OutPort="Value" InNode="163" InPort="B"/>
-	<Connection OutNode="165" OutPort="A &amp;lt; B" InNode="151" InPort="In"/>
+	<Connection OutNode="165" OutPort="A &amp;amp;lt; B" InNode="151" InPort="In"/>
 	<Connection OutNode="147" OutPort="Player" InNode="151" InPort="Player"/>
 	<Connection OutNode="163" OutPort="A == B" InNode="167" InPort="In"/>
 	<Connection OutNode="147" OutPort="Player" InNode="167" InPort="Player"/>
@@ -561,7 +561,7 @@
 	<Connection OutNode="123" OutPort="Invoker" InNode="176" InPort="Player"/>
 	<Connection OutNode="178" OutPort="Value" InNode="177" InPort="B"/>
 	<Connection OutNode="173" OutPort="Value" InNode="177" InPort="A"/>
-	<Connection OutNode="177" OutPort="A &amp;lt; B" InNode="179" InPort="In"/>
+	<Connection OutNode="177" OutPort="A &amp;amp;lt; B" InNode="179" InPort="In"/>
 	<Connection OutNode="123" OutPort="Invoker" InNode="179" InPort="Player"/>
 	<Connection OutNode="172" OutPort="Successful" InNode="177" InPort="In"/>
 	<Connection OutNode="120" OutPort="Successful" InNode="180" InPort="In"/>

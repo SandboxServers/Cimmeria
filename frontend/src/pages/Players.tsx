@@ -93,10 +93,10 @@ export default function Players() {
               </div>
             )}
             {playersResource.loading && !playersResource.data && (
-              <div className="px-6 pb-6 text-sm text-muted-foreground">Loading live roster...</div>
+              <div className="px-6 pb-6 text-sm text-on-surface-variant">Loading live roster...</div>
             )}
             {playersResource.data && !playersResource.data.available && (
-              <div className="px-6 pb-6 text-sm text-muted-foreground">
+              <div className="px-6 pb-6 text-sm text-on-surface-variant">
                 {playersResource.data.reason}
               </div>
             )}
@@ -117,10 +117,10 @@ export default function Players() {
                   <TableBody>
                     {filteredPlayers.map((player) => (
                       <TableRow key={player.name}>
-                        <TableCell className="font-medium text-foreground">{player.name}</TableCell>
-                        <TableCell className="text-muted-foreground">{player.archetype}</TableCell>
+                        <TableCell className="font-medium text-on-surface">{player.name}</TableCell>
+                        <TableCell className="text-on-surface-variant">{player.archetype}</TableCell>
                         <TableCell>{player.level}</TableCell>
-                        <TableCell className="max-w-[220px] truncate text-muted-foreground">
+                        <TableCell className="max-w-[220px] truncate text-on-surface-variant">
                           {player.zone}
                         </TableCell>
                         <TableCell>
@@ -129,7 +129,7 @@ export default function Players() {
                           </Badge>
                         </TableCell>
                         <TableCell>{player.ping ?? 'n/a'}</TableCell>
-                        <TableCell className="text-muted-foreground">{player.session}</TableCell>
+                        <TableCell className="text-on-surface-variant">{player.session}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -149,17 +149,17 @@ export default function Players() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-sm font-medium text-foreground">Roster route</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              <div className="obsidian-panel border border-[rgba(77,70,53,0.15)] p-4">
+                <p className="text-sm font-medium text-on-surface">Roster route</p>
+                <p className="mt-2 text-sm leading-6 text-on-surface-variant">
                   {playersResource.data?.available
                     ? 'Live roster feed is available.'
                     : playersResource.data?.reason ?? 'Waiting for player route response.'}
                 </p>
               </div>
-              <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-sm font-medium text-foreground">Base and cell services</p>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              <div className="obsidian-panel border border-[rgba(77,70,53,0.15)] p-4">
+                <p className="text-sm font-medium text-on-surface">Base and cell services</p>
+                <p className="mt-2 text-sm leading-6 text-on-surface-variant">
                   {playersResource.data?.summary.ready
                     ? 'Runtime services are up, but detailed roster enumeration is still pending.'
                     : 'Runtime services are not fully ready for a roster feed.'}

@@ -43,11 +43,11 @@ const SOURCE_CONFIG: Record<LogSource, { label: string; wsPath: string; descript
 const MAX_ENTRIES = 2000;
 
 const LEVEL_COLORS: Record<string, string> = {
-  ERROR: 'bg-red-400/15 text-red-200',
-  WARN: 'bg-amber-300/15 text-amber-100',
-  INFO: 'bg-emerald-400/12 text-emerald-100',
-  DEBUG: 'bg-sky-400/12 text-sky-200',
-  TRACE: 'bg-slate-400/12 text-slate-300',
+  ERROR: 'bg-error/15 text-error',
+  WARN: 'bg-primary/15 text-primary',
+  INFO: 'bg-tertiary/12 text-tertiary',
+  DEBUG: 'bg-surface-high text-on-surface-variant',
+  TRACE: 'bg-surface-high text-on-surface-variant/50',
 };
 
 function formatTime(ms: number): string {
@@ -153,7 +153,7 @@ export default function Logs() {
         badge={
           <span className="inline-flex items-center gap-2">
             <Circle
-              className={`size-2 ${connected ? 'fill-emerald-400 text-emerald-400' : 'fill-amber-400 text-amber-400'}`}
+              className={`size-2 ${connected ? 'fill-tertiary text-tertiary' : 'fill-primary text-primary'}`}
             />
             {connected ? 'Live' : 'Reconnecting...'}
           </span>
@@ -206,43 +206,43 @@ export default function Logs() {
             <div
               ref={scrollRef}
               onScroll={handleScroll}
-              className="subtle-scrollbar h-[600px] overflow-y-auto rounded-[28px] border border-white/8 bg-[#09131d] p-4 font-mono text-xs text-slate-100 shadow-inner shadow-black/35"
+              className="subtle-scrollbar h-[600px] overflow-y-auto border border-[rgba(77,70,53,0.15)] bg-surface-lowest p-4 font-mono text-xs text-on-surface shadow-inner shadow-black/35"
             >
               <div className="mb-4 flex items-center gap-3">
                 <div
                   className={`size-2 rounded-full ${
                     connected
-                      ? 'bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.85)]'
-                      : 'bg-amber-300 shadow-[0_0_14px_rgba(252,211,77,0.85)]'
+                      ? 'bg-tertiary shadow-[0_0_14px_rgba(127,222,221,0.85)]'
+                      : 'bg-primary shadow-[0_0_14px_rgba(242,202,80,0.85)]'
                   }`}
                 />
-                <span className="uppercase tracking-[0.24em] text-slate-400">
+                <span className="uppercase tracking-[0.24em] text-on-surface-variant">
                   {connected ? (paused ? 'Paused' : `Streaming — ${sourceLabel}`) : 'Connecting...'}
                 </span>
               </div>
               <div className="space-y-1">
                 {displayEntries.length === 0 && (
-                  <div className="py-8 text-center text-slate-500">
+                  <div className="py-8 text-center text-on-surface-variant/50">
                     {connected
                       ? 'Waiting for log entries...'
                       : `Connecting to ${sourceLabel.toLowerCase()}...`}
                   </div>
                 )}
                 {displayEntries.map((entry, i) => (
-                  <div key={i} className="flex gap-2 leading-5 hover:bg-white/[0.03] rounded px-1">
-                    <span className="shrink-0 text-slate-500">{formatTime(entry.timestamp_ms)}</span>
+                  <div key={i} className="flex gap-2 leading-5 hover:bg-surface-high px-1">
+                    <span className="shrink-0 text-on-surface-variant/50">{formatTime(entry.timestamp_ms)}</span>
                     <span
-                      className={`shrink-0 w-12 text-center rounded px-1 text-[10px] font-semibold tracking-wider ${LEVEL_COLORS[entry.level] ?? LEVEL_COLORS.INFO}`}
+                      className={`shrink-0 w-12 text-center px-1 text-[10px] font-semibold tracking-wider ${LEVEL_COLORS[entry.level] ?? LEVEL_COLORS.INFO}`}
                     >
                       {entry.level}
                     </span>
-                    <span className="shrink-0 text-slate-400 max-w-[220px] truncate" title={entry.target}>
+                    <span className="shrink-0 text-on-surface-variant max-w-[220px] truncate" title={entry.target}>
                       {entry.target}
                     </span>
-                    <span className="text-slate-100 break-all">
+                    <span className="text-on-surface break-all">
                       {entry.message}
                       {Object.keys(entry.fields ?? {}).length > 0 && (
-                        <span className="text-slate-500"> {formatFields(entry.fields)}</span>
+                        <span className="text-on-surface-variant/50"> {formatFields(entry.fields)}</span>
                       )}
                     </span>
                   </div>
@@ -265,14 +265,14 @@ export default function Logs() {
               {(['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'] as const).map((lvl) => (
                 <div
                   key={lvl}
-                  className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3"
+                  className="flex items-center justify-between border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-3"
                 >
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider ${LEVEL_COLORS[lvl]}`}
+                    className={`font-dense px-2 py-0.5 text-[10px] font-semibold tracking-wider ${LEVEL_COLORS[lvl]}`}
                   >
                     {lvl}
                   </span>
-                  <span className="text-sm font-medium text-foreground tabular-nums">
+                  <span className="font-headline text-primary text-sm font-medium tabular-nums">
                     {levelCounts[lvl] ?? 0}
                   </span>
                 </div>
@@ -287,24 +287,24 @@ export default function Logs() {
               <CardDescription>{sourceDescription}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
-                <span className="text-sm text-muted-foreground">Source</span>
+              <div className="flex items-center justify-between border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-3">
+                <span className="text-sm text-on-surface-variant">Source</span>
                 <Badge variant="outline">{sourceLabel}</Badge>
               </div>
-              <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
-                <span className="text-sm text-muted-foreground">WebSocket</span>
+              <div className="flex items-center justify-between border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-3">
+                <span className="text-sm text-on-surface-variant">WebSocket</span>
                 <Badge variant={connected ? 'success' : 'outline'}>
                   {connected ? 'Connected' : 'Disconnected'}
                 </Badge>
               </div>
-              <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
-                <span className="text-sm text-muted-foreground">Buffer</span>
-                <span className="text-sm font-medium text-foreground tabular-nums">
+              <div className="flex items-center justify-between border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-3">
+                <span className="text-sm text-on-surface-variant">Buffer</span>
+                <span className="text-sm font-medium text-on-surface tabular-nums">
                   {entries.length} / {MAX_ENTRIES}
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-[24px] border border-white/6 bg-white/[0.03] px-4 py-3">
-                <span className="text-sm text-muted-foreground">Auto-reconnect</span>
+              <div className="flex items-center justify-between border border-[rgba(77,70,53,0.15)] bg-surface-low px-4 py-3">
+                <span className="text-sm text-on-surface-variant">Auto-reconnect</span>
                 <Badge variant="success">Enabled</Badge>
               </div>
             </CardContent>

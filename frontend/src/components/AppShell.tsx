@@ -3,7 +3,6 @@ import { useMemo, useState, type ComponentType } from 'react';
 import type { LucideProps } from 'lucide-react';
 import {
   Boxes,
-  ChevronRight,
   Compass,
   LayoutDashboard,
   Menu,
@@ -45,26 +44,26 @@ export default function AppShell() {
   );
 
   const Sidebar = () => (
-    <aside className="glass-panel subtle-scrollbar flex h-full w-full flex-col overflow-y-auto rounded-[30px] border border-white/8 bg-slate-950/82 p-5">
-      <div className="rounded-[28px] border border-white/6 bg-gradient-to-br from-primary/16 via-transparent to-accent/12 p-5">
+    <aside className="subtle-scrollbar flex h-full w-full flex-col overflow-y-auto border border-[rgba(77,70,53,0.15)] bg-surface-lowest p-5">
+      <div className="obsidian-panel border border-[rgba(77,70,53,0.15)] p-5">
         <div className="mb-4 flex items-center justify-between">
           <Badge>Phase 4</Badge>
           <Sparkles className="size-4 text-primary" />
         </div>
-        <h2 className="text-xl font-semibold tracking-[-0.04em] text-foreground">
-          Cimmeria Command
+        <h2 className="font-headline text-xl tracking-tighter uppercase text-primary">
+          COMMAND_STRATA
         </h2>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        <p className="mt-2 text-sm leading-6 text-on-surface-variant">
           Operations-grade admin tooling for the emulator rewrite. Tailwind-driven UI, ready for API wiring.
         </p>
       </div>
 
       <div className="mt-6 flex items-center justify-between px-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-muted-foreground">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-on-surface-variant">
             Control Surfaces
           </p>
-          <p className="mt-1 text-sm text-foreground">Phase 4 dashboard stack</p>
+          <p className="mt-1 text-sm text-on-surface">Phase 4 dashboard stack</p>
         </div>
         <Badge variant="success">Online</Badge>
       </div>
@@ -77,8 +76,8 @@ export default function AppShell() {
               key={item.path}
               className={({ isActive }) =>
                 cn(
-                  'group flex items-center justify-between rounded-[24px] border border-transparent px-3 py-3 transition-all hover:border-white/10 hover:bg-white/[0.045]',
-                  isActive && 'border-primary/40 bg-primary/14 text-foreground shadow-[0_14px_40px_rgba(245,170,49,0.14)]',
+                  'group flex items-center justify-between border border-transparent px-3 py-3 transition-all duration-200 hover:bg-surface-highest hover:translate-x-1',
+                  isActive && 'bg-secondary-container/30 text-on-surface shadow-[inset_4px_0_0_0_#F2CA50]',
                 )
               }
               to={item.path}
@@ -86,28 +85,27 @@ export default function AppShell() {
               onClick={() => setMobileOpen(false)}
             >
               <div className="flex items-center gap-3">
-                <div className="rounded-2xl border border-white/8 bg-white/6 p-2 text-muted-foreground transition-colors">
+                <div className="border border-[rgba(77,70,53,0.15)] bg-surface-high p-2 text-on-surface-variant transition-colors">
                   <Icon className="size-4" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-foreground">{item.label}</p>
-                  <p className="text-xs text-muted-foreground">{item.hint}</p>
+                  <p className="text-sm font-medium text-on-surface">{item.label}</p>
+                  <p className="text-xs text-on-surface-variant">{item.hint}</p>
                 </div>
               </div>
-              <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </NavLink>
           );
         })}
       </nav>
 
-      <div className="mt-auto rounded-[28px] border border-white/6 bg-white/5 p-4">
+      <div className="mt-auto border border-[rgba(77,70,53,0.15)] bg-surface-high p-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-full bg-accent/15 p-2 text-accent">
+          <div className="bg-accent/15 p-2 text-accent">
             <ShieldCheck className="size-4" />
           </div>
           <div>
-            <p className="text-sm font-medium text-foreground">Local operator mode</p>
-            <p className="text-xs text-muted-foreground">JWT and Tauri IPC hooks can slot in here.</p>
+            <p className="text-sm font-medium text-on-surface">Local operator mode</p>
+            <p className="text-xs text-on-surface-variant">JWT and Tauri IPC hooks can slot in here.</p>
           </div>
         </div>
       </div>
@@ -135,9 +133,9 @@ export default function AppShell() {
           </>
         )}
 
-        <main className="flex min-h-[calc(100vh-2rem)] min-w-0 flex-1 flex-col gap-6 rounded-[34px] border border-white/6 bg-slate-950/32 p-4 shadow-[0_30px_120px_rgba(0,0,0,0.24)] sm:p-5 lg:p-6">
+        <main className="flex min-h-[calc(100vh-2rem)] min-w-0 flex-1 flex-col gap-6 border border-[rgba(77,70,53,0.15)] bg-surface p-4 shadow-[0_30px_120px_rgba(0,0,0,0.24)] sm:p-5 lg:p-6">
           {showPageChrome && (
-            <header className="glass-panel flex flex-col gap-4 rounded-[28px] border border-white/8 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+            <header className="flex flex-col gap-4 border border-[rgba(77,70,53,0.15)] bg-surface-high px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-start gap-3">
                 <Button
                   className="lg:hidden"
@@ -153,10 +151,10 @@ export default function AppShell() {
                     <Badge variant="success">Realtime-ready</Badge>
                   </div>
                   <div>
-                    <h1 className="text-lg font-semibold tracking-[-0.03em] text-foreground sm:text-xl">
+                    <h1 className="text-lg font-semibold tracking-[-0.03em] text-on-surface sm:text-xl">
                       {activeItem.label}
                     </h1>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-on-surface-variant">
                       {activeItem.hint} with a Tailwind and shadcn-style operator interface.
                     </p>
                   </div>

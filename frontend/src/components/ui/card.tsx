@@ -7,7 +7,7 @@ export function Card({ className, ...rest }: DivProps) {
   return (
     <div
       className={cn(
-        'glass-panel rounded-[28px] border border-white/8 bg-card/82 text-card-foreground',
+        'border border-[rgba(77,70,53,0.15)] bg-surface-low text-card-foreground',
         className,
       )}
       {...rest}
@@ -22,14 +22,14 @@ export function CardHeader({ className, ...rest }: DivProps) {
 export function CardTitle({ className, ...rest }: DivProps) {
   return (
     <div
-      className={cn('text-lg font-semibold tracking-tight text-foreground', className)}
+      className={cn('font-headline text-lg font-semibold uppercase tracking-widest text-on-surface', className)}
       {...rest}
     />
   );
 }
 
 export function CardDescription({ className, ...rest }: DivProps) {
-  return <div className={cn('text-sm text-muted-foreground', className)} {...rest} />;
+  return <div className={cn('text-sm text-on-surface-variant', className)} {...rest} />;
 }
 
 export function CardContent({ className, ...rest }: DivProps) {

@@ -11,11 +11,11 @@ export function Progress({ className, value, ...rest }: ProgressProps) {
 
   return (
     <div
-      className={cn('h-2.5 w-full overflow-hidden rounded-full bg-white/8', className)}
+      className={cn('h-2.5 w-full overflow-hidden bg-surface-high', className)}
       {...rest}
     >
       <div
-        className="h-full rounded-full bg-gradient-to-r from-primary via-amber-300 to-accent transition-all duration-300"
+        className="h-full bg-gradient-to-r from-primary via-primary/70 to-tertiary transition-all duration-300"
         style={{ width: `${safeValue}%` }}
       />
     </div>

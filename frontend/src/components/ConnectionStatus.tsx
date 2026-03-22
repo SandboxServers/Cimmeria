@@ -19,13 +19,13 @@ export function getConnectionError(...errors: (Error | null | undefined)[]): Err
  */
 export default function ConnectionStatus({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-amber-400/20 bg-amber-400/5 px-5 py-4">
-      <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-2.5">
-        <WifiOff className="size-5 text-amber-400" />
+    <div className="flex items-center gap-4 border border-primary/20 bg-primary/5 px-5 py-4">
+      <div className="border border-primary/20 bg-primary/10 p-2.5">
+        <WifiOff className="size-5 text-primary" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground">Server unreachable</p>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm font-medium text-on-surface">Server unreachable</p>
+        <p className="text-sm text-on-surface-variant">
           The admin API is not responding. Make sure the Cimmeria server is running. Retrying automatically...
         </p>
       </div>

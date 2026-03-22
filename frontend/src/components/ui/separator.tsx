@@ -11,7 +11,7 @@ export function Separator({ className, orientation, ...rest }: SeparatorProps) {
       aria-hidden="true"
       className={cn(
         orientation === 'vertical' ? 'h-full w-px' : 'h-px w-full',
-        'shrink-0 bg-border/70',
+        'shrink-0 bg-[rgba(77,70,53,0.15)]',
         className,
       )}
       {...rest}

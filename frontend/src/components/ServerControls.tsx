@@ -15,7 +15,7 @@ const LED_STYLES: Record<ServerHealth, string> = {
   offline: 'bg-red-400 shadow-[0_0_12px_rgba(248,113,113,0.8)]',
   building: 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]',
   degraded: 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]',
-  healthy: 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]',
+  healthy: 'bg-[#7fdedd] shadow-[0_0_12px_rgba(127,222,221,0.8)]',
 };
 
 const STATUS_LABEL: Record<ServerHealth, string> = {
@@ -101,9 +101,9 @@ export default function ServerControls() {
   return (
     <div className="flex flex-wrap items-center gap-3">
       {/* Status LED */}
-      <div className="flex items-center gap-2.5 rounded-full border border-white/8 bg-white/5 px-4 py-2.5">
+      <div className="flex items-center gap-2.5 border border-[rgba(77,70,53,0.15)] bg-surface-high px-4 py-2.5">
         <div className={`size-2.5 rounded-full transition-all ${LED_STYLES[health]}`} />
-        <span className="text-sm font-medium text-foreground">{STATUS_LABEL[health]}</span>
+        <span className="text-sm font-medium text-on-surface">{STATUS_LABEL[health]}</span>
       </div>
 
       {/* Start */}

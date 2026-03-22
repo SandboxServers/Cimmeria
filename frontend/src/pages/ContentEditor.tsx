@@ -58,11 +58,11 @@ export default function ContentEditor() {
                     <CardTitle>{selectedDomain.name} workspace</CardTitle>
                     <CardDescription>{selectedDomain.summary}</CardDescription>
                   </div>
-                  <div className="rounded-[24px] border border-white/8 bg-white/[0.03] px-4 py-3 text-right">
-                    <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                  <div className="border border-[rgba(77,70,53,0.15)] bg-surface-high px-4 py-3 text-right">
+                    <p className="font-headline text-primary uppercase tracking-widest text-xs">
                       Records
                     </p>
-                    <p className="mt-1 text-2xl font-semibold tracking-[-0.06em] text-foreground">
+                    <p className="mt-1 text-2xl font-semibold tracking-[-0.06em] text-on-surface">
                       {selectedDomain.records}
                     </p>
                   </div>
@@ -70,26 +70,26 @@ export default function ContentEditor() {
                 <CardContent className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      <label className="font-headline text-primary uppercase tracking-widest text-xs">
                         Resource path
                       </label>
                       <Input defaultValue={`${domain.name.toLowerCase()}/sample-record`} />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      <label className="font-headline text-primary uppercase tracking-widest text-xs">
                         Revision tag
                       </label>
                       <Input defaultValue="phase4-ui-pass" />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    <label className="font-headline text-primary uppercase tracking-widest text-xs">
                       Editor notes
                     </label>
                     <Textarea defaultValue={`Editing ${domain.name} definitions with a phase 4 operator workflow. Preserve schema safety, show ownership, and surface publish intent before commit.`} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    <label className="font-headline text-primary uppercase tracking-widest text-xs">
                       Draft payload
                     </label>
                     <Textarea
@@ -121,11 +121,11 @@ export default function ContentEditor() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {publishQueue.map((item) => (
-                      <div key={item.target} className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+                      <div key={item.target} className="border border-[rgba(77,70,53,0.15)] bg-surface-high p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-sm font-medium text-foreground">{item.target}</p>
-                            <p className="mt-1 text-sm text-muted-foreground">{item.author}</p>
+                            <p className="text-sm font-medium text-on-surface">{item.target}</p>
+                            <p className="mt-1 text-sm text-on-surface-variant">{item.author}</p>
                           </div>
                           <Badge
                             variant={
@@ -153,15 +153,15 @@ export default function ContentEditor() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="rounded-[24px] border border-emerald-400/20 bg-emerald-400/10 p-4">
-                      <p className="text-sm font-medium text-foreground">Schema check</p>
-                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    <div className="border border-tertiary/20 bg-tertiary/10 p-4">
+                      <p className="text-sm font-medium text-on-surface">Schema check</p>
+                      <p className="mt-2 text-sm leading-6 text-on-surface-variant">
                         No missing columns or enum mismatches detected in the draft view.
                       </p>
                     </div>
-                    <div className="rounded-[24px] border border-primary/20 bg-primary/8 p-4">
-                      <p className="text-sm font-medium text-foreground">Reload impact</p>
-                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    <div className="border border-primary/20 bg-primary/8 p-4">
+                      <p className="text-sm font-medium text-on-surface">Reload impact</p>
+                      <p className="mt-2 text-sm leading-6 text-on-surface-variant">
                         Safe for live apply if downstream mission chains stay unchanged.
                       </p>
                     </div>
