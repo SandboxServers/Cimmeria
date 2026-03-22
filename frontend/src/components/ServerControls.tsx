@@ -32,7 +32,7 @@ function deriveHealth(sv: SupervisorStatusResponse | null): ServerHealth {
   if (!sv.process_running) return 'offline';
   if (sv.services) {
     const s = sv.services;
-    if (s.auth && s.base && s.cell && s.database) return 'healthy';
+    if (s.auth && s.base && s.cell) return 'healthy';
     return 'degraded';
   }
   return 'degraded';
