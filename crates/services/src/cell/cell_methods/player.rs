@@ -1,16 +1,23 @@
 //! SGWPlayer own exposed CellMethods (indices 67–108).
 
-pub const USE_ABILITY: u16 = 67;
-pub const INTERACT: u16 = 68;
-pub const INITIAL_RESPONSE: u16 = 69;
-pub const DIALOG_RESPONSE: u16 = 70;
-pub const MAP_LOADED: u16 = 71;
-pub const AVATAR_UPDATE_EXPLICIT: u16 = 72;
-pub const AVATAR_UPDATE_DETAILED: u16 = 73;
-pub const RESPAWN: u16 = 74;
-pub const CLOSE_STORE: u16 = 75;
-pub const CLOSE_LOOT: u16 = 76;
-pub const CLOSE_VAULT: u16 = 77;
+use tokio::sync::mpsc;
+use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_entity::stats::{HEALTH, FOCUS};
+use crate::cell::combat;
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
+
+pub const CALL_FOR_AID: u16 = 67;
+pub const USE_ABILITY: u16 = 68;
+pub const USE_ABILITY_ON_GROUND: u16 = 69;
+pub const RESPAWN: u16 = 70;
+pub const UNSTUCK: u16 = 71;
+pub const RESET_MY_ABILITIES: u16 = 72;
+pub const WHO: u16 = 73;
+pub const INTERACT: u16 = 74;
+pub const DIALOG_BUTTON_CHOICE: u16 = 75;
+pub const INITIAL_RESPONSE: u16 = 76;
+pub const TRAIN_ABILITY: u16 = 77;
 pub const PURCHASE_ITEMS: u16 = 78;
 pub const SELL_ITEMS: u16 = 79;
 pub const BUYBACK_ITEMS: u16 = 80;
@@ -42,3 +49,554 @@ pub const TRADE_REQUEST_CANCEL: u16 = 105;
 pub const TRADE_UPDATE_PROPOSAL: u16 = 106;
 pub const TRADE_LOCK_STATE: u16 = 107;
 pub const CANCEL_MOVIE: u16 = 108;
+
+pub async fn dispatch(
+    entity_id: u32,
+    method_index: u16,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
+) -> bool {
+    match method_index {
+        CALL_FOR_AID => {
+            if args.len() >= 4 {
+                let respawner_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, respawner_id, "UNIMPLEMENTED: callForAid");
+            }
+            true
+        }
+
+        USE_ABILITY => {
+            if args.len() >= 8 {
+                let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                tracing::debug!(entity_id, ability_id, target_id, "useAbility");
+                crate::cell::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr).await;
+
+                // Check if target NPC died -- fire entity_death for content chains
+                // and set AI state to Dead so the NPC stops acting.
+                if target_id > 0 {
+                    let target_eid = target_id as u32;
+                    let death_info = space_mgr.get_entity(target_eid).and_then(|target| {
+                        let is_dead = target.stats.get(cimmeria_entity::stats::HEALTH)
+                            .map_or(false, |s| s.cur <= 0);
+                        if is_dead && !target.is_player {
+                            Some((target.tag.clone(), target.is_player))
+                        } else {
+                            None
+                        }
+                    });
+
+                    if let Some((tag, _is_player)) = death_info {
+                        // Set AI state to Dead and clear threat
+                        if let Some(target) = space_mgr.get_entity_mut(target_eid) {
+                            target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
+                            target.threat_list.clear();
+                        }
+
+                        // Fire entity_death for content engine (mission kill chains)
+                        if let Some(tag) = tag {
+                            let player_id = space_mgr.get_entity(entity_id)
+                                .and_then(|e| e.player_id).unwrap_or(0);
+                            crate::cell::content::fire_entity_death(
+                                entity_id, player_id, &tag, engine, tx, space_mgr,
+                            ).await;
+                        }
+                    }
+                }
+            }
+            true
+        }
+
+        USE_ABILITY_ON_GROUND => {
+            if args.len() >= 16 {
+                let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let x = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+                let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
+                tracing::debug!(entity_id, ability_id, x, y, z, "useAbilityOnGroundTarget");
+                // TODO: Ground-target AoE ability handling
+            }
+            true
+        }
+
+        RESPAWN => {
+            tracing::debug!(entity_id, "respawn");
+            handle_respawn(entity_id, tx, space_mgr).await;
+            true
+        }
+
+        UNSTUCK => {
+            tracing::info!(entity_id, "UNIMPLEMENTED: unstuck");
+            true
+        }
+
+        RESET_MY_ABILITIES => {
+            tracing::info!(entity_id, "UNIMPLEMENTED: resetMyAbilities");
+            true
+        }
+
+        WHO => {
+            // who(WSTRING name, WSTRING archetype, WSTRING alignment, WSTRING playerType)
+            tracing::info!(entity_id, "UNIMPLEMENTED: who");
+            true
+        }
+
+        INTERACT => {
+            if args.len() >= 4 {
+                let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, target_entity_id, "interact");
+
+                // ── Step 1: Fire interact_tag event ──
+                // Python: self.first('entity.interact.tag::' + target.tag, ...)
+                let mut handled = false;
+                if let Some(target) = space_mgr.get_entity(target_entity_id as u32) {
+                    let tag = target.tag.clone();
+                    let template_name = target.npc_name.clone();
+                    let player_id = space_mgr.get_entity(entity_id)
+                        .and_then(|e| e.player_id).unwrap_or(0);
+
+                    if let Some(ref tag) = tag {
+                        handled = crate::cell::content::fire_interact_tag(
+                            entity_id, player_id, tag, target_entity_id as u32,
+                            engine, tx, space_mgr,
+                        ).await;
+                    }
+
+                    // ── Step 2: Fire interact_template event ──
+                    // Python: self.first('entity.interact.template::' + target.template.templateName, ...)
+                    if !handled {
+                        if let Some(ref name) = template_name {
+                            handled = crate::cell::content::fire_interact_template(
+                                entity_id, player_id, name, target_entity_id as u32,
+                                engine, tx, space_mgr,
+                            ).await;
+                        }
+                    }
+                }
+
+                // ── Step 3: Fall through to available_interactions / static interaction ──
+                // Python: target.onInteract(self)
+                if !handled {
+                    let dialog_id = crate::cell::interactions::handle_interact(
+                        entity_id, target_entity_id as u32, tx, space_mgr,
+                    ).await;
+
+                    if let Some(did) = dialog_id {
+                        let player_id = space_mgr.get_entity(entity_id)
+                            .and_then(|e| e.player_id)
+                            .unwrap_or(0);
+                        crate::cell::content::fire_dialog_open(
+                            entity_id, player_id, did, engine, tx, space_mgr,
+                        ).await;
+                    }
+                }
+            }
+            true
+        }
+
+        DIALOG_BUTTON_CHOICE => {
+            if args.len() >= 8 {
+                let dialog_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let button_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                tracing::info!(entity_id, dialog_id, button_id, "dialogButtonChoice");
+
+                let player_id = space_mgr.get_entity(entity_id)
+                    .and_then(|e| e.player_id).unwrap_or(0);
+                crate::cell::content::fire_dialog_choice(
+                    entity_id, player_id, dialog_id, engine, tx, space_mgr,
+                ).await;
+            }
+            true
+        }
+
+        INITIAL_RESPONSE => {
+            if args.len() >= 4 {
+                let interaction_set_map_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, interaction_set_map_id, "initialResponse");
+
+                crate::cell::interactions::handle_initial_response(
+                    entity_id, interaction_set_map_id, engine, tx, space_mgr,
+                ).await;
+            }
+            true
+        }
+
+        TRAIN_ABILITY => {
+            if args.len() >= 4 {
+                let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, ability_id, "UNIMPLEMENTED: trainAbility");
+            }
+            true
+        }
+
+        PURCHASE_ITEMS => {
+            // ARRAY<INT32> itemIndices, ARRAY<INT32> quantities
+            tracing::info!(entity_id, "UNIMPLEMENTED: purchaseItems");
+            true
+        }
+
+        SELL_ITEMS => {
+            // ARRAY<INT32> itemIds, ARRAY<INT32> quantities
+            tracing::info!(entity_id, "UNIMPLEMENTED: sellItems");
+            true
+        }
+
+        BUYBACK_ITEMS => {
+            // ARRAY<INT32> itemIds, ARRAY<INT32> quantities
+            tracing::info!(entity_id, "UNIMPLEMENTED: buybackItems");
+            true
+        }
+
+        REPAIR_ITEMS => {
+            // ARRAY<INT32> itemIds
+            tracing::info!(entity_id, "UNIMPLEMENTED: repairItems");
+            true
+        }
+
+        RECHARGE_ITEMS => {
+            // ARRAY<INT32> itemIds
+            tracing::info!(entity_id, "UNIMPLEMENTED: rechargeItems");
+            true
+        }
+
+        SET_AUTO_CYCLE => {
+            if !args.is_empty() {
+                let enabled = args[0] != 0;
+                tracing::debug!(entity_id, enabled, "setAutoCycle");
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.abilities.auto_cycle = enabled;
+                    if !enabled {
+                        entity.abilities.auto_cycle_ability_id = None;
+                    }
+                }
+            }
+            true
+        }
+
+        LOOT_ITEM => {
+            if args.len() >= 4 {
+                let index = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, index, "UNIMPLEMENTED: lootItem");
+            }
+            true
+        }
+
+        TRIGGER_REGION => {
+            // triggerClientHintedGenericRegion(INT32 id, UINT8 bEntering, VECTOR3 position)
+            if args.len() >= 17 {
+                let region_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let b_entering = args[4] != 0;
+                let _x = f32::from_le_bytes([args[5], args[6], args[7], args[8]]);
+                let _y = f32::from_le_bytes([args[9], args[10], args[11], args[12]]);
+                let _z = f32::from_le_bytes([args[13], args[14], args[15], args[16]]);
+
+                // Look up the region tag from the auto-incrementing runtime ID.
+                // The runtime ID is NOT the DB set_id or the number from the tag.
+                let region_tag = space_mgr.get_region(region_id as u32)
+                    .map(|r| r.tag.clone());
+
+                if let Some(tag) = region_tag {
+                    tracing::info!(entity_id, region_id, %tag, b_entering, "triggerClientHintedGenericRegion");
+
+                    let player_id = space_mgr.get_entity(entity_id)
+                        .and_then(|e| e.player_id).unwrap_or(0);
+
+                    if b_entering {
+                        crate::cell::content::fire_enter_region(
+                            entity_id, player_id, &tag, engine, tx, space_mgr,
+                        ).await;
+                    } else {
+                        crate::cell::content::fire_exit_region(
+                            entity_id, player_id, &tag, engine, tx, space_mgr,
+                        ).await;
+                    }
+                } else {
+                    tracing::warn!(entity_id, region_id, "Unknown region ID in triggerClientHintedGenericRegion");
+                }
+            }
+            true
+        }
+
+        REQUEST_RELOAD => {
+            if !args.is_empty() {
+                let reload_type = args[0];
+                tracing::debug!(entity_id, reload_type, "requestReload");
+                handle_reload(entity_id, tx, space_mgr).await;
+            }
+            true
+        }
+
+        CHOSEN_REWARDS => {
+            // RewardChoices choices, INT32 missionId -- complex struct
+            tracing::info!(entity_id, "UNIMPLEMENTED: chosenRewards");
+            true
+        }
+
+        PET_INVOKE_ABILITY => {
+            if args.len() >= 12 {
+                let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let ability_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                let target_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+                tracing::info!(entity_id, pet_entity_id, ability_id, target_id, "UNIMPLEMENTED: petInvokeAbility");
+            }
+            true
+        }
+
+        PET_ABILITY_TOGGLE => {
+            if args.len() >= 9 {
+                let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let ability_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                let toggle = args[8] as i8;
+                tracing::info!(entity_id, pet_entity_id, ability_id, toggle, "UNIMPLEMENTED: petAbilityToggle");
+            }
+            true
+        }
+
+        PET_CHANGE_STANCE => {
+            if args.len() >= 5 {
+                let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let stance = args[4] as i8;
+                tracing::info!(entity_id, pet_entity_id, stance, "UNIMPLEMENTED: petChangeStance");
+            }
+            true
+        }
+
+        SET_RING_TRANSPORTER_DEST => {
+            if args.len() >= 8 {
+                let region_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let destination_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                tracing::info!(entity_id, region_id, destination_id, "UNIMPLEMENTED: setRingTransporterDestination");
+            }
+            true
+        }
+
+        WORLD_INSTANCE_RESET => {
+            tracing::info!(entity_id, "UNIMPLEMENTED: onWorldInstanceReset");
+            true
+        }
+
+        UPDATE_SYSTEM_OPTIONS => {
+            // ARRAY<NameValuePair> options -- variable length
+            tracing::info!(entity_id, "UNIMPLEMENTED: updateSystemOptions");
+            true
+        }
+
+        ORG_CREATION => {
+            // WSTRING organizationName -- variable length
+            tracing::info!(entity_id, "UNIMPLEMENTED: onOrganizationCreation");
+            true
+        }
+
+        SPEND_APPLIED_SCIENCE_POINTS => {
+            if args.len() >= 4 {
+                let discipline_seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, discipline_seq_id, "UNIMPLEMENTED: spendAppliedSciencePoints");
+            }
+            true
+        }
+
+        CRAFT => {
+            // INT32 craftId, ARRAY<ItemID> items, INT32 quantity
+            if args.len() >= 4 {
+                let craft_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, craft_id, "UNIMPLEMENTED: craft");
+            }
+            true
+        }
+
+        RESEARCH => {
+            // ItemID itemId, ARRAY<ItemID> kickers
+            tracing::info!(entity_id, "UNIMPLEMENTED: research");
+            true
+        }
+
+        REVERSE_ENGINEER => {
+            // ItemID itemId
+            tracing::info!(entity_id, "UNIMPLEMENTED: reverseEngineer");
+            true
+        }
+
+        ALLOYING => {
+            // INT32 craftId, ItemID currentTierItemId, ARRAY<ItemID> lowerTierItems
+            if args.len() >= 4 {
+                let craft_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, craft_id, "UNIMPLEMENTED: alloying");
+            }
+            true
+        }
+
+        RESPEC_CRAFTING => {
+            tracing::info!(entity_id, "UNIMPLEMENTED: respecCrafting");
+            true
+        }
+
+        CLIENT_CHALLENGE_RESPONSE => {
+            // INT32, WSTRING, INT32, WSTRING, INT32, INT32, WSTRING -- anti-cheat
+            if args.len() >= 4 {
+                let challenge = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, challenge, "UNIMPLEMENTED: onClientChallengeResponse");
+            }
+            true
+        }
+
+        SEND_DUEL_RESPONSE => {
+            if !args.is_empty() {
+                let response = args[0] as i8;
+                tracing::info!(entity_id, response, "UNIMPLEMENTED: sendDuelResponse");
+            }
+            true
+        }
+
+        DUEL_FORFEIT => {
+            tracing::info!(entity_id, "UNIMPLEMENTED: duelForfeit");
+            true
+        }
+
+        TRADE_REQUEST => {
+            // INT32 entityId, LocalTradeProposal proposal
+            if args.len() >= 4 {
+                let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, target_entity_id, "UNIMPLEMENTED: tradeRequest");
+            }
+            true
+        }
+
+        TRADE_REQUEST_CANCEL => {
+            if args.len() >= 4 {
+                let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, target_entity_id, "UNIMPLEMENTED: tradeRequestCancel");
+            }
+            true
+        }
+
+        TRADE_UPDATE_PROPOSAL => {
+            // INT32 entityId, LocalTradeProposal proposal
+            if args.len() >= 4 {
+                let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                tracing::info!(entity_id, target_entity_id, "UNIMPLEMENTED: tradeUpdateProposal");
+            }
+            true
+        }
+
+        TRADE_LOCK_STATE => {
+            if args.len() >= 9 {
+                let local_version_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let remote_version_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                let lock_state = args[8] as i8;
+                tracing::info!(entity_id, local_version_id, remote_version_id, lock_state, "UNIMPLEMENTED: tradeLockState");
+            }
+            true
+        }
+
+        CANCEL_MOVIE => {
+            // WSTRING movieName -- variable length
+            tracing::info!(entity_id, "UNIMPLEMENTED: cancelMovie");
+            true
+        }
+
+        _ => false,
+    }
+}
+
+// ── Respawn ──────────────────────────────────────────────────────────────────
+
+/// Handle player respawn: restore health/focus, clear dead state, send updates.
+///
+/// Reference: `python/cell/SGWBeing.py:revive()` — restores pools to max,
+/// clears combatantState dead flag, sends stat and state field updates.
+async fn handle_respawn(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let entity = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e,
+        None => {
+            tracing::warn!(entity_id, "respawn: entity not found");
+            return;
+        }
+    };
+
+    // Restore health and focus to max
+    if let Some(health) = entity.stats.get_mut(HEALTH) {
+        health.set_current(health.max);
+    }
+    if let Some(focus) = entity.stats.get_mut(FOCUS) {
+        focus.set_current(focus.max);
+    }
+
+    // Serialize stat update (health + focus now dirty)
+    let stat_update = entity.stats.serialize_dirty();
+    entity.stats.clear_dirty();
+
+    // Clear dead state
+    let mut state_field = 0u32;
+    combat::clear_dead_state(&mut state_field);
+
+    // Clear all ability cooldowns
+    entity.abilities.clear_all_cooldowns();
+
+    // Reset position to spawn point if available
+    // (Future: read spawn point from DB or initial position)
+
+    tracing::info!(entity_id, "Player respawned");
+
+    // Send onStatUpdate (index 20) — restored health/focus
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: 20,
+        args: stat_update,
+    }).await;
+
+    // Send onStateFieldUpdate (index 19) — cleared dead flag
+    let mut state_args = Vec::with_capacity(4);
+    state_args.extend_from_slice(&state_field.to_le_bytes());
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: 19,
+        args: state_args,
+    }).await;
+}
+
+// ── Reload ────────────────────────────────────────────────────────────────────
+
+/// Handle player weapon reload: reset ammo to max and send stat update.
+///
+/// Reference: `python/cell/SGWPlayer.py:1482-1498`
+async fn handle_reload(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let entity = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e,
+        None => {
+            tracing::warn!(entity_id, "requestReload: entity not found");
+            return;
+        }
+    };
+
+    // Reset ammo to max
+    let old = entity.current_ammo;
+    entity.current_ammo = entity.max_ammo;
+
+    if old == entity.max_ammo {
+        tracing::debug!(entity_id, "requestReload: already at max ammo");
+        return;
+    }
+
+    tracing::info!(entity_id, old, new = entity.max_ammo, "Weapon reloaded");
+
+    // Send onEntityProperty(GENERICPROPERTY_AmmoTypeId, ammo_type)
+    // This tells the client to update the ammo display
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&7i32.to_le_bytes()); // GENERICPROPERTY_AmmoTypeId = 7
+    args.extend_from_slice(&entity.ammo_type.to_le_bytes());
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: 7, // onEntityProperty (SGWSpawnableEntity, flat index 7)
+        args,
+    }).await;
+}
