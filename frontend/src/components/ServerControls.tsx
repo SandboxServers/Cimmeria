@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Hammer, Power, Square } from 'lucide-react';
+import { Hammer, Power, Square, AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button';
 import {
+  fetchAdminStatus,
   fetchSupervisorStatus,
   supervisorStart,
   supervisorStop,
@@ -13,8 +14,8 @@ type ServerHealth = 'offline' | 'building' | 'degraded' | 'healthy';
 
 const LED_STYLES: Record<ServerHealth, string> = {
   offline: 'bg-red-400 shadow-[0_0_12px_rgba(248,113,113,0.8)]',
-  building: 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]',
-  degraded: 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]',
+  building: 'bg-primary shadow-[0_0_12px_rgba(242,202,80,0.8)]',
+  degraded: 'bg-primary shadow-[0_0_12px_rgba(242,202,80,0.8)]',
   healthy: 'bg-[#7fdedd] shadow-[0_0_12px_rgba(127,222,221,0.8)]',
 };
 
@@ -34,21 +35,21 @@ function deriveHealth(sv: SupervisorStatusResponse | null): ServerHealth {
     if (s.auth && s.base && s.cell && s.database) return 'healthy';
     return 'degraded';
   }
-  // Process running but services not yet reported (startup)
   return 'degraded';
 }
 
 /**
  * Persistent server status LED + Start/Stop/Rebuild controls.
- * Polls the supervisor (port 8444) which is always available,
- * even when the game server is down.
+ * Polls the supervisor (port 8444) and admin API (port 8443).
  */
 export default function ServerControls() {
   const [sv, setSv] = useState<SupervisorStatusResponse | null>(null);
   const [health, setHealth] = useState<ServerHealth>('offline');
+  const [serverReachable, setServerReachable] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const poll = useCallback(async () => {
+    // Poll supervisor
     try {
       const data = await fetchSupervisorStatus();
       setSv(data);
@@ -56,6 +57,14 @@ export default function ServerControls() {
     } catch {
       setSv(null);
       setHealth('offline');
+    }
+
+    // Poll admin API (game server)
+    try {
+      await fetchAdminStatus();
+      setServerReachable(true);
+    } catch {
+      setServerReachable(false);
     }
   }, []);
 
@@ -95,52 +104,80 @@ export default function ServerControls() {
     }
   };
 
+  const supervisorReachable = sv !== null;
   const isBuilding = sv?.building ?? false;
   const processRunning = sv?.process_running ?? false;
 
+  // Derive status banner
+  const statusBanner = (() => {
+    if (serverReachable && supervisorReachable) return null; // all good
+    if (!serverReachable && !supervisorReachable)
+      return { text: 'Server offline — Supervisor unreachable', severity: 'critical' as const };
+    if (!serverReachable && supervisorReachable)
+      return { text: 'Server offline', severity: 'warning' as const };
+    // serverReachable && !supervisorReachable
+    return { text: 'Server online — Supervisor unreachable', severity: 'warning' as const };
+  })();
+
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      {/* Status LED */}
-      <div className="flex items-center gap-2.5 border border-[rgba(77,70,53,0.15)] bg-surface-high px-4 py-2.5">
-        <div className={`size-2.5 rounded-full transition-all ${LED_STYLES[health]}`} />
-        <span className="text-sm font-medium text-on-surface">{STATUS_LABEL[health]}</span>
+    <div className="flex flex-col items-end gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Status LED */}
+        <div className="flex items-center gap-2.5 border border-[rgba(77,70,53,0.15)] bg-surface-high px-4 py-2.5">
+          <div className={`size-2.5 rounded-full transition-all ${LED_STYLES[health]}`} />
+          <span className="text-sm font-medium text-on-surface">{STATUS_LABEL[health]}</span>
+        </div>
+
+        {/* Start */}
+        <Button
+          onClick={handleStart}
+          variant="outline"
+          size="sm"
+          disabled={busy || isBuilding || processRunning || !supervisorReachable}
+          title="Start server process"
+        >
+          <Power className="size-3.5" />
+          Start
+        </Button>
+
+        {/* Stop */}
+        <Button
+          onClick={handleStop}
+          variant="outline"
+          size="sm"
+          disabled={busy || isBuilding || !processRunning || !supervisorReachable}
+          title="Stop server process"
+        >
+          <Square className="size-3.5" />
+          Stop
+        </Button>
+
+        {/* Rebuild */}
+        <Button
+          onClick={handleRebuild}
+          variant="secondary"
+          size="sm"
+          disabled={busy || isBuilding || !supervisorReachable}
+          title="Stop, rebuild, and restart server"
+        >
+          <Hammer className="size-3.5" />
+          Rebuild
+        </Button>
       </div>
 
-      {/* Start */}
-      <Button
-        onClick={handleStart}
-        variant="outline"
-        size="sm"
-        disabled={busy || isBuilding || processRunning}
-        title="Start server process"
-      >
-        <Power className="size-3.5" />
-        Start
-      </Button>
-
-      {/* Stop */}
-      <Button
-        onClick={handleStop}
-        variant="outline"
-        size="sm"
-        disabled={busy || isBuilding || !processRunning}
-        title="Stop server process"
-      >
-        <Square className="size-3.5" />
-        Stop
-      </Button>
-
-      {/* Rebuild */}
-      <Button
-        onClick={handleRebuild}
-        variant="secondary"
-        size="sm"
-        disabled={busy || isBuilding}
-        title="Stop, rebuild, and restart server"
-      >
-        <Hammer className="size-3.5" />
-        Rebuild
-      </Button>
+      {/* Status banner */}
+      {statusBanner && (
+        <div
+          className={`flex items-center gap-2 px-3 py-1.5 font-dense text-xs uppercase tracking-widest ${
+            statusBanner.severity === 'critical'
+              ? 'border border-error/20 bg-error/8 text-error'
+              : 'border border-primary/20 bg-primary/8 text-primary'
+          }`}
+        >
+          <AlertTriangle className="size-3" />
+          {statusBanner.text}
+        </div>
+      )}
     </div>
   );
 }
