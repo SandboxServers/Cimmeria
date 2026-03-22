@@ -71,21 +71,21 @@ function CatalogCard({
   template: ScenarioTemplate;
 }) {
   return (
-    <div className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4 transition-colors hover:border-[rgba(245,170,49,0.3)] hover:bg-[rgba(245,170,49,0.08)]">
+    <div className="border border-[rgba(77,70,53,0.15)] bg-surface-low p-4 transition-colors hover:border-primary/30 hover:bg-primary/8">
       <div className="flex items-start justify-between gap-3">
         <button
           className="flex-1 text-left"
           onClick={() => onAdd(template)}
           type="button"
         >
-          <span className="text-sm font-medium text-white">{template.title}</span>
+          <span className="text-sm font-medium text-on-surface">{template.title}</span>
         </button>
         <div className="flex items-center gap-2">
           <button
-            className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+            className={`border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
               favorite
-                ? 'border-[rgba(245,170,49,0.38)] bg-[rgba(245,170,49,0.16)] text-[#ffd38a]'
-                : 'border-white/8 bg-white/4 text-[rgba(224,231,239,0.72)]'
+                ? 'border-primary/38 bg-primary/16 text-primary'
+                : 'border-[rgba(77,70,53,0.15)] bg-surface-high text-on-surface-variant'
             }`}
             onClick={() => onToggleFavorite(template.id)}
             type="button"
@@ -93,7 +93,7 @@ function CatalogCard({
             {favorite ? 'Pinned' : 'Pin'}
           </button>
           <span
-            className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]"
+            className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]"
             style={{
               backgroundColor: `${template.accent}22`,
               color: template.accent,
@@ -104,10 +104,10 @@ function CatalogCard({
         </div>
       </div>
       <button className="mt-2 w-full text-left" onClick={() => onAdd(template)} type="button">
-        <p className="text-sm leading-6 text-[rgba(224,231,239,0.76)]">{template.detail}</p>
+        <p className="text-sm leading-6 text-on-surface-variant">{template.detail}</p>
         <div className="mt-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+            <p className="text-xs uppercase tracking-[0.2em] text-on-surface-variant">
               {template.scenario}
             </p>
             <p className="mt-2 text-xs uppercase tracking-[0.18em] text-[rgba(94,184,179,0.8)]">
@@ -115,7 +115,7 @@ function CatalogCard({
             </p>
           </div>
           <span
-            className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]"
+            className="px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]"
             style={{
               backgroundColor: familyTint[template.family].chip,
               color: familyTint[template.family].text,
@@ -180,38 +180,38 @@ export default function MissionCardLibrary({
   };
 
   return (
-    <section className="rounded-[32px] border border-white/8 bg-[rgba(9,18,28,0.8)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+    <section className="obsidian-panel border border-[rgba(77,70,53,0.15)] bg-surface-low p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
       <div className="flex flex-wrap items-start gap-4">
         <div className="min-w-[320px] flex-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[rgba(160,174,192,0.72)]">
+          <p className="font-headline text-xs uppercase tracking-widest text-primary">
             Mission Card Library
           </p>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-on-surface-variant">
             Search the catalog, pin frequent cards, and reuse recent inserts instead of re-scanning every section each time.
           </p>
         </div>
-        <div className="flex min-h-[88px] min-w-[360px] flex-1 items-center justify-between rounded-[24px] border border-[rgba(245,170,49,0.2)] bg-[linear-gradient(135deg,rgba(245,170,49,0.14),rgba(19,162,164,0.08))] px-5 py-4 text-sm text-[rgba(224,231,239,0.9)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div className="flex min-h-[88px] min-w-[360px] flex-1 items-center justify-between border border-primary/20 bg-[linear-gradient(135deg,rgba(245,170,49,0.14),rgba(19,162,164,0.08))] px-5 py-4 text-sm text-on-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(245,170,49,0.82)]">
+            <p className="font-headline text-xs uppercase tracking-widest text-primary">
               Adding Cards Into
             </p>
-            <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-white">
+            <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-on-surface">
               {selectedChainName}
             </p>
           </div>
-          <span className="rounded-full border border-white/10 bg-[rgba(9,18,28,0.46)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(224,231,239,0.76)]">
+          <span className="border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-on-surface-variant">
             Active target
           </span>
         </div>
       </div>
 
       <div className="mt-6 grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_repeat(4,minmax(0,0.6fr))]">
-        <label className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-4 py-3">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+        <label className="border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-4 py-3">
+          <span className="text-[10px] font-dense uppercase tracking-widest text-primary">
             Search
           </span>
           <input
-            className="mt-2 w-full bg-transparent text-sm text-white outline-none placeholder:text-[rgba(160,174,192,0.56)]"
+            className="mt-2 w-full bg-transparent text-sm text-on-surface outline-none placeholder:text-on-surface-variant/50"
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Find by title, detail, tag, or property"
             type="search"
@@ -219,12 +219,12 @@ export default function MissionCardLibrary({
           />
         </label>
 
-        <label className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-4 py-3">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+        <label className="border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-4 py-3">
+          <span className="text-[10px] font-dense uppercase tracking-widest text-primary">
             Family
           </span>
           <select
-            className="mt-2 w-full bg-transparent text-sm text-white outline-none"
+            className="mt-2 w-full bg-transparent text-sm text-on-surface outline-none"
             onChange={(event) => setFamily(event.target.value as PrimitiveFamily | 'all')}
             value={family}
           >
@@ -237,12 +237,12 @@ export default function MissionCardLibrary({
           </select>
         </label>
 
-        <label className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-4 py-3">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+        <label className="border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-4 py-3">
+          <span className="text-[10px] font-dense uppercase tracking-widest text-primary">
             Relevance
           </span>
           <select
-            className="mt-2 w-full bg-transparent text-sm text-white outline-none"
+            className="mt-2 w-full bg-transparent text-sm text-on-surface outline-none"
             onChange={(event) => setRelevance(event.target.value as CardRelevance | 'all')}
             value={relevance}
           >
@@ -253,10 +253,10 @@ export default function MissionCardLibrary({
         </label>
 
         <button
-          className={`rounded-[24px] border px-4 py-3 text-left text-sm transition-colors ${
+          className={`border px-4 py-3 text-left text-sm transition-colors ${
             favoritesOnly
-              ? 'border-[rgba(245,170,49,0.3)] bg-[rgba(245,170,49,0.12)] text-[#ffd38a]'
-              : 'border-white/8 bg-[rgba(255,255,255,0.03)] text-[rgba(224,231,239,0.76)]'
+              ? 'border-primary/30 bg-primary/12 text-primary'
+              : 'border-[rgba(77,70,53,0.15)] bg-surface-lowest text-on-surface-variant'
           }`}
           onClick={() => {
             setFavoritesOnly((current) => !current);
@@ -268,10 +268,10 @@ export default function MissionCardLibrary({
         </button>
 
         <button
-          className={`rounded-[24px] border px-4 py-3 text-left text-sm transition-colors ${
+          className={`border px-4 py-3 text-left text-sm transition-colors ${
             recentsOnly
               ? 'border-[rgba(94,184,179,0.3)] bg-[rgba(94,184,179,0.12)] text-[#a7f0eb]'
-              : 'border-white/8 bg-[rgba(255,255,255,0.03)] text-[rgba(224,231,239,0.76)]'
+              : 'border-[rgba(77,70,53,0.15)] bg-surface-lowest text-on-surface-variant'
           }`}
           onClick={() => {
             setRecentsOnly((current) => !current);
@@ -287,10 +287,10 @@ export default function MissionCardLibrary({
         {sections.length ? (
           sections.map((section) => (
             <section
-              className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-5"
+              className="border border-[rgba(77,70,53,0.15)] bg-surface-low p-5"
               key={section.id}
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
+              <p className="font-headline text-xs uppercase tracking-widest text-primary">
                 {section.title}
               </p>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -307,7 +307,7 @@ export default function MissionCardLibrary({
             </section>
           ))
         ) : (
-          <section className="rounded-[28px] border border-dashed border-white/10 bg-[rgba(255,255,255,0.02)] p-10 text-center text-sm text-[rgba(224,231,239,0.72)] 2xl:col-span-2">
+          <section className="border border-dashed border-[rgba(77,70,53,0.15)] bg-surface-lowest p-10 text-center text-sm text-on-surface-variant 2xl:col-span-2">
             No cards match the current search/filter combination.
           </section>
         )}

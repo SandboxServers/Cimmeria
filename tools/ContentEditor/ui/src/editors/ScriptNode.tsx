@@ -70,12 +70,12 @@ export const ScriptNode = memo(function ScriptNode({
 
   return (
     <div
-      className="relative rounded-[20px] border px-0 py-0 shadow-[0_16px_40px_rgba(0,0,0,0.32)] backdrop-blur-lg transition-all"
+      className="obsidian-panel relative border px-0 py-0 shadow-[0_16px_40px_rgba(0,0,0,0.32)] backdrop-blur-lg transition-all"
       style={{
         minWidth: 220,
         minHeight: nodeHeight,
-        borderColor: selected ? '#f5aa31' : colors.border,
-        backgroundColor: selected ? 'rgba(245,170,49,0.12)' : 'rgba(9,18,28,0.92)',
+        borderColor: selected ? '#f5aa31' : 'rgba(77,70,53,0.15)',
+        backgroundColor: selected ? 'rgba(245,170,49,0.12)' : undefined,
         boxShadow: selected
           ? `0 0 0 1px rgba(245,170,49,0.3), 0 16px 40px rgba(0,0,0,0.32)`
           : undefined,
@@ -84,7 +84,7 @@ export const ScriptNode = memo(function ScriptNode({
     >
       {/* Header */}
       <div
-        className="flex items-center justify-between gap-2 rounded-t-[20px] px-4 py-2.5"
+        className="flex items-center justify-between gap-2 px-4 py-2.5"
         style={{ backgroundColor: colors.bg }}
       >
         <span
@@ -127,7 +127,7 @@ export const ScriptNode = memo(function ScriptNode({
                     style={{ backgroundColor: color }}
                   />
                 )}
-                <span className="text-[11px] text-[rgba(224,231,239,0.76)]">{port.name}</span>
+                <span className="text-[11px] text-on-surface-variant">{port.name}</span>
               </div>
             );
           })}
@@ -143,7 +143,7 @@ export const ScriptNode = memo(function ScriptNode({
                 className="flex items-center gap-1.5 py-0.5 pl-2 pr-4"
                 key={`out-${port.name}`}
               >
-                <span className="text-[11px] text-[rgba(224,231,239,0.76)]">{port.name}</span>
+                <span className="text-[11px] text-on-surface-variant">{port.name}</span>
                 {isTrigger ? (
                   <span
                     className="inline-block h-2.5 w-2.5 rotate-45"
@@ -170,8 +170,8 @@ export const ScriptNode = memo(function ScriptNode({
 
       {/* Comment indicator */}
       {nodeData.comment && (
-        <div className="border-t border-[rgba(255,255,255,0.06)] px-4 py-1.5">
-          <p className="truncate text-[10px] text-[rgba(160,174,192,0.72)]">{nodeData.comment}</p>
+        <div className="border-t border-[rgba(77,70,53,0.15)] px-4 py-1.5">
+          <p className="truncate text-[10px] text-on-surface-variant">{nodeData.comment}</p>
         </div>
       )}
 

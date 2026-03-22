@@ -170,10 +170,10 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded border border-border/50">
+    <div className="border border-[rgba(77,70,53,0.15)]">
       <button
         type="button"
-        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+        className="flex w-full items-center gap-1.5 px-2 py-1.5 font-headline text-[11px] uppercase tracking-widest text-on-surface-variant hover:text-on-surface"
         onClick={() => setOpen((o) => !o)}
       >
         {open ? (
@@ -184,7 +184,7 @@ function Section({
         {title}
       </button>
       {open && (
-        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-border/30 px-2 pb-2 pt-1">
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-[rgba(77,70,53,0.15)]/30 px-2 pb-2 pt-1">
           {children}
         </div>
       )}
@@ -195,7 +195,7 @@ function Section({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
-      <label className="self-center text-[11px] text-muted-foreground">{label}</label>
+      <label className="self-center text-xs font-dense uppercase tracking-widest text-primary">{label}</label>
       <div>{children}</div>
     </>
   );
@@ -216,7 +216,7 @@ function TextInput({
       value={value ?? ''}
       onChange={onChange ? (e) => onChange(e.target.value) : undefined}
       disabled={disabled}
-      className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+      className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none disabled:opacity-50"
     />
   );
 }
@@ -236,7 +236,7 @@ function NumberInput({
       value={value ?? ''}
       onChange={onChange ? (e) => onChange(e.target.value) : undefined}
       disabled={disabled}
-      className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-50"
+      className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none disabled:opacity-50"
     />
   );
 }
@@ -253,7 +253,7 @@ function Checkbox({
       type="checkbox"
       checked={checked}
       onChange={(e) => onChange(e.target.checked)}
-      className="h-3.5 w-3.5 rounded border-border bg-input accent-primary"
+      className="h-3.5 w-3.5 border-[rgba(77,70,53,0.15)] bg-surface-lowest accent-primary"
     />
   );
 }
@@ -280,7 +280,7 @@ function ArrayInput({
         onChange(parts);
       }}
       placeholder="Comma-separated IDs"
-      className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+      className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
     />
   );
 }
@@ -305,7 +305,7 @@ function StringArrayInput({
         onChange(parts);
       }}
       placeholder="Comma-separated values"
-      className="w-full rounded border border-border bg-input px-1.5 py-0.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+      className="w-full border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-1.5 py-0.5 text-xs text-on-surface placeholder:text-on-surface-variant focus:border-primary focus:outline-none"
     />
   );
 }

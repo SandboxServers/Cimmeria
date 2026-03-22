@@ -65,24 +65,24 @@ export default function ScriptNodePalette({
   }, [filteredTemplates]);
 
   return (
-    <section className="rounded-[32px] border border-white/8 bg-[rgba(9,18,28,0.8)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+    <section className="obsidian-panel border border-[rgba(77,70,53,0.15)] bg-surface-low p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
       <div className="mb-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[rgba(160,174,192,0.72)]">
+        <p className="font-headline text-xs uppercase tracking-widest text-primary">
           Script Node Palette
         </p>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-[rgba(224,231,239,0.76)]">
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-on-surface-variant">
           Browse available script nodes. Click a node to add it to the canvas.
         </p>
       </div>
 
       {/* Filters */}
       <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <label className="rounded-[24px] border border-white/8 bg-[rgba(255,255,255,0.03)] px-4 py-3">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[rgba(160,174,192,0.72)]">
+        <label className="border border-[rgba(77,70,53,0.15)] bg-surface-lowest px-4 py-3">
+          <span className="text-[10px] font-dense uppercase tracking-widest text-primary">
             Search
           </span>
           <input
-            className="mt-2 w-full bg-transparent text-sm text-white outline-none placeholder:text-[rgba(160,174,192,0.56)]"
+            className="mt-2 w-full bg-transparent text-sm text-on-surface outline-none placeholder:text-on-surface-variant/50"
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Find by name, category, or description"
             type="search"
@@ -96,10 +96,10 @@ export default function ScriptNodePalette({
             const colors = nt !== 'all' ? nodeTypeColors[nt] : null;
             return (
               <button
-                className={`flex-1 rounded-[20px] border px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors ${
+                className={`flex-1 border px-2 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors ${
                   active
-                    ? 'border-[rgba(245,170,49,0.4)] bg-[rgba(245,170,49,0.18)] text-[#ffd38a]'
-                    : 'border-white/8 bg-[rgba(255,255,255,0.03)] text-[rgba(224,231,239,0.72)] hover:bg-[rgba(255,255,255,0.06)]'
+                    ? 'border-primary/40 bg-primary/18 text-primary'
+                    : 'border-[rgba(77,70,53,0.15)] bg-surface-lowest text-on-surface-variant hover:bg-surface-highest'
                 }`}
                 key={nt}
                 onClick={() => setTypeFilter(nt)}
@@ -126,10 +126,10 @@ export default function ScriptNodePalette({
         {grouped.length > 0 ? (
           grouped.map(([category, items]) => (
             <section
-              className="rounded-[28px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-5"
+              className="border border-[rgba(77,70,53,0.15)] bg-surface-low p-5"
               key={category}
             >
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(160,174,192,0.72)]">
+              <p className="font-headline mb-3 text-xs uppercase tracking-widest text-primary">
                 {category}
               </p>
               <div className="grid gap-2 md:grid-cols-2">
@@ -140,7 +140,7 @@ export default function ScriptNodePalette({
             </section>
           ))
         ) : (
-          <section className="rounded-[28px] border border-dashed border-white/10 bg-[rgba(255,255,255,0.02)] p-10 text-center text-sm text-[rgba(224,231,239,0.72)] 2xl:col-span-2">
+          <section className="border border-dashed border-[rgba(77,70,53,0.15)] bg-surface-lowest p-10 text-center text-sm text-on-surface-variant 2xl:col-span-2">
             No nodes match the current search/filter combination.
           </section>
         )}
@@ -164,16 +164,16 @@ function PaletteCard({
 
   return (
     <button
-      className="rounded-[20px] border border-white/8 bg-[rgba(255,255,255,0.02)] p-3 text-left transition-colors hover:border-[rgba(245,170,49,0.3)] hover:bg-[rgba(245,170,49,0.06)]"
+      className="border border-[rgba(77,70,53,0.15)] bg-surface-lowest p-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/6"
       onClick={() => onAdd(template.ref_name)}
       type="button"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-sm font-medium text-white">
+        <span className="truncate text-sm font-medium text-on-surface">
           {template.display_name}
         </span>
         <span
-          className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
+          className="shrink-0 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
           style={{ backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
         >
           {template.node_type}
@@ -181,7 +181,7 @@ function PaletteCard({
       </div>
 
       {template.description && (
-        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-[rgba(224,231,239,0.64)]">
+        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-on-surface-variant">
           {template.description}
         </p>
       )}
@@ -190,7 +190,7 @@ function PaletteCard({
       <div className="mt-2 flex flex-wrap gap-1">
         {inputs.map((p) => (
           <span
-            className="rounded-full px-1.5 py-0.5 text-[9px] font-medium"
+            className="px-1.5 py-0.5 text-[9px] font-medium"
             key={`in-${p.name}`}
             style={{
               backgroundColor: `${portTypeColors[p.port_type] ?? '#64748b'}22`,
@@ -202,7 +202,7 @@ function PaletteCard({
         ))}
         {outputs.map((p) => (
           <span
-            className="rounded-full border border-dashed px-1.5 py-0.5 text-[9px] font-medium"
+            className="border border-dashed px-1.5 py-0.5 text-[9px] font-medium"
             key={`out-${p.name}`}
             style={{
               borderColor: `${portTypeColors[p.port_type] ?? '#64748b'}44`,

@@ -179,15 +179,15 @@ function ChainEditorInner({
       proOptions={{ hideAttribution: true }}
       defaultEdgeOptions={{ type: 'sequenceThread' }}
     >
-      <Background gap={24} size={1} color="rgba(255,255,255,0.04)" />
+      <Background gap={40} size={1} color="rgba(242, 202, 80, 0.03)" />
       <Controls
         showInteractive={false}
-        className="!border-[rgba(255,255,255,0.08)] !bg-[rgba(9,18,28,0.92)] !shadow-lg [&_button]:!border-[rgba(255,255,255,0.08)] [&_button]:!bg-[rgba(9,18,28,0.92)] [&_button]:!fill-[rgba(224,231,239,0.72)] hover:[&_button]:!bg-[rgba(255,255,255,0.08)]"
+        className="!border-[rgba(77,70,53,0.15)] !bg-[#0e0e0e] !shadow-lg [&_button]:!border-[rgba(77,70,53,0.15)] [&_button]:!bg-[#0e0e0e] [&_button]:!fill-[#d0c5af] hover:[&_button]:!bg-[#2a2a2a] hover:[&_button]:!fill-[#f2ca50]"
       />
       <MiniMap
-        className="!border-[rgba(255,255,255,0.08)] !bg-[rgba(9,18,28,0.8)]"
+        className="!border-[rgba(77,70,53,0.15)] !bg-[#0e0e0e]"
         nodeColor={miniMapColor}
-        maskColor="rgba(0,0,0,0.6)"
+        maskColor="rgba(19,19,19,0.8)"
       />
     </ReactFlow>
   );

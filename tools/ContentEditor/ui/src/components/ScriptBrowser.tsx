@@ -5,6 +5,7 @@ import {
   FileCode2,
   Folder,
   FolderOpen,
+  Scroll,
 } from 'lucide-react';
 import type { ScriptEntry } from '../editors/scriptTypes';
 
@@ -66,15 +67,16 @@ export default function ScriptBrowser({
   const tree = useMemo(() => buildTree(scripts), [scripts]);
 
   return (
-    <div className="subtle-scrollbar flex h-full flex-col overflow-y-auto border-r border-border bg-card">
-      <div className="border-b border-border px-3 py-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Script Browser
+    <div className="subtle-scrollbar flex h-full flex-col overflow-y-auto border-r border-[rgba(77,70,53,0.15)] bg-surface-lowest">
+      <div className="border-b border-[rgba(77,70,53,0.15)] px-3 py-2">
+        <h2 className="font-headline text-primary tracking-[0.2em] uppercase text-xs flex items-center gap-1.5">
+          <Scroll className="h-3.5 w-3.5" />
+          SCRIPT_ARCHIVE
         </h2>
       </div>
 
       {scripts.length === 0 ? (
-        <div className="px-4 py-6 text-center text-xs text-muted-foreground">
+        <div className="px-4 py-6 text-center text-xs text-on-surface-variant">
           No scripts loaded.
           <br />
           Switch to Scripts mode to load the script catalog.
@@ -117,10 +119,10 @@ function TreeBranch({
     const isActive = activeScriptPath === node.fullPath;
     return (
       <button
-        className={`flex w-full items-center gap-2 py-1 text-sm transition-colors hover:bg-secondary/50 ${
+        className={`flex w-full items-center gap-2 py-1 text-sm transition-all duration-200 hover:bg-surface-highest hover:translate-x-1 ${
           isActive
-            ? 'bg-secondary/70 text-foreground'
-            : 'text-muted-foreground'
+            ? 'bg-secondary-container/30 text-primary shadow-[inset_4px_0_0_0_#F2CA50]'
+            : 'text-on-surface-variant'
         }`}
         onClick={() => onSelectScript(node.fullPath!)}
         style={{ paddingLeft: 12 + depth * 16 }}
@@ -140,14 +142,14 @@ function TreeBranch({
   return (
     <div>
       <button
-        className="flex w-full items-center gap-1.5 py-1 text-sm font-medium text-foreground hover:bg-secondary/50"
+        className="flex w-full items-center gap-1.5 py-1 text-sm font-medium text-on-surface hover:bg-surface-highest hover:translate-x-1 transition-all duration-200"
         onClick={() => setExpanded((e) => !e)}
         style={{ paddingLeft: 8 + depth * 16 }}
       >
         {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          <ChevronDown className="h-3.5 w-3.5 text-on-surface-variant" />
         ) : (
-          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          <ChevronRight className="h-3.5 w-3.5 text-on-surface-variant" />
         )}
         {expanded ? (
           <FolderOpen className="h-4 w-4 text-primary" />
@@ -155,7 +157,7 @@ function TreeBranch({
           <Folder className="h-4 w-4 text-primary" />
         )}
         <span className="truncate">{node.name}</span>
-        <span className="ml-auto pr-3 text-[10px] text-muted-foreground">
+        <span className="ml-auto pr-3 text-[10px] text-on-surface-variant">
           {countLeaves(node)}
         </span>
       </button>

@@ -30,18 +30,16 @@ export const ScriptCommentNode = memo(function ScriptCommentNode({
 
   return (
     <div
-      className="rounded-[16px] border p-4 transition-all"
+      className="bg-surface-lowest border p-4 transition-all"
       style={{
         width: commentData.width || 200,
         minHeight: commentData.height || 60,
-        backgroundColor: colors.bg,
         borderColor: selected ? '#f5aa31' : colors.border,
         borderStyle: 'dashed',
       }}
     >
       <p
-        className="whitespace-pre-wrap text-xs leading-5"
-        style={{ color: colors.text }}
+        className="whitespace-pre-wrap text-xs italic leading-5 text-on-surface-variant"
       >
         {commentData.text}
       </p>
