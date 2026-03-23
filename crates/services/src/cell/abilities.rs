@@ -82,6 +82,9 @@ pub async fn handle_use_ability(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // ── Look up ability definition from DB (before mutable borrow) ──
+    let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
+
     // ── Validation (requires attacker entity) ──
 
     let entity = match space_mgr.get_entity_mut(entity_id) {
@@ -104,16 +107,18 @@ pub async fn handle_use_ability(
         return;
     }
 
-    // Apply a default cooldown (2 seconds) since we don't have full ability
-    // definitions loaded from DB yet. Real cooldown comes from AbilityDef.cooldown.
-    let cooldown_secs = 2.0f32;
+    let cooldown_secs = ability_def.as_ref().map_or(2.0, |d| if d.cooldown > 0.0 { d.cooldown } else { 0.5 });
     let cooldown_duration = std::time::Duration::from_secs_f32(cooldown_secs);
     entity.abilities.start_ability_cooldown(ability_id, cooldown_duration);
 
     // Get effect sequence ID for this ability invocation
     let effect_seq = entity.abilities.next_effect_id();
 
-    tracing::info!(entity_id, ability_id, target_id, cooldown_secs, "useAbility: launched");
+    tracing::info!(
+        entity_id, ability_id, target_id, cooldown_secs,
+        ability_name = ability_def.as_ref().map_or("unknown", |d| &d.name),
+        "useAbility: launched"
+    );
 
     // ── Send cooldown timer to attacker ──
 
@@ -128,21 +133,17 @@ pub async fn handle_use_ability(
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
 
     // ── Send attack animation (onSequence) to attacker + witnesses ──
-    // Python: AbilityManager.playSequence(sequenceId, sourceId, targetId, instanceId)
-    // The sequence ID determines which kismet animation plays. Without DB-loaded
-    // ability defs we use the ability_id as the sequence ID — the client will look
-    // up the kismet event set for this ability and play the attack animation.
-    {
+    // The event_set_id from the ability def determines which kismet animation plays.
+    if let Some(event_set_id) = ability_def.as_ref().and_then(|d| d.event_set_id) {
         let mut seq_args = Vec::with_capacity(28);
-        seq_args.extend_from_slice(&ability_id.to_le_bytes());     // KismetEventSetSeqID
+        seq_args.extend_from_slice(&event_set_id.to_le_bytes());       // KismetEventSetSeqID
         seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
-        seq_args.extend_from_slice(&target_id.to_le_bytes());     // TargetID
-        seq_args.push(1);                                           // PrimaryTarget = true
-        seq_args.extend_from_slice(&0.0f32.to_le_bytes());        // ImpactTime
-        seq_args.extend_from_slice(&0u32.to_le_bytes());           // NameValuePairs array count = 0
-        seq_args.push(0);                                           // ViewType = KISMET_VIEW_Witness
+        seq_args.extend_from_slice(&target_id.to_le_bytes());         // TargetID
+        seq_args.push(1);                                               // PrimaryTarget = true
+        seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
+        seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs array count = 0
+        seq_args.push(0);                                               // ViewType = KISMET_VIEW_Witness
         seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
-        // Send to attacker and all witnesses
         send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
     }
 
@@ -177,12 +178,23 @@ pub async fn handle_use_ability(
     let random_value = pseudo_random(entity_id, ability_id, effect_seq as u32);
     let qr_result = combat::calculate_result(qr, random_value);
 
-    // Base damage: use a level-scaled value until we load AbilityDef from DB.
-    // Tutorial NPCs (level 1) should deal ~15 damage per hit, not 50.
-    let attacker_level = space_mgr.get_entity(entity_id)
-        .map(|e| e.level)
-        .unwrap_or(1);
-    let base_damage: i32 = (10 + attacker_level * 5) as i32;
+    // Look up base damage from the ability's first effect's NVPs.
+    // Effect NVP "HealthDamage" = direct health damage amount.
+    let base_damage: i32 = if let Some(ref def) = ability_def {
+        let mut dmg = 0i32;
+        for &eid in &def.effect_ids {
+            if let Some(effect) = space_mgr.effect_defs.get(&eid) {
+                let health_dmg = effect.param_i32("HealthDamage");
+                if health_dmg > 0 {
+                    dmg = health_dmg;
+                    break;
+                }
+            }
+        }
+        if dmg > 0 { dmg } else { 15 } // fallback if no HealthDamage NVP
+    } else {
+        15 // no ability def loaded
+    };
 
     // Apply damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {

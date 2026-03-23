@@ -271,8 +271,9 @@ pub const LEASH_DISTANCE: f32 = 100.0;
 /// NPCs won't fire until the target is within this distance.
 pub const NPC_ATTACK_RANGE: f32 = 30.0;
 
-/// Default NPC attack ability ID (QA data: generic ranged attack).
-pub const NPC_DEFAULT_ABILITY: i32 = 597;
+/// Default NPC attack ability ID: "Pistol Shot" (ability 592, ranged DD).
+/// Was incorrectly 597 ("Heal Focus") — a self-heal, not an attack.
+pub const NPC_DEFAULT_ABILITY: i32 = 592;
 
 /// Generate threat on an NPC target from a player attacker.
 ///

@@ -148,6 +148,25 @@ pub async fn dispatch(
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, target_entity_id, "interact");
 
+                // ── Step 0: If target is a hostile NPC, set as combat target ──
+                // Right-clicking a hostile NPC should start auto-attack, not open a dialog.
+                // Faction 10 = hostile (NID guards, enemy mobs).
+                {
+                    let is_hostile = space_mgr.get_entity(target_entity_id as u32)
+                        .map_or(false, |t| !t.is_player && t.faction == 10);
+                    if is_hostile {
+                        tracing::info!(entity_id, target_entity_id, "interact: targeting hostile NPC for combat");
+                        let mut reply = Vec::with_capacity(4);
+                        reply.extend_from_slice(&target_entity_id.to_le_bytes());
+                        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                            entity_id,
+                            method_index: 16, // onTargetUpdate
+                            args: reply,
+                        }).await;
+                        return true;
+                    }
+                }
+
                 // ── Step 1: Fire interact_tag event ──
                 // Python: self.first('entity.interact.tag::' + target.tag, ...)
                 let mut handled = false;
@@ -190,6 +209,21 @@ pub async fn dispatch(
                         crate::cell::content::fire_dialog_open(
                             entity_id, player_id, did, engine, tx, space_mgr,
                         ).await;
+                    } else {
+                        // No interaction/dialog — if target is an NPC, set it as
+                        // the player's target so the client enables auto-attack.
+                        let is_hostile_npc = space_mgr.get_entity(target_entity_id as u32)
+                            .map_or(false, |t| !t.is_player);
+                        if is_hostile_npc {
+                            tracing::debug!(entity_id, target_entity_id, "interact: targeting hostile NPC for combat");
+                            let mut reply = Vec::with_capacity(4);
+                            reply.extend_from_slice(&target_entity_id.to_le_bytes());
+                            let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                                entity_id,
+                                method_index: 16, // onTargetUpdate
+                                args: reply,
+                            }).await;
+                        }
                     }
                 }
             }

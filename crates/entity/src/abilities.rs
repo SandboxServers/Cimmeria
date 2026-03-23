@@ -76,6 +76,33 @@ pub struct AbilityDef {
     pub effect_ids: Vec<i32>,
     pub moniker_ids: Vec<i64>,
     pub required_ammo: i32,
+    pub event_set_id: Option<i32>,
+    pub velocity: f32,
+}
+
+/// A single effect within an ability (damage, heal, buff, etc).
+#[derive(Debug, Clone)]
+pub struct EffectDef {
+    pub effect_id: i32,
+    pub ability_id: i32,
+    pub delay: i32,
+    pub effect_sequence: i32,
+    pub event_set_id: Option<i32>,
+    pub script_name: Option<String>,
+    /// Name-value pairs: e.g. "HealthDamage" → "15"
+    pub params: std::collections::HashMap<String, String>,
+}
+
+impl EffectDef {
+    /// Get a param as i32, returning 0 if missing or unparseable.
+    pub fn param_i32(&self, name: &str) -> i32 {
+        self.params.get(name).and_then(|v| v.parse().ok()).unwrap_or(0)
+    }
+
+    /// Get a param as f32, returning 0.0 if missing or unparseable.
+    pub fn param_f32(&self, name: &str) -> f32 {
+        self.params.get(name).and_then(|v| v.parse().ok()).unwrap_or(0.0)
+    }
 }
 
 // ── AbilityTreeData ───────────────────────────────────────────────────────

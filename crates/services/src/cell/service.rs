@@ -196,6 +196,18 @@ impl CellService {
             }
         }
 
+        // Load ability + effect definitions from DB
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_ability_defs(pool).await {
+                Ok(defs) => { space_mgr.ability_defs = defs; }
+                Err(e) => { tracing::warn!("Failed to load ability defs: {e}"); }
+            }
+            match spawner::load_effect_defs(pool).await {
+                Ok(defs) => { space_mgr.effect_defs = defs; }
+                Err(e) => { tracing::warn!("Failed to load effect defs: {e}"); }
+            }
+        }
+
         // Send SpaceData for all startup spaces to BaseApp
         if let Some(ref tx) = self.cell_to_base_tx {
             for (space_id, world_name) in space_mgr.all_spaces() {

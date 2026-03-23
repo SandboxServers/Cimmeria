@@ -102,6 +102,12 @@ pub struct SpaceManager {
     /// Next runtime region ID (auto-incrementing, starts at 1).
     /// Matches Python `GenericRegionManager.lastRegionId`.
     pub next_region_id: u32,
+    /// Ability definitions: ability_id → AbilityDef.
+    /// Loaded from `resources.abilities` at startup.
+    pub ability_defs: HashMap<i32, cimmeria_entity::abilities::AbilityDef>,
+    /// Effect definitions: effect_id → EffectDef.
+    /// Loaded from `resources.effects` + `resources.effect_nvps` at startup.
+    pub effect_defs: HashMap<i32, cimmeria_entity::abilities::EffectDef>,
 }
 
 impl SpaceManager {
@@ -121,6 +127,8 @@ impl SpaceManager {
             step_objectives: HashMap::new(),
             regions: HashMap::new(),
             next_region_id: 1,
+            ability_defs: HashMap::new(),
+            effect_defs: HashMap::new(),
         }
     }
 
@@ -793,7 +801,7 @@ impl SpaceManager {
         e.spawn_position = Some(pos);
 
         // Give NPCs a default combat ability and stats so they can fight back
-        e.abilities.add_ability(597); // generic combat ability
+        e.abilities.add_ability(super::combat::NPC_DEFAULT_ABILITY);
         // Initialize NPC health based on level (simple scaling)
         use cimmeria_entity::stats::{HEALTH, FOCUS};
         let hp = 200 + (e.level as i32 * 50);

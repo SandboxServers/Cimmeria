@@ -83,8 +83,16 @@ See [aoi-entity-introduction.md](aoi-entity-introduction.md) for NPC AoI entity 
 - Cooked data versions: versionInfoRequest/onVersionInfo, for items/abilities/missions PAK data
 - These are completely separate -- entity cache stamps have NO interaction with versionInfoRequest
 
+### SGWPlayer Client Method Index Table (RESOLVED)
+- See [sgwplayer-method-index-table.md](sgwplayer-method-index-table.md) for full 157-method mapping
+- The "71 hidden methods" are ClientMethods from SGWPlayer's 11 Implements interfaces
+- Parse order: parent-first, then Implements-before-own for each level
+- SGWPlayer own methods start at index 98 (after 27 parent + 71 interface methods)
+- Key: `entity_description.cpp:parseInterface()` processes Implements, Properties, ClientMethods in that order
+- SubSlot mechanism kicks in at 62+ exposed methods (SGWPlayer has 157, so sub-slots ARE needed)
+
 ### Open Questions
-- Exposed method sub-slot mechanism (for > 62 methods per entity) -- unlikely needed for SGW entities
+- Sub-slot encoding details: SGWPlayer has 157 client methods, which exceeds 62 -- verify sub-slot behavior matches `entity_method_descriptions.cpp:checkExposedForSubSlots()`
 
 ## Key Source Locations
 
