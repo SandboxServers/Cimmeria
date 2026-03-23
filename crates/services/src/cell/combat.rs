@@ -265,7 +265,7 @@ fn calculate_absorption(defender: &StatList, damage_type: i8) -> i32 {
 
 /// Leash distance in world units — if an NPC's target moves further than this
 /// from the NPC's spawn position, the NPC resets and walks home.
-pub const LEASH_DISTANCE: f32 = 50.0;
+pub const LEASH_DISTANCE: f32 = 100.0;
 
 /// Maximum attack range in world units for NPC ranged attacks.
 /// NPCs won't fire until the target is within this distance.

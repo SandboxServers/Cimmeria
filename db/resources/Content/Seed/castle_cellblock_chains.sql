@@ -71,9 +71,10 @@ VALUES
 -- MISSION 638 — Speak to Prisoner 329
 -- ============================================================
 
--- Chain 1011: enter Region2 when 638 not active + archetype != 8 → accept + SCI dialog set
+-- Chain 1011: enter Region2 when 638 not active + non-Jaffa → accept + human dialog set
+-- dialog_set 5866 maps to dialog 5021 (Human version of "Free Prisoner 329")
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1011, '638 - Region2 entry: accept (non-scientist)', 'mission', 638, true, 0);
+VALUES (1011, '638 - Region2 entry: accept (non-Jaffa)', 'mission', 638, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1011, 'enter_region', 'Castle_Cellblock.Region2', 'player', false, 0);
@@ -86,11 +87,12 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1011, 'accept_mission', 638, NULL, '{}', 0, 0),
-  (1011, 'add_dialog_set', 2794, NULL, '{"slot": 17}', 0, 1);
+  (1011, 'add_dialog_set', 5866, NULL, '{"slot": 17}', 0, 1);
 
--- Chain 1012: enter Region2 when 638 not active + archetype == 8 → accept + scientist dialog set
+-- Chain 1012: enter Region2 when 638 not active + Jaffa → accept + Jaffa dialog set
+-- dialog_set 2794 maps to dialog 2300 (Jaffa version — mentions symbiote)
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1012, '638 - Region2 entry: accept (scientist)', 'mission', 638, true, 0);
+VALUES (1012, '638 - Region2 entry: accept (Jaffa)', 'mission', 638, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1012, 'enter_region', 'Castle_Cellblock.Region2', 'player', false, 0);
@@ -103,7 +105,7 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1012, 'accept_mission', 638, NULL, '{}', 0, 0),
-  (1012, 'add_dialog_set', 5866, NULL, '{"slot": 17}', 0, 1);
+  (1012, 'add_dialog_set', 2794, NULL, '{"slot": 17}', 0, 1);
 
 -- Chain 1013: enter Region2 always → system message 5040
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -172,6 +174,32 @@ VALUES
   (1017, 'play_sequence', 1749, NULL, '{}', 0, 1),
   (1017, 'set_interaction_type', NULL, '329_CellDoorButton', '{"op": "~", "mask": 256}', 0, 2);
 
+-- Chain 1020: dialog choice 5021 (human) while step 2116 active → show follow-up dialog 5020
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1020, '638 - Post-minigame (human): show escape dialog', 'mission', 638, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1020, 'dialog_choice', '5021', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1020, 'step_status', 638, '2116', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1020, 'display_dialog', 5020, NULL, '{}', 0, 0);
+
+-- Chain 1021: dialog choice 2300 (Jaffa) while step 2116 active → show follow-up dialog 5020
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1021, '638 - Post-minigame (Jaffa): show escape dialog', 'mission', 638, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1021, 'dialog_choice', '2300', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1021, 'step_status', 638, '2116', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1021, 'display_dialog', 5020, NULL, '{}', 0, 0);
+
 -- Chain 1018: dialog choice 5020 (non-sci agree escape) while step 2116 active → finish 638, accept 639
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1018, '638 - Agree to help (non-sci): complete 638, accept 639', 'mission', 638, true, 0);
@@ -187,7 +215,7 @@ VALUES
   (1018, 'display_dialog', 2298, NULL, '{}', 0, 0),
   (1018, 'accept_mission',  639, NULL, '{}', 0, 1),
   (1018, 'complete_mission', 638, NULL, '{}', 0, 2),
-  (1018, 'remove_dialog_set', 2794, NULL, '{"slot": 17}', 0, 3);
+  (1018, 'remove_dialog_set', 5866, NULL, '{"slot": 17}', 0, 3);
 
 -- Chain 1019: dialog choice 2299 (sci agree escape) while step 2116 active → finish 638, accept 639
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -204,7 +232,7 @@ VALUES
   (1019, 'display_dialog', 2298, NULL, '{}', 0, 0),
   (1019, 'accept_mission',  639, NULL, '{}', 0, 1),
   (1019, 'complete_mission', 638, NULL, '{}', 0, 2),
-  (1019, 'remove_dialog_set', 5866, NULL, '{"slot": 17}', 0, 3);
+  (1019, 'remove_dialog_set', 2794, NULL, '{"slot": 17}', 0, 3);
 
 -- ============================================================
 -- MISSION 639 — Find Ambernol
@@ -221,7 +249,9 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (1031, 'step_status', 639, '2117', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1031, 'advance_step', 639, '2145', '{}', 0, 0);
+VALUES
+  (1031, 'advance_step', 639, '2145', '{}', 0, 0),
+  (1031, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 1);
 
 -- Chain 1032: interact with Ambernol vial while step 2145 active → pick up, destroy, aggro guard, advance
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)

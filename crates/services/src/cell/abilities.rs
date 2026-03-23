@@ -158,8 +158,12 @@ pub async fn handle_use_ability(
     let random_value = pseudo_random(entity_id, ability_id, effect_seq as u32);
     let qr_result = combat::calculate_result(qr, random_value);
 
-    // Default base damage (stub — real value comes from AbilityDef.effects[].params)
-    let base_damage: i32 = 50;
+    // Base damage: use a level-scaled value until we load AbilityDef from DB.
+    // Tutorial NPCs (level 1) should deal ~15 damage per hit, not 50.
+    let attacker_level = space_mgr.get_entity(entity_id)
+        .map(|e| e.level)
+        .unwrap_or(1);
+    let base_damage: i32 = (10 + attacker_level * 5) as i32;
 
     // Apply damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {

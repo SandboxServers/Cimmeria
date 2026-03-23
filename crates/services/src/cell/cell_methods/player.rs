@@ -204,6 +204,7 @@ pub async fn dispatch(
 
                 let player_id = space_mgr.get_entity(entity_id)
                     .and_then(|e| e.player_id).unwrap_or(0);
+                // Fire with dialogId — matches Python: self.fire('dialog.choice::' + str(dialogId))
                 crate::cell::content::fire_dialog_choice(
                     entity_id, player_id, dialog_id, engine, tx, space_mgr,
                 ).await;
