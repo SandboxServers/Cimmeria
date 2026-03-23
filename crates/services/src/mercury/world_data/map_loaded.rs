@@ -198,6 +198,12 @@ fn build_map_loaded_body_inner(
         for &id in &data.abilities {
             args.extend_from_slice(&id.to_le_bytes());
         }
+        tracing::info!(
+            player_id = data.player_id,
+            ability_count = data.abilities.len(),
+            abilities = ?data.abilities,
+            "mapLoaded: sending onKnownAbilitiesUpdate"
+        );
         append_method!(method_idx::ON_KNOWN_ABILITIES_UPDATE, &args);
     }
 

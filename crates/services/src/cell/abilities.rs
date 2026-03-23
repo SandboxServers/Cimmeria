@@ -127,6 +127,25 @@ pub async fn handle_use_ability(
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
 
+    // ── Send attack animation (onSequence) to attacker + witnesses ──
+    // Python: AbilityManager.playSequence(sequenceId, sourceId, targetId, instanceId)
+    // The sequence ID determines which kismet animation plays. Without DB-loaded
+    // ability defs we use the ability_id as the sequence ID — the client will look
+    // up the kismet event set for this ability and play the attack animation.
+    {
+        let mut seq_args = Vec::with_capacity(28);
+        seq_args.extend_from_slice(&ability_id.to_le_bytes());     // KismetEventSetSeqID
+        seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+        seq_args.extend_from_slice(&target_id.to_le_bytes());     // TargetID
+        seq_args.push(1);                                           // PrimaryTarget = true
+        seq_args.extend_from_slice(&0.0f32.to_le_bytes());        // ImpactTime
+        seq_args.extend_from_slice(&0u32.to_le_bytes());           // NameValuePairs array count = 0
+        seq_args.push(0);                                           // ViewType = KISMET_VIEW_Witness
+        seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
+        // Send to attacker and all witnesses
+        send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
+    }
+
     // ── Combat resolution (if target specified) ──
 
     if target_id <= 0 {
