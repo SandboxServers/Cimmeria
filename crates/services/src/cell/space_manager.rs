@@ -374,6 +374,10 @@ impl SpaceManager {
         if let Some(&space_id) = self.entity_space.get(&entity_id) {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.insert(entity_id);
+                if let Some(entity) = space.entities.get_mut(&entity_id) {
+                    entity.is_player = true;
+                    entity.class_id = 0x02; // SGWPlayer
+                }
                 tracing::debug!(entity_id, space_id, "Entity connected (player)");
             }
         }
