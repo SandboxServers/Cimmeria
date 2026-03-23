@@ -94,6 +94,17 @@ pub(crate) async fn handle_on_client_ready(
         db_pool, pending.player_id,
     ).await;
 
+    // Query player abilities from DB
+    let abilities: Vec<i32> = if let Some(pool) = db_pool {
+        sqlx::query_scalar("SELECT unnest(abilities) FROM sgw_player WHERE player_id = $1")
+            .bind(pending.player_id)
+            .fetch_all(pool.as_ref())
+            .await
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
     if let Some(ref tx) = cell_tx {
         let _ = tx.send(BaseToCellMsg::ConnectEntity {
             entity_id,
@@ -104,6 +115,7 @@ pub(crate) async fn handle_on_client_ready(
             player_id: pending.player_id,
             world_name: pending.world_name.clone(),
             saved_missions,
+            abilities,
         }).await;
     }
 

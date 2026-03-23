@@ -95,7 +95,7 @@ pub async fn handle_use_ability(
         }
     };
 
-    // Check if entity knows this ability
+    // Check if entity knows this ability (skip for non-entity abilities like reload)
     if !entity.abilities.has_ability(ability_id) {
         tracing::debug!(entity_id, ability_id, "useAbility: entity does not have ability");
         return;
@@ -107,9 +107,22 @@ pub async fn handle_use_ability(
         return;
     }
 
+    // Check ammo for ranged abilities (players only — NPCs have infinite ammo)
+    let required_ammo = ability_def.as_ref().map_or(0, |d| d.required_ammo);
+    if required_ammo > 0 && entity.is_player && entity.current_ammo < required_ammo {
+        tracing::debug!(entity_id, ability_id, current = entity.current_ammo, required = required_ammo, "useAbility: not enough ammo");
+        return;
+    }
+
     let cooldown_secs = ability_def.as_ref().map_or(2.0, |d| if d.cooldown > 0.0 { d.cooldown } else { 0.5 });
     let cooldown_duration = std::time::Duration::from_secs_f32(cooldown_secs);
     entity.abilities.start_ability_cooldown(ability_id, cooldown_duration);
+
+    // Consume ammo (players only)
+    if required_ammo > 0 && entity.is_player {
+        entity.current_ammo -= required_ammo;
+        tracing::debug!(entity_id, ability_id, ammo_remaining = entity.current_ammo, "useAbility: consumed ammo");
+    }
 
     // Get effect sequence ID for this ability invocation
     let effect_seq = entity.abilities.next_effect_id();
@@ -178,34 +191,41 @@ pub async fn handle_use_ability(
     let random_value = pseudo_random(entity_id, ability_id, effect_seq as u32);
     let qr_result = combat::calculate_result(qr, random_value);
 
-    // Look up base damage from the ability's first effect's NVPs.
-    // Effect NVP "HealthDamage" = direct health damage amount.
-    let base_damage: i32 = if let Some(ref def) = ability_def {
-        let mut dmg = 0i32;
+    // Look up damage values from the ability's effect NVPs.
+    let (health_base_damage, focus_base_damage) = if let Some(ref def) = ability_def {
+        let mut h_dmg = 0i32;
+        let mut f_dmg = 0i32;
         for &eid in &def.effect_ids {
             if let Some(effect) = space_mgr.effect_defs.get(&eid) {
-                let health_dmg = effect.param_i32("HealthDamage");
-                if health_dmg > 0 {
-                    dmg = health_dmg;
-                    break;
-                }
+                let hd = effect.param_i32("HealthDamage");
+                let fd = effect.param_i32("FocusDamage");
+                if hd > 0 { h_dmg = hd; }
+                if fd > 0 { f_dmg = fd; }
             }
         }
-        if dmg > 0 { dmg } else { 15 } // fallback if no HealthDamage NVP
+        (if h_dmg > 0 { h_dmg } else { 15 }, f_dmg)
     } else {
-        15 // no ability def loaded
+        (15, 0)
     };
 
-    // Apply damage to target
+    // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
         Some(e) => e,
         None => return,
     };
 
-    let (effect_results, _total_damage) = combat::calculate_damage(
-        &qr_result, base_damage, DT_PHYSICAL, HEALTH,
+    let (effect_results, _total_health_damage) = combat::calculate_damage(
+        &qr_result, health_base_damage, DT_PHYSICAL, HEALTH,
         &attacker_stats, &mut target.stats,
     );
+
+    // Apply focus damage if present
+    if focus_base_damage > 0 {
+        let _ = combat::calculate_damage(
+            &qr_result, focus_base_damage, DT_PHYSICAL, cimmeria_entity::stats::FOCUS,
+            &attacker_stats, &mut target.stats,
+        );
+    }
 
     // Check if target died
     let target_died = target.stats.get(HEALTH).map_or(false, |s| s.cur <= 0);
@@ -269,7 +289,7 @@ pub async fn handle_use_ability(
 
     // Generate threat on surviving NPCs so they aggro back
     if !target_died {
-        combat::generate_threat(space_mgr, entity_id, target_eid, _total_damage as f32);
+        combat::generate_threat(space_mgr, entity_id, target_eid, _total_health_damage as f32);
     }
 }
 

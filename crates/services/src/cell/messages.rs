@@ -130,6 +130,8 @@ pub enum BaseToCellMsg {
         world_name: String,
         /// Saved missions loaded from DB, to be restored before content engine fires.
         saved_missions: Vec<SavedMission>,
+        /// Player's known ability IDs (from sgw_player.abilities column).
+        abilities: Vec<i32>,
     },
 
     /// Reload the content engine from the database (triggered by admin API / Content Editor).

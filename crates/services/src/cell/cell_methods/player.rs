@@ -156,6 +156,7 @@ pub async fn dispatch(
                         .map_or(false, |t| !t.is_player && t.faction == 10);
                     if is_hostile {
                         tracing::info!(entity_id, target_entity_id, "interact: targeting hostile NPC for combat");
+                        // Send onTargetUpdate so client shows the target
                         let mut reply = Vec::with_capacity(4);
                         reply.extend_from_slice(&target_entity_id.to_le_bytes());
                         let _ = tx.send(CellToBaseMsg::EntityMethodCall {
@@ -163,6 +164,11 @@ pub async fn dispatch(
                             method_index: 16, // onTargetUpdate
                             args: reply,
                         }).await;
+                        // Also fire the player's default attack ability (Pistol Shot = 592)
+                        // since the client auto-attack system may not trigger automatically.
+                        crate::cell::abilities::handle_use_ability(
+                            entity_id, 592, target_entity_id, tx, space_mgr,
+                        ).await;
                         return true;
                     }
                 }
@@ -597,14 +603,28 @@ async fn handle_respawn(
 
 // ── Reload ────────────────────────────────────────────────────────────────────
 
-/// Handle player weapon reload: reset ammo to max and send stat update.
+/// Reload ability ID (from resources.abilities).
+const ABILITY_RELOAD_WEAPON: i32 = 596;
+
+/// Handle player weapon reload.
+///
+/// Launches ability 596 (Reload) which has a 2-second warmup, then
+/// restores ammo to max. Sends onTimerUpdate for the cooldown/warmup,
+/// onSequence for the reload animation, and onStatUpdate for ammo change.
 ///
 /// Reference: `python/cell/SGWPlayer.py:1482-1498`
+/// Reference: `python/cell/SGWBeing.py:863-874`
 async fn handle_reload(
     entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    // Look up ability 596 (Reload) from DB before mutable borrow
+    let reload_def = space_mgr.ability_defs.get(&ABILITY_RELOAD_WEAPON).cloned();
+    let warmup = reload_def.as_ref().map_or(2.0f32, |d| d.warmup);
+    let cooldown = reload_def.as_ref().map_or(1.0f32, |d| d.cooldown);
+    let event_set_id = reload_def.as_ref().and_then(|d| d.event_set_id);
+
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
         None => {
@@ -613,25 +633,66 @@ async fn handle_reload(
         }
     };
 
-    // Reset ammo to max
-    let old = entity.current_ammo;
-    entity.current_ammo = entity.max_ammo;
-
-    if old == entity.max_ammo {
+    if entity.current_ammo >= entity.max_ammo {
         tracing::debug!(entity_id, "requestReload: already at max ammo");
         return;
     }
 
-    tracing::info!(entity_id, old, new = entity.max_ammo, "Weapon reloaded");
+    // Reset ammo to max (in the original, this happens after warmup;
+    // we do it instantly since we don't have warmup timers yet)
+    let old = entity.current_ammo;
+    entity.current_ammo = entity.max_ammo;
 
-    // Send onEntityProperty(GENERICPROPERTY_AmmoTypeId, ammo_type)
-    // This tells the client to update the ammo display
-    let mut args = Vec::with_capacity(8);
-    args.extend_from_slice(&7i32.to_le_bytes()); // GENERICPROPERTY_AmmoTypeId = 7
-    args.extend_from_slice(&entity.ammo_type.to_le_bytes());
+    // Start ability cooldown
+    let total_time = warmup + cooldown;
+    entity.abilities.start_ability_cooldown(
+        ABILITY_RELOAD_WEAPON,
+        std::time::Duration::from_secs_f32(total_time),
+    );
+
+    tracing::info!(entity_id, old, new = entity.max_ammo, warmup, cooldown, "Weapon reloaded");
+
+    // Send onTimerUpdate for reload warmup+cooldown
+    let timer_args = cimmeria_entity::abilities::serialize_timer_update(
+        ABILITY_RELOAD_WEAPON,
+        cimmeria_entity::abilities::TIMER_ABILITY_COOLDOWN,
+        entity_id as i32,
+        total_time,
+        0.0,
+    );
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
-        method_index: 7, // onEntityProperty (SGWSpawnableEntity, flat index 7)
+        method_index: 12, // onTimerUpdate
+        args: timer_args,
+    }).await;
+
+    // Send reload animation (onSequence) if event_set_id available
+    if let Some(esid) = event_set_id {
+        let mut seq_args = Vec::with_capacity(28);
+        seq_args.extend_from_slice(&esid.to_le_bytes());               // KismetEventSetSeqID
+        seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+        seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID (self)
+        seq_args.push(1);                                               // PrimaryTarget
+        seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
+        seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs count
+        seq_args.push(0);                                               // ViewType
+        seq_args.extend_from_slice(&0i32.to_le_bytes());               // InstanceId
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: 1, // onSequence
+            args: seq_args,
+        }).await;
+    }
+
+    // Send onEntityProperty to update ammo display
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&7i32.to_le_bytes()); // GENERICPROPERTY_AmmoTypeId = 7
+    let ammo_type = space_mgr.get_entity(entity_id)
+        .map_or(0, |e| e.ammo_type);
+    args.extend_from_slice(&ammo_type.to_le_bytes());
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: 7, // onEntityProperty
         args,
     }).await;
 }

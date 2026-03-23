@@ -367,10 +367,16 @@ async fn handle_base_message(
             chat::handle_chat_message(entity_id, &speaker_name, speaker_flags, channel, &text, tx, space_mgr).await;
         }
 
-        BaseToCellMsg::InitPlayerState { entity_id, player_id, world_name, saved_missions } => {
-            tracing::debug!(entity_id, player_id, %world_name, saved_count = saved_missions.len(), "InitPlayerState");
+        BaseToCellMsg::InitPlayerState { entity_id, player_id, world_name, saved_missions, abilities } => {
+            tracing::debug!(entity_id, player_id, %world_name, saved_count = saved_missions.len(), ability_count = abilities.len(), "InitPlayerState");
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.player_id = Some(player_id);
+
+                // Register player's known abilities on the server-side entity
+                for &ability_id in &abilities {
+                    entity.abilities.add_ability(ability_id);
+                }
+                tracing::debug!(entity_id, count = abilities.len(), "Registered player abilities on cell entity");
 
                 // Restore saved missions BEFORE content engine fires, so that
                 // chain conditions correctly see existing mission state and
