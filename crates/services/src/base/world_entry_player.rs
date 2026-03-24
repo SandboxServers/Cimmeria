@@ -686,10 +686,10 @@ pub(crate) async fn handle_grant_item(
         args.extend_from_slice(&(all_items.len() as u32).to_le_bytes());
         for (i, (type_id, stack_size, slot_id, cid, bound, durability, charges)) in all_items.iter().enumerate() {
             let item = cimmeria_entity::inventory::InvItem {
-                id: *cid * 100 + *slot_id, // stable instance ID
+                id: *cid * 100 + *slot_id + 1, // stable instance ID (1-indexed)
                 dbid: *type_id,
                 stack_size: *stack_size,
-                slot_id: *slot_id,
+                slot_id: *slot_id + 1, // DB is 0-indexed, wire is 1-indexed
                 container_id: *cid,
                 is_bound: *bound,
                 durability: *durability,
