@@ -542,9 +542,8 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
 
         if dist <= move_speed {
             // Reached (or overshot) the waypoint — snap to it and consume
-            // Sample navmesh height at the waypoint for floor-hugging
-            let snap_y = space_mgr.get_navmesh_height(npc_id, next_wp.x, next_wp.z)
-                .unwrap_or(next_wp.y);
+            // Waypoint Y comes from Detour's findStraightPath (already on navmesh surface)
+            let snap_y = next_wp.y;
 
             // Peek at the NEXT waypoint (index 1) to compute velocity toward it
             let next_next_wp = if path_len > 1 {
@@ -588,9 +587,10 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
             let new_x = cur_pos.x + dx * t;
             let new_z = cur_pos.z + dz * t;
 
-            // Sample navmesh height for floor-hugging instead of linear Y interpolation
-            let new_y = space_mgr.get_navmesh_height(npc_id, new_x, new_z)
-                .unwrap_or(cur_pos.y + dy * t);
+            // Linearly interpolate Y between current position and waypoint.
+            // Waypoints from Detour's findStraightPath are on the navmesh surface,
+            // so linear interpolation between them stays close to the floor.
+            let new_y = cur_pos.y + dy * t;
 
             // Face the direction of movement
             let dir_x = (dx / dist * 127.0) as i8;
@@ -602,6 +602,16 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
                 dy / dist * speed_per_sec,
                 dz / dist * speed_per_sec,
             ];
+
+            if (npc_id % 10000) < 5 { // log a few NPCs
+                tracing::debug!(
+                    npc_id,
+                    cur = format_args!("({:.1},{:.1},{:.1})", cur_pos.x, cur_pos.y, cur_pos.z),
+                    new = format_args!("({:.1},{:.1},{:.1})", new_x, new_y, new_z),
+                    wp = format_args!("({:.1},{:.1},{:.1})", next_wp.x, next_wp.y, next_wp.z),
+                    "NPC movement step"
+                );
+            }
 
             space_mgr.update_entity_position(
                 npc_id,
