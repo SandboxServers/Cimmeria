@@ -666,6 +666,25 @@ async fn handle_reload(
         args: timer_args,
     }).await;
 
+    // Ensure combat state is set for reload animations
+    {
+        const BSF_IN_COMBAT: u32 = 1 << 3;
+        const BSF_HOLSTER: u32 = 1 << 8;
+        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+            let old = e.state_field;
+            e.state_field |= BSF_IN_COMBAT;
+            e.state_field &= !BSF_HOLSTER;
+            if e.state_field != old {
+                let new_state = e.state_field;
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 19, // onStateFieldUpdate
+                    args: new_state.to_le_bytes().to_vec(),
+                }).await;
+            }
+        }
+    }
+
     // Send reload animation (onSequence) if event_set_id available.
     // Look up the correct sequence_id — the client expects sequence_id, not event_set_id.
     if let Some(esid) = event_set_id {
