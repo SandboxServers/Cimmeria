@@ -662,7 +662,43 @@ pub(crate) async fn handle_grant_item(
 
     match result {
         Ok(_) => tracing::debug!(player_id, item_id, container_id, slot = next_slot, "Item persisted to inventory"),
-        Err(e) => tracing::error!(player_id, item_id, "Failed to persist item: {e}"),
+        Err(e) => {
+            tracing::error!(player_id, item_id, "Failed to persist item: {e}");
+            return;
+        }
+    }
+
+    // Send onUpdateItem to the client with the real slot and a stable instance ID.
+    // Instance ID is synthesized as (container_id * 100 + slot) — unique per character
+    // since (container_id, slot_id) is unique per character in sgw_inventory.
+    {
+        let instance_id = container_id * 100 + next_slot;
+        let item = cimmeria_entity::inventory::InvItem {
+            id: instance_id,
+            dbid: item_id,
+            stack_size: count,
+            slot_id: next_slot,
+            container_id,
+            is_bound: false,
+            durability: 100,
+            ammo_types: vec![],
+            cur_ammo_type: 0,
+            charges: 0,
+        };
+        let mut args = Vec::with_capacity(48);
+        args.extend_from_slice(&1u32.to_le_bytes()); // array count = 1 item
+        item.serialize(&mut args);
+
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::ON_UPDATE_ITEM, &args,
+                )
+            },
+        ).await;
+        tracing::debug!(entity_id, player_id, item_id, container_id, slot = next_slot, instance_id, "Sent onUpdateItem to client");
     }
 
     // If this is an equipped container (3=bandolier, 4-14=equipment), send visual updates

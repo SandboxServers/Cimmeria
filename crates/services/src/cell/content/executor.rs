@@ -69,7 +69,6 @@ pub(super) async fn execute_actions(
             Action::GrantItem { item_id, count, container_id } => {
                 tracing::info!(entity_id, item_id, count, chain_id, "Content: granting item");
                 let cid = container_id.unwrap_or_else(|| item_container(item_id, &space_mgr.item_containers));
-                grant_item_runtime(entity_id, item_id, cid, count, tx).await;
 
                 // If this is a weapon (bandolier), set ammo state on the entity.
                 // Weapons start unloaded — the player must press R to reload.
@@ -398,37 +397,6 @@ fn weapon_clip_size(item_id: i32) -> Option<i32> {
         21 => Some(30),  // TODO: verify clip size from DB
         _ => None,
     }
-}
-
-/// Send an `onUpdateItem` (method_index 72) to grant an item at runtime.
-async fn grant_item_runtime(
-    entity_id: u32,
-    item_id: i32,
-    container_id: i32,
-    count: i32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-) {
-    let instance_id = item_id * 1000 + 1;
-    let slot_id: i32 = 1;
-
-    let mut args = Vec::with_capacity(44);
-    args.extend_from_slice(&1u32.to_le_bytes());
-    args.extend_from_slice(&instance_id.to_le_bytes());
-    args.extend_from_slice(&item_id.to_le_bytes());
-    args.extend_from_slice(&count.to_le_bytes());
-    args.extend_from_slice(&slot_id.to_le_bytes());
-    args.extend_from_slice(&container_id.to_le_bytes());
-    args.push(0);
-    args.extend_from_slice(&100i32.to_le_bytes());
-    args.extend_from_slice(&0u32.to_le_bytes());
-    args.extend_from_slice(&0i32.to_le_bytes());
-    args.extend_from_slice(&0i32.to_le_bytes());
-
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: 72, // onUpdateItem
-        args,
-    }).await;
 }
 
 /// Send per-player InteractionType update if the NPC is already in the player's AoI.
