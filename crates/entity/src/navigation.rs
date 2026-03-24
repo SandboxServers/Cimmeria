@@ -424,6 +424,23 @@ impl NavMesh {
             .unwrap_or(*pos)
     }
 
+    /// Sample the navmesh surface height at the given XZ position.
+    ///
+    /// Finds the walkable polygon containing (x, z) and returns the
+    /// interpolated Y height on that polygon's surface. Returns `None`
+    /// if no walkable polygon contains the point.
+    pub fn get_height_at(&self, x: f32, z: f32) -> Option<f32> {
+        let p = [x, 0.0, z];
+        for (idx, poly) in self.polys.iter().enumerate() {
+            if poly.area == 0 { continue; }
+            let pverts = self.poly_verts(idx);
+            if Self::point_in_poly_xz(p, &pverts) {
+                return Some(self.interpolate_height(&pverts, p));
+            }
+        }
+        None
+    }
+
     /// Line-of-sight raycast from `start` to `end`.
     ///
     /// Returns `true` if the ray can travel from start to end without hitting

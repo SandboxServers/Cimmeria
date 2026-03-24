@@ -51,6 +51,10 @@ pub struct CellEntity {
     /// Facing direction (unit vector or yaw/pitch/roll encoded).
     pub direction: Vector3,
 
+    /// Current velocity in world units per second.
+    /// Sent to clients for interpolation between position updates.
+    pub velocity: [f32; 3],
+
     /// Whether the entity is currently on the ground (affects movement mode).
     pub is_on_ground: bool,
 
@@ -205,6 +209,7 @@ impl CellEntity {
             space_id,
             position,
             direction: Vector3::zero(),
+            velocity: [0.0; 3],
             is_on_ground: true,
             properties: HashMap::new(),
             witnesses: HashSet::new(),
@@ -243,7 +248,7 @@ impl CellEntity {
             spawn_position: None,
             ai_cooldown_ticks: 0,
             nav_path: Vec::new(),
-            move_speed: 3.0, // ~3 world units per tick (walking speed)
+            move_speed: 0.6, // ~0.6 world units per 100ms tick = 6 units/sec
             saved_missions_loaded: false,
         }
     }

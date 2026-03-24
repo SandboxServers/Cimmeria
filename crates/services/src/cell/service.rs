@@ -295,10 +295,8 @@ async fn run_cell_loop(
 
                 aoi_tick_counter = aoi_tick_counter.wrapping_add(1);
 
-                // NPC movement runs every 5th AoI tick (500ms) for smooth pathing
-                if aoi_tick_counter % 5 == 0 {
-                    npc_movement_tick(&mut space_mgr);
-                }
+                // NPC movement runs every AoI tick (100ms) for smooth pathing
+                npc_movement_tick(&mut space_mgr);
 
                 // NPC AI runs every 20th AoI tick (2 seconds at 100ms intervals)
                 if aoi_tick_counter % 20 == 0 {
@@ -525,13 +523,13 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
         .collect();
 
     for npc_id in moving_npcs {
-        // Read the next waypoint and move_speed
-        let (next_wp, move_speed, cur_pos) = {
+        // Read the next waypoint, move_speed, and remaining path length
+        let (next_wp, move_speed, cur_pos, path_len) = {
             let npc = match space_mgr.get_entity(npc_id) {
                 Some(e) if !e.nav_path.is_empty() => e,
                 _ => continue,
             };
-            (npc.nav_path[0], npc.move_speed, npc.position)
+            (npc.nav_path[0], npc.move_speed, npc.position, npc.nav_path.len())
         };
 
         let dx = next_wp.x - cur_pos.x;
@@ -539,33 +537,77 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
         let dz = next_wp.z - cur_pos.z;
         let dist = (dx * dx + dy * dy + dz * dz).sqrt();
 
+        // Speed in world units per second (tick is 100ms = 0.1s)
+        let speed_per_sec = move_speed * 10.0;
+
         if dist <= move_speed {
             // Reached (or overshot) the waypoint — snap to it and consume
+            // Sample navmesh height at the waypoint for floor-hugging
+            let snap_y = space_mgr.get_navmesh_height(npc_id, next_wp.x, next_wp.z)
+                .unwrap_or(next_wp.y);
+
+            // Peek at the NEXT waypoint (index 1) to compute velocity toward it
+            let next_next_wp = if path_len > 1 {
+                space_mgr.get_entity(npc_id).map(|e| e.nav_path[1])
+            } else {
+                None
+            };
+
+            let (velocity, dir_x, dir_z) = if let Some(nn) = next_next_wp {
+                // Still more waypoints — compute velocity toward the next one
+                let ndx = nn.x - next_wp.x;
+                let ndz = nn.z - next_wp.z;
+                let ndy = nn.y - next_wp.y;
+                let nd = (ndx * ndx + ndy * ndy + ndz * ndz).sqrt();
+                if nd > 0.001 {
+                    (
+                        [ndx / nd * speed_per_sec, ndy / nd * speed_per_sec, ndz / nd * speed_per_sec],
+                        (ndx / nd * 127.0) as i8,
+                        (ndz / nd * 127.0) as i8,
+                    )
+                } else {
+                    ([0.0; 3], 0i8, 0i8)
+                }
+            } else {
+                // Last waypoint — stopping
+                ([0.0; 3], 0i8, 0i8)
+            };
+
             space_mgr.update_entity_position(
                 npc_id,
-                [next_wp.x, next_wp.y, next_wp.z],
-                [0, 0, 0],
-                [0.0; 3],
+                [next_wp.x, snap_y, next_wp.z],
+                [dir_x, 0, dir_z],
+                velocity,
             );
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.nav_path.remove(0);
             }
         } else {
-            // Move toward waypoint by move_speed
+            // Move toward waypoint by move_speed units
             let t = move_speed / dist;
             let new_x = cur_pos.x + dx * t;
-            let new_y = cur_pos.y + dy * t;
             let new_z = cur_pos.z + dz * t;
+
+            // Sample navmesh height for floor-hugging instead of linear Y interpolation
+            let new_y = space_mgr.get_navmesh_height(npc_id, new_x, new_z)
+                .unwrap_or(cur_pos.y + dy * t);
 
             // Face the direction of movement
             let dir_x = (dx / dist * 127.0) as i8;
             let dir_z = (dz / dist * 127.0) as i8;
 
+            // Velocity = direction * speed_per_sec
+            let velocity = [
+                dx / dist * speed_per_sec,
+                dy / dist * speed_per_sec,
+                dz / dist * speed_per_sec,
+            ];
+
             space_mgr.update_entity_position(
                 npc_id,
                 [new_x, new_y, new_z],
                 [dir_x, 0, dir_z],
-                [0.0; 3],
+                velocity,
             );
         }
     }
