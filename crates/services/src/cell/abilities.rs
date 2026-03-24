@@ -95,6 +95,11 @@ pub async fn handle_use_ability(
         }
     };
 
+    // Dead entities can't use abilities
+    if combat::is_dead_state(entity.state_field) {
+        return;
+    }
+
     // Check if entity knows this ability (skip for non-entity abilities like reload)
     if !entity.abilities.has_ability(ability_id) {
         tracing::debug!(entity_id, ability_id, "useAbility: entity does not have ability");
@@ -257,6 +262,9 @@ pub async fn handle_use_ability(
     } else {
         (15, 0)
     };
+    // Temp: 2x player damage so players can kill NPCs before dying
+    let is_player_attacker = space_mgr.get_entity(entity_id).map_or(false, |e| e.is_player);
+    let health_base_damage = if is_player_attacker { health_base_damage * 2 } else { health_base_damage };
 
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
@@ -281,9 +289,16 @@ pub async fn handle_use_ability(
     let target_died = target.stats.get(HEALTH).map_or(false, |s| s.cur <= 0);
     if target_died {
         combat::set_dead_state(&mut target.state_field);
+        // Transition NPC AI to Dead so it stops fighting and moving
+        if !target.is_player {
+            target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
+            target.threat_list.clear();
+            target.nav_path.clear();
+        }
         tracing::info!(
             attacker = entity_id, target = target_eid,
-            ability_id, "Target killed!"
+            ability_id, is_npc = !target.is_player,
+            "Target killed!"
         );
     }
     let target_state = target.state_field;
@@ -320,6 +335,29 @@ pub async fn handle_use_ability(
         let mut state_args = Vec::with_capacity(4);
         state_args.extend_from_slice(&target_state.to_le_bytes());
         send_entity_method(target_eid, 19, state_args, tx, space_mgr).await;
+
+        // Send death animation via onSequence (Entity_Death = event_id 5001)
+        // Look up the death sequence from the target's event set via sequence_map
+        {
+            const EVENT_ENTITY_DEATH: i32 = 5001;
+            // Use event set 1025 (Mob) for NPCs, 1025 for players too (same death anim)
+            let event_set_id = space_mgr.get_entity(target_eid)
+                .and_then(|e| if e.is_player { Some(1025) } else { Some(1025) });
+            if let Some(esid) = event_set_id {
+                if let Some(&death_seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ENTITY_DEATH)) {
+                    let mut seq_args = Vec::with_capacity(28);
+                    seq_args.extend_from_slice(&death_seq_id.to_le_bytes());       // KismetEventSetSeqID
+                    seq_args.extend_from_slice(&(target_eid as i32).to_le_bytes()); // SourceID (dying entity)
+                    seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());  // TargetID (killer)
+                    seq_args.push(1);                                                // PrimaryTarget
+                    seq_args.extend_from_slice(&0.0f32.to_le_bytes());             // ImpactTime
+                    seq_args.extend_from_slice(&0u32.to_le_bytes());                // NameValuePairs count
+                    seq_args.push(0);                                                // ViewType
+                    seq_args.extend_from_slice(&0i32.to_le_bytes());                // InstanceId
+                    send_entity_method(target_eid, 1, seq_args, tx, space_mgr).await; // onSequence
+                }
+            }
+        }
 
         // Grant XP to the attacker if the target is a non-player entity
         if let Some(target) = space_mgr.get_entity(target_eid) {
