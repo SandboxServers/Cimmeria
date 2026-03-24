@@ -151,6 +151,13 @@ pub struct CellEntity {
     /// Visual component paths from `entity_templates.components`.
     pub components: Vec<String>,
 
+    // ── Being state ─────────────────────────────────────────────────────────
+    /// State field bitfield (EStateField flags from Atrea.enums).
+    /// Bit 0: BSF_Dead, Bit 1: BSF_AutoCycling, Bit 2: BSF_Crouching,
+    /// Bit 3: BSF_InCombat, Bit 4: BSF_PlayingMinigame, Bit 5: BSF_InStealth,
+    /// Bit 6: BSF_MovementLock, Bit 7: BSF_Walking, Bit 8: BSF_Holster.
+    pub state_field: u32,
+
     // ── Ammo state ────────────────────────────────────────────────────────────
     /// Current ammo count for active bandolier weapon.
     pub current_ammo: i32,
@@ -227,6 +234,7 @@ impl CellEntity {
             static_mesh: None,
             body_set: None,
             components: Vec::new(),
+            state_field: 0,
             current_ammo: 0,
             max_ammo: 0,
             ammo_type: 0,

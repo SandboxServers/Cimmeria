@@ -145,6 +145,27 @@ pub async fn handle_use_ability(
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
 
+    // ── Set combat state on the attacker ──
+    // BSF_InCombat (bit 3): The client's SeqEvent_CombatStateChanged fires when
+    // this changes, transitioning the animation state machine.
+    // BSF_Holster (bit 8): When set, weapon is holstered. Must be CLEARED for
+    // combat — USGWAnim_BlendByWeapon uses active weapon to select animations.
+    // Reference: SGWBeing.py:751-754, SGWMob.py:162
+    {
+        const BSF_IN_COMBAT: u32 = 1 << 3;
+        const BSF_HOLSTER: u32 = 1 << 8;
+        let entity = space_mgr.get_entity_mut(entity_id);
+        if let Some(e) = entity {
+            let old_state = e.state_field;
+            e.state_field |= BSF_IN_COMBAT;   // Enter combat
+            e.state_field &= !BSF_HOLSTER;     // Unholster weapon
+            if e.state_field != old_state {
+                let new_state = e.state_field;
+                send_entity_method(entity_id, 19, new_state.to_le_bytes().to_vec(), tx, space_mgr).await;
+            }
+        }
+    }
+
     // ── Send attack animation (onSequence) to attacker + witnesses ──
     // Look up the correct sequence_id from the event set. The client expects
     // the sequence_id from resources.sequences, NOT the event_set_id.
@@ -256,16 +277,16 @@ pub async fn handle_use_ability(
         );
     }
 
-    // Check if target died
+    // Check if target died — use entity's state_field so we preserve other flags
     let target_died = target.stats.get(HEALTH).map_or(false, |s| s.cur <= 0);
-    let mut state_field = 0u32;
     if target_died {
-        combat::set_dead_state(&mut state_field);
+        combat::set_dead_state(&mut target.state_field);
         tracing::info!(
             attacker = entity_id, target = target_eid,
             ability_id, "Target killed!"
         );
     }
+    let target_state = target.state_field;
 
     // Serialize dirty stats for the target
     let target_stat_update = target.stats.serialize_dirty();
@@ -297,7 +318,7 @@ pub async fn handle_use_ability(
 
     if target_died {
         let mut state_args = Vec::with_capacity(4);
-        state_args.extend_from_slice(&state_field.to_le_bytes());
+        state_args.extend_from_slice(&target_state.to_le_bytes());
         send_entity_method(target_eid, 19, state_args, tx, space_mgr).await;
 
         // Grant XP to the attacker if the target is a non-player entity
