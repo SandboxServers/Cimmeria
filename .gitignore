@@ -185,3 +185,6 @@ cimmeria-content-editor.exe
 cimmeria-server
 
 pak/*
+config/BaseService.config
+.claude/settings.local.json
+Cimmeria.code-workspace

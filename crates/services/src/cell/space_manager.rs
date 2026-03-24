@@ -112,6 +112,10 @@ pub struct SpaceManager {
     /// Used to resolve the correct KismetEventSetSeqID for onSequence calls.
     /// Loaded from `resources.event_sets_sequences` + `resources.sequences` at startup.
     pub sequence_map: HashMap<(i32, i32), i32>,
+    /// Item → preferred container mapping from `resources.items.container_sets`.
+    /// Loaded at startup so runtime item grants go into the correct inventory bag
+    /// (e.g. mission items into INV_Mission, weapons into bandolier).
+    pub item_containers: HashMap<i32, i32>,
 }
 
 impl SpaceManager {
@@ -134,6 +138,7 @@ impl SpaceManager {
             ability_defs: HashMap::new(),
             effect_defs: HashMap::new(),
             sequence_map: HashMap::new(),
+            item_containers: HashMap::new(),
         }
     }
 

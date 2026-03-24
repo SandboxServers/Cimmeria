@@ -210,6 +210,10 @@ impl CellService {
                 Ok(map) => { space_mgr.sequence_map = map; }
                 Err(e) => { tracing::warn!("Failed to load event_set sequences: {e}"); }
             }
+            match spawner::load_item_containers(pool).await {
+                Ok(map) => { space_mgr.item_containers = map; }
+                Err(e) => { tracing::warn!("Failed to load item containers: {e}"); }
+            }
         }
 
         // Send SpaceData for all startup spaces to BaseApp

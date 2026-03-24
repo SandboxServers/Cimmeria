@@ -582,10 +582,19 @@ mod tests {
 
     #[test]
     fn item_container_mapping() {
-        assert_eq!(item_container(55), 3);
-        assert_eq!(item_container(21), 3);
-        assert_eq!(item_container(3730), 1);
-        assert_eq!(item_container(999), 1);
+        use std::collections::HashMap;
+        // Simulate DB-loaded container_sets: weapons→bandolier, mission items→mission bag
+        let mut map = HashMap::new();
+        map.insert(55, 3);   // SI 3 9mm Pistol → bandolier
+        map.insert(21, 3);   // weapon → bandolier
+        map.insert(3730, 2); // Frost's Letter → mission bag
+        map.insert(19, 2);   // Ambernol Vial → mission bag
+
+        assert_eq!(item_container(55, &map), 3);
+        assert_eq!(item_container(21, &map), 3);
+        assert_eq!(item_container(3730, &map), 2);  // was wrongly 1 before
+        assert_eq!(item_container(19, &map), 2);    // was wrongly 1 before
+        assert_eq!(item_container(999, &map), 1);   // unknown item defaults to INV_Main
     }
 
     // ── populate_mission_context ──────────────────────────────────────────

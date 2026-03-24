@@ -776,3 +776,33 @@ struct EffectNvpRow {
     name: String,
     value: String,
 }
+
+/// Load item → preferred container mappings from `resources.items.container_sets`.
+///
+/// The `container_sets` column is a PostgreSQL `integer[]`. We pick the first
+/// element as the preferred container for runtime grants (mission items → 2,
+/// weapons → 3, etc.). Items with an empty array are omitted — they default
+/// to INV_Main (1) at the call site.
+pub async fn load_item_containers(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, i32>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT item_id, container_sets[1] AS container_id \
+         FROM resources.items \
+         WHERE array_length(container_sets, 1) > 0",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map = std::collections::HashMap::with_capacity(rows.len());
+    for r in &rows {
+        let item_id: i32 = r.get("item_id");
+        let container_id: i32 = r.get("container_id");
+        map.insert(item_id, container_id);
+    }
+
+    tracing::info!(count = map.len(), "Loaded item container mappings");
+    Ok(map)
+}

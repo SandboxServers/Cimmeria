@@ -27,17 +27,26 @@
       "mcp__ghidra__set_decompiler_comment",
       "mcp__ghidra__set_disassembly_comment",
       "mcp__ghidra__set_function_prototype",
-      "mcp__ghidra__set_local_variable_type"
+      "mcp__ghidra__set_local_variable_type",
+      "Bash(wc -l \"C:\\\\Users\\\\Steve\\\\source\\\\projects\\\\Cimmeria\\\\logs/\"*.log)",
+      "Bash(*)",
+      "Read(//c/Users/Steve/source/projects/SGW/**)",
+      "mcp__cimmeria-rag__get_entity_protocol",
+      "mcp__cimmeria-rag__search_cimmeria",
+      "mcp__cimmeria-rag__cross_reference",
+      "mcp__cimmeria-rag__get_file_content",
+      "mcp__cimmeria-rag__lookup_enum",
+      "mcp__ghidra__*"
     ]
   },
   "mcpServers": {
     "ghidra": {
       "type": "stdio",
-      "command": "/home/cadacious/.claude/ghidra-mcp-venv/bin/python3",
+      "command": "C:\\Users\\Steve\\source\\projects\\ghidra-mcp\\.venv\\Scripts\\python.exe",
       "args": [
-        "/mnt/c/Users/Steve/source/projects/GhidraMCP/bridge_mcp_ghidra.py",
+        "C:\\Users\\Steve\\source\\projects\\ghidra-mcp\\bridge_mcp_ghidra.py",
         "--ghidra-server",
-        "http://172.25.144.1:8090/"
+        "http://127.0.0.1:8098/"
       ]
     }
   }
