@@ -417,6 +417,8 @@ mod tests {
             effect_ids: vec![100, 101],
             moniker_ids: vec![42],
             required_ammo: 1,
+            event_set_id: None,
+            velocity: 0.0,
         }
     }
 

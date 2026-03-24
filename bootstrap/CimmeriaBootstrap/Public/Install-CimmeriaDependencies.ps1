@@ -330,5 +330,39 @@ function Install-CimmeriaDependencies {
         }
     }
 
+    # ── Recast Navigation (Detour navmesh library, all platforms) ──────────
+    Write-Step "RECAST NAVIGATION (DETOUR NAVMESH LIBRARY)"
+
+    $recastDir = Join-Path $ExternalDir "recast"
+    $recastDetourHeader = Join-Path $recastDir "Detour" "Include" "DetourNavMesh.h"
+
+    if (Test-Path $recastDetourHeader) {
+        Write-Status "Recast Navigation: already present" "DarkGray"
+    } else {
+        if (-not $SkipDownload) {
+            Write-Status "Downloading Recast Navigation $($Dependencies.Recast.Version)..." "White"
+            Get-DownloadFile $Dependencies.Recast.Url (Join-Path $DownloadDir $Dependencies.Recast.FileName)
+        }
+
+        $recastArchive = Join-Path $DownloadDir $Dependencies.Recast.FileName
+        if (Test-Path $recastArchive) {
+            Write-Status "Recast Navigation: extracting source..." "White"
+            $recastTempDir = Join-Path $ExternalDir "recast_temp"
+            Expand-DependencyArchive $recastArchive $recastTempDir
+
+            # The zip extracts to recastnavigation-1.6.0/
+            $recastRoot = Get-ChildItem $recastTempDir -Directory | Select-Object -First 1
+            if (Test-Path $recastDir) { Remove-Item $recastDir -Recurse -Force }
+            Move-Item $recastRoot.FullName $recastDir
+
+            Remove-Item $recastTempDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Status "Recast Navigation: done (v$($Dependencies.Recast.Version), DT_NAVMESH_VERSION=7)" "Green"
+        } else {
+            Write-Status "Recast Navigation: archive not found. Download manually:" "Yellow"
+            Write-Status "  $($Dependencies.Recast.Url)" "Yellow"
+            Write-Status "  Extract to: $recastDir" "Yellow"
+        }
+    }
+
     Write-Status "Install-CimmeriaDependencies complete." "Green"
 }

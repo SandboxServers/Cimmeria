@@ -17,6 +17,14 @@
         Notes     = "17.9 is the latest 17.x patch release (Feb 2026). EOL Nov 2029."
     }
 
+    Recast = @{
+        Version   = "1.6.0"
+        Url       = "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v1.6.0.zip"
+        FileName  = "recastnavigation-1.6.0.zip"
+        Type      = "source"
+        Notes     = "Detour navmesh query library. Compiled from source via cc crate during cargo build. DT_NAVMESH_VERSION=7."
+    }
+
     SevenZip = @{
         Version       = "24.09"
         ExtraUrl      = "https://www.7-zip.org/a/7z2409-extra.7z"

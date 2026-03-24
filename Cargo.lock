@@ -534,6 +534,7 @@ name = "cimmeria-entity"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "cc",
  "cimmeria-commands",
  "cimmeria-common",
  "cimmeria-defs",
