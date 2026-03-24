@@ -668,26 +668,37 @@ pub(crate) async fn handle_grant_item(
         }
     }
 
-    // Send onUpdateItem to the client with the real slot and a stable instance ID.
-    // Instance ID is synthesized as (container_id * 100 + slot) — unique per character
-    // since (container_id, slot_id) is unique per character in sgw_inventory.
+    // Re-query ALL inventory items and send the full list via onUpdateItem.
+    // The client replaces its item list with the array contents, so we must
+    // send everything — not just the newly added item.
+    // Reference: python/cell/Inventory.py flushUpdates() step 3
     {
-        let instance_id = container_id * 100 + next_slot;
-        let item = cimmeria_entity::inventory::InvItem {
-            id: instance_id,
-            dbid: item_id,
-            stack_size: count,
-            slot_id: next_slot,
-            container_id,
-            is_bound: false,
-            durability: 100,
-            ammo_types: vec![],
-            cur_ammo_type: 0,
-            charges: 0,
-        };
-        let mut args = Vec::with_capacity(48);
-        args.extend_from_slice(&1u32.to_le_bytes()); // array count = 1 item
-        item.serialize(&mut args);
+        let all_items: Vec<(i32, i32, i32, i32, bool, i32, i32)> = sqlx::query_as(
+            "SELECT type_id, stack_size, slot_id, container_id, bound, durability, charges \
+             FROM sgw_inventory WHERE character_id = $1 ORDER BY container_id, slot_id",
+        )
+        .bind(player_id)
+        .fetch_all(pool.as_ref())
+        .await
+        .unwrap_or_default();
+
+        let mut args = Vec::with_capacity(4 + all_items.len() * 48);
+        args.extend_from_slice(&(all_items.len() as u32).to_le_bytes());
+        for (i, (type_id, stack_size, slot_id, cid, bound, durability, charges)) in all_items.iter().enumerate() {
+            let item = cimmeria_entity::inventory::InvItem {
+                id: *cid * 100 + *slot_id, // stable instance ID
+                dbid: *type_id,
+                stack_size: *stack_size,
+                slot_id: *slot_id,
+                container_id: *cid,
+                is_bound: *bound,
+                durability: *durability,
+                ammo_types: vec![],
+                cur_ammo_type: 0,
+                charges: *charges,
+            };
+            item.serialize(&mut args);
+        }
 
         send_to_witness(
             socket, connected, entity_to_addr, entity_id,
@@ -698,7 +709,7 @@ pub(crate) async fn handle_grant_item(
                 )
             },
         ).await;
-        tracing::debug!(entity_id, player_id, item_id, container_id, slot = next_slot, instance_id, "Sent onUpdateItem to client");
+        tracing::debug!(entity_id, player_id, item_id, total_items = all_items.len(), "Sent full onUpdateItem to client");
     }
 
     // If this is an equipped container (3=bandolier, 4-14=equipment), send visual updates
