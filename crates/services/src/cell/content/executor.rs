@@ -372,6 +372,18 @@ pub(super) async fn execute_actions(
                     }
                 }
             }
+            Action::SetActiveSlot { bag_id, slot } => {
+                tracing::info!(entity_id, bag_id, slot, chain_id, "Content: set active slot");
+                // Send onActiveSlotUpdate(bagId, slotId) — slotId is 1-indexed on wire
+                let mut args = Vec::with_capacity(8);
+                args.extend_from_slice(&bag_id.to_le_bytes());
+                args.extend_from_slice(&(slot + 1).to_le_bytes()); // 1-indexed
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 70, // onActiveSlotUpdate (method_idx::ON_ACTIVE_SLOT_UPDATE)
+                    args,
+                }).await;
+            }
             Action::TriggerChain { chain_id: target_chain_id } => {
                 tracing::debug!(entity_id, target_chain_id, chain_id, "Content: trigger chain (caller must re-dispatch)");
             }
