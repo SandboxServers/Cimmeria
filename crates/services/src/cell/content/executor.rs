@@ -68,7 +68,8 @@ pub(super) async fn execute_actions(
             }
             Action::GrantItem { item_id, count, container_id } => {
                 tracing::info!(entity_id, item_id, count, chain_id, "Content: granting item");
-                let cid = container_id.unwrap_or_else(|| item_container(item_id, &space_mgr.item_containers));
+                let cid = container_id.filter(|&c| c > 0)
+                    .unwrap_or_else(|| item_container(item_id, &space_mgr.item_containers));
 
                 // If this is a weapon (bandolier), set ammo state on the entity.
                 // Weapons start unloaded — the player must press R to reload.
