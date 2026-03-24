@@ -108,6 +108,10 @@ pub struct SpaceManager {
     /// Effect definitions: effect_id → EffectDef.
     /// Loaded from `resources.effects` + `resources.effect_nvps` at startup.
     pub effect_defs: HashMap<i32, cimmeria_entity::abilities::EffectDef>,
+    /// Event set sequence lookup: (event_set_id, event_id) → sequence_id.
+    /// Used to resolve the correct KismetEventSetSeqID for onSequence calls.
+    /// Loaded from `resources.event_sets_sequences` + `resources.sequences` at startup.
+    pub sequence_map: HashMap<(i32, i32), i32>,
 }
 
 impl SpaceManager {
@@ -129,6 +133,7 @@ impl SpaceManager {
             next_region_id: 1,
             ability_defs: HashMap::new(),
             effect_defs: HashMap::new(),
+            sequence_map: HashMap::new(),
         }
     }
 

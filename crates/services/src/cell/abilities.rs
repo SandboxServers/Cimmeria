@@ -146,18 +146,47 @@ pub async fn handle_use_ability(
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
 
     // ── Send attack animation (onSequence) to attacker + witnesses ──
-    // The event_set_id from the ability def determines which kismet animation plays.
+    // Look up the correct sequence_id from the event set. The client expects
+    // the sequence_id from resources.sequences, NOT the event_set_id.
+    // Reference: AbilityManager.py — self.manager.playSequence(beginSeq.seqId, ...)
     if let Some(event_set_id) = ability_def.as_ref().and_then(|d| d.event_set_id) {
-        let mut seq_args = Vec::with_capacity(28);
-        seq_args.extend_from_slice(&event_set_id.to_le_bytes());       // KismetEventSetSeqID
-        seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
-        seq_args.extend_from_slice(&target_id.to_le_bytes());         // TargetID
-        seq_args.push(1);                                               // PrimaryTarget = true
-        seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
-        seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs array count = 0
-        seq_args.push(0);                                               // ViewType = KISMET_VIEW_Witness
-        seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
-        send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
+        use super::spawner::{EVENT_ABILITY_BEGIN, EVENT_ABILITY_END};
+
+        // Send Ability_Begin (event_id 1000) if the ability has a warmup phase
+        let warmup = ability_def.as_ref().map_or(0.0, |d| d.warmup);
+        if warmup > 0.0 {
+            if let Some(&begin_seq_id) = space_mgr.sequence_map.get(&(event_set_id, EVENT_ABILITY_BEGIN)) {
+                let mut seq_args = Vec::with_capacity(28);
+                seq_args.extend_from_slice(&begin_seq_id.to_le_bytes());       // KismetEventSetSeqID (sequence_id)
+                seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+                seq_args.extend_from_slice(&target_id.to_le_bytes());          // TargetID
+                seq_args.push(1);                                               // PrimaryTarget = true
+                seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
+                seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs array count = 0
+                seq_args.push(0);                                               // ViewType = KISMET_VIEW_Witness
+                seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
+                send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
+            }
+        }
+
+        // Send Ability_End (event_id 1001) — the main ability fire animation
+        if let Some(&end_seq_id) = space_mgr.sequence_map.get(&(event_set_id, EVENT_ABILITY_END)) {
+            let mut seq_args = Vec::with_capacity(28);
+            seq_args.extend_from_slice(&end_seq_id.to_le_bytes());         // KismetEventSetSeqID (sequence_id)
+            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+            seq_args.extend_from_slice(&target_id.to_le_bytes());          // TargetID
+            seq_args.push(1);                                               // PrimaryTarget = true
+            seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
+            seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs array count = 0
+            seq_args.push(0);                                               // ViewType = KISMET_VIEW_Witness
+            seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
+            send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
+        } else {
+            tracing::debug!(
+                entity_id, ability_id, event_set_id,
+                "onSequence: no Ability_End sequence found for event_set"
+            );
+        }
     }
 
     // ── Combat resolution (if target specified) ──

@@ -629,6 +629,44 @@ mod tests {
 
 // ── Ability + Effect definitions ─────────────────────────────────────────────
 
+/// Event IDs for ability sequence lookups (from Atrea.enums).
+pub const EVENT_ABILITY_BEGIN: i32 = 1000;
+pub const EVENT_ABILITY_END: i32 = 1001;
+
+/// Load the event set → sequence mapping from the database.
+///
+/// Joins `resources.event_sets_sequences` with `resources.sequences` to build
+/// a lookup from `(event_set_id, event_id) → sequence_id`. This resolves the
+/// correct KismetEventSetSeqID to send in `onSequence` calls.
+///
+/// The lookup chain: ability has event_set_id → event_sets_sequences join →
+/// sequences table has (sequence_id, event_id). The client expects sequence_id,
+/// NOT event_set_id.
+pub async fn load_event_set_sequences(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<(i32, i32), i32>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT ess.event_set_id, s.sequence_id, s.event_id \
+         FROM resources.event_sets_sequences ess \
+         JOIN resources.sequences s ON s.sequence_id = ess.sequence_id"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map = std::collections::HashMap::with_capacity(rows.len());
+    for r in &rows {
+        let event_set_id: i32 = r.get("event_set_id");
+        let sequence_id: i32 = r.get("sequence_id");
+        let event_id: i32 = r.get("event_id");
+        map.insert((event_set_id, event_id), sequence_id);
+    }
+
+    tracing::info!(count = map.len(), "Loaded event_set sequence mappings");
+    Ok(map)
+}
+
 /// Load all ability definitions from `resources.abilities`.
 pub async fn load_ability_defs(pool: &PgPool) -> Result<std::collections::HashMap<i32, cimmeria_entity::abilities::AbilityDef>, sqlx::Error> {
     let rows = sqlx::query_as::<_, AbilityRow>(

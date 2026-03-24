@@ -206,6 +206,10 @@ impl CellService {
                 Ok(defs) => { space_mgr.effect_defs = defs; }
                 Err(e) => { tracing::warn!("Failed to load effect defs: {e}"); }
             }
+            match spawner::load_event_set_sequences(pool).await {
+                Ok(map) => { space_mgr.sequence_map = map; }
+                Err(e) => { tracing::warn!("Failed to load event_set sequences: {e}"); }
+            }
         }
 
         // Send SpaceData for all startup spaces to BaseApp

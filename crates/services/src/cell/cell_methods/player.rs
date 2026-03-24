@@ -666,22 +666,29 @@ async fn handle_reload(
         args: timer_args,
     }).await;
 
-    // Send reload animation (onSequence) if event_set_id available
+    // Send reload animation (onSequence) if event_set_id available.
+    // Look up the correct sequence_id — the client expects sequence_id, not event_set_id.
     if let Some(esid) = event_set_id {
-        let mut seq_args = Vec::with_capacity(28);
-        seq_args.extend_from_slice(&esid.to_le_bytes());               // KismetEventSetSeqID
-        seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
-        seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID (self)
-        seq_args.push(1);                                               // PrimaryTarget
-        seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
-        seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs count
-        seq_args.push(0);                                               // ViewType
-        seq_args.extend_from_slice(&0i32.to_le_bytes());               // InstanceId
-        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: 1, // onSequence
-            args: seq_args,
-        }).await;
+        use crate::cell::spawner::EVENT_ABILITY_END;
+
+        if let Some(&seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ABILITY_END)) {
+            let mut seq_args = Vec::with_capacity(28);
+            seq_args.extend_from_slice(&seq_id.to_le_bytes());             // KismetEventSetSeqID (sequence_id)
+            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID (self)
+            seq_args.push(1);                                               // PrimaryTarget
+            seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
+            seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs count
+            seq_args.push(0);                                               // ViewType
+            seq_args.extend_from_slice(&0i32.to_le_bytes());               // InstanceId
+            let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index: 1, // onSequence
+                args: seq_args,
+            }).await;
+        } else {
+            tracing::debug!(entity_id, event_set_id = esid, "reload: no Ability_End sequence found");
+        }
     }
 
     // Send onEntityProperty to update ammo display
