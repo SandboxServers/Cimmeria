@@ -88,6 +88,7 @@ pub async fn handle_use_ability(
     // ── Validation (immutable checks first to avoid borrow conflicts) ──
 
     // Pre-checks with immutable borrows
+    let mut out_of_range = false;
     {
         let entity = match space_mgr.get_entity(entity_id) {
             Some(e) => e,
@@ -116,10 +117,24 @@ pub async fn handle_use_ability(
                 let dist = entity.position.distance_to(&target.position);
                 if dist > max_range {
                     tracing::debug!(entity_id, ability_id, distance = dist, max_range, "useAbility: target out of range");
-                    return;
+                    out_of_range = true;
                 }
             }
         }
+    }
+
+    if out_of_range {
+        // Send onErrorCode to player: ERRORCODE_SYSTEM_Ability=0, CONDITION_FEEDBACK_OutsideWeaponRange=42
+        let mut err_args = Vec::with_capacity(7);
+        err_args.push(0u8);                                     // SystemID
+        err_args.extend_from_slice(&ability_id.to_le_bytes());  // InstanceID
+        err_args.extend_from_slice(&42u16.to_le_bytes());       // ErrorCodeID
+        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: 121, // ON_ERROR_CODE
+            args: err_args,
+        }).await;
+        return;
     }
 
     // Mutable borrow for state changes
