@@ -110,10 +110,16 @@ pub async fn handle_use_ability(
             return;
         }
 
-        // Range check: attacker must be within the ability's max_range of the target
+        // Range + target validation
         if target_id > 0 {
-            let max_range = ability_def.as_ref().map_or(30.0, |d| if d.max_range > 0 { d.max_range as f32 } else { 30.0 });
             if let Some(target) = space_mgr.get_entity(target_id as u32) {
+                // Don't attack dead targets
+                if combat::is_dead_state(target.state_field) {
+                    tracing::debug!(entity_id, ability_id, target_id, "useAbility: target is dead");
+                    return;
+                }
+                // Range check
+                let max_range = ability_def.as_ref().map_or(30.0, |d| if d.max_range > 0 { d.max_range as f32 } else { 30.0 });
                 let dist = entity.position.distance_to(&target.position);
                 if dist > max_range {
                     tracing::debug!(entity_id, ability_id, distance = dist, max_range, "useAbility: target out of range");
@@ -341,7 +347,9 @@ pub async fn handle_use_ability(
 
     // ── Send effect results ──
 
-    // onEffectResults to attacker (so they see damage numbers)
+    // onEffectResults — send to both attacker and target, but avoid double-sending.
+    // If attacker is a player and target is an NPC, the witness routing on the NPC
+    // already reaches the player. So only send to the attacker directly + NPC witnesses.
     let effect_args = serialize_effect_results(
         entity_id as i32,  // source
         ability_id,
@@ -350,10 +358,19 @@ pub async fn handle_use_ability(
         qr_result.result_code,
         &effect_results,
     );
+
+    let attacker_is_player = space_mgr.get_entity(entity_id).map_or(false, |e| e.is_player);
+    let target_is_player = space_mgr.get_entity(target_eid).map_or(false, |e| e.is_player);
+
+    // Send to attacker
     send_entity_method(entity_id, 14, effect_args.clone(), tx, space_mgr).await;
 
-    // onEffectResults to target (so they see incoming damage)
-    send_entity_method(target_eid, 14, effect_args, tx, space_mgr).await;
+    // Only send to target if the target is a player (so they see incoming damage).
+    // If target is an NPC, the attacker (as witness) already received it above via
+    // send_entity_method routing.
+    if target_is_player && !attacker_is_player {
+        send_entity_method(target_eid, 14, effect_args, tx, space_mgr).await;
+    }
 
     // ── Send stat updates ──
 
