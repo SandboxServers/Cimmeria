@@ -85,32 +85,48 @@ pub async fn handle_use_ability(
     // ── Look up ability definition from DB (before mutable borrow) ──
     let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
 
-    // ── Validation (requires attacker entity) ──
+    // ── Validation (immutable checks first to avoid borrow conflicts) ──
 
-    let entity = match space_mgr.get_entity_mut(entity_id) {
-        Some(e) => e,
-        None => {
-            tracing::warn!(entity_id, "useAbility: entity not found");
+    // Pre-checks with immutable borrows
+    {
+        let entity = match space_mgr.get_entity(entity_id) {
+            Some(e) => e,
+            None => {
+                tracing::warn!(entity_id, "useAbility: entity not found");
+                return;
+            }
+        };
+
+        if combat::is_dead_state(entity.state_field) {
             return;
         }
+        if !entity.abilities.has_ability(ability_id) {
+            tracing::debug!(entity_id, ability_id, "useAbility: entity does not have ability");
+            return;
+        }
+        if entity.abilities.is_on_cooldown(ability_id) {
+            tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");
+            return;
+        }
+
+        // Range check: attacker must be within the ability's max_range of the target
+        if target_id > 0 {
+            let max_range = ability_def.as_ref().map_or(30.0, |d| if d.max_range > 0 { d.max_range as f32 } else { 30.0 });
+            if let Some(target) = space_mgr.get_entity(target_id as u32) {
+                let dist = entity.position.distance_to(&target.position);
+                if dist > max_range {
+                    tracing::debug!(entity_id, ability_id, distance = dist, max_range, "useAbility: target out of range");
+                    return;
+                }
+            }
+        }
+    }
+
+    // Mutable borrow for state changes
+    let entity = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e,
+        None => return,
     };
-
-    // Dead entities can't use abilities
-    if combat::is_dead_state(entity.state_field) {
-        return;
-    }
-
-    // Check if entity knows this ability (skip for non-entity abilities like reload)
-    if !entity.abilities.has_ability(ability_id) {
-        tracing::debug!(entity_id, ability_id, "useAbility: entity does not have ability");
-        return;
-    }
-
-    // Check cooldown
-    if entity.abilities.is_on_cooldown(ability_id) {
-        tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");
-        return;
-    }
 
     // Check ammo for ranged abilities (players only — NPCs have infinite ammo)
     let required_ammo = ability_def.as_ref().map_or(0, |d| d.required_ammo);
