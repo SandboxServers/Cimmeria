@@ -332,7 +332,7 @@ pub async fn handle_use_ability(
             target.threat_list.clear();
             target.nav_path.clear();
             target.velocity = [0.0; 3]; // Stop movement interpolation
-            target.interaction_type_flags = 0; // Clear interaction so NPC isn't shown as attackable
+            target.interaction_type_flags = 0; // Clear attackable flags; loot generation below may re-set
         }
         tracing::info!(
             attacker = entity_id, target = target_eid,
@@ -386,9 +386,19 @@ pub async fn handle_use_ability(
         state_args.extend_from_slice(&target_state.to_le_bytes());
         send_entity_method(target_eid, 19, state_args, tx, space_mgr).await;
 
-        // Clear interaction type on dead NPCs so they're not shown as attackable
+        // Generate loot from the NPC's loot table, then update interaction type.
+        // Reference: python/cell/SGWMob.py:onDead() + Lootable.generateLoot()
         if !target_is_player {
-            send_entity_method(target_eid, 3, 0i32.to_le_bytes().to_vec(), tx, space_mgr).await; // InteractionType(0)
+            generate_loot_on_death(target_eid, space_mgr);
+
+            // Send InteractionType: INT_NormalLoot if loot was generated, 0 otherwise
+            let interaction_flags = space_mgr.get_entity(target_eid)
+                .map_or(0i64, |e| e.interaction_type_flags);
+            send_entity_method(
+                target_eid, 3,
+                interaction_flags.to_le_bytes().to_vec(),
+                tx, space_mgr,
+            ).await;
         }
 
         // Send death animation via onSequence (Entity_Death = event_id 5001)
@@ -455,6 +465,89 @@ pub async fn handle_use_ability(
     // Generate threat on surviving NPCs so they aggro back
     if !target_died {
         combat::generate_threat(space_mgr, entity_id, target_eid, _total_health_damage as f32);
+    }
+}
+
+/// INT_NormalLoot interaction type flag (1 << 62).
+/// From `python/Atrea/enums.py: INT_NormalLoot = 4611686018427387904`.
+/// This is the interaction bitflag that tells the client to show the loot cursor.
+const INT_NORMAL_LOOT: i64 = 4611686018427387904;
+
+/// Generate loot from the NPC's loot table and store it on the entity.
+///
+/// Rolls each entry independently against its probability, matching the Python
+/// `Lootable.randomizeLoot()` algorithm. If any loot is generated, sets the
+/// entity's interaction_type_flags to INT_NormalLoot and adds a Loot interaction.
+///
+/// Reference: `python/cell/SGWMob.py:onDead()`, `python/cell/interactions/Lootable.py`
+fn generate_loot_on_death(
+    target_eid: u32,
+    space_mgr: &mut SpaceManager,
+) {
+    // Read loot_table_id before mutable borrow
+    let loot_table_id = space_mgr.get_entity(target_eid)
+        .and_then(|e| e.loot_table_id);
+
+    let loot_table_id = match loot_table_id {
+        Some(id) => id,
+        None => return, // No loot table — NPC drops nothing
+    };
+
+    // Look up loot entries (clone to avoid borrow conflict with space_mgr)
+    let entries = match space_mgr.loot_tables.get(&loot_table_id) {
+        Some(entries) => entries.clone(),
+        None => {
+            tracing::debug!(target_eid, loot_table_id, "No loot table entries found");
+            return;
+        }
+    };
+
+    // Roll each entry
+    let target = match space_mgr.get_entity_mut(target_eid) {
+        Some(e) => e,
+        None => return,
+    };
+
+    for entry in &entries {
+        let roll: f32 = rand::random();
+        if roll <= entry.probability {
+            let quantity = if entry.min_quantity == entry.max_quantity {
+                entry.min_quantity
+            } else {
+                let range = (entry.max_quantity - entry.min_quantity + 1) as u32;
+                entry.min_quantity + (rand::random::<u32>() % range) as i32
+            };
+
+            if quantity > 0 {
+                let index = target.next_loot_index;
+                target.next_loot_index += 1;
+
+                target.loot.push(cimmeria_entity::cell_entity::LootItem {
+                    design_id: entry.design_id,
+                    quantity,
+                    index,
+                });
+
+                let name = entry.design_id
+                    .map(|id| format!("item_{id}"))
+                    .unwrap_or_else(|| "naquadah".to_string());
+                tracing::info!(
+                    target_eid, %name, quantity, index,
+                    probability = entry.probability,
+                    "Loot generated"
+                );
+            }
+        }
+    }
+
+    if !target.loot.is_empty() {
+        // Set INT_NormalLoot so the client shows the loot cursor
+        target.interaction_type_flags = INT_NORMAL_LOOT;
+        target.interaction_type = Some(cimmeria_entity::cell_entity::NpcInteractionType::Loot);
+        tracing::info!(
+            target_eid, items = target.loot.len(),
+            "NPC has loot — set INT_NormalLoot interaction"
+        );
     }
 }
 

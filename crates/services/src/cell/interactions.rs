@@ -105,7 +105,11 @@ pub async fn handle_interact(
         }
         Some(NpcInteractionType::Loot) => {
             tracing::info!(entity_id, target_entity_id, "interact: loot → onLootDisplay");
-            send_loot_display(entity_id, target_entity_id as i32, tx).await;
+            // Track which entity the player is looting (for lootItem calls)
+            if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+                player.looting_entity = Some(target_entity_id);
+            }
+            send_loot_display(entity_id, target_entity_id as i32, tx, space_mgr).await;
             None
         }
         None => {
@@ -198,26 +202,158 @@ async fn send_trainer_open(
     }).await;
 }
 
-/// Send `onLootDisplay` (flat index 114) to the player with empty loot.
+/// Send `onLootDisplay` (flat index 114) to the player with the NPC's loot.
 ///
-/// Wire: `entityId:i32, items:ARRAY<{itemId:i32, quantity:i16, index:i32, typeId:i32}>,
-///        initial:i8`.
+/// Wire format per LootItemQuantity from alias.xml:
+///   `itemID:i32, quantity:i16, index:i32, typeID:i32`
+/// Outer: `entityId:i32, ARRAY<LootItemQuantity>, initial:i8`
+///
+/// Reference: `python/cell/interactions/Lootable.py:sendLootList()`
 async fn send_loot_display(
     player_id: u32,
     npc_entity_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
-    let mut args = Vec::with_capacity(9);
-    args.extend_from_slice(&npc_entity_id.to_le_bytes());  // EntityID
-    args.extend_from_slice(&0u32.to_le_bytes());            // count = 0 (empty loot)
-    args.push(1);                                           // Initial = 1
+    // Read loot items from the target entity
+    let loot_items: Vec<(Option<i32>, i32, i32)> = space_mgr.get_entity(npc_entity_id as u32)
+        .map(|e| e.loot.iter().map(|li| (li.design_id, li.quantity, li.index)).collect())
+        .unwrap_or_default();
 
-    tracing::debug!(player_id, npc_entity_id, "Sending onLootDisplay (empty)");
+    let count = loot_items.len() as u32;
+    // Per item: 4 (itemID) + 2 (quantity i16) + 4 (index) + 4 (typeID) = 14 bytes
+    let mut args = Vec::with_capacity(4 + 4 + loot_items.len() * 14 + 1);
+    args.extend_from_slice(&npc_entity_id.to_le_bytes());  // EntityID
+    args.extend_from_slice(&count.to_le_bytes());           // ARRAY count
+
+    for (design_id, quantity, index) in &loot_items {
+        let item_id = design_id.unwrap_or(0); // 0 = naquadah (cash)
+        let type_id = if design_id.is_some() { 1i32 } else { 2i32 }; // LOOT_Item=1, LOOT_Cash=2
+        args.extend_from_slice(&item_id.to_le_bytes());          // itemID: INT32
+        args.extend_from_slice(&(*quantity as i16).to_le_bytes()); // quantity: INT16
+        args.extend_from_slice(&index.to_le_bytes());             // index: INT32
+        args.extend_from_slice(&type_id.to_le_bytes());           // typeID: INT32
+    }
+
+    args.push(1); // Initial = 1
+
+    tracing::info!(
+        player_id, npc_entity_id, count,
+        "Sending onLootDisplay"
+    );
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id: player_id,
-        method_index: 114, // onLootDisplay
+        method_index: crate::mercury::method_idx::ON_LOOT_DISPLAY,
         args,
     }).await;
+}
+
+/// Handle `lootItem(index)` cell method call.
+///
+/// The player picks up one item from a lootable NPC's corpse. On success:
+/// 1. Remove the item from the NPC's loot list
+/// 2. If it's cash (design_id=None), send `onCashChanged` to player
+/// 3. If it's an item, send `onUpdateItem` to player
+/// 4. Send updated loot list to all players with the loot window open
+/// 5. If loot is now empty, clear INT_NormalLoot on the NPC
+///
+/// Reference: `python/cell/interactions/Lootable.py:onLootItem()`
+pub async fn handle_loot_item(
+    entity_id: u32,
+    index: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    // Find which entity the player is looting
+    let looting_target = space_mgr.get_entity(entity_id)
+        .and_then(|e| e.looting_entity);
+
+    let target_eid = match looting_target {
+        Some(eid) => eid,
+        None => {
+            tracing::warn!(entity_id, index, "lootItem: player not looting anything");
+            return;
+        }
+    };
+
+    // Find and remove the loot item from the NPC
+    let removed_item = {
+        let target = match space_mgr.get_entity_mut(target_eid) {
+            Some(e) => e,
+            None => {
+                tracing::warn!(entity_id, target_eid, index, "lootItem: target entity not found");
+                return;
+            }
+        };
+
+        let pos = target.loot.iter().position(|li| li.index == index);
+        match pos {
+            Some(i) => target.loot.remove(i),
+            None => {
+                tracing::warn!(entity_id, target_eid, index, "lootItem: invalid index");
+                return;
+            }
+        }
+    };
+
+    tracing::info!(
+        entity_id, target_eid, index,
+        design_id = ?removed_item.design_id,
+        quantity = removed_item.quantity,
+        "Player looted item"
+    );
+
+    // Grant the loot to the player via BaseApp persistence handlers
+    if removed_item.design_id.is_none() {
+        // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
+        let _ = tx.send(CellToBaseMsg::GrantCash {
+            entity_id,
+            amount: removed_item.quantity,
+        }).await;
+    } else {
+        // Item — grant via GrantItem to base for persistence + onUpdateItem
+        let design_id = removed_item.design_id.unwrap();
+        let player_id = space_mgr.get_entity(entity_id)
+            .and_then(|e| e.player_id)
+            .unwrap_or(0);
+        // Look up preferred container from item_containers cache, default to INV_Main (1)
+        let container_id = space_mgr.item_containers.get(&design_id).copied().unwrap_or(1);
+        let _ = tx.send(CellToBaseMsg::GrantItem {
+            entity_id,
+            player_id,
+            item_id: design_id,
+            container_id,
+            count: removed_item.quantity,
+        }).await;
+    }
+
+    // Check if loot is now empty
+    let loot_empty = space_mgr.get_entity(target_eid)
+        .map_or(true, |e| e.loot.is_empty());
+
+    if loot_empty {
+        // Clear loot interaction on the NPC
+        if let Some(target) = space_mgr.get_entity_mut(target_eid) {
+            target.interaction_type_flags = 0;
+            target.interaction_type = None;
+        }
+        // Broadcast InteractionType(0) to witnesses
+        super::abilities::send_entity_method(
+            target_eid, 3,
+            0i64.to_le_bytes().to_vec(),
+            tx, space_mgr,
+        ).await;
+
+        // Clear looting state on the player
+        if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+            player.looting_entity = None;
+        }
+
+        tracing::info!(target_eid, "NPC loot exhausted — cleared interaction");
+    } else {
+        // Send updated loot list
+        send_loot_display(entity_id, target_eid as i32, tx, space_mgr).await;
+    }
 }
 
 /// Handle initial interaction response: find a matching dialog for the given

@@ -330,7 +330,9 @@ pub async fn dispatch(
         LOOT_ITEM => {
             if args.len() >= 4 {
                 let index = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, index, "UNIMPLEMENTED: lootItem");
+                crate::cell::interactions::handle_loot_item(
+                    entity_id, index, tx, space_mgr,
+                ).await;
             }
             true
         }

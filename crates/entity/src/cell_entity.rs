@@ -188,6 +188,31 @@ pub struct CellEntity {
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
     pub saved_missions_loaded: bool,
+
+    // ── Loot state ────────────────────────────────────────────────────────────
+    /// Loot table ID from `entity_templates.loot_table_id`.
+    pub loot_table_id: Option<i32>,
+    /// Generated loot items on this corpse (populated on NPC death).
+    pub loot: Vec<LootItem>,
+    /// Next loot index counter (matches Python `Lootable.nextLootIndex`).
+    pub next_loot_index: i32,
+    /// Entity ID of the NPC this player is currently looting (only for player entities).
+    /// Set when the player interacts with a lootable corpse, cleared on loot window close.
+    /// Reference: `python/cell/SGWPlayer.py:setLooting()`
+    pub looting_entity: Option<u32>,
+}
+
+/// An item in a dead NPC's loot list, ready for display to players.
+///
+/// Reference: `python/cell/interactions/Lootable.py:LootableItem`
+#[derive(Debug, Clone)]
+pub struct LootItem {
+    /// Item design ID, or None for naquadah (cash).
+    pub design_id: Option<i32>,
+    /// Quantity of this item/cash.
+    pub quantity: i32,
+    /// Unique index within this loot list (1-based, sent to client).
+    pub index: i32,
 }
 
 /// NPC AI state machine.
@@ -250,6 +275,10 @@ impl CellEntity {
             nav_path: Vec::new(),
             move_speed: 0.6, // ~0.6 world units per 100ms tick = 6 units/sec
             saved_missions_loaded: false,
+            loot_table_id: None,
+            loot: Vec::new(),
+            next_loot_index: 1,
+            looting_entity: None,
         }
     }
 

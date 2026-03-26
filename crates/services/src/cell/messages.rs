@@ -254,6 +254,12 @@ pub enum CellToBaseMsg {
         count: i32,
     },
 
+    /// Grant cash (naquadah) to a player and persist to the database.
+    GrantCash {
+        entity_id: u32,
+        amount: i32,
+    },
+
     /// Send a ghost entity method call to a specific witness player.
     ///
     /// Used for broadcasting property updates (InteractionType, SetVisible, etc.)

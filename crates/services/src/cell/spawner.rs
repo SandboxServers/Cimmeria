@@ -197,6 +197,7 @@ pub struct SpawnRecord {
     pub speaker_id: Option<i32>,
     pub static_interaction_sets: Vec<i32>,
     pub has_dynamic_properties: bool,
+    pub loot_table_id: Option<i32>,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -226,7 +227,8 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                t.template_id, t.template_name, t.class, t.static_mesh, t.body_set, \
                t.components, t.flags, t.interaction_type, t.event_set_id, t.level, \
                t.alignment, t.faction, t.name_id, t.speaker_id, \
-               t.static_interaction_sets, t.has_dynamic_properties \
+               t.static_interaction_sets, t.has_dynamic_properties, \
+               t.loot_table_id \
         FROM resources.spawnlist s \
         JOIN resources.entity_templates t ON s.template_id = t.template_id \
         JOIN resources.worlds w ON s.world_id = w.world_id \
@@ -261,6 +263,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             speaker_id: r.get("speaker_id"),
             static_interaction_sets: r.get("static_interaction_sets"),
             has_dynamic_properties: r.get("has_dynamic_properties"),
+            loot_table_id: r.get("loot_table_id"),
         })
         .collect();
 
@@ -536,6 +539,7 @@ mod tests {
             speaker_id: None,
             static_interaction_sets: vec![],
             has_dynamic_properties: true,
+            loot_table_id: None,
         }
     }
 
@@ -775,6 +779,57 @@ struct EffectNvpRow {
     effect_id: i32,
     name: String,
     value: String,
+}
+
+// ── Loot table cache ─────────────────────────────────────────────────────────
+
+/// A single entry in a loot table, loaded from `resources.loot`.
+#[derive(Debug, Clone)]
+pub struct LootTableEntry {
+    pub design_id: Option<i32>,
+    pub min_quantity: i32,
+    pub max_quantity: i32,
+    pub probability: f32,
+}
+
+/// Load loot tables from the database.
+///
+/// Returns `loot_table_id → Vec<LootTableEntry>` so that loot generation at
+/// NPC death can roll drops without per-kill DB queries.
+///
+/// Reference: `python/cell/interactions/Lootable.py:randomizeLoot()`
+pub async fn load_loot_tables(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, Vec<LootTableEntry>>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT loot_table_id, design_id, min_quantity, max_quantity, probability \
+         FROM resources.loot \
+         ORDER BY loot_table_id, loot_id"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map: std::collections::HashMap<i32, Vec<LootTableEntry>> =
+        std::collections::HashMap::new();
+    for r in &rows {
+        let table_id: i32 = r.get("loot_table_id");
+        let entry = LootTableEntry {
+            design_id: r.get("design_id"),
+            min_quantity: r.get("min_quantity"),
+            max_quantity: r.get("max_quantity"),
+            probability: r.get("probability"),
+        };
+        map.entry(table_id).or_default().push(entry);
+    }
+
+    tracing::info!(
+        tables = map.len(),
+        entries = map.values().map(|v| v.len()).sum::<usize>(),
+        "Loaded loot tables"
+    );
+    Ok(map)
 }
 
 /// Load item → preferred container mappings from `resources.items.container_sets`.

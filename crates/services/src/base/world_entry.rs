@@ -38,7 +38,7 @@ use super::world_entry_appearance::{build_appearance_args, build_tint_args};
 use super::world_entry_player::{
     default_player_load_data, query_player_load_data,
     query_player_load_data_by_account, query_world_entry,
-    handle_grant_xp, handle_grant_item, handle_mission_update, handle_mail_request,
+    handle_grant_xp, handle_grant_item, handle_grant_cash, handle_mission_update, handle_mail_request,
 };
 
 // ── Space registry (populated from CellService SpaceData messages) ───────────
@@ -677,6 +677,9 @@ pub(crate) async fn handle_cell_message(
                 entity_id, player_id, item_id, container_id, count,
                 db_pool, socket, connected, entity_to_addr,
             ).await;
+        }
+        CellToBaseMsg::GrantCash { entity_id, amount } => {
+            handle_grant_cash(entity_id, amount, db_pool, socket, connected, entity_to_addr).await;
         }
         CellToBaseMsg::WitnessEntityMethod { witness_id, entity_id, method_index, args } => {
             tracing::debug!(witness_id, entity_id, method_index, "Broadcast entity method to witness");

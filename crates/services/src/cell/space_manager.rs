@@ -116,6 +116,9 @@ pub struct SpaceManager {
     /// Loaded at startup so runtime item grants go into the correct inventory bag
     /// (e.g. mission items into INV_Mission, weapons into bandolier).
     pub item_containers: HashMap<i32, i32>,
+    /// Loot tables: loot_table_id → entries.
+    /// Loaded from `resources.loot` at startup for NPC death loot generation.
+    pub loot_tables: HashMap<i32, Vec<super::spawner::LootTableEntry>>,
 }
 
 impl SpaceManager {
@@ -139,6 +142,7 @@ impl SpaceManager {
             effect_defs: HashMap::new(),
             sequence_map: HashMap::new(),
             item_containers: HashMap::new(),
+            loot_tables: HashMap::new(),
         }
     }
 
@@ -810,6 +814,7 @@ impl SpaceManager {
         e.body_set = Some(record.body_set.clone());
         e.components = record.components.clone().unwrap_or_default();
         e.spawn_position = Some(pos);
+        e.loot_table_id = record.loot_table_id;
 
         // Give NPCs a default combat ability and stats so they can fight back
         e.abilities.add_ability(super::combat::NPC_DEFAULT_ABILITY);
@@ -1217,6 +1222,7 @@ mod tests {
             static_mesh: None,
             body_set: "BS_NID_Soldier.BS_NID_Soldier".to_string(),
             components: Some(vec!["Comp1".to_string()]),
+            loot_table_id: Some(2),
         };
 
         mgr.spawn_npc_from_record(600, &record).unwrap();

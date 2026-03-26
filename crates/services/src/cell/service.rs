@@ -214,6 +214,10 @@ impl CellService {
                 Ok(map) => { space_mgr.item_containers = map; }
                 Err(e) => { tracing::warn!("Failed to load item containers: {e}"); }
             }
+            match spawner::load_loot_tables(pool).await {
+                Ok(tables) => { space_mgr.loot_tables = tables; }
+                Err(e) => { tracing::warn!("Failed to load loot tables: {e}"); }
+            }
         }
 
         // Send SpaceData for all startup spaces to BaseApp

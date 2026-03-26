@@ -190,6 +190,7 @@ pub mod method_idx {
     // onDHDReply = 100
     pub const ON_KNOWN_ABILITIES_UPDATE: u16 = 101;
     pub const ON_TIME_OF_DAY: u16 = 102;
+    pub const ON_LOOT_DISPLAY: u16 = 114;
     pub const ON_PLAYER_DATA_LOADED: u16 = 115;
     pub const ON_CLIENT_MAP_LOAD: u16 = 117;
     pub const GIVE_ABILITY: u16 = 118;

@@ -792,6 +792,85 @@ pub(crate) async fn handle_grant_item(
     }
 }
 
+// ── Cash grant handler ──────────────────────────────────────────────────────
+
+/// Handle a cash (naquadah) grant from CellService.
+///
+/// Updates the player's `sgw_player.naquadah` in the database and sends
+/// `onCashChanged(newTotal)` to the client.
+///
+/// Reference: `python/cell/Inventory.py:addCash()`
+pub(crate) async fn handle_grant_cash(
+    entity_id: u32,
+    amount: i32,
+    db_pool: &Option<Arc<PgPool>>,
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    // Find the player_id via entity_to_addr -> connected state -> account -> query
+    let addr = {
+        let map = entity_to_addr.lock().unwrap();
+        match map.get(&entity_id) {
+            Some(a) => *a,
+            None => {
+                tracing::warn!(entity_id, "GrantCash: no address for entity");
+                return;
+            }
+        }
+    };
+    let account_id = {
+        let clients = connected.lock().unwrap();
+        match clients.get(&addr) {
+            Some(c) => c.account_id,
+            None => {
+                tracing::warn!(entity_id, "GrantCash: no connected state");
+                return;
+            }
+        }
+    };
+
+    if let Some(pool) = db_pool {
+        // Atomically add cash and return the new total
+        let new_total: Option<i32> = sqlx::query_scalar(
+            "UPDATE sgw_player SET naquadah = naquadah + $1 \
+             WHERE account_id = $2 \
+             RETURNING naquadah",
+        )
+        .bind(amount)
+        .bind(account_id as i32)
+        .fetch_optional(pool.as_ref())
+        .await
+        .unwrap_or(None);
+
+        let total = new_total.unwrap_or(amount);
+        tracing::info!(entity_id, amount, total, "GrantCash: updated naquadah");
+
+        // Send onCashChanged(INT32 total) to the client
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::ON_CASH_CHANGED, &total.to_le_bytes(),
+                )
+            },
+        ).await;
+    } else {
+        tracing::debug!(entity_id, amount, "GrantCash: no DB pool, sending untracked");
+        // Send just the grant amount as the new total (not persisted)
+        send_to_witness(
+            socket, connected, entity_to_addr, entity_id,
+            |key, seq, acks| {
+                build_entity_method_packet(
+                    key, seq, acks, entity_id,
+                    method_idx::ON_CASH_CHANGED, &amount.to_le_bytes(),
+                )
+            },
+        ).await;
+    }
+}
+
 // ── Mail handling ───────────────────────────────────────────────────────────
 
 /// Handle a mail request from CellService by querying the DB and sending results to the client.
