@@ -585,8 +585,9 @@ async fn handle_respawn(
     let stat_update = entity.stats.serialize_dirty();
     entity.stats.clear_dirty();
 
-    // Clear dead state from the entity's actual state_field (not a fresh zero!)
+    // Clear dead state and movement lock from the entity's actual state_field
     combat::clear_dead_state(&mut entity.state_field);
+    entity.state_field &= !(1 << 6); // Clear BSF_MovementLock
 
     // Clear all ability cooldowns
     entity.abilities.clear_all_cooldowns();

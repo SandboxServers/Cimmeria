@@ -326,6 +326,7 @@ pub async fn handle_use_ability(
     let target_died = target.stats.get(HEALTH).map_or(false, |s| s.cur <= 0);
     if target_died {
         combat::set_dead_state(&mut target.state_field);
+        target.state_field |= 1 << 6; // BSF_MovementLock — prevent movement while dead
         // Transition NPC AI to Dead so it stops fighting and moving
         if !target.is_player {
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
