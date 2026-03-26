@@ -396,7 +396,7 @@ pub async fn handle_use_ability(
                     let mut seq_args = Vec::with_capacity(28);
                     seq_args.extend_from_slice(&death_seq_id.to_le_bytes());       // KismetEventSetSeqID
                     seq_args.extend_from_slice(&(target_eid as i32).to_le_bytes()); // SourceID (dying entity)
-                    seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());  // TargetID (killer)
+                    seq_args.extend_from_slice(&(target_eid as i32).to_le_bytes()); // TargetID (also dying entity — NOT killer, or client plays death anim on killer)
                     seq_args.push(1);                                                // PrimaryTarget
                     seq_args.extend_from_slice(&0.0f32.to_le_bytes());             // ImpactTime
                     seq_args.extend_from_slice(&0u32.to_le_bytes());                // NameValuePairs count
