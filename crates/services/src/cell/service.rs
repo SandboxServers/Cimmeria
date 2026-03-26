@@ -735,8 +735,8 @@ async fn npc_ai_fight(
     let in_range = dist_to_target <= combat::NPC_ATTACK_RANGE;
     let has_los = space_mgr.has_line_of_sight(npc_id, target_id);
 
-    if !in_range || !has_los {
-        // Can't attack — pathfind toward target, but only recalculate if:
+    if !in_range {
+        // Out of range — pathfind toward target, but only recalculate if:
         // 1. NPC has no active path, OR
         // 2. Target has moved significantly from the path's destination
         let needs_repath = {
@@ -774,7 +774,8 @@ async fn npc_ai_fight(
         return;
     }
 
-    // In range and have LoS — stop moving and attack
+    // In range — stop moving and attack (LoS check skipped to prevent jittering;
+    // the ability's range check handles the actual validation)
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.nav_path.clear();
     }

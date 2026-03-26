@@ -331,6 +331,7 @@ pub async fn handle_use_ability(
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
             target.threat_list.clear();
             target.nav_path.clear();
+            target.velocity = [0.0; 3]; // Stop movement interpolation
             target.interaction_type_flags = 0; // Clear interaction so NPC isn't shown as attackable
         }
         tracing::info!(
