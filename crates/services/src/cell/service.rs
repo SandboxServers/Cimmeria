@@ -786,35 +786,38 @@ async fn npc_ai_leash(
 ) {
     use cimmeria_entity::cell_entity::AiState;
 
-    let npc = match space_mgr.get_entity_mut(npc_id) {
-        Some(e) => e,
-        None => return,
+    let (stat_update, state_field) = {
+        let npc = match space_mgr.get_entity_mut(npc_id) {
+            Some(e) => e,
+            None => return,
+        };
+
+        // Snap back to spawn position
+        if let Some(spawn_pos) = npc.spawn_position {
+            npc.position = spawn_pos;
+        }
+
+        // Restore health to max
+        if let Some(health) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+            health.set_current(health.max);
+        }
+
+        // Clear dead state flag
+        npc.ai_state = AiState::Idle;
+        npc.threat_list.clear();
+        npc.abilities.clear_all_cooldowns();
+
+        // Clear dead flag from the NPC's actual state_field
+        super::combat::clear_dead_state(&mut npc.state_field);
+
+        tracing::info!(npc_id, "NPC AI: leash complete, reset to Idle with full health");
+
+        // Collect data before dropping the mutable borrow
+        let stat_update = npc.stats.serialize_dirty();
+        npc.stats.clear_dirty();
+        let state_field = npc.state_field;
+        (stat_update, state_field)
     };
-
-    // Snap back to spawn position
-    if let Some(spawn_pos) = npc.spawn_position {
-        npc.position = spawn_pos;
-    }
-
-    // Restore health to max
-    if let Some(health) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
-        health.set_current(health.max);
-    }
-
-    // Clear dead state flag
-    npc.ai_state = AiState::Idle;
-    npc.threat_list.clear();
-    npc.abilities.clear_all_cooldowns();
-
-    tracing::info!(npc_id, "NPC AI: leash complete, reset to Idle with full health");
-
-    // Send stat update to witnesses so they see health restored
-    let stat_update = npc.stats.serialize_dirty();
-    npc.stats.clear_dirty();
-
-    // State field update (clear dead flag)
-    let mut state_field = 0u32;
-    super::combat::clear_dead_state(&mut state_field);
 
     super::abilities::send_entity_method(npc_id, 20, stat_update, tx, space_mgr).await;
 

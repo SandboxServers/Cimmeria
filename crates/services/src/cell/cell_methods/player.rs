@@ -62,7 +62,18 @@ pub async fn dispatch(
         CALL_FOR_AID => {
             if args.len() >= 4 {
                 let respawner_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, respawner_id, "UNIMPLEMENTED: callForAid");
+                tracing::info!(entity_id, respawner_id, "callForAid");
+
+                // Send onEndAidWait to close the Defeat Window
+                // Reference: python/cell/SGWPlayer.py:1217 — self.client.onEndAidWait()
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
+                    args: Vec::new(),
+                }).await;
+
+                // Respawn: restore health/focus, clear dead state, send updates
+                handle_respawn(entity_id, tx, space_mgr).await;
             }
             true
         }
@@ -572,17 +583,19 @@ async fn handle_respawn(
     let stat_update = entity.stats.serialize_dirty();
     entity.stats.clear_dirty();
 
-    // Clear dead state
-    let mut state_field = 0u32;
-    combat::clear_dead_state(&mut state_field);
+    // Clear dead state from the entity's actual state_field (not a fresh zero!)
+    combat::clear_dead_state(&mut entity.state_field);
 
     // Clear all ability cooldowns
     entity.abilities.clear_all_cooldowns();
 
+    // Grab the updated state_field before dropping the mutable borrow
+    let state_field = entity.state_field;
+
     // Reset position to spawn point if available
     // (Future: read spawn point from DB or initial position)
 
-    tracing::info!(entity_id, "Player respawned");
+    tracing::info!(entity_id, state_field, "Player respawned");
 
     // Send onStatUpdate (index 20) — restored health/focus
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {

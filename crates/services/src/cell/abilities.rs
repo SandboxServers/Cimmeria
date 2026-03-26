@@ -421,6 +421,28 @@ pub async fn handle_use_ability(
                 }).await;
             }
         }
+
+        // Send onBeginAidWait to player so they see the Defeat Window
+        // Reference: python/cell/SGWPlayer.py:1278 — self.client.onBeginAidWait(100, respawnerList)
+        if target_is_player {
+            let mut aid_args = Vec::with_capacity(32);
+            // INT32: TimeToAid (seconds until auto-respawn)
+            aid_args.extend_from_slice(&30i32.to_le_bytes());
+            // ARRAY<Respawner>: count
+            aid_args.extend_from_slice(&1u32.to_le_bytes());
+            // Respawner[0]: respawnerID (INT32)
+            aid_args.extend_from_slice(&1i32.to_le_bytes());
+            // Respawner[0]: respawnerName (UNICODE_STRING: u32 char_count + UTF-16LE)
+            crate::mercury::write_wstring(&mut aid_args, "Respawn Point");
+            send_entity_method(
+                target_eid,
+                crate::mercury::method_idx::ON_BEGIN_AID_WAIT,
+                aid_args,
+                tx,
+                space_mgr,
+            ).await;
+            tracing::info!(target = target_eid, "Sent onBeginAidWait (Defeat Window)");
+        }
     }
 
     // Generate threat on surviving NPCs so they aggro back

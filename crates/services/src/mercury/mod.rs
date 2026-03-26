@@ -185,6 +185,9 @@ pub mod method_idx {
     pub const SEND_MAIL_RESULT: u16 = 79;
 
     // SGWPlayer own methods (base offset 98)
+    pub const ON_BEGIN_AID_WAIT: u16 = 98;
+    pub const ON_END_AID_WAIT: u16 = 99;
+    // onDHDReply = 100
     pub const ON_KNOWN_ABILITIES_UPDATE: u16 = 101;
     pub const ON_TIME_OF_DAY: u16 = 102;
     pub const ON_PLAYER_DATA_LOADED: u16 = 115;
