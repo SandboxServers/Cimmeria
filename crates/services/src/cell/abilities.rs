@@ -386,6 +386,16 @@ pub async fn handle_use_ability(
         state_args.extend_from_slice(&target_state.to_le_bytes());
         send_entity_method(target_eid, 19, state_args, tx, space_mgr).await;
 
+        // Clear the attacker's target so the targeting reticle disappears.
+        // The reticle stays at the NPC's last standing position otherwise.
+        if attacker_is_player {
+            send_entity_method(
+                entity_id, 16, // onTargetUpdate(INT32 targetId = 0)
+                0i32.to_le_bytes().to_vec(),
+                tx, space_mgr,
+            ).await;
+        }
+
         // Generate loot from the NPC's loot table, then update interaction type.
         // Reference: python/cell/SGWMob.py:onDead() + Lootable.generateLoot()
         if !target_is_player {
