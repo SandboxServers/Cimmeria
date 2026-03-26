@@ -331,6 +331,7 @@ pub async fn handle_use_ability(
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
             target.threat_list.clear();
             target.nav_path.clear();
+            target.interaction_type_flags = 0; // Clear interaction so NPC isn't shown as attackable
         }
         tracing::info!(
             attacker = entity_id, target = target_eid,
@@ -383,6 +384,11 @@ pub async fn handle_use_ability(
         let mut state_args = Vec::with_capacity(4);
         state_args.extend_from_slice(&target_state.to_le_bytes());
         send_entity_method(target_eid, 19, state_args, tx, space_mgr).await;
+
+        // Clear interaction type on dead NPCs so they're not shown as attackable
+        if !target_is_player {
+            send_entity_method(target_eid, 3, 0i32.to_le_bytes().to_vec(), tx, space_mgr).await; // InteractionType(0)
+        }
 
         // Send death animation via onSequence (Entity_Death = event_id 5001)
         // Look up the death sequence from the target's event set via sequence_map

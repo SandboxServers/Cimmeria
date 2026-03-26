@@ -736,25 +736,40 @@ async fn npc_ai_fight(
     let has_los = space_mgr.has_line_of_sight(npc_id, target_id);
 
     if !in_range || !has_los {
-        // Can't attack — pathfind toward target
-        if let Some(path) = space_mgr.find_path(npc_id, &npc_pos, &target_pos) {
-            if path.len() > 1 {
-                // Skip first waypoint (current position), store the rest
-                let waypoints: Vec<_> = path.into_iter().skip(1).collect();
-                if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                    npc.nav_path = waypoints;
+        // Can't attack — pathfind toward target, but only recalculate if:
+        // 1. NPC has no active path, OR
+        // 2. Target has moved significantly from the path's destination
+        let needs_repath = {
+            let npc = space_mgr.get_entity(npc_id);
+            match npc {
+                Some(e) if !e.nav_path.is_empty() => {
+                    // Check if target moved far from the last waypoint
+                    let last_wp = e.nav_path[e.nav_path.len() - 1];
+                    last_wp.distance_to(&target_pos) > 5.0
                 }
+                _ => true, // No path — need one
+            }
+        };
+
+        if needs_repath {
+            if let Some(path) = space_mgr.find_path(npc_id, &npc_pos, &target_pos) {
+                if path.len() > 1 {
+                    let waypoints: Vec<_> = path.into_iter().skip(1).collect();
+                    if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                        npc.nav_path = waypoints;
+                    }
+                    tracing::debug!(
+                        npc_id, target = target_id,
+                        in_range, has_los,
+                        "NPC AI: pathfinding toward target"
+                    );
+                }
+            } else {
                 tracing::debug!(
                     npc_id, target = target_id,
-                    in_range, has_los,
-                    "NPC AI: pathfinding toward target"
+                    "NPC AI: no path to target"
                 );
             }
-        } else {
-            tracing::debug!(
-                npc_id, target = target_id,
-                "NPC AI: no path to target"
-            );
         }
         return;
     }
