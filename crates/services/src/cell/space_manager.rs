@@ -309,17 +309,29 @@ impl SpaceManager {
         self.spaces.insert(space_id, instance);
     }
 
-    /// Check if a space already exists for a world name.
+    /// Check if a non-instanced space already exists for a world name.
+    ///
+    /// Only checks `world_spaces` (non-instanced startup spaces). For instanced
+    /// worlds this always returns false because instances are per-player and not
+    /// cached in `world_spaces`.
     pub fn has_space_for_world(&self, world_name: &str) -> bool {
         self.world_spaces.contains_key(world_name)
     }
 
+    /// Check if a world is marked as instanced in spaces.xml.
+    pub fn is_world_instanced(&self, world_name: &str) -> bool {
+        self.worlds.get(world_name).map_or(false, |w| w.instanced)
+    }
+
     /// Find or create a space for the given world name.
     ///
-    /// - Non-instanced worlds: return the existing startup space.
-    /// - Instanced worlds: return existing shared instance, or create a new one.
+    /// - Non-instanced worlds: return the existing startup space from `world_spaces`.
+    /// - Instanced worlds: always create a NEW space. Each player gets their own
+    ///   private instance (Castle_CellBlock, SGC_W1, etc.). The space is NOT cached
+    ///   in `world_spaces` — it lives only in `spaces` and is destroyed when the
+    ///   last player leaves.
     pub fn find_or_create_space(&mut self, world_name: &str) -> Result<u32, String> {
-        // Check if there's already a space for this world
+        // Non-instanced: return the shared startup space
         if let Some(&space_id) = self.world_spaces.get(world_name) {
             return Ok(space_id);
         }
@@ -335,12 +347,11 @@ impl SpaceManager {
             ));
         }
 
-        // Create a new instance for this instanced world
+        // Instanced: always create a fresh space — do NOT cache in world_spaces
         let space_id = self.allocate_space_id();
         self.create_space_instance(space_id, world_name);
-        self.world_spaces.insert(world_name.to_string(), space_id);
 
-        tracing::info!(space_id, world = %world_name, "Created instanced space on demand");
+        tracing::info!(space_id, world = %world_name, "Created new instanced space");
         Ok(space_id)
     }
 
@@ -376,8 +387,13 @@ impl SpaceManager {
     }
 
     /// Destroy a cell entity, removing it from its space.
+    ///
+    /// If the entity was in an instanced space and was the last player, the
+    /// entire space instance is destroyed (all remaining NPCs removed).
     pub fn destroy_entity(&mut self, entity_id: u32) {
         if let Some(space_id) = self.entity_space.remove(&entity_id) {
+            let mut should_destroy_space = false;
+
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 if let Some(cell_entity) = space.entities.remove(&entity_id) {
                     space.space.remove_entity(
@@ -386,9 +402,43 @@ impl SpaceManager {
                     );
                 }
                 space.players.remove(&entity_id);
+
+                // Check if this was the last player in an instanced space
+                if space.players.is_empty() {
+                    let world_name = &space.world_name;
+                    if self.worlds.get(world_name).map_or(false, |w| w.instanced) {
+                        should_destroy_space = true;
+                    }
+                }
+            }
+
+            if should_destroy_space {
+                self.destroy_space(space_id);
             }
         }
         tracing::debug!(entity_id, "Cell entity destroyed");
+    }
+
+    /// Destroy an instanced space, removing all entities and freeing resources.
+    ///
+    /// Only called for instanced spaces when the last player leaves. Removes
+    /// all NPC entities, the space instance, and any entity_space entries.
+    fn destroy_space(&mut self, space_id: u32) {
+        if let Some(space) = self.spaces.remove(&space_id) {
+            let entity_count = space.entities.len();
+
+            // Remove all entity_space entries for entities in this space
+            for &eid in space.entities.keys() {
+                self.entity_space.remove(&eid);
+            }
+
+            tracing::info!(
+                space_id,
+                world = %space.world_name,
+                entities_removed = entity_count,
+                "Destroyed instanced space (last player left)"
+            );
+        }
     }
 
     /// Mark an entity as having a client controller (player).
@@ -777,12 +827,39 @@ impl SpaceManager {
     ///
     /// Sets class_id, interaction flags, name, faction, alignment, and all other
     /// template-driven fields. Returns the space_id the NPC was placed in.
+    ///
+    /// For non-instanced worlds, uses `find_or_create_space` to resolve the space.
+    /// For instanced worlds, callers should use `spawn_npc_from_record_in_space`
+    /// instead to target a specific space_id.
     pub fn spawn_npc_from_record(
         &mut self,
         entity_id: u32,
         record: &super::spawner::SpawnRecord,
     ) -> Result<u32, String> {
         let space_id = self.find_or_create_space(&record.world_name)?;
+        self.spawn_npc_from_record_into(entity_id, record, space_id)
+    }
+
+    /// Spawn an NPC entity from a database spawn record into a specific space.
+    ///
+    /// Used for instanced spaces where each player gets their own space_id.
+    /// The caller is responsible for providing the correct space_id.
+    pub fn spawn_npc_from_record_in_space(
+        &mut self,
+        entity_id: u32,
+        record: &super::spawner::SpawnRecord,
+        space_id: u32,
+    ) -> Result<u32, String> {
+        self.spawn_npc_from_record_into(entity_id, record, space_id)
+    }
+
+    /// Internal: spawn an NPC from a record into a given space_id.
+    fn spawn_npc_from_record_into(
+        &mut self,
+        entity_id: u32,
+        record: &super::spawner::SpawnRecord,
+        space_id: u32,
+    ) -> Result<u32, String> {
         let pos = Vector3::new(record.x, record.y, record.z);
         // heading is yaw (rotation.y), x and z rotation are 0
         let dir = Vector3::new(0.0, record.heading, 0.0);
@@ -862,12 +939,18 @@ impl SpaceManager {
     ///
     /// Used by content chain actions (SetInteractionType, DestroyTaggedEntity, etc.)
     /// to locate entities by their `spawnlist.tag` value.
+    ///
+    /// Searches all spaces matching `world_name` — works for both non-instanced
+    /// (one space in `world_spaces`) and instanced (multiple spaces) worlds.
     pub fn find_entity_by_tag(&self, world_name: &str, tag: &str) -> Option<u32> {
-        let &space_id = self.world_spaces.get(world_name)?;
-        let space = self.spaces.get(&space_id)?;
-        for (&eid, entity) in &space.entities {
-            if entity.tag.as_deref() == Some(tag) {
-                return Some(eid);
+        for space in self.spaces.values() {
+            if space.world_name != world_name {
+                continue;
+            }
+            for (&eid, entity) in &space.entities {
+                if entity.tag.as_deref() == Some(tag) {
+                    return Some(eid);
+                }
             }
         }
         None
@@ -877,17 +960,22 @@ impl SpaceManager {
     ///
     /// Used by `add_dialog_set` to locate NPC entities that match the slot
     /// (template_id) so per-player InteractionType updates can be sent.
+    ///
+    /// Searches all spaces matching `world_name` — works for both non-instanced
+    /// and instanced worlds.
     pub fn find_entities_by_template(&self, world_name: &str, template_id: i32) -> Vec<u32> {
-        let Some(&space_id) = self.world_spaces.get(world_name) else {
-            return vec![];
-        };
-        let Some(space) = self.spaces.get(&space_id) else {
-            return vec![];
-        };
-        space.entities.iter()
-            .filter(|(_, e)| e.template_id == Some(template_id))
-            .map(|(&eid, _)| eid)
-            .collect()
+        let mut results = Vec::new();
+        for space in self.spaces.values() {
+            if space.world_name != world_name {
+                continue;
+            }
+            for (&eid, e) in &space.entities {
+                if e.template_id == Some(template_id) {
+                    results.push(eid);
+                }
+            }
+        }
+        results
     }
 
     // ── NavMesh queries ──────────────────────────────────────────────────
@@ -1003,12 +1091,16 @@ mod tests {
         let mut mgr = make_manager();
         assert_eq!(mgr.space_id_for_world("Castle_CellBlock"), None);
 
-        let id = mgr.find_or_create_space("Castle_CellBlock").unwrap();
-        assert_eq!(id, 65538); // next after 65536, 65537
+        let id1 = mgr.find_or_create_space("Castle_CellBlock").unwrap();
+        assert_eq!(id1, 65538); // next after 65536, 65537
 
-        // Second call reuses the same space
+        // Each call creates a NEW instance — they should NOT share a space
         let id2 = mgr.find_or_create_space("Castle_CellBlock").unwrap();
-        assert_eq!(id, id2);
+        assert_eq!(id2, 65539);
+        assert_ne!(id1, id2);
+
+        // Instanced spaces are NOT cached in world_spaces
+        assert_eq!(mgr.space_id_for_world("Castle_CellBlock"), None);
     }
 
     #[test]
@@ -1237,5 +1329,70 @@ mod tests {
         assert!(npc.abilities.has_ability(597));
         // Health should be scaled: 200 + (5 * 50) = 450
         assert_eq!(npc.stats.get(cimmeria_entity::stats::HEALTH).unwrap().max, 450);
+    }
+
+    #[test]
+    fn instanced_space_destroyed_when_last_player_leaves() {
+        let mut mgr = make_manager();
+
+        // Create a player entity in an instanced space
+        let space_id = mgr.create_entity(200, "Castle_CellBlock", [5.0, 0.0, 5.0], [0.0; 3]).unwrap();
+        mgr.connect_entity(200);
+
+        // Manually add an NPC into the same instanced space (simulates what
+        // spawn_instance_npcs_from_records does with a specific space_id)
+        let npc_pos = Vector3::new(10.0, 0.0, 10.0);
+        let mut npc = CellEntity::new(
+            EntityId(100_000),
+            SpaceId(space_id as i32),
+            npc_pos,
+        );
+        npc.class_id = 0x04;
+        npc.is_player = false;
+        let space = mgr.spaces.get_mut(&space_id).unwrap();
+        space.space.add_entity(EntityId(100_000), &npc_pos);
+        space.entities.insert(100_000, npc);
+        mgr.entity_space.insert(100_000, space_id);
+
+        assert!(mgr.spaces.contains_key(&space_id));
+        assert_eq!(mgr.spaces[&space_id].entities.len(), 2); // player + NPC
+
+        // Destroy the player — last player in the instance, should destroy the space
+        mgr.destroy_entity(200);
+
+        // Space should be fully cleaned up
+        assert!(!mgr.spaces.contains_key(&space_id));
+        assert!(!mgr.entity_space.contains_key(&200));
+        assert!(!mgr.entity_space.contains_key(&100_000)); // NPC also cleaned up
+    }
+
+    #[test]
+    fn non_instanced_space_survives_player_leaving() {
+        let mut mgr = make_manager();
+
+        // Create a player in a non-instanced startup space
+        mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3]).unwrap();
+        mgr.connect_entity(100);
+
+        // Destroy the player — non-instanced space should NOT be destroyed
+        mgr.destroy_entity(100);
+
+        assert!(mgr.spaces.contains_key(&65536)); // Agnos space still exists
+    }
+
+    #[test]
+    fn two_players_get_separate_instances() {
+        let mut mgr = make_manager();
+
+        let space1 = mgr.create_entity(100, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        let space2 = mgr.create_entity(200, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        assert_ne!(space1, space2);
+        assert!(mgr.spaces.contains_key(&space1));
+        assert!(mgr.spaces.contains_key(&space2));
+
+        // Each space has exactly one entity
+        assert_eq!(mgr.spaces[&space1].entities.len(), 1);
+        assert_eq!(mgr.spaces[&space2].entities.len(), 1);
     }
 }

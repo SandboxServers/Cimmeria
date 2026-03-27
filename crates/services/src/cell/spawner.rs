@@ -306,12 +306,16 @@ pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceMan
     count
 }
 
-/// Spawn NPCs from DB records for a specific instanced world.
+/// Spawn NPCs from DB records for a specific instanced world into a given space.
 ///
-/// Called when an instanced space is first created (e.g., Castle_CellBlock, SGC_W1).
+/// Called when a new instanced space is created for a player (e.g., Castle_CellBlock,
+/// SGC_W1). Each instance gets its own set of NPCs. The `space_id` parameter is the
+/// space that was just created — NPCs are spawned directly into it rather than going
+/// through `find_or_create_space` (which would create yet another new instance).
 pub fn spawn_instance_npcs_from_records(
     records: &[SpawnRecord],
     world_name: &str,
+    space_id: u32,
     space_mgr: &mut SpaceManager,
 ) -> usize {
     let mut count = 0;
@@ -320,10 +324,10 @@ pub fn spawn_instance_npcs_from_records(
             continue;
         }
         let npc_id = space_mgr.allocate_npc_id();
-        match space_mgr.spawn_npc_from_record(npc_id, record) {
-            Ok(space_id) => {
+        match space_mgr.spawn_npc_from_record_in_space(npc_id, record, space_id) {
+            Ok(sid) => {
                 tracing::debug!(
-                    npc_id, space_id, spawn_id = record.spawn_id,
+                    npc_id, space_id = sid, spawn_id = record.spawn_id,
                     world = %record.world_name, name = %record.template_name,
                     tag = ?record.tag, "Spawned instance NPC from DB"
                 );
@@ -603,8 +607,8 @@ mod tests {
     #[test]
     fn spawn_instance_npcs_filters_by_world() {
         let mut mgr = make_manager_with_worlds();
-        // Create the instanced space first
-        mgr.find_or_create_space("Castle_CellBlock").unwrap();
+        // Create the instanced space first — returns a new space_id each time
+        let space_id = mgr.find_or_create_space("Castle_CellBlock").unwrap();
 
         let records = vec![
             make_test_record("Castle_CellBlock", Some("Tag1"), "being"),
@@ -612,7 +616,7 @@ mod tests {
             make_test_record("Agnos", Some("Tag3"), "mob"), // wrong world
         ];
 
-        let count = spawn_instance_npcs_from_records(&records, "Castle_CellBlock", &mut mgr);
+        let count = spawn_instance_npcs_from_records(&records, "Castle_CellBlock", space_id, &mut mgr);
         assert_eq!(count, 2);
     }
 

@@ -325,14 +325,24 @@ async fn handle_base_message(
         BaseToCellMsg::CreateEntity { entity_id, world_name, position, rotation, reply_tx } => {
             tracing::debug!(entity_id, %world_name, ?position, "CreateEntity");
 
-            let is_new_space = !space_mgr.has_space_for_world(&world_name);
+            // For instanced worlds, every CreateEntity gets a new space with its
+            // own NPCs. For non-instanced worlds, the space already exists from
+            // startup and NPCs were spawned then.
+            let is_instanced = space_mgr.is_world_instanced(&world_name);
 
             match space_mgr.create_entity(entity_id, &world_name, position, rotation) {
                 Ok(space_id) => {
-                    if is_new_space {
-                        let npc_count = spawner::spawn_instance_npcs_from_records(spawn_records, &world_name, space_mgr);
+                    if is_instanced {
+                        // Notify BaseApp about the new instanced space so it can
+                        // route entity messages to it
+                        let _ = tx.send(CellToBaseMsg::SpaceData {
+                            space_id,
+                            world_name: world_name.clone(),
+                        }).await;
+
+                        let npc_count = spawner::spawn_instance_npcs_from_records(spawn_records, &world_name, space_id, space_mgr);
                         if npc_count > 0 {
-                            tracing::info!(world = %world_name, npc_count, "Spawned instance NPCs");
+                            tracing::info!(world = %world_name, space_id, npc_count, "Spawned instance NPCs");
                         }
                     }
 
