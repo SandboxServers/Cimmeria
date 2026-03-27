@@ -603,6 +603,30 @@ async fn handle_respawn(
         args: stat_update,
     }).await;
 
+    // Send Entity_Spawn (5000) kismet sequence to end ragdoll / play stand-up animation.
+    // The death flow sends Entity_Death (5001) which calls InitRagdoll in kismet.
+    // Entity_Spawn (5000) calls TermRagdoll — without this, the player stays ragdolled.
+    {
+        const EVENT_ENTITY_SPAWN: i32 = 5000;
+        if let Some(&spawn_seq_id) = space_mgr.sequence_map.get(&(1025, EVENT_ENTITY_SPAWN)) {
+            let mut seq_args = Vec::with_capacity(28);
+            seq_args.extend_from_slice(&spawn_seq_id.to_le_bytes());       // KismetEventSetSeqID
+            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID
+            seq_args.push(1);                                               // PrimaryTarget
+            seq_args.extend_from_slice(&0.0f32.to_le_bytes());             // ImpactTime
+            seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs count
+            seq_args.push(0);                                               // ViewType
+            seq_args.extend_from_slice(&0i32.to_le_bytes());               // InstanceId
+            let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index: 1, // onSequence
+                args: seq_args,
+            }).await;
+            tracing::debug!(entity_id, spawn_seq_id, "Sent Entity_Spawn sequence to end ragdoll");
+        }
+    }
+
     // Send onStateFieldUpdate (index 19) — fully cleared state
     let mut state_args = Vec::with_capacity(4);
     state_args.extend_from_slice(&0u32.to_le_bytes());
