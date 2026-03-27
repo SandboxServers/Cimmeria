@@ -63,16 +63,6 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let respawner_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, respawner_id, "callForAid");
-
-                // Send onEndAidWait to close the Defeat Window
-                // Reference: python/cell/SGWPlayer.py:1217 — self.client.onEndAidWait()
-                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
-                    args: Vec::new(),
-                }).await;
-
-                // Respawn: restore health/focus, clear dead state, send updates
                 handle_respawn(entity_id, tx, space_mgr).await;
             }
             true
@@ -556,10 +546,12 @@ pub async fn dispatch(
 
 // ── Respawn ──────────────────────────────────────────────────────────────────
 
-/// Handle player respawn: restore health/focus, clear dead state, send updates.
+/// Handle player respawn: close defeat UI, restore health/focus, clear all
+/// state flags, teleport to spawn point, send updates.
 ///
 /// Reference: `python/cell/SGWBeing.py:revive()` — restores pools to max,
 /// clears combatantState dead flag, sends stat and state field updates.
+/// Reference: `python/cell/SGWPlayer.py:1217` — self.client.onEndAidWait()
 async fn handle_respawn(
     entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -585,20 +577,24 @@ async fn handle_respawn(
     let stat_update = entity.stats.serialize_dirty();
     entity.stats.clear_dirty();
 
-    // Clear dead state and movement lock from the entity's actual state_field
-    combat::clear_dead_state(&mut entity.state_field);
-    entity.state_field &= !(1 << 6); // Clear BSF_MovementLock
+    // Clear ALL state flags — not just BSF_Dead, but also BSF_InCombat,
+    // BSF_MovementLock, etc. The client uses the state field to drive ragdoll
+    // and other visual states; leaving BSF_InCombat set can prevent the death
+    // animation from ending properly on respawn.
+    entity.state_field = 0;
 
     // Clear all ability cooldowns
     entity.abilities.clear_all_cooldowns();
 
-    // Grab the updated state_field before dropping the mutable borrow
-    let state_field = entity.state_field;
+    tracing::info!(entity_id, "Player respawned, state_field=0");
 
-    // Reset position to spawn point if available
-    // (Future: read spawn point from DB or initial position)
-
-    tracing::info!(entity_id, state_field, "Player respawned");
+    // Send onEndAidWait to close the Defeat Window.
+    // Both callForAid and respawn paths need this.
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
+        args: Vec::new(),
+    }).await;
 
     // Send onStatUpdate (index 20) — restored health/focus
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
@@ -607,14 +603,20 @@ async fn handle_respawn(
         args: stat_update,
     }).await;
 
-    // Send onStateFieldUpdate (index 19) — cleared dead flag
+    // Send onStateFieldUpdate (index 19) — fully cleared state
     let mut state_args = Vec::with_capacity(4);
-    state_args.extend_from_slice(&state_field.to_le_bytes());
+    state_args.extend_from_slice(&0u32.to_le_bytes());
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
         method_index: 19,
         args: state_args,
     }).await;
+
+    // Teleport player to spawn point.
+    // TODO: Read spawn position from the respawner entity or DB. For now,
+    // hardcoded to Castle_CellBlock Praxis spawn from chardef.rs.
+    let spawn_pos: [f32; 3] = [-334.231, 73.472, -228.026];
+    space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 }
 
 // ── Reload ────────────────────────────────────────────────────────────────────
