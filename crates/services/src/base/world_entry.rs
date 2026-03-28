@@ -693,7 +693,18 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::RespawnReload { entity_id, world_name, spawn_pos } => {
             tracing::info!(entity_id, %world_name, ?spawn_pos, "RespawnReload: triggering map reload");
 
-            // 1. Send onClientMapLoad to trigger loading screen
+            // 1a. Send RESET_ENTITIES to destroy the ragdolled pawn.
+            // Without this, onClientMapLoad re-uses the existing pawn which
+            // retains its ragdoll physics mode. RESET_ENTITIES forces the client
+            // to destroy all entities so mapLoaded creates them fresh.
+            send_to_witness(
+                socket, connected, entity_to_addr, entity_id,
+                |key, seq, acks| {
+                    build_reset_entities(key, seq, acks)
+                },
+            ).await;
+
+            // 1b. Send onClientMapLoad to trigger loading screen
             let mut ml_args = Vec::new();
             crate::mercury::write_wstring(&mut ml_args, &world_name); // areaName
             crate::mercury::write_wstring(&mut ml_args, &world_name); // mapPath
