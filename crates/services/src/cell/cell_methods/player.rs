@@ -638,26 +638,33 @@ async fn handle_respawn(
         args: state_args,
     }).await;
 
-    // Teleport player to spawn point via onPlayerTeleport (method 116).
-    // Regular position updates are ignored for the player's own entity (client is
-    // authoritative on its own position). onPlayerTeleport forces the client to
-    // accept the new position.
+    // Teleport player to spawn point.
     let spawn_pos: [f32; 3] = resolve_respawn_position(respawner_id, entity_id, space_mgr);
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 
-    let mut tp_args = Vec::with_capacity(24);
-    tp_args.extend_from_slice(&spawn_pos[0].to_le_bytes()); // Location X
-    tp_args.extend_from_slice(&spawn_pos[1].to_le_bytes()); // Location Y
-    tp_args.extend_from_slice(&spawn_pos[2].to_le_bytes()); // Location Z
-    tp_args.extend_from_slice(&0.0f32.to_le_bytes());       // Direction X
-    tp_args.extend_from_slice(&0.0f32.to_le_bytes());       // Direction Y
-    tp_args.extend_from_slice(&0.0f32.to_le_bytes());       // Direction Z
+    // Use onClientMapLoad (method 117) to force a full map reload at the spawn
+    // position. This resets the client's pawn state (including ragdoll) via a
+    // loading screen transition. onPlayerTeleport (116) doesn't work while in
+    // ragdoll because the pawn's physics mode overrides the position.
+    // Wire: WSTRING areaName, WSTRING mapPath, INT32 WorldID, VECTOR3 Location, VECTOR3 Direction
+    let world_name = space_mgr.get_entity_world_name(entity_id)
+        .unwrap_or_else(|| "Castle_CellBlock".to_string());
+    let mut ml_args = Vec::with_capacity(128);
+    crate::mercury::write_wstring(&mut ml_args, &world_name);    // areaName
+    crate::mercury::write_wstring(&mut ml_args, &world_name);    // mapPath
+    ml_args.extend_from_slice(&0i32.to_le_bytes());              // WorldID (0 = current)
+    ml_args.extend_from_slice(&spawn_pos[0].to_le_bytes());      // Location X
+    ml_args.extend_from_slice(&spawn_pos[1].to_le_bytes());      // Location Y
+    ml_args.extend_from_slice(&spawn_pos[2].to_le_bytes());      // Location Z
+    ml_args.extend_from_slice(&0.0f32.to_le_bytes());            // Direction X
+    ml_args.extend_from_slice(&0.0f32.to_le_bytes());            // Direction Y
+    ml_args.extend_from_slice(&0.0f32.to_le_bytes());            // Direction Z
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
-        method_index: 116, // onPlayerTeleport
-        args: tp_args,
+        method_index: 117, // onClientMapLoad
+        args: ml_args,
     }).await;
-    tracing::info!(entity_id, ?spawn_pos, "Sent onPlayerTeleport");
+    tracing::info!(entity_id, ?spawn_pos, %world_name, "Sent onClientMapLoad for respawn");
 }
 
 /// Look up the respawn position for a given respawner_id.
