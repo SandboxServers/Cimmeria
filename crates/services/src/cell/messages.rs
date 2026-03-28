@@ -260,6 +260,16 @@ pub enum CellToBaseMsg {
         amount: i32,
     },
 
+    /// Respawn reload: send onClientMapLoad to trigger a loading screen, then
+    /// set up pending_client_ready so the next onClientReady triggers a fresh
+    /// mapLoaded sequence with cleared state. This is the only reliable way to
+    /// reset ragdoll/death state on the client.
+    RespawnReload {
+        entity_id: u32,
+        world_name: String,
+        spawn_pos: [f32; 3],
+    },
+
     /// Send a ghost entity method call to a specific witness player.
     ///
     /// Used for broadcasting property updates (InteractionType, SetVisible, etc.)

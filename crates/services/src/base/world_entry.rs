@@ -25,7 +25,7 @@ use crate::mercury::{
     build_reset_entities, build_create_player,
     build_enter_world,
     WorldEntryInfo,
-    DEFAULT_SPACE_ID, SGWPLAYER_CLASS_ID,
+    DEFAULT_SPACE_ID, SGWPLAYER_CLASS_ID, method_idx,
 };
 
 use super::{ConnectedClientState, PendingClientReadyInfo};
@@ -689,6 +689,72 @@ pub(crate) async fn handle_cell_message(
                     build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
                 },
             ).await;
+        }
+        CellToBaseMsg::RespawnReload { entity_id, world_name, spawn_pos } => {
+            tracing::info!(entity_id, %world_name, ?spawn_pos, "RespawnReload: triggering map reload");
+
+            // 1. Send onClientMapLoad to trigger loading screen
+            let mut ml_args = Vec::new();
+            crate::mercury::write_wstring(&mut ml_args, &world_name); // areaName
+            crate::mercury::write_wstring(&mut ml_args, &world_name); // mapPath
+            ml_args.extend_from_slice(&0i32.to_le_bytes());           // WorldID
+            ml_args.extend_from_slice(&spawn_pos[0].to_le_bytes());   // Location X
+            ml_args.extend_from_slice(&spawn_pos[1].to_le_bytes());   // Location Y
+            ml_args.extend_from_slice(&spawn_pos[2].to_le_bytes());   // Location Z
+            ml_args.extend_from_slice(&0.0f32.to_le_bytes());         // Direction X
+            ml_args.extend_from_slice(&0.0f32.to_le_bytes());         // Direction Y
+            ml_args.extend_from_slice(&0.0f32.to_le_bytes());         // Direction Z
+            send_to_witness(
+                socket, connected, entity_to_addr, entity_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(key, seq, acks, entity_id,
+                        method_idx::ON_CLIENT_MAP_LOAD, &ml_args)
+                },
+            ).await;
+
+            // 2. Set up pending_client_ready so the next onClientReady triggers
+            //    a fresh mapLoaded sequence (stats, appearance, state_field=0).
+            //    This is what actually clears the ragdoll — the full world re-entry.
+            //    We query player_id from the DB via account_id since we don't cache it.
+            let addr = {
+                entity_to_addr.lock().unwrap().get(&entity_id).copied()
+            };
+            if let Some(addr) = addr {
+                let (account_id, appearance_args, tint_args) = {
+                    let clients = connected.lock().unwrap();
+                    if let Some(c) = clients.get(&addr) {
+                        (c.account_id,
+                         c.cached_appearance_args.clone().unwrap_or_default(),
+                         c.cached_tint_args.clone().unwrap_or_default())
+                    } else {
+                        (0, vec![], vec![])
+                    }
+                };
+                // Query player_id from account
+                let player_id: i32 = if let Some(pool) = db_pool {
+                    sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE account_id = $1 LIMIT 1")
+                        .bind(account_id as i32)
+                        .fetch_optional(pool.as_ref())
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or(entity_id as i32)
+                } else {
+                    entity_id as i32
+                };
+
+                let mut clients = connected.lock().unwrap();
+                if let Some(c) = clients.get_mut(&addr) {
+                    c.pending_client_ready = Some(super::PendingClientReadyInfo {
+                        entity_id,
+                        player_id,
+                        world_name: world_name.clone(),
+                        appearance_args,
+                        tint_args,
+                    });
+                    tracing::debug!(entity_id, player_id, "Set pending_client_ready for respawn");
+                }
+            }
         }
         CellToBaseMsg::StartMinigame { entity_id, player_id, game_name, difficulty, on_victory_chains } => {
             tracing::info!(entity_id, player_id, %game_name, difficulty, "Starting minigame session");

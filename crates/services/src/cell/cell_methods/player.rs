@@ -590,81 +590,30 @@ async fn handle_respawn(
 
     tracing::info!(entity_id, "Player respawned, state_field=0");
 
-    // Send onEndAidWait to close the Defeat Window.
-    // Both callForAid and respawn paths need this.
+    // Close the Defeat Window
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
         method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
         args: Vec::new(),
     }).await;
 
-    // Send onStatUpdate (index 20) — restored health/focus
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: 20,
-        args: stat_update,
-    }).await;
-
-    // Send Entity_Spawn (5000) kismet sequence to end ragdoll / play stand-up animation.
-    // The death flow sends Entity_Death (5001) which calls InitRagdoll in kismet.
-    // Entity_Spawn (5000) calls TermRagdoll — without this, the player stays ragdolled.
-    {
-        const EVENT_ENTITY_SPAWN: i32 = 5000;
-        if let Some(&spawn_seq_id) = space_mgr.sequence_map.get(&(1025, EVENT_ENTITY_SPAWN)) {
-            let mut seq_args = Vec::with_capacity(28);
-            seq_args.extend_from_slice(&spawn_seq_id.to_le_bytes());       // KismetEventSetSeqID
-            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
-            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID
-            seq_args.push(1);                                               // PrimaryTarget
-            seq_args.extend_from_slice(&0.0f32.to_le_bytes());             // ImpactTime
-            seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs count
-            seq_args.push(0);                                               // ViewType
-            seq_args.extend_from_slice(&0i32.to_le_bytes());               // InstanceId
-            let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: 1, // onSequence
-                args: seq_args,
-            }).await;
-            tracing::debug!(entity_id, spawn_seq_id, "Sent Entity_Spawn sequence to end ragdoll");
-        }
-    }
-
-    // Send onStateFieldUpdate (index 19) — fully cleared state
-    let mut state_args = Vec::with_capacity(4);
-    state_args.extend_from_slice(&0u32.to_le_bytes());
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: 19,
-        args: state_args,
-    }).await;
-
-    // Teleport player to spawn point.
+    // Teleport + full world re-entry: send RespawnReload to BaseApp.
+    // This triggers onClientMapLoad → loading screen → onClientReady → fresh
+    // mapLoaded packet with state_field=0, full health, and appearance rebuild.
+    // The ragdoll persists through simple state updates because the pawn's
+    // physics mode is controlled by the kismet pipeline, not the state field.
+    // A full world re-entry is the only reliable way to reset everything.
     let spawn_pos: [f32; 3] = resolve_respawn_position(respawner_id, entity_id, space_mgr);
-    space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
-
-    // Use onClientMapLoad (method 117) to force a full map reload at the spawn
-    // position. This resets the client's pawn state (including ragdoll) via a
-    // loading screen transition. onPlayerTeleport (116) doesn't work while in
-    // ragdoll because the pawn's physics mode overrides the position.
-    // Wire: WSTRING areaName, WSTRING mapPath, INT32 WorldID, VECTOR3 Location, VECTOR3 Direction
     let world_name = space_mgr.get_entity_world_name(entity_id)
         .unwrap_or_else(|| "Castle_CellBlock".to_string());
-    let mut ml_args = Vec::with_capacity(128);
-    crate::mercury::write_wstring(&mut ml_args, &world_name);    // areaName
-    crate::mercury::write_wstring(&mut ml_args, &world_name);    // mapPath
-    ml_args.extend_from_slice(&0i32.to_le_bytes());              // WorldID (0 = current)
-    ml_args.extend_from_slice(&spawn_pos[0].to_le_bytes());      // Location X
-    ml_args.extend_from_slice(&spawn_pos[1].to_le_bytes());      // Location Y
-    ml_args.extend_from_slice(&spawn_pos[2].to_le_bytes());      // Location Z
-    ml_args.extend_from_slice(&0.0f32.to_le_bytes());            // Direction X
-    ml_args.extend_from_slice(&0.0f32.to_le_bytes());            // Direction Y
-    ml_args.extend_from_slice(&0.0f32.to_le_bytes());            // Direction Z
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+    space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
+
+    let _ = tx.send(CellToBaseMsg::RespawnReload {
         entity_id,
-        method_index: 117, // onClientMapLoad
-        args: ml_args,
+        world_name,
+        spawn_pos,
     }).await;
-    tracing::info!(entity_id, ?spawn_pos, %world_name, "Sent onClientMapLoad for respawn");
+    tracing::info!(entity_id, ?spawn_pos, "Sent RespawnReload to BaseApp");
 }
 
 /// Look up the respawn position for a given respawner_id.
