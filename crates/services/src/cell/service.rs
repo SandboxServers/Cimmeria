@@ -578,7 +578,7 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
                 None
             };
 
-            let (velocity, dir_x, dir_z) = if let Some(nn) = next_next_wp {
+            let (velocity, yaw) = if let Some(nn) = next_next_wp {
                 // Still more waypoints — compute velocity toward the next one
                 let ndx = nn.x - next_wp.x;
                 let ndz = nn.z - next_wp.z;
@@ -587,25 +587,25 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
                 if nd > 0.001 {
                     (
                         [ndx / nd * speed_per_sec, ndy / nd * speed_per_sec, ndz / nd * speed_per_sec],
-                        (ndx / nd * 127.0) as i8,
-                        (ndz / nd * 127.0) as i8,
+                        ndx.atan2(ndz),
                     )
                 } else {
-                    ([0.0; 3], 0i8, 0i8)
+                    ([0.0; 3], 0.0)
                 }
             } else {
-                // Last waypoint — stopping
-                ([0.0; 3], 0i8, 0i8)
+                // Last waypoint — stopping, keep current facing
+                ([0.0; 3], dx.atan2(dz))
             };
 
             space_mgr.update_entity_position(
                 npc_id,
                 [next_wp.x, snap_y, next_wp.z],
-                [dir_x, 0, dir_z],
+                [0, 0, 0],
                 velocity,
             );
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.nav_path.remove(0);
+                npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);
             }
         } else {
             // Move toward waypoint by move_speed units
@@ -618,9 +618,9 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
             // so linear interpolation between them stays close to the floor.
             let new_y = cur_pos.y + dy * t;
 
-            // Face the direction of movement
-            let dir_x = (dx / dist * 127.0) as i8;
-            let dir_z = (dz / dist * 127.0) as i8;
+            // Face the direction of movement (yaw = atan2(dx, dz) in radians)
+            // Direction is [pitch, yaw, roll] — only yaw matters for facing
+            let yaw = dx.atan2(dz);
 
             // Velocity = direction * speed_per_sec
             let velocity = [
@@ -642,9 +642,13 @@ fn npc_movement_tick(space_mgr: &mut SpaceManager) {
             space_mgr.update_entity_position(
                 npc_id,
                 [new_x, new_y, new_z],
-                [dir_x, 0, dir_z],
+                [0, 0, 0],
                 velocity,
             );
+            // Set yaw directly as radians (pack_angle reads direction.y)
+            if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+                npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);
+            }
         }
     }
 }
