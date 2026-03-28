@@ -18,3 +18,5 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (7, 23, 'Respawner_bet_Infirmary', 0, 0, 0);
 
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (8, 12, 'Stasis Chamber', -334.231, 73.472, -228.026);
+

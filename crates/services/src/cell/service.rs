@@ -196,6 +196,18 @@ impl CellService {
             }
         }
 
+        // Load respawner definitions for death/respawn system
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_respawners(pool).await {
+                Ok(defs) => {
+                    space_mgr.respawners = defs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load respawners: {e}");
+                }
+            }
+        }
+
         // Load ability + effect definitions from DB
         if let Some(ref pool) = self.db_pool {
             match spawner::load_ability_defs(pool).await {

@@ -119,6 +119,9 @@ pub struct SpaceManager {
     /// Loot tables: loot_table_id → entries.
     /// Loaded from `resources.loot` at startup for NPC death loot generation.
     pub loot_tables: HashMap<i32, Vec<super::spawner::LootTableEntry>>,
+    /// Respawner definitions loaded from `resources.respawners`.
+    /// Used to populate the Defeat Window and look up respawn positions.
+    pub respawners: Vec<super::spawner::RespawnerDef>,
 }
 
 impl SpaceManager {
@@ -143,6 +146,7 @@ impl SpaceManager {
             sequence_map: HashMap::new(),
             item_containers: HashMap::new(),
             loot_tables: HashMap::new(),
+            respawners: Vec::new(),
         }
     }
 

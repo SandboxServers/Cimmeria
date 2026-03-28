@@ -63,7 +63,7 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let respawner_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, respawner_id, "callForAid");
-                handle_respawn(entity_id, tx, space_mgr).await;
+                handle_respawn(entity_id, respawner_id, tx, space_mgr).await;
             }
             true
         }
@@ -123,8 +123,9 @@ pub async fn dispatch(
         }
 
         RESPAWN => {
-            tracing::debug!(entity_id, "respawn");
-            handle_respawn(entity_id, tx, space_mgr).await;
+            // Auto-respawn (timer expired): use -1 to mean "first respawner for my world"
+            tracing::debug!(entity_id, "respawn (auto)");
+            handle_respawn(entity_id, -1, tx, space_mgr).await;
             true
         }
 
@@ -554,6 +555,7 @@ pub async fn dispatch(
 /// Reference: `python/cell/SGWPlayer.py:1217` — self.client.onEndAidWait()
 async fn handle_respawn(
     entity_id: u32,
+    respawner_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
@@ -640,8 +642,7 @@ async fn handle_respawn(
     // Regular position updates are ignored for the player's own entity (client is
     // authoritative on its own position). onPlayerTeleport forces the client to
     // accept the new position.
-    // TODO: Read spawn position from the respawner entity or DB.
-    let spawn_pos: [f32; 3] = [-334.231, 73.472, -228.026];
+    let spawn_pos: [f32; 3] = resolve_respawn_position(respawner_id, entity_id, space_mgr);
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 
     let mut tp_args = Vec::with_capacity(24);
@@ -657,6 +658,39 @@ async fn handle_respawn(
         args: tp_args,
     }).await;
     tracing::info!(entity_id, ?spawn_pos, "Sent onPlayerTeleport");
+}
+
+/// Look up the respawn position for a given respawner_id.
+///
+/// If `respawner_id` matches a known respawner, use its position.
+/// If `respawner_id` is -1 (auto-respawn), use the first respawner for
+/// the player's current world. Falls back to a hardcoded default if no
+/// respawners are defined for the world.
+fn resolve_respawn_position(
+    respawner_id: i32,
+    entity_id: u32,
+    space_mgr: &SpaceManager,
+) -> [f32; 3] {
+    const DEFAULT_POS: [f32; 3] = [-334.231, 73.472, -228.026];
+
+    // Try exact match first (callForAid sends a specific respawner_id)
+    if respawner_id > 0 {
+        if let Some(resp) = space_mgr.respawners.iter().find(|r| r.respawner_id == respawner_id) {
+            return resp.pos;
+        }
+        tracing::warn!(entity_id, respawner_id, "Respawner not found, falling back to world default");
+    }
+
+    // Auto-respawn or unknown ID: pick first respawner for the player's world
+    if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
+        if let Some(resp) = space_mgr.respawners.iter().find(|r| r.world_name == world_name) {
+            return resp.pos;
+        }
+    }
+
+    // No respawners for this world — use hardcoded fallback
+    tracing::debug!(entity_id, "No respawners for player's world, using default position");
+    DEFAULT_POS
 }
 
 // ── Reload ────────────────────────────────────────────────────────────────────

@@ -453,15 +453,33 @@ pub async fn handle_use_ability(
         // Send onBeginAidWait to player so they see the Defeat Window
         // Reference: python/cell/SGWPlayer.py:1278 — self.client.onBeginAidWait(100, respawnerList)
         if target_is_player {
-            let mut aid_args = Vec::with_capacity(32);
+            // Look up respawners for the player's current world
+            let world_name = space_mgr.get_entity_world_name(target_eid);
+            let matching_respawners: Vec<_> = if let Some(ref wn) = world_name {
+                space_mgr.respawners.iter()
+                    .filter(|r| r.world_name == *wn)
+                    .collect()
+            } else {
+                vec![]
+            };
+
+            let mut aid_args = Vec::with_capacity(64);
             // INT32: TimeToAid (seconds until auto-respawn)
             aid_args.extend_from_slice(&30i32.to_le_bytes());
-            // ARRAY<Respawner>: count
-            aid_args.extend_from_slice(&1u32.to_le_bytes());
-            // Respawner[0]: respawnerID (INT32)
-            aid_args.extend_from_slice(&1i32.to_le_bytes());
-            // Respawner[0]: respawnerName (UNICODE_STRING: u32 char_count + UTF-16LE)
-            crate::mercury::write_wstring(&mut aid_args, "Respawn Point");
+
+            if matching_respawners.is_empty() {
+                // Fallback: single entry with chardef spawn position
+                aid_args.extend_from_slice(&1u32.to_le_bytes()); // array count
+                aid_args.extend_from_slice(&0i32.to_le_bytes()); // respawnerID = 0 (default)
+                crate::mercury::write_wstring(&mut aid_args, "Respawn Point");
+            } else {
+                aid_args.extend_from_slice(&(matching_respawners.len() as u32).to_le_bytes());
+                for resp in &matching_respawners {
+                    aid_args.extend_from_slice(&resp.respawner_id.to_le_bytes());
+                    crate::mercury::write_wstring(&mut aid_args, &resp.name);
+                }
+            }
+
             send_entity_method(
                 target_eid,
                 crate::mercury::method_idx::ON_BEGIN_AID_WAIT,
@@ -469,7 +487,12 @@ pub async fn handle_use_ability(
                 tx,
                 space_mgr,
             ).await;
-            tracing::info!(target = target_eid, "Sent onBeginAidWait (Defeat Window)");
+            tracing::info!(
+                target = target_eid,
+                world = ?world_name,
+                respawner_count = if matching_respawners.is_empty() { 1 } else { matching_respawners.len() },
+                "Sent onBeginAidWait (Defeat Window)"
+            );
         }
     }
 
