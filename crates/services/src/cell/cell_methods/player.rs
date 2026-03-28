@@ -636,11 +636,27 @@ async fn handle_respawn(
         args: state_args,
     }).await;
 
-    // Teleport player to spawn point.
-    // TODO: Read spawn position from the respawner entity or DB. For now,
-    // hardcoded to Castle_CellBlock Praxis spawn from chardef.rs.
+    // Teleport player to spawn point via onPlayerTeleport (method 116).
+    // Regular position updates are ignored for the player's own entity (client is
+    // authoritative on its own position). onPlayerTeleport forces the client to
+    // accept the new position.
+    // TODO: Read spawn position from the respawner entity or DB.
     let spawn_pos: [f32; 3] = [-334.231, 73.472, -228.026];
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
+
+    let mut tp_args = Vec::with_capacity(24);
+    tp_args.extend_from_slice(&spawn_pos[0].to_le_bytes()); // Location X
+    tp_args.extend_from_slice(&spawn_pos[1].to_le_bytes()); // Location Y
+    tp_args.extend_from_slice(&spawn_pos[2].to_le_bytes()); // Location Z
+    tp_args.extend_from_slice(&0.0f32.to_le_bytes());       // Direction X
+    tp_args.extend_from_slice(&0.0f32.to_le_bytes());       // Direction Y
+    tp_args.extend_from_slice(&0.0f32.to_le_bytes());       // Direction Z
+    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+        entity_id,
+        method_index: 116, // onPlayerTeleport
+        args: tp_args,
+    }).await;
+    tracing::info!(entity_id, ?spawn_pos, "Sent onPlayerTeleport");
 }
 
 // ── Reload ────────────────────────────────────────────────────────────────────
