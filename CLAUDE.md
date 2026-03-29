@@ -6,22 +6,48 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 
 ### Architecture
 
-- **AuthenticationServer** - Player login, account management (port 13001)
-- **BaseApp** - Persistent entity state, player base data, shard management (port 32832)
-- **CellApp** - Spatial entity simulation, world cells, movement, AoI
-- **NavBuilder** - Offline navigation mesh generation (Recast/Detour)
-- **ServerEd** - Qt-based editor tool for server administration
-- **UnifiedKernel** - Shared static library: networking (Boost.Asio), protocol, Mercury messaging
+#### Rust Server (active — `crates/`)
 
-### Tech Stack (Current)
+- **cimmeria-server** (`crates/server/`) — binary entry point
+- **cimmeria-services** (`crates/services/`) — Auth, Base, Cell service implementations
+- **cimmeria-mercury** (`crates/mercury/`) — Mercury reliable UDP + AES-256 encryption
+- **cimmeria-entity** (`crates/entity/`) — Entity lifecycle and properties
+- **cimmeria-game** (`crates/game/`) — Game mechanics and rules
+- **cimmeria-content-engine** (`crates/content-engine/`) — Data-driven content pipeline
+- **cimmeria-defs** (`crates/defs/`) — Entity definition parser (XML → Rust types)
+- **cimmeria-common** (`crates/common/`) — Shared types, config, error handling
+- Plus: `commands`, `admin-api`, `supervisor`, `launcher`, `upk`, `upk-objects`
+
+#### C++ Reference Implementation (`src/`, `projects/`)
+
+- **AuthenticationServer** — Login, account management (port 13001)
+- **BaseApp** — Persistent entity state, player base data, shard management (port 32832)
+- **CellApp** — Spatial entity simulation, world cells, movement, AoI
+- **NavBuilder** — Offline navigation mesh generation (Recast/Detour)
+- **ServerEd** — Qt-based editor tool for server administration
+- **UnifiedKernel** — Shared static library: networking, protocol, Mercury messaging
+
+### Tech Stack
+
+#### Rust Server (active)
+
+| Crate | Purpose |
+|---|---|
+| `tokio` | Async runtime and networking |
+| `axum` | HTTP/REST for auth and admin API |
+| `sqlx` | PostgreSQL async driver |
+| `quick-xml` | SOAP/XML parsing |
+| `serde` | Serialization/deserialization |
+
+#### C++ Reference (legacy)
 
 | Component | Version | Notes |
 |---|---|---|
-| MSVC Toolset | v145 (VS2026) | C++11 (migration from v120 complete) |
+| MSVC Toolset | v145 (VS2026) | C++11 codebase, migration from v120 complete |
 | Boost | 1.55.0 | Asio, Python, Thread, DateTime, Filesystem |
-| Python | 3.4.1 | Embedded for entity scripting |
+| Python | 3.4.1 | Embedded via Boost.Python for entity scripting |
 | PostgreSQL | 17.9 | Via SOCI 3.2.1 ORM |
-| OpenSSL | 0.9.8i | Authentication encryption |
+| OpenSSL | 0.9.8i | Authentication encryption — **do not expose to internet** |
 | Qt | 5.x (early) | ServerEd tool only |
 | Recast/Detour | ~2013 era | Navigation meshes |
 | TinyXML2 | ~1.x | Config/entity XML parsing |
@@ -29,26 +55,29 @@ A server emulator for the Stargate Worlds MMO, implementing authentication, worl
 
 ### Key Directories
 
-- `src/` - C++ source (UnifiedKernel, servers, NavBuilder)
-- `projects/` - Visual Studio .vcxproj files
+- `crates/` - **Rust server (active development)** — 15 crates, primary codebase
+- `src/` - C++ reference implementation (`authentication/`, `baseapp/`, `cellapp/`, `common/`, `mercury/`, `nav_builder/`, etc.)
+- `projects/` - Visual Studio .vcxproj files (6 projects for C++ legacy build)
 - `python/` - Python entity scripts and game logic (164 files)
 - `entities/` - XML entity definitions and type registry
 - `config/` - XML service configuration files
 - `data/cache/` - Cooked game data (.pak files)
 - `data/scripts/` - Effect, mission, and space scripts
-- `db/` - PostgreSQL schema files (split structure: `db/database.sql`, `db/resources/`, `db/sgw/`)
-- `docs/` - **111 documents** covering protocol, gameplay, engine, architecture, and RE findings
+- `db/` - PostgreSQL schemas (`db/database.sql` root setup, `db/sgw/` game schema, `db/resources/` content data organized by 18 game systems, `db/deprecated/` old monolithic files)
+- `docs/` - **151 documents** covering protocol, gameplay, engine, architecture, and RE findings
   - `docs/protocol/` - Mercury wire format, entity sync, login handshake, position updates
-  - `docs/gameplay/` - 24 per-system gameplay breakdowns (combat, abilities, inventory, missions, etc.)
+  - `docs/gameplay/` - 26 per-system gameplay breakdowns (combat, abilities, inventory, missions, etc.)
   - `docs/engine/` - BigWorld internals, CME framework, cooked data, space management
   - `docs/reverse-engineering/findings/` - 17 per-system wire format docs from Ghidra analysis
   - `docs/guides/` - Evidence standards, reading decompiled code, entity def guide
   - `docs/client/` - Game client analysis (launcher, tools)
   - `docs/tools/` - Development tool design docs (admin panel)
-- `tools/ServerEd/` - Qt editor tool source
-- `external/` - Vendored dependencies (NOT in git - see .gitignore)
-- `bin64/` - Build output (NOT in git)
-- `lib64/` - Library output (NOT in git)
+  - `docs/architecture/` - Server systems, tech stack, migration roadmap
+  - `docs/content/` - Zone audit, mission chains, archetype mapping
+- `tools/` - Editor tools (ServerEd Qt app, ContentEditor/SceneEditor Tauri apps, Python RE utilities)
+- `frontend/` - React/TypeScript admin UI (compiled dist/ included)
+- `external/` - Vendored C++ dependencies (NOT in git — downloaded by `setup.ps1`)
+- `bin64/`, `lib64/` - C++ build output (NOT in git)
 
 ### Build
 
@@ -131,7 +160,7 @@ Agents with deep expertise in the exact dependency versions currently in use.
 - Memory management patterns: Boost shared_ptr, scoped_ptr
 - Precompiled headers (stdafx.hpp) and VS2026 project structure
 
-**Key files:** `src/lib/`, `src/common/`, `src/server/`, `projects/UnifiedKernel/`
+**Key files:** `src/authentication/`, `src/baseapp/`, `src/cellapp/`, `src/common/`, `src/mercury/`, `projects/UnifiedKernel.vcxproj`
 
 **When to use:** Any changes to server core, networking, protocol messages, inter-service communication, session management, or the kernel library.
 
@@ -167,7 +196,7 @@ Agents with deep expertise in the exact dependency versions currently in use.
 - Connection pooling and transaction management
 - Entity state serialization/deserialization patterns
 
-**Key files:** `db/database.sql`, `db/resources/`, `db/sgw/`, `src/lib/database/` (if present), config `db_connection_string`
+**Key files:** `db/database.sql`, `db/resources/`, `db/sgw/`, config `db_connection_string`
 
 **When to use:** Schema changes, query optimization, new persistent data types, database migration scripts, SOCI layer modifications.
 
@@ -204,7 +233,7 @@ Agents with deep expertise in the exact dependency versions currently in use.
 - Cell-based world partitioning (cell_spaces.xml)
 - Entity movement and position tracking
 
-**Key files:** `src/server/NavBuilder/`, `projects/NavBuilder/`, `projects/Recast/`, `data/spaces/`, `entities/cell_spaces.xml`
+**Key files:** `src/nav_builder/`, `projects/NavBuilder.vcxproj`, `projects/Recast.vcxproj`, `data/spaces/`, `entities/cell_spaces.xml`
 
 **When to use:** Navigation issues, world space changes, movement bugs, AoI tuning, pathfinding, adding new navigable areas.
 
@@ -260,7 +289,7 @@ Agents with deep expertise in the exact dependency versions currently in use.
 - Client connection lifecycle and inactivity timeout handling
 - Python console security (password-gated access on port 8989)
 
-**Key files:** `src/server/AuthenticationServer/`, `projects/AuthenticationServer/`, `config/AuthenticationService.config`
+**Key files:** `src/authentication/`, `projects/AuthenticationServer.vcxproj`, `config/AuthenticationService.config`
 
 **When to use:** Authentication bugs, security hardening, encryption changes, session management, login flow modifications.
 
@@ -268,9 +297,18 @@ Agents with deep expertise in the exact dependency versions currently in use.
 
 ### Migration Specialists
 
-Agents specialized in upgrading specific dependencies from current versions to modern targets. Use these when planning or executing dependency upgrades.
+Agents specialized in upgrading specific dependencies. Full agent definitions and migration order in [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).
 
----
+| Migration | Path | Status |
+|---|---|---|
+| MSVC Toolchain | v120 → v145 (VS2026) | **COMPLETE** |
+| PostgreSQL | 9.2.3 → 17.9 | **COMPLETE** |
+| OpenSSL | 0.9.8i → 3.5.x | Pending — **CRITICAL** (active CVEs) |
+| Boost | 1.55.0 → 1.90.0 | Pending — HIGH |
+| Python | 3.4.1 → 3.12+ | Pending — MEDIUM |
+| Build System | .sln/.vcxproj → CMake+vcpkg | Pending — MEDIUM |
+| Qt | 5.x → 6.10 | Pending — LOW (ServerEd only) |
+| Recast/Detour | 2013 era → 1.6.0 | Pending — LOW |
 
 #### 9. MSVC Toolchain Migration Agent
 

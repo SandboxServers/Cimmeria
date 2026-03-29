@@ -20,7 +20,7 @@ BigWorld Technology internals, Cheyenne Mountain Entertainment (CME) framework, 
 ## Key References
 
 - **BigWorld reference source**: `external/engines/BigWorld-Engine-2.0.1/` (1.9.1 also available)
-- **Cimmeria engine code**: `src/lib/` (UnifiedKernel)
+- **Cimmeria engine code**: `src/` (UnifiedKernel — see `src/common/`, `src/mercury/`, `src/entity/`)
 - **Entity definitions**: `entities/defs/`, `entities/entities.xml`
 - **Space definitions**: `entities/cell_spaces.xml`
 - **Cooked data**: `data/cache/*.pak`, client XSD schemas

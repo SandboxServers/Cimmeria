@@ -16,8 +16,9 @@ Wire formats, Mercury messaging, and client-server protocol documentation.
 
 ## Key References
 
-- **BigWorld source**: `external/engines/BigWorld-Engine-2.0.1/src/lib/network/` and `src/lib/connection/`
-- **Cimmeria implementation**: `src/lib/` (UnifiedKernel), `src/server/*/`
+- **BigWorld source**: `external/engines/BigWorld-Engine-2.0.1/` (if present)
+- **Cimmeria C++ implementation**: `src/mercury/`, `src/authentication/`, `src/baseapp/`, `src/cellapp/`
+- **Cimmeria Rust implementation**: `crates/mercury/`, `crates/services/`
 - **Entity definitions**: `entities/defs/` — define the property/method contract
 - **Existing docs**: `docs/connection-flow.md`, `docs/network-messages.md`
 

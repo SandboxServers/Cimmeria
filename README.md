@@ -138,9 +138,13 @@ Cimmeria/
 │   ├── admin-api/          REST administration API
 │   └── server/             Binary entry point (cargo run -p cimmeria-server)
 ├── src/                    C++ server (legacy reference implementation)
-│   ├── lib/                UnifiedKernel shared library
+│   ├── authentication/     AuthenticationServer source
+│   ├── baseapp/            BaseApp source
+│   ├── cellapp/            CellApp source
 │   ├── common/             Shared utilities
-│   └── server/             Auth, BaseApp, CellApp, NavBuilder
+│   ├── mercury/            Mercury protocol implementation
+│   ├── nav_builder/        NavBuilder source
+│   └── ...                 (entity/, log/, openssl/, util/, xml/)
 ├── python/                 Entity scripts and game logic (164 files)
 ├── entities/               XML entity definitions and type registry
 ├── config/                 XML service configuration
@@ -148,9 +152,10 @@ Cimmeria/
 ├── db/                     PostgreSQL schemas
 │   ├── database.sql        Database and role setup
 │   ├── sgw/                Game schema (accounts, characters, items)
-│   └── resources/          Resource data (abilities, effects, archetypes)
-├── docs/                   123 documents
-├── tools/ServerEd/         Qt editor source
+│   ├── resources/          Resource data (abilities, effects, archetypes — 18 game systems)
+│   └── deprecated/         Old monolithic schema files (reference only)
+├── docs/                   151 documents
+├── tools/                  Editor tools (ServerEd, ContentEditor, SceneEditor, RE utilities)
 ├── bootstrap/              C++ dependency automation
 └── W-NG.sln                Visual Studio solution (C++ legacy build)
 ```
@@ -201,7 +206,7 @@ Test account: **test** / **test** (SHA1 hashed).
 
 ## Documentation
 
-[docs/](docs/readme.md) contains **123 documents** covering protocol, gameplay, engine internals, architecture, and reverse engineering.
+[docs/](docs/readme.md) contains **151 documents** covering protocol, gameplay, engine internals, architecture, and reverse engineering.
 
 **Start here:**
 - [How SGW Works](docs/how-sgw-works.md) — BigWorld + UE3 hybrid architecture
