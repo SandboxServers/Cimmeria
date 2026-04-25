@@ -53,7 +53,21 @@ function Assert-CimmeriaPrerequisites {
     $rustup = Get-Command rustup -ErrorAction SilentlyContinue
     if ($rustup) {
         $toolchain = (rustup show active-toolchain 2>&1) -join ""
-        Write-Status "Found rustup: $toolchain" "Green"
+        # Check if there's an error or no active toolchain (empty string or error message)
+        if ([string]::IsNullOrWhiteSpace($toolchain) -or $toolchain -match "error|could not choose|not configured") {
+            Write-Status "No default Rust toolchain configured — setting to stable..." "Yellow"
+            rustup default stable 2>&1 | ForEach-Object {
+                Write-Status "  $_" "DarkGray"
+            }
+            if ($LASTEXITCODE -eq 0) {
+                $toolchain = (rustup show active-toolchain 2>&1) -join ""
+                Write-Status "Found rustup: $toolchain" "Green"
+            } else {
+                throw "Failed to set default Rust toolchain. Run 'rustup default stable' manually."
+            }
+        } else {
+            Write-Status "Found rustup: $toolchain" "Green"
+        }
     } elseif (-not $needsRelaunch) {
         Write-Status "rustup not found — installing via rustup..." "Yellow"
         Install-RustToolchain -RelaunchAfter:$true
