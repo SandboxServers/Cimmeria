@@ -184,6 +184,7 @@ pub async fn handle_grant_xp(
 /// Handle cash grant from CellService -- update DB and send client notification.
 pub async fn handle_grant_cash(
     entity_id: u32,
+    player_id: i32,
     amount: i32,
     db_pool: &Option<Arc<PgPool>>,
     socket: &Arc<UdpSocket>,
@@ -195,17 +196,7 @@ pub async fn handle_grant_cash(
         match map.get(&entity_id) {
             Some(a) => *a,
             None => {
-                tracing::warn!(entity_id, "GrantCash: no address for entity");
-                return;
-            }
-        }
-    };
-    let account_id = {
-        let clients = connected.lock().unwrap();
-        match clients.get(&addr) {
-            Some(c) => c.account_id,
-            None => {
-                tracing::warn!(entity_id, "GrantCash: no connected state");
+                tracing::warn!(entity_id, player_id, "GrantCash: no address for entity");
                 return;
             }
         }
@@ -214,11 +205,11 @@ pub async fn handle_grant_cash(
     if let Some(pool) = db_pool {
         let new_total: Option<i32> = sqlx::query_scalar(
             "UPDATE sgw_player SET naquadah = naquadah + $1 \
-             WHERE account_id = $2 \
+             WHERE player_id = $2 \
              RETURNING naquadah",
         )
         .bind(amount)
-        .bind(account_id as i32)
+        .bind(player_id)
         .fetch_optional(pool.as_ref())
         .await
         .unwrap_or(None);

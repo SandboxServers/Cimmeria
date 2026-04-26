@@ -688,8 +688,8 @@ pub(crate) async fn handle_cell_message(
                 db_pool, cell_tx, socket, connected, entity_to_addr,
             ).await;
         }
-        CellToBaseMsg::GrantCash { entity_id, amount } => {
-            handle_grant_cash(entity_id, amount, db_pool, socket, connected, entity_to_addr).await;
+        CellToBaseMsg::GrantCash { entity_id, player_id, amount } => {
+            handle_grant_cash(entity_id, player_id, amount, db_pool, socket, connected, entity_to_addr).await;
         }
         CellToBaseMsg::WitnessEntityMethod { witness_id, entity_id, method_index, args } => {
             tracing::debug!(witness_id, entity_id, method_index, "Broadcast entity method to witness");

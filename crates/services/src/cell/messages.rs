@@ -385,6 +385,7 @@ pub enum CellToBaseMsg {
     /// Grant cash (naquadah) to a player and persist to the database.
     GrantCash {
         entity_id: u32,
+        player_id: i32,
         amount: i32,
     },
 

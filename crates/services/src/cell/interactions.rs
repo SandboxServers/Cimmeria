@@ -314,8 +314,12 @@ pub async fn handle_loot_item(
     // Grant the loot to the player via BaseApp persistence handlers
     if removed_item.design_id.is_none() {
         // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
+        let player_id = space_mgr.get_entity(entity_id)
+            .and_then(|e| e.player_id)
+            .unwrap_or(0);
         let _ = tx.send(CellToBaseMsg::GrantCash {
             entity_id,
+            player_id,
             amount: removed_item.quantity,
         }).await;
     } else {
