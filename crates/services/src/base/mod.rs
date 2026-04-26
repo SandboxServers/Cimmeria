@@ -27,7 +27,7 @@ pub(crate) mod cooked_data;
 mod service;
 pub(crate) mod world_entry;
 pub(crate) mod world_entry_appearance;
-pub(crate) mod world_entry_player;
+pub(crate) mod world_entry_methods;
 pub(crate) mod dispatch;
 pub(crate) mod tick_sync;
 

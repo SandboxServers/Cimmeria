@@ -1,0 +1,46 @@
+/// All 42 SGWPlayer cell method indices (67–108).
+///
+/// Reference: `python/cell/SGWPlayer.py` exposed method table.
+
+pub const CALL_FOR_AID: u16 = 67;
+pub const USE_ABILITY: u16 = 68;
+pub const USE_ABILITY_ON_GROUND: u16 = 69;
+pub const RESPAWN: u16 = 70;
+pub const UNSTUCK: u16 = 71;
+pub const RESET_MY_ABILITIES: u16 = 72;
+pub const WHO: u16 = 73;
+pub const INTERACT: u16 = 74;
+pub const DIALOG_BUTTON_CHOICE: u16 = 75;
+pub const INITIAL_RESPONSE: u16 = 76;
+pub const TRAIN_ABILITY: u16 = 77;
+pub const PURCHASE_ITEMS: u16 = 78;
+pub const SELL_ITEMS: u16 = 79;
+pub const BUYBACK_ITEMS: u16 = 80;
+pub const REPAIR_ITEMS: u16 = 81;
+pub const RECHARGE_ITEMS: u16 = 82;
+pub const SET_AUTO_CYCLE: u16 = 83;
+pub const LOOT_ITEM: u16 = 84;
+pub const TRIGGER_REGION: u16 = 85;
+pub const REQUEST_RELOAD: u16 = 86;
+pub const CHOSEN_REWARDS: u16 = 87;
+pub const PET_INVOKE_ABILITY: u16 = 88;
+pub const PET_ABILITY_TOGGLE: u16 = 89;
+pub const PET_CHANGE_STANCE: u16 = 90;
+pub const SET_RING_TRANSPORTER_DEST: u16 = 91;
+pub const WORLD_INSTANCE_RESET: u16 = 92;
+pub const UPDATE_SYSTEM_OPTIONS: u16 = 93;
+pub const ORG_CREATION: u16 = 94;
+pub const SPEND_APPLIED_SCIENCE_POINTS: u16 = 95;
+pub const CRAFT: u16 = 96;
+pub const RESEARCH: u16 = 97;
+pub const REVERSE_ENGINEER: u16 = 98;
+pub const ALLOYING: u16 = 99;
+pub const RESPEC_CRAFTING: u16 = 100;
+pub const CLIENT_CHALLENGE_RESPONSE: u16 = 101;
+pub const SEND_DUEL_RESPONSE: u16 = 102;
+pub const DUEL_FORFEIT: u16 = 103;
+pub const TRADE_REQUEST: u16 = 104;
+pub const TRADE_REQUEST_CANCEL: u16 = 105;
+pub const TRADE_UPDATE_PROPOSAL: u16 = 106;
+pub const TRADE_LOCK_STATE: u16 = 107;
+pub const CANCEL_MOVIE: u16 = 108;

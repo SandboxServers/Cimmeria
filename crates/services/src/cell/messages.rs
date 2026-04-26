@@ -132,7 +132,52 @@ pub enum BaseToCellMsg {
         saved_missions: Vec<SavedMission>,
         /// Player's known ability IDs (from sgw_player.abilities column).
         abilities: Vec<i32>,
+        /// Active bandolier slot from `sgw_player.bandolier_slot` (0-based).
+        active_bandolier_slot: i32,
+        /// Bandolier slot contents loaded from `sgw_inventory` + `resources.items`.
+        bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
     },
+
+    /// Update one bandolier slot after a runtime item grant.
+    ///
+    /// BaseApp persists inventory changes and sends the client inventory update,
+    /// while CellApp owns combat state. This keeps the cell-side weapon cache in
+    /// sync without waiting for relog/world entry.
+    UpdateBandolierItem {
+        entity_id: u32,
+        slot_id: i32,
+        item: cimmeria_entity::cell_entity::BandolierItem,
+        make_active: bool,
+    },
+
+    /// Replace the whole cell-side bandolier cache after inventory move/remove.
+    SyncBandolierItems {
+        entity_id: u32,
+        active_bandolier_slot: i32,
+        bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
+    },
+
+    /// Inventory move committed in BaseApp after DB validation.
+    ///
+    /// CellApp uses the source/target transition to fire item equip/unequip
+    /// event abilities only after the move is known to have persisted.
+    InventoryItemMoveApplied {
+        entity_id: u32,
+        item_id: i32,
+        source_container_id: i32,
+        target_container_id: i32,
+        swapped_item_id: Option<i32>,
+    },
+
+    /// Inventory item instance was fully removed after DB validation.
+    InventoryItemRemoved {
+        entity_id: u32,
+        item_id: i32,
+        source_container_id: i32,
+    },
+
+    /// Inventory item was granted and persisted in BaseApp.
+    InventoryItemGranted { entity_id: u32, item_id: i32 },
 
     /// Reload the content engine from the database (triggered by admin API / Content Editor).
     ReloadContentEngine,
@@ -253,6 +298,89 @@ pub enum CellToBaseMsg {
         container_id: i32,
         count: i32,
     },
+
+    /// Open a vendor store for a player using the vendor template lists.
+    OpenVendorStore {
+        entity_id: u32,
+        player_id: i32,
+        vendor_entity_id: i32,
+        vendor_template_id: Option<i32>,
+    },
+
+    /// Purchase items from the currently-open vendor store.
+    PurchaseVendorItems {
+        entity_id: u32,
+        player_id: i32,
+        vendor_entity_id: i32,
+        vendor_template_id: i32,
+        items: Vec<(i32, i32)>,
+    },
+
+    /// Sell owned inventory items to the currently-open vendor store.
+    SellVendorItems {
+        entity_id: u32,
+        player_id: i32,
+        vendor_entity_id: i32,
+        vendor_template_id: i32,
+        items: Vec<(i32, i32)>,
+    },
+
+    /// Buy back recently-sold inventory items from the currently-open vendor store.
+    BuybackVendorItems {
+        entity_id: u32,
+        player_id: i32,
+        vendor_entity_id: i32,
+        vendor_template_id: i32,
+        items: Vec<(i32, i32)>,
+    },
+
+    /// Request a full inventory refresh from BaseApp.
+    ListInventoryItems { entity_id: u32, player_id: i32 },
+
+    /// Move an inventory item instance to another bag/slot.
+    MoveInventoryItem {
+        entity_id: u32,
+        player_id: i32,
+        item_id: i32,
+        target_container_id: i32,
+        target_slot_id: i32,
+        quantity: i32,
+    },
+
+    /// Remove quantity from an inventory item instance.
+    RemoveInventoryItem {
+        entity_id: u32,
+        player_id: i32,
+        item_id: i32,
+        quantity: i32,
+    },
+
+    /// Repair an owned inventory item instance by a durability ratio.
+    RepairInventoryItem {
+        entity_id: u32,
+        player_id: i32,
+        item_id: i32,
+        repair_ratio: f32,
+    },
+
+    /// Fully repair owned inventory item instances.
+    RepairInventoryItems {
+        entity_id: u32,
+        player_id: i32,
+        item_ids: Vec<i32>,
+        vendor_template_id: Option<i32>,
+    },
+
+    /// Fully recharge owned inventory item instances.
+    RechargeInventoryItems {
+        entity_id: u32,
+        player_id: i32,
+        item_ids: Vec<i32>,
+        vendor_template_id: Option<i32>,
+    },
+
+    /// Persist the player's active bandolier slot.
+    ActiveSlotUpdate { player_id: i32, slot_id: i32 },
 
     /// Grant cash (naquadah) to a player and persist to the database.
     GrantCash {

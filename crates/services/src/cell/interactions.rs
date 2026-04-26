@@ -94,8 +94,8 @@ pub async fn handle_interact(
             Some(dialog_id)
         }
         Some(NpcInteractionType::Vendor) => {
-            tracing::info!(entity_id, target_entity_id, "interact: vendor → onStoreOpen");
-            send_store_open(entity_id, target_entity_id as i32, tx).await;
+            tracing::info!(entity_id, target_entity_id, "interact: vendor → OpenVendorStore");
+            send_store_open(entity_id, target_entity_id as u32, tx, space_mgr).await;
             None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {
@@ -143,28 +143,36 @@ pub async fn send_dialog_display(
     }).await;
 }
 
-/// Send `onStoreOpen` (flat index 109) to the player with empty inventory.
+/// Open a vendor store for a player by requesting store data from base.
 ///
-/// Wire: `entityId:i32, vendorType:i32, buyList:ARRAY, sellList:ARRAY,
-///        buybackList:ARRAY, repairList:ARRAY, rechargeList:ARRAY`.
+/// Sets the vendor_entity on the player entity and sends OpenVendorStore
+/// to BaseApp, which will load the full vendor store data and send it to the client.
 async fn send_store_open(
     player_id: u32,
-    npc_entity_id: i32,
+    vendor_entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
 ) {
-    let mut args = Vec::with_capacity(28);
-    args.extend_from_slice(&npc_entity_id.to_le_bytes());  // EntityId
-    args.extend_from_slice(&1i32.to_le_bytes());            // VendorType (1 = general)
-    // 5 empty arrays (buy, sell, buyback, repair, recharge)
-    for _ in 0..5 {
-        args.extend_from_slice(&0u32.to_le_bytes());        // count = 0
+    // Store vendor entity ID on player for reference during vendor operations
+    if let Some(player) = space_mgr.get_entity_mut(player_id) {
+        player.vendor_entity = Some(vendor_entity_id);
     }
 
-    tracing::debug!(player_id, npc_entity_id, "Sending onStoreOpen (empty)");
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+    // Get vendor template ID from the vendor entity
+    let vendor_template_id = space_mgr.get_entity(vendor_entity_id)
+        .and_then(|e| e.template_id);
+
+    // Get player_id for base app message
+    let player_db_id = space_mgr.get_entity(player_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0);
+
+    tracing::info!(player_id, vendor_entity_id, ?vendor_template_id, "Opening vendor store");
+    let _ = tx.send(CellToBaseMsg::OpenVendorStore {
         entity_id: player_id,
-        method_index: 109, // onStoreOpen
-        args,
+        player_id: player_db_id,
+        vendor_entity_id: vendor_entity_id as i32,
+        vendor_template_id,
     }).await;
 }
 

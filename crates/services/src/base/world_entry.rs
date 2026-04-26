@@ -2,7 +2,7 @@
 //! (create player), mapLoaded (enter world), gate travel, and CellToBase message dispatch.
 //!
 //! Sub-concerns are split into sibling modules:
-//! - `world_entry_player` -- DB queries (world entry, player load, inventory, XP, missions, mail)
+//! - `world_entry_methods` -- DB queries and handlers (world entry, player load, inventory, XP, missions, mail, vendor, etc.)
 //! - `world_entry_appearance` -- BeingAppearance/onEntityTint assembly and visual resend helpers
 
 use std::collections::HashMap;
@@ -35,10 +35,16 @@ use super::helpers::{drain_acks_and_seq, get_account_entity_id, send_to_witness}
 // Re-exports from sibling modules so connect_loop.rs imports stay unchanged.
 pub(crate) use super::world_entry_appearance::{handle_cancel_movie, handle_on_client_ready};
 use super::world_entry_appearance::{build_appearance_args, build_tint_args};
-use super::world_entry_player::{
+use super::world_entry_methods::{
+    handle_grant_xp, handle_grant_item, handle_grant_cash, handle_mission_update, handle_mail_request,
+    handle_open_vendor_store, handle_purchase_vendor_items, handle_sell_vendor_items, handle_buyback_vendor_items,
+    send_full_inventory_update, handle_remove_inventory_item, handle_move_inventory_item,
+    handle_repair_inventory_item, handle_paid_repair_inventory_items,
+    handle_recharge_inventory_items, handle_paid_recharge_inventory_items,
+};
+use super::world_entry_methods::{
     default_player_load_data, query_player_load_data,
     query_player_load_data_by_account, query_world_entry,
-    handle_grant_xp, handle_grant_item, handle_grant_cash, handle_mission_update, handle_mail_request,
 };
 
 // ── Space registry (populated from CellService SpaceData messages) ───────────
@@ -531,6 +537,7 @@ async fn handle_gate_travel(
         rot: rotation,
         world_name: target_world_name.to_string(),
         class_id: SGWPLAYER_CLASS_ID, // See NOTE above -- SGWGmPlayer shifts method indices
+        world_stargates: vec![], // TODO: query accessible stargates for this world
     };
 
     // Query player load data from DB (same player, different world)
@@ -675,7 +682,7 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::GrantItem { entity_id, player_id, item_id, container_id, count } => {
             handle_grant_item(
                 entity_id, player_id, item_id, container_id, count,
-                db_pool, socket, connected, entity_to_addr,
+                db_pool, cell_tx, socket, connected, entity_to_addr,
             ).await;
         }
         CellToBaseMsg::GrantCash { entity_id, amount } => {
@@ -824,6 +831,80 @@ pub(crate) async fn handle_cell_message(
                     result_code,
                     on_victory_chains,
                 }).await;
+            }
+        }
+        CellToBaseMsg::OpenVendorStore { entity_id, player_id, vendor_entity_id, vendor_template_id } => {
+            handle_open_vendor_store(
+                entity_id, player_id, vendor_entity_id, vendor_template_id,
+                &db_pool, socket, connected, entity_to_addr,
+            ).await;
+        }
+        CellToBaseMsg::PurchaseVendorItems { entity_id, player_id, vendor_entity_id, vendor_template_id, items } => {
+            handle_purchase_vendor_items(
+                entity_id, player_id, vendor_entity_id, vendor_template_id, items,
+                &db_pool, cell_tx, socket, connected, entity_to_addr,
+            ).await;
+        }
+        CellToBaseMsg::SellVendorItems { entity_id, player_id, vendor_entity_id, vendor_template_id, items } => {
+            handle_sell_vendor_items(
+                entity_id, player_id, vendor_entity_id, vendor_template_id, items,
+                &db_pool, cell_tx, socket, connected, entity_to_addr,
+            ).await;
+        }
+        CellToBaseMsg::BuybackVendorItems { entity_id, player_id, vendor_entity_id, vendor_template_id, items } => {
+            handle_buyback_vendor_items(
+                entity_id, player_id, vendor_entity_id, vendor_template_id, items,
+                &db_pool, cell_tx, socket, connected, entity_to_addr,
+            ).await;
+        }
+        CellToBaseMsg::ListInventoryItems { entity_id, player_id } => {
+            if let Some(pool) = &db_pool {
+                send_full_inventory_update(entity_id, player_id, pool, socket, connected, entity_to_addr).await;
+            }
+        }
+        CellToBaseMsg::MoveInventoryItem { entity_id, player_id, item_id, target_container_id, target_slot_id, quantity } => {
+            handle_move_inventory_item(
+                entity_id, player_id, item_id, target_container_id, target_slot_id, quantity,
+                &db_pool, cell_tx, socket, connected, entity_to_addr,
+            ).await;
+        }
+        CellToBaseMsg::RemoveInventoryItem { entity_id, player_id, item_id, quantity } => {
+            handle_remove_inventory_item(
+                entity_id, player_id, item_id, quantity,
+                &db_pool, cell_tx, socket, connected, entity_to_addr,
+            ).await;
+        }
+        CellToBaseMsg::RepairInventoryItem { entity_id, player_id, item_id, repair_ratio } => {
+            handle_repair_inventory_item(
+                entity_id, player_id, item_id, repair_ratio,
+                &db_pool, socket, connected, entity_to_addr,
+            ).await;
+        }
+        CellToBaseMsg::RepairInventoryItems { entity_id, player_id, item_ids, vendor_template_id } => {
+            if let Some(template_id) = vendor_template_id {
+                handle_paid_repair_inventory_items(
+                    entity_id, player_id, item_ids, template_id,
+                    &db_pool, socket, connected, entity_to_addr,
+                ).await;
+            }
+        }
+        CellToBaseMsg::RechargeInventoryItems { entity_id, player_id, item_ids, vendor_template_id } => {
+            if let Some(template_id) = vendor_template_id {
+                handle_paid_recharge_inventory_items(
+                    entity_id, player_id, item_ids, template_id,
+                    &db_pool, socket, connected, entity_to_addr,
+                ).await;
+            }
+        }
+        CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id } => {
+            if let Some(pool) = db_pool {
+                let _ = sqlx::query(
+                    "UPDATE sgw_player SET active_bandolier_slot = $1 WHERE player_id = $2"
+                )
+                    .bind(slot_id)
+                    .bind(player_id)
+                    .execute(pool.as_ref())
+                    .await;
             }
         }
     }

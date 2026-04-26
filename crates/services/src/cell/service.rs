@@ -399,7 +399,7 @@ async fn handle_base_message(
             chat::handle_chat_message(entity_id, &speaker_name, speaker_flags, channel, &text, tx, space_mgr).await;
         }
 
-        BaseToCellMsg::InitPlayerState { entity_id, player_id, world_name, saved_missions, abilities } => {
+        BaseToCellMsg::InitPlayerState { entity_id, player_id, world_name, saved_missions, abilities, active_bandolier_slot, bandolier_items } => {
             tracing::debug!(entity_id, player_id, %world_name, saved_count = saved_missions.len(), ability_count = abilities.len(), "InitPlayerState");
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.player_id = Some(player_id);
@@ -508,6 +508,34 @@ async fn handle_base_message(
                     ).await;
                 }
             }
+        }
+
+        BaseToCellMsg::UpdateBandolierItem { entity_id, slot_id, item, make_active } => {
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.bandolier_items.insert(slot_id, item);
+                if make_active {
+                    entity.active_bandolier_slot = slot_id;
+                }
+            }
+        }
+
+        BaseToCellMsg::SyncBandolierItems { entity_id, active_bandolier_slot, bandolier_items } => {
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                entity.active_bandolier_slot = active_bandolier_slot;
+                entity.bandolier_items = bandolier_items.into_iter().collect();
+            }
+        }
+
+        BaseToCellMsg::InventoryItemMoveApplied { entity_id, item_id, source_container_id, target_container_id, swapped_item_id } => {
+            tracing::debug!(entity_id, item_id, source = source_container_id, target = target_container_id, "Item moved in inventory");
+        }
+
+        BaseToCellMsg::InventoryItemRemoved { entity_id, item_id, source_container_id } => {
+            tracing::debug!(entity_id, item_id, source = source_container_id, "Item removed from inventory");
+        }
+
+        BaseToCellMsg::InventoryItemGranted { entity_id, item_id } => {
+            tracing::debug!(entity_id, item_id, "Item granted to player");
         }
     }
 }

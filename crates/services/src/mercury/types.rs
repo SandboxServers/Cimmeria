@@ -33,6 +33,8 @@ pub struct WorldEntryInfo {
     /// Entity class ID for CREATE_BASE_PLAYER: SGWPlayer (0x02) or SGWGmPlayer (0x03).
     /// Matches `python/base/Account.py:293-296`: access_level > 0 → SGWGmPlayer.
     pub class_id: u8,
+    /// Stargate entity IDs accessible from this world.
+    pub world_stargates: Vec<i32>,
 }
 
 /// Archetype base stat values (from `db/resources/Archetypes/Seed/archetypes.sql`).
@@ -73,6 +75,12 @@ pub struct PlayerLoadData {
     pub first_login: i32,
     pub access_level: i32,
     pub skin_color_id: i32,
+    /// Active bandolier slot (0-based) from `sgw_player.bandolier_slot`.
+    pub active_bandolier_slot: i32,
+    /// Active weapon clip size from `sgw_player.active_weapon_clip_size`.
+    pub active_weapon_clip_size: i32,
+    /// Active ammo type enum from `sgw_player.active_ammo_type`.
+    pub active_ammo_type: i32,
     /// Ability tree data (3 branches). Loaded from `resources.archetype_ability_tree`.
     pub ability_tree: cimmeria_entity::abilities::AbilityTreeData,
     /// Inventory items loaded from `sgw_inventory`.

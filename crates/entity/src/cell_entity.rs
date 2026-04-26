@@ -11,6 +11,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+
 use cimmeria_common::{EntityId, SpaceId, Vector3};
 
 use crate::abilities::AbilityManager;
@@ -200,6 +202,15 @@ pub struct CellEntity {
     /// Set when the player interacts with a lootable corpse, cleared on loot window close.
     /// Reference: `python/cell/SGWPlayer.py:setLooting()`
     pub looting_entity: Option<u32>,
+
+    /// Entity ID of the currently-open vendor (only for player entities).
+    pub vendor_entity: Option<u32>,
+
+    /// Currently-active bandolier slot (0-based index).
+    pub active_bandolier_slot: i32,
+
+    /// Player's bandolier items (quick-access equipment slots).
+    pub bandolier_items: HashMap<i32, BandolierItem>,
 }
 
 /// An item in a dead NPC's loot list, ready for display to players.
@@ -213,6 +224,17 @@ pub struct LootItem {
     pub quantity: i32,
     /// Unique index within this loot list (1-based, sent to client).
     pub index: i32,
+}
+
+/// An item slot in the player's bandolier (quick-access equipment bar).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BandolierItem {
+    /// Item design ID.
+    pub item_id: i32,
+    /// Magazine/clip size for weapons.
+    pub clip_size: i32,
+    /// Default ammo type for weapons.
+    pub default_ammo_type: i32,
 }
 
 /// NPC AI state machine.
@@ -279,6 +301,9 @@ impl CellEntity {
             loot: Vec::new(),
             next_loot_index: 1,
             looting_entity: None,
+            vendor_entity: None,
+            active_bandolier_slot: 0,
+            bandolier_items: HashMap::new(),
         }
     }
 
