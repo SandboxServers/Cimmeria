@@ -10,11 +10,17 @@ pub enum ConfigError {
     Json(#[from] serde_json::Error),
 }
 
+fn default_manifest_url() -> String {
+    "https://cimmeria.blob.core.windows.net/patches/manifest.json".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LauncherConfig {
     pub install_path: String,
     pub server_address: String,
-    pub patch_server_url: String,
+    // Full Azure blob URL to manifest.json, published by CI/CD.
+    #[serde(alias = "patch_server_url", default = "default_manifest_url")]
+    pub manifest_url: String,
     pub last_patch_check: Option<String>,
 }
 
@@ -23,7 +29,7 @@ impl Default for LauncherConfig {
         Self {
             install_path: String::new(),
             server_address: "play.cimmeria.gg".to_string(),
-            patch_server_url: "https://patches.cimmeria.gg".to_string(),
+            manifest_url: default_manifest_url(),
             last_patch_check: None,
         }
     }
@@ -53,7 +59,7 @@ mod tests {
     fn test_default_config() {
         let config = LauncherConfig::default();
         assert_eq!(config.server_address, "play.cimmeria.gg");
-        assert_eq!(config.patch_server_url, "https://patches.cimmeria.gg");
+        assert_eq!(config.manifest_url, "https://cimmeria.blob.core.windows.net/patches/manifest.json");
         assert!(config.install_path.is_empty());
         assert!(config.last_patch_check.is_none());
     }
@@ -66,7 +72,7 @@ mod tests {
         let config = LauncherConfig {
             install_path: "C:\\Games\\SGW".to_string(),
             server_address: "localhost".to_string(),
-            patch_server_url: "https://example.com".to_string(),
+            manifest_url: "https://example.com/manifest.json".to_string(),
             last_patch_check: Some("2026-03-06T12:00:00Z".to_string()),
         };
 
@@ -74,6 +80,23 @@ mod tests {
         let loaded = LauncherConfig::load(&path).unwrap();
         assert_eq!(loaded.install_path, "C:\\Games\\SGW");
         assert_eq!(loaded.server_address, "localhost");
+        assert_eq!(loaded.manifest_url, "https://example.com/manifest.json");
+    }
+
+    #[test]
+    fn test_backward_compat_patch_server_url() {
+        // Old config with patch_server_url should deserialize to manifest_url
+        let json = r#"{"install_path":"C:\\Games\\SGW","server_address":"play.cimmeria.gg","patch_server_url":"https://old.patches.gg/manifest.json","last_patch_check":null}"#;
+        let config: LauncherConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.manifest_url, "https://old.patches.gg/manifest.json");
+    }
+
+    #[test]
+    fn test_missing_manifest_url_gets_default() {
+        // Old config without manifest_url or patch_server_url gets the default
+        let json = r#"{"install_path":"C:\\Games\\SGW","server_address":"play.cimmeria.gg","last_patch_check":null}"#;
+        let config: LauncherConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.manifest_url, "https://cimmeria.blob.core.windows.net/patches/manifest.json");
     }
 
     #[test]
