@@ -105,23 +105,34 @@ pub(crate) async fn handle_on_client_ready(
         vec![]
     };
 
-    // Query active bandolier slot and items from DB (Bug #1: don't hardcode empty state)
+    // Query active bandolier slot and items from DB (Bug #1: don't hardcode empty state).
+    // Distinguish DB error from "no row" so a connection blip doesn't silently default
+    // a real player to empty bandolier state.
     let (active_bandolier_slot, bandolier_items) = if let Some(pool) = db_pool {
-        let slot: Option<i32> = sqlx::query_scalar(
-            "SELECT bandolier_slot FROM sgw_player WHERE player_id = $1"
+        let slot: i32 = match sqlx::query_scalar::<_, Option<i32>>(
+            "SELECT bandolier_slot FROM sgw_player WHERE player_id = $1",
         )
         .bind(pending.player_id)
         .fetch_optional(pool.as_ref())
         .await
-        .unwrap_or(None)
-        .flatten();
+        {
+            Ok(Some(Some(s))) => s,
+            Ok(Some(None)) | Ok(None) => 0,
+            Err(e) => {
+                tracing::error!(
+                    player_id = pending.player_id,
+                    "Bandolier slot read failed; defaulting to 0 but logging error: {e}"
+                );
+                0
+            }
+        };
 
         let items = super::world_entry_methods::player_load::meta::query_bandolier_items(
             db_pool,
             pending.player_id,
         ).await;
 
-        (slot.unwrap_or(0), items)
+        (slot, items)
     } else {
         (0, Vec::new())
     };

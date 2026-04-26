@@ -57,7 +57,7 @@ pub async fn load_store_buy_items(pool: &Arc<PgPool>, item_list_id: Option<i32>)
     let price_rows = if list_item_ids.is_empty() {
         Vec::new()
     } else {
-        sqlx::query_as::<_, ItemListPriceRow>(
+        match sqlx::query_as::<_, ItemListPriceRow>(
             "SELECT item_id, design_id, quantity \
              FROM resources.item_list_prices \
              WHERE item_id = ANY($1) ORDER BY item_id, design_id",
@@ -65,13 +65,20 @@ pub async fn load_store_buy_items(pool: &Arc<PgPool>, item_list_id: Option<i32>)
         .bind(&list_item_ids)
         .fetch_all(pool.as_ref())
         .await
-        .unwrap_or_else(|e| {
-            tracing::error!(
-                item_list_id,
-                "OpenVendorStore: item price query failed: {e}"
-            );
-            Vec::new()
-        })
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                // Bail rather than display items with missing prerequisite costs
+                // — purchase validation rejects on prereq mismatch, so showing
+                // a "free" item that the player can't actually buy is worse
+                // than showing an empty store.
+                tracing::error!(
+                    item_list_id,
+                    "OpenVendorStore: item price query failed, refusing to display partial store: {e}"
+                );
+                return Vec::new();
+            }
+        }
     };
 
     rows.into_iter()
@@ -183,7 +190,7 @@ pub async fn load_vendor_repair_prices(
     };
 
     match sqlx::query_as::<_, StoreItemCostRow>(
-        "SELECT GREATEST((ili.naquadah * (100 - inv.durability)) / 100, 1)::INT AS cost, inv.item_id \
+        "SELECT GREATEST((ili.naquadah::BIGINT * (100 - inv.durability)::BIGINT) / 100, 1)::INT AS cost, inv.item_id \
          FROM resources.item_list_items ili \
          JOIN sgw_inventory inv ON inv.type_id = ili.design_id \
          WHERE ili.item_list_id = $1 AND inv.character_id = $2 \
@@ -222,7 +229,7 @@ pub async fn load_vendor_recharge_prices(
     };
 
     match sqlx::query_as::<_, StoreItemCostRow>(
-        "SELECT GREATEST((ili.naquadah * (ri.charges - inv.charges)) / ri.charges, 1)::INT AS cost, inv.item_id \
+        "SELECT GREATEST((ili.naquadah::BIGINT * (ri.charges - inv.charges)::BIGINT) / NULLIF(ri.charges, 0)::BIGINT, 1)::INT AS cost, inv.item_id \
          FROM resources.item_list_items ili \
          JOIN sgw_inventory inv ON inv.type_id = ili.design_id \
          JOIN resources.items ri ON ri.item_id = inv.type_id \

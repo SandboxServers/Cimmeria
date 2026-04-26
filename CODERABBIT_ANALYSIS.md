@@ -143,11 +143,11 @@ CodeRabbit identified 52 issues across PR #77. **Critical issues: 6** (data loss
 
 ## 🟡 IMPORT & MODULE PATH ERRORS (8 issues) — FIX BEFORE BUILD
 
-### Vendor submodule super:: nesting (6 files)
-**Files:** `paid_repair.rs`, `paid_recharge.rs`, `recharge.rs`, `repair.rs`, `purchase.rs`, `sell.rs`, `buyback.rs`  
-**Issue:** Use `super::super::super::` instead of `super::super::` (one level too deep).  
-**Impact:** Compilation fails; "module not found".  
-**Recommendation:** ✅ **FIX IMMEDIATELY** — Search/replace `super::super::super::inventory::` → `super::super::inventory::`.  
+### Vendor submodule super:: nesting (7 files)
+**Files:** `paid_repair.rs`, `paid_recharge.rs`, `recharge.rs`, `repair.rs`, `purchase.rs`, `sell.rs`, `buyback.rs` (7 files total)
+**Issue:** Use `super::super::super::` instead of `super::super::` (one level too deep).
+**Impact:** Compilation fails; "module not found".
+**Recommendation:** ✅ **FIX IMMEDIATELY** — Search/replace `super::super::super::inventory::` → `super::super::inventory::`.
 **Effort:** 5 min | **Risk:** Low (mechanical fix)
 
 ### Recharge calls wrong module path

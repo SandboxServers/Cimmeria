@@ -546,8 +546,8 @@ async fn handle_base_message(
             tracing::debug!(entity_id, item_id, source = source_container_id, "Item removed from inventory");
         }
 
-        BaseToCellMsg::InventoryItemGranted { entity_id, item_id } => {
-            tracing::debug!(entity_id, item_id, "Item granted to player");
+        BaseToCellMsg::InventoryItemGranted { entity_id, item_id, container_id, slot_id, quantity } => {
+            tracing::debug!(entity_id, item_id, container_id, slot_id, quantity, "Item granted to player");
         }
     }
 }

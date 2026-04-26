@@ -21,9 +21,13 @@ pub async fn query_world_entry(
     entity_manager: &Arc<std::sync::Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) -> WorldEntryInfo {
-    let player_eid = entity_manager.lock().unwrap().create_entity("SGWPlayer").0 as u32;
-
-    let default_entry = || WorldEntryInfo {
+    // Defer allocating the entity_id until we know the player row loaded —
+    // otherwise every DB failure / no-character lookup leaks an entity_id
+    // in the EntityManager.
+    let alloc_entity = || -> u32 {
+        entity_manager.lock().unwrap().create_entity("SGWPlayer").0 as u32
+    };
+    let default_entry_with_eid = |player_eid: u32| WorldEntryInfo {
         player_entity_id: player_eid,
         space_id: DEFAULT_SPACE_ID,
         pos: [0.0; 3],
@@ -35,7 +39,7 @@ pub async fn query_world_entry(
 
     let pool = match db_pool {
         Some(p) => p,
-        None => return default_entry(),
+        None => return default_entry_with_eid(alloc_entity()),
     };
 
     #[derive(sqlx::FromRow)]
@@ -56,11 +60,12 @@ pub async fn query_world_entry(
     .await
     {
         Ok(Some(row)) => {
+            let player_eid = alloc_entity();
             let pos = [row.pos_x, row.pos_y, row.pos_z];
 
             let space_id = if let Some(tx) = cell_tx {
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-                if tx
+                match tx
                     .send(BaseToCellMsg::CreateEntity {
                         entity_id: player_eid,
                         world_name: row.world_location.clone(),
@@ -69,17 +74,21 @@ pub async fn query_world_entry(
                         reply_tx,
                     })
                     .await
-                    .is_ok()
                 {
-                    match reply_rx.await {
+                    Ok(_) => match reply_rx.await {
                         Ok(sid) => sid,
                         Err(_) => {
                             tracing::warn!(world = %row.world_location, "CellService oneshot dropped -- using fallback");
                             resolve_space_id_fallback(&row.world_location)
                         }
+                    },
+                    Err(e) => {
+                        tracing::warn!(
+                            world = %row.world_location,
+                            "CellService channel closed sending CreateEntity ({e}) — using fallback space id"
+                        );
+                        resolve_space_id_fallback(&row.world_location)
                     }
-                } else {
-                    resolve_space_id_fallback(&row.world_location)
                 }
             } else {
                 resolve_space_id_fallback(&row.world_location)
@@ -99,11 +108,11 @@ pub async fn query_world_entry(
         }
         Ok(None) => {
             tracing::warn!(player_id, account_id, "Character not found for world entry");
-            default_entry()
+            default_entry_with_eid(alloc_entity())
         }
         Err(e) => {
             tracing::error!("Failed to query world entry: {e}");
-            default_entry()
+            default_entry_with_eid(alloc_entity())
         }
     }
 }

@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use crate::base::{ConnectedClientState, helpers};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx};
-use super::super::player_load::meta::query_bandolier_items;
+use super::super::player_load::meta::query_bandolier_items_tx;
 
 pub async fn send_cash_changed_to_client(
     entity_id: u32,
@@ -73,14 +73,33 @@ pub async fn sync_bandolier_after_inventory_change(
         }
     };
 
-    let bandolier_items = query_bandolier_items(db_pool, player_id).await;
+    // Read bandolier items *inside* the transaction so the FOR UPDATE lock above
+    // protects this read against concurrent inventory mutations on container 3.
+    let bandolier_items = match query_bandolier_items_tx(&mut db_tx, player_id).await {
+        Ok(items) => items,
+        Err(e) => {
+            let _ = db_tx.rollback().await;
+            tracing::error!(entity_id, player_id, "sync_bandolier: read items failed: {e}");
+            return;
+        }
+    };
+
+    // Empty bandolier: nothing to reconcile, don't write a sentinel slot or
+    // emit a Sync that says "active slot 0 of nothing".
+    if bandolier_items.is_empty() {
+        if let Err(e) = db_tx.commit().await {
+            tracing::error!(entity_id, player_id, "sync_bandolier: commit failed: {e}");
+        }
+        return;
+    }
+
     let mut active_slot = old_active;
     if !bandolier_items.iter().any(|(slot, _)| *slot == active_slot) {
         active_slot = bandolier_items
             .iter()
             .map(|(slot, _)| *slot)
             .min()
-            .unwrap_or(0);
+            .unwrap_or(old_active);
         if let Err(e) = sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
             .bind(active_slot)
             .bind(player_id)
@@ -99,7 +118,7 @@ pub async fn sync_bandolier_after_inventory_change(
         return;
     }
 
-    if active_slot != old_active && !bandolier_items.is_empty() {
+    if active_slot != old_active {
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&3i32.to_le_bytes());
         args.extend_from_slice(&(active_slot + 1).to_le_bytes());

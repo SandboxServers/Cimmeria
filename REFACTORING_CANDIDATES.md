@@ -195,7 +195,7 @@ Avg: 350L (weighted)
    - Isolated system (no impact on other services)
    - ~2.5 hours effort
 
-2. **Phase 2 (SOON):** Refactor `world_entry.rs` → 5-6 modules
+2. **Phase 2 (SOON):** Refactor `world_entry.rs` → 9 modules + mod.rs hub
    - Message handler hub
    - Clear semantic groups (vendor, inventory, rewards, events)
    - ~2 hours effort
@@ -257,8 +257,8 @@ crates/services/src/
 ```
 
 **Total new structure:**
-- Base service: 24 world_entry_methods files + 9 world_entry files = **33 focused modules** (vs. 1 monolithic)
-- Cell service: 9 cell_methods/player files + 9 space_manager files = **18 focused modules** (vs. 2 monolithic)
+- Base service: 24 world_entry_methods files + 10 world_entry files (incl. `mod.rs`) = **34 focused modules** (vs. 1 monolithic)
+- Cell service: 9 cell_methods/player files + 10 space_manager files (incl. `mod.rs`) = **19 focused modules** (vs. 2 monolithic)
 - **Zero files > 400L** (currently 2)
 - **Max file: ~260L** (currently 1,402L)
 

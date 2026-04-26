@@ -884,30 +884,51 @@ pub(crate) async fn handle_cell_message(
             ).await;
         }
         CellToBaseMsg::RepairInventoryItems { entity_id, player_id, item_ids, vendor_template_id } => {
-            if let Some(template_id) = vendor_template_id {
-                handle_paid_repair_inventory_items(
-                    entity_id, player_id, item_ids, template_id,
-                    &db_pool, socket, connected, entity_to_addr,
-                ).await;
+            match vendor_template_id {
+                Some(template_id) => {
+                    handle_paid_repair_inventory_items(
+                        entity_id, player_id, item_ids, template_id,
+                        &db_pool, socket, connected, entity_to_addr,
+                    ).await;
+                }
+                None => tracing::warn!(
+                    entity_id, player_id, item_count = item_ids.len(),
+                    "RepairInventoryItems dropped: missing vendor_template_id"
+                ),
             }
         }
         CellToBaseMsg::RechargeInventoryItems { entity_id, player_id, item_ids, vendor_template_id } => {
-            if let Some(template_id) = vendor_template_id {
-                handle_paid_recharge_inventory_items(
-                    entity_id, player_id, item_ids, template_id,
-                    &db_pool, socket, connected, entity_to_addr,
-                ).await;
+            match vendor_template_id {
+                Some(template_id) => {
+                    handle_paid_recharge_inventory_items(
+                        entity_id, player_id, item_ids, template_id,
+                        &db_pool, socket, connected, entity_to_addr,
+                    ).await;
+                }
+                None => tracing::warn!(
+                    entity_id, player_id, item_count = item_ids.len(),
+                    "RechargeInventoryItems dropped: missing vendor_template_id"
+                ),
             }
         }
         CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id } => {
             if let Some(pool) = db_pool {
-                let _ = sqlx::query(
+                match sqlx::query(
                     "UPDATE sgw_player SET active_bandolier_slot = $1 WHERE player_id = $2"
                 )
                     .bind(slot_id)
                     .bind(player_id)
                     .execute(pool.as_ref())
-                    .await;
+                    .await
+                {
+                    Ok(res) if res.rows_affected() == 0 => {
+                        tracing::warn!(player_id, slot_id, "ActiveSlotUpdate: no rows updated");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(player_id, slot_id, error = %e, "ActiveSlotUpdate: DB write failed");
+                    }
+                }
             }
         }
     }

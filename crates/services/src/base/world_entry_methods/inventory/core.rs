@@ -62,11 +62,22 @@ pub async fn send_full_inventory_update(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> usize {
-    let all_items: Vec<InventoryRow> = sqlx::query_as::<_, InventoryRow>(INVENTORY_ITEM_SELECT)
-        .bind(player_id)
-        .fetch_all(pool.as_ref())
-        .await
-        .unwrap_or_default();
+    let all_items: Vec<InventoryRow> =
+        match sqlx::query_as::<_, InventoryRow>(INVENTORY_ITEM_SELECT)
+            .bind(player_id)
+            .fetch_all(pool.as_ref())
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::error!(
+                    entity_id,
+                    player_id,
+                    "send_full_inventory_update: query failed, refusing to broadcast empty inventory: {e}"
+                );
+                return 0;
+            }
+        };
 
     let mut args = Vec::with_capacity(4 + all_items.len() * 48);
     args.extend_from_slice(&(all_items.len() as u32).to_le_bytes());
@@ -130,18 +141,33 @@ pub async fn handle_remove_inventory_item(
         return;
     }
 
-    let source = sqlx::query_as::<_, InventoryInstanceRow>(
+    let mut tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!(player_id, item_id, "RemoveInventoryItem: begin tx failed: {e}");
+            return;
+        }
+    };
+
+    let source = match sqlx::query_as::<_, InventoryInstanceRow>(
         "SELECT type_id, stack_size, container_id, slot_id, bound, durability, charges \
-         FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1",
+         FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1 FOR UPDATE",
     )
     .bind(player_id)
     .bind(item_id)
-    .fetch_optional(pool.as_ref())
+    .fetch_optional(&mut *tx)
     .await
-    .ok()
-    .flatten();
+    {
+        Ok(opt) => opt,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            tracing::error!(player_id, item_id, "RemoveInventoryItem: source query failed: {e}");
+            return;
+        }
+    };
 
     let Some(source) = source else {
+        let _ = tx.rollback().await;
         tracing::warn!(
             player_id,
             item_id,
@@ -155,7 +181,7 @@ pub async fn handle_remove_inventory_item(
         sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1 AND item_id = $2")
             .bind(player_id)
             .bind(item_id)
-            .execute(pool.as_ref())
+            .execute(&mut *tx)
             .await
     } else {
         sqlx::query(
@@ -165,17 +191,19 @@ pub async fn handle_remove_inventory_item(
         .bind(quantity)
         .bind(player_id)
         .bind(item_id)
-        .execute(pool.as_ref())
+        .execute(&mut *tx)
         .await
     };
 
     match result {
         Ok(r) if r.rows_affected() == 1 => {}
         Ok(_) => {
+            let _ = tx.rollback().await;
             tracing::warn!(player_id, item_id, "RemoveInventoryItem: no rows changed");
             return;
         }
         Err(e) => {
+            let _ = tx.rollback().await;
             tracing::error!(
                 player_id,
                 item_id,
@@ -183,6 +211,11 @@ pub async fn handle_remove_inventory_item(
             );
             return;
         }
+    }
+
+    if let Err(e) = tx.commit().await {
+        tracing::error!(player_id, item_id, "RemoveInventoryItem: commit failed: {e}");
+        return;
     }
 
     let total_items = send_full_inventory_update(

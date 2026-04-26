@@ -8,7 +8,6 @@ use tokio::net::UdpSocket;
 use crate::base::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
 use super::super::inventory::grant::normalize_item_ids;
-use super::data::load_vendor_recharge_prices;
 use super::store::send_store_update_to_client;
 use super::helpers::send_cash_changed_to_client;
 use super::purchase_helpers::load_vendor_template_lists;
@@ -218,10 +217,15 @@ pub async fn handle_paid_recharge_inventory_items(
          FROM resources.items ri \
          WHERE inv.character_id = $1 \
            AND inv.item_id = ANY($2) \
-           AND inv.type_id = ri.item_id",
+           AND inv.type_id = ri.item_id \
+           AND inv.container_id = ANY($3) \
+           AND inv.stack_size = 1 \
+           AND ri.charges > 0 \
+           AND inv.charges < ri.charges",
     )
     .bind(player_id)
     .bind(&item_ids)
+    .bind(VENDOR_FILTER_BAGS.as_slice())
     .execute(&mut *tx)
     .await;
 

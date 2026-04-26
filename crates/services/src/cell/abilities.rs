@@ -151,6 +151,18 @@ pub async fn handle_use_ability(
 
     // Check ammo for ranged abilities (players only — NPCs have infinite ammo)
     let required_ammo = ability_def.as_ref().map_or(0, |d| d.required_ammo);
+
+    // If a pending reload's warmup has elapsed, promote the refill now so the
+    // ammo check below sees the full magazine. If it hasn't elapsed, the fire
+    // is gated by the ammo check (current_ammo is still pre-reload).
+    if let Some(deadline) = entity.reload_complete_at {
+        if std::time::Instant::now() >= deadline {
+            entity.current_ammo = entity.max_ammo;
+            entity.reload_complete_at = None;
+            tracing::debug!(entity_id, "useAbility: reload warmup elapsed, magazine refilled");
+        }
+    }
+
     if required_ammo > 0 && entity.is_player && entity.current_ammo < required_ammo {
         tracing::debug!(entity_id, ability_id, current = entity.current_ammo, required = required_ammo, "useAbility: not enough ammo");
         return;

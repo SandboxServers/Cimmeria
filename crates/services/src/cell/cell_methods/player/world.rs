@@ -46,8 +46,16 @@ pub async fn dispatch(
                 let _y = f32::from_le_bytes([args[9], args[10], args[11], args[12]]);
                 let _z = f32::from_le_bytes([args[13], args[14], args[15], args[16]]);
 
-                let region_tag = space_mgr.get_region(region_id as u32)
-                    .map(|r| r.tag.clone());
+                // Region IDs are wire-encoded as i32 but stored as u32 internally.
+                // Reject negative values up-front rather than sign-extending them
+                // into a high u32 that no real region will match.
+                let region_tag = match u32::try_from(region_id) {
+                    Ok(rid) => space_mgr.get_region(rid).map(|r| r.tag.clone()),
+                    Err(_) => {
+                        tracing::warn!(entity_id, region_id, "triggerClientHintedGenericRegion: negative region_id, ignoring");
+                        None
+                    }
+                };
 
                 if let Some(tag) = region_tag {
                     tracing::info!(entity_id, region_id, %tag, b_entering, "triggerClientHintedGenericRegion");
@@ -128,13 +136,12 @@ async fn handle_reload(
         }
     };
 
-    if entity.current_ammo >= entity.max_ammo {
+    if entity.current_ammo >= entity.max_ammo && entity.reload_complete_at.is_none() {
         tracing::debug!(entity_id, "requestReload: already at max ammo");
         return;
     }
 
     let old = entity.current_ammo;
-    entity.current_ammo = entity.max_ammo;
 
     let total_time = warmup + cooldown;
     entity.abilities.start_ability_cooldown(
@@ -142,7 +149,14 @@ async fn handle_reload(
         std::time::Duration::from_secs_f32(total_time),
     );
 
-    tracing::info!(entity_id, old, new = entity.max_ammo, warmup, cooldown, "Weapon reloaded");
+    // Defer the actual ammo refill until after the warmup so the player can't
+    // fire the new magazine before the weapon animation completes. The fire
+    // path (cell::abilities::handle_use_ability) checks reload_complete_at and
+    // promotes the pending refill on first attempt past the deadline.
+    let warmup_duration = std::time::Duration::from_secs_f32(warmup.max(0.0));
+    entity.reload_complete_at = Some(std::time::Instant::now() + warmup_duration);
+
+    tracing::info!(entity_id, old, target = entity.max_ammo, warmup, cooldown, "Weapon reload started");
 
     let timer_args = cimmeria_entity::abilities::serialize_timer_update(
         ABILITY_RELOAD_WEAPON,

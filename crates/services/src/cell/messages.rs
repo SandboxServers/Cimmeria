@@ -177,7 +177,13 @@ pub enum BaseToCellMsg {
     },
 
     /// Inventory item was granted and persisted in BaseApp.
-    InventoryItemGranted { entity_id: u32, item_id: i32 },
+    InventoryItemGranted {
+        entity_id: u32,
+        item_id: i32,
+        container_id: i32,
+        slot_id: i32,
+        quantity: i32,
+    },
 
     /// Reload the content engine from the database (triggered by admin API / Content Editor).
     ReloadContentEngine,

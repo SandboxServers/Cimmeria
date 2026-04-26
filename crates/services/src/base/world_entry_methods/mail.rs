@@ -29,15 +29,26 @@ pub async fn handle_mail_request(
         }
     };
 
+    // Use poison-tolerant lock acquires so a panic in another thread doesn't
+    // cascade into a panic here.
     let player_name = {
-        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+        let addr_guard = match entity_to_addr.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        let addr = match addr_guard.get(&entity_id).copied() {
             Some(a) => a,
             None => {
+                drop(addr_guard);
                 tracing::warn!(entity_id, "Mail: no addr for player name lookup");
                 return;
             }
         };
-        let clients = connected.lock().unwrap();
+        drop(addr_guard);
+        let clients = match connected.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
         clients
             .get(&addr)
             .and_then(|c| c.player_name.clone())
@@ -60,26 +71,41 @@ pub async fn handle_mail_request(
                 flags: i32,
             }
 
-            let rows = sqlx::query_as::<_, MailRow>(
+            let rows = match sqlx::query_as::<_, MailRow>(
                 "SELECT mail_id, sender_name, sender_id, subject, cash, sent_time, read_time, flags \
                  FROM sgw_gate_mail WHERE character_id = $1 ORDER BY mail_id DESC",
             )
             .bind(player_id)
             .fetch_all(pool.as_ref())
             .await
-            .unwrap_or_default();
+            {
+                Ok(rows) => rows,
+                Err(e) => {
+                    tracing::error!(entity_id, player_id, "Mail: header query failed: {e}");
+                    return;
+                }
+            };
 
             let headers: Vec<mail::MailHeader> = rows
                 .iter()
-                .map(|r| mail::MailHeader {
-                    id: r.mail_id,
-                    from_text: r.sender_name.clone(),
-                    from_id: r.sender_id.unwrap_or(0),
-                    subject_text: r.subject.clone(),
-                    cash: r.cash as i32,
-                    sent_time: r.sent_time as f32,
-                    read_time: r.read_time as f32,
-                    flags: r.flags,
+                .map(|r| {
+                    let cash = i32::try_from(r.cash).unwrap_or_else(|_| {
+                        tracing::warn!(
+                            mail_id = r.mail_id, db_cash = r.cash,
+                            "Mail header cash truncated to i32 range"
+                        );
+                        r.cash.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+                    });
+                    mail::MailHeader {
+                        id: r.mail_id,
+                        from_text: r.sender_name.clone(),
+                        from_id: r.sender_id.unwrap_or(0),
+                        subject_text: r.subject.clone(),
+                        cash,
+                        sent_time: r.sent_time as f32,
+                        read_time: r.read_time as f32,
+                        flags: r.flags,
+                    }
                 })
                 .collect();
 
@@ -130,13 +156,16 @@ pub async fn handle_mail_request(
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs() as i32;
-                    let _ = sqlx::query(
+                    if let Err(e) = sqlx::query(
                         "UPDATE sgw_gate_mail SET read_time = $1 WHERE mail_id = $2 AND read_time = 0",
                     )
                     .bind(now)
                     .bind(mail_id)
                     .execute(pool.as_ref())
-                    .await;
+                    .await
+                    {
+                        tracing::warn!(entity_id, mail_id, "Mail: read_time UPDATE failed: {e}");
+                    }
 
                     let args = mail::serialize_on_mail_read(mail_id, &row.message, &player_name);
                     send_to_witness(
@@ -165,12 +194,21 @@ pub async fn handle_mail_request(
 
         MailOp::Delete { mail_id } => {
             tracing::debug!(entity_id, mail_id, "Mail: deleting");
-            let _ =
-                sqlx::query("DELETE FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2")
-                    .bind(mail_id)
-                    .bind(player_id)
-                    .execute(pool.as_ref())
-                    .await;
+            match sqlx::query("DELETE FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2")
+                .bind(mail_id)
+                .bind(player_id)
+                .execute(pool.as_ref())
+                .await
+            {
+                Ok(r) if r.rows_affected() == 0 => {
+                    tracing::warn!(entity_id, player_id, mail_id, "Mail: Delete affected 0 rows");
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(entity_id, player_id, mail_id, "Mail: Delete failed: {e}");
+                    return;
+                }
+            }
 
             let args = mail::serialize_on_mail_header_remove(mail_id);
             send_to_witness(
@@ -194,13 +232,23 @@ pub async fn handle_mail_request(
 
         MailOp::Archive { mail_id } => {
             tracing::debug!(entity_id, mail_id, "Mail: archiving");
-            let _ = sqlx::query(
+            match sqlx::query(
                 "UPDATE sgw_gate_mail SET flags = flags | 1 WHERE mail_id = $1 AND character_id = $2",
             )
             .bind(mail_id)
             .bind(player_id)
             .execute(pool.as_ref())
-            .await;
+            .await
+            {
+                Ok(r) if r.rows_affected() == 0 => {
+                    tracing::warn!(entity_id, player_id, mail_id, "Mail: Archive affected 0 rows");
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(entity_id, player_id, mail_id, "Mail: Archive failed: {e}");
+                    return;
+                }
+            }
 
             let args = mail::serialize_on_mail_header_remove(mail_id);
             send_to_witness(

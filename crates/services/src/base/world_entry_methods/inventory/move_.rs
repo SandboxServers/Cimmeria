@@ -47,26 +47,6 @@ pub async fn handle_move_inventory_item(
         }
     };
 
-    let source = match sqlx::query_as::<_, InventoryInstanceRow>(
-        "SELECT type_id, stack_size, container_id, slot_id, bound, durability, charges \
-         FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1",
-    )
-    .bind(player_id)
-    .bind(item_id)
-    .fetch_optional(pool.as_ref())
-    .await
-    {
-        Ok(Some(row)) => row,
-        Ok(None) => {
-            tracing::warn!(player_id, item_id, "MoveInventoryItem: source item not found");
-            return;
-        }
-        Err(e) => {
-            tracing::error!(player_id, item_id, "MoveInventoryItem: source query failed: {e}");
-            return;
-        }
-    };
-
     let max_slots = bag_max_slots(target_container_id);
     if target_container_id <= 0 || target_slot_id < 0 || target_slot_id >= max_slots || quantity <= 0 {
         tracing::warn!(
@@ -76,11 +56,54 @@ pub async fn handle_move_inventory_item(
         return;
     }
 
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::error!(player_id, item_id, "MoveInventoryItem: begin failed: {e}");
+            return;
+        }
+    };
+
+    // Read source row inside the tx with FOR UPDATE so concurrent moves observe
+    // a consistent snapshot. Without this, the swap path could lose updates.
+    let source = match sqlx::query_as::<_, InventoryInstanceRow>(
+        "SELECT type_id, stack_size, container_id, slot_id, bound, durability, charges \
+         FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1 FOR UPDATE",
+    )
+    .bind(player_id)
+    .bind(item_id)
+    .fetch_optional(&mut *tx)
+    .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            let _ = tx.rollback().await;
+            tracing::warn!(player_id, item_id, "MoveInventoryItem: source item not found");
+            return;
+        }
+        Err(e) => {
+            let _ = tx.rollback().await;
+            tracing::error!(player_id, item_id, "MoveInventoryItem: source query failed: {e}");
+            return;
+        }
+    };
+
+    if quantity > source.stack_size {
+        let _ = tx.rollback().await;
+        tracing::warn!(
+            player_id, item_id, quantity, stack_size = source.stack_size,
+            "MoveInventoryItem: requested quantity exceeds stack — rejecting"
+        );
+        return;
+    }
+
     if source.container_id == target_container_id && source.slot_id == target_slot_id {
+        let _ = tx.rollback().await;
         return;
     }
 
     if !item_allows_container(pool, source.type_id, target_container_id).await {
+        let _ = tx.rollback().await;
         tracing::warn!(
             player_id, item_id, type_id = source.type_id, target_container_id,
             "MoveInventoryItem: item cannot be moved into target container"
@@ -90,17 +113,18 @@ pub async fn handle_move_inventory_item(
 
     let occupied: Option<i32> = match sqlx::query_scalar(
         "SELECT item_id FROM sgw_inventory \
-         WHERE character_id = $1 AND container_id = $2 AND slot_id = $3 AND item_id <> $4 LIMIT 1",
+         WHERE character_id = $1 AND container_id = $2 AND slot_id = $3 AND item_id <> $4 LIMIT 1 FOR UPDATE",
     )
     .bind(player_id)
     .bind(target_container_id)
     .bind(target_slot_id)
     .bind(item_id)
-    .fetch_optional(pool.as_ref())
+    .fetch_optional(&mut *tx)
     .await
     {
         Ok(result) => result,
         Err(e) => {
+            let _ = tx.rollback().await;
             tracing::error!(player_id, target_container_id, target_slot_id, "MoveInventoryItem: occupied slot query failed: {e}");
             return;
         }
@@ -108,20 +132,13 @@ pub async fn handle_move_inventory_item(
 
     if quantity < source.stack_size {
         if occupied.is_some() {
+            let _ = tx.rollback().await;
             tracing::warn!(
                 player_id, item_id, target_container_id, target_slot_id,
                 "MoveInventoryItem: cannot split onto occupied slot"
             );
             return;
         }
-
-        let mut tx = match pool.begin().await {
-            Ok(tx) => tx,
-            Err(e) => {
-                tracing::error!(player_id, item_id, "MoveInventoryItem: begin failed: {e}");
-                return;
-            }
-        };
 
         let update = sqlx::query(
             "UPDATE sgw_inventory SET stack_size = stack_size - $1 \
@@ -186,21 +203,23 @@ pub async fn handle_move_inventory_item(
         }
     } else if let Some(occupied_item_id) = occupied {
         let occupied_item_type: Option<i32> = match sqlx::query_scalar(
-            "SELECT type_id FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1",
+            "SELECT type_id FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1 FOR UPDATE",
         )
         .bind(player_id)
         .bind(occupied_item_id)
-        .fetch_optional(pool.as_ref())
+        .fetch_optional(&mut *tx)
         .await
         {
             Ok(result) => result,
             Err(e) => {
+                let _ = tx.rollback().await;
                 tracing::error!(player_id, occupied_item_id, "MoveInventoryItem: occupied item type query failed: {e}");
                 return;
             }
         };
 
         let Some(occupied_item_type) = occupied_item_type else {
+            let _ = tx.rollback().await;
             tracing::warn!(
                 player_id, item_id, occupied_item_id,
                 "MoveInventoryItem: occupied item disappeared before swap"
@@ -209,6 +228,7 @@ pub async fn handle_move_inventory_item(
         };
 
         if !item_allows_container(pool, occupied_item_type, source.container_id).await {
+            let _ = tx.rollback().await;
             tracing::warn!(
                 player_id, item_id, occupied_item_id, occupied_item_type,
                 source_container_id = source.container_id,
@@ -216,14 +236,6 @@ pub async fn handle_move_inventory_item(
             );
             return;
         }
-
-        let mut tx = match pool.begin().await {
-            Ok(tx) => tx,
-            Err(e) => {
-                tracing::error!(player_id, item_id, "MoveInventoryItem: begin failed: {e}");
-                return;
-            }
-        };
 
         let move_occupied = sqlx::query(
             "UPDATE sgw_inventory SET container_id = $1, slot_id = $2 \
@@ -291,16 +303,23 @@ pub async fn handle_move_inventory_item(
         .bind(target_slot_id)
         .bind(player_id)
         .bind(item_id)
-        .execute(pool.as_ref())
+        .execute(&mut *tx)
         .await;
 
         match result {
-            Ok(r) if r.rows_affected() == 1 => {}
+            Ok(r) if r.rows_affected() == 1 => {
+                if let Err(e) = tx.commit().await {
+                    tracing::error!(player_id, item_id, "MoveInventoryItem: simple commit failed: {e}");
+                    return;
+                }
+            }
             Ok(_) => {
+                let _ = tx.rollback().await;
                 tracing::warn!(player_id, item_id, "MoveInventoryItem: no rows updated");
                 return;
             }
             Err(e) => {
+                let _ = tx.rollback().await;
                 tracing::error!(player_id, item_id, "MoveInventoryItem: update failed: {e}");
                 return;
             }

@@ -485,8 +485,9 @@ mod tests {
     // ── NPC combat constants ──────────────────────────────────────────────
 
     #[test]
-    fn npc_default_ability_is_597() {
-        assert_eq!(NPC_DEFAULT_ABILITY, 597);
+    fn npc_default_ability_is_pistol_shot() {
+        // 592 = Pistol Shot (ranged DD). Was previously 597 (Heal Focus, self-heal).
+        assert_eq!(NPC_DEFAULT_ABILITY, 592);
     }
 
     #[test]

@@ -324,11 +324,19 @@ pub async fn handle_loot_item(
     );
 
     // Grant the loot to the player via BaseApp persistence handlers
+    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        Some(id) => id,
+        None => {
+            tracing::warn!(
+                entity_id, target_eid,
+                "lootItem: dropping loot grant — looter has no player_id (would otherwise misroute to player_id=0)"
+            );
+            return;
+        }
+    };
+
     if removed_item.design_id.is_none() {
         // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
-        let player_id = space_mgr.get_entity(entity_id)
-            .and_then(|e| e.player_id)
-            .unwrap_or(0);
         let _ = tx.send(CellToBaseMsg::GrantCash {
             entity_id,
             player_id,
@@ -337,9 +345,6 @@ pub async fn handle_loot_item(
     } else {
         // Item — grant via GrantItem to base for persistence + onUpdateItem
         let design_id = removed_item.design_id.unwrap();
-        let player_id = space_mgr.get_entity(entity_id)
-            .and_then(|e| e.player_id)
-            .unwrap_or(0);
         // Look up preferred container from item_containers cache, default to INV_Main (1)
         let container_id = space_mgr.item_containers.get(&design_id).copied().unwrap_or(1);
         let _ = tx.send(CellToBaseMsg::GrantItem {
@@ -443,26 +448,6 @@ mod tests {
         assert_eq!(i32::from_le_bytes([args[0], args[1], args[2], args[3]]), npc_id);
         assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), dialog_id);
         assert_eq!(args[12], 1); // isImmediate
-    }
-
-    #[test]
-    fn store_open_args_format() {
-        let npc_id: i32 = 100_001;
-        let mut args = Vec::new();
-        args.extend_from_slice(&npc_id.to_le_bytes());
-        args.extend_from_slice(&1i32.to_le_bytes()); // vendorType
-        for _ in 0..5 {
-            args.extend_from_slice(&0u32.to_le_bytes());
-        }
-
-        assert_eq!(args.len(), 28);
-        assert_eq!(i32::from_le_bytes([args[0], args[1], args[2], args[3]]), npc_id);
-        assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), 1); // vendorType
-        // All 5 array counts should be 0
-        for i in 0..5 {
-            let offset = 8 + i * 4;
-            assert_eq!(u32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]), 0);
-        }
     }
 
     #[test]
@@ -575,6 +560,9 @@ mod tests {
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
 
         mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+        }
         let npc_id = mgr.allocate_npc_id();
         mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(npc) = mgr.get_entity_mut(npc_id) {
@@ -586,11 +574,12 @@ mod tests {
 
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::EntityMethodCall { method_index, args, .. } => {
-                assert_eq!(method_index, 109); // onStoreOpen
-                assert_eq!(args.len(), 28);
+            CellToBaseMsg::OpenVendorStore { entity_id, player_id, vendor_entity_id, .. } => {
+                assert_eq!(entity_id, 1);
+                assert_eq!(player_id, 42);
+                assert_eq!(vendor_entity_id as u32, npc_id);
             }
-            _ => panic!("Expected EntityMethodCall"),
+            other => panic!("Expected OpenVendorStore, got {:?}", other),
         }
     }
 

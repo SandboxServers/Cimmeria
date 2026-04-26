@@ -37,18 +37,16 @@ pub async fn query_saved_missions(
             let missions: Vec<_> = rows
                 .into_iter()
                 .map(|r| {
-                    let status = match i8::try_from(r.status) {
-                        Ok(s) => s,
-                        Err(_) => {
-                            tracing::warn!(
-                                player_id,
-                                mission_id = r.mission_id,
-                                db_status = r.status,
-                                "Mission status out of i8 range, clamping"
-                            );
-                            127i8.min((-128i8).max(r.status as i8))
-                        }
-                    };
+                    let status = i8::try_from(r.status).unwrap_or_else(|_| {
+                        tracing::warn!(
+                            player_id,
+                            mission_id = r.mission_id,
+                            db_status = r.status,
+                            "Mission status out of i8 range, clamping"
+                        );
+                        // Clamp at i32, then cast — casting first wraps modulo 256.
+                        r.status.clamp(i8::MIN as i32, i8::MAX as i32) as i8
+                    });
                     SavedMission {
                         mission_id: r.mission_id,
                         status,

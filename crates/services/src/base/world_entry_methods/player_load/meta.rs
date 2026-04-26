@@ -49,49 +49,28 @@ pub fn default_player_load_data() -> PlayerLoadData {
     }
 }
 
-/// Query bandolier items from the database for a player.
-///
-/// Returns tuples of (slot_id, BandolierItem) containing equipped weapon info.
-pub async fn query_bandolier_items(
-    db_pool: &Option<std::sync::Arc<PgPool>>,
-    player_id: i32,
+#[derive(sqlx::FromRow)]
+struct BandolierItemRow {
+    slot_id: i32,
+    item_id: i32,
+    clip_size: i32,
+    default_ammo_type_id: i32,
+}
+
+const BANDOLIER_ITEMS_QUERY: &str = r#"
+SELECT inv.slot_id, inv.type_id AS item_id, COALESCE(ri.clip_size, 0) AS clip_size,
+       CASE WHEN ri.default_ammo_type IS NULL THEN 0
+            ELSE array_position(enum_range(NULL::resources."EAmmoType"), ri.default_ammo_type) - 1
+       END AS default_ammo_type_id
+FROM sgw_inventory inv
+JOIN resources.items ri ON ri.item_id = inv.type_id
+WHERE inv.character_id = $1 AND inv.container_id = 3
+ORDER BY inv.slot_id
+"#;
+
+fn map_bandolier_rows(
+    rows: Vec<BandolierItemRow>,
 ) -> Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)> {
-    let pool = match db_pool {
-        Some(p) => p,
-        None => return vec![],
-    };
-
-    #[derive(sqlx::FromRow)]
-    struct Row {
-        slot_id: i32,
-        item_id: i32,
-        clip_size: i32,
-        default_ammo_type_id: i32,
-    }
-
-    let rows = match sqlx::query_as::<_, Row>(
-        r#"
-        SELECT inv.slot_id, inv.type_id AS item_id, COALESCE(ri.clip_size, 0) AS clip_size,
-               CASE WHEN ri.default_ammo_type IS NULL THEN 0
-                    ELSE array_position(enum_range(NULL::resources."EAmmoType"), ri.default_ammo_type) - 1
-               END AS default_ammo_type_id
-        FROM sgw_inventory inv
-        JOIN resources.items ri ON ri.item_id = inv.type_id
-        WHERE inv.character_id = $1 AND inv.container_id = 3
-        ORDER BY inv.slot_id
-        "#,
-    )
-    .bind(player_id)
-    .fetch_all(pool.as_ref())
-    .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::error!(player_id, "query_bandolier_items failed: {e}");
-            return vec![];
-        }
-    };
-
     rows.into_iter()
         .map(|row| {
             (
@@ -104,6 +83,45 @@ pub async fn query_bandolier_items(
             )
         })
         .collect()
+}
+
+/// Query bandolier items from the database for a player.
+///
+/// Returns tuples of (slot_id, BandolierItem) containing equipped weapon info.
+pub async fn query_bandolier_items(
+    db_pool: &Option<std::sync::Arc<PgPool>>,
+    player_id: i32,
+) -> Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)> {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => return vec![],
+    };
+
+    match sqlx::query_as::<_, BandolierItemRow>(BANDOLIER_ITEMS_QUERY)
+        .bind(player_id)
+        .fetch_all(pool.as_ref())
+        .await
+    {
+        Ok(rows) => map_bandolier_rows(rows),
+        Err(e) => {
+            tracing::error!(player_id, "query_bandolier_items failed: {e}");
+            vec![]
+        }
+    }
+}
+
+/// Transaction-aware variant — runs the bandolier read inside an existing tx
+/// so callers that have already acquired locks (e.g. `FOR UPDATE` on
+/// `sgw_player`) see a consistent snapshot.
+pub async fn query_bandolier_items_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    player_id: i32,
+) -> Result<Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, BandolierItemRow>(BANDOLIER_ITEMS_QUERY)
+        .bind(player_id)
+        .fetch_all(&mut **tx)
+        .await?;
+    Ok(map_bandolier_rows(rows))
 }
 
 /// Query archetype ability tree data from the database.

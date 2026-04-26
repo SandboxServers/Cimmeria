@@ -10,7 +10,7 @@ use crate::cell::messages::BaseToCellMsg;
 use super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
 use super::purchase_helpers::{load_vendor_purchase_lines, consume_design_quantity, normalize_item_quantities};
-use super::store::{handle_open_vendor_store, VendorTemplateLists, send_store_update_to_client};
+use super::store::handle_open_vendor_store;
 use super::helpers::send_cash_changed_to_client;
 
 const INV_MAIN: i32 = 1;
@@ -46,11 +46,31 @@ pub async fn handle_purchase_vendor_items(
         return;
     };
 
+    if lines.iter().any(|line| line.cash_cost < 0) {
+        tracing::warn!(
+            entity_id,
+            player_id,
+            vendor_template_id,
+            "PurchaseVendorItems: rejecting purchase containing negative cash_cost line"
+        );
+        return;
+    }
+
     let total_cash_cost = match lines
         .iter()
         .try_fold(0i32, |total, line| total.checked_add(line.cash_cost))
     {
-        Some(total) => total,
+        Some(total) if total >= 0 => total,
+        Some(total) => {
+            tracing::warn!(
+                entity_id,
+                player_id,
+                vendor_template_id,
+                total,
+                "PurchaseVendorItems: rejecting negative aggregate cash cost"
+            );
+            return;
+        }
         None => {
             tracing::warn!(
                 entity_id,
@@ -176,6 +196,7 @@ pub async fn handle_purchase_vendor_items(
         }
     };
 
+    let mut granted: Vec<(i32, i32, i32)> = Vec::with_capacity(lines.len()); // (design_id, slot, quantity)
     for line in &lines {
         let Some(next_slot) = grant_slots.next() else {
             let _ = tx.rollback().await;
@@ -187,6 +208,7 @@ pub async fn handle_purchase_vendor_items(
             );
             return;
         };
+        granted.push((line.design_id, next_slot, line.grant_quantity));
 
         let result = sqlx::query(
             "INSERT INTO sgw_inventory \
@@ -247,13 +269,25 @@ pub async fn handle_purchase_vendor_items(
     .await;
 
     if let Some(cell_tx) = cell_tx {
-        for line in &lines {
-            let _ = cell_tx
+        for (design_id, slot_id, quantity) in &granted {
+            if let Err(e) = cell_tx
                 .send(BaseToCellMsg::InventoryItemGranted {
                     entity_id,
-                    item_id: line.design_id,
+                    item_id: *design_id,
+                    container_id: INV_MAIN,
+                    slot_id: *slot_id,
+                    quantity: *quantity,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    design_id,
+                    "PurchaseVendorItems: cell channel closed during InventoryItemGranted: {e}"
+                );
+                break;
+            }
         }
     }
 

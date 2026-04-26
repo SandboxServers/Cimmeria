@@ -6,11 +6,12 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use crate::base::{ConnectedClientState, helpers, resources, world_entry_appearance};
+use crate::base::{ConnectedClientState, helpers, world_entry_appearance};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx};
 use super::core::send_full_inventory_update;
 use super::super::player_load::core::query_player_load_data;
+use super::super::vendor::serializers::reserve_free_inventory_slots;
 
 /// Normalize item ID array: remove dupes, sort, filter invalid IDs.
 pub fn normalize_item_ids(mut item_ids: Vec<i32>) -> Vec<i32> {
@@ -21,21 +22,25 @@ pub fn normalize_item_ids(mut item_ids: Vec<i32>) -> Vec<i32> {
 }
 
 /// Check if an item type can be placed in a container.
+///
+/// Returns `false` on DB error rather than silently defaulting to "main bag" —
+/// the caller can decide whether to abort the operation or try a fallback.
 pub async fn item_allows_container(pool: &Arc<PgPool>, type_id: i32, container_id: i32) -> bool {
-    let container_sets: Vec<i32> = sqlx::query_scalar(
-        "SELECT container_sets FROM resources.items WHERE item_id = $1"
+    match sqlx::query_scalar::<_, Option<Vec<i32>>>(
+        "SELECT container_sets FROM resources.items WHERE item_id = $1",
     )
     .bind(type_id)
     .fetch_optional(pool.as_ref())
     .await
-    .ok()
-    .flatten()
-    .unwrap_or_default();
-
-    if container_sets.is_empty() {
-        container_id == 1
-    } else {
-        container_sets.contains(&container_id)
+    {
+        Ok(Some(Some(container_sets))) if !container_sets.is_empty() => {
+            container_sets.contains(&container_id)
+        }
+        Ok(Some(None)) | Ok(Some(Some(_))) | Ok(None) => container_id == 1,
+        Err(e) => {
+            tracing::error!(type_id, container_id, "item_allows_container query failed: {e}");
+            false
+        }
     }
 }
 
@@ -68,43 +73,51 @@ pub async fn handle_grant_item(
         }
     };
 
-    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
-        .bind(player_id)
-        .bind(container_id)
-        .execute(&mut *db_tx)
-        .await
-    {
-        let _ = db_tx.rollback().await;
-        tracing::error!(player_id, item_id, "GrantItem: advisory lock failed: {e}");
-        return;
-    }
-
-    let next_slot: i32 = match sqlx::query_scalar::<_, i32>(
-        "SELECT COALESCE(MAX(slot_id), -1) + 1 FROM sgw_inventory \
-         WHERE character_id = $1 AND container_id = $2",
-    )
-    .bind(player_id)
-    .bind(container_id)
-    .fetch_one(&mut *db_tx)
-    .await
-    {
-        Ok(s) => s,
+    // Reserve a free slot via the same hole-filling helper used by vendor purchase.
+    // (reserve_free_inventory_slots takes a per-(player, container) advisory lock.)
+    let next_slot: i32 = match reserve_free_inventory_slots(&mut db_tx, player_id, container_id, 1).await {
+        Ok(Some(slots)) => match slots.into_iter().next() {
+            Some(s) => s,
+            None => {
+                let _ = db_tx.rollback().await;
+                tracing::warn!(player_id, item_id, container_id, "GrantItem: reserve returned empty");
+                return;
+            }
+        },
+        Ok(None) => {
+            let _ = db_tx.rollback().await;
+            tracing::warn!(player_id, item_id, container_id, "GrantItem: container full");
+            return;
+        }
         Err(e) => {
             let _ = db_tx.rollback().await;
-            tracing::error!(player_id, item_id, "GrantItem: slot query failed: {e}");
+            tracing::error!(player_id, item_id, container_id, "GrantItem: slot reserve failed: {e}");
             return;
         }
     };
 
+    // Default charges to the item's full charge capacity (consumables/abilities ammo)
+    // rather than always inserting `charges = 0`.
+    let default_charges: i32 = sqlx::query_scalar::<_, Option<i32>>(
+        "SELECT charges FROM resources.items WHERE item_id = $1",
+    )
+    .bind(item_id)
+    .fetch_optional(&mut *db_tx)
+    .await
+    .unwrap_or(None)
+    .flatten()
+    .unwrap_or(0);
+
     let result = sqlx::query(
         "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id, \
-         bound, durability, charges) VALUES ($1, $2, $3, $4, $5, false, 100, 0)",
+         bound, durability, charges) VALUES ($1, $2, $3, $4, $5, false, 100, $6)",
     )
     .bind(player_id)
     .bind(item_id)
     .bind(count)
     .bind(next_slot)
     .bind(container_id)
+    .bind(default_charges)
     .execute(&mut *db_tx)
     .await;
 
@@ -114,6 +127,7 @@ pub async fn handle_grant_item(
             item_id,
             container_id,
             slot = next_slot,
+            charges = default_charges,
             "Item persisted to inventory"
         ),
         Err(e) => {
@@ -146,9 +160,23 @@ pub async fn handle_grant_item(
     );
 
     if let Some(tx) = cell_tx {
-        let _ = tx
-            .send(BaseToCellMsg::InventoryItemGranted { entity_id, item_id })
-            .await;
+        if let Err(e) = tx
+            .send(BaseToCellMsg::InventoryItemGranted {
+                entity_id,
+                item_id,
+                container_id,
+                slot_id: next_slot,
+                quantity: count,
+            })
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                player_id,
+                item_id,
+                "GrantItem: cell channel closed while emitting InventoryItemGranted: {e}"
+            );
+        }
     }
 
     let is_equipped = (3..=14).contains(&container_id);
@@ -157,6 +185,27 @@ pub async fn handle_grant_item(
     }
 
     if container_id == 3 {
+        // Persist the new active bandolier slot regardless of whether the cell
+        // sync channel is available — the witness packet below relies on this
+        // having committed to DB.
+        match sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
+            .bind(next_slot)
+            .bind(player_id)
+            .execute(pool.as_ref())
+            .await
+        {
+            Ok(_) => tracing::debug!(
+                player_id,
+                slot_id = next_slot,
+                "Persisted granted bandolier slot"
+            ),
+            Err(e) => tracing::error!(
+                player_id,
+                slot_id = next_slot,
+                "Failed to persist granted bandolier slot: {e}"
+            ),
+        }
+
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&container_id.to_le_bytes());
         args.extend_from_slice(&(next_slot + 1).to_le_bytes());
@@ -186,7 +235,7 @@ pub async fn handle_grant_item(
                 default_ammo_type_id: i32,
             }
 
-            let item = sqlx::query_as::<_, BandolierRow>(
+            let item = match sqlx::query_as::<_, BandolierRow>(
                 r#"
                 SELECT item_id, COALESCE(clip_size, 0) AS clip_size,
                        CASE WHEN default_ammo_type IS NULL THEN 0
@@ -199,13 +248,18 @@ pub async fn handle_grant_item(
             .bind(item_id)
             .fetch_optional(pool.as_ref())
             .await
-            .ok()
-            .flatten()
-            .map(|row| cimmeria_entity::cell_entity::BandolierItem {
-                item_id: row.item_id,
-                clip_size: row.clip_size,
-                default_ammo_type: row.default_ammo_type_id,
-            });
+            {
+                Ok(Some(row)) => Some(cimmeria_entity::cell_entity::BandolierItem {
+                    item_id: row.item_id,
+                    clip_size: row.clip_size,
+                    default_ammo_type: row.default_ammo_type_id,
+                }),
+                Ok(None) => None,
+                Err(e) => {
+                    tracing::error!(item_id, "GrantItem: bandolier item lookup failed: {e}");
+                    None
+                }
+            };
 
             if let Some(item) = item {
                 let _ = tx
@@ -216,25 +270,6 @@ pub async fn handle_grant_item(
                         make_active: true,
                     })
                     .await;
-
-                let result =
-                    sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
-                        .bind(next_slot)
-                        .bind(player_id)
-                        .execute(pool.as_ref())
-                        .await;
-                match result {
-                    Ok(_) => tracing::debug!(
-                        player_id,
-                        slot_id = next_slot,
-                        "Persisted granted bandolier slot"
-                    ),
-                    Err(e) => tracing::error!(
-                        player_id,
-                        slot_id = next_slot,
-                        "Failed to persist granted bandolier slot: {e}"
-                    ),
-                }
             }
         }
     }

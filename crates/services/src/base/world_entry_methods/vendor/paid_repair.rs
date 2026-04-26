@@ -8,7 +8,6 @@ use tokio::net::UdpSocket;
 use crate::base::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
 use super::super::inventory::grant::normalize_item_ids;
-use super::data::load_vendor_repair_prices;
 use super::store::send_store_update_to_client;
 use super::helpers::send_cash_changed_to_client;
 use super::purchase_helpers::load_vendor_template_lists;
@@ -209,10 +208,14 @@ pub async fn handle_paid_repair_inventory_items(
 
     let result = sqlx::query(
         "UPDATE sgw_inventory SET durability = 100 \
-         WHERE character_id = $1 AND item_id = ANY($2)",
+         WHERE character_id = $1 AND item_id = ANY($2) \
+           AND container_id = ANY($3) \
+           AND stack_size = 1 \
+           AND durability >= 0 AND durability < 100",
     )
     .bind(player_id)
     .bind(&item_ids)
+    .bind(VENDOR_FILTER_BAGS.as_slice())
     .execute(&mut *tx)
     .await;
 

@@ -171,6 +171,11 @@ pub struct CellEntity {
     pub max_ammo: i32,
     /// Ammo type enum value for `onEntityProperty(AmmoTypeId)`.
     pub ammo_type: i32,
+    /// When `Some(t)`, a reload is in progress and the magazine is not yet
+    /// available; fire paths must reject until `Instant::now() >= t` and on
+    /// elapse refill `current_ammo` to `max_ammo`. Set by RequestReload, cleared
+    /// on first fire attempt past the deadline.
+    pub reload_complete_at: Option<std::time::Instant>,
 
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
@@ -290,6 +295,7 @@ impl CellEntity {
             current_ammo: 0,
             max_ammo: 0,
             ammo_type: 0,
+            reload_complete_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),
             spawn_position: None,

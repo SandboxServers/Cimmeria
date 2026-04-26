@@ -5,6 +5,11 @@ use sqlx::PgPool;
 use crate::mercury::PlayerLoadData;
 use super::meta::{default_player_load_data, query_archetype_ability_tree, query_active_weapon_stats};
 
+/// Container IDs used in equipment-visual queries. Mirrors the DB schema:
+/// 3 = bandolier, 4..=14 = the eleven equipment slots (head, torso, etc.).
+pub const CONTAINER_BANDOLIER: i32 = 3;
+pub const EQUIPMENT_CONTAINERS: &[i32] = &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+
 // NOTE: this query is duplicated in `inventory/core.rs` (the live-update path).
 // If you change the column list, ammo_position expression, or row shape here,
 // update the other site too — the two paths must produce identical row layouts.
@@ -88,22 +93,35 @@ pub async fn query_player_load_data(
             );
 
             let mut components = row.components;
-            let item_visuals: Vec<String> = sqlx::query_scalar(
+            let item_visuals: Vec<String> = match sqlx::query_scalar(
                 "SELECT ri.visual_component \
                  FROM sgw_inventory inv \
                  JOIN resources.items ri ON ri.item_id = inv.type_id \
-                 WHERE inv.character_id = $1 \
+                 WHERE inv.container_id = ANY($1) \
+                   AND inv.character_id = $2 \
                    AND ri.visual_component IS NOT NULL \
                    AND ( \
-                     (inv.container_id IN (4,5,6,7,8,9,10,11,12,13,14) AND inv.slot_id = 0) \
-                     OR (inv.container_id = 3 AND inv.slot_id = $2) \
+                     (inv.container_id <> $3 AND inv.slot_id = 0) \
+                     OR (inv.container_id = $3 AND inv.slot_id = $4) \
                    )",
             )
+            .bind({
+                let mut all: Vec<i32> = EQUIPMENT_CONTAINERS.to_vec();
+                all.push(CONTAINER_BANDOLIER);
+                all
+            })
             .bind(player_id)
+            .bind(CONTAINER_BANDOLIER)
             .bind(row.bandolier_slot)
             .fetch_all(pool.as_ref())
             .await
-            .unwrap_or_default();
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(player_id, "Failed to query equipped item visuals — keeping naked appearance for this load: {e}");
+                    Vec::new()
+                }
+            };
             if !item_visuals.is_empty() {
                 tracing::debug!(player_id, visuals = ?item_visuals, "Equipped item visual components");
             }
@@ -192,7 +210,14 @@ pub async fn query_player_load_data_by_account(
     .await
     {
         Ok(Some(row)) => query_player_load_data(db_pool, account_id, row.player_id).await,
-        _ => default_player_load_data(),
+        Ok(None) => {
+            tracing::warn!(account_id, "query_player_load_data_by_account: no player for account");
+            default_player_load_data()
+        }
+        Err(e) => {
+            tracing::error!(account_id, "query_player_load_data_by_account: lookup failed: {e}");
+            default_player_load_data()
+        }
     }
 }
 

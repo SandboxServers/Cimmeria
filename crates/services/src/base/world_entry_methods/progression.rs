@@ -16,6 +16,13 @@ const LEVEL_XP: [u64; 21] = [
     40_000, 60_000, 90_000, 120_000, 180_000, 250_000, 400_000,
 ];
 
+// Compile-time guard: LEVEL_XP must cover every level from 1 through MAX_LEVEL,
+// indexed by current-level (1-based), so its length must equal MAX_LEVEL + 1.
+const _: () = assert!(
+    LEVEL_XP.len() == MAX_LEVEL as usize + 1,
+    "LEVEL_XP table length must equal MAX_LEVEL + 1; update LEVEL_XP when MAX_LEVEL changes"
+);
+
 const GENERICPROPERTY_TRAINING_POINTS: i32 = 1;
 
 /// Handle XP grant from CellService -- compute level-ups and send client notifications.
@@ -203,7 +210,7 @@ pub async fn handle_grant_cash(
     };
 
     if let Some(pool) = db_pool {
-        let new_total: Option<i32> = sqlx::query_scalar(
+        let new_total: i32 = match sqlx::query_scalar::<_, i32>(
             "UPDATE sgw_player SET naquadah = naquadah + $1 \
              WHERE player_id = $2 \
              RETURNING naquadah",
@@ -212,9 +219,19 @@ pub async fn handle_grant_cash(
         .bind(player_id)
         .fetch_optional(pool.as_ref())
         .await
-        .unwrap_or(None);
+        {
+            Ok(Some(total)) => total,
+            Ok(None) => {
+                tracing::warn!(entity_id, player_id, amount, "GrantCash: player row not found, dropping grant");
+                return;
+            }
+            Err(e) => {
+                tracing::error!(entity_id, player_id, amount, "GrantCash: UPDATE failed: {e}");
+                return;
+            }
+        };
 
-        let total = new_total.unwrap_or(amount);
+        let total = new_total;
         tracing::info!(entity_id, amount, total, "GrantCash: updated naquadah");
 
         send_to_witness(

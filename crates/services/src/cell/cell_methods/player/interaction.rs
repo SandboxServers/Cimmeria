@@ -77,20 +77,12 @@ pub async fn dispatch(
                         crate::cell::content::fire_dialog_open(
                             entity_id, player_id, did, engine, tx, space_mgr,
                         ).await;
-                    } else {
-                        let is_hostile_npc = space_mgr.get_entity(target_entity_id as u32)
-                            .map_or(false, |t| !t.is_player && t.faction == 10);
-                        if is_hostile_npc {
-                            tracing::debug!(entity_id, target_entity_id, "interact: targeting hostile NPC for combat");
-                            let mut reply = Vec::with_capacity(4);
-                            reply.extend_from_slice(&target_entity_id.to_le_bytes());
-                            let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                                entity_id,
-                                method_index: 16,
-                                args: reply,
-                            }).await;
-                        }
                     }
+                    // Hostile NPC fall-through removed: the early branch at the top of
+                    // INTERACT (lines 27-42) already handles `!t.is_player && t.faction == 10`
+                    // and returns true, so this path can only be reached when the target is
+                    // a player or a non-hostile faction — neither of which should trigger
+                    // combat from an interact request.
                 }
             }
             true
@@ -105,7 +97,7 @@ pub async fn dispatch(
                 let player_id = space_mgr.get_entity(entity_id)
                     .and_then(|e| e.player_id).unwrap_or(0);
                 crate::cell::content::fire_dialog_choice(
-                    entity_id, player_id, dialog_id, engine, tx, space_mgr,
+                    entity_id, player_id, dialog_id, button_id, engine, tx, space_mgr,
                 ).await;
             }
             true

@@ -620,21 +620,20 @@ mod tests {
         let args = vec![0u8]; // reloadType = 0
         dispatch_cell_method(1, CM_REQUEST_RELOAD, &args, &tx, &mut mgr, &engine).await;
 
-        // Should reset ammo
-        assert_eq!(mgr.get_entity(1).unwrap().current_ammo, 30);
+        // Reload sets the deadline but does NOT immediately refill — the magazine
+        // stays at the pre-reload count until warmup elapses (see use_ability path).
+        let entity = mgr.get_entity(1).unwrap();
+        assert_eq!(entity.current_ammo, 5, "magazine should not refill until warmup elapses");
+        assert!(entity.reload_complete_at.is_some(), "reload deadline should be set");
 
-        // Should have sent onEntityProperty
+        // Reload sends a TimerUpdate (method 12) for the cooldown bar; the
+        // onEntityProperty(AmmoTypeId) packet only fires when an event_set
+        // sequence is mapped, which this test deliberately doesn't set up.
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } => {
+            CellToBaseMsg::EntityMethodCall { entity_id, method_index, .. } => {
                 assert_eq!(entity_id, 1);
-                assert_eq!(method_index, 7); // onEntityProperty
-                // First 4 bytes: GENERICPROPERTY_AmmoTypeId = 7
-                let prop_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                assert_eq!(prop_id, 7);
-                // Next 4 bytes: ammo_type = 2
-                let ammo = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                assert_eq!(ammo, 2);
+                assert_eq!(method_index, 12, "expected TimerUpdate first");
             }
             _ => panic!("Expected EntityMethodCall"),
         }

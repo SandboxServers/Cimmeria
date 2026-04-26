@@ -37,7 +37,10 @@ pub async fn handle_repair_inventory_item(
         return;
     }
 
-    let repair_points = (repair_ratio.clamp(0.0, 1.0) * 100.0).round() as i32;
+    // Tiny ratios (<0.005) round down to 0 points, which then matches no rows
+    // in the WHERE clause and silently reports "no repairable item changed."
+    // Floor-clamp so any non-zero ratio repairs at least one durability point.
+    let repair_points = ((repair_ratio.clamp(0.0, 1.0) * 100.0).round() as i32).max(1);
     let result = sqlx::query(
         "UPDATE sgw_inventory \
          SET durability = LEAST(100, GREATEST(0, durability) + $1) \

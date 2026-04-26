@@ -226,8 +226,10 @@ pub async fn consume_design_quantity(
     .fetch_all(&mut **tx)
     .await?;
 
-    let available: i32 = stacks.iter().map(|row| row.stack_size).sum();
-    if available < quantity {
+    // Sum in i64 to defend against pathological inventories where summed stacks
+    // exceed i32::MAX. Compare back in i64 against the (i32) requested quantity.
+    let available: i64 = stacks.iter().map(|row| row.stack_size as i64).sum();
+    if available < quantity as i64 {
         return Ok(false);
     }
 

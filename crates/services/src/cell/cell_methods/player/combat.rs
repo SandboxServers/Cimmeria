@@ -50,11 +50,19 @@ pub async fn dispatch(
                         }
 
                         if let Some(tag) = tag {
-                            let player_id = space_mgr.get_entity(entity_id)
-                                .and_then(|e| e.player_id).unwrap_or(0);
-                            crate::cell::content::fire_entity_death(
-                                entity_id, player_id, &tag, engine, tx, space_mgr,
-                            ).await;
+                            match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+                                Some(player_id) => {
+                                    crate::cell::content::fire_entity_death(
+                                        entity_id, player_id, &tag, engine, tx, space_mgr,
+                                    ).await;
+                                }
+                                None => {
+                                    tracing::warn!(
+                                        entity_id, npc_tag = %tag,
+                                        "Skipping entity_death event: killer entity has no player_id"
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -146,7 +154,10 @@ fn resolve_respawn_position(
     entity_id: u32,
     space_mgr: &SpaceManager,
 ) -> [f32; 3] {
-    const DEFAULT_POS: [f32; 3] = [-334.231, 73.472, -228.026];
+    // Castle_CellBlock starting hub coordinates — only used as a final fallback
+    // for that world; in other worlds we respawn in place rather than teleporting
+    // players to Castle.
+    const CASTLE_DEFAULT_POS: [f32; 3] = [-334.231, 73.472, -228.026];
 
     if respawner_id > 0 {
         if let Some(resp) = space_mgr.respawners.iter().find(|r| r.respawner_id == respawner_id) {
@@ -155,12 +166,30 @@ fn resolve_respawn_position(
         tracing::warn!(entity_id, respawner_id, "Respawner not found, falling back to world default");
     }
 
-    if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-        if let Some(resp) = space_mgr.respawners.iter().find(|r| r.world_name == world_name) {
+    let world_name = space_mgr.get_entity_world_name(entity_id);
+    if let Some(ref wn) = world_name {
+        if let Some(resp) = space_mgr.respawners.iter().find(|r| r.world_name == *wn) {
             return resp.pos;
         }
     }
 
-    tracing::debug!(entity_id, "No respawners for player's world, using default position");
-    DEFAULT_POS
+    // Castle has a known safe default; for other worlds, respawn in place to
+    // avoid silently teleporting the player across worlds.
+    match world_name.as_deref() {
+        Some("Castle_CellBlock") | None => {
+            tracing::debug!(entity_id, world = ?world_name, "No respawner; using Castle default position");
+            CASTLE_DEFAULT_POS
+        }
+        Some(world) => {
+            let in_place = space_mgr
+                .get_entity(entity_id)
+                .map(|e| [e.position.x, e.position.y, e.position.z])
+                .unwrap_or(CASTLE_DEFAULT_POS);
+            tracing::warn!(
+                entity_id, world = world,
+                "No respawner configured for this world — respawning in place at current position"
+            );
+            in_place
+        }
+    }
 }

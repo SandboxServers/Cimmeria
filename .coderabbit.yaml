@@ -232,10 +232,12 @@ knowledge_base:
     enabled: false
   code_guidelines:
     enabled: true
+    # Point at guideline documents (CLAUDE.md, AGENTS.md, etc.) — NOT source files.
+    # CodeRabbit reads these as context to learn project conventions.
     filePatterns:
-      - "crates/**/*.rs"
-      - "src/**/*.cpp"
-      - "src/**/*.h"
+      - "**/CLAUDE.md"
+      - "**/AGENTS.md"
+      - "**/.cursorrules"
   learnings:
     scope: auto
   issues:
