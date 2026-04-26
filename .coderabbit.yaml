@@ -1,0 +1,260 @@
+# CodeRabbit Configuration for Cimmeria
+# Rust game server emulator with C++ legacy reference implementation
+
+language: en-US
+early_access: false
+enable_free_tier: true
+inheritance: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  commit_status: true
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  auto_apply_labels: false
+  suggested_reviewers: true
+  auto_assign_reviewers: false
+  abort_on_close: true
+  disable_cache: false
+
+  slop_detection:
+    enabled: true
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    drafts: false
+
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
+    simplify:
+      enabled: false
+
+  pre_merge_checks:
+    override_requested_reviewers_only: false
+    docstrings:
+      mode: warning
+      threshold: 80
+    title:
+      mode: warning
+    description:
+      mode: warning
+    issue_assessment:
+      mode: warning
+
+  # Tool configuration focused on Rust + C++ legacy code
+  tools:
+    # Rust linter and formatter
+    clippy:
+      enabled: true
+
+    # C/C++ checkers for legacy reference implementation
+    cppcheck:
+      enabled: true
+    clang:
+      enabled: true
+
+    # Security scanning
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    semgrep:
+      enabled: true
+
+    # Configuration and script validation
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+
+    # GitHub-native checks
+    github-checks:
+      enabled: true
+      timeout_ms: 90000
+
+    # Disabled: Not applicable to this project
+    ruff:
+      enabled: false
+    eslint:
+      enabled: false
+    biome:
+      enabled: false
+    oxc:
+      enabled: false
+    rubocop:
+      enabled: false
+    golangci-lint:
+      enabled: false
+    phpstan:
+      enabled: false
+    phpmd:
+      enabled: false
+    phpcs:
+      enabled: false
+    flake8:
+      enabled: false
+    pylint:
+      enabled: false
+    hadolint:
+      enabled: false
+    swiftlint:
+      enabled: false
+    detekt:
+      enabled: false
+    buf:
+      enabled: false
+    regal:
+      enabled: false
+    actionlint:
+      enabled: false
+    pmd:
+      enabled: false
+    opengrep:
+      enabled: false
+    checkov:
+      enabled: false
+    tflint:
+      enabled: false
+    sqlfluff:
+      enabled: false
+    trivy:
+      enabled: false
+    prismaLint:
+      enabled: false
+    shopifyThemeCheck:
+      enabled: false
+    luacheck:
+      enabled: false
+    brakeman:
+      enabled: false
+    dotenvLint:
+      enabled: false
+    htmlhint:
+      enabled: false
+    stylelint:
+      enabled: false
+    checkmake:
+      enabled: false
+    osvScanner:
+      enabled: false
+    blinter:
+      enabled: false
+    smartyLint:
+      enabled: false
+    emberTemplateLint:
+      enabled: false
+    psscriptanalyzer:
+      enabled: false
+    fortitudeLint:
+      enabled: false
+    languagetool:
+      enabled: false
+    circleci:
+      enabled: false
+    ast-grep:
+      enabled: false
+
+  # Path-specific review rules
+  path_instructions:
+    # Rust server code — stricter review
+    - path: crates/**
+      instructions: |
+        Focus on:
+        - Memory safety and ownership patterns
+        - Async/await correctness with tokio
+        - Error handling (Result, Option, ? operator)
+        - Entity system consistency
+        - Mercury protocol compliance
+
+    # C++ reference implementation — legacy but important
+    - path: src/**
+      instructions: |
+        Focus on:
+        - BigWorld engine patterns
+        - MSVC compatibility
+        - Memory management (Boost smart pointers)
+        - Protocol wire format correctness
+
+    # Database schema and migrations
+    - path: db/**
+      instructions: |
+        Focus on:
+        - PostgreSQL 17.9 compatibility
+        - Migration safety (no data loss)
+        - Index optimization
+        - Transaction isolation
+
+    # Entity definitions and data
+    - path: entities/**
+      instructions: |
+        Focus on:
+        - Entity definition schema validity
+        - Method index correctness
+        - Property synchronization flags
+
+    # Game content and logic
+    - path: python/**
+      instructions: |
+        Focus on:
+        - Python 3.4.1 compatibility (no f-strings, type hints, async)
+        - Entity lifecycle hooks
+        - Client-server property updates
+
+chat:
+  art: true
+  allow_non_org_members: true
+  auto_reply: true
+  integrations:
+    jira:
+      usage: auto
+    linear:
+      usage: auto
+
+knowledge_base:
+  opt_out: false
+  web_search:
+    enabled: false
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "crates/**/*.rs"
+      - "src/**/*.cpp"
+      - "src/**/*.h"
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
+
+code_generation:
+  docstrings:
+    language: en-US
+  unit_tests:
+    path_instructions:
+      - path: "crates/services/**"
+        instructions: "Focus on async/await testing with tokio::test"
+
+issue_enrichment:
+  auto_enrich:
+    enabled: true
+  planning:
+    enabled: true
+    auto_planning:
+      enabled: true
