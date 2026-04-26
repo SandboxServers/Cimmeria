@@ -84,8 +84,8 @@ listen('update-progress', (event) => {
   const p = event.payload;
   const pct = p.total > 0 ? (p.current / p.total * 100) : 0;
   updateBar.style.width = pct.toFixed(1) + '%';
-  updateCount.textContent = p.current + '/' + p.total;
-  updateFile.textContent = p.filename;
+  updateCount.textContent = p.current + ' / ' + p.total;
+  updateFile.textContent = p.id;
 });
 
 listen('update-complete', () => {

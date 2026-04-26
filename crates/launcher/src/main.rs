@@ -35,7 +35,8 @@ fn main() {
             app.manage(AppState {
                 config_path,
                 config: Mutex::new(config),
-                cancel_token: Mutex::new(None),
+                install_cancel: Mutex::new(None),
+                update_cancel: Mutex::new(None),
             });
 
             Ok(())

@@ -18,7 +18,7 @@ fn find_pattern(data: &[u8], pattern: &[u8]) -> Option<usize> {
         .position(|window| window == pattern)
 }
 
-pub fn patch_hostname(data: &mut [u8], new_host: &str) -> Result<usize, PatchError> {
+pub fn patch_hostname(data: &mut [u8], new_host: &str) -> Result<(), PatchError> {
     let host_bytes = new_host.as_bytes();
     if host_bytes.len() > MAX_HOST_LEN {
         return Err(PatchError::AddressTooLong { len: host_bytes.len() });
@@ -32,18 +32,25 @@ pub fn patch_hostname(data: &mut [u8], new_host: &str) -> Result<usize, PatchErr
         data[offset + i] = 0;
     }
 
-    Ok(offset)
+    Ok(())
 }
 
 pub fn needs_patching(data: &[u8]) -> bool {
     find_pattern(data, ORIGINAL_HOST).is_some()
 }
 
-pub fn patch_exe(exe_path: &std::path::Path, new_host: &str) -> Result<usize, PatchError> {
+pub fn patch_exe(exe_path: &std::path::Path, new_host: &str) -> Result<(), PatchError> {
     let mut data = std::fs::read(exe_path)?;
-    let offset = patch_hostname(&mut data, new_host)?;
-    std::fs::write(exe_path, &data)?;
-    Ok(offset)
+    patch_hostname(&mut data, new_host)?;
+
+    let temp_path = exe_path.with_extension(format!("tmp.{}", std::process::id()));
+    std::fs::write(&temp_path, &data)?;
+
+    if let Err(e) = std::fs::rename(&temp_path, exe_path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(PatchError::Io(e));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -59,8 +66,7 @@ mod tests {
     #[test]
     fn test_patch_hostname_success() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
-        let offset = patch_hostname(&mut data, "localhost").unwrap();
-        assert_eq!(offset, 40);
+        patch_hostname(&mut data, "localhost").unwrap();
         assert_eq!(&data[40..49], b"localhost");
         assert!(data[49..62].iter().all(|&b| b == 0));
     }
@@ -70,8 +76,7 @@ mod tests {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
         let host = "abcdefghijklmnopqrstuv";
         assert_eq!(host.len(), 22);
-        let offset = patch_hostname(&mut data, host).unwrap();
-        assert_eq!(offset, 40);
+        patch_hostname(&mut data, host).unwrap();
         assert_eq!(&data[40..62], host.as_bytes());
     }
 
@@ -117,10 +122,48 @@ mod tests {
         let data = make_fake_exe(b"www.stargateworlds.com");
         std::fs::write(&exe_path, &data).unwrap();
 
-        let offset = patch_exe(&exe_path, "localhost").unwrap();
-        assert_eq!(offset, 40);
+        patch_exe(&exe_path, "localhost").unwrap();
 
         let patched = std::fs::read(&exe_path).unwrap();
         assert_eq!(&patched[40..49], b"localhost");
+    }
+
+    #[test]
+    fn test_patch_exe_no_temp_left() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe_path = dir.path().join("SGW.exe");
+        let data = make_fake_exe(b"www.stargateworlds.com");
+        std::fs::write(&exe_path, &data).unwrap();
+
+        patch_exe(&exe_path, "localhost").unwrap();
+
+        // Verify no temp files left behind
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.contains("tmp."))
+                    .unwrap_or(false)
+            })
+            .collect();
+        assert_eq!(entries.len(), 0, "No temp files should remain after successful patch");
+    }
+
+    #[test]
+    fn test_patch_exe_unchanged_on_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe_path = dir.path().join("SGW.exe");
+        let data = make_fake_exe(b"different.host");
+        let original = data.clone();
+        std::fs::write(&exe_path, &data).unwrap();
+
+        let result = patch_exe(&exe_path, "localhost");
+        assert!(result.is_err());
+
+        let on_disk = std::fs::read(&exe_path).unwrap();
+        assert_eq!(on_disk, original, "File should be unchanged on patch failure");
     }
 }

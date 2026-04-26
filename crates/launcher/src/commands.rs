@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::io;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -9,24 +10,26 @@ use tracing::{error, info};
 
 use crate::config::LauncherConfig;
 use crate::download::{download_file, DownloadProgress};
-use crate::extract::{build_extract_args, count_cab_files, ExtractProgress};
+use crate::extract::{build_extract_args, count_cab_files, extract_zip_to_dir, ExtractProgress};
 use crate::launch::{check_installation, launch_game, InstallState};
 use crate::patch::{needs_patching, patch_exe};
-use crate::updater::{check_manifest, fetch_manifest, verify_hash, UpdateCheckResult};
-
-const ARCHIVE_URL: &str = "https://archive.org/download/StargateWorlds_0.8348.1.4046/Stargate%20Worlds%20%280.8348.1.4046%29%20%282009-06-30%29%20%28beta%29.rar";
+use crate::updater::{
+    check_manifest, fetch_manifest, verify_hash, load_applied_patches, save_applied_patches,
+    AppliedPatches, UpdateCheckResult,
+};
 
 pub struct AppState {
     pub config_path: PathBuf,
     pub config: Mutex<LauncherConfig>,
-    pub cancel_token: Mutex<Option<CancellationToken>>,
+    pub install_cancel: Mutex<Option<CancellationToken>>,
+    pub update_cancel: Mutex<Option<CancellationToken>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 struct UpdateProgress {
+    id: String,
     current: usize,
     total: usize,
-    filename: String,
 }
 
 #[tauri::command]
@@ -36,12 +39,24 @@ pub fn cmd_check_installation(state: State<'_, AppState>) -> InstallState {
 }
 
 #[tauri::command]
-pub fn cmd_get_default_install_path() -> String {
-    if let Ok(pf) = std::env::var("ProgramFiles") {
-        format!("{}\\Stargate Worlds", pf)
-    } else {
-        "C:\\Program Files\\Stargate Worlds".to_string()
+pub fn cmd_get_default_install_path(app: AppHandle) -> String {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    if cwd.join("Cargo.toml").exists() && cwd.join("crates").exists() {
+        return cwd
+            .join("game")
+            .join("sgw")
+            .to_string_lossy()
+            .to_string();
     }
+    app.path()
+        .home_dir()
+        .map(|h| {
+            h.join("Games")
+                .join("Stargate Worlds")
+                .to_string_lossy()
+                .to_string()
+        })
+        .unwrap_or_else(|_| "C:\\Games\\Stargate Worlds".to_string())
 }
 
 #[tauri::command]
@@ -77,11 +92,8 @@ pub fn cmd_patch_server_address(
         return Ok("Already patched".to_string());
     }
 
-    let offset = patch_exe(&exe_path, &address).map_err(|e| e.to_string())?;
-    Ok(format!(
-        "Patched server address to '{}' at offset 0x{:X}",
-        address, offset
-    ))
+    patch_exe(&exe_path, &address).map_err(|e| e.to_string())?;
+    Ok(format!("Patched server address to '{}'", address))
 }
 
 #[tauri::command]
@@ -92,9 +104,12 @@ pub fn cmd_launch_game(state: State<'_, AppState>) -> Result<u32, String> {
 
 #[tauri::command]
 pub fn cmd_cancel_install(state: State<'_, AppState>) {
-    let token = state.cancel_token.lock().unwrap();
-    if let Some(ref t) = *token {
+    if let Some(t) = state.install_cancel.lock().unwrap().take() {
         info!("Cancelling install");
+        t.cancel();
+    }
+    if let Some(t) = state.update_cancel.lock().unwrap().take() {
+        info!("Cancelling updates");
         t.cancel();
     }
 }
@@ -106,31 +121,57 @@ pub async fn cmd_download_and_install(
     install_path: String,
     server_address: String,
 ) -> Result<(), String> {
-    // Set up cancellation token
+    if install_path.is_empty() {
+        return Err("Install path must be selected before downloading".to_string());
+    }
+
     let cancel = CancellationToken::new();
     {
-        let mut token = state.cancel_token.lock().unwrap();
+        let mut token = state.install_cancel.lock().unwrap();
         *token = Some(cancel.clone());
     }
+
+    let config = state.config.lock().unwrap();
+    let manifest_url = config.manifest_url.clone();
+    drop(config);
+
+    let manifest = fetch_manifest(&manifest_url)
+        .await
+        .map_err(|e| format!("Failed to fetch manifest: {}", e))?;
+
+    let base_entry = manifest
+        .patches
+        .iter()
+        .find(|p| p.id == "base-client")
+        .ok_or_else(|| "Base client entry not found in manifest".to_string())?
+        .clone();
 
     let temp_dir = std::env::temp_dir().join("sgw-launcher");
     std::fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;
     let archive_path = temp_dir.join("sgw-installer.rar");
 
-    // Phase 1: Download
-    info!("Downloading installer from {}", ARCHIVE_URL);
-
+    info!("Downloading base client from {}", base_entry.url);
     let app_dl = app.clone();
-    download_file(ARCHIVE_URL, &archive_path, cancel.clone(), move |progress: DownloadProgress| {
-        let _ = app_dl.emit("download-progress", &progress);
-    })
+    download_file(
+        &base_entry.url,
+        &archive_path,
+        cancel.clone(),
+        move |progress: DownloadProgress| {
+            let _ = app_dl.emit("download-progress", &progress);
+        },
+    )
     .await
     .map_err(|e| {
-        let _ = app.emit("install-error", &serde_json::json!({ "message": e.to_string() }));
+        let _ = app.emit(
+            "install-error",
+            &serde_json::json!({ "message": e.to_string() }),
+        );
         e.to_string()
     })?;
 
-    // Phase 2: Extract RAR
+    verify_hash(&archive_path, &base_entry.sha256)
+        .map_err(|e| format!("Download integrity check failed: {}", e))?;
+
     info!("Extracting RAR archive");
     let _ = app.emit(
         "extract-progress",
@@ -175,7 +216,6 @@ pub async fn cmd_download_and_install(
         },
     );
 
-    // Phase 3: Extract CAB files
     let cabs = count_cab_files(&extract_dir).map_err(|e| e.to_string())?;
     let total_cabs = cabs.len() as u32;
     info!("Found {} CAB files to extract", total_cabs);
@@ -204,10 +244,7 @@ pub async fn cmd_download_and_install(
             },
         );
 
-        let cab_args = build_extract_args(
-            cab.to_str().unwrap(),
-            &install_path,
-        );
+        let cab_args = build_extract_args(cab.to_str().unwrap(), &install_path);
 
         let cab_output = app
             .shell()
@@ -228,7 +265,6 @@ pub async fn cmd_download_and_install(
         }
     }
 
-    // Phase 4: Patch executable
     let exe_path = Path::new(&install_path).join("SGW.exe");
     if exe_path.exists() {
         let data = std::fs::read(&exe_path).map_err(|e| e.to_string())?;
@@ -238,7 +274,6 @@ pub async fn cmd_download_and_install(
         }
     }
 
-    // Phase 5: Save config with install path
     {
         let mut config = state.config.lock().unwrap();
         config.install_path = install_path;
@@ -247,93 +282,180 @@ pub async fn cmd_download_and_install(
             .map_err(|e| e.to_string())?;
     }
 
-    // Clean up temp files
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let mut applied = load_applied_patches(&config_dir);
+    applied
+        .applied
+        .insert("base-client".to_string(), base_entry.sha256.clone());
+    save_applied_patches(&config_dir, &applied).map_err(|e| e.to_string())?;
+
     if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
         error!("Failed to clean up temp dir: {}", e);
     }
 
     let _ = app.emit("install-complete", ());
-
     info!("Installation complete");
     Ok(())
 }
 
 #[tauri::command]
-pub async fn cmd_check_for_updates(
-    state: State<'_, AppState>,
-) -> Result<UpdateCheckResult, String> {
-    let (patch_server_url, install_path) = {
+pub async fn cmd_check_for_updates(app: AppHandle, state: State<'_, AppState>) -> Result<UpdateCheckResult, String> {
+    let (manifest_url, config_dir) = {
         let config = state.config.lock().unwrap();
-        (config.patch_server_url.clone(), config.install_path.clone())
+        (config.manifest_url.clone(), app.path().app_config_dir()
+            .map_err(|e| e.to_string())?)
     };
 
-    let manifest = fetch_manifest(&patch_server_url)
+    let manifest = fetch_manifest(&manifest_url)
         .await
         .map_err(|e| e.to_string())?;
 
-    let files_to_update = check_manifest(&manifest, Path::new(&install_path));
-    let total_bytes: u64 = files_to_update.iter().map(|f| f.size).sum();
+    let applied = load_applied_patches(&config_dir);
+    let patches_to_apply = check_manifest(&manifest, &applied);
+    let total_bytes: u64 = patches_to_apply.iter().map(|p| p.size).sum();
 
     Ok(UpdateCheckResult {
-        updates_available: !files_to_update.is_empty(),
-        files_to_update,
+        updates_available: !patches_to_apply.is_empty(),
+        patches_to_apply,
         total_bytes,
-        server_version: manifest.version,
+        manifest_version: manifest.manifest_version,
     })
 }
 
 #[tauri::command]
-pub async fn cmd_apply_updates(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let (patch_server_url, install_path) = {
+pub async fn cmd_apply_updates(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let cancel = CancellationToken::new();
+    {
+        let mut token = state.update_cancel.lock().unwrap();
+        *token = Some(cancel.clone());
+    }
+
+    let (manifest_url, install_path, config_dir) = {
         let config = state.config.lock().unwrap();
-        (config.patch_server_url.clone(), config.install_path.clone())
+        (
+            config.manifest_url.clone(),
+            config.install_path.clone(),
+            app.path().app_config_dir().map_err(|e| e.to_string())?,
+        )
     };
 
-    let manifest = fetch_manifest(&patch_server_url)
+    let manifest = fetch_manifest(&manifest_url)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Failed to fetch manifest: {}", e))?;
 
-    let files = check_manifest(&manifest, Path::new(&install_path));
-    let total = files.len();
-    let cancel = CancellationToken::new();
+    let applied = load_applied_patches(&config_dir);
+    let patches = check_manifest(&manifest, &applied);
+    let total = patches.len() as u32;
 
-    for (i, entry) in files.iter().enumerate() {
+    if patches.is_empty() {
+        let _ = app.emit("update-complete", ());
+        return Ok(());
+    }
+
+    let staging_dir = std::env::temp_dir().join("sgw-launcher/updates");
+    std::fs::create_dir_all(&staging_dir).map_err(|e| e.to_string())?;
+
+    for (i, patch) in patches.iter().enumerate() {
         if cancel.is_cancelled() {
             return Err("Update cancelled".to_string());
         }
 
-        let local_path = Path::new(&install_path).join(&entry.path);
+        let staging_zip = staging_dir.join(format!("{}-{}.zip", patch.id, patch.version));
+
+        info!("Downloading patch {}", patch.id);
+        let app_dl = app.clone();
+        download_file(
+            &patch.url,
+            &staging_zip,
+            cancel.clone(),
+            move |progress: DownloadProgress| {
+                let _ = app_dl.emit("download-progress", &progress);
+            },
+        )
+        .await
+        .map_err(|e| format!("Failed to download patch {}: {}", patch.id, e))?;
+
+        verify_hash(&staging_zip, &patch.sha256).map_err(|e| {
+            let _ = std::fs::remove_file(&staging_zip);
+            format!("Hash verification failed for patch {}: {}", patch.id, e)
+        })?;
+
+        let extracted_dir = staging_dir.join("extracted");
+        std::fs::create_dir_all(&extracted_dir).map_err(|e| e.to_string())?;
+
+        info!("Extracting patch {}", patch.id);
+        extract_zip_to_dir(&staging_zip, &extracted_dir)
+            .map_err(|e| format!("Failed to extract patch {}: {}", patch.id, e))?;
+
+        let mut extracted_files = Vec::new();
+        if extracted_dir.exists() {
+            walk_dir(&extracted_dir, &extracted_dir, &mut extracted_files)
+                .map_err(|e| e.to_string())?;
+        }
+
+        for extracted_file in extracted_files {
+            if cancel.is_cancelled() {
+                return Err("Update cancelled".to_string());
+            }
+
+            let relative_path = extracted_file
+                .strip_prefix(&extracted_dir)
+                .map_err(|e| e.to_string())?;
+            let final_path = Path::new(&install_path).join(relative_path);
+
+            if let Some(parent) = final_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+
+            let temp_path = final_path.with_file_name(format!(
+                ".sgw-{}-{}",
+                std::process::id(),
+                final_path.file_name().unwrap_or_default().to_string_lossy()
+            ));
+
+            std::fs::copy(&extracted_file, &temp_path)
+                .map_err(|e| format!("Failed to stage file: {}", e))?;
+
+            std::fs::rename(&temp_path, &final_path).map_err(|e| {
+                let _ = std::fs::remove_file(&temp_path);
+                format!("Failed to commit file {}: {}", relative_path.display(), e)
+            })?;
+        }
+
+        let mut applied = load_applied_patches(&config_dir);
+        applied
+            .applied
+            .insert(patch.id.clone(), patch.sha256.clone());
+        save_applied_patches(&config_dir, &applied).map_err(|e| e.to_string())?;
 
         let _ = app.emit(
             "update-progress",
             &UpdateProgress {
-                current: i + 1,
-                total,
-                filename: entry.path.clone(),
+                id: patch.id.clone(),
+                current: (i + 1),
+                total: (total as usize),
             },
         );
+    }
 
-        // Create parent dirs if needed
-        if let Some(parent) = local_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-
-        // Download the updated file
-        let noop_cancel = CancellationToken::new();
-        download_file(&entry.patch_url, &local_path, noop_cancel, |_| {})
-            .await
-            .map_err(|e| format!("Failed to download {}: {}", entry.path, e))?;
-
-        // Verify hash
-        verify_hash(&local_path, &entry.sha256)
-            .map_err(|e| format!("Hash verification failed for {}: {}", entry.path, e))?;
+    if let Err(e) = std::fs::remove_dir_all(&staging_dir) {
+        error!("Failed to clean up staging dir: {}", e);
     }
 
     let _ = app.emit("update-complete", ());
+    info!("Applied {} patches", total);
+    Ok(())
+}
 
-    info!("Applied {} updates", total);
+fn walk_dir(dir: &Path, base: &Path, files: &mut Vec<PathBuf>) -> io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            files.push(path);
+        } else if path.is_dir() {
+            walk_dir(&path, base, files)?;
+        }
+    }
     Ok(())
 }
