@@ -188,3 +188,7 @@ pak/*
 config/BaseService.config
 .claude/settings.local.json
 Cimmeria.code-workspace
+
+game/sgw/*
+!game/sgw/.gitkeep
+!game/sgw/README.md

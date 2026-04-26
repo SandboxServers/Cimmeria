@@ -34,6 +34,13 @@ function Sync-CimmeriaGameData {
         $isWin = $IsWindows -or (-not (Test-Path variable:IsWindows))
         $searchPaths = @()
 
+        # First check: extracted client in repo (game/sgw)
+        $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+        $repoGamePath = Join-Path $repoRoot "game/sgw"
+        if (Test-Path $repoGamePath) {
+            $searchPaths += $repoGamePath
+        }
+
         if ($isWin) {
             $scriptDrive = (Split-Path $PSScriptRoot -Qualifier)
             $searchPaths += "${scriptDrive}\Stargate Worlds-QA"
