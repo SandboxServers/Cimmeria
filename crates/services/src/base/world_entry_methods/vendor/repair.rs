@@ -9,6 +9,10 @@ use super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
 use super::super::inventory::grant::normalize_item_ids;
 
+/// Containers that can be operated on by the vendor stack — main bag, bandolier,
+/// equipment slots, and quick bars. Bank, mail attachments, and loot are excluded.
+const VENDOR_FILTER_BAGS: [i32; 14] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
 pub async fn handle_repair_inventory_item(
     entity_id: u32,
     player_id: i32,
@@ -138,12 +142,14 @@ pub async fn handle_repair_inventory_items(
          SET durability = 100 \
          WHERE character_id = $1 \
            AND item_id = ANY($2) \
+           AND container_id = ANY($3) \
            AND stack_size = 1 \
            AND durability >= 0 \
            AND durability < 100",
     )
     .bind(player_id)
     .bind(&item_ids)
+    .bind(VENDOR_FILTER_BAGS.as_slice())
     .execute(pool.as_ref())
     .await;
 

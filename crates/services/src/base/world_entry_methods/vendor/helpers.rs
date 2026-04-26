@@ -85,11 +85,22 @@ pub async fn sync_bandolier_after_inventory_change(
     };
 
     // Empty bandolier: nothing to reconcile, don't write a sentinel slot or
-    // emit a Sync that says "active slot 0 of nothing".
+    // emit a witness packet for "active slot 0 of nothing". Still send
+    // SyncBandolierItems so the cell-side cache drops any stale entries —
+    // otherwise the previous bandolier set lingers in the cell HashMap until
+    // the next non-empty change.
     if bandolier_items.is_empty() {
         if let Err(e) = db_tx.commit().await {
             tracing::error!(entity_id, player_id, "sync_bandolier: commit failed: {e}");
+            return;
         }
+        let _ = tx
+            .send(BaseToCellMsg::SyncBandolierItems {
+                entity_id,
+                active_bandolier_slot: old_active,
+                bandolier_items: Vec::new(),
+            })
+            .await;
         return;
     }
 

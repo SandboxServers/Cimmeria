@@ -23,10 +23,16 @@ pub async fn query_world_entry(
 ) -> WorldEntryInfo {
     // Defer allocating the entity_id until we know the player row loaded —
     // otherwise every DB failure / no-character lookup leaks an entity_id
-    // in the EntityManager.
+    // in the EntityManager. On hard failure paths (DB error, no character
+    // row) we return `player_entity_id = 0` as a "no entry" sentinel so the
+    // caller can detect the failure without us also burning an unregistered
+    // ID that the cell service never learns about.
     let alloc_entity = || -> u32 {
         entity_manager.lock().unwrap().create_entity("SGWPlayer").0 as u32
     };
+    // Sentinel returned when no real entity could be allocated/registered.
+    // Callers must treat this as "world entry failed, do not proceed."
+    const NO_ENTITY_ID: u32 = 0;
     let default_entry_with_eid = |player_eid: u32| WorldEntryInfo {
         player_entity_id: player_eid,
         space_id: DEFAULT_SPACE_ID,
@@ -39,6 +45,7 @@ pub async fn query_world_entry(
 
     let pool = match db_pool {
         Some(p) => p,
+        // No-DB mode (e.g. CombatSim smoke test) is a real entry, so allocate.
         None => return default_entry_with_eid(alloc_entity()),
     };
 
@@ -107,12 +114,12 @@ pub async fn query_world_entry(
             }
         }
         Ok(None) => {
-            tracing::warn!(player_id, account_id, "Character not found for world entry");
-            default_entry_with_eid(alloc_entity())
+            tracing::warn!(player_id, account_id, "Character not found for world entry — returning sentinel entity id");
+            default_entry_with_eid(NO_ENTITY_ID)
         }
         Err(e) => {
-            tracing::error!("Failed to query world entry: {e}");
-            default_entry_with_eid(alloc_entity())
+            tracing::error!("Failed to query world entry ({e}) — returning sentinel entity id");
+            default_entry_with_eid(NO_ENTITY_ID)
         }
     }
 }

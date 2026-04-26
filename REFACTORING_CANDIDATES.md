@@ -178,13 +178,18 @@ Avg: 620L (weighted across all files)
 ```
 
 **After space_manager + world_entry refactoring:**
+
+```text
+Max:        915L  (spawner.rs — separate refactor candidate; tracks above)
+Avg:        ~350L (weighted across all crates/services/src files)
+> 800L:     1 file (spawner.rs)
+400-800L:   2 files
+200-400L:   6 files
+< 200L:     25 files
 ```
-Max: 915L (spawner.rs, not yet refactored)
-Avg: 350L (weighted)
-> 400L: 0 files ✅
-200-400L: 6 files
-< 200L: 25 files ✅
-```
+
+(Goal of "no files > 400L outside the deferred refactor candidates" is met
+once spawner.rs is split.)
 
 ---
 

@@ -161,16 +161,40 @@ pub async fn load_vendor_purchase_lines(
 
         let grant_quantity = match row.quantity.checked_mul(*requested_quantity) {
             Some(quantity) if quantity > 0 => quantity,
-            _ => {
-                tracing::warn!(vendor_template_id, index, "PurchaseVendorItems: grant quantity overflow");
+            Some(quantity) => {
+                tracing::warn!(
+                    vendor_template_id, index,
+                    row_quantity = row.quantity, requested_quantity, computed = quantity,
+                    "PurchaseVendorItems: rejecting non-positive grant quantity"
+                );
+                return None;
+            }
+            None => {
+                tracing::warn!(
+                    vendor_template_id, index,
+                    row_quantity = row.quantity, requested_quantity,
+                    "PurchaseVendorItems: grant quantity overflow"
+                );
                 return None;
             }
         };
 
         let cash_cost = match row.naquadah.checked_mul(*requested_quantity) {
             Some(cost) if cost >= 0 => cost,
-            _ => {
-                tracing::warn!(vendor_template_id, index, "PurchaseVendorItems: cash cost overflow");
+            Some(cost) => {
+                tracing::warn!(
+                    vendor_template_id, index,
+                    naquadah = row.naquadah, requested_quantity, computed = cost,
+                    "PurchaseVendorItems: rejecting negative cash cost"
+                );
+                return None;
+            }
+            None => {
+                tracing::warn!(
+                    vendor_template_id, index,
+                    naquadah = row.naquadah, requested_quantity,
+                    "PurchaseVendorItems: cash cost overflow"
+                );
                 return None;
             }
         };

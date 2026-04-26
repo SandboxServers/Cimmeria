@@ -155,25 +155,25 @@ pub async fn query_archetype_ability_tree(pool: &PgPool, archetype_id: i32) -> O
         return None;
     }
 
+    // The DB schema constrains tree_index to a valid range — if a row violates
+    // that, the data set is corrupted and silently skipping rows would ship a
+    // partial ability tree. Bail with None so the caller's fallback (the
+    // archetype-derived default tree) takes over instead.
     let mut ability_tree = AbilityTreeData::default();
     for row in rows {
-        let Ok(tree_index) = usize::try_from(row.tree_index) else {
-            tracing::warn!(
-                archetype_id,
-                tree_index = row.tree_index,
-                "Ignoring invalid ability tree index"
-            );
-            continue;
+        let tree_index = match usize::try_from(row.tree_index) {
+            Ok(idx) if idx < ability_tree.trees.len() => idx,
+            _ => {
+                tracing::error!(
+                    archetype_id,
+                    tree_index = row.tree_index,
+                    tree_count = ability_tree.trees.len(),
+                    "Ability tree index out of range — schema constraint violated; bailing to fallback tree"
+                );
+                return None;
+            }
         };
-        if let Some(tree) = ability_tree.trees.get_mut(tree_index) {
-            tree.push(row.ability_id);
-        } else {
-            tracing::warn!(
-                archetype_id,
-                tree_index,
-                "Ignoring out-of-range ability tree index"
-            );
-        }
+        ability_tree.trees[tree_index].push(row.ability_id);
     }
 
     Some(ability_tree)

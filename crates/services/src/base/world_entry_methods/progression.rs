@@ -97,7 +97,9 @@ pub async fn handle_grant_xp(
                 acks,
                 entity_id,
                 method_idx::ON_EXP_UPDATE,
-                &(total_xp as i32).to_le_bytes(),
+                // Wire format is i32; saturate so a u64 total exceeding 2^31-1
+                // doesn't wrap negative on the client display.
+                &(total_xp.min(i32::MAX as u64) as i32).to_le_bytes(),
             )
         },
     )

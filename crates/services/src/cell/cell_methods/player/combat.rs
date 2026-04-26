@@ -130,6 +130,13 @@ async fn handle_respawn(
 
     tracing::info!(entity_id, "Player respawned, state_field=0");
 
+    // Push the refreshed health/focus to the client via onEntityStat (method 20)
+    // — without this, mapLoaded after RespawnReload would query the stale DB
+    // values and the player would render with their pre-death stats.
+    if !stat_update.is_empty() {
+        crate::cell::abilities::send_entity_method(entity_id, 20, stat_update, tx, space_mgr).await;
+    }
+
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
         method_index: crate::mercury::method_idx::ON_END_AID_WAIT,

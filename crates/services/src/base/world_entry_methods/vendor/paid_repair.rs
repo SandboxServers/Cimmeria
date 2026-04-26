@@ -77,6 +77,12 @@ pub async fn handle_paid_repair_inventory_items(
         }
     };
 
+    // Lock acquisition order: `sgw_inventory` rows (the FOR UPDATE OF inv below)
+    // are acquired BEFORE `sgw_player.naquadah` (the FOR UPDATE balance read
+    // later). All vendor-stack handlers (paid_repair, paid_recharge, purchase,
+    // sell, buyback) follow this same order to avoid lock-cycle deadlocks
+    // between repair and concurrent grant/move operations that touch both
+    // tables.
     let rows = match sqlx::query_as::<_, StoreItemCostRow>(
         "SELECT GREATEST((ili.naquadah::BIGINT * (100 - inv.durability)::BIGINT) / 100, 1)::INT AS cost, \
                 inv.item_id \

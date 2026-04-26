@@ -97,7 +97,7 @@ CodeRabbit identified 52 issues across PR #77. **Critical issues: 6** (data loss
 **Recommendation:** ✅ **FIX** — Cast to i64 before multiplication: `(naquadah as i64) * (charges as i64)`.  
 **Effort:** 5 min | **Risk:** Low
 
-### 7. Fire equipped weapon attack is dead stub
+### 7. Fire-equipped-weapon-attack handler is a dead stub
 **File:** `cell_methods/inventory.rs` (fire_equipped_weapon_attack_event)  
 **Issue:** Function declared but never implemented.  
 **Impact:** Combat abilities don't fire weapon events; animations missing.  
@@ -168,7 +168,7 @@ CodeRabbit identified 52 issues across PR #77. **Critical issues: 6** (data loss
 
 ## 🔵 STYLE & DOCUMENTATION (26 issues) — DEFER TO CLEANUP PR
 
-These are valid observations but **non-blocking**. Can be fixed in a follow-up "code quality" PR without affecting functionality.
+These are valid observations but **non-blocking**. They can be fixed in a follow-up "code quality" PR without affecting functionality.
 
 ### Examples (not exhaustive):
 - Empty placeholder files (sell_helpers.rs)

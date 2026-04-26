@@ -10,6 +10,12 @@ const ITEM_FLAG_CAN_BE_SOLD: i32 = 1 << 10;
 const INV_BUYBACK: i32 = 16;
 const VENDOR_FILTER_BAGS: [i32; 14] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
+// In INV_BUYBACK rows, the `flags` column stores the unit buyback price.
+// Pending/uninitialized buyback rows leave flags negative; the buyback list
+// query and clear-buyback bookkeeping both use `flags >= 0` as the sentinel
+// "this row was sell-stamped and has a real price" check. If you change that
+// convention (e.g., move price to a dedicated column), update both sites.
+
 #[derive(sqlx::FromRow)]
 struct ItemListItemRow {
     item_id: i32,

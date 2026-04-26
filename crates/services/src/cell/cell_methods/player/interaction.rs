@@ -24,7 +24,17 @@ pub async fn dispatch(
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, target_entity_id, "interact");
 
-                let is_hostile = space_mgr.get_entity(target_entity_id as u32)
+                // Reject negative target_entity_id rather than sign-extending into a
+                // high u32 that no real entity will match.
+                let target_entity_u32 = match u32::try_from(target_entity_id) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        tracing::warn!(entity_id, target_entity_id, "interact: negative target_entity_id, ignoring");
+                        return true;
+                    }
+                };
+
+                let is_hostile = space_mgr.get_entity(target_entity_u32)
                     .map_or(false, |t| !t.is_player && t.faction == 10);
                 if is_hostile {
                     tracing::info!(entity_id, target_entity_id, "interact: targeting hostile NPC for combat");
@@ -42,7 +52,7 @@ pub async fn dispatch(
                 }
 
                 let mut handled = false;
-                if let Some(target) = space_mgr.get_entity(target_entity_id as u32) {
+                if let Some(target) = space_mgr.get_entity(target_entity_u32) {
                     let tag = target.tag.clone();
                     let template_name = target.npc_name.clone();
                     let player_id = space_mgr.get_entity(entity_id)
@@ -50,7 +60,7 @@ pub async fn dispatch(
 
                     if let Some(ref tag) = tag {
                         handled = crate::cell::content::fire_interact_tag(
-                            entity_id, player_id, tag, target_entity_id as u32,
+                            entity_id, player_id, tag, target_entity_u32,
                             engine, tx, space_mgr,
                         ).await;
                     }
@@ -58,7 +68,7 @@ pub async fn dispatch(
                     if !handled {
                         if let Some(ref name) = template_name {
                             handled = crate::cell::content::fire_interact_template(
-                                entity_id, player_id, name, target_entity_id as u32,
+                                entity_id, player_id, name, target_entity_u32,
                                 engine, tx, space_mgr,
                             ).await;
                         }
@@ -67,7 +77,7 @@ pub async fn dispatch(
 
                 if !handled {
                     let dialog_id = crate::cell::interactions::handle_interact(
-                        entity_id, target_entity_id as u32, tx, space_mgr,
+                        entity_id, target_entity_u32, tx, space_mgr,
                     ).await;
 
                     if let Some(did) = dialog_id {

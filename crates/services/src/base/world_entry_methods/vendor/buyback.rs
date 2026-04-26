@@ -32,6 +32,12 @@ pub async fn handle_buyback_vendor_items(
     vendor_template_id: i32,
     items: Vec<(i32, i32)>,
     db_pool: &Option<Arc<PgPool>>,
+    // Buyback intentionally does not emit InventoryItemGranted to the cell:
+    // the moved row keeps the same `item_id` (the only identifier the cell
+    // tracks), so a client-side `send_full_inventory_update` after the tx
+    // commits is sufficient to resync. If a future change introduces a new
+    // item_id during buyback (e.g., a stack split that creates a new row),
+    // wire `cell_tx` through and emit InventoryItemGranted for the new id.
     _cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,

@@ -97,16 +97,23 @@ pub async fn handle_grant_item(
     };
 
     // Default charges to the item's full charge capacity (consumables/abilities ammo)
-    // rather than always inserting `charges = 0`.
-    let default_charges: i32 = sqlx::query_scalar::<_, Option<i32>>(
+    // rather than always inserting `charges = 0`. A DB error here aborts the grant
+    // — we don't want a transient timeout to silently produce a depleted item.
+    let default_charges: i32 = match sqlx::query_scalar::<_, Option<i32>>(
         "SELECT charges FROM resources.items WHERE item_id = $1",
     )
     .bind(item_id)
     .fetch_optional(&mut *db_tx)
     .await
-    .unwrap_or(None)
-    .flatten()
-    .unwrap_or(0);
+    {
+        Ok(Some(Some(c))) => c,
+        Ok(Some(None)) | Ok(None) => 0,
+        Err(e) => {
+            let _ = db_tx.rollback().await;
+            tracing::error!(player_id, item_id, "GrantItem: charges lookup failed: {e}");
+            return;
+        }
+    };
 
     let result = sqlx::query(
         "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id, \
@@ -133,6 +140,27 @@ pub async fn handle_grant_item(
         Err(e) => {
             let _ = db_tx.rollback().await;
             tracing::error!(player_id, item_id, "Failed to persist item: {e}");
+            return;
+        }
+    }
+
+    // For bandolier grants, persist `bandolier_slot` in the SAME transaction so
+    // the inventory insert and the active-slot move are atomic — a separate
+    // post-commit UPDATE could silently leave the player with the new item
+    // visible but the active slot still pointing at the old one.
+    if container_id == 3 {
+        if let Err(e) = sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
+            .bind(next_slot)
+            .bind(player_id)
+            .execute(&mut *db_tx)
+            .await
+        {
+            let _ = db_tx.rollback().await;
+            tracing::error!(
+                player_id,
+                slot_id = next_slot,
+                "GrantItem: bandolier_slot UPDATE failed inside tx, aborting grant: {e}"
+            );
             return;
         }
     }
@@ -185,27 +213,8 @@ pub async fn handle_grant_item(
     }
 
     if container_id == 3 {
-        // Persist the new active bandolier slot regardless of whether the cell
-        // sync channel is available — the witness packet below relies on this
-        // having committed to DB.
-        match sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
-            .bind(next_slot)
-            .bind(player_id)
-            .execute(pool.as_ref())
-            .await
-        {
-            Ok(_) => tracing::debug!(
-                player_id,
-                slot_id = next_slot,
-                "Persisted granted bandolier slot"
-            ),
-            Err(e) => tracing::error!(
-                player_id,
-                slot_id = next_slot,
-                "Failed to persist granted bandolier slot: {e}"
-            ),
-        }
-
+        // bandolier_slot was already committed inside the inventory tx above —
+        // it is safe to broadcast the witness packet now.
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&container_id.to_le_bytes());
         args.extend_from_slice(&(next_slot + 1).to_le_bytes());
@@ -274,13 +283,19 @@ pub async fn handle_grant_item(
         }
     }
 
-    let visual: Option<String> = sqlx::query_scalar(
+    let visual: Option<String> = match sqlx::query_scalar(
         "SELECT visual_component FROM resources.items WHERE item_id = $1 AND visual_component IS NOT NULL",
     )
     .bind(item_id)
     .fetch_optional(pool.as_ref())
     .await
-    .unwrap_or(None);
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(player_id, item_id, "GrantItem: visual_component lookup failed (skipping appearance refresh): {e}");
+            None
+        }
+    };
 
     if visual.is_some() {
         tracing::info!(

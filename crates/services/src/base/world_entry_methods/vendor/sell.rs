@@ -10,9 +10,9 @@ use crate::cell::messages::BaseToCellMsg;
 use super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
 use super::purchase_helpers::normalize_item_quantities;
-use super::store::{handle_open_vendor_store, send_store_update_to_client};
+use super::store::handle_open_vendor_store;
 use super::data::load_vendor_sell_prices;
-use super::serializers::{reserve_free_inventory_slots, StoreItemCostUpdate};
+use super::serializers::reserve_free_inventory_slots;
 use super::helpers::{send_cash_changed_to_client, sync_bandolier_after_inventory_change};
 use super::purchase_helpers::load_vendor_template_lists;
 
@@ -352,16 +352,9 @@ pub async fn handle_sell_vendor_items(
     )
     .await;
 
-    let store_updates: Vec<StoreItemCostUpdate> = removed_items
-        .iter()
-        .map(|(item_id, _)| StoreItemCostUpdate {
-            item_id: *item_id,
-            sell_price: 0,
-            repair_price: 0,
-            recharge_price: 0,
-        })
-        .collect();
-    send_store_update_to_client(entity_id, &store_updates, socket, connected, entity_to_addr).await;
+    // Note: a per-item store update would be redundant here — handle_open_vendor_store
+    // below sends a complete store payload, which already supersedes any
+    // incremental price clears we'd compute from `removed_items`.
 
     if let Some(cell_tx) = cell_tx {
         for (item_id, container_id) in &removed_items {
