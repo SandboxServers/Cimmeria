@@ -17,11 +17,12 @@
         "width": 600,
         "height": 400,
         "resizable": false,
-        "center": true
+        "center": true,
+        "hiddenTitle": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'"
+      "csp": null
     }
   },
   "plugins": {

@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use std::io;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
@@ -131,9 +131,10 @@ pub async fn cmd_download_and_install(
         *token = Some(cancel.clone());
     }
 
-    let config = state.config.lock().unwrap();
-    let manifest_url = config.manifest_url.clone();
-    drop(config);
+    let manifest_url = {
+        let config = state.config.lock().unwrap();
+        config.manifest_url.clone()
+    };
 
     let manifest = fetch_manifest(&manifest_url)
         .await
