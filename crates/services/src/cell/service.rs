@@ -536,8 +536,10 @@ async fn handle_base_message(
             }
         }
 
+        // Bandolier state is re-synced via SyncBandolierItems; these handlers are
+        // logging-only — base owns the inventory mutation, cell only learns about it.
         BaseToCellMsg::InventoryItemMoveApplied { entity_id, item_id, source_container_id, target_container_id, swapped_item_id } => {
-            tracing::debug!(entity_id, item_id, source = source_container_id, target = target_container_id, "Item moved in inventory");
+            tracing::debug!(entity_id, item_id, source = source_container_id, target = target_container_id, swapped_item_id = ?swapped_item_id, "Item moved in inventory");
         }
 
         BaseToCellMsg::InventoryItemRemoved { entity_id, item_id, source_container_id } => {

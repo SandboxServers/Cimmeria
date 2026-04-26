@@ -182,7 +182,7 @@ pub(crate) async fn handle_request_character_visuals(
                  WHERE inv.character_id = $1 \
                    AND ri.visual_component IS NOT NULL \
                    AND ( \
-                     (inv.container_id IN (3,4,5,6,7,8,9,10,11,12,13,14) AND inv.slot_id = 0) \
+                     (inv.container_id IN (4,5,6,7,8,9,10,11,12,13,14) AND inv.slot_id = 0) \
                      OR (inv.container_id = 3 AND inv.slot_id = $2) \
                    )",
             )

@@ -390,6 +390,9 @@ VALUES (3026, 'SGC_W1 - Dialog 5365: accept mission 1562', 'mission', 1562, true
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (3026, 'dialog_choice', '5365', 'player', false, 0);
 
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (3026, 'mission_status', 1562, NULL, 'eq', 'not_active', 0);
+
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (3026, 'accept_mission', 1562, NULL, '{}', 0, 0),

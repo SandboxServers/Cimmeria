@@ -69,7 +69,7 @@ pub async fn query_bandolier_items(
         default_ammo_type_id: i32,
     }
 
-    sqlx::query_as::<_, Row>(
+    let rows = match sqlx::query_as::<_, Row>(
         r#"
         SELECT inv.slot_id, inv.type_id AS item_id, COALESCE(ri.clip_size, 0) AS clip_size,
                CASE WHEN ri.default_ammo_type IS NULL THEN 0
@@ -84,19 +84,26 @@ pub async fn query_bandolier_items(
     .bind(player_id)
     .fetch_all(pool.as_ref())
     .await
-    .unwrap_or_default()
-    .into_iter()
-    .map(|row| {
-        (
-            row.slot_id,
-            cimmeria_entity::cell_entity::BandolierItem {
-                item_id: row.item_id,
-                clip_size: row.clip_size,
-                default_ammo_type: row.default_ammo_type_id,
-            },
-        )
-    })
-    .collect()
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!(player_id, "query_bandolier_items failed: {e}");
+            return vec![];
+        }
+    };
+
+    rows.into_iter()
+        .map(|row| {
+            (
+                row.slot_id,
+                cimmeria_entity::cell_entity::BandolierItem {
+                    item_id: row.item_id,
+                    clip_size: row.clip_size,
+                    default_ammo_type: row.default_ammo_type_id,
+                },
+            )
+        })
+        .collect()
 }
 
 /// Query archetype ability tree data from the database.
@@ -166,7 +173,7 @@ pub async fn query_active_weapon_stats(
         default_ammo_type_id: i32,
     }
 
-    sqlx::query_as::<_, ActiveWeaponRow>(
+    match sqlx::query_as::<_, ActiveWeaponRow>(
         r#"
         SELECT COALESCE(ri.clip_size, 0) AS clip_size,
                CASE WHEN ri.default_ammo_type IS NULL THEN 0
@@ -184,8 +191,12 @@ pub async fn query_active_weapon_stats(
     .bind(bandolier_slot)
     .fetch_optional(pool)
     .await
-    .ok()
-    .flatten()
-    .map(|row| (row.clip_size, row.default_ammo_type_id))
-    .unwrap_or((0, 0))
+    {
+        Ok(Some(row)) => (row.clip_size, row.default_ammo_type_id),
+        Ok(None) => (0, 0),
+        Err(e) => {
+            tracing::error!(player_id, bandolier_slot, "query_active_weapon_stats failed: {e}");
+            (0, 0)
+        }
+    }
 }

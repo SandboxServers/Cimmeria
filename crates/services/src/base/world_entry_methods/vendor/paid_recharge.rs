@@ -57,11 +57,11 @@ pub async fn handle_paid_recharge_inventory_items(
         return;
     };
     let Some(recharge_item_list) = template.recharge_item_list else {
-        tracing::debug!(
+        tracing::warn!(
             entity_id,
             player_id,
             vendor_template_id,
-            "RechargeInventoryItems: vendor has no recharge list"
+            "RechargeInventoryItems: vendor has no recharge list — client request dropped"
         );
         return;
     };
@@ -79,7 +79,7 @@ pub async fn handle_paid_recharge_inventory_items(
     };
 
     let rows = match sqlx::query_as::<_, StoreItemCostRow>(
-        "SELECT GREATEST((ili.naquadah * (ri.charges - inv.charges)) / ri.charges, 1)::INT AS cost, \
+        "SELECT GREATEST((ili.naquadah::BIGINT * (ri.charges - inv.charges)::BIGINT) / NULLIF(ri.charges, 0)::BIGINT, 1)::INT AS cost, \
                 inv.item_id \
          FROM resources.item_list_items ili \
          JOIN sgw_inventory inv ON inv.type_id = ili.design_id \

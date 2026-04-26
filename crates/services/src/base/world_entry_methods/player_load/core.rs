@@ -5,6 +5,9 @@ use sqlx::PgPool;
 use crate::mercury::PlayerLoadData;
 use super::meta::{default_player_load_data, query_archetype_ability_tree, query_active_weapon_stats};
 
+// NOTE: this query is duplicated in `inventory/core.rs` (the live-update path).
+// If you change the column list, ammo_position expression, or row shape here,
+// update the other site too — the two paths must produce identical row layouts.
 const INVENTORY_ITEM_SELECT: &str = r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        inv.bound, inv.durability, inv.charges,
@@ -92,7 +95,7 @@ pub async fn query_player_load_data(
                  WHERE inv.character_id = $1 \
                    AND ri.visual_component IS NOT NULL \
                    AND ( \
-                     (inv.container_id IN (3,4,5,6,7,8,9,10,11,12,13,14) AND inv.slot_id = 0) \
+                     (inv.container_id IN (4,5,6,7,8,9,10,11,12,13,14) AND inv.slot_id = 0) \
                      OR (inv.container_id = 3 AND inv.slot_id = $2) \
                    )",
             )

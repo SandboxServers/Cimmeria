@@ -4,8 +4,8 @@
 
 Yes, refactoring the top 3 candidates **would get them down to ~250 lines each**, but with caveats:
 
-1. **space_manager.rs (1,402L)** → can split into 6 focused modules (~200-250L each)
-2. **world_entry.rs (932L)** → can split into 5-6 message handler modules (~150-200L each)
+1. **space_manager.rs (1,402L)** → can split into 9 focused modules (~120-260L each) plus a `mod.rs` re-export hub
+2. **world_entry.rs (932L)** → can split into 9 message handler modules (~120-240L each) plus a `mod.rs` re-export hub
 3. **dispatch.rs (662L)** → **should NOT split** (already clean architecture)
 
 ---
@@ -142,6 +142,7 @@ All **under 250L, achievable.**
 **Current dispatch.rs (662L):**
 - Lines 1-197: Re-export hubs (const mapping CM_* to cell_methods::* constants)
 - Lines 198-260: Actual dispatch function (thin routing, ~62 lines)
+- Lines 261-662: Per-interface dispatch wrappers, helper utilities, and method-name lookups used by telemetry and tests
 
 **Why it's well-designed:**
 1. **Separation of concerns:**
@@ -159,8 +160,8 @@ All **under 250L, achievable.**
 
 | File | Current | Proposed | Effort | Benefit | Priority |
 |------|---------|----------|--------|---------|----------|
-| **space_manager.rs** | 1,402L | 6 files, 200-260L | 2-3 hrs | VERY HIGH (largest file) | 🔴 **NOW** |
-| **world_entry.rs** | 932L | 6 files, 140-240L | 2 hrs | HIGH (message hub) | 🟠 **SOON** |
+| **space_manager.rs** | 1,402L | 10 files (incl. mod.rs), 50-260L | 2-3 hrs | VERY HIGH (largest file) | 🔴 **NOW** |
+| **world_entry.rs** | 932L | 10 files (incl. mod.rs), 60-240L | 2 hrs | HIGH (message hub) | 🟠 **SOON** |
 | **dispatch.rs** | 662L | Keep as-is | 0 hrs | N/A (already optimal) | 🟢 **SKIP** |
 
 ---

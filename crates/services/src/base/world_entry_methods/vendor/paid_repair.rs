@@ -57,11 +57,11 @@ pub async fn handle_paid_repair_inventory_items(
         return;
     };
     let Some(repair_item_list) = template.repair_item_list else {
-        tracing::debug!(
+        tracing::warn!(
             entity_id,
             player_id,
             vendor_template_id,
-            "RepairInventoryItems: vendor has no repair list"
+            "RepairInventoryItems: vendor has no repair list — client request dropped"
         );
         return;
     };
@@ -79,7 +79,7 @@ pub async fn handle_paid_repair_inventory_items(
     };
 
     let rows = match sqlx::query_as::<_, StoreItemCostRow>(
-        "SELECT GREATEST((ili.naquadah * (100 - inv.durability)) / 100, 1)::INT AS cost, \
+        "SELECT GREATEST((ili.naquadah::BIGINT * (100 - inv.durability)::BIGINT) / 100, 1)::INT AS cost, \
                 inv.item_id \
          FROM resources.item_list_items ili \
          JOIN sgw_inventory inv ON inv.type_id = ili.design_id \

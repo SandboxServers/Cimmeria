@@ -163,15 +163,27 @@ async fn send_store_open(
         .and_then(|e| e.template_id);
 
     // Get player_id for base app message
-    let player_db_id = space_mgr.get_entity(player_id)
-        .and_then(|e| e.player_id)
-        .unwrap_or(0);
+    let player_db_id = match space_mgr.get_entity(player_id).and_then(|e| e.player_id) {
+        Some(id) => id,
+        None => {
+            tracing::warn!(player_id, vendor_entity_id, "send_store_open: missing player_id; aborting vendor open");
+            return;
+        }
+    };
+
+    let vendor_entity_id_i32 = match i32::try_from(vendor_entity_id) {
+        Ok(v) => v,
+        Err(_) => {
+            tracing::warn!(player_id, vendor_entity_id, "send_store_open: vendor entity id exceeds i32; aborting");
+            return;
+        }
+    };
 
     tracing::info!(player_id, vendor_entity_id, ?vendor_template_id, "Opening vendor store");
     let _ = tx.send(CellToBaseMsg::OpenVendorStore {
         entity_id: player_id,
         player_id: player_db_id,
-        vendor_entity_id: vendor_entity_id as i32,
+        vendor_entity_id: vendor_entity_id_i32,
         vendor_template_id,
     }).await;
 }

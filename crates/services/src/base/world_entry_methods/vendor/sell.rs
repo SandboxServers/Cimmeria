@@ -13,7 +13,7 @@ use super::purchase_helpers::normalize_item_quantities;
 use super::store::{handle_open_vendor_store, send_store_update_to_client};
 use super::data::load_vendor_sell_prices;
 use super::serializers::{reserve_free_inventory_slots, StoreItemCostUpdate};
-use super::helpers::send_cash_changed_to_client;
+use super::helpers::{send_cash_changed_to_client, sync_bandolier_after_inventory_change};
 use super::purchase_helpers::load_vendor_template_lists;
 
 const INV_MAIN: i32 = 1;
@@ -373,6 +373,19 @@ pub async fn handle_sell_vendor_items(
                 })
                 .await;
         }
+    }
+
+    if bandolier_changed {
+        sync_bandolier_after_inventory_change(
+            entity_id,
+            player_id,
+            db_pool,
+            cell_tx,
+            socket,
+            connected,
+            entity_to_addr,
+        )
+        .await;
     }
 
     handle_open_vendor_store(

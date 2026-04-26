@@ -257,12 +257,14 @@ mod tests {
     #[tokio::test]
     async fn request_headers_sends_message() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
-        handle_request_mail_headers(1, 0, &tx).await;
+        let mut space_mgr = SpaceManager::new();
+        handle_request_mail_headers(1, 0, &tx, &space_mgr).await;
 
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::MailRequest { entity_id, op } => {
+            CellToBaseMsg::MailRequest { entity_id, player_id, op } => {
                 assert_eq!(entity_id, 1);
+                assert_eq!(player_id, 0);
                 match op {
                     MailOp::RequestHeaders { b_archive } => assert_eq!(b_archive, 0),
                     _ => panic!("Expected RequestHeaders"),
@@ -275,12 +277,14 @@ mod tests {
     #[tokio::test]
     async fn request_body_sends_message() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
-        handle_request_mail_body(1, 42, &tx).await;
+        let mut space_mgr = SpaceManager::new();
+        handle_request_mail_body(1, 42, &tx, &space_mgr).await;
 
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::MailRequest { entity_id, op } => {
+            CellToBaseMsg::MailRequest { entity_id, player_id, op } => {
                 assert_eq!(entity_id, 1);
+                assert_eq!(player_id, 0);
                 match op {
                     MailOp::RequestBody { mail_id } => assert_eq!(mail_id, 42),
                     _ => panic!("Expected RequestBody"),
@@ -293,12 +297,14 @@ mod tests {
     #[tokio::test]
     async fn delete_mail_sends_message() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
-        handle_delete_mail(1, 99, &tx).await;
+        let mut space_mgr = SpaceManager::new();
+        handle_delete_mail(1, 99, &tx, &space_mgr).await;
 
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::MailRequest { entity_id, op } => {
+            CellToBaseMsg::MailRequest { entity_id, player_id, op } => {
                 assert_eq!(entity_id, 1);
+                assert_eq!(player_id, 0);
                 match op {
                     MailOp::Delete { mail_id } => assert_eq!(mail_id, 99),
                     _ => panic!("Expected Delete"),

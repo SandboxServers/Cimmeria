@@ -6,9 +6,7 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
 use super::super::super::ConnectedClientState;
-use super::helpers;
-use super::super::super::inventory::core;
-use super::super::super::inventory::grant;
+use super::super::super::inventory::core::send_full_inventory_update;
 use super::super::super::inventory::grant::normalize_item_ids;
 
 pub async fn handle_recharge_inventory_items(
@@ -22,7 +20,7 @@ pub async fn handle_recharge_inventory_items(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     if let Some(vendor_template_id) = vendor_template_id {
-        super::vendor_paid_recharge::handle_paid_recharge_inventory_items(
+        super::paid_recharge::handle_paid_recharge_inventory_items(
             entity_id,
             player_id,
             item_ids,
@@ -72,7 +70,7 @@ pub async fn handle_recharge_inventory_items(
 
     match result {
         Ok(r) if r.rows_affected() > 0 => {
-            let total_items = inventory_core::send_full_inventory_update(
+            let total_items = send_full_inventory_update(
                 entity_id,
                 player_id,
                 pool,

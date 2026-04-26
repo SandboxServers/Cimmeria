@@ -257,6 +257,10 @@ pub async fn handle_buyback_vendor_items(
             return;
         };
 
+        // Flags semantics: in INV_BUYBACK, `flags` stores the per-stack buyback unit
+        // price. Full-move clears it to 0 (item is back in main inventory). Partial-move
+        // inserts the moved portion with flags=0 but leaves the remaining buyback row's
+        // flags untouched so the remainder can still be bought back at the original price.
         let result = if *quantity >= row.stack_size {
             sqlx::query(
                 "UPDATE sgw_inventory \

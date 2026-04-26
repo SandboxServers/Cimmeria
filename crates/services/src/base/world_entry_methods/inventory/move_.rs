@@ -133,29 +133,50 @@ pub async fn handle_move_inventory_item(
         .execute(&mut *tx)
         .await;
 
-        let insert = if update.as_ref().map(|r| r.rows_affected()).unwrap_or(0) == 1 {
-            sqlx::query(
-                "INSERT INTO sgw_inventory \
-                 (character_id, type_id, stack_size, slot_id, container_id, bound, durability, charges) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            )
-            .bind(player_id)
-            .bind(source.type_id)
-            .bind(quantity)
-            .bind(target_slot_id)
-            .bind(target_container_id)
-            .bind(source.bound)
-            .bind(source.durability)
-            .bind(source.charges)
-            .execute(&mut *tx)
-            .await
-        } else {
-            update
+        let update_rows = match update {
+            Ok(r) => r.rows_affected(),
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(player_id, item_id, "MoveInventoryItem: split decrement failed: {e}");
+                return;
+            }
         };
+        if update_rows != 1 {
+            let _ = tx.rollback().await;
+            tracing::warn!(
+                player_id, item_id, quantity,
+                "MoveInventoryItem: split decrement matched 0 rows (concurrent modification?)"
+            );
+            return;
+        }
+
+        let insert = sqlx::query(
+            "INSERT INTO sgw_inventory \
+             (character_id, type_id, stack_size, slot_id, container_id, bound, durability, charges) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(player_id)
+        .bind(source.type_id)
+        .bind(quantity)
+        .bind(target_slot_id)
+        .bind(target_container_id)
+        .bind(source.bound)
+        .bind(source.durability)
+        .bind(source.charges)
+        .execute(&mut *tx)
+        .await;
 
         match insert {
+            Ok(r) if r.rows_affected() == 1 => {
+                if let Err(e) = tx.commit().await {
+                    tracing::error!(player_id, item_id, "MoveInventoryItem: split commit failed: {e}");
+                    return;
+                }
+            }
             Ok(_) => {
-                let _ = tx.commit().await;
+                let _ = tx.rollback().await;
+                tracing::warn!(player_id, item_id, "MoveInventoryItem: split insert affected 0 rows");
+                return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
@@ -215,24 +236,45 @@ pub async fn handle_move_inventory_item(
         .execute(&mut *tx)
         .await;
 
-        let move_source = if move_occupied.as_ref().map(|r| r.rows_affected()).unwrap_or(0) == 1 {
-            sqlx::query(
-                "UPDATE sgw_inventory SET container_id = $1, slot_id = $2 \
-                 WHERE character_id = $3 AND item_id = $4",
-            )
-            .bind(target_container_id)
-            .bind(target_slot_id)
-            .bind(player_id)
-            .bind(item_id)
-            .execute(&mut *tx)
-            .await
-        } else {
-            move_occupied
+        let move_occupied_rows = match move_occupied {
+            Ok(r) => r.rows_affected(),
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(player_id, item_id, "MoveInventoryItem: swap-occupied failed: {e}");
+                return;
+            }
         };
+        if move_occupied_rows != 1 {
+            let _ = tx.rollback().await;
+            tracing::warn!(
+                player_id, item_id, occupied_item_id,
+                "MoveInventoryItem: swap-occupied matched 0 rows"
+            );
+            return;
+        }
+
+        let move_source = sqlx::query(
+            "UPDATE sgw_inventory SET container_id = $1, slot_id = $2 \
+             WHERE character_id = $3 AND item_id = $4",
+        )
+        .bind(target_container_id)
+        .bind(target_slot_id)
+        .bind(player_id)
+        .bind(item_id)
+        .execute(&mut *tx)
+        .await;
 
         match move_source {
+            Ok(r) if r.rows_affected() == 1 => {
+                if let Err(e) = tx.commit().await {
+                    tracing::error!(player_id, item_id, "MoveInventoryItem: swap commit failed: {e}");
+                    return;
+                }
+            }
             Ok(_) => {
-                let _ = tx.commit().await;
+                let _ = tx.rollback().await;
+                tracing::warn!(player_id, item_id, "MoveInventoryItem: swap-source matched 0 rows");
+                return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;

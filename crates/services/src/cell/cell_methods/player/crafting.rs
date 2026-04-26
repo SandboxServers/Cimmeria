@@ -15,6 +15,8 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let craft_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, craft_id, "UNIMPLEMENTED: craft");
+            } else {
+                tracing::warn!(entity_id, args_len = args.len(), "craft: malformed/truncated args");
             }
             true
         }
@@ -33,6 +35,8 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let craft_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, craft_id, "UNIMPLEMENTED: alloying");
+            } else {
+                tracing::warn!(entity_id, args_len = args.len(), "alloying: malformed/truncated args");
             }
             true
         }

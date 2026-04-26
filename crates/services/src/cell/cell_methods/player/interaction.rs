@@ -79,7 +79,7 @@ pub async fn dispatch(
                         ).await;
                     } else {
                         let is_hostile_npc = space_mgr.get_entity(target_entity_id as u32)
-                            .map_or(false, |t| !t.is_player);
+                            .map_or(false, |t| !t.is_player && t.faction == 10);
                         if is_hostile_npc {
                             tracing::debug!(entity_id, target_entity_id, "interact: targeting hostile NPC for combat");
                             let mut reply = Vec::with_capacity(4);

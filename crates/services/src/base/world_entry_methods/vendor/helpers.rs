@@ -50,14 +50,28 @@ pub async fn sync_bandolier_after_inventory_change(
         return;
     };
 
-    let old_active: i32 =
-        sqlx::query_scalar("SELECT bandolier_slot FROM sgw_player WHERE player_id = $1 LIMIT 1")
-            .bind(player_id)
-            .fetch_optional(pool.as_ref())
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or(0);
+    let mut db_tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!(entity_id, player_id, "sync_bandolier: begin tx failed: {e}");
+            return;
+        }
+    };
+
+    let old_active: i32 = match sqlx::query_scalar(
+        "SELECT bandolier_slot FROM sgw_player WHERE player_id = $1 FOR UPDATE",
+    )
+    .bind(player_id)
+    .fetch_optional(&mut *db_tx)
+    .await
+    {
+        Ok(v) => v.unwrap_or(0),
+        Err(e) => {
+            let _ = db_tx.rollback().await;
+            tracing::error!(entity_id, player_id, "sync_bandolier: read slot failed: {e}");
+            return;
+        }
+    };
 
     let bandolier_items = query_bandolier_items(db_pool, player_id).await;
     let mut active_slot = old_active;
@@ -67,22 +81,25 @@ pub async fn sync_bandolier_after_inventory_change(
             .map(|(slot, _)| *slot)
             .min()
             .unwrap_or(0);
-        match sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
+        if let Err(e) = sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
             .bind(active_slot)
             .bind(player_id)
-            .execute(pool.as_ref())
+            .execute(&mut *db_tx)
             .await
         {
-            Ok(_) => {
-                tracing::debug!(entity_id, player_id, active_slot, "Bandolier active slot updated");
-            }
-            Err(e) => {
-                tracing::error!(entity_id, player_id, active_slot, "Failed to update bandolier slot: {e}");
-            }
+            let _ = db_tx.rollback().await;
+            tracing::error!(entity_id, player_id, active_slot, "Failed to update bandolier slot: {e}");
+            return;
         }
+        tracing::debug!(entity_id, player_id, active_slot, "Bandolier active slot updated");
     }
 
-    if active_slot != old_active {
+    if let Err(e) = db_tx.commit().await {
+        tracing::error!(entity_id, player_id, "sync_bandolier: commit failed: {e}");
+        return;
+    }
+
+    if active_slot != old_active && !bandolier_items.is_empty() {
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&3i32.to_le_bytes());
         args.extend_from_slice(&(active_slot + 1).to_le_bytes());

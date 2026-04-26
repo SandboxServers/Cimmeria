@@ -15,18 +15,20 @@ pub const REQUEST_AMMO_CHANGE: u16 = 42;
 
 /// Fire a weapon attack event for an equipped item.
 /// Called after a ranged weapon attack is launched.
+// TODO(combat-pass): Implement weapon swing animations, ammo consumption,
+// projectile spawn, and equipped-item event broadcast to witnesses.
 pub async fn fire_equipped_weapon_attack_event(
     entity_id: u32,
     target_id: i32,
     is_ranged: bool,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
+    _tx: &mpsc::Sender<CellToBaseMsg>,
+    _space_mgr: &mut SpaceManager,
 ) {
-    tracing::debug!(
+    tracing::warn!(
         entity_id,
         target_id,
         is_ranged,
-        "fireEquippedWeaponAttackEvent"
+        "fireEquippedWeaponAttackEvent: stub — weapon events not yet implemented"
     );
 }
 

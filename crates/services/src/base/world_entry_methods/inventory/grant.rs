@@ -60,15 +60,41 @@ pub async fn handle_grant_item(
         }
     };
 
-    let next_slot: i32 = sqlx::query_scalar(
+    let mut db_tx = match pool.begin().await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!(player_id, item_id, "GrantItem: begin tx failed: {e}");
+            return;
+        }
+    };
+
+    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(player_id)
+        .bind(container_id)
+        .execute(&mut *db_tx)
+        .await
+    {
+        let _ = db_tx.rollback().await;
+        tracing::error!(player_id, item_id, "GrantItem: advisory lock failed: {e}");
+        return;
+    }
+
+    let next_slot: i32 = match sqlx::query_scalar::<_, i32>(
         "SELECT COALESCE(MAX(slot_id), -1) + 1 FROM sgw_inventory \
          WHERE character_id = $1 AND container_id = $2",
     )
     .bind(player_id)
     .bind(container_id)
-    .fetch_one(pool.as_ref())
+    .fetch_one(&mut *db_tx)
     .await
-    .unwrap_or(0);
+    {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = db_tx.rollback().await;
+            tracing::error!(player_id, item_id, "GrantItem: slot query failed: {e}");
+            return;
+        }
+    };
 
     let result = sqlx::query(
         "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id, \
@@ -79,7 +105,7 @@ pub async fn handle_grant_item(
     .bind(count)
     .bind(next_slot)
     .bind(container_id)
-    .execute(pool.as_ref())
+    .execute(&mut *db_tx)
     .await;
 
     match result {
@@ -91,9 +117,15 @@ pub async fn handle_grant_item(
             "Item persisted to inventory"
         ),
         Err(e) => {
+            let _ = db_tx.rollback().await;
             tracing::error!(player_id, item_id, "Failed to persist item: {e}");
             return;
         }
+    }
+
+    if let Err(e) = db_tx.commit().await {
+        tracing::error!(player_id, item_id, "GrantItem: commit failed: {e}");
+        return;
     }
 
     let total_items = send_full_inventory_update(
