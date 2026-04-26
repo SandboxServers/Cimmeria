@@ -36,14 +36,28 @@ pub async fn query_saved_missions(
         Ok(rows) => {
             let missions: Vec<_> = rows
                 .into_iter()
-                .map(|r| SavedMission {
-                    mission_id: r.mission_id,
-                    status: r.status as i8,
-                    current_step_id: r.current_step_id,
-                    completed_step_ids: r.completed_step_ids,
-                    completed_objective_ids: r.completed_objective_ids,
-                    active_objective_ids: r.active_objective_ids,
-                    failed_objective_ids: r.failed_objective_ids,
+                .map(|r| {
+                    let status = match i8::try_from(r.status) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            tracing::warn!(
+                                player_id,
+                                mission_id = r.mission_id,
+                                db_status = r.status,
+                                "Mission status out of i8 range, clamping"
+                            );
+                            127i8.min((-128i8).max(r.status as i8))
+                        }
+                    };
+                    SavedMission {
+                        mission_id: r.mission_id,
+                        status,
+                        current_step_id: r.current_step_id,
+                        completed_step_ids: r.completed_step_ids,
+                        completed_objective_ids: r.completed_objective_ids,
+                        active_objective_ids: r.active_objective_ids,
+                        failed_objective_ids: r.failed_objective_ids,
+                    }
                 })
                 .collect();
             tracing::info!(

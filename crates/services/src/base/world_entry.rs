@@ -667,8 +667,8 @@ pub(crate) async fn handle_cell_message(
                 tracing::error!(entity_id, world = %target_world_name, "Gate travel failed: {e}");
             }
         }
-        CellToBaseMsg::MailRequest { entity_id, op } => {
-            handle_mail_request(entity_id, op, socket, connected, entity_to_addr, db_pool).await;
+        CellToBaseMsg::MailRequest { entity_id, player_id, op } => {
+            handle_mail_request(entity_id, player_id, op, socket, connected, entity_to_addr, db_pool).await;
         }
         CellToBaseMsg::MissionUpdate { player_id, mission_id, status, current_step_id,
                                         completed_step_ids, completed_objective_ids, active_objective_ids,

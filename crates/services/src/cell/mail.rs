@@ -10,15 +10,21 @@
 use tokio::sync::mpsc;
 
 use super::messages::{CellToBaseMsg, MailOp};
+use super::space_manager::SpaceManager;
 
 /// Forward a `requestMailHeaders` call to BaseApp for DB execution.
 pub async fn handle_request_mail_headers(
     entity_id: u32,
     b_archive: u8,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
+    let player_id = space_mgr.get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0);
     let _ = tx.send(CellToBaseMsg::MailRequest {
         entity_id,
+        player_id,
         op: MailOp::RequestHeaders { b_archive },
     }).await;
 }
@@ -28,9 +34,14 @@ pub async fn handle_request_mail_body(
     entity_id: u32,
     mail_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
+    let player_id = space_mgr.get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0);
     let _ = tx.send(CellToBaseMsg::MailRequest {
         entity_id,
+        player_id,
         op: MailOp::RequestBody { mail_id },
     }).await;
 }
@@ -40,9 +51,14 @@ pub async fn handle_delete_mail(
     entity_id: u32,
     mail_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
+    let player_id = space_mgr.get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0);
     let _ = tx.send(CellToBaseMsg::MailRequest {
         entity_id,
+        player_id,
         op: MailOp::Delete { mail_id },
     }).await;
 }
@@ -52,9 +68,14 @@ pub async fn handle_archive_mail(
     entity_id: u32,
     mail_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
+    let player_id = space_mgr.get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .unwrap_or(0);
     let _ = tx.send(CellToBaseMsg::MailRequest {
         entity_id,
+        player_id,
         op: MailOp::Archive { mail_id },
     }).await;
 }

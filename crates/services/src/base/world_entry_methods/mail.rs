@@ -14,6 +14,7 @@ use super::super::ConnectedClientState;
 /// Handle a mail request from CellService by querying the DB and sending results to the client.
 pub async fn handle_mail_request(
     entity_id: u32,
+    player_id: i32,
     op: MailOp,
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -23,39 +24,7 @@ pub async fn handle_mail_request(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(entity_id, "Mail request: no DB pool available");
-            return;
-        }
-    };
-
-    let account_id = {
-        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-            Some(a) => a,
-            None => {
-                tracing::warn!(entity_id, "Mail: no client addr");
-                return;
-            }
-        };
-        let clients = connected.lock().unwrap();
-        match clients.get(&addr) {
-            Some(c) => c.account_id,
-            None => {
-                tracing::warn!(entity_id, "Mail: client not found");
-                return;
-            }
-        }
-    };
-
-    let player_id = match sqlx::query_scalar::<_, i32>(
-        "SELECT player_id FROM sgw_player WHERE account_id = $1 ORDER BY player_id LIMIT 1",
-    )
-    .bind(account_id as i32)
-    .fetch_optional(pool.as_ref())
-    .await
-    {
-        Ok(Some(pid)) => pid,
-        _ => {
-            tracing::warn!(entity_id, account_id, "Mail: could not resolve player_id");
+            tracing::debug!(entity_id, player_id, "Mail request: no DB pool available");
             return;
         }
     };

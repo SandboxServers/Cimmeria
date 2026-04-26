@@ -249,6 +249,7 @@ pub enum CellToBaseMsg {
     /// Request mail headers for a player entity (forwarded to BaseApp for DB query).
     MailRequest {
         entity_id: u32,
+        player_id: i32,
         /// Mail operation type.
         op: MailOp,
     },
