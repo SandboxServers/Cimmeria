@@ -47,7 +47,7 @@ pub async fn handle_move_inventory_item(
         }
     };
 
-    let source = sqlx::query_as::<_, InventoryInstanceRow>(
+    let source = match sqlx::query_as::<_, InventoryInstanceRow>(
         "SELECT type_id, stack_size, container_id, slot_id, bound, durability, charges \
          FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1",
     )
@@ -55,12 +55,16 @@ pub async fn handle_move_inventory_item(
     .bind(item_id)
     .fetch_optional(pool.as_ref())
     .await
-    .ok()
-    .flatten();
-
-    let Some(source) = source else {
-        tracing::warn!(player_id, item_id, "MoveInventoryItem: source item not found");
-        return;
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            tracing::warn!(player_id, item_id, "MoveInventoryItem: source item not found");
+            return;
+        }
+        Err(e) => {
+            tracing::error!(player_id, item_id, "MoveInventoryItem: source query failed: {e}");
+            return;
+        }
     };
 
     let max_slots = bag_max_slots(target_container_id);
@@ -84,7 +88,7 @@ pub async fn handle_move_inventory_item(
         return;
     }
 
-    let occupied: Option<i32> = sqlx::query_scalar(
+    let occupied: Option<i32> = match sqlx::query_scalar(
         "SELECT item_id FROM sgw_inventory \
          WHERE character_id = $1 AND container_id = $2 AND slot_id = $3 AND item_id <> $4 LIMIT 1",
     )
@@ -94,8 +98,13 @@ pub async fn handle_move_inventory_item(
     .bind(item_id)
     .fetch_optional(pool.as_ref())
     .await
-    .ok()
-    .flatten();
+    {
+        Ok(result) => result,
+        Err(e) => {
+            tracing::error!(player_id, target_container_id, target_slot_id, "MoveInventoryItem: occupied slot query failed: {e}");
+            return;
+        }
+    };
 
     if quantity < source.stack_size {
         if occupied.is_some() {
@@ -155,15 +164,20 @@ pub async fn handle_move_inventory_item(
             }
         }
     } else if let Some(occupied_item_id) = occupied {
-        let occupied_item_type: Option<i32> = sqlx::query_scalar(
+        let occupied_item_type: Option<i32> = match sqlx::query_scalar(
             "SELECT type_id FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1",
         )
         .bind(player_id)
         .bind(occupied_item_id)
         .fetch_optional(pool.as_ref())
         .await
-        .ok()
-        .flatten();
+        {
+            Ok(result) => result,
+            Err(e) => {
+                tracing::error!(player_id, occupied_item_id, "MoveInventoryItem: occupied item type query failed: {e}");
+                return;
+            }
+        };
 
         let Some(occupied_item_type) = occupied_item_type else {
             tracing::warn!(

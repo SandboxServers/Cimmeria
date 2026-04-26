@@ -410,6 +410,16 @@ async fn handle_base_message(
                 }
                 tracing::debug!(entity_id, count = abilities.len(), "Registered player abilities on cell entity");
 
+                // Apply bandolier state to entity (Bug #2: restore persisted bandolier slot and items)
+                entity.active_bandolier_slot = active_bandolier_slot;
+                entity.bandolier_items = bandolier_items;
+                tracing::debug!(
+                    entity_id,
+                    active_bandolier_slot,
+                    bandolier_item_count = entity.bandolier_items.len(),
+                    "Applied bandolier state to cell entity"
+                );
+
                 // Restore saved missions BEFORE content engine fires, so that
                 // chain conditions correctly see existing mission state and
                 // don't re-trigger already-active or completed missions.

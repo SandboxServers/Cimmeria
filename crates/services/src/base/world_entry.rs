@@ -529,6 +529,9 @@ async fn handle_gate_travel(
         resolve_space_id_fallback(target_world_name)
     };
 
+    // Query stargates for the destination world (Bug #3: load stargate cache for new world)
+    let world_stargates = query_world_stargates(db_pool, target_world_name).await;
+
     // Build the world entry info for the new destination
     let entry_info = WorldEntryInfo {
         player_entity_id: entity_id,
@@ -537,7 +540,7 @@ async fn handle_gate_travel(
         rot: rotation,
         world_name: target_world_name.to_string(),
         class_id: SGWPLAYER_CLASS_ID, // See NOTE above -- SGWGmPlayer shifts method indices
-        world_stargates: vec![], // TODO: query accessible stargates for this world
+        world_stargates,
     };
 
     // Query player load data from DB (same player, different world)

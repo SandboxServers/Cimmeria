@@ -105,6 +105,30 @@ pub(crate) async fn handle_on_client_ready(
         vec![]
     };
 
+    // Query active bandolier slot and items from DB (Bug #1: don't hardcode empty state)
+    let (active_bandolier_slot, bandolier_items) = if let Some(pool) = db_pool {
+        let slot: Option<i32> = sqlx::query_scalar(
+            "SELECT bandolier_slot FROM sgw_player WHERE player_id = $1"
+        )
+        .bind(pending.player_id)
+        .fetch_optional(pool.as_ref())
+        .await
+        .unwrap_or(None)
+        .flatten();
+
+        let items = super::world_entry_methods::player_load::meta::query_bandolier_items(
+            db_pool,
+            pending.player_id,
+        ).await;
+
+        let bandolier_items: std::collections::HashMap<i32, cimmeria_entity::cell_entity::BandolierItem> =
+            items.into_iter().collect();
+
+        (slot.unwrap_or(0), bandolier_items)
+    } else {
+        (0, std::collections::HashMap::new())
+    };
+
     if let Some(ref tx) = cell_tx {
         let _ = tx.send(BaseToCellMsg::ConnectEntity {
             entity_id,
@@ -116,8 +140,8 @@ pub(crate) async fn handle_on_client_ready(
             world_name: pending.world_name.clone(),
             saved_missions,
             abilities,
-            active_bandolier_slot: 0,
-            bandolier_items: vec![],
+            active_bandolier_slot,
+            bandolier_items,
         }).await;
     }
 
