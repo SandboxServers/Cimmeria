@@ -44,7 +44,7 @@ use super::world_entry_methods::{
 };
 use super::world_entry_methods::{
     default_player_load_data, query_player_load_data,
-    query_player_load_data_by_account, query_world_entry,
+    query_player_load_data_by_account, query_world_entry, query_world_stargates,
 };
 
 // ── Space registry (populated from CellService SpaceData messages) ───────────

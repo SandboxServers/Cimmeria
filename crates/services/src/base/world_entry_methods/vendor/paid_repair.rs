@@ -6,8 +6,8 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
 use crate::base::ConnectedClientState;
-use super::super::super::inventory::core::send_full_inventory_update;
-use super::super::super::inventory::grant::normalize_item_ids;
+use super::super::inventory::core::send_full_inventory_update;
+use super::super::inventory::grant::normalize_item_ids;
 use super::data::load_vendor_repair_prices;
 use super::store::send_store_update_to_client;
 use super::helpers::send_cash_changed_to_client;

@@ -6,8 +6,8 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
 use super::super::super::ConnectedClientState;
-use super::super::super::inventory::core::send_full_inventory_update;
-use super::super::super::inventory::grant::normalize_item_ids;
+use super::super::inventory::core::send_full_inventory_update;
+use super::super::inventory::grant::normalize_item_ids;
 
 pub async fn handle_repair_inventory_item(
     entity_id: u32,

@@ -412,7 +412,7 @@ async fn handle_base_message(
 
                 // Apply bandolier state to entity (Bug #2: restore persisted bandolier slot and items)
                 entity.active_bandolier_slot = active_bandolier_slot;
-                entity.bandolier_items = bandolier_items;
+                entity.bandolier_items = bandolier_items.into_iter().collect();
                 tracing::debug!(
                     entity_id,
                     active_bandolier_slot,

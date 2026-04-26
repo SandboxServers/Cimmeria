@@ -121,12 +121,9 @@ pub(crate) async fn handle_on_client_ready(
             pending.player_id,
         ).await;
 
-        let bandolier_items: std::collections::HashMap<i32, cimmeria_entity::cell_entity::BandolierItem> =
-            items.into_iter().collect();
-
-        (slot.unwrap_or(0), bandolier_items)
+        (slot.unwrap_or(0), items)
     } else {
-        (0, std::collections::HashMap::new())
+        (0, Vec::new())
     };
 
     if let Some(ref tx) = cell_tx {

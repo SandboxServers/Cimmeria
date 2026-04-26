@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
 use super::super::super::ConnectedClientState;
-use super::super::super::inventory::core::send_full_inventory_update;
+use super::super::inventory::core::send_full_inventory_update;
 use super::purchase_helpers::{load_vendor_purchase_lines, consume_design_quantity, normalize_item_quantities};
 use super::store::{handle_open_vendor_store, VendorTemplateLists, send_store_update_to_client};
 use super::helpers::send_cash_changed_to_client;
@@ -157,7 +157,7 @@ pub async fn handle_purchase_vendor_items(
         balance
     };
 
-    let mut grant_slots = match super::vendor_serializers::reserve_free_inventory_slots(&mut tx, player_id, INV_MAIN, lines.len()).await {
+    let mut grant_slots = match super::serializers::reserve_free_inventory_slots(&mut tx, player_id, INV_MAIN, lines.len()).await {
         Ok(Some(slots)) => slots.into_iter(),
         Ok(None) => {
             let _ = tx.rollback().await;
