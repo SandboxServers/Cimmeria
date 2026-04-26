@@ -67,11 +67,19 @@ pub async fn sync_bandolier_after_inventory_change(
             .map(|(slot, _)| *slot)
             .min()
             .unwrap_or(0);
-        let _ = sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
+        match sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
             .bind(active_slot)
             .bind(player_id)
             .execute(pool.as_ref())
-            .await;
+            .await
+        {
+            Ok(_) => {
+                tracing::debug!(entity_id, player_id, active_slot, "Bandolier active slot updated");
+            }
+            Err(e) => {
+                tracing::error!(entity_id, player_id, active_slot, "Failed to update bandolier slot: {e}");
+            }
+        }
     }
 
     if active_slot != old_active {
