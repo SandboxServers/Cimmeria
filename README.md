@@ -220,3 +220,11 @@ For reverse engineering: [docs/reverse-engineering/](docs/reverse-engineering/PL
 ## License
 
 This project is a server emulator for research and preservation purposes.
+
+## 💰 Bounty Contribution
+
+- **Task:** handle_grant_xp does not persist XP/level/training_points to database
+- **Reward:** $4
+- **Source:** GitHub-Paid
+- **Date:** 2026-04-27
+
