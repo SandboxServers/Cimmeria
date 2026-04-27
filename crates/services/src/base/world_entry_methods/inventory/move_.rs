@@ -169,8 +169,12 @@ pub async fn handle_move_inventory_item(
         return;
     }
 
-    let occupied: Option<i32> = match sqlx::query_scalar(
-        "SELECT item_id FROM sgw_inventory \
+    // Fetch both `item_id` and `type_id` for the occupant in one FOR-UPDATE
+    // query; the row is locked here for the rest of the tx, so the swap arm
+    // below can rely on the cached `type_id` instead of re-locking the same
+    // row just to read its type.
+    let occupied: Option<(i32, i32)> = match sqlx::query_as::<_, (i32, i32)>(
+        "SELECT item_id, type_id FROM sgw_inventory \
          WHERE character_id = $1 AND container_id = $2 AND slot_id = $3 AND item_id <> $4 LIMIT 1 FOR UPDATE",
     )
     .bind(player_id)
@@ -259,32 +263,7 @@ pub async fn handle_move_inventory_item(
                 return;
             }
         }
-    } else if let Some(occupied_item_id) = occupied {
-        let occupied_item_type: Option<i32> = match sqlx::query_scalar(
-            "SELECT type_id FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1 FOR UPDATE",
-        )
-        .bind(player_id)
-        .bind(occupied_item_id)
-        .fetch_optional(&mut *tx)
-        .await
-        {
-            Ok(result) => result,
-            Err(e) => {
-                let _ = tx.rollback().await;
-                tracing::error!(player_id, occupied_item_id, "MoveInventoryItem: occupied item type query failed: {e}");
-                return;
-            }
-        };
-
-        let Some(occupied_item_type) = occupied_item_type else {
-            let _ = tx.rollback().await;
-            tracing::warn!(
-                player_id, item_id, occupied_item_id,
-                "MoveInventoryItem: occupied item disappeared before swap"
-            );
-            return;
-        };
-
+    } else if let Some((occupied_item_id, occupied_item_type)) = occupied {
         if !item_allows_container(pool, occupied_item_type, source.container_id).await {
             let _ = tx.rollback().await;
             tracing::warn!(
@@ -406,7 +385,7 @@ pub async fn handle_move_inventory_item(
                 item_id,
                 source_container_id: source.container_id,
                 target_container_id,
-                swapped_item_id: occupied,
+                swapped_item_id: occupied.map(|(id, _)| id),
             })
             .await;
     }

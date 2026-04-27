@@ -114,13 +114,13 @@ Most Rust IDE setups (VS Code with rust-analyzer, IntelliJ Rust) run Clippy auto
 
 Quick searches to run before committing:
 
-| What to Find | Search Pattern |
-|--------------|----------------|
-| Masked DB errors | `.ok().flatten()` in Rust files |
-| Masked DB errors | `.unwrap_or_default()` near query/fetch calls |
-| Magic numbers | `method_index:` followed by a digit |
-| Unchecked mutations | `.execute(` without nearby `rows_affected` |
-| Deep super chains | `super::super::super::` |
+| What to Find | Command |
+|--------------|---------|
+| Masked DB errors | `rg -n --type rust '\.ok\(\)\.flatten\(\)'` |
+| Masked DB errors | `rg -n --type rust '\.unwrap_or_default\(\)' -C 3` |
+| Magic numbers | `rg -n --type rust 'method_index:\s*\d+'` |
+| Unchecked mutations | `rg -n --type rust '\.execute\(' -C 3` |
+| Deep super chains | `rg -n --type rust 'super::super::super::'` |
 
 ---
 
