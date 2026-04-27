@@ -112,8 +112,14 @@ fn build_map_loaded_body_inner(
     // 1. setupStargateInfo (3xARRAY<INT32>: world, known, hidden)
     {
         let mut args = Vec::new();
-        args.extend_from_slice(&0u32.to_le_bytes()); // worldStargateIds: empty
-        args.extend_from_slice(&(data.known_stargates.len() as u32).to_le_bytes());
+        // worldStargateIds: stargates physically present in the destination
+        // world (queried by query_world_stargates and stored in WorldEntryInfo).
+        args.extend_from_slice(&u32::try_from(world_entry.world_stargates.len()).unwrap_or(u32::MAX).to_le_bytes());
+        for &sg in &world_entry.world_stargates {
+            args.extend_from_slice(&sg.to_le_bytes());
+        }
+        // knownStargateIds: address-book entries the player has unlocked.
+        args.extend_from_slice(&u32::try_from(data.known_stargates.len()).unwrap_or(u32::MAX).to_le_bytes());
         for &sg in &data.known_stargates {
             args.extend_from_slice(&sg.to_le_bytes());
         }

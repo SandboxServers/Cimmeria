@@ -40,26 +40,56 @@ pub async fn dispatch(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) -> bool {
+    // All inventory ops require a player_id — we refuse to silently default
+    // to 0 (would either no-op or hit a sentinel row).
+    let resolve_player_id = |op: &str| -> Option<i32> {
+        match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+            Some(id) => Some(id),
+            None => {
+                tracing::warn!(entity_id, op, "inventory op dropped: entity has no player_id");
+                None
+            }
+        }
+    };
+
     match method_index {
         REMOVE_ITEM => {
             if args.len() >= 6 {
                 let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                let quantity = i16::from_le_bytes([args[4], args[5]]);
-                tracing::info!(entity_id, item_id, quantity, "UNIMPLEMENTED: removeItem");
+                let quantity = i16::from_le_bytes([args[4], args[5]]) as i32;
+                tracing::debug!(entity_id, item_id, quantity, "removeItem");
+                if let Some(player_id) = resolve_player_id("removeItem") {
+                    let _ = tx.send(CellToBaseMsg::RemoveInventoryItem {
+                        entity_id, player_id, item_id, quantity,
+                    }).await;
+                }
+            } else {
+                tracing::warn!(entity_id, args_len = args.len(), "removeItem: truncated args");
             }
             true
         }
         LIST_ITEMS => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: listItems");
+            tracing::debug!(entity_id, "listItems");
+            if let Some(player_id) = resolve_player_id("listItems") {
+                let _ = tx.send(CellToBaseMsg::ListInventoryItems { entity_id, player_id }).await;
+            }
             true
         }
         MOVE_ITEM => {
             if args.len() >= 16 {
                 let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                let target_bag = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                let target_slot = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+                let target_container_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                let target_slot_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let quantity = i32::from_le_bytes([args[12], args[13], args[14], args[15]]);
-                tracing::info!(entity_id, item_id, target_bag, target_slot, quantity, "UNIMPLEMENTED: moveItem");
+                tracing::debug!(entity_id, item_id, target_container_id, target_slot_id, quantity, "moveItem");
+                if let Some(player_id) = resolve_player_id("moveItem") {
+                    let _ = tx.send(CellToBaseMsg::MoveInventoryItem {
+                        entity_id, player_id, item_id,
+                        target_container_id, target_slot_id, quantity,
+                    }).await;
+                }
+            } else {
+                tracing::warn!(entity_id, args_len = args.len(), "moveItem: truncated args");
             }
             true
         }
@@ -89,7 +119,32 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let slot_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, bag_id, slot_id, "UNIMPLEMENTED: requestActiveSlotChange");
+                tracing::debug!(entity_id, bag_id, slot_id, "requestActiveSlotChange");
+                // Only bandolier (container 3) carries an active slot.
+                if bag_id == 3 {
+                    // Resolve player_id BEFORE taking the mutable borrow on
+                    // space_mgr, otherwise the immutable borrow inside
+                    // `resolve_player_id` would alias.
+                    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+                        Some(id) => Some(id),
+                        None => {
+                            tracing::warn!(entity_id, "requestActiveSlotChange dropped: entity has no player_id");
+                            None
+                        }
+                    };
+                    // Update the cell-side entity immediately so subsequent
+                    // ability/ammo checks see the new slot, then persist via base.
+                    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                        entity.active_bandolier_slot = slot_id;
+                    }
+                    if let Some(player_id) = player_id {
+                        let _ = tx.send(CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id }).await;
+                    }
+                } else {
+                    tracing::warn!(entity_id, bag_id, slot_id, "requestActiveSlotChange: ignoring non-bandolier container");
+                }
+            } else {
+                tracing::warn!(entity_id, args_len = args.len(), "requestActiveSlotChange: truncated args");
             }
             true
         }

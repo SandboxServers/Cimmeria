@@ -18,6 +18,68 @@ use super::combat;
 use super::messages::CellToBaseMsg;
 use super::space_manager::SpaceManager;
 
+/// Default radius for ground-targeted ability auto-aim, in world units.
+/// Picks the nearest enemy NPC within this radius of the click point and
+/// resolves the ability against it. A future combat pass should replace
+/// this with true AoE damage application driven by the ability's effect
+/// definition (radius + per-tick damage parameters).
+const GROUND_TARGET_AUTOAIM_RADIUS: f32 = 5.0;
+
+/// Handle a ground-targeted ability: pick the nearest enemy NPC within
+/// `GROUND_TARGET_AUTOAIM_RADIUS` of the click point and resolve the ability
+/// against it, sharing all the cooldown/ammo/state-field accounting from the
+/// targeted path. If no enemy is in range, the call still consumes cooldown
+/// and ammo via `handle_use_ability(target_id=0)` so the player can't spam.
+pub async fn handle_use_ability_on_ground(
+    entity_id: u32,
+    ability_id: i32,
+    ground: [f32; 3],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    // Find the nearest enemy NPC to the ground click. Players targeting
+    // friendly factions or themselves with a ground ability fall through to
+    // the no-target branch below.
+    let nearest = {
+        let mut best: Option<(u32, f32)> = None;
+        for npc_eid in space_mgr.all_npc_entity_ids() {
+            if let Some(npc) = space_mgr.get_entity(npc_eid) {
+                if combat::is_dead_state(npc.state_field) {
+                    continue;
+                }
+                let dx = npc.position.x - ground[0];
+                let dy = npc.position.y - ground[1];
+                let dz = npc.position.z - ground[2];
+                let dist_sq = dx * dx + dy * dy + dz * dz;
+                if dist_sq <= GROUND_TARGET_AUTOAIM_RADIUS * GROUND_TARGET_AUTOAIM_RADIUS {
+                    let better = best.map_or(true, |(_, d)| dist_sq < d);
+                    if better {
+                        best = Some((npc_eid, dist_sq));
+                    }
+                }
+            }
+        }
+        best.map(|(eid, _)| eid)
+    };
+
+    match nearest {
+        Some(target_eid) => {
+            tracing::debug!(
+                entity_id, ability_id, ?ground, target_eid,
+                "useAbilityOnGroundTarget: resolving against nearest enemy in radius"
+            );
+            handle_use_ability(entity_id, ability_id, target_eid as i32, tx, space_mgr).await;
+        }
+        None => {
+            tracing::debug!(
+                entity_id, ability_id, ?ground,
+                "useAbilityOnGroundTarget: no enemy in radius; consuming cooldown/ammo without damage"
+            );
+            handle_use_ability(entity_id, ability_id, 0, tx, space_mgr).await;
+        }
+    }
+}
+
 /// Send an entity method call, routing to the entity's client if it's a player,
 /// or broadcasting to all witnessing players if it's an NPC (ghost entity).
 ///

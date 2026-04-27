@@ -77,13 +77,8 @@ pub async fn dispatch(
                 let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
                 tracing::debug!(entity_id, ability_id, x, y, z, "useAbilityOnGroundTarget");
-                // Ground-targeted abilities (e.g., AoE drops) currently route
-                // through the same handler with target_id=0; the position is
-                // logged for now and the cooldown/ammo accounting still fires.
-                // TODO: add ground_target: [f32; 3] to handle_use_ability so
-                // splash damage can resolve at the actual click point.
-                crate::cell::abilities::handle_use_ability(
-                    entity_id, ability_id, 0, tx, space_mgr,
+                crate::cell::abilities::handle_use_ability_on_ground(
+                    entity_id, ability_id, [x, y, z], tx, space_mgr,
                 ).await;
             }
             true

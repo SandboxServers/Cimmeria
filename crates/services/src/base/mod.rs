@@ -119,6 +119,12 @@ pub(crate) struct ConnectedClientState {
     pub world_name: Option<String>,
     pub player_xp: Option<u64>,
     pub player_training_points: Option<u32>,
+    /// The DB `player_id` of the character the client selected via
+    /// `playCharacter`. Set during the play-character flow and used by
+    /// gate-travel / respawn so they target the active character instead
+    /// of falling back to "lowest player_id for the account" — which is
+    /// wrong on multi-character accounts.
+    pub active_player_id: Option<i32>,
 }
 
 #[cfg(test)]

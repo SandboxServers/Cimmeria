@@ -170,6 +170,11 @@ pub(crate) async fn handle_play_character(
             c.world_name = Some(entry_info.world_name.clone());
             c.player_xp = Some(player_load_data.exp as u64);
             c.player_training_points = Some(player_load_data.training_points as u32);
+            // Cache the selected player's DB id so gate-travel/respawn can use
+            // it directly instead of falling back to a "lowest player_id for
+            // this account" lookup that would target the wrong character on
+            // multi-character accounts.
+            c.active_player_id = Some(player_id);
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
             c.pending_client_ready = None;
@@ -540,6 +545,56 @@ async fn handle_gate_travel(
         resolve_space_id_fallback(target_world_name)
     };
 
+    // Persist the destination world + position to sgw_player so a future
+    // relog or RespawnReload reloads the player at the new world rather than
+    // snapping them back to the saved pre-gate location.
+    if let Some(pool) = db_pool {
+        // Look up active_player_id (cached from playCharacter) — fall back to
+        // lowest-for-account only if missing, to keep gate travel functional
+        // on accounts that somehow skipped the playCharacter cache.
+        let active_pid: Option<i32> = {
+            let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+            clients.get(&addr).and_then(|c| c.active_player_id)
+        };
+
+        let update_clause = "UPDATE sgw_player \
+             SET world_location = $1, \
+                 world_id = COALESCE((SELECT world_id FROM resources.worlds WHERE world = $1), world_id), \
+                 pos_x = $2, pos_y = $3, pos_z = $4 \
+             WHERE player_id = $5 AND account_id = $6";
+        let res = match active_pid {
+            Some(pid) => sqlx::query(update_clause)
+                .bind(target_world_name)
+                .bind(position[0]).bind(position[1]).bind(position[2])
+                .bind(pid).bind(account_id as i32)
+                .execute(pool.as_ref()).await,
+            None => {
+                tracing::warn!(%addr, account_id, "GateTravel: no active_player_id cached; persisting against first character for account");
+                sqlx::query(
+                    "UPDATE sgw_player SET \
+                       world_location = $1, \
+                       world_id = COALESCE((SELECT world_id FROM resources.worlds WHERE world = $1), world_id), \
+                       pos_x = $2, pos_y = $3, pos_z = $4 \
+                     WHERE player_id = (SELECT MIN(player_id) FROM sgw_player WHERE account_id = $5) \
+                       AND account_id = $5",
+                )
+                .bind(target_world_name)
+                .bind(position[0]).bind(position[1]).bind(position[2])
+                .bind(account_id as i32)
+                .execute(pool.as_ref()).await
+            }
+        };
+        match res {
+            Ok(r) if r.rows_affected() == 0 => {
+                tracing::warn!(%addr, account_id, world = %target_world_name, "GateTravel: persistence UPDATE matched 0 rows");
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!(%addr, account_id, world = %target_world_name, "GateTravel: failed to persist destination: {e}");
+            }
+        }
+    }
+
     // Query stargates for the destination world (Bug #3: load stargate cache for new world)
     let world_stargates = query_world_stargates(db_pool, target_world_name).await;
 
@@ -554,16 +609,21 @@ async fn handle_gate_travel(
         world_stargates,
     };
 
-    // Query player load data from DB (same player, different world)
-    let player_id = {
+    // Query player load data from DB (same player, different world).
+    // Use the cached active_player_id from playCharacter — falling back to
+    // query_player_load_data_by_account would pick the lowest player_id for
+    // the account, which is wrong on multi-character accounts.
+    let active_player_id: Option<i32> = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        let c = clients.get(&addr).ok_or("client not found")?;
-        // We stored account_id but need player_id for the DB query.
-        // The player_id isn't stored in ConnectedClientState, so we query by
-        // account_id alone (the DB query uses account_id to find the active char).
-        c.account_id
+        clients.get(&addr).and_then(|c| c.active_player_id)
     };
-    let player_load_data = query_player_load_data_by_account(db_pool, account_id).await;
+    let player_load_data = match active_player_id {
+        Some(pid) => query_player_load_data(db_pool, account_id, pid).await,
+        None => {
+            tracing::warn!(%addr, account_id, "GateTravel: no active_player_id cached — falling back to lowest player_id for account");
+            query_player_load_data_by_account(db_pool, account_id).await
+        }
+    };
 
     // Entity teardown: Send RESET_ENTITIES
     let acks: Vec<u32> = {
@@ -592,7 +652,6 @@ async fn handle_gate_travel(
         "Gate travel: RESET_ENTITIES sent -- awaiting ENABLE_ENTITIES"
     );
 
-    let _ = player_id; // account_id used above
     Ok(())
 }
 
@@ -752,27 +811,37 @@ pub(crate) async fn handle_cell_message(
                 entity_to_addr.lock().unwrap().get(&entity_id).copied()
             };
             if let Some(addr) = addr {
-                let (account_id, appearance_args, tint_args) = {
+                let (account_id, cached_player_id, appearance_args, tint_args) = {
                     let clients = connected.lock().unwrap();
                     if let Some(c) = clients.get(&addr) {
                         (c.account_id,
+                         c.active_player_id,
                          c.cached_appearance_args.clone().unwrap_or_default(),
                          c.cached_tint_args.clone().unwrap_or_default())
                     } else {
-                        (0, vec![], vec![])
+                        (0, None, vec![], vec![])
                     }
                 };
-                // Query player_id from account
-                let player_id: i32 = if let Some(pool) = db_pool {
-                    sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE account_id = $1 LIMIT 1")
-                        .bind(account_id as i32)
-                        .fetch_optional(pool.as_ref())
-                        .await
-                        .ok()
-                        .flatten()
-                        .unwrap_or(entity_id as i32)
-                } else {
-                    entity_id as i32
+                // Use the cached active_player_id from playCharacter — the
+                // previous "lowest player_id for account" lookup was wrong on
+                // multi-character accounts. Fall back only if it was somehow
+                // not cached (treat that as a logged anomaly).
+                let player_id: i32 = match cached_player_id {
+                    Some(pid) => pid,
+                    None => {
+                        tracing::warn!(entity_id, account_id, "Respawn: no active_player_id cached, falling back to first character lookup");
+                        if let Some(pool) = db_pool {
+                            sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE account_id = $1 LIMIT 1")
+                                .bind(account_id as i32)
+                                .fetch_optional(pool.as_ref())
+                                .await
+                                .ok()
+                                .flatten()
+                                .unwrap_or(entity_id as i32)
+                        } else {
+                            entity_id as i32
+                        }
+                    }
                 };
 
                 let mut clients = connected.lock().unwrap();
@@ -924,8 +993,11 @@ pub(crate) async fn handle_cell_message(
         }
         CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id } => {
             if let Some(pool) = db_pool {
+                // The schema column is `bandolier_slot` (see sgw_player.sql);
+                // an earlier draft used `active_bandolier_slot` which never
+                // existed and would hard-fail at runtime.
                 match sqlx::query(
-                    "UPDATE sgw_player SET active_bandolier_slot = $1 WHERE player_id = $2"
+                    "UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2"
                 )
                     .bind(slot_id)
                     .bind(player_id)

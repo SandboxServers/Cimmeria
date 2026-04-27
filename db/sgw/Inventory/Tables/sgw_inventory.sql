@@ -40,3 +40,15 @@ ALTER TABLE ONLY sgw_inventory ALTER COLUMN ammo_type SET DEFAULT 'AMMO_NONE'::r
 
 ALTER TABLE ONLY sgw_inventory ALTER COLUMN ammo_types SET DEFAULT '{}'::resources."EAmmoType"[];
 
+--
+-- Defense-in-depth: prevent two rows from ever occupying the same slot for a
+-- given (character, container). The Rust path takes a per-(player, container)
+-- pg_advisory_xact_lock during slot reservation/move, but the unique index
+-- closes the gap if anything bypasses that locking (bulk imports, ad-hoc fixups,
+-- or future code paths). Stack splits insert into a *different* slot, so this
+-- index does not interfere with the existing INSERT/UPDATE flows.
+--
+
+CREATE UNIQUE INDEX IF NOT EXISTS sgw_inventory_unique_slot
+    ON sgw_inventory (character_id, container_id, slot_id);
+

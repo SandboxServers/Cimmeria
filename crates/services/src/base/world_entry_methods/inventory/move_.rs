@@ -64,6 +64,23 @@ pub async fn handle_move_inventory_item(
         }
     };
 
+    // Take a per-(player, container) advisory lock for the target container
+    // before checking occupancy. `FOR UPDATE` on the occupied-slot SELECT only
+    // locks existing rows; without this advisory lock two concurrent moves
+    // targeting the same *empty* slot can both pass and write into the same
+    // (container, slot). This matches the convention used by
+    // `reserve_free_inventory_slots` for grant/purchase.
+    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(player_id)
+        .bind(target_container_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        tracing::error!(player_id, item_id, target_container_id, "MoveInventoryItem: advisory lock failed: {e}");
+        return;
+    }
+
     // Read source row inside the tx with FOR UPDATE so concurrent moves observe
     // a consistent snapshot. Without this, the swap path could lose updates.
     let source = match sqlx::query_as::<_, InventoryInstanceRow>(
