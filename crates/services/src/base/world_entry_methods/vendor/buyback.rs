@@ -70,6 +70,37 @@ pub async fn handle_buyback_vendor_items(
         }
     };
 
+    // Lock acquisition order: sgw_inventory rows BEFORE sgw_player.naquadah,
+    // matching the convention documented in paid_repair.rs and shared by the
+    // rest of the vendor stack. Reading the balance first would invert this
+    // order and risk a deadlock against concurrent grant/move operations.
+    let buyback_rows = match sqlx::query_as::<_, BuybackInventoryRow>(
+        "SELECT item_id, stack_size, flags AS unit_price \
+         FROM sgw_inventory \
+         WHERE character_id = $1 \
+           AND item_id = ANY($2) \
+           AND container_id = $3 \
+           AND flags > 0 \
+         FOR UPDATE",
+    )
+    .bind(player_id)
+    .bind(&requested_item_ids)
+    .bind(INV_BUYBACK)
+    .fetch_all(&mut *tx)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            let _ = tx.rollback().await;
+            tracing::error!(
+                entity_id,
+                player_id,
+                "BuybackVendorItems: buyback query failed: {e}"
+            );
+            return;
+        }
+    };
+
     let balance: Option<i32> =
         match sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1 FOR UPDATE")
             .bind(player_id)
@@ -92,33 +123,6 @@ pub async fn handle_buyback_vendor_items(
         let _ = tx.rollback().await;
         tracing::warn!(entity_id, player_id, "BuybackVendorItems: player not found");
         return;
-    };
-
-    let buyback_rows = match sqlx::query_as::<_, BuybackInventoryRow>(
-        "SELECT item_id, stack_size, flags AS unit_price \
-         FROM sgw_inventory \
-         WHERE character_id = $1 \
-           AND item_id = ANY($2) \
-           AND container_id = $3 \
-           AND flags >= 0 \
-         FOR UPDATE",
-    )
-    .bind(player_id)
-    .bind(&requested_item_ids)
-    .bind(INV_BUYBACK)
-    .fetch_all(&mut *tx)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            let _ = tx.rollback().await;
-            tracing::error!(
-                entity_id,
-                player_id,
-                "BuybackVendorItems: buyback query failed: {e}"
-            );
-            return;
-        }
     };
 
     let rows_by_id: HashMap<i32, BuybackInventoryRow> = buyback_rows

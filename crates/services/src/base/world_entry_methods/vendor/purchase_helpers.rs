@@ -9,14 +9,6 @@ const INV_MAIN: i32 = 1;
 const VENDOR_COST_BAGS: [i32; 3] = [INV_MAIN, 2, 15];
 
 #[derive(sqlx::FromRow)]
-struct ItemListItemRow {
-    item_id: i32,
-    design_id: i32,
-    quantity: i32,
-    naquadah: i32,
-}
-
-#[derive(sqlx::FromRow)]
 struct ItemListPriceRow {
     item_id: i32,
     design_id: i32,
@@ -202,18 +194,26 @@ pub async fn load_vendor_purchase_lines(
         let mut item_costs = Vec::new();
         if let Some(costs) = item_costs_by_list_item.get(&row.list_item_id) {
             for (design_id, quantity) in costs {
-                let Some(total_quantity) = quantity.checked_mul(*requested_quantity) else {
-                    tracing::warn!(
-                        vendor_template_id,
-                        index,
-                        design_id,
-                        "PurchaseVendorItems: item cost overflow"
-                    );
-                    return None;
+                let total_quantity = match quantity.checked_mul(*requested_quantity) {
+                    Some(t) if t > 0 => t,
+                    Some(t) => {
+                        tracing::warn!(
+                            vendor_template_id, index, design_id,
+                            unit = quantity, requested_quantity, computed = t,
+                            "PurchaseVendorItems: rejecting non-positive item cost"
+                        );
+                        return None;
+                    }
+                    None => {
+                        tracing::warn!(
+                            vendor_template_id, index, design_id,
+                            unit = quantity, requested_quantity,
+                            "PurchaseVendorItems: item cost overflow"
+                        );
+                        return None;
+                    }
                 };
-                if total_quantity > 0 {
-                    item_costs.push((*design_id, total_quantity));
-                }
+                item_costs.push((*design_id, total_quantity));
             }
         }
 

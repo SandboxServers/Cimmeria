@@ -98,6 +98,10 @@ pub async fn query_world_entry(
                     }
                 }
             } else {
+                tracing::warn!(
+                    player_id, world = %row.world_location,
+                    "query_world_entry: cell_tx is None at world entry — falling back to hardcoded space id table; this is likely a service-startup ordering bug"
+                );
                 resolve_space_id_fallback(&row.world_location)
             };
 
@@ -118,7 +122,7 @@ pub async fn query_world_entry(
             default_entry_with_eid(NO_ENTITY_ID)
         }
         Err(e) => {
-            tracing::error!("Failed to query world entry ({e}) — returning sentinel entity id");
+            tracing::error!(player_id, account_id, "Failed to query world entry ({e}) — returning sentinel entity id");
             default_entry_with_eid(NO_ENTITY_ID)
         }
     }

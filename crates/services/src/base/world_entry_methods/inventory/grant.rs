@@ -25,22 +25,30 @@ pub fn normalize_item_ids(mut item_ids: Vec<i32>) -> Vec<i32> {
 ///
 /// Returns `false` on DB error rather than silently defaulting to "main bag" —
 /// the caller can decide whether to abort the operation or try a fallback.
+///
+/// Default rule (no `container_sets` configured for the item type): only the
+/// main inventory bag (container 1) is allowed.
 pub async fn item_allows_container(pool: &Arc<PgPool>, type_id: i32, container_id: i32) -> bool {
-    match sqlx::query_scalar::<_, Option<Vec<i32>>>(
+    let result = sqlx::query_scalar::<_, Option<Vec<i32>>>(
         "SELECT container_sets FROM resources.items WHERE item_id = $1",
     )
     .bind(type_id)
     .fetch_optional(pool.as_ref())
-    .await
-    {
-        Ok(Some(Some(container_sets))) if !container_sets.is_empty() => {
-            container_sets.contains(&container_id)
-        }
-        Ok(Some(None)) | Ok(Some(Some(_))) | Ok(None) => container_id == 1,
+    .await;
+
+    let container_sets: Option<Vec<i32>> = match result {
+        Ok(row) => row.flatten(),
         Err(e) => {
             tracing::error!(type_id, container_id, "item_allows_container query failed: {e}");
-            false
+            return false;
         }
+    };
+
+    match container_sets {
+        Some(sets) if !sets.is_empty() => sets.contains(&container_id),
+        // Either the item type has no row, or `container_sets` is NULL/empty —
+        // fall back to allowing only the main bag.
+        _ => container_id == 1,
     }
 }
 
@@ -244,6 +252,10 @@ pub async fn handle_grant_item(
                 default_ammo_type_id: i32,
             }
 
+            // On lookup error or missing row, send the UpdateBandolierItem with
+            // degraded clip/ammo values rather than silently dropping the cell
+            // sync — the item is committed to DB and the slot/active flag must
+            // reach the cell. Combat code will refresh clip_size on next reload.
             let item = match sqlx::query_as::<_, BandolierRow>(
                 r#"
                 SELECT item_id, COALESCE(clip_size, 0) AS clip_size,
@@ -258,27 +270,48 @@ pub async fn handle_grant_item(
             .fetch_optional(pool.as_ref())
             .await
             {
-                Ok(Some(row)) => Some(cimmeria_entity::cell_entity::BandolierItem {
+                Ok(Some(row)) => cimmeria_entity::cell_entity::BandolierItem {
                     item_id: row.item_id,
                     clip_size: row.clip_size,
                     default_ammo_type: row.default_ammo_type_id,
-                }),
-                Ok(None) => None,
+                },
+                Ok(None) => {
+                    tracing::warn!(
+                        item_id,
+                        "GrantItem: no resources.items row for bandolier item, sending UpdateBandolierItem with placeholder clip/ammo"
+                    );
+                    cimmeria_entity::cell_entity::BandolierItem {
+                        item_id,
+                        clip_size: 0,
+                        default_ammo_type: 0,
+                    }
+                }
                 Err(e) => {
-                    tracing::error!(item_id, "GrantItem: bandolier item lookup failed: {e}");
-                    None
+                    tracing::error!(
+                        item_id,
+                        "GrantItem: bandolier item lookup failed ({e}); sending UpdateBandolierItem with placeholder clip/ammo so cell stays in sync"
+                    );
+                    cimmeria_entity::cell_entity::BandolierItem {
+                        item_id,
+                        clip_size: 0,
+                        default_ammo_type: 0,
+                    }
                 }
             };
 
-            if let Some(item) = item {
-                let _ = tx
-                    .send(BaseToCellMsg::UpdateBandolierItem {
-                        entity_id,
-                        slot_id: next_slot,
-                        item,
-                        make_active: true,
-                    })
-                    .await;
+            if let Err(e) = tx
+                .send(BaseToCellMsg::UpdateBandolierItem {
+                    entity_id,
+                    slot_id: next_slot,
+                    item,
+                    make_active: true,
+                })
+                .await
+            {
+                tracing::warn!(
+                    entity_id, player_id, item_id,
+                    "GrantItem: cell channel closed sending UpdateBandolierItem: {e}"
+                );
             }
         }
     }

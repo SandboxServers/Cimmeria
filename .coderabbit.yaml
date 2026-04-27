@@ -9,6 +9,12 @@ inheritance: false
 reviews:
   profile: assertive
   request_changes_workflow: false
+  # Skip markdown files entirely — CodeRabbit's markdown reviews tend to drown
+  # the signal-to-noise ratio with hyphenation/heading-padding nits that don't
+  # justify reviewer attention on a code-focused PR.
+  path_filters:
+    - "!**/*.md"
+    - "!**/*.markdown"
   high_level_summary: true
   review_status: true
   commit_status: true

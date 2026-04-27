@@ -20,6 +20,12 @@ fn archetype_resource_name(archetype_id: i32) -> Option<&'static str> {
 }
 
 /// Default player load data when the DB is unavailable.
+///
+/// Caveat: `archetype` and `ability_tree` are both keyed to archetype id 1
+/// here. If a caller ever partially overrides this struct (e.g., a half-loaded
+/// row that fills `archetype` from DB but leaves the rest defaulted), the
+/// tree won't match the new archetype. This is the "DB unavailable" sentinel
+/// used as a whole, so today this is fine — but keep the two values in sync.
 pub fn default_player_load_data() -> PlayerLoadData {
     PlayerLoadData {
         player_id: 0,

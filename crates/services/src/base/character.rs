@@ -175,7 +175,7 @@ pub(crate) async fn handle_request_character_visuals(
 
     match row {
         Ok(Some((bodyset, mut components, skin_color_id, bandolier_slot))) => {
-            let item_visuals: Vec<String> = sqlx::query_scalar(
+            let item_visuals: Vec<String> = match sqlx::query_scalar(
                 "SELECT ri.visual_component \
                  FROM sgw_inventory inv \
                  JOIN resources.items ri ON ri.item_id = inv.type_id \
@@ -190,7 +190,13 @@ pub(crate) async fn handle_request_character_visuals(
             .bind(bandolier_slot)
             .fetch_all(pool.as_ref())
             .await
-            .unwrap_or_default();
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(player_id, "character_list visual_component query failed (skipping appearance overlay): {e}");
+                    Vec::new()
+                }
+            };
 
             components.extend(item_visuals);
 

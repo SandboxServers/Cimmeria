@@ -11,7 +11,7 @@ use super::super::inventory::grant::normalize_item_ids;
 
 /// Containers that can be operated on by the vendor stack — main bag, bandolier,
 /// equipment slots, and quick bars. Bank, mail attachments, and loot are excluded.
-const VENDOR_FILTER_BAGS: [i32; 14] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+use super::VENDOR_FILTER_BAGS;
 
 pub async fn handle_repair_inventory_item(
     entity_id: u32,
@@ -48,11 +48,14 @@ pub async fn handle_repair_inventory_item(
     let result = sqlx::query(
         "UPDATE sgw_inventory \
          SET durability = LEAST(100, GREATEST(0, durability) + $1) \
-         WHERE character_id = $2 AND item_id = $3 AND durability >= 0 AND durability < 100",
+         WHERE character_id = $2 AND item_id = $3 \
+           AND container_id = ANY($4) \
+           AND durability >= 0 AND durability < 100",
     )
     .bind(repair_points)
     .bind(player_id)
     .bind(item_id)
+    .bind(VENDOR_FILTER_BAGS.as_slice())
     .execute(pool.as_ref())
     .await;
 

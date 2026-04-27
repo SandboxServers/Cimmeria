@@ -8,13 +8,15 @@ const COST_NAQUADAH: i32 = 1;
 const COST_ITEM: i32 = 2;
 const ITEM_FLAG_CAN_BE_SOLD: i32 = 1 << 10;
 const INV_BUYBACK: i32 = 16;
-const VENDOR_FILTER_BAGS: [i32; 14] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+use super::VENDOR_FILTER_BAGS;
 
 // In INV_BUYBACK rows, the `flags` column stores the unit buyback price.
-// Pending/uninitialized buyback rows leave flags negative; the buyback list
-// query and clear-buyback bookkeeping both use `flags >= 0` as the sentinel
-// "this row was sell-stamped and has a real price" check. If you change that
-// convention (e.g., move price to a dedicated column), update both sites.
+// Pending/uninitialized buyback rows leave flags negative. The buyback list
+// query and clear-buyback bookkeeping use `flags > 0` as the sentinel "this
+// row was sell-stamped at a real price" check — `flags = 0` rows are excluded
+// to prevent free-buyback exploits where a zero-priced row would appear as a
+// free item in the buyback list. If you change that convention (e.g., move
+// price to a dedicated column), update both sites.
 
 #[derive(sqlx::FromRow)]
 struct ItemListItemRow {
@@ -159,11 +161,15 @@ pub async fn load_vendor_sell_prices(
 }
 
 /// Load buyback prices from player buyback inventory (container 16).
+///
+/// Filters `flags > 0` (not `>= 0`) so rows stamped at zero unit price (e.g.,
+/// items sold while their per-stack value happened to round to zero) don't
+/// appear as free buyback offerings.
 pub async fn load_vendor_buyback_prices(pool: &Arc<PgPool>, player_id: i32) -> Vec<StoreItemCost> {
     match sqlx::query_as::<_, StoreItemCostRow>(
         "SELECT flags AS cost, item_id \
          FROM sgw_inventory \
-         WHERE character_id = $1 AND container_id = $2 AND flags >= 0 \
+         WHERE character_id = $1 AND container_id = $2 AND flags > 0 \
          ORDER BY slot_id",
     )
     .bind(player_id)

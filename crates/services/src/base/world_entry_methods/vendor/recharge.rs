@@ -11,7 +11,7 @@ use super::super::inventory::grant::normalize_item_ids;
 
 /// Containers that can be operated on by the vendor stack — main bag, bandolier,
 /// equipment slots, and quick bars. Bank, mail attachments, and loot are excluded.
-const VENDOR_FILTER_BAGS: [i32; 14] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+use super::VENDOR_FILTER_BAGS;
 
 pub async fn handle_recharge_inventory_items(
     entity_id: u32,
@@ -56,6 +56,41 @@ pub async fn handle_recharge_inventory_items(
         return;
     }
 
+    // Wrap in a transaction so the matching rows can be locked before the
+    // UPDATE — matches the explicit FOR UPDATE used by the paid recharge path
+    // and prevents racing with concurrent sell/move operations on the same
+    // items.
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::error!(entity_id, player_id, "RechargeInventoryItems: begin tx failed: {e}");
+            return;
+        }
+    };
+
+    // Lock candidate rows up-front so the UPDATE below sees a stable snapshot.
+    if let Err(e) = sqlx::query(
+        "SELECT 1 FROM sgw_inventory inv \
+         JOIN resources.items ri ON ri.item_id = inv.type_id \
+         WHERE inv.character_id = $1 \
+           AND inv.item_id = ANY($2) \
+           AND inv.container_id = ANY($3) \
+           AND inv.stack_size = 1 \
+           AND ri.charges > 0 \
+           AND inv.charges < ri.charges \
+         FOR UPDATE OF inv",
+    )
+    .bind(player_id)
+    .bind(&item_ids)
+    .bind(VENDOR_FILTER_BAGS.as_slice())
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        tracing::error!(entity_id, player_id, "RechargeInventoryItems: lock query failed: {e}");
+        return;
+    }
+
     let result = sqlx::query(
         "UPDATE sgw_inventory inv \
          SET charges = ri.charges \
@@ -71,40 +106,52 @@ pub async fn handle_recharge_inventory_items(
     .bind(player_id)
     .bind(&item_ids)
     .bind(VENDOR_FILTER_BAGS.as_slice())
-    .execute(pool.as_ref())
+    .execute(&mut *tx)
     .await;
 
-    match result {
-        Ok(r) if r.rows_affected() > 0 => {
-            let total_items = send_full_inventory_update(
-                entity_id,
-                player_id,
-                pool,
-                socket,
-                connected,
-                entity_to_addr,
-            )
-            .await;
-            tracing::debug!(
+    let recharged = match result {
+        Ok(r) => r.rows_affected(),
+        Err(e) => {
+            let _ = tx.rollback().await;
+            tracing::error!(
                 entity_id,
                 player_id,
                 item_count = item_ids.len(),
-                recharged = r.rows_affected(),
-                total_items,
-                "Inventory items recharged"
+                "RechargeInventoryItems: update failed: {e}"
             );
+            return;
         }
-        Ok(_) => tracing::debug!(
+    };
+
+    if let Err(e) = tx.commit().await {
+        tracing::error!(entity_id, player_id, "RechargeInventoryItems: commit failed: {e}");
+        return;
+    }
+
+    if recharged > 0 {
+        let total_items = send_full_inventory_update(
+            entity_id,
+            player_id,
+            pool,
+            socket,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+        tracing::debug!(
+            entity_id,
+            player_id,
+            item_count = item_ids.len(),
+            recharged,
+            total_items,
+            "Inventory items recharged"
+        );
+    } else {
+        tracing::debug!(
             entity_id,
             player_id,
             item_count = item_ids.len(),
             "RechargeInventoryItems: no rechargeable items changed"
-        ),
-        Err(e) => tracing::error!(
-            entity_id,
-            player_id,
-            item_count = item_ids.len(),
-            "RechargeInventoryItems: update failed: {e}"
-        ),
+        );
     }
 }

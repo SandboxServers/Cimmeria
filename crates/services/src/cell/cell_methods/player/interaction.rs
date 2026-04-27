@@ -40,11 +40,17 @@ pub async fn dispatch(
                     tracing::info!(entity_id, target_entity_id, "interact: targeting hostile NPC for combat");
                     let mut reply = Vec::with_capacity(4);
                     reply.extend_from_slice(&target_entity_id.to_le_bytes());
-                    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    if let Err(e) = tx.send(CellToBaseMsg::EntityMethodCall {
                         entity_id,
                         method_index: 16,
                         args: reply,
-                    }).await;
+                    }).await {
+                        tracing::warn!(
+                            entity_id, target_entity_id,
+                            "interact: cell->base channel closed sending hostile-NPC combat method: {e}"
+                        );
+                        return true;
+                    }
                     crate::cell::abilities::handle_use_ability(
                         entity_id, 592, target_entity_id, tx, space_mgr,
                     ).await;
@@ -121,6 +127,8 @@ pub async fn dispatch(
                 crate::cell::interactions::handle_initial_response(
                     entity_id, interaction_set_map_id, engine, tx, space_mgr,
                 ).await;
+            } else {
+                tracing::warn!(entity_id, args_len = args.len(), "initialResponse: truncated args, dropping");
             }
             true
         }

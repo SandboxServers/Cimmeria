@@ -1,6 +1,12 @@
 pub mod store;
 pub mod data;
 pub mod serializers;
+
+/// Containers that can be operated on by the vendor stack — main bag,
+/// bandolier (3), the eleven equipment slots (4..=14), and quick bar (15).
+/// Bank, mail attachments, and loot bags are intentionally excluded so
+/// vendor sell/repair/recharge can't reach into them.
+pub(crate) const VENDOR_FILTER_BAGS: [i32; 14] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 pub mod purchase;
 pub mod purchase_helpers;
 pub mod sell;

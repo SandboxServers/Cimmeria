@@ -254,27 +254,13 @@ pub async fn handle_grant_cash(
         )
         .await;
     } else {
-        tracing::debug!(
-            entity_id,
-            amount,
-            "GrantCash: no DB pool, sending untracked"
+        // No-DB-pool mode: we have no authoritative balance to send. Drop the
+        // grant entirely rather than emitting onCashChanged with the *delta*
+        // as the absolute total — the client treats the payload as a new total
+        // and would desync from what the server (eventually) persists.
+        tracing::warn!(
+            entity_id, player_id, amount,
+            "GrantCash: no DB pool, dropping grant (cannot send authoritative onCashChanged)"
         );
-        send_to_witness(
-            socket,
-            connected,
-            entity_to_addr,
-            entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::ON_CASH_CHANGED,
-                    &amount.to_le_bytes(),
-                )
-            },
-        )
-        .await;
     }
 }

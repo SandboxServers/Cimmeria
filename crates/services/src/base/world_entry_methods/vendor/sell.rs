@@ -20,7 +20,7 @@ const INV_MAIN: i32 = 1;
 const INV_BANDOLIER: i32 = 3;
 const INV_BUYBACK: i32 = 16;
 const ITEM_FLAG_CAN_BE_SOLD: i32 = 1 << 10;
-const VENDOR_FILTER_BAGS: [i32; 14] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+use super::VENDOR_FILTER_BAGS;
 
 #[derive(sqlx::FromRow)]
 struct SellInventoryRow {
@@ -205,16 +205,21 @@ pub async fn handle_sell_vendor_items(
         };
 
         let result = if *quantity >= row.stack_size {
+            // Pin the UPDATE to the (character, item, container) triple that was
+            // just locked above so we cannot accidentally relocate a same-item-id
+            // row from a different container if the schema's uniqueness ever
+            // weakens.
             sqlx::query(
                 "UPDATE sgw_inventory \
                  SET container_id = $1, slot_id = $2, flags = $3 \
-                 WHERE character_id = $4 AND item_id = $5",
+                 WHERE character_id = $4 AND item_id = $5 AND container_id = $6",
             )
             .bind(INV_BUYBACK)
             .bind(buyback_slot)
             .bind(row.unit_price)
             .bind(player_id)
             .bind(item_id)
+            .bind(row.container_id)
             .execute(&mut *tx)
             .await
         } else {
@@ -225,7 +230,7 @@ pub async fn handle_sell_vendor_items(
                  SELECT character_id, type_id, $1, $2, $3, bound, durability, charges, \
                         ammo_type, ammo_types, ammo, $4 \
                  FROM sgw_inventory \
-                 WHERE character_id = $5 AND item_id = $6 AND stack_size >= $1",
+                 WHERE character_id = $5 AND item_id = $6 AND container_id = $7 AND stack_size >= $1",
             )
             .bind(quantity)
             .bind(buyback_slot)
@@ -233,6 +238,7 @@ pub async fn handle_sell_vendor_items(
             .bind(row.unit_price)
             .bind(player_id)
             .bind(item_id)
+            .bind(row.container_id)
             .execute(&mut *tx)
             .await;
 
@@ -240,11 +246,12 @@ pub async fn handle_sell_vendor_items(
                 Ok(r) if r.rows_affected() == 1 => {
                     sqlx::query(
                         "UPDATE sgw_inventory SET stack_size = stack_size - $1 \
-                 WHERE character_id = $2 AND item_id = $3 AND stack_size >= $1",
+                 WHERE character_id = $2 AND item_id = $3 AND container_id = $4 AND stack_size >= $1",
                     )
                     .bind(quantity)
                     .bind(player_id)
                     .bind(item_id)
+                    .bind(row.container_id)
                     .execute(&mut *tx)
                     .await
                 }

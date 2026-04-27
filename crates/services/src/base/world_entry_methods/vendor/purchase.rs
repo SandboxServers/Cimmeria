@@ -90,6 +90,42 @@ pub async fn handle_purchase_vendor_items(
         }
     };
 
+    // Lock acquisition order: sgw_inventory rows (via consume_design_quantity's
+    // FOR UPDATE prereq lookup) BEFORE sgw_player.naquadah (FOR UPDATE balance
+    // read below). Matches the convention documented in paid_repair.rs and
+    // shared by the rest of the vendor stack — locking the player row first
+    // would deadlock against concurrent paid_repair/paid_recharge/sell/buyback
+    // operations on the same player.
+    for line in &lines {
+        for (design_id, quantity) in &line.item_costs {
+            match consume_design_quantity(&mut tx, player_id, *design_id, *quantity).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    let _ = tx.rollback().await;
+                    tracing::warn!(
+                        entity_id,
+                        player_id,
+                        design_id,
+                        quantity,
+                        "PurchaseVendorItems: missing item prerequisite"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    let _ = tx.rollback().await;
+                    tracing::error!(
+                        entity_id,
+                        player_id,
+                        design_id,
+                        quantity,
+                        "PurchaseVendorItems: item prerequisite consume failed: {e}"
+                    );
+                    return;
+                }
+            }
+        }
+    }
+
     let balance: Option<i32> =
         match sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1 FOR UPDATE")
             .bind(player_id)
@@ -120,36 +156,6 @@ pub async fn handle_purchase_vendor_items(
             "PurchaseVendorItems: insufficient naquadah"
         );
         return;
-    }
-
-    for line in &lines {
-        for (design_id, quantity) in &line.item_costs {
-            match consume_design_quantity(&mut tx, player_id, *design_id, *quantity).await {
-                Ok(true) => {}
-                Ok(false) => {
-                    let _ = tx.rollback().await;
-                    tracing::warn!(
-                        entity_id,
-                        player_id,
-                        design_id,
-                        quantity,
-                        "PurchaseVendorItems: missing item prerequisite"
-                    );
-                    return;
-                }
-                Err(e) => {
-                    let _ = tx.rollback().await;
-                    tracing::error!(
-                        entity_id,
-                        player_id,
-                        design_id,
-                        quantity,
-                        "PurchaseVendorItems: item prerequisite consume failed: {e}"
-                    );
-                    return;
-                }
-            }
-        }
     }
 
     let new_cash_total = if total_cash_cost > 0 {

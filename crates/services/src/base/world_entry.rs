@@ -113,6 +113,17 @@ pub(crate) async fn handle_play_character(
     // Query character data from DB and resolve space via CellService
     let entry_info = query_world_entry(db_pool, account_id, player_id, entity_manager, cell_tx).await;
 
+    // query_world_entry returns player_entity_id == 0 as a "world entry failed"
+    // sentinel (DB error or character not found). Bail before dispatching any
+    // packets that would target an entity the cell never registered.
+    if entry_info.player_entity_id == 0 {
+        tracing::error!(
+            %addr, player_id, account_id,
+            "World entry aborted: query_world_entry returned NO_ENTITY_ID sentinel"
+        );
+        return Ok(());
+    }
+
     // Also query the full player data needed for mapLoaded
     let player_load_data = query_player_load_data(db_pool, account_id, player_id).await;
 

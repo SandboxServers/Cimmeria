@@ -106,11 +106,13 @@ pub async fn sync_bandolier_after_inventory_change(
 
     let mut active_slot = old_active;
     if !bandolier_items.iter().any(|(slot, _)| *slot == active_slot) {
+        // Safe to unwrap: the empty-bandolier case is short-circuited above,
+        // so `bandolier_items` is non-empty here and `min()` always yields Some.
         active_slot = bandolier_items
             .iter()
             .map(|(slot, _)| *slot)
             .min()
-            .unwrap_or(old_active);
+            .expect("bandolier_items is non-empty (empty case returned above)");
         if let Err(e) = sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
             .bind(active_slot)
             .bind(player_id)
@@ -130,8 +132,10 @@ pub async fn sync_bandolier_after_inventory_change(
     }
 
     if active_slot != old_active {
+        // Container 3 = bandolier; matches CONTAINER_BANDOLIER in player_load/core.rs.
+        const CONTAINER_BANDOLIER: i32 = 3;
         let mut args = Vec::with_capacity(8);
-        args.extend_from_slice(&3i32.to_le_bytes());
+        args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
         args.extend_from_slice(&(active_slot + 1).to_le_bytes());
         helpers::send_to_witness(
             socket,

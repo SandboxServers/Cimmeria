@@ -37,13 +37,13 @@ pub async fn dispatch(
                         let is_dead = target.stats.get(HEALTH)
                             .map_or(false, |s| s.cur <= 0);
                         if is_dead && !target.is_player {
-                            Some((target.tag.clone(), target.is_player))
+                            Some(target.tag.clone())
                         } else {
                             None
                         }
                     });
 
-                    if let Some((tag, _is_player)) = death_info {
+                    if let Some(tag) = death_info {
                         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
                             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
                             target.threat_list.clear();
@@ -73,10 +73,18 @@ pub async fn dispatch(
         USE_ABILITY_ON_GROUND => {
             if args.len() >= 16 {
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                let _x = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                let _y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
-                let _z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
-                tracing::debug!(entity_id, ability_id, "useAbilityOnGroundTarget");
+                let x = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+                let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
+                tracing::debug!(entity_id, ability_id, x, y, z, "useAbilityOnGroundTarget");
+                // Ground-targeted abilities (e.g., AoE drops) currently route
+                // through the same handler with target_id=0; the position is
+                // logged for now and the cooldown/ammo accounting still fires.
+                // TODO: add ground_target: [f32; 3] to handle_use_ability so
+                // splash damage can resolve at the actual click point.
+                crate::cell::abilities::handle_use_ability(
+                    entity_id, ability_id, 0, tx, space_mgr,
+                ).await;
             }
             true
         }

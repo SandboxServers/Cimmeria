@@ -13,7 +13,7 @@ use super::helpers::send_cash_changed_to_client;
 use super::purchase_helpers::load_vendor_template_lists;
 use super::serializers::StoreItemCostUpdate;
 
-const VENDOR_FILTER_BAGS: [i32; 14] = [1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+use super::VENDOR_FILTER_BAGS;
 
 #[derive(sqlx::FromRow)]
 struct StoreItemCostRow {
