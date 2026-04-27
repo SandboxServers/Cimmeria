@@ -57,7 +57,7 @@ pub async fn query_world_entry(
             let player_eid = alloc_entity();
             if let Some(tx) = cell_tx {
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-                if tx
+                match tx
                     .send(BaseToCellMsg::CreateEntity {
                         entity_id: player_eid,
                         world_name: "CombatSim".to_string(),
@@ -66,13 +66,23 @@ pub async fn query_world_entry(
                         reply_tx,
                     })
                     .await
-                    .is_ok()
                 {
-                    // Wait for the cell to ack the registration; the space_id
-                    // reply is unused here (default_entry uses DEFAULT_SPACE_ID),
-                    // but we must drive the oneshot so the cell completes the
-                    // create.
-                    let _ = reply_rx.await;
+                    Ok(_) => {
+                        // Wait for the cell to ack the registration; the space_id
+                        // reply is unused here (default_entry uses DEFAULT_SPACE_ID),
+                        // but we must drive the oneshot so the cell completes the
+                        // create.
+                        let _ = reply_rx.await;
+                    }
+                    Err(e) => {
+                        // Mirror the DB-path log so a closed cell channel is
+                        // visible at world entry instead of silently producing
+                        // an unregistered entity id.
+                        tracing::warn!(
+                            "CellService channel closed sending CreateEntity in no-DB mode ({e}) — entity {} will be unregistered with the cell",
+                            player_eid
+                        );
+                    }
                 }
             }
             return default_entry_with_eid(player_eid);

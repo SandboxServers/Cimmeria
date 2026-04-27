@@ -86,9 +86,39 @@ pub async fn dispatch(
                 let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
                 tracing::debug!(entity_id, ability_id, x, y, z, "useAbilityOnGroundTarget");
-                crate::cell::abilities::handle_use_ability_on_ground(
+
+                // handle_use_ability_on_ground returns the resolved target_eid
+                // (if any) so we can detect alive→dead transitions and fire the
+                // content-engine death event — single-target USE_ABILITY does
+                // the same. Without this, ground-targeted kills don't trigger
+                // mission progress or chain death triggers.
+                let target_eid = crate::cell::abilities::handle_use_ability_on_ground(
                     entity_id, ability_id, [x, y, z], tx, space_mgr,
                 ).await;
+
+                if let Some(target_eid) = target_eid {
+                    let just_died = space_mgr.get_entity(target_eid).map_or(false, |t| {
+                        t.stats.get(HEALTH).map_or(false, |s| s.cur <= 0)
+                    });
+                    if just_died {
+                        let tag = space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone());
+                        if let Some(tag) = tag {
+                            match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+                                Some(player_id) => {
+                                    crate::cell::content::fire_entity_death(
+                                        entity_id, player_id, &tag, engine, tx, space_mgr,
+                                    ).await;
+                                }
+                                None => {
+                                    tracing::warn!(
+                                        entity_id, npc_tag = %tag,
+                                        "Skipping entity_death event (ground target): killer entity has no player_id"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
             true
         }
@@ -194,6 +224,16 @@ fn resolve_respawn_position(
 
     // Castle has a known safe default; for other worlds, respawn in place to
     // avoid silently teleporting the player across worlds.
+    //
+    // Operational note: in-place respawn outside Castle can produce death
+    // loops if the player died standing in damaging geometry (e.g., a lava
+    // tile or AoE pool) and no respawner is configured for that world —
+    // they'll respawn at full health, immediately take damage from the
+    // surrounding geometry, and die again. The clean fix is content-side:
+    // every world should ship at least one respawner. This warn log is the
+    // signal to operators that a world is missing one. A future combat pass
+    // can also add a brief invuln window after respawn to absorb the first
+    // damage tick if the player happens to respawn inside an active hazard.
     match world_name.as_deref() {
         Some("Castle_CellBlock") | None => {
             tracing::debug!(entity_id, world = ?world_name, "No respawner; using Castle default position");

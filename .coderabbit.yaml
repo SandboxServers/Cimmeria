@@ -9,12 +9,14 @@ inheritance: false
 reviews:
   profile: assertive
   request_changes_workflow: false
-  # Skip markdown files entirely — CodeRabbit's markdown reviews tend to drown
-  # the signal-to-noise ratio with hyphenation/heading-padding nits that don't
-  # justify reviewer attention on a code-focused PR.
+  # Skip noisy in-repo analysis/planning markdown that triggers a lot of
+  # markdownlint nits without informing code review. We deliberately keep
+  # CLAUDE.md / AGENTS.md / .cursorrules in scope so CodeRabbit's
+  # `code_guidelines.filePatterns` and the `markdownlint` tool still apply
+  # to actual guideline documents.
   path_filters:
-    - "!**/*.md"
-    - "!**/*.markdown"
+    - "!CODERABBIT_ANALYSIS.md"
+    - "!REFACTORING_CANDIDATES.md"
   high_level_summary: true
   review_status: true
   commit_status: true

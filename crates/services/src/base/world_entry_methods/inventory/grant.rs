@@ -123,16 +123,29 @@ pub async fn handle_grant_item(
         }
     };
 
+    // Pull ammo_type / ammo_types / charges from resources.items so a granted
+    // weapon arrives with its real ammo configuration. Without this, the
+    // defaults are AMMO_NONE / [] / 0, which makes ranged grants unusable
+    // until the player manually changes ammo. INSERT…SELECT keeps this in
+    // a single round-trip and gives us COALESCE for ammo_type so items with
+    // a NULL default still get a sane sentinel rather than NULL (the column
+    // is NOT NULL in the schema).
     let result = sqlx::query(
-        "INSERT INTO sgw_inventory (character_id, type_id, stack_size, slot_id, container_id, \
-         bound, durability, charges) VALUES ($1, $2, $3, $4, $5, false, 100, $6)",
+        "INSERT INTO sgw_inventory \
+            (character_id, type_id, stack_size, slot_id, container_id, \
+             bound, durability, charges, \
+             ammo_type, ammo_types, ammo, flags) \
+         SELECT $1, ri.item_id, $2, $3, $4, false, 100, $5, \
+                COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
+                ri.ammo_types, ri.charges, 0 \
+         FROM resources.items ri WHERE ri.item_id = $6",
     )
     .bind(player_id)
-    .bind(item_id)
     .bind(count)
     .bind(next_slot)
     .bind(container_id)
     .bind(default_charges)
+    .bind(item_id)
     .execute(&mut *db_tx)
     .await;
 
@@ -162,6 +175,12 @@ pub async fn handle_grant_item(
     // slot is now also gone). This matches the slot-preservation behavior of
     // `sync_bandolier_after_inventory_change` so a loot drop or quest reward
     // doesn't hot-swap a player's preferred weapon mid-combat.
+    // Track whether the bandolier_slot UPDATE actually adopted the new slot
+    // (i.e., rows_affected == 1). If the WHERE-NOT-EXISTS guard preserved the
+    // player's existing selection, downstream messages must NOT advertise the
+    // new slot as active — otherwise the cell mirrors the new active slot
+    // even though the DB still points at the old one (desync).
+    let mut bandolier_became_active = false;
     if container_id == 3 {
         let res = sqlx::query(
             "UPDATE sgw_player p \
@@ -181,6 +200,7 @@ pub async fn handle_grant_item(
 
         match res {
             Ok(r) => {
+                bandolier_became_active = r.rows_affected() == 1;
                 tracing::debug!(
                     player_id,
                     slot_id = next_slot,
@@ -248,28 +268,34 @@ pub async fn handle_grant_item(
     }
 
     if container_id == 3 {
-        // bandolier_slot was already committed inside the inventory tx above —
-        // it is safe to broadcast the witness packet now.
-        let mut args = Vec::with_capacity(8);
-        args.extend_from_slice(&container_id.to_le_bytes());
-        args.extend_from_slice(&(next_slot + 1).to_le_bytes());
-        helpers::send_to_witness(
-            socket,
-            connected,
-            entity_to_addr,
-            entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::ON_ACTIVE_SLOT_UPDATE,
-                    &args,
-                )
-            },
-        )
-        .await;
+        // Only broadcast the active-slot witness packet if the DB UPDATE above
+        // actually adopted the new slot. If the WHERE-NOT-EXISTS guard kept
+        // the player's existing selection, the cell/client must continue to
+        // see the previous active slot — broadcasting `next_slot` here would
+        // desync the client UI and the cell's `active_bandolier_slot` from
+        // the persisted DB value.
+        if bandolier_became_active {
+            let mut args = Vec::with_capacity(8);
+            args.extend_from_slice(&container_id.to_le_bytes());
+            args.extend_from_slice(&(next_slot + 1).to_le_bytes());
+            helpers::send_to_witness(
+                socket,
+                connected,
+                entity_to_addr,
+                entity_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(
+                        key,
+                        seq,
+                        acks,
+                        entity_id,
+                        method_idx::ON_ACTIVE_SLOT_UPDATE,
+                        &args,
+                    )
+                },
+            )
+            .await;
+        }
 
         if let Some(tx) = cell_tx {
             #[derive(sqlx::FromRow)]
@@ -310,7 +336,11 @@ pub async fn handle_grant_item(
                             entity_id,
                             slot_id: next_slot,
                             item,
-                            make_active: true,
+                            // Only flip the cell's active slot when the DB
+                            // UPDATE actually adopted next_slot. Otherwise
+                            // the cell would mirror an active slot the DB
+                            // disagrees with.
+                            make_active: bandolier_became_active,
                         })
                         .await
                     {

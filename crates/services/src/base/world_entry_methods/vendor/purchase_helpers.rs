@@ -83,7 +83,13 @@ pub async fn load_vendor_purchase_lines(
     let template =
         load_vendor_template_lists(pool, vendor_template_id, "PurchaseVendorItems").await?;
     let Some(buy_item_list) = template.buy_item_list else {
-        tracing::debug!(vendor_template_id, "PurchaseVendorItems: vendor has no buy list");
+        // Mirror the level used by the sibling "vendor template not found" arm
+        // in `load_vendor_template_lists` and by the paid_repair/paid_recharge
+        // missing-list branches: a vendor template that's reached via
+        // PurchaseVendorItems but has no buy_item_list is either a
+        // misconfiguration or an unexpected client request, neither of which
+        // should be hidden behind debug-level filtering in production.
+        tracing::warn!(vendor_template_id, "PurchaseVendorItems: vendor has no buy list");
         return None;
     };
 

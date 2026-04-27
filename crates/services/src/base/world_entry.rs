@@ -835,25 +835,19 @@ pub(crate) async fn handle_cell_message(
                         (0, None, vec![], vec![])
                     }
                 };
-                // Use the cached active_player_id from playCharacter — the
-                // previous "lowest player_id for account" lookup was wrong on
-                // multi-character accounts. Fall back only if it was somehow
-                // not cached (treat that as a logged anomaly).
+                // Fail closed: a missing active_player_id means we cannot
+                // safely identify which character to respawn. The previous
+                // "lowest player_id for account" fallback would silently
+                // respawn a different character on multi-character accounts —
+                // the same bug class hardened in handle_gate_travel.
                 let player_id: i32 = match cached_player_id {
                     Some(pid) => pid,
                     None => {
-                        tracing::warn!(entity_id, account_id, "Respawn: no active_player_id cached, falling back to first character lookup");
-                        if let Some(pool) = db_pool {
-                            sqlx::query_scalar("SELECT player_id FROM sgw_player WHERE account_id = $1 LIMIT 1")
-                                .bind(account_id as i32)
-                                .fetch_optional(pool.as_ref())
-                                .await
-                                .ok()
-                                .flatten()
-                                .unwrap_or(entity_id as i32)
-                        } else {
-                            entity_id as i32
-                        }
+                        tracing::error!(
+                            entity_id, account_id,
+                            "Respawn: no active_player_id cached — aborting respawn (would risk respawning the wrong character on multi-character accounts)"
+                        );
+                        return;
                     }
                 };
 
