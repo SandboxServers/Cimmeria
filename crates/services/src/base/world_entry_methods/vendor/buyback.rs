@@ -306,7 +306,7 @@ pub async fn handle_buyback_vendor_items(
 
             match insert_result {
                 Ok(r) if r.rows_affected() == 1 => {
-                    sqlx::query(
+                    let upd = sqlx::query(
                         "UPDATE sgw_inventory SET stack_size = stack_size - $1 \
                      WHERE character_id = $2 AND item_id = $3 AND container_id = $4 \
                        AND stack_size >= $1",
@@ -316,7 +316,27 @@ pub async fn handle_buyback_vendor_items(
                     .bind(item_id)
                     .bind(INV_BUYBACK)
                     .execute(&mut *tx)
-                    .await
+                    .await;
+
+                    // If the partial-buyback decrement just reduced the row to
+                    // stack_size = 0, remove it now so it doesn't show up as a
+                    // free-looking ghost entry on the next vendor open. Keyed on
+                    // the same (character, item, container) tuple as the UPDATE
+                    // above so we never delete a row we didn't just touch.
+                    if upd.is_ok() {
+                        let _ = sqlx::query(
+                            "DELETE FROM sgw_inventory \
+                             WHERE character_id = $1 AND item_id = $2 \
+                               AND container_id = $3 AND stack_size <= 0",
+                        )
+                        .bind(player_id)
+                        .bind(item_id)
+                        .bind(INV_BUYBACK)
+                        .execute(&mut *tx)
+                        .await;
+                    }
+
+                    upd
                 }
                 Ok(_) => {
                     let _ = tx.rollback().await;

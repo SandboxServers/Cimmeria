@@ -41,10 +41,19 @@ pub async fn handle_use_ability_on_ground(
     // friendly factions or themselves with a ground ability fall through to
     // the no-target branch below.
     let nearest = {
+        // Hostile-faction sentinel matches `cell_methods/player/interaction.rs`'s
+        // hostile check (`!is_player && faction == 10`). Without it, auto-aim
+        // would happily target vendors, quest givers, and neutral wildlife — a
+        // ground-targeted ability fired near a friendly NPC would damage them.
+        const HOSTILE_FACTION: u8 = 10;
+
         let mut best: Option<(u32, f32)> = None;
         for npc_eid in space_mgr.all_npc_entity_ids() {
             if let Some(npc) = space_mgr.get_entity(npc_eid) {
                 if combat::is_dead_state(npc.state_field) {
+                    continue;
+                }
+                if npc.faction != HOSTILE_FACTION {
                     continue;
                 }
                 let dx = npc.position.x - ground[0];

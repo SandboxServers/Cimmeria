@@ -156,20 +156,47 @@ pub async fn handle_grant_item(
     // the inventory insert and the active-slot move are atomic — a separate
     // post-commit UPDATE could silently leave the player with the new item
     // visible but the active slot still pointing at the old one.
+    //
+    // Only adopt the new slot when the player's *previous* selection no longer
+    // points at a real item (e.g., empty bandolier, or the previously-selected
+    // slot is now also gone). This matches the slot-preservation behavior of
+    // `sync_bandolier_after_inventory_change` so a loot drop or quest reward
+    // doesn't hot-swap a player's preferred weapon mid-combat.
     if container_id == 3 {
-        if let Err(e) = sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
-            .bind(next_slot)
-            .bind(player_id)
-            .execute(&mut *db_tx)
-            .await
-        {
-            let _ = db_tx.rollback().await;
-            tracing::error!(
-                player_id,
-                slot_id = next_slot,
-                "GrantItem: bandolier_slot UPDATE failed inside tx, aborting grant: {e}"
-            );
-            return;
+        let res = sqlx::query(
+            "UPDATE sgw_player p \
+                SET bandolier_slot = $1 \
+              WHERE p.player_id = $2 \
+                AND NOT EXISTS ( \
+                  SELECT 1 FROM sgw_inventory inv \
+                  WHERE inv.character_id = p.player_id \
+                    AND inv.container_id = 3 \
+                    AND inv.slot_id = p.bandolier_slot \
+                )",
+        )
+        .bind(next_slot)
+        .bind(player_id)
+        .execute(&mut *db_tx)
+        .await;
+
+        match res {
+            Ok(r) => {
+                tracing::debug!(
+                    player_id,
+                    slot_id = next_slot,
+                    swapped = r.rows_affected() == 1,
+                    "GrantItem: bandolier_slot reconciled (swapped only if previous selection vacant)"
+                );
+            }
+            Err(e) => {
+                let _ = db_tx.rollback().await;
+                tracing::error!(
+                    player_id,
+                    slot_id = next_slot,
+                    "GrantItem: bandolier_slot UPDATE failed inside tx, aborting grant: {e}"
+                );
+                return;
+            }
         }
     }
 
@@ -252,11 +279,12 @@ pub async fn handle_grant_item(
                 default_ammo_type_id: i32,
             }
 
-            // On lookup error or missing row, send the UpdateBandolierItem with
-            // degraded clip/ammo values rather than silently dropping the cell
-            // sync — the item is committed to DB and the slot/active flag must
-            // reach the cell. Combat code will refresh clip_size on next reload.
-            let item = match sqlx::query_as::<_, BandolierRow>(
+            // Resolve the item's clip/ammo metadata. On Ok(None) — the granted
+            // item type is not in resources.items, which is data corruption —
+            // fall back to a full bandolier resync so combat doesn't see
+            // clip_size=0. On Err — transient DB failure — also resync rather
+            // than ship known-bad clip/ammo to the cell.
+            let row = sqlx::query_as::<_, BandolierRow>(
                 r#"
                 SELECT item_id, COALESCE(clip_size, 0) AS clip_size,
                        CASE WHEN default_ammo_type IS NULL THEN 0
@@ -268,50 +296,48 @@ pub async fn handle_grant_item(
             )
             .bind(item_id)
             .fetch_optional(pool.as_ref())
-            .await
-            {
-                Ok(Some(row)) => cimmeria_entity::cell_entity::BandolierItem {
-                    item_id: row.item_id,
-                    clip_size: row.clip_size,
-                    default_ammo_type: row.default_ammo_type_id,
-                },
-                Ok(None) => {
-                    tracing::warn!(
-                        item_id,
-                        "GrantItem: no resources.items row for bandolier item, sending UpdateBandolierItem with placeholder clip/ammo"
-                    );
-                    cimmeria_entity::cell_entity::BandolierItem {
-                        item_id,
-                        clip_size: 0,
-                        default_ammo_type: 0,
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(
-                        item_id,
-                        "GrantItem: bandolier item lookup failed ({e}); sending UpdateBandolierItem with placeholder clip/ammo so cell stays in sync"
-                    );
-                    cimmeria_entity::cell_entity::BandolierItem {
-                        item_id,
-                        clip_size: 0,
-                        default_ammo_type: 0,
-                    }
-                }
-            };
+            .await;
 
-            if let Err(e) = tx
-                .send(BaseToCellMsg::UpdateBandolierItem {
-                    entity_id,
-                    slot_id: next_slot,
-                    item,
-                    make_active: true,
-                })
-                .await
-            {
-                tracing::warn!(
-                    entity_id, player_id, item_id,
-                    "GrantItem: cell channel closed sending UpdateBandolierItem: {e}"
-                );
+            match row {
+                Ok(Some(row)) => {
+                    let item = cimmeria_entity::cell_entity::BandolierItem {
+                        item_id: row.item_id,
+                        clip_size: row.clip_size,
+                        default_ammo_type: row.default_ammo_type_id,
+                    };
+                    if let Err(e) = tx
+                        .send(BaseToCellMsg::UpdateBandolierItem {
+                            entity_id,
+                            slot_id: next_slot,
+                            item,
+                            make_active: true,
+                        })
+                        .await
+                    {
+                        tracing::warn!(
+                            entity_id, player_id, item_id,
+                            "GrantItem: cell channel closed sending UpdateBandolierItem: {e}"
+                        );
+                    }
+                }
+                Ok(None) | Err(_) => {
+                    // Either the item type is missing from resources.items
+                    // (data corruption — no clip/ammo metadata available) or
+                    // the lookup hit a transient error. In both cases we
+                    // delegate to the full sync path, which queries fresh
+                    // bandolier state under FOR UPDATE and emits
+                    // SyncBandolierItems with whatever the DB actually has.
+                    if matches!(row, Err(ref _e)) {
+                        if let Err(e) = row {
+                            tracing::error!(item_id, "GrantItem: bandolier metadata lookup failed ({e}); falling back to sync_bandolier_after_inventory_change");
+                        }
+                    } else {
+                        tracing::warn!(item_id, "GrantItem: no resources.items row for granted bandolier item; falling back to full bandolier resync");
+                    }
+                    super::super::vendor::helpers::sync_bandolier_after_inventory_change(
+                        entity_id, player_id, db_pool, cell_tx, socket, connected, entity_to_addr,
+                    ).await;
+                }
             }
         }
     }
@@ -348,6 +374,10 @@ pub async fn handle_grant_item(
             }
         };
 
+        // TODO: replace with a narrow `query_player_appearance_data` that only
+        // returns bodyset+components — this full profile load is overkill for
+        // an appearance refresh and re-runs every other query in the load
+        // (abilities, missions, weapon stats, etc.).
         let player_data = query_player_load_data(db_pool, account_id, player_id).await;
         let appearance_args = world_entry_appearance::build_appearance_args(
             &player_data.bodyset,

@@ -99,11 +99,13 @@ pub async fn dispatch(
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(entity_id, item_id, target_id, "useItem");
 
-                let player_id = space_mgr.get_entity(entity_id)
-                    .and_then(|e| e.player_id).unwrap_or(0);
-                crate::cell::content::fire_item_use(
-                    entity_id, player_id, item_id, engine, tx, space_mgr,
-                ).await;
+                if let Some(player_id) = resolve_player_id("useItem") {
+                    crate::cell::content::fire_item_use(
+                        entity_id, player_id, item_id, engine, tx, space_mgr,
+                    ).await;
+                }
+            } else {
+                tracing::warn!(entity_id, args_len = args.len(), "useItem: truncated args");
             }
             true
         }

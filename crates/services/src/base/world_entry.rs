@@ -39,7 +39,7 @@ use super::world_entry_methods::{
     handle_grant_xp, handle_grant_item, handle_grant_cash, handle_mission_update, handle_mail_request,
     handle_open_vendor_store, handle_purchase_vendor_items, handle_sell_vendor_items, handle_buyback_vendor_items,
     send_full_inventory_update, handle_remove_inventory_item, handle_move_inventory_item,
-    handle_repair_inventory_item, handle_paid_repair_inventory_items,
+    handle_repair_inventory_item, handle_repair_inventory_items, handle_paid_repair_inventory_items,
     handle_recharge_inventory_items, handle_paid_recharge_inventory_items,
 };
 use super::world_entry_methods::{
@@ -113,14 +113,21 @@ pub(crate) async fn handle_play_character(
     // Query character data from DB and resolve space via CellService
     let entry_info = query_world_entry(db_pool, account_id, player_id, entity_manager, cell_tx).await;
 
-    // query_world_entry returns player_entity_id == 0 as a "world entry failed"
+    // query_world_entry returns NO_ENTITY_ID as a "world entry failed"
     // sentinel (DB error or character not found). Bail before dispatching any
-    // packets that would target an entity the cell never registered.
-    if entry_info.player_entity_id == 0 {
+    // packets that would target an entity the cell never registered, AND
+    // clear the world_entry_sent latch so a subsequent playCharacter retry on
+    // the same connection isn't silently dropped.
+    if entry_info.player_entity_id == super::world_entry_methods::world_entry::NO_ENTITY_ID {
         tracing::error!(
             %addr, player_id, account_id,
             "World entry aborted: query_world_entry returned NO_ENTITY_ID sentinel"
         );
+        if let Ok(mut clients) = connected.lock() {
+            if let Some(c) = clients.get_mut(&addr) {
+                c.world_entry_sent = false;
+            }
+        }
         return Ok(());
     }
 
@@ -557,33 +564,34 @@ async fn handle_gate_travel(
             clients.get(&addr).and_then(|c| c.active_player_id)
         };
 
-        let update_clause = "UPDATE sgw_player \
-             SET world_location = $1, \
-                 world_id = COALESCE((SELECT world_id FROM resources.worlds WHERE world = $1), world_id), \
-                 pos_x = $2, pos_y = $3, pos_z = $4 \
-             WHERE player_id = $5 AND account_id = $6";
-        let res = match active_pid {
-            Some(pid) => sqlx::query(update_clause)
-                .bind(target_world_name)
-                .bind(position[0]).bind(position[1]).bind(position[2])
-                .bind(pid).bind(account_id as i32)
-                .execute(pool.as_ref()).await,
+        // Fail closed: gate travel without a known active character would
+        // otherwise persist against a fallback (e.g., MIN(player_id) for the
+        // account) that could corrupt a different character on multi-character
+        // accounts. The cache is set in play_character; missing here is a
+        // protocol-level error, not something to paper over.
+        let pid = match active_pid {
+            Some(pid) => pid,
             None => {
-                tracing::warn!(%addr, account_id, "GateTravel: no active_player_id cached; persisting against first character for account");
-                sqlx::query(
-                    "UPDATE sgw_player SET \
-                       world_location = $1, \
-                       world_id = COALESCE((SELECT world_id FROM resources.worlds WHERE world = $1), world_id), \
-                       pos_x = $2, pos_y = $3, pos_z = $4 \
-                     WHERE player_id = (SELECT MIN(player_id) FROM sgw_player WHERE account_id = $5) \
-                       AND account_id = $5",
-                )
-                .bind(target_world_name)
-                .bind(position[0]).bind(position[1]).bind(position[2])
-                .bind(account_id as i32)
-                .execute(pool.as_ref()).await
+                tracing::error!(
+                    %addr, account_id, world = %target_world_name,
+                    "GateTravel: no active_player_id cached — refusing to persist destination (would risk wrong-character corruption on multi-character accounts)"
+                );
+                return Ok(());
             }
         };
+
+        let res = sqlx::query(
+            "UPDATE sgw_player \
+               SET world_location = $1, \
+                   world_id = COALESCE((SELECT world_id FROM resources.worlds WHERE world = $1), world_id), \
+                   pos_x = $2, pos_y = $3, pos_z = $4 \
+             WHERE player_id = $5 AND account_id = $6",
+        )
+        .bind(target_world_name)
+        .bind(position[0]).bind(position[1]).bind(position[2])
+        .bind(pid).bind(account_id as i32)
+        .execute(pool.as_ref()).await;
+
         match res {
             Ok(r) if r.rows_affected() == 0 => {
                 tracing::warn!(%addr, account_id, world = %target_world_name, "GateTravel: persistence UPDATE matched 0 rows");
@@ -610,20 +618,25 @@ async fn handle_gate_travel(
     };
 
     // Query player load data from DB (same player, different world).
-    // Use the cached active_player_id from playCharacter — falling back to
-    // query_player_load_data_by_account would pick the lowest player_id for
-    // the account, which is wrong on multi-character accounts.
-    let active_player_id: Option<i32> = {
+    // Fail closed: a missing active_player_id means we can't safely identify
+    // which character to reload — falling back to "lowest player_id for the
+    // account" would silently load the wrong character on multi-character
+    // accounts. The cache is set in play_character; missing here is a
+    // protocol-level error.
+    let active_player_id: i32 = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients.get(&addr).and_then(|c| c.active_player_id)
-    };
-    let player_load_data = match active_player_id {
-        Some(pid) => query_player_load_data(db_pool, account_id, pid).await,
-        None => {
-            tracing::warn!(%addr, account_id, "GateTravel: no active_player_id cached — falling back to lowest player_id for account");
-            query_player_load_data_by_account(db_pool, account_id).await
+        match clients.get(&addr).and_then(|c| c.active_player_id) {
+            Some(pid) => pid,
+            None => {
+                tracing::error!(
+                    %addr, account_id,
+                    "GateTravel: no active_player_id cached — aborting reload (would risk loading wrong character on multi-character accounts)"
+                );
+                return Ok(());
+            }
         }
     };
+    let player_load_data = query_player_load_data(db_pool, account_id, active_player_id).await;
 
     // Entity teardown: Send RESET_ENTITIES
     let acks: Vec<u32> = {
@@ -964,32 +977,22 @@ pub(crate) async fn handle_cell_message(
             ).await;
         }
         CellToBaseMsg::RepairInventoryItems { entity_id, player_id, item_ids, vendor_template_id } => {
-            match vendor_template_id {
-                Some(template_id) => {
-                    handle_paid_repair_inventory_items(
-                        entity_id, player_id, item_ids, template_id,
-                        &db_pool, socket, connected, entity_to_addr,
-                    ).await;
-                }
-                None => tracing::warn!(
-                    entity_id, player_id, item_count = item_ids.len(),
-                    "RepairInventoryItems dropped: missing vendor_template_id"
-                ),
-            }
+            // Route through the wrapper so the `None` (free repair) path is
+            // reachable. The wrapper dispatches to handle_paid_repair when a
+            // template id is supplied and to the free-repair UPDATE otherwise.
+            handle_repair_inventory_items(
+                entity_id, player_id, item_ids, vendor_template_id,
+                &db_pool, socket, connected, entity_to_addr,
+            ).await;
         }
         CellToBaseMsg::RechargeInventoryItems { entity_id, player_id, item_ids, vendor_template_id } => {
-            match vendor_template_id {
-                Some(template_id) => {
-                    handle_paid_recharge_inventory_items(
-                        entity_id, player_id, item_ids, template_id,
-                        &db_pool, socket, connected, entity_to_addr,
-                    ).await;
-                }
-                None => tracing::warn!(
-                    entity_id, player_id, item_count = item_ids.len(),
-                    "RechargeInventoryItems dropped: missing vendor_template_id"
-                ),
-            }
+            // Route through the wrapper so the `None` (free recharge) path is
+            // reachable. The wrapper dispatches to handle_paid_recharge when a
+            // template id is supplied and to the free-recharge UPDATE otherwise.
+            handle_recharge_inventory_items(
+                entity_id, player_id, item_ids, vendor_template_id,
+                &db_pool, socket, connected, entity_to_addr,
+            ).await;
         }
         CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id } => {
             if let Some(pool) = db_pool {

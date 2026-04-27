@@ -6,6 +6,13 @@ use sqlx::{PgPool, Postgres, Transaction};
 use super::store::VendorTemplateLists;
 
 const INV_MAIN: i32 = 1;
+// Containers consulted when consuming item-prerequisites for a purchase:
+//   INV_MAIN  = 1  — main bag
+//   2          — vault/bank container (can pay from stored items)
+//   15         — quick bar / hot bar (also lootable for prereqs)
+// Bandolier (3) and equipment slots (4..=14) are deliberately excluded — a
+// vendor purchase shouldn't strip an equipped weapon or armor piece to satisfy
+// a recipe cost.
 const VENDOR_COST_BAGS: [i32; 3] = [INV_MAIN, 2, 15];
 
 #[derive(sqlx::FromRow)]

@@ -64,15 +64,20 @@ pub async fn handle_move_inventory_item(
         }
     };
 
-    // Take a per-(player, container) advisory lock for the target container
-    // before checking occupancy. `FOR UPDATE` on the occupied-slot SELECT only
-    // locks existing rows; without this advisory lock two concurrent moves
-    // targeting the same *empty* slot can both pass and write into the same
-    // (container, slot). This matches the convention used by
-    // `reserve_free_inventory_slots` for grant/purchase.
-    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+    // Per-player advisory lock serializes ALL inventory moves for this player.
+    //
+    // A per-(player, container) lock is not enough: opposite-direction swaps
+    // (A→B and B→A running concurrently) each lock their own source row first,
+    // then deadlock when each tries to FOR-UPDATE the other's target occupant.
+    // Taking a single per-player lock before any row locks eliminates that
+    // ordering problem outright. Moves are rare enough that the contention
+    // cost is negligible compared to the deadlock risk.
+    //
+    // Sentinel arg `0` distinguishes the "all-containers" move lock from the
+    // per-container slot-reservation locks taken by
+    // `reserve_free_inventory_slots(player_id, container_id)`.
+    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, 0)")
         .bind(player_id)
-        .bind(target_container_id)
         .execute(&mut *tx)
         .await
     {

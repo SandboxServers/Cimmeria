@@ -16,7 +16,6 @@ use super::serializers::reserve_free_inventory_slots;
 use super::helpers::{send_cash_changed_to_client, sync_bandolier_after_inventory_change};
 use super::purchase_helpers::load_vendor_template_lists;
 
-const INV_MAIN: i32 = 1;
 const INV_BANDOLIER: i32 = 3;
 const INV_BUYBACK: i32 = 16;
 const ITEM_FLAG_CAN_BE_SOLD: i32 = 1 << 10;
@@ -311,6 +310,39 @@ pub async fn handle_sell_vendor_items(
     }
 
     let new_cash_total = if total_cash_gain > 0 {
+        // Pre-validate that current naquadah + total_cash_gain fits in i32
+        // (sgw_player.naquadah is INT4). Without this check the UPDATE below
+        // would error on overflow and rollback the entire sale, surfacing as
+        // a confusing failure to the player. Pre-checking lets us return a
+        // clean refusal instead of relying on PostgreSQL to error.
+        let current_balance: i32 =
+            match sqlx::query_scalar::<_, i32>("SELECT naquadah FROM sgw_player WHERE player_id = $1 FOR UPDATE")
+                .bind(player_id)
+                .fetch_optional(&mut *tx)
+                .await
+            {
+                Ok(Some(b)) => b,
+                Ok(None) => {
+                    let _ = tx.rollback().await;
+                    tracing::warn!(entity_id, player_id, "SellVendorItems: player not found");
+                    return;
+                }
+                Err(e) => {
+                    let _ = tx.rollback().await;
+                    tracing::error!(entity_id, player_id, "SellVendorItems: balance read failed: {e}");
+                    return;
+                }
+            };
+
+        if current_balance.checked_add(total_cash_gain).is_none() {
+            let _ = tx.rollback().await;
+            tracing::warn!(
+                entity_id, player_id, current_balance, total_cash_gain,
+                "SellVendorItems: refusing sale — naquadah balance would overflow i32"
+            );
+            return;
+        }
+
         match sqlx::query_scalar::<_, i32>(
             "UPDATE sgw_player SET naquadah = naquadah + $1 \
              WHERE player_id = $2 RETURNING naquadah",

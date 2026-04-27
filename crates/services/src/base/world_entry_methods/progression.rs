@@ -47,7 +47,12 @@ pub async fn handle_grant_xp(
     };
 
     let (total_xp, new_level, training_points, levels_gained) = {
-        let mut map = connected.lock().unwrap();
+        // Tolerate poison instead of panicking — another thread crashing the
+        // mutex shouldn't stop XP grants from continuing on the recovered state.
+        let mut map = match connected.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
         let state = match map.get_mut(&addr) {
             Some(s) => s,
             None => {
@@ -60,7 +65,10 @@ pub async fn handle_grant_xp(
         let mut level = state.player_level.unwrap_or(1) as u32;
         let mut tp = state.player_training_points.unwrap_or(0);
 
-        xp += xp_amount;
+        // Saturate to prevent a pathological grant (e.g., from a corrupted
+        // GrantXP message) wrapping the accumulator and producing a negative
+        // wire value or a phantom delevel.
+        xp = xp.saturating_add(xp_amount);
 
         let mut gained = Vec::new();
         while level < MAX_LEVEL && xp > LEVEL_XP[level as usize] {

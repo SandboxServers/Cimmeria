@@ -29,26 +29,35 @@ pub async fn dispatch(
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, ability_id, target_id, "useAbility");
+
+                // Snapshot whether the target was alive *before* the ability
+                // resolves. Without this, hitting an already-dead corpse would
+                // re-fire fire_entity_death (and stomp the AI cleanup that
+                // handle_use_ability already performed on the original kill),
+                // double-counting mission progress on every post-death swing.
+                let was_alive_before = if target_id > 0 {
+                    space_mgr.get_entity(target_id as u32).map_or(false, |t| {
+                        !t.is_player
+                            && t.stats.get(HEALTH).map_or(false, |s| s.cur > 0)
+                    })
+                } else {
+                    false
+                };
+
                 crate::cell::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr).await;
 
-                if target_id > 0 {
+                // Only react to alive→dead transitions caused by *this* call.
+                // handle_use_ability already handles AI/loot/XP on the kill
+                // itself; we only need to fire the content-engine death event
+                // here, since that's a separate concern wired off the killing
+                // player's player_id.
+                if was_alive_before {
                     let target_eid = target_id as u32;
-                    let death_info = space_mgr.get_entity(target_eid).and_then(|target| {
-                        let is_dead = target.stats.get(HEALTH)
-                            .map_or(false, |s| s.cur <= 0);
-                        if is_dead && !target.is_player {
-                            Some(target.tag.clone())
-                        } else {
-                            None
-                        }
+                    let just_died = space_mgr.get_entity(target_eid).map_or(false, |t| {
+                        t.stats.get(HEALTH).map_or(false, |s| s.cur <= 0)
                     });
-
-                    if let Some(tag) = death_info {
-                        if let Some(target) = space_mgr.get_entity_mut(target_eid) {
-                            target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
-                            target.threat_list.clear();
-                        }
-
+                    if just_died {
+                        let tag = space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone());
                         if let Some(tag) = tag {
                             match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
                                 Some(player_id) => {

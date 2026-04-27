@@ -10,6 +10,12 @@ use crate::mercury::{WorldEntryInfo, DEFAULT_SPACE_ID, SGWPLAYER_CLASS_ID};
 
 use super::super::world_entry::resolve_space_id_fallback;
 
+/// Sentinel `player_entity_id` returned by [`query_world_entry`] when no real
+/// entity could be allocated/registered (DB error or character not found).
+/// Callers must treat this as "world entry failed, do not proceed" rather than
+/// hard-coding the literal `0`.
+pub const NO_ENTITY_ID: u32 = 0;
+
 /// Query the character's world entry data from the database and allocate a player entity ID.
 ///
 /// If a CellService channel is available, sends `CreateEntity` to resolve the space_id
@@ -30,9 +36,6 @@ pub async fn query_world_entry(
     let alloc_entity = || -> u32 {
         entity_manager.lock().unwrap().create_entity("SGWPlayer").0 as u32
     };
-    // Sentinel returned when no real entity could be allocated/registered.
-    // Callers must treat this as "world entry failed, do not proceed."
-    const NO_ENTITY_ID: u32 = 0;
     let default_entry_with_eid = |player_eid: u32| WorldEntryInfo {
         player_entity_id: player_eid,
         space_id: DEFAULT_SPACE_ID,
@@ -45,8 +48,35 @@ pub async fn query_world_entry(
 
     let pool = match db_pool {
         Some(p) => p,
-        // No-DB mode (e.g. CombatSim smoke test) is a real entry, so allocate.
-        None => return default_entry_with_eid(alloc_entity()),
+        // No-DB mode (e.g. CombatSim smoke test) is a real entry. If a cell
+        // channel is up, dispatch CreateEntity for the allocated id so the
+        // cell learns about the entity instead of receiving downstream
+        // packets (gate-travel / AoI) for an id it never saw. Without that
+        // round-trip the cell silently ignores the entity.
+        None => {
+            let player_eid = alloc_entity();
+            if let Some(tx) = cell_tx {
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                if tx
+                    .send(BaseToCellMsg::CreateEntity {
+                        entity_id: player_eid,
+                        world_name: "CombatSim".to_string(),
+                        position: [0.0; 3],
+                        rotation: [0.0; 3],
+                        reply_tx,
+                    })
+                    .await
+                    .is_ok()
+                {
+                    // Wait for the cell to ack the registration; the space_id
+                    // reply is unused here (default_entry uses DEFAULT_SPACE_ID),
+                    // but we must drive the oneshot so the cell completes the
+                    // create.
+                    let _ = reply_rx.await;
+                }
+            }
+            return default_entry_with_eid(player_eid);
+        }
     };
 
     #[derive(sqlx::FromRow)]

@@ -46,8 +46,14 @@ pub async fn sync_bandolier_after_inventory_change(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let (Some(pool), Some(tx)) = (db_pool, cell_tx) else {
-        return;
+    // The DB reconciliation must run whenever a pool is available, regardless
+    // of whether the cell-sync channel is up — otherwise a `cell_tx == None`
+    // window would skip the authoritative `bandolier_slot` UPDATE entirely
+    // and leave the player's persisted active slot pointing at a vacated
+    // bandolier entry. The `cell_tx`-only emit is gated separately below.
+    let pool = match db_pool {
+        Some(p) => p,
+        None => return,
     };
 
     let mut db_tx = match pool.begin().await {
@@ -94,13 +100,15 @@ pub async fn sync_bandolier_after_inventory_change(
             tracing::error!(entity_id, player_id, "sync_bandolier: commit failed: {e}");
             return;
         }
-        let _ = tx
-            .send(BaseToCellMsg::SyncBandolierItems {
-                entity_id,
-                active_bandolier_slot: old_active,
-                bandolier_items: Vec::new(),
-            })
-            .await;
+        if let Some(tx) = cell_tx {
+            let _ = tx
+                .send(BaseToCellMsg::SyncBandolierItems {
+                    entity_id,
+                    active_bandolier_slot: old_active,
+                    bandolier_items: Vec::new(),
+                })
+                .await;
+        }
         return;
     }
 
@@ -156,11 +164,13 @@ pub async fn sync_bandolier_after_inventory_change(
         .await;
     }
 
-    let _ = tx
-        .send(BaseToCellMsg::SyncBandolierItems {
-            entity_id,
-            active_bandolier_slot: active_slot,
-            bandolier_items,
-        })
-        .await;
+    if let Some(tx) = cell_tx {
+        let _ = tx
+            .send(BaseToCellMsg::SyncBandolierItems {
+                entity_id,
+                active_bandolier_slot: active_slot,
+                bandolier_items,
+            })
+            .await;
+    }
 }

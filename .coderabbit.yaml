@@ -173,8 +173,10 @@ reviews:
       enabled: false
     circleci:
       enabled: false
-    ast-grep:
-      enabled: false
+    # ast-grep block intentionally omitted — its schema only accepts rule_dirs,
+    # util_dirs, essential_rules, and packages; an `enabled: false` here
+    # violates the schema. CodeRabbit defaults ast-grep to off when the section
+    # is absent, which is what we want.
 
   # Path-specific review rules
   path_instructions:
