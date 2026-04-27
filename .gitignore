@@ -193,5 +193,3 @@ game/sgw/*
 game/patches/*
 !game/sgw/.gitkeep
 !game/sgw/README.md
-
-logs/*

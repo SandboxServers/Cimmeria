@@ -15,6 +15,13 @@ const INV_MAIN: i32 = 1;
 // a recipe cost.
 const VENDOR_COST_BAGS: [i32; 3] = [INV_MAIN, 2, 15];
 
+// Hard cap on a single purchase line. Real vendor UIs are bounded well below
+// this (typical stack sizes are <100); larger values are almost certainly a
+// malformed/malicious request. Without this guard a vendor row with
+// `quantity = 1` and `naquadah = 0` would let a client mint up to i32::MAX
+// items at zero cost — checked_mul on `1 * MAX` doesn't overflow.
+const MAX_VENDOR_PURCHASE_QUANTITY: i32 = 9_999;
+
 #[derive(sqlx::FromRow)]
 struct ItemListPriceRow {
     item_id: i32,
@@ -154,6 +161,15 @@ pub async fn load_vendor_purchase_lines(
     let mut lines = Vec::with_capacity(items.len());
 
     for (index, requested_quantity) in items {
+        if *requested_quantity <= 0 || *requested_quantity > MAX_VENDOR_PURCHASE_QUANTITY {
+            tracing::warn!(
+                vendor_template_id, buy_item_list, index, requested_quantity,
+                cap = MAX_VENDOR_PURCHASE_QUANTITY,
+                "PurchaseVendorItems: requested quantity out of range"
+            );
+            return None;
+        }
+
         let Some(row) = rows_by_index.get(index) else {
             tracing::warn!(
                 vendor_template_id,

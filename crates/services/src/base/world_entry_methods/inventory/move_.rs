@@ -86,6 +86,25 @@ pub async fn handle_move_inventory_item(
         return;
     }
 
+    // Also take the per-container lock for the target so concurrent
+    // grants/purchases that call `reserve_free_inventory_slots(player_id,
+    // target_container)` block until the move commits. Without this, a grant
+    // can read target-slot occupancy, see the slot free, INSERT into it, and
+    // commit before this move's UPDATE relocates the source row — the unique
+    // index on (character_id, container_id, slot_id) would then surface as a
+    // user-visible error on a legitimate move. Source-container lock is taken
+    // below once we've read the source row.
+    if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+        .bind(player_id)
+        .bind(target_container_id)
+        .execute(&mut *tx)
+        .await
+    {
+        let _ = tx.rollback().await;
+        tracing::error!(player_id, item_id, target_container_id, "MoveInventoryItem: target container lock failed: {e}");
+        return;
+    }
+
     // Read source row inside the tx with FOR UPDATE so concurrent moves observe
     // a consistent snapshot. Without this, the swap path could lose updates.
     let source = match sqlx::query_as::<_, InventoryInstanceRow>(
@@ -122,6 +141,23 @@ pub async fn handle_move_inventory_item(
     if source.container_id == target_container_id && source.slot_id == target_slot_id {
         let _ = tx.rollback().await;
         return;
+    }
+
+    // Source-container lock matches the target-container lock taken above —
+    // moves where source ≠ target also need to serialize against grants into
+    // the source bag (the swap path moves the displaced occupant into the
+    // source's old slot and would race the same way).
+    if source.container_id != target_container_id {
+        if let Err(e) = sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+            .bind(player_id)
+            .bind(source.container_id)
+            .execute(&mut *tx)
+            .await
+        {
+            let _ = tx.rollback().await;
+            tracing::error!(player_id, item_id, source_container_id = source.container_id, "MoveInventoryItem: source container lock failed: {e}");
+            return;
+        }
     }
 
     if !item_allows_container(pool, source.type_id, target_container_id).await {

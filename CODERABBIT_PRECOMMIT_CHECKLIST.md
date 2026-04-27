@@ -127,18 +127,23 @@ Quick searches to run before committing:
 ## Secondary Checks (~30% of Feedback)
 
 ### Integer Overflow in SQL (~5%)
+
 When multiplying values in SQL queries, cast to BIGINT before the operation to prevent overflow on large values.
 
 ### Player ID Resolution (~4%)
+
 Don't re-query player_id by account_id when you already have it. Cache player_id on the connection state and pass it through.
 
 ### UNIMPLEMENTED Stubs (~3%)
+
 Stub functions that return `true` or silently succeed are dangerous. Either forward to the real implementation or return `false` / log a warning.
 
 ### Test Assertions (~3%)
+
 When changing message enum variants or function signatures, update the corresponding test assertions.
 
 ### Duplicate Definitions (~2%)
+
 If the same SQL query or struct appears in multiple files, extract it to a shared module.
 
 ---
