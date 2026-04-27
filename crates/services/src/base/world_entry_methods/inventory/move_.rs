@@ -274,6 +274,46 @@ pub async fn handle_move_inventory_item(
             return;
         }
 
+        // Three-step swap to keep each statement boundary collision-free
+        // against the sgw_inventory_unique_slot UNIQUE INDEX on
+        // (character_id, container_id, slot_id):
+        //   1. Park source at slot_id = -1 in its current container.
+        //   2. Move occupant into source's original slot (now vacated).
+        //   3. Move source from the sentinel slot into the target.
+        //
+        // A two-step swap (occupant→source's-slot, source→target) would have
+        // both rows colliding on (source.container_id, source.slot_id) at the
+        // end of statement 1. The sentinel slot=-1 is safe because:
+        //  - bag_max_slots() never reserves negative slots, so grant/purchase
+        //    paths cannot land there.
+        //  - The (player_id, 0) advisory lock above serializes against other
+        //    moves on this player, so no concurrent move can also be parking
+        //    a different row at -1 in the same container for the same player.
+        const SWAP_SENTINEL_SLOT: i32 = -1;
+
+        let park_source = sqlx::query(
+            "UPDATE sgw_inventory SET slot_id = $1 \
+             WHERE character_id = $2 AND item_id = $3",
+        )
+        .bind(SWAP_SENTINEL_SLOT)
+        .bind(player_id)
+        .bind(item_id)
+        .execute(&mut *tx)
+        .await;
+        match park_source {
+            Ok(r) if r.rows_affected() == 1 => {}
+            Ok(_) => {
+                let _ = tx.rollback().await;
+                tracing::warn!(player_id, item_id, "MoveInventoryItem: park-source matched 0 rows");
+                return;
+            }
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(player_id, item_id, "MoveInventoryItem: park-source failed: {e}");
+                return;
+            }
+        }
+
         let move_occupied = sqlx::query(
             "UPDATE sgw_inventory SET container_id = $1, slot_id = $2 \
              WHERE character_id = $3 AND item_id = $4",
