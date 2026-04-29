@@ -25,7 +25,7 @@ See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
 ## Why Rust
 
-The original C++ server was built against a 2013-era dependency stack: Boost 1.55, Python 3.4, OpenSSL 1.0.1e (with known CVEs including Heartbleed), PostgreSQL 9.2, SOCI 3.2 — all end-of-life, all tightly coupled. Upgrading any single dependency triggers cascading breaks across the others. The build requires Visual Studio on Windows with precompiled headers and a specific MSVC toolset. The Python 3.4 embedding layer (via Boost.Python) is especially fragile — no type hints, no f-strings, no async, and Boost.Python itself hasn't tracked CPython's embedding API changes.
+The original C++ server was built against a 2013-era dependency stack: Boost 1.55, Python 3.4, OpenSSL 0.9.8i (multiple known CVEs), SOCI 3.2 — all end-of-life, all tightly coupled. Upgrading any single dependency triggers cascading breaks across the others. The build requires Visual Studio on Windows with precompiled headers and a specific MSVC toolset. The Python 3.4 embedding layer (via Boost.Python) is especially fragile — no type hints, no f-strings, no async, and Boost.Python itself hasn't tracked CPython's embedding API changes. (PostgreSQL has since been upgraded to 17.9; the rest remain pending — see [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).)
 
 Rather than fight through 10 phases of dependency upgrades to modernize a codebase that would still be C++11 at the end, we're rewriting the server in Rust:
 
@@ -154,7 +154,7 @@ Cimmeria/
 │   ├── sgw/                Game schema (accounts, characters, items)
 │   ├── resources/          Resource data (abilities, effects, archetypes — 18 game systems)
 │   └── deprecated/         Old monolithic schema files (reference only)
-├── docs/                   151 documents
+├── docs/                   152 documents
 ├── tools/                  Editor tools (ServerEd, ContentEditor, SceneEditor, RE utilities)
 ├── bootstrap/              C++ dependency automation
 └── W-NG.sln                Visual Studio solution (C++ legacy build)
@@ -182,8 +182,8 @@ Cimmeria/
 | MSVC Toolset | v145 (VS2026) | C++11 codebase |
 | Boost | 1.55.0 | Asio, Python, Thread, DateTime |
 | Python | 3.4.1 | Embedded via Boost.Python |
-| PostgreSQL | 9.2.x | Via SOCI 3.2.1 |
-| OpenSSL | 1.0.1e | Known CVEs — do not expose to internet |
+| PostgreSQL | 17.9 | Via SOCI 3.2.1 (server upgraded; SOCI pending) |
+| OpenSSL | 0.9.8i | Known CVEs — do not expose to internet |
 
 ## Configuration
 
@@ -206,7 +206,7 @@ Test account: **test** / **test** (SHA1 hashed).
 
 ## Documentation
 
-[docs/](docs/readme.md) contains **151 documents** covering protocol, gameplay, engine internals, architecture, and reverse engineering.
+[docs/](docs/readme.md) contains **152 documents** covering protocol, gameplay, engine internals, architecture, and reverse engineering.
 
 **Start here:**
 - [How SGW Works](docs/how-sgw-works.md) — BigWorld + UE3 hybrid architecture

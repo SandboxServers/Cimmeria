@@ -42,19 +42,21 @@ cargo build -p cimmeria-server --release
 # Run tests for one crate:
 cargo test -p cimmeria-services
 
-# Full workspace check (high memory on WSL):
-cargo check --workspace --exclude sgw-launcher --exclude cimmeria-upk --exclude cimmeria-upk-objects
+# Full workspace check (high memory on WSL — skip the Tauri apps):
+cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor --exclude cimmeria-scene-editor
 ```
 
 See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Key Source Files
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `services/src/auth.rs` | Authentication service — login, character select |
-| `services/src/base.rs` | BaseApp service — entity persistence, player state |
-| `services/src/cell.rs` | CellApp service — world simulation, movement |
+| `services/src/auth/` | Authentication service — login, character select (`mod.rs`, `service.rs`, `handlers.rs`) |
+| `services/src/base/` | BaseApp service — entity persistence, player state, character creation, world entry |
+| `services/src/cell/` | CellApp service — world simulation, movement, abilities, combat, missions, gate travel |
+| `services/src/mercury/` | Mercury transport glue — AoI, protocol dispatch, world data |
 | `mercury/src/lib.rs` | Mercury packet framing, encryption, reliability |
-| `game/src/combat.rs` | Combat system entry point |
+| `game/src/combat/` | Combat system |
+| `game/src/inventory/`, `missions/`, `interactions/`, `social/`, `world/` | Per-system game logic |
 | `content-engine/src/lib.rs` | Content pipeline (missions, dialogs, sequences) |

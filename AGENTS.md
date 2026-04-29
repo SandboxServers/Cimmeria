@@ -19,25 +19,6 @@ This applies especially to:
 - validation-state changes
 - content-engine serialization/deserialization changes
 
-## Running Frontend Logic UAT Checklist
-
-Keep this running list current as features are added:
-
-1. Rename card
-2. Move card
-3. Rename sequence thread
-4. Add input ports
-5. Add output ports
-6. Delete card
-7. Add new library card
-8. Draft save payload update
-9. Content-engine save payload update
-10. Scope filtering integrity
-11. Typed field selection and database-picker filtering
-12. Validation issue generation and focus transitions
-
-When a new frontend capability is added, append the relevant REPL-UAT item(s) here if they are not already covered.
-
 ## Notes
 
 - REPL-style logic UAT supplements browser/manual UAT; it does not replace visual verification.

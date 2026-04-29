@@ -1,479 +1,69 @@
-# Cimmeria - Stargate Worlds Emulator
+# Cimmeria — Stargate Worlds Emulator
 
-## Project Overview
+A server emulator for Stargate Worlds. Active development is in Rust (`crates/`); the C++ code in `src/` and Python scripts in `python/` are reference implementations — read them for behavior, implement in Rust.
 
-A server emulator for the Stargate Worlds MMO, implementing authentication, world simulation, entity management, and game logic via a distributed service architecture.
+For human-readable project overview, see [README.md](README.md). For the dependency migration roadmap and migration-specialist agent definitions, see [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).
 
-### Architecture
+## Repo invariants (non-obvious)
 
-#### Rust Server (active — `crates/`)
+- `external/` and `bin64/`/`lib64/` are **not in git** — populated by `setup.ps1`. A fresh checkout looks broken until setup runs.
+- `db/deprecated/` contains old monolithic SQL files. **Do not load them.** Active schemas: `db/database.sql`, `db/sgw/`, `db/resources/`.
+- `config/*.config` files contain test credentials. Real environments use `*.local` overrides (gitignored). Most-edited: `db_connection_string` in `BaseService.config`.
+- Python console (port 8989) is password-gated; password lives in `AuthenticationService.config`.
+- Legacy C++ uses **OpenSSL 0.9.8i** with active CVEs — never expose this server to the internet.
+- Frontend convention: every meaningful frontend change requires a REPL-style logic UAT in addition to tests/builds — see [AGENTS.md](AGENTS.md).
 
-- **cimmeria-server** (`crates/server/`) — binary entry point
-- **cimmeria-services** (`crates/services/`) — Auth, Base, Cell service implementations
-- **cimmeria-mercury** (`crates/mercury/`) — Mercury reliable UDP + AES-256 encryption
-- **cimmeria-entity** (`crates/entity/`) — Entity lifecycle and properties
-- **cimmeria-game** (`crates/game/`) — Game mechanics and rules
-- **cimmeria-content-engine** (`crates/content-engine/`) — Data-driven content pipeline
-- **cimmeria-defs** (`crates/defs/`) — Entity definition parser (XML → Rust types)
-- **cimmeria-common** (`crates/common/`) — Shared types, config, error handling
-- Plus: `commands`, `admin-api`, `supervisor`, `launcher`, `upk`, `upk-objects`
+## Build rules
 
-#### C++ Reference Implementation (`src/`, `projects/`)
+### Rust (active)
 
-- **AuthenticationServer** — Login, account management (port 13001)
-- **BaseApp** — Persistent entity state, player base data, shard management (port 32832)
-- **CellApp** — Spatial entity simulation, world cells, movement, AoI
-- **NavBuilder** — Offline navigation mesh generation (Recast/Detour)
-- **ServerEd** — Qt-based editor tool for server administration
-- **UnifiedKernel** — Shared static library: networking, protocol, Mercury messaging
+Always target **Windows** — the server runs on Windows alongside the game client.
 
-### Tech Stack
-
-#### Rust Server (active)
-
-| Crate | Purpose |
-|---|---|
-| `tokio` | Async runtime and networking |
-| `axum` | HTTP/REST for auth and admin API |
-| `sqlx` | PostgreSQL async driver |
-| `quick-xml` | SOAP/XML parsing |
-| `serde` | Serialization/deserialization |
-
-#### C++ Reference (legacy)
-
-| Component | Version | Notes |
-|---|---|---|
-| MSVC Toolset | v145 (VS2026) | C++11 codebase, migration from v120 complete |
-| Boost | 1.55.0 | Asio, Python, Thread, DateTime, Filesystem |
-| Python | 3.4.1 | Embedded via Boost.Python for entity scripting |
-| PostgreSQL | 17.9 | Via SOCI 3.2.1 ORM |
-| OpenSSL | 0.9.8i | Authentication encryption — **do not expose to internet** |
-| Qt | 5.x (early) | ServerEd tool only |
-| Recast/Detour | ~2013 era | Navigation meshes |
-| TinyXML2 | ~1.x | Config/entity XML parsing |
-| ICU | 51 | Unicode/i18n (bundled with Qt) |
-
-### Key Directories
-
-- `crates/` - **Rust server (active development)** — 15 crates, primary codebase
-- `src/` - C++ reference implementation (`authentication/`, `baseapp/`, `cellapp/`, `common/`, `mercury/`, `nav_builder/`, etc.)
-- `projects/` - Visual Studio .vcxproj files (6 projects for C++ legacy build)
-- `python/` - Python entity scripts and game logic (164 files)
-- `entities/` - XML entity definitions and type registry
-- `config/` - XML service configuration files
-- `data/cache/` - Cooked game data (.pak files)
-- `data/scripts/` - Effect, mission, and space scripts
-- `db/` - PostgreSQL schemas (`db/database.sql` root setup, `db/sgw/` game schema, `db/resources/` content data organized by 18 game systems, `db/deprecated/` old monolithic files)
-- `docs/` - **151 documents** covering protocol, gameplay, engine, architecture, and RE findings
-  - `docs/protocol/` - Mercury wire format, entity sync, login handshake, position updates
-  - `docs/gameplay/` - 26 per-system gameplay breakdowns (combat, abilities, inventory, missions, etc.)
-  - `docs/engine/` - BigWorld internals, CME framework, cooked data, space management
-  - `docs/reverse-engineering/findings/` - 17 per-system wire format docs from Ghidra analysis
-  - `docs/guides/` - Evidence standards, reading decompiled code, entity def guide
-  - `docs/client/` - Game client analysis (launcher, tools)
-  - `docs/tools/` - Development tool design docs (admin panel)
-  - `docs/architecture/` - Server systems, tech stack, migration roadmap
-  - `docs/content/` - Zone audit, mission chains, archetype mapping
-- `tools/` - Editor tools (ServerEd Qt app, ContentEditor/SceneEditor Tauri apps, Python RE utilities)
-- `frontend/` - React/TypeScript admin UI (compiled dist/ included)
-- `external/` - Vendored C++ dependencies (NOT in git — downloaded by `setup.ps1`)
-- `bin64/`, `lib64/` - C++ build output (NOT in git)
-
-### Build
-
-#### Rust Server (primary)
-
-**Always build for Windows** — the server runs on Windows alongside the game client. On Linux/WSL, cross-compile:
 ```bash
+# WSL/Linux: cross-compile to Windows.
 cargo build -p cimmeria-server --target x86_64-pc-windows-gnu --release
 cp target/x86_64-pc-windows-gnu/release/cimmeria-server.exe .
-```
-On Windows natively:
-```bash
+
+# Windows natively:
 cargo build -p cimmeria-server --release
 cp target/release/cimmeria-server.exe .
 ```
-After building, always copy the exe to the project root.
 
-#### Rust Build Memory Management (WSL)
+After building, copy the exe to the project root.
 
-The Rust linker consumes ~47 GB RAM when linking the full `cimmeria-server` binary. On WSL with limited memory this causes OOM crashes. Follow these rules:
+### Rust build memory (WSL)
 
-1. **Use `cargo check -p cimmeria-services`** for iterative development — it skips linking (1.5s, <2 GB RAM). Only use full `cargo build` or `cargo test` when you specifically need a binary or test results.
-2. **Never run multiple cargo/rustc processes concurrently.** No background builds, no parallel `cargo check` + `cargo test`. One at a time. Kill any stale `rustc` processes before starting a new build: `pkill -f rustc`
-3. **Target specific crates** — use `-p cimmeria-services` or `-p cimmeria-game` instead of `--workspace`. Only build the full workspace for final validation.
-4. **Check for stale processes** before building: `ps aux | grep -E "cargo|rustc" | grep -v grep`
-5. `CARGO_BUILD_JOBS=2` is set in `.bashrc` to limit parallel compile jobs.
+The full link can consume ~47 GB RAM. The workspace's `[profile.dev.package."*"]` strips dep debug info to bring this down to ~8 GB, but you still need to be careful:
 
-**Quick reference:**
+1. **`cargo check -p cimmeria-services`** for iteration (1.5s, <2 GB). Only run full `cargo build`/`cargo test` when you actually need a binary or test results.
+2. **Never run multiple `cargo`/`rustc` processes concurrently.** Kill stale ones before starting a new build: `pkill -f rustc`.
+3. **Target specific crates** with `-p` rather than `--workspace`. Only build the workspace for final validation.
+4. Sanity-check before building: `ps aux | grep -E "cargo|rustc" | grep -v grep`.
+5. `CARGO_BUILD_JOBS=2` is set in `.bashrc` to cap parallel codegen.
+
+Quick reference:
+
 ```bash
-# Iterative dev (fast, low memory):
+# Iteration
 cargo check -p cimmeria-services
 
-# Run tests for one crate:
+# Single-crate test
 cargo test -p cimmeria-services
 
-# Full workspace validation (rare, high memory):
-cargo check --workspace --exclude cimmeria-app --exclude sgw-launcher --exclude cimmeria-content-editor --exclude cimmeria-scene-editor
+# Full workspace check — skip the Tauri apps so the linker doesn't OOM
+cargo check --workspace \
+  --exclude cimmeria-app \
+  --exclude cimmeria-content-editor \
+  --exclude cimmeria-scene-editor
 
-# Kill stale builds:
+# Kill stale builds
 pkill -f "cargo|rustc"
 ```
 
-#### C++ (legacy reference)
+### C++ (legacy)
 
-Solution: `W-NG.sln` (Visual Studio 2026, MSVC v145)
-Configurations: Debug, Release, UnoptRelease, MinSizeRel
-Platforms: Win32, x64
+Solution: `W-NG.sln` (VS2026, MSVC v145). Bootstrap via `setup.ps1` (wraps the `CimmeriaBootstrap` PowerShell module — see [bootstrap/CimmeriaBootstrap/README.md](bootstrap/CimmeriaBootstrap/README.md) for individual functions).
 
-Bootstrap dependencies:
-1. `setup.ps1` - Full bootstrap: clone to running server (wraps CimmeriaBootstrap module)
-2. `setup-dependencies.ps1` - Automated: download, patch, and build all external dependencies
-3. Or manually: `bootstrap/init-boost.bat`, `bootstrap/build-boost.bat`, `bootstrap/build-openssl.bat`, `bootstrap/build-soci.bat`
+## Migration status (one-line)
 
-### Config Notes
-
-- Config files in `config/` contain default/template values
-- `db_connection_string` in BaseService.config has test credentials - use `*.local` overrides for real environments
-- Python console available on port 8989 (requires password to be set)
-- Developer mode flag enables relaxed auth and elevated logging
-
----
-
-## Agent Roster
-
-### Current Stack Specialists
-
-Agents with deep expertise in the exact dependency versions currently in use.
-
----
-
-#### 1. C++ Server Core Agent
-
-**Focus:** UnifiedKernel, server architecture, networking, protocol layer
-
-**Expertise:**
-- C++11 with VS2026 (v145) — migrated from v120, C++14/17 features available but not yet adopted
-- Boost 1.55.0: Asio (async networking), Thread, Smart Pointers, Signals2, DateTime, Filesystem v3
-- Custom UnifiedProtocol and Mercury reliable messaging framework
-- Multi-service architecture (Auth, Base, Cell inter-service communication)
-- Memory management patterns: Boost shared_ptr, scoped_ptr
-- Precompiled headers (stdafx.hpp) and VS2026 project structure
-
-**Key files:** `src/authentication/`, `src/baseapp/`, `src/cellapp/`, `src/common/`, `src/mercury/`, `projects/UnifiedKernel.vcxproj`
-
-**When to use:** Any changes to server core, networking, protocol messages, inter-service communication, session management, or the kernel library.
-
----
-
-#### 2. Python Game Logic Agent
-
-**Focus:** Entity scripting, game mechanics, mission systems
-
-**Expertise:**
-- Python 3.4.1 embedded via Boost.Python
-- Entity scripting patterns in the Cimmeria framework
-- No f-strings, no async/await, no type hints (3.4 limitations)
-- Entity lifecycle: creation, persistence, destruction
-- Mission, interaction, minigame, and combat scripting
-- NPC behavior and AI scripting
-- Client-server entity property synchronization
-
-**Key files:** `python/`, `entities/defs/`, `entities/entities.xml`
-
-**When to use:** Game feature implementation, entity behavior, missions, interactions, minigames, NPC logic, or any gameplay scripting.
-
----
-
-#### 3. Database & Persistence Agent
-
-**Focus:** PostgreSQL schema, SOCI ORM layer, data persistence
-
-**Expertise:**
-- PostgreSQL 17 SQL dialect and features (upgraded from 9.2)
-- SOCI 3.2.1 C++ database abstraction (session management, prepared statements, row mapping)
-- Schema design for MMO persistence (accounts, characters, items, missions, effects)
-- Connection pooling and transaction management
-- Entity state serialization/deserialization patterns
-
-**Key files:** `db/database.sql`, `db/resources/`, `db/sgw/`, config `db_connection_string`
-
-**When to use:** Schema changes, query optimization, new persistent data types, database migration scripts, SOCI layer modifications.
-
----
-
-#### 4. Entity System & Data Agent
-
-**Focus:** Entity definitions, XML data pipeline, cooked data (.pak) files
-
-**Expertise:**
-- XML entity type definitions and registry (`entities.xml`, `spaces.xml`, `custom_alias.xml`)
-- Entity definition schema: properties, methods, client/server/cell split
-- TinyXML2 ~1.x parsing patterns
-- Custom `.pak` file format for cooked game data
-- Entity type hierarchy and inheritance
-- Custom enumerations and type aliasing system
-
-**Key files:** `entities/`, `data/cache/*.pak`, `data/scripts/`
-
-**When to use:** Adding/modifying entity types, changing data schemas, updating cooked data pipelines, entity definition troubleshooting.
-
----
-
-#### 5. Navigation & Spatial Systems Agent
-
-**Focus:** Recast/Detour navmesh, world grid, spatial queries
-
-**Expertise:**
-- Recast ~2013 era (NavMesh v7) API for navmesh generation
-- Detour pathfinding and navigation queries
-- NavBuilder tool architecture and usage
-- Spatial grid chunking system (configurable `grid_chunk_size`)
-- Area of Interest (AoI) calculations (`grid_vision_distance`, `grid_hysteresis`)
-- Cell-based world partitioning (cell_spaces.xml)
-- Entity movement and position tracking
-
-**Key files:** `src/nav_builder/`, `projects/NavBuilder.vcxproj`, `projects/Recast.vcxproj`, `data/spaces/`, `entities/cell_spaces.xml`
-
-**When to use:** Navigation issues, world space changes, movement bugs, AoI tuning, pathfinding, adding new navigable areas.
-
----
-
-#### 6. Qt ServerEd Tool Agent
-
-**Focus:** ServerEd editor tool, Qt 5.x UI development
-
-**Expertise:**
-- Qt 5.x (early release) Widgets, Network, Sql, Xml modules
-- ServerEd architecture: config dialog, database worker, filesystem browser, node editor
-- Qt .ui forms, .qrc resources, signal/slot patterns
-- Database-backed object editor (objectdatabase.cpp)
-- Visual node graph editor (qneblock/qneport/qneconnection)
-- PostgreSQL integration via Qt5Sql + qsqlpsql driver
-
-**Key files:** `tools/ServerEd/`
-
-**When to use:** Editor tool features, admin UI, database browsing, visual scripting tools, any ServerEd changes.
-
----
-
-#### 7. Build & DevOps Agent
-
-**Focus:** Build system, dependency management, CI/CD, developer workflow
-
-**Expertise:**
-- Visual Studio 2026 (v145) .sln/.vcxproj project structure
-- MSBuild configurations (Debug/Release/UnoptRelease/MinSizeRel x Win32/x64)
-- CimmeriaBootstrap PowerShell module (setup.ps1, setup-dependencies.ps1)
-- Boost bootstrap and build scripts (bootstrap/build-boost.bat, bootstrap/init-boost.bat)
-- External dependency layout and linking (external/ directory structure)
-- Library output management (lib64/debug, lib64/release)
-- Static vs dynamic linking patterns in the project
-- Windows-specific build considerations
-
-**Key files:** `W-NG.sln`, `projects/**/*.vcxproj`, `setup.ps1`, `setup-dependencies.ps1`, `bootstrap/`
-
-**When to use:** Build failures, adding new projects/libraries, dependency updates, CI/CD setup, build configuration changes.
-
----
-
-#### 8. Network Security & Auth Agent
-
-**Focus:** Authentication flow, encryption, network security
-
-**Expertise:**
-- OpenSSL 0.9.8i API (legacy, pre-1.0 interface)
-- Authentication server protocol and session management
-- Shard authentication key exchange
-- Network packet encryption/decryption
-- Client connection lifecycle and inactivity timeout handling
-- Python console security (password-gated access on port 8989)
-
-**Key files:** `src/authentication/`, `projects/AuthenticationServer.vcxproj`, `config/AuthenticationService.config`
-
-**When to use:** Authentication bugs, security hardening, encryption changes, session management, login flow modifications.
-
----
-
-### Migration Specialists
-
-Agents specialized in upgrading specific dependencies. Full agent definitions and migration order in [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).
-
-| Migration | Path | Status |
-|---|---|---|
-| MSVC Toolchain | v120 → v145 (VS2026) | **COMPLETE** |
-| PostgreSQL | 9.2.3 → 17.9 | **COMPLETE** |
-| OpenSSL | 0.9.8i → 3.5.x | Pending — **CRITICAL** (active CVEs) |
-| Boost | 1.55.0 → 1.90.0 | Pending — HIGH |
-| Python | 3.4.1 → 3.12+ | Pending — MEDIUM |
-| Build System | .sln/.vcxproj → CMake+vcpkg | Pending — MEDIUM |
-| Qt | 5.x → 6.10 | Pending — LOW (ServerEd only) |
-| Recast/Detour | 2013 era → 1.6.0 | Pending — LOW |
-
-#### 9. MSVC Toolchain Migration Agent
-
-**Migration path:** VS2012 (v120) -> VS2026 (v145) — **COMPLETE**
-
-**Status:** Migration to VS2026 (v145) is done. All 6 projects build successfully. See `memory/build-fixes.md` for patches applied.
-
-**Expertise:**
-- v120 -> v145 toolset changes and compatibility breaks
-- C++11 -> C++17/C++20/C++23 incremental adoption strategy (available but not yet adopted)
-- Compiler warning/error resolution across MSVC versions
-- STL implementation changes (iterator debugging, allocator model, `std::auto_ptr` removal)
-- Windows SDK version upgrades and API changes
-- `.vcxproj` PlatformToolset migration and project file updates
-- `/permissive-` conformance mode preparation
-- Deprecation of legacy CRT functions (`_CRT_SECURE_NO_WARNINGS` patterns)
-
-**Priority:** ~~HIGH~~ COMPLETE - Foundation migration done.
-
----
-
-#### 10. Boost Migration Agent
-
-**Migration path:** Boost 1.55.0 -> 1.90.0
-
-**Expertise:**
-- 35 minor releases of breaking changes and deprecations
-- Boost.Asio evolution: standalone Asio option, executor model changes, completion token patterns
-- Boost.Python API changes across versions
-- Boost.Thread -> `std::thread` migration opportunities
-- Boost.Filesystem v3 -> `std::filesystem` migration path
-- Boost.Signals2 stability and any API drift
-- Removed/reorganized libraries across the 1.55-1.90 range
-- Header-only vs compiled library changes
-
-**Priority:** HIGH - Core dependency touching every component.
-
----
-
-#### 11. Python Embedding Migration Agent
-
-**Migration path:** Python 3.4.1 -> 3.12+ (or 3.14 if stable)
-
-**Expertise:**
-- CPython embedding API changes (3.4 -> 3.12): `Py_Initialize`, module system, GIL changes
-- Boost.Python compatibility with newer Python versions
-- Python 3.4 removed features: `imp` module, old-style string formatting edge cases
-- New features to adopt: f-strings (3.6+), dataclasses (3.7+), walrus operator (3.8+), match/case (3.10+)
-- `asyncio` evolution (if server needs async Python)
-- Type hint introduction strategy for existing 164-file scripting codebase
-- Python DLL/library linking changes across versions
-- Virtual environment and dependency isolation modernization
-
-**Priority:** MEDIUM - Python 3.4 is EOL but scripting layer is somewhat isolated.
-
----
-
-#### 12. PostgreSQL Migration Agent
-
-**Migration path:** PostgreSQL 9.2.3 -> 17.9 — **COMPLETE**
-
-**Status:** Upgraded from 9.2.3 to 17.9 (EOL Nov 2029). Schema compatibility fixes applied (removed `default_with_oids`, `EXECUTE PROCEDURE` → `EXECUTE FUNCTION`). pgdata version mismatch auto-detection added to bootstrap. DLL staging updated to auto-discover libpq dependencies.
-
-**Expertise:**
-- Features now available: JSONB, parallel queries, partitioning, logical replication, generated columns, incremental sort, query pipelining
-- `pg_dump`/`pg_restore` cross-version migration procedures
-- SOCI 3.2.1 -> 4.1.2 migration (ORM layer upgrade is a separate task)
-- Connection string and authentication method changes (`md5` -> `scram-sha-256`)
-
-**Priority:** ~~MEDIUM~~ COMPLETE - Running PG 17.9 (current stable, EOL Nov 2029).
-
----
-
-#### 13. OpenSSL Migration Agent
-
-**Migration path:** OpenSSL 0.9.8i -> 3.5.x
-
-**Expertise:**
-- CRITICAL: 0.9.8 has multiple known CVEs including Heartbleed-era vulnerabilities
-- Complete API overhaul: `EVP_*` interface migration, provider model (3.0+)
-- Removed functions: `SSLv2_*`, `SSLv3_*`, many low-level crypto functions
-- `OPENSSL_init_ssl()` replacing `SSL_library_init()`
-- Certificate and key loading API changes
-- TLS 1.2/1.3 support enablement
-- Library naming changes: `libeay32.dll`/`ssleay32.dll` -> `libcrypto.dll`/`libssl.dll`
-- Build system changes (Configure -> CMake option)
-- FIPS module availability (3.0+)
-
-**Priority:** CRITICAL - Active security vulnerabilities. Should be the highest-priority migration after MSVC toolchain.
-
----
-
-#### 14. Qt Migration Agent
-
-**Migration path:** Qt 5.x (early) -> Qt 6.10
-
-**Expertise:**
-- Qt 5 -> Qt 6 porting guide application
-- Build system migration: qmake -> CMake (Qt 6 standard)
-- Removed/moved modules and classes
-- `QString`/`QByteArray` behavior changes
-- Signal/slot syntax modernization
-- Qt5Sql -> Qt6Sql driver changes
-- ICU 51 -> ICU 78 bundled with Qt upgrade
-- High-DPI and accessibility improvements
-- QML/Quick changes (if ServerEd expands)
-
-**Priority:** LOW - Only affects ServerEd tool, not the game servers.
-
----
-
-#### 15. Build System Modernization Agent
-
-**Migration path:** .sln/.vcxproj -> CMake + vcpkg/Conan
-
-**Expertise:**
-- CMake project generation from existing VS solutions
-- vcpkg manifest mode for dependency management (replaces external/ vendoring)
-- Conan as alternative package manager
-- Cross-platform build support (Linux server targets)
-- CI/CD pipeline design (GitHub Actions, Azure DevOps)
-- Precompiled header migration to CMake `target_precompile_headers`
-- CTest integration for automated testing
-- CPack for distribution packaging
-- Docker containerization for server deployment
-
-**Priority:** MEDIUM - Enables easier dependency management and CI/CD, but functional without it.
-
----
-
-#### 16. Recast/Detour Migration Agent
-
-**Migration path:** ~2013 era NavMesh v7 -> Recast 1.6.0
-
-**Expertise:**
-- Recast/Detour API evolution over the past decade
-- NavMesh data format version changes (v7 -> current)
-- Tile-based navmesh improvements
-- Dynamic obstacle support additions
-- Thread safety improvements
-- CMake build integration (modern Recast uses CMake)
-- NavMesh regeneration strategy for existing game data
-
-**Priority:** LOW - Still industry-standard, API is relatively stable.
-
----
-
-### Recommended Migration Order
-
-```
-Phase 1 (Foundation):
-  1. MSVC Toolchain (v120 -> v145)       -- COMPLETE (VS2026)
-  2. OpenSSL (0.9.8 -> 3.x)             -- critical security fix
-
-Phase 2 (Core Libraries):
-  3. Boost (1.55 -> 1.85+)              -- major dependency
-  4. PostgreSQL + SOCI (9.2 -> 17)      -- COMPLETE (17.9)
-
-Phase 3 (Runtime & Scripting):
-  5. Python (3.4 -> 3.12+)              -- scripting layer
-  6. TinyXML2 (~1.x -> 11.x)            -- minor, low-risk
-  7. ICU (51 -> 78)                      -- often bundled with Qt
-
-Phase 4 (Tooling & Build):
-  8. Qt (5.x -> 6.x)                    -- ServerEd only
-  9. Recast/Detour (2013 -> 1.6)        -- low risk
-  10. Build System (VS -> CMake+vcpkg)   -- modernization
-```
+PostgreSQL 9.2 → 17.9 ✅ and MSVC v120 → v145 ✅ done. OpenSSL 0.9.8i → 3.x is the next critical migration (active CVEs). Full roadmap and per-migration agent definitions: [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).
