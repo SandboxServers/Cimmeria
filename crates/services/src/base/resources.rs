@@ -34,6 +34,7 @@ pub(crate) fn bag_max_slots(container_id: i32) -> i32 {
         3 => 4,    // Bandolier
         4..=14 => 1,  // Equipment slots
         15 => 100, // Crafting
+        16 => 12,  // Vendor Buyback
         _ => 0,
     }
 }

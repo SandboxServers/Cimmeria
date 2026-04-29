@@ -112,9 +112,21 @@ fn build_map_loaded_body_inner(
     // 1. setupStargateInfo (3xARRAY<INT32>: world, known, hidden)
     {
         let mut args = Vec::new();
-        args.extend_from_slice(&0u32.to_le_bytes()); // worldStargateIds: empty
-        args.extend_from_slice(&(data.known_stargates.len() as u32).to_le_bytes());
-        for &sg in &data.known_stargates {
+        // worldStargateIds: stargates physically present in the destination
+        // world (queried by query_world_stargates and stored in WorldEntryInfo).
+        // Cap at u32::MAX entries and only serialize that many — using the same
+        // count for both the length prefix and the loop ensures a corrupt
+        // input (>2^32 entries) can't desync the encoded length from the
+        // actual payload count.
+        let world_count = world_entry.world_stargates.len().min(u32::MAX as usize);
+        args.extend_from_slice(&(world_count as u32).to_le_bytes());
+        for &sg in world_entry.world_stargates.iter().take(world_count) {
+            args.extend_from_slice(&sg.to_le_bytes());
+        }
+        // knownStargateIds: address-book entries the player has unlocked.
+        let known_count = data.known_stargates.len().min(u32::MAX as usize);
+        args.extend_from_slice(&(known_count as u32).to_le_bytes());
+        for &sg in data.known_stargates.iter().take(known_count) {
             args.extend_from_slice(&sg.to_le_bytes());
         }
         args.extend_from_slice(&0u32.to_le_bytes()); // hiddenStargates: empty

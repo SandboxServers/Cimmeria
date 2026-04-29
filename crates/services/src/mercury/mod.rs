@@ -184,6 +184,10 @@ pub mod method_idx {
     pub const ON_MAIL_READ: u16 = 78;
     pub const SEND_MAIL_RESULT: u16 = 79;
 
+    // SGWVendorStore interface (80–81)
+    pub const ON_STORE_OPEN: u16 = 80;
+    pub const ON_STORE_UPDATE: u16 = 81;
+
     // SGWPlayer own methods (base offset 98)
     pub const ON_BEGIN_AID_WAIT: u16 = 98;
     pub const ON_END_AID_WAIT: u16 = 99;

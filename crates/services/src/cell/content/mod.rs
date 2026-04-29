@@ -450,6 +450,7 @@ pub async fn fire_dialog_choice(
     entity_id: u32,
     player_id: i32,
     dialog_id: i32,
+    button_id: i32,
     engine: &ChainEngine,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -457,6 +458,7 @@ pub async fn fire_dialog_choice(
     let mut ctx = ExecutionContext::new()
         .with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("dialog_id".to_string(), serde_json::json!(dialog_id));
+    ctx.set_param("button_id".to_string(), serde_json::json!(button_id));
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);

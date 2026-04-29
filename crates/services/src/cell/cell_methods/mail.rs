@@ -19,13 +19,13 @@ pub async fn dispatch(
     method_index: u16,
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
-    _space_mgr: &mut SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) -> bool {
     match method_index {
         REQUEST_MAIL_HEADERS => {
             let b_archive = if !args.is_empty() { args[0] } else { 0 };
             tracing::debug!(entity_id, b_archive, "requestMailHeaders");
-            crate::cell::mail::handle_request_mail_headers(entity_id, b_archive, tx).await;
+            crate::cell::mail::handle_request_mail_headers(entity_id, b_archive, tx, space_mgr).await;
             true
         }
         SEND_MAIL_MESSAGE => {
@@ -36,7 +36,7 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::debug!(entity_id, mail_id, "archiveMailMessage");
-                crate::cell::mail::handle_archive_mail(entity_id, mail_id, tx).await;
+                crate::cell::mail::handle_archive_mail(entity_id, mail_id, tx, space_mgr).await;
             }
             true
         }
@@ -44,7 +44,7 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::debug!(entity_id, mail_id, "deleteMailMessage");
-                crate::cell::mail::handle_delete_mail(entity_id, mail_id, tx).await;
+                crate::cell::mail::handle_delete_mail(entity_id, mail_id, tx, space_mgr).await;
             }
             true
         }
@@ -59,7 +59,7 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::debug!(entity_id, mail_id, "requestMailBody");
-                crate::cell::mail::handle_request_mail_body(entity_id, mail_id, tx).await;
+                crate::cell::mail::handle_request_mail_body(entity_id, mail_id, tx, space_mgr).await;
             }
             true
         }

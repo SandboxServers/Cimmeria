@@ -285,23 +285,35 @@ pub(crate) async fn handle_create_character(
 
     // ── Look up world_id (Account.py:163) ───
 
-    let world_id: Option<i32> = sqlx::query_scalar(
+    let world_id: Option<i32> = match sqlx::query_scalar(
         "SELECT world_id FROM resources.worlds WHERE world = $1",
     )
     .bind(world_location)
     .fetch_optional(pool.as_ref())
     .await
-    .unwrap_or(None);
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(world_location, "character_create: world_id lookup failed: {e}");
+            None
+        }
+    };
 
     // ── Look up starting abilities (Account.py:166) ───
 
-    let abilities: Vec<i32> = sqlx::query_scalar(
+    let abilities: Vec<i32> = match sqlx::query_scalar(
         "SELECT ability_id FROM resources.char_creation_abilities WHERE char_def_id = $1",
     )
     .bind(char_def_id)
     .fetch_all(pool.as_ref())
     .await
-    .unwrap_or_default();
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(char_def_id, "character_create: starting abilities lookup failed: {e}");
+            Vec::new()
+        }
+    };
 
     tracing::debug!(
         %addr, char_def_id,

@@ -175,22 +175,42 @@ pub(crate) async fn handle_request_character_visuals(
 
     match row {
         Ok(Some((bodyset, mut components, skin_color_id, bandolier_slot))) => {
-            let item_visuals: Vec<String> = sqlx::query_scalar(
+            // Equipment containers + bandolier are defined alongside the
+            // identical query in player_load/core.rs (CONTAINER_BANDOLIER and
+            // EQUIPMENT_CONTAINERS). Bind them via ANY/parameter so the two
+            // sites stay in sync without depending on string-literal identity.
+            use super::world_entry_methods::player_load::core::{
+                CONTAINER_BANDOLIER, EQUIPMENT_CONTAINERS,
+            };
+            let item_visuals: Vec<String> = match sqlx::query_scalar(
                 "SELECT ri.visual_component \
                  FROM sgw_inventory inv \
                  JOIN resources.items ri ON ri.item_id = inv.type_id \
-                 WHERE inv.character_id = $1 \
+                 WHERE inv.container_id = ANY($1) \
+                   AND inv.character_id = $2 \
                    AND ri.visual_component IS NOT NULL \
                    AND ( \
-                     (inv.container_id IN (3,4,5,6,7,8,9,10,11,12,13,14) AND inv.slot_id = 0) \
-                     OR (inv.container_id = 3 AND inv.slot_id = $2) \
+                     (inv.container_id <> $3 AND inv.slot_id = 0) \
+                     OR (inv.container_id = $3 AND inv.slot_id = $4) \
                    )",
             )
+            .bind({
+                let mut all: Vec<i32> = EQUIPMENT_CONTAINERS.to_vec();
+                all.push(CONTAINER_BANDOLIER);
+                all
+            })
             .bind(player_id)
+            .bind(CONTAINER_BANDOLIER)
             .bind(bandolier_slot)
             .fetch_all(pool.as_ref())
             .await
-            .unwrap_or_default();
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(player_id, "character visuals query failed (skipping appearance overlay): {e}");
+                    Vec::new()
+                }
+            };
 
             components.extend(item_visuals);
 

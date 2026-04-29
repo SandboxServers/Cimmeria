@@ -144,6 +144,7 @@ pub(crate) async fn handle_login(
                 world_name: None,
                 player_xp: None,
                 player_training_points: None,
+                active_player_id: None,
             },
         );
         arcs

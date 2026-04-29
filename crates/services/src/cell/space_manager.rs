@@ -1330,7 +1330,8 @@ mod tests {
         assert_eq!(npc.alignment, 1);
         assert_eq!(npc.level, 5);
         assert_eq!(npc.spawn_position.unwrap(), Vector3::new(10.0, 0.0, 20.0));
-        assert!(npc.abilities.has_ability(597));
+        // 592 = NPC_DEFAULT_ABILITY (Pistol Shot — was previously 597/Heal Focus).
+        assert!(npc.abilities.has_ability(592));
         // Health should be scaled: 200 + (5 * 50) = 450
         assert_eq!(npc.stats.get(cimmeria_entity::stats::HEALTH).unwrap().max, 450);
     }

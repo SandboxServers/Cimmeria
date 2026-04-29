@@ -177,8 +177,11 @@ mod tests {
             skin_color_id: 0,
             ability_tree: Default::default(),
             items: vec![],
+            active_bandolier_slot: 0,
+            active_weapon_clip_size: 0,
+            active_ammo_type: 0,
         };
-        let entry = WorldEntryInfo { player_entity_id: 42, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02 };
+        let entry = WorldEntryInfo { player_entity_id: 42, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 42, &data, &entry);
         assert!(!packets.is_empty(), "mapLoaded should produce at least one packet");
         assert_eq!(seqs as usize, packets.len(), "seqs_consumed should match packet count");
@@ -211,8 +214,11 @@ mod tests {
             skin_color_id: 5,
             ability_tree: archetype_ability_tree(2),
             items: vec![],
+            active_bandolier_slot: 0,
+            active_weapon_clip_size: 0,
+            active_ammo_type: 0,
         };
-        let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02 };
+        let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         // Mercury MAX_BODY_LENGTH is 1411 bytes
@@ -248,8 +254,11 @@ mod tests {
             skin_color_id: 5,
             ability_tree: archetype_ability_tree(2),
             items: vec![],
+            active_bandolier_slot: 0,
+            active_weapon_clip_size: 0,
+            active_ammo_type: 0,
         };
-        let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02 };
+        let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
 
@@ -295,10 +304,14 @@ mod tests {
             skin_color_id: 5,
             ability_tree: archetype_ability_tree(2),
             items: vec![],
+            active_bandolier_slot: 0,
+            active_weapon_clip_size: 0,
+            active_ammo_type: 0,
         };
         let entry = WorldEntryInfo {
             player_entity_id: 100, space_id: 65552,
             pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02,
+            world_stargates: vec![],
         };
         let (packets, seqs) = build_map_loaded(&TEST_KEY, 10, &[], 100, &data, &entry);
         let enc = MercuryEncryption::from_session_key(TEST_KEY);

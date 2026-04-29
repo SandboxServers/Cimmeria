@@ -94,8 +94,8 @@ pub async fn handle_interact(
             Some(dialog_id)
         }
         Some(NpcInteractionType::Vendor) => {
-            tracing::info!(entity_id, target_entity_id, "interact: vendor → onStoreOpen");
-            send_store_open(entity_id, target_entity_id as i32, tx).await;
+            tracing::info!(entity_id, target_entity_id, "interact: vendor → OpenVendorStore");
+            send_store_open(entity_id, target_entity_id as u32, tx, space_mgr).await;
             None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {
@@ -143,28 +143,48 @@ pub async fn send_dialog_display(
     }).await;
 }
 
-/// Send `onStoreOpen` (flat index 109) to the player with empty inventory.
+/// Open a vendor store for a player by requesting store data from base.
 ///
-/// Wire: `entityId:i32, vendorType:i32, buyList:ARRAY, sellList:ARRAY,
-///        buybackList:ARRAY, repairList:ARRAY, rechargeList:ARRAY`.
+/// Sets the vendor_entity on the player entity and sends OpenVendorStore
+/// to BaseApp, which will load the full vendor store data and send it to the client.
 async fn send_store_open(
     player_id: u32,
-    npc_entity_id: i32,
+    vendor_entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
 ) {
-    let mut args = Vec::with_capacity(28);
-    args.extend_from_slice(&npc_entity_id.to_le_bytes());  // EntityId
-    args.extend_from_slice(&1i32.to_le_bytes());            // VendorType (1 = general)
-    // 5 empty arrays (buy, sell, buyback, repair, recharge)
-    for _ in 0..5 {
-        args.extend_from_slice(&0u32.to_le_bytes());        // count = 0
+    // Store vendor entity ID on player for reference during vendor operations
+    if let Some(player) = space_mgr.get_entity_mut(player_id) {
+        player.vendor_entity = Some(vendor_entity_id);
     }
 
-    tracing::debug!(player_id, npc_entity_id, "Sending onStoreOpen (empty)");
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+    // Get vendor template ID from the vendor entity
+    let vendor_template_id = space_mgr.get_entity(vendor_entity_id)
+        .and_then(|e| e.template_id);
+
+    // Get player_id for base app message
+    let player_db_id = match space_mgr.get_entity(player_id).and_then(|e| e.player_id) {
+        Some(id) => id,
+        None => {
+            tracing::warn!(player_id, vendor_entity_id, "send_store_open: missing player_id; aborting vendor open");
+            return;
+        }
+    };
+
+    let vendor_entity_id_i32 = match i32::try_from(vendor_entity_id) {
+        Ok(v) => v,
+        Err(_) => {
+            tracing::warn!(player_id, vendor_entity_id, "send_store_open: vendor entity id exceeds i32; aborting");
+            return;
+        }
+    };
+
+    tracing::info!(player_id, vendor_entity_id, ?vendor_template_id, "Opening vendor store");
+    let _ = tx.send(CellToBaseMsg::OpenVendorStore {
         entity_id: player_id,
-        method_index: 109, // onStoreOpen
-        args,
+        player_id: player_db_id,
+        vendor_entity_id: vendor_entity_id_i32,
+        vendor_template_id,
     }).await;
 }
 
@@ -304,18 +324,27 @@ pub async fn handle_loot_item(
     );
 
     // Grant the loot to the player via BaseApp persistence handlers
+    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        Some(id) => id,
+        None => {
+            tracing::warn!(
+                entity_id, target_eid,
+                "lootItem: dropping loot grant — looter has no player_id (would otherwise misroute to player_id=0)"
+            );
+            return;
+        }
+    };
+
     if removed_item.design_id.is_none() {
         // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
         let _ = tx.send(CellToBaseMsg::GrantCash {
             entity_id,
+            player_id,
             amount: removed_item.quantity,
         }).await;
     } else {
         // Item — grant via GrantItem to base for persistence + onUpdateItem
         let design_id = removed_item.design_id.unwrap();
-        let player_id = space_mgr.get_entity(entity_id)
-            .and_then(|e| e.player_id)
-            .unwrap_or(0);
         // Look up preferred container from item_containers cache, default to INV_Main (1)
         let container_id = space_mgr.item_containers.get(&design_id).copied().unwrap_or(1);
         let _ = tx.send(CellToBaseMsg::GrantItem {
@@ -419,26 +448,6 @@ mod tests {
         assert_eq!(i32::from_le_bytes([args[0], args[1], args[2], args[3]]), npc_id);
         assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), dialog_id);
         assert_eq!(args[12], 1); // isImmediate
-    }
-
-    #[test]
-    fn store_open_args_format() {
-        let npc_id: i32 = 100_001;
-        let mut args = Vec::new();
-        args.extend_from_slice(&npc_id.to_le_bytes());
-        args.extend_from_slice(&1i32.to_le_bytes()); // vendorType
-        for _ in 0..5 {
-            args.extend_from_slice(&0u32.to_le_bytes());
-        }
-
-        assert_eq!(args.len(), 28);
-        assert_eq!(i32::from_le_bytes([args[0], args[1], args[2], args[3]]), npc_id);
-        assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), 1); // vendorType
-        // All 5 array counts should be 0
-        for i in 0..5 {
-            let offset = 8 + i * 4;
-            assert_eq!(u32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]), 0);
-        }
     }
 
     #[test]
@@ -551,6 +560,9 @@ mod tests {
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
 
         mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+        }
         let npc_id = mgr.allocate_npc_id();
         mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(npc) = mgr.get_entity_mut(npc_id) {
@@ -562,11 +574,12 @@ mod tests {
 
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::EntityMethodCall { method_index, args, .. } => {
-                assert_eq!(method_index, 109); // onStoreOpen
-                assert_eq!(args.len(), 28);
+            CellToBaseMsg::OpenVendorStore { entity_id, player_id, vendor_entity_id, .. } => {
+                assert_eq!(entity_id, 1);
+                assert_eq!(player_id, 42);
+                assert_eq!(vendor_entity_id as u32, npc_id);
             }
-            _ => panic!("Expected EntityMethodCall"),
+            other => panic!("Expected OpenVendorStore, got {:?}", other),
         }
     }
 
