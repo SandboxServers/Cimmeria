@@ -95,6 +95,7 @@ Client                       Cell                                       Base / D
   │                           │   warmup  = ability_defs[596].warmup   (e.g. 2.0s)
   │                           │   cooldown = ability_defs[596].cooldown
   │                           │   reload_complete_at = now + warmup
+  │                           │   reload_slot_id = Some(active_bandolier_slot)  ← pin
   │                           │   abilities.start_ability_cooldown(596, warmup+cooldown)
   │ ◀── onTimerUpdate (m12) ──│
   │ ◀── onStateFieldUpdate ───│  (BSF_IN_COMBAT | clear BSF_HOLSTER)
@@ -102,14 +103,18 @@ Client                       Cell                                       Base / D
   │  (warmup elapses, e.g. 2 s later)
   │                           │
   │                           │ reload_completion_tick (every 100 ms):
-  │                           │   for each entity where now >= reload_complete_at:
-  │                           │     refill_active_slot()           ← magazine = clip_size
+  │                           │   for each player where now >= reload_complete_at:
+  │                           │     slot = reload_slot_id              ← refills the
+  │                           │     set_slot_ammo(slot, clip_size)     ←  PINNED slot,
+  │                           │                                        ←  not active!
   │                           │     reload_complete_at = None
+  │                           │     reload_slot_id     = None
   │                           │     stats.serialize_dirty() → onStatUpdate
-  │ ◀── onStatUpdate (m20) ───│  AmmoSlot{N}: cur=clip_size
+  │ ◀── onStatUpdate (m20) ───│  AmmoSlot{N}: cur=clip_size  (N = pinned slot)
   │                           │ ──── BandolierAmmoUpdate ─────────▶│ UPDATE sgw_inventory
   │                           │      { player_id, slot_id,        │   SET ammo = …,
-  │                           │        current_ammo, cur_ammo_type}│       cur_ammo_type = …
+  │                           │        expected_item_id,          │       cur_ammo_type = …
+  │                           │        current_ammo, cur_ammo_type}│   WHERE … type_id = …
 ```
 
 The fire-path **only** reads `active_ammo()`; it does not promote pending refills itself. The 100 ms `reload_completion_tick` is the sole refill path (Stage C cleanup — see [`crates/services/src/cell/service.rs:602-681`](../../crates/services/src/cell/service.rs#L602)).

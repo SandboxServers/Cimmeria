@@ -920,19 +920,29 @@ pub async fn load_item_containers(
 /// stats from this cache so the client renders the correct empty magazine for
 /// the new weapon. Mirrors the per-row clip_size + default_ammo_type that
 /// `BANDOLIER_ITEMS_QUERY` reads for player_load.
-#[derive(Debug, Clone, Copy)]
+///
+/// `allowed_ammo_types` is the whitelist of subtypes a player may pick via
+/// `requestAmmoChange` for this weapon — empty means "no choice; default
+/// only". Mirrors `resources.items.ammo_types` converted to 0-based indices.
+#[derive(Debug, Clone)]
 pub struct WeaponDef {
     pub clip_size: i32,
     /// 0-based EAmmoType index, matching the wire format used in
     /// `bandolier_items` and `onEntityProperty(AmmoTypeId)`.
     pub default_ammo_type: i32,
+    /// 0-based EAmmoType indices the player may pick via requestAmmoChange.
+    /// Empty Vec means "no allowed subtypes" (default ammo type only).
+    pub allowed_ammo_types: Vec<i32>,
 }
 
-/// Load weapon stats (clip_size + default_ammo_type) from `resources.items`.
+/// Load weapon stats (clip_size + default_ammo_type + allowed ammo subtypes)
+/// from `resources.items`.
 ///
 /// Skips items with `clip_size IS NULL` (non-weapons). The `default_ammo_type`
 /// conversion mirrors `BANDOLIER_ITEMS_QUERY` exactly so that values seeded
 /// here for runtime grants match the wire format the player_load path uses.
+/// `ammo_types` is unnested and each enum entry converted via the same
+/// `array_position` trick, then aggregated back to an `integer[]` array.
 pub async fn load_item_defs(
     pool: &PgPool,
 ) -> Result<std::collections::HashMap<i32, WeaponDef>, sqlx::Error> {
@@ -942,7 +952,12 @@ pub async fn load_item_defs(
         "SELECT item_id, clip_size, \
                 CASE WHEN default_ammo_type IS NULL THEN 0 \
                      ELSE array_position(enum_range(NULL::resources.\"EAmmoType\"), default_ammo_type) - 1 \
-                END AS default_ammo_type_id \
+                END AS default_ammo_type_id, \
+                COALESCE( \
+                    (SELECT array_agg((array_position(enum_range(NULL::resources.\"EAmmoType\"), e) - 1)::integer) \
+                     FROM unnest(ammo_types) AS e), \
+                    '{}'::integer[] \
+                ) AS allowed_ammo_type_ids \
          FROM resources.items \
          WHERE clip_size IS NOT NULL",
     )
@@ -954,7 +969,8 @@ pub async fn load_item_defs(
         let item_id: i32 = r.get("item_id");
         let clip_size: i32 = r.get("clip_size");
         let default_ammo_type: i32 = r.get("default_ammo_type_id");
-        map.insert(item_id, WeaponDef { clip_size, default_ammo_type });
+        let allowed_ammo_types: Vec<i32> = r.get("allowed_ammo_type_ids");
+        map.insert(item_id, WeaponDef { clip_size, default_ammo_type, allowed_ammo_types });
     }
 
     tracing::info!(count = map.len(), "Loaded weapon defs");

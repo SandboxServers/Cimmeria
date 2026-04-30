@@ -165,6 +165,14 @@ pub async fn dispatch(
                 let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let slot_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, bag_id, slot_id, "requestActiveSlotChange");
+                // Reject out-of-range slots before any mutation. The bandolier
+                // has 5 slots (0-4); a forged value would otherwise leave the
+                // entity in an impossible local state, cancel any in-flight
+                // reload, and propagate via ActiveSlotUpdate to base.
+                if !(0..5).contains(&slot_id) {
+                    tracing::warn!(entity_id, bag_id, slot_id, "requestActiveSlotChange: slot_id out of range, rejecting");
+                    return true;
+                }
                 // Only bandolier (container 3) carries an active slot.
                 if bag_id == 3 {
                     // Resolve player_id BEFORE taking the mutable borrow on
@@ -285,6 +293,14 @@ pub async fn dispatch(
                     return true;
                 }
 
+                // Snapshot the weapon's allowed-ammo whitelist BEFORE taking
+                // the mutable entity borrow — both read from `space_mgr` and
+                // can't coexist. `None` means the cache had no entry (custom
+                // item the loader skipped), in which case we accept any
+                // positive ammo_type to match the legacy `pass` semantics
+                // for unknown weapons.
+                let weapon_def = space_mgr.item_defs.get(&item_id).cloned();
+
                 // Phase 1: locate the slot, mutate, capture the BandolierAmmoUpdate
                 // payload + active-slot flag, drop the mutable borrow.
                 let (player_id, persist, is_active) = {
@@ -315,6 +331,25 @@ pub async fn dispatch(
                             return true;
                         }
                     };
+                    // Validate ammo_type against the weapon's allowed
+                    // subtypes whitelist (snapshotted into `weapon_def`
+                    // above). Without this an attacker could persist an
+                    // arbitrary ammo subtype that the client UI can't
+                    // render. Falls through when the cache entry is
+                    // missing — see comment at the snapshot site.
+                    if let Some(def) = weapon_def.as_ref() {
+                        let allowed = ammo_type == def.default_ammo_type
+                            || def.allowed_ammo_types.iter().any(|&a| a == ammo_type);
+                        if !allowed {
+                            tracing::warn!(
+                                entity_id, item_id, ammo_type,
+                                allowed = ?def.allowed_ammo_types,
+                                default_ammo = def.default_ammo_type,
+                                "requestAmmoChange: ammo_type not in weapon's allowed list, rejecting"
+                            );
+                            return true;
+                        }
+                    }
                     // Mutate the slot. We mark dirty (so any in-flight flush
                     // path sees the change) and immediately drain — the
                     // BandolierAmmoUpdate emitted below persists it now.
@@ -672,6 +707,88 @@ mod tests {
                 "cur_ammo_type should be unchanged for bad_ammo_type={bad_ammo_type}");
             assert!(!entity.bandolier_ammo_dirty.contains(&0),
                 "no dirty flag for bad_ammo_type={bad_ammo_type}");
+        }
+    }
+
+    /// CodeRabbit #15: requestAmmoChange must reject ammo subtypes that aren't
+    /// in the weapon's `allowed_ammo_types` whitelist (mirrors
+    /// `resources.items.ammo_types`). Items with no cache entry fall through
+    /// (matching legacy `pass` for unknown weapons) — already covered by
+    /// the existing happy-path test.
+    #[tokio::test]
+    async fn request_ammo_change_rejects_unlisted_subtype() {
+        use crate::cell::spawner::WeaponDef;
+
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        // Seed the item_defs cache so the validation runs (without an
+        // entry, the handler falls through and accepts any positive value).
+        mgr.item_defs.insert(42, WeaponDef {
+            clip_size: 30,
+            default_ammo_type: 1,
+            allowed_ammo_types: vec![1, 3, 5],  // 7 not allowed
+        });
+
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.bandolier_items.insert(0, BandolierItem {
+                item_id: 42, clip_size: 30, default_ammo_type: 1,
+                current_ammo: 20, cur_ammo_type: 1,
+            });
+            e.active_bandolier_slot = 0;
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+
+        // ammo_type = 7 — positive, but not in the weapon's whitelist.
+        let mut args = Vec::with_capacity(8);
+        args.extend_from_slice(&42i32.to_le_bytes());
+        args.extend_from_slice(&7i32.to_le_bytes());
+
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let handled = dispatch(1, REQUEST_AMMO_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+        assert!(handled);
+        assert!(rx.try_recv().is_err(), "no rx messages for unlisted ammo_type");
+        let entity = mgr.get_entity(1).unwrap();
+        assert_eq!(entity.bandolier_items[&0].cur_ammo_type, 1, "cur_ammo_type unchanged");
+        assert!(!entity.bandolier_ammo_dirty.contains(&0));
+    }
+
+    /// CodeRabbit out-of-diff: REQUEST_ACTIVE_SLOT_CHANGE must reject slot_id
+    /// outside 0..5 before mutating active_bandolier_slot or sending
+    /// ActiveSlotUpdate. A forged value would otherwise leave the entity in
+    /// an impossible state.
+    #[tokio::test]
+    async fn request_active_slot_change_rejects_out_of_range_slot() {
+        use crate::cell::content::build_engine;
+
+        for bad_slot in [-1i32, 5, 99, i32::MAX] {
+            let mut mgr = make_test_space_mgr();
+            mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+            if let Some(e) = mgr.get_entity_mut(1) {
+                e.is_player = true;
+                e.player_id = Some(100);
+                e.active_bandolier_slot = 0;
+            }
+            mgr.connect_entity(1);
+
+            let (tx, mut rx) = mpsc::channel(8);
+            let engine = build_engine(None).await;
+
+            let mut args = Vec::with_capacity(8);
+            args.extend_from_slice(&3i32.to_le_bytes());      // bag_id = 3
+            args.extend_from_slice(&bad_slot.to_le_bytes());  // out-of-range slot
+
+            let handled = dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+            assert!(handled, "handler claims the index even when slot is invalid (bad_slot={bad_slot})");
+            assert!(rx.try_recv().is_err(), "no messages emitted for bad_slot={bad_slot}");
+            assert_eq!(
+                mgr.get_entity(1).unwrap().active_bandolier_slot, 0,
+                "active_bandolier_slot must not change for bad_slot={bad_slot}"
+            );
         }
     }
 }

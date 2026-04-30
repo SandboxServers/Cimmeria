@@ -389,17 +389,7 @@ pub async fn handle_use_ability(
         // dirty ammo stat (e.g. ground-targeted ability that consumed ammo
         // without picking up a target via auto-aim).
         if needs_ammo_stat_send {
-            let attacker_payload = match space_mgr.get_entity_mut(entity_id) {
-                Some(e) => {
-                    let p = e.stats.serialize_dirty();
-                    e.stats.clear_dirty();
-                    p
-                }
-                None => Vec::new(),
-            };
-            if !attacker_payload.is_empty() {
-                send_entity_method(entity_id, 20, attacker_payload, tx, space_mgr).await;
-            }
+            flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
         }
         return;
     }
@@ -410,7 +400,14 @@ pub async fn handle_use_ability(
     // entities mutably at once, we snapshot the attacker stats first.
     let attacker_stats = match space_mgr.get_entity(entity_id) {
         Some(e) => e.stats.clone(),
-        None => return,
+        None => {
+            // Defensive: entity vanished after the consume mutation. Flush
+            // before exiting so the client still sees the ammo decrement.
+            if needs_ammo_stat_send {
+                flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
+            }
+            return;
+        }
     };
 
     // Calculate QR
@@ -418,6 +415,11 @@ pub async fn handle_use_ability(
         Some(e) => e,
         None => {
             tracing::debug!(target_id, "useAbility: target not found");
+            // Flush ammo decrement even when target lookup fails — the shot
+            // still left the chamber from the player's perspective.
+            if needs_ammo_stat_send {
+                flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
+            }
             return;
         }
     };
@@ -452,7 +454,15 @@ pub async fn handle_use_ability(
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
         Some(e) => e,
-        None => return,
+        None => {
+            // Flush ammo decrement before exiting — the shot was fired even
+            // if the target was removed between the immutable lookup above
+            // and the mutable lookup here.
+            if needs_ammo_stat_send {
+                flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
+            }
+            return;
+        }
     };
 
     let (effect_results, _total_health_damage) = combat::calculate_damage(
@@ -529,19 +539,9 @@ pub async fn handle_use_ability(
     // onStatUpdate to attacker — drains AmmoSlot{N} dirty bits set by
     // `set_slot_ammo` on the consume path so the bandolier UI updates on every
     // shot. Skipped if the consume path didn't run (no ammo cost or NPC
-    // attacker), and we re-acquire `entity` because `target` borrowed `space_mgr`.
+    // attacker).
     if needs_ammo_stat_send {
-        let attacker_payload = match space_mgr.get_entity_mut(entity_id) {
-            Some(e) => {
-                let p = e.stats.serialize_dirty();
-                e.stats.clear_dirty();
-                p
-            }
-            None => Vec::new(),
-        };
-        if !attacker_payload.is_empty() {
-            send_entity_method(entity_id, 20, attacker_payload, tx, space_mgr).await;
-        }
+        flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
     }
 
     // ── Send state field update if target died ──
@@ -753,6 +753,28 @@ fn generate_loot_on_death(
 /// Formula: 10 * mob_level.
 fn kill_xp(mob_level: u32) -> u64 {
     10 * mob_level as u64
+}
+
+/// Drain the attacker's dirty stats and push `onStatUpdate` (method 20) to its
+/// client. Used by `handle_use_ability` after a successful ammo consume — and
+/// crucially before any early-return that follows the consume — so the client
+/// always sees the AmmoSlot{N} decrement, even when downstream lookups fail.
+async fn flush_attacker_ammo_stat(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let payload = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => {
+            let p = e.stats.serialize_dirty();
+            e.stats.clear_dirty();
+            p
+        }
+        None => Vec::new(),
+    };
+    if !payload.is_empty() {
+        send_entity_method(entity_id, 20, payload, tx, space_mgr).await;
+    }
 }
 
 /// Generate a pseudo-random value in [0.0, 1.0) from entity/ability/sequence.
