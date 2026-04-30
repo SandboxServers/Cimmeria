@@ -1,0 +1,199 @@
+//! CellService startup: load XML world defs, hydrate DB caches, spawn the message loop.
+
+use super::super::content;
+use super::super::messages::CellToBaseMsg;
+use super::super::space_manager::SpaceManager;
+use super::super::{CellError, spawner};
+use super::CellService;
+
+impl CellService {
+    /// Start the cell service.
+    ///
+    /// Loads space definitions from XML, creates startup spaces, and begins
+    /// processing messages from BaseApp.
+    pub async fn start(&mut self) -> Result<(), CellError> {
+        tracing::info!(addr = %self.listener_addr, "Starting cell service");
+
+        // Load space definitions from XML
+        let mut space_mgr = SpaceManager::new(1); // cell_id = 1
+        match space_mgr.load_from_xml(&self.entities_dir) {
+            Ok(()) => {
+                tracing::info!(
+                    worlds = space_mgr.world_count(),
+                    startup_spaces = space_mgr.space_count(),
+                    "Cell service loaded space definitions"
+                );
+            }
+            Err(e) => {
+                tracing::warn!("Failed to load space definitions: {e} — continuing with empty space set");
+            }
+        }
+
+        // Load spawn records from DB and populate startup spaces
+        let spawn_records = if let Some(ref pool) = self.db_pool {
+            match spawner::load_spawns_from_db(pool).await {
+                Ok(records) => {
+                    tracing::info!(count = records.len(), "Loaded spawn records from database");
+                    records
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load spawn records: {e} — using hardcoded fallback");
+                    vec![]
+                }
+            }
+        } else {
+            vec![]
+        };
+
+        let npc_count = spawner::spawn_npcs_from_records(&spawn_records, &mut space_mgr);
+        tracing::info!(npc_count, "NPC population initialized");
+
+        // Load dialog_set_maps cache for per-player interaction system
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_dialog_set_maps(pool).await {
+                Ok(maps) => {
+                    space_mgr.dialog_set_maps = maps;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load dialog_set_maps: {e}");
+                }
+            }
+        }
+
+        // Load mission definitions cache for AcceptMission content actions
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_mission_defs(pool).await {
+                Ok(defs) => {
+                    space_mgr.mission_defs = defs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load mission_defs: {e}");
+                }
+            }
+        }
+
+        // Load step objectives cache for AdvanceStep content actions
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_step_objectives(pool).await {
+                Ok(objs) => {
+                    space_mgr.step_objectives = objs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load step_objectives: {e}");
+                }
+            }
+        }
+
+        // Load stargate destinations cache for gate travel
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_stargates(pool).await {
+                Ok(gates) => {
+                    space_mgr.stargates = gates;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load stargates: {e}");
+                }
+            }
+        }
+
+        // Load generic regions from DB and register with auto-incrementing runtime IDs.
+        // Reference: python/cell/GenericRegion.py — GenericRegionManager.load() + registerRegion()
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_regions_from_db(pool).await {
+                Ok(region_data) => {
+                    for rd in region_data {
+                        let runtime_id = space_mgr.next_region_id;
+                        space_mgr.next_region_id += 1;
+                        space_mgr.regions.insert(runtime_id, super::super::space_manager::RegionData {
+                            runtime_id,
+                            db_set_id: rd.set_id,
+                            tag: rd.name,
+                            world_name: rd.world_name,
+                            height: rd.height,
+                            radius: rd.radius,
+                            flags: rd.flags,
+                            points: rd.points,
+                        });
+                    }
+                    tracing::info!(count = space_mgr.regions.len(), "Registered generic regions");
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load generic regions: {e}");
+                }
+            }
+        }
+
+        // Load respawner definitions for death/respawn system
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_respawners(pool).await {
+                Ok(defs) => {
+                    space_mgr.respawners = defs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load respawners: {e}");
+                }
+            }
+        }
+
+        // Load ability + effect definitions from DB
+        if let Some(ref pool) = self.db_pool {
+            match spawner::load_ability_defs(pool).await {
+                Ok(defs) => { space_mgr.ability_defs = defs; }
+                Err(e) => { tracing::warn!("Failed to load ability defs: {e}"); }
+            }
+            match spawner::load_effect_defs(pool).await {
+                Ok(defs) => { space_mgr.effect_defs = defs; }
+                Err(e) => { tracing::warn!("Failed to load effect defs: {e}"); }
+            }
+            match spawner::load_event_set_sequences(pool).await {
+                Ok(map) => { space_mgr.sequence_map = map; }
+                Err(e) => { tracing::warn!("Failed to load event_set sequences: {e}"); }
+            }
+            match spawner::load_item_containers(pool).await {
+                Ok(map) => { space_mgr.item_containers = map; }
+                Err(e) => { tracing::warn!("Failed to load item containers: {e}"); }
+            }
+            match spawner::load_item_defs(pool).await {
+                Ok(map) => { space_mgr.item_defs = map; }
+                Err(e) => { tracing::warn!("Failed to load item defs: {e}"); }
+            }
+            match spawner::load_loot_tables(pool).await {
+                Ok(tables) => { space_mgr.loot_tables = tables; }
+                Err(e) => { tracing::warn!("Failed to load loot tables: {e}"); }
+            }
+        }
+
+        // Send SpaceData for all startup spaces to BaseApp
+        if let Some(ref tx) = self.cell_to_base_tx {
+            for (space_id, world_name) in space_mgr.all_spaces() {
+                let msg = CellToBaseMsg::SpaceData {
+                    space_id,
+                    world_name,
+                };
+                if tx.send(msg).await.is_err() {
+                    tracing::warn!("Failed to send SpaceData to BaseApp (channel closed)");
+                    break;
+                }
+            }
+        }
+
+        // Build the content engine — load from DB if available, else fallback
+        let engine = content::build_engine(self.db_pool.as_deref()).await;
+        let db_pool = self.db_pool.clone();
+
+        // Take ownership of channels for the message processing loop
+        let rx = self.base_to_cell_rx.take();
+        let tx = self.cell_to_base_tx.clone();
+
+        if let (Some(mut rx), Some(tx)) = (rx, tx) {
+            tokio::spawn(async move {
+                super::message_loop::run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool, spawn_records).await;
+            });
+        } else {
+            tracing::warn!("Cell service started without channels — operating in stub mode");
+        }
+
+        self.is_running = true;
+        Ok(())
+    }
+}
