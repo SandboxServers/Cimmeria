@@ -1,0 +1,28 @@
+//! Ability invocation handler for the CellService.
+//!
+//! Processes `useAbility` calls from the client: validates the ability exists
+//! in the entity's known list, checks cooldowns, starts warmup/cooldown timers,
+//! resolves damage against the target, and sends results to the client.
+//!
+//! Submodule layout:
+//! - `dispatch` — ground-targeted auto-aim entry point.
+//! - `use_ability` — main `handle_use_ability` flow (validate → consume → fire → resolve).
+//! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
+//! - `loot_drop` — on-death loot generation + interaction-flag updates.
+//! - `rng` — deterministic pseudo-random for combat rolls.
+//!
+//! Reference: `python/cell/AbilityManager.py:1004-1056`
+
+mod dispatch;
+mod loot_drop;
+mod messaging;
+mod rng;
+mod use_ability;
+
+#[cfg(test)]
+mod tests;
+
+// Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
+pub use dispatch::handle_use_ability_on_ground;
+pub use use_ability::handle_use_ability;
+pub(crate) use messaging::send_entity_method;

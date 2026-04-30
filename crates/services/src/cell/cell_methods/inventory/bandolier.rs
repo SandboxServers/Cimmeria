@@ -1,0 +1,287 @@
+//! Bandolier slot operations: persistence flush, active-slot swap, and
+//! per-slot ammo-type change. These handlers interleave reads and mutations
+//! on the cell entity, so each carefully scopes its `&mut` borrows around
+//! await points.
+
+use tokio::sync::mpsc;
+use cimmeria_entity::cell_entity::CellEntity;
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
+
+use super::constants::{build_entity_property_args, GENERICPROPERTY_AMMO_TYPE_ID};
+
+/// Drain `entity.bandolier_ammo_dirty` and emit one `BandolierAmmoUpdate` per
+/// slot. Used by the logout / world-transition flush paths.
+///
+/// Slots that are dirty but no longer have a `BandolierItem` (e.g. swapped out
+/// before logout) are silently dropped — there's nothing to persist for them.
+pub async fn flush_dirty_bandolier_ammo(
+    entity: &mut CellEntity,
+    player_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
+    if entity.bandolier_ammo_dirty.is_empty() {
+        return;
+    }
+    // Drain into a Vec so we don't hold the borrow on `entity` across awaits.
+    let dirty: Vec<i32> = entity.bandolier_ammo_dirty.drain().collect();
+    for slot_id in dirty {
+        let (item_id, current_ammo, cur_ammo_type) = match entity.bandolier_items.get(&slot_id) {
+            Some(item) => (item.item_id, item.current_ammo, item.cur_ammo_type),
+            None => continue,
+        };
+        let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
+            player_id,
+            slot_id,
+            expected_item_id: item_id,
+            current_ammo,
+            cur_ammo_type,
+        }).await;
+    }
+}
+
+pub(super) async fn handle_request_active_slot_change(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if args.len() < 8 {
+        tracing::warn!(entity_id, args_len = args.len(), "requestActiveSlotChange: truncated args");
+        return;
+    }
+    let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+    let slot_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+    tracing::debug!(entity_id, bag_id, slot_id, "requestActiveSlotChange");
+    // Reject out-of-range slots before any mutation. The bandolier
+    // has 5 slots (0-4); a forged value would otherwise leave the
+    // entity in an impossible local state, cancel any in-flight
+    // reload, and propagate via ActiveSlotUpdate to base.
+    if !(0..5).contains(&slot_id) {
+        tracing::warn!(entity_id, bag_id, slot_id, "requestActiveSlotChange: slot_id out of range, rejecting");
+        return;
+    }
+    // Only bandolier (container 3) carries an active slot.
+    if bag_id != 3 {
+        tracing::warn!(entity_id, bag_id, slot_id, "requestActiveSlotChange: ignoring non-bandolier container");
+        return;
+    }
+
+    // Resolve player_id BEFORE taking the mutable borrow on
+    // space_mgr, otherwise the immutable borrow would alias.
+    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        Some(id) => Some(id),
+        None => {
+            tracing::warn!(entity_id, "requestActiveSlotChange dropped: entity has no player_id");
+            None
+        }
+    };
+
+    // Phase 1: capture the previous slot's pending-flush state
+    // and the new slot's `cur_ammo_type` while we have a
+    // mutable borrow. Drop the borrow before any awaits.
+    //
+    // Stage D: if the previously-active slot was dirty (fires
+    // since the last flush), emit one BandolierAmmoUpdate for
+    // it before swapping. The reload-completion tick already
+    // drains the active slot when reloads finish; this catches
+    // mid-magazine swaps where the player swaps weapons before
+    // reloading the empty one.
+    let (prev_persist, new_ammo_type): (Option<(i32, i32, i32, i32)>, Option<i32>) = {
+        let entity = match space_mgr.get_entity_mut(entity_id) {
+            Some(e) => e,
+            None => return,
+        };
+        let prev_slot = entity.active_bandolier_slot;
+        let prev_persist = if entity.bandolier_ammo_dirty.contains(&prev_slot) {
+            entity.bandolier_items.get(&prev_slot).map(|item| {
+                (prev_slot, item.item_id, item.current_ammo, item.cur_ammo_type)
+            })
+        } else {
+            None
+        };
+        if prev_persist.is_some() {
+            entity.bandolier_ammo_dirty.remove(&prev_slot);
+        }
+        // Cancel any in-flight reload only if the swap actually
+        // moves to a different slot. A same-slot "swap" (no-op
+        // from the client, or replayed packet) must not cancel
+        // an in-progress reload. Otherwise the fire-gate would
+        // still block until the deadline, and the tick would
+        // refill the original slot — but the player has moved
+        // on; re-pressing R after swapping back restarts the
+        // reload from scratch.
+        if slot_id != prev_slot && entity.reload_complete_at.is_some() {
+            entity.reload_complete_at = None;
+            entity.reload_slot_id = None;
+            tracing::debug!(
+                entity_id, prev_slot, new_slot = slot_id,
+                "active slot change cancelled in-flight reload"
+            );
+        }
+        entity.active_bandolier_slot = slot_id;
+        let new_ammo_type = entity.bandolier_items
+            .get(&slot_id)
+            .map(|i| i.cur_ammo_type);
+        (prev_persist, new_ammo_type)
+    };
+
+    // Phase 2: send messages now that the borrow is released.
+    if let Some(player_id) = player_id {
+        if let Some((p_slot, item_id, current_ammo, cur_ammo_type)) = prev_persist {
+            let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
+                player_id,
+                slot_id: p_slot,
+                expected_item_id: item_id,
+                current_ammo,
+                cur_ammo_type,
+            }).await;
+        }
+        let _ = tx.send(CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id }).await;
+    }
+
+    // Stage D: refresh the client's ammo-type indicator for the
+    // newly-active slot. If the new slot is empty (no item),
+    // send 0 to mirror legacy "no weapon equipped" behavior
+    // (SGWPlayer.py:522 — `activeItem.ammoType if activeItem else 0`).
+    let property_value = new_ammo_type.unwrap_or(0);
+    let property_args = build_entity_property_args(
+        GENERICPROPERTY_AMMO_TYPE_ID,
+        property_value,
+    );
+    crate::cell::abilities::send_entity_method(
+        entity_id,
+        crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY,
+        property_args,
+        tx,
+        space_mgr,
+    ).await;
+}
+
+pub(super) async fn handle_request_ammo_change(
+    entity_id: u32,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    if args.len() < 8 {
+        tracing::warn!(entity_id, args_len = args.len(), "requestAmmoChange: truncated args");
+        return;
+    }
+    let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+    let ammo_type = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+    tracing::debug!(entity_id, item_id, ammo_type, "requestAmmoChange");
+
+    // Loose validation — the legacy is literally `pass`. Reject
+    // anything non-positive: 0 is the "no choice" sentinel, and
+    // the DB column has CHECK (cur_ammo_type >= 0), so a negative
+    // value would mutate cell + client state then fail the DB
+    // write later, leaving them ahead of persistence. The proper
+    // whitelist lives on the item template's `ammo_types`
+    // (crates/entity/src/inventory.rs:81).
+    // TODO: validate against item.ammo_types whitelist
+    //       (see crates/entity/src/inventory.rs:81 — `Item.ammo_types`).
+    if ammo_type <= 0 {
+        tracing::warn!(entity_id, item_id, ammo_type, "requestAmmoChange: rejecting non-positive ammo_type");
+        return;
+    }
+
+    // Snapshot the weapon's allowed-ammo whitelist BEFORE taking
+    // the mutable entity borrow — both read from `space_mgr` and
+    // can't coexist. `None` means the cache had no entry (custom
+    // item the loader skipped), in which case we accept any
+    // positive ammo_type to match the legacy `pass` semantics
+    // for unknown weapons.
+    let weapon_def = space_mgr.item_defs.get(&item_id).cloned();
+
+    // Phase 1: locate the slot, mutate, capture the BandolierAmmoUpdate
+    // payload + active-slot flag, drop the mutable borrow.
+    let (player_id, persist, is_active) = {
+        let entity = match space_mgr.get_entity_mut(entity_id) {
+            Some(e) => e,
+            None => return,
+        };
+        // Match all slots holding this item_id. The wire request
+        // doesn't carry a slot/instance id, so duplicate weapons
+        // are ambiguous — reject rather than guess. A future
+        // protocol revision should add slot id to the message.
+        let matches: Vec<i32> = entity.bandolier_items.iter()
+            .filter(|(_, item)| item.item_id == item_id)
+            .map(|(s, _)| *s)
+            .collect();
+        let slot = match matches.as_slice() {
+            [s] => *s,
+            [] => {
+                tracing::warn!(entity_id, item_id, "requestAmmoChange: item not in bandolier");
+                return;
+            }
+            ambiguous => {
+                tracing::warn!(
+                    entity_id, item_id,
+                    slot_count = ambiguous.len(),
+                    "requestAmmoChange: ambiguous — multiple slots hold this item_id, rejecting"
+                );
+                return;
+            }
+        };
+        // Validate ammo_type against the weapon's allowed
+        // subtypes whitelist (snapshotted into `weapon_def`
+        // above). Without this an attacker could persist an
+        // arbitrary ammo subtype that the client UI can't
+        // render. Falls through when the cache entry is
+        // missing — see comment at the snapshot site.
+        if let Some(def) = weapon_def.as_ref() {
+            let allowed = ammo_type == def.default_ammo_type
+                || def.allowed_ammo_types.iter().any(|&a| a == ammo_type);
+            if !allowed {
+                tracing::warn!(
+                    entity_id, item_id, ammo_type,
+                    allowed = ?def.allowed_ammo_types,
+                    default_ammo = def.default_ammo_type,
+                    "requestAmmoChange: ammo_type not in weapon's allowed list, rejecting"
+                );
+                return;
+            }
+        }
+        // Mutate the slot. We mark dirty (so any in-flight flush
+        // path sees the change) and immediately drain — the
+        // BandolierAmmoUpdate emitted below persists it now.
+        let item = entity.bandolier_items.get_mut(&slot).unwrap();
+        item.cur_ammo_type = ammo_type;
+        let item_id_for_persist = item.item_id;
+        let current_ammo = item.current_ammo;
+        entity.bandolier_ammo_dirty.insert(slot);
+        entity.bandolier_ammo_dirty.remove(&slot);
+        let is_active = slot == entity.active_bandolier_slot;
+        let player_id = entity.player_id;
+        (player_id, (slot, item_id_for_persist, current_ammo, ammo_type), is_active)
+    };
+
+    // Phase 2: persist + (if active) refresh the client's ammo-type indicator.
+    if let Some(player_id) = player_id {
+        let (slot_id, expected_item_id, current_ammo, cur_ammo_type) = persist;
+        let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
+            player_id,
+            slot_id,
+            expected_item_id,
+            current_ammo,
+            cur_ammo_type,
+        }).await;
+    } else {
+        tracing::warn!(entity_id, "requestAmmoChange: entity has no player_id — skipping persist");
+    }
+
+    if is_active {
+        let property_args = build_entity_property_args(
+            GENERICPROPERTY_AMMO_TYPE_ID,
+            ammo_type,
+        );
+        crate::cell::abilities::send_entity_method(
+            entity_id,
+            crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY,
+            property_args,
+            tx,
+            space_mgr,
+        ).await;
+    }
+}
