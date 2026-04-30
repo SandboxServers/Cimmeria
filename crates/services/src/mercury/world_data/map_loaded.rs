@@ -165,7 +165,7 @@ fn build_map_loaded_body_inner(
     //    Uses StatList from entity crate — sends ALL stats, matching Python's
     //    `self.sendStats(self.client, False, False)` which sends everything.
     {
-        use cimmeria_entity::stats::{StatList, ArchetypeStatValues};
+        use cimmeria_entity::stats::{StatList, ArchetypeStatValues, AMMO_SLOT_1};
         let mut stat_list = StatList::new();
         stat_list.apply_archetype(&ArchetypeStatValues {
             coordination: stats.coordination,
@@ -179,6 +179,17 @@ fn build_map_loaded_body_inner(
             health_per_level: stats.health_per_level,
             focus_per_level: stats.focus_per_level,
         });
+        // Seed AmmoSlot{N} stats from persisted bandolier ammo so the UI
+        // shows the correct value at world entry. Without this seed every
+        // re-login sends the default (0, 0, 0) tuple — the cell-side
+        // InitPlayerState seeding (service.rs) sets the stats correctly on
+        // the entity but happens after this packet is already on the wire.
+        for (slot_id, item) in &data.bandolier_items {
+            let stat_id = AMMO_SLOT_1 + slot_id;
+            if let Some(stat) = stat_list.get_mut(stat_id) {
+                stat.update(0, item.current_ammo, item.clip_size);
+            }
+        }
         // onStatUpdate: dynamic values (min, current, max)
         let stat_args = stat_list.serialize_all();
         append_method!(method_idx::ON_STAT_UPDATE, &stat_args);
