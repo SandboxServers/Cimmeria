@@ -144,7 +144,11 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
                 Some(e) if !e.nav_path.is_empty() => e,
                 _ => continue,
             };
-            (npc.nav_path[0], npc.move_speed, npc.position, npc.nav_path.len())
+            let next_wp = match npc.nav_path.front() {
+                Some(wp) => *wp,
+                None => continue,
+            };
+            (next_wp, npc.move_speed, npc.position, npc.nav_path.len())
         };
 
         let dx = next_wp.x - cur_pos.x;
@@ -162,7 +166,7 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
 
             // Peek at the NEXT waypoint (index 1) to compute velocity toward it
             let next_next_wp = if path_len > 1 {
-                space_mgr.get_entity(npc_id).map(|e| e.nav_path[1])
+                space_mgr.get_entity(npc_id).and_then(|e| e.nav_path.get(1).copied())
             } else {
                 None
             };
@@ -193,7 +197,7 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
                 velocity,
             );
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
-                npc.nav_path.remove(0);
+                npc.nav_path.pop_front();
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);
             }
         } else {

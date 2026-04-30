@@ -76,10 +76,13 @@ async fn slot_swap_preserves_per_slot_ammo() {
 
     let (tx, mut rx) = mpsc::channel(64);
 
-    // Fire two shots on slot 0 → current_ammo == 28 (cooldown is 1ms,
-    // so the second fire happens past the deadline).
+    // Fire two shots on slot 0 → current_ammo == 28. Reset the cooldown
+    // between shots instead of sleeping past it: a 1ms cooldown plus a 5ms
+    // sleep is enough on a quiet box but flakes under CI scheduler stalls.
     handle_use_ability(1, ability_id, 0, &tx, &mut mgr).await;
-    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.abilities.clear_all_cooldowns();
+    }
     handle_use_ability(1, ability_id, 0, &tx, &mut mgr).await;
     assert_eq!(mgr.get_entity(1).unwrap().bandolier_items[&0].current_ammo, 28);
 
@@ -133,7 +136,9 @@ async fn slot_swap_preserves_per_slot_ammo() {
     }
 
     // Fire once on slot 1 → current_ammo == 11.
-    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.abilities.clear_all_cooldowns();
+    }
     handle_use_ability(1, ability_id, 0, &tx, &mut mgr).await;
     assert_eq!(mgr.get_entity(1).unwrap().bandolier_items[&1].current_ammo, 11);
 

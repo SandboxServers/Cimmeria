@@ -15,7 +15,12 @@ static SPACE_REGISTRY: std::sync::LazyLock<Mutex<HashMap<String, u32>>> =
 /// Register a space in the global registry (called from CellToBase message handler).
 pub(crate) fn register_space(world_name: String, space_id: u32) {
     tracing::debug!(world = %world_name, space_id, "Registered space in BaseApp registry");
-    SPACE_REGISTRY.lock().unwrap().insert(world_name, space_id);
+    // Recover from a poisoned mutex: a panic mid-mutation would otherwise
+    // wedge every subsequent space registration. The HashMap is in a known
+    // state (insert is atomic from the caller's perspective), so reusing
+    // the inner guard is safe here.
+    let mut guard = SPACE_REGISTRY.lock().unwrap_or_else(|p| p.into_inner());
+    guard.insert(world_name, space_id);
 }
 
 /// Hardcoded space ID fallback (used when CellService oneshot fails or is unavailable).

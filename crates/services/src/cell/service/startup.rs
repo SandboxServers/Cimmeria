@@ -1,5 +1,9 @@
 //! CellService startup: load XML world defs, hydrate DB caches, spawn the message loop.
 
+use std::sync::Arc;
+
+use tokio::sync::Notify;
+
 use super::super::content;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
@@ -186,9 +190,16 @@ impl CellService {
         let tx = self.cell_to_base_tx.clone();
 
         if let (Some(mut rx), Some(tx)) = (rx, tx) {
-            tokio::spawn(async move {
-                super::message_loop::run_cell_loop(&mut rx, &tx, space_mgr, engine, db_pool, spawn_records).await;
+            // Stash a shutdown signal so `stop()` can ask the loop to exit
+            // without dropping the channel out from under it.
+            let shutdown = Arc::new(Notify::new());
+            self.shutdown_signal = Some(shutdown.clone());
+            let handle = tokio::spawn(async move {
+                super::message_loop::run_cell_loop(
+                    &mut rx, &tx, space_mgr, engine, db_pool, spawn_records, shutdown,
+                ).await;
             });
+            self.cell_loop_handle = Some(handle);
         } else {
             tracing::warn!("Cell service started without channels — operating in stub mode");
         }

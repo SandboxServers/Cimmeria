@@ -10,7 +10,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use sqlx::PgPool;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Notify};
+use tokio::task::JoinHandle;
 
 use cimmeria_common::ServerConfig;
 
@@ -44,6 +45,15 @@ pub struct CellService {
 
     /// Database pool for content engine loading (set by orchestrator).
     pub(crate) db_pool: Option<Arc<PgPool>>,
+
+    /// Handle to the spawned cell-loop task. `stop()` notifies and awaits it
+    /// so shutdown is deterministic instead of relying on the channel half
+    /// being dropped at some unspecified time.
+    pub(crate) cell_loop_handle: Option<JoinHandle<()>>,
+
+    /// Signal that asks `run_cell_loop` to break out of its select loop.
+    /// Cloned into the task on start; notified by `stop()`.
+    pub(crate) shutdown_signal: Option<Arc<Notify>>,
 }
 
 impl CellService {
@@ -62,6 +72,8 @@ impl CellService {
             cell_to_base_tx: None,
             entities_dir: "entities".to_string(),
             db_pool: None,
+            cell_loop_handle: None,
+            shutdown_signal: None,
         }
     }
 
@@ -86,8 +98,22 @@ impl CellService {
     }
 
     /// Stop the cell service gracefully.
+    ///
+    /// Signals the cell loop to break out, awaits its join handle, then drops
+    /// the channels. Without the await, the task could outlive `stop()` and
+    /// keep poking at shared state during teardown.
     pub async fn stop(&mut self) {
         tracing::info!("Stopping cell service");
+        if let Some(signal) = self.shutdown_signal.take() {
+            signal.notify_waiters();
+        }
+        if let Some(handle) = self.cell_loop_handle.take() {
+            match handle.await {
+                Ok(()) => tracing::trace!("Cell loop joined cleanly"),
+                Err(e) if e.is_cancelled() => tracing::trace!("Cell loop was cancelled"),
+                Err(e) => tracing::warn!(error = %e, "Cell loop task panicked"),
+            }
+        }
         self.base_to_cell_rx = None;
         self.cell_to_base_tx = None;
         self.is_running = false;

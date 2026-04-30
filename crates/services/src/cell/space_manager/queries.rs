@@ -97,53 +97,50 @@ impl SpaceManager {
         ids
     }
 
-    /// Find an NPC entity by its spawn tag within a specific world.
+    /// Find an NPC entity by its spawn tag within the same space as `source_entity_id`.
     ///
     /// Used by content chain actions (SetInteractionType, DestroyTaggedEntity, etc.)
-    /// to locate entities by their `spawnlist.tag` value.
-    ///
-    /// Searches all spaces matching `world_name` — works for both non-instanced
-    /// (one space in `world_spaces`) and instanced (multiple spaces) worlds.
-    pub fn find_entity_by_tag(&self, world_name: &str, tag: &str) -> Option<u32> {
-        for space in self.spaces.values() {
-            if space.world_name != world_name {
-                continue;
-            }
-            for (&eid, entity) in &space.entities {
-                if entity.tag.as_deref() == Some(tag) {
-                    return Some(eid);
-                }
-            }
-        }
-        None
+    /// to locate entities by their `spawnlist.tag` value. Restricting the search
+    /// to the source's space prevents instanced worlds from leaking entity
+    /// resolution across instance boundaries.
+    pub fn find_entity_by_tag(&self, source_entity_id: u32, tag: &str) -> Option<u32> {
+        let &space_id = self.entity_space.get(&source_entity_id)?;
+        let space = self.spaces.get(&space_id)?;
+        space.entities.iter().find_map(|(&eid, entity)| {
+            (entity.tag.as_deref() == Some(tag)).then_some(eid)
+        })
     }
 
-    /// Find all entities with a given `template_id` in a specific world.
+    /// Find all entities with a given `template_id` in the same space as
+    /// `source_entity_id`.
     ///
     /// Used by `add_dialog_set` to locate NPC entities that match the slot
     /// (template_id) so per-player InteractionType updates can be sent.
-    ///
-    /// Searches all spaces matching `world_name` — works for both non-instanced
-    /// and instanced worlds.
-    pub fn find_entities_by_template(&self, world_name: &str, template_id: i32) -> Vec<u32> {
-        let mut results = Vec::new();
-        for space in self.spaces.values() {
-            if space.world_name != world_name {
-                continue;
-            }
-            for (&eid, e) in &space.entities {
-                if e.template_id == Some(template_id) {
-                    results.push(eid);
-                }
-            }
-        }
-        results
+    /// Restricted to a single space so instanced worlds don't cross-pollinate.
+    pub fn find_entities_by_template(&self, source_entity_id: u32, template_id: i32) -> Vec<u32> {
+        let Some(&space_id) = self.entity_space.get(&source_entity_id) else {
+            return Vec::new();
+        };
+        let Some(space) = self.spaces.get(&space_id) else {
+            return Vec::new();
+        };
+        space.entities.iter()
+            .filter(|(_, e)| e.template_id == Some(template_id))
+            .map(|(&eid, _)| eid)
+            .collect()
     }
 
     /// Return all player entity IDs that currently have `target_entity_id` in their AoI.
     ///
     /// Used for broadcasting property updates (InteractionType, SetVisible, etc.)
     /// to players who can see the entity.
+    ///
+    /// In this codebase `entity.witnesses` is populated only for players (see
+    /// [`super::aoi::SpaceManager::compute_aoi_changes`]), and stores the set
+    /// of entities the player currently sees. The reverse mapping (observers
+    /// of a target) isn't materialized, so we have to scan player witness
+    /// sets. Restricted to the target's own space, so the scan is bounded by
+    /// players in that space rather than the whole world.
     pub fn get_witnesses_of(&self, target_entity_id: u32) -> Vec<u32> {
         let Some(&space_id) = self.entity_space.get(&target_entity_id) else {
             return vec![];
@@ -152,9 +149,12 @@ impl SpaceManager {
             return vec![];
         };
         let target_eid = EntityId(target_entity_id as i32);
-        space.players.iter().filter(|&&pid| {
-            space.entities.get(&pid)
-                .map_or(false, |p| p.witnesses.contains(&target_eid))
-        }).copied().collect()
+        space.players.iter()
+            .filter(|&&pid| {
+                space.entities.get(&pid)
+                    .map_or(false, |p| p.witnesses.contains(&target_eid))
+            })
+            .copied()
+            .collect()
     }
 }

@@ -99,24 +99,34 @@ impl SpaceManager {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);
 
-                // Notify all entities that had this one in their AoI
-                if let Some(cell_entity) = space.entities.get(&entity_id) {
-                    let witnesses: Vec<u32> = cell_entity.witnesses
-                        .iter()
-                        .map(|eid| eid.0 as u32)
-                        .collect();
-                    for witness_id in witnesses {
-                        let _ = tx.send(CellToBaseMsg::LeftAoI {
-                            witness_id,
-                            entity_id,
-                        }).await;
+                // Notify every entity that had this one in its AoI -- i.e. each
+                // `other` whose `witnesses` set contains the disconnecting id.
+                // `cell_entity.witnesses` holds the entities IT sees, which is
+                // the wrong direction; iterate the space and check inbound
+                // membership instead.
+                let target = EntityId(entity_id as i32);
+                let observers: Vec<u32> = space.entities
+                    .iter()
+                    .filter(|(other_id, other)| {
+                        **other_id != entity_id && other.witnesses.contains(&target)
+                    })
+                    .map(|(other_id, _)| *other_id)
+                    .collect();
+                for witness_id in observers {
+                    if let Err(e) = tx.send(CellToBaseMsg::LeftAoI {
+                        witness_id,
+                        entity_id,
+                    }).await {
+                        tracing::warn!(
+                            witness_id, entity_id, error = %e,
+                            "LeftAoI send to base failed during disconnect"
+                        );
                     }
                 }
 
                 // Remove this entity from all other entities' witness sets
-                let eid = EntityId(entity_id as i32);
                 for other in space.entities.values_mut() {
-                    other.witnesses.remove(&eid);
+                    other.witnesses.remove(&target);
                 }
             }
         }

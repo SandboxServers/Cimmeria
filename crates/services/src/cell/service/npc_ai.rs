@@ -131,7 +131,10 @@ async fn npc_ai_fight(
             match npc {
                 Some(e) if !e.nav_path.is_empty() => {
                     // Check if target moved far from the last waypoint
-                    let last_wp = e.nav_path[e.nav_path.len() - 1];
+                    let last_wp = match e.nav_path.back() {
+                        Some(wp) => *wp,
+                        None => return,
+                    };
                     last_wp.distance_to(&target_pos) > 5.0
                 }
                 _ => true, // No path — need one
@@ -141,7 +144,7 @@ async fn npc_ai_fight(
         if needs_repath {
             if let Some(path) = space_mgr.find_path(npc_id, &npc_pos, &target_pos) {
                 if path.len() > 1 {
-                    let waypoints: Vec<_> = path.into_iter().skip(1).collect();
+                    let waypoints: std::collections::VecDeque<_> = path.into_iter().skip(1).collect();
                     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                         npc.nav_path = waypoints;
                     }
@@ -161,8 +164,20 @@ async fn npc_ai_fight(
         return;
     }
 
-    // In range — stop moving and attack (LoS check skipped to prevent jittering;
-    // the ability's range check handles the actual validation)
+    // In range — stop moving and attack, but only if we actually have line
+    // of sight to the target. Without this check, NPCs fire through walls
+    // because the ability's range check alone doesn't verify occlusion.
+    if !has_los {
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            npc.nav_path.clear();
+        }
+        tracing::debug!(
+            npc_id, target = target_id, distance = dist_to_target,
+            "NPC AI: in range but no line of sight, holding fire"
+        );
+        return;
+    }
+
     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
         npc.nav_path.clear();
     }

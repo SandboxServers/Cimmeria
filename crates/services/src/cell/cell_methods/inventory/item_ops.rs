@@ -35,9 +35,14 @@ pub(super) async fn handle_remove_item(
         let quantity = i16::from_le_bytes([args[4], args[5]]) as i32;
         tracing::debug!(entity_id, item_id, quantity, "removeItem");
         if let Some(player_id) = resolve_player_id(entity_id, "removeItem", space_mgr) {
-            let _ = tx.send(CellToBaseMsg::RemoveInventoryItem {
+            if let Err(e) = tx.send(CellToBaseMsg::RemoveInventoryItem {
                 entity_id, player_id, item_id, quantity,
-            }).await;
+            }).await {
+                tracing::error!(
+                    entity_id, player_id, item_id, quantity, error = %e,
+                    "RemoveInventoryItem send to base failed"
+                );
+            }
         }
     } else {
         tracing::warn!(entity_id, args_len = args.len(), "removeItem: truncated args");
@@ -51,7 +56,12 @@ pub(super) async fn handle_list_items(
 ) {
     tracing::debug!(entity_id, "listItems");
     if let Some(player_id) = resolve_player_id(entity_id, "listItems", space_mgr) {
-        let _ = tx.send(CellToBaseMsg::ListInventoryItems { entity_id, player_id }).await;
+        if let Err(e) = tx.send(CellToBaseMsg::ListInventoryItems { entity_id, player_id }).await {
+            tracing::error!(
+                entity_id, player_id, error = %e,
+                "ListInventoryItems send to base failed"
+            );
+        }
     }
 }
 
@@ -68,10 +78,17 @@ pub(super) async fn handle_move_item(
         let quantity = i32::from_le_bytes([args[12], args[13], args[14], args[15]]);
         tracing::debug!(entity_id, item_id, target_container_id, target_slot_id, quantity, "moveItem");
         if let Some(player_id) = resolve_player_id(entity_id, "moveItem", space_mgr) {
-            let _ = tx.send(CellToBaseMsg::MoveInventoryItem {
+            if let Err(e) = tx.send(CellToBaseMsg::MoveInventoryItem {
                 entity_id, player_id, item_id,
                 target_container_id, target_slot_id, quantity,
-            }).await;
+            }).await {
+                tracing::error!(
+                    entity_id, player_id, item_id,
+                    target_container_id, target_slot_id, quantity,
+                    error = %e,
+                    "MoveInventoryItem send to base failed"
+                );
+            }
         }
     } else {
         tracing::warn!(entity_id, args_len = args.len(), "moveItem: truncated args");

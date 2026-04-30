@@ -23,20 +23,40 @@ pub async fn flush_dirty_bandolier_ammo(
     if entity.bandolier_ammo_dirty.is_empty() {
         return;
     }
-    // Drain into a Vec so we don't hold the borrow on `entity` across awaits.
-    let dirty: Vec<i32> = entity.bandolier_ammo_dirty.drain().collect();
+    // Snapshot dirty slot IDs without draining; we only clear each marker
+    // after its send succeeds, so a transient channel failure leaves the
+    // marker in place and the next flush retries it.
+    let dirty: Vec<i32> = entity.bandolier_ammo_dirty.iter().copied().collect();
     for slot_id in dirty {
         let (item_id, current_ammo, cur_ammo_type) = match entity.bandolier_items.get(&slot_id) {
             Some(item) => (item.item_id, item.current_ammo, item.cur_ammo_type),
-            None => continue,
+            None => {
+                // Dirty slot with no item -- nothing to persist. Drop marker.
+                entity.bandolier_ammo_dirty.remove(&slot_id);
+                continue;
+            }
         };
-        let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
+        match tx.send(CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
             expected_item_id: item_id,
             current_ammo,
             cur_ammo_type,
-        }).await;
+        }).await {
+            Ok(()) => {
+                entity.bandolier_ammo_dirty.remove(&slot_id);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    player_id, slot_id, item_id, current_ammo, cur_ammo_type,
+                    error = %e,
+                    "BandolierAmmoUpdate send failed; leaving slot dirty for retry"
+                );
+                // Subsequent sends will likely also fail; preserve ordering
+                // by retrying the whole set on the next flush.
+                break;
+            }
+        }
     }
 }
 
@@ -100,9 +120,9 @@ pub(super) async fn handle_request_active_slot_change(
         } else {
             None
         };
-        if prev_persist.is_some() {
-            entity.bandolier_ammo_dirty.remove(&prev_slot);
-        }
+        // Leave the dirty marker in place; phase 2 only clears it after the
+        // BandolierAmmoUpdate send succeeds, so a failed send doesn't lose
+        // pending persistence state.
         // Cancel any in-flight reload only if the swap actually
         // moves to a different slot. A same-slot "swap" (no-op
         // from the client, or replayed packet) must not cancel
@@ -126,18 +146,40 @@ pub(super) async fn handle_request_active_slot_change(
         (prev_persist, new_ammo_type)
     };
 
-    // Phase 2: send messages now that the borrow is released.
+    // Phase 2: send messages now that the borrow is released. Clear the
+    // dirty marker for the previously-active slot only after the persist
+    // message is accepted by the channel.
     if let Some(player_id) = player_id {
         if let Some((p_slot, item_id, current_ammo, cur_ammo_type)) = prev_persist {
-            let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
+            match tx.send(CellToBaseMsg::BandolierAmmoUpdate {
                 player_id,
                 slot_id: p_slot,
                 expected_item_id: item_id,
                 current_ammo,
                 cur_ammo_type,
-            }).await;
+            }).await {
+                Ok(()) => {
+                    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                        entity.bandolier_ammo_dirty.remove(&p_slot);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        entity_id, player_id, slot_id = p_slot,
+                        expected_item_id = item_id,
+                        error = %e,
+                        "BandolierAmmoUpdate (slot swap) send failed; dirty marker preserved for retry"
+                    );
+                }
+            }
         }
-        let _ = tx.send(CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id }).await;
+        if let Err(e) = tx.send(CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id }).await {
+            tracing::warn!(
+                entity_id, player_id, slot_id,
+                error = %e,
+                "ActiveSlotUpdate send failed"
+            );
+        }
     }
 
     // Stage D: refresh the client's ammo-type indicator for the
@@ -243,15 +285,14 @@ pub(super) async fn handle_request_ammo_change(
                 return;
             }
         }
-        // Mutate the slot. We mark dirty (so any in-flight flush
-        // path sees the change) and immediately drain — the
-        // BandolierAmmoUpdate emitted below persists it now.
+        // Mutate the slot and mark it dirty. The dirty marker stays set
+        // until phase 2 confirms BandolierAmmoUpdate was accepted by the
+        // channel; if the send fails the next flush picks the change up.
         let item = entity.bandolier_items.get_mut(&slot).unwrap();
         item.cur_ammo_type = ammo_type;
         let item_id_for_persist = item.item_id;
         let current_ammo = item.current_ammo;
         entity.bandolier_ammo_dirty.insert(slot);
-        entity.bandolier_ammo_dirty.remove(&slot);
         let is_active = slot == entity.active_bandolier_slot;
         let player_id = entity.player_id;
         (player_id, (slot, item_id_for_persist, current_ammo, ammo_type), is_active)
@@ -260,13 +301,26 @@ pub(super) async fn handle_request_ammo_change(
     // Phase 2: persist + (if active) refresh the client's ammo-type indicator.
     if let Some(player_id) = player_id {
         let (slot_id, expected_item_id, current_ammo, cur_ammo_type) = persist;
-        let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
+        match tx.send(CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
             expected_item_id,
             current_ammo,
             cur_ammo_type,
-        }).await;
+        }).await {
+            Ok(()) => {
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.bandolier_ammo_dirty.remove(&slot_id);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    entity_id, player_id, slot_id, expected_item_id, cur_ammo_type,
+                    error = %e,
+                    "BandolierAmmoUpdate (ammo change) send failed; dirty marker preserved for retry"
+                );
+            }
+        }
     } else {
         tracing::warn!(entity_id, "requestAmmoChange: entity has no player_id — skipping persist");
     }

@@ -44,24 +44,16 @@ pub(crate) async fn handle_enable_entities(
     _cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     _entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Check if we have a pending world entry (create-player step).
+    // Peek at pending world entry without consuming it: we only commit (take)
+    // after the create-player send_to succeeds, so a transient send failure
+    // leaves login state intact for the next ENABLE_ENTITIES retry.
     let pending = {
-        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get_mut(&addr) {
-            match (c.pending_player_entity_id.take(), c.pending_world_entry.take()) {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get(&addr) {
+            match (c.pending_player_entity_id, c.pending_world_entry.clone()) {
                 (Some(eid), Some(entry)) => Some((eid, entry)),
                 _ => None,
             }
-        } else {
-            None
-        }
-    };
-
-    // Also retrieve the pending player load data
-    let pending_load = {
-        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get_mut(&addr) {
-            c.pending_player_load_data.take()
         } else {
             None
         }
@@ -86,15 +78,18 @@ pub(crate) async fn handle_enable_entities(
         let pkt = build_create_player(&key, seq, &acks, &entry_info);
         socket.send_to(&pkt, addr).await?;
 
-        // Store world entry + player data for the enter-world step (triggered by mapLoaded)
+        // Send succeeded — now commit: take pending state and stage map_loaded data.
         {
-        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get_mut(&addr) {
-            c.pending_map_loaded = Some(entry_info);
-            c.pending_player_load_data = pending_load;
-            c.pending_client_ready = None;
+            let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+            if let Some(c) = clients.get_mut(&addr) {
+                c.pending_player_entity_id.take();
+                let entry = c.pending_world_entry.take().unwrap_or(entry_info);
+                let load = c.pending_player_load_data.take();
+                c.pending_map_loaded = Some(entry);
+                c.pending_player_load_data = load;
+                c.pending_client_ready = None;
+            }
         }
-    }
 
         tracing::info!(%addr, "Create player complete -- waiting for client mapLoaded");
         return Ok(());
@@ -103,19 +98,18 @@ pub(crate) async fn handle_enable_entities(
     // -- Phase 4: initial entity creation -- send Account entity + char list --
     // Account entity was already allocated in Phase 3 (handle_login).
 
-    // Guard: only send once per connection.
+    // Guard: only proceed if we haven't already sent the char list.
+    // Note: char_list_sent is flipped only after send_to succeeds below, so a
+    // transient failure permits retry on the next ENABLE_ENTITIES.
     {
-        let mut clients = connected
-            .lock()
-            .map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get_mut(&addr) {
-            if c.char_list_sent {
-                return Ok(()); // already sent
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        match clients.get(&addr) {
+            Some(c) if c.char_list_sent => return Ok(()),
+            Some(_) => {}
+            None => {
+                tracing::warn!(%addr, "enable_entities: addr not in connected map");
+                return Ok(());
             }
-            c.char_list_sent = true;
-        } else {
-            tracing::warn!(%addr, "enable_entities: addr not in connected map");
-            return Ok(());
         }
     }
 
@@ -135,6 +129,14 @@ pub(crate) async fn handle_enable_entities(
     let pkt = build_char_list(&key, seq, &acks, &characters, account_eid);
     tracing::trace!(%addr, len = pkt.len(), seq, hex = %super::super::helpers::to_hex(&pkt), "UDP_OUT char_list");
     socket.send_to(&pkt, addr).await?;
+
+    // Send succeeded -- mark char list as sent so we don't re-send on subsequent ENABLE_ENTITIES.
+    {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if let Some(c) = clients.get_mut(&addr) {
+            c.char_list_sent = true;
+        }
+    }
 
     tracing::info!(%addr, "Phase 4 complete -- char list sent");
 

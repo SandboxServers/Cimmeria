@@ -14,5 +14,8 @@ pub(super) fn pseudo_random(entity_id: u32, ability_id: i32, sequence: u32) -> f
     h ^= sequence.wrapping_mul(3266489917);
     h = h.wrapping_mul(668265263);
     h ^= h >> 15;
-    (h as f64) / (u32::MAX as f64)
+    // Divide by 2^32 (one greater than u32::MAX) so the result is strictly
+    // in [0.0, 1.0); using u32::MAX as the divisor would map h == u32::MAX
+    // to 1.0, breaking the half-open invariant the callers rely on.
+    (h as f64) / (u32::MAX as f64 + 1.0)
 }
