@@ -271,14 +271,17 @@ pub async fn dispatch(
                 let ammo_type = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(entity_id, item_id, ammo_type, "requestAmmoChange");
 
-                // Loose validation — the legacy is literally `pass`. Reject the
-                // obvious-junk case (zero), then accept whatever the client
-                // sent. The proper whitelist lives on the item template's
-                // `ammo_types` (crates/entity/src/inventory.rs:81).
+                // Loose validation — the legacy is literally `pass`. Reject
+                // anything non-positive: 0 is the "no choice" sentinel, and
+                // the DB column has CHECK (cur_ammo_type >= 0), so a negative
+                // value would mutate cell + client state then fail the DB
+                // write later, leaving them ahead of persistence. The proper
+                // whitelist lives on the item template's `ammo_types`
+                // (crates/entity/src/inventory.rs:81).
                 // TODO: validate against item.ammo_types whitelist
                 //       (see crates/entity/src/inventory.rs:81 — `Item.ammo_types`).
-                if ammo_type == 0 {
-                    tracing::warn!(entity_id, item_id, "requestAmmoChange: rejecting zero ammo_type");
+                if ammo_type <= 0 {
+                    tracing::warn!(entity_id, item_id, ammo_type, "requestAmmoChange: rejecting non-positive ammo_type");
                     return true;
                 }
 
@@ -632,37 +635,43 @@ mod tests {
         assert!(rx.try_recv().is_err(), "no further rx messages expected");
     }
 
-    /// Stage E: ammo_type=0 is rejected with a warn, no rx messages emitted.
-    /// Matches the deviation Stage D introduced to filter obvious-junk requests.
+    /// CodeRabbit #12 (and earlier rejects-zero): non-positive ammo_type is
+    /// rejected before mutating local state. Without this, a negative value
+    /// would update `bandolier_items` + send `onEntityProperty`, then fail
+    /// the DB write (`cur_ammo_type >= 0` CHECK) — leaving cell + client
+    /// state ahead of persistence.
     #[tokio::test]
-    async fn request_ammo_change_rejects_zero() {
-        let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    async fn request_ammo_change_rejects_non_positive() {
+        for bad_ammo_type in [0i32, -1, -42] {
+            let mut mgr = make_test_space_mgr();
+            mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
 
-        if let Some(e) = mgr.get_entity_mut(1) {
-            e.is_player = true;
-            e.player_id = Some(100);
-            e.bandolier_items.insert(0, BandolierItem {
-                item_id: 42, clip_size: 30, default_ammo_type: 1,
-                current_ammo: 20, cur_ammo_type: 1,
-            });
-            e.active_bandolier_slot = 0;
+            if let Some(e) = mgr.get_entity_mut(1) {
+                e.is_player = true;
+                e.player_id = Some(100);
+                e.bandolier_items.insert(0, BandolierItem {
+                    item_id: 42, clip_size: 30, default_ammo_type: 1,
+                    current_ammo: 20, cur_ammo_type: 1,
+                });
+                e.active_bandolier_slot = 0;
+            }
+
+            let (tx, mut rx) = mpsc::channel(8);
+
+            let mut args = Vec::with_capacity(8);
+            args.extend_from_slice(&42i32.to_le_bytes());
+            args.extend_from_slice(&bad_ammo_type.to_le_bytes());
+
+            let engine = cimmeria_content_engine::chain::ChainEngine::new();
+            let handled = dispatch(1, REQUEST_AMMO_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+            assert!(handled, "REQUEST_AMMO_CHANGE should be claimed (bad_ammo_type={bad_ammo_type})");
+            assert!(rx.try_recv().is_err(), "no rx messages for bad_ammo_type={bad_ammo_type}");
+            let entity = mgr.get_entity(1).unwrap();
+            assert_eq!(entity.bandolier_items[&0].cur_ammo_type, 1,
+                "cur_ammo_type should be unchanged for bad_ammo_type={bad_ammo_type}");
+            assert!(!entity.bandolier_ammo_dirty.contains(&0),
+                "no dirty flag for bad_ammo_type={bad_ammo_type}");
         }
-
-        let (tx, mut rx) = mpsc::channel(8);
-
-        let mut args = Vec::with_capacity(8);
-        args.extend_from_slice(&42i32.to_le_bytes());
-        args.extend_from_slice(&0i32.to_le_bytes());
-
-        let engine = cimmeria_content_engine::chain::ChainEngine::new();
-        let handled = dispatch(1, REQUEST_AMMO_CHANGE, &args, &tx, &mut mgr, &engine).await;
-
-        // Handler still returns true (claims the index), but no side effects.
-        assert!(handled, "REQUEST_AMMO_CHANGE should be claimed by the inventory dispatch");
-        assert!(rx.try_recv().is_err(), "no rx messages should be emitted for ammo_type=0");
-        let entity = mgr.get_entity(1).unwrap();
-        assert_eq!(entity.bandolier_items[&0].cur_ammo_type, 1, "cur_ammo_type should be unchanged");
-        assert!(!entity.bandolier_ammo_dirty.contains(&0));
     }
 }

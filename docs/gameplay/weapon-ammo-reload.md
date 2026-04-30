@@ -205,7 +205,11 @@ NPCs (`SGWMob`) use the **same `bandolier_items` / `AmmoSlot{N}` model conceptua
 if required_ammo > 0 && entity.is_player && current_ammo < required_ammo { … abort … }
 ```
 
-This means mobs do not currently consume rounds, do not need to reload, and do not have their `bandolier_ammo_dirty` populated by combat. The legacy [`SGWMob.py`](../../python/cell/SGWMob.py) implemented full mob ammo (`getAmmoStat`/`getClipSize`/`triggerReload`) but in practice mobs were rarely ammo-limited. We deferred the port; if/when mob reload is needed, the same `set_slot_ammo` + `reload_complete_at` machinery applies — just remove the `is_player` short-circuit and add an AI-driven `requestReload` equivalent.
+This means mobs do not currently consume rounds, do not need to reload, and do not have their `bandolier_ammo_dirty` populated by combat. The legacy [`SGWMob.py`](../../python/cell/SGWMob.py) implemented full mob ammo (`getAmmoStat`/`getClipSize`/`triggerReload`) but in practice mobs were rarely ammo-limited. We deferred the port; if/when mob reload is needed, three changes are required together — partial work will silently break:
+
+1. Remove the `is_player` short-circuit in [`abilities.rs`](../../crates/services/src/cell/abilities.rs) so the ammo gate runs for NPCs.
+2. Add an AI-driven `requestReload` equivalent that calls `set_slot_ammo` + `reload_complete_at` on the mob entity.
+3. **Widen `reload_completion_tick` beyond players.** It currently iterates [`space_mgr.all_player_entity_ids()`](../../crates/services/src/cell/service.rs) only — an NPC that sets `reload_complete_at` will never be promoted by the existing tick, leaving the magazine empty forever. Either change the tick to scan all entities with `reload_complete_at = Some(_)`, add a `space_mgr.all_reloadable_entity_ids()` helper, or extend the iteration to include NPCs in fighting state.
 
 Cross-reference: [npc-ai.md § Ammo Management](npc-ai.md#ammo-management).
 

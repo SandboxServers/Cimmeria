@@ -211,7 +211,11 @@ Legacy accessors and their Rust equivalents:
 
 Legacy behavior: on spawn (`doAiSpawnAction`), the mob called `getClipSize()` on its equipped weapon and set its ammo stat to that value, representing a full reload at spawn. When `selectHostileAbility` found all abilities blocked by ammo, it called `triggerReload()`. The reload completed after a delay and refilled the clip, allowing the combat loop to resume.
 
-If/when NPC reload is needed, the same machinery applies: drop the `is_player` short-circuit in the fire-gate, set `reload_complete_at` from an AI-driven path, and let the existing `reload_completion_tick` ([`service.rs:610`](../../crates/services/src/cell/service.rs#L610)) refill the magazine.
+If/when NPC reload is needed, the same machinery applies — but **all three** of the following are required together; partial work will silently leave NPCs stuck mid-reload:
+
+1. Drop the `is_player` short-circuit in the fire-gate ([`abilities.rs`](../../crates/services/src/cell/abilities.rs)).
+2. Set `reload_complete_at` from an AI-driven path (an NPC equivalent of `requestReload`).
+3. **Widen `reload_completion_tick`** ([`service.rs:610`](../../crates/services/src/cell/service.rs#L610)) — it currently iterates `space_mgr.all_player_entity_ids()` only, so an NPC's deadline would never be promoted. Add an `all_reloadable_entity_ids()` accessor or extend the existing one to include fighting NPCs.
 
 See [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full ammo and reload model.
 
