@@ -64,6 +64,21 @@ pkill -f "cargo|rustc"
 
 Solution: `W-NG.sln` (VS2026, MSVC v145). Bootstrap via `setup.ps1` (wraps the `CimmeriaBootstrap` PowerShell module — see [bootstrap/CimmeriaBootstrap/README.md](bootstrap/CimmeriaBootstrap/README.md) for individual functions).
 
+## File organization
+
+Files should "do what it says on the tin" — a reader (human or LLM) should predict a file's contents from its name. Split large files along natural seams to keep both LLM context and human review tractable.
+
+- **Soft cap: 500 lines. Hard cap: 700 lines.**
+  - Under 500: leave alone.
+  - 500–700: split if a natural seam exists (handler groups, lifecycle phases, message-type families, etc.). If the file is one cohesive concept with no seam, leave it.
+  - Over 700: must split.
+- **Split along natural seams, not arbitrary line counts.** Group methods that share state, lifecycle, or call patterns. Line count is a *signal to look for seams*, not a target.
+- **Flat names for 2–3 siblings; directory for 4+.** Prefer `inventory_grant.rs` + `inventory_move.rs` (2 siblings, flat) over `inventory/grant.rs` + `inventory/move.rs`. Promote to a directory once you cross 4 files on the same theme.
+- **Re-export discipline.** When a file becomes a directory, the new `mod.rs` should `pub use` the submodules' public types so external callers' imports don't change. Splits are internal refactors, not public-surface changes.
+- **Foresight rule.** When creating a new file you can already see will accumulate siblings (handler-per-message, method-per-feature), start it as a directory from day one. Heuristic: *if you can name 3+ logical sibling files now, make the directory now.* See `crates/services/src/base/world_entry_methods/vendor/` for the canonical example.
+- **Naming.** Avoid `helpers.rs`, `utils.rs`, `misc.rs`, `extra.rs` — they hide content. Use `cooldowns.rs`, `damage_resolution.rs`, `witness_list.rs`.
+- **Module style.** The repo uses `foo/mod.rs` (not the modern `foo.rs` + `foo/` style). Stay consistent.
+
 ## Migration status (one-line)
 
 PostgreSQL 9.2 → 17.9 ✅ and MSVC v120 → v145 ✅ done. OpenSSL 0.9.8i → 3.x is the next critical migration (active CVEs). Full roadmap and per-migration agent definitions: [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).
