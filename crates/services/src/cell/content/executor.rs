@@ -36,7 +36,7 @@ pub(super) async fn execute_actions(
                     crate::cell::missions::accept_mission(
                         entity_id, mission_id, step_id, objectives, tx, space_mgr,
                     ).await;
-                    let _ = tx.send(CellToBaseMsg::MissionUpdate {
+                    if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                         player_id,
                         mission_id,
                         status: 1,
@@ -45,7 +45,13 @@ pub(super) async fn execute_actions(
                         completed_objective_ids: vec![],
                         active_objective_ids: vec![step_id],
                         failed_objective_ids: vec![],
-                    }).await;
+                    }).await {
+                        tracing::error!(
+                            entity_id, player_id, mission_id, step_id,
+                            chain_id, error = %e,
+                            "MissionUpdate (accept) send to base failed -- mission progress not persisted"
+                        );
+                    }
                 } else {
                     tracing::warn!(mission_id, chain_id, "No mission_defs entry — cannot accept mission");
                 }
@@ -55,7 +61,7 @@ pub(super) async fn execute_actions(
                 crate::cell::missions::complete_mission_direct(
                     entity_id, mission_id, tx, space_mgr,
                 ).await;
-                let _ = tx.send(CellToBaseMsg::MissionUpdate {
+                if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,
                     status: 2,
@@ -64,7 +70,12 @@ pub(super) async fn execute_actions(
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![],
                     failed_objective_ids: vec![],
-                }).await;
+                }).await {
+                    tracing::error!(
+                        entity_id, player_id, mission_id, chain_id, error = %e,
+                        "MissionUpdate (complete) send to base failed -- mission completion not persisted"
+                    );
+                }
             }
             Action::GrantItem { item_id, count, container_id } => {
                 tracing::info!(entity_id, item_id, count, chain_id, "Content: granting item");
@@ -108,13 +119,19 @@ pub(super) async fn execute_actions(
                     }
                 }
 
-                let _ = tx.send(CellToBaseMsg::GrantItem {
+                if let Err(e) = tx.send(CellToBaseMsg::GrantItem {
                     entity_id,
                     player_id,
                     item_id,
                     container_id: cid,
                     count,
-                }).await;
+                }).await {
+                    tracing::error!(
+                        entity_id, player_id, item_id, container_id = cid,
+                        count, chain_id, error = %e,
+                        "GrantItem send to base failed -- item not persisted to inventory"
+                    );
+                }
 
                 if let Some(payload) = ammo_stat_payload {
                     if !payload.is_empty() {
@@ -148,7 +165,7 @@ pub(super) async fn execute_actions(
             Action::AdvanceStep { mission_id, step_id } => {
                 tracing::info!(entity_id, mission_id, step_id, chain_id, "Content: advancing step");
                 crate::cell::missions::advance_step(entity_id, mission_id, step_id, tx, space_mgr).await;
-                let _ = tx.send(CellToBaseMsg::MissionUpdate {
+                if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,
                     status: 1,
@@ -157,7 +174,13 @@ pub(super) async fn execute_actions(
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![step_id],
                     failed_objective_ids: vec![],
-                }).await;
+                }).await {
+                    tracing::error!(
+                        entity_id, player_id, mission_id, step_id,
+                        chain_id, error = %e,
+                        "MissionUpdate (advance step) send to base failed -- step progress not persisted"
+                    );
+                }
             }
             Action::AddDialogSet { dialog_set_id, slot, mission_id: _ } => {
                 tracing::info!(entity_id, dialog_set_id, slot, chain_id, "Content: adding dialog set");

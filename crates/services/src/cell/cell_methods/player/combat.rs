@@ -190,11 +190,17 @@ async fn handle_respawn(
         .unwrap_or_else(|| "Castle_CellBlock".to_string());
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 
-    let _ = tx.send(CellToBaseMsg::RespawnReload {
+    if let Err(e) = tx.send(CellToBaseMsg::RespawnReload {
         entity_id,
-        world_name,
+        world_name: world_name.clone(),
         spawn_pos,
-    }).await;
+    }).await {
+        tracing::error!(
+            entity_id, %world_name, ?spawn_pos, error = %e,
+            "RespawnReload send to base failed -- player will not be teleported to spawn"
+        );
+        return;
+    }
     tracing::info!(entity_id, ?spawn_pos, "Sent RespawnReload to BaseApp");
 }
 

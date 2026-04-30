@@ -105,7 +105,11 @@ impl CellService {
     pub async fn stop(&mut self) {
         tracing::info!("Stopping cell service");
         if let Some(signal) = self.shutdown_signal.take() {
-            signal.notify_waiters();
+            // notify_one() stores a permit if no waiter is currently parked,
+            // so the next `shutdown.notified().await` in the loop returns
+            // immediately. notify_waiters() would only wake an already-parked
+            // future and could be lost between loop iterations.
+            signal.notify_one();
         }
         if let Some(handle) = self.cell_loop_handle.take() {
             match handle.await {

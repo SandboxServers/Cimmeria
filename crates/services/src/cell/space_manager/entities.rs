@@ -99,18 +99,22 @@ impl SpaceManager {
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 space.players.remove(&entity_id);
 
-                // Notify every entity that had this one in its AoI -- i.e. each
-                // `other` whose `witnesses` set contains the disconnecting id.
-                // `cell_entity.witnesses` holds the entities IT sees, which is
-                // the wrong direction; iterate the space and check inbound
-                // membership instead.
+                // Notify every player that had this one in its AoI -- i.e. each
+                // player whose `witnesses` set contains the disconnecting id.
+                // `cell_entity.witnesses` holds the entities IT sees (wrong
+                // direction); iterate `space.players` and check inbound
+                // membership instead. NPCs don't receive LeftAoI, so we skip
+                // scanning them and keep disconnect O(P) rather than O(E).
                 let target = EntityId(entity_id as i32);
-                let observers: Vec<u32> = space.entities
+                let observers: Vec<u32> = space.players
                     .iter()
-                    .filter(|(other_id, other)| {
-                        **other_id != entity_id && other.witnesses.contains(&target)
+                    .copied()
+                    .filter(|other_id| {
+                        *other_id != entity_id
+                            && space.entities
+                                .get(other_id)
+                                .map_or(false, |other| other.witnesses.contains(&target))
                     })
-                    .map(|(other_id, _)| *other_id)
                     .collect();
                 for witness_id in observers {
                     if let Err(e) = tx.send(CellToBaseMsg::LeftAoI {

@@ -472,10 +472,16 @@ pub async fn handle_use_ability(
                     attacker = entity_id, target = target_eid,
                     mob_level = target.level, xp, "Granting kill XP"
                 );
-                let _ = tx.send(CellToBaseMsg::GrantXP {
+                if let Err(e) = tx.send(CellToBaseMsg::GrantXP {
                     entity_id,
                     xp_amount: xp,
-                }).await;
+                }).await {
+                    tracing::error!(
+                        attacker = entity_id, target = target_eid, xp,
+                        error = %e,
+                        "GrantXP send to base failed -- player kill credit lost"
+                    );
+                }
             }
         }
 
