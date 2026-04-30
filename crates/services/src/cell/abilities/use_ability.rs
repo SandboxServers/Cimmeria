@@ -280,7 +280,11 @@ pub async fn handle_use_ability(
             return;
         }
     };
-    let qr = combat::calculate_qr(&attacker_stats, &target.stats, true);
+    // Use the ability's actual ranged flag for the QR calculation. Defaults
+    // to false when the AbilityDef is missing (unknown ability falls back to
+    // a generic melee swing).
+    let ability_is_ranged = ability_def.as_ref().map(|d| d.is_ranged).unwrap_or(false);
+    let qr = combat::calculate_qr(&attacker_stats, &target.stats, ability_is_ranged);
 
     // Generate random value for this hit (seeded from ability invocation)
     // For now use a deterministic hash to be reproducible in tests.
@@ -288,7 +292,11 @@ pub async fn handle_use_ability(
     let random_value = pseudo_random(entity_id, ability_id, effect_seq as u32);
     let qr_result = combat::calculate_result(qr, random_value);
 
-    // Look up damage values from the ability's effect NVPs.
+    // Look up damage values from the ability's effect NVPs. When the
+    // ability is known but exposes no positive HealthDamage (e.g. focus
+    // drains, heals, buff-only abilities) we keep health_base_damage at 0
+    // so the ability doesn't accidentally read as a 15-HP physical hit.
+    // The 15-HP fallback is reserved for the unknown-ability case.
     let (health_base_damage, focus_base_damage) = if let Some(ref def) = ability_def {
         let mut h_dmg = 0i32;
         let mut f_dmg = 0i32;
@@ -300,7 +308,7 @@ pub async fn handle_use_ability(
                 if fd > 0 { f_dmg = fd; }
             }
         }
-        (if h_dmg > 0 { h_dmg } else { 15 }, f_dmg)
+        (h_dmg, f_dmg)
     } else {
         (15, 0)
     };
@@ -464,10 +472,16 @@ pub async fn handle_use_ability(
                     attacker = entity_id, target = target_eid,
                     mob_level = target.level, xp, "Granting kill XP"
                 );
-                let _ = tx.send(CellToBaseMsg::GrantXP {
+                if let Err(e) = tx.send(CellToBaseMsg::GrantXP {
                     entity_id,
                     xp_amount: xp,
-                }).await;
+                }).await {
+                    tracing::error!(
+                        attacker = entity_id, target = target_eid, xp,
+                        error = %e,
+                        "GrantXP send to base failed -- player kill credit lost"
+                    );
+                }
             }
         }
 

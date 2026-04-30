@@ -36,7 +36,7 @@ pub(super) async fn execute_actions(
                     crate::cell::missions::accept_mission(
                         entity_id, mission_id, step_id, objectives, tx, space_mgr,
                     ).await;
-                    let _ = tx.send(CellToBaseMsg::MissionUpdate {
+                    if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                         player_id,
                         mission_id,
                         status: 1,
@@ -45,7 +45,13 @@ pub(super) async fn execute_actions(
                         completed_objective_ids: vec![],
                         active_objective_ids: vec![step_id],
                         failed_objective_ids: vec![],
-                    }).await;
+                    }).await {
+                        tracing::error!(
+                            entity_id, player_id, mission_id, step_id,
+                            chain_id, error = %e,
+                            "MissionUpdate (accept) send to base failed -- mission progress not persisted"
+                        );
+                    }
                 } else {
                     tracing::warn!(mission_id, chain_id, "No mission_defs entry — cannot accept mission");
                 }
@@ -55,7 +61,7 @@ pub(super) async fn execute_actions(
                 crate::cell::missions::complete_mission_direct(
                     entity_id, mission_id, tx, space_mgr,
                 ).await;
-                let _ = tx.send(CellToBaseMsg::MissionUpdate {
+                if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,
                     status: 2,
@@ -64,7 +70,12 @@ pub(super) async fn execute_actions(
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![],
                     failed_objective_ids: vec![],
-                }).await;
+                }).await {
+                    tracing::error!(
+                        entity_id, player_id, mission_id, chain_id, error = %e,
+                        "MissionUpdate (complete) send to base failed -- mission completion not persisted"
+                    );
+                }
             }
             Action::GrantItem { item_id, count, container_id } => {
                 tracing::info!(entity_id, item_id, count, chain_id, "Content: granting item");
@@ -108,13 +119,19 @@ pub(super) async fn execute_actions(
                     }
                 }
 
-                let _ = tx.send(CellToBaseMsg::GrantItem {
+                if let Err(e) = tx.send(CellToBaseMsg::GrantItem {
                     entity_id,
                     player_id,
                     item_id,
                     container_id: cid,
                     count,
-                }).await;
+                }).await {
+                    tracing::error!(
+                        entity_id, player_id, item_id, container_id = cid,
+                        count, chain_id, error = %e,
+                        "GrantItem send to base failed -- item not persisted to inventory"
+                    );
+                }
 
                 if let Some(payload) = ammo_stat_payload {
                     if !payload.is_empty() {
@@ -148,7 +165,7 @@ pub(super) async fn execute_actions(
             Action::AdvanceStep { mission_id, step_id } => {
                 tracing::info!(entity_id, mission_id, step_id, chain_id, "Content: advancing step");
                 crate::cell::missions::advance_step(entity_id, mission_id, step_id, tx, space_mgr).await;
-                let _ = tx.send(CellToBaseMsg::MissionUpdate {
+                if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,
                     status: 1,
@@ -157,7 +174,13 @@ pub(super) async fn execute_actions(
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![step_id],
                     failed_objective_ids: vec![],
-                }).await;
+                }).await {
+                    tracing::error!(
+                        entity_id, player_id, mission_id, step_id,
+                        chain_id, error = %e,
+                        "MissionUpdate (advance step) send to base failed -- step progress not persisted"
+                    );
+                }
             }
             Action::AddDialogSet { dialog_set_id, slot, mission_id: _ } => {
                 tracing::info!(entity_id, dialog_set_id, slot, chain_id, "Content: adding dialog set");
@@ -204,24 +227,25 @@ pub(super) async fn execute_actions(
                     None
                 };
 
-                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-                    if let Some(&target_id) = space_mgr.find_entities_by_template(&world_name, slot).first() {
-                        let target_eid = cimmeria_common::EntityId(target_id as i32);
-                        let in_witness_set = space_mgr.get_entity(entity_id)
-                            .map_or(false, |p| p.witnesses.contains(&target_eid));
+                // Update every entity sharing this template -- `.first()` would
+                // arbitrarily pick one (HashMap iteration order is nondeterministic),
+                // leaving sibling entities with stale interaction flags.
+                for target_id in space_mgr.find_entities_by_template(entity_id, slot) {
+                    let target_eid = cimmeria_common::EntityId(target_id as i32);
+                    let in_witness_set = space_mgr.get_entity(entity_id)
+                        .map_or(false, |p| p.witnesses.contains(&target_eid));
 
-                        if in_witness_set {
-                            let base_flags = space_mgr.get_entity(target_id)
-                                .map(|e| e.interaction_type_flags).unwrap_or(0);
-                            let merged = base_flags | removed_flags.unwrap_or(0);
+                    if in_witness_set {
+                        let base_flags = space_mgr.get_entity(target_id)
+                            .map(|e| e.interaction_type_flags).unwrap_or(0);
+                        let merged = base_flags | removed_flags.unwrap_or(0);
 
-                            let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
-                                witness_id: entity_id,
-                                entity_id: target_id,
-                                method_index: 3, // InteractionType
-                                args: (merged as u64).to_le_bytes().to_vec(),
-                            }).await;
-                        }
+                        let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+                            witness_id: entity_id,
+                            entity_id: target_id,
+                            method_index: 3, // InteractionType
+                            args: (merged as u64).to_le_bytes().to_vec(),
+                        }).await;
                     }
                 }
             }
@@ -229,40 +253,38 @@ pub(super) async fn execute_actions(
                 tracing::info!(entity_id, item_id, count, chain_id, "Content: removing item");
             }
             Action::SetInteractionType { entity_tag, operation, mask } => {
-                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
-                        let new_flags = if let Some(target) = space_mgr.get_entity_mut(target_id) {
-                            let old = target.interaction_type_flags;
-                            match operation.as_str() {
-                                "add" | "|" => target.interaction_type_flags |= mask,
-                                "remove" | "~" => target.interaction_type_flags &= !mask,
-                                "set" => target.interaction_type_flags = mask,
-                                _ => tracing::warn!(%operation, "Unknown interaction type operation"),
-                            }
-                            tracing::debug!(
-                                entity_id, %entity_tag, target_id, %operation, mask,
-                                old, new = target.interaction_type_flags, chain_id,
-                                "Content: set interaction type"
-                            );
-                            Some(target.interaction_type_flags)
-                        } else {
-                            None
-                        };
-
-                        if let Some(flags) = new_flags {
-                            let witnesses = space_mgr.get_witnesses_of(target_id);
-                            for witness_id in witnesses {
-                                let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
-                                    witness_id,
-                                    entity_id: target_id,
-                                    method_index: 3, // InteractionType
-                                    args: (flags as u64).to_le_bytes().to_vec(),
-                                }).await;
-                            }
+                if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+                    let new_flags = if let Some(target) = space_mgr.get_entity_mut(target_id) {
+                        let old = target.interaction_type_flags;
+                        match operation.as_str() {
+                            "add" | "|" => target.interaction_type_flags |= mask,
+                            "remove" | "~" => target.interaction_type_flags &= !mask,
+                            "set" => target.interaction_type_flags = mask,
+                            _ => tracing::warn!(%operation, "Unknown interaction type operation"),
                         }
+                        tracing::debug!(
+                            entity_id, %entity_tag, target_id, %operation, mask,
+                            old, new = target.interaction_type_flags, chain_id,
+                            "Content: set interaction type"
+                        );
+                        Some(target.interaction_type_flags)
                     } else {
-                        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetInteractionType");
+                        None
+                    };
+
+                    if let Some(flags) = new_flags {
+                        let witnesses = space_mgr.get_witnesses_of(target_id);
+                        for witness_id in witnesses {
+                            let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+                                witness_id,
+                                entity_id: target_id,
+                                method_index: 3, // InteractionType
+                                args: (flags as u64).to_le_bytes().to_vec(),
+                            }).await;
+                        }
                     }
+                } else {
+                    tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetInteractionType");
                 }
             }
             Action::StartMinigame { minigame_type, on_victory_chains } => {
@@ -276,26 +298,22 @@ pub(super) async fn execute_actions(
                 }).await;
             }
             Action::SetAggression { entity_tag, level: agg_level } => {
-                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
-                        tracing::debug!(entity_id, %entity_tag, target_id, agg_level, chain_id, "Content: set aggression");
-                        if let Some(target) = space_mgr.get_entity_mut(target_id) {
-                            target.properties.insert(
-                                "aggression".to_string(),
-                                cimmeria_entity::base_entity::PropertyValue::Int32(agg_level),
-                            );
-                        }
+                if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+                    tracing::debug!(entity_id, %entity_tag, target_id, agg_level, chain_id, "Content: set aggression");
+                    if let Some(target) = space_mgr.get_entity_mut(target_id) {
+                        target.properties.insert(
+                            "aggression".to_string(),
+                            cimmeria_entity::base_entity::PropertyValue::Int32(agg_level),
+                        );
                     }
                 }
             }
             Action::DestroyTaggedEntity { entity_tag } => {
-                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
-                        tracing::info!(entity_id, %entity_tag, target_id, chain_id, "Content: destroying tagged entity");
-                        space_mgr.destroy_entity(target_id);
-                    } else {
-                        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for DestroyTaggedEntity");
-                    }
+                if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+                    tracing::info!(entity_id, %entity_tag, target_id, chain_id, "Content: destroying tagged entity");
+                    space_mgr.destroy_entity(target_id);
+                } else {
+                    tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for DestroyTaggedEntity");
                 }
             }
             Action::TriggerTransporter { region_id } => {
@@ -361,48 +379,42 @@ pub(super) async fn execute_actions(
                 // Generate threat on the NPC (found by tag) from the player.
                 // If no entity_tag, the threat is on the player entity itself (ignored by combat).
                 if let Some(tag) = &entity_tag {
-                    if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-                        if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, tag) {
-                            tracing::info!(
-                                entity_id, %tag, target_id, threat_level, chain_id,
-                                "Content: generate threat on NPC from player"
-                            );
-                            crate::cell::combat::generate_threat(
-                                space_mgr,
-                                entity_id,  // attacker = the player
-                                target_id,  // target = the NPC
-                                threat_level as f32,
-                            );
-                        }
+                    if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, tag) {
+                        tracing::info!(
+                            entity_id, %tag, target_id, threat_level, chain_id,
+                            "Content: generate threat on NPC from player"
+                        );
+                        crate::cell::combat::generate_threat(
+                            space_mgr,
+                            entity_id,  // attacker = the player
+                            target_id,  // target = the NPC
+                            threat_level as f32,
+                        );
                     }
                 } else {
                     tracing::debug!(entity_id, threat_level, chain_id, "Content: generate threat (no target tag, skipped)");
                 }
             }
             Action::SetVisible { entity_tag, visible } => {
-                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
-                        tracing::debug!(entity_id, %entity_tag, target_id, visible, chain_id, "Content: set visible");
-                        let vis_byte: u8 = if visible { 1 } else { 0 };
-                        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                            entity_id: target_id,
-                            method_index: 11, // onVisible
-                            args: vec![vis_byte],
-                        }).await;
-                    }
+                if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+                    tracing::debug!(entity_id, %entity_tag, target_id, visible, chain_id, "Content: set visible");
+                    let vis_byte: u8 = if visible { 1 } else { 0 };
+                    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                        entity_id: target_id,
+                        method_index: 11, // onVisible
+                        args: vec![vis_byte],
+                    }).await;
                 }
             }
             Action::MoveWaypoint { entity_tag, destination, speed: _ } => {
-                if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-                    if let Some(target_id) = space_mgr.find_entity_by_tag(&world_name, &entity_tag) {
-                        tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
-                        space_mgr.update_entity_position(
-                            target_id,
-                            destination,
-                            [0, 0, 0],
-                            [0.0; 3],
-                        );
-                    }
+                if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+                    tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
+                    space_mgr.update_entity_position(
+                        target_id,
+                        destination,
+                        [0, 0, 0],
+                        [0.0; 3],
+                    );
                 }
             }
             Action::SetActiveSlot { bag_id, slot } => {
@@ -460,35 +472,36 @@ async fn send_interaction_update_if_visible(
     space_mgr: &SpaceManager,
     label: &str,
 ) {
-    if let Some(world_name) = space_mgr.get_entity_world_name(entity_id) {
-        if let Some(&target_id) = space_mgr.find_entities_by_template(&world_name, slot).first() {
-            let target_eid = cimmeria_common::EntityId(target_id as i32);
-            let in_witness_set = space_mgr.get_entity(entity_id)
-                .map_or(false, |p| p.witnesses.contains(&target_eid));
+    // Update every entity sharing this template instead of an arbitrary
+    // first match -- spaces with multiple template-equal NPCs would otherwise
+    // get a single nondeterministic update.
+    for target_id in space_mgr.find_entities_by_template(entity_id, slot) {
+        let target_eid = cimmeria_common::EntityId(target_id as i32);
+        let in_witness_set = space_mgr.get_entity(entity_id)
+            .map_or(false, |p| p.witnesses.contains(&target_eid));
 
-            if in_witness_set {
-                let base_flags = space_mgr.get_entity(target_id)
-                    .map(|e| e.interaction_type_flags).unwrap_or(0);
-                let merged = base_flags | entry.interaction_flags;
+        if in_witness_set {
+            let base_flags = space_mgr.get_entity(target_id)
+                .map(|e| e.interaction_type_flags).unwrap_or(0);
+            let merged = base_flags | entry.interaction_flags;
 
-                tracing::debug!(
-                    entity_id, target_id,
-                    dialog_id = entry.dialog_id, base_flags, merged,
-                    "Sending per-player InteractionType for {}", label
-                );
+            tracing::debug!(
+                entity_id, target_id,
+                dialog_id = entry.dialog_id, base_flags, merged,
+                "Sending per-player InteractionType for {}", label
+            );
 
-                let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
-                    witness_id: entity_id,
-                    entity_id: target_id,
-                    method_index: 3, // InteractionType
-                    args: (merged as u64).to_le_bytes().to_vec(),
-                }).await;
-            } else {
-                tracing::debug!(
-                    entity_id, target_id,
-                    "NPC not yet in player AoI — deferring InteractionType to AoI create"
-                );
-            }
+            let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+                witness_id: entity_id,
+                entity_id: target_id,
+                method_index: 3, // InteractionType
+                args: (merged as u64).to_le_bytes().to_vec(),
+            }).await;
+        } else {
+            tracing::debug!(
+                entity_id, target_id,
+                "NPC not yet in player AoI — deferring InteractionType to AoI create"
+            );
         }
     }
 }

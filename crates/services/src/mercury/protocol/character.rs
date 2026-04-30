@@ -13,6 +13,23 @@ use super::{
     ACCOUNT_CLASS_ID, CharacterInfo,
 };
 
+/// Serialize one `CharacterInfo` FIXED_DICT into the byte stream. Shared by
+/// `build_char_list` and `build_on_character_list` so the field order can't
+/// drift between the two callers.
+fn write_character_info(buf: &mut Vec<u8>, ch: &CharacterInfo) {
+    buf.extend_from_slice(&ch.player_id.to_le_bytes());
+    write_wstring(buf, &ch.name);
+    write_wstring(buf, &ch.extra_name);
+    buf.push(ch.alignment);
+    buf.push(ch.level);
+    buf.push(ch.gender);
+    write_wstring(buf, &ch.world_location);
+    buf.push(ch.archetype);
+    buf.push(ch.title);
+    buf.extend_from_slice(&ch.player_type.to_le_bytes());
+    buf.push(ch.playable);
+}
+
 /// Build and encrypt the Phase 4 character list response packet.
 ///
 /// Sent immediately after the client confirms login with msg_id=0x01.
@@ -51,19 +68,8 @@ pub fn build_char_list(
     // Array count
     payload.extend_from_slice(&(characters.len() as u32).to_le_bytes());
 
-    // Serialize each CharacterInfo FIXED_DICT
     for ch in characters {
-        payload.extend_from_slice(&ch.player_id.to_le_bytes());
-        write_wstring(&mut payload, &ch.name);
-        write_wstring(&mut payload, &ch.extra_name);
-        payload.push(ch.alignment);
-        payload.push(ch.level);
-        payload.push(ch.gender);
-        write_wstring(&mut payload, &ch.world_location);
-        payload.push(ch.archetype);
-        payload.push(ch.title);
-        payload.extend_from_slice(&ch.player_type.to_le_bytes());
-        payload.push(ch.playable);
+        write_character_info(&mut payload, ch);
     }
 
     body.extend_from_slice(&(payload.len() as u16).to_le_bytes());
@@ -100,19 +106,8 @@ pub fn build_on_character_list(
     // Array count
     payload.extend_from_slice(&(characters.len() as u32).to_le_bytes());
 
-    // Serialize each CharacterInfo FIXED_DICT
     for ch in characters {
-        payload.extend_from_slice(&ch.player_id.to_le_bytes());
-        write_wstring(&mut payload, &ch.name);
-        write_wstring(&mut payload, &ch.extra_name);
-        payload.push(ch.alignment);
-        payload.push(ch.level);
-        payload.push(ch.gender);
-        write_wstring(&mut payload, &ch.world_location);
-        payload.push(ch.archetype);
-        payload.push(ch.title);
-        payload.extend_from_slice(&ch.player_type.to_le_bytes());
-        payload.push(ch.playable);
+        write_character_info(&mut payload, ch);
     }
 
     body.extend_from_slice(&(payload.len() as u16).to_le_bytes());

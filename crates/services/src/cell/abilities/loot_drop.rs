@@ -51,7 +51,20 @@ pub(super) fn generate_loot_on_death(
     for entry in &entries {
         let roll: f32 = rand::random();
         if roll <= entry.probability {
+            // Guard against malformed DB rows where min > max -- the
+            // subtraction would wrap as u32 and produce wildly out-of-range
+            // quantities. Log and fall back to min in that case.
             let quantity = if entry.min_quantity == entry.max_quantity {
+                entry.min_quantity
+            } else if entry.min_quantity > entry.max_quantity {
+                tracing::warn!(
+                    target_eid,
+                    loot_table_id,
+                    design_id = ?entry.design_id,
+                    min = entry.min_quantity,
+                    max = entry.max_quantity,
+                    "loot entry has min_quantity > max_quantity; using min as fallback"
+                );
                 entry.min_quantity
             } else {
                 let range = (entry.max_quantity - entry.min_quantity + 1) as u32;

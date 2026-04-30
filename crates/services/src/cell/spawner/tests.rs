@@ -126,9 +126,11 @@ fn find_entity_by_tag_works() {
     let npc_id = mgr.allocate_npc_id();
     mgr.spawn_npc_from_record(npc_id, &record).unwrap();
 
-    let found = mgr.find_entity_by_tag("Agnos", "TestTag");
+    // Use the NPC itself as the source entity -- it lives in Agnos, so the
+    // search runs against that single space.
+    let found = mgr.find_entity_by_tag(npc_id, "TestTag");
     assert_eq!(found, Some(npc_id));
 
-    let not_found = mgr.find_entity_by_tag("Agnos", "NonexistentTag");
+    let not_found = mgr.find_entity_by_tag(npc_id, "NonexistentTag");
     assert_eq!(not_found, None);
 }

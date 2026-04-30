@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use sqlx::PgPool;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Notify};
 
 use cimmeria_content_engine::chain::ChainEngine;
 
@@ -13,6 +13,10 @@ use super::super::space_manager::SpaceManager;
 use super::super::spawner;
 
 /// Main CellService message processing loop.
+///
+/// Exits when `shutdown` is notified, the BaseToCell channel closes, or the
+/// task is dropped. `CellService::stop()` uses the `shutdown` arm to request
+/// a clean exit and then awaits the join handle.
 pub(super) async fn run_cell_loop(
     rx: &mut mpsc::Receiver<BaseToCellMsg>,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -20,6 +24,7 @@ pub(super) async fn run_cell_loop(
     mut engine: ChainEngine,
     db_pool: Option<Arc<PgPool>>,
     spawn_records: Vec<spawner::SpawnRecord>,
+    shutdown: Arc<Notify>,
 ) {
     tracing::debug!("Cell service message loop started");
 
@@ -28,6 +33,10 @@ pub(super) async fn run_cell_loop(
 
     loop {
         tokio::select! {
+            _ = shutdown.notified() => {
+                tracing::info!("Cell service received shutdown signal — exiting loop");
+                break;
+            }
             msg = rx.recv() => {
                 match msg {
                     Some(BaseToCellMsg::ReloadContentEngine) => {

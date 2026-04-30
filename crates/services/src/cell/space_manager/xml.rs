@@ -40,16 +40,31 @@ impl SpaceManager {
                     let mut min_y: i32 = 0;
                     let mut max_y: i32 = 0;
 
-                    for attr in e.attributes().flatten() {
-                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                    for attr_res in e.attributes() {
+                        let attr = attr_res.map_err(|err| {
+                            format!("spaces.xml: malformed Space attribute: {err}")
+                        })?;
+                        let key = std::str::from_utf8(attr.key.as_ref()).map_err(|err| {
+                            format!("spaces.xml: non-UTF8 attribute key: {err}")
+                        })?;
+                        let val = std::str::from_utf8(&attr.value).map_err(|err| {
+                            format!("spaces.xml: non-UTF8 value for {key}: {err}")
+                        })?;
                         match key {
                             "WorldName" => world_name = val.to_string(),
                             "Instanced" => instanced = val == "true",
-                            "MinX" => min_x = val.parse().unwrap_or(0),
-                            "MaxX" => max_x = val.parse().unwrap_or(0),
-                            "MinY" => min_y = val.parse().unwrap_or(0),
-                            "MaxY" => max_y = val.parse().unwrap_or(0),
+                            "MinX" => min_x = val.parse().map_err(|err| {
+                                format!("spaces.xml: MinX={val:?} not a valid i32: {err}")
+                            })?,
+                            "MaxX" => max_x = val.parse().map_err(|err| {
+                                format!("spaces.xml: MaxX={val:?} not a valid i32: {err}")
+                            })?,
+                            "MinY" => min_y = val.parse().map_err(|err| {
+                                format!("spaces.xml: MinY={val:?} not a valid i32: {err}")
+                            })?,
+                            "MaxY" => max_y = val.parse().map_err(|err| {
+                                format!("spaces.xml: MaxY={val:?} not a valid i32: {err}")
+                            })?,
                             _ => {}
                         }
                     }
@@ -93,9 +108,16 @@ impl SpaceManager {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e)) if e.name().as_ref() == b"Space" => {
                     let mut world_name = String::new();
-                    for attr in e.attributes().flatten() {
-                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                    for attr_res in e.attributes() {
+                        let attr = attr_res.map_err(|err| {
+                            format!("cell_spaces.xml: malformed Space attribute: {err}")
+                        })?;
+                        let key = std::str::from_utf8(attr.key.as_ref()).map_err(|err| {
+                            format!("cell_spaces.xml: non-UTF8 attribute key: {err}")
+                        })?;
+                        let val = std::str::from_utf8(&attr.value).map_err(|err| {
+                            format!("cell_spaces.xml: non-UTF8 value for {key}: {err}")
+                        })?;
                         if key == "WorldName" {
                             world_name = val.to_string();
                         }

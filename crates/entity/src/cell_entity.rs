@@ -9,7 +9,7 @@
 //! This corresponds to the C++ `CellEntity` / `Entity` classes in
 //! `src/server/CellApp/`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -192,8 +192,10 @@ pub struct CellEntity {
     /// Ticks until next AI action (count-down from ai tick interval).
     pub ai_cooldown_ticks: u32,
     /// Navmesh path waypoints the NPC is currently following.
-    /// Empty = not moving. Each tick consumes the next waypoint.
-    pub nav_path: Vec<Vector3>,
+    /// Empty = not moving. Each tick pops the next waypoint off the front.
+    /// Stored as `VecDeque` so per-tick `pop_front` is O(1) instead of the
+    /// O(n) shift `Vec::remove(0)` would do.
+    pub nav_path: VecDeque<Vector3>,
     /// Movement speed in world units per tick.
     pub move_speed: f32,
 
@@ -315,7 +317,7 @@ impl CellEntity {
             threat_list: HashMap::new(),
             spawn_position: None,
             ai_cooldown_ticks: 0,
-            nav_path: Vec::new(),
+            nav_path: VecDeque::new(),
             move_speed: 0.6, // ~0.6 world units per 100ms tick = 6 units/sec
             saved_missions_loaded: false,
             loot_table_id: None,
