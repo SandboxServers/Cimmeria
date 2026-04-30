@@ -227,7 +227,10 @@ pub(super) async fn execute_actions(
                     None
                 };
 
-                if let Some(&target_id) = space_mgr.find_entities_by_template(entity_id, slot).first() {
+                // Update every entity sharing this template -- `.first()` would
+                // arbitrarily pick one (HashMap iteration order is nondeterministic),
+                // leaving sibling entities with stale interaction flags.
+                for target_id in space_mgr.find_entities_by_template(entity_id, slot) {
                     let target_eid = cimmeria_common::EntityId(target_id as i32);
                     let in_witness_set = space_mgr.get_entity(entity_id)
                         .map_or(false, |p| p.witnesses.contains(&target_eid));
@@ -469,7 +472,10 @@ async fn send_interaction_update_if_visible(
     space_mgr: &SpaceManager,
     label: &str,
 ) {
-    if let Some(&target_id) = space_mgr.find_entities_by_template(entity_id, slot).first() {
+    // Update every entity sharing this template instead of an arbitrary
+    // first match -- spaces with multiple template-equal NPCs would otherwise
+    // get a single nondeterministic update.
+    for target_id in space_mgr.find_entities_by_template(entity_id, slot) {
         let target_eid = cimmeria_common::EntityId(target_id as i32);
         let in_witness_set = space_mgr.get_entity(entity_id)
             .map_or(false, |p| p.witnesses.contains(&target_eid));
