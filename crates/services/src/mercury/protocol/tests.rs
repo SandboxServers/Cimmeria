@@ -205,7 +205,7 @@ fn resource_fragment_uses_u16_length_prefix() {
     let word_len = u16::from_le_bytes([len_lo, len_hi]);
 
     // Expected payload: dataId(2) + chunkId(1) + flags(1) + msgType(1) +
-    //                   categoryId(4) + elementId(4) + xml(22) = 35
+    //                   categoryId(4) + elementId(4) + xml(23) = 36
     let expected_payload_len: u16 = 2 + 1 + 1 + 1 + 4 + 4 + xml.len() as u16;
     assert_eq!(
         word_len, expected_payload_len,

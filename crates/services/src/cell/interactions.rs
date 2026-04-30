@@ -490,9 +490,9 @@ mod tests {
     async fn interact_requires_target_in_range() {
         // Create a space manager with entities
         let mut mgr = super::super::space_manager::SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
@@ -516,9 +516,9 @@ mod tests {
     #[tokio::test]
     async fn interact_sends_dialog_when_nearby() {
         let mut mgr = super::super::space_manager::SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
@@ -552,9 +552,9 @@ mod tests {
     #[tokio::test]
     async fn interact_sends_vendor_when_nearby() {
         let mut mgr = super::super::space_manager::SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
@@ -586,9 +586,9 @@ mod tests {
     #[tokio::test]
     async fn interact_no_response_for_hostile() {
         let mut mgr = super::super::space_manager::SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();

@@ -3,13 +3,13 @@ use super::super::space_manager::SpaceManager;
 
 fn make_manager_with_worlds() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
-    let spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+    let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces>
     <Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" />
     <Space WorldName="Castle" Instanced="false" MinX="0" MaxX="2400" MinY="0" MaxY="2400" />
     <Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
 </Spaces>"#;
-    let cell_spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+    let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces>
     <Space WorldName="Agnos" />
     <Space WorldName="Castle" />

@@ -88,6 +88,10 @@ pub async fn load_regions_from_db(
         // Python workaround: single-point cylinder → 4-point bounding box
         // Reference: GenericRegion.workaround() — if 1 point and radius > 0,
         // expand to an axis-aligned box centered on the point.
+        //
+        // The asymmetric elevation on the fourth corner (only one corner uses
+        // py + h while the other three use py) is intentional and matches the
+        // Python original — do not "normalize" by raising all four corners.
         if points.len() == 1 && radius > 0.0 {
             let [px, py, pz] = points[0];
             let r = radius;
@@ -104,8 +108,8 @@ pub async fn load_regions_from_db(
             set_id,
             name: r.get("name"),
             world_name: r.get("world_name"),
-            radius: radius as f32,
-            height: height as f32,
+            radius,
+            height,
             flags: r.get("flags"),
             points,
         });

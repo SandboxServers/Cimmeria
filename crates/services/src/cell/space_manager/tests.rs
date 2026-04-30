@@ -3,7 +3,7 @@ use super::super::messages::CellToBaseMsg;
 use cimmeria_common::{EntityId, SpaceId, Vector3};
 use cimmeria_entity::cell_entity::CellEntity;
 
-const TEST_SPACES_XML: &str = r#"<?xml version="1.0" charset="UTF-8"?>
+const TEST_SPACES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces>
     <Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" />
     <Space WorldName="Castle" Instanced="false" MinX="0" MaxX="2400" MinY="0" MaxY="2400" />
@@ -11,7 +11,7 @@ const TEST_SPACES_XML: &str = r#"<?xml version="1.0" charset="UTF-8"?>
     <Space WorldName="SGC_W1" Instanced="true" MinX="-400" MaxX="400" MinY="-400" MaxY="800" />
 </Spaces>"#;
 
-const TEST_CELL_SPACES_XML: &str = r#"<?xml version="1.0" charset="UTF-8"?>
+const TEST_CELL_SPACES_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces>
     <Space WorldName="Agnos" />
     <Space WorldName="Castle" />
@@ -157,7 +157,7 @@ fn full_xml_file_loading() {
     // Test with the actual XML content (same structure as files)
     let mut mgr = SpaceManager::new(1);
 
-    let spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+    let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces>
     <Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" />
     <Space WorldName="Agnos_Library" Instanced="false" MinX="-600" MaxX="600" MinY="-600" MaxY="600" />
@@ -167,7 +167,7 @@ fn full_xml_file_loading() {
     <Space WorldName="SGC_W1" Instanced="true" MinX="-400" MaxX="400" MinY="-400" MaxY="800" />
 </Spaces>"#;
 
-    let cell_spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+    let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces>
     <Space WorldName="Agnos" />
     <Space WorldName="Agnos_Library" />

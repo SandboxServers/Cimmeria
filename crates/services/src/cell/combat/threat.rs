@@ -16,10 +16,12 @@ pub const NPC_ATTACK_RANGE: f32 = 30.0;
 /// Was incorrectly 597 ("Heal Focus") — a self-heal, not an attack.
 pub const NPC_DEFAULT_ABILITY: i32 = 592;
 
-/// Generate threat on an NPC target from a player attacker.
+/// Generate threat on an NPC target from an attacker.
 ///
 /// Transitions the NPC from Idle to Fighting on first hit, and accumulates
-/// threat so the NPC knows who to attack back.
+/// threat so the NPC knows who to attack back. The attacker can be any
+/// entity (player or NPC) — only the target's `is_player` flag gates the
+/// state transition.
 pub fn generate_threat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
     attacker_id: u32,

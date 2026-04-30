@@ -271,9 +271,9 @@ mod tests {
 
     fn space_mgr_with_player(entity_id: u32, player_id: i32) -> SpaceManager {
         let mut mgr = SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
@@ -348,9 +348,9 @@ mod tests {
     async fn missing_player_id_drops_request() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
         let mut space_mgr = SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" charset="UTF-8"?>
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         space_mgr.parse_spaces_xml(spaces_xml).unwrap();
         space_mgr.create_startup_spaces(cell_spaces_xml).unwrap();

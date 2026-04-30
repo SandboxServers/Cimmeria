@@ -7,14 +7,15 @@
 
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED, MISSION_NOT_ACTIVE};
 
 /// Populate mission status and step status context params from entity state.
 pub(super) fn populate_mission_context(entity: &CellEntity, ctx: &mut ExecutionContext) {
     for mission in entity.missions.all_missions() {
         let status_str = match mission.status {
-            0 => "not_active",
-            1 => "active",
-            2 => "completed",
+            MISSION_NOT_ACTIVE => "not_active",
+            MISSION_ACTIVE => "active",
+            MISSION_COMPLETED => "completed",
             _ => "not_active",
         };
         ctx.set_param(
