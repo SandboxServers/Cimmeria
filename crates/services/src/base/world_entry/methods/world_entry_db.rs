@@ -8,7 +8,7 @@ use cimmeria_entity::manager::EntityManager;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{WorldEntryInfo, DEFAULT_SPACE_ID, SGWPLAYER_CLASS_ID};
 
-use super::super::world_entry::resolve_space_id_fallback;
+use super::super::space_registry::resolve_space_id_fallback;
 
 /// Sentinel `player_entity_id` returned by [`query_world_entry`] when no real
 /// entity could be allocated/registered (DB error or character not found).

@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx};
-use super::super::super::helpers::send_to_witness;
-use super::super::super::ConnectedClientState;
+use super::super::super::super::helpers::send_to_witness;
+use super::super::super::super::ConnectedClientState;
 use super::super::vendor::helpers::sync_bandolier_after_inventory_change;
 
 const INVENTORY_ITEM_SELECT: &str = r#"

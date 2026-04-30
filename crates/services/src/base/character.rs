@@ -179,7 +179,7 @@ pub(crate) async fn handle_request_character_visuals(
             // identical query in player_load/core.rs (CONTAINER_BANDOLIER and
             // EQUIPMENT_CONTAINERS). Bind them via ANY/parameter so the two
             // sites stay in sync without depending on string-literal identity.
-            use super::world_entry_methods::player_load::core::{
+            use super::world_entry::methods::player_load::core::{
                 CONTAINER_BANDOLIER, EQUIPMENT_CONTAINERS,
             };
             let item_visuals: Vec<String> = match sqlx::query_scalar(

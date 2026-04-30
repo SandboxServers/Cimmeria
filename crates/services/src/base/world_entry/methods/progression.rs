@@ -8,8 +8,8 @@ use tokio::net::UdpSocket;
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
 use crate::mercury::{build_entity_method_packet, method_idx};
-use super::super::helpers::send_to_witness;
-use super::super::ConnectedClientState;
+use super::super::super::helpers::send_to_witness;
+use super::super::super::ConnectedClientState;
 
 const LEVEL_XP: [u64; 21] = [
     0, 100, 200, 300, 600, 1_000, 1_600, 2_500, 4_000, 6_000, 9_000, 14_000, 18_000, 25_000,

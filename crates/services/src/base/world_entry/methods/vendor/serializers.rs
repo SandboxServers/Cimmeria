@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use sqlx::{PgPool, Postgres, Transaction};
 
-use super::super::super::resources::bag_max_slots;
+use super::super::super::super::resources::bag_max_slots;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoreBuyCost {

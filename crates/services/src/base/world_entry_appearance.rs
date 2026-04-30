@@ -90,7 +90,7 @@ pub(crate) async fn handle_on_client_ready(
     );
 
     // Query saved missions from DB before sending InitPlayerState
-    let saved_missions = super::world_entry_methods::query_saved_missions(
+    let saved_missions = super::world_entry::methods::query_saved_missions(
         db_pool, pending.player_id,
     ).await;
 
@@ -127,7 +127,7 @@ pub(crate) async fn handle_on_client_ready(
             }
         };
 
-        let items = super::world_entry_methods::player_load::meta::query_bandolier_items(
+        let items = super::world_entry::methods::player_load::meta::query_bandolier_items(
             db_pool,
             pending.player_id,
         ).await;

@@ -7,9 +7,9 @@ use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
-use super::super::super::helpers::send_to_witness;
-use super::super::super::resources::bag_max_slots;
-use super::super::super::ConnectedClientState;
+use super::super::super::super::helpers::send_to_witness;
+use super::super::super::super::resources::bag_max_slots;
+use super::super::super::super::ConnectedClientState;
 use super::core::send_full_inventory_update;
 use super::grant::item_allows_container;
 use super::super::vendor::helpers::sync_bandolier_after_inventory_change;

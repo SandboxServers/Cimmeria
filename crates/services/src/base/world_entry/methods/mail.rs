@@ -8,8 +8,8 @@ use tokio::net::UdpSocket;
 use crate::cell::mail;
 use crate::cell::messages::MailOp;
 use crate::mercury::{build_entity_method_packet, method_idx};
-use super::super::helpers::send_to_witness;
-use super::super::ConnectedClientState;
+use super::super::super::helpers::send_to_witness;
+use super::super::super::ConnectedClientState;
 
 /// Handle a mail request from CellService by querying the DB and sending results to the client.
 pub async fn handle_mail_request(

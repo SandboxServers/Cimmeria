@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
-use super::super::super::ConnectedClientState;
+use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
 use super::super::inventory::grant::normalize_item_ids;
 
