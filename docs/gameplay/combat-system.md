@@ -122,7 +122,7 @@ Each entry: { StatID: INT32, Delta: INT32, DamageCode: INT32, StatResultCode: IN
 
 Ranged abilities declare a `required_ammo` cost. On every `useAbility`, the cell fire-gate ([`crates/services/src/cell/abilities.rs:259-281`](../../crates/services/src/cell/abilities.rs#L259)) checks:
 
-```
+```text
 if required_ammo > 0 && entity.is_player && active_ammo() < required_ammo:
     log "useAbility: not enough ammo"
     return  (fire aborts; no effect dispatch, no cooldown)

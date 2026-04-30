@@ -150,12 +150,16 @@ async fn handle_reload(
         std::time::Duration::from_secs_f32(total_time),
     );
 
-    // Defer the actual ammo refill until after the warmup so the player can't
-    // fire the new magazine before the weapon animation completes. The fire
-    // path (cell::abilities::handle_use_ability) checks reload_complete_at and
-    // promotes the pending refill on first attempt past the deadline.
+    // Defer the actual ammo refill until after the warmup. The reload-completion
+    // tick promotes pending refills; the fire-path gates on `reload_complete_at`
+    // to prevent shooting during the warmup.
+    //
+    // Pin the reload to the slot that started it. If the player swaps weapons
+    // mid-reload, the tick must refill *this* slot — not whatever slot is
+    // active when the deadline elapses.
     let warmup_duration = std::time::Duration::from_secs_f32(warmup.max(0.0));
     entity.reload_complete_at = Some(std::time::Instant::now() + warmup_duration);
+    entity.reload_slot_id = Some(entity.active_bandolier_slot);
 
     tracing::info!(entity_id, old, target = target_ammo, warmup, cooldown, "Weapon reload started");
 

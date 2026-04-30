@@ -174,8 +174,13 @@ pub struct CellEntity {
     /// When `Some(t)`, a reload is in progress and the magazine is not yet
     /// available; fire paths must reject until `Instant::now() >= t`. The
     /// reload-completion tick (cell::service::reload_completion_tick) refills
-    /// the active slot via `refill_active_slot()` and clears this field.
+    /// the slot pinned by `reload_slot_id` and clears both fields.
     pub reload_complete_at: Option<std::time::Instant>,
+    /// The bandolier slot that initiated the in-flight reload. Pinning to
+    /// this slot (rather than `active_bandolier_slot` at completion time)
+    /// prevents a mid-reload weapon swap from refilling the wrong magazine.
+    /// `None` whenever `reload_complete_at` is `None`.
+    pub reload_slot_id: Option<i32>,
 
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
@@ -305,6 +310,7 @@ impl CellEntity {
             components: Vec::new(),
             state_field: 0,
             reload_complete_at: None,
+            reload_slot_id: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),
             spawn_position: None,

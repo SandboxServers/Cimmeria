@@ -11,3 +11,21 @@
 
 ALTER TABLE sgw_inventory
     ADD COLUMN IF NOT EXISTS cur_ammo_type integer NOT NULL DEFAULT 0;
+
+-- Guard against malformed payloads landing as durable corruption: ammo subtype
+-- IDs are always non-negative (0 sentinels "no explicit choice", positive
+-- values index into resources."EAmmoType"). PostgreSQL has no IF NOT EXISTS
+-- for CHECK constraints, so use a DO block for idempotency.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'sgw_inventory_cur_ammo_type_nonnegative_chk'
+          AND conrelid = 'sgw_inventory'::regclass
+    ) THEN
+        ALTER TABLE sgw_inventory
+            ADD CONSTRAINT sgw_inventory_cur_ammo_type_nonnegative_chk
+            CHECK (cur_ammo_type >= 0);
+    END IF;
+END $$;

@@ -395,9 +395,15 @@ pub enum CellToBaseMsg {
     /// `requestAmmoChange`, logout) — see Stage B/C/D in
     /// docs/gameplay/weapon-ammo-reload.md (TBD). `player_id` here matches the
     /// DB `character_id`, mirroring the field naming used by `ActiveSlotUpdate`.
+    ///
+    /// `expected_item_id` guards against TOCTOU: if the slot's item changes
+    /// between the cell sending this message and the base writing the row,
+    /// the SQL `WHERE type_id = $expected_item_id` clause skips the write
+    /// rather than scribbling stale ammo onto the new weapon.
     BandolierAmmoUpdate {
         player_id: i32,
         slot_id: i32,
+        expected_item_id: i32,
         current_ammo: i32,
         cur_ammo_type: i32,
     },

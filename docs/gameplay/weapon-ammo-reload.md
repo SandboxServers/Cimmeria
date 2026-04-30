@@ -20,7 +20,7 @@ Persistence is **batched**: dirty slots flush at natural drain points (reload co
 
 Per-slot ammo lives in **two mirrored places** on the cell entity, both written through `set_slot_ammo()`:
 
-```
+```text
                      CellEntity
    ┌─────────────────────────────────────────────┐
    │  bandolier_items: HashMap<i32, Bandolier… >│
@@ -51,7 +51,7 @@ Stat IDs `AMMO_SLOT_1..5` (49–53) are **bandolier-slot-relative**, not weapon-
 
 ## Wire flow — fire
 
-```
+```text
 Client                                         Cell                        Base
   │                                              │
   │ useAbility(abilityId, targetId) ───────────▶ │
@@ -85,9 +85,9 @@ Implementation: [`crates/services/src/cell/abilities.rs:259-281`](../../crates/s
 
 ## Wire flow — reload
 
-`requestReload(EReloadType)` is a Mercury **cell method** on `SGWPlayer` (def: [`entities/defs/SGWPlayer.def:794-797`](../../entities/defs/SGWPlayer.def#L794), opcode `0x14` = 86 — see [decompiled binding](../reverse-engineering/decompiled/14_standalone_named.c#L298900)).
+`requestReload(EReloadType)` is a Mercury **cell method** on `SGWPlayer` (def: [`entities/defs/SGWPlayer.def:794-797`](../../entities/defs/SGWPlayer.def#L794), wire opcode 86 / `0x56` — defined as `REQUEST_RELOAD` in [`crates/services/src/cell/cell_methods/player/constants.rs`](../../crates/services/src/cell/cell_methods/player/constants.rs); the `0x14` value in the [decompiled client binding](../reverse-engineering/decompiled/14_standalone_named.c#L298900) is a registration index, not the wire opcode).
 
-```
+```text
 Client                       Cell                                       Base / DB
   │ requestReload(0) ────────▶│
   │                           │ handle_reload (player/world.rs:121):
@@ -118,7 +118,7 @@ Matches legacy [`Reload.py`](../../python/cell/effects/Reload.py): the effect re
 
 ## `requestAmmoChange` flow
 
-```
+```text
 Client (player clicks an ammo subtype icon)
   │
   │ requestAmmoChange(item_id, ammo_type) ──▶ Cell
@@ -138,7 +138,7 @@ Def: [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities
 
 ## Active slot swap
 
-```
+```text
 Client → Cell:  requestActiveSlotChange(bag_id=3, slot_id)
                                         │
                                         │ if bag_id != 3: ignore (only bandolier has active slot)
@@ -211,7 +211,7 @@ Cross-reference: [npc-ai.md § Ammo Management](npc-ai.md#ammo-management).
 
 ## Sequence diagram (one shot + one reload)
 
-```
+```text
 Client                       Cell                              Base / DB
   │
   │ useAbility(596, 0) ───────▶│  active_ammo() = 5

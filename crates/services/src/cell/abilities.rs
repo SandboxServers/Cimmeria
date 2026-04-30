@@ -258,6 +258,18 @@ pub async fn handle_use_ability(
     // sole refill path, so the eager promotion that used to live here is gone.
     let required_ammo = ability_def.as_ref().map_or(0, |d| d.required_ammo);
 
+    // Block firing while a reload warmup is still pending. Without this, the
+    // player could fire during the reload animation — those shots would
+    // decrement against the pre-refill ammo and then be silently overwritten
+    // by the tick's refill, effectively granting free ammo.
+    if required_ammo > 0
+        && entity.is_player
+        && entity.reload_complete_at.is_some_and(|t| std::time::Instant::now() < t)
+    {
+        tracing::debug!(entity_id, ability_id, "useAbility: reload in progress, blocking fire");
+        return;
+    }
+
     let current_ammo = entity.active_ammo();
     if required_ammo > 0 && entity.is_player && current_ammo < required_ammo {
         tracing::debug!(entity_id, ability_id, current = current_ammo, required = required_ammo, "useAbility: not enough ammo");

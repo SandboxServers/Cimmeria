@@ -548,18 +548,9 @@ mod tests {
             pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02,
             world_stargates: vec![],
         };
-        let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
-        let enc = MercuryEncryption::from_session_key(TEST_KEY);
-
-        // Concatenate plaintext bodies across all fragments. Each fragment
-        // is `[flags:1][body...][footers:12]` so the body slice is `[1..len-12]`.
-        // For non-fragmented single packets the footers vary; this test only
-        // needs to find a stat tuple anywhere in the assembled bytes.
-        let mut all_bytes = Vec::new();
-        for pkt in &packets {
-            let pt = enc.decrypt(pkt).unwrap();
-            all_bytes.extend_from_slice(&pt);
-        }
+        // Assert against the raw, unfragmented mapLoaded body to avoid coupling
+        // the regression check to Mercury framing/footers.
+        let all_bytes = build_map_loaded_body(100, &data, &entry);
 
         // StatUpdate wire format (16 bytes per stat):
         //   stat_id:i32 LE | min:i32 LE | cur:i32 LE | max:i32 LE

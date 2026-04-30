@@ -680,28 +680,46 @@ async fn reload_completion_tick(
                 None => continue,
             };
 
-            if entity.refill_active_slot().is_none() {
-                // No bandolier item in the active slot — clear the deadline
-                // anyway so we don't loop forever, but skip the wire send.
-                entity.reload_complete_at = None;
-                tracing::debug!(entity_id, "reload tick: active slot empty, no refill");
+            // Refill the slot that *started* the reload, not whatever slot is
+            // currently active. Without pinning, a mid-reload weapon swap
+            // would mis-attribute the refill to the new weapon.
+            let slot_id = match entity.reload_slot_id {
+                Some(s) => s,
+                None => {
+                    // Defensive: shouldn't happen — reload_complete_at is only
+                    // set together with reload_slot_id. Clear and move on.
+                    entity.reload_complete_at = None;
+                    tracing::warn!(entity_id, "reload tick: deadline set without slot_id, clearing");
+                    continue;
+                }
+            };
+
+            // Look up the clip size for the pinned slot. If the slot is
+            // empty (item removed mid-reload), clear the deadline and skip
+            // the wire send rather than refilling nothing.
+            let clip_size = entity.bandolier_items.get(&slot_id).map(|i| i.clip_size);
+            let new_ammo = match clip_size {
+                Some(cs) => entity.set_slot_ammo(slot_id, cs),
+                None => None,
+            };
+            entity.reload_complete_at = None;
+            entity.reload_slot_id = None;
+
+            if new_ammo.is_none() {
+                tracing::debug!(entity_id, slot_id, "reload tick: pinned slot empty, no refill");
                 continue;
             }
-            entity.reload_complete_at = None;
 
             // The slot was marked dirty by `set_slot_ammo`; persistence drains
             // it via the BandolierAmmoUpdate below.
-            entity.bandolier_ammo_dirty.remove(&entity.active_bandolier_slot);
+            entity.bandolier_ammo_dirty.remove(&slot_id);
 
             let payload = entity.stats.serialize_dirty();
             entity.stats.clear_dirty();
 
-            let persist = entity.player_id.map(|pid| (
-                pid,
-                entity.active_bandolier_slot,
-                entity.active_ammo(),
-                entity.active_ammo_type(),
-            ));
+            let (item_id, cur_ammo, cur_ammo_type) = entity.bandolier_items.get(&slot_id)
+                .map_or((0, 0, 0), |i| (i.item_id, i.current_ammo, i.cur_ammo_type));
+            let persist = entity.player_id.map(|pid| (pid, slot_id, item_id, cur_ammo, cur_ammo_type));
 
             (payload, persist)
         };
@@ -715,10 +733,11 @@ async fn reload_completion_tick(
 
         // Phase 3: persistence. CellToBaseMsg::BandolierAmmoUpdate is consumed
         // by base's existing handler that writes `sgw_inventory.ammo`.
-        if let Some((player_id, slot_id, current_ammo, cur_ammo_type)) = persist {
+        if let Some((player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type)) = persist {
             let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
                 player_id,
                 slot_id,
+                expected_item_id,
                 current_ammo,
                 cur_ammo_type,
             }).await;
@@ -1108,6 +1127,7 @@ mod tests {
             e.reload_complete_at = Some(
                 std::time::Instant::now() - std::time::Duration::from_millis(1),
             );
+            e.reload_slot_id = Some(0);
             if let Some(s) = e.stats.get_mut(AMMO_SLOT_1) { s.update(0, 5, 30); s.clear_dirty(); }
         }
         // connect_entity inserts the entity into space.players, which
@@ -1122,6 +1142,7 @@ mod tests {
         assert_eq!(entity.bandolier_items[&0].current_ammo, 30, "magazine refilled to clip_size");
         assert_eq!(entity.stats.get(AMMO_SLOT_1).unwrap().cur, 30, "AmmoSlot1 stat refilled");
         assert!(entity.reload_complete_at.is_none(), "reload_complete_at cleared");
+        assert!(entity.reload_slot_id.is_none(), "reload_slot_id cleared");
         assert!(!entity.bandolier_ammo_dirty.contains(&0), "active slot's dirty flag drained");
 
         // ── Wire-message assertions ─────────────────────────────────────
@@ -1151,9 +1172,10 @@ mod tests {
         // Second: BandolierAmmoUpdate for persistence.
         let m2 = rx.try_recv().expect("expected BandolierAmmoUpdate");
         match m2 {
-            CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, current_ammo, cur_ammo_type } => {
+            CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type } => {
                 assert_eq!(player_id, 100);
                 assert_eq!(slot_id, 0);
+                assert_eq!(expected_item_id, 1, "should carry the slot's item_id for TOCTOU guard");
                 assert_eq!(current_ammo, 30);
                 assert_eq!(cur_ammo_type, 2);
             }
@@ -1265,19 +1287,19 @@ mod tests {
         mgr.destroy_entity(1);
 
         // Collect the two BandolierAmmoUpdate messages (HashSet drain order is
-        // unspecified, so build a slot_id → (current_ammo, type) map).
+        // unspecified, so build a slot_id → (item_id, current_ammo, type) map).
         let mut updates = std::collections::HashMap::new();
         while let Ok(msg) = rx.try_recv() {
             if let CellToBaseMsg::BandolierAmmoUpdate {
-                player_id, slot_id, current_ammo, cur_ammo_type
+                player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type
             } = msg {
                 assert_eq!(player_id, 100);
-                updates.insert(slot_id, (current_ammo, cur_ammo_type));
+                updates.insert(slot_id, (expected_item_id, current_ammo, cur_ammo_type));
             }
         }
         assert_eq!(updates.len(), 2, "expected one BandolierAmmoUpdate per dirty slot");
-        assert_eq!(updates.get(&0), Some(&(17, 1)));
-        assert_eq!(updates.get(&1), Some(&(4, 7)));
+        assert_eq!(updates.get(&0), Some(&(10, 17, 1)));
+        assert_eq!(updates.get(&1), Some(&(11, 4, 7)));
 
         // Entity removed from the space manager.
         assert!(mgr.get_entity(1).is_none(), "entity should be destroyed after teardown");
@@ -1326,10 +1348,11 @@ mod tests {
         let mut got_ammo_update = false;
         while let Ok(msg) = rx.try_recv() {
             if let CellToBaseMsg::BandolierAmmoUpdate {
-                player_id, slot_id, current_ammo, cur_ammo_type
+                player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type
             } = msg {
                 assert_eq!(player_id, 100);
                 assert_eq!(slot_id, 0);
+                assert_eq!(expected_item_id, 10, "should carry the slot's item_id");
                 assert_eq!(current_ammo, 17);
                 assert_eq!(cur_ammo_type, 1);
                 got_ammo_update = true;

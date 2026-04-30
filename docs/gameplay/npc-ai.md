@@ -21,7 +21,7 @@ Defined in `python/Atrea/enums.py` lines 228-239.
 
 | State | Value | Implemented | Notes |
 |-------|-------|-------------|-------|
-| `AI_STATE_Spawning` | 0 | YES | Loads weapon ammo, transitions to Idle |
+| `AI_STATE_Spawning` | 0 | PARTIAL | Transitions to Idle. Legacy loaded weapon ammo here; the Rust port skips this since the fire-gate short-circuits on `!is_player`. See [Ammo Management](#ammo-management). |
 | `AI_STATE_Idle` | 1 | YES | Waits for threat |
 | `AI_STATE_Investigating` | 2 | NO | POI-based investigation loop |
 | `AI_STATE_Fighting` | 3 | YES | Target selection, ability selection, fire |
@@ -37,7 +37,7 @@ Defined in `python/Atrea/enums.py` lines 228-239.
 ### State Transitions (Implemented)
 
 ```
-Spawning  -->  Idle       (doAiSpawnAction complete, ammo loaded)
+Spawning  -->  Idle       (doAiSpawnAction complete; ammo seed skipped — fire-gate short-circuits on !is_player)
 Idle      -->  Fighting   (threatGenerated() called while alive)
 Fighting  -->  Idle       (threat list empty after target pruning)
 Any       -->  Dead       (isDead() returns true, loop exits)

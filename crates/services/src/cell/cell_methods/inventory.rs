@@ -42,13 +42,14 @@ pub async fn flush_dirty_bandolier_ammo(
     // Drain into a Vec so we don't hold the borrow on `entity` across awaits.
     let dirty: Vec<i32> = entity.bandolier_ammo_dirty.drain().collect();
     for slot_id in dirty {
-        let (current_ammo, cur_ammo_type) = match entity.bandolier_items.get(&slot_id) {
-            Some(item) => (item.current_ammo, item.cur_ammo_type),
+        let (item_id, current_ammo, cur_ammo_type) = match entity.bandolier_items.get(&slot_id) {
+            Some(item) => (item.item_id, item.current_ammo, item.cur_ammo_type),
             None => continue,
         };
         let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,
+            expected_item_id: item_id,
             current_ammo,
             cur_ammo_type,
         }).await;
@@ -187,7 +188,7 @@ pub async fn dispatch(
                     // drains the active slot when reloads finish; this catches
                     // mid-magazine swaps where the player swaps weapons before
                     // reloading the empty one.
-                    let (prev_persist, new_ammo_type): (Option<(i32, i32, i32)>, Option<i32>) = {
+                    let (prev_persist, new_ammo_type): (Option<(i32, i32, i32, i32)>, Option<i32>) = {
                         let entity = match space_mgr.get_entity_mut(entity_id) {
                             Some(e) => e,
                             None => return true,
@@ -195,13 +196,29 @@ pub async fn dispatch(
                         let prev_slot = entity.active_bandolier_slot;
                         let prev_persist = if entity.bandolier_ammo_dirty.contains(&prev_slot) {
                             entity.bandolier_items.get(&prev_slot).map(|item| {
-                                (prev_slot, item.current_ammo, item.cur_ammo_type)
+                                (prev_slot, item.item_id, item.current_ammo, item.cur_ammo_type)
                             })
                         } else {
                             None
                         };
                         if prev_persist.is_some() {
                             entity.bandolier_ammo_dirty.remove(&prev_slot);
+                        }
+                        // Cancel any in-flight reload only if the swap actually
+                        // moves to a different slot. A same-slot "swap" (no-op
+                        // from the client, or replayed packet) must not cancel
+                        // an in-progress reload. Otherwise the fire-gate would
+                        // still block until the deadline, and the tick would
+                        // refill the original slot — but the player has moved
+                        // on; re-pressing R after swapping back restarts the
+                        // reload from scratch.
+                        if slot_id != prev_slot && entity.reload_complete_at.is_some() {
+                            entity.reload_complete_at = None;
+                            entity.reload_slot_id = None;
+                            tracing::debug!(
+                                entity_id, prev_slot, new_slot = slot_id,
+                                "active slot change cancelled in-flight reload"
+                            );
                         }
                         entity.active_bandolier_slot = slot_id;
                         let new_ammo_type = entity.bandolier_items
@@ -212,10 +229,11 @@ pub async fn dispatch(
 
                     // Phase 2: send messages now that the borrow is released.
                     if let Some(player_id) = player_id {
-                        if let Some((p_slot, current_ammo, cur_ammo_type)) = prev_persist {
+                        if let Some((p_slot, item_id, current_ammo, cur_ammo_type)) = prev_persist {
                             let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
                                 player_id,
                                 slot_id: p_slot,
+                                expected_item_id: item_id,
                                 current_ammo,
                                 cur_ammo_type,
                             }).await;
@@ -271,13 +289,26 @@ pub async fn dispatch(
                         Some(e) => e,
                         None => return true,
                     };
-                    let slot = entity.bandolier_items.iter()
-                        .find(|(_, item)| item.item_id == item_id)
-                        .map(|(s, _)| *s);
-                    let slot = match slot {
-                        Some(s) => s,
-                        None => {
+                    // Match all slots holding this item_id. The wire request
+                    // doesn't carry a slot/instance id, so duplicate weapons
+                    // are ambiguous — reject rather than guess. A future
+                    // protocol revision should add slot id to the message.
+                    let matches: Vec<i32> = entity.bandolier_items.iter()
+                        .filter(|(_, item)| item.item_id == item_id)
+                        .map(|(s, _)| *s)
+                        .collect();
+                    let slot = match matches.as_slice() {
+                        [s] => *s,
+                        [] => {
                             tracing::warn!(entity_id, item_id, "requestAmmoChange: item not in bandolier");
+                            return true;
+                        }
+                        ambiguous => {
+                            tracing::warn!(
+                                entity_id, item_id,
+                                slot_count = ambiguous.len(),
+                                "requestAmmoChange: ambiguous — multiple slots hold this item_id, rejecting"
+                            );
                             return true;
                         }
                     };
@@ -286,20 +317,22 @@ pub async fn dispatch(
                     // BandolierAmmoUpdate emitted below persists it now.
                     let item = entity.bandolier_items.get_mut(&slot).unwrap();
                     item.cur_ammo_type = ammo_type;
+                    let item_id_for_persist = item.item_id;
                     let current_ammo = item.current_ammo;
                     entity.bandolier_ammo_dirty.insert(slot);
                     entity.bandolier_ammo_dirty.remove(&slot);
                     let is_active = slot == entity.active_bandolier_slot;
                     let player_id = entity.player_id;
-                    (player_id, (slot, current_ammo, ammo_type), is_active)
+                    (player_id, (slot, item_id_for_persist, current_ammo, ammo_type), is_active)
                 };
 
                 // Phase 2: persist + (if active) refresh the client's ammo-type indicator.
                 if let Some(player_id) = player_id {
-                    let (slot_id, current_ammo, cur_ammo_type) = persist;
+                    let (slot_id, expected_item_id, current_ammo, cur_ammo_type) = persist;
                     let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
                         player_id,
                         slot_id,
+                        expected_item_id,
                         current_ammo,
                         cur_ammo_type,
                     }).await;
@@ -425,9 +458,10 @@ mod tests {
         // → ActiveSlotUpdate(1) → onEntityProperty(AmmoTypeId, slot1.cur_ammo_type=7).
         let m1 = rx.try_recv().expect("expected BandolierAmmoUpdate(prev slot)");
         match m1 {
-            CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, current_ammo, cur_ammo_type } => {
+            CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type } => {
                 assert_eq!(player_id, 100);
                 assert_eq!(slot_id, 0, "first swap msg should flush prev slot 0");
+                assert_eq!(expected_item_id, 10, "should carry slot 0's item_id for TOCTOU guard");
                 assert_eq!(current_ammo, 28);
                 assert_eq!(cur_ammo_type, 1);
             }
@@ -477,6 +511,59 @@ mod tests {
         assert_eq!(entity.active_bandolier_slot, 0);
     }
 
+    /// CodeRabbit #4: starting a reload on slot 0, swapping to slot 1, then
+    /// letting the warmup elapse must NOT refill slot 1 with slot 0's clip
+    /// size. The fix cancels the in-flight reload on swap, so the tick has
+    /// nothing to promote and slot 1's ammo stays where it was.
+    #[tokio::test]
+    async fn slot_swap_cancels_in_flight_reload() {
+        use crate::cell::content::build_engine;
+        use cimmeria_entity::cell_entity::BandolierItem;
+
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.bandolier_items.insert(0, BandolierItem {
+                item_id: 10, clip_size: 30, default_ammo_type: 1,
+                current_ammo: 5, cur_ammo_type: 1,
+            });
+            e.bandolier_items.insert(1, BandolierItem {
+                item_id: 11, clip_size: 12, default_ammo_type: 7,
+                current_ammo: 8, cur_ammo_type: 7,
+            });
+            e.active_bandolier_slot = 0;
+            // Simulate a reload of slot 0 currently warming up.
+            e.reload_complete_at = Some(
+                std::time::Instant::now() + std::time::Duration::from_secs(10),
+            );
+            e.reload_slot_id = Some(0);
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(64);
+        let engine = build_engine(None).await;
+
+        // Swap to slot 1.
+        let mut swap = Vec::with_capacity(8);
+        swap.extend_from_slice(&3i32.to_le_bytes());
+        swap.extend_from_slice(&1i32.to_le_bytes());
+        dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &swap, &tx, &mut mgr, &engine).await;
+
+        let entity = mgr.get_entity(1).unwrap();
+        assert!(entity.reload_complete_at.is_none(), "swap should cancel in-flight reload");
+        assert!(entity.reload_slot_id.is_none(), "swap should clear pinned slot");
+        assert_eq!(entity.bandolier_items[&0].current_ammo, 5, "cancelled reload must NOT refill slot 0");
+        assert_eq!(entity.bandolier_items[&1].current_ammo, 8, "slot 1 untouched");
+        assert_eq!(entity.active_bandolier_slot, 1);
+
+        // Drain the rx so the channel doesn't error if assertions above
+        // succeeded (slot-swap emits ActiveSlotUpdate and onEntityProperty).
+        while rx.try_recv().is_ok() {}
+    }
+
     /// Stage E: requestAmmoChange must update the slot's `cur_ammo_type`,
     /// emit exactly one BandolierAmmoUpdate (drained immediately, NOT pending
     /// for logout flush), and — when the slot is active — push an
@@ -514,9 +601,10 @@ mod tests {
         // First message: BandolierAmmoUpdate carrying the new type + existing ammo.
         let m1 = rx.try_recv().expect("expected BandolierAmmoUpdate");
         match m1 {
-            CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, current_ammo, cur_ammo_type } => {
+            CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type } => {
                 assert_eq!(player_id, 100);
                 assert_eq!(slot_id, 0);
+                assert_eq!(expected_item_id, 42, "should carry the slot's item_id for TOCTOU guard");
                 assert_eq!(current_ammo, 20);
                 assert_eq!(cur_ammo_type, 3);
             }
