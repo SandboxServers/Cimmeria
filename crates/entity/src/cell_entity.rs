@@ -165,17 +165,22 @@ pub struct CellEntity {
     pub state_field: u32,
 
     // ── Ammo state ────────────────────────────────────────────────────────────
-    /// Current ammo count for active bandolier weapon.
-    pub current_ammo: i32,
-    /// Maximum ammo for the active weapon (clip size).
-    pub max_ammo: i32,
-    /// Ammo type enum value for `onEntityProperty(AmmoTypeId)`.
-    pub ammo_type: i32,
+    //
+    // Per-slot ammo lives on `BandolierItem` (`current_ammo`, `cur_ammo_type`)
+    // and on the `Stat[AMMO_SLOT_1+slot]` map. Use `active_ammo()`,
+    // `active_clip_size()`, `active_ammo_type()`, and `set_slot_ammo()` to
+    // read and write — never re-introduce a shadow scalar.
+
     /// When `Some(t)`, a reload is in progress and the magazine is not yet
-    /// available; fire paths must reject until `Instant::now() >= t` and on
-    /// elapse refill `current_ammo` to `max_ammo`. Set by RequestReload, cleared
-    /// on first fire attempt past the deadline.
+    /// available; fire paths must reject until `Instant::now() >= t`. The
+    /// reload-completion tick (cell::service::reload_completion_tick) refills
+    /// the slot pinned by `reload_slot_id` and clears both fields.
     pub reload_complete_at: Option<std::time::Instant>,
+    /// The bandolier slot that initiated the in-flight reload. Pinning to
+    /// this slot (rather than `active_bandolier_slot` at completion time)
+    /// prevents a mid-reload weapon swap from refilling the wrong magazine.
+    /// `None` whenever `reload_complete_at` is `None`.
+    pub reload_slot_id: Option<i32>,
 
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
@@ -216,6 +221,12 @@ pub struct CellEntity {
 
     /// Player's bandolier items (quick-access equipment slots).
     pub bandolier_items: HashMap<i32, BandolierItem>,
+
+    /// Slot ids whose `current_ammo`/`cur_ammo_type` have changed since the
+    /// last persistence flush. Stage A wires this in but doesn't drain it —
+    /// stages B/C/D read/clear this on reload completion, slot swap, ammo
+    /// change, and logout.
+    pub bandolier_ammo_dirty: HashSet<i32>,
 }
 
 /// An item in a dead NPC's loot list, ready for display to players.
@@ -240,6 +251,12 @@ pub struct BandolierItem {
     pub clip_size: i32,
     /// Default ammo type for weapons.
     pub default_ammo_type: i32,
+    /// Remaining ammo in this slot's magazine. Per-slot, persisted as
+    /// `sgw_inventory.ammo`.
+    pub current_ammo: i32,
+    /// Currently selected ammo subtype (defaults to `default_ammo_type`).
+    /// Persisted per-slot — players can pick a non-default subtype per weapon.
+    pub cur_ammo_type: i32,
 }
 
 /// NPC AI state machine.
@@ -292,10 +309,8 @@ impl CellEntity {
             body_set: None,
             components: Vec::new(),
             state_field: 0,
-            current_ammo: 0,
-            max_ammo: 0,
-            ammo_type: 0,
             reload_complete_at: None,
+            reload_slot_id: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),
             spawn_position: None,
@@ -310,6 +325,7 @@ impl CellEntity {
             vendor_entity: None,
             active_bandolier_slot: 0,
             bandolier_items: HashMap::new(),
+            bandolier_ammo_dirty: HashSet::new(),
         }
     }
 
@@ -343,6 +359,58 @@ impl CellEntity {
     /// Uses squared distance comparison to avoid a square root.
     pub fn is_in_aoi(&self, other_pos: &Vector3) -> bool {
         self.position.distance_squared_to(other_pos) <= self.aoi_radius * self.aoi_radius
+    }
+
+    // ── Bandolier ammo helpers ───────────────────────────────────────────────
+    //
+    // Per-slot ammo lives on `BandolierItem.current_ammo` and is mirrored to
+    // the `Stat[AMMO_SLOT_1+slot]` map. These helpers are the read/write path
+    // for fire, reload, slot swap, and ammo-change; the shadow scalars that
+    // used to live on `CellEntity` were removed in Stage C.
+
+    /// Read the active slot's current ammo, or 0 if no item equipped.
+    pub fn active_ammo(&self) -> i32 {
+        self.bandolier_items
+            .get(&self.active_bandolier_slot)
+            .map_or(0, |i| i.current_ammo)
+    }
+
+    /// Read the active slot's clip size, or 0 if no item equipped.
+    pub fn active_clip_size(&self) -> i32 {
+        self.bandolier_items
+            .get(&self.active_bandolier_slot)
+            .map_or(0, |i| i.clip_size)
+    }
+
+    /// Read the active slot's selected ammo type, or 0 if no item equipped.
+    pub fn active_ammo_type(&self) -> i32 {
+        self.bandolier_items
+            .get(&self.active_bandolier_slot)
+            .map_or(0, |i| i.cur_ammo_type)
+    }
+
+    /// Set ammo for a slot, mirroring to the AmmoSlot{N} stat. Returns the
+    /// clamped value, or `None` if the slot is unequipped.
+    ///
+    /// Marks the slot dirty in `bandolier_ammo_dirty` for batched persistence.
+    pub fn set_slot_ammo(&mut self, slot_id: i32, current: i32) -> Option<i32> {
+        let item = self.bandolier_items.get_mut(&slot_id)?;
+        item.current_ammo = current.clamp(0, item.clip_size);
+        let clamped = item.current_ammo;
+        let stat_id = crate::stats::AMMO_SLOT_1 + slot_id;
+        if let Some(stat) = self.stats.get_mut(stat_id) {
+            stat.set_current(clamped);
+        }
+        self.bandolier_ammo_dirty.insert(slot_id);
+        Some(clamped)
+    }
+
+    /// Refill the active slot's magazine to its `clip_size`. Returns the new
+    /// ammo value, or `None` if no slot is equipped.
+    pub fn refill_active_slot(&mut self) -> Option<i32> {
+        let slot = self.active_bandolier_slot;
+        let max = self.bandolier_items.get(&slot).map(|i| i.clip_size)?;
+        self.set_slot_ammo(slot, max)
     }
 }
 
@@ -446,11 +514,15 @@ mod tests {
     // ── New field defaults ─────────────────────────────────────────────────
 
     #[test]
-    fn new_entity_ammo_defaults_zero() {
+    fn new_entity_ammo_defaults_empty() {
         let entity = make_entity();
-        assert_eq!(entity.current_ammo, 0);
-        assert_eq!(entity.max_ammo, 0);
-        assert_eq!(entity.ammo_type, 0);
+        // Stage C: shadow scalars are gone — assert the helper-derived view
+        // (no items in bandolier => zero everything) and that no slot is dirty.
+        assert_eq!(entity.active_ammo(), 0);
+        assert_eq!(entity.active_clip_size(), 0);
+        assert_eq!(entity.active_ammo_type(), 0);
+        assert!(entity.bandolier_items.is_empty());
+        assert!(entity.bandolier_ammo_dirty.is_empty());
     }
 
     #[test]
@@ -508,5 +580,102 @@ mod tests {
         let spawn = Vector3::new(100.0, 5.0, 200.0);
         entity.spawn_position = Some(spawn);
         assert_eq!(entity.spawn_position.unwrap(), spawn);
+    }
+
+    // ── Bandolier ammo helpers ──────────────────────────────────────────────
+
+    fn make_bandolier_item(item_id: i32, clip: i32) -> BandolierItem {
+        BandolierItem {
+            item_id,
+            clip_size: clip,
+            default_ammo_type: 1,
+            current_ammo: clip,
+            cur_ammo_type: 1,
+        }
+    }
+
+    #[test]
+    fn active_ammo_helpers_with_no_item_return_zero() {
+        let entity = make_entity();
+        assert_eq!(entity.active_ammo(), 0);
+        assert_eq!(entity.active_clip_size(), 0);
+        assert_eq!(entity.active_ammo_type(), 0);
+    }
+
+    #[test]
+    fn active_ammo_helpers_read_from_active_slot() {
+        let mut entity = make_entity();
+        entity.active_bandolier_slot = 1;
+        entity.bandolier_items.insert(0, make_bandolier_item(100, 30));
+        entity.bandolier_items.insert(1, BandolierItem {
+            item_id: 200, clip_size: 12, default_ammo_type: 2,
+            current_ammo: 8, cur_ammo_type: 2,
+        });
+
+        assert_eq!(entity.active_ammo(), 8);
+        assert_eq!(entity.active_clip_size(), 12);
+        assert_eq!(entity.active_ammo_type(), 2);
+    }
+
+    /// Seed an AmmoSlot stat so the `set_current()` clamp doesn't pin to 0.
+    /// Stage B's world-entry init does this for real; tests have to mirror it
+    /// because Stage A leaves the helper callable but unseeded by default.
+    fn seed_ammo_stat(entity: &mut CellEntity, slot_id: i32, clip: i32) {
+        let stat_id = crate::stats::AMMO_SLOT_1 + slot_id;
+        if let Some(stat) = entity.stats.get_mut(stat_id) {
+            stat.update(0, clip, clip);
+            stat.clear_dirty();
+        }
+    }
+
+    #[test]
+    fn set_slot_ammo_clamps_and_marks_dirty() {
+        let mut entity = make_entity();
+        entity.bandolier_items.insert(0, make_bandolier_item(100, 30));
+        seed_ammo_stat(&mut entity, 0, 30);
+
+        // Clamp above clip_size.
+        let result = entity.set_slot_ammo(0, 999);
+        assert_eq!(result, Some(30));
+        assert!(entity.bandolier_ammo_dirty.contains(&0));
+        assert_eq!(entity.stats.get(crate::stats::AMMO_SLOT_1).unwrap().cur, 30);
+
+        // Clamp below zero.
+        entity.bandolier_ammo_dirty.clear();
+        let result = entity.set_slot_ammo(0, -5);
+        assert_eq!(result, Some(0));
+        assert!(entity.bandolier_ammo_dirty.contains(&0));
+        assert_eq!(entity.stats.get(crate::stats::AMMO_SLOT_1).unwrap().cur, 0);
+    }
+
+    #[test]
+    fn set_slot_ammo_unequipped_returns_none() {
+        let mut entity = make_entity();
+        let result = entity.set_slot_ammo(2, 5);
+        assert_eq!(result, None);
+        assert!(entity.bandolier_ammo_dirty.is_empty());
+    }
+
+    #[test]
+    fn refill_active_slot_fills_to_clip_size() {
+        let mut entity = make_entity();
+        entity.bandolier_items.insert(0, BandolierItem {
+            item_id: 100, clip_size: 30, default_ammo_type: 1,
+            current_ammo: 5, cur_ammo_type: 1,
+        });
+        seed_ammo_stat(&mut entity, 0, 30);
+
+        let result = entity.refill_active_slot();
+        assert_eq!(result, Some(30));
+        assert_eq!(entity.bandolier_items[&0].current_ammo, 30);
+        let stat = entity.stats.get(crate::stats::AMMO_SLOT_1).unwrap();
+        assert_eq!(stat.cur, 30);
+    }
+
+    #[test]
+    fn refill_active_slot_unequipped_returns_none() {
+        let mut entity = make_entity();
+        let result = entity.refill_active_slot();
+        assert_eq!(result, None);
     }
 }

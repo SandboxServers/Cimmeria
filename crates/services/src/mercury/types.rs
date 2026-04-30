@@ -77,10 +77,11 @@ pub struct PlayerLoadData {
     pub skin_color_id: i32,
     /// Active bandolier slot (0-based) from `sgw_player.bandolier_slot`.
     pub active_bandolier_slot: i32,
-    /// Active weapon clip size from `sgw_player.active_weapon_clip_size`.
-    pub active_weapon_clip_size: i32,
-    /// Active ammo type enum from `sgw_player.active_ammo_type`.
-    pub active_ammo_type: i32,
+    /// Bandolier items keyed by slot id. Loaded from `sgw_inventory` (container 3)
+    /// joined to `resources.items`. Stage C: this is the single source of truth
+    /// for the active weapon's clip size and ammo subtype on the wire — the old
+    /// shadow `active_weapon_clip_size` / `active_ammo_type` fields are gone.
+    pub bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
     /// Ability tree data (3 branches). Loaded from `resources.archetype_ability_tree`.
     pub ability_tree: cimmeria_entity::abilities::AbilityTreeData,
     /// Inventory items loaded from `sgw_inventory`.

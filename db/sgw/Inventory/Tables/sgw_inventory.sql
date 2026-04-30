@@ -15,7 +15,9 @@ CREATE TABLE sgw_inventory (
     character_id integer NOT NULL,
     bound boolean DEFAULT false NOT NULL,
     ammo integer DEFAULT 0 NOT NULL,
-    CONSTRAINT local_id_check CHECK ((item_id >= 10000))
+    cur_ammo_type integer DEFAULT 0 NOT NULL,
+    CONSTRAINT local_id_check CHECK ((item_id >= 10000)),
+    CONSTRAINT sgw_inventory_cur_ammo_type_nonnegative_chk CHECK ((cur_ammo_type >= 0))
 )
 INHERITS (sgw_inventory_base);
 

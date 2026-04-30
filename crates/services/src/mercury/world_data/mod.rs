@@ -178,8 +178,7 @@ mod tests {
             ability_tree: Default::default(),
             items: vec![],
             active_bandolier_slot: 0,
-            active_weapon_clip_size: 0,
-            active_ammo_type: 0,
+            bandolier_items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 42, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 42, &data, &entry);
@@ -215,8 +214,7 @@ mod tests {
             ability_tree: archetype_ability_tree(2),
             items: vec![],
             active_bandolier_slot: 0,
-            active_weapon_clip_size: 0,
-            active_ammo_type: 0,
+            bandolier_items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
@@ -255,8 +253,7 @@ mod tests {
             ability_tree: archetype_ability_tree(2),
             items: vec![],
             active_bandolier_slot: 0,
-            active_weapon_clip_size: 0,
-            active_ammo_type: 0,
+            bandolier_items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
@@ -305,8 +302,7 @@ mod tests {
             ability_tree: archetype_ability_tree(2),
             items: vec![],
             active_bandolier_slot: 0,
-            active_weapon_clip_size: 0,
-            active_ammo_type: 0,
+            bandolier_items: vec![],
         };
         let entry = WorldEntryInfo {
             player_entity_id: 100, space_id: 65552,
@@ -498,5 +494,106 @@ mod tests {
 
         let sk = u32::from_le_bytes([body[15], body[16], body[17], body[18]]);
         assert_eq!(sk, SKIN_TINTS[5], "skinTint should match SKIN_TINTS[5]");
+    }
+
+    /// Regression: at world entry the `mapLoaded` packet's `onStatUpdate`
+    /// must seed AmmoSlot{N} stats from the persisted bandolier ammo.
+    /// Previously it built a fresh `StatList::new()` (defaults `(0, 0, 0)`)
+    /// so on re-login the bandolier UI showed an empty mag until the next
+    /// reload — even though the cell-side `bandolier_items.current_ammo`
+    /// loaded correctly from `sgw_inventory.ammo`.
+    #[test]
+    fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
+        use cimmeria_entity::cell_entity::BandolierItem;
+
+        let data = PlayerLoadData {
+            player_id: 1,
+            level: 5,
+            player_name: "Reloader".into(),
+            extra_name: String::new(),
+            alignment: 1,
+            archetype: 2,
+            gender: 1,
+            bodyset: "BS_HumanMale.BS_HumanMale".into(),
+            components: vec![],
+            exp: 0,
+            naquadah: 0,
+            known_stargates: vec![],
+            abilities: vec![],
+            training_points: 0,
+            applied_science_points: 0,
+            blueprint_ids: vec![],
+            first_login: 0,
+            access_level: 0,
+            skin_color_id: 0,
+            ability_tree: archetype_ability_tree(2),
+            items: vec![],
+            active_bandolier_slot: 0,
+            // Slot 0: 8 of 15 (mid-mag), slot 2: 12 of 12 (full).
+            // Slot 1, 3, 4 are empty — their AmmoSlot stats must stay
+            // at the default (0, 0, 0).
+            bandolier_items: vec![
+                (0, BandolierItem {
+                    item_id: 100, clip_size: 15, default_ammo_type: 1,
+                    current_ammo: 8, cur_ammo_type: 1,
+                }),
+                (2, BandolierItem {
+                    item_id: 101, clip_size: 12, default_ammo_type: 7,
+                    current_ammo: 12, cur_ammo_type: 7,
+                }),
+            ],
+        };
+        let entry = WorldEntryInfo {
+            player_entity_id: 100, space_id: 65552,
+            pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02,
+            world_stargates: vec![],
+        };
+        // Assert against the raw, unfragmented mapLoaded body to avoid coupling
+        // the regression check to Mercury framing/footers.
+        let all_bytes = build_map_loaded_body(100, &data, &entry);
+
+        // StatUpdate wire format (16 bytes per stat):
+        //   stat_id:i32 LE | min:i32 LE | cur:i32 LE | max:i32 LE
+        //
+        // Stat IDs: AMMO_SLOT_1=49, AMMO_SLOT_3=51 (skipping the empty slot 1).
+        let ammo_slot_1_tuple: [u8; 16] = [
+            49, 0, 0, 0,   // stat_id = 49 (AMMO_SLOT_1)
+             0, 0, 0, 0,   // min = 0
+             8, 0, 0, 0,   // cur = 8
+            15, 0, 0, 0,   // max = 15
+        ];
+        let ammo_slot_3_tuple: [u8; 16] = [
+            51, 0, 0, 0,   // stat_id = 51 (AMMO_SLOT_3 — slot index 2)
+             0, 0, 0, 0,   // min = 0
+            12, 0, 0, 0,   // cur = 12
+            12, 0, 0, 0,   // max = 12
+        ];
+
+        let contains = |needle: &[u8]| {
+            all_bytes.windows(needle.len()).any(|w| w == needle)
+        };
+
+        assert!(
+            contains(&ammo_slot_1_tuple),
+            "mapLoaded onStatUpdate must include AmmoSlot1 = (0, 8, 15) from persisted bandolier item",
+        );
+        assert!(
+            contains(&ammo_slot_3_tuple),
+            "mapLoaded onStatUpdate must include AmmoSlot3 = (0, 12, 12) from persisted bandolier item",
+        );
+
+        // Empty slot 1 (stat id 50) must NOT appear with a non-zero cur value.
+        // We look for a slot-1 tuple matching some plausible stale value (15)
+        // to make sure no leak from elsewhere overwrote it.
+        let stale_slot_2: [u8; 16] = [
+            50, 0, 0, 0,
+             0, 0, 0, 0,
+            15, 0, 0, 0,
+            15, 0, 0, 0,
+        ];
+        assert!(
+            !contains(&stale_slot_2),
+            "empty slot 1 should not have stale clip_size in its AmmoSlot stat",
+        );
     }
 }

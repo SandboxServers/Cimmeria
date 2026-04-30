@@ -72,6 +72,18 @@ pub async fn handle_dial_gate(
         "Gate travel: initiating world transition"
     );
 
+    // Stage D: world transition destroys the cell entity and re-creates it on
+    // the destination world. Flush any pending bandolier ammo writes before
+    // teardown — anything still in `bandolier_ammo_dirty` after this is lost
+    // to the cross-world re-spawn.
+    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+        if let Some(player_id) = entity.player_id {
+            super::cell_methods::inventory::flush_dirty_bandolier_ammo(
+                entity, player_id, tx,
+            ).await;
+        }
+    }
+
     // Remove entity from current space (CellService side)
     space_mgr.destroy_entity(entity_id);
 

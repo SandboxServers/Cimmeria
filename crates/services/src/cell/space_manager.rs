@@ -116,6 +116,11 @@ pub struct SpaceManager {
     /// Loaded at startup so runtime item grants go into the correct inventory bag
     /// (e.g. mission items into INV_Mission, weapons into bandolier).
     pub item_containers: HashMap<i32, i32>,
+    /// Weapon defs (clip_size + default_ammo_type) keyed by item_id.
+    /// Loaded from `resources.items` at startup. Used by the content engine's
+    /// GrantItem path to seed bandolier slots when a weapon is granted at
+    /// runtime, so the client renders the correct empty magazine.
+    pub item_defs: HashMap<i32, super::spawner::WeaponDef>,
     /// Loot tables: loot_table_id → entries.
     /// Loaded from `resources.loot` at startup for NPC death loot generation.
     pub loot_tables: HashMap<i32, Vec<super::spawner::LootTableEntry>>,
@@ -145,6 +150,7 @@ impl SpaceManager {
             effect_defs: HashMap::new(),
             sequence_map: HashMap::new(),
             item_containers: HashMap::new(),
+            item_defs: HashMap::new(),
             loot_tables: HashMap::new(),
             respawners: Vec::new(),
         }
@@ -775,6 +781,17 @@ impl SpaceManager {
                     ids.push(entity.entity_id.0 as u32);
                 }
             }
+        }
+        ids
+    }
+
+    /// Collect all player entity IDs (entries in each space's `players` set)
+    /// across all spaces. Returned as a `Vec` so callers can iterate without
+    /// holding a borrow on `SpaceManager`.
+    pub fn all_player_entity_ids(&self) -> Vec<u32> {
+        let mut ids = Vec::new();
+        for space in self.spaces.values() {
+            ids.extend(space.players.iter().copied());
         }
         ids
     }

@@ -616,6 +616,20 @@ Messages the client sends to the server.
 
 ---
 
+## Ammo & Reload Cell Methods
+
+The catalog above lists messages by client-side `Event_NetOut_*` / `Event_NetIn_*` name. Three of those map to known Mercury cell-method opcodes used by the weapon ammo and reload pipeline:
+
+| Wire opcode | Cell method | Interface | Args | Notes |
+|-------------|-------------|-----------|------|-------|
+| 41 (`0x29`) | `requestActiveSlotChange` | SGWInventoryManager | INT32 BagId, INT32 SlotId | Only `BagId == 3` (INV_Bandolier) carries an active slot |
+| 42 (`0x2A`) | `requestAmmoChange` | SGWInventoryManager | INT32 ItemId, INT32 AmmoType | Server validates `ammo_type != 0` |
+| 86 (`0x56`) | `requestReload` | SGWPlayer | UINT8 EReloadType | Starts warmup deadline; refill is server-driven. Source: [`REQUEST_RELOAD` in cell/cell_methods/player/constants.rs](../../crates/services/src/cell/cell_methods/player/constants.rs). The decompiled client-side binding at [`14_standalone_named.c:298900-298909`](../reverse-engineering/decompiled/14_standalone_named.c#L298900) shows `0x14` — that is a **registration index** in the `BW__unknown_00438c40` setup call, not the wire opcode. |
+
+Server → client ammo updates flow through **`onStatUpdate`** (client method index 20) carrying one or more `AmmoSlot{N}` stat entries (stat IDs 49–53). Active-slot subtype refresh uses **`onEntityProperty`** with `GENERICPROPERTY_AmmoTypeId = 3`. `ActiveSlotUpdate` and `BandolierAmmoUpdate` are internal cell→base messages for persistence and are not sent over the wire to the client.
+
+Full sequence diagrams and the persistence cadence: [docs/gameplay/weapon-ammo-reload.md](../gameplay/weapon-ammo-reload.md).
+
 ## SGWNetworkManager
 
 The `SGWNetworkManager` class (source: `SGWNetworkManager.cpp` at 0x019abbc4) is the central hub that:

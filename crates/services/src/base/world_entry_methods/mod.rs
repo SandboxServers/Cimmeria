@@ -12,7 +12,7 @@ pub mod vendor;
 
 // Re-export all public functions for backward compatibility
 pub use world_entry::{query_world_entry, query_world_stargates};
-pub use player_load::{query_player_load_data, query_player_load_data_by_account, query_inventory_items, default_player_load_data, query_bandolier_items, query_archetype_ability_tree, query_active_weapon_stats};
+pub use player_load::{query_player_load_data, query_player_load_data_by_account, query_inventory_items, default_player_load_data, query_bandolier_items, query_archetype_ability_tree};
 pub use progression::{handle_grant_xp, handle_grant_cash};
 pub use missions::{query_saved_missions, handle_mission_update};
 pub use mail::handle_mail_request;

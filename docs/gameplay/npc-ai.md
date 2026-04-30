@@ -21,7 +21,7 @@ Defined in `python/Atrea/enums.py` lines 228-239.
 
 | State | Value | Implemented | Notes |
 |-------|-------|-------------|-------|
-| `AI_STATE_Spawning` | 0 | YES | Loads weapon ammo, transitions to Idle |
+| `AI_STATE_Spawning` | 0 | PARTIAL | Transitions to Idle. Legacy loaded weapon ammo here; the Rust port skips this since the fire-gate short-circuits on `!is_player`. See [Ammo Management](#ammo-management). |
 | `AI_STATE_Idle` | 1 | YES | Waits for threat |
 | `AI_STATE_Investigating` | 2 | NO | POI-based investigation loop |
 | `AI_STATE_Fighting` | 3 | YES | Target selection, ability selection, fire |
@@ -37,7 +37,7 @@ Defined in `python/Atrea/enums.py` lines 228-239.
 ### State Transitions (Implemented)
 
 ```
-Spawning  -->  Idle       (doAiSpawnAction complete, ammo loaded)
+Spawning  -->  Idle       (doAiSpawnAction complete; ammo seed skipped — fire-gate short-circuits on !is_player)
 Idle      -->  Fighting   (threatGenerated() called while alive)
 Fighting  -->  Idle       (threat list empty after target pruning)
 Any       -->  Dead       (isDead() returns true, loop exits)
@@ -197,16 +197,27 @@ There is no priority weighting — the first usable ability in iteration order i
 
 ## Ammo Management
 
-Mobs use the same ammo model as players. Relevant accessors:
+Mobs use the same `bandolier_items` / `Stat[AMMO_SLOT_1+slot]` model as players in principle. In practice the **Rust port skips the ammo gate for non-players**: the fire-gate in [`crates/services/src/cell/abilities.rs:259-263`](../../crates/services/src/cell/abilities.rs#L259) short-circuits with `entity.is_player && current_ammo < required_ammo`, so NPCs currently fire without consuming rounds and never need to reload. `triggerReload()` is not yet ported.
 
-- `getAmmoStat()` — Returns the stat ID representing current ammo count
-- `getClipSize()` — Returns max ammo from the equipped weapon template
-- `getAmmoCount()` — Returns current ammo value
-- `consumeAmmo(amount)` — Decrements ammo by `amount`
+Legacy accessors and their Rust equivalents:
 
-On spawn (`doAiSpawnAction`), the mob calls `getClipSize()` on its equipped weapon and sets its ammo stat to that value. This represents a full reload at spawn.
+| Legacy (`SGWMob.py` / `SGWPlayer.py`) | Rust equivalent |
+|----------------------------------------|-----------------|
+| `getAmmoStat()` — stat ID for current slot | `crate::stats::AMMO_SLOT_1 + entity.active_bandolier_slot` |
+| `getClipSize()` — max ammo from equipped weapon | [`CellEntity::active_clip_size()`](../../crates/entity/src/cell_entity.rs#L373) |
+| `getAmmoCount()` — current ammo | [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity.rs#L366) |
+| `consumeAmmo(amount)` | [`CellEntity::set_slot_ammo(slot, current - amount)`](../../crates/entity/src/cell_entity.rs#L390) |
+| `triggerReload()` | Not ported for NPCs (player path: [`handle_reload`](../../crates/services/src/cell/cell_methods/player/world.rs#L121)) |
 
-When `selectHostileAbility` finds that all abilities are blocked by ammo, it calls `triggerReload()`. The reload completes after a delay and refills the clip, allowing the combat loop to resume.
+Legacy behavior: on spawn (`doAiSpawnAction`), the mob called `getClipSize()` on its equipped weapon and set its ammo stat to that value, representing a full reload at spawn. When `selectHostileAbility` found all abilities blocked by ammo, it called `triggerReload()`. The reload completed after a delay and refilled the clip, allowing the combat loop to resume.
+
+If/when NPC reload is needed, the same machinery applies — but **all three** of the following are required together; partial work will silently leave NPCs stuck mid-reload:
+
+1. Drop the `is_player` short-circuit in the fire-gate ([`abilities.rs`](../../crates/services/src/cell/abilities.rs)).
+2. Set `reload_complete_at` from an AI-driven path (an NPC equivalent of `requestReload`).
+3. **Widen `reload_completion_tick`** ([`service.rs:610`](../../crates/services/src/cell/service.rs#L610)) — it currently iterates `space_mgr.all_player_entity_ids()` only, so an NPC's deadline would never be promoted. Add an `all_reloadable_entity_ids()` accessor or extend the existing one to include fighting NPCs.
+
+See [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full ammo and reload model.
 
 ---
 

@@ -130,7 +130,7 @@ Types: Physical, Energy, Hazmat, Psionic, Untyped (5 types x 3 sources = 15 stat
 
 | Stat | Purpose |
 |------|---------|
-| `ammoSlot1` .. `ammoSlot5` | Ammo counts per slot |
+| `ammoSlot1` .. `ammoSlot5` (IDs **49–53**) | Ammo counts per **bandolier slot** (slot-relative, not weapon-relative). Active slot's stat ID = `AMMO_SLOT_1 + active_bandolier_slot`. Mirrored from `BandolierItem.current_ammo`. See [weapon-ammo-reload.md](weapon-ammo-reload.md). |
 | `deploymentBarAmmo` | Deployment bar ammo |
 | `response` | Response ability cooldown reduction % |
 | `stealthRating` / `stealthMovement` | Stealth system |
