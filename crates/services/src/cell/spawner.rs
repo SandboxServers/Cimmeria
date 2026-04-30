@@ -913,3 +913,50 @@ pub async fn load_item_containers(
     tracing::info!(count = map.len(), "Loaded item container mappings");
     Ok(map)
 }
+
+/// Cached weapon stats for runtime item grants.
+///
+/// The content engine's `GrantItem` action seeds bandolier slots and AmmoSlot
+/// stats from this cache so the client renders the correct empty magazine for
+/// the new weapon. Mirrors the per-row clip_size + default_ammo_type that
+/// `BANDOLIER_ITEMS_QUERY` reads for player_load.
+#[derive(Debug, Clone, Copy)]
+pub struct WeaponDef {
+    pub clip_size: i32,
+    /// 0-based EAmmoType index, matching the wire format used in
+    /// `bandolier_items` and `onEntityProperty(AmmoTypeId)`.
+    pub default_ammo_type: i32,
+}
+
+/// Load weapon stats (clip_size + default_ammo_type) from `resources.items`.
+///
+/// Skips items with `clip_size IS NULL` (non-weapons). The `default_ammo_type`
+/// conversion mirrors `BANDOLIER_ITEMS_QUERY` exactly so that values seeded
+/// here for runtime grants match the wire format the player_load path uses.
+pub async fn load_item_defs(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, WeaponDef>, sqlx::Error> {
+    use sqlx::Row;
+
+    let rows = sqlx::query(
+        "SELECT item_id, clip_size, \
+                CASE WHEN default_ammo_type IS NULL THEN 0 \
+                     ELSE array_position(enum_range(NULL::resources.\"EAmmoType\"), default_ammo_type) - 1 \
+                END AS default_ammo_type_id \
+         FROM resources.items \
+         WHERE clip_size IS NOT NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut map = std::collections::HashMap::with_capacity(rows.len());
+    for r in &rows {
+        let item_id: i32 = r.get("item_id");
+        let clip_size: i32 = r.get("clip_size");
+        let default_ammo_type: i32 = r.get("default_ammo_type_id");
+        map.insert(item_id, WeaponDef { clip_size, default_ammo_type });
+    }
+
+    tracing::info!(count = map.len(), "Loaded weapon defs");
+    Ok(map)
+}

@@ -42,6 +42,7 @@ use super::world_entry_methods::{
     handle_repair_inventory_item, handle_repair_inventory_items, handle_paid_repair_inventory_items,
     handle_recharge_inventory_items, handle_paid_recharge_inventory_items,
 };
+use super::world_entry_methods::inventory::update_bandolier_ammo;
 use super::world_entry_methods::{
     default_player_load_data, query_player_load_data,
     query_player_load_data_by_account, query_world_entry, query_world_stargates,
@@ -1008,6 +1009,23 @@ pub(crate) async fn handle_cell_message(
                     Err(e) => {
                         tracing::warn!(player_id, slot_id, error = %e, "ActiveSlotUpdate: DB write failed");
                     }
+                }
+            }
+        }
+        CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, current_ammo, cur_ammo_type } => {
+            // `player_id` from the cell is the DB character_id (matches the
+            // `ActiveSlotUpdate` convention right above). Stage A wires the
+            // handler in but the cell does not yet emit this message —
+            // Stages B/C/D drive it from reload completion / slot swap /
+            // ammo change / logout.
+            if let Some(pool) = db_pool {
+                if let Err(e) = update_bandolier_ammo(
+                    pool.as_ref(), player_id, slot_id, current_ammo, cur_ammo_type,
+                ).await {
+                    tracing::warn!(
+                        player_id, slot_id, current_ammo, cur_ammo_type, error = %e,
+                        "BandolierAmmoUpdate: DB write failed"
+                    );
                 }
             }
         }

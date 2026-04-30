@@ -48,8 +48,7 @@ pub fn default_player_load_data() -> PlayerLoadData {
         access_level: 0,
         skin_color_id: 0,
         active_bandolier_slot: 0,
-        active_weapon_clip_size: 0,
-        active_ammo_type: 0,
+        bandolier_items: vec![],
         ability_tree: archetype_ability_tree(1),
         items: vec![],
     }
@@ -61,13 +60,22 @@ struct BandolierItemRow {
     item_id: i32,
     clip_size: i32,
     default_ammo_type_id: i32,
+    /// Per-slot remaining ammo from `sgw_inventory.ammo`. Populated by Stage A
+    /// but not yet read by fire/reload — Stage C wires the consumers.
+    current_ammo: i32,
+    /// Per-slot selected ammo subtype from `sgw_inventory.cur_ammo_type`. Zero
+    /// means "no explicit choice" — Rust-side defaulting falls back to the
+    /// item's default_ammo_type below.
+    cur_ammo_type: i32,
 }
 
 const BANDOLIER_ITEMS_QUERY: &str = r#"
 SELECT inv.slot_id, inv.type_id AS item_id, COALESCE(ri.clip_size, 0) AS clip_size,
        CASE WHEN ri.default_ammo_type IS NULL THEN 0
             ELSE array_position(enum_range(NULL::resources."EAmmoType"), ri.default_ammo_type) - 1
-       END AS default_ammo_type_id
+       END AS default_ammo_type_id,
+       inv.ammo AS current_ammo,
+       inv.cur_ammo_type
 FROM sgw_inventory inv
 JOIN resources.items ri ON ri.item_id = inv.type_id
 WHERE inv.character_id = $1 AND inv.container_id = 3
@@ -79,12 +87,22 @@ fn map_bandolier_rows(
 ) -> Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)> {
     rows.into_iter()
         .map(|row| {
+            // Treat 0 as "no explicit choice" and fall back to the item's
+            // default ammo type — matches the legacy Account.py behavior where
+            // a slot with no override picks default_ammo_type at load time.
+            let cur_ammo_type = if row.cur_ammo_type == 0 {
+                row.default_ammo_type_id
+            } else {
+                row.cur_ammo_type
+            };
             (
                 row.slot_id,
                 cimmeria_entity::cell_entity::BandolierItem {
                     item_id: row.item_id,
                     clip_size: row.clip_size,
                     default_ammo_type: row.default_ammo_type_id,
+                    current_ammo: row.current_ammo,
+                    cur_ammo_type,
                 },
             )
         })
@@ -185,42 +203,3 @@ pub async fn query_archetype_ability_tree(pool: &PgPool, archetype_id: i32) -> O
     Some(ability_tree)
 }
 
-/// Query active weapon stats from the player's equipped bandolier slot.
-pub async fn query_active_weapon_stats(
-    pool: &PgPool,
-    player_id: i32,
-    bandolier_slot: i32,
-) -> (i32, i32) {
-    #[derive(sqlx::FromRow)]
-    struct ActiveWeaponRow {
-        clip_size: i32,
-        default_ammo_type_id: i32,
-    }
-
-    match sqlx::query_as::<_, ActiveWeaponRow>(
-        r#"
-        SELECT COALESCE(ri.clip_size, 0) AS clip_size,
-               CASE WHEN ri.default_ammo_type IS NULL THEN 0
-                    ELSE array_position(enum_range(NULL::resources."EAmmoType"), ri.default_ammo_type) - 1
-               END AS default_ammo_type_id
-        FROM sgw_inventory inv
-        JOIN resources.items ri ON ri.item_id = inv.type_id
-        WHERE inv.character_id = $1
-          AND inv.container_id = 3
-          AND inv.slot_id = $2
-        LIMIT 1
-        "#,
-    )
-    .bind(player_id)
-    .bind(bandolier_slot)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(Some(row)) => (row.clip_size, row.default_ammo_type_id),
-        Ok(None) => (0, 0),
-        Err(e) => {
-            tracing::error!(player_id, bandolier_slot, "query_active_weapon_stats failed: {e}");
-            (0, 0)
-        }
-    }
-}

@@ -197,16 +197,23 @@ There is no priority weighting — the first usable ability in iteration order i
 
 ## Ammo Management
 
-Mobs use the same ammo model as players. Relevant accessors:
+Mobs use the same `bandolier_items` / `Stat[AMMO_SLOT_1+slot]` model as players in principle. In practice the **Rust port skips the ammo gate for non-players**: the fire-gate in [`crates/services/src/cell/abilities.rs:259-263`](../../crates/services/src/cell/abilities.rs#L259) short-circuits with `entity.is_player && current_ammo < required_ammo`, so NPCs currently fire without consuming rounds and never need to reload. `triggerReload()` is not yet ported.
 
-- `getAmmoStat()` — Returns the stat ID representing current ammo count
-- `getClipSize()` — Returns max ammo from the equipped weapon template
-- `getAmmoCount()` — Returns current ammo value
-- `consumeAmmo(amount)` — Decrements ammo by `amount`
+Legacy accessors and their Rust equivalents:
 
-On spawn (`doAiSpawnAction`), the mob calls `getClipSize()` on its equipped weapon and sets its ammo stat to that value. This represents a full reload at spawn.
+| Legacy (`SGWMob.py` / `SGWPlayer.py`) | Rust equivalent |
+|----------------------------------------|-----------------|
+| `getAmmoStat()` — stat ID for current slot | `crate::stats::AMMO_SLOT_1 + entity.active_bandolier_slot` |
+| `getClipSize()` — max ammo from equipped weapon | [`CellEntity::active_clip_size()`](../../crates/entity/src/cell_entity.rs#L373) |
+| `getAmmoCount()` — current ammo | [`CellEntity::active_ammo()`](../../crates/entity/src/cell_entity.rs#L366) |
+| `consumeAmmo(amount)` | [`CellEntity::set_slot_ammo(slot, current - amount)`](../../crates/entity/src/cell_entity.rs#L390) |
+| `triggerReload()` | Not ported for NPCs (player path: [`handle_reload`](../../crates/services/src/cell/cell_methods/player/world.rs#L121)) |
 
-When `selectHostileAbility` finds that all abilities are blocked by ammo, it calls `triggerReload()`. The reload completes after a delay and refills the clip, allowing the combat loop to resume.
+Legacy behavior: on spawn (`doAiSpawnAction`), the mob called `getClipSize()` on its equipped weapon and set its ammo stat to that value, representing a full reload at spawn. When `selectHostileAbility` found all abilities blocked by ammo, it called `triggerReload()`. The reload completed after a delay and refilled the clip, allowing the combat loop to resume.
+
+If/when NPC reload is needed, the same machinery applies: drop the `is_player` short-circuit in the fire-gate, set `reload_complete_at` from an AI-driven path, and let the existing `reload_completion_tick` ([`service.rs:610`](../../crates/services/src/cell/service.rs#L610)) refill the magazine.
+
+See [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full ammo and reload model.
 
 ---
 

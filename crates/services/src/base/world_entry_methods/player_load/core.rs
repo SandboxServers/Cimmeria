@@ -3,7 +3,7 @@ use std::sync::Arc;
 use sqlx::PgPool;
 
 use crate::mercury::PlayerLoadData;
-use super::meta::{default_player_load_data, query_archetype_ability_tree, query_active_weapon_stats};
+use super::meta::{default_player_load_data, query_archetype_ability_tree, query_bandolier_items};
 
 /// Container IDs used in equipment-visual queries. Mirrors the DB schema:
 /// 3 = bandolier, 4..=14 = the eleven equipment slots (head, torso, etc.).
@@ -145,8 +145,11 @@ pub async fn query_player_load_data(
                     );
                     crate::mercury::archetype_ability_tree(row.archetype)
                 });
-            let (active_weapon_clip_size, active_ammo_type) =
-                query_active_weapon_stats(pool.as_ref(), player_id, row.bandolier_slot).await;
+            // Stage C: bandolier_items now carries clip_size + cur_ammo_type
+            // for every populated slot, so the old `query_active_weapon_stats`
+            // (which only fetched the active slot's clip + default ammo) is
+            // redundant. `map_loaded.rs` reads the active item directly.
+            let bandolier_items = query_bandolier_items(db_pool, player_id).await;
 
             PlayerLoadData {
                 player_id,
@@ -169,8 +172,7 @@ pub async fn query_player_load_data(
                 access_level: row.access_level,
                 skin_color_id: row.skin_color_id,
                 active_bandolier_slot: row.bandolier_slot,
-                active_weapon_clip_size,
-                active_ammo_type,
+                bandolier_items,
                 ability_tree,
                 items,
             }

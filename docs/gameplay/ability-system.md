@@ -114,6 +114,16 @@ AbilityManager.useAbility()
 | EntityDoesNotHaveAbility | `CONDITION_FEEDBACK_EntityDoesNotHaveAbility` | Ability not in entity list |
 | PositionCheck* | `CONDITION_FEEDBACK_PositionCheck{Above,Below,Front,Flank,Rear}` | Invalid facing direction |
 
+## Reload Ability
+
+`ABILITY_RELOAD_WEAPON = 596` is the well-known reload ability. Its `warmup` and `cooldown` come from the standard `ability_defs` row — no special-cased timing. The `requestReload(EReloadType)` cell method on `SGWPlayer` ([`SGWPlayer.def:794-797`](../../entities/defs/SGWPlayer.def#L794), opcode 86) starts the reload by:
+
+1. Setting `reload_complete_at = now + warmup` on the cell entity.
+2. Calling `start_ability_cooldown(596, warmup + cooldown)` so subsequent fires are gated by the standard cooldown timer.
+3. Sending `onTimerUpdate` (method 12) so the client renders the cooldown bar.
+
+The warmup deadline gates **magazine refill timing**: a 100 ms `reload_completion_tick` checks `reload_complete_at` and calls `refill_active_slot()` (sets `current_ammo = clip_size`) when the deadline elapses. The fire-path does not promote pending refills — it only reads the current ammo. See [weapon-ammo-reload.md](weapon-ammo-reload.md) for the full sequence.
+
 ## Data References
 
 - **Ability definitions**: 1,887 in `db/resources.sql`

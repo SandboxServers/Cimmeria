@@ -604,14 +604,26 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_reload_sends_entity_property() {
+        use cimmeria_entity::cell_entity::BandolierItem;
+        use cimmeria_entity::stats::AMMO_SLOT_1;
+
         let mut mgr = make_test_space_mgr();
         mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
 
-        // Set up ammo state
+        // Stage C: shadow scalars are gone. Seed the bandolier item + AmmoSlot
+        // stat the same way `InitPlayerState` does for a real world entry.
         if let Some(e) = mgr.get_entity_mut(1) {
-            e.current_ammo = 5;
-            e.max_ammo = 30;
-            e.ammo_type = 2;
+            e.bandolier_items.insert(0, BandolierItem {
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: 2,
+                current_ammo: 5,
+                cur_ammo_type: 2,
+            });
+            if let Some(stat) = e.stats.get_mut(AMMO_SLOT_1) {
+                stat.update(0, 5, 30);
+                stat.clear_dirty();
+            }
         }
 
         let engine = cimmeria_content_engine::chain::ChainEngine::new();
@@ -621,9 +633,9 @@ mod tests {
         dispatch_cell_method(1, CM_REQUEST_RELOAD, &args, &tx, &mut mgr, &engine).await;
 
         // Reload sets the deadline but does NOT immediately refill — the magazine
-        // stays at the pre-reload count until warmup elapses (see use_ability path).
+        // stays at the pre-reload count until the reload tick runs past warmup.
         let entity = mgr.get_entity(1).unwrap();
-        assert_eq!(entity.current_ammo, 5, "magazine should not refill until warmup elapses");
+        assert_eq!(entity.active_ammo(), 5, "magazine should not refill until warmup elapses");
         assert!(entity.reload_complete_at.is_some(), "reload deadline should be set");
 
         // Reload sends a TimerUpdate (method 12) for the cooldown bar; the
@@ -641,13 +653,25 @@ mod tests {
 
     #[tokio::test]
     async fn dispatch_reload_already_full_no_message() {
+        use cimmeria_entity::cell_entity::BandolierItem;
+        use cimmeria_entity::stats::AMMO_SLOT_1;
+
         let mut mgr = make_test_space_mgr();
         mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
 
-        // Already at max
+        // Already at max — bandolier item with clip_size == current_ammo.
         if let Some(e) = mgr.get_entity_mut(1) {
-            e.current_ammo = 30;
-            e.max_ammo = 30;
+            e.bandolier_items.insert(0, BandolierItem {
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: 0,
+                current_ammo: 30,
+                cur_ammo_type: 0,
+            });
+            if let Some(stat) = e.stats.get_mut(AMMO_SLOT_1) {
+                stat.update(0, 30, 30);
+                stat.clear_dirty();
+            }
         }
 
         let engine = cimmeria_content_engine::chain::ChainEngine::new();

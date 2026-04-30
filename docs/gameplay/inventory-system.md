@@ -86,6 +86,19 @@ The `Inventory` class in `python/cell/Inventory.py` handles all inventory logic.
 | `INV_Buyback` | Store buyback (session-only, not persisted) |
 | `INV_CommandBank` | Upper bound / org vault |
 
+## Bandolier and ammo
+
+`INV_Bandolier` (container id `3`) holds 5 equipment slots indexed `0..4` and is the only container that tracks an active slot. Each bandolier slot persists not only the equipped item but also its **per-slot magazine state**:
+
+| `sgw_inventory` column | Field | Purpose |
+|------------------------|-------|---------|
+| `ammo`                 | `BandolierItem.current_ammo` | Rounds remaining in this slot's magazine |
+| `cur_ammo_type`        | `BandolierItem.cur_ammo_type` | Selected ammo subtype (defaults to item's `default_ammo_type`) |
+
+Both columns are bandolier-slot-scoped — swapping weapons does not pool ammo across slots. The cell server mirrors `current_ammo` to `Stat[AMMO_SLOT_1+slot]` (stat IDs 49–53) so the client UI can subscribe to `Events.StatUpdated` for meter and count refresh.
+
+Persistence is **batched**: dirty slots are flushed at reload completion, slot swap, ammo change, logout, and world transition. Full message flow, sequence diagrams, and legacy reference points are in [weapon-ammo-reload.md](weapon-ammo-reload.md).
+
 ## Flush Update Order
 
 The `Inventory.flushUpdates()` method sends updates to the client in this order:

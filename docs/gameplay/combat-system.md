@@ -118,6 +118,20 @@ Each entry: { StatId: INT32, Min: INT32, Current: INT32, Max: INT32 }
 Each entry: { StatID: INT32, Delta: INT32, DamageCode: INT32, StatResultCode: INT32 }
 ```
 
+## Ammo Gating
+
+Ranged abilities declare a `required_ammo` cost. On every `useAbility`, the cell fire-gate ([`crates/services/src/cell/abilities.rs:259-281`](../../crates/services/src/cell/abilities.rs#L259)) checks:
+
+```
+if required_ammo > 0 && entity.is_player && active_ammo() < required_ammo:
+    log "useAbility: not enough ammo"
+    return  (fire aborts; no effect dispatch, no cooldown)
+```
+
+If the check passes, the server decrements via `set_slot_ammo(active_slot, ammo - required_ammo)`, which mirrors the new value to `Stat[AMMO_SLOT_1+slot]` and emits `onStatUpdate` (method 20) so the bandolier UI refreshes the meter and count. NPCs (`is_player == false`) skip the gate entirely — they currently fire without consuming ammo.
+
+Full server-authoritative ammo model, reload flow, persistence cadence, and client UI subscription chain: [weapon-ammo-reload.md](weapon-ammo-reload.md).
+
 ## Damage Pipeline
 
 The damage calculation in `DamageCalc.calculateDamage()` follows this pipeline:

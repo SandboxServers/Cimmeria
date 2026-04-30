@@ -6,6 +6,9 @@
 - Key files: `crates/services/src/base.rs`, `crates/services/src/mercury_ext.rs`, `crates/services/src/auth.rs`
 - C++ reference: `src/baseapp/mercury/sgw/` (client_handler.cpp, connect_handler.cpp, messages.cpp)
 
+## Build Environment
+- See [build-environment.md](build-environment.md) — repo `.cargo/config.toml` hardcodes another user's rust-lld path; need `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` override.
+
 ## Audit Findings (2026-03-04)
 See [audit-findings.md](audit-findings.md) for full details.
 

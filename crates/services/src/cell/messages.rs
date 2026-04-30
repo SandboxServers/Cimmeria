@@ -389,6 +389,19 @@ pub enum CellToBaseMsg {
     /// Persist the player's active bandolier slot.
     ActiveSlotUpdate { player_id: i32, slot_id: i32 },
 
+    /// Persist a single bandolier slot's per-slot ammo state.
+    ///
+    /// Sent by the cell on the batched cadence (reload completion, slot swap,
+    /// `requestAmmoChange`, logout) — see Stage B/C/D in
+    /// docs/gameplay/weapon-ammo-reload.md (TBD). `player_id` here matches the
+    /// DB `character_id`, mirroring the field naming used by `ActiveSlotUpdate`.
+    BandolierAmmoUpdate {
+        player_id: i32,
+        slot_id: i32,
+        current_ammo: i32,
+        cur_ammo_type: i32,
+    },
+
     /// Grant cash (naquadah) to a player and persist to the database.
     GrantCash {
         entity_id: u32,

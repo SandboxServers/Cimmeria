@@ -12,6 +12,7 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 |--------|--------|---------------|------------------|----------|
 | [Combat](#combat) | IM | SGWCombatant | AbilityManager.py, EffectManager.py | HIGH |
 | [Abilities](#abilities) | IM | SGWAbilityManager | AbilityManager.py | HIGH |
+| [Weapon Ammo & Reload](#weapon-ammo--reload) | IM | SGWPlayer / SGWInventoryManager | SGWPlayer.py, AbilityManager.py, effects/Reload.py | HIGH |
 | [Effects](#effects) | IM | SGWCombatant | EffectManager.py | HIGH |
 | [Stats](#stats) | IM | SGWCombatant | Stat.py | HIGH |
 | [Inventory](#inventory) | NT | SGWInventoryManager | Inventory.py | HIGH |
@@ -72,6 +73,21 @@ Status key: **CW** = Confirmed Working, **NT** = Needs Test, **IM** = Implemente
 **Enums**: `TargetingMode`, `AbilityRange`, `AbilityType` in enumerations.xml
 
 **RE doc**: [ability-system.md](ability-system.md)
+
+---
+
+## Weapon Ammo & Reload
+
+**Status**: IM — Server-authoritative per-bandolier-slot ammo. Fire-gate validates `required_ammo` against `active_ammo()`, decrements via `set_slot_ammo`, mirrors to `Stat[AMMO_SLOT_1+slot]`. `requestReload(EReloadType)` (cell method 86 on SGWPlayer) sets a warmup deadline; a 100 ms tick refills the magazine. Persistence is batched (reload completion / slot swap / ammo change / logout / world transition).
+
+**Key cell methods (NetOut)**:
+- `requestReload(EReloadType)` — opcode 86 on SGWPlayer
+- `requestActiveSlotChange(BagId, SlotId)` — opcode 41 on SGWInventoryManager
+- `requestAmmoChange(ItemId, AmmoType)` — opcode 42 on SGWInventoryManager
+
+**Key client method (NetIn)**: `onStatUpdate` (method 20) carrying the AmmoSlot{N} stat — the bandolier UI's only refresh trigger.
+
+**RE doc**: [weapon-ammo-reload.md](weapon-ammo-reload.md)
 
 ---
 

@@ -73,12 +73,37 @@ pub(super) async fn execute_actions(
 
                 // If this is a weapon (bandolier), set ammo state on the entity.
                 // Weapons start unloaded — the player must press R to reload.
+                //
+                // Stage C: insert a `BandolierItem` for the granted slot and seed
+                // the AmmoSlot{N} stat to (0, 0, clip_size) so subsequent fire /
+                // reload paths (which now read through `active_ammo()` and
+                // `set_slot_ammo`) operate on a valid clamp range. We also send
+                // an `onStatUpdate` so the client renders the empty mag for the
+                // new weapon without waiting for the next fire.
+                let mut ammo_stat_payload: Option<Vec<u8>> = None;
                 if cid == 3 {
-                    if let Some(clip) = weapon_clip_size(item_id) {
+                    if let Some((clip, default_ammo_type)) = weapon_stats(item_id, &space_mgr.item_defs) {
                         if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                            entity.max_ammo = clip;
-                            entity.current_ammo = 0;
-                            tracing::info!(entity_id, item_id, clip, "Weapon granted unloaded");
+                            // The weapon-grant chain doesn't tell us which slot
+                            // the base will assign — content engine grants
+                            // implicitly fill the active bandolier slot.
+                            let slot_id = entity.active_bandolier_slot;
+                            entity.bandolier_items.insert(slot_id, cimmeria_entity::cell_entity::BandolierItem {
+                                item_id,
+                                clip_size: clip,
+                                default_ammo_type,
+                                current_ammo: 0,
+                                cur_ammo_type: default_ammo_type,
+                            });
+                            entity.bandolier_ammo_dirty.insert(slot_id);
+                            let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
+                            if let Some(stat) = entity.stats.get_mut(stat_id) {
+                                stat.update(0, 0, clip);
+                                let payload = entity.stats.serialize_dirty();
+                                entity.stats.clear_dirty();
+                                ammo_stat_payload = Some(payload);
+                            }
+                            tracing::info!(entity_id, item_id, slot_id, clip, "Weapon granted unloaded");
                         }
                     }
                 }
@@ -90,6 +115,14 @@ pub(super) async fn execute_actions(
                     container_id: cid,
                     count,
                 }).await;
+
+                if let Some(payload) = ammo_stat_payload {
+                    if !payload.is_empty() {
+                        crate::cell::abilities::send_entity_method(
+                            entity_id, 20, payload, tx, space_mgr,
+                        ).await;
+                    }
+                }
             }
             Action::DisplayDialog { dialog_id } | Action::StartDialog { dialog_set_id: dialog_id } => {
                 tracing::info!(entity_id, dialog_id, chain_id, "Content: displaying dialog");
@@ -402,14 +435,18 @@ pub(super) fn item_container(item_id: i32, item_containers: &std::collections::H
     *item_containers.get(&item_id).unwrap_or(&1)
 }
 
-/// Return the clip size for known weapon items (from items.clip_size in DB).
-/// Weapons granted via content chains start unloaded (current_ammo = 0).
-fn weapon_clip_size(item_id: i32) -> Option<i32> {
-    match item_id {
-        55 => Some(15),  // SI 3 9mm Pistol
-        21 => Some(30),  // TODO: verify clip size from DB
-        _ => None,
-    }
+/// Return the clip size and default ammo type for a granted weapon item.
+///
+/// Reads from the `space_mgr.item_defs` cache loaded at startup from
+/// `resources.items` (see `spawner::load_item_defs`). Returns `None` for
+/// non-weapon items (clip_size IS NULL in DB) or when the cache wasn't
+/// populated (e.g. tests without a DB pool) — callers skip the bandolier
+/// seeding in that case, and the player can still receive the item normally.
+fn weapon_stats(
+    item_id: i32,
+    item_defs: &std::collections::HashMap<i32, crate::cell::spawner::WeaponDef>,
+) -> Option<(i32, i32)> {
+    item_defs.get(&item_id).map(|d| (d.clip_size, d.default_ammo_type))
 }
 
 /// Send per-player InteractionType update if the NPC is already in the player's AoI.

@@ -178,8 +178,7 @@ mod tests {
             ability_tree: Default::default(),
             items: vec![],
             active_bandolier_slot: 0,
-            active_weapon_clip_size: 0,
-            active_ammo_type: 0,
+            bandolier_items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 42, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 42, &data, &entry);
@@ -215,8 +214,7 @@ mod tests {
             ability_tree: archetype_ability_tree(2),
             items: vec![],
             active_bandolier_slot: 0,
-            active_weapon_clip_size: 0,
-            active_ammo_type: 0,
+            bandolier_items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
@@ -255,8 +253,7 @@ mod tests {
             ability_tree: archetype_ability_tree(2),
             items: vec![],
             active_bandolier_slot: 0,
-            active_weapon_clip_size: 0,
-            active_ammo_type: 0,
+            bandolier_items: vec![],
         };
         let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
         let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
@@ -305,8 +302,7 @@ mod tests {
             ability_tree: archetype_ability_tree(2),
             items: vec![],
             active_bandolier_slot: 0,
-            active_weapon_clip_size: 0,
-            active_ammo_type: 0,
+            bandolier_items: vec![],
         };
         let entry = WorldEntryInfo {
             player_entity_id: 100, space_id: 65552,

@@ -270,13 +270,23 @@ fn build_map_loaded_body_inner(
 
     // 20. onEntityProperty x6 (INT32 propId, INT32 value)
     //     GENERICPROPERTY IDs from Atrea.enums
+    //
+    // Stage C: AmmoTypeId is sourced directly from the active bandolier item.
+    // No shadow `active_ammo_type` field on PlayerLoadData anymore — if no
+    // item is in the active slot we fall back to 0 (matches legacy "no weapon
+    // equipped" behavior).
+    let active_ammo_type = data
+        .bandolier_items
+        .iter()
+        .find(|(slot, _)| *slot == data.active_bandolier_slot)
+        .map_or(0, |(_, item)| item.cur_ammo_type);
     for &(prop_id, value) in &[
         (2i32, data.applied_science_points), // AppliedSciencePoints
         (1,    data.training_points),        // TrainingPoints
         (7,    data.access_level),           // AccessLevel
         (8,    data.gender),                 // Gender
         (4,    0),                           // PvPFlag
-        (3,    0),                           // AmmoTypeId
+        (3,    active_ammo_type),            // AmmoTypeId
     ] {
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&prop_id.to_le_bytes());

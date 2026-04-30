@@ -136,12 +136,13 @@ async fn handle_reload(
         }
     };
 
-    if entity.current_ammo >= entity.max_ammo && entity.reload_complete_at.is_none() {
+    if entity.active_ammo() >= entity.active_clip_size() && entity.reload_complete_at.is_none() {
         tracing::debug!(entity_id, "requestReload: already at max ammo");
         return;
     }
 
-    let old = entity.current_ammo;
+    let old = entity.active_ammo();
+    let target_ammo = entity.active_clip_size();
 
     let total_time = warmup + cooldown;
     entity.abilities.start_ability_cooldown(
@@ -156,7 +157,7 @@ async fn handle_reload(
     let warmup_duration = std::time::Duration::from_secs_f32(warmup.max(0.0));
     entity.reload_complete_at = Some(std::time::Instant::now() + warmup_duration);
 
-    tracing::info!(entity_id, old, target = entity.max_ammo, warmup, cooldown, "Weapon reload started");
+    tracing::info!(entity_id, old, target = target_ammo, warmup, cooldown, "Weapon reload started");
 
     let timer_args = cimmeria_entity::abilities::serialize_timer_update(
         ABILITY_RELOAD_WEAPON,
@@ -215,7 +216,7 @@ async fn handle_reload(
     let mut args = Vec::with_capacity(8);
     args.extend_from_slice(&7i32.to_le_bytes());
     let ammo_type = space_mgr.get_entity(entity_id)
-        .map_or(0, |e| e.ammo_type);
+        .map_or(0, |e| e.active_ammo_type());
     args.extend_from_slice(&ammo_type.to_le_bytes());
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
