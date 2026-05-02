@@ -18,7 +18,7 @@ pub use player_load::{query_player_load_data, query_player_load_data_by_account,
 pub use progression::{handle_grant_xp, handle_grant_cash};
 pub use missions::{query_saved_missions, handle_mission_update};
 pub use mail::handle_mail_request;
-pub use inventory::{handle_grant_item, item_allows_container, normalize_item_ids, send_full_inventory_update, handle_remove_inventory_item, handle_move_inventory_item};
+pub use inventory::{handle_grant_item, item_allows_container, normalize_item_ids, send_full_inventory_update, handle_remove_inventory_item, handle_use_inventory_item, handle_move_inventory_item};
 pub use vendor::{
     serialize_store_open, serialize_empty_store_open, serialize_store_item_cost_array,
     serialize_store_update, free_inventory_slots, reserve_free_inventory_slots,

@@ -100,17 +100,28 @@ pub(super) async fn handle_use_item(
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-    engine: &ChainEngine,
+    _engine: &ChainEngine,
 ) {
     if args.len() >= 8 {
+        // The wire `aItemID` is the inventory instance id (per
+        // SGWInventoryManager.def), not the item design id. Forward to base
+        // for atomic consume; base looks up the type_id and, on commit
+        // success, fires `BaseToCellMsg::ItemUsed { type_id, ... }` back so
+        // the cell can fire `OnItemUse` with the design id. This gates
+        // mission progression on actual consumption.
         let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
         let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
         tracing::info!(entity_id, item_id, target_id, "useItem");
 
         if let Some(player_id) = resolve_player_id(entity_id, "useItem", space_mgr) {
-            crate::cell::content::fire_item_use(
-                entity_id, player_id, item_id, engine, tx, space_mgr,
-            ).await;
+            if let Err(e) = tx.send(CellToBaseMsg::UseInventoryItem {
+                entity_id, player_id, item_id, target_id,
+            }).await {
+                tracing::error!(
+                    entity_id, player_id, item_id, target_id, error = %e,
+                    "UseInventoryItem send to base failed -- item not consumed"
+                );
+            }
         }
     } else {
         tracing::warn!(entity_id, args_len = args.len(), "useItem: truncated args");

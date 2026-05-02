@@ -127,6 +127,7 @@ impl SpaceManager {
         e.body_set = Some(record.body_set.clone());
         e.components = record.components.clone().unwrap_or_default();
         e.spawn_position = Some(pos);
+        e.is_stationary = record.is_stationary;
         e.loot_table_id = record.loot_table_id;
 
         // Give NPCs a default combat ability and stats so they can fight back

@@ -37,6 +37,7 @@ pub struct SpawnRecord {
     pub static_interaction_sets: Vec<i32>,
     pub has_dynamic_properties: bool,
     pub loot_table_id: Option<i32>,
+    pub is_stationary: bool,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.
@@ -63,6 +64,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
 
     let rows = sqlx::query(
         "SELECT s.spawn_id, w.world AS world_name, s.x, s.y, s.z, s.heading, s.tag, \
+               s.is_stationary, \
                t.template_id, t.template_name, t.class, t.static_mesh, t.body_set, \
                t.components, t.flags, t.interaction_type, t.event_set_id, t.level, \
                t.alignment, t.faction, t.name_id, t.speaker_id, \
@@ -103,6 +105,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
             static_interaction_sets: r.get("static_interaction_sets"),
             has_dynamic_properties: r.get("has_dynamic_properties"),
             loot_table_id: r.get("loot_table_id"),
+            is_stationary: r.get("is_stationary"),
         })
         .collect();
 

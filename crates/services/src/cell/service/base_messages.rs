@@ -304,5 +304,25 @@ pub(super) async fn handle_base_message(
         BaseToCellMsg::InventoryItemGranted { entity_id, item_id, container_id, slot_id, quantity } => {
             tracing::debug!(entity_id, item_id, container_id, slot_id, quantity, "Item granted to player");
         }
+
+        BaseToCellMsg::ItemUsed { entity_id, type_id, target_id } => {
+            // Base committed the consumption transaction; fire `OnItemUse` so
+            // any chain conditioned on `item_use::<type_id>` can run. Mission
+            // progression that gates on this only advances after the vial is
+            // actually consumed — if base failed to consume, this event never
+            // arrives.
+            let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+                Some(pid) => pid,
+                None => {
+                    tracing::warn!(
+                        entity_id, type_id,
+                        "ItemUsed: entity has no player_id — content event dropped"
+                    );
+                    return;
+                }
+            };
+            tracing::debug!(entity_id, player_id, type_id, target_id, "ItemUsed: firing OnItemUse");
+            content::fire_item_use(entity_id, player_id, type_id, engine, tx, space_mgr).await;
+        }
     }
 }

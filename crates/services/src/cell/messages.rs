@@ -185,6 +185,17 @@ pub enum BaseToCellMsg {
         quantity: i32,
     },
 
+    /// Inventory item was consumed atomically by base (in response to
+    /// `CellToBaseMsg::UseInventoryItem`). The cell should fire the
+    /// `OnItemUse` content event with `type_id` (item design id). Only sent
+    /// after the consumption tx commits — if the player didn't own that
+    /// instance or the tx failed, this message is not emitted.
+    ItemUsed {
+        entity_id: u32,
+        type_id: i32,
+        target_id: i32,
+    },
+
     /// Reload the content engine from the database (triggered by admin API / Content Editor).
     ReloadContentEngine,
 
@@ -360,6 +371,23 @@ pub enum CellToBaseMsg {
         player_id: i32,
         item_id: i32,
         quantity: i32,
+    },
+
+    /// Consume one charge/stack of an inventory item instance, then fire the
+    /// content-engine `OnItemUse` event back to the cell with the resolved
+    /// `type_id` (item design id). Mission progression that depends on item
+    /// use is gated on the consumption committing successfully — if the row
+    /// can't be found or the tx fails, no event fires and the mission does
+    /// not advance.
+    ///
+    /// `item_id` is the inventory instance id from the wire (`useItem` arg
+    /// per `SGWInventoryManager.def` — "Player inventory id"). The type_id is
+    /// looked up server-side and returned via `BaseToCellMsg::ItemUsed`.
+    UseInventoryItem {
+        entity_id: u32,
+        player_id: i32,
+        item_id: i32,
+        target_id: i32,
     },
 
     /// Repair an owned inventory item instance by a durability ratio.

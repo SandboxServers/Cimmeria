@@ -43,6 +43,7 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         static_interaction_sets: vec![],
         has_dynamic_properties: true,
         loot_table_id: None,
+        is_stationary: false,
     }
 }
 
