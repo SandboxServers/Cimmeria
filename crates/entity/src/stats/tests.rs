@@ -342,3 +342,23 @@ fn scale_for_level_1_is_base() {
     assert_eq!(list.get(HEALTH).unwrap().max, 760);
     assert_eq!(list.get(FOCUS).unwrap().max, 1570);
 }
+
+#[test]
+fn scale_for_level_0_treated_as_1() {
+    // Regression: level == 0 must not produce a negative bonus.
+    // The DB column allows 0 but the formula needs a 1-based level —
+    // without the clamp, max would be base - per_level (smaller than the
+    // archetype baseline) and propagate that incorrect value into the
+    // stat state. Copilot caught this on PR #107.
+    let mut list = StatList::new();
+    let arch = ArchetypeStatValues {
+        coordination: 5, engagement: 4, fortitude: 3, morale: 4,
+        perception: 3, intelligence: 2, health: 760, focus: 1570,
+        health_per_level: 10, focus_per_level: 70,
+    };
+    list.apply_archetype(&arch);
+    list.scale_for_level(0, &arch);
+    // Same result as level 1: no bonus, max == archetype base.
+    assert_eq!(list.get(HEALTH).unwrap().max, 760);
+    assert_eq!(list.get(FOCUS).unwrap().max, 1570);
+}
