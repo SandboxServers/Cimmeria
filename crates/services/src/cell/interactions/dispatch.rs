@@ -143,11 +143,21 @@ pub async fn handle_initial_response(
             None
         });
 
-    let player_id = space_mgr.get_entity(entity_id)
-        .and_then(|e| e.player_id)
-        .unwrap_or(0);
-
     if let Some(dialog_id) = dialog_id {
+        // Resolve player_id only after we know we have a dialog to fire.
+        // Falling back to 0 here would attribute the resulting content-engine
+        // side effects (mission progress, chain triggers) to a non-existent
+        // player. Mirrors the existing protection in `send_store_open`.
+        let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+            Some(id) => id,
+            None => {
+                tracing::warn!(
+                    entity_id, interaction_set_map_id, dialog_id,
+                    "handle_initial_response: missing player_id; aborting dialog open"
+                );
+                return;
+            }
+        };
         tracing::info!(
             entity_id, interaction_set_map_id, dialog_id,
             "handle_initial_response: found dialog, sending onDialogDisplay"
@@ -283,5 +293,46 @@ mod tests {
 
         // No response for hostile NPCs
         assert!(rx.try_recv().is_err());
+    }
+
+    /// Regression for #105 + Copilot review on PR #108: handle_initial_response
+    /// must NOT fall back to `player_id = 0` when forwarding into the content
+    /// engine. If the player_id is missing, the warn-and-return path must
+    /// fire and no onDialogDisplay packet should be queued.
+    #[tokio::test]
+    async fn initial_response_skips_when_player_id_missing() {
+        let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+
+        // Create a player but DO NOT set player_id — default is None.
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+
+        // Seed an available_interactions entry so dialog lookup succeeds —
+        // the test only fails if the function bails on missing player_id
+        // BEFORE firing the dialog. Wire format of the value tuple is
+        // (dialog_set_map_id, dialog_id, _).
+        const TEMPLATE_ID: i32 = 7;
+        const DIALOG_SET_MAP_ID: i32 = 99;
+        const DIALOG_ID: i32 = 42;
+        if let Some(p) = mgr.get_entity_mut(1) {
+            assert!(p.player_id.is_none(), "default CellEntity must have no player_id for this test");
+            p.available_interactions.insert(TEMPLATE_ID, vec![(DIALOG_SET_MAP_ID, DIALOG_ID, 0)]);
+        }
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = ChainEngine::new();
+        handle_initial_response(1, DIALOG_SET_MAP_ID, &engine, &tx, &mut mgr).await;
+
+        // Nothing must have been queued — the function should have warn-and-
+        // returned before send_dialog_display or fire_dialog_open ran.
+        assert!(
+            rx.try_recv().is_err(),
+            "initial_response must not send onDialogDisplay when player_id is missing"
+        );
     }
 }

@@ -85,6 +85,21 @@ pub async fn handle_loot_item(
         }
     };
 
+    // Validate the looter has a player_id BEFORE mutating the corpse loot
+    // list. The earlier ordering removed the item first and only then
+    // checked, so an invalid looter (no player_id) lost the drop forever
+    // — the corpse table was already mutated.
+    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        Some(id) => id,
+        None => {
+            tracing::warn!(
+                entity_id, target_eid,
+                "lootItem: looter has no player_id; aborting without removing the drop"
+            );
+            return;
+        }
+    };
+
     // Find and remove the loot item from the NPC
     let removed_item = {
         let target = match space_mgr.get_entity_mut(target_eid) {
@@ -111,18 +126,6 @@ pub async fn handle_loot_item(
         quantity = removed_item.quantity,
         "Player looted item"
     );
-
-    // Grant the loot to the player via BaseApp persistence handlers
-    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
-        Some(id) => id,
-        None => {
-            tracing::warn!(
-                entity_id, target_eid,
-                "lootItem: dropping loot grant — looter has no player_id (would otherwise misroute to player_id=0)"
-            );
-            return;
-        }
-    };
 
     if removed_item.design_id.is_none() {
         // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
@@ -202,5 +205,58 @@ mod tests {
         assert_eq!(args.len(), 9);
         assert_eq!(u32::from_le_bytes([args[4], args[5], args[6], args[7]]), 0);
         assert_eq!(args[8], 1);
+    }
+
+    /// Regression for #106 + Copilot review on PR #108: validate looter
+    /// has a player_id BEFORE removing the loot from the corpse. If the
+    /// player_id check ever moves back below the mutation, the drop is
+    /// gone and no grant fires.
+    #[tokio::test]
+    async fn loot_item_with_no_player_id_preserves_corpse_loot() {
+        use super::super::super::space_manager::SpaceManager;
+        use super::*;
+        use cimmeria_entity::cell_entity::LootItem;
+        use tokio::sync::mpsc;
+
+        let mut mgr = SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+
+        // Looter — leave player_id as the default (None).
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+
+        // Seed loot on the corpse and mark the player as looting it.
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.loot.push(LootItem { design_id: None, quantity: 50, index: 1 });
+        }
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.looting_entity = Some(npc_id);
+            assert!(p.player_id.is_none(), "default CellEntity must have no player_id for this test");
+        }
+
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_loot_item(1, 1, &tx, &mut mgr).await;
+
+        // Corpse loot must still be present (the bug removed it before the
+        // player_id check, leaving the player with nothing AND the corpse
+        // empty).
+        let loot_after = mgr.get_entity(npc_id).map(|e| e.loot.len()).unwrap_or(0);
+        assert_eq!(loot_after, 1, "corpse loot must be intact when looter has no player_id");
+
+        // No GrantCash / GrantItem must have been queued.
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::GrantCash { .. } | CellToBaseMsg::GrantItem { .. } => {
+                    panic!("no grant message should fire when looter has no player_id");
+                }
+                _ => {}
+            }
+        }
     }
 }
