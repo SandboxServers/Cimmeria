@@ -191,8 +191,7 @@ async fn handle_reload(
     }).await;
 
     {
-        const BSF_IN_COMBAT: u32 = 1 << 3;
-        const BSF_HOLSTER: u32 = 1 << 8;
+        use crate::cell::combat::{BSF_HOLSTER, BSF_IN_COMBAT};
         if let Some(e) = space_mgr.get_entity_mut(entity_id) {
             let old = e.state_field;
             e.state_field |= BSF_IN_COMBAT;
