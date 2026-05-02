@@ -13,12 +13,14 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::mercury::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
-    build_entity_leave, build_entity_method_packet, build_reset_entities, method_idx,
+    build_entity_leave, build_entity_method_packet, build_forced_position,
+    build_reset_entities, method_idx,
 };
 
 use super::super::ConnectedClientState;
 use super::super::helpers::send_to_witness;
 use super::gate_travel::handle_gate_travel;
+use super::space_registry::resolve_space_id_fallback;
 use super::methods::inventory::update_bandolier_ammo;
 use super::methods::{
     handle_buyback_vendor_items, handle_grant_cash, handle_grant_item, handle_grant_xp,
@@ -141,6 +143,12 @@ pub(crate) async fn handle_cell_message(
                 |key, seq, acks| {
                     build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
                 },
+            ).await;
+        }
+        CellToBaseMsg::TeleportPlayer { entity_id, position } => {
+            handle_teleport_player(
+                entity_id, position,
+                socket, connected, entity_to_addr, db_pool,
             ).await;
         }
         CellToBaseMsg::RespawnReload { entity_id, world_name, spawn_pos } => {
@@ -405,6 +413,110 @@ pub(crate) async fn handle_cell_message(
                         "BandolierAmmoUpdate: DB write failed"
                     );
                 }
+            }
+        }
+    }
+}
+
+/// Authoritative same-world teleport: snap the player's avatar to `position`.
+///
+/// Sends three things, in order:
+/// 1. `FORCED_POSITION` (0x31) — the engine-level snap. Without this the
+///    avatar does not move (the client keeps sending `AVATAR_UPDATE_EXPLICIT`
+///    from the source pad). See `build_forced_position` for wire details.
+/// 2. `onPlayerTeleport` (method 116) — flags the client into streaming-load
+///    waiting state with the new position so terrain chunks load cleanly.
+///    See SGWPlayer.def's comment on this method.
+/// 3. Persist new pos to `sgw_player` so a relog mid-ceremony doesn't
+///    teleport the player back to the source pad. We fail closed on missing
+///    `active_player_id` for the same reason as `gate_travel.rs`.
+async fn handle_teleport_player(
+    entity_id: u32,
+    position: [f32; 3],
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
+) {
+    // Resolve space_id from the client's known world_name. Falls back to the
+    // hardcoded table when the world hasn't been registered yet (rare).
+    let (world_name, account_id, active_player_id) = {
+        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+            Some(a) => a,
+            None => {
+                tracing::warn!(entity_id, "TeleportPlayer: no client addr for entity");
+                return;
+            }
+        };
+        let clients = connected.lock().unwrap();
+        match clients.get(&addr) {
+            Some(c) => (c.world_name.clone(), c.account_id, c.active_player_id),
+            None => {
+                tracing::warn!(entity_id, %addr, "TeleportPlayer: client state not found");
+                return;
+            }
+        }
+    };
+    let world_name = world_name.unwrap_or_else(|| "Castle_CellBlock".to_string());
+    let space_id = resolve_space_id_fallback(&world_name);
+
+    tracing::info!(
+        entity_id, ?position, %world_name, space_id,
+        "TeleportPlayer: snapping avatar"
+    );
+
+    // 1. Engine-level snap.
+    send_to_witness(
+        socket, connected, entity_to_addr, entity_id,
+        |key, seq, acks| {
+            build_forced_position(key, seq, acks, entity_id, space_id, position)
+        },
+    ).await;
+
+    // 2. Streaming-load waiting flag (method 116). Direction is zeroed —
+    //    we don't currently rotate the avatar on ring travel.
+    let mut args = Vec::with_capacity(24);
+    for &c in &position {
+        args.extend_from_slice(&c.to_le_bytes());
+    }
+    args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
+    const METHOD_ON_PLAYER_TELEPORT: u16 = 116;
+    send_to_witness(
+        socket, connected, entity_to_addr, entity_id,
+        |key, seq, acks| {
+            build_entity_method_packet(key, seq, acks, entity_id,
+                METHOD_ON_PLAYER_TELEPORT, &args)
+        },
+    ).await;
+
+    // 3. Persist. Mirrors gate_travel's fail-closed on missing active_player_id.
+    if let Some(pool) = db_pool {
+        let pid = match active_player_id {
+            Some(p) => p,
+            None => {
+                tracing::error!(
+                    entity_id, account_id,
+                    "TeleportPlayer: no active_player_id cached — refusing to persist"
+                );
+                return;
+            }
+        };
+        let res = sqlx::query(
+            "UPDATE sgw_player SET pos_x = $1, pos_y = $2, pos_z = $3 \
+             WHERE player_id = $4 AND account_id = $5"
+        )
+        .bind(position[0]).bind(position[1]).bind(position[2])
+        .bind(pid).bind(account_id as i32)
+        .execute(pool.as_ref()).await;
+        match res {
+            Ok(r) if r.rows_affected() == 0 => {
+                tracing::warn!(entity_id, pid, account_id,
+                    "TeleportPlayer: persistence UPDATE matched 0 rows");
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!(entity_id, pid, account_id, error = %e,
+                    "TeleportPlayer: failed to persist position");
             }
         }
     }

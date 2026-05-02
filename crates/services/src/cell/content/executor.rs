@@ -18,6 +18,7 @@ pub(super) async fn execute_actions(
     player_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
 ) {
     for (chain_id, action) in resolved.actions {
         match action {
@@ -330,6 +331,48 @@ pub(super) async fn execute_actions(
             }
             Action::TriggerTransporter { region_id } => {
                 tracing::info!(entity_id, region_id, chain_id, "Content: triggering transporter");
+                crate::cell::ring_transport_runtime::handle_interact(
+                    region_id, entity_id, tx, space_mgr, engine,
+                ).await;
+            }
+            Action::Teleport { space_id, position } => {
+                tracing::info!(
+                    entity_id, space_id, ?position, chain_id,
+                    "Content: teleporting entity"
+                );
+                // The chain action's `space_id` is the destination space ID.
+                // For same-world teleport (the common case in current chains
+                // — there's no chain-driven cross-world teleport in the live
+                // seed data) it equals the entity's current space, so we can
+                // ignore it and just reposition. Cross-world chain teleport
+                // would need a path equivalent to GateTravel; defer that
+                // until a chain actually demands it.
+                let current_space = space_mgr.get_entity(entity_id).map(|e| e.space_id.0);
+                if Some(space_id) != current_space && space_id != 0 {
+                    tracing::warn!(
+                        entity_id, requested = space_id, current = ?current_space, chain_id,
+                        "Content: cross-space chain teleport not implemented — falling back to same-space move"
+                    );
+                }
+                space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+                if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+                    e.position = cimmeria_common::Vector3::new(position[0], position[1], position[2]);
+                }
+                let mut args = Vec::with_capacity(24);
+                args.extend_from_slice(&position[0].to_le_bytes());
+                args.extend_from_slice(&position[1].to_le_bytes());
+                args.extend_from_slice(&position[2].to_le_bytes());
+                args.extend_from_slice(&0.0f32.to_le_bytes());
+                args.extend_from_slice(&0.0f32.to_le_bytes());
+                args.extend_from_slice(&0.0f32.to_le_bytes());
+                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    // onPlayerTeleport (SGWPlayer flat method index 116) —
+                    // tells the client to set the waiting state flag and
+                    // mask any streaming chunk loads on the way to the dest.
+                    method_index: 116,
+                    args,
+                }).await;
             }
             Action::SystemMessage { message_id } => {
                 // TODO: Wire format for system messages is unknown. The previous

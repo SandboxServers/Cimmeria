@@ -224,6 +224,18 @@ pub struct CellEntity {
     /// Currently-active bandolier slot (0-based index).
     pub active_bandolier_slot: i32,
 
+    // ── Ring transporter state ──────────────────────────────────────────────
+
+    /// Region ID of the ring pad the player is currently interacting with.
+    /// Set when the player triggers a ring switch (Python `interact()`),
+    /// cleared when they pick a destination (Python `selectDestination`).
+    /// `None` whenever no ring UI is active for this player.
+    pub ring_source_id: Option<i32>,
+    /// Destination ring region ID after a successful selection — used by the
+    /// destination ring's `playerLoaded` callback to route the loaded player
+    /// to the correct waiting list. Cleared in `playerLoaded`.
+    pub destination_ring_id: Option<i32>,
+
     /// Player's bandolier items (quick-access equipment slots).
     pub bandolier_items: HashMap<i32, BandolierItem>,
 
@@ -332,6 +344,8 @@ impl CellEntity {
             active_bandolier_slot: 0,
             bandolier_items: HashMap::new(),
             bandolier_ammo_dirty: HashSet::new(),
+            ring_source_id: None,
+            destination_ring_id: None,
         }
     }
 

@@ -165,6 +165,17 @@ impl CellService {
                 Ok(tables) => { space_mgr.loot_tables = tables; }
                 Err(e) => { tracing::warn!("Failed to load loot tables: {e}"); }
             }
+            match super::super::ring_transport::load_ring_regions(pool).await {
+                Ok(regions) => {
+                    space_mgr.ring_transporters.load(&regions);
+                    space_mgr.ring_regions = regions;
+                    tracing::info!(
+                        count = space_mgr.ring_regions.len(),
+                        "Initialized ring transporters"
+                    );
+                }
+                Err(e) => { tracing::warn!("Failed to load ring transport regions: {e}"); }
+            }
         }
 
         // Send SpaceData for all startup spaces to BaseApp

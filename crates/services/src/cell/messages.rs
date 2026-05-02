@@ -453,6 +453,19 @@ pub enum CellToBaseMsg {
         spawn_pos: [f32; 3],
     },
 
+    /// Authoritative same-world teleport. The cell has already updated its
+    /// spatial state via `update_entity_position`; the base must now push the
+    /// new position to the player's own client. Engine-level snap, no loading
+    /// screen, no world reload — used by ring transporters and any other
+    /// in-world short-hop teleport.
+    ///
+    /// Other witnesses receive their position update through the next AoI
+    /// tick's `EntityMoved` broadcast — no extra fan-out is needed here.
+    TeleportPlayer {
+        entity_id: u32,
+        position: [f32; 3],
+    },
+
     /// Send a ghost entity method call to a specific witness player.
     ///
     /// Used for broadcasting property updates (InteractionType, SetVisible, etc.)

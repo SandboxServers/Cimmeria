@@ -61,6 +61,13 @@ pub(super) async fn run_cell_loop(
                 // is delivered in the same tick as other AoI-driven updates.
                 super::ticks::reload_completion_tick(tx, &mut space_mgr).await;
 
+                // Drive ring transporter timers (hide / warmup / cooldown).
+                // Each transporter holds its own deadlines; this tick fires
+                // the transitions and dispatches their effects.
+                super::super::ring_transport_runtime::run_tick_with_engine(
+                    tx, &mut space_mgr, &engine,
+                ).await;
+
                 // NPC movement runs every AoI tick (100ms) for smooth pathing
                 super::ticks::npc_movement_tick(&mut space_mgr);
 
