@@ -94,7 +94,7 @@ pub async fn handle_loot_item(
         None => {
             tracing::warn!(
                 entity_id, target_eid,
-                "lootItem: dropping loot grant — looter has no player_id (would otherwise misroute to player_id=0)"
+                "lootItem: looter has no player_id; aborting without removing the drop"
             );
             return;
         }
@@ -205,5 +205,58 @@ mod tests {
         assert_eq!(args.len(), 9);
         assert_eq!(u32::from_le_bytes([args[4], args[5], args[6], args[7]]), 0);
         assert_eq!(args[8], 1);
+    }
+
+    /// Regression for #106 + Copilot review on PR #108: validate looter
+    /// has a player_id BEFORE removing the loot from the corpse. If the
+    /// player_id check ever moves back below the mutation, the drop is
+    /// gone and no grant fires.
+    #[tokio::test]
+    async fn loot_item_with_no_player_id_preserves_corpse_loot() {
+        use super::super::super::space_manager::SpaceManager;
+        use super::*;
+        use cimmeria_entity::cell_entity::LootItem;
+        use tokio::sync::mpsc;
+
+        let mut mgr = SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+
+        // Looter — leave player_id as the default (None).
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+
+        // Seed loot on the corpse and mark the player as looting it.
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            npc.loot.push(LootItem { design_id: None, quantity: 50, index: 1 });
+        }
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.looting_entity = Some(npc_id);
+            assert!(p.player_id.is_none(), "default CellEntity must have no player_id for this test");
+        }
+
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_loot_item(1, 1, &tx, &mut mgr).await;
+
+        // Corpse loot must still be present (the bug removed it before the
+        // player_id check, leaving the player with nothing AND the corpse
+        // empty).
+        let loot_after = mgr.get_entity(npc_id).map(|e| e.loot.len()).unwrap_or(0);
+        assert_eq!(loot_after, 1, "corpse loot must be intact when looter has no player_id");
+
+        // No GrantCash / GrantItem must have been queued.
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::GrantCash { .. } | CellToBaseMsg::GrantItem { .. } => {
+                    panic!("no grant message should fire when looter has no player_id");
+                }
+                _ => {}
+            }
+        }
     }
 }
