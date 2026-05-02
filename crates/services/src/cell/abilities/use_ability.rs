@@ -437,8 +437,9 @@ pub async fn handle_use_ability(
             // the player's BSF_InCombat bit is unset and the new stateField is
             // pushed to the client. We're being aggressive here (clear on every
             // kill), which is safe for the single-target Cellblock fights we're
-            // testing; multi-mob aggro will need proper threat-tracking before
-            // generalizing.
+            // testing; multi-mob aggro needs the per-player threatenedMobs set
+            // tracked in issue #92 before this can stay correct under multiple
+            // attackers.
             const BSF_IN_COMBAT: u32 = 1 << 3;
             let attacker_state = if let Some(p) = space_mgr.get_entity_mut(entity_id) {
                 let old = p.state_field;
