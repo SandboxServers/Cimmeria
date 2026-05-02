@@ -295,10 +295,24 @@ mod tests {
         while let Ok(msg) = rx.try_recv() {
             if let CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } = msg {
                 if entity_id == 1 && method_index == 114 {
+                    // We seeded exactly one LootItem; assert the encoded count
+                    // matches that, not just `> 0`. A future bug that
+                    // duplicated entries or announced the wrong length would
+                    // otherwise still pass this regression guard.
                     let count = u32::from_le_bytes(args[4..8].try_into().unwrap());
-                    assert!(
-                        count > 0,
-                        "onLootDisplay must announce a non-empty loot list when npc.loot has entries"
+                    assert_eq!(
+                        count, 1,
+                        "onLootDisplay must announce exactly the seeded loot count (1)"
+                    );
+                    // The trailing byte is the `initial` flag from
+                    // send_loot_display: 1 for the first display (opens the
+                    // loot window) and 0 for refresh-only packets. The
+                    // first-open path is the one a right-click on a corpse
+                    // takes, so this must be 1.
+                    let initial = *args.last().expect("onLootDisplay payload missing trailing initial byte");
+                    assert_eq!(
+                        initial, 1,
+                        "first-display onLootDisplay must set initial=1 to open the loot window client-side"
                     );
                     saw_loot_display = true;
                 }
