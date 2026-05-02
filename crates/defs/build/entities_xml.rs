@@ -39,24 +39,20 @@ pub fn parse_entities_xml(path: &Path) -> Vec<String> {
         match reader.read_event() {
             Ok(Event::Start(ref e)) => {
                 depth += 1;
-                // Depth 1 = inside <root>. Self-closing tags at depth 1 are
-                // entity types, but Start + End pairs at depth 1 could also be
-                // entity types (the XML may use either style).
-                if depth == 1 {
+                // After increment, direct children of <root> sit at depth == 2.
+                // The Start branch catches the `<Account></Account>` form;
+                // the Empty branch below catches the `<Account/>` form.
+                if depth == 2 {
                     let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    if tag != "root" {
-                        names.push(tag);
-                    }
+                    names.push(tag);
                 }
             }
             Ok(Event::Empty(ref e)) => {
-                // Self-closing tags inside <root>.
-                if depth == 0 || (depth == 1 && String::from_utf8_lossy(e.name().as_ref()) != "root") {
-                    // depth == 0 means we haven't seen <root> yet, which
-                    // shouldn't happen, but handle gracefully. depth == 1
-                    // means we're inside <root>.
-                    if depth >= 1 {
-                        let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                // Self-closing tag — depth doesn't advance, so direct
+                // children of <root> fire here at depth == 1.
+                if depth == 1 {
+                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    if tag != "root" {
                         names.push(tag);
                     }
                 }
