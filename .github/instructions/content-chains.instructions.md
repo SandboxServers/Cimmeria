@@ -52,7 +52,7 @@ When a PR regenerates these, diff against the previous version. Disable buggy ch
 
 ## Chain-ID ranges (`castle_cellblock_chains.sql`)
 
-```
+```text
 Mission 622:  1001-1010   Mission 638:  1011-1030
 Mission 639:  1031-1040   Mission 640:  1041-1050
 Mission 641:  1051-1070   Mission 680:  1071-1080

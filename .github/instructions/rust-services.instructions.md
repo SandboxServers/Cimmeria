@@ -10,7 +10,7 @@ applyTo: "crates/services/**/*.rs"
 
 - **Cell** (`crates/services/src/cell/`) — entity state, content engine, AoI, NPC AI, abilities. One cell per space.
 - **Base** (`crates/services/src/base/`) — client connection lifecycle, world entry, client-method dispatch, persistence, witness broadcasts to the connected client.
-- They communicate by enum messages (`crates/services/src/cell/messages.rs`). Don't reach across the boundary directly — add a message variant if you need a new interaction.
+- They communicate by enum messages (`crates/services/src/cell/messages/`). Don't reach across the boundary directly — add a message variant if you need a new interaction.
 
 ## Content engine actions
 
@@ -51,6 +51,6 @@ Default to none. Only when the **why** is non-obvious: hidden constraint, subtle
 
 ## Reference
 
-- `crates/services/src/cell/ring_transport_runtime.rs` is a good example of how to dispatch FSM `Effect`s into wire `CellToBaseMsg`s.
+- `crates/services/src/cell/ring_transport/runtime.rs` is a good example of how to dispatch FSM `Effect`s into wire `CellToBaseMsg`s.
 - `crates/services/src/base/world_entry/cell_dispatch.rs` shows the base-side handler pattern for a `CellToBaseMsg` variant.
 - Reference Python in `python/cell/` and `python/common/` is the behaviour spec — read it for any new feature port.
