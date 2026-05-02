@@ -8,17 +8,25 @@
 //! Issue #97 asks for the linter to also walk the entity_templates
 //! table for entities whose default flags already include the bit, but
 //! template loading needs a real DB. The MVP implementation here scans
-//! the seed SQL files directly with a regex pass — same chain must
-//! contain both the trigger and at least one `set_interaction_type`
-//! action, with an explicit allowlist of `(file, chain_id)` exceptions
-//! for cases where the bit comes from elsewhere.
+//! the seed SQL files directly with a line-by-line pass — for each
+//! `interact_tag` trigger on tag T, we require that SOME chain in the
+//! same file has a `set_interaction_type` action targeting tag T.
+//! The check is intentionally **tag-based across the file** (not
+//! same-chain) because content engine missions often split the
+//! trigger and the bit-setup across sibling chains in the same scope
+//! (e.g., chain 1034 sets the bit, chain 1041 triggers the use). An
+//! explicit allowlist of `(file, chain_id)` exceptions covers cases
+//! where the bit comes from outside the chain SQL entirely (entity
+//! template default, lootable body, etc.).
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 
 /// Resolve the workspace root from the test crate's CARGO_MANIFEST_DIR.
-/// The seed SQL files live three levels up at `db/resources/Content/Seed/`.
+/// `CARGO_MANIFEST_DIR` is `<workspace>/crates/content-engine`, so two
+/// `parent()` hops land on the workspace root. The seed SQL files then
+/// live at `<workspace>/db/resources/Content/Seed/`.
 fn workspace_root() -> PathBuf {
     let manifest_dir =
         PathBuf::from(env!("CARGO_MANIFEST_DIR"));

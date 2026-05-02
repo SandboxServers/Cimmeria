@@ -112,10 +112,13 @@ pub const INT_NORMAL_LOOT: i64 = 4611686018427387904;
 // Bit 63 (INT_MissionLoot = 9223372036854775808) is NOT expressible as i64.
 // See #97 for the widening discussion.
 
-/// Resolve a symbolic name to its bit value.
-///
-/// Returns `None` for unknown names; the caller should treat that as an
-/// authoring error (e.g., chain linter test fails, loader skips with warn).
+/// Resolve a symbolic name to its bit value, or `None` for unknown
+/// names. The content engine loader (`crates/content-engine/src/
+/// loader.rs::convert_action`) treats `None` as a soft authoring error:
+/// it logs a `tracing::warn!` and falls back to a mask of `0`, so the
+/// resulting `Action::SetInteractionType` runs but has no effect on the
+/// flag bits. Future hardening (validating mask names at chain-load
+/// time, failing the test suite on unknown names) is tracked in #97.
 pub fn mask_for_name(name: &str) -> Option<i64> {
     match name {
         "INT_Banker" => Some(INT_BANKER),
