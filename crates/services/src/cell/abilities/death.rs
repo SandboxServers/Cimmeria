@@ -25,7 +25,6 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::loot_drop::generate_loot_on_death;
 use super::messaging::send_entity_method;
-use crate::cell::combat::BSF_IN_COMBAT;
 
 /// Apply the death-transition message sequence for a target that just died.
 ///
@@ -41,31 +40,32 @@ pub(super) async fn apply_death_transition(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    // 1+2. Attacker side: clear targeting reticle + drop out of combat.
+    // 1. Attacker side: clear targeting reticle.
     if attacker_is_player {
         send_entity_method(
             attacker_id, crate::mercury::method_idx::ON_TARGET_UPDATE,
             0i32.to_le_bytes().to_vec(),
             tx, space_mgr,
         ).await;
+    }
 
-        // Aggressive BSF_InCombat clear on every kill — safe for single-target
-        // fights, wrong under multi-mob aggro. Issue #92 tracks the proper
-        // per-player threatenedMobs set that drives this bit.
-        let attacker_state = if let Some(p) = space_mgr.get_entity_mut(attacker_id) {
-            let old = p.state_field;
-            p.state_field &= !BSF_IN_COMBAT;
-            if p.state_field != old { Some(p.state_field) } else { None }
-        } else {
-            None
-        };
-        if let Some(new_state) = attacker_state {
+    // 2. Drop the dying NPC from EVERY player's threatened_mobs set —
+    //    not just the killer's. Multiple players can have the same mob on
+    //    their threat lists; clearing only the killer's BSF_InCombat would
+    //    leave others stuck in combat-ready cursor mode after the only mob
+    //    they were threatened by died. Mirrors python `SGWPlayer.on
+    //    RemovedFromThreatList` fanout from `SGWMob.onDead`.
+    if !target_is_player {
+        let to_broadcast = crate::cell::combat::clear_dead_npc_from_all_player_threat(
+            space_mgr, target_eid,
+        );
+        for (player_id, new_state) in to_broadcast {
             tracing::debug!(
-                attacker = attacker_id, target = target_eid, new_state,
-                "death: clearing attacker BSF_InCombat (exit combat after kill)"
+                player_id, dying_npc = target_eid, new_state,
+                "death: clearing player BSF_InCombat (last threatened mob died)"
             );
             send_entity_method(
-                attacker_id, crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                player_id, crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),
                 tx, space_mgr,
             ).await;

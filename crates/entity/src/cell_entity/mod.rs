@@ -167,6 +167,12 @@ pub struct CellEntity {
     /// Bit 6: BSF_MovementLock, Bit 7: BSF_Walking, Bit 8: BSF_Holster.
     pub state_field: u32,
 
+    /// NPC entity IDs that currently have this player on their threat list.
+    /// Player entities only — `BSF_InCombat` (bit 3 of `state_field`) is set
+    /// while this is non-empty and cleared when it drains. Mirrors the
+    /// `threatenedMobs` list on `python/cell/SGWPlayer.py:944-965`.
+    pub threatened_mobs: HashSet<u32>,
+
     // ── Ammo state ────────────────────────────────────────────────────────────
     //
     // Per-slot ammo lives on `BandolierItem` (`current_ammo`, `cur_ammo_type`)
@@ -329,6 +335,7 @@ impl CellEntity {
             body_set: None,
             components: Vec::new(),
             state_field: 0,
+            threatened_mobs: HashSet::new(),
             reload_complete_at: None,
             reload_slot_id: None,
             ai_state: AiState::Idle,
