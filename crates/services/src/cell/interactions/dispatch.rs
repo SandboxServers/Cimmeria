@@ -143,11 +143,21 @@ pub async fn handle_initial_response(
             None
         });
 
-    let player_id = space_mgr.get_entity(entity_id)
-        .and_then(|e| e.player_id)
-        .unwrap_or(0);
-
     if let Some(dialog_id) = dialog_id {
+        // Resolve player_id only after we know we have a dialog to fire.
+        // Falling back to 0 here would attribute the resulting content-engine
+        // side effects (mission progress, chain triggers) to a non-existent
+        // player. Mirrors the existing protection in `send_store_open`.
+        let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+            Some(id) => id,
+            None => {
+                tracing::warn!(
+                    entity_id, interaction_set_map_id, dialog_id,
+                    "handle_initial_response: missing player_id; aborting dialog open"
+                );
+                return;
+            }
+        };
         tracing::info!(
             entity_id, interaction_set_map_id, dialog_id,
             "handle_initial_response: found dialog, sending onDialogDisplay"

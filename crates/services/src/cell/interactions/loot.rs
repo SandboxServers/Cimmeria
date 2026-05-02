@@ -85,6 +85,21 @@ pub async fn handle_loot_item(
         }
     };
 
+    // Validate the looter has a player_id BEFORE mutating the corpse loot
+    // list. The earlier ordering removed the item first and only then
+    // checked, so an invalid looter (no player_id) lost the drop forever
+    // — the corpse table was already mutated.
+    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        Some(id) => id,
+        None => {
+            tracing::warn!(
+                entity_id, target_eid,
+                "lootItem: dropping loot grant — looter has no player_id (would otherwise misroute to player_id=0)"
+            );
+            return;
+        }
+    };
+
     // Find and remove the loot item from the NPC
     let removed_item = {
         let target = match space_mgr.get_entity_mut(target_eid) {
@@ -111,18 +126,6 @@ pub async fn handle_loot_item(
         quantity = removed_item.quantity,
         "Player looted item"
     );
-
-    // Grant the loot to the player via BaseApp persistence handlers
-    let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
-        Some(id) => id,
-        None => {
-            tracing::warn!(
-                entity_id, target_eid,
-                "lootItem: dropping loot grant — looter has no player_id (would otherwise misroute to player_id=0)"
-            );
-            return;
-        }
-    };
 
     if removed_item.design_id.is_none() {
         // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
