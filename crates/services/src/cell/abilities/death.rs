@@ -25,10 +25,7 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::loot_drop::generate_loot_on_death;
 use super::messaging::send_entity_method;
-
-/// `BSF_InCombat` bit position. Cleared on the attacker on every kill while
-/// multi-mob threat tracking (#92) is unimplemented.
-const BSF_IN_COMBAT: u32 = 1 << 3;
+use crate::cell::combat::BSF_IN_COMBAT;
 
 /// Apply the death-transition message sequence for a target that just died.
 ///

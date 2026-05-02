@@ -30,9 +30,13 @@ pub async fn dispatch(
             super::world::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await
         }
         super::constants::ORG_CREATION..=super::constants::CANCEL_MOVIE => {
-            if method_index >= super::constants::ORG_CREATION && method_index <= super::constants::SPEND_APPLIED_SCIENCE_POINTS {
-                super::social::dispatch(entity_id, method_index, args, tx, space_mgr).await
-            } else if method_index >= super::constants::CRAFT && method_index <= super::constants::RESPEC_CRAFTING {
+            // The outer arm already pins method_index into [ORG_CREATION,
+            // CANCEL_MOVIE]. Only the [CRAFT, RESPEC_CRAFTING] sub-range
+            // routes to crafting; everything else in the outer range is
+            // social. Implicit constant ordering:
+            //   ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS < CRAFT
+            //   ≤ RESPEC_CRAFTING ≤ CANCEL_MOVIE
+            if (super::constants::CRAFT..=super::constants::RESPEC_CRAFTING).contains(&method_index) {
                 super::crafting::dispatch(entity_id, method_index, args, tx, space_mgr).await
             } else {
                 super::social::dispatch(entity_id, method_index, args, tx, space_mgr).await

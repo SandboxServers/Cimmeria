@@ -125,7 +125,7 @@ pub(crate) async fn handle_cell_message(
             ).await;
         }
         CellToBaseMsg::GrantXP { entity_id, xp_amount } => {
-            handle_grant_xp(entity_id, xp_amount, socket, connected, entity_to_addr).await;
+            handle_grant_xp(entity_id, xp_amount, db_pool, socket, connected, entity_to_addr).await;
         }
         CellToBaseMsg::GrantItem { entity_id, player_id, item_id, container_id, count } => {
             handle_grant_item(

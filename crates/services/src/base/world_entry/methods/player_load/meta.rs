@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use sqlx::PgPool;
 
 use cimmeria_entity::abilities::AbilityTreeData;
@@ -113,7 +115,7 @@ fn map_bandolier_rows(
 ///
 /// Returns tuples of (slot_id, BandolierItem) containing equipped weapon info.
 pub async fn query_bandolier_items(
-    db_pool: &Option<std::sync::Arc<PgPool>>,
+    db_pool: &Option<Arc<PgPool>>,
     player_id: i32,
 ) -> Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)> {
     let pool = match db_pool {
