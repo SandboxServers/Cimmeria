@@ -220,7 +220,7 @@ mod tests {
         match msg {
             CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } => {
                 assert_eq!(entity_id, 1); // sent to player
-                assert_eq!(method_index, crate::cell::client_methods::player::ON_DIALOG_DISPLAY);
+                assert_eq!(method_index, crate::mercury::method_idx::ON_DIALOG_DISPLAY);
                 assert_eq!(args.len(), 17);
                 let dialog_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 assert_eq!(dialog_id, 42);
