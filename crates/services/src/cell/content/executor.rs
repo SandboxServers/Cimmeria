@@ -331,7 +331,7 @@ pub(super) async fn execute_actions(
             }
             Action::TriggerTransporter { region_id } => {
                 tracing::info!(entity_id, region_id, chain_id, "Content: triggering transporter");
-                crate::cell::ring_transport_runtime::handle_interact(
+                crate::cell::ring_transport::handle_interact(
                     region_id, entity_id, tx, space_mgr, engine,
                 ).await;
             }

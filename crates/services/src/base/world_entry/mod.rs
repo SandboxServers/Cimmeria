@@ -20,6 +20,7 @@ mod gate_travel;
 mod map_loaded;
 mod play_character;
 pub(crate) mod space_registry;
+mod teleport;
 
 // Public surface (re-exports keep `super::world_entry::handle_*` imports working
 // in connect_loop.rs and friends).

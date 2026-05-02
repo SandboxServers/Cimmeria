@@ -10,15 +10,33 @@
 //!
 //! Module layout:
 //! - `regions` — DB load of `ring_transport_regions` into [`RingRegion`].
-//! - `transporter` — [`RingTransporter`] state machine + manager + tick.
+//! - `transporter` — [`RingTransporter`] FSM + manager.
 //! - `wire` — `RegionInfo` + `onRingTransporterList` payload encoding.
+//! - `wire_helpers` — runtime byte-level helpers (`onSequence`, `onVisible`,
+//!   `onStateFieldUpdate`, etc.) and the `BSF_MOVEMENT_LOCK` constant.
+//! - `dispatch` — turns [`Effect`] values into `CellToBaseMsg` sends and
+//!   spatial-grid mutations.
+//! - `runtime` — public entry points (`handle_interact`,
+//!   `handle_select_destination`, `handle_region_trigger`,
+//!   `run_tick_with_engine`).
 
+mod dispatch;
 mod regions;
+mod runtime;
 mod transporter;
 mod wire;
+mod wire_helpers;
+
+#[cfg(test)]
+mod tests;
 
 pub use regions::{load_ring_regions, RingRegion};
+pub use runtime::{
+    handle_interact, handle_region_trigger, handle_select_destination,
+    run_tick_with_engine,
+};
 pub use transporter::{
-    ring_transport_tick, Effect, RegionEvent, RingTransporter, RingTransporterManager, State,
+    Effect, RegionEvent, RingTransporter, RingTransporterManager, State,
 };
 pub use wire::{build_on_ring_transporter_list, encode_region_info};
+pub use wire_helpers::{BSF_MOVEMENT_LOCK, METHOD_ON_RING_TRANSPORTER_LIST};

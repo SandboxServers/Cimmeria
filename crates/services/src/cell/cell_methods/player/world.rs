@@ -79,7 +79,7 @@ pub async fn dispatch(
                     // Forward to the ring transporter FSM if this region is a
                     // ring pad (point_set_id matches a loaded ring region).
                     if let Some(set_id) = db_set_id {
-                        crate::cell::ring_transport_runtime::handle_region_trigger(
+                        crate::cell::ring_transport::handle_region_trigger(
                             set_id, b_entering, entity_id, tx, space_mgr, engine,
                         ).await;
                     }
@@ -109,7 +109,7 @@ pub async fn dispatch(
                 let region_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let destination_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(entity_id, region_id, destination_id, "setRingTransporterDestination");
-                crate::cell::ring_transport_runtime::handle_select_destination(
+                crate::cell::ring_transport::handle_select_destination(
                     region_id, destination_id, entity_id, tx, space_mgr, engine,
                 ).await;
             }

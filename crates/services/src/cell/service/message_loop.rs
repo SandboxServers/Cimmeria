@@ -64,7 +64,7 @@ pub(super) async fn run_cell_loop(
                 // Drive ring transporter timers (hide / warmup / cooldown).
                 // Each transporter holds its own deadlines; this tick fires
                 // the transitions and dispatches their effects.
-                super::super::ring_transport_runtime::run_tick_with_engine(
+                super::super::ring_transport::run_tick_with_engine(
                     tx, &mut space_mgr, &engine,
                 ).await;
 

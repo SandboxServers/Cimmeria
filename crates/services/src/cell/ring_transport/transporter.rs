@@ -4,9 +4,17 @@
 //! owns one ring pad's runtime state: who's currently standing on it, what
 //! state the FSM is in, and any pending timer deadlines.
 //!
-//! Timing is tick-driven (100ms cadence) — see [`ring_transport_tick`]. The
-//! Python original used `Atrea.addTimer` (game-time deadlines), which maps
-//! cleanly onto `Instant`-based deadlines we poll each tick.
+//! File-size note: the FSM, `Effect` enum, and `RingTransporterManager` shim
+//! live together because the only natural seam (manager out + Effect out)
+//! produces an ~50-line shim alongside a ~600-line FSM file — uneven enough
+//! that we keep them together per the CLAUDE.md "skip the split if the only
+//! seams produce uneven files" rule. Production code is ~510 lines (over the
+//! 500 soft cap, under the 700 hard cap).
+//!
+//! Timing is tick-driven (100ms cadence) — see
+//! [`super::runtime::run_tick_with_engine`]. The Python original used
+//! `Atrea.addTimer` (game-time deadlines), which maps cleanly onto
+//! `Instant`-based deadlines we poll each tick.
 //!
 //! State graph (from the Python original):
 //!
@@ -509,18 +517,6 @@ impl RawDeadline {
     pub(crate) fn is_warmup(self) -> bool { self.0 == DeadlineKind::Warmup }
     pub(crate) fn is_remote_warmup(self) -> bool { self.0 == DeadlineKind::RemoteWarmup }
     pub(crate) fn is_cooldown(self) -> bool { self.0 == DeadlineKind::Cooldown }
-}
-
-/// Tick entry point — re-exports the runtime tick so callers can stick to
-/// `super::ring_transport::ring_transport_tick`. The actual effect dispatch
-/// lives in [`crate::cell::ring_transport_runtime`] (effect → wire) so this
-/// module stays test-friendly.
-pub async fn ring_transport_tick(
-    tx: &tokio::sync::mpsc::Sender<crate::cell::messages::CellToBaseMsg>,
-    space_mgr: &mut crate::cell::space_manager::SpaceManager,
-    engine: &cimmeria_content_engine::chain::ChainEngine,
-) {
-    crate::cell::ring_transport_runtime::run_tick_with_engine(tx, space_mgr, engine).await;
 }
 
 #[cfg(test)]
