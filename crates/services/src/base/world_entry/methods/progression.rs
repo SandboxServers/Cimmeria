@@ -50,14 +50,20 @@ pub async fn handle_grant_xp(
         }
     };
 
+    // Read current state and compute the new values WITHOUT mutating state
+    // yet. We defer the in-memory update until after DB persistence succeeds
+    // — Copilot caught that the previous order (mutate-then-persist) leaked
+    // a failed grant onto the next successful one: the next GrantXP would
+    // saturate-add on top of the unpersisted value and then write the
+    // combined sum, effectively persisting the grant we tried to drop.
     let (player_id, total_xp, new_level, training_points, levels_gained) = {
         // Tolerate poison instead of panicking — another thread crashing the
         // mutex shouldn't stop XP grants from continuing on the recovered state.
-        let mut map = match connected.lock() {
+        let map = match connected.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        let state = match map.get_mut(&addr) {
+        let state = match map.get(&addr) {
             Some(s) => s,
             None => {
                 tracing::warn!(entity_id, "GrantXP: no connected state for entity");
@@ -66,14 +72,14 @@ pub async fn handle_grant_xp(
         };
 
         let player_id = state.active_player_id;
-        let mut xp = state.player_xp.unwrap_or(0);
+        let prev_xp = state.player_xp.unwrap_or(0);
         let mut level = state.player_level.unwrap_or(1) as u32;
         let mut tp = state.player_training_points.unwrap_or(0);
 
         // Saturate to prevent a pathological grant (e.g., from a corrupted
         // GrantXP message) wrapping the accumulator and producing a negative
         // wire value or a phantom delevel.
-        xp = xp.saturating_add(xp_amount);
+        let xp = prev_xp.saturating_add(xp_amount);
 
         let mut gained = Vec::new();
         while level < MAX_LEVEL && xp > LEVEL_XP[level as usize] {
@@ -82,30 +88,25 @@ pub async fn handle_grant_xp(
             gained.push(level);
         }
 
-        state.player_xp = Some(xp);
-        state.player_level = Some(level as i32);
-        state.player_training_points = Some(tp);
-
         (player_id, xp, level, tp, gained)
     };
 
-    // Persist before wire packets — same ordering invariant `handle_grant_cash`
-    // relies on. On DB failure we drop the wire send so the client doesn't
-    // display unpersisted state. The in-memory state mutation above is
-    // tolerable as a single-process leak: it gets rebuilt from sgw_player on
-    // the next world entry.
+    // Persist first. On DB failure we return WITHOUT mutating in-memory
+    // state and WITHOUT emitting wire packets — the next GrantXP will then
+    // recompute from the truly persisted values rather than compounding the
+    // failure.
     match (db_pool, player_id) {
         (Some(pool), Some(player_id)) => {
-            // Wire format is i32 for exp; saturate so a u64 total exceeding
-            // 2^31-1 doesn't wrap negative. The DB column is bigint, so this
-            // only protects future reads/writes that round-trip via i32.
-            let exp_i64 = total_xp.min(i32::MAX as u64) as i64;
+            // `sgw_player.exp` is `integer`; saturate to i32::MAX so a u64
+            // total exceeding 2^31-1 doesn't wrap negative on either the
+            // column or the wire payload (also i32).
+            let exp_i32 = total_xp.min(i32::MAX as u64) as i32;
             match sqlx::query(
                 "UPDATE sgw_player \
                     SET exp = $1, level = $2, training_points = $3 \
                   WHERE player_id = $4",
             )
-            .bind(exp_i64)
+            .bind(exp_i32)
             .bind(new_level as i32)
             .bind(training_points as i32)
             .bind(player_id)
@@ -142,6 +143,20 @@ pub async fn handle_grant_xp(
                 entity_id, total_xp, new_level,
                 "GrantXP: no DB pool — XP/level not persisted, will be lost on reconnect"
             );
+        }
+    }
+
+    // DB write succeeded (or we're in a no-persist best-effort branch).
+    // Apply the in-memory mutation now so subsequent reads see the new state.
+    {
+        let mut map = match connected.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        };
+        if let Some(state) = map.get_mut(&addr) {
+            state.player_xp = Some(total_xp);
+            state.player_level = Some(new_level as i32);
+            state.player_training_points = Some(training_points);
         }
     }
 
