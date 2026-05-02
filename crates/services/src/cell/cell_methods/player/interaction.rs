@@ -261,13 +261,24 @@ mod tests {
             npc.faction = 10; // hostile
             crate::cell::combat::set_dead_state(&mut npc.state_field);
             npc.interaction_type = Some(NpcInteractionType::Loot);
+            // Seed real loot. Without this, the test only proves dispatch
+            // routes to method 114 — the corpse could be empty and the test
+            // would still pass. With a real LootItem in place, asserting
+            // count > 0 below catches a future "empty list short-circuit"
+            // regression in handle_interact (e.g., if it grows a guard like
+            // `interaction_type = Some(Loot) AND target.loot non-empty`).
+            npc.loot.push(cimmeria_entity::cell_entity::LootItem {
+                design_id: None, // None = naquadah (cash)
+                quantity: 50,
+                index: 1,
+            });
         }
 
         let (tx, mut rx) = mpsc::channel(16);
         let engine = cimmeria_content_engine::chain::ChainEngine::new();
-        let mut args = Vec::with_capacity(4);
-        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
-        let handled = dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+        let mut dispatch_args = Vec::with_capacity(4);
+        dispatch_args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        let handled = dispatch(1, INTERACT, &dispatch_args, &tx, &mut mgr, &engine).await;
         assert!(handled);
 
         // Player should now be marked as looting this corpse.
@@ -277,11 +288,32 @@ mod tests {
             "interact handler must set looting_entity on the player"
         );
 
-        // onLootDisplay (method 114) must have been queued for the player.
+        // onLootDisplay (method 114) must have been queued for the player AND
+        // the encoded loot count must be non-zero. Wire layout from
+        // send_loot_display: `entity_id:i32, count:u32, items[..], initial:u8`.
         let mut saw_loot_display = false;
         while let Ok(msg) = rx.try_recv() {
-            if let CellToBaseMsg::EntityMethodCall { entity_id, method_index, .. } = msg {
+            if let CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } = msg {
                 if entity_id == 1 && method_index == 114 {
+                    // We seeded exactly one LootItem; assert the encoded count
+                    // matches that, not just `> 0`. A future bug that
+                    // duplicated entries or announced the wrong length would
+                    // otherwise still pass this regression guard.
+                    let count = u32::from_le_bytes(args[4..8].try_into().unwrap());
+                    assert_eq!(
+                        count, 1,
+                        "onLootDisplay must announce exactly the seeded loot count (1)"
+                    );
+                    // The trailing byte is the `initial` flag from
+                    // send_loot_display: 1 for the first display (opens the
+                    // loot window) and 0 for refresh-only packets. The
+                    // first-open path is the one a right-click on a corpse
+                    // takes, so this must be 1.
+                    let initial = *args.last().expect("onLootDisplay payload missing trailing initial byte");
+                    assert_eq!(
+                        initial, 1,
+                        "first-display onLootDisplay must set initial=1 to open the loot window client-side"
+                    );
                     saw_loot_display = true;
                 }
                 // useAbility / target reticle must NOT have been sent.
