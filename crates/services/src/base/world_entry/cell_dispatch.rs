@@ -27,8 +27,9 @@ use super::methods::{
     handle_mail_request, handle_mission_update, handle_move_inventory_item,
     handle_open_vendor_store, handle_purchase_vendor_items,
     handle_recharge_inventory_items, handle_remove_inventory_item,
-    handle_repair_inventory_item, handle_repair_inventory_items, handle_sell_vendor_items,
-    handle_use_inventory_item, send_full_inventory_update,
+    handle_remove_inventory_item_by_type, handle_repair_inventory_item,
+    handle_repair_inventory_items, handle_sell_vendor_items, handle_use_inventory_item,
+    send_full_inventory_update,
 };
 use super::space_registry::register_space;
 
@@ -344,6 +345,12 @@ pub(crate) async fn handle_cell_message(
         CellToBaseMsg::UseInventoryItem { entity_id, player_id, item_id, target_id } => {
             handle_use_inventory_item(
                 entity_id, player_id, item_id, target_id,
+                &db_pool, cell_tx,
+            ).await;
+        }
+        CellToBaseMsg::RemoveInventoryItemByType { entity_id, player_id, type_id, count } => {
+            handle_remove_inventory_item_by_type(
+                entity_id, player_id, type_id, count,
                 &db_pool, cell_tx, socket, connected, entity_to_addr,
             ).await;
         }

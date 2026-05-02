@@ -168,6 +168,19 @@ pub enum CellToBaseMsg {
         quantity: i32,
     },
 
+    /// Remove `count` of an item by **design id** (`type_id`) — chains know
+    /// design ids, not instance ids. Base resolves the player's first
+    /// matching instance and applies the same wire-update sequence as
+    /// `RemoveInventoryItem`. Used by `Action::RemoveItem` in the cell
+    /// content executor (e.g., chain 1034 consumes the Ambernol vial after
+    /// `OnItemUse` fires).
+    RemoveInventoryItemByType {
+        entity_id: u32,
+        player_id: i32,
+        type_id: i32,
+        count: i32,
+    },
+
     /// Consume one charge/stack of an inventory item instance, then fire the
     /// content-engine `OnItemUse` event back to the cell with the resolved
     /// `type_id` (item design id). Mission progression that depends on item

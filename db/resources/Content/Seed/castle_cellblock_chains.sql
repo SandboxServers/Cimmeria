@@ -285,10 +285,12 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1033, 'advance_step', 639, '2343', '{}', 0, 0);
 
 -- Chain 1034: use item 19 (ambernol) while step 2343 active → complete 639, accept 640.
---   The vial is consumed atomically by the base service before this fires
---   (CellToBaseMsg::UseInventoryItem → BaseToCellMsg::ItemUsed → fire_item_use),
---   so no `remove_item` action is needed — and including one would double-consume
---   if the player happened to have a stack >1.
+--   The chain is responsible for consumption via `remove_item`. Mirrors python
+--   `FindAmbernol.py:115` which calls `inventory.removeItemByDesign(19, 1, False)`
+--   from a per-mission script callback — pure `useItem` events fire without
+--   consuming, and per-item handlers decide whether to remove the stack
+--   (#95 reverted the global consume-on-use that would silently drain reusable
+--   items like radios).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1034, '639 - Use ambernol: complete 639, accept 640', 'mission', 639, true, 0);
 
@@ -300,13 +302,17 @@ VALUES (1034, 'step_status', 639, '2343', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1034, 'complete_mission', 639, NULL, '{}', 0, 0),
-  (1034, 'accept_mission',   640, NULL, '{}', 0, 1),
+  -- Consume the vial first — the step-status condition is locked in by the
+  -- time the chain fires, so subsequent actions can't double-trigger off the
+  -- removal's wire updates.
+  (1034, 'remove_item',      19,  NULL, '{"qty": 1}', 0, 0),
+  (1034, 'complete_mission', 639, NULL, '{}',         0, 1),
+  (1034, 'accept_mission',   640, NULL, '{}',         0, 2),
   -- Make the ring switch right-clickable with the Livewire icon so the player can hack it.
   -- The classic Python script (HackTheRings.py) didn't set this bit; the original Atrea editor
   -- presumably wired it implicitly off the Event_EntityInteract node. We do it explicitly here.
   (1034, 'set_interaction_type', NULL, 'HackTheRings_Switch',
-   '{"op": "|", "mask": 256}', 0, 2);
+   '{"op": "|", "mask": 256}', 0, 3);
 
 -- ============================================================
 -- MISSION 640 — Hack the Rings
