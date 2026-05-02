@@ -10,7 +10,6 @@
 
 use std::time::Instant;
 
-use cimmeria_common::Vector3;
 use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
@@ -69,7 +68,23 @@ async fn dispatch_effect_inner(
             send_visible(entity_id, true, tx).await;
         }
         Effect::TeleportPlayer { entity_id, position, world_name, destination_region_id } => {
-            same_world_teleport(entity_id, position, &world_name, tx, space_mgr).await;
+            // Resolve the authoritative space_id from the cell — bailing if the
+            // entity is gone, because the alternative (synthesizing 0) would
+            // dispatch a bogus snap and still mark the destination ring loaded.
+            let space_id = match space_mgr.get_entity(entity_id).map(|e| e.space_id.0 as u32) {
+                Some(s) => s,
+                None => {
+                    tracing::error!(
+                        entity_id, destination_region_id,
+                        "TeleportPlayer effect: entity missing from space — destination ring will time out in RemoteLoadWait"
+                    );
+                    return;
+                }
+            };
+            if !same_world_teleport(entity_id, position, &world_name, space_id, tx, space_mgr).await {
+                // Send failed — don't mark loaded; let the destination time out.
+                return;
+            }
             // Mark the player as "loaded" on the destination ring immediately —
             // Castle_CellBlock is non-instanced and same-world, so we don't
             // wait for a real `mapLoaded` round trip. Cross-world rings need a
@@ -78,21 +93,23 @@ async fn dispatch_effect_inner(
             mark_player_loaded(destination_region_id, entity_id, tx, space_mgr, engine).await;
         }
         Effect::TeleportCrossWorld { entity_id, position, world_name, destination_region_id } => {
-            // TODO: cross-world ring travel needs a CellToBase message akin to
-            // GateTravel that re-creates the player on the destination world,
-            // and a callback that drives `RingTransporter::player_loaded` on
-            // the destination. None of the live region pairs in the seed data
-            // cross worlds (Castle 1↔2 is same-world), so leaving this as a
-            // warn rather than a half-implementation.
-            let _ = destination_region_id;
-            tracing::warn!(
-                entity_id, ?position, %world_name,
-                "ring transport: cross-world teleport not implemented yet — player will not travel"
+            // Cross-world is rejected up-front in `handle_select_destination`,
+            // so the FSM should never produce this effect. Surface as error
+            // (not panic) to keep the cell loop running if we ever regress.
+            tracing::error!(
+                entity_id, ?position, %world_name, destination_region_id,
+                "ring transport: TeleportCrossWorld effect dispatched — \
+                 should have been rejected at selectDestination"
             );
         }
         Effect::FireTeleportIn { entity_id, region_id } => {
-            let player_id = space_mgr.get_entity(entity_id)
-                .and_then(|e| e.player_id).unwrap_or(0);
+            let Some(player_id) = space_mgr.get_entity(entity_id).and_then(|e| e.player_id) else {
+                tracing::error!(
+                    entity_id, region_id,
+                    "FireTeleportIn: entity has no player_id — refusing to fire chain (would miscredit arrival content)"
+                );
+                return;
+            };
             content::fire_teleport_in(entity_id, player_id, region_id, engine, tx, space_mgr).await;
         }
         Effect::SendDestinationList { entity_id, source_region_id, destinations } => {
@@ -179,29 +196,32 @@ pub(super) async fn try_advance_after_load(
     }
 }
 
+/// Returns `true` if the cell→base hand-off succeeded. The caller should
+/// gate `mark_player_loaded` on this — a failed send means the base never
+/// snapped the avatar and the destination ring shouldn't pretend the player
+/// arrived.
 async fn same_world_teleport(
     entity_id: u32,
     position: [f32; 3],
     _world_name: &str,
+    space_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-) {
+) -> bool {
     // Server-side: keep the spatial grid + entity position consistent so AoI
     // ticks broadcast the new position to other witnesses (build_avatar_update).
+    // `update_entity_position` already writes `cell_entity.position`.
     space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
-    // SpaceId.0 is i32 (matches DB type); the wire packet is u32, and space
-    // ids are always non-negative so this is a width-only conversion.
-    let space_id = space_mgr.get_entity(entity_id)
-        .map(|e| e.space_id.0 as u32)
-        .unwrap_or(0);
-    if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-        e.position = Vector3::new(position[0], position[1], position[2]);
-    }
 
     // Client-side: hand off to the base. The base sends `forcedPosition` (0x31)
     // to authoritatively snap the player's own avatar, then `onPlayerTeleport`
     // (method 116) for streaming-load coordination. The bare 116-only path the
     // previous version used does NOT move the avatar — see SGWPlayer.def comment
     // and the `handle_teleport_player` handler.
-    let _ = tx.send(CellToBaseMsg::TeleportPlayer { entity_id, space_id, position }).await;
+    if let Err(e) = tx.send(CellToBaseMsg::TeleportPlayer { entity_id, space_id, position }).await {
+        tracing::error!(entity_id, space_id, ?position, error = %e,
+            "TeleportPlayer: cell→base channel send failed");
+        return false;
+    }
+    true
 }

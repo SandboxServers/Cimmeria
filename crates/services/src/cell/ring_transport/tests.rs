@@ -185,6 +185,39 @@ async fn full_ring_cycle_dispatches_expected_messages() {
         "BSF_MovementLock not cleared at cooldown");
 }
 
+/// Cross-world ring travel is rejected before any state transitions.
+/// Both source and destination must remain `Idle` so subsequent same-world
+/// trips don't get jammed by a half-running FSM.
+#[tokio::test]
+async fn select_destination_cross_world_rejected() {
+    let mut mgr = make_test_space_mgr();
+    let mut regions = std::collections::HashMap::new();
+    regions.insert(1, ring(1, "Castle_CellBlock", vec![2], [0.0; 3]));
+    // Different world_name — Python's selectDestination has no equivalent
+    // guard, but our authoritative-teleport pipeline can't deliver a player
+    // to a different world without the GateTravel-style hand-off.
+    regions.insert(2, ring(2, "Agnos", vec![1], [10.0; 3]));
+    mgr.ring_transporters.load(&regions);
+    mgr.ring_point_set_to_region = regions.iter()
+        .map(|(rid, r)| (r.point_set_id, *rid))
+        .collect();
+    mgr.ring_regions = regions;
+
+    mgr.create_entity(42, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    let (tx, mut rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+
+    handle_select_destination(1, 2, 42, &tx, &mut mgr, &engine).await;
+
+    // Both rings stayed Idle — no half-running ceremony to recover from.
+    assert_eq!(mgr.ring_transporters.get(1).unwrap().state, State::Idle);
+    assert_eq!(mgr.ring_transporters.get(2).unwrap().state, State::Idle);
+    assert!(mgr.ring_transporters.get(1).unwrap().remote_region_id.is_none());
+    assert!(mgr.ring_transporters.get(2).unwrap().remote_region_id.is_none());
+    // No effects dispatched.
+    assert!(rx.try_recv().is_err());
+}
+
 /// Self-as-destination is rejected (matches Python `selectDestination`).
 #[tokio::test]
 async fn select_destination_self_rejected() {
