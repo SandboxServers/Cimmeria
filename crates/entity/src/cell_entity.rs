@@ -198,6 +198,9 @@ pub struct CellEntity {
     pub nav_path: VecDeque<Vector3>,
     /// Movement speed in world units per tick.
     pub move_speed: f32,
+    /// Pin this NPC to its spawn position. AI will attack when the target
+    /// is in range + LOS but never pathfind. Loaded from `spawnlist.is_stationary`.
+    pub is_stationary: bool,
 
     // ── Saved mission state (for re-login) ────────────────────────────────────
     /// Saved missions loaded from DB, to be populated before content engine fires.
@@ -319,6 +322,7 @@ impl CellEntity {
             ai_cooldown_ticks: 0,
             nav_path: VecDeque::new(),
             move_speed: 0.6, // ~0.6 world units per 100ms tick = 6 units/sec
+            is_stationary: false,
             saved_missions_loaded: false,
             loot_table_id: None,
             loot: Vec::new(),

@@ -250,7 +250,19 @@ pub(super) async fn execute_actions(
                 }
             }
             Action::RemoveItem { item_id, count } => {
-                tracing::info!(entity_id, item_id, count, chain_id, "Content: removing item");
+                // TODO: Action::RemoveItem here gets a design id (type_id) from
+                // the chain, but `RemoveInventoryItem` expects the inventory
+                // instance id. Resolving that requires either a cell-side
+                // instance↔design cache or a new "remove by type_id" base
+                // handler. For the FindAmbernol use-item path we route
+                // consumption through `UseInventoryItem` instead, which is
+                // atomic on the base side, so this stub doesn't block that
+                // mission. Revisit when chain-driven removals (turn-ins, etc.)
+                // come up.
+                tracing::warn!(
+                    entity_id, item_id, count, chain_id,
+                    "Content: RemoveItem stub — chain-driven item removal by design id not yet wired"
+                );
             }
             Action::SetInteractionType { entity_tag, operation, mask } => {
                 if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {

@@ -61,9 +61,51 @@ pub async fn dispatch(
                         );
                         return true;
                     }
+
+                    // Snapshot alive-before so we only fire the content-engine
+                    // death event on the alive→dead transition caused by this
+                    // call. Mirrors `super::combat::dispatch`'s USE_ABILITY arm.
+                    // Without this, kills via right-click auto-attack (this path)
+                    // never fire `OnEntityDeath` chains — mission progress that
+                    // depends on tagged kills (e.g., FindAmbernol drone → step
+                    // 2144 → 2343) silently stalls.
+                    let was_alive_before = space_mgr.get_entity(target_entity_u32)
+                        .map_or(false, |t| {
+                            !t.is_player
+                                && t.stats.get(cimmeria_entity::stats::HEALTH)
+                                    .map_or(false, |s| s.cur > 0)
+                        });
+
                     crate::cell::abilities::handle_use_ability(
                         entity_id, 592, target_entity_id, tx, space_mgr,
                     ).await;
+
+                    if was_alive_before {
+                        let just_died = space_mgr.get_entity(target_entity_u32)
+                            .map_or(false, |t| {
+                                t.stats.get(cimmeria_entity::stats::HEALTH)
+                                    .map_or(false, |s| s.cur <= 0)
+                            });
+                        if just_died {
+                            let tag = space_mgr.get_entity(target_entity_u32)
+                                .and_then(|t| t.tag.clone());
+                            if let Some(tag) = tag {
+                                match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+                                    Some(player_id) => {
+                                        crate::cell::content::fire_entity_death(
+                                            entity_id, player_id, &tag, engine, tx, space_mgr,
+                                        ).await;
+                                    }
+                                    None => {
+                                        tracing::warn!(
+                                            entity_id, npc_tag = %tag,
+                                            "Skipping entity_death event (interact path): killer entity has no player_id"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
                     return true;
                 }
 

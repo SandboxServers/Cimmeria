@@ -49,7 +49,7 @@ async fn npc_ai_fight(
     use super::super::combat;
 
     // Read NPC state (immutable borrow)
-    let (top_target, spawn_pos, npc_pos) = {
+    let (top_target, spawn_pos, npc_pos, is_stationary) = {
         let npc = match space_mgr.get_entity(npc_id) {
             Some(e) => e,
             None => return,
@@ -60,7 +60,7 @@ async fn npc_ai_fight(
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(&eid, _)| eid);
 
-        (top, npc.spawn_position, npc.position)
+        (top, npc.spawn_position, npc.position, npc.is_stationary)
     };
 
     let target_id = match top_target {
@@ -126,7 +126,15 @@ async fn npc_ai_fight(
     // to regain line of sight. Treating "in range but blocked" as a stop
     // condition would freeze the NPC behind walls/corners; making it a repath
     // condition lets the AI walk around the obstruction.
+    //
+    // Stationary NPCs (turrets, fixed defenders) skip pathfinding entirely:
+    // they hold position and only fire when the target enters range + LOS.
+    // The leash check above still resets them if the target wanders past
+    // LEASH_DISTANCE.
     if !in_range || !has_los {
+        if is_stationary {
+            return;
+        }
         let needs_repath = {
             let npc = space_mgr.get_entity(npc_id);
             match npc {

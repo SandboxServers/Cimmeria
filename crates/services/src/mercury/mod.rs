@@ -175,6 +175,7 @@ pub mod method_idx {
     // SGWInventoryManager interface (69–75)
     pub const ON_BAG_INFO: u16 = 69;
     pub const ON_ACTIVE_SLOT_UPDATE: u16 = 70;
+    pub const ON_REMOVE_ITEM: u16 = 71;
     pub const ON_UPDATE_ITEM: u16 = 72;
     pub const ON_CASH_CHANGED: u16 = 75;
 

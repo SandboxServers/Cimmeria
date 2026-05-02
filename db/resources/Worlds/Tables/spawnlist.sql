@@ -12,7 +12,8 @@ CREATE TABLE spawnlist (
     world_id integer NOT NULL,
     template_id integer NOT NULL,
     tag character varying(100),
-    set_name character varying(100)
+    set_name character varying(100),
+    is_stationary boolean DEFAULT false NOT NULL
 );
 
 --

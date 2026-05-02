@@ -273,6 +273,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         body_set: "BS_NID_Soldier.BS_NID_Soldier".to_string(),
         components: Some(vec!["Comp1".to_string()]),
         loot_table_id: Some(2),
+        is_stationary: false,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();

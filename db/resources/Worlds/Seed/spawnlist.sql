@@ -42,7 +42,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (11, -201.25, 56.079998, -131.610001, 1.57079637, 12, 8, 'Preparation_SMG1A', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (10, -220.257004, 66.7440033, -121.375, 4.71238899, 12, 4, 'ArmYourself_PrisonerRetrievalUnit', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (10, -220.257004, 66.7440033, -121.375, 4.71238899, 12, 4, 'ArmYourself_PrisonerRetrievalUnit', NULL, true);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (79, -54.8799973, 26.0799999, -163.839996, 1.04607904, 12, 3, 'Cellblock_FakeRingSwitch', NULL);
 
