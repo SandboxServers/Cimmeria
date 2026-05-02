@@ -22,5 +22,6 @@ pub mod inventory;
 pub mod missions;
 pub mod movement;
 pub mod detour_ffi;
+pub mod interaction_flags;
 pub mod navigation;
 pub mod stats;

@@ -274,7 +274,27 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
         "set_interaction_type" => {
             let entity_tag = row.target_key.as_deref()?.to_string();
             let operation = params.get("op").and_then(|v| v.as_str()).unwrap_or("|").to_string();
-            let mask = params.get("mask").and_then(|v| v.as_i64()).unwrap_or(0);
+            // Accept either an integer literal (legacy form, e.g.,
+            // `'mask': 256`) or a symbolic name from EInteractionNotification
+            // Type (`'mask': 'INT_MinigameLivewire'`). The symbolic form is
+            // preferred — see crates/entity/src/interaction_flags.rs.
+            let mask = match params.get("mask") {
+                Some(v) if v.is_i64() => v.as_i64().unwrap_or(0),
+                Some(v) if v.is_string() => {
+                    let name = v.as_str().unwrap_or("");
+                    match cimmeria_entity::interaction_flags::mask_for_name(name) {
+                        Some(m) => m,
+                        None => {
+                            tracing::warn!(
+                                chain_id = row.chain_id, %name,
+                                "set_interaction_type: unknown interaction-flag name; mask defaulted to 0"
+                            );
+                            0
+                        }
+                    }
+                }
+                _ => 0,
+            };
             Some(Action::SetInteractionType { entity_tag, operation, mask })
         }
         "start_minigame" => {
