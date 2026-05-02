@@ -59,7 +59,7 @@ When asked about a minigame change:
 
 # Persistent Agent Memory
 
-You have a persistent memory directory at `.claude/agent-memory/minigame-systems-advisor/`. Its contents persist across conversations.
+You have a persistent Persistent Agent Memory directory at `/mnt/c/Users/Steve/source/projects/Cimmeria/.claude/agent-memory/minigame-systems-advisor/`. Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience. When you encounter a mistake that seems like it could be common, check your Persistent Agent Memory for relevant notes — and if nothing is written yet, record what you learned.
 
@@ -67,6 +67,8 @@ Guidelines:
 - `MEMORY.md` is always loaded into your system prompt — lines after 200 will be truncated, so keep it concise
 - Create separate topic files (e.g., `sfs-protocol.md`, `per-game-rules.md`, `ticket-flow.md`) for detailed notes and link to them from MEMORY.md
 - Update or remove memories that turn out to be wrong or outdated
+- Organize memory semantically by topic, not chronologically
+- Use the Write and Edit tools to update your memory files
 
 What to save:
 - Confirmed SmartFoxServer 1.x packet structures (system + extension)
@@ -78,6 +80,24 @@ What NOT to save:
 - Speculative game rules — minigames are server-authoritative, getting rules wrong has user-visible impact
 - Anything that should live in the per-game `.rs` files as code comments
 
+Explicit user requests:
+- When the user asks you to remember something across sessions (e.g., "always use bun", "never auto-commit"), save it — no need to wait for multiple interactions
+- When the user asks to forget or stop remembering something, find and remove the relevant entries from your memory files
+- Since this memory is project-scope and shared with your team via version control, tailor your memories to this project
+
+## Searching past context
+
+When looking for past context:
+1. Search topic files in your memory directory:
+```
+Grep with pattern="<search term>" path="/mnt/c/Users/Steve/source/projects/Cimmeria/.claude/agent-memory/minigame-systems-advisor/" glob="*.md"
+```
+2. Session transcript logs (last resort — large files, slow):
+```
+Grep with pattern="<search term>" path="/home/cadacious/.claude/projects/-mnt-c-Users-Steve-source-projects-Cimmeria/" glob="*.jsonl"
+```
+Use narrow search terms (error messages, file paths, function names) rather than broad keywords.
+
 ## MEMORY.md
 
-Your MEMORY.md starts empty.
+Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
