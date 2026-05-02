@@ -306,6 +306,23 @@ pub async fn handle_remove_inventory_item(
 /// Mission progression that listens for `OnItemUse` only fires after the
 /// consumption tx commits — if the player doesn't own that instance, or
 /// the tx fails, nothing is sent back and the chain doesn't progress.
+///
+/// TODO(consume-on-use): consumption is currently unconditional. The Python
+/// reference decoupled "fire `item.use::<typeId>` event" from "remove from
+/// inventory" — script callbacks decided per item type. That meant
+/// reusable quest items (radio-style "use on target" objectives, multi-step
+/// items) could fire the event many times. Once content chains start
+/// driving multi-use items, split this into a "resolve type_id + fire
+/// event" path and a separate "consume by design id" base RPC that chain
+/// `Action::RemoveItem` can call. For Ambernol (the only currently-shipped
+/// `OnItemUse` consumer) the always-consume behavior is correct.
+///
+/// TODO(delivery durability): the `ItemUsed` send below is best-effort. If
+/// `tx.commit()` succeeds but `cell_tx` is closed (cell service restart,
+/// channel saturation), the item is gone from the DB but `OnItemUse` never
+/// fires — mission progression that gates on it strands the player. For a
+/// single-operator deployment this is acceptable. Production-grade fix is
+/// an outbox row written in the same transaction, drained by a retrier.
 pub async fn handle_use_inventory_item(
     entity_id: u32,
     player_id: i32,
@@ -422,10 +439,12 @@ pub async fn handle_use_inventory_item(
             );
         }
 
-        if consumed_all && source.container_id != 1 {
+        if consumed_all {
             // Mirror the InventoryItemRemoved emission from `handle_remove_inventory_item`
             // so any cell-side listeners (e.g., bandolier slot reconciliation) see the
-            // removal. Skipping for the main bag matches the existing remove flow.
+            // removal. Sent for all containers — the remove path emits unconditionally
+            // on full removal, and any divergence here would silently break listeners
+            // for main-bag consumes.
             let _ = cell_tx.send(BaseToCellMsg::InventoryItemRemoved {
                 entity_id,
                 item_id,
