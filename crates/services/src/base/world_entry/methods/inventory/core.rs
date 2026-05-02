@@ -307,22 +307,19 @@ pub async fn handle_remove_inventory_item(
 /// consumption tx commits — if the player doesn't own that instance, or
 /// the tx fails, nothing is sent back and the chain doesn't progress.
 ///
-/// TODO(consume-on-use): consumption is currently unconditional. The Python
-/// reference decoupled "fire `item.use::<typeId>` event" from "remove from
-/// inventory" — script callbacks decided per item type. That meant
-/// reusable quest items (radio-style "use on target" objectives, multi-step
-/// items) could fire the event many times. Once content chains start
-/// driving multi-use items, split this into a "resolve type_id + fire
-/// event" path and a separate "consume by design id" base RPC that chain
-/// `Action::RemoveItem` can call. For Ambernol (the only currently-shipped
-/// `OnItemUse` consumer) the always-consume behavior is correct.
+/// TODO(#95 consume-on-use): consumption is currently unconditional. The
+/// Python reference decoupled "fire `item.use::<typeId>` event" from
+/// "remove from inventory" — script callbacks decided per item type.
+/// Reusable quest items (radios, multi-step "use on target" objectives)
+/// silently lose stacks under the current code. For Ambernol (the only
+/// shipped `OnItemUse` consumer) the always-consume behavior is correct,
+/// so the bug is latent until a second consumer ships.
 ///
-/// TODO(delivery durability): the `ItemUsed` send below is best-effort. If
-/// `tx.commit()` succeeds but `cell_tx` is closed (cell service restart,
+/// TODO(#96 delivery durability): the `ItemUsed` send below is best-effort.
+/// If `tx.commit()` succeeds but `cell_tx` is closed (cell service restart,
 /// channel saturation), the item is gone from the DB but `OnItemUse` never
-/// fires — mission progression that gates on it strands the player. For a
-/// single-operator deployment this is acceptable. Production-grade fix is
-/// an outbox row written in the same transaction, drained by a retrier.
+/// fires — mission progression strands the player. Production fix is an
+/// outbox row written in the same transaction, drained by a retrier.
 pub async fn handle_use_inventory_item(
     entity_id: u32,
     player_id: i32,
