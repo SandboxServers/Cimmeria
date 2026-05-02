@@ -25,9 +25,10 @@ pub const NPC_DEFAULT_ABILITY: i32 = 592;
 ///
 /// Returns `Some(new_state_field)` when the attacker just entered combat
 /// (i.e., their `threatened_mobs` was empty before this call) — the
-/// caller is responsible for broadcasting `onStateFieldUpdate` to AoI
-/// witnesses so the in-combat HUD/cursor flips. Returns `None` when no
-/// broadcast is needed.
+/// caller is responsible for sending `onStateFieldUpdate` to the player
+/// (via `send_entity_method`, which routes player methods to the player's
+/// own client) so their in-combat HUD/cursor flips. Returns `None` when
+/// no send is needed.
 #[must_use]
 pub fn generate_threat(
     space_mgr: &mut crate::cell::space_manager::SpaceManager,
@@ -131,8 +132,9 @@ pub fn exit_player_combat(
 /// Called when an NPC dies. Iterates the dying NPC's `threat_list` and
 /// removes the NPC from each aggroed player's `threatened_mobs` set.
 /// Returns `(player_id, new_state_field)` pairs for which `BSF_IN_COMBAT`
-/// just cleared so the caller can broadcast `onStateFieldUpdate` to each
-/// affected player's witnesses.
+/// just cleared so the caller can send `onStateFieldUpdate` to each
+/// affected player (via `send_entity_method`, which for player entities
+/// routes to that player's own client — not their AoI witnesses).
 ///
 /// Does NOT clear the NPC's own `threat_list` — caller decides whether to
 /// keep it for damage attribution (XP, loot tagging) or wipe it.
