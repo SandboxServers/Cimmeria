@@ -33,7 +33,13 @@ For mission progression, also add a `player_loaded`-triggered chain that re-appl
 
 ## Inventory consumption
 
-`UseInventoryItem` on the base side consumes the item *before* `fire_item_use` reaches the cell. Don't add `remove_item` actions to chains triggered on `item_use` — they'll double-consume any stack >1. The current `Action::RemoveItem` executor is a stub, so today the bug is latent, but new chains should not rely on the stub.
+`UseInventoryItem` fires `OnItemUse` as a pure event — the base no longer auto-consumes the stack. Chains that need to consume (consumable vials, mission objects) must include an explicit `remove_item` action. This is the correct pattern for `item_use`-triggered chains:
+
+```sql
+(chain_id, 'remove_item', <design_id>, NULL, '{"qty": 1}', 0, 0),
+```
+
+`Action::RemoveItem` routes through `CellToBaseMsg::RemoveInventoryItemByType`, which resolves the player's first matching stack (ordered by `container_id, slot_id` to prefer the main bag over the bandolier) and applies the full wire-update sequence. Non-consumable items (radios, multi-step "use on target" objectives) simply omit the `remove_item` action.
 
 ## Auto-generated `space_*_chains.sql` (chain IDs 5xxx)
 
