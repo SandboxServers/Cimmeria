@@ -16,6 +16,7 @@ pub mod interactions;
 pub mod mail;
 pub mod messages;
 pub mod missions;
+pub mod ring_transport;
 mod service;
 pub mod space_manager;
 pub mod spawner;

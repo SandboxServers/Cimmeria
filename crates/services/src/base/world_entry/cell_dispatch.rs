@@ -13,12 +13,14 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::mercury::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
-    build_entity_leave, build_entity_method_packet, build_reset_entities, method_idx,
+    build_entity_invisible, build_entity_leave, build_entity_method_packet,
+    build_reset_entities, method_idx,
 };
 
 use super::super::ConnectedClientState;
 use super::super::helpers::send_to_witness;
 use super::gate_travel::handle_gate_travel;
+use super::teleport::handle_teleport_player;
 use super::methods::inventory::update_bandolier_ammo;
 use super::methods::{
     handle_buyback_vendor_items, handle_grant_cash, handle_grant_item, handle_grant_xp,
@@ -141,6 +143,21 @@ pub(crate) async fn handle_cell_message(
                 |key, seq, acks| {
                     build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
                 },
+            ).await;
+        }
+        CellToBaseMsg::EntityInvisible { witness_id, entity_id } => {
+            tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
+            send_to_witness(
+                socket, connected, entity_to_addr, witness_id,
+                |key, seq, acks| {
+                    build_entity_invisible(key, seq, acks, entity_id)
+                },
+            ).await;
+        }
+        CellToBaseMsg::TeleportPlayer { entity_id, space_id, position } => {
+            handle_teleport_player(
+                entity_id, space_id, position,
+                socket, connected, entity_to_addr, db_pool,
             ).await;
         }
         CellToBaseMsg::RespawnReload { entity_id, world_name, spawn_pos } => {
@@ -409,3 +426,4 @@ pub(crate) async fn handle_cell_message(
         }
     }
 }
+

@@ -4,7 +4,7 @@
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
 use crate::cell::messages::NpcAoIData;
-use super::{encrypt_packet, append_entity_method, write_wstring, method_idx, REPLY_FLAGS};
+use super::{encrypt_packet, append_entity_method, write_wstring, method_idx, REPLY_FLAGS, BASEMSG_FORCED_POSITION};
 
 /// `GENERICPROPERTY_DatabaseId` — maps to speaker_id for dialog-capable entities.
 const GENERICPROPERTY_DATABASE_ID: i32 = 9;
@@ -170,10 +170,34 @@ pub fn build_create_entity_cascade(
     encrypt_packet(&plaintext, key)
 }
 
+/// Build and encrypt `ENTITY_INVISIBLE (0x0B)` *alone* — temporary visual
+/// hide that keeps the entity in the client's AoI bookkeeping. Used for the
+/// ring-transport teleport-out fade. Matches C++ `ClientHandler::leaveAoI(id,
+/// deleteEntity=false)` from `client_handler.cpp:516-528`.
+///
+/// To re-show, send `onVisible(1)` (entity method index 8 with arg 0x01) —
+/// see `client_handler.cpp::enterAoI`.
+pub fn build_entity_invisible(
+    key: &[u8; 32],
+    seq_id: u32,
+    acks: &[u32],
+    entity_id: u32,
+) -> Vec<u8> {
+    let mut body = Vec::with_capacity(8);
+    body.push(BASEMSG_ENTITY_INVISIBLE);
+    body.extend_from_slice(&entity_id.to_le_bytes());
+    body.push(0xFF); // idAlias = no alias
+
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
 /// Build and encrypt `ENTITY_INVISIBLE (0x0B)` + `LEAVE_AOI (0x0C)` for when
 /// an entity leaves a witness's Area of Interest.
 ///
-/// Matches C++ `ClientHandler::leaveAoI()` from `client_handler.cpp:516-539`.
+/// Matches C++ `ClientHandler::leaveAoI(id, deleteEntity=true)` from
+/// `client_handler.cpp:516-539`.
 pub fn build_entity_leave(
     key: &[u8; 32],
     seq_id: u32,
@@ -227,6 +251,43 @@ pub fn build_avatar_update(
     body.push(pack_angle(direction[1])); // yaw
     body.push(pack_angle(direction[0])); // pitch
     body.push(pack_angle(direction[2])); // roll
+
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
+    encrypt_packet(&plaintext, key)
+}
+
+/// Build `FORCED_POSITION (0x31)` — authoritative position snap for the
+/// player's own avatar.
+///
+/// This is the engine-level message that `BigWorld::ClientHandler` consumes
+/// before user code; it bypasses prediction/interpolation and snaps the pawn
+/// to `position`. `onPlayerTeleport` (method 116) only flags a streaming-load
+/// waiting state — it does not move the avatar. See SGWPlayer.def's comment
+/// on `onPlayerTeleport` and docs/protocol/position-updates.md.
+///
+/// Wire layout matches `build_enter_world_body`:
+/// `[entityID:u32][spaceID:u32][vehicleID:u32=0][pos:3×f32][vel:3×f32=0]
+///  [rot:3×f32][flags:u8=0x01]`.
+pub fn build_forced_position(
+    key: &[u8; 32],
+    seq_id: u32,
+    acks: &[u32],
+    entity_id: u32,
+    space_id: u32,
+    position: [f32; 3],
+) -> Vec<u8> {
+    let mut body = Vec::with_capacity(50);
+    body.push(BASEMSG_FORCED_POSITION);
+    body.extend_from_slice(&entity_id.to_le_bytes());
+    body.extend_from_slice(&space_id.to_le_bytes());
+    body.extend_from_slice(&0u32.to_le_bytes()); // vehicleID = 0
+    for &c in &position {
+        body.extend_from_slice(&c.to_le_bytes());
+    }
+    body.extend_from_slice(&[0u8; 12]); // velocity = 0,0,0
+    body.extend_from_slice(&[0u8; 12]); // rotation = 0,0,0 (yaw/pitch/roll)
+    body.push(0x01);                    // flags
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
@@ -377,4 +438,43 @@ pub(crate) fn pack_velocity_xyz(v: [f32; 3]) -> [u8; 5] {
 
     let p1 = packed1.to_le_bytes();
     [p1[0], p1[1], p1[2], p1[3], packed2]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cimmeria_mercury::encryption::MercuryEncryption;
+
+    const TEST_KEY: [u8; 32] = [0x42u8; 32];
+
+    /// `build_forced_position` must produce the exact byte layout the BigWorld
+    /// engine expects on the client side. The layout matches `build_enter_world_body`
+    /// in world_data/phases.rs — same message id, same field order, same flags
+    /// byte. Mismatch here is the difference between the avatar snapping and
+    /// staying put.
+    #[test]
+    fn forced_position_wire_layout() {
+        let pkt = build_forced_position(&TEST_KEY, 1, &[], 0x12345678, 0x0001_0010, [10.0, 20.0, 30.0]);
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+        let pt = enc.decrypt(&pkt).unwrap();
+
+        // body starts at offset 1 (offset 0 is flags).
+        assert_eq!(pt[1], super::super::BASEMSG_FORCED_POSITION, "msg id");
+        // entity_id LE
+        assert_eq!(&pt[2..6], &0x12345678u32.to_le_bytes());
+        // space_id LE
+        assert_eq!(&pt[6..10], &0x00010010u32.to_le_bytes());
+        // vehicleID = 0
+        assert_eq!(&pt[10..14], &0u32.to_le_bytes());
+        // pos x/y/z
+        assert_eq!(&pt[14..18], &10.0f32.to_le_bytes());
+        assert_eq!(&pt[18..22], &20.0f32.to_le_bytes());
+        assert_eq!(&pt[22..26], &30.0f32.to_le_bytes());
+        // velocity = 0,0,0 (12 zero bytes)
+        assert_eq!(&pt[26..38], &[0u8; 12]);
+        // rotation = 0,0,0 (12 zero bytes)
+        assert_eq!(&pt[38..50], &[0u8; 12]);
+        // flags = 0x01
+        assert_eq!(pt[50], 0x01, "flags");
+    }
 }

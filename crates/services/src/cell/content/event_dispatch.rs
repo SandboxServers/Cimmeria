@@ -56,7 +56,7 @@ pub async fn fire_player_loaded(
             tracing::info!(entity_id, player_id, %world_name, chain_id, action = ?action, "fire_player_loaded: matched action");
         }
     }
-    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 
     // Diagnostic: confirm mission 622 state after chain execution
     if let Some(entity) = space_mgr.get_entity(entity_id) {
@@ -114,7 +114,7 @@ pub async fn fire_dialog_open(
         "fire_dialog_open: resolved"
     );
 
-    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
 /// Fire `OnInteractTag` event when a player interacts with a tagged entity.
@@ -153,7 +153,7 @@ pub async fn fire_interact_tag(
     let matched = !resolved.actions.is_empty();
     if matched {
         tracing::info!(entity_id, player_id, %tag, actions = resolved.actions.len(), "fire_interact_tag: matched");
-        executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+        executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
     } else {
         tracing::debug!(entity_id, %tag, "fire_interact_tag: no chains matched");
     }
@@ -195,7 +195,7 @@ pub async fn fire_interact_template(
     let matched = !resolved.actions.is_empty();
     if matched {
         tracing::info!(entity_id, player_id, %template_name, actions = resolved.actions.len(), "fire_interact_template: matched");
-        executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+        executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
     } else {
         tracing::debug!(entity_id, %template_name, "fire_interact_template: no chains matched");
     }
@@ -239,7 +239,7 @@ pub async fn fire_entity_death(
             actions = resolved.actions.len(), "fire_entity_death: matched"
         );
     }
-    executor::execute_actions(resolved, killer_entity_id, player_id, tx, space_mgr).await;
+    executor::execute_actions(resolved, killer_entity_id, player_id, tx, space_mgr, engine).await;
 }
 
 /// Fire the `RegionEnter` event when the client enters a Kismet region.
@@ -283,7 +283,7 @@ pub async fn fire_enter_region(
     } else {
         tracing::debug!(entity_id, %region_tag, "fire_enter_region: no chains matched");
     }
-    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
 /// Fire the `RegionExit` event when the client exits a Kismet region.
@@ -325,7 +325,7 @@ pub async fn fire_exit_region(
     } else {
         tracing::debug!(entity_id, %region_tag, "fire_exit_region: no chains matched");
     }
-    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
 /// Fire `OnDialogChoice` event when a player clicks a dialog button.
@@ -360,7 +360,7 @@ pub async fn fire_dialog_choice(
     } else {
         tracing::debug!(entity_id, dialog_id, "fire_dialog_choice: no chains matched");
     }
-    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
 /// Fire `OnItemUse` event when a player uses an inventory item.
@@ -397,7 +397,52 @@ pub async fn fire_item_use(
     } else {
         tracing::debug!(entity_id, item_id, "fire_item_use: no chains matched");
     }
-    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
+}
+
+/// Fire the `teleport_in` event when a player arrives via a ring transporter.
+///
+/// Chain 1044 (`teleport_in` event_key=`2`) hooks this to complete mission 640
+/// when the player teleports into Castle_CellBlock ring 2. The chain loader
+/// converts the SQL `event_key` string into a typed `region_id` field on the
+/// trigger, so matching only needs the typed `region_id` param.
+pub async fn fire_teleport_in(
+    entity_id: u32,
+    player_id: i32,
+    region_id: i32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let mut ctx = ExecutionContext::new()
+        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    ctx.set_param("region_id".to_string(), serde_json::json!(region_id));
+    // The content engine's `teleport_in` trigger reads `region_id` as i64 (see
+    // `Trigger::OnTeleportIn::matches` in crates/content-engine/src/triggers.rs).
+    // No `event_key` params are needed — the loader already converts the SQL
+    // event_key string into a typed `region_id` field on the trigger.
+
+    if let Some(entity) = space_mgr.get_entity(entity_id) {
+        populate_mission_context(entity, &mut ctx);
+        if let Some(archetype_id) = entity.archetype_id {
+            ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+        }
+    }
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::TeleportIn,
+        source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    if !resolved.actions.is_empty() {
+        tracing::info!(entity_id, player_id, region_id, actions = resolved.actions.len(), "fire_teleport_in: matched");
+    } else {
+        tracing::debug!(entity_id, region_id, "fire_teleport_in: no chains matched");
+    }
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
 /// Fire a content chain directly by ID, bypassing trigger matching.
@@ -422,5 +467,5 @@ pub async fn fire_chain_by_id(
     let resolved = cimmeria_content_engine::chain::ResolvedActions {
         actions: actions.into_iter().map(|a| (chain_id, a)).collect(),
     };
-    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr).await;
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }

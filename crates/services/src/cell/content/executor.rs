@@ -18,6 +18,7 @@ pub(super) async fn execute_actions(
     player_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &cimmeria_content_engine::chain::ChainEngine,
 ) {
     for (chain_id, action) in resolved.actions {
         match action {
@@ -330,6 +331,42 @@ pub(super) async fn execute_actions(
             }
             Action::TriggerTransporter { region_id } => {
                 tracing::info!(entity_id, region_id, chain_id, "Content: triggering transporter");
+                crate::cell::ring_transport::handle_interact(
+                    region_id, entity_id, tx, space_mgr, engine,
+                ).await;
+            }
+            Action::Teleport { space_id, position } => {
+                tracing::info!(
+                    entity_id, space_id, ?position, chain_id,
+                    "Content: teleporting entity"
+                );
+                // The chain action's `space_id` is the destination space ID.
+                // Cross-space chain teleport would need a path equivalent to
+                // GateTravel; defer until a chain actually demands it.
+                let current_space = space_mgr.get_entity(entity_id).map(|e| e.space_id.0);
+                if Some(space_id) != current_space && space_id != 0 {
+                    tracing::warn!(
+                        entity_id, requested = space_id, current = ?current_space, chain_id,
+                        "Content: cross-space chain teleport not implemented — falling back to same-space move"
+                    );
+                }
+                // Same-world teleport: keep the spatial grid consistent here,
+                // then route through TeleportPlayer for the authoritative
+                // FORCED_POSITION snap + persist. The bare 116-only path the
+                // previous version emitted does NOT move the avatar.
+                // `update_entity_position` already writes `cell_entity.position`.
+                space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+                // SpaceId is i32 in the cell (matches DB type) but the wire
+                // forced-position packet is u32 — space ids are always
+                // non-negative, so the cast is a width-only conversion.
+                let cell_space_id = space_mgr.get_entity(entity_id)
+                    .map(|e| e.space_id.0 as u32)
+                    .unwrap_or(space_id as u32);
+                let _ = tx.send(CellToBaseMsg::TeleportPlayer {
+                    entity_id,
+                    space_id: cell_space_id,
+                    position,
+                }).await;
             }
             Action::SystemMessage { message_id } => {
                 // TODO: Wire format for system messages is unknown. The previous
@@ -413,7 +450,7 @@ pub(super) async fn execute_actions(
                     let vis_byte: u8 = if visible { 1 } else { 0 };
                     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
                         entity_id: target_id,
-                        method_index: 11, // onVisible
+                        method_index: crate::mercury::method_idx::ON_VISIBLE,
                         args: vec![vis_byte],
                     }).await;
                 }

@@ -281,14 +281,20 @@ Entity interaction types are controlled by a UINT64 bitmask that determines whic
 
 | Bits | Purpose |
 |------|---------|
-| 1-21 | NPC types (banker, vendor, trainer, minigames, etc.) |
+| 1-12 | NPC right-click categories (banker, trainer, ring transporter, minigame variants) |
+| 13-21 | Vendor sub-categories (armor, weapons, crafting tabs) |
 | 22-25 | A-Story mission states (pending, available, active, turn-in) |
 | 26-29 | Non-A-Story mission states |
 | 30 | `INT_MissionWorldObject` — quest item outline glow |
 | 31 | `INT_MissionWaypoint` |
-| 32 | `INT_DrossPile` |
+| 32 | `INT_DrossPile` — crafting resource node |
+| 53-55 | `INT_Attackable_In_*Cover` — auto-set by combat system |
+| 56-60 | `INT_Machine_*` — crafting machines |
+| 61-63 | `INT_Attackable`, `INT_NormalLoot`, `INT_MissionLoot` |
 
 Scripts set these dynamically via `setInteractionType()`. If an entity template has `interaction_type=0`, the script must set the correct bits or the entity will lack its visual quest indicator.
+
+For full per-bit semantics, worked patterns, and a "use this when..." cookbook for chain SQL authors, see [docs/content/interaction-flags.md](../content/interaction-flags.md).
 
 ## Event Signal System (CME Framework)
 

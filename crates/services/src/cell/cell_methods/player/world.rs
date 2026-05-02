@@ -49,11 +49,14 @@ pub async fn dispatch(
                 // Region IDs are wire-encoded as i32 but stored as u32 internally.
                 // Reject negative values up-front rather than sign-extending them
                 // into a high u32 that no real region will match.
-                let region_tag = match u32::try_from(region_id) {
-                    Ok(rid) => space_mgr.get_region(rid).map(|r| r.tag.clone()),
+                let (region_tag, db_set_id) = match u32::try_from(region_id) {
+                    Ok(rid) => match space_mgr.get_region(rid) {
+                        Some(r) => (Some(r.tag.clone()), Some(r.db_set_id)),
+                        None => (None, None),
+                    },
                     Err(_) => {
                         tracing::warn!(entity_id, region_id, "triggerClientHintedGenericRegion: negative region_id, ignoring");
-                        None
+                        (None, None)
                     }
                 };
 
@@ -70,6 +73,14 @@ pub async fn dispatch(
                     } else {
                         crate::cell::content::fire_exit_region(
                             entity_id, player_id, &tag, engine, tx, space_mgr,
+                        ).await;
+                    }
+
+                    // Forward to the ring transporter FSM if this region is a
+                    // ring pad (point_set_id matches a loaded ring region).
+                    if let Some(set_id) = db_set_id {
+                        crate::cell::ring_transport::handle_region_trigger(
+                            set_id, b_entering, entity_id, tx, space_mgr, engine,
                         ).await;
                     }
                 } else {
@@ -97,7 +108,10 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let region_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let destination_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, region_id, destination_id, "UNIMPLEMENTED: setRingTransporterDestination");
+                tracing::info!(entity_id, region_id, destination_id, "setRingTransporterDestination");
+                crate::cell::ring_transport::handle_select_destination(
+                    region_id, destination_id, entity_id, tx, space_mgr, engine,
+                ).await;
             }
             true
         }

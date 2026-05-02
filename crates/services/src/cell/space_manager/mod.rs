@@ -135,6 +135,15 @@ pub struct SpaceManager {
     /// Respawner definitions loaded from `resources.respawners`.
     /// Used to populate the Defeat Window and look up respawn positions.
     pub respawners: Vec<super::spawner::RespawnerDef>,
+    /// Ring transporter region definitions keyed by `region_id` (cross-world unique).
+    /// Loaded once at startup from `resources.ring_transport_regions`.
+    pub ring_regions: HashMap<i32, super::ring_transport::RingRegion>,
+    /// Reverse index: `point_set_id` → `region_id` for O(1) ring trigger
+    /// lookup. Populated alongside `ring_regions`.
+    pub ring_point_set_to_region: HashMap<i32, i32>,
+    /// Live ring transporter state machines keyed by `region_id`.
+    /// Built from `ring_regions` at startup; one entry per ring pad.
+    pub ring_transporters: super::ring_transport::RingTransporterManager,
 }
 
 impl SpaceManager {
@@ -161,6 +170,9 @@ impl SpaceManager {
             item_defs: HashMap::new(),
             loot_tables: HashMap::new(),
             respawners: Vec::new(),
+            ring_regions: HashMap::new(),
+            ring_point_set_to_region: HashMap::new(),
+            ring_transporters: super::ring_transport::RingTransporterManager::new(),
         }
     }
 }

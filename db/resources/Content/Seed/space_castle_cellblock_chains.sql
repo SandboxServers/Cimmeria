@@ -206,8 +206,12 @@ VALUES
    '{}', 0, 0);
 
 -- Chain 5012: Castle_CellBlock → Event_Teleport (node 141)
+-- DISABLED: auto-generated converter incorrectly emitted `accept_mission 640` where the original
+-- Python (`Castle_CellBlock.py` teleportCb) calls `missions.complete(640)`. Mission 640's
+-- teleport_in flow is already correctly handled by curated chain 1044. Re-enabling this would
+-- re-accept the just-completed mission and loop the player back to "hack the rings".
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (5012, 'Castle_CellBlock → Event_Teleport (node 141)', 'space', 8, true, 0);
+VALUES (5012, 'Castle_CellBlock → Event_Teleport (node 141)', 'space', 8, false, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (5012, 'teleport_in', '2', 'player', true, 0);
@@ -223,8 +227,12 @@ VALUES
    '{"mask":8388608,"op":"|"}', 0, 1);
 
 -- Chain 5013: Castle_CellBlock → Event_Teleport (node 141)
+-- DISABLED: same root cause as 5012 — auto-generated converter emitted `accept_mission 640`
+-- where the original Python (`Castle_CellBlock.py` teleportCb) calls `missions.complete(640)`.
+-- Mission 640's teleport_in flow is already correctly handled by curated chain 1044. Re-enabling
+-- this would re-accept the just-completed mission and loop the player back to "hack the rings".
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (5013, 'Castle_CellBlock → Event_Teleport (node 141)', 'space', 8, true, 0);
+VALUES (5013, 'Castle_CellBlock → Event_Teleport (node 141)', 'space', 8, false, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (5013, 'teleport_in', '2', 'player', true, 0);

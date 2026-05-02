@@ -301,7 +301,12 @@ VALUES (1034, 'step_status', 639, '2343', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1034, 'complete_mission', 639, NULL, '{}', 0, 0),
-  (1034, 'accept_mission',   640, NULL, '{}', 0, 1);
+  (1034, 'accept_mission',   640, NULL, '{}', 0, 1),
+  -- Make the ring switch right-clickable with the Livewire icon so the player can hack it.
+  -- The classic Python script (HackTheRings.py) didn't set this bit; the original Atrea editor
+  -- presumably wired it implicitly off the Event_EntityInteract node. We do it explicitly here.
+  (1034, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+   '{"op": "|", "mask": 256}', 0, 2);
 
 -- ============================================================
 -- MISSION 640 — Hack the Rings
@@ -321,12 +326,17 @@ VALUES (1041, 'step_status', 640, '2120', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1041, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1042]}', 0, 0);
 
--- Chain 1042: Livewire victory → advance step to 2215
+-- Chain 1042: Livewire victory → advance step to 2215, swap switch icon Livewire → RingNetwork
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1042, '640 - Livewire victory: advance to 2215', 'mission', 640, true, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1042, 'advance_step', 640, '2215', '{}', 0, 0);
+VALUES
+  (1042, 'advance_step', 640, '2215', '{}', 0, 0),
+  (1042, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+   '{"op": "~", "mask": 256}', 0, 1),
+  (1042, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+   '{"op": "|", "mask": 32}', 0, 2);
 
 -- Chain 1043: interact with ring switch while step 2215 active → trigger transporter (regionId=1)
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -340,6 +350,36 @@ VALUES (1043, 'step_status', 640, '2215', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1043, 'trigger_transporter', NULL, NULL, '{"regionId": 1}', 0, 0);
+
+-- Chain 1045: player_loaded + step 2120 active → restore Livewire bit on the switch.
+--   Needed because interaction_type flags are NOT persisted on the entity across server restarts.
+--   Without this, a player who logged out mid-mission-640 would find the switch unclickable.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1045, '640 - Restore Livewire bit on login (step 2120)', 'mission', 640, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1045, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1045, 'step_status', 640, '2120', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1045, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+        '{"op": "|", "mask": 256}', 0, 0);
+
+-- Chain 1046: player_loaded + step 2215 active → restore RingNetwork bit on the switch.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1046, '640 - Restore RingNetwork bit on login (step 2215)', 'mission', 640, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1046, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1046, 'step_status', 640, '2215', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1046, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+        '{"op": "|", "mask": 32}', 0, 0);
 
 -- Chain 1044: teleport_in regionId=2 while 640 active → complete 640, show ColMarsh indicator
 --   BUG FIX: this correctly sets the 'Preparation_ColMarsh' tag (no trailing 'r')
@@ -357,7 +397,10 @@ VALUES
   (1044, 'complete_mission', 640, NULL, '{}', 0, 0),
   -- BUG FIX: correct tag is 'Preparation_ColMarsh' (classic script had 'Preparation_ColMarshr')
   (1044, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
-   '{"op": "|", "mask": 8388608}', 0, 1);
+   '{"op": "|", "mask": 8388608}', 0, 1),
+  -- Clear RingNetwork bit set by chain 1042 once we've used the rings.
+  (1044, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+   '{"op": "~", "mask": 32}', 0, 2);
 
 -- ============================================================
 -- MISSION 641 — Preparation
@@ -501,11 +544,30 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1061, 'display_dialog', 3998, NULL, '{}', 0, 0),
   (1061, 'complete_mission', 641, NULL, '{}', 0, 1),
-  (1061, 'accept_mission',   680, NULL, '{}', 0, 2);
+  (1061, 'accept_mission',   680, NULL, '{}', 0, 2),
+  -- Make the second ring switch right-clickable with the RingNetwork icon. Same gap as 640:
+  -- EscapeTheCellblock.py subscribes to the interact tag but never sets interactionType.
+  (1061, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "|", "mask": 32}', 0, 3);
 
 -- ============================================================
 -- MISSION 680 — Escape the Cellblock
 -- ============================================================
+
+-- Chain 1074: player_loaded + step 2344 active → restore RingNetwork bit on the second switch.
+--   Same restart-resilience pattern as chains 1045/1046 for the first ring switch.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1074, '680 - Restore RingNetwork bit on login (step 2344)', 'mission', 680, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1074, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1074, 'step_status', 680, '2344', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1074, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+        '{"op": "|", "mask": 32}', 0, 0);
 
 -- Chain 1071: interact ring switch while step 2344 active → trigger transporter to regionId=2
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -528,7 +590,10 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1072, 'teleport_in', '3', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1072, 'advance_step', 680, '2345', '{}', 0, 0);
+VALUES
+  (1072, 'advance_step', 680, '2345', '{}', 0, 0),
+  (1072, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "~", "mask": 32}', 0, 1);
 
 -- Chain 1073: enter Region9 when 681 not yet active → accept mission 681
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
