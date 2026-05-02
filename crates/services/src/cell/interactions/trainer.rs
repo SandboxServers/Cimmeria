@@ -33,7 +33,7 @@ pub(super) async fn send_trainer_open(
     tracing::debug!(player_id, npc_entity_id, archetype_id, count, "Sending onTrainerOpen");
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id: player_id,
-        method_index: 113, // onTrainerOpen
+        method_index: crate::cell::client_methods::player::ON_TRAINER_OPEN,
         args,
     }).await;
 }

@@ -23,7 +23,7 @@ pub async fn send_dialog_display(
     tracing::debug!(player_id, npc_entity_id, dialog_id, "Sending onDialogDisplay");
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id: player_id,
-        method_index: 105, // onDialogDisplay
+        method_index: crate::cell::client_methods::player::ON_DIALOG_DISPLAY,
         args,
     }).await;
 }
