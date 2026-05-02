@@ -20,7 +20,7 @@ use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
-use super::loot_drop::{generate_loot_on_death, kill_xp};
+use super::loot_drop::kill_xp;
 use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
 use super::rng::pseudo_random;
 
@@ -354,7 +354,11 @@ pub async fn handle_use_ability(
             target.threat_list.clear();
             target.nav_path.clear();
             target.velocity = [0.0; 3]; // Stop movement interpolation
-            target.interaction_type_flags = 0; // Clear attackable flags; loot generation below may re-set
+            // NOTE: do NOT zero `interaction_type_flags` here. Python `SGWMob.onDead()`
+            // OR-merges `INT_NormalLoot` and preserves all other bits — content-driven
+            // bits (quest tags, mission interactions) must survive death. The dead-state
+            // bit handles cursor distinction client-side; we don't need to clear
+            // `INT_Attackable` to suppress the shootable cursor.
             target.state_field &= !(1 << 3); // BSF_InCombat — clear so witnesses' clients stop
                                              // treating this NPC as a combat target. Mirrors
                                              // python `unsetStateFlag(BSF_InCombat)` at
@@ -414,77 +418,15 @@ pub async fn handle_use_ability(
     }
 
     // ── Death side effects ──
-    //
-    // Order on the wire matters. The InteractionType update (method 3) must arrive
-    // BEFORE the dead-state bit (method 19); otherwise the client locks in
-    // "shootable" cursor state on dead-state arrival and ignores the later flag
-    // change. Mirrors the Python reference where setInteractionType runs inside
-    // SGWMob.onDead() before the state field flip propagates.
+    // Wire-protocol burst (target reticle, BSF_InCombat clear, loot + InteractionType,
+    // dead-state flip) lives in `death::apply_death_transition` so the ordering
+    // constraints documented there stay in one place.
 
     if target_died {
-        // Clear the attacker's target so the targeting reticle disappears.
-        // The reticle stays at the NPC's last standing position otherwise.
-        if attacker_is_player {
-            send_entity_method(
-                entity_id, crate::mercury::method_idx::ON_TARGET_UPDATE,
-                0i32.to_le_bytes().to_vec(),
-                tx, space_mgr,
-            ).await;
-
-            // Drop the attacker out of combat so the client stops routing
-            // right-click on selected entities to `useAbility`. Mirrors python
-            // SGWPlayer.py:961-965 where, when the threatenedMobs list empties,
-            // the player's BSF_InCombat bit is unset and the new stateField is
-            // pushed to the client. We're being aggressive here (clear on every
-            // kill), which is safe for the single-target Cellblock fights we're
-            // testing; multi-mob aggro needs the per-player threatenedMobs set
-            // tracked in issue #92 before this can stay correct under multiple
-            // attackers.
-            const BSF_IN_COMBAT: u32 = 1 << 3;
-            let attacker_state = if let Some(p) = space_mgr.get_entity_mut(entity_id) {
-                let old = p.state_field;
-                p.state_field &= !BSF_IN_COMBAT;
-                if p.state_field != old { Some(p.state_field) } else { None }
-            } else {
-                None
-            };
-            if let Some(new_state) = attacker_state {
-                tracing::debug!(
-                    attacker = entity_id, target = target_eid, new_state,
-                    "death: clearing attacker BSF_InCombat (exit combat after kill)"
-                );
-                send_entity_method(
-                    entity_id, crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-                    new_state.to_le_bytes().to_vec(),
-                    tx, space_mgr,
-                ).await;
-            }
-        }
-
-        // Generate loot from the NPC's loot table, then update interaction type
-        // so the client renders the loot cursor on the corpse.
-        // Reference: python/cell/SGWMob.py:onDead() + Lootable.generateLoot()
-        if !target_is_player {
-            generate_loot_on_death(target_eid, space_mgr);
-
-            // Send InteractionType: INT_NormalLoot if loot was generated, 0 otherwise.
-            // The client's mInteractionType field at GameEntity+0x50 drives the
-            // loot cursor via `onInteractionType` handler.
-            let interaction_flags = space_mgr.get_entity(target_eid)
-                .map_or(0i64, |e| e.interaction_type_flags);
-            send_entity_method(
-                target_eid, crate::mercury::method_idx::INTERACTION_TYPE,
-                (interaction_flags as u64).to_le_bytes().to_vec(),
-                tx, space_mgr,
-            ).await;
-        }
-
-        // Now flip the dead-state bit so the client transitions visuals + cursor.
-        let mut state_args = Vec::with_capacity(4);
-        state_args.extend_from_slice(&target_state.to_le_bytes());
-        send_entity_method(
-            target_eid, crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-            state_args, tx, space_mgr,
+        super::death::apply_death_transition(
+            target_eid, entity_id, target_state,
+            attacker_is_player, target_is_player,
+            tx, space_mgr,
         ).await;
 
         // Send death animation via onSequence (Entity_Death = event_id 5001)

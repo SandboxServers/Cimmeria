@@ -366,15 +366,23 @@ pub async fn handle_loot_item(
         .map_or(true, |e| e.loot.is_empty());
 
     if loot_empty {
-        // Clear loot interaction on the NPC
-        if let Some(target) = space_mgr.get_entity_mut(target_eid) {
-            target.interaction_type_flags = 0;
-            target.interaction_type = None;
-        }
-        // Broadcast InteractionType(0) to witnesses
+        // Clear ONLY the loot bit; preserve other interaction flags (quest tags,
+        // mission interactions, etc.) so the corpse retains any content state set
+        // pre-death. Mirrors python `Lootable.py:204`:
+        //     ent.setInteractionType(ent.interactionType & ~INT_NormalLoot)
+        let flags_to_send = if let Some(target) = space_mgr.get_entity_mut(target_eid) {
+            target.interaction_type_flags &= !super::abilities::INT_NORMAL_LOOT;
+            if target.interaction_type_flags == 0 {
+                target.interaction_type = None;
+            }
+            target.interaction_type_flags
+        } else {
+            0
+        };
+        // Broadcast remaining flags to witnesses (not blanket 0).
         super::abilities::send_entity_method(
             target_eid, crate::mercury::method_idx::INTERACTION_TYPE,
-            0u64.to_le_bytes().to_vec(),
+            (flags_to_send as u64).to_le_bytes().to_vec(),
             tx, space_mgr,
         ).await;
 

@@ -11,7 +11,7 @@ use super::super::space_manager::SpaceManager;
 /// INT_NormalLoot interaction type flag (1 << 62).
 /// From `python/Atrea/enums.py: INT_NormalLoot = 4611686018427387904`.
 /// This is the interaction bitflag that tells the client to show the loot cursor.
-const INT_NORMAL_LOOT: i64 = 4611686018427387904;
+pub(crate) const INT_NORMAL_LOOT: i64 = 4611686018427387904;
 
 /// Generate loot from the NPC's loot table and store it on the entity.
 ///
