@@ -20,7 +20,7 @@ use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
-use super::loot_drop::{generate_loot_on_death, kill_xp};
+use super::loot_drop::kill_xp;
 use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
 use super::rng::pseudo_random;
 
@@ -354,7 +354,15 @@ pub async fn handle_use_ability(
             target.threat_list.clear();
             target.nav_path.clear();
             target.velocity = [0.0; 3]; // Stop movement interpolation
-            target.interaction_type_flags = 0; // Clear attackable flags; loot generation below may re-set
+            // NOTE: do NOT zero `interaction_type_flags` here. Python `SGWMob.onDead()`
+            // OR-merges `INT_NormalLoot` and preserves all other bits — content-driven
+            // bits (quest tags, mission interactions) must survive death. The dead-state
+            // bit handles cursor distinction client-side; we don't need to clear
+            // `INT_Attackable` to suppress the shootable cursor.
+            target.state_field &= !(1 << 3); // BSF_InCombat — clear so witnesses' clients stop
+                                             // treating this NPC as a combat target. Mirrors
+                                             // python `unsetStateFlag(BSF_InCombat)` at
+                                             // SGWMob.py:292 when the threat list empties.
         }
         tracing::info!(
             attacker = entity_id, target = target_eid,
@@ -409,37 +417,17 @@ pub async fn handle_use_ability(
         flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
     }
 
-    // ── Send state field update if target died ──
+    // ── Death side effects ──
+    // Wire-protocol burst (target reticle, BSF_InCombat clear, loot + InteractionType,
+    // dead-state flip) lives in `death::apply_death_transition` so the ordering
+    // constraints documented there stay in one place.
 
     if target_died {
-        let mut state_args = Vec::with_capacity(4);
-        state_args.extend_from_slice(&target_state.to_le_bytes());
-        send_entity_method(target_eid, 19, state_args, tx, space_mgr).await;
-
-        // Clear the attacker's target so the targeting reticle disappears.
-        // The reticle stays at the NPC's last standing position otherwise.
-        if attacker_is_player {
-            send_entity_method(
-                entity_id, 16, // onTargetUpdate(INT32 targetId = 0)
-                0i32.to_le_bytes().to_vec(),
-                tx, space_mgr,
-            ).await;
-        }
-
-        // Generate loot from the NPC's loot table, then update interaction type.
-        // Reference: python/cell/SGWMob.py:onDead() + Lootable.generateLoot()
-        if !target_is_player {
-            generate_loot_on_death(target_eid, space_mgr);
-
-            // Send InteractionType: INT_NormalLoot if loot was generated, 0 otherwise
-            let interaction_flags = space_mgr.get_entity(target_eid)
-                .map_or(0i64, |e| e.interaction_type_flags);
-            send_entity_method(
-                target_eid, 3,
-                interaction_flags.to_le_bytes().to_vec(),
-                tx, space_mgr,
-            ).await;
-        }
+        super::death::apply_death_transition(
+            target_eid, entity_id, target_state,
+            attacker_is_player, target_is_player,
+            tx, space_mgr,
+        ).await;
 
         // Send death animation via onSequence (Entity_Death = event_id 5001)
         // Look up the death sequence from the target's event set via sequence_map

@@ -7,12 +7,14 @@
 //! Submodule layout:
 //! - `dispatch` — ground-targeted auto-aim entry point.
 //! - `use_ability` — main `handle_use_ability` flow (validate → consume → fire → resolve).
+//! - `death` — ordered wire protocol burst when a target dies.
 //! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
 //! - `rng` — deterministic pseudo-random for combat rolls.
 //!
 //! Reference: `python/cell/AbilityManager.py:1004-1056`
 
+mod death;
 mod dispatch;
 mod loot_drop;
 mod messaging;
@@ -25,4 +27,5 @@ mod tests;
 // Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
 pub use dispatch::handle_use_ability_on_ground;
 pub use use_ability::handle_use_ability;
+pub(crate) use loot_drop::INT_NORMAL_LOOT;
 pub(crate) use messaging::send_entity_method;

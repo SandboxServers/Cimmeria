@@ -243,7 +243,7 @@ pub(super) async fn execute_actions(
                         let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
                             witness_id: entity_id,
                             entity_id: target_id,
-                            method_index: 3, // InteractionType
+                            method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                             args: (merged as u64).to_le_bytes().to_vec(),
                         }).await;
                     }
@@ -278,7 +278,7 @@ pub(super) async fn execute_actions(
                             let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
                                 witness_id,
                                 entity_id: target_id,
-                                method_index: 3, // InteractionType
+                                method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                                 args: (flags as u64).to_le_bytes().to_vec(),
                             }).await;
                         }
@@ -494,7 +494,7 @@ async fn send_interaction_update_if_visible(
             let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
                 witness_id: entity_id,
                 entity_id: target_id,
-                method_index: 3, // InteractionType
+                method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                 args: (merged as u64).to_le_bytes().to_vec(),
             }).await;
         } else {
