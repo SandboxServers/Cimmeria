@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::mercury::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
-    build_entity_leave, build_entity_method_packet,
+    build_entity_invisible, build_entity_leave, build_entity_method_packet,
     build_reset_entities, method_idx,
 };
 
@@ -142,6 +142,15 @@ pub(crate) async fn handle_cell_message(
                 socket, connected, entity_to_addr, witness_id,
                 |key, seq, acks| {
                     build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
+                },
+            ).await;
+        }
+        CellToBaseMsg::EntityInvisible { witness_id, entity_id } => {
+            tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
+            send_to_witness(
+                socket, connected, entity_to_addr, witness_id,
+                |key, seq, acks| {
+                    build_entity_invisible(key, seq, acks, entity_id)
                 },
             ).await;
         }

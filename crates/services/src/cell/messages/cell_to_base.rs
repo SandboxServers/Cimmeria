@@ -278,6 +278,17 @@ pub enum CellToBaseMsg {
         args: Vec<u8>,
     },
 
+    /// Send `BASEMSG_ENTITY_INVISIBLE (0x0B)` to a single witness without the
+    /// follow-up `LEAVE_AOI (0x0C)` — visually hides the entity on that
+    /// client while keeping it in AoI bookkeeping. Mirror of C++
+    /// `ClientHandler::leaveAoI(entity_id, deleteEntity=false)`. Used by the
+    /// ring-transport hide phase; pair with a `WitnessEntityMethod` calling
+    /// `onVisible(1)` to restore.
+    EntityInvisible {
+        witness_id: u32,
+        entity_id: u32,
+    },
+
     /// Start a minigame session for a player (Cell → Base).
     StartMinigame {
         entity_id: u32,
