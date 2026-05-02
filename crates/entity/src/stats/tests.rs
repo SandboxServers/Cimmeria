@@ -60,6 +60,29 @@ fn stat_set_min_clamps_current() {
 }
 
 #[test]
+fn stat_set_max_below_min_pulls_min_down() {
+    // Regression for #102: set_max below current min must pull min down
+    // and keep `min ≤ cur ≤ max` so we never serialize min > max.
+    let mut s = Stat::new(80, 90, 100, 80, 90, 100);
+    s.set_max(50);
+    assert_eq!(s.min, 50);
+    assert_eq!(s.cur, 50);
+    assert_eq!(s.max, 50);
+    assert!(s.min <= s.cur && s.cur <= s.max);
+}
+
+#[test]
+fn stat_set_min_above_max_pushes_max_up() {
+    // Regression for #102: set_min above current max must push max up.
+    let mut s = Stat::new(0, 50, 100, 0, 50, 100);
+    s.set_min(200);
+    assert_eq!(s.min, 200);
+    assert_eq!(s.cur, 200);
+    assert_eq!(s.max, 200);
+    assert!(s.min <= s.cur && s.cur <= s.max);
+}
+
+#[test]
 fn stat_change_by_percent() {
     let mut s = Stat::new(0, 200, 1000, 0, 200, 1000);
     let delta = s.change_by_percent(0.5); // 50% of 200 = 100
@@ -289,10 +312,18 @@ fn scale_for_level_increases_health_and_focus() {
 
     // Scale to level 5: health = 760 + 10*(5-1) = 800, focus = 1570 + 70*(5-1) = 1850
     list.scale_for_level(5, &arch);
-    assert_eq!(list.get(HEALTH).unwrap().max, 800);
-    assert_eq!(list.get(HEALTH).unwrap().cur, 800);
-    assert_eq!(list.get(FOCUS).unwrap().max, 1850);
-    assert_eq!(list.get(FOCUS).unwrap().cur, 1850);
+    let health = list.get(HEALTH).unwrap();
+    assert_eq!(health.max, 800);
+    assert_eq!(health.cur, 800);
+    // Regression for #104: base values must track the new max on level-up,
+    // otherwise serialize_all_base / serialize_dirty_base report stale data.
+    assert_eq!(health.base_max, 800);
+    assert_eq!(health.base_cur, 800);
+    let focus = list.get(FOCUS).unwrap();
+    assert_eq!(focus.max, 1850);
+    assert_eq!(focus.cur, 1850);
+    assert_eq!(focus.base_max, 1850);
+    assert_eq!(focus.base_cur, 1850);
     assert!(list.has_dirty());
 }
 

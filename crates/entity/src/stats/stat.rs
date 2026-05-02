@@ -71,21 +71,27 @@ impl Stat {
         self.change(delta)
     }
 
-    /// Set dynamic maximum, clamping current if needed.
+    /// Set dynamic maximum. Pulls `min` down with it if it would otherwise
+    /// exceed the new max, then clamps `cur` into the resulting `[min, max]`.
+    /// Preserves the `min ≤ cur ≤ max` invariant the wire format depends on.
     pub fn set_max(&mut self, max: i32) {
         self.max = max;
-        if self.cur > self.max {
-            self.cur = self.max;
+        if self.min > self.max {
+            self.min = self.max;
         }
+        self.cur = self.cur.clamp(self.min, self.max);
         self.dirty = true;
     }
 
-    /// Set dynamic minimum, clamping current if needed.
+    /// Set dynamic minimum. Pushes `max` up with it if it would otherwise
+    /// fall below the new min, then clamps `cur` into the resulting
+    /// `[min, max]`. Preserves the `min ≤ cur ≤ max` invariant.
     pub fn set_min(&mut self, min: i32) {
         self.min = min;
-        if self.cur < self.min {
-            self.cur = self.min;
+        if self.max < self.min {
+            self.max = self.min;
         }
+        self.cur = self.cur.clamp(self.min, self.max);
         self.dirty = true;
     }
 

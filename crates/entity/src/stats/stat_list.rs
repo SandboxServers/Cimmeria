@@ -178,12 +178,12 @@ impl StatList {
             (HEALTH_RES,   0, 30,                  2000),
             (DEPLOYMENT_BAR_AMMO, 0, 0,            1),
         ] {
-            if let Some(stat) = self.stats.get_mut(&id) {
-                stat.update(min, cur, max);
-                stat.set_base(min, cur, max);
-                stat.dirty = false;
-                stat.base_dirty = false;
-            }
+            let stat = self.stats.get_mut(&id)
+                .expect("apply_archetype: core stat missing from StatList::new()");
+            stat.update(min, cur, max);
+            stat.set_base(min, cur, max);
+            stat.dirty = false;
+            stat.base_dirty = false;
         }
     }
 
@@ -294,15 +294,17 @@ impl StatList {
     pub fn scale_for_level(&mut self, level: u32, arch: &ArchetypeStatValues) {
         let bonus_health = arch.health_per_level * (level as i32 - 1);
         let new_health_max = arch.health + bonus_health;
-        if let Some(stat) = self.stats.get_mut(&HEALTH) {
-            stat.update(0, new_health_max, new_health_max);
-        }
+        let stat = self.stats.get_mut(&HEALTH)
+            .expect("scale_for_level: HEALTH missing from StatList::new()");
+        stat.update(0, new_health_max, new_health_max);
+        stat.set_base(0, new_health_max, new_health_max);
 
         let bonus_focus = arch.focus_per_level * (level as i32 - 1);
         let new_focus_max = arch.focus + bonus_focus;
-        if let Some(stat) = self.stats.get_mut(&FOCUS) {
-            stat.update(0, new_focus_max, new_focus_max);
-        }
+        let stat = self.stats.get_mut(&FOCUS)
+            .expect("scale_for_level: FOCUS missing from StatList::new()");
+        stat.update(0, new_focus_max, new_focus_max);
+        stat.set_base(0, new_focus_max, new_focus_max);
     }
 
     /// Returns true if any stat has dirty or base_dirty set.
