@@ -54,7 +54,12 @@ pub async fn load_ring_regions(
     let mut regions: HashMap<i32, RingRegion> = HashMap::with_capacity(rows.len());
     for r in &rows {
         let region_id: i32 = r.get("region_id");
-        let dests: Vec<i32> = r.try_get("destination_region_ids").unwrap_or_default();
+        // SQL NULL → empty list (intentional — region with no destinations is
+        // valid). Real decode errors (wrong column type, malformed array)
+        // bubble up so startup fails loudly instead of silently dropping
+        // routing data.
+        let dests: Option<Vec<i32>> = r.try_get("destination_region_ids")?;
+        let dests = dests.unwrap_or_default();
         regions.insert(region_id, RingRegion {
             region_id,
             world_id: r.get("world_id"),

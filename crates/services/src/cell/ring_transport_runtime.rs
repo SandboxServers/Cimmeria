@@ -27,11 +27,9 @@ pub const BSF_MOVEMENT_LOCK: u32 = 1 << 6;
 const METHOD_ON_STATE_FIELD_UPDATE: u16 = 19;
 /// `onSequence` (SGWSpawnableEntity own, flat index 1).
 const METHOD_ON_SEQUENCE: u16 = 1;
-/// `onVisible` (SGWSpawnableEntity own, flat index 8). The current
-/// `Action::SetVisible` executor uses index 11 — that's incorrect and is
-/// fixed in this same patch by routing through here. See the existing
-/// constant `crate::mercury::method_idx::ON_VISIBLE` (= 8).
-const METHOD_ON_VISIBLE: u16 = 8;
+/// `onVisible` (SGWSpawnableEntity own, flat index 8) — alias for
+/// `crate::mercury::method_idx::ON_VISIBLE`.
+const METHOD_ON_VISIBLE: u16 = crate::mercury::method_idx::ON_VISIBLE;
 /// `onRingTransporterList` (SGWPlayer own, flat index 133).
 pub const METHOD_ON_RING_TRANSPORTER_LIST: u16 = 133;
 
@@ -145,13 +143,13 @@ pub async fn run_tick_with_engine(
     for (region_id, deadline) in ready {
         // Resolve any cross-region lookups (warmup needs the destination's
         // position) BEFORE taking a `&mut` to the source transporter.
-        let destination_for_warmup: Option<RingRegion> = if deadline.is_warmup() {
-            let dst_id = space_mgr.ring_transporters.get(region_id)
-                .and_then(|t| t.remote_region_id)
-                .unwrap_or(0);
-            space_mgr.ring_regions.get(&dst_id).cloned()
+        let (destination_for_warmup, warmup_num_players, warmup_dst_id): (Option<RingRegion>, u32, i32) = if deadline.is_warmup() {
+            let (dst_id, num_players) = space_mgr.ring_transporters.get(region_id)
+                .map(|t| (t.remote_region_id.unwrap_or(0), t.send_players.len() as u32))
+                .unwrap_or((0, 0));
+            (space_mgr.ring_regions.get(&dst_id).cloned(), num_players, dst_id)
         } else {
-            None
+            (None, 0, 0)
         };
 
         let effects: Vec<Effect> = if let Some(t) = space_mgr.ring_transporters.get_mut(region_id) {
@@ -184,7 +182,7 @@ pub async fn run_tick_with_engine(
         // its `playerLoaded` callback is genuinely async (waits for the
         // client's `mapLoaded`). We collapse the timing into one tick.
         if deadline.is_warmup() {
-            advance_destination_after_warmup(region_id, tx, space_mgr, engine).await;
+            advance_destination_after_warmup(warmup_dst_id, warmup_num_players, tx, space_mgr, engine).await;
         }
 
         dispatch_effects(effects, tx, space_mgr, engine).await;
@@ -194,16 +192,17 @@ pub async fn run_tick_with_engine(
 /// After the source ring's warmup expires, push the destination ring through
 /// RecvWarmup → RemoteLoadWait → (eventually) RemoteWarmup. This is the
 /// cross-link work that the Python `__warmupTimerExpired` does inline.
+///
+/// `dst_id` and `num_players` are captured by the caller BEFORE
+/// `warmup_timer_expired` runs — that call clears `send_players` and resets
+/// the source to `Idle` so the next trip can start cleanly.
 async fn advance_destination_after_warmup(
-    source_region_id: i32,
+    dst_id: i32,
+    num_players: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    let (dst_id, num_players) = match space_mgr.ring_transporters.get(source_region_id) {
-        Some(t) => (t.remote_region_id.unwrap_or(0), t.send_players.len() as u32),
-        None => return,
-    };
     if let Some(dst) = space_mgr.ring_transporters.get_mut(dst_id) {
         // Python order: remoteCountUpdate, then remoteTransport. The order
         // matters because remoteCountUpdate(0) fast-paths into __allPlayersLoaded.
@@ -230,6 +229,11 @@ async fn mark_player_loaded(
     if let Some(dst) = space_mgr.ring_transporters.get_mut(dst_region_id) {
         // `player_loaded` is idempotent on the same eid.
         let _ = dst.player_loaded(entity_id);
+    }
+    // Python clears `destinationRingId` here once the destination ring has
+    // taken responsibility for the player.
+    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+        player.destination_ring_id = None;
     }
     try_advance_after_load(dst_region_id, tx, space_mgr, engine).await;
 }
@@ -353,9 +357,13 @@ pub async fn handle_select_destination(
         }
     }
 
-    // Python clears `ringSourceId` here.
+    // Python: clear `ringSourceId` and remember `destinationRingId` so the
+    // destination's `playerLoaded` callback can route the player. The dest id
+    // is cleared in `mark_player_loaded` once the destination ring picks the
+    // player up (matching the Python `playerLoaded` lifecycle).
     if let Some(player) = space_mgr.get_entity_mut(entity_id) {
         player.ring_source_id = None;
+        player.destination_ring_id = Some(destination_region_id);
     }
 
     let auto_start = space_mgr.ring_transporters.get(source_region_id)
@@ -376,10 +384,7 @@ pub async fn handle_region_trigger(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    let region_id = space_mgr.ring_regions.values()
-        .find(|r| r.point_set_id == point_set_id)
-        .map(|r| r.region_id);
-    let region_id = match region_id {
+    let region_id = match space_mgr.ring_point_set_to_region.get(&point_set_id).copied() {
         Some(id) => id,
         None => return,
     };
@@ -509,6 +514,11 @@ async fn same_world_teleport(
     // Server-side: keep the spatial grid + entity position consistent so AoI
     // ticks broadcast the new position to other witnesses (build_avatar_update).
     space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+    // SpaceId.0 is i32 (matches DB type); the wire packet is u32, and space
+    // ids are always non-negative so this is a width-only conversion.
+    let space_id = space_mgr.get_entity(entity_id)
+        .map(|e| e.space_id.0 as u32)
+        .unwrap_or(0);
     if let Some(e) = space_mgr.get_entity_mut(entity_id) {
         e.position = Vector3::new(position[0], position[1], position[2]);
     }
@@ -518,7 +528,7 @@ async fn same_world_teleport(
     // (method 116) for streaming-load coordination. The bare 116-only path the
     // previous version used does NOT move the avatar — see SGWPlayer.def comment
     // and the `handle_teleport_player` handler.
-    let _ = tx.send(CellToBaseMsg::TeleportPlayer { entity_id, position }).await;
+    let _ = tx.send(CellToBaseMsg::TeleportPlayer { entity_id, space_id, position }).await;
 }
 
 async fn send_destination_list(
@@ -595,6 +605,9 @@ mod tests {
         regions.insert(1, ring(1, "Castle_CellBlock", vec![2], [0.0, 0.0, 0.0]));
         regions.insert(2, ring(2, "Castle_CellBlock", vec![1], [10.0, 20.0, 30.0]));
         mgr.ring_transporters.load(&regions);
+        mgr.ring_point_set_to_region = regions.iter()
+            .map(|(rid, r)| (r.point_set_id, *rid))
+            .collect();
         mgr.ring_regions = regions;
 
         // Seed the kismet sequence map so PlaySequence resolves.
@@ -662,11 +675,14 @@ mod tests {
             let dst = mgr.ring_regions.get(&2).unwrap();
             ([dst.x, dst.y, dst.z], dst.world_name.clone())
         };
+        // Capture num_players BEFORE warmup (which clears send_players as part
+        // of the source's reset to Idle).
+        let warmup_num_players = mgr.ring_transporters.get(1).unwrap().send_players.len() as u32;
         let warmup_effects = mgr.ring_transporters.get_mut(1).unwrap()
             .warmup_timer_expired(dst_pos.0, &dst_pos.1);
         // Same ordering as the production tick: count update before teleport
         // so `mark_player_loaded` can advance the FSM synchronously.
-        advance_destination_after_warmup(1, &tx, &mut mgr, &engine).await;
+        advance_destination_after_warmup(2, warmup_num_players, &tx, &mut mgr, &engine).await;
         dispatch_effects(warmup_effects, &tx, &mut mgr, &engine).await;
 
         // After the warmup teleport step we should see a TeleportPlayer
@@ -676,14 +692,15 @@ mod tests {
         let mut remaining = Vec::new();
         while let Ok(msg) = rx.try_recv() {
             match msg {
-                CellToBaseMsg::TeleportPlayer { entity_id, position } => {
-                    teleport_msg = Some((entity_id, position));
+                CellToBaseMsg::TeleportPlayer { entity_id, space_id, position } => {
+                    teleport_msg = Some((entity_id, space_id, position));
                 }
                 other => remaining.push(other),
             }
         }
-        let (eid, pos) = teleport_msg.expect("TeleportPlayer not emitted by warmup→teleport step");
+        let (eid, space_id, pos) = teleport_msg.expect("TeleportPlayer not emitted by warmup→teleport step");
         assert_eq!(eid, 42);
+        assert_ne!(space_id, 0, "TeleportPlayer must carry a non-zero space_id");
         assert!((pos[0] - 10.0).abs() < 0.001);
         assert!((pos[1] - 20.0).abs() < 0.001);
         assert!((pos[2] - 30.0).abs() < 0.001);
@@ -729,6 +746,9 @@ mod tests {
         regions.insert(1, ring(1, "Castle_CellBlock", vec![1, 2], [0.0; 3]));
         regions.insert(2, ring(2, "Castle_CellBlock", vec![1], [10.0; 3]));
         mgr.ring_transporters.load(&regions);
+        mgr.ring_point_set_to_region = regions.iter()
+            .map(|(rid, r)| (r.point_set_id, *rid))
+            .collect();
         mgr.ring_regions = regions;
 
         mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();

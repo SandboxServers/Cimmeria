@@ -341,12 +341,8 @@ pub(super) async fn execute_actions(
                     "Content: teleporting entity"
                 );
                 // The chain action's `space_id` is the destination space ID.
-                // For same-world teleport (the common case in current chains
-                // — there's no chain-driven cross-world teleport in the live
-                // seed data) it equals the entity's current space, so we can
-                // ignore it and just reposition. Cross-world chain teleport
-                // would need a path equivalent to GateTravel; defer that
-                // until a chain actually demands it.
+                // Cross-space chain teleport would need a path equivalent to
+                // GateTravel; defer until a chain actually demands it.
                 let current_space = space_mgr.get_entity(entity_id).map(|e| e.space_id.0);
                 if Some(space_id) != current_space && space_id != 0 {
                     tracing::warn!(
@@ -354,24 +350,24 @@ pub(super) async fn execute_actions(
                         "Content: cross-space chain teleport not implemented — falling back to same-space move"
                     );
                 }
+                // Same-world teleport: keep the spatial grid consistent here,
+                // then route through TeleportPlayer for the authoritative
+                // FORCED_POSITION snap + persist. The bare 116-only path the
+                // previous version emitted does NOT move the avatar.
                 space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
+                // SpaceId is i32 in the cell (matches DB type) but the wire
+                // forced-position packet is u32 — space ids are always
+                // non-negative, so the cast is a width-only conversion.
+                let cell_space_id = space_mgr.get_entity(entity_id)
+                    .map(|e| e.space_id.0 as u32)
+                    .unwrap_or(space_id as u32);
                 if let Some(e) = space_mgr.get_entity_mut(entity_id) {
                     e.position = cimmeria_common::Vector3::new(position[0], position[1], position[2]);
                 }
-                let mut args = Vec::with_capacity(24);
-                args.extend_from_slice(&position[0].to_le_bytes());
-                args.extend_from_slice(&position[1].to_le_bytes());
-                args.extend_from_slice(&position[2].to_le_bytes());
-                args.extend_from_slice(&0.0f32.to_le_bytes());
-                args.extend_from_slice(&0.0f32.to_le_bytes());
-                args.extend_from_slice(&0.0f32.to_le_bytes());
-                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
+                let _ = tx.send(CellToBaseMsg::TeleportPlayer {
                     entity_id,
-                    // onPlayerTeleport (SGWPlayer flat method index 116) —
-                    // tells the client to set the waiting state flag and
-                    // mask any streaming chunk loads on the way to the dest.
-                    method_index: 116,
-                    args,
+                    space_id: cell_space_id,
+                    position,
                 }).await;
             }
             Action::SystemMessage { message_id } => {
@@ -456,7 +452,7 @@ pub(super) async fn execute_actions(
                     let vis_byte: u8 = if visible { 1 } else { 0 };
                     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
                         entity_id: target_id,
-                        method_index: 11, // onVisible
+                        method_index: crate::mercury::method_idx::ON_VISIBLE,
                         args: vec![vis_byte],
                     }).await;
                 }

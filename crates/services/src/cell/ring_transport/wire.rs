@@ -21,7 +21,7 @@ use super::regions::RingRegion;
 
 /// Append one `RegionInfo` FIXED_DICT to `out`.
 ///
-/// 4 INT32 + 3 FLOAT = 24 bytes per entry.
+/// 3 INT32 + 3 FLOAT = 24 bytes per entry.
 pub fn encode_region_info(out: &mut Vec<u8>, region: &RingRegion) {
     out.extend_from_slice(&region.region_id.to_le_bytes());
     out.extend_from_slice(&region.display_name_id.to_le_bytes());

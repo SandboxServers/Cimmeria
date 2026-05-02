@@ -459,10 +459,15 @@ pub enum CellToBaseMsg {
     /// screen, no world reload — used by ring transporters and any other
     /// in-world short-hop teleport.
     ///
+    /// `space_id` is the cell's authoritative space — the base trusts this
+    /// over its connection-cached `world_name`, which can lag during world
+    /// transitions.
+    ///
     /// Other witnesses receive their position update through the next AoI
     /// tick's `EntityMoved` broadcast — no extra fan-out is needed here.
     TeleportPlayer {
         entity_id: u32,
+        space_id: u32,
         position: [f32; 3],
     },
 

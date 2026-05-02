@@ -20,7 +20,6 @@ use crate::mercury::{
 use super::super::ConnectedClientState;
 use super::super::helpers::send_to_witness;
 use super::gate_travel::handle_gate_travel;
-use super::space_registry::resolve_space_id_fallback;
 use super::methods::inventory::update_bandolier_ammo;
 use super::methods::{
     handle_buyback_vendor_items, handle_grant_cash, handle_grant_item, handle_grant_xp,
@@ -145,9 +144,9 @@ pub(crate) async fn handle_cell_message(
                 },
             ).await;
         }
-        CellToBaseMsg::TeleportPlayer { entity_id, position } => {
+        CellToBaseMsg::TeleportPlayer { entity_id, space_id, position } => {
             handle_teleport_player(
-                entity_id, position,
+                entity_id, space_id, position,
                 socket, connected, entity_to_addr, db_pool,
             ).await;
         }
@@ -432,15 +431,16 @@ pub(crate) async fn handle_cell_message(
 ///    `active_player_id` for the same reason as `gate_travel.rs`.
 async fn handle_teleport_player(
     entity_id: u32,
+    space_id: u32,
     position: [f32; 3],
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<PgPool>>,
 ) {
-    // Resolve space_id from the client's known world_name. Falls back to the
-    // hardcoded table when the world hasn't been registered yet (rare).
-    let (world_name, account_id, active_player_id) = {
+    // The cell owns authoritative `space_id` and passes it through. We only
+    // need the connection state for account_id/active_player_id (DB persist).
+    let (account_id, active_player_id) = {
         let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
             Some(a) => a,
             None => {
@@ -450,18 +450,16 @@ async fn handle_teleport_player(
         };
         let clients = connected.lock().unwrap();
         match clients.get(&addr) {
-            Some(c) => (c.world_name.clone(), c.account_id, c.active_player_id),
+            Some(c) => (c.account_id, c.active_player_id),
             None => {
                 tracing::warn!(entity_id, %addr, "TeleportPlayer: client state not found");
                 return;
             }
         }
     };
-    let world_name = world_name.unwrap_or_else(|| "Castle_CellBlock".to_string());
-    let space_id = resolve_space_id_fallback(&world_name);
 
     tracing::info!(
-        entity_id, ?position, %world_name, space_id,
+        entity_id, ?position, space_id,
         "TeleportPlayer: snapping avatar"
     );
 

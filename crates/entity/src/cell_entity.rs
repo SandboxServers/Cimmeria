@@ -470,6 +470,8 @@ mod tests {
         assert!(entity.is_on_ground);
         assert!(entity.witnesses.is_empty());
         assert_eq!(entity.aoi_radius, 100.0);
+        assert_eq!(entity.ring_source_id, None);
+        assert_eq!(entity.destination_ring_id, None);
     }
 
     #[test]

@@ -168,6 +168,9 @@ impl CellService {
             match super::super::ring_transport::load_ring_regions(pool).await {
                 Ok(regions) => {
                     space_mgr.ring_transporters.load(&regions);
+                    space_mgr.ring_point_set_to_region = regions.iter()
+                        .map(|(rid, r)| (r.point_set_id, *rid))
+                        .collect();
                     space_mgr.ring_regions = regions;
                     tracing::info!(
                         count = space_mgr.ring_regions.len(),

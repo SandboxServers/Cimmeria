@@ -313,16 +313,25 @@ impl RingTransporter {
     /// Warmup-timer: source-side teleport. Mirrors `__warmupTimerExpired` +
     /// `__doTransport`.
     ///
+    /// After dispatching the teleport effects, the source ring's job is done
+    /// for this trip — it goes straight back to `Idle` and clears its transient
+    /// state so the next trigger doesn't get rejected as "source ring is busy".
+    /// The Python original keeps the source in REMOTE_LOAD_WAIT with no path
+    /// out; we tighten this because our Rust state machine rejects re-entry.
+    /// The destination ring continues through `RemoteLoadWait → RemoteWarmup →
+    /// Cooldown → Idle` independently.
+    ///
     /// Caller must use [`Self::remote_count_update`] + [`Self::remote_transport`]
     /// on the destination ring after this returns.
     pub fn warmup_timer_expired(&mut self, dst_position: [f32; 3], dst_world: &str) -> Vec<Effect> {
         debug_assert_eq!(self.state, State::SendWarmup);
-        self.state = State::RemoteLoadWait;
         self.timers.warmup_at = None;
         let dst_region = self.remote_region_id.unwrap_or(0);
-        self.send_players.iter()
+        let send_world = self.world_name.clone();
+        let players: Vec<u32> = std::mem::take(&mut self.send_players);
+        let effects: Vec<Effect> = players.iter()
             .map(|&eid| {
-                if dst_world == self.world_name {
+                if dst_world == send_world {
                     Effect::TeleportPlayer {
                         entity_id: eid,
                         position: dst_position,
@@ -338,7 +347,11 @@ impl RingTransporter {
                     }
                 }
             })
-            .collect()
+            .collect();
+
+        self.state = State::Idle;
+        self.remote_region_id = None;
+        effects
     }
 
     /// `playerLoaded()` — destination side. Returns true when the count of
@@ -590,9 +603,13 @@ mod tests {
         assert_eq!(src.state, State::SendWarmup);
         let _ = hide_now;
 
-        // Warmup timer → teleport
+        // Warmup timer → teleport. The source's job ends here: it goes back
+        // to `Idle` and clears its transient state (R9 fix — without this the
+        // source rejects the next trip as "source ring is busy").
         let effs = src.warmup_timer_expired([10.0, 20.0, 30.0], "Castle");
-        assert_eq!(src.state, State::RemoteLoadWait);
+        assert_eq!(src.state, State::Idle);
+        assert_eq!(src.remote_region_id, None);
+        assert!(src.send_players.is_empty());
         assert_eq!(effs.len(), 1);
         match &effs[0] {
             Effect::TeleportPlayer { entity_id, position, world_name, destination_region_id } => {
@@ -603,6 +620,11 @@ mod tests {
             }
             _ => panic!("expected TeleportPlayer"),
         }
+
+        // Regression for R9: after a full source-side cycle, the next
+        // validate_destination must succeed. Previously the source stayed in
+        // RemoteLoadWait with no path back to Idle and rejected as busy.
+        assert_eq!(src.validate_destination(2), Ok(()));
     }
 
     #[test]
