@@ -142,6 +142,7 @@ pub const FRAG_FIRST_AND_LAST: u8 = 0x43;
 /// parent chain through SGWBeing with identical interface ordering.
 pub mod method_idx {
     // SGWSpawnableEntity own (0–11)
+    pub const ON_SEQUENCE: u16 = 1;
     pub const INTERACTION_TYPE: u16 = 3;
     pub const ON_ENTITY_FLAGS: u16 = 4;
     pub const ON_ENTITY_PROPERTY: u16 = 7;
@@ -210,6 +211,7 @@ pub mod method_idx {
     pub const ON_EXTRA_NAME_UPDATE: u16 = 130;
     pub const ON_EXP_UPDATE: u16 = 131;
     pub const ON_MAX_EXP_UPDATE: u16 = 132;
+    pub const ON_RING_TRANSPORTER_LIST: u16 = 133;
     pub const ON_UPDATE_KNOWN_CRAFTS: u16 = 139;
     pub const ON_ABILITY_TREE_INFO: u16 = 141;
     pub const ON_PLAY_MOVIE: u16 = 155;

@@ -16,12 +16,7 @@ use super::transporter::State;
 use super::wire_helpers::{BSF_MOVEMENT_LOCK, METHOD_ON_RING_TRANSPORTER_LIST};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
-
-/// `onStateFieldUpdate` — duplicated here so tests can match on it without
-/// re-exporting the cell-internal constant.
-const METHOD_ON_STATE_FIELD_UPDATE: u16 = 19;
-/// `onSequence` — same rationale as above.
-const METHOD_ON_SEQUENCE: u16 = 1;
+use crate::mercury::method_idx::{ON_SEQUENCE, ON_STATE_FIELD_UPDATE};
 
 fn make_test_space_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
@@ -106,8 +101,8 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     let mut got_sequence = false;
     while let Ok(msg) = rx.try_recv() {
         if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
-            if method_index == METHOD_ON_STATE_FIELD_UPDATE { got_lock = true; }
-            if method_index == METHOD_ON_SEQUENCE { got_sequence = true; }
+            if method_index == ON_STATE_FIELD_UPDATE { got_lock = true; }
+            if method_index == ON_SEQUENCE { got_sequence = true; }
         }
     }
     assert!(got_lock, "BSF_MovementLock not applied");

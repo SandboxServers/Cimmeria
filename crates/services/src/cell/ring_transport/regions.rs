@@ -68,8 +68,12 @@ pub async fn load_ring_regions(
             y: r.get("y"),
             z: r.get("z"),
             tag: r.get("tag"),
-            height: r.try_get::<f32, _>("height").unwrap_or(0.0),
-            radius: r.try_get::<f32, _>("radius").unwrap_or(0.0),
+            // height/radius are NOT NULL in the schema — a decode error here
+            // means real corruption (wrong column type, malformed numeric).
+            // Bubble up so startup fails loudly instead of producing a
+            // zero-radius pad the trigger volume can't see players entering.
+            height: r.try_get::<f32, _>("height")?,
+            radius: r.try_get::<f32, _>("radius")?,
             event_set_id: r.get("event_set_id"),
             display_name_id: r.get("display_name_id"),
             destination_ids: dests,

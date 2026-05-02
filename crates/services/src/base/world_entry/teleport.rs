@@ -80,12 +80,11 @@ pub(super) async fn handle_teleport_player(
         args.extend_from_slice(&c.to_le_bytes());
     }
     args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
-    const METHOD_ON_PLAYER_TELEPORT: u16 = 116;
     send_to_witness(
         socket, connected, entity_to_addr, entity_id,
         |key, seq, acks| {
             build_entity_method_packet(key, seq, acks, entity_id,
-                METHOD_ON_PLAYER_TELEPORT, &args)
+                crate::cell::client_methods::player::ON_PLAYER_TELEPORT, &args)
         },
     ).await;
 

@@ -139,14 +139,22 @@ pub(super) async fn mark_player_loaded(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    if let Some(dst) = space_mgr.ring_transporters.get_mut(dst_region_id) {
-        // `player_loaded` is idempotent on the same eid.
-        let _ = dst.player_loaded(entity_id);
-    }
+    let recorded = match space_mgr.ring_transporters.get_mut(dst_region_id) {
+        Some(dst) => {
+            // `player_loaded` is idempotent on the same eid.
+            let _ = dst.player_loaded(entity_id);
+            true
+        }
+        None => false,
+    };
     // Python clears `destinationRingId` here once the destination ring has
-    // taken responsibility for the player.
-    if let Some(player) = space_mgr.get_entity_mut(entity_id) {
-        player.destination_ring_id = None;
+    // taken responsibility for the player. Only clear after a successful
+    // load record — otherwise we'd lose the routing pointer while the
+    // player is still in transit.
+    if recorded {
+        if let Some(player) = space_mgr.get_entity_mut(entity_id) {
+            player.destination_ring_id = None;
+        }
     }
     try_advance_after_load(dst_region_id, tx, space_mgr, engine).await;
 }

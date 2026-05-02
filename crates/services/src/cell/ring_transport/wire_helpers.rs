@@ -13,20 +13,17 @@ use super::transporter::RegionEvent;
 use super::wire::build_on_ring_transporter_list;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use crate::mercury::method_idx::{
+    ON_RING_TRANSPORTER_LIST, ON_SEQUENCE, ON_STATE_FIELD_UPDATE, ON_VISIBLE,
+};
 
 /// `BSF_MovementLock` — bit 6 of `state_field`. See
-/// `crates/entity/src/cell_entity.rs` for the full bit layout.
+/// `crates/entity/src/cell_entity/` for the full bit layout.
 pub const BSF_MOVEMENT_LOCK: u32 = 1 << 6;
 
-/// `onStateFieldUpdate` (SGWBeing interface, flat index 19).
-pub(super) const METHOD_ON_STATE_FIELD_UPDATE: u16 = 19;
-/// `onSequence` (SGWSpawnableEntity own, flat index 1).
-pub(super) const METHOD_ON_SEQUENCE: u16 = 1;
-/// `onVisible` (SGWSpawnableEntity own, flat index 8) — alias for
-/// `crate::mercury::method_idx::ON_VISIBLE`.
-pub(super) const METHOD_ON_VISIBLE: u16 = crate::mercury::method_idx::ON_VISIBLE;
-/// `onRingTransporterList` (SGWPlayer own, flat index 133).
-pub const METHOD_ON_RING_TRANSPORTER_LIST: u16 = 133;
+/// Re-export for tests (see `super::tests`) and external consumers that
+/// dispatch on the destination-list method id.
+pub const METHOD_ON_RING_TRANSPORTER_LIST: u16 = ON_RING_TRANSPORTER_LIST;
 
 /// KISMET_VIEW_EventInvoker viewType passed to `onSequence`. Same value used
 /// elsewhere for region-driven kismet — the camera follows the triggering
@@ -69,7 +66,7 @@ pub(super) async fn send_play_sequence(
     let args = build_on_sequence_args(seq_id, entity_id);
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
-        method_index: METHOD_ON_SEQUENCE,
+        method_index: ON_SEQUENCE,
         args,
     }).await;
 }
@@ -90,7 +87,7 @@ pub(super) async fn update_state_flag(
     };
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
-        method_index: METHOD_ON_STATE_FIELD_UPDATE,
+        method_index: ON_STATE_FIELD_UPDATE,
         args: new_state.to_le_bytes().to_vec(),
     }).await;
 }
@@ -103,7 +100,7 @@ pub(super) async fn send_visible(
     let byte: u8 = if visible { 1 } else { 0 };
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
         entity_id,
-        method_index: METHOD_ON_VISIBLE,
+        method_index: ON_VISIBLE,
         args: vec![byte],
     }).await;
 }

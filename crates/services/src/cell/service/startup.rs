@@ -168,9 +168,21 @@ impl CellService {
             match super::super::ring_transport::load_ring_regions(pool).await {
                 Ok(regions) => {
                     space_mgr.ring_transporters.load(&regions);
-                    space_mgr.ring_point_set_to_region = regions.iter()
-                        .map(|(rid, r)| (r.point_set_id, *rid))
-                        .collect();
+                    // Multiple rings sharing a point_set_id would silently
+                    // route everyone through whichever ring HashMap iteration
+                    // landed last. Log the collision so the bad seed data
+                    // surfaces at startup rather than as ghost-routing later.
+                    let mut point_set_to_region = std::collections::HashMap::with_capacity(regions.len());
+                    for (rid, r) in &regions {
+                        if let Some(existing) = point_set_to_region.insert(r.point_set_id, *rid) {
+                            tracing::error!(
+                                point_set_id = r.point_set_id,
+                                first_region = existing, second_region = *rid,
+                                "duplicate point_set_id across ring regions — routing will be non-deterministic"
+                            );
+                        }
+                    }
+                    space_mgr.ring_point_set_to_region = point_set_to_region;
                     space_mgr.ring_regions = regions;
                     tracing::info!(
                         count = space_mgr.ring_regions.len(),
