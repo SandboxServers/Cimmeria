@@ -60,6 +60,29 @@ fn stat_set_min_clamps_current() {
 }
 
 #[test]
+fn stat_set_max_below_min_pulls_min_down() {
+    // Regression for #102: set_max below current min must pull min down
+    // and keep `min ≤ cur ≤ max` so we never serialize min > max.
+    let mut s = Stat::new(80, 90, 100, 80, 90, 100);
+    s.set_max(50);
+    assert_eq!(s.min, 50);
+    assert_eq!(s.cur, 50);
+    assert_eq!(s.max, 50);
+    assert!(s.min <= s.cur && s.cur <= s.max);
+}
+
+#[test]
+fn stat_set_min_above_max_pushes_max_up() {
+    // Regression for #102: set_min above current max must push max up.
+    let mut s = Stat::new(0, 50, 100, 0, 50, 100);
+    s.set_min(200);
+    assert_eq!(s.min, 200);
+    assert_eq!(s.cur, 200);
+    assert_eq!(s.max, 200);
+    assert!(s.min <= s.cur && s.cur <= s.max);
+}
+
+#[test]
 fn stat_change_by_percent() {
     let mut s = Stat::new(0, 200, 1000, 0, 200, 1000);
     let delta = s.change_by_percent(0.5); // 50% of 200 = 100
@@ -289,10 +312,18 @@ fn scale_for_level_increases_health_and_focus() {
 
     // Scale to level 5: health = 760 + 10*(5-1) = 800, focus = 1570 + 70*(5-1) = 1850
     list.scale_for_level(5, &arch);
-    assert_eq!(list.get(HEALTH).unwrap().max, 800);
-    assert_eq!(list.get(HEALTH).unwrap().cur, 800);
-    assert_eq!(list.get(FOCUS).unwrap().max, 1850);
-    assert_eq!(list.get(FOCUS).unwrap().cur, 1850);
+    let health = list.get(HEALTH).unwrap();
+    assert_eq!(health.max, 800);
+    assert_eq!(health.cur, 800);
+    // Regression for #104: base values must track the new max on level-up,
+    // otherwise serialize_all_base / serialize_dirty_base report stale data.
+    assert_eq!(health.base_max, 800);
+    assert_eq!(health.base_cur, 800);
+    let focus = list.get(FOCUS).unwrap();
+    assert_eq!(focus.max, 1850);
+    assert_eq!(focus.cur, 1850);
+    assert_eq!(focus.base_max, 1850);
+    assert_eq!(focus.base_cur, 1850);
     assert!(list.has_dirty());
 }
 
@@ -308,6 +339,26 @@ fn scale_for_level_1_is_base() {
     list.clear_dirty();
     list.scale_for_level(1, &arch);
     // Level 1: no bonus
+    assert_eq!(list.get(HEALTH).unwrap().max, 760);
+    assert_eq!(list.get(FOCUS).unwrap().max, 1570);
+}
+
+#[test]
+fn scale_for_level_0_treated_as_1() {
+    // Regression: level == 0 must not produce a negative bonus.
+    // The DB column allows 0 but the formula needs a 1-based level —
+    // without the clamp, max would be base - per_level (smaller than the
+    // archetype baseline) and propagate that incorrect value into the
+    // stat state. Copilot caught this on PR #107.
+    let mut list = StatList::new();
+    let arch = ArchetypeStatValues {
+        coordination: 5, engagement: 4, fortitude: 3, morale: 4,
+        perception: 3, intelligence: 2, health: 760, focus: 1570,
+        health_per_level: 10, focus_per_level: 70,
+    };
+    list.apply_archetype(&arch);
+    list.scale_for_level(0, &arch);
+    // Same result as level 1: no bonus, max == archetype base.
     assert_eq!(list.get(HEALTH).unwrap().max, 760);
     assert_eq!(list.get(FOCUS).unwrap().max, 1570);
 }
