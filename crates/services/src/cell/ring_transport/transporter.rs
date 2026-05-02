@@ -600,8 +600,8 @@ mod tests {
         let _ = hide_now;
 
         // Warmup timer → teleport. The source's job ends here: it goes back
-        // to `Idle` and clears its transient state (R9 fix — without this the
-        // source rejects the next trip as "source ring is busy").
+        // to `Idle` and clears its transient state — without this the
+        // source rejects the next trip as "source ring is busy".
         let effs = src.warmup_timer_expired([10.0, 20.0, 30.0], "Castle");
         assert_eq!(src.state, State::Idle);
         assert_eq!(src.remote_region_id, None);
@@ -617,9 +617,10 @@ mod tests {
             _ => panic!("expected TeleportPlayer"),
         }
 
-        // Regression for R9: after a full source-side cycle, the next
-        // validate_destination must succeed. Previously the source stayed in
-        // RemoteLoadWait with no path back to Idle and rejected as busy.
+        // Invariant: after a full source-side cycle, the next
+        // validate_destination must succeed. The source must reset to Idle
+        // (rather than staying in RemoteLoadWait) so it doesn't reject the
+        // next trip as busy.
         assert_eq!(src.validate_destination(2), Ok(()));
     }
 

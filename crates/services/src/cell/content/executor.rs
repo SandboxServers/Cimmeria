@@ -354,6 +354,7 @@ pub(super) async fn execute_actions(
                 // then route through TeleportPlayer for the authoritative
                 // FORCED_POSITION snap + persist. The bare 116-only path the
                 // previous version emitted does NOT move the avatar.
+                // `update_entity_position` already writes `cell_entity.position`.
                 space_mgr.update_entity_position(entity_id, position, [0, 0, 0], [0.0; 3]);
                 // SpaceId is i32 in the cell (matches DB type) but the wire
                 // forced-position packet is u32 — space ids are always
@@ -361,9 +362,6 @@ pub(super) async fn execute_actions(
                 let cell_space_id = space_mgr.get_entity(entity_id)
                     .map(|e| e.space_id.0 as u32)
                     .unwrap_or(space_id as u32);
-                if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-                    e.position = cimmeria_common::Vector3::new(position[0], position[1], position[2]);
-                }
                 let _ = tx.send(CellToBaseMsg::TeleportPlayer {
                     entity_id,
                     space_id: cell_space_id,

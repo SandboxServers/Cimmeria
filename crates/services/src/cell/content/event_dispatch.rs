@@ -403,9 +403,9 @@ pub async fn fire_item_use(
 /// Fire the `teleport_in` event when a player arrives via a ring transporter.
 ///
 /// Chain 1044 (`teleport_in` event_key=`2`) hooks this to complete mission 640
-/// when the player teleports into Castle_CellBlock ring 2. Trigger matching
-/// uses both the typed `region_id` param and the string `event_key` form
-/// (some triggers store the key as a string), so we set both.
+/// when the player teleports into Castle_CellBlock ring 2. The chain loader
+/// converts the SQL `event_key` string into a typed `region_id` field on the
+/// trigger, so matching only needs the typed `region_id` param.
 pub async fn fire_teleport_in(
     entity_id: u32,
     player_id: i32,
