@@ -117,7 +117,7 @@ impl SpaceManager {
                                         events.push(CellToBaseMsg::WitnessEntityMethod {
                                             witness_id: player_id,
                                             entity_id: eid,
-                                            method_index: 3, // InteractionType
+                                            method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                                             args: (merged as u64).to_le_bytes().to_vec(),
                                         });
 

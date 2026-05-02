@@ -1,13 +1,15 @@
 //! Combatant state flags (dead/alive) packed into a `stateField` bitmask.
 //!
-//! From `python/Atrea/enums.py`. The client reads `stateField` and treats
-//! bit 13 as "dead" — value 8192 = `PLAYER_STATE_DEAD`.
+//! From `python/Atrea/enums.py:176-184`. `BSF_*` enum values are bit *indices*;
+//! `setStateFlag(flag)` does `stateField |= 1 << flag`. BSF_Dead = 0 → value 1.
 
-/// Bitmask for dead state in combatantState.
-pub const PLAYER_STATE_DEAD: u32 = 8192;
+/// Bitmask for dead state in combatantState (1 << BSF_Dead).
+pub const PLAYER_STATE_DEAD: u32 = 1;
 
-/// Bit position for dead flag in stateField (sent to client).
-pub const BSF_DEAD: u32 = 13; // bit 13 → value 8192
+/// Bit position for dead flag in stateField (sent to client). Matches python
+/// `Atrea.enums.BSF_Dead = 0`. The earlier value 13 was a wire-protocol bug
+/// that left dead NPCs visible as "attackable" on the client.
+pub const BSF_DEAD: u32 = 0;
 
 /// Check if a state field indicates the entity is dead.
 pub fn is_dead_state(state_field: u32) -> bool {
@@ -35,7 +37,7 @@ mod tests {
 
         set_dead_state(&mut state);
         assert!(is_dead_state(state));
-        assert_eq!(state, 8192);
+        assert_eq!(state, 1);
 
         clear_dead_state(&mut state);
         assert!(!is_dead_state(state));

@@ -84,7 +84,7 @@ pub(super) fn generate_loot_on_death(
                 let name = entry.design_id
                     .map(|id| format!("item_{id}"))
                     .unwrap_or_else(|| "naquadah".to_string());
-                tracing::info!(
+                tracing::debug!(
                     target_eid, %name, quantity, index,
                     probability = entry.probability,
                     "Loot generated"
@@ -94,10 +94,12 @@ pub(super) fn generate_loot_on_death(
     }
 
     if !target.loot.is_empty() {
-        // Set INT_NormalLoot so the client shows the loot cursor
-        target.interaction_type_flags = INT_NORMAL_LOOT;
+        // Set INT_NormalLoot so the client shows the loot cursor. OR-preserve to match
+        // the Python reference (`setInteractionType(self.interactionType | INT_NormalLoot)`)
+        // — keeps any bits a content chain set pre-death.
+        target.interaction_type_flags |= INT_NORMAL_LOOT;
         target.interaction_type = Some(cimmeria_entity::cell_entity::NpcInteractionType::Loot);
-        tracing::info!(
+        tracing::debug!(
             target_eid, items = target.loot.len(),
             "NPC has loot — set INT_NormalLoot interaction"
         );

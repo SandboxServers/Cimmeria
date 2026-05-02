@@ -109,7 +109,7 @@ pub async fn handle_interact(
             if let Some(player) = space_mgr.get_entity_mut(entity_id) {
                 player.looting_entity = Some(target_entity_id);
             }
-            send_loot_display(entity_id, target_entity_id as i32, tx, space_mgr).await;
+            send_loot_display(entity_id, target_entity_id as i32, 1, tx, space_mgr).await;
             None
         }
         None => {
@@ -228,10 +228,15 @@ async fn send_trainer_open(
 ///   `itemID:i32, quantity:i16, index:i32, typeID:i32`
 /// Outer: `entityId:i32, ARRAY<LootItemQuantity>, initial:i8`
 ///
+/// `initial = 1` for the first display (opens the window), `0` for subsequent
+/// refreshes after a lootItem (client refreshes contents; closes the window
+/// if the list is now empty per Loot.lua's `LootWin:hide()` on count==0).
+///
 /// Reference: `python/cell/interactions/Lootable.py:sendLootList()`
 async fn send_loot_display(
     player_id: u32,
     npc_entity_id: i32,
+    initial: u8,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
@@ -255,10 +260,10 @@ async fn send_loot_display(
         args.extend_from_slice(&type_id.to_le_bytes());           // typeID: INT32
     }
 
-    args.push(1); // Initial = 1
+    args.push(initial);
 
-    tracing::info!(
-        player_id, npc_entity_id, count,
+    tracing::debug!(
+        player_id, npc_entity_id, count, initial,
         "Sending onLootDisplay"
     );
     let _ = tx.send(CellToBaseMsg::EntityMethodCall {
@@ -368,20 +373,27 @@ pub async fn handle_loot_item(
         }
         // Broadcast InteractionType(0) to witnesses
         super::abilities::send_entity_method(
-            target_eid, 3,
-            0i64.to_le_bytes().to_vec(),
+            target_eid, crate::mercury::method_idx::INTERACTION_TYPE,
+            0u64.to_le_bytes().to_vec(),
             tx, space_mgr,
         ).await;
+
+        // Send the empty loot list to the player so the loot window closes.
+        // Loot.lua hides the window when getLootCount()==0 inside onLootDisplay.
+        // Without this, the window stays open displaying stale data and any
+        // additional "Loot All" clicks fall through to lootItem with no
+        // looting_entity set (we used to log the resulting warning storm).
+        send_loot_display(entity_id, target_eid as i32, 0, tx, space_mgr).await;
 
         // Clear looting state on the player
         if let Some(player) = space_mgr.get_entity_mut(entity_id) {
             player.looting_entity = None;
         }
 
-        tracing::info!(target_eid, "NPC loot exhausted — cleared interaction");
+        tracing::debug!(target_eid, "NPC loot exhausted — cleared interaction");
     } else {
-        // Send updated loot list
-        send_loot_display(entity_id, target_eid as i32, tx, space_mgr).await;
+        // Send updated loot list to refresh the open window
+        send_loot_display(entity_id, target_eid as i32, 0, tx, space_mgr).await;
     }
 }
 
