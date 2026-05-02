@@ -288,9 +288,10 @@ VALUES (1033, 'advance_step', 639, '2343', '{}', 0, 0);
 --   The chain is responsible for consumption via `remove_item`. Mirrors python
 --   `FindAmbernol.py:115` which calls `inventory.removeItemByDesign(19, 1, False)`
 --   from a per-mission script callback — pure `useItem` events fire without
---   consuming, and per-item handlers decide whether to remove the stack
---   (#95 reverted the global consume-on-use that would silently drain reusable
---   items like radios).
+--   consuming, and per-item handlers decide whether to remove the stack.
+--   The previous global consume-on-use behavior was wrong for reusable items
+--   (radios, multi-step "use on target" objectives) which silently lost stacks
+--   on every use.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1034, '639 - Use ambernol: complete 639, accept 640', 'mission', 639, true, 0);
 

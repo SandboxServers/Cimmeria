@@ -53,6 +53,17 @@ struct InventoryInstanceRow {
     charges: i32,
 }
 
+/// Lighter row for [`handle_remove_inventory_item_by_type`], which needs
+/// `item_id` (for the targeted `onRemoveItem` packet) but not the
+/// `bound` / `durability` / `charges` metadata.
+#[derive(sqlx::FromRow)]
+struct InventoryInstanceWithIdRow {
+    item_id: i32,
+    stack_size: i32,
+    container_id: i32,
+    slot_id: i32,
+}
+
 /// Send full inventory update to player, refreshing all items on the client.
 pub async fn send_full_inventory_update(
     entity_id: u32,
@@ -424,9 +435,23 @@ pub async fn handle_remove_inventory_item_by_type(
     // because we're about to mutate; LIMIT 1 because we only consume from
     // a single stack — multi-stack draining isn't the chain semantic
     // (mission removes are always 1 from a specific stack).
-    let source = match sqlx::query_as::<_, InventoryInstanceRow>(
-        "SELECT type_id, stack_size, container_id, slot_id, bound, durability, charges \
-         FROM sgw_inventory WHERE character_id = $1 AND type_id = $2 LIMIT 1 FOR UPDATE",
+    //
+    // ORDER BY (container_id, slot_id) is load-bearing — without it, sqlx
+    // returns whichever row PG felt like; for a player with stacks of the
+    // same design in both the main bag (container 1) and the bandolier
+    // (container 3), an unordered LIMIT 1 might consume the equipped
+    // stack instead of the main-bag one. The ascending order biases
+    // toward main bag (container 1) which is the desired default for
+    // chain-driven consumes (vials, mission objects) — bandolier stacks
+    // are touched by explicit equip/unequip flows, not by chains.
+    //
+    // The SELECT also pulls `item_id` so we don't need a second roundtrip
+    // to look it up before sending the targeted onRemoveItem packet on
+    // full removal.
+    let source = match sqlx::query_as::<_, InventoryInstanceWithIdRow>(
+        "SELECT item_id, stack_size, container_id, slot_id \
+         FROM sgw_inventory WHERE character_id = $1 AND type_id = $2 \
+         ORDER BY container_id, slot_id LIMIT 1 FOR UPDATE",
     )
     .bind(player_id)
     .bind(type_id)
@@ -450,29 +475,20 @@ pub async fn handle_remove_inventory_item_by_type(
         return;
     };
 
-    // Need item_id to fire the targeted onRemoveItem packet on full removal.
-    let removed_item_id: i32 = match sqlx::query_scalar::<_, i32>(
-        "SELECT item_id FROM sgw_inventory \
-         WHERE character_id = $1 AND container_id = $2 AND slot_id = $3 LIMIT 1",
-    )
-    .bind(player_id)
-    .bind(source.container_id)
-    .bind(source.slot_id)
-    .fetch_optional(&mut *tx)
-    .await
-    {
-        Ok(Some(id)) => id,
-        Ok(None) => {
-            let _ = tx.rollback().await;
-            tracing::warn!(player_id, type_id, "RemoveInventoryItemByType: source row vanished mid-tx");
-            return;
-        }
-        Err(e) => {
-            let _ = tx.rollback().await;
-            tracing::error!(player_id, type_id, "RemoveInventoryItemByType: item_id lookup failed: {e}");
-            return;
-        }
-    };
+    let removed_item_id = source.item_id;
+
+    if count > source.stack_size {
+        // Visible warning — caller asked for more than this stack holds.
+        // We still proceed (treating it as "remove the whole stack"),
+        // matching the existing handle_remove_inventory_item semantic
+        // for `quantity >= stack_size`. If a future caller actually
+        // needs multi-stack draining, that's a new RPC variant, not a
+        // silent extension of this one.
+        tracing::warn!(
+            player_id, type_id, requested = count, available = source.stack_size,
+            "RemoveInventoryItemByType: requested count exceeds stack size; removing whole stack"
+        );
+    }
 
     let removed_all = count >= source.stack_size;
     let result = if removed_all {

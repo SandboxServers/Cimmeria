@@ -260,12 +260,24 @@ pub(super) async fn execute_actions(
                     entity_id, player_id, type_id = item_id, count, chain_id,
                     "Content: RemoveItem → RemoveInventoryItemByType"
                 );
-                let _ = tx.send(CellToBaseMsg::RemoveInventoryItemByType {
+                if let Err(e) = tx.send(CellToBaseMsg::RemoveInventoryItemByType {
                     entity_id,
                     player_id,
                     type_id: item_id,
                     count,
-                }).await;
+                }).await {
+                    // Saturated/closed channel — the consume silently
+                    // skips otherwise. Surface it loudly so missions
+                    // that depend on the removal (e.g., FindAmbernol
+                    // chain 1034 consumes the vial) don't silently
+                    // strand the player with the item still in their
+                    // bag while the chain reports completion.
+                    tracing::error!(
+                        entity_id, player_id, type_id = item_id, count, chain_id,
+                        error = %e,
+                        "Content: RemoveItem cell→base channel send failed — item NOT removed"
+                    );
+                }
             }
             Action::SetInteractionType { entity_tag, operation, mask } => {
                 if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
