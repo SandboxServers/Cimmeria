@@ -62,10 +62,10 @@ async fn dispatch_effect_inner(
             update_state_flag(entity_id, BSF_MOVEMENT_LOCK, false, tx, space_mgr).await;
         }
         Effect::HidePlayer { entity_id } => {
-            send_visible(entity_id, false, tx).await;
+            send_visible(entity_id, false, tx, space_mgr).await;
         }
         Effect::ShowPlayer { entity_id } => {
-            send_visible(entity_id, true, tx).await;
+            send_visible(entity_id, true, tx, space_mgr).await;
         }
         Effect::TeleportPlayer { entity_id, position, world_name, destination_region_id } => {
             // Resolve the authoritative space_id from the cell — bailing if the

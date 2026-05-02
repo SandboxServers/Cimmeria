@@ -92,17 +92,29 @@ pub(super) async fn update_state_flag(
     }).await;
 }
 
+/// Broadcasts `onVisible` to every witness of the entity *and* the entity
+/// itself, so the avatar fades for nearby players too — not just for the
+/// teleporting player. `EntityMethodCall` would only route to the entity's
+/// own client (see `cell_dispatch.rs::EntityMethodCall`), which would leave
+/// other clients in AoI rendering the avatar normally.
 pub(super) async fn send_visible(
     entity_id: u32,
     visible: bool,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     let byte: u8 = if visible { 1 } else { 0 };
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: ON_VISIBLE,
-        args: vec![byte],
-    }).await;
+    let mut targets: std::collections::HashSet<u32> =
+        space_mgr.get_witnesses_of(entity_id).into_iter().collect();
+    targets.insert(entity_id);
+    for witness_id in targets {
+        let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id,
+            method_index: ON_VISIBLE,
+            args: vec![byte],
+        }).await;
+    }
 }
 
 pub(super) async fn send_destination_list(
