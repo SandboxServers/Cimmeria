@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Entity definitions parsed from .def XML files at compile time"
+build = "build/main.rs"
 
 [dependencies]
 serde = { workspace = true }
