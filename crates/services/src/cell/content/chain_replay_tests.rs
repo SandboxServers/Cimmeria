@@ -130,7 +130,7 @@ async fn chain_3026_does_not_fire_when_mission_1562_is_completed() {
     let chain = load_single_chain_for_test(&pool, 3026)
         .await
         .expect("DB query for chain 3026 must succeed")
-        .expect("chain 3026 must exist in seeded content_chains");
+        .expect("chain 3026 must exist in seeded content_chains and successfully load/convert");
 
     let mut engine = ChainEngine::new();
     engine.register_chain(chain);
