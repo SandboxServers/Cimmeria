@@ -4,6 +4,9 @@ use sqlx::PgPool;
 
 use super::serializers::{StoreBuyCost, StoreItem, StoreItemCost};
 
+#[cfg(test)]
+mod tests;
+
 const COST_NAQUADAH: i32 = 1;
 const COST_ITEM: i32 = 2;
 const ITEM_FLAG_CAN_BE_SOLD: i32 = 1 << 10;

@@ -432,3 +432,6 @@ pub async fn handle_buyback_vendor_items(
         "Vendor buyback completed"
     );
 }
+
+#[cfg(test)]
+mod tests;

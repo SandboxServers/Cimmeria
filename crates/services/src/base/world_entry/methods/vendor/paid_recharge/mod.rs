@@ -15,14 +15,17 @@ use crate::base::ConnectedClientState;
 
 use super::VENDOR_FILTER_BAGS;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(sqlx::FromRow)]
 struct StoreItemCostRow {
     cost: i32,
     item_id: i32,
 }
 
-/// Transactionally repair items for payment and refresh inventory/cash.
-pub async fn handle_paid_repair_inventory_items(
+/// Transactionally recharge items for payment and refresh inventory/cash.
+pub async fn handle_paid_recharge_inventory_items(
     entity_id: u32,
     player_id: i32,
     item_ids: Vec<i32>,
@@ -35,7 +38,7 @@ pub async fn handle_paid_repair_inventory_items(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, "RepairInventoryItems: no DB pool");
+            tracing::debug!(player_id, "RechargeInventoryItems: no DB pool");
             return;
         }
     };
@@ -45,22 +48,22 @@ pub async fn handle_paid_repair_inventory_items(
         tracing::debug!(
             entity_id,
             player_id,
-            "RepairInventoryItems: empty item list"
+            "RechargeInventoryItems: empty item list"
         );
         return;
     }
 
     let Some(template) =
-        load_vendor_template_lists(pool, vendor_template_id, "RepairInventoryItems").await
+        load_vendor_template_lists(pool, vendor_template_id, "RechargeInventoryItems").await
     else {
         return;
     };
-    let Some(repair_item_list) = template.repair_item_list else {
+    let Some(recharge_item_list) = template.recharge_item_list else {
         tracing::warn!(
             entity_id,
             player_id,
             vendor_template_id,
-            "RepairInventoryItems: vendor has no repair list — client request dropped"
+            "RechargeInventoryItems: vendor has no recharge list — client request dropped"
         );
         return;
     };
@@ -71,33 +74,28 @@ pub async fn handle_paid_repair_inventory_items(
             tracing::error!(
                 entity_id,
                 player_id,
-                "RepairInventoryItems: begin failed: {e}"
+                "RechargeInventoryItems: begin failed: {e}"
             );
             return;
         }
     };
 
-    // Lock acquisition order: `sgw_inventory` rows (the FOR UPDATE OF inv below)
-    // are acquired BEFORE `sgw_player.naquadah` (the FOR UPDATE balance read
-    // later). All vendor-stack handlers (paid_repair, paid_recharge, purchase,
-    // sell, buyback) follow this same order to avoid lock-cycle deadlocks
-    // between repair and concurrent grant/move operations that touch both
-    // tables.
     let rows = match sqlx::query_as::<_, StoreItemCostRow>(
-        "SELECT GREATEST((ili.naquadah::BIGINT * (100 - inv.durability)::BIGINT) / 100, 1)::INT AS cost, \
+        "SELECT GREATEST((ili.naquadah::BIGINT * (ri.charges - inv.charges)::BIGINT) / NULLIF(ri.charges, 0)::BIGINT, 1)::INT AS cost, \
                 inv.item_id \
          FROM resources.item_list_items ili \
          JOIN sgw_inventory inv ON inv.type_id = ili.design_id \
+         JOIN resources.items ri ON ri.item_id = inv.type_id \
          WHERE ili.item_list_id = $1 \
            AND inv.character_id = $2 \
            AND inv.item_id = ANY($3) \
            AND inv.container_id = ANY($4) \
            AND inv.stack_size = 1 \
-           AND inv.durability >= 0 \
-           AND inv.durability < 100 \
+           AND ri.charges > 0 \
+           AND inv.charges < ri.charges \
          FOR UPDATE OF inv",
     )
-    .bind(repair_item_list)
+    .bind(recharge_item_list)
     .bind(player_id)
     .bind(&item_ids)
     .bind(VENDOR_FILTER_BAGS.as_slice())
@@ -111,7 +109,7 @@ pub async fn handle_paid_repair_inventory_items(
                 entity_id,
                 player_id,
                 vendor_template_id,
-                "RepairInventoryItems: repair query failed: {e}"
+                "RechargeInventoryItems: recharge query failed: {e}"
             );
             return;
         }
@@ -127,7 +125,7 @@ pub async fn handle_paid_repair_inventory_items(
                 entity_id,
                 player_id,
                 item_id,
-                "RepairInventoryItems: item is not repairable at this vendor"
+                "RechargeInventoryItems: item is not rechargeable at this vendor"
             );
             return;
         };
@@ -136,7 +134,11 @@ pub async fn handle_paid_repair_inventory_items(
             Some(total) => total,
             None => {
                 let _ = tx.rollback().await;
-                tracing::warn!(entity_id, player_id, "RepairInventoryItems: cost overflow");
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    "RechargeInventoryItems: cost overflow"
+                );
                 return;
             }
         };
@@ -154,7 +156,7 @@ pub async fn handle_paid_repair_inventory_items(
                 tracing::error!(
                     entity_id,
                     player_id,
-                    "RepairInventoryItems: balance query failed: {e}"
+                    "RechargeInventoryItems: balance query failed: {e}"
                 );
                 return;
             }
@@ -165,7 +167,7 @@ pub async fn handle_paid_repair_inventory_items(
         tracing::warn!(
             entity_id,
             player_id,
-            "RepairInventoryItems: player not found"
+            "RechargeInventoryItems: player not found"
         );
         return;
     };
@@ -177,7 +179,7 @@ pub async fn handle_paid_repair_inventory_items(
             player_id,
             balance,
             total_cost,
-            "RepairInventoryItems: insufficient naquadah"
+            "RechargeInventoryItems: insufficient naquadah"
         );
         return;
     }
@@ -197,7 +199,7 @@ pub async fn handle_paid_repair_inventory_items(
             tracing::warn!(
                 entity_id,
                 player_id,
-                "RepairInventoryItems: player disappeared before cash update"
+                "RechargeInventoryItems: player disappeared before cash update"
             );
             return;
         }
@@ -206,18 +208,23 @@ pub async fn handle_paid_repair_inventory_items(
             tracing::error!(
                 entity_id,
                 player_id,
-                "RepairInventoryItems: cash update failed: {e}"
+                "RechargeInventoryItems: cash update failed: {e}"
             );
             return;
         }
     };
 
     let result = sqlx::query(
-        "UPDATE sgw_inventory SET durability = 100 \
-         WHERE character_id = $1 AND item_id = ANY($2) \
-           AND container_id = ANY($3) \
-           AND stack_size = 1 \
-           AND durability >= 0 AND durability < 100",
+        "UPDATE sgw_inventory inv \
+         SET charges = ri.charges \
+         FROM resources.items ri \
+         WHERE inv.character_id = $1 \
+           AND inv.item_id = ANY($2) \
+           AND inv.type_id = ri.item_id \
+           AND inv.container_id = ANY($3) \
+           AND inv.stack_size = 1 \
+           AND ri.charges > 0 \
+           AND inv.charges < ri.charges",
     )
     .bind(player_id)
     .bind(&item_ids)
@@ -234,7 +241,7 @@ pub async fn handle_paid_repair_inventory_items(
                 player_id,
                 expected = item_ids.len(),
                 updated = r.rows_affected(),
-                "RepairInventoryItems: unexpected repair update count"
+                "RechargeInventoryItems: unexpected recharge update count"
             );
             return;
         }
@@ -243,7 +250,7 @@ pub async fn handle_paid_repair_inventory_items(
             tracing::error!(
                 entity_id,
                 player_id,
-                "RepairInventoryItems: update failed: {e}"
+                "RechargeInventoryItems: update failed: {e}"
             );
             return;
         }
@@ -253,7 +260,7 @@ pub async fn handle_paid_repair_inventory_items(
         tracing::error!(
             entity_id,
             player_id,
-            "RepairInventoryItems: commit failed: {e}"
+            "RechargeInventoryItems: commit failed: {e}"
         );
         return;
     }
@@ -286,6 +293,6 @@ pub async fn handle_paid_repair_inventory_items(
         item_count = item_ids.len(),
         total_cost,
         total_items,
-        "Vendor repair completed"
+        "Vendor recharge completed"
     );
 }
