@@ -55,13 +55,30 @@ async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i3
 /// because sgw_inventory.type_id has an FK to resources.items, so the
 /// fixture rows can't use synthetic type_ids.
 async fn pick_main_bag_type_ids(pool: &PgPool, count: usize) -> Vec<i32> {
-    sqlx::query_scalar::<_, i32>(
+    let ids: Vec<i32> = sqlx::query_scalar::<_, i32>(
         "SELECT item_id FROM resources.items \
          WHERE container_sets IS NULL OR 1 = ANY(container_sets) \
          ORDER BY item_id LIMIT $1",
     )
     .bind(count as i64)
-    .fetch_all(pool).await.expect("pick item_ids")
+    .fetch_all(pool).await.expect("pick item_ids");
+    assert_eq!(
+        ids.len(), count,
+        "resources.items has fewer than {count} container-1-allowed types — \
+         the bundled seed (db/resources/Items/Seed/items.sql) must be loaded \
+         before running live-DB tests",
+    );
+    ids
+}
+
+/// Compute an item_id that's guaranteed not to exist in `sgw_inventory`.
+/// Hard-coded sentinels collide with the auto-increment sequence as it
+/// advances over time; deriving from MAX(item_id) is stable across runs.
+async fn unused_item_id(pool: &PgPool) -> i32 {
+    let max_id: Option<i32> = sqlx::query_scalar(
+        "SELECT MAX(item_id) FROM sgw_inventory",
+    ).fetch_one(pool).await.expect("MAX(item_id) query");
+    max_id.unwrap_or(10_000) + 1_000_000
 }
 
 /// Insert a sgw_inventory row at a known (container, slot) and return
@@ -272,7 +289,7 @@ async fn source_item_not_found_makes_no_changes() {
 
     let types = pick_main_bag_type_ids(&pool, 1).await;
     let bystander = insert_item(&pool, player_id, types[0], 1, 4, 1).await;
-    let nonexistent_item_id = 99_999_999;
+    let nonexistent_item_id = unused_item_id(&pool).await;
 
     let (socket, e2a, conn) = make_state(9_999_014);
     let db_pool = Some(Arc::new(pool.clone()));
