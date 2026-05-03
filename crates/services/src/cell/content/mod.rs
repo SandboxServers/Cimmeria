@@ -10,6 +10,9 @@ mod event_dispatch;
 mod executor;
 mod mission_context;
 
+#[cfg(test)]
+mod chain_replay_tests;
+
 // Public surface — preserve the flat `crate::cell::content::<fn>` paths that
 // callers across the cell service already use.
 pub use engine_loader::build_engine;
