@@ -174,6 +174,149 @@ pub async fn reserve_free_inventory_slots(
 }
 
 #[cfg(test)]
+mod serializer_tests {
+    use super::*;
+
+    #[test]
+    fn store_item_cost_array_empty_emits_count_zero() {
+        let mut args = Vec::new();
+        serialize_store_item_cost_array(&mut args, &[]);
+        assert_eq!(args, [0, 0, 0, 0], "empty cost array must still write u32(0) count");
+    }
+
+    #[test]
+    fn store_item_cost_array_writes_cost_then_item_id_per_row() {
+        let mut args = Vec::new();
+        serialize_store_item_cost_array(&mut args, &[
+            StoreItemCost { cost: 250, item_id: 1001 },
+            StoreItemCost { cost: -1,  item_id: 2002 },
+        ]);
+
+        // count(u32) | (cost:i32 | item_id:i32) * 2
+        assert_eq!(args.len(), 4 + 2 * 8);
+        assert_eq!(u32::from_le_bytes([args[0], args[1], args[2], args[3]]), 2);
+        assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), 250);
+        assert_eq!(i32::from_le_bytes([args[8], args[9], args[10], args[11]]), 1001);
+        assert_eq!(i32::from_le_bytes([args[12], args[13], args[14], args[15]]), -1);
+        assert_eq!(i32::from_le_bytes([args[16], args[17], args[18], args[19]]), 2002);
+    }
+
+    #[test]
+    fn store_update_empty_emits_count_zero() {
+        let args = serialize_store_update(&[]);
+        assert_eq!(args, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn store_update_byte_exact_layout() {
+        // Row layout: item_id, sell_price, repair_price, recharge_price (all i32 LE).
+        // Flips a per-row sign so a regression that swaps two adjacent fields fails
+        // loudly instead of silently producing the same wire bytes.
+        let args = serialize_store_update(&[StoreItemCostUpdate {
+            item_id: 7777,
+            sell_price: 100,
+            repair_price: 200,
+            recharge_price: 300,
+        }]);
+
+        assert_eq!(args.len(), 4 + 16);
+        assert_eq!(u32::from_le_bytes([args[0], args[1], args[2], args[3]]), 1);
+        assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), 7777);
+        assert_eq!(i32::from_le_bytes([args[8], args[9], args[10], args[11]]), 100);
+        assert_eq!(i32::from_le_bytes([args[12], args[13], args[14], args[15]]), 200);
+        assert_eq!(i32::from_le_bytes([args[16], args[17], args[18], args[19]]), 300);
+    }
+
+    #[test]
+    fn empty_store_open_writes_vendor_id_marker_and_five_empty_arrays() {
+        let args = serialize_empty_store_open(424242);
+
+        // vendor_id(i32) | marker(i32 = 1) | buy_count(u32 = 0)
+        // | sell_count(u32 = 0) | buyback_count(u32 = 0)
+        // | repair_count(u32 = 0) | recharge_count(u32 = 0)
+        assert_eq!(args.len(), 4 + 4 + 4 + 4 * 4);
+        assert_eq!(i32::from_le_bytes([args[0], args[1], args[2], args[3]]), 424242);
+        // The magic "1" sandwiched between vendor_id and the buy-list count is
+        // load-bearing — the client de-serializer reads it before the array
+        // header. A regression that drops or moves it desyncs every later
+        // field.
+        assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), 1);
+        for off in (8..args.len()).step_by(4) {
+            assert_eq!(
+                u32::from_le_bytes([args[off], args[off + 1], args[off + 2], args[off + 3]]),
+                0,
+                "expected u32(0) array count at offset {off}",
+            );
+        }
+    }
+
+    #[test]
+    fn store_open_full_layout_round_trips_all_sections() {
+        let buy_items = vec![StoreItem {
+            index: 5,
+            item_id: 9001,
+            cost_list: vec![
+                StoreBuyCost { cost_type: 0, type_id: 0,    quantity: 50 },
+                StoreBuyCost { cost_type: 1, type_id: 1234, quantity: 1  },
+            ],
+            usable: 1,
+            quantity: 7,
+        }];
+        let sell     = vec![StoreItemCost { cost: 11, item_id: 100 }];
+        let buyback  = vec![StoreItemCost { cost: 22, item_id: 200 }];
+        let repair   = vec![StoreItemCost { cost: 33, item_id: 300 }];
+        let recharge = vec![StoreItemCost { cost: 44, item_id: 400 }];
+
+        let args = serialize_store_open(42, &buy_items, &sell, &buyback, &repair, &recharge);
+
+        let mut off = 0;
+        let read_i32 = |args: &[u8], off: &mut usize| {
+            let v = i32::from_le_bytes([args[*off], args[*off + 1], args[*off + 2], args[*off + 3]]);
+            *off += 4;
+            v
+        };
+        let read_u32 = |args: &[u8], off: &mut usize| {
+            let v = u32::from_le_bytes([args[*off], args[*off + 1], args[*off + 2], args[*off + 3]]);
+            *off += 4;
+            v
+        };
+
+        assert_eq!(read_i32(&args, &mut off), 42, "vendor_entity_id");
+        assert_eq!(read_i32(&args, &mut off), 1, "marker");
+
+        // Buy items
+        assert_eq!(read_u32(&args, &mut off), 1, "buy items count");
+        assert_eq!(read_i32(&args, &mut off), 5, "item.index");
+        assert_eq!(read_i32(&args, &mut off), 9001, "item.item_id");
+        assert_eq!(read_u32(&args, &mut off), 2, "cost_list count");
+        // Cost row 0
+        assert_eq!(read_i32(&args, &mut off), 0,  "cost_list[0].cost_type");
+        assert_eq!(read_i32(&args, &mut off), 0,  "cost_list[0].type_id");
+        assert_eq!(read_i32(&args, &mut off), 50, "cost_list[0].quantity");
+        // Cost row 1
+        assert_eq!(read_i32(&args, &mut off), 1,    "cost_list[1].cost_type");
+        assert_eq!(read_i32(&args, &mut off), 1234, "cost_list[1].type_id");
+        assert_eq!(read_i32(&args, &mut off), 1,    "cost_list[1].quantity");
+        assert_eq!(args[off], 1, "item.usable"); off += 1;
+        assert_eq!(read_i32(&args, &mut off), 7, "item.quantity");
+
+        // Sell / buyback / repair / recharge — emitted in this exact order.
+        for (label, expected_cost, expected_item_id) in [
+            ("sell", 11, 100),
+            ("buyback", 22, 200),
+            ("repair", 33, 300),
+            ("recharge", 44, 400),
+        ] {
+            assert_eq!(read_u32(&args, &mut off), 1, "{label} count");
+            assert_eq!(read_i32(&args, &mut off), expected_cost, "{label} cost");
+            assert_eq!(read_i32(&args, &mut off), expected_item_id, "{label} item_id");
+        }
+
+        assert_eq!(off, args.len(), "no trailing bytes after parsed sections");
+    }
+}
+
+#[cfg(test)]
 mod free_inventory_slots_tests {
     use super::*;
 
