@@ -59,22 +59,35 @@ mod tests {
     use super::*;
     use crate::test_support::require_db_or_skip;
 
-    /// Sentinel base for bandolier-ammo tests. Distinct from prior live-DB
-    /// sentinels (outbox 0x000 / grant_cash +0x100 / move +0x200 /
-    /// grant_item +0x300 / missions +0x400 / mail +0x500 /
-    /// vendor/repair +0x600 / paid_repair +0x700 / sell +0x800 /
-    /// buyback +0x900 / purchase +0x0A00).
+    /// Sentinel base for bandolier-ammo tests, stepped past prior
+    /// live-DB sentinels reserved elsewhere in the crate.
     const TEST_BASE: i32 = 0x7000_0B00;
 
-    /// Both designs are bandolier-allowed (verified via
-    /// `SELECT item_id FROM resources.items WHERE container_sets IS NULL
-    /// OR 3 = ANY(container_sets)`). Picking a SECOND distinct allowed
-    /// type matters: it lets the TOCTOU test simulate "player swapped
-    /// the bandolier slot's weapon" with a real foreign-key-valid type.
-    const FIRST_BANDOLIER_TYPE: i32 = 17;
-    const SWAPPED_BANDOLIER_TYPE: i32 = 21;
-
     const INV_BANDOLIER: i32 = 3;
+
+    /// Pick two distinct `resources.items.item_id` values that are
+    /// allowed in the bandolier (`container_sets` is NULL/empty or
+    /// includes container 3). Querying instead of hard-coding keeps
+    /// the test from breaking if a seed-data renumber removes the
+    /// specific ids we picked. The two ids returned are the lowest
+    /// allowed ones, which is what the TOCTOU test needs: a primary
+    /// type for the "matching" path and a distinct secondary type to
+    /// simulate "player swapped the slot's weapon."
+    async fn pick_two_bandolier_types(pool: &PgPool) -> (i32, i32) {
+        let rows: Vec<i32> = sqlx::query_scalar(
+            "SELECT item_id FROM resources.items \
+             WHERE container_sets IS NULL OR 3 = ANY(container_sets) \
+             ORDER BY item_id LIMIT 2",
+        )
+        .fetch_all(pool)
+        .await
+        .expect("pick two bandolier-allowed types");
+        assert!(
+            rows.len() >= 2,
+            "seed must provide at least two bandolier-allowed item types; got {rows:?}",
+        );
+        (rows[0], rows[1])
+    }
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
@@ -160,21 +173,22 @@ mod tests {
     #[tokio::test]
     async fn update_writes_ammo_and_cur_ammo_type_when_type_matches() {
         let pool = require_db_or_skip!();
+        let (primary_type, _) = pick_two_bandolier_types(&pool).await;
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
         cleanup(&pool, account_id, player_id).await;
         insert_account_and_player(&pool, account_id, player_id).await;
         // Start with ammo=10, cur_ammo_type=0 so the post-call asserts
         // can pin the exact written values rather than just "non-zero".
-        insert_bandolier_item(&pool, player_id, FIRST_BANDOLIER_TYPE, 1, 10, 0).await;
+        insert_bandolier_item(&pool, player_id, primary_type, 1, 10, 0).await;
 
-        update_bandolier_ammo(&pool, player_id, 1, FIRST_BANDOLIER_TYPE, 42, 7)
+        update_bandolier_ammo(&pool, player_id, 1, primary_type, 42, 7)
             .await
             .expect("update_bandolier_ammo must succeed on matching slot");
 
         assert_eq!(
             ammo_state_of(&pool, player_id, 1).await,
-            Some((FIRST_BANDOLIER_TYPE, 42, 7)),
+            Some((primary_type, 42, 7)),
             "ammo and cur_ammo_type must be written when expected_item_id matches",
         );
 
@@ -184,27 +198,33 @@ mod tests {
     /// TOCTOU guard: the slot exists but holds a DIFFERENT type_id (the
     /// player swapped the bandolier slot's weapon between the cell event
     /// and the persistence call). The `AND type_id = $5` predicate must
-    /// reject the write so the new weapon's ammo stays untouched. The
-    /// pre-fix bug shape this protects against: scribbling the old
-    /// weapon's ammo onto the new weapon.
+    /// reject the write so the new weapon's ammo stays untouched.
+    ///
+    /// Coverage gap, intentional: this only pins the *different-type*
+    /// swap. A same-type swap (a different physical row of the same
+    /// design replacing the original at the same slot) still passes
+    /// the predicate and would silently scribble. Whether that's a
+    /// production bug or acceptable behavior is tracked separately —
+    /// see the issue linked from this branch's PR description.
     #[tokio::test]
     async fn update_no_op_when_slot_holds_different_type() {
         let pool = require_db_or_skip!();
+        let (primary_type, swapped_type) = pick_two_bandolier_types(&pool).await;
         let account_id = TEST_BASE + 100;
         let player_id = TEST_BASE + 101;
         cleanup(&pool, account_id, player_id).await;
         insert_account_and_player(&pool, account_id, player_id).await;
-        // Slot has SWAPPED_BANDOLIER_TYPE, but the call passes
-        // FIRST_BANDOLIER_TYPE as expected — TOCTOU guard must fire.
-        insert_bandolier_item(&pool, player_id, SWAPPED_BANDOLIER_TYPE, 2, 5, 1).await;
+        // Slot has the swapped (secondary) type, but the call passes
+        // the primary type as expected — TOCTOU guard must fire.
+        insert_bandolier_item(&pool, player_id, swapped_type, 2, 5, 1).await;
 
-        update_bandolier_ammo(&pool, player_id, 2, FIRST_BANDOLIER_TYPE, 999, 99)
+        update_bandolier_ammo(&pool, player_id, 2, primary_type, 999, 99)
             .await
             .expect("must NOT error when type_id mismatches; just no-op");
 
         assert_eq!(
             ammo_state_of(&pool, player_id, 2).await,
-            Some((SWAPPED_BANDOLIER_TYPE, 5, 1)),
+            Some((swapped_type, 5, 1)),
             "TOCTOU mismatch must leave ammo and cur_ammo_type untouched",
         );
 
@@ -218,13 +238,14 @@ mod tests {
     #[tokio::test]
     async fn update_no_op_when_slot_is_empty() {
         let pool = require_db_or_skip!();
+        let (primary_type, _) = pick_two_bandolier_types(&pool).await;
         let account_id = TEST_BASE + 200;
         let player_id = TEST_BASE + 201;
         cleanup(&pool, account_id, player_id).await;
         insert_account_and_player(&pool, account_id, player_id).await;
         // Deliberately do NOT insert a bandolier row at slot 3.
 
-        update_bandolier_ammo(&pool, player_id, 3, FIRST_BANDOLIER_TYPE, 42, 7)
+        update_bandolier_ammo(&pool, player_id, 3, primary_type, 42, 7)
             .await
             .expect("must NOT error on empty slot; just no-op");
 
