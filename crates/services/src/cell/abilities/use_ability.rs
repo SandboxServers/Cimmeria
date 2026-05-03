@@ -519,8 +519,19 @@ pub async fn handle_use_ability(
         }
     }
 
-    // Generate threat on surviving NPCs so they aggro back
+    // Generate threat on surviving NPCs so they aggro back. If this hit
+    // is what put the player into combat (their threatened_mobs went
+    // from empty → {target}), broadcast the new state_field so the
+    // client flips its in-combat HUD/cursor routing.
     if !target_died {
-        combat::generate_threat(space_mgr, entity_id, target_eid, _total_health_damage as f32);
+        if let Some(new_state) = combat::generate_threat(
+            space_mgr, entity_id, target_eid, _total_health_damage as f32,
+        ) {
+            super::messaging::send_entity_method(
+                entity_id, crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                new_state.to_le_bytes().to_vec(),
+                tx, space_mgr,
+            ).await;
+        }
     }
 }

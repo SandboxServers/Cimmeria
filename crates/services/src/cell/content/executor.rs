@@ -433,12 +433,20 @@ pub(super) async fn execute_actions(
                             entity_id, %tag, target_id, threat_level, chain_id,
                             "Content: generate threat on NPC from player"
                         );
-                        crate::cell::combat::generate_threat(
+                        if let Some(new_state) = crate::cell::combat::generate_threat(
                             space_mgr,
                             entity_id,  // attacker = the player
                             target_id,  // target = the NPC
                             threat_level as f32,
-                        );
+                        ) {
+                            // Player just entered combat — broadcast state
+                            // change so the client flips in-combat HUD.
+                            crate::cell::abilities::send_entity_method(
+                                entity_id, crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                                new_state.to_le_bytes().to_vec(),
+                                tx, space_mgr,
+                            ).await;
+                        }
                     }
                 } else {
                     tracing::debug!(entity_id, threat_level, chain_id, "Content: generate threat (no target tag, skipped)");
