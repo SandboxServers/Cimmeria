@@ -322,4 +322,55 @@ mod tests {
         }
         assert!(saw_loot_display, "expected onLootDisplay (method 114) for dead lootable corpse");
     }
+
+    /// A neutral NPC (faction != 10) with no dialog/template/tag must NOT be
+    /// rerouted to combat. The is_hostile early branch is gated on faction
+    /// 10 specifically — if a future regression drops the faction check the
+    /// fall-through would silently auto-attack neutral civilians on right-
+    /// click.
+    #[tokio::test]
+    async fn neutral_npc_with_no_interaction_does_not_route_to_combat() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(42);
+        }
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(npc) = mgr.get_entity_mut(npc_id) {
+            // Neutral / non-hostile faction. Faction 10 is the only value
+            // that enables the hostile reroute — anything else (including
+            // the default 0) must fall through to the dialog/interact path.
+            npc.faction = 0;
+            npc.clear_all_state_flags();
+            // No tag, no template name, no interaction_type configured —
+            // i.e. there's nothing for the dialog/interact path to do
+            // either. The point of the test is that *nothing combat-related*
+            // happens, not that some interaction succeeds.
+            npc.tag = None;
+            npc.npc_name = None;
+            npc.interaction_type = None;
+        }
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = cimmeria_content_engine::chain::ChainEngine::new();
+        let mut args = Vec::with_capacity(4);
+        args.extend_from_slice(&(npc_id as i32).to_le_bytes());
+        let handled = dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
+        assert!(handled, "INTERACT must always return true (handled)");
+
+        // Method 16 = onTargetUpdate is the canonical hostile-reroute marker
+        // emitted at the top of the is_hostile branch (interaction.rs:53-56).
+        // Asserting it never appears is a precise probe for "the hostile
+        // reroute didn't run" — the alive_hostile_reroutes_to_useability test
+        // pins the converse direction, so together they bracket the branch.
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+                assert_ne!(
+                    method_index, 16,
+                    "neutral NPC must not fire onTargetUpdate from INTERACT",
+                );
+            }
+        }
+    }
 }
