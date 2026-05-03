@@ -103,8 +103,9 @@ mod tests {
             assert!(
                 handled,
                 "method {pet_method} (pet) must route to social and return true; \
-                 a false here means the arm order regressed and world::dispatch \
-                 (which has no case for 88..=90) handled it instead",
+                 a false here means the arm order regressed: world::dispatch \
+                 (which has no case for 88..=90) was reached first and \
+                 returned false because nothing in its match handled it",
             );
         }
     }
