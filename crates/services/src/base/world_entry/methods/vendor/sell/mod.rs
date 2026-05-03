@@ -470,3 +470,6 @@ pub async fn handle_sell_vendor_items(
         "Vendor sale completed"
     );
 }
+
+#[cfg(test)]
+mod tests;
