@@ -18,7 +18,7 @@ mod stat_list;
 #[cfg(test)]
 mod tests;
 
-pub use archetype::ArchetypeStatValues;
+pub use archetype::{ArchetypeStatValues, ARCHETYPE_COUNT};
 pub use stat::Stat;
 pub use stat_ids::*;
 pub use stat_list::StatList;
