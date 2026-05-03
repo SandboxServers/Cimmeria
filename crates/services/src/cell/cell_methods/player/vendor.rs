@@ -312,3 +312,112 @@ mod read_i32_array_tests {
         assert_eq!(off, 16);
     }
 }
+
+#[cfg(test)]
+mod vendor_context_tests {
+    use super::{vendor_context, VendorSession};
+    use crate::cell::space_manager::SpaceManager;
+
+    fn make_space_manager() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(spaces_xml).unwrap();
+        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+        mgr
+    }
+
+    fn assert_session(
+        session: Option<VendorSession>,
+        expected_player_id: i32,
+        expected_vendor_entity_id: i32,
+        expected_template_id: Option<i32>,
+    ) {
+        let s = session.expect("vendor_context should return Some");
+        assert_eq!(s.player_id, expected_player_id);
+        assert_eq!(s.vendor_entity_id, expected_vendor_entity_id);
+        assert_eq!(s.server_template_id, expected_template_id);
+    }
+
+    #[test]
+    fn returns_none_when_entity_does_not_exist() {
+        let mgr = make_space_manager();
+        assert!(vendor_context(99999, &mgr).is_none());
+    }
+
+    #[test]
+    fn returns_none_when_player_id_missing() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        // player.player_id deliberately left None.
+        let vendor = mgr.allocate_npc_id();
+        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.vendor_entity = Some(vendor);
+        }
+        assert!(vendor_context(1, &mgr).is_none());
+    }
+
+    #[test]
+    fn returns_none_when_vendor_entity_unset() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(4242);
+            // p.vendor_entity deliberately left None — no vendor opened.
+        }
+        assert!(vendor_context(1, &mgr).is_none());
+    }
+
+    #[test]
+    fn happy_path_returns_session_with_template_id() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        let vendor = mgr.allocate_npc_id();
+        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(v) = mgr.get_entity_mut(vendor) {
+            v.template_id = Some(9001);
+        }
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(4242);
+            p.vendor_entity = Some(vendor);
+        }
+        assert_session(vendor_context(1, &mgr), 4242, vendor as i32, Some(9001));
+    }
+
+    #[test]
+    fn happy_path_returns_session_when_vendor_lacks_template_id() {
+        // The function reads template_id authoritatively from the vendor
+        // entity, falling back to None rather than fabricating a value. A
+        // missing template_id surfaces as `server_template_id: None` —
+        // validate_template_id at the caller treats that as a rejection
+        // (so a client can't open a templateless vendor and submit ops).
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        let vendor = mgr.allocate_npc_id();
+        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        // Deliberately not setting template_id on the vendor.
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(4242);
+            p.vendor_entity = Some(vendor);
+        }
+        assert_session(vendor_context(1, &mgr), 4242, vendor as i32, None);
+    }
+
+    #[test]
+    fn returns_session_with_no_template_when_vendor_entity_id_is_stale() {
+        // The player has a stale vendor_entity pointing at an id that doesn't
+        // exist (vendor despawned or never spawned). vendor_context still
+        // returns Some with server_template_id: None — the caller's
+        // validate_template_id arm logs and rejects the op.
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.player_id = Some(4242);
+            p.vendor_entity = Some(123456); // no entity at this id
+        }
+        assert_session(vendor_context(1, &mgr), 4242, 123456, None);
+    }
+}
