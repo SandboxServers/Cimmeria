@@ -31,6 +31,9 @@ pub(crate) mod tick_sync;
 pub(crate) mod world_entry;
 pub(crate) mod world_entry_appearance;
 
+#[cfg(test)]
+mod smoke_tests;
+
 pub use service::BaseService;
 
 // ── Error types ───────────────────────────────────────────────────────────────
