@@ -32,13 +32,21 @@ use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
 /// 7. Send `onEffectResults` to attacker's client and witnesses
 /// 8. Send `onStatUpdate` to target if stats changed
 /// 9. Check for death and send `onStateFieldUpdate` if target died
+///
+/// Returns `true` when the cast committed (validation passed and the
+/// cooldown/ammo consume took effect — which is also when the target's
+/// damage resolution and wire packets fired). Returns `false` when any
+/// pre-consume guard rejected the call (entity missing/dead, no
+/// ability, on cooldown, reload in flight, no ammo, or out-of-range
+/// for an explicit target). Ground-target AoE callers gate
+/// secondary-target damage on this — see PR #122 / Copilot review.
 pub async fn handle_use_ability(
     entity_id: u32,
     ability_id: i32,
     target_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-) {
+) -> bool {
     // ── Look up ability definition from DB (before mutable borrow) ──
     let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
 
@@ -51,20 +59,20 @@ pub async fn handle_use_ability(
             Some(e) => e,
             None => {
                 tracing::warn!(entity_id, "useAbility: entity not found");
-                return;
+                return false;
             }
         };
 
         if combat::is_dead_state(entity.state_field) {
-            return;
+            return false;
         }
         if !entity.abilities.has_ability(ability_id) {
             tracing::debug!(entity_id, ability_id, "useAbility: entity does not have ability");
-            return;
+            return false;
         }
         if entity.abilities.is_on_cooldown(ability_id) {
             tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");
-            return;
+            return false;
         }
 
         // Range + target validation
@@ -73,7 +81,7 @@ pub async fn handle_use_ability(
                 // Don't attack dead targets
                 if combat::is_dead_state(target.state_field) {
                     tracing::debug!(entity_id, ability_id, target_id, "useAbility: target is dead");
-                    return;
+                    return false;
                 }
                 // Range check
                 let max_range = ability_def.as_ref().map_or(30.0, |d| if d.max_range > 0 { d.max_range as f32 } else { 30.0 });
@@ -97,13 +105,13 @@ pub async fn handle_use_ability(
             method_index: 121, // ON_ERROR_CODE
             args: err_args,
         }).await;
-        return;
+        return false;
     }
 
     // Mutable borrow for state changes
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
-        None => return,
+        None => return false,
     };
 
     // Check ammo for ranged abilities (players only — NPCs have infinite ammo).
@@ -123,13 +131,13 @@ pub async fn handle_use_ability(
         && entity.reload_complete_at.is_some()
     {
         tracing::debug!(entity_id, ability_id, "useAbility: reload in progress, blocking fire");
-        return;
+        return false;
     }
 
     let current_ammo = entity.active_ammo();
     if required_ammo > 0 && entity.is_player && current_ammo < required_ammo {
         tracing::debug!(entity_id, ability_id, current = current_ammo, required = required_ammo, "useAbility: not enough ammo");
-        return;
+        return false;
     }
 
     let cooldown_secs = ability_def.as_ref().map_or(2.0, |d| if d.cooldown > 0.0 { d.cooldown } else { 0.5 });
@@ -244,7 +252,11 @@ pub async fn handle_use_ability(
         if needs_ammo_stat_send {
             flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
         }
-        return;
+        // Cooldown + ammo were consumed; the cast committed even though no
+        // target was resolved. Ground-target callers see this as "primary
+        // succeeded" and proceed with any AoE secondaries (which they
+        // wouldn't have when no targets were in radius anyway).
+        return true;
     }
 
     super::damage_apply::apply_damage_to_target(
@@ -257,4 +269,5 @@ pub async fn handle_use_ability(
         tx,
         space_mgr,
     ).await;
+    true
 }

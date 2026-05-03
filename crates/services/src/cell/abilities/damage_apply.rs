@@ -201,19 +201,28 @@ pub(super) async fn apply_damage_to_target(
     let target_is_player = space_mgr.get_entity(target_eid).map_or(false, |e| e.is_player);
 
     // Send to attacker
-    send_entity_method(entity_id, 14, effect_args.clone(), tx, space_mgr).await;
+    send_entity_method(
+        entity_id, crate::mercury::method_idx::ON_EFFECT_RESULTS,
+        effect_args.clone(), tx, space_mgr,
+    ).await;
 
     // Only send to target if the target is a player (so they see incoming damage).
     // If target is an NPC, the attacker (as witness) already received it above via
     // send_entity_method routing.
     if target_is_player && !attacker_is_player {
-        send_entity_method(target_eid, 14, effect_args, tx, space_mgr).await;
+        send_entity_method(
+            target_eid, crate::mercury::method_idx::ON_EFFECT_RESULTS,
+            effect_args, tx, space_mgr,
+        ).await;
     }
 
     // ── Send stat updates ──
 
     // onStatUpdate to target (their health bar changes)
-    send_entity_method(target_eid, 20, target_stat_update, tx, space_mgr).await;
+    send_entity_method(
+        target_eid, crate::mercury::method_idx::ON_STAT_UPDATE,
+        target_stat_update, tx, space_mgr,
+    ).await;
 
     // onStatUpdate to attacker — drains AmmoSlot{N} dirty bits set by
     // `set_slot_ammo` on the consume path so the bandolier UI updates on every
@@ -253,7 +262,10 @@ pub(super) async fn apply_damage_to_target(
                     seq_args.extend_from_slice(&0u32.to_le_bytes());                // NameValuePairs count
                     seq_args.push(0);                                                // ViewType
                     seq_args.extend_from_slice(&0i32.to_le_bytes());                // InstanceId
-                    send_entity_method(target_eid, 1, seq_args, tx, space_mgr).await; // onSequence
+                    send_entity_method(
+                        target_eid, crate::mercury::method_idx::ON_SEQUENCE,
+                        seq_args, tx, space_mgr,
+                    ).await;
                 }
             }
         }
