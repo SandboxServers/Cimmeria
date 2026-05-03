@@ -537,4 +537,6 @@ pub async fn handle_move_inventory_item(
 }
 
 #[cfg(test)]
+mod concurrency_tests;
+#[cfg(test)]
 mod tests;
