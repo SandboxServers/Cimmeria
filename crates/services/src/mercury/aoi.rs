@@ -477,4 +477,110 @@ mod tests {
         // flags = 0x01
         assert_eq!(pt[50], 0x01, "flags");
     }
+
+    /// `build_create_entity_base` emits CREATE_ENTITY (0x09) immediately
+    /// followed by UPDATE_AVATAR (0x10) in a single packet — the client
+    /// expects the create + initial pose to arrive together so the entity
+    /// is fully positioned before the cascade configures it.
+    #[test]
+    fn create_entity_base_wire_layout() {
+        let pkt = build_create_entity_base(
+            &TEST_KEY, 1, &[],
+            0xDEADBEEF, 0x42, [10.0, 20.0, 30.0], [0.0, 0.0, 0.0],
+        );
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+        let pt = enc.decrypt(&pkt).unwrap();
+
+        // Body starts at offset 1 (offset 0 is flags).
+        // CREATE_ENTITY: [0x09][word_len=8 LE][entity_id u32][0xFF][class_id][0x00][0x00]
+        assert_eq!(pt[1], BASEMSG_CREATE_ENTITY);
+        assert_eq!(u16::from_le_bytes([pt[2], pt[3]]), 8, "CREATE_ENTITY wordLength");
+        assert_eq!(&pt[4..8], &0xDEADBEEFu32.to_le_bytes());
+        assert_eq!(pt[8], 0xFF, "idAlias = no alias");
+        assert_eq!(pt[9], 0x42, "class_id");
+        assert_eq!(&pt[10..12], &[0x00, 0x00], "two trailing zero bytes");
+
+        // UPDATE_AVATAR begins at offset 12: [0x10][entity_id u32][pos 3×f32]
+        // [vel 5 zero bytes][0x01 physics mode][yaw][pitch][roll]
+        assert_eq!(pt[12], BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR);
+        assert_eq!(&pt[13..17], &0xDEADBEEFu32.to_le_bytes());
+        assert_eq!(&pt[17..21], &10.0f32.to_le_bytes());
+        assert_eq!(&pt[21..25], &20.0f32.to_le_bytes());
+        assert_eq!(&pt[25..29], &30.0f32.to_le_bytes());
+        assert_eq!(&pt[29..34], &[0u8; 5], "velocity bytes (zero on initial pose)");
+        assert_eq!(pt[34], 0x01, "physics mode");
+        // yaw/pitch/roll are direction[1]/[0]/[2] — all zero direction packs to 0
+        assert_eq!(&pt[35..38], &[0u8; 3], "yaw/pitch/roll = 0 for zero direction");
+
+        // Total body length = 12 (CREATE_ENTITY) + 26 (UPDATE_AVATAR) = 38
+        // After flags(1) and footers, the body region must be exactly that.
+        assert_eq!(&pt[1..39].len(), &38);
+    }
+
+    /// `build_entity_invisible` is the smallest AoI builder — 6-byte body.
+    /// Used for ring-transport teleport-out fades where the entity should
+    /// vanish but not be deleted from the client's entity table.
+    #[test]
+    fn entity_invisible_wire_layout() {
+        let pkt = build_entity_invisible(&TEST_KEY, 1, &[], 0x12345678);
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+        let pt = enc.decrypt(&pkt).unwrap();
+
+        // [flags][0x0B][entity_id u32][0xFF]
+        assert_eq!(pt[1], BASEMSG_ENTITY_INVISIBLE);
+        assert_eq!(&pt[2..6], &0x12345678u32.to_le_bytes());
+        assert_eq!(pt[6], 0xFF, "idAlias = no alias");
+    }
+
+    /// `build_entity_leave` emits ENTITY_INVISIBLE (0x0B) then LEAVE_AOI (0x0C)
+    /// in a single packet — invisible-first prevents a one-frame "ghost"
+    /// flicker as the client tears down the entity. Both records must reach
+    /// the wire in this order.
+    #[test]
+    fn entity_leave_emits_invisible_then_leave_aoi() {
+        let pkt = build_entity_leave(&TEST_KEY, 1, &[], 0xCAFEF00D);
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+        let pt = enc.decrypt(&pkt).unwrap();
+
+        // ENTITY_INVISIBLE first: [0x0B][entity_id u32][0xFF]
+        assert_eq!(pt[1], BASEMSG_ENTITY_INVISIBLE);
+        assert_eq!(&pt[2..6], &0xCAFEF00Du32.to_le_bytes());
+        assert_eq!(pt[6], 0xFF);
+
+        // LEAVE_AOI next at offset 7:
+        //   [0x0C][word_len=8 LE][entity_id u32][cacheStamp=0 u32]
+        assert_eq!(pt[7], BASEMSG_LEAVE_AOI);
+        assert_eq!(u16::from_le_bytes([pt[8], pt[9]]), 8, "LEAVE_AOI wordLength");
+        assert_eq!(&pt[10..14], &0xCAFEF00Du32.to_le_bytes());
+        assert_eq!(&pt[14..18], &0u32.to_le_bytes(), "cacheStamp = 0");
+    }
+
+    /// `build_avatar_update` is the per-tick AoI position relay for ghost
+    /// entities. Wire layout is fixed-size 26 bytes after the msg id, so any
+    /// drift in field order desyncs all subsequent updates in the same packet.
+    #[test]
+    fn avatar_update_wire_layout() {
+        let pkt = build_avatar_update(
+            &TEST_KEY, 1, &[],
+            0x00ABCDEF,
+            [100.0, 200.0, 300.0],
+            [0.0, 0.0, 0.0], // zero velocity — packed to 5 zero bytes
+            [0.0, 0.0, 0.0], // zero direction — yaw/pitch/roll all 0
+        );
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+        let pt = enc.decrypt(&pkt).unwrap();
+
+        // [flags][0x10][entity_id u32][pos 3×f32][vel 5 bytes][0x01][yaw][pitch][roll]
+        assert_eq!(pt[1], BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR);
+        assert_eq!(&pt[2..6], &0x00ABCDEFu32.to_le_bytes());
+        assert_eq!(&pt[6..10], &100.0f32.to_le_bytes());
+        assert_eq!(&pt[10..14], &200.0f32.to_le_bytes());
+        assert_eq!(&pt[14..18], &300.0f32.to_le_bytes());
+        // Zero velocity packed via pack_velocity_xyz — exact bytes are an
+        // implementation detail of the packer, but a zero input MUST round-
+        // trip to all zeros so a missing-update doesn't drift the ghost.
+        assert_eq!(&pt[18..23], &[0u8; 5], "zero velocity must pack to 5 zero bytes");
+        assert_eq!(pt[23], 0x01, "physics mode");
+        assert_eq!(&pt[24..27], &[0u8; 3], "yaw/pitch/roll for zero direction");
+    }
 }
