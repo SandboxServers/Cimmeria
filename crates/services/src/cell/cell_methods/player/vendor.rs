@@ -407,7 +407,7 @@ mod vendor_context_tests {
     }
 
     #[test]
-    fn returns_none_when_player_id_set_but_vendor_entity_does_not_exist() {
+    fn returns_session_with_no_template_when_vendor_entity_id_is_stale() {
         // The player has a stale vendor_entity pointing at an id that doesn't
         // exist (vendor despawned or never spawned). vendor_context still
         // returns Some with server_template_id: None — the caller's
