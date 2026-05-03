@@ -58,10 +58,13 @@ Today this applies to:
 
 | Flag | Reason |
 |------|--------|
-| `BSF_CROUCHING` | Idempotent player input via `requestCrouched` |
-| `BSF_HOLSTER` | Mostly idempotent player input; weapon-fire also unholsters |
+| `BSF_CROUCHING` | Idempotent player input via the `setCrouched` cell method (`cell_methods/combatant.rs::SET_CROUCHED`) |
+| `BSF_HOLSTER` | Mostly idempotent player input via `requestHolsterWeapon`; weapon-fire also unholsters |
 | `BSF_IN_COMBAT` | Externally managed via `threatened_mobs` set in `combat::threat` — that set IS the dedup mechanism |
-| `BSF_WALKING` | Idempotent input |
+
+`BSF_Walking` exists in the python reference (`Atrea/enums.py`) but
+has no Rust writer today. When that gets ported, it'll join this
+table — same idempotent-input shape (set on movement-mode change).
 
 ## The mixing bug
 
