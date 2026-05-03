@@ -74,26 +74,31 @@ pub struct Channel {
     /// Socket address of the remote peer.
     pub remote_addr: SocketAddr,
 
-    /// Wall-clock of the last outbound packet (send-side activity). Reset
-    /// only on `send_packet`. Used by [`Self::keepalive_due`] to decide
-    /// when to send a keepalive — purely "we haven't sent anything in
-    /// a while", independent of what the peer has done.
+    /// Wall-clock of the last outbound packet (send-side activity).
+    /// Updated whenever we put bytes on the wire — `send_packet`,
+    /// `check_timeouts` (when it returns retransmits the caller will
+    /// emit), and `touch_sent` for out-of-band emits like keepalives.
+    /// Used by [`Self::keepalive_due`] to decide when to send a
+    /// keepalive: "we haven't sent anything in a while", independent
+    /// of what the peer has done.
     pub last_sent: Instant,
 
     /// Wall-clock of the last inbound packet (receive-side activity).
-    /// Reset on `receive_packet` and `process_acks` (an ACK is peer-
-    /// originated data). Used by [`Self::is_timed_out`] to detect a
-    /// silent peer — disconnect when the peer hasn't said anything in
-    /// a while, independent of what we've sent them.
+    /// Updated by every code path that observes peer-originated bytes:
+    /// `receive_packet`, `process_acks` (an ACK frame is peer data),
+    /// and `touch_received` for callers that count peer traffic at
+    /// the socket layer. Used by [`Self::is_timed_out`] to detect a
+    /// silent peer — disconnect when the peer hasn't said anything
+    /// in a while, independent of what we've sent them.
     ///
-    /// Splitting these two clocks (#120) is what makes both keepalive
-    /// AND idle-disconnect actually fire. Conflating them via a single
-    /// `last_activity` reset on both paths meant our own sends would
-    /// suppress the peer-silence check, so dead peers were never
-    /// disconnected and (depending on traffic shape) keepalives never
-    /// fired either. C++ Mercury maintains two timestamps for the same
-    /// reason — see `src/mercury/channel.cpp`'s `lastReceived_` /
-    /// `lastSent_`.
+    /// Splitting `last_sent` and `last_received` is what makes both
+    /// keepalive AND idle-disconnect actually fire on this side.
+    /// Conflating them via a single `last_activity` reset on both
+    /// paths meant our own sends would suppress the peer-silence
+    /// check, so dead peers were never disconnected and (depending
+    /// on traffic shape) keepalives never fired either. C++ Mercury
+    /// maintains two timestamps for the same reason — see
+    /// `src/mercury/channel.cpp`'s `lastReceived_` / `lastSent_`.
     pub last_received: Instant,
 }
 
@@ -198,9 +203,8 @@ impl Channel {
     /// retransmit timers for selectively NACKed packets.
     pub fn process_acks(&mut self, ack_seq: u32) -> Result<()> {
         // ACK frames are peer-originated → counts as receive-side activity,
-        // not send-side. The previous `last_activity` reset here was
-        // ambiguous: an ACK isn't us sending the peer something, but the
-        // pre-#120 conflation hid that.
+        // not send-side. (We aren't putting bytes on the wire; we're
+        // observing the peer's response to a prior emit.)
         self.last_received = Instant::now();
 
         // Cumulative ACK: remove all TX entries with sequence <= ack_seq.
@@ -224,7 +228,12 @@ impl Channel {
 
     /// Check all packets in the TX window for retransmission timeouts.
     ///
-    /// Returns a list of packets that need to be retransmitted.
+    /// Returns a list of packets that need to be retransmitted. The caller
+    /// is expected to put the returned packets on the wire — so when this
+    /// returns a non-empty list we bump `last_sent` too, otherwise a
+    /// channel actively retransmitting would still look idle from the
+    /// keepalive helper's perspective and emit redundant pings on top of
+    /// the retransmits.
     pub fn check_timeouts(&mut self) -> Vec<Packet> {
         let now = Instant::now();
         let timeout = std::time::Duration::from_millis(consts::ACK_TIMEOUT_MS);
@@ -238,17 +247,19 @@ impl Channel {
             }
         }
 
+        if !retransmits.is_empty() {
+            self.last_sent = now;
+        }
         retransmits
     }
 
     /// Returns `true` if the channel has exceeded the maximum retry count
-    /// or the peer has been silent for too long.
+    /// or the peer has been silent past `INACTIVITY_TIMEOUT_MS`.
     ///
-    /// **Reads `last_received` — not the send clock.** The pre-#120 version
-    /// read a single `last_activity` that we reset on our own sends, so
-    /// the inactivity check would never fire while we were broadcasting
-    /// world updates to a (dead) client. Disconnect detection has to gate
-    /// on what the PEER does, not on what we do.
+    /// Reads `last_received`, not `last_sent` — disconnect detection gates
+    /// on what the PEER does (or doesn't), not on what we do. If we're
+    /// broadcasting world updates to a dead client, our own outbound
+    /// traffic shouldn't suppress the silence check.
     pub fn is_timed_out(&self) -> bool {
         let peer_idle_ms = self.last_received.elapsed().as_millis() as u64;
 
@@ -258,8 +269,7 @@ impl Channel {
         });
 
         // Peer has been silent past the configured tolerance — assume dead.
-        let peer_idle_timeout =
-            peer_idle_ms > consts::KEEPALIVE_INTERVAL_MS * (consts::MAX_RETRIES as u64);
+        let peer_idle_timeout = peer_idle_ms > consts::INACTIVITY_TIMEOUT_MS;
 
         max_retries_exceeded || peer_idle_timeout
     }
@@ -268,13 +278,9 @@ impl Channel {
     /// `KEEPALIVE_INTERVAL_MS` and a keepalive packet should now go out
     /// to keep NAT mappings warm.
     ///
-    /// **Reads `last_sent` — not the receive clock.** A peer talking to us
+    /// Reads `last_sent`, not `last_received` — a peer talking to us
     /// doesn't relieve us of the obligation to send something ourselves;
-    /// NAT entries on the path between us and the peer time out based on
-    /// what flows in each direction. The pre-#120 conflated `last_activity`
-    /// reset on inbound packets too, which suppressed keepalives any time
-    /// the peer was sending — exactly the load shape where we'd most want
-    /// to confirm the path is healthy.
+    /// NAT entries time out per direction.
     pub fn keepalive_due(&self) -> bool {
         self.last_sent.elapsed().as_millis() as u64 >= consts::KEEPALIVE_INTERVAL_MS
     }
@@ -382,7 +388,7 @@ mod tests {
         assert_eq!(ch.tx_window[0].retransmit_count, 0);
     }
 
-    // ── #120: split last_activity into last_sent / last_received ─────────
+    // ── Split last_activity into last_sent / last_received ─────────────
 
     #[test]
     fn send_packet_updates_only_last_sent() {
@@ -443,9 +449,8 @@ mod tests {
             - std::time::Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
         ch.last_received = std::time::Instant::now();
 
-        // The pre-#120 conflated `last_activity` would have been refreshed
-        // by inbound packets and keepalive_due would (incorrectly) return
-        // false even though we owe the peer a packet.
+        // Inbound peer traffic must NOT suppress our send-side keepalive
+        // — NAT entries time out per direction.
         assert!(ch.keepalive_due(),
             "keepalive must be due based on OUR send-side silence, regardless of peer activity");
     }
@@ -462,16 +467,15 @@ mod tests {
     fn is_timed_out_fires_on_silent_peer_even_if_we_keep_sending() {
         let mut ch = Channel::new(test_addr());
         // Simulate "we keep blasting world updates at a dead client":
-        // last_sent is fresh, but last_received is stale beyond the
-        // peer-tolerance window.
+        // last_sent is fresh, but last_received is stale past the
+        // configured INACTIVITY_TIMEOUT_MS.
         ch.last_sent = std::time::Instant::now();
         ch.last_received = std::time::Instant::now()
-            - std::time::Duration::from_millis(
-                consts::KEEPALIVE_INTERVAL_MS * (consts::MAX_RETRIES as u64) + 100,
-            );
+            - std::time::Duration::from_millis(consts::INACTIVITY_TIMEOUT_MS + 100);
 
-        // Pre-#120, `is_timed_out` read the conflated `last_activity` which
-        // our own sends had refreshed — so dead clients were never reaped.
+        // Conflated `last_activity` would have been refreshed by our own
+        // sends — so dead clients would never be reaped. Splitting the
+        // clocks closes that hole.
         assert!(ch.is_timed_out(),
             "is_timed_out must trigger on peer silence regardless of our outgoing traffic");
     }
@@ -483,6 +487,67 @@ mod tests {
         ch.last_sent = std::time::Instant::now();
         ch.last_received = std::time::Instant::now();
         assert!(!ch.is_timed_out());
+    }
+
+    #[test]
+    fn touch_sent_only_moves_send_clock() {
+        let mut ch = Channel::new(test_addr());
+        let baseline = std::time::Instant::now() - std::time::Duration::from_secs(10);
+        ch.last_sent = baseline;
+        ch.last_received = baseline;
+
+        ch.touch_sent();
+
+        assert!(ch.last_sent > baseline, "touch_sent must move last_sent");
+        assert_eq!(ch.last_received, baseline, "touch_sent must NOT move last_received");
+    }
+
+    #[test]
+    fn touch_received_only_moves_receive_clock() {
+        let mut ch = Channel::new(test_addr());
+        let baseline = std::time::Instant::now() - std::time::Duration::from_secs(10);
+        ch.last_sent = baseline;
+        ch.last_received = baseline;
+
+        ch.touch_received();
+
+        assert!(ch.last_received > baseline, "touch_received must move last_received");
+        assert_eq!(ch.last_sent, baseline, "touch_received must NOT move last_sent");
+    }
+
+    #[test]
+    fn check_timeouts_bumps_last_sent_when_retransmitting() {
+        // A channel that's actively retransmitting a lost reliable packet
+        // is putting bytes on the wire — the keepalive helper must observe
+        // that activity and not emit redundant pings on top of the retries.
+        let mut ch = Channel::new(test_addr());
+        ch.send_packet(test_packet()).unwrap();
+        // Backdate both: the entry's last_sent so check_timeouts sees it as
+        // expired, AND Channel.last_sent so we can detect whether it moves.
+        let backdate = std::time::Instant::now() - std::time::Duration::from_millis(800);
+        ch.tx_window[0].last_sent = backdate;
+        ch.last_sent = backdate;
+
+        let retransmits = ch.check_timeouts();
+        assert_eq!(retransmits.len(), 1, "expired packet should be retransmitted");
+        assert!(ch.last_sent > backdate,
+            "check_timeouts emitting retransmits must bump Channel.last_sent");
+    }
+
+    #[test]
+    fn check_timeouts_does_not_bump_last_sent_when_no_retransmits() {
+        // A no-op pass (nothing expired) shouldn't perturb the keepalive
+        // timer — otherwise the periodic tick would silently keep the
+        // channel "active" forever.
+        let mut ch = Channel::new(test_addr());
+        ch.send_packet(test_packet()).unwrap();
+        let baseline = std::time::Instant::now() - std::time::Duration::from_secs(10);
+        ch.last_sent = baseline;
+
+        let retransmits = ch.check_timeouts();
+        assert!(retransmits.is_empty());
+        assert_eq!(ch.last_sent, baseline,
+            "no-op check_timeouts must leave last_sent untouched");
     }
 
     #[test]
