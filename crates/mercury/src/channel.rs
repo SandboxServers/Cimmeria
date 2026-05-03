@@ -8,10 +8,12 @@ use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::time::Instant;
 
+use bytes::Bytes;
 use cimmeria_common::Result;
 
 use crate::consts;
-use crate::packet::Packet;
+use crate::packet::{Packet, ParsedPacket};
+use crate::unpacker::FragmentAssembler;
 
 // ── Channel state ───────────────────────────────────────────────────────────
 
@@ -100,6 +102,13 @@ pub struct Channel {
     /// maintains two timestamps for the same reason — see
     /// `src/mercury/channel.cpp`'s `lastReceived_` / `lastSent_`.
     pub last_received: Instant,
+
+    /// Per-channel fragment reassembly buffer for `FLAG_FRAGMENTED`
+    /// packets. Lives on `Channel` (not `Nub`) because the reassembly
+    /// key (first-fragment sequence number) is per-peer — different
+    /// channels can legitimately reuse the same low sequence numbers
+    /// without colliding in a shared map.
+    fragment_assembler: FragmentAssembler,
 }
 
 impl Channel {
@@ -115,7 +124,34 @@ impl Channel {
             remote_addr,
             last_sent: now,
             last_received: now,
+            fragment_assembler: FragmentAssembler::new(),
         }
+    }
+
+    /// Feed a parsed Mercury packet through this channel's fragment
+    /// assembler and bump `last_received`.
+    ///
+    /// Non-fragmented packets pass through immediately; fragmented packets
+    /// buffer until the bundle is complete. This is the receive-path
+    /// equivalent of [`Self::send_packet`] for FLAG_FRAGMENTED bundles —
+    /// non-fragmented `Packet`s still go through [`Self::receive_packet`].
+    ///
+    /// Per-channel ownership of the assembler matters: keying reassembly
+    /// by sequence number alone would let one peer's fragments collide
+    /// with another peer's identical sequence numbers in a shared map.
+    /// Tying the assembler to the channel makes the per-peer scope
+    /// implicit.
+    pub fn reassemble_parsed(&mut self, pkt: &ParsedPacket) -> Result<Option<Bytes>> {
+        self.last_received = Instant::now();
+        self.fragment_assembler.process_parsed(pkt)
+    }
+
+    /// Drop reassembly buffers older than `max_age`. The drainer
+    /// `Nub::tick` should call this periodically per channel, or callers
+    /// can drive it themselves. Without it, fragments from a never-
+    /// completing bundle would pin memory until the channel itself dies.
+    pub fn cleanup_stale_fragments(&mut self, max_age: std::time::Duration) {
+        self.fragment_assembler.cleanup_stale(max_age);
     }
 
     /// Queue a packet for reliable transmission.
@@ -548,6 +584,107 @@ mod tests {
         assert!(retransmits.is_empty());
         assert_eq!(ch.last_sent, baseline,
             "no-op check_timeouts must leave last_sent untouched");
+    }
+
+    // ── Per-channel fragment reassembly ──────────────────────────────
+
+    /// Build then parse a fragmented Mercury packet — same helper shape
+    /// `unpacker::tests` uses, duplicated here because the inner module
+    /// is private.
+    fn build_then_parse_fragment(
+        seq: u32,
+        frag_begin: u32,
+        frag_end: u32,
+        body: &[u8],
+    ) -> crate::packet::ParsedPacket {
+        use crate::packet::{build_outgoing_fragmented, parse_incoming};
+        let raw = build_outgoing_fragmented(0, body, seq, frag_begin, frag_end, &[]);
+        parse_incoming(&raw).unwrap()
+    }
+
+    #[test]
+    fn reassemble_parsed_passes_through_non_fragmented() {
+        use crate::packet::{build_outgoing, parse_incoming, FLAG_HAS_SEQUENCE};
+        let mut ch = Channel::new(test_addr());
+        let raw = build_outgoing(FLAG_HAS_SEQUENCE, b"hello", Some(7), &[], None);
+        let parsed = parse_incoming(&raw).unwrap();
+
+        let body = ch.reassemble_parsed(&parsed).unwrap()
+            .expect("non-fragmented should pass through");
+        assert_eq!(body.as_ref(), b"hello");
+    }
+
+    #[test]
+    fn reassemble_parsed_completes_3_fragment_bundle() {
+        let mut ch = Channel::new(test_addr());
+        let f0 = build_then_parse_fragment(10, 10, 12, b"AAA");
+        let f1 = build_then_parse_fragment(11, 10, 12, b"BBB");
+        let f2 = build_then_parse_fragment(12, 10, 12, b"CCC");
+
+        assert!(ch.reassemble_parsed(&f0).unwrap().is_none());
+        assert!(ch.reassemble_parsed(&f1).unwrap().is_none());
+        let body = ch.reassemble_parsed(&f2).unwrap().expect("third fragment completes");
+        assert_eq!(body.as_ref(), b"AAABBBCCC");
+    }
+
+    #[test]
+    fn reassemble_parsed_bumps_last_received() {
+        // Receive-side observation must move last_received so the
+        // peer-silence detector sees fragment activity as keepalive-
+        // equivalent. Without this, a peer streaming a large bundle of
+        // fragments would still look idle until the bundle assembled.
+        let mut ch = Channel::new(test_addr());
+        let baseline = std::time::Instant::now() - std::time::Duration::from_secs(10);
+        ch.last_received = baseline;
+        ch.last_sent = baseline;
+
+        let f0 = build_then_parse_fragment(20, 20, 21, b"part-one");
+        ch.reassemble_parsed(&f0).unwrap();
+
+        assert!(ch.last_received > baseline, "fragment receive must move last_received");
+        assert_eq!(ch.last_sent, baseline, "fragment receive must NOT move last_sent");
+    }
+
+    #[test]
+    fn reassemble_parsed_isolates_per_channel_state() {
+        // Two channels with overlapping fragment seq ranges must NOT
+        // share reassembly buffers — that's the whole point of putting
+        // the assembler on the channel rather than the Nub.
+        let mut a = Channel::new("127.0.0.1:8001".parse().unwrap());
+        let mut b = Channel::new("127.0.0.1:8002".parse().unwrap());
+
+        let a0 = build_then_parse_fragment(50, 50, 51, b"a-part-1");
+        let a1 = build_then_parse_fragment(51, 50, 51, b"a-part-2");
+        // b uses the SAME seq range (50..=51) — an unscoped assembler
+        // would conflate b's fragments with a's, flush a partial bundle
+        // early, or error on conflicting total_frags.
+        let b0 = build_then_parse_fragment(50, 50, 51, b"BBB-1");
+
+        assert!(a.reassemble_parsed(&a0).unwrap().is_none());
+        // b's fragment must not affect a's pending state.
+        assert!(b.reassemble_parsed(&b0).unwrap().is_none());
+        let a_body = a.reassemble_parsed(&a1).unwrap().expect("a's bundle completes");
+        assert_eq!(a_body.as_ref(), b"a-part-1a-part-2",
+            "channel a must reassemble its own fragments without b's interference");
+    }
+
+    #[test]
+    fn cleanup_stale_fragments_drops_partial_bundles() {
+        let mut ch = Channel::new(test_addr());
+        let f0 = build_then_parse_fragment(40, 40, 42, b"only-one");
+        ch.reassemble_parsed(&f0).unwrap();
+
+        ch.cleanup_stale_fragments(std::time::Duration::ZERO);
+
+        // Subsequent re-receipt of f0 must start fresh — if the partial
+        // bundle wasn't reaped, the assembler would silently treat the
+        // re-arrival as a duplicate-fragment dedup and never complete.
+        let f1 = build_then_parse_fragment(41, 40, 42, b"two");
+        let f2 = build_then_parse_fragment(42, 40, 42, b"three");
+        assert!(ch.reassemble_parsed(&f0).unwrap().is_none());
+        assert!(ch.reassemble_parsed(&f1).unwrap().is_none());
+        let body = ch.reassemble_parsed(&f2).unwrap().expect("post-cleanup bundle completes");
+        assert_eq!(body.as_ref(), b"only-onetwothree");
     }
 
     #[test]
