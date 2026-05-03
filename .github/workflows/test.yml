@@ -14,13 +14,16 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  # Tauri members of the workspace pull in heavy GUI dependencies and have
-  # their own Linux-build prerequisites; keep them out of CI builds. Names
-  # match the exclude list in CLAUDE.md.
+  # Tauri / GTK-using members of the workspace pull in heavy GUI deps and
+  # have their own Linux-build prerequisites; keep them out of CI builds.
+  # CLAUDE.md only enumerates the three editor crates, but `sgw-launcher`
+  # (crates/launcher) also depends on Tauri and pulls glib-sys, so exclude
+  # it here too.
   WORKSPACE_EXCLUDES: >-
     --exclude cimmeria-app
     --exclude cimmeria-content-editor
     --exclude cimmeria-scene-editor
+    --exclude sgw-launcher
 
 jobs:
   check:
