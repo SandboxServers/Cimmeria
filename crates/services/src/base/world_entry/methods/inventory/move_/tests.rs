@@ -10,12 +10,15 @@ use crate::test_support::require_db_or_skip;
 /// Sentinel base for live-DB move-inventory tests. Stays well below
 /// i32::MAX (sgw_player.player_id is `integer`). Per-test offsets
 /// keep concurrent runs from colliding on the same rows.
-const TEST_BASE: i32 = 0x7000_0200;
+///
+/// Also consumed by the sibling `concurrency_tests` module via
+/// `super::tests::TEST_BASE`, hence `pub(super)`.
+pub(super) const TEST_BASE: i32 = 0x7000_0200;
 
 /// Cleanup deletes the account; sgw_player rows cascade off via
 /// sgw_player_account_id_fkey. sgw_inventory does NOT cascade off
 /// account, so delete those rows by character_id explicitly.
-async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+pub(super) async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
     let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
         .bind(player_id)
         .execute(pool)
@@ -26,7 +29,7 @@ async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         .await;
 }
 
-async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32) {
+pub(super) async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32) {
     sqlx::query(
         "INSERT INTO account (account_id, account_name, password) \
          VALUES ($1, $2, '')",
@@ -58,7 +61,7 @@ async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i3
 /// that pass `item_allows_container(.., container_id=1)`. Necessary
 /// because sgw_inventory.type_id has an FK to resources.items, so the
 /// fixture rows can't use synthetic type_ids.
-async fn pick_main_bag_type_ids(pool: &PgPool, count: usize) -> Vec<i32> {
+pub(super) async fn pick_main_bag_type_ids(pool: &PgPool, count: usize) -> Vec<i32> {
     let ids: Vec<i32> = sqlx::query_scalar::<_, i32>(
         "SELECT item_id FROM resources.items \
          WHERE container_sets IS NULL OR 1 = ANY(container_sets) \
@@ -92,7 +95,7 @@ async fn unused_item_id(pool: &PgPool) -> i32 {
 /// Insert a sgw_inventory row at a known (container, slot) and return
 /// the auto-generated item_id. The caller must supply a `type_id`
 /// that exists in resources.items (use [`pick_main_bag_type_ids`]).
-async fn insert_item(
+pub(super) async fn insert_item(
     pool: &PgPool,
     player_id: i32,
     type_id: i32,
