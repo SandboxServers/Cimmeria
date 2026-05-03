@@ -207,3 +207,203 @@ pub async fn query_archetype_ability_tree(
 
     Some(ability_tree)
 }
+
+#[cfg(test)]
+mod tests {
+    //! Live-DB integration tests for the player_load metadata loaders.
+    //!
+    //! Skip cleanly when DATABASE_URL is unset; against the bundled
+    //! local Postgres they exercise:
+    //!
+    //! - `query_bandolier_items` happy path + cur_ammo_type=0 fallback
+    //!   to default_ammo_type (the legacy Account.py behavior).
+    //! - `query_bandolier_items` empty-bandolier path.
+    //! - `query_bandolier_items` no-pool short-circuit.
+    //! - `query_archetype_ability_tree` against a seeded archetype
+    //!   (returns Some) and an unknown archetype id (returns None).
+
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+
+    /// Sentinel base for player_load/meta tests. Distinct from prior
+    /// live-DB sentinels (outbox 0x000 / grant_cash +0x100 /
+    /// move +0x200 / grant_item +0x300 / missions +0x400 / mail +0x500 /
+    /// vendor/repair +0x600 / paid_repair +0x700 / sell +0x800 /
+    /// buyback +0x900 / purchase +0x0A00 / ammo +0x0B00 /
+    /// vendor_data +0x0C00).
+    const TEST_BASE: i32 = 0x7000_0D00;
+
+    /// Bandolier-allowed weapon design with clip_size=15 and
+    /// default_ammo_type=Bullet_Default. Verified against
+    /// resources.items in the seed; the enum index for
+    /// Bullet_Default is 1.
+    const WEAPON_TYPE_ID: i32 = 3241;
+    const EXPECTED_CLIP_SIZE: i32 = 15;
+    const EXPECTED_DEFAULT_AMMO_INDEX: i32 = 1;
+
+    const INV_BANDOLIER: i32 = 3;
+
+    async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+        let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
+            .bind(player_id)
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(pool)
+            .await;
+    }
+
+    async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32) {
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password) \
+             VALUES ($1, $2, '')",
+        )
+        .bind(account_id)
+        .bind(format!("meta-test-{account_id}"))
+        .execute(pool)
+        .await
+        .expect("insert account");
+
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah, bandolier_slot\
+             ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                       0.0, 0.0, 0.0, 0, 0, 0)",
+        )
+        .bind(account_id)
+        .bind(player_id)
+        .bind(format!("test-{player_id}"))
+        .execute(pool)
+        .await
+        .expect("insert player");
+    }
+
+    async fn insert_bandolier_row(
+        pool: &PgPool,
+        player_id: i32,
+        slot_id: i32,
+        cur_ammo_type: i32,
+        ammo: i32,
+    ) {
+        sqlx::query(
+            "INSERT INTO sgw_inventory \
+                (character_id, type_id, stack_size, slot_id, container_id, \
+                 bound, durability, charges, ammo, cur_ammo_type) \
+             VALUES ($1, $2, 1, $3, $4, false, 100, 0, $5, $6)",
+        )
+        .bind(player_id)
+        .bind(WEAPON_TYPE_ID)
+        .bind(slot_id)
+        .bind(INV_BANDOLIER)
+        .bind(ammo)
+        .bind(cur_ammo_type)
+        .execute(pool)
+        .await
+        .expect("insert bandolier row");
+    }
+
+    /// Happy path + the cur_ammo_type=0 fallback: when the inventory
+    /// row's cur_ammo_type is 0 ("no explicit choice"), the loader
+    /// substitutes the item's default_ammo_type. Locks the legacy
+    /// Account.py-compat behavior in.
+    #[tokio::test]
+    async fn bandolier_zero_cur_ammo_type_falls_back_to_default_ammo() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE;
+        let player_id = TEST_BASE + 1;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        // Slot 1: cur_ammo_type=0 — must fall back to default index (1).
+        insert_bandolier_row(&pool, player_id, 1, 0, 7).await;
+        // Slot 2: cur_ammo_type=5 — must be returned verbatim.
+        insert_bandolier_row(&pool, player_id, 2, 5, 12).await;
+
+        let db_pool = Some(Arc::new(pool.clone()));
+        let items = query_bandolier_items(&db_pool, player_id).await;
+
+        assert_eq!(items.len(), 2);
+        let by_slot: std::collections::HashMap<i32, _> = items.into_iter().collect();
+
+        let slot1 = by_slot.get(&1).expect("slot 1 must be present");
+        assert_eq!(slot1.item_id, WEAPON_TYPE_ID);
+        assert_eq!(slot1.clip_size, EXPECTED_CLIP_SIZE);
+        assert_eq!(slot1.default_ammo_type, EXPECTED_DEFAULT_AMMO_INDEX);
+        assert_eq!(
+            slot1.current_ammo, 7,
+            "current_ammo must round-trip from inv.ammo"
+        );
+        assert_eq!(
+            slot1.cur_ammo_type, EXPECTED_DEFAULT_AMMO_INDEX,
+            "cur_ammo_type=0 must fall back to default_ammo_type",
+        );
+
+        let slot2 = by_slot.get(&2).expect("slot 2 must be present");
+        assert_eq!(
+            slot2.cur_ammo_type, 5,
+            "non-zero cur_ammo_type must be returned verbatim",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Empty-bandolier path: a player with no rows in container 3
+    /// gets an empty Vec — must NOT error or return a sentinel item.
+    #[tokio::test]
+    async fn bandolier_empty_returns_empty_vec() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 100;
+        let player_id = TEST_BASE + 101;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        // Deliberately do NOT insert any bandolier rows.
+
+        let db_pool = Some(Arc::new(pool.clone()));
+        let items = query_bandolier_items(&db_pool, player_id).await;
+
+        assert!(items.is_empty());
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// No-pool short-circuit: `db_pool: None` returns empty Vec
+    /// without hitting the DB. Important because the offline-mode
+    /// path (no DB) relies on this returning empty rather than
+    /// erroring.
+    #[tokio::test]
+    async fn bandolier_no_pool_returns_empty_vec() {
+        // No `require_db_or_skip!()` here — this test deliberately
+        // exercises the None branch and runs even when DATABASE_URL
+        // is unset.
+        let items = query_bandolier_items(&None, 1).await;
+        assert!(items.is_empty());
+    }
+
+    /// `query_archetype_ability_tree` against a seeded archetype
+    /// returns Some(tree). Soldier (id=1) is the canonical test
+    /// archetype — verified by archetype_resource_name above.
+    #[tokio::test]
+    async fn ability_tree_known_archetype_returns_some() {
+        let pool = require_db_or_skip!();
+        let result = query_archetype_ability_tree(&pool, 1).await;
+        assert!(
+            result.is_some(),
+            "Soldier archetype (id=1) must have a seeded ability tree",
+        );
+    }
+
+    /// Unknown archetype id (-1, well outside the 0..=8 range) returns
+    /// None at the archetype_resource_name lookup — never hits the DB.
+    /// Caller (player_load) substitutes the default tree on None.
+    #[tokio::test]
+    async fn ability_tree_unknown_archetype_returns_none() {
+        let pool = require_db_or_skip!();
+        let result = query_archetype_ability_tree(&pool, -1).await;
+        assert!(
+            result.is_none(),
+            "out-of-range archetype id must short-circuit before any DB read",
+        );
+    }
+}
