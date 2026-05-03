@@ -251,19 +251,33 @@ pub(super) async fn execute_actions(
                 }
             }
             Action::RemoveItem { item_id, count } => {
-                // TODO: Action::RemoveItem here gets a design id (type_id) from
-                // the chain, but `RemoveInventoryItem` expects the inventory
-                // instance id. Resolving that requires either a cell-side
-                // instance↔design cache or a new "remove by type_id" base
-                // handler. For the FindAmbernol use-item path we route
-                // consumption through `UseInventoryItem` instead, which is
-                // atomic on the base side, so this stub doesn't block that
-                // mission. Revisit when chain-driven removals (turn-ins, etc.)
-                // come up.
-                tracing::warn!(
-                    entity_id, item_id, count, chain_id,
-                    "Content: RemoveItem stub — chain-driven item removal by design id not yet wired"
+                // Chains carry the item's design id (type_id), not an
+                // inventory instance id. Route through the cell→base
+                // RemoveInventoryItemByType RPC, which resolves the
+                // player's first matching instance and applies the same
+                // wire-update sequence as a normal remove.
+                tracing::info!(
+                    entity_id, player_id, type_id = item_id, count, chain_id,
+                    "Content: RemoveItem → RemoveInventoryItemByType"
                 );
+                if let Err(e) = tx.send(CellToBaseMsg::RemoveInventoryItemByType {
+                    entity_id,
+                    player_id,
+                    type_id: item_id,
+                    count,
+                }).await {
+                    // Saturated/closed channel — the consume silently
+                    // skips otherwise. Surface it loudly so missions
+                    // that depend on the removal (e.g., FindAmbernol
+                    // chain 1034 consumes the vial) don't silently
+                    // strand the player with the item still in their
+                    // bag while the chain reports completion.
+                    tracing::error!(
+                        entity_id, player_id, type_id = item_id, count, chain_id,
+                        error = %e,
+                        "Content: RemoveItem cell→base channel send failed — item NOT removed"
+                    );
+                }
             }
             Action::SetInteractionType { entity_tag, operation, mask } => {
                 if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
@@ -559,6 +573,50 @@ async fn send_interaction_update_if_visible(
                 entity_id, target_id,
                 "NPC not yet in player AoI — deferring InteractionType to AoI create"
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
+
+    fn make_space_mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr
+    }
+
+    /// Regression for #95: `Action::RemoveItem` must route through the new
+    /// `RemoveInventoryItemByType` cell→base RPC, not the silently-ignored
+    /// stub it used to be. Locks in the chain-driven removal path that
+    /// chain 1034 (FindAmbernol consume) depends on.
+    #[tokio::test]
+    async fn remove_item_action_emits_remove_inventory_by_type() {
+        let mut mgr = make_space_mgr();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+
+        let (tx, mut rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+        let resolved = ResolvedActions {
+            actions: vec![(1034, Action::RemoveItem { item_id: 19, count: 1 })],
+        };
+
+        execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+        let msg = rx.try_recv().expect("expected RemoveInventoryItemByType");
+        match msg {
+            CellToBaseMsg::RemoveInventoryItemByType { entity_id, player_id, type_id, count } => {
+                assert_eq!(entity_id, 1);
+                assert_eq!(player_id, 42);
+                assert_eq!(type_id, 19);
+                assert_eq!(count, 1);
+            }
+            other => panic!("expected RemoveInventoryItemByType, got {:?}", other),
         }
     }
 }
