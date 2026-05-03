@@ -66,7 +66,7 @@ Solution: `W-NG.sln` (VS2026, MSVC v145). Bootstrap via `setup.ps1` (wraps the `
 
 ## Pre-PR checklist
 
-CI (`.github/workflows/test.yml`) gates four checks on every PR — run all four locally before pushing or the pipeline will fail and you'll round-trip:
+CI (`.github/workflows/test.yml`) gates five checks on every PR — run all five locally before pushing or the pipeline will fail and you'll round-trip:
 
 ```bash
 cargo fmt --all -- --check
@@ -80,12 +80,17 @@ cargo build --workspace \
 cargo test --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher
+
+# Live-DB tests — start the bundled Postgres first, then:
+DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
+  cargo test -p cimmeria-services --lib -- --test-threads=1
 ```
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
 - **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site.
 - **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
-- **test fails** → live-DB tests in `crates/services` self-skip when `DATABASE_URL` is unset, so CI exercises only the unit + non-DB integration suite. To run the live-DB suite locally, point `DATABASE_URL` at the bundled Postgres; under heavy parallelism some live-DB tests will collide on shared sentinel ranges, so use `cargo test … -- --test-threads=1` if you see flakes.
+- **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
+- **test-live-db fails** → CI runs `cargo test -p cimmeria-services --lib -- --test-threads=1` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. `--test-threads=1` is required: some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
 
 ## File organization
 
