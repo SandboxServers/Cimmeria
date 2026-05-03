@@ -183,23 +183,20 @@ impl FragmentAssembler {
 
     /// Feed a freshly-parsed Mercury packet into the assembler.
     ///
-    /// The receive-path integration that issue #121 was filing for: the
-    /// `FragmentAssembler` existed but had zero callers, so any inbound
-    /// packet larger than a single datagram (initial inventory snapshot,
-    /// full ability list, large region descriptor) was silently dropped
-    /// or mis-decoded by downstream code that didn't understand the
-    /// fragment footers.
+    /// Non-fragmented packets pass the body through verbatim so the
+    /// receive path doesn't have to branch on `is_fragmented()`.
+    /// Fragmented packets buffer until the bundle is complete; the
+    /// `FragmentAssembler` reassembles in arrival-independent order.
     ///
     /// Returns:
-    /// - `Ok(Some(body))` when the packet is non-fragmented (body passes
-    ///   through verbatim) OR when this packet completes a fragmented
-    ///   bundle (body is the assembled payload).
+    /// - `Ok(Some(body))` when the packet is non-fragmented OR when this
+    ///   fragment completes the bundle.
     /// - `Ok(None)` when the packet is one of N fragments and we're still
     ///   waiting for the rest.
     /// - `Err(_)` for malformed fragment metadata: missing
-    ///   `seq_id`/`frag_begin`/`frag_end` (the parser should have set them
-    ///   together but defensive), inverted range, fragment count exceeding
-    ///   `MAX_FRAGMENTS`, or this packet's seq outside the declared range.
+    ///   `seq_id`/`frag_begin`/`frag_end`, inverted range, fragment count
+    ///   exceeding `MAX_FRAGMENTS`, or this packet's seq outside the
+    ///   declared range.
     ///
     /// Mapping from parser footers to assembler keys:
     /// - reassembly key = `frag_begin` (the bundle's anchor seq)
@@ -207,8 +204,6 @@ impl FragmentAssembler {
     /// - this fragment's index = `seq_id - frag_begin`
     pub fn process_parsed(&mut self, pkt: &ParsedPacket) -> Result<Option<Bytes>> {
         if !pkt.is_fragmented() {
-            // Pass-through: caller hands us non-fragmented packets too so
-            // the receive path doesn't have to branch.
             return Ok(Some(pkt.body.clone()));
         }
 
@@ -233,24 +228,26 @@ impl FragmentAssembler {
                 "inverted fragment range: frag_begin={begin}, frag_end={end}"
             )));
         }
-        let total_u32 = end - begin + 1;
+        // Promote to u64 before the +1 — `end - begin == u32::MAX`
+        // (e.g., begin=0, end=u32::MAX) would overflow and panic in
+        // debug / wrap to 0 in release if we computed in u32. The
+        // MAX_FRAGMENTS cap below would silently accept that 0.
+        let total_u64 = (end as u64) - (begin as u64) + 1;
         // The assembler stores total_fragments as u8 (capped by MAX_FRAGMENTS).
-        // Reject anything that would overflow OR exceed the cap before we
-        // even try the cast — the cap exists to bound reassembly memory
-        // per peer, so a malicious or buggy sender shouldn't be able to
-        // push us past it.
-        if total_u32 as usize > MAX_FRAGMENTS {
+        // Reject anything beyond the cap; the cap exists to bound per-peer
+        // reassembly memory.
+        if total_u64 > MAX_FRAGMENTS as u64 {
             return Err(CimmeriaError::FragmentReassembly(format!(
-                "fragment range {begin}..={end} ({total_u32} fragments) exceeds MAX_FRAGMENTS {MAX_FRAGMENTS}"
+                "fragment range {begin}..={end} ({total_u64} fragments) exceeds MAX_FRAGMENTS {MAX_FRAGMENTS}"
             )));
         }
-        let total_frags = total_u32 as u8;
+        let total_frags = total_u64 as u8;
 
         // seq must lie within the range — otherwise we'd map to a
         // nonsensical fragment index. wrapping_sub catches `seq < begin`
         // since the diff would be huge.
         let idx_u32 = seq.wrapping_sub(begin);
-        if idx_u32 >= total_u32 {
+        if (idx_u32 as u64) >= total_u64 {
             return Err(CimmeriaError::FragmentReassembly(format!(
                 "seq {seq} outside fragment range {begin}..={end}"
             )));
@@ -323,11 +320,11 @@ mod tests {
         assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
     }
 
-    // ── #121: receive-path integration via process_parsed ────────────
+    // ── Receive-path integration via process_parsed ─────────────────
 
     /// Helper: build a fragmented Mercury packet via the public encoder
-    /// then parse it back. Mirrors what the live receive loop will do
-    /// per fragment after this PR wires the assembler into channel.rs.
+    /// then parse it back. Mirrors what the live receive loop does per
+    /// fragment when the assembler is wired into the channel.
     fn build_then_parse_fragment(
         seq: u32,
         frag_begin: u32,
@@ -353,8 +350,8 @@ mod tests {
 
     #[test]
     fn process_parsed_reassembles_in_order_3_fragment_bundle() {
-        // The named acceptance criterion from #121: a hand-built 3-fragment
-        // bundle round-trips through parse + assembler integration.
+        // A hand-built 3-fragment bundle round-trips through parse +
+        // assembler integration.
         let mut asm = FragmentAssembler::new();
         let f0 = build_then_parse_fragment(10, 10, 12, b"AAA");
         let f1 = build_then_parse_fragment(11, 10, 12, b"BBB");
@@ -437,6 +434,30 @@ mod tests {
         let mut asm = FragmentAssembler::new();
         let err = asm.process_parsed(&pkt).unwrap_err();
         assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
+    }
+
+    #[test]
+    fn process_parsed_handles_u32_max_range_without_overflow() {
+        // Pathological/malicious case: frag_begin=0, frag_end=u32::MAX
+        // would compute `end - begin + 1 == u32::MAX + 1` and overflow
+        // u32. Promoting to u64 lets us detect it via the MAX_FRAGMENTS
+        // cap rather than panicking in debug or wrapping to 0 in release.
+        // Synthesize the ParsedPacket directly since `build_then_parse_fragment`
+        // won't help us — the encoder rejects oversized ranges upstream.
+        let pkt = ParsedPacket {
+            flags: crate::packet::FLAG_FRAGMENTED | crate::packet::FLAG_HAS_SEQUENCE,
+            body: Bytes::from_static(b"x"),
+            seq_id: Some(0),
+            first_req_offset: None,
+            frag_begin: Some(0),
+            frag_end: Some(u32::MAX),
+            acks: vec![],
+        };
+
+        let mut asm = FragmentAssembler::new();
+        let err = asm.process_parsed(&pkt).unwrap_err();
+        assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
+        assert_eq!(asm.pending_count(), 0, "rejected packet must not register pending state");
     }
 
     #[test]
