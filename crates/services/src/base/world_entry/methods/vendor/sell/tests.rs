@@ -23,10 +23,13 @@ const SEEDED_SELL_VENDOR_TEMPLATE_ID: i32 = 25;
 const SELLABLE_TYPE_ID: i32 = 21;
 const SELLABLE_TYPE_PRICE: i32 = 1_000;
 
-async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
-    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id < 0")
+async fn cleanup(pool: &PgPool, entity_id: i32, account_id: i32, player_id: i32) {
+    // Delete the outbox rows the test enqueues so a shared live DB
+    // doesn't accumulate stale entries from successful runs.
+    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
+        .bind(entity_id)
         .execute(pool)
-        .await; // no-op safety net
+        .await;
     let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
         .bind(player_id)
         .execute(pool)
@@ -141,19 +144,20 @@ fn make_state(
 #[tokio::test]
 async fn full_stack_sell_credits_balance_and_moves_item_to_buyback() {
     let pool = require_db_or_skip!();
+    let entity_id: i32 = 0x7000_0801;
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id, 100).await;
     let item = insert_item(&pool, player_id, SELLABLE_TYPE_ID, 1, 0, 1).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0801);
+    let (socket, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // vendor_entity_id=99 here is just a wire-side identifier; the
     // function uses vendor_template_id (25) to look up the sell list.
     handle_sell_vendor_items(
-        0x7000_0801,
+        entity_id as u32,
         player_id,
         99,
         SEEDED_SELL_VENDOR_TEMPLATE_ID,
@@ -181,7 +185,7 @@ async fn full_stack_sell_credits_balance_and_moves_item_to_buyback() {
         "balance must rise by exactly unit_price * quantity",
     );
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
 }
 
 /// An item whose type isn't in the vendor's sell_item_list is
@@ -191,31 +195,37 @@ async fn full_stack_sell_credits_balance_and_moves_item_to_buyback() {
 #[tokio::test]
 async fn sell_rejected_for_item_not_in_vendor_sell_list() {
     let pool = require_db_or_skip!();
+    let entity_id: i32 = 0x7000_0802;
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id, 100).await;
 
-    // Find a resources.items row that's main-bag allowed but is NOT
-    // in the seeded sell list (item_list_id=2). The sell list contains
-    // design_ids {21, 55, 3437}; pick the first allowed-in-1 type that
-    // isn't one of those.
+    // Find a resources.items row that's main-bag allowed AND has the
+    // sellable flag bit set, but is NOT in the seeded sell list
+    // (item_list_id=2). Constraining on the flag matters: if we picked
+    // a type that fails the handler's `(flags & ITEM_FLAG_CAN_BE_SOLD)
+    // <> 0` check, the rejection would land for the *wrong* reason and
+    // the regression guard would no longer be testing the not-in-list
+    // path. The sell list contains design_ids {21, 55, 3437}.
     let unsellable_type: i32 = sqlx::query_scalar(
         "SELECT item_id FROM resources.items \
          WHERE (container_sets IS NULL OR 1 = ANY(container_sets)) \
+           AND (flags & $1) <> 0 \
            AND item_id NOT IN (21, 55, 3437) \
          ORDER BY item_id LIMIT 1",
     )
+    .bind(ITEM_FLAG_CAN_BE_SOLD)
     .fetch_one(&pool)
     .await
     .expect("pick unsellable_type");
     let item = insert_item(&pool, player_id, unsellable_type, 1, 0, 1).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0802);
+    let (socket, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_sell_vendor_items(
-        0x7000_0802,
+        entity_id as u32,
         player_id,
         99,
         SEEDED_SELL_VENDOR_TEMPLATE_ID,
@@ -240,7 +250,7 @@ async fn sell_rejected_for_item_not_in_vendor_sell_list() {
         "balance must not change when the sale is refused",
     );
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
 }
 
 /// Naquadah-overflow guard: if the resulting balance would exceed
@@ -251,18 +261,19 @@ async fn sell_rejected_for_item_not_in_vendor_sell_list() {
 #[tokio::test]
 async fn sell_rejected_when_balance_would_overflow_i32() {
     let pool = require_db_or_skip!();
+    let entity_id: i32 = 0x7000_0803;
     let account_id = TEST_BASE + 200;
     let player_id = TEST_BASE + 201;
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
     // Set naquadah to i32::MAX; selling for 1000 more would overflow.
     insert_account_and_player(&pool, account_id, player_id, i32::MAX).await;
     let item = insert_item(&pool, player_id, SELLABLE_TYPE_ID, 1, 0, 1).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0803);
+    let (socket, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_sell_vendor_items(
-        0x7000_0803,
+        entity_id as u32,
         player_id,
         99,
         SEEDED_SELL_VENDOR_TEMPLATE_ID,
@@ -288,5 +299,5 @@ async fn sell_rejected_when_balance_would_overflow_i32() {
         "balance must stay at i32::MAX — no partial credit on overflow",
     );
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
 }
