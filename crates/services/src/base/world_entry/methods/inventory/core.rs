@@ -325,7 +325,7 @@ pub async fn handle_remove_inventory_item(
 /// content events tied to actual inventory state — a malicious client
 /// can't spam `useItem(any id)` to trigger arbitrary chain actions.
 ///
-/// Delivery durability (issue #96): the `ItemUsed` event is enqueued in
+/// Delivery durability: the `ItemUsed` event is enqueued in
 /// `cell_event_outbox` first, then dispatched on the in-process channel.
 /// `tokio::sync::mpsc::Sender::send().await` only fails when the receiver
 /// is dropped (e.g., cell task panicked / shut down) — full channels

@@ -1,7 +1,7 @@
 -- Migration: add cell_event_outbox table for durable base→cell content events.
 -- Safe to run on existing databases (uses IF NOT EXISTS).
 -- See db/sgw/Outbox/Tables/cell_event_outbox.sql for the canonical definition
--- and rationale (issue #96).
+-- and rationale.
 
 CREATE TABLE IF NOT EXISTS cell_event_outbox (
     id              BIGSERIAL PRIMARY KEY,

@@ -1,4 +1,4 @@
-//! Durable base→cell content event delivery (issue #96).
+//! Durable base→cell content event delivery.
 //!
 //! Closes the gap between "base committed a DB change" and "cell fires the
 //! corresponding `OnItemUse` / inventory chain event". The previous
@@ -156,7 +156,7 @@ async fn record_failure(pool: &PgPool, id: i64, error: &str) {
 /// No logging here — the drainer is the only caller and decides whether to
 /// log (first encounter) or stay quiet (already-flagged poison row), based
 /// on `attempts`. Without this gate, a single bad row turns into a continuous
-/// warn-spam at the 5s drain interval. (Copilot review on #124.)
+/// warn-spam at the 5s drain interval.
 fn row_to_message(row: &OutboxRow) -> Option<BaseToCellMsg> {
     match (row.event_type.as_str(), &*row.payload) {
         (EVENT_TYPE_ITEM_USED, CellOutboxPayload::ItemUsed { type_id, target_id }) => {
@@ -233,9 +233,8 @@ pub(crate) struct DrainStats {
 
 /// Drain a single batch of undelivered rows. Returns per-outcome counts
 /// rather than just `rows.len()` — the loop breaks early on a closed cell
-/// channel, so a raw row count would overstate progress (Copilot review
-/// on #124). Exposed pub(crate) so the periodic loop and tests can both
-/// call it.
+/// channel, so a raw row count would overstate progress. Exposed
+/// `pub(crate)` so the periodic loop and tests can both call it.
 pub(crate) async fn drain_undelivered(
     pool: &PgPool,
     cell_tx: &mpsc::Sender<BaseToCellMsg>,
@@ -244,7 +243,7 @@ pub(crate) async fn drain_undelivered(
     // increasing per insert across all entities, so per-entity ordering is
     // implied by global ordering). LIMIT bounds the batch so we don't
     // hold the channel under a backlog. No FOR UPDATE SKIP LOCKED yet —
-    // single-writer base assumption (#96 out-of-scope: multi-instance HA).
+    // single-writer base assumption; multi-instance HA is out of scope here.
     let rows: Vec<OutboxRow> = sqlx::query_as::<_, OutboxRow>(
         "SELECT id, entity_id, event_type, payload, attempts \
          FROM cell_event_outbox \
@@ -263,7 +262,7 @@ pub(crate) async fn drain_undelivered(
             // Poison row — log loud once (first encounter) then drop to
             // debug for subsequent retries. Without the rate-limit, the
             // 5s drainer interval turns one bad row into permanent warn
-            // spam (Copilot review on #124).
+            // spam.
             if row.attempts == 0 {
                 tracing::warn!(
                     outbox_id = id, event_type = %row.event_type, attempts = row.attempts,

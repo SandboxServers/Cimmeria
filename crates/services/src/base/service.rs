@@ -195,7 +195,7 @@ impl BaseService {
             });
         }
 
-        // Spawn the cell_event_outbox drainer (issue #96). The startup pass
+        // Spawn the cell_event_outbox drainer. The startup pass
         // replays any rows orphaned by the previous shutdown; the periodic
         // ticker covers transient channel failures during steady-state.
         // Requires both a DB pool and a cell channel — gated on both.

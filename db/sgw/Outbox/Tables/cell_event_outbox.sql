@@ -5,7 +5,7 @@
 -- this, an mpsc send failure (receiver dropped — cell task panic / shut
 -- down, or panic between commit and send) would silently strand chains
 -- that gate on the event — most notably mission progression on
--- `OnItemUse`. See issue #96.
+-- `OnItemUse`.
 --
 -- (Note: `tokio::mpsc::Sender::send().await` does not error on a full
 -- channel — it backpressures. The failure mode this protects against is
