@@ -16,14 +16,17 @@ env:
   CARGO_INCREMENTAL: 0
   # Tauri / GTK-using members of the workspace pull in heavy GUI deps and
   # have their own Linux-build prerequisites; keep them out of CI builds.
-  # CLAUDE.md only enumerates the three editor crates, but `sgw-launcher`
-  # (crates/launcher) also depends on Tauri and pulls glib-sys, so exclude
-  # it here too.
+  # CLAUDE.md enumerates three editor crates; `sgw-launcher` (crates/launcher)
+  # is also Tauri-based and pulls glib-sys, so exclude it here too.
   WORKSPACE_EXCLUDES: >-
     --exclude cimmeria-app
     --exclude cimmeria-content-editor
     --exclude cimmeria-scene-editor
     --exclude sgw-launcher
+  # Pinned to keep CI byte-identical with what setup.ps1 hydrates locally
+  # (bootstrap/CimmeriaBootstrap/Data/Dependencies.psd1). Bumping requires
+  # a coordinated change there.
+  RECAST_VERSION: "1.6.0"
 
 jobs:
   check:
@@ -37,6 +40,19 @@ jobs:
       # both on the runner so cargo's clang invocation finds them.
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
+      # crates/entity/build.rs compiles the Detour navmesh library from
+      # external/recast. external/ is gitignored and populated locally by
+      # setup.ps1 (bootstrap/CimmeriaBootstrap/...Install-CimmeriaDependencies.ps1).
+      # Mirror that hydration in CI so cc-rs has the C++ sources.
+      - name: hydrate external/recast
+        run: |
+          mkdir -p external
+          curl -sL --retry 3 \
+            -o /tmp/recast.zip \
+            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
+          unzip -q /tmp/recast.zip -d /tmp/recast_extract
+          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
+          test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: workspace-check
@@ -44,19 +60,31 @@ jobs:
         run: cargo check --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets
 
   test:
-    name: cargo test -p cimmeria-services
+    name: cargo test (workspace)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
+      - name: hydrate external/recast
+        run: |
+          mkdir -p external
+          curl -sL --retry 3 \
+            -o /tmp/recast.zip \
+            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
+          unzip -q /tmp/recast.zip -d /tmp/recast_extract
+          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
+          test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: services-test
-      # Live-DB tests use the test_support::require_db_or_skip! macro and
-      # self-skip when DATABASE_URL is unset, so this run only exercises
-      # the unit + non-DB integration tests. The DB-integration job is a
-      # follow-up that needs schema + seed loading.
+          shared-key: workspace-test
+      # Run all non-Tauri workspace tests. Live-DB tests in cimmeria-services
+      # use test_support::require_db_or_skip! and self-skip when DATABASE_URL
+      # is unset, so this baseline exercises unit + non-DB integration tests
+      # across cimmeria-services, cimmeria-mercury, cimmeria-content-engine,
+      # and the rest of the non-GUI workspace. A follow-up job will add a
+      # postgres-services container with schema + seed loading for the
+      # live-DB suite.
       - name: cargo test
-        run: cargo test -p cimmeria-services
+        run: cargo test --workspace ${{ env.WORKSPACE_EXCLUDES }}
