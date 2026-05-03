@@ -240,7 +240,13 @@ use crate::test_support::require_db_or_skip;
 /// Sentinel base for entity_ids used by live-DB outbox tests. Each test
 /// picks a unique offset so concurrent runs don't collide on the same
 /// `cell_event_outbox` rows.
-const TEST_ENTITY_BASE: u32 = 0xDEAD_0000;
+///
+/// Stays well below `i32::MAX` because `cell_event_outbox.entity_id`
+/// is `INTEGER` and the `enqueue_*` helpers cast `as i32`. A `u32`
+/// value above `i32::MAX` would wrap to negative and silently land
+/// in row space that's hard to recognize as "test fixture" during
+/// debugging.
+const TEST_ENTITY_BASE: u32 = 0x7000_0000;
 
 async fn cleanup(pool: &sqlx::PgPool, entity_id: u32) {
     let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")

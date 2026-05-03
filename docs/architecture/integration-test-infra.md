@@ -84,30 +84,43 @@ sentinel and delete its own rows on cleanup.
 
 1. Install PostgreSQL 17 locally (matches production target). The
    bootstrap module under `bootstrap/CimmeriaBootstrap/` already does
-   this for the server; reuse the same install.
+   this for the server; reuse the same install. **Note**: the
+   bootstrap binds Postgres to port **5433** (not the default 5432)
+   to avoid clashing with any system Postgres install. URLs below
+   reflect that.
 2. Create a dedicated test database:
    ```sql
    CREATE DATABASE cimmeria_test;
    ```
 3. Load the schema into it:
    ```bash
-   psql -U <user> -d cimmeria_test -v ON_ERROR_STOP=1 -f db/database.sql
+   psql -U <user> -p 5433 -d cimmeria_test -v ON_ERROR_STOP=1 -f db/database.sql
    ```
 4. Export the connection string before running tests:
    ```bash
-   export DATABASE_URL=postgres://<user>:<pw>@localhost/cimmeria_test
-   cargo test -p cimmeria-services --test outbox_integration
+   export DATABASE_URL=postgres://<user>:<pw>@localhost:5433/cimmeria_test
+   cargo test -p cimmeria-services
    ```
 
 For PowerShell:
 ```powershell
-$env:DATABASE_URL = "postgres://<user>:<pw>@localhost/cimmeria_test"
+$env:DATABASE_URL = "postgres://<user>:<pw>@localhost:5433/cimmeria_test"
 cargo test -p cimmeria-services
 ```
 
+If your local Postgres is on the default 5432, drop `:5433`. The
+constraint is "whatever port your test DB is actually on."
+
 Live-DB tests are interleaved with unit tests under the same `cargo
 test` invocation — they self-skip when `DATABASE_URL` isn't set, so
-the same command works in both modes.
+the same command works in both modes. To run only the outbox subset:
+
+```bash
+cargo test -p cimmeria-services outbox
+```
+
+(filters by test name, which matches both the unit `outbox::tests::*`
+and the live-DB `outbox::tests::enqueue_*` cases).
 
 ## Test isolation
 
