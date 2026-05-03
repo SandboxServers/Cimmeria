@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
+use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx};
 use super::super::super::super::helpers::send_to_witness;
@@ -324,10 +325,13 @@ pub async fn handle_remove_inventory_item(
 /// content events tied to actual inventory state — a malicious client
 /// can't spam `useItem(any id)` to trigger arbitrary chain actions.
 ///
-/// TODO(#96 delivery durability): the `ItemUsed` send is best-effort. If
-/// `cell_tx` is closed (cell service restart, channel saturation) the
-/// chain never fires — mission progression strands the player. Production
-/// fix is the outbox pattern in #96.
+/// Delivery durability (issue #96): the `ItemUsed` event is enqueued in
+/// `cell_event_outbox` first, then dispatched on the in-process channel.
+/// If the channel is closed/saturated the row stays undelivered and the
+/// background drainer ([`crate::base::outbox::spawn_drainer`]) retries it.
+/// The cell-side `BaseToCellMsg::ItemUsed` handler is idempotent — chain
+/// conditions self-gate on `step_status = active` so a duplicate fire
+/// from a drainer retry is harmless.
 pub async fn handle_use_inventory_item(
     entity_id: u32,
     player_id: i32,
@@ -375,17 +379,30 @@ pub async fn handle_use_inventory_item(
         "UseInventoryItem: firing ItemUsed (no consumption — chain decides)"
     );
 
-    if let Some(cell_tx) = cell_tx {
-        if let Err(e) = cell_tx.send(BaseToCellMsg::ItemUsed {
-            entity_id,
-            type_id,
-            target_id,
-        }).await {
+    let payload = CellOutboxPayload::ItemUsed { type_id, target_id };
+    let outbox_id = match outbox::enqueue(pool.as_ref(), entity_id, &payload).await {
+        Ok(id) => id,
+        Err(e) => {
+            // Outbox INSERT failed — cannot guarantee delivery, so do NOT
+            // attempt the in-process send (a successful send without an
+            // outbox row would lose its retry safety net on next failure).
+            // The player can re-use the item; ownership lookup above is
+            // idempotent.
             tracing::error!(
-                entity_id, player_id, item_id, error = %e,
-                "UseInventoryItem: cell channel closed sending ItemUsed — content event lost"
+                entity_id, player_id, item_id, type_id,
+                "UseInventoryItem: outbox enqueue failed; ItemUsed not dispatched: {e}"
             );
+            return;
         }
+    };
+
+    if let Some(cell_tx) = cell_tx {
+        outbox::try_dispatch_now(pool.as_ref(), cell_tx, outbox_id, entity_id, payload).await;
+    } else {
+        tracing::debug!(
+            entity_id, outbox_id,
+            "UseInventoryItem: no cell channel; row left for drainer"
+        );
     }
 }
 
