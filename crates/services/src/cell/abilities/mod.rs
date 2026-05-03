@@ -7,6 +7,9 @@
 //! Submodule layout:
 //! - `dispatch` — ground-targeted auto-aim entry point.
 //! - `use_ability` — main `handle_use_ability` flow (validate → consume → fire → resolve).
+//! - `damage_apply` — per-target damage application, shared between the
+//!   targeted path and ground-target AoE so cooldown/ammo consume happens
+//!   once per invocation but damage applies to each target in radius.
 //! - `death` — ordered wire protocol burst when a target dies.
 //! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
@@ -14,6 +17,7 @@
 //!
 //! Reference: `python/cell/AbilityManager.py:1004-1056`
 
+mod damage_apply;
 mod death;
 mod dispatch;
 mod loot_drop;

@@ -87,31 +87,32 @@ pub async fn dispatch(
                 let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
                 tracing::debug!(entity_id, ability_id, x, y, z, "useAbilityOnGroundTarget");
 
-                // handle_use_ability_on_ground returns the resolved target_eid
-                // (if any) so we can detect alive→dead transitions and fire the
-                // content-engine death event — single-target USE_ABILITY does
-                // the same. Without this, ground-targeted kills don't trigger
-                // mission progress or chain death triggers.
-                let target_eid = crate::cell::abilities::handle_use_ability_on_ground(
+                // handle_use_ability_on_ground returns the entity IDs of every
+                // NPC that died during this cast (primary + AoE secondaries).
+                // We fire the content-engine death event for each, so kill-
+                // count missions and other death-triggered chains advance for
+                // every AoE kill — not just the primary. Empty Vec means
+                // either no targets in radius, primary cast rejected, or
+                // nothing died.
+                let deaths = crate::cell::abilities::handle_use_ability_on_ground(
                     entity_id, ability_id, [x, y, z], tx, space_mgr,
                 ).await;
 
-                if let Some(target_eid) = target_eid {
-                    let just_died = space_mgr.get_entity(target_eid).map_or(false, |t| {
-                        t.stats.get(HEALTH).map_or(false, |s| s.cur <= 0)
-                    });
-                    if just_died {
-                        let tag = space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone());
+                if !deaths.is_empty() {
+                    // Resolve player_id once — it doesn't change across kills.
+                    let player_id = space_mgr.get_entity(entity_id).and_then(|e| e.player_id);
+                    for dead_eid in deaths {
+                        let tag = space_mgr.get_entity(dead_eid).and_then(|t| t.tag.clone());
                         if let Some(tag) = tag {
-                            match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
-                                Some(player_id) => {
+                            match player_id {
+                                Some(pid) => {
                                     crate::cell::content::fire_entity_death(
-                                        entity_id, player_id, &tag, engine, tx, space_mgr,
+                                        entity_id, pid, &tag, engine, tx, space_mgr,
                                     ).await;
                                 }
                                 None => {
                                     tracing::warn!(
-                                        entity_id, npc_tag = %tag,
+                                        entity_id, npc_tag = %tag, dead_eid,
                                         "Skipping entity_death event (ground target): killer entity has no player_id"
                                     );
                                 }
