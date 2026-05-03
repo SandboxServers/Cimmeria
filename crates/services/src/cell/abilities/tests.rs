@@ -1,7 +1,7 @@
 //! Tests for the abilities module.
 //!
 //! - Wire-format spot checks for `serialize_timer_update` (the public helper).
-//! - Determinism + uniqueness asserts for `pseudo_random`.
+//! - Determinism + uniqueness asserts for `pseudo_random_seed`.
 //! - End-to-end fire of `handle_use_ability` covering the ammo-consume path.
 
 use cimmeria_entity::abilities::{TIMER_ABILITY_COOLDOWN, serialize_timer_update};
@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::handle_use_ability;
-use super::rng::pseudo_random;
+use super::rng::pseudo_random_seed;
 
 #[test]
 fn timer_update_has_correct_format() {
@@ -24,28 +24,39 @@ fn timer_update_has_correct_format() {
 }
 
 #[test]
-fn pseudo_random_is_deterministic() {
-    let v1 = pseudo_random(1, 597, 0);
-    let v2 = pseudo_random(1, 597, 0);
-    assert_eq!(v1, v2);
+fn pseudo_random_seed_is_deterministic() {
+    let s1 = pseudo_random_seed(1, 597, 0);
+    let s2 = pseudo_random_seed(1, 597, 0);
+    assert_eq!(s1, s2);
 }
 
 #[test]
-fn pseudo_random_varies_with_inputs() {
-    let v1 = pseudo_random(1, 597, 0);
-    let v2 = pseudo_random(2, 597, 0);
-    let v3 = pseudo_random(1, 598, 0);
-    let v4 = pseudo_random(1, 597, 1);
-    assert_ne!(v1, v2);
-    assert_ne!(v1, v3);
-    assert_ne!(v1, v4);
+fn pseudo_random_seed_varies_with_inputs() {
+    // Each input dimension must perturb the seed independently — otherwise
+    // rapid-fire shots on the same target (entity, ability fixed; only
+    // sequence varies) would share suspiciously similar beta samples.
+    let s1 = pseudo_random_seed(1, 597, 0);
+    let s2 = pseudo_random_seed(2, 597, 0);
+    let s3 = pseudo_random_seed(1, 598, 0);
+    let s4 = pseudo_random_seed(1, 597, 1);
+    assert_ne!(s1, s2);
+    assert_ne!(s1, s3);
+    assert_ne!(s1, s4);
 }
 
 #[test]
-fn pseudo_random_in_range() {
-    for i in 0..100 {
-        let v = pseudo_random(i, i as i32 * 7, i * 13);
-        assert!(v >= 0.0 && v < 1.0, "value out of range: {v}");
+fn pseudo_random_seed_avoids_obvious_collisions() {
+    // Spot-check: sequential triples must produce well-separated seeds, not
+    // a tight cluster that the beta sampler would map to similar samples.
+    use std::collections::HashSet;
+    let mut seen: HashSet<u64> = HashSet::new();
+    for entity_id in 1..=10 {
+        for ability_id in 1..=10 {
+            for seq in 0..10 {
+                let s = pseudo_random_seed(entity_id, ability_id, seq);
+                assert!(seen.insert(s), "collision at ({entity_id}, {ability_id}, {seq})");
+            }
+        }
     }
 }
 

@@ -22,7 +22,7 @@ use super::super::space_manager::SpaceManager;
 
 use super::loot_drop::kill_xp;
 use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
-use super::rng::pseudo_random;
+use super::rng::pseudo_random_seed;
 
 /// Resolve damage from `entity_id` to `target_eid` for ability `ability_id`.
 ///
@@ -92,11 +92,12 @@ pub(super) async fn apply_damage_to_target(
     let ability_is_ranged = ability_def.as_ref().map(|d| d.is_ranged).unwrap_or(false);
     let qr = combat::calculate_qr(&attacker_stats, &target.stats, ability_is_ranged);
 
-    // Generate random value for this hit (seeded from ability invocation).
-    // Per-(target, effect_seq) determinism — fresh effect_seq per AoE
-    // secondary target gives them independent rolls.
-    let random_value = pseudo_random(entity_id, ability_id, effect_seq);
-    let qr_result = combat::calculate_result(qr, random_value);
+    // Seed the beta-distribution sample from this ability invocation.
+    // Per-(entity, ability, effect_seq) determinism — a fresh effect_seq per
+    // AoE secondary target gives independent rolls without losing replay
+    // reproducibility.
+    let seed = pseudo_random_seed(entity_id, ability_id, effect_seq);
+    let qr_result = combat::calculate_result(qr, seed);
 
     // Look up damage values from the ability's effect NVPs. When the
     // ability is known but exposes no positive HealthDamage (e.g. focus
