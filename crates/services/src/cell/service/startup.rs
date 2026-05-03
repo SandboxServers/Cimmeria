@@ -7,7 +7,7 @@ use tokio::sync::Notify;
 use super::super::content;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
-use super::super::{CellError, spawner};
+use super::super::{spawner, CellError};
 use super::CellService;
 
 impl CellService {
@@ -29,7 +29,9 @@ impl CellService {
                 );
             }
             Err(e) => {
-                tracing::warn!("Failed to load space definitions: {e} — continuing with empty space set");
+                tracing::warn!(
+                    "Failed to load space definitions: {e} — continuing with empty space set"
+                );
             }
         }
 
@@ -108,18 +110,24 @@ impl CellService {
                     for rd in region_data {
                         let runtime_id = space_mgr.next_region_id;
                         space_mgr.next_region_id += 1;
-                        space_mgr.regions.insert(runtime_id, super::super::space_manager::RegionData {
+                        space_mgr.regions.insert(
                             runtime_id,
-                            db_set_id: rd.set_id,
-                            tag: rd.name,
-                            world_name: rd.world_name,
-                            height: rd.height,
-                            radius: rd.radius,
-                            flags: rd.flags,
-                            points: rd.points,
-                        });
+                            super::super::space_manager::RegionData {
+                                runtime_id,
+                                db_set_id: rd.set_id,
+                                tag: rd.name,
+                                world_name: rd.world_name,
+                                height: rd.height,
+                                radius: rd.radius,
+                                flags: rd.flags,
+                                points: rd.points,
+                            },
+                        );
                     }
-                    tracing::info!(count = space_mgr.regions.len(), "Registered generic regions");
+                    tracing::info!(
+                        count = space_mgr.regions.len(),
+                        "Registered generic regions"
+                    );
                 }
                 Err(e) => {
                     tracing::warn!("Failed to load generic regions: {e}");
@@ -142,28 +150,52 @@ impl CellService {
         // Load ability + effect definitions from DB
         if let Some(ref pool) = self.db_pool {
             match spawner::load_ability_defs(pool).await {
-                Ok(defs) => { space_mgr.ability_defs = defs; }
-                Err(e) => { tracing::warn!("Failed to load ability defs: {e}"); }
+                Ok(defs) => {
+                    space_mgr.ability_defs = defs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load ability defs: {e}");
+                }
             }
             match spawner::load_effect_defs(pool).await {
-                Ok(defs) => { space_mgr.effect_defs = defs; }
-                Err(e) => { tracing::warn!("Failed to load effect defs: {e}"); }
+                Ok(defs) => {
+                    space_mgr.effect_defs = defs;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load effect defs: {e}");
+                }
             }
             match spawner::load_event_set_sequences(pool).await {
-                Ok(map) => { space_mgr.sequence_map = map; }
-                Err(e) => { tracing::warn!("Failed to load event_set sequences: {e}"); }
+                Ok(map) => {
+                    space_mgr.sequence_map = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load event_set sequences: {e}");
+                }
             }
             match spawner::load_item_containers(pool).await {
-                Ok(map) => { space_mgr.item_containers = map; }
-                Err(e) => { tracing::warn!("Failed to load item containers: {e}"); }
+                Ok(map) => {
+                    space_mgr.item_containers = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load item containers: {e}");
+                }
             }
             match spawner::load_item_defs(pool).await {
-                Ok(map) => { space_mgr.item_defs = map; }
-                Err(e) => { tracing::warn!("Failed to load item defs: {e}"); }
+                Ok(map) => {
+                    space_mgr.item_defs = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load item defs: {e}");
+                }
             }
             match spawner::load_loot_tables(pool).await {
-                Ok(tables) => { space_mgr.loot_tables = tables; }
-                Err(e) => { tracing::warn!("Failed to load loot tables: {e}"); }
+                Ok(tables) => {
+                    space_mgr.loot_tables = tables;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load loot tables: {e}");
+                }
             }
             match super::super::ring_transport::load_ring_regions(pool).await {
                 Ok(regions) => {
@@ -172,7 +204,8 @@ impl CellService {
                     // route everyone through whichever ring HashMap iteration
                     // landed last. Log the collision so the bad seed data
                     // surfaces at startup rather than as ghost-routing later.
-                    let mut point_set_to_region = std::collections::HashMap::with_capacity(regions.len());
+                    let mut point_set_to_region =
+                        std::collections::HashMap::with_capacity(regions.len());
                     for (rid, r) in &regions {
                         if let Some(existing) = point_set_to_region.insert(r.point_set_id, *rid) {
                             tracing::error!(
@@ -189,7 +222,9 @@ impl CellService {
                         "Initialized ring transporters"
                     );
                 }
-                Err(e) => { tracing::warn!("Failed to load ring transport regions: {e}"); }
+                Err(e) => {
+                    tracing::warn!("Failed to load ring transport regions: {e}");
+                }
             }
         }
 
@@ -222,8 +257,15 @@ impl CellService {
             self.shutdown_signal = Some(shutdown.clone());
             let handle = tokio::spawn(async move {
                 super::message_loop::run_cell_loop(
-                    &mut rx, &tx, space_mgr, engine, db_pool, spawn_records, shutdown,
-                ).await;
+                    &mut rx,
+                    &tx,
+                    space_mgr,
+                    engine,
+                    db_pool,
+                    spawn_records,
+                    shutdown,
+                )
+                .await;
             });
             self.cell_loop_handle = Some(handle);
         } else {

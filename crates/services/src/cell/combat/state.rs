@@ -47,8 +47,8 @@ pub fn is_dead_state(state_field: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cimmeria_entity::cell_entity::CellEntity;
     use cimmeria_common::{EntityId, SpaceId, Vector3};
+    use cimmeria_entity::cell_entity::CellEntity;
 
     fn entity() -> CellEntity {
         CellEntity::new(EntityId(1), SpaceId(0), Vector3::new(0.0, 0.0, 0.0))
@@ -74,14 +74,29 @@ mod tests {
         // bump the counter to 2; clearing one MUST keep the bit set until
         // the second clear drains the counter.
         let mut e = entity();
-        assert!(e.set_state_flag(BSF_MOVEMENT_LOCK), "first set should transition");
-        assert!(!e.set_state_flag(BSF_MOVEMENT_LOCK), "second set must not re-fire");
+        assert!(
+            e.set_state_flag(BSF_MOVEMENT_LOCK),
+            "first set should transition"
+        );
+        assert!(
+            !e.set_state_flag(BSF_MOVEMENT_LOCK),
+            "second set must not re-fire"
+        );
         assert!(e.has_state_flag(BSF_MOVEMENT_LOCK));
 
-        assert!(!e.unset_state_flag(BSF_MOVEMENT_LOCK), "first unset should not transition");
-        assert!(e.has_state_flag(BSF_MOVEMENT_LOCK), "flag must remain set with one source still active");
+        assert!(
+            !e.unset_state_flag(BSF_MOVEMENT_LOCK),
+            "first unset should not transition"
+        );
+        assert!(
+            e.has_state_flag(BSF_MOVEMENT_LOCK),
+            "flag must remain set with one source still active"
+        );
 
-        assert!(e.unset_state_flag(BSF_MOVEMENT_LOCK), "second unset should clear");
+        assert!(
+            e.unset_state_flag(BSF_MOVEMENT_LOCK),
+            "second unset should clear"
+        );
         assert!(!e.has_state_flag(BSF_MOVEMENT_LOCK));
     }
 
@@ -90,7 +105,10 @@ mod tests {
         // Defensive: a stray clear without a prior set must not underflow
         // (would silently flip the bit on the next set if it did).
         let mut e = entity();
-        assert!(!e.unset_state_flag(BSF_DEAD), "unset on empty counter is a no-op");
+        assert!(
+            !e.unset_state_flag(BSF_DEAD),
+            "unset on empty counter is a no-op"
+        );
         assert_eq!(e.state_field, 0);
     }
 
@@ -105,7 +123,10 @@ mod tests {
             e.unset_state_flag(BSF_MOVEMENT_LOCK);
             e.unset_state_flag(BSF_HOLSTER);
         }
-        assert!(e.state_flag_counts.is_empty(), "no map entries from stray unsets");
+        assert!(
+            e.state_flag_counts.is_empty(),
+            "no map entries from stray unsets"
+        );
     }
 
     #[test]
@@ -116,7 +137,10 @@ mod tests {
         let mut e = entity();
         e.set_state_flag(BSF_DEAD);
         e.unset_state_flag(BSF_DEAD);
-        assert!(e.state_flag_counts.is_empty(), "drained counter should be removed");
+        assert!(
+            e.state_flag_counts.is_empty(),
+            "drained counter should be removed"
+        );
     }
 
     #[test]

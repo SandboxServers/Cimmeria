@@ -154,7 +154,10 @@ pub async fn load_vendor_sell_prices(
             })
             .collect(),
         Err(e) => {
-            tracing::error!(item_list_id, "OpenVendorStore: sell price query failed: {e}");
+            tracing::error!(
+                item_list_id,
+                "OpenVendorStore: sell price query failed: {e}"
+            );
             Vec::new()
         }
     }

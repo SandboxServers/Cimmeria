@@ -3,13 +3,11 @@
 
 use cimmeria_mercury::packet::build_fragmented_bundle;
 
-use super::{
-    encrypt_packet, write_wstring, append_entity_method, method_idx,
-    REPLY_FLAGS, SKIN_TINTS,
-    PlayerLoadData, WorldEntryInfo,
-    build_world_params_args,
-};
 use super::stats::{archetype_stats, level_exp};
+use super::{
+    append_entity_method, build_world_params_args, encrypt_packet, method_idx, write_wstring,
+    PlayerLoadData, WorldEntryInfo, REPLY_FLAGS, SKIN_TINTS,
+};
 
 // ── mapLoaded multi-packet builder ───────────────────────────────────────────
 
@@ -58,7 +56,11 @@ pub fn build_map_loaded_body(
     let stats = archetype_stats(data.archetype);
     let mut body = Vec::with_capacity(8192);
     build_map_loaded_body_inner(&mut body, entity_id, data, world_entry, &stats);
-    tracing::info!(entity_id, body_bytes = body.len(), "mapLoaded: body assembled");
+    tracing::info!(
+        entity_id,
+        body_bytes = body.len(),
+        "mapLoaded: body assembled"
+    );
     body
 }
 
@@ -68,7 +70,7 @@ pub fn fragment_count(body_len: usize) -> u32 {
     if body_len <= FRAGMENT_BODY_SIZE {
         1
     } else {
-        ((body_len + FRAGMENT_BODY_SIZE - 1) / FRAGMENT_BODY_SIZE) as u32
+        body_len.div_ceil(FRAGMENT_BODY_SIZE) as u32
     }
 }
 
@@ -83,13 +85,9 @@ pub fn fragment_map_loaded(
     body: &[u8],
 ) -> (Vec<Vec<u8>>, u32) {
     let key_copy = *key;
-    build_fragmented_bundle(
-        REPLY_FLAGS,
-        body,
-        base_seq,
-        acks,
-        |plaintext| encrypt_packet(plaintext, &key_copy),
-    )
+    build_fragmented_bundle(REPLY_FLAGS, body, base_seq, acks, |plaintext| {
+        encrypt_packet(plaintext, &key_copy)
+    })
 }
 
 fn build_map_loaded_body_inner(
@@ -107,7 +105,10 @@ fn build_map_loaded_body_inner(
     }
 
     // 0. setupWorldParameters (22 args: 5xi32 + 17xf32)
-    append_method!(method_idx::SETUP_WORLD_PARAMETERS, &build_world_params_args(&world_entry.world_name));
+    append_method!(
+        method_idx::SETUP_WORLD_PARAMETERS,
+        &build_world_params_args(&world_entry.world_name)
+    );
 
     // 1. setupStargateInfo (3xARRAY<INT32>: world, known, hidden)
     {
@@ -159,13 +160,16 @@ fn build_map_loaded_body_inner(
     append_method!(method_idx::ON_STATE_FIELD_UPDATE, &0u32.to_le_bytes());
 
     // 7. onKismetEventSetUpdate(INT32) — default 1025
-    append_method!(method_idx::ON_KISMET_EVENT_SET_UPDATE, &1025i32.to_le_bytes());
+    append_method!(
+        method_idx::ON_KISMET_EVENT_SET_UPDATE,
+        &1025i32.to_le_bytes()
+    );
 
     // 8. sendStats: onStatUpdate + onStatBaseUpdate
     //    Uses StatList from entity crate — sends ALL stats, matching Python's
     //    `self.sendStats(self.client, False, False)` which sends everything.
     {
-        use cimmeria_entity::stats::{StatList, ArchetypeStatValues, AMMO_SLOT_1};
+        use cimmeria_entity::stats::{ArchetypeStatValues, StatList, AMMO_SLOT_1};
         let mut stat_list = StatList::new();
         stat_list.apply_archetype(&ArchetypeStatValues {
             coordination: stats.coordination,
@@ -199,7 +203,10 @@ fn build_map_loaded_body_inner(
     }
 
     // 9. onArchetypeUpdate(INT32)
-    append_method!(method_idx::ON_ARCHETYPE_UPDATE, &data.archetype.to_le_bytes());
+    append_method!(
+        method_idx::ON_ARCHETYPE_UPDATE,
+        &data.archetype.to_le_bytes()
+    );
 
     // 10. onAlignmentUpdate(INT8)
     append_method!(method_idx::ON_ALIGNMENT_UPDATE, &[data.alignment as u8]);
@@ -260,8 +267,8 @@ fn build_map_loaded_body_inner(
             SKIN_TINTS[0]
         };
         let mut args = Vec::with_capacity(12);
-        args.extend_from_slice(&0u32.to_le_bytes());        // primaryColorId (default 0, matches C++)
-        args.extend_from_slice(&0u32.to_le_bytes());        // secondaryColorId (default 0, matches C++)
+        args.extend_from_slice(&0u32.to_le_bytes()); // primaryColorId (default 0, matches C++)
+        args.extend_from_slice(&0u32.to_le_bytes()); // secondaryColorId (default 0, matches C++)
         args.extend_from_slice(&skin_tint.to_le_bytes());
         append_method!(method_idx::ON_ENTITY_TINT, &args);
     }
@@ -277,7 +284,10 @@ fn build_map_loaded_body_inner(
     append_method!(method_idx::ON_EXP_UPDATE, &data.exp.to_le_bytes());
 
     // 19. onMaxExpUpdate(INT32) — extended encoding
-    append_method!(method_idx::ON_MAX_EXP_UPDATE, &level_exp(data.level).to_le_bytes());
+    append_method!(
+        method_idx::ON_MAX_EXP_UPDATE,
+        &level_exp(data.level).to_le_bytes()
+    );
 
     // 20. onEntityProperty x6 (INT32 propId, INT32 value)
     //     GENERICPROPERTY IDs from Atrea.enums
@@ -293,11 +303,11 @@ fn build_map_loaded_body_inner(
         .map_or(0, |(_, item)| item.cur_ammo_type);
     for &(prop_id, value) in &[
         (2i32, data.applied_science_points), // AppliedSciencePoints
-        (1,    data.training_points),        // TrainingPoints
-        (7,    data.access_level),           // AccessLevel
-        (8,    data.gender),                 // Gender
-        (4,    0),                           // PvPFlag
-        (3,    active_ammo_type),            // AmmoTypeId
+        (1, data.training_points),           // TrainingPoints
+        (7, data.access_level),              // AccessLevel
+        (8, data.gender),                    // Gender
+        (4, 0),                              // PvPFlag
+        (3, active_ammo_type),               // AmmoTypeId
     ] {
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&prop_id.to_le_bytes());
@@ -340,8 +350,14 @@ fn build_map_loaded_body_inner(
     // 24. onChatJoined — notify client about default channels
     //     Reference: python/base/SGWPlayer.py onClientReady -> ChannelManager.playerLoggedIn
     for &(channel_name, channel_id) in &[
-        ("say", 0u8), ("emote", 1), ("yell", 2), ("team", 3),
-        ("squad", 4), ("command", 5), ("server", 7), ("tell", 9),
+        ("say", 0u8),
+        ("emote", 1),
+        ("yell", 2),
+        ("team", 3),
+        ("squad", 4),
+        ("command", 5),
+        ("server", 7),
+        ("tell", 9),
     ] {
         let mut args = Vec::new();
         write_wstring(&mut args, channel_name);
@@ -378,5 +394,4 @@ fn build_map_loaded_body_inner(
         write_wstring(&mut args, &welcome); // Text
         append_method!(method_idx::ON_PLAYER_COMMUNICATION, &args);
     }
-
 }

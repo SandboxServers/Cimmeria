@@ -35,9 +35,7 @@ pub struct RingRegion {
 ///
 /// The Python `postLoad` step (drop self-references and dangling destination
 /// IDs) is performed in a second pass once the full table is in memory.
-pub async fn load_ring_regions(
-    pool: &PgPool,
-) -> Result<HashMap<i32, RingRegion>, sqlx::Error> {
+pub async fn load_ring_regions(pool: &PgPool) -> Result<HashMap<i32, RingRegion>, sqlx::Error> {
     use sqlx::Row;
 
     let rows = sqlx::query(
@@ -46,7 +44,7 @@ pub async fn load_ring_regions(
                 r.destination_region_ids, r.point_set_id, w.world AS world_name \
            FROM resources.ring_transport_regions r \
            JOIN resources.worlds w ON r.world_id = w.world_id \
-          ORDER BY r.region_id"
+          ORDER BY r.region_id",
     )
     .fetch_all(pool)
     .await?;
@@ -60,25 +58,28 @@ pub async fn load_ring_regions(
         // routing data.
         let dests: Option<Vec<i32>> = r.try_get("destination_region_ids")?;
         let dests = dests.unwrap_or_default();
-        regions.insert(region_id, RingRegion {
+        regions.insert(
             region_id,
-            world_id: r.get("world_id"),
-            world_name: r.get("world_name"),
-            x: r.get("x"),
-            y: r.get("y"),
-            z: r.get("z"),
-            tag: r.get("tag"),
-            // height/radius are NOT NULL in the schema — a decode error here
-            // means real corruption (wrong column type, malformed numeric).
-            // Bubble up so startup fails loudly instead of producing a
-            // zero-radius pad the trigger volume can't see players entering.
-            height: r.try_get::<f32, _>("height")?,
-            radius: r.try_get::<f32, _>("radius")?,
-            event_set_id: r.get("event_set_id"),
-            display_name_id: r.get("display_name_id"),
-            destination_ids: dests,
-            point_set_id: r.get("point_set_id"),
-        });
+            RingRegion {
+                region_id,
+                world_id: r.get("world_id"),
+                world_name: r.get("world_name"),
+                x: r.get("x"),
+                y: r.get("y"),
+                z: r.get("z"),
+                tag: r.get("tag"),
+                // height/radius are NOT NULL in the schema — a decode error here
+                // means real corruption (wrong column type, malformed numeric).
+                // Bubble up so startup fails loudly instead of producing a
+                // zero-radius pad the trigger volume can't see players entering.
+                height: r.try_get::<f32, _>("height")?,
+                radius: r.try_get::<f32, _>("radius")?,
+                event_set_id: r.get("event_set_id"),
+                display_name_id: r.get("display_name_id"),
+                destination_ids: dests,
+                point_set_id: r.get("point_set_id"),
+            },
+        );
     }
 
     // postLoad: filter self-references and dangling destinations.
@@ -87,11 +88,18 @@ pub async fn load_ring_regions(
         let mut filtered = Vec::with_capacity(region.destination_ids.len());
         for &dst in &region.destination_ids {
             if dst == *id {
-                tracing::warn!(region_id = id, "ring region lists itself as destination — dropping");
+                tracing::warn!(
+                    region_id = id,
+                    "ring region lists itself as destination — dropping"
+                );
                 continue;
             }
             if !known.contains(&dst) {
-                tracing::warn!(region_id = id, dst, "ring region destination not in table — dropping");
+                tracing::warn!(
+                    region_id = id,
+                    dst,
+                    "ring region destination not in table — dropping"
+                );
                 continue;
             }
             filtered.push(dst);

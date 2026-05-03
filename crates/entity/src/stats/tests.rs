@@ -181,10 +181,16 @@ fn statlist_serialize_all_wire_format() {
     let mut list = StatList::new();
     // Apply archetype so we have known values
     let arch = ArchetypeStatValues {
-        coordination: 15, engagement: 10, fortitude: 12,
-        morale: 13, perception: 14, intelligence: 11,
-        health: 500, focus: 200,
-        health_per_level: 10, focus_per_level: 70,
+        coordination: 15,
+        engagement: 10,
+        fortitude: 12,
+        morale: 13,
+        perception: 14,
+        intelligence: 11,
+        health: 500,
+        focus: 200,
+        health_per_level: 10,
+        focus_per_level: 70,
     };
     list.apply_archetype(&arch);
 
@@ -200,10 +206,25 @@ fn statlist_serialize_all_wire_format() {
     let mut found_health = false;
     for i in 0..count as usize {
         let offset = 4 + i * 16;
-        let id = i32::from_le_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]]);
+        let id = i32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]);
         if id == HEALTH {
-            let cur = i32::from_le_bytes([data[offset+8], data[offset+9], data[offset+10], data[offset+11]]);
-            let max = i32::from_le_bytes([data[offset+12], data[offset+13], data[offset+14], data[offset+15]]);
+            let cur = i32::from_le_bytes([
+                data[offset + 8],
+                data[offset + 9],
+                data[offset + 10],
+                data[offset + 11],
+            ]);
+            let max = i32::from_le_bytes([
+                data[offset + 12],
+                data[offset + 13],
+                data[offset + 14],
+                data[offset + 15],
+            ]);
             assert_eq!(cur, 500);
             assert_eq!(max, 500);
             found_health = true;
@@ -252,10 +273,16 @@ fn statlist_clear_dirty() {
 fn statlist_serialize_base_values() {
     let mut list = StatList::new();
     let arch = ArchetypeStatValues {
-        coordination: 15, engagement: 10, fortitude: 12,
-        morale: 13, perception: 14, intelligence: 11,
-        health: 500, focus: 200,
-        health_per_level: 10, focus_per_level: 70,
+        coordination: 15,
+        engagement: 10,
+        fortitude: 12,
+        morale: 13,
+        perception: 14,
+        intelligence: 11,
+        health: 500,
+        focus: 200,
+        health_per_level: 10,
+        focus_per_level: 70,
     };
     list.apply_archetype(&arch);
 
@@ -267,10 +294,25 @@ fn statlist_serialize_base_values() {
     let mut found = false;
     for i in 0..count as usize {
         let offset = 4 + i * 16;
-        let id = i32::from_le_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]]);
+        let id = i32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]);
         if id == HEALTH {
-            let cur = i32::from_le_bytes([data[offset+8], data[offset+9], data[offset+10], data[offset+11]]);
-            let max = i32::from_le_bytes([data[offset+12], data[offset+13], data[offset+14], data[offset+15]]);
+            let cur = i32::from_le_bytes([
+                data[offset + 8],
+                data[offset + 9],
+                data[offset + 10],
+                data[offset + 11],
+            ]);
+            let max = i32::from_le_bytes([
+                data[offset + 12],
+                data[offset + 13],
+                data[offset + 14],
+                data[offset + 15],
+            ]);
             assert_eq!(cur, 500);
             assert_eq!(max, 500);
             found = true;
@@ -300,9 +342,16 @@ fn stat_ids_match_python_enums() {
 fn scale_for_level_increases_health_and_focus() {
     let mut list = StatList::new();
     let arch = ArchetypeStatValues {
-        coordination: 5, engagement: 4, fortitude: 3, morale: 4,
-        perception: 3, intelligence: 2, health: 760, focus: 1570,
-        health_per_level: 10, focus_per_level: 70,
+        coordination: 5,
+        engagement: 4,
+        fortitude: 3,
+        morale: 4,
+        perception: 3,
+        intelligence: 2,
+        health: 760,
+        focus: 1570,
+        health_per_level: 10,
+        focus_per_level: 70,
     };
     list.apply_archetype(&arch);
 
@@ -331,9 +380,16 @@ fn scale_for_level_increases_health_and_focus() {
 fn scale_for_level_1_is_base() {
     let mut list = StatList::new();
     let arch = ArchetypeStatValues {
-        coordination: 5, engagement: 4, fortitude: 3, morale: 4,
-        perception: 3, intelligence: 2, health: 760, focus: 1570,
-        health_per_level: 10, focus_per_level: 70,
+        coordination: 5,
+        engagement: 4,
+        fortitude: 3,
+        morale: 4,
+        perception: 3,
+        intelligence: 2,
+        health: 760,
+        focus: 1570,
+        health_per_level: 10,
+        focus_per_level: 70,
     };
     list.apply_archetype(&arch);
     list.clear_dirty();
@@ -352,9 +408,16 @@ fn scale_for_level_0_treated_as_1() {
     // stat state. Copilot caught this on PR #107.
     let mut list = StatList::new();
     let arch = ArchetypeStatValues {
-        coordination: 5, engagement: 4, fortitude: 3, morale: 4,
-        perception: 3, intelligence: 2, health: 760, focus: 1570,
-        health_per_level: 10, focus_per_level: 70,
+        coordination: 5,
+        engagement: 4,
+        fortitude: 3,
+        morale: 4,
+        perception: 3,
+        intelligence: 2,
+        health: 760,
+        focus: 1570,
+        health_per_level: 10,
+        focus_per_level: 70,
     };
     list.apply_archetype(&arch);
     list.scale_for_level(0, &arch);

@@ -191,10 +191,7 @@ mod tests {
 
     #[test]
     fn waypoint_controller_moves_toward_target() {
-        let waypoints = vec![
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(10.0, 0.0, 0.0),
-        ];
+        let waypoints = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0)];
         let mut ctrl = WaypointMovementController::new(waypoints, 5.0);
 
         // After 1 second at speed 5, should be at (5, 0, 0).
@@ -205,10 +202,7 @@ mod tests {
 
     #[test]
     fn waypoint_controller_reaches_end() {
-        let waypoints = vec![
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(10.0, 0.0, 0.0),
-        ];
+        let waypoints = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0)];
         let mut ctrl = WaypointMovementController::new(waypoints, 100.0);
 
         // Speed 100, distance 10 -- should reach in one tick.
@@ -236,10 +230,7 @@ mod tests {
 
     #[test]
     fn waypoint_controller_returns_none_when_complete() {
-        let waypoints = vec![
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(1.0, 0.0, 0.0),
-        ];
+        let waypoints = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(1.0, 0.0, 0.0)];
         let mut ctrl = WaypointMovementController::new(waypoints, 100.0);
         ctrl.update(1.0); // reach the end
         assert!(ctrl.update(1.0).is_none()); // no more movement
@@ -253,10 +244,7 @@ mod tests {
 
     #[test]
     fn waypoint_controller_position() {
-        let waypoints = vec![
-            Vector3::new(0.0, 0.0, 0.0),
-            Vector3::new(10.0, 0.0, 0.0),
-        ];
+        let waypoints = vec![Vector3::new(0.0, 0.0, 0.0), Vector3::new(10.0, 0.0, 0.0)];
         let ctrl = WaypointMovementController::new(waypoints, 5.0);
         assert_eq!(ctrl.position(), Vector3::new(0.0, 0.0, 0.0));
     }

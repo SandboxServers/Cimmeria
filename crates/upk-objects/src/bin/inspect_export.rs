@@ -59,10 +59,17 @@ fn main() {
                 for (i, mip) in tex.mips.iter().enumerate() {
                     println!(
                         "    [{}] {}x{} — {} bytes{}",
-                        i, mip.size_x, mip.size_y, mip.data.len(),
-                        if mip.is_bulk_compressed { " (LZO/ZLIB compressed)" }
-                        else if mip.data.is_empty() { " (external/empty)" }
-                        else { "" }
+                        i,
+                        mip.size_x,
+                        mip.size_y,
+                        mip.data.len(),
+                        if mip.is_bulk_compressed {
+                            " (LZO/ZLIB compressed)"
+                        } else if mip.data.is_empty() {
+                            " (external/empty)"
+                        } else {
+                            ""
+                        }
                     );
                 }
             }
@@ -78,16 +85,23 @@ fn main() {
                 println!("\n--- StaticMesh ---");
                 println!(
                     "  Bounds: origin=({:.1}, {:.1}, {:.1}) extent=({:.1}, {:.1}, {:.1}) r={:.1}",
-                    mesh.bounds.origin[0], mesh.bounds.origin[1], mesh.bounds.origin[2],
-                    mesh.bounds.extent[0], mesh.bounds.extent[1], mesh.bounds.extent[2],
+                    mesh.bounds.origin[0],
+                    mesh.bounds.origin[1],
+                    mesh.bounds.origin[2],
+                    mesh.bounds.extent[0],
+                    mesh.bounds.extent[1],
+                    mesh.bounds.extent[2],
                     mesh.bounds.sphere_radius
                 );
                 println!("  LODs:   {}", mesh.lod_models.len());
                 for (i, lod) in mesh.lod_models.iter().enumerate() {
                     println!(
                         "    [{}] {} verts, {} tris, {} sections, {} indices",
-                        i, lod.num_vertices, lod.num_triangles,
-                        lod.sections.len(), lod.indices.len()
+                        i,
+                        lod.num_vertices,
+                        lod.num_triangles,
+                        lod.sections.len(),
+                        lod.indices.len()
                     );
                     if let Some(v) = lod.vertices.first() {
                         println!(
@@ -112,14 +126,22 @@ fn main() {
             if offset >= data.len() {
                 continue;
             }
-            let (props, end_offset) = cimmeria_upk::parse_tagged_properties_with_end(&data, offset, &pkg.names);
+            let (props, end_offset) =
+                cimmeria_upk::parse_tagged_properties_with_end(&data, offset, &pkg.names);
             if !props.is_empty() {
-                println!("\n--- Properties (offset {}, end at {}) ---", offset, end_offset);
+                println!(
+                    "\n--- Properties (offset {}, end at {}) ---",
+                    offset, end_offset
+                );
                 for p in &props {
                     let type_str = prop_type_name(&p.value);
                     println!("  {} ({}) = {:?}", p.name, type_str, p.value);
                 }
-                println!("\n--- Post-property binary (offset 0x{:X}, {} bytes remaining) ---", end_offset, data.len().saturating_sub(end_offset));
+                println!(
+                    "\n--- Post-property binary (offset 0x{:X}, {} bytes remaining) ---",
+                    end_offset,
+                    data.len().saturating_sub(end_offset)
+                );
                 break;
             }
         }
@@ -129,19 +151,36 @@ fn main() {
     if show_props && show_hex {
         // Find post-property binary offset
         for &offset in &[0usize, 4, 32] {
-            if offset >= data.len() { continue; }
-            let (props, end_offset) = cimmeria_upk::parse_tagged_properties_with_end(&data, offset, &pkg.names);
+            if offset >= data.len() {
+                continue;
+            }
+            let (props, end_offset) =
+                cimmeria_upk::parse_tagged_properties_with_end(&data, offset, &pkg.names);
             if !props.is_empty() {
                 let remaining = data.len().saturating_sub(end_offset);
                 let dump_len = remaining.min(256);
-                println!("\n--- Post-property hex (offset 0x{:X}, first {} of {} bytes) ---", end_offset, dump_len, remaining);
-                for (i, chunk) in data[end_offset..end_offset + dump_len].chunks(16).enumerate() {
+                println!(
+                    "\n--- Post-property hex (offset 0x{:X}, first {} of {} bytes) ---",
+                    end_offset, dump_len, remaining
+                );
+                for (i, chunk) in data[end_offset..end_offset + dump_len]
+                    .chunks(16)
+                    .enumerate()
+                {
                     print!("{:04x}: ", end_offset + i * 16);
-                    for b in chunk { print!("{:02x} ", b); }
-                    for _ in chunk.len()..16 { print!("   "); }
+                    for b in chunk {
+                        print!("{:02x} ", b);
+                    }
+                    for _ in chunk.len()..16 {
+                        print!("   ");
+                    }
                     print!(" |");
                     for b in chunk {
-                        let c = if *b >= 0x20 && *b < 0x7f { *b as char } else { '.' };
+                        let c = if *b >= 0x20 && *b < 0x7f {
+                            *b as char
+                        } else {
+                            '.'
+                        };
                         print!("{}", c);
                     }
                     println!("|");

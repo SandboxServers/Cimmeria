@@ -2,8 +2,8 @@
 //!
 //! Usage: extract-kismet <file.umap|zone_dir> [--summary] [--graph]
 
-use cimmeria_upk::Package;
 use cimmeria_upk::objects::kismet::{self, KismetNode};
+use cimmeria_upk::Package;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -30,7 +30,7 @@ fn main() {
             .filter(|e| {
                 e.path()
                     .extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("umap"))
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("umap"))
             })
             .map(|e| e.path())
             .collect();
@@ -41,11 +41,7 @@ fn main() {
     };
 
     for file_path in &files {
-        let tile_name = file_path
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let tile_name = file_path.file_name().unwrap().to_string_lossy().to_string();
         tile_count += 1;
 
         match Package::open(file_path.to_str().unwrap()) {
@@ -71,7 +67,7 @@ fn main() {
         *class_counts.entry(&node.class_name).or_default() += 1;
     }
     let mut sorted: Vec<_> = class_counts.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
 
     // Count content chains (events with output connections)
     let chain_count: usize = all_nodes
@@ -119,7 +115,7 @@ fn main() {
         root_seqs.sort_by_key(|s| &s.full_path);
 
         for seq in root_seqs {
-            print_sequence_tree(&all_nodes, &sequences, seq, 2, &mut std::collections::HashSet::new());
+            print_sequence_tree(&sequences, seq, 2, &mut std::collections::HashSet::new());
         }
 
         // Show wired event chains
@@ -140,7 +136,8 @@ fn main() {
                 } else {
                     format!(" ({})", event.obj_comment)
                 };
-                let total_conns: usize = event.output_links.iter().map(|l| l.connections.len()).sum();
+                let total_conns: usize =
+                    event.output_links.iter().map(|l| l.connections.len()).sum();
                 println!(
                     "  {} [{}] -> {} outputs{}",
                     event.class_name, event.tile, total_conns, comment
@@ -151,7 +148,10 @@ fn main() {
                         let target_desc = target
                             .map(|t| format!("{} '{}'", t.class_name, t.object_name))
                             .unwrap_or_else(|| format!("?{}", conn.target_key));
-                        println!("    -> {} [input {}] {}", link.desc, conn.input_idx, target_desc);
+                        println!(
+                            "    -> {} [input {}] {}",
+                            link.desc, conn.input_idx, target_desc
+                        );
                     }
                 }
             }
@@ -163,7 +163,6 @@ fn main() {
 }
 
 fn print_sequence_tree(
-    all_nodes: &HashMap<String, KismetNode>,
     sequences: &HashMap<String, KismetNode>,
     seq: &KismetNode,
     indent: usize,
@@ -190,7 +189,7 @@ fn print_sequence_tree(
 
     for obj_key in &seq.sequence_objects {
         if let Some(child_seq) = sequences.get(obj_key) {
-            print_sequence_tree(all_nodes, sequences, child_seq, indent + 2, visited);
+            print_sequence_tree(sequences, child_seq, indent + 2, visited);
         }
     }
 }

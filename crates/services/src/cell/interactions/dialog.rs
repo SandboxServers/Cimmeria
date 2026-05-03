@@ -14,18 +14,25 @@ pub async fn send_dialog_display(
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
     let mut args = Vec::with_capacity(17);
-    args.extend_from_slice(&npc_entity_id.to_le_bytes());  // EntityId
-    args.extend_from_slice(&dialog_id.to_le_bytes());       // DialogID
-    args.extend_from_slice(&0i32.to_le_bytes());            // MissionFlags
-    args.push(1);                                           // IsImmediate
-    args.extend_from_slice(&0i32.to_le_bytes());            // aMissionId
+    args.extend_from_slice(&npc_entity_id.to_le_bytes()); // EntityId
+    args.extend_from_slice(&dialog_id.to_le_bytes()); // DialogID
+    args.extend_from_slice(&0i32.to_le_bytes()); // MissionFlags
+    args.push(1); // IsImmediate
+    args.extend_from_slice(&0i32.to_le_bytes()); // aMissionId
 
-    tracing::debug!(player_id, npc_entity_id, dialog_id, "Sending onDialogDisplay");
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id: player_id,
-        method_index: crate::mercury::method_idx::ON_DIALOG_DISPLAY,
-        args,
-    }).await;
+    tracing::debug!(
+        player_id,
+        npc_entity_id,
+        dialog_id,
+        "Sending onDialogDisplay"
+    );
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id: player_id,
+            method_index: crate::mercury::method_idx::ON_DIALOG_DISPLAY,
+            args,
+        })
+        .await;
 }
 
 #[cfg(test)]
@@ -42,8 +49,14 @@ mod tests {
         args.extend_from_slice(&0i32.to_le_bytes()); // missionId
 
         assert_eq!(args.len(), 17);
-        assert_eq!(i32::from_le_bytes([args[0], args[1], args[2], args[3]]), npc_id);
-        assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), dialog_id);
+        assert_eq!(
+            i32::from_le_bytes([args[0], args[1], args[2], args[3]]),
+            npc_id
+        );
+        assert_eq!(
+            i32::from_le_bytes([args[4], args[5], args[6], args[7]]),
+            dialog_id
+        );
         assert_eq!(args[12], 1); // isImmediate
     }
 }

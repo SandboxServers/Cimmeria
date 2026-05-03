@@ -158,10 +158,8 @@ impl Visit for FieldVisitor {
     }
 
     fn record_bool(&mut self, field: &Field, value: bool) {
-        self.fields.insert(
-            field.name().to_string(),
-            serde_json::Value::Bool(value),
-        );
+        self.fields
+            .insert(field.name().to_string(), serde_json::Value::Bool(value));
     }
 }
 
@@ -270,8 +268,7 @@ fn auth_signature(
         date.to_lowercase(),
     );
 
-    let mut mac =
-        HmacSha256::new_from_slice(master_key).expect("HMAC accepts any key size");
+    let mut mac = HmacSha256::new_from_slice(master_key).expect("HMAC accepts any key size");
     mac.update(payload.as_bytes());
     B64.encode(mac.finalize().into_bytes())
 }
@@ -315,8 +312,7 @@ fn rfc1123_now() -> String {
 
     const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
-        "Nov", "Dec",
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
 
     format!(

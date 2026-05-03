@@ -48,10 +48,7 @@ fn main() {
             match parse_def_file(&def_path, type_name) {
                 Ok(def) => entity_defs.push(def),
                 Err(e) => {
-                    println!(
-                        "cargo:warning=Failed to parse {}.def: {}",
-                        type_name, e
-                    );
+                    println!("cargo:warning=Failed to parse {}.def: {}", type_name, e);
                 }
             }
         } else {

@@ -48,7 +48,7 @@ fn main() {
         .iter()
         .map(|(k, v)| (k.as_str(), v.len()))
         .collect();
-    class_counts.sort_by(|a, b| b.1.cmp(&a.1));
+    class_counts.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
 
     println!("\nTop 20 classes:");
     for (cls, count) in class_counts.iter().take(20) {
@@ -77,8 +77,6 @@ fn main() {
     );
 
     // Save
-    index
-        .save(Path::new(output))
-        .expect("Failed to save index");
+    index.save(Path::new(output)).expect("Failed to save index");
     println!("Saved to {}", output);
 }

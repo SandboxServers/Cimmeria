@@ -47,15 +47,15 @@ struct XrcMesh {
     nverts: u32,
     npolys: u32,
     nvp: u32,
-    verts: Vec<u16>,     // nverts * 3 (quantized)
-    polys: Vec<u16>,     // npolys * nvp * 2
+    verts: Vec<u16>, // nverts * 3 (quantized)
+    polys: Vec<u16>, // npolys * nvp * 2
     _regs: Vec<u16>,
     _flags: Vec<u16>,
-    areas: Vec<u8>,      // npolys
+    areas: Vec<u8>, // npolys
     // Detail mesh
-    detail_meshes: Vec<u32>,  // nmeshes * 4
-    detail_verts: Vec<f32>,   // nverts * 3
-    detail_tris: Vec<u8>,     // ntris * 4
+    detail_meshes: Vec<u32>, // nmeshes * 4
+    detail_verts: Vec<f32>,  // nverts * 3
+    detail_tris: Vec<u8>,    // ntris * 4
     detail_nmeshes: u32,
     detail_nverts: u32,
     detail_ntris: u32,
@@ -89,8 +89,7 @@ fn read_u8(r: &mut impl IoRead) -> std::io::Result<u8> {
 }
 
 fn load_xrc(path: &str) -> Result<XrcMesh, String> {
-    let file = std::fs::File::open(path)
-        .map_err(|e| format!("Failed to open nav file: {e}"))?;
+    let file = std::fs::File::open(path).map_err(|e| format!("Failed to open nav file: {e}"))?;
     let mut r = BufReader::new(file);
 
     // Section 1: Agent parameters
@@ -133,11 +132,17 @@ fn load_xrc(path: &str) -> Result<XrcMesh, String> {
 
     // Section 6-8: Region IDs, flags, areas
     let mut regs = vec![0u16; npolys as usize];
-    for v in &mut regs { *v = read_u16(&mut r).map_err(|e| format!("Read error: {e}"))?; }
+    for v in &mut regs {
+        *v = read_u16(&mut r).map_err(|e| format!("Read error: {e}"))?;
+    }
     let mut flags = vec![0u16; npolys as usize];
-    for v in &mut flags { *v = read_u16(&mut r).map_err(|e| format!("Read error: {e}"))?; }
+    for v in &mut flags {
+        *v = read_u16(&mut r).map_err(|e| format!("Read error: {e}"))?;
+    }
     let mut areas = vec![0u8; npolys as usize];
-    for v in &mut areas { *v = read_u8(&mut r).map_err(|e| format!("Read error: {e}"))?; }
+    for v in &mut areas {
+        *v = read_u8(&mut r).map_err(|e| format!("Read error: {e}"))?;
+    }
 
     // Section 9: Detail mesh metadata
     let detail_nmeshes = read_u32(&mut r).map_err(|e| format!("Read error: {e}"))?;
@@ -146,22 +151,42 @@ fn load_xrc(path: &str) -> Result<XrcMesh, String> {
 
     // Section 10: Detail mesh descriptors
     let mut detail_meshes = vec![0u32; (detail_nmeshes * 4) as usize];
-    for v in &mut detail_meshes { *v = read_u32(&mut r).map_err(|e| format!("Read error: {e}"))?; }
+    for v in &mut detail_meshes {
+        *v = read_u32(&mut r).map_err(|e| format!("Read error: {e}"))?;
+    }
 
     // Section 11: Detail vertices (float32)
     let mut detail_verts = vec![0.0f32; (detail_nverts * 3) as usize];
-    for v in &mut detail_verts { *v = read_f32(&mut r).map_err(|e| format!("Read error: {e}"))?; }
+    for v in &mut detail_verts {
+        *v = read_f32(&mut r).map_err(|e| format!("Read error: {e}"))?;
+    }
 
     // Section 12: Detail triangles
     let mut detail_tris = vec![0u8; (detail_ntris * 4) as usize];
-    r.read_exact(&mut detail_tris).map_err(|e| format!("Read error: {e}"))?;
+    r.read_exact(&mut detail_tris)
+        .map_err(|e| format!("Read error: {e}"))?;
 
     Ok(XrcMesh {
-        cs, ch, bmin, _bmax: bmax, nverts, npolys, nvp,
-        verts, polys, _regs: regs, _flags: flags, areas,
-        detail_meshes, detail_verts, detail_tris,
-        detail_nmeshes, detail_nverts, detail_ntris,
-        agent_height, agent_radius,
+        cs,
+        ch,
+        bmin,
+        _bmax: bmax,
+        nverts,
+        npolys,
+        nvp,
+        verts,
+        polys,
+        _regs: regs,
+        _flags: flags,
+        areas,
+        detail_meshes,
+        detail_verts,
+        detail_tris,
+        detail_nmeshes,
+        detail_nverts,
+        detail_ntris,
+        agent_height,
+        agent_radius,
     })
 }
 
@@ -195,11 +220,17 @@ fn build_triangles(mesh: &XrcMesh) -> (Vec<f32>, Vec<u8>) {
         let base_tri = mesh.detail_meshes[i * 4 + 2] as usize;
         let tri_count = mesh.detail_meshes[i * 4 + 3] as usize;
 
-        let area_id = if i < mesh.areas.len() { mesh.areas[i] } else { 0 };
+        let area_id = if i < mesh.areas.len() {
+            mesh.areas[i]
+        } else {
+            0
+        };
 
         for t in 0..tri_count {
             let ti = (base_tri + t) * 4;
-            if ti + 2 >= mesh.detail_tris.len() { break; }
+            if ti + 2 >= mesh.detail_tris.len() {
+                break;
+            }
 
             let idx0 = mesh.detail_tris[ti] as usize;
             let idx1 = mesh.detail_tris[ti + 1] as usize;
@@ -276,8 +307,16 @@ pub async fn load_navmesh(
     Ok(NavMeshData {
         vertices,
         area_ids,
-        bounds_min: [bmin[0].min(bmax[0]), bmin[1].min(bmax[1]), bmin[2].min(bmax[2])],
-        bounds_max: [bmin[0].max(bmax[0]), bmin[1].max(bmax[1]), bmin[2].max(bmax[2])],
+        bounds_min: [
+            bmin[0].min(bmax[0]),
+            bmin[1].min(bmax[1]),
+            bmin[2].min(bmax[2]),
+        ],
+        bounds_max: [
+            bmin[0].max(bmax[0]),
+            bmin[1].max(bmax[1]),
+            bmin[2].max(bmax[2]),
+        ],
         poly_count: mesh.npolys,
         tri_count,
         agent_height: mesh.agent_height,
@@ -300,7 +339,8 @@ pub async fn list_navmeshes(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().map_or(false, |ext| ext == "nav") {
-            let name = path.file_stem()
+            let name = path
+                .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);

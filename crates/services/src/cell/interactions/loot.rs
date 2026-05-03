@@ -25,36 +25,47 @@ pub(super) async fn send_loot_display(
     space_mgr: &SpaceManager,
 ) {
     // Read loot items from the target entity
-    let loot_items: Vec<(Option<i32>, i32, i32)> = space_mgr.get_entity(npc_entity_id as u32)
-        .map(|e| e.loot.iter().map(|li| (li.design_id, li.quantity, li.index)).collect())
+    let loot_items: Vec<(Option<i32>, i32, i32)> = space_mgr
+        .get_entity(npc_entity_id as u32)
+        .map(|e| {
+            e.loot
+                .iter()
+                .map(|li| (li.design_id, li.quantity, li.index))
+                .collect()
+        })
         .unwrap_or_default();
 
     let count = loot_items.len() as u32;
     // Per item: 4 (itemID) + 2 (quantity i16) + 4 (index) + 4 (typeID) = 14 bytes
     let mut args = Vec::with_capacity(4 + 4 + loot_items.len() * 14 + 1);
-    args.extend_from_slice(&npc_entity_id.to_le_bytes());  // EntityID
-    args.extend_from_slice(&count.to_le_bytes());           // ARRAY count
+    args.extend_from_slice(&npc_entity_id.to_le_bytes()); // EntityID
+    args.extend_from_slice(&count.to_le_bytes()); // ARRAY count
 
     for (design_id, quantity, index) in &loot_items {
         let item_id = design_id.unwrap_or(0); // 0 = naquadah (cash)
         let type_id = if design_id.is_some() { 1i32 } else { 2i32 }; // LOOT_Item=1, LOOT_Cash=2
-        args.extend_from_slice(&item_id.to_le_bytes());          // itemID: INT32
+        args.extend_from_slice(&item_id.to_le_bytes()); // itemID: INT32
         args.extend_from_slice(&(*quantity as i16).to_le_bytes()); // quantity: INT16
-        args.extend_from_slice(&index.to_le_bytes());             // index: INT32
-        args.extend_from_slice(&type_id.to_le_bytes());           // typeID: INT32
+        args.extend_from_slice(&index.to_le_bytes()); // index: INT32
+        args.extend_from_slice(&type_id.to_le_bytes()); // typeID: INT32
     }
 
     args.push(initial);
 
     tracing::debug!(
-        player_id, npc_entity_id, count, initial,
+        player_id,
+        npc_entity_id,
+        count,
+        initial,
         "Sending onLootDisplay"
     );
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id: player_id,
-        method_index: crate::mercury::method_idx::ON_LOOT_DISPLAY,
-        args,
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id: player_id,
+            method_index: crate::mercury::method_idx::ON_LOOT_DISPLAY,
+            args,
+        })
+        .await;
 }
 
 /// Handle `lootItem(index)` cell method call.
@@ -74,7 +85,8 @@ pub async fn handle_loot_item(
     space_mgr: &mut SpaceManager,
 ) {
     // Find which entity the player is looting
-    let looting_target = space_mgr.get_entity(entity_id)
+    let looting_target = space_mgr
+        .get_entity(entity_id)
         .and_then(|e| e.looting_entity);
 
     let target_eid = match looting_target {
@@ -93,7 +105,8 @@ pub async fn handle_loot_item(
         Some(id) => id,
         None => {
             tracing::warn!(
-                entity_id, target_eid,
+                entity_id,
+                target_eid,
                 "lootItem: looter has no player_id; aborting without removing the drop"
             );
             return;
@@ -105,7 +118,12 @@ pub async fn handle_loot_item(
         let target = match space_mgr.get_entity_mut(target_eid) {
             Some(e) => e,
             None => {
-                tracing::warn!(entity_id, target_eid, index, "lootItem: target entity not found");
+                tracing::warn!(
+                    entity_id,
+                    target_eid,
+                    index,
+                    "lootItem: target entity not found"
+                );
                 return;
             }
         };
@@ -127,30 +145,38 @@ pub async fn handle_loot_item(
         "Player looted item"
     );
 
-    if removed_item.design_id.is_none() {
-        // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
-        let _ = tx.send(CellToBaseMsg::GrantCash {
-            entity_id,
-            player_id,
-            amount: removed_item.quantity,
-        }).await;
-    } else {
+    if let Some(design_id) = removed_item.design_id {
         // Item — grant via GrantItem to base for persistence + onUpdateItem
-        let design_id = removed_item.design_id.unwrap();
         // Look up preferred container from item_containers cache, default to INV_Main (1)
-        let container_id = space_mgr.item_containers.get(&design_id).copied().unwrap_or(1);
-        let _ = tx.send(CellToBaseMsg::GrantItem {
-            entity_id,
-            player_id,
-            item_id: design_id,
-            container_id,
-            count: removed_item.quantity,
-        }).await;
+        let container_id = space_mgr
+            .item_containers
+            .get(&design_id)
+            .copied()
+            .unwrap_or(1);
+        let _ = tx
+            .send(CellToBaseMsg::GrantItem {
+                entity_id,
+                player_id,
+                item_id: design_id,
+                container_id,
+                count: removed_item.quantity,
+            })
+            .await;
+    } else {
+        // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
+        let _ = tx
+            .send(CellToBaseMsg::GrantCash {
+                entity_id,
+                player_id,
+                amount: removed_item.quantity,
+            })
+            .await;
     }
 
     // Check if loot is now empty
-    let loot_empty = space_mgr.get_entity(target_eid)
-        .map_or(true, |e| e.loot.is_empty());
+    let loot_empty = space_mgr
+        .get_entity(target_eid)
+        .is_none_or(|e| e.loot.is_empty());
 
     if loot_empty {
         // Clear ONLY the loot bit; preserve other interaction flags (quest tags,
@@ -168,10 +194,13 @@ pub async fn handle_loot_item(
         };
         // Broadcast remaining flags to witnesses (not blanket 0).
         crate::cell::abilities::send_entity_method(
-            target_eid, crate::mercury::method_idx::INTERACTION_TYPE,
+            target_eid,
+            crate::mercury::method_idx::INTERACTION_TYPE,
             (flags_to_send as u64).to_le_bytes().to_vec(),
-            tx, space_mgr,
-        ).await;
+            tx,
+            space_mgr,
+        )
+        .await;
 
         // Send the empty loot list to the player so the loot window closes.
         // Loot.lua hides the window when getLootCount()==0 inside onLootDisplay.
@@ -227,17 +256,26 @@ mod tests {
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
 
         // Looter — leave player_id as the default (None).
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         let npc_id = mgr.allocate_npc_id();
-        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
 
         // Seed loot on the corpse and mark the player as looting it.
         if let Some(npc) = mgr.get_entity_mut(npc_id) {
-            npc.loot.push(LootItem { design_id: None, quantity: 50, index: 1 });
+            npc.loot.push(LootItem {
+                design_id: None,
+                quantity: 50,
+                index: 1,
+            });
         }
         if let Some(p) = mgr.get_entity_mut(1) {
             p.looting_entity = Some(npc_id);
-            assert!(p.player_id.is_none(), "default CellEntity must have no player_id for this test");
+            assert!(
+                p.player_id.is_none(),
+                "default CellEntity must have no player_id for this test"
+            );
         }
 
         let (tx, mut rx) = mpsc::channel(16);
@@ -247,7 +285,10 @@ mod tests {
         // player_id check, leaving the player with nothing AND the corpse
         // empty).
         let loot_after = mgr.get_entity(npc_id).map(|e| e.loot.len()).unwrap_or(0);
-        assert_eq!(loot_after, 1, "corpse loot must be intact when looter has no player_id");
+        assert_eq!(
+            loot_after, 1,
+            "corpse loot must be intact when looter has no player_id"
+        );
 
         // No GrantCash / GrantItem must have been queued.
         while let Ok(msg) = rx.try_recv() {

@@ -13,8 +13,7 @@ pub fn create(session: &MinigameSession) -> Option<Box<dyn MinigameInstance>> {
         // TODO: Port Alignment and GoauldCrystals from Python
         // "Alignment" => Box::new(alignment::AlignmentGame::new(session)),
         // "GoauldCrystals" | "CrystalGame" => Box::new(goauld_crystals::GoauldCrystalsGame::new(session)),
-        "Hack" | "Activate" | "Analyze" | "Bypass"
-        | "Converse" | "ConverseBasicHumanoid" => {
+        "Hack" | "Activate" | "Analyze" | "Bypass" | "Converse" | "ConverseBasicHumanoid" => {
             Box::new(placeholder::PlaceholderGame::new(&session.game_name))
         }
         _ => {

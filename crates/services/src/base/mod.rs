@@ -16,20 +16,20 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 
-pub(crate) mod chardef;
-pub(crate) mod resources;
-pub(crate) mod helpers;
-pub(crate) mod connect_loop;
-pub(crate) mod login;
 pub(crate) mod character;
 pub(crate) mod character_create;
+pub(crate) mod chardef;
+pub(crate) mod connect_loop;
 pub(crate) mod cooked_data;
+pub(crate) mod dispatch;
+pub(crate) mod helpers;
+pub(crate) mod login;
 pub(crate) mod outbox;
+pub(crate) mod resources;
 mod service;
+pub(crate) mod tick_sync;
 pub(crate) mod world_entry;
 pub(crate) mod world_entry_appearance;
-pub(crate) mod dispatch;
-pub(crate) mod tick_sync;
 
 pub use service::BaseService;
 
@@ -143,8 +143,10 @@ mod tests {
 
     #[tokio::test]
     async fn start_sets_running() {
-        let mut config = ServerConfig::default();
-        config.base_port = 0;
+        let config = ServerConfig {
+            base_port: 0,
+            ..ServerConfig::default()
+        };
         let mut svc = BaseService::new(&config);
         svc.start().await.unwrap();
         assert!(svc.is_running);

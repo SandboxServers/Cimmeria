@@ -29,8 +29,13 @@ const DEFAULT_GROUND_TARGET_RADIUS: f32 = 5.0;
 /// later effects for a radius — chains author the primary-effect radius on
 /// the first effect, and silently picking up a different effect's
 /// `Radius` would diverge from the authored intent.
-fn ability_radius(ability_def: &Option<cimmeria_entity::abilities::AbilityDef>, space_mgr: &SpaceManager) -> f32 {
-    let Some(def) = ability_def else { return DEFAULT_GROUND_TARGET_RADIUS };
+fn ability_radius(
+    ability_def: &Option<cimmeria_entity::abilities::AbilityDef>,
+    space_mgr: &SpaceManager,
+) -> f32 {
+    let Some(def) = ability_def else {
+        return DEFAULT_GROUND_TARGET_RADIUS;
+    };
     let Some(&first_effect_id) = def.effect_ids.first() else {
         return DEFAULT_GROUND_TARGET_RADIUS;
     };
@@ -38,7 +43,11 @@ fn ability_radius(ability_def: &Option<cimmeria_entity::abilities::AbilityDef>, 
         return DEFAULT_GROUND_TARGET_RADIUS;
     };
     let r = effect.param_f32("Radius");
-    if r > 0.0 { r } else { DEFAULT_GROUND_TARGET_RADIUS }
+    if r > 0.0 {
+        r
+    } else {
+        DEFAULT_GROUND_TARGET_RADIUS
+    }
 }
 
 /// Handle a ground-targeted ability — applies damage to **every** hostile
@@ -86,7 +95,10 @@ pub async fn handle_use_ability_on_ground(
     let attacker_space = match space_mgr.get_entity(entity_id) {
         Some(e) => e.space_id,
         None => {
-            tracing::warn!(entity_id, "useAbilityOnGroundTarget: attacker entity not found");
+            tracing::warn!(
+                entity_id,
+                "useAbilityOnGroundTarget: attacker entity not found"
+            );
             return Vec::new();
         }
     };
@@ -127,13 +139,22 @@ pub async fn handle_use_ability_on_ground(
     // handle_use_ability bails before the cooldown starts and the player
     // can spam-click. Falling back to target_id = 0 keeps the
     // cooldown/ammo charge in that case.
-    let max_range = ability_def
-        .as_ref()
-        .map_or(30.0, |d| if d.max_range > 0 { d.max_range as f32 } else { 30.0 });
+    let max_range = ability_def.as_ref().map_or(30.0, |d| {
+        if d.max_range > 0 {
+            d.max_range as f32
+        } else {
+            30.0
+        }
+    });
 
-    let primary_in_range = targets.first().map_or(false, |&(target_eid, _)| {
-        match (space_mgr.get_entity(entity_id), space_mgr.get_entity(target_eid)) {
-            (Some(attacker), Some(target)) => attacker.position.distance_to(&target.position) <= max_range,
+    let primary_in_range = targets.first().is_some_and(|&(target_eid, _)| {
+        match (
+            space_mgr.get_entity(entity_id),
+            space_mgr.get_entity(target_eid),
+        ) {
+            (Some(attacker), Some(target)) => {
+                attacker.position.distance_to(&target.position) <= max_range
+            }
             _ => false,
         }
     });
@@ -160,30 +181,41 @@ pub async fn handle_use_ability_on_ground(
     // Snapshot HEALTH for every target BEFORE damage so we can detect
     // alive→dead transitions per-target after the cast resolves and
     // surface them to the caller for `fire_entity_death`.
-    let alive_before: Vec<(u32, bool)> = targets.iter().map(|&(eid, _)| {
-        let alive = space_mgr.get_entity(eid).map_or(false, |e|
-            e.stats.get(cimmeria_entity::stats::HEALTH).map_or(false, |s| s.cur > 0));
-        (eid, alive)
-    }).collect();
+    let alive_before: Vec<(u32, bool)> = targets
+        .iter()
+        .map(|&(eid, _)| {
+            let alive = space_mgr.get_entity(eid).is_some_and(|e| {
+                e.stats
+                    .get(cimmeria_entity::stats::HEALTH)
+                    .is_some_and(|s| s.cur > 0)
+            });
+            (eid, alive)
+        })
+        .collect();
 
     // Primary target: full handle_use_ability path (consumes ammo,
     // starts cooldown, sends timer/sequence/state-field, applies damage).
     let (primary_eid, _) = targets[0];
     tracing::debug!(
-        entity_id, ability_id, ?ground, primary_eid, radius,
+        entity_id,
+        ability_id,
+        ?ground,
+        primary_eid,
+        radius,
         target_count = targets.len(),
         "useAbilityOnGroundTarget: AoE — primary target via handle_use_ability"
     );
-    let primary_committed = handle_use_ability(
-        entity_id, ability_id, primary_eid as i32, tx, space_mgr,
-    ).await;
+    let primary_committed =
+        handle_use_ability(entity_id, ability_id, primary_eid as i32, tx, space_mgr).await;
 
     if !primary_committed {
         // Pre-consume guard rejected the cast (cooldown, ammo, dead, etc.).
         // Don't apply secondary damage — that would deal free hits despite
         // the primary failing validation. Empty Vec means no kills.
         tracing::debug!(
-            entity_id, ability_id, primary_eid,
+            entity_id,
+            ability_id,
+            primary_eid,
             "useAbilityOnGroundTarget: primary cast rejected; suppressing AoE secondaries"
         );
         return Vec::new();
@@ -194,11 +226,15 @@ pub async fn handle_use_ability_on_ground(
     // `next_effect_id()` call mints a unique value off the attacker's
     // ability manager.
     for &(secondary_eid, _) in targets.iter().skip(1) {
-        let secondary_seq = space_mgr.get_entity_mut(entity_id)
+        let secondary_seq = space_mgr
+            .get_entity_mut(entity_id)
             .map(|e| e.abilities.next_effect_id())
             .unwrap_or(0);
         tracing::debug!(
-            entity_id, ability_id, secondary_eid, secondary_seq,
+            entity_id,
+            ability_id,
+            secondary_eid,
+            secondary_seq,
             "useAbilityOnGroundTarget: AoE — secondary target via apply_damage_to_target"
         );
         apply_damage_to_target(
@@ -211,7 +247,8 @@ pub async fn handle_use_ability_on_ground(
             false,
             tx,
             space_mgr,
-        ).await;
+        )
+        .await;
     }
 
     // Collect alive→dead transitions across all targets so the caller can
@@ -222,8 +259,11 @@ pub async fn handle_use_ability_on_ground(
         if !was_alive {
             continue;
         }
-        let now_dead = space_mgr.get_entity(eid).map_or(false, |e|
-            e.stats.get(cimmeria_entity::stats::HEALTH).map_or(false, |s| s.cur <= 0));
+        let now_dead = space_mgr.get_entity(eid).is_some_and(|e| {
+            e.stats
+                .get(cimmeria_entity::stats::HEALTH)
+                .is_some_and(|s| s.cur <= 0)
+        });
         if now_dead {
             deaths.push(eid);
         }
@@ -250,15 +290,18 @@ mod tests {
 
         let mut effect_params = HashMap::new();
         effect_params.insert("Radius".to_string(), "12.5".to_string());
-        mgr.effect_defs.insert(500, EffectDef {
-            effect_id: 500,
-            ability_id: 999,
-            delay: 0,
-            effect_sequence: 0,
-            event_set_id: None,
-            script_name: None,
-            params: effect_params,
-        });
+        mgr.effect_defs.insert(
+            500,
+            EffectDef {
+                effect_id: 500,
+                ability_id: 999,
+                delay: 0,
+                effect_sequence: 0,
+                event_set_id: None,
+                script_name: None,
+                params: effect_params,
+            },
+        );
 
         let ability = AbilityDef {
             ability_id: 999,
@@ -301,20 +344,40 @@ mod tests {
         // Effect with HealthDamage but no Radius → fall back to default.
         let mut effect_params = HashMap::new();
         effect_params.insert("HealthDamage".to_string(), "20".to_string());
-        mgr.effect_defs.insert(501, EffectDef {
-            effect_id: 501, ability_id: 998, delay: 0, effect_sequence: 0,
-            event_set_id: None, script_name: None, params: effect_params,
-        });
+        mgr.effect_defs.insert(
+            501,
+            EffectDef {
+                effect_id: 501,
+                ability_id: 998,
+                delay: 0,
+                effect_sequence: 0,
+                event_set_id: None,
+                script_name: None,
+                params: effect_params,
+            },
+        );
 
         let ability = AbilityDef {
-            ability_id: 998, name: "NoRadius".to_string(),
-            cooldown: 1.0, warmup: 0.0, flags: 0, is_ranged: true,
-            min_range: 0, max_range: 30, target_type_id: 0,
-            effect_ids: vec![501], moniker_ids: vec![],
-            required_ammo: 0, event_set_id: None, velocity: 0.0,
+            ability_id: 998,
+            name: "NoRadius".to_string(),
+            cooldown: 1.0,
+            warmup: 0.0,
+            flags: 0,
+            is_ranged: true,
+            min_range: 0,
+            max_range: 30,
+            target_type_id: 0,
+            effect_ids: vec![501],
+            moniker_ids: vec![],
+            required_ammo: 0,
+            event_set_id: None,
+            velocity: 0.0,
         };
 
-        assert_eq!(ability_radius(&Some(ability), &mgr), DEFAULT_GROUND_TARGET_RADIUS);
+        assert_eq!(
+            ability_radius(&Some(ability), &mgr),
+            DEFAULT_GROUND_TARGET_RADIUS
+        );
     }
 
     // ── Ground-target AoE end-to-end tests ───────────────────────────────
@@ -341,7 +404,11 @@ mod tests {
     /// `Castle_CellBlock`, an ability with required_ammo=1, max_range=30,
     /// and a single effect carrying HealthDamage=30 + Radius=10.0.
     /// Returns `(SpaceManager, tx, rx)` for end-to-end fire tests.
-    fn make_aoe_scenario() -> (SpaceManager, mpsc::Sender<CellToBaseMsg>, mpsc::Receiver<CellToBaseMsg>) {
+    fn make_aoe_scenario() -> (
+        SpaceManager,
+        mpsc::Sender<CellToBaseMsg>,
+        mpsc::Receiver<CellToBaseMsg>,
+    ) {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /><Space WorldName="OtherWorld" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -349,15 +416,22 @@ mod tests {
         mgr.create_startup_spaces(cxml).unwrap();
 
         // Attacker — player at origin with full bandolier.
-        mgr.create_entity(ATTACKER_EID, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(ATTACKER_EID, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
         if let Some(e) = mgr.get_entity_mut(ATTACKER_EID) {
             e.is_player = true;
             e.player_id = Some(100);
             e.abilities.add_ability(GROUND_ABILITY_ID);
-            e.bandolier_items.insert(0, BandolierItem {
-                item_id: 1, clip_size: 30, default_ammo_type: 2,
-                current_ammo: 30, cur_ammo_type: 2,
-            });
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 30,
+                    cur_ammo_type: 2,
+                },
+            );
             if let Some(stat) = e.stats.get_mut(AMMO_SLOT_1) {
                 stat.update(0, 30, 30);
                 stat.clear_dirty();
@@ -368,21 +442,39 @@ mod tests {
         let mut effect_params = HashMap::new();
         effect_params.insert("HealthDamage".to_string(), "30".to_string());
         effect_params.insert("Radius".to_string(), "10.0".to_string());
-        mgr.effect_defs.insert(GROUND_EFFECT_ID, EffectDef {
-            effect_id: GROUND_EFFECT_ID, ability_id: GROUND_ABILITY_ID,
-            delay: 0, effect_sequence: 0, event_set_id: None,
-            script_name: None, params: effect_params,
-        });
+        mgr.effect_defs.insert(
+            GROUND_EFFECT_ID,
+            EffectDef {
+                effect_id: GROUND_EFFECT_ID,
+                ability_id: GROUND_ABILITY_ID,
+                delay: 0,
+                effect_sequence: 0,
+                event_set_id: None,
+                script_name: None,
+                params: effect_params,
+            },
+        );
 
         // Ability: ranged, required_ammo=1, max_range=30, no warmup.
-        mgr.ability_defs.insert(GROUND_ABILITY_ID, AbilityDef {
-            ability_id: GROUND_ABILITY_ID, name: "GroundAoE".to_string(),
-            cooldown: 0.5, warmup: 0.0, flags: 0,
-            is_ranged: true, min_range: 0, max_range: 30,
-            target_type_id: 0, effect_ids: vec![GROUND_EFFECT_ID],
-            moniker_ids: vec![], required_ammo: 1,
-            event_set_id: None, velocity: 0.0,
-        });
+        mgr.ability_defs.insert(
+            GROUND_ABILITY_ID,
+            AbilityDef {
+                ability_id: GROUND_ABILITY_ID,
+                name: "GroundAoE".to_string(),
+                cooldown: 0.5,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: true,
+                min_range: 0,
+                max_range: 30,
+                target_type_id: 0,
+                effect_ids: vec![GROUND_EFFECT_ID],
+                moniker_ids: vec![],
+                required_ammo: 1,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
 
         let (tx, rx) = mpsc::channel(256);
         (mgr, tx, rx)
@@ -421,8 +513,13 @@ mod tests {
 
         // Fire ground ability at origin.
         let deaths = handle_use_ability_on_ground(
-            ATTACKER_EID, GROUND_ABILITY_ID, [0.0, 0.0, 0.0], &tx, &mut mgr,
-        ).await;
+            ATTACKER_EID,
+            GROUND_ABILITY_ID,
+            [0.0, 0.0, 0.0],
+            &tx,
+            &mut mgr,
+        )
+        .await;
 
         // No one died (200 HP - 60 damage = 140 left, all alive).
         assert!(deaths.is_empty(), "no kills expected — all NPCs had 200 HP");
@@ -430,7 +527,10 @@ mod tests {
         // All three in-radius same-space NPCs should have taken damage.
         for eid in [100u32, 101, 102] {
             let hp = mgr.get_entity(eid).unwrap().stats.get(HEALTH).unwrap().cur;
-            assert!(hp < 200, "hostile {eid} in radius should have taken damage; hp={hp}");
+            assert!(
+                hp < 200,
+                "hostile {eid} in radius should have taken damage; hp={hp}"
+            );
         }
 
         // The out-of-radius NPC must be untouched.
@@ -450,7 +550,10 @@ mod tests {
         // Ammo should have decremented exactly once (primary consumed; AoE
         // secondaries pass needs_ammo_stat_send=false).
         let ammo = mgr.get_entity(ATTACKER_EID).unwrap().bandolier_items[&0].current_ammo;
-        assert_eq!(ammo, 29, "ammo should decrement once per AoE invocation, got {ammo}");
+        assert_eq!(
+            ammo, 29,
+            "ammo should decrement once per AoE invocation, got {ammo}"
+        );
     }
 
     #[tokio::test]
@@ -468,27 +571,40 @@ mod tests {
 
         // Force the ability onto cooldown so handle_use_ability rejects.
         if let Some(e) = mgr.get_entity_mut(ATTACKER_EID) {
-            e.abilities.start_ability_cooldown(
-                GROUND_ABILITY_ID, std::time::Duration::from_secs(60),
-            );
+            e.abilities
+                .start_ability_cooldown(GROUND_ABILITY_ID, std::time::Duration::from_secs(60));
         }
 
         let deaths = handle_use_ability_on_ground(
-            ATTACKER_EID, GROUND_ABILITY_ID, [0.0, 0.0, 0.0], &tx, &mut mgr,
-        ).await;
-        assert!(deaths.is_empty(), "no deaths expected when primary rejected");
+            ATTACKER_EID,
+            GROUND_ABILITY_ID,
+            [0.0, 0.0, 0.0],
+            &tx,
+            &mut mgr,
+        )
+        .await;
+        assert!(
+            deaths.is_empty(),
+            "no deaths expected when primary rejected"
+        );
 
         // BOTH NPCs must be untouched — the primary was rejected so the
         // secondary loop must not have run.
         for eid in [200u32, 201] {
             let hp = mgr.get_entity(eid).unwrap().stats.get(HEALTH).unwrap().cur;
-            assert_eq!(hp, 200, "NPC {eid} must not take damage when primary cast rejected; hp={hp}");
+            assert_eq!(
+                hp, 200,
+                "NPC {eid} must not take damage when primary cast rejected; hp={hp}"
+            );
         }
 
         // Ammo must NOT have decremented (cooldown rejection happens
         // before consume).
         let ammo = mgr.get_entity(ATTACKER_EID).unwrap().bandolier_items[&0].current_ammo;
-        assert_eq!(ammo, 30, "ammo must not decrement when primary cast rejected; ammo={ammo}");
+        assert_eq!(
+            ammo, 30,
+            "ammo must not decrement when primary cast rejected; ammo={ammo}"
+        );
     }
 
     #[tokio::test]
@@ -507,14 +623,25 @@ mod tests {
         add_hostile_npc(&mut mgr, 303, "Castle_CellBlock", [1.0, 0.0, 1.0], 1000);
 
         let deaths = handle_use_ability_on_ground(
-            ATTACKER_EID, GROUND_ABILITY_ID, [0.0, 0.0, 0.0], &tx, &mut mgr,
-        ).await;
+            ATTACKER_EID,
+            GROUND_ABILITY_ID,
+            [0.0, 0.0, 0.0],
+            &tx,
+            &mut mgr,
+        )
+        .await;
 
         // All three low-HP NPCs should be in the deaths Vec; survivor not.
         assert_eq!(deaths.len(), 3, "expected 3 AoE kills, got {deaths:?}");
         for eid in [300u32, 301, 302] {
-            assert!(deaths.contains(&eid), "expected kill {eid} in deaths Vec {deaths:?}");
+            assert!(
+                deaths.contains(&eid),
+                "expected kill {eid} in deaths Vec {deaths:?}"
+            );
         }
-        assert!(!deaths.contains(&303), "high-HP survivor must not be in deaths Vec");
+        assert!(
+            !deaths.contains(&303),
+            "high-HP survivor must not be in deaths Vec"
+        );
     }
 }

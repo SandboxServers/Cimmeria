@@ -27,8 +27,12 @@ impl Stat {
     /// Create a new stat with explicit values for all 6 fields.
     pub fn new(min: i32, cur: i32, max: i32, base_min: i32, base_cur: i32, base_max: i32) -> Self {
         Self {
-            min, cur, max,
-            base_min, base_cur, base_max,
+            min,
+            cur,
+            max,
+            base_min,
+            base_cur,
+            base_max,
             dirty: false,
             base_dirty: false,
         }

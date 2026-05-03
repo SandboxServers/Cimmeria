@@ -1,8 +1,8 @@
 //! Missionary interface exposed CellMethods (indices 52–54).
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 pub const ABANDON_MISSION: u16 = 52;
 pub const SHARE_MISSION: u16 = 53;

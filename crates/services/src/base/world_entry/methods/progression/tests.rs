@@ -41,12 +41,7 @@ async fn insert_test_account(pool: &sqlx::PgPool, account_id: i32) {
 /// and CHECK constraints (level/alignment/gender/etc. ranges) plus the
 /// FKs (account_id, world_location). Only columns relevant to the
 /// grant_cash assertions need test-specific values.
-async fn insert_test_player(
-    pool: &sqlx::PgPool,
-    account_id: i32,
-    player_id: i32,
-    naquadah: i32,
-) {
+async fn insert_test_player(pool: &sqlx::PgPool, account_id: i32, player_id: i32, naquadah: i32) {
     sqlx::query(
         "INSERT INTO sgw_player (\
             account_id, player_id, level, alignment, archetype, gender, \
@@ -64,7 +59,12 @@ async fn insert_test_player(
     .expect("INSERT test sgw_player row");
 }
 
-async fn make_state() -> (Arc<UdpSocket>, Arc<Mutex<HashMap<u32, SocketAddr>>>, Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>, u32) {
+async fn make_state() -> (
+    Arc<UdpSocket>,
+    Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    u32,
+) {
     let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP"));
     let entity_id: u32 = 9_999_001;
     // entity_to_addr must contain `entity_id` so handle_grant_cash's first
@@ -104,14 +104,26 @@ async fn credits_only_target_character_when_account_has_multiple() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_grant_cash(
-        entity_id, player_a, 50,
-        &db_pool, &socket, &connected, &entity_to_addr,
-    ).await;
+        entity_id,
+        player_a,
+        50,
+        &db_pool,
+        &socket,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
 
     let a_naq: i32 = sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
-        .bind(player_a).fetch_one(&pool).await.unwrap();
+        .bind(player_a)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     let b_naq: i32 = sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
-        .bind(player_b).fetch_one(&pool).await.unwrap();
+        .bind(player_b)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
     assert_eq!(a_naq, 150, "target character A: 100 + 50 = 150");
     assert_eq!(
@@ -143,22 +155,34 @@ async fn does_not_credit_when_player_row_missing() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_grant_cash(
-        entity_id, nonexistent, 50,
-        &db_pool, &socket, &connected, &entity_to_addr,
-    ).await;
+        entity_id,
+        nonexistent,
+        50,
+        &db_pool,
+        &socket,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
 
-    let bystander_naq: i32 = sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
-        .bind(bystander).fetch_one(&pool).await.unwrap();
+    let bystander_naq: i32 =
+        sqlx::query_scalar("SELECT naquadah FROM sgw_player WHERE player_id = $1")
+            .bind(bystander)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(
         bystander_naq, 200,
         "bystander row must be untouched when grant target doesn't exist",
     );
 
     // Confirm the missing row genuinely wasn't created as a side effect.
-    let nonexistent_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM sgw_player WHERE player_id = $1",
-    )
-    .bind(nonexistent).fetch_one(&pool).await.unwrap();
+    let nonexistent_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sgw_player WHERE player_id = $1")
+            .bind(nonexistent)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(nonexistent_count, 0, "missing-row branch must not INSERT");
 
     cleanup(&pool, account_id).await;

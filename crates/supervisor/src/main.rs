@@ -272,10 +272,13 @@ async fn kill_server(state: &SupervisorState) -> Result<(), String> {
             Ok(Some(exit)) => {
                 *state.last_exit_code.lock().await = exit.code();
                 *guard = None;
-                return Ok(());
+                Ok(())
             }
             Ok(None) => {
-                child.kill().await.map_err(|e| format!("Failed to kill server: {e}"))?;
+                child
+                    .kill()
+                    .await
+                    .map_err(|e| format!("Failed to kill server: {e}"))?;
                 let exit = child
                     .wait()
                     .await
@@ -318,7 +321,12 @@ async fn fetch_services(port: u16) -> Option<serde_json::Value> {
     use tokio::net::TcpStream;
 
     let timeout = std::time::Duration::from_secs(2);
-    let stream = match tokio::time::timeout(timeout, TcpStream::connect(format!("127.0.0.1:{port}"))).await {
+    let stream = match tokio::time::timeout(
+        timeout,
+        TcpStream::connect(format!("127.0.0.1:{port}")),
+    )
+    .await
+    {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => {
             tracing::debug!("Health proxy: connect failed: {e}");
@@ -330,7 +338,9 @@ async fn fetch_services(port: u16) -> Option<serde_json::Value> {
         }
     };
 
-    let request = format!("GET /api/config/status HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    let request = format!(
+        "GET /api/config/status HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    );
     let mut stream = stream;
     if let Err(e) = stream.write_all(request.as_bytes()).await {
         tracing::debug!("Health proxy: write failed: {e}");
@@ -344,7 +354,10 @@ async fn fetch_services(port: u16) -> Option<serde_json::Value> {
     }
 
     let response = String::from_utf8_lossy(&buf);
-    tracing::debug!("Health proxy: raw response ({} bytes):\n{response}", buf.len());
+    tracing::debug!(
+        "Health proxy: raw response ({} bytes):\n{response}",
+        buf.len()
+    );
 
     let body = response.split("\r\n\r\n").nth(1)?;
     let json: serde_json::Value = match serde_json::from_str(body) {

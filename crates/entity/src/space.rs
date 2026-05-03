@@ -54,10 +54,7 @@ impl Space {
             self.grid.insert(entity_id, position);
             debug!("Entity {} entered space {}", entity_id, self.space_id);
         } else {
-            warn!(
-                "Entity {} is already in space {}",
-                entity_id, self.space_id
-            );
+            warn!("Entity {} is already in space {}", entity_id, self.space_id);
         }
     }
 

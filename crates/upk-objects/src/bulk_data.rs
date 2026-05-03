@@ -10,8 +10,8 @@
 //!
 //! We implement both and let callers try modern first, falling back to legacy.
 
-use byteorder::{ByteOrder, LittleEndian};
 use crate::error::{ObjectError, Result};
+use byteorder::{ByteOrder, LittleEndian};
 
 // --- FUntypedBulkData flags ---
 
@@ -76,7 +76,9 @@ fn parse_bulk_data_inner(data: &[u8], offset: usize, offset_width: usize) -> Res
     if offset + header_size > data.len() {
         return Err(ObjectError::InvalidData(format!(
             "Bulk data header requires {} bytes at offset {}, but only {} available",
-            header_size, offset, data.len().saturating_sub(offset)
+            header_size,
+            offset,
+            data.len().saturating_sub(offset)
         )));
     }
 
@@ -139,7 +141,9 @@ fn parse_bulk_data_inner(data: &[u8], offset: usize, offset_width: usize) -> Res
     if pos + data_size > data.len() {
         return Err(ObjectError::InvalidData(format!(
             "Bulk data payload requires {} bytes at offset {}, but only {} available",
-            data_size, pos, data.len().saturating_sub(pos)
+            data_size,
+            pos,
+            data.len().saturating_sub(pos)
         )));
     }
 
@@ -271,8 +275,8 @@ mod tests {
     fn parse_empty_lazy_array() {
         let mut buf = vec![0u8; 12];
         LittleEndian::write_i32(&mut buf[0..], 100); // skip_offset
-        LittleEndian::write_i32(&mut buf[4..], 0);   // count
-        LittleEndian::write_i32(&mut buf[8..], 4);   // element_size
+        LittleEndian::write_i32(&mut buf[4..], 0); // count
+        LittleEndian::write_i32(&mut buf[8..], 4); // element_size
 
         let result = parse_lazy_array(&buf, 0).unwrap();
         assert_eq!(result.element_count, 0);
@@ -283,9 +287,9 @@ mod tests {
     #[test]
     fn parse_lazy_array_with_data() {
         let mut buf = vec![0u8; 12 + 8];
-        LittleEndian::write_i32(&mut buf[0..], 20);  // skip_offset
-        LittleEndian::write_i32(&mut buf[4..], 2);   // count
-        LittleEndian::write_i32(&mut buf[8..], 4);   // element_size
+        LittleEndian::write_i32(&mut buf[0..], 20); // skip_offset
+        LittleEndian::write_i32(&mut buf[4..], 2); // count
+        LittleEndian::write_i32(&mut buf[8..], 4); // element_size
         buf[12..20].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
 
         let result = parse_lazy_array(&buf, 0).unwrap();

@@ -9,7 +9,7 @@ use sqlx::PgPool;
 
 use cimmeria_content_engine::chain::{Chain, ChainEngine};
 use cimmeria_content_engine::loader::{
-    DbActionRow, DbChainRow, DbConditionRow, DbTriggerRow, build_chains_from_rows,
+    build_chains_from_rows, DbActionRow, DbChainRow, DbConditionRow, DbTriggerRow,
 };
 
 /// Build the content engine by loading chains from the database.
@@ -24,11 +24,16 @@ pub async fn build_engine(db_pool: Option<&PgPool>) -> ChainEngine {
                 for chain in chains {
                     engine.register_chain(chain);
                 }
-                tracing::info!(chains = engine.chain_count(), "Content engine loaded from database");
+                tracing::info!(
+                    chains = engine.chain_count(),
+                    "Content engine loaded from database"
+                );
                 return engine;
             }
             Err(e) => {
-                tracing::error!("Failed to load content chains from DB: {e} — content engine will be empty");
+                tracing::error!(
+                    "Failed to load content chains from DB: {e} — content engine will be empty"
+                );
             }
         }
     } else {
@@ -44,7 +49,7 @@ async fn load_chains_from_db(pool: &PgPool) -> Result<Vec<Chain>, sqlx::Error> {
 
     let chain_rows: Vec<DbChainRow> = sqlx::query(
         "SELECT chain_id, description, scope_type, scope_id, enabled, priority \
-         FROM resources.content_chains ORDER BY chain_id"
+         FROM resources.content_chains ORDER BY chain_id",
     )
     .fetch_all(pool)
     .await?
@@ -61,7 +66,7 @@ async fn load_chains_from_db(pool: &PgPool) -> Result<Vec<Chain>, sqlx::Error> {
 
     let trigger_rows: Vec<DbTriggerRow> = sqlx::query(
         "SELECT chain_id, event_type, event_key, scope, once, sort_order \
-         FROM resources.content_triggers ORDER BY chain_id, sort_order"
+         FROM resources.content_triggers ORDER BY chain_id, sort_order",
     )
     .fetch_all(pool)
     .await?
@@ -78,7 +83,7 @@ async fn load_chains_from_db(pool: &PgPool) -> Result<Vec<Chain>, sqlx::Error> {
 
     let condition_rows: Vec<DbConditionRow> = sqlx::query(
         "SELECT chain_id, condition_type, target_id, target_key, operator, value, sort_order \
-         FROM resources.content_conditions ORDER BY chain_id, sort_order"
+         FROM resources.content_conditions ORDER BY chain_id, sort_order",
     )
     .fetch_all(pool)
     .await?
@@ -96,7 +101,7 @@ async fn load_chains_from_db(pool: &PgPool) -> Result<Vec<Chain>, sqlx::Error> {
 
     let action_rows: Vec<DbActionRow> = sqlx::query(
         "SELECT chain_id, action_type, target_id, target_key, params, delay_ms, sort_order \
-         FROM resources.content_actions ORDER BY chain_id, sort_order"
+         FROM resources.content_actions ORDER BY chain_id, sort_order",
     )
     .fetch_all(pool)
     .await?
@@ -120,5 +125,10 @@ async fn load_chains_from_db(pool: &PgPool) -> Result<Vec<Chain>, sqlx::Error> {
         "Loaded content engine rows from database"
     );
 
-    Ok(build_chains_from_rows(chain_rows, trigger_rows, condition_rows, action_rows))
+    Ok(build_chains_from_rows(
+        chain_rows,
+        trigger_rows,
+        condition_rows,
+        action_rows,
+    ))
 }

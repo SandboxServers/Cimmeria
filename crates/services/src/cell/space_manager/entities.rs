@@ -24,14 +24,13 @@ impl SpaceManager {
         let pos = Vector3::new(position[0], position[1], position[2]);
         let dir = Vector3::new(rotation[0], rotation[1], rotation[2]);
 
-        let mut cell_entity = CellEntity::new(
-            EntityId(entity_id as i32),
-            SpaceId(space_id as i32),
-            pos,
-        );
+        let mut cell_entity =
+            CellEntity::new(EntityId(entity_id as i32), SpaceId(space_id as i32), pos);
         cell_entity.direction = dir;
 
-        let space = self.spaces.get_mut(&space_id)
+        let space = self
+            .spaces
+            .get_mut(&space_id)
             .ok_or_else(|| format!("Space {space_id} disappeared"))?;
 
         space.space.add_entity(EntityId(entity_id as i32), &pos);
@@ -52,17 +51,16 @@ impl SpaceManager {
 
             if let Some(space) = self.spaces.get_mut(&space_id) {
                 if let Some(cell_entity) = space.entities.remove(&entity_id) {
-                    space.space.remove_entity(
-                        EntityId(entity_id as i32),
-                        &cell_entity.position,
-                    );
+                    space
+                        .space
+                        .remove_entity(EntityId(entity_id as i32), &cell_entity.position);
                 }
                 space.players.remove(&entity_id);
 
                 // Check if this was the last player in an instanced space
                 if space.players.is_empty() {
                     let world_name = &space.world_name;
-                    if self.worlds.get(world_name).map_or(false, |w| w.instanced) {
+                    if self.worlds.get(world_name).is_some_and(|w| w.instanced) {
                         should_destroy_space = true;
                     }
                 }
@@ -106,21 +104,26 @@ impl SpaceManager {
                 // membership instead. NPCs don't receive LeftAoI, so we skip
                 // scanning them and keep disconnect O(P) rather than O(E).
                 let target = EntityId(entity_id as i32);
-                let observers: Vec<u32> = space.players
+                let observers: Vec<u32> = space
+                    .players
                     .iter()
                     .copied()
                     .filter(|other_id| {
                         *other_id != entity_id
-                            && space.entities
+                            && space
+                                .entities
                                 .get(other_id)
-                                .map_or(false, |other| other.witnesses.contains(&target))
+                                .is_some_and(|other| other.witnesses.contains(&target))
                     })
                     .collect();
                 for witness_id in observers {
-                    if let Err(e) = tx.send(CellToBaseMsg::LeftAoI {
-                        witness_id,
-                        entity_id,
-                    }).await {
+                    if let Err(e) = tx
+                        .send(CellToBaseMsg::LeftAoI {
+                            witness_id,
+                            entity_id,
+                        })
+                        .await
+                    {
                         tracing::warn!(
                             witness_id, entity_id, error = %e,
                             "LeftAoI send to base failed during disconnect"
@@ -171,11 +174,10 @@ impl SpaceManager {
             cell_entity.velocity = velocity;
 
             // Update the spatial grid
-            space.space.grid.update_position(
-                EntityId(entity_id as i32),
-                &old_pos,
-                &new_pos,
-            );
+            space
+                .space
+                .grid
+                .update_position(EntityId(entity_id as i32), &old_pos, &new_pos);
         }
     }
 }

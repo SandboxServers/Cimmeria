@@ -26,9 +26,9 @@ pub(crate) fn register_space(world_name: String, space_id: u32) {
 /// Hardcoded space ID fallback (used when CellService oneshot fails or is unavailable).
 pub(crate) fn resolve_space_id_fallback(world_name: &str) -> u32 {
     match world_name {
-        "Castle_CellBlock" => DEFAULT_SPACE_ID,     // 65552
-        "SGC_W1"           => DEFAULT_SPACE_ID + 1, // 65553
-        "CombatSim"        => DEFAULT_SPACE_ID + 2, // 65554
+        "Castle_CellBlock" => DEFAULT_SPACE_ID, // 65552
+        "SGC_W1" => DEFAULT_SPACE_ID + 1,       // 65553
+        "CombatSim" => DEFAULT_SPACE_ID + 2,    // 65554
         _ => {
             tracing::warn!("Unknown world_location: {world_name}, defaulting to Castle_CellBlock");
             DEFAULT_SPACE_ID

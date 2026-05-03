@@ -2,21 +2,23 @@
 //!
 //! Binary layout after tagged properties (verified from AN-Antenna00 hex dump):
 //!
-//!   1. FBoxSphereBounds (28 bytes): origin[3f], extent[3f], radius[f]
-//!   2. BodySetup object reference (i32)
-//!   3. kDOPTree collision:
-//!      - Node count (i32) + nodes (count * 32 bytes: 6 floats bbox + 2 u32 children)
-//!      - Triangle count (i32) + triangles (count * 8 bytes: 3 u16 verts + 1 u16 material)
-//!   4. InternalVersion (i32, typically 15)
-//!   5. LODModels count (i32)
-//!   6. Per LOD:
-//!      a. RawTriangles: FUntypedBulkData v486 (16-byte header, empty in cooked packages)
-//!      b. Elements: count (i32) + count * 28-byte FStaticMeshElement structs (7 x i32)
-//!      c. VertexBuffer: stride (i32) + num_vertices (i32) + bulk_count (i32) +
-//!         bulk_count * stride bytes of inline vertex data
-//!      d. NumVertices (i32) + IndexCount (i32) + IndexCount * 2 bytes of u16 indices
-//!      e. Edges: header (i32) + count (i32) + count * 16-byte FMeshEdge structs
-//!      f. Trailing fields (skipped)
+//! ```text
+//! 1. FBoxSphereBounds (28 bytes): origin[3f], extent[3f], radius[f]
+//! 2. BodySetup object reference (i32)
+//! 3. kDOPTree collision:
+//!    - Node count (i32) + nodes (count * 32 bytes: 6 floats bbox + 2 u32 children)
+//!    - Triangle count (i32) + triangles (count * 8 bytes: 3 u16 verts + 1 u16 material)
+//! 4. InternalVersion (i32, typically 15)
+//! 5. LODModels count (i32)
+//! 6. Per LOD:
+//!    a. RawTriangles: FUntypedBulkData v486 (16-byte header, empty in cooked packages)
+//!    b. Elements: count (i32) + count * 28-byte FStaticMeshElement structs (7 x i32)
+//!    c. VertexBuffer: stride (i32) + num_vertices (i32) + bulk_count (i32) +
+//!       bulk_count * stride bytes of inline vertex data
+//!    d. NumVertices (i32) + IndexCount (i32) + IndexCount * 2 bytes of u16 indices
+//!    e. Edges: header (i32) + count (i32) + count * 16-byte FMeshEdge structs
+//!    f. Trailing fields (skipped)
+//! ```
 //!
 //! Vertex format (40 bytes per vertex, full-precision UVs):
 //!   [+0]  Position:   3 x f32 (12 bytes)
@@ -98,8 +100,7 @@ pub fn deserialize_static_mesh(
     names: &[cimmeria_upk::NameEntry],
 ) -> Result<StaticMesh> {
     // 1. Parse tagged properties (start at offset 4, after NetIndex)
-    let (_props, bin_offset) =
-        cimmeria_upk::parse_tagged_properties_with_end(data, 4, names);
+    let (_props, bin_offset) = cimmeria_upk::parse_tagged_properties_with_end(data, 4, names);
 
     let mut pos = bin_offset;
 
@@ -123,7 +124,7 @@ pub fn deserialize_static_mesh(
     ensure_bytes(data, pos, 4, "LODModels count")?;
     let lod_count = LittleEndian::read_i32(&data[pos..]);
     pos += 4;
-    if lod_count < 0 || lod_count > 16 {
+    if !(0..=16).contains(&lod_count) {
         return Err(ObjectError::InvalidData(format!(
             "Unreasonable LOD count: {}",
             lod_count
@@ -172,7 +173,7 @@ fn skip_kdop_tree(data: &[u8], pos: &mut usize) -> Result<()> {
     ensure_bytes(data, *pos, 4, "kDOP node count")?;
     let node_count = LittleEndian::read_i32(&data[*pos..]);
     *pos += 4;
-    if node_count < 0 || node_count > 100_000 {
+    if !(0..=100_000).contains(&node_count) {
         return Err(ObjectError::InvalidData(format!(
             "Unreasonable kDOP node count: {}",
             node_count
@@ -186,7 +187,7 @@ fn skip_kdop_tree(data: &[u8], pos: &mut usize) -> Result<()> {
     ensure_bytes(data, *pos, 4, "kDOP triangle count")?;
     let tri_count = LittleEndian::read_i32(&data[*pos..]);
     *pos += 4;
-    if tri_count < 0 || tri_count > 1_000_000 {
+    if !(0..=1_000_000).contains(&tri_count) {
         return Err(ObjectError::InvalidData(format!(
             "Unreasonable kDOP triangle count: {}",
             tri_count
@@ -225,7 +226,7 @@ fn parse_lod(data: &[u8], pos: &mut usize, lod_idx: usize) -> Result<LodModel> {
     ensure_bytes(data, *pos, 4, "Elements count")?;
     let elem_count = LittleEndian::read_i32(&data[*pos..]);
     *pos += 4;
-    if elem_count < 0 || elem_count > 256 {
+    if !(0..=256).contains(&elem_count) {
         return Err(ObjectError::InvalidData(format!(
             "LOD {}: unreasonable element count: {}",
             lod_idx, elem_count
@@ -302,7 +303,7 @@ fn parse_lod(data: &[u8], pos: &mut usize, lod_idx: usize) -> Result<LodModel> {
         let _edge_header = LittleEndian::read_i32(&data[*pos..]);
         let edge_count = LittleEndian::read_i32(&data[*pos + 4..]);
         *pos += 8;
-        if edge_count >= 0 && edge_count < 10_000_000 {
+        if (0..10_000_000).contains(&edge_count) {
             let edge_data = edge_count as usize * MESH_EDGE_SIZE;
             if *pos + edge_data <= data.len() {
                 *pos += edge_data;
@@ -374,7 +375,9 @@ fn parse_vertices(data: &[u8], count: usize, stride: usize) -> Result<Vec<Vertex
         if base + stride > data.len() {
             return Err(ObjectError::InvalidData(format!(
                 "Vertex {} at offset {} exceeds data length {}",
-                i, base, data.len()
+                i,
+                base,
+                data.len()
             )));
         }
 

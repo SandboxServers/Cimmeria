@@ -18,7 +18,13 @@ pub struct MailMessage {
 
 impl MailMessage {
     /// Create a new text-only mail message.
-    pub fn new(mail_id: i64, sender_name: String, recipient_name: String, subject: String, body: String) -> Self {
+    pub fn new(
+        mail_id: i64,
+        sender_name: String,
+        recipient_name: String,
+        subject: String,
+        body: String,
+    ) -> Self {
         Self {
             mail_id,
             sender_name,
@@ -66,23 +72,41 @@ mod tests {
 
     #[test]
     fn plain_mail_no_attachments() {
-        let m = MailMessage::new(1, "Daniel".to_string(), "Jack".to_string(), "Artifacts".to_string(), "Found something.".to_string());
+        let m = MailMessage::new(
+            1,
+            "Daniel".to_string(),
+            "Jack".to_string(),
+            "Artifacts".to_string(),
+            "Found something.".to_string(),
+        );
         assert!(!m.has_attachments());
         assert!(!m.is_read);
     }
 
     #[test]
     fn mail_with_money() {
-        let m = MailMessage::new(2, "Sam".to_string(), "Teal'c".to_string(), "Funds".to_string(), "For supplies.".to_string())
-            .with_money(500);
+        let m = MailMessage::new(
+            2,
+            "Sam".to_string(),
+            "Teal'c".to_string(),
+            "Funds".to_string(),
+            "For supplies.".to_string(),
+        )
+        .with_money(500);
         assert!(m.has_attachments());
         assert_eq!(m.attached_money, 500);
     }
 
     #[test]
     fn mail_with_item() {
-        let m = MailMessage::new(3, "Vala".to_string(), "Daniel".to_string(), "Gift".to_string(), "You'll like this.".to_string())
-            .with_item(42);
+        let m = MailMessage::new(
+            3,
+            "Vala".to_string(),
+            "Daniel".to_string(),
+            "Gift".to_string(),
+            "You'll like this.".to_string(),
+        )
+        .with_item(42);
         assert!(m.has_attachments());
         assert_eq!(m.attached_item_id, Some(42));
     }

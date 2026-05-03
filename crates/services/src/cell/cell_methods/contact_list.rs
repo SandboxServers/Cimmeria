@@ -1,8 +1,8 @@
 //! ContactListManager interface exposed CellMethods (indices 55–60).
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 pub const CREATE: u16 = 55;
 pub const DELETE: u16 = 56;
@@ -42,7 +42,12 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let flags = u32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, list_id, flags, "UNIMPLEMENTED: contactListFlagsUpdate");
+                tracing::info!(
+                    entity_id,
+                    list_id,
+                    flags,
+                    "UNIMPLEMENTED: contactListFlagsUpdate"
+                );
             }
             true
         }
@@ -56,7 +61,11 @@ pub async fn dispatch(
         REMOVE_MEMBERS => {
             if args.len() >= 4 {
                 let list_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, list_id, "UNIMPLEMENTED: contactListRemoveMembers");
+                tracing::info!(
+                    entity_id,
+                    list_id,
+                    "UNIMPLEMENTED: contactListRemoveMembers"
+                );
             }
             true
         }

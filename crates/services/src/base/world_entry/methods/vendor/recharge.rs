@@ -63,7 +63,11 @@ pub async fn handle_recharge_inventory_items(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(entity_id, player_id, "RechargeInventoryItems: begin tx failed: {e}");
+            tracing::error!(
+                entity_id,
+                player_id,
+                "RechargeInventoryItems: begin tx failed: {e}"
+            );
             return;
         }
     };
@@ -87,7 +91,11 @@ pub async fn handle_recharge_inventory_items(
     .await
     {
         let _ = tx.rollback().await;
-        tracing::error!(entity_id, player_id, "RechargeInventoryItems: lock query failed: {e}");
+        tracing::error!(
+            entity_id,
+            player_id,
+            "RechargeInventoryItems: lock query failed: {e}"
+        );
         return;
     }
 
@@ -124,7 +132,11 @@ pub async fn handle_recharge_inventory_items(
     };
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(entity_id, player_id, "RechargeInventoryItems: commit failed: {e}");
+        tracing::error!(
+            entity_id,
+            player_id,
+            "RechargeInventoryItems: commit failed: {e}"
+        );
         return;
     }
 

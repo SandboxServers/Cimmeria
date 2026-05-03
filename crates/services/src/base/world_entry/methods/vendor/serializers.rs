@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::{Postgres, Transaction};
 
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 
@@ -47,11 +47,19 @@ pub fn serialize_store_open(
     args.extend_from_slice(&vendor_entity_id.to_le_bytes());
     args.extend_from_slice(&1i32.to_le_bytes());
 
-    args.extend_from_slice(&u32::try_from(buy_items.len()).unwrap_or(u32::MAX).to_le_bytes());
+    args.extend_from_slice(
+        &u32::try_from(buy_items.len())
+            .unwrap_or(u32::MAX)
+            .to_le_bytes(),
+    );
     for item in buy_items {
         args.extend_from_slice(&item.index.to_le_bytes());
         args.extend_from_slice(&item.item_id.to_le_bytes());
-        args.extend_from_slice(&u32::try_from(item.cost_list.len()).unwrap_or(u32::MAX).to_le_bytes());
+        args.extend_from_slice(
+            &u32::try_from(item.cost_list.len())
+                .unwrap_or(u32::MAX)
+                .to_le_bytes(),
+        );
         for cost in &item.cost_list {
             args.extend_from_slice(&cost.cost_type.to_le_bytes());
             args.extend_from_slice(&cost.type_id.to_le_bytes());
@@ -75,7 +83,11 @@ pub fn serialize_empty_store_open(vendor_entity_id: i32) -> Vec<u8> {
 
 /// Serialize a single cost array (count + items).
 pub fn serialize_store_item_cost_array(args: &mut Vec<u8>, prices: &[StoreItemCost]) {
-    args.extend_from_slice(&u32::try_from(prices.len()).unwrap_or(u32::MAX).to_le_bytes());
+    args.extend_from_slice(
+        &u32::try_from(prices.len())
+            .unwrap_or(u32::MAX)
+            .to_le_bytes(),
+    );
     for price in prices {
         args.extend_from_slice(&price.cost.to_le_bytes());
         args.extend_from_slice(&price.item_id.to_le_bytes());
@@ -85,7 +97,11 @@ pub fn serialize_store_item_cost_array(args: &mut Vec<u8>, prices: &[StoreItemCo
 /// Serialize store update with changed prices/repairs/recharges.
 pub fn serialize_store_update(updates: &[StoreItemCostUpdate]) -> Vec<u8> {
     let mut args = Vec::with_capacity(4 + updates.len() * 16);
-    args.extend_from_slice(&u32::try_from(updates.len()).unwrap_or(u32::MAX).to_le_bytes());
+    args.extend_from_slice(
+        &u32::try_from(updates.len())
+            .unwrap_or(u32::MAX)
+            .to_le_bytes(),
+    );
     for update in updates {
         args.extend_from_slice(&update.item_id.to_le_bytes());
         args.extend_from_slice(&update.sell_price.to_le_bytes());
@@ -181,24 +197,49 @@ mod serializer_tests {
     fn store_item_cost_array_empty_emits_count_zero() {
         let mut args = Vec::new();
         serialize_store_item_cost_array(&mut args, &[]);
-        assert_eq!(args, [0, 0, 0, 0], "empty cost array must still write u32(0) count");
+        assert_eq!(
+            args,
+            [0, 0, 0, 0],
+            "empty cost array must still write u32(0) count"
+        );
     }
 
     #[test]
     fn store_item_cost_array_writes_cost_then_item_id_per_row() {
         let mut args = Vec::new();
-        serialize_store_item_cost_array(&mut args, &[
-            StoreItemCost { cost: 250, item_id: 1001 },
-            StoreItemCost { cost: -1,  item_id: 2002 },
-        ]);
+        serialize_store_item_cost_array(
+            &mut args,
+            &[
+                StoreItemCost {
+                    cost: 250,
+                    item_id: 1001,
+                },
+                StoreItemCost {
+                    cost: -1,
+                    item_id: 2002,
+                },
+            ],
+        );
 
         // count(u32) | (cost:i32 | item_id:i32) * 2
         assert_eq!(args.len(), 4 + 2 * 8);
         assert_eq!(u32::from_le_bytes([args[0], args[1], args[2], args[3]]), 2);
-        assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), 250);
-        assert_eq!(i32::from_le_bytes([args[8], args[9], args[10], args[11]]), 1001);
-        assert_eq!(i32::from_le_bytes([args[12], args[13], args[14], args[15]]), -1);
-        assert_eq!(i32::from_le_bytes([args[16], args[17], args[18], args[19]]), 2002);
+        assert_eq!(
+            i32::from_le_bytes([args[4], args[5], args[6], args[7]]),
+            250
+        );
+        assert_eq!(
+            i32::from_le_bytes([args[8], args[9], args[10], args[11]]),
+            1001
+        );
+        assert_eq!(
+            i32::from_le_bytes([args[12], args[13], args[14], args[15]]),
+            -1
+        );
+        assert_eq!(
+            i32::from_le_bytes([args[16], args[17], args[18], args[19]]),
+            2002
+        );
     }
 
     #[test]
@@ -221,10 +262,22 @@ mod serializer_tests {
 
         assert_eq!(args.len(), 4 + 16);
         assert_eq!(u32::from_le_bytes([args[0], args[1], args[2], args[3]]), 1);
-        assert_eq!(i32::from_le_bytes([args[4], args[5], args[6], args[7]]), 7777);
-        assert_eq!(i32::from_le_bytes([args[8], args[9], args[10], args[11]]), 100);
-        assert_eq!(i32::from_le_bytes([args[12], args[13], args[14], args[15]]), 200);
-        assert_eq!(i32::from_le_bytes([args[16], args[17], args[18], args[19]]), 300);
+        assert_eq!(
+            i32::from_le_bytes([args[4], args[5], args[6], args[7]]),
+            7777
+        );
+        assert_eq!(
+            i32::from_le_bytes([args[8], args[9], args[10], args[11]]),
+            100
+        );
+        assert_eq!(
+            i32::from_le_bytes([args[12], args[13], args[14], args[15]]),
+            200
+        );
+        assert_eq!(
+            i32::from_le_bytes([args[16], args[17], args[18], args[19]]),
+            300
+        );
     }
 
     #[test]
@@ -235,7 +288,10 @@ mod serializer_tests {
         // | sell_count(u32 = 0) | buyback_count(u32 = 0)
         // | repair_count(u32 = 0) | recharge_count(u32 = 0)
         assert_eq!(args.len(), 4 + 4 + 4 + 4 * 4);
-        assert_eq!(i32::from_le_bytes([args[0], args[1], args[2], args[3]]), 424242);
+        assert_eq!(
+            i32::from_le_bytes([args[0], args[1], args[2], args[3]]),
+            424242
+        );
         // The magic "1" sandwiched between vendor_id and the buy-list count is
         // load-bearing — the client de-serializer reads it before the array
         // header. A regression that drops or moves it desyncs every later
@@ -256,27 +312,49 @@ mod serializer_tests {
             index: 5,
             item_id: 9001,
             cost_list: vec![
-                StoreBuyCost { cost_type: 0, type_id: 0,    quantity: 50 },
-                StoreBuyCost { cost_type: 1, type_id: 1234, quantity: 1  },
+                StoreBuyCost {
+                    cost_type: 0,
+                    type_id: 0,
+                    quantity: 50,
+                },
+                StoreBuyCost {
+                    cost_type: 1,
+                    type_id: 1234,
+                    quantity: 1,
+                },
             ],
             usable: 1,
             quantity: 7,
         }];
-        let sell     = vec![StoreItemCost { cost: 11, item_id: 100 }];
-        let buyback  = vec![StoreItemCost { cost: 22, item_id: 200 }];
-        let repair   = vec![StoreItemCost { cost: 33, item_id: 300 }];
-        let recharge = vec![StoreItemCost { cost: 44, item_id: 400 }];
+        let sell = vec![StoreItemCost {
+            cost: 11,
+            item_id: 100,
+        }];
+        let buyback = vec![StoreItemCost {
+            cost: 22,
+            item_id: 200,
+        }];
+        let repair = vec![StoreItemCost {
+            cost: 33,
+            item_id: 300,
+        }];
+        let recharge = vec![StoreItemCost {
+            cost: 44,
+            item_id: 400,
+        }];
 
         let args = serialize_store_open(42, &buy_items, &sell, &buyback, &repair, &recharge);
 
         let mut off = 0;
         let read_i32 = |args: &[u8], off: &mut usize| {
-            let v = i32::from_le_bytes([args[*off], args[*off + 1], args[*off + 2], args[*off + 3]]);
+            let v =
+                i32::from_le_bytes([args[*off], args[*off + 1], args[*off + 2], args[*off + 3]]);
             *off += 4;
             v
         };
         let read_u32 = |args: &[u8], off: &mut usize| {
-            let v = u32::from_le_bytes([args[*off], args[*off + 1], args[*off + 2], args[*off + 3]]);
+            let v =
+                u32::from_le_bytes([args[*off], args[*off + 1], args[*off + 2], args[*off + 3]]);
             *off += 4;
             v
         };
@@ -290,14 +368,15 @@ mod serializer_tests {
         assert_eq!(read_i32(&args, &mut off), 9001, "item.item_id");
         assert_eq!(read_u32(&args, &mut off), 2, "cost_list count");
         // Cost row 0
-        assert_eq!(read_i32(&args, &mut off), 0,  "cost_list[0].cost_type");
-        assert_eq!(read_i32(&args, &mut off), 0,  "cost_list[0].type_id");
+        assert_eq!(read_i32(&args, &mut off), 0, "cost_list[0].cost_type");
+        assert_eq!(read_i32(&args, &mut off), 0, "cost_list[0].type_id");
         assert_eq!(read_i32(&args, &mut off), 50, "cost_list[0].quantity");
         // Cost row 1
-        assert_eq!(read_i32(&args, &mut off), 1,    "cost_list[1].cost_type");
+        assert_eq!(read_i32(&args, &mut off), 1, "cost_list[1].cost_type");
         assert_eq!(read_i32(&args, &mut off), 1234, "cost_list[1].type_id");
-        assert_eq!(read_i32(&args, &mut off), 1,    "cost_list[1].quantity");
-        assert_eq!(args[off], 1, "item.usable"); off += 1;
+        assert_eq!(read_i32(&args, &mut off), 1, "cost_list[1].quantity");
+        assert_eq!(args[off], 1, "item.usable");
+        off += 1;
         assert_eq!(read_i32(&args, &mut off), 7, "item.quantity");
 
         // Sell / buyback / repair / recharge — emitted in this exact order.
@@ -309,7 +388,11 @@ mod serializer_tests {
         ] {
             assert_eq!(read_u32(&args, &mut off), 1, "{label} count");
             assert_eq!(read_i32(&args, &mut off), expected_cost, "{label} cost");
-            assert_eq!(read_i32(&args, &mut off), expected_item_id, "{label} item_id");
+            assert_eq!(
+                read_i32(&args, &mut off),
+                expected_item_id,
+                "{label} item_id"
+            );
         }
 
         assert_eq!(off, args.len(), "no trailing bytes after parsed sections");
@@ -354,7 +437,10 @@ mod free_inventory_slots_tests {
 
     #[test]
     fn returns_empty_when_zero_needed() {
-        assert_eq!(free_inventory_slots(1, 4, &[], 0).unwrap(), Vec::<i32>::new());
+        assert_eq!(
+            free_inventory_slots(1, 4, &[], 0).unwrap(),
+            Vec::<i32>::new()
+        );
     }
 
     #[test]

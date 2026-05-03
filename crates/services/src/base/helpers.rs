@@ -14,7 +14,10 @@ use super::ConnectedClientState;
 
 /// Format a byte slice as a hex string for trace logging.
 pub(crate) fn to_hex(data: &[u8]) -> String {
-    data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ")
+    data.iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Drain pending ACKs and allocate the next sequence number.
@@ -23,9 +26,7 @@ pub(crate) fn drain_acks_and_seq(
     addr: SocketAddr,
 ) -> Result<(Vec<u32>, u32), Box<dyn std::error::Error + Send + Sync>> {
     let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-    let c = clients
-        .get_mut(&addr)
-        .ok_or("addr not in connected map")?;
+    let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
     let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
     let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
     Ok((acks, seq))

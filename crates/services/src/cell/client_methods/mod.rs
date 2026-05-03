@@ -12,17 +12,17 @@
 //! See `docs/protocol/client-method-dispatch-table.md` for the complete
 //! 157-method table with args and wire encoding details.
 
-pub mod spawnable_entity;
 pub mod being;
+pub mod black_market;
+pub mod client_cache;
 pub mod combatant;
 pub mod communicator;
-pub mod organization;
-pub mod minigame;
+pub mod contact_list;
 pub mod gate_travel;
 pub mod inventory;
 pub mod mail;
+pub mod minigame;
 pub mod missionary;
-pub mod contact_list;
-pub mod black_market;
-pub mod client_cache;
+pub mod organization;
 pub mod player;
+pub mod spawnable_entity;

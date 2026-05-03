@@ -33,9 +33,7 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
     ),
     tag = "Auth"
 )]
-pub async fn login(
-    State(_orchestrator): State<Arc<Orchestrator>>,
-) -> Json<serde_json::Value> {
+pub async fn login(State(_orchestrator): State<Arc<Orchestrator>>) -> Json<serde_json::Value> {
     // TODO: Validate admin credentials, issue JWT
     Json(serde_json::json!({
         "status": "ok",
@@ -53,9 +51,7 @@ pub async fn login(
     ),
     tag = "Auth"
 )]
-pub async fn logout(
-    State(_orchestrator): State<Arc<Orchestrator>>,
-) -> Json<serde_json::Value> {
+pub async fn logout(State(_orchestrator): State<Arc<Orchestrator>>) -> Json<serde_json::Value> {
     // TODO: Add token to denylist
     Json(serde_json::json!({
         "status": "ok",

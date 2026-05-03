@@ -46,6 +46,12 @@ pub struct LogBuffer {
     inner: Arc<Mutex<VecDeque<LogEntry>>>,
 }
 
+impl Default for LogBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LogBuffer {
     pub fn new() -> Self {
         Self {
@@ -165,9 +171,7 @@ impl Visit for FieldVisitor {
     }
 
     fn record_bool(&mut self, field: &Field, value: bool) {
-        self.fields.insert(
-            field.name().to_string(),
-            serde_json::Value::Bool(value),
-        );
+        self.fields
+            .insert(field.name().to_string(), serde_json::Value::Bool(value));
     }
 }

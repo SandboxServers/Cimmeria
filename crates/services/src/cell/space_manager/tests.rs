@@ -1,5 +1,5 @@
-use super::*;
 use super::super::messages::CellToBaseMsg;
+use super::*;
 use cimmeria_common::{EntityId, SpaceId, Vector3};
 use cimmeria_entity::cell_entity::CellEntity;
 
@@ -70,7 +70,9 @@ fn unknown_world_returns_error() {
 #[test]
 fn create_entity_in_startup_space() {
     let mut mgr = make_manager();
-    let space_id = mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3]).unwrap();
+    let space_id = mgr
+        .create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
     assert_eq!(space_id, 65536);
     assert!(mgr.spaces[&65536].entities.contains_key(&100));
 }
@@ -78,7 +80,9 @@ fn create_entity_in_startup_space() {
 #[test]
 fn create_entity_in_instanced_space() {
     let mut mgr = make_manager();
-    let space_id = mgr.create_entity(200, "SGC_W1", [5.0, 0.0, 5.0], [0.0; 3]).unwrap();
+    let space_id = mgr
+        .create_entity(200, "SGC_W1", [5.0, 0.0, 5.0], [0.0; 3])
+        .unwrap();
     assert_eq!(space_id, 65538);
     assert!(mgr.spaces[&65538].entities.contains_key(&200));
 }
@@ -86,7 +90,8 @@ fn create_entity_in_instanced_space() {
 #[test]
 fn destroy_entity_removes_from_space() {
     let mut mgr = make_manager();
-    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3]).unwrap();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
     mgr.destroy_entity(100);
     assert!(!mgr.spaces[&65536].entities.contains_key(&100));
     assert!(!mgr.entity_space.contains_key(&100));
@@ -95,7 +100,8 @@ fn destroy_entity_removes_from_space() {
 #[test]
 fn connect_entity_marks_as_player() {
     let mut mgr = make_manager();
-    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3]).unwrap();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
     mgr.connect_entity(100);
     assert!(mgr.spaces[&65536].players.contains(&100));
 }
@@ -103,7 +109,8 @@ fn connect_entity_marks_as_player() {
 #[test]
 fn update_entity_position() {
     let mut mgr = make_manager();
-    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3]).unwrap();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
     mgr.update_entity_position(100, [50.0, 5.0, 60.0], [0, 0, 0], [0.0; 3]);
     let entity = &mgr.spaces[&65536].entities[&100];
     assert_eq!(entity.position, Vector3::new(50.0, 5.0, 60.0));
@@ -112,23 +119,30 @@ fn update_entity_position() {
 #[test]
 fn aoi_detects_nearby_players() {
     let mut mgr = make_manager();
-    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
-    mgr.create_entity(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3]).unwrap();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
     mgr.connect_entity(100);
     mgr.connect_entity(200);
 
     let events = mgr.compute_aoi_changes();
 
     // Both players should see each other enter AoI
-    let entered: Vec<_> = events.iter().filter(|e| matches!(e, CellToBaseMsg::EnteredAoI { .. })).collect();
+    let entered: Vec<_> = events
+        .iter()
+        .filter(|e| matches!(e, CellToBaseMsg::EnteredAoI { .. }))
+        .collect();
     assert_eq!(entered.len(), 2);
 }
 
 #[test]
 fn aoi_detects_entity_leaving() {
     let mut mgr = make_manager();
-    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
-    mgr.create_entity(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3]).unwrap();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
     mgr.connect_entity(100);
     mgr.connect_entity(200);
 
@@ -140,7 +154,10 @@ fn aoi_detects_entity_leaving() {
 
     // Second tick: entity 200 should leave AoI of entity 100
     let events = mgr.compute_aoi_changes();
-    let left: Vec<_> = events.iter().filter(|e| matches!(e, CellToBaseMsg::LeftAoI { .. })).collect();
+    let left: Vec<_> = events
+        .iter()
+        .filter(|e| matches!(e, CellToBaseMsg::LeftAoI { .. }))
+        .collect();
     assert_eq!(left.len(), 2); // Both should lose sight of each other
 }
 
@@ -212,7 +229,9 @@ fn spawn_npc_gets_default_ability() {
     mgr.spawn_npc(500, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
 
     let npc = mgr.get_entity(500).unwrap();
-    assert!(npc.abilities.has_ability(crate::cell::combat::NPC_DEFAULT_ABILITY));
+    assert!(npc
+        .abilities
+        .has_ability(crate::cell::combat::NPC_DEFAULT_ABILITY));
 }
 
 #[test]
@@ -222,8 +241,10 @@ fn all_npc_entity_ids_returns_only_npcs() {
     mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
     mgr.connect_entity(1);
     // Add two NPC entities
-    mgr.spawn_npc(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
-    mgr.spawn_npc(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3]).unwrap();
+    mgr.spawn_npc(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.spawn_npc(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
 
     let npc_ids = mgr.all_npc_entity_ids();
     assert_eq!(npc_ids.len(), 2);
@@ -254,7 +275,10 @@ fn spawn_npc_from_record_sets_template_fields() {
     let record = SpawnRecord {
         spawn_id: 1,
         world_name: "Agnos".to_string(),
-        x: 10.0, y: 0.0, z: 20.0, heading: 1.5,
+        x: 10.0,
+        y: 0.0,
+        z: 20.0,
+        heading: 1.5,
         class: "SGWMob".to_string(),
         template_id: 42,
         template_name: "TestGuard".to_string(),
@@ -288,7 +312,10 @@ fn spawn_npc_from_record_sets_template_fields() {
     // 592 = NPC_DEFAULT_ABILITY (Pistol Shot — was previously 597/Heal Focus).
     assert!(npc.abilities.has_ability(592));
     // Health should be scaled: 200 + (5 * 50) = 450
-    assert_eq!(npc.stats.get(cimmeria_entity::stats::HEALTH).unwrap().max, 450);
+    assert_eq!(
+        npc.stats.get(cimmeria_entity::stats::HEALTH).unwrap().max,
+        450
+    );
 }
 
 #[test]
@@ -296,17 +323,15 @@ fn instanced_space_destroyed_when_last_player_leaves() {
     let mut mgr = make_manager();
 
     // Create a player entity in an instanced space
-    let space_id = mgr.create_entity(200, "Castle_CellBlock", [5.0, 0.0, 5.0], [0.0; 3]).unwrap();
+    let space_id = mgr
+        .create_entity(200, "Castle_CellBlock", [5.0, 0.0, 5.0], [0.0; 3])
+        .unwrap();
     mgr.connect_entity(200);
 
     // Manually add an NPC into the same instanced space (simulates what
     // spawn_instance_npcs_from_records does with a specific space_id)
     let npc_pos = Vector3::new(10.0, 0.0, 10.0);
-    let mut npc = CellEntity::new(
-        EntityId(100_000),
-        SpaceId(space_id as i32),
-        npc_pos,
-    );
+    let mut npc = CellEntity::new(EntityId(100_000), SpaceId(space_id as i32), npc_pos);
     npc.class_id = 0x04;
     npc.is_player = false;
     let space = mgr.spaces.get_mut(&space_id).unwrap();
@@ -331,7 +356,8 @@ fn non_instanced_space_survives_player_leaving() {
     let mut mgr = make_manager();
 
     // Create a player in a non-instanced startup space
-    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3]).unwrap();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
     mgr.connect_entity(100);
 
     // Destroy the player — non-instanced space should NOT be destroyed
@@ -344,8 +370,12 @@ fn non_instanced_space_survives_player_leaving() {
 fn two_players_get_separate_instances() {
     let mut mgr = make_manager();
 
-    let space1 = mgr.create_entity(100, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
-    let space2 = mgr.create_entity(200, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    let space1 = mgr
+        .create_entity(100, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    let space2 = mgr
+        .create_entity(200, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     assert_ne!(space1, space2);
     assert!(mgr.spaces.contains_key(&space1));

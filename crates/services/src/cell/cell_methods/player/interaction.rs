@@ -1,7 +1,7 @@
-use tokio::sync::mpsc;
-use cimmeria_content_engine::chain::ChainEngine;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_content_engine::chain::ChainEngine;
+use tokio::sync::mpsc;
 
 use super::constants::*;
 
@@ -29,7 +29,11 @@ pub async fn dispatch(
                 let target_entity_u32 = match u32::try_from(target_entity_id) {
                     Ok(v) => v,
                     Err(_) => {
-                        tracing::warn!(entity_id, target_entity_id, "interact: negative target_entity_id, ignoring");
+                        tracing::warn!(
+                            entity_id,
+                            target_entity_id,
+                            "interact: negative target_entity_id, ignoring"
+                        );
                         return true;
                     }
                 };
@@ -40,21 +44,27 @@ pub async fn dispatch(
                 // every right-click on a corpse silently became an auto-attack and
                 // the loot interaction never fired (proven via x32dbg trace at
                 // FUN_00e84b20: client correctly sent interact, server intercepted).
-                let is_hostile = space_mgr.get_entity(target_entity_u32)
-                    .map_or(false, |t| {
-                        !t.is_player
-                            && t.faction == 10
-                            && !crate::cell::combat::is_dead_state(t.state_field)
-                    });
+                let is_hostile = space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
+                    !t.is_player
+                        && t.faction == 10
+                        && !crate::cell::combat::is_dead_state(t.state_field)
+                });
                 if is_hostile {
-                    tracing::info!(entity_id, target_entity_id, "interact: targeting hostile NPC for combat");
+                    tracing::info!(
+                        entity_id,
+                        target_entity_id,
+                        "interact: targeting hostile NPC for combat"
+                    );
                     let mut reply = Vec::with_capacity(4);
                     reply.extend_from_slice(&target_entity_id.to_le_bytes());
-                    if let Err(e) = tx.send(CellToBaseMsg::EntityMethodCall {
-                        entity_id,
-                        method_index: 16,
-                        args: reply,
-                    }).await {
+                    if let Err(e) = tx
+                        .send(CellToBaseMsg::EntityMethodCall {
+                            entity_id,
+                            method_index: 16,
+                            args: reply,
+                        })
+                        .await
+                    {
                         tracing::warn!(
                             entity_id, target_entity_id,
                             "interact: cell->base channel closed sending hostile-NPC combat method: {e}"
@@ -69,32 +79,40 @@ pub async fn dispatch(
                     // never fire `OnEntityDeath` chains — mission progress that
                     // depends on tagged kills (e.g., FindAmbernol drone → step
                     // 2144 → 2343) silently stalls.
-                    let was_alive_before = space_mgr.get_entity(target_entity_u32)
-                        .map_or(false, |t| {
+                    let was_alive_before =
+                        space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
                             !t.is_player
-                                && t.stats.get(cimmeria_entity::stats::HEALTH)
-                                    .map_or(false, |s| s.cur > 0)
+                                && t.stats
+                                    .get(cimmeria_entity::stats::HEALTH)
+                                    .is_some_and(|s| s.cur > 0)
                         });
 
                     crate::cell::abilities::handle_use_ability(
-                        entity_id, 592, target_entity_id, tx, space_mgr,
-                    ).await;
+                        entity_id,
+                        592,
+                        target_entity_id,
+                        tx,
+                        space_mgr,
+                    )
+                    .await;
 
                     if was_alive_before {
-                        let just_died = space_mgr.get_entity(target_entity_u32)
-                            .map_or(false, |t| {
-                                t.stats.get(cimmeria_entity::stats::HEALTH)
-                                    .map_or(false, |s| s.cur <= 0)
-                            });
+                        let just_died = space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
+                            t.stats
+                                .get(cimmeria_entity::stats::HEALTH)
+                                .is_some_and(|s| s.cur <= 0)
+                        });
                         if just_died {
-                            let tag = space_mgr.get_entity(target_entity_u32)
+                            let tag = space_mgr
+                                .get_entity(target_entity_u32)
                                 .and_then(|t| t.tag.clone());
                             if let Some(tag) = tag {
                                 match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
                                     Some(player_id) => {
                                         crate::cell::content::fire_entity_death(
                                             entity_id, player_id, &tag, engine, tx, space_mgr,
-                                        ).await;
+                                        )
+                                        .await;
                                     }
                                     None => {
                                         tracing::warn!(
@@ -113,38 +131,58 @@ pub async fn dispatch(
                 if let Some(target) = space_mgr.get_entity(target_entity_u32) {
                     let tag = target.tag.clone();
                     let template_name = target.npc_name.clone();
-                    let player_id = space_mgr.get_entity(entity_id)
-                        .and_then(|e| e.player_id).unwrap_or(0);
+                    let player_id = space_mgr
+                        .get_entity(entity_id)
+                        .and_then(|e| e.player_id)
+                        .unwrap_or(0);
 
                     if let Some(ref tag) = tag {
                         handled = crate::cell::content::fire_interact_tag(
-                            entity_id, player_id, tag, target_entity_u32,
-                            engine, tx, space_mgr,
-                        ).await;
+                            entity_id,
+                            player_id,
+                            tag,
+                            target_entity_u32,
+                            engine,
+                            tx,
+                            space_mgr,
+                        )
+                        .await;
                     }
 
                     if !handled {
                         if let Some(ref name) = template_name {
                             handled = crate::cell::content::fire_interact_template(
-                                entity_id, player_id, name, target_entity_u32,
-                                engine, tx, space_mgr,
-                            ).await;
+                                entity_id,
+                                player_id,
+                                name,
+                                target_entity_u32,
+                                engine,
+                                tx,
+                                space_mgr,
+                            )
+                            .await;
                         }
                     }
                 }
 
                 if !handled {
                     let dialog_id = crate::cell::interactions::handle_interact(
-                        entity_id, target_entity_u32, tx, space_mgr,
-                    ).await;
+                        entity_id,
+                        target_entity_u32,
+                        tx,
+                        space_mgr,
+                    )
+                    .await;
 
                     if let Some(did) = dialog_id {
-                        let player_id = space_mgr.get_entity(entity_id)
+                        let player_id = space_mgr
+                            .get_entity(entity_id)
                             .and_then(|e| e.player_id)
                             .unwrap_or(0);
                         crate::cell::content::fire_dialog_open(
                             entity_id, player_id, did, engine, tx, space_mgr,
-                        ).await;
+                        )
+                        .await;
                     }
                     // Hostile NPC fall-through removed: the early branch at the top of
                     // INTERACT (lines 27-42) already handles `!t.is_player && t.faction == 10`
@@ -162,25 +200,38 @@ pub async fn dispatch(
                 let button_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(entity_id, dialog_id, button_id, "dialogButtonChoice");
 
-                let player_id = space_mgr.get_entity(entity_id)
-                    .and_then(|e| e.player_id).unwrap_or(0);
+                let player_id = space_mgr
+                    .get_entity(entity_id)
+                    .and_then(|e| e.player_id)
+                    .unwrap_or(0);
                 crate::cell::content::fire_dialog_choice(
                     entity_id, player_id, dialog_id, button_id, engine, tx, space_mgr,
-                ).await;
+                )
+                .await;
             }
             true
         }
 
         INITIAL_RESPONSE => {
             if args.len() >= 4 {
-                let interaction_set_map_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                let interaction_set_map_id =
+                    i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(entity_id, interaction_set_map_id, "initialResponse");
 
                 crate::cell::interactions::handle_initial_response(
-                    entity_id, interaction_set_map_id, engine, tx, space_mgr,
-                ).await;
+                    entity_id,
+                    interaction_set_map_id,
+                    engine,
+                    tx,
+                    space_mgr,
+                )
+                .await;
             } else {
-                tracing::warn!(entity_id, args_len = args.len(), "initialResponse: truncated args, dropping");
+                tracing::warn!(
+                    entity_id,
+                    args_len = args.len(),
+                    "initialResponse: truncated args, dropping"
+                );
             }
             true
         }
@@ -211,11 +262,13 @@ mod tests {
     #[tokio::test]
     async fn alive_hostile_reroutes_to_useability() {
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         let npc_id = mgr.allocate_npc_id();
-        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(npc) = mgr.get_entity_mut(npc_id) {
-            npc.faction = 10;            // hostile
+            npc.faction = 10; // hostile
             npc.clear_all_state_flags(); // alive — hard reset (counters too)
         }
 
@@ -239,7 +292,10 @@ mod tests {
                 assert_ne!(method_index, 114, "loot must not fire for an alive hostile");
             }
         }
-        assert!(saw_target_update, "expected onTargetUpdate from hostile reroute");
+        assert!(
+            saw_target_update,
+            "expected onTargetUpdate from hostile reroute"
+        );
     }
 
     /// Right-clicking a DEAD hostile corpse with loot must reach
@@ -251,12 +307,14 @@ mod tests {
     #[tokio::test]
     async fn dead_hostile_with_loot_routes_to_interact() {
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(p) = mgr.get_entity_mut(1) {
             p.player_id = Some(42);
         }
         let npc_id = mgr.allocate_npc_id();
-        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(npc) = mgr.get_entity_mut(npc_id) {
             npc.faction = 10; // hostile
             npc.set_state_flag(crate::cell::combat::BSF_DEAD);
@@ -293,7 +351,12 @@ mod tests {
         // send_loot_display: `entity_id:i32, count:u32, items[..], initial:u8`.
         let mut saw_loot_display = false;
         while let Ok(msg) = rx.try_recv() {
-            if let CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } = msg {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                args,
+            } = msg
+            {
                 if entity_id == 1 && method_index == 114 {
                     // We seeded exactly one LootItem; assert the encoded count
                     // matches that, not just `> 0`. A future bug that
@@ -309,7 +372,9 @@ mod tests {
                     // loot window) and 0 for refresh-only packets. The
                     // first-open path is the one a right-click on a corpse
                     // takes, so this must be 1.
-                    let initial = *args.last().expect("onLootDisplay payload missing trailing initial byte");
+                    let initial = *args
+                        .last()
+                        .expect("onLootDisplay payload missing trailing initial byte");
                     assert_eq!(
                         initial, 1,
                         "first-display onLootDisplay must set initial=1 to open the loot window client-side"
@@ -317,10 +382,16 @@ mod tests {
                     saw_loot_display = true;
                 }
                 // useAbility / target reticle must NOT have been sent.
-                assert_ne!(method_index, 16, "dead hostile must not fire onTargetUpdate");
+                assert_ne!(
+                    method_index, 16,
+                    "dead hostile must not fire onTargetUpdate"
+                );
             }
         }
-        assert!(saw_loot_display, "expected onLootDisplay (method 114) for dead lootable corpse");
+        assert!(
+            saw_loot_display,
+            "expected onLootDisplay (method 114) for dead lootable corpse"
+        );
     }
 
     /// A neutral NPC (faction != 10) with no dialog/template/tag must NOT be
@@ -331,12 +402,14 @@ mod tests {
     #[tokio::test]
     async fn neutral_npc_with_no_interaction_does_not_route_to_combat() {
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(p) = mgr.get_entity_mut(1) {
             p.player_id = Some(42);
         }
         let npc_id = mgr.allocate_npc_id();
-        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(npc) = mgr.get_entity_mut(npc_id) {
             // Neutral / non-hostile faction. Faction 10 is the only value
             // that enables the hostile reroute — anything else (including

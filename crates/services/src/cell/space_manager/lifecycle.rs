@@ -61,7 +61,7 @@ impl SpaceManager {
 
     /// Check if a world is marked as instanced in spaces.xml.
     pub fn is_world_instanced(&self, world_name: &str) -> bool {
-        self.worlds.get(world_name).map_or(false, |w| w.instanced)
+        self.worlds.get(world_name).is_some_and(|w| w.instanced)
     }
 
     /// Find or create a space for the given world name.
@@ -78,7 +78,9 @@ impl SpaceManager {
         }
 
         // Check if we know about this world at all
-        let world_def = self.worlds.get(world_name)
+        let world_def = self
+            .worlds
+            .get(world_name)
             .ok_or_else(|| format!("Unknown world: {world_name}"))?;
 
         if !world_def.instanced {

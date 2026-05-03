@@ -29,12 +29,12 @@ pub(crate) const BAG_FILL_ORDER: &[i32] = &[
 /// Max items per container (Constants.py:142-162).
 pub(crate) fn bag_max_slots(container_id: i32) -> i32 {
     match container_id {
-        1 => 40,   // Main
-        2 => 100,  // Mission
-        3 => 4,    // Bandolier
-        4..=14 => 1,  // Equipment slots
-        15 => 100, // Crafting
-        16 => 12,  // Vendor Buyback
+        1 => 40,     // Main
+        2 => 100,    // Mission
+        3 => 4,      // Bandolier
+        4..=14 => 1, // Equipment slots
+        15 => 100,   // Crafting
+        16 => 12,    // Vendor Buyback
         _ => 0,
     }
 }
@@ -48,7 +48,11 @@ pub(crate) fn bag_max_slots(container_id: i32) -> i32 {
 ///
 /// All other containers start at 0.
 pub(crate) fn bag_min_slot(container_id: i32) -> i32 {
-    if container_id == INV_BANDOLIER { 1 } else { 0 }
+    if container_id == INV_BANDOLIER {
+        1
+    } else {
+        0
+    }
 }
 
 // ── Resource cache ───────────────────────────────────────────────────────────
@@ -112,7 +116,11 @@ impl ResourceCache {
                     categories.insert(cat_id, cat_data);
                 }
                 Err(e) => {
-                    tracing::warn!(category = cat_id, file = filename, "Failed to load PAK: {e}");
+                    tracing::warn!(
+                        category = cat_id,
+                        file = filename,
+                        "Failed to load PAK: {e}"
+                    );
                 }
             }
         }
@@ -130,8 +138,8 @@ impl ResourceCache {
 
     /// Load a single PAK file (ZIP archive) into a CategoryData.
     fn load_pak(pak_path: &str) -> Result<CategoryData, String> {
-        let file = std::fs::File::open(pak_path)
-            .map_err(|e| format!("Failed to open {pak_path}: {e}"))?;
+        let file =
+            std::fs::File::open(pak_path).map_err(|e| format!("Failed to open {pak_path}: {e}"))?;
         let mut archive = zip::ZipArchive::new(file)
             .map_err(|e| format!("Failed to read ZIP {pak_path}: {e}"))?;
 
@@ -139,7 +147,8 @@ impl ResourceCache {
         let mut metadata: u32 = 0;
 
         for i in 0..archive.len() {
-            let mut entry = archive.by_index(i)
+            let mut entry = archive
+                .by_index(i)
                 .map_err(|e| format!("ZIP entry {i}: {e}"))?;
             let name = entry.name().to_string();
 
@@ -151,7 +160,8 @@ impl ResourceCache {
             } else if let Some(id_str) = name.strip_prefix('_') {
                 if let Ok(id) = id_str.parse::<u32>() {
                     let mut data = Vec::with_capacity(entry.size() as usize);
-                    entry.read_to_end(&mut data)
+                    entry
+                        .read_to_end(&mut data)
                         .map_err(|e| format!("Failed to read entry {name}: {e}"))?;
                     elements.insert(id, data);
                 }

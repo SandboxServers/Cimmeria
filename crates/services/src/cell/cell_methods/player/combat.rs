@@ -1,8 +1,8 @@
-use tokio::sync::mpsc;
-use cimmeria_content_engine::chain::ChainEngine;
-use cimmeria_entity::stats::{HEALTH, FOCUS};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_entity::stats::{FOCUS, HEALTH};
+use tokio::sync::mpsc;
 
 use super::constants::*;
 
@@ -36,15 +36,17 @@ pub async fn dispatch(
                 // handle_use_ability already performed on the original kill),
                 // double-counting mission progress on every post-death swing.
                 let was_alive_before = if target_id > 0 {
-                    space_mgr.get_entity(target_id as u32).map_or(false, |t| {
-                        !t.is_player
-                            && t.stats.get(HEALTH).map_or(false, |s| s.cur > 0)
+                    space_mgr.get_entity(target_id as u32).is_some_and(|t| {
+                        !t.is_player && t.stats.get(HEALTH).is_some_and(|s| s.cur > 0)
                     })
                 } else {
                     false
                 };
 
-                crate::cell::abilities::handle_use_ability(entity_id, ability_id, target_id, tx, space_mgr).await;
+                crate::cell::abilities::handle_use_ability(
+                    entity_id, ability_id, target_id, tx, space_mgr,
+                )
+                .await;
 
                 // Only react to alive→dead transitions caused by *this* call.
                 // handle_use_ability already handles AI/loot/XP on the kill
@@ -53,9 +55,9 @@ pub async fn dispatch(
                 // player's player_id.
                 if was_alive_before {
                     let target_eid = target_id as u32;
-                    let just_died = space_mgr.get_entity(target_eid).map_or(false, |t| {
-                        t.stats.get(HEALTH).map_or(false, |s| s.cur <= 0)
-                    });
+                    let just_died = space_mgr
+                        .get_entity(target_eid)
+                        .is_some_and(|t| t.stats.get(HEALTH).is_some_and(|s| s.cur <= 0));
                     if just_died {
                         let tag = space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone());
                         if let Some(tag) = tag {
@@ -63,7 +65,8 @@ pub async fn dispatch(
                                 Some(player_id) => {
                                     crate::cell::content::fire_entity_death(
                                         entity_id, player_id, &tag, engine, tx, space_mgr,
-                                    ).await;
+                                    )
+                                    .await;
                                 }
                                 None => {
                                     tracing::warn!(
@@ -95,8 +98,13 @@ pub async fn dispatch(
                 // either no targets in radius, primary cast rejected, or
                 // nothing died.
                 let deaths = crate::cell::abilities::handle_use_ability_on_ground(
-                    entity_id, ability_id, [x, y, z], tx, space_mgr,
-                ).await;
+                    entity_id,
+                    ability_id,
+                    [x, y, z],
+                    tx,
+                    space_mgr,
+                )
+                .await;
 
                 if !deaths.is_empty() {
                     // Resolve player_id once — it doesn't change across kills.
@@ -108,7 +116,8 @@ pub async fn dispatch(
                                 Some(pid) => {
                                     crate::cell::content::fire_entity_death(
                                         entity_id, pid, &tag, engine, tx, space_mgr,
-                                    ).await;
+                                    )
+                                    .await;
                                 }
                                 None => {
                                     tracing::warn!(
@@ -184,22 +193,28 @@ async fn handle_respawn(
         crate::cell::abilities::send_entity_method(entity_id, 20, stat_update, tx, space_mgr).await;
     }
 
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
-        args: Vec::new(),
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
+            args: Vec::new(),
+        })
+        .await;
 
     let spawn_pos: [f32; 3] = resolve_respawn_position(respawner_id, entity_id, space_mgr);
-    let world_name = space_mgr.get_entity_world_name(entity_id)
+    let world_name = space_mgr
+        .get_entity_world_name(entity_id)
         .unwrap_or_else(|| "Castle_CellBlock".to_string());
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 
-    if let Err(e) = tx.send(CellToBaseMsg::RespawnReload {
-        entity_id,
-        world_name: world_name.clone(),
-        spawn_pos,
-    }).await {
+    if let Err(e) = tx
+        .send(CellToBaseMsg::RespawnReload {
+            entity_id,
+            world_name: world_name.clone(),
+            spawn_pos,
+        })
+        .await
+    {
         tracing::error!(
             entity_id, %world_name, ?spawn_pos, error = %e,
             "RespawnReload send to base failed -- player will not be teleported to spawn"
@@ -220,10 +235,18 @@ fn resolve_respawn_position(
     const CASTLE_DEFAULT_POS: [f32; 3] = [-334.231, 73.472, -228.026];
 
     if respawner_id > 0 {
-        if let Some(resp) = space_mgr.respawners.iter().find(|r| r.respawner_id == respawner_id) {
+        if let Some(resp) = space_mgr
+            .respawners
+            .iter()
+            .find(|r| r.respawner_id == respawner_id)
+        {
             return resp.pos;
         }
-        tracing::warn!(entity_id, respawner_id, "Respawner not found, falling back to world default");
+        tracing::warn!(
+            entity_id,
+            respawner_id,
+            "Respawner not found, falling back to world default"
+        );
     }
 
     let world_name = space_mgr.get_entity_world_name(entity_id);
@@ -256,7 +279,8 @@ fn resolve_respawn_position(
                 .map(|e| [e.position.x, e.position.y, e.position.z])
                 .unwrap_or(CASTLE_DEFAULT_POS);
             tracing::warn!(
-                entity_id, world = world,
+                entity_id,
+                world = world,
                 "No respawner configured for this world — respawning in place at current position"
             );
             in_place

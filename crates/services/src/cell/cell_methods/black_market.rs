@@ -1,8 +1,8 @@
 //! SGWBlackMarketManager interface exposed CellMethods (indices 61–66).
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 pub const SEARCH: u16 = 61;
 pub const CREATE_AUCTION: u16 = 62;
@@ -30,7 +30,14 @@ pub async fn dispatch(
                 let initial_bid = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let buyout_price = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let duration_days = i32::from_le_bytes([args[12], args[13], args[14], args[15]]);
-                tracing::info!(entity_id, item_id, initial_bid, buyout_price, duration_days, "UNIMPLEMENTED: BMCreateAuction");
+                tracing::info!(
+                    entity_id,
+                    item_id,
+                    initial_bid,
+                    buyout_price,
+                    duration_days,
+                    "UNIMPLEMENTED: BMCreateAuction"
+                );
             }
             true
         }
@@ -38,7 +45,12 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let auction_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let bid_amount = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, auction_id, bid_amount, "UNIMPLEMENTED: BMPlaceBid");
+                tracing::info!(
+                    entity_id,
+                    auction_id,
+                    bid_amount,
+                    "UNIMPLEMENTED: BMPlaceBid"
+                );
             }
             true
         }

@@ -23,7 +23,7 @@ pub async fn load_dialog_set_maps(
 
     let rows = sqlx::query(
         "SELECT dialog_set_map_id, dialog_id, interaction_flags \
-         FROM resources.dialog_set_maps"
+         FROM resources.dialog_set_maps",
     )
     .fetch_all(pool)
     .await?;
@@ -34,7 +34,13 @@ pub async fn load_dialog_set_maps(
         let dialog_id: Option<i32> = r.get("dialog_id");
         let interaction_flags: i64 = r.get("interaction_flags");
         if let Some(dialog_id) = dialog_id {
-            map.insert(id, DialogSetMapEntry { dialog_id, interaction_flags });
+            map.insert(
+                id,
+                DialogSetMapEntry {
+                    dialog_id,
+                    interaction_flags,
+                },
+            );
         }
     }
 

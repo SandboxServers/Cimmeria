@@ -11,9 +11,7 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{
-    serialize_effect_results, AbilityDef, DT_PHYSICAL,
-};
+use cimmeria_entity::abilities::{serialize_effect_results, AbilityDef, DT_PHYSICAL};
 use cimmeria_entity::stats::HEALTH;
 
 use super::super::combat;
@@ -111,8 +109,12 @@ pub(super) async fn apply_damage_to_target(
             if let Some(effect) = space_mgr.effect_defs.get(&eid) {
                 let hd = effect.param_i32("HealthDamage");
                 let fd = effect.param_i32("FocusDamage");
-                if hd > 0 { h_dmg = hd; }
-                if fd > 0 { f_dmg = fd; }
+                if hd > 0 {
+                    h_dmg = hd;
+                }
+                if fd > 0 {
+                    f_dmg = fd;
+                }
             }
         }
         (h_dmg, f_dmg)
@@ -120,8 +122,12 @@ pub(super) async fn apply_damage_to_target(
         (15, 0)
     };
     // Temp: 2x player damage so players can kill NPCs before dying
-    let is_player_attacker = space_mgr.get_entity(entity_id).map_or(false, |e| e.is_player);
-    let health_base_damage = if is_player_attacker { health_base_damage * 2 } else { health_base_damage };
+    let is_player_attacker = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+    let health_base_damage = if is_player_attacker {
+        health_base_damage * 2
+    } else {
+        health_base_damage
+    };
 
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
@@ -138,45 +144,55 @@ pub(super) async fn apply_damage_to_target(
     };
 
     let (effect_results, _total_health_damage) = combat::calculate_damage(
-        &qr_result, health_base_damage, DT_PHYSICAL, HEALTH,
-        &attacker_stats, &mut target.stats,
+        &qr_result,
+        health_base_damage,
+        DT_PHYSICAL,
+        HEALTH,
+        &attacker_stats,
+        &mut target.stats,
     );
 
     // Apply focus damage if present
     if focus_base_damage > 0 {
         let _ = combat::calculate_damage(
-            &qr_result, focus_base_damage, DT_PHYSICAL, cimmeria_entity::stats::FOCUS,
-            &attacker_stats, &mut target.stats,
+            &qr_result,
+            focus_base_damage,
+            DT_PHYSICAL,
+            cimmeria_entity::stats::FOCUS,
+            &attacker_stats,
+            &mut target.stats,
         );
     }
 
     // Check if target died — use entity's state_field so we preserve other flags
-    let target_died = target.stats.get(HEALTH).map_or(false, |s| s.cur <= 0);
+    let target_died = target.stats.get(HEALTH).is_some_and(|s| s.cur <= 0);
     if target_died {
         target.set_state_flag(combat::BSF_DEAD);
         target.set_state_flag(combat::BSF_MOVEMENT_LOCK); // prevent movement while dead
-        // Transition NPC AI to Dead so it stops fighting and moving
+                                                          // Transition NPC AI to Dead so it stops fighting and moving
         if !target.is_player {
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
             target.threat_list.clear();
             target.nav_path.clear();
             target.velocity = [0.0; 3]; // Stop movement interpolation
-            // NOTE: do NOT zero `interaction_type_flags` here. Python `SGWMob.onDead()`
-            // OR-merges `INT_NormalLoot` and preserves all other bits — content-driven
-            // bits (quest tags, mission interactions) must survive death. The dead-state
-            // bit handles cursor distinction client-side; we don't need to clear
-            // `INT_Attackable` to suppress the shootable cursor.
-            // BSF_IN_COMBAT is intentionally written via raw bitmask ops
-            // across the codebase (use_ability sets it on weapon-fire,
-            // threat module clears it when the threat list drains). Mixing
-            // it with `unset_state_flag` here would hit the zero-counter
-            // no-op path and leave the bit stuck — NPCs would render as
-            // still-in-combat after death. Mirrors python SGWMob.py:292.
+                                        // NOTE: do NOT zero `interaction_type_flags` here. Python `SGWMob.onDead()`
+                                        // OR-merges `INT_NormalLoot` and preserves all other bits — content-driven
+                                        // bits (quest tags, mission interactions) must survive death. The dead-state
+                                        // bit handles cursor distinction client-side; we don't need to clear
+                                        // `INT_Attackable` to suppress the shootable cursor.
+                                        // BSF_IN_COMBAT is intentionally written via raw bitmask ops
+                                        // across the codebase (use_ability sets it on weapon-fire,
+                                        // threat module clears it when the threat list drains). Mixing
+                                        // it with `unset_state_flag` here would hit the zero-counter
+                                        // no-op path and leave the bit stuck — NPCs would render as
+                                        // still-in-combat after death. Mirrors python SGWMob.py:292.
             target.state_field &= !combat::BSF_IN_COMBAT;
         }
         tracing::info!(
-            attacker = entity_id, target = target_eid,
-            ability_id, is_npc = !target.is_player,
+            attacker = entity_id,
+            target = target_eid,
+            ability_id,
+            is_npc = !target.is_player,
             "Target killed!"
         );
     }
@@ -193,7 +209,7 @@ pub(super) async fn apply_damage_to_target(
     // If attacker is a player and target is an NPC, the witness routing on the NPC
     // already reaches the player. So only send to the attacker directly + NPC witnesses.
     let effect_args = serialize_effect_results(
-        entity_id as i32,  // source
+        entity_id as i32, // source
         ability_id,
         effect_seq as i32, // effect ID (using sequence as stub)
         target_eid as i32, // target
@@ -201,32 +217,46 @@ pub(super) async fn apply_damage_to_target(
         &effect_results,
     );
 
-    let attacker_is_player = space_mgr.get_entity(entity_id).map_or(false, |e| e.is_player);
-    let target_is_player = space_mgr.get_entity(target_eid).map_or(false, |e| e.is_player);
+    let attacker_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+    let target_is_player = space_mgr
+        .get_entity(target_eid)
+        .is_some_and(|e| e.is_player);
 
     // Send to attacker
     send_entity_method(
-        entity_id, crate::mercury::method_idx::ON_EFFECT_RESULTS,
-        effect_args.clone(), tx, space_mgr,
-    ).await;
+        entity_id,
+        crate::mercury::method_idx::ON_EFFECT_RESULTS,
+        effect_args.clone(),
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // Only send to target if the target is a player (so they see incoming damage).
     // If target is an NPC, the attacker (as witness) already received it above via
     // send_entity_method routing.
     if target_is_player && !attacker_is_player {
         send_entity_method(
-            target_eid, crate::mercury::method_idx::ON_EFFECT_RESULTS,
-            effect_args, tx, space_mgr,
-        ).await;
+            target_eid,
+            crate::mercury::method_idx::ON_EFFECT_RESULTS,
+            effect_args,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 
     // ── Send stat updates ──
 
     // onStatUpdate to target (their health bar changes)
     send_entity_method(
-        target_eid, crate::mercury::method_idx::ON_STAT_UPDATE,
-        target_stat_update, tx, space_mgr,
-    ).await;
+        target_eid,
+        crate::mercury::method_idx::ON_STAT_UPDATE,
+        target_stat_update,
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // onStatUpdate to attacker — drains AmmoSlot{N} dirty bits set by
     // `set_slot_ammo` on the consume path so the bandolier UI updates on every
@@ -243,33 +273,43 @@ pub(super) async fn apply_damage_to_target(
 
     if target_died {
         super::death::apply_death_transition(
-            target_eid, entity_id, target_state,
-            attacker_is_player, target_is_player,
-            tx, space_mgr,
-        ).await;
+            target_eid,
+            entity_id,
+            target_state,
+            attacker_is_player,
+            target_is_player,
+            tx,
+            space_mgr,
+        )
+        .await;
 
         // Send death animation via onSequence (Entity_Death = event_id 5001)
         // Look up the death sequence from the target's event set via sequence_map
         {
             const EVENT_ENTITY_DEATH: i32 = 5001;
-            // Use event set 1025 (Mob) for NPCs, 1025 for players too (same death anim)
-            let event_set_id = space_mgr.get_entity(target_eid)
-                .and_then(|e| if e.is_player { Some(1025) } else { Some(1025) });
+            // Event set 1025 (Mob) drives the death anim for both NPCs and
+            // players today. If they ever diverge, branch on `e.is_player`.
+            let event_set_id = space_mgr.get_entity(target_eid).map(|_| 1025);
             if let Some(esid) = event_set_id {
-                if let Some(&death_seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ENTITY_DEATH)) {
+                if let Some(&death_seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ENTITY_DEATH))
+                {
                     let mut seq_args = Vec::with_capacity(28);
-                    seq_args.extend_from_slice(&death_seq_id.to_le_bytes());       // KismetEventSetSeqID
+                    seq_args.extend_from_slice(&death_seq_id.to_le_bytes()); // KismetEventSetSeqID
                     seq_args.extend_from_slice(&(target_eid as i32).to_le_bytes()); // SourceID (dying entity)
                     seq_args.extend_from_slice(&(target_eid as i32).to_le_bytes()); // TargetID (also dying entity — NOT killer, or client plays death anim on killer)
-                    seq_args.push(1);                                                // PrimaryTarget
-                    seq_args.extend_from_slice(&0.0f32.to_le_bytes());             // ImpactTime
-                    seq_args.extend_from_slice(&0u32.to_le_bytes());                // NameValuePairs count
-                    seq_args.push(0);                                                // ViewType
-                    seq_args.extend_from_slice(&0i32.to_le_bytes());                // InstanceId
+                    seq_args.push(1); // PrimaryTarget
+                    seq_args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
+                    seq_args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count
+                    seq_args.push(0); // ViewType
+                    seq_args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
                     send_entity_method(
-                        target_eid, crate::mercury::method_idx::ON_SEQUENCE,
-                        seq_args, tx, space_mgr,
-                    ).await;
+                        target_eid,
+                        crate::mercury::method_idx::ON_SEQUENCE,
+                        seq_args,
+                        tx,
+                        space_mgr,
+                    )
+                    .await;
                 }
             }
         }
@@ -279,13 +319,19 @@ pub(super) async fn apply_damage_to_target(
             if !target.is_player {
                 let xp = kill_xp(target.level);
                 tracing::info!(
-                    attacker = entity_id, target = target_eid,
-                    mob_level = target.level, xp, "Granting kill XP"
+                    attacker = entity_id,
+                    target = target_eid,
+                    mob_level = target.level,
+                    xp,
+                    "Granting kill XP"
                 );
-                if let Err(e) = tx.send(CellToBaseMsg::GrantXP {
-                    entity_id,
-                    xp_amount: xp,
-                }).await {
+                if let Err(e) = tx
+                    .send(CellToBaseMsg::GrantXP {
+                        entity_id,
+                        xp_amount: xp,
+                    })
+                    .await
+                {
                     tracing::error!(
                         attacker = entity_id, target = target_eid, xp,
                         error = %e,
@@ -301,7 +347,9 @@ pub(super) async fn apply_damage_to_target(
             // Look up respawners for the player's current world
             let world_name = space_mgr.get_entity_world_name(target_eid);
             let matching_respawners: Vec<_> = if let Some(ref wn) = world_name {
-                space_mgr.respawners.iter()
+                space_mgr
+                    .respawners
+                    .iter()
                     .filter(|r| r.world_name == *wn)
                     .collect()
             } else {
@@ -331,7 +379,8 @@ pub(super) async fn apply_damage_to_target(
                 aid_args,
                 tx,
                 space_mgr,
-            ).await;
+            )
+            .await;
             tracing::info!(
                 target = target_eid,
                 world = ?world_name,
@@ -347,13 +396,19 @@ pub(super) async fn apply_damage_to_target(
     // client flips its in-combat HUD/cursor routing.
     if !target_died {
         if let Some(new_state) = combat::generate_threat(
-            space_mgr, entity_id, target_eid, _total_health_damage as f32,
+            space_mgr,
+            entity_id,
+            target_eid,
+            _total_health_damage as f32,
         ) {
             send_entity_method(
-                entity_id, crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                entity_id,
+                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),
-                tx, space_mgr,
-            ).await;
+                tx,
+                space_mgr,
+            )
+            .await;
         }
     }
 }

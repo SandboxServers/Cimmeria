@@ -16,11 +16,8 @@ use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::minigame::SessionRegistry;
 
 use super::{
-    BaseError, ConnectedClientState, OnlinePlayer, archetype_name,
-    connect_loop::run_connect_loop,
-    outbox,
-    resources::ResourceCache,
-    world_entry::handle_cell_message,
+    archetype_name, connect_loop::run_connect_loop, outbox, resources::ResourceCache,
+    world_entry::handle_cell_message, BaseError, ConnectedClientState, OnlinePlayer,
 };
 
 /// BaseApp service -- manages persistent entity state and client connections.
@@ -83,7 +80,8 @@ impl BaseService {
     /// Snapshot of all connected players for the admin API.
     pub fn online_players(&self) -> Vec<OnlinePlayer> {
         let clients = self.connected_clients.lock().unwrap();
-        clients.iter()
+        clients
+            .iter()
             .filter(|(_, c)| c.world_entry_sent)
             .map(|(addr, c)| OnlinePlayer {
                 id: c.player_entity_id.unwrap_or(0),
@@ -151,8 +149,7 @@ impl BaseService {
         let cell_rx = self.cell_rx.take();
 
         let connected = Arc::clone(&self.connected_clients);
-        let entity_manager: Arc<Mutex<EntityManager>> =
-            Arc::new(Mutex::new(EntityManager::new()));
+        let entity_manager: Arc<Mutex<EntityManager>> = Arc::new(Mutex::new(EntityManager::new()));
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
@@ -173,10 +170,16 @@ impl BaseService {
         tokio::spawn(async move {
             tracing::trace!("Base service UDP receive loop started");
             run_connect_loop(
-                socket, pending_logins, db_pool, resource_cache,
-                cell_tx_for_loop, connected_for_loop,
-                entity_manager_for_loop, entity_to_addr_for_loop,
-            ).await;
+                socket,
+                pending_logins,
+                db_pool,
+                resource_cache,
+                cell_tx_for_loop,
+                connected_for_loop,
+                entity_manager_for_loop,
+                entity_to_addr_for_loop,
+            )
+            .await;
             tracing::trace!("Base service UDP receive loop exited");
         });
 
@@ -185,11 +188,17 @@ impl BaseService {
                 tracing::debug!("Base service CellToBase message handler started");
                 while let Some(msg) = cell_rx.recv().await {
                     handle_cell_message(
-                        msg, &socket_for_cell, &connected_for_cell,
+                        msg,
+                        &socket_for_cell,
+                        &connected_for_cell,
                         &entity_to_addr_for_cell,
-                        &cell_tx_for_cell, &db_pool_for_cell,
-                        &mg_registry_for_cell, &mg_host_for_cell, mg_port_for_cell,
-                    ).await;
+                        &cell_tx_for_cell,
+                        &db_pool_for_cell,
+                        &mg_registry_for_cell,
+                        &mg_host_for_cell,
+                        mg_port_for_cell,
+                    )
+                    .await;
                 }
                 tracing::debug!("Base service CellToBase message handler exited");
             });

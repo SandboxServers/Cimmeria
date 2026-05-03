@@ -99,14 +99,17 @@ impl MissionInstance {
 
     /// Complete a specific objective by ID.
     pub fn complete_objective(&mut self, objective_id: i32) -> bool {
-        if let Some(obj) = self.active_objectives.iter_mut().find(|o| o.objective_id == objective_id) {
+        if let Some(obj) = self
+            .active_objectives
+            .iter_mut()
+            .find(|o| o.objective_id == objective_id)
+        {
             obj.status = STATUS_COMPLETED;
             self.completed_objectives.push(objective_id);
             true
         } else {
             false
         }
-
     }
 }
 
@@ -150,7 +153,8 @@ impl MissionManager {
 
     /// Get all active (non-hidden) missions for resend.
     pub fn active_missions(&self) -> Vec<&MissionInstance> {
-        self.missions.values()
+        self.missions
+            .values()
             .filter(|m| m.status == MISSION_ACTIVE && !m.is_hidden)
             .collect()
     }
@@ -253,7 +257,10 @@ mod tests {
         assert_eq!(m.status, MISSION_COMPLETED);
         assert_eq!(m.current_step_id, None);
         assert!(m.completed_steps.contains(&200));
-        assert!(m.active_objectives.iter().all(|o| o.status == STATUS_COMPLETED));
+        assert!(m
+            .active_objectives
+            .iter()
+            .all(|o| o.status == STATUS_COMPLETED));
         // Python parity: complete() increments repeats. This is the bug
         // class fixed by #118 — without the bump, repeatable missions
         // appear to reset on relog instead of advancing the counter.
@@ -357,7 +364,10 @@ mod tests {
         assert_eq!(messages[0].0, 80);
         assert_eq!(messages[0].1.len(), 9);
         let mission_id = i32::from_le_bytes([
-            messages[0].1[0], messages[0].1[1], messages[0].1[2], messages[0].1[3],
+            messages[0].1[0],
+            messages[0].1[1],
+            messages[0].1[2],
+            messages[0].1[3],
         ]);
         assert_eq!(mission_id, 100);
         assert_eq!(messages[0].1[4], 0); // STATUS_ACTIVE
@@ -366,7 +376,10 @@ mod tests {
         assert_eq!(messages[1].0, 81);
         assert_eq!(messages[1].1.len(), 5);
         let step_id = i32::from_le_bytes([
-            messages[1].1[0], messages[1].1[1], messages[1].1[2], messages[1].1[3],
+            messages[1].1[0],
+            messages[1].1[1],
+            messages[1].1[2],
+            messages[1].1[3],
         ]);
         assert_eq!(step_id, 200);
 
@@ -374,7 +387,10 @@ mod tests {
         assert_eq!(messages[2].0, 82);
         assert_eq!(messages[2].1.len(), 7);
         let obj_id = i32::from_le_bytes([
-            messages[2].1[0], messages[2].1[1], messages[2].1[2], messages[2].1[3],
+            messages[2].1[0],
+            messages[2].1[1],
+            messages[2].1[2],
+            messages[2].1[3],
         ]);
         assert_eq!(obj_id, 300);
         assert_eq!(messages[2].1[5], 0); // not hidden
@@ -411,8 +427,18 @@ mod tests {
 
         // Simulate what CellService does on InitPlayerState
         let objectives = vec![
-            MissionObjective { objective_id: 800, status: STATUS_ACTIVE, hidden: false, optional: false },
-            MissionObjective { objective_id: 801, status: STATUS_COMPLETED, hidden: false, optional: false },
+            MissionObjective {
+                objective_id: 800,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: false,
+            },
+            MissionObjective {
+                objective_id: 801,
+                status: STATUS_COMPLETED,
+                hidden: false,
+                optional: false,
+            },
         ];
         let mut mission = MissionInstance::new(622, 700, objectives);
         mission.status = MISSION_ACTIVE;
@@ -454,9 +480,16 @@ mod tests {
         let mut mgr = MissionManager::new();
 
         // Active mission 622
-        let m1 = MissionInstance::new(622, 700, vec![
-            MissionObjective { objective_id: 800, status: STATUS_ACTIVE, hidden: false, optional: false },
-        ]);
+        let m1 = MissionInstance::new(
+            622,
+            700,
+            vec![MissionObjective {
+                objective_id: 800,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: false,
+            }],
+        );
         mgr.add_mission(m1);
 
         // Completed mission 638
@@ -465,9 +498,16 @@ mod tests {
         mgr.add_mission(m2);
 
         // Active mission 681
-        let m3 = MissionInstance::new(681, 720, vec![
-            MissionObjective { objective_id: 900, status: STATUS_ACTIVE, hidden: false, optional: false },
-        ]);
+        let m3 = MissionInstance::new(
+            681,
+            720,
+            vec![MissionObjective {
+                objective_id: 900,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: false,
+            }],
+        );
         mgr.add_mission(m3);
 
         assert_eq!(mgr.count(), 3);

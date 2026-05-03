@@ -48,10 +48,7 @@ pub fn hash_file(path: &Path) -> std::io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-pub fn check_manifest(
-    manifest: &PatchManifest,
-    install_path: &Path,
-) -> Vec<ManifestEntry> {
+pub fn check_manifest(manifest: &PatchManifest, install_path: &Path) -> Vec<ManifestEntry> {
     manifest
         .files
         .iter()

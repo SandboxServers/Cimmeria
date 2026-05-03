@@ -1,8 +1,8 @@
 //! SGWMailManager interface exposed CellMethods (indices 43–51).
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 pub const REQUEST_MAIL_HEADERS: u16 = 43;
 pub const SEND_MAIL_MESSAGE: u16 = 44;
@@ -25,7 +25,8 @@ pub async fn dispatch(
         REQUEST_MAIL_HEADERS => {
             let b_archive = if !args.is_empty() { args[0] } else { 0 };
             tracing::debug!(entity_id, b_archive, "requestMailHeaders");
-            crate::cell::mail::handle_request_mail_headers(entity_id, b_archive, tx, space_mgr).await;
+            crate::cell::mail::handle_request_mail_headers(entity_id, b_archive, tx, space_mgr)
+                .await;
             true
         }
         SEND_MAIL_MESSAGE => {
@@ -59,7 +60,8 @@ pub async fn dispatch(
             if args.len() >= 4 {
                 let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::debug!(entity_id, mail_id, "requestMailBody");
-                crate::cell::mail::handle_request_mail_body(entity_id, mail_id, tx, space_mgr).await;
+                crate::cell::mail::handle_request_mail_body(entity_id, mail_id, tx, space_mgr)
+                    .await;
             }
             true
         }
@@ -75,7 +77,13 @@ pub async fn dispatch(
                 let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let container_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let slot_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
-                tracing::info!(entity_id, mail_id, container_id, slot_id, "UNIMPLEMENTED: takeItemFromMailMessage");
+                tracing::info!(
+                    entity_id,
+                    mail_id,
+                    container_id,
+                    slot_id,
+                    "UNIMPLEMENTED: takeItemFromMailMessage"
+                );
             }
             true
         }

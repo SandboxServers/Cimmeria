@@ -68,7 +68,7 @@ fn main() {
             *counts.entry(cls).or_default() += 1;
         }
         let mut sorted: Vec<_> = counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
 
         println!("--- Class Distribution ({} classes) ---", sorted.len());
         for (cls, count) in &sorted {

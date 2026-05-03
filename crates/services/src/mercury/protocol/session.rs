@@ -8,10 +8,8 @@
 use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 
 use super::{
-    encrypt_packet, REPLY_FLAGS,
-    BASEMSG_REPLY_MESSAGE, BASEMSG_UPDATE_FREQUENCY_NOTIFICATION,
-    BASEMSG_TICK_SYNC, BASEMSG_SET_GAME_TIME,
-    BASEMSG_RESET_ENTITIES, BASEMSG_LOGGED_OFF,
+    encrypt_packet, BASEMSG_LOGGED_OFF, BASEMSG_REPLY_MESSAGE, BASEMSG_RESET_ENTITIES,
+    BASEMSG_SET_GAME_TIME, BASEMSG_TICK_SYNC, BASEMSG_UPDATE_FREQUENCY_NOTIFICATION, REPLY_FLAGS,
 };
 
 /// Build and encrypt the `BASEMSG_REPLY_MESSAGE` packet.
@@ -19,12 +17,7 @@ use super::{
 /// This is the server's response to the `baseAppLogin` connect request.
 /// The reply echoes `request_id` and the 20-byte `ticket` back to the client
 /// so it can verify the server is legitimate.
-pub fn build_connect_reply(
-    request_id: u32,
-    ticket: &[u8],
-    key: &[u8; 32],
-    seq_id: u32,
-) -> Vec<u8> {
+pub fn build_connect_reply(request_id: u32, ticket: &[u8], key: &[u8; 32], seq_id: u32) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
     assert_eq!(ticket.len(), 20, "ticket must be exactly 20 bytes");
@@ -88,11 +81,7 @@ pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u
 /// The C++ server sends RESET_ENTITIES in its own flushed bundle, separate from
 /// the cell/viewport data.  The client tears down all entities, then sends
 /// ENABLE_ENTITIES, at which point the create-player step fires.
-pub fn build_reset_entities(
-    key: &[u8; 32],
-    seq_id: u32,
-    acks: &[u32],
-) -> Vec<u8> {
+pub fn build_reset_entities(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
     let mut body = Vec::with_capacity(4);
@@ -113,16 +102,13 @@ pub fn build_reset_entities(
 ///
 /// C++ reference: `client_handler.cpp:461` — `BASEMSG_LOGGED_OFF` with
 /// `reason = 0` followed by `flushBundle` + `channel->condemn()`.
-pub fn build_logged_off(
-    key: &[u8; 32],
-    seq_id: u32,
-    acks: &[u32],
-) -> Vec<u8> {
+pub fn build_logged_off(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
-    let mut body = Vec::with_capacity(2);
-    body.push(BASEMSG_LOGGED_OFF);
-    body.push(0x00); // reason = 0 (normal logoff)
+    let body = vec![
+        BASEMSG_LOGGED_OFF,
+        0x00, // reason = 0 (normal logoff)
+    ];
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);

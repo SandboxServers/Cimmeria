@@ -4,7 +4,7 @@ use sqlx::PgPool;
 
 use cimmeria_entity::abilities::AbilityTreeData;
 
-use crate::mercury::{PlayerLoadData, archetype_ability_tree};
+use crate::mercury::{archetype_ability_tree, PlayerLoadData};
 
 fn archetype_resource_name(archetype_id: i32) -> Option<&'static str> {
     match archetype_id {
@@ -151,7 +151,10 @@ pub async fn query_bandolier_items_tx(
 }
 
 /// Query archetype ability tree data from the database.
-pub async fn query_archetype_ability_tree(pool: &PgPool, archetype_id: i32) -> Option<AbilityTreeData> {
+pub async fn query_archetype_ability_tree(
+    pool: &PgPool,
+    archetype_id: i32,
+) -> Option<AbilityTreeData> {
     let archetype = archetype_resource_name(archetype_id)?;
 
     #[derive(sqlx::FromRow)]
@@ -204,4 +207,3 @@ pub async fn query_archetype_ability_tree(pool: &PgPool, archetype_id: i32) -> O
 
     Some(ability_tree)
 }
-

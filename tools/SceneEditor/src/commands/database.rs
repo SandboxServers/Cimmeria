@@ -190,17 +190,14 @@ fn get_pool(state: &AppState) -> Result<sqlx::PgPool, String> {
 
 /// List all worlds, returning world_id and client_map for zone matching.
 #[tauri::command]
-pub async fn list_worlds(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<WorldInfo>, String> {
+pub async fn list_worlds(state: tauri::State<'_, AppState>) -> Result<Vec<WorldInfo>, String> {
     let pool = get_pool(&state)?;
 
-    let rows = sqlx::query(
-        "SELECT world_id, world, client_map FROM resources.worlds ORDER BY world_id",
-    )
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| format!("Failed to query worlds: {e}"))?;
+    let rows =
+        sqlx::query("SELECT world_id, world, client_map FROM resources.worlds ORDER BY world_id")
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| format!("Failed to query worlds: {e}"))?;
 
     let worlds = rows
         .iter()
@@ -562,10 +559,7 @@ pub async fn update_spawn_position(
 
 /// Delete a spawn from the spawnlist table.
 #[tauri::command]
-pub async fn delete_spawn(
-    state: tauri::State<'_, AppState>,
-    spawn_id: i32,
-) -> Result<(), String> {
+pub async fn delete_spawn(state: tauri::State<'_, AppState>, spawn_id: i32) -> Result<(), String> {
     let pool = get_pool(&state)?;
 
     let result = sqlx::query("DELETE FROM resources.spawnlist WHERE spawn_id = $1")
@@ -638,7 +632,11 @@ pub async fn create_region(
         gate_address: None,
     };
 
-    tracing::info!("Created region {} (handler={})", region_id, entity.handler.as_deref().unwrap_or(""));
+    tracing::info!(
+        "Created region {} (handler={})",
+        region_id,
+        entity.handler.as_deref().unwrap_or("")
+    );
     Ok(entity)
 }
 

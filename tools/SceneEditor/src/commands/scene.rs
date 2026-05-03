@@ -67,8 +67,8 @@ pub async fn scan_zones(
 
     let mut zones = Vec::new();
 
-    let entries = std::fs::read_dir(&maps_dir)
-        .map_err(|e| format!("Failed to read Maps directory: {e}"))?;
+    let entries =
+        std::fs::read_dir(&maps_dir).map_err(|e| format!("Failed to read Maps directory: {e}"))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
@@ -126,8 +126,8 @@ pub async fn load_zone(
     let mut bounds = ZoneBounds::empty();
     let mut tile_count = 0u32;
 
-    let entries = std::fs::read_dir(zone_dir)
-        .map_err(|e| format!("Failed to read zone directory: {e}"))?;
+    let entries =
+        std::fs::read_dir(zone_dir).map_err(|e| format!("Failed to read zone directory: {e}"))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
@@ -252,11 +252,10 @@ pub async fn list_actors(
     let guard = state.loaded_zone.lock().unwrap();
     let zone = guard.as_ref().ok_or("No zone loaded")?;
 
-    let iter = zone.actors.iter().filter(|a| {
-        class_filter
-            .as_ref()
-            .map_or(true, |f| a.class_name == *f)
-    });
+    let iter = zone
+        .actors
+        .iter()
+        .filter(|a| class_filter.as_ref().map_or(true, |f| a.class_name == *f));
 
     let entries: Vec<ActorListEntry> = iter
         .map(|a| ActorListEntry {
@@ -380,7 +379,9 @@ pub async fn duplicate_actors(
     let zone = guard.as_mut().ok_or("No zone loaded")?;
 
     let key_set: std::collections::HashSet<&str> = keys.iter().map(|s| s.as_str()).collect();
-    let sources: Vec<ActorEntry> = zone.actors.iter()
+    let sources: Vec<ActorEntry> = zone
+        .actors
+        .iter()
         .filter(|a| key_set.contains(a.key.as_str()))
         .cloned()
         .collect();
@@ -420,7 +421,10 @@ pub async fn duplicate_actors(
             static_mesh: new_actor.static_mesh.clone(),
         });
 
-        *zone.class_counts.entry(new_actor.class_name.clone()).or_insert(0) += 1;
+        *zone
+            .class_counts
+            .entry(new_actor.class_name.clone())
+            .or_insert(0) += 1;
         new_keys.push(new_key);
         zone.actors.push(new_actor);
     }
@@ -474,7 +478,8 @@ pub async fn rotate_actors(
     new_pitch: Vec<f32>,
     new_roll: Vec<f32>,
 ) -> Result<(), String> {
-    if keys.len() != new_yaw.len() || keys.len() != new_pitch.len() || keys.len() != new_roll.len() {
+    if keys.len() != new_yaw.len() || keys.len() != new_pitch.len() || keys.len() != new_roll.len()
+    {
         return Err("Array length mismatch".into());
     }
 
@@ -543,7 +548,9 @@ pub async fn scale_actors(
 #[tauri::command]
 pub async fn undo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     let action = state.undo_stack.lock().unwrap().pop();
-    let Some(action) = action else { return Ok(false) };
+    let Some(action) = action else {
+        return Ok(false);
+    };
 
     let mut guard = state.loaded_zone.lock().unwrap();
     let zone = guard.as_mut().ok_or("No zone loaded")?;
@@ -560,8 +567,11 @@ pub async fn undo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
         }
         UndoAction::CreateActors(keys) => {
             // Remove the created actors
-            let key_set: std::collections::HashSet<&str> = keys.iter().map(|s| s.as_str()).collect();
-            let removed: Vec<ActorEntry> = zone.actors.iter()
+            let key_set: std::collections::HashSet<&str> =
+                keys.iter().map(|s| s.as_str()).collect();
+            let removed: Vec<ActorEntry> = zone
+                .actors
+                .iter()
                 .filter(|a| key_set.contains(a.key.as_str()))
                 .cloned()
                 .collect();
@@ -663,7 +673,9 @@ pub async fn undo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
 #[tauri::command]
 pub async fn redo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
     let action = state.redo_stack.lock().unwrap().pop();
-    let Some(action) = action else { return Ok(false) };
+    let Some(action) = action else {
+        return Ok(false);
+    };
 
     let mut guard = state.loaded_zone.lock().unwrap();
     let zone = guard.as_mut().ok_or("No zone loaded")?;
@@ -679,8 +691,11 @@ pub async fn redo(state: tauri::State<'_, AppState>) -> Result<bool, String> {
             UndoAction::CreateActors(keys)
         }
         UndoAction::CreateActors(keys) => {
-            let key_set: std::collections::HashSet<&str> = keys.iter().map(|s| s.as_str()).collect();
-            let removed: Vec<ActorEntry> = zone.actors.iter()
+            let key_set: std::collections::HashSet<&str> =
+                keys.iter().map(|s| s.as_str()).collect();
+            let removed: Vec<ActorEntry> = zone
+                .actors
+                .iter()
                 .filter(|a| key_set.contains(a.key.as_str()))
                 .cloned()
                 .collect();
@@ -791,7 +806,10 @@ pub async fn update_actor_property(
         .find(|a| a.key == key)
         .ok_or_else(|| format!("Actor not found: {key}"))?;
 
-    let old_value = if let Some(prop) = actor.properties.iter_mut().find(|p| p.name == property_name)
+    let old_value = if let Some(prop) = actor
+        .properties
+        .iter_mut()
+        .find(|p| p.name == property_name)
     {
         let old = prop.value.clone();
         prop.value = new_value;
@@ -806,7 +824,11 @@ pub async fn update_actor_property(
     };
 
     drop(guard);
-    state.push_undo(UndoAction::PropertyChange(key, property_name, old_value.clone()));
+    state.push_undo(UndoAction::PropertyChange(
+        key,
+        property_name,
+        old_value.clone(),
+    ));
 
     Ok(old_value)
 }
@@ -1117,14 +1139,9 @@ pub async fn export_sql(
 
     drop(guard);
 
-    std::fs::write(&file_path, sql)
-        .map_err(|e| format!("Failed to write SQL file: {e}"))?;
+    std::fs::write(&file_path, sql).map_err(|e| format!("Failed to write SQL file: {e}"))?;
 
-    tracing::info!(
-        "Exported {} actors to SQL: {}",
-        total_count,
-        file_path
-    );
+    tracing::info!("Exported {} actors to SQL: {}", total_count, file_path);
 
     Ok(total_count)
 }
@@ -1145,8 +1162,7 @@ pub async fn save_zone(
 
     drop(guard);
 
-    std::fs::write(&file_path, json)
-        .map_err(|e| format!("Failed to write JSON file: {e}"))?;
+    std::fs::write(&file_path, json).map_err(|e| format!("Failed to write JSON file: {e}"))?;
 
     tracing::info!("Saved {} actors to JSON: {}", count, file_path);
 
@@ -1178,10 +1194,7 @@ fn count_umap_files(dir: &Path) -> u32 {
         .unwrap_or(0)
 }
 
-fn find_vector_prop(
-    props: &[cimmeria_upk::TaggedProperty],
-    name: &str,
-) -> Option<(f32, f32, f32)> {
+fn find_vector_prop(props: &[cimmeria_upk::TaggedProperty], name: &str) -> Option<(f32, f32, f32)> {
     props.iter().find(|p| p.name == name).and_then(|p| {
         if let PropValue::Vector { x, y, z } = &p.value {
             Some((*x, *y, *z))

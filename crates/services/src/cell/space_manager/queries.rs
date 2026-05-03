@@ -8,7 +8,8 @@ use super::{RegionData, SpaceManager};
 impl SpaceManager {
     /// Return all active spaces as (space_id, world_name) pairs.
     pub fn all_spaces(&self) -> Vec<(u32, String)> {
-        self.spaces.values()
+        self.spaces
+            .values()
             .map(|s| (s.space_id, s.world_name.clone()))
             .collect()
     }
@@ -54,7 +55,10 @@ impl SpaceManager {
     /// Get the objectives for a given step from the step_objectives cache.
     ///
     /// Returns an empty vec if the step has no objectives in the cache.
-    pub fn get_step_objectives(&self, step_id: i32) -> Vec<super::super::spawner::MissionObjectiveDef> {
+    pub fn get_step_objectives(
+        &self,
+        step_id: i32,
+    ) -> Vec<super::super::spawner::MissionObjectiveDef> {
         self.step_objectives
             .get(&step_id)
             .cloned()
@@ -68,7 +72,8 @@ impl SpaceManager {
 
     /// Return all registered regions for a given world name.
     pub fn regions_for_world(&self, world_name: &str) -> Vec<&RegionData> {
-        self.regions.values()
+        self.regions
+            .values()
             .filter(|r| r.world_name == world_name)
             .collect()
     }
@@ -106,9 +111,10 @@ impl SpaceManager {
     pub fn find_entity_by_tag(&self, source_entity_id: u32, tag: &str) -> Option<u32> {
         let &space_id = self.entity_space.get(&source_entity_id)?;
         let space = self.spaces.get(&space_id)?;
-        space.entities.iter().find_map(|(&eid, entity)| {
-            (entity.tag.as_deref() == Some(tag)).then_some(eid)
-        })
+        space
+            .entities
+            .iter()
+            .find_map(|(&eid, entity)| (entity.tag.as_deref() == Some(tag)).then_some(eid))
     }
 
     /// Find all entities with a given `template_id` in the same space as
@@ -124,7 +130,9 @@ impl SpaceManager {
         let Some(space) = self.spaces.get(&space_id) else {
             return Vec::new();
         };
-        space.entities.iter()
+        space
+            .entities
+            .iter()
             .filter(|(_, e)| e.template_id == Some(template_id))
             .map(|(&eid, _)| eid)
             .collect()
@@ -149,10 +157,14 @@ impl SpaceManager {
             return vec![];
         };
         let target_eid = EntityId(target_entity_id as i32);
-        space.players.iter()
+        space
+            .players
+            .iter()
             .filter(|&&pid| {
-                space.entities.get(&pid)
-                    .map_or(false, |p| p.witnesses.contains(&target_eid))
+                space
+                    .entities
+                    .get(&pid)
+                    .is_some_and(|p| p.witnesses.contains(&target_eid))
             })
             .copied()
             .collect()

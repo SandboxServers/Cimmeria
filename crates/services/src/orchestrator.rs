@@ -20,11 +20,11 @@ use tokio::sync::broadcast;
 use crate::audit::{LoginEvent, LoginEventBuffer};
 use crate::auth::{AuthService, ShardInfo};
 use crate::base::BaseService;
-use crate::cell::CellService;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
+use crate::cell::CellService;
 use crate::database::DatabasePool;
 use crate::orchestrator_postgres::ensure_postgresql_running;
-use crate::orchestrator_shards::{ShardRow, query_all_shards};
+use crate::orchestrator_shards::{query_all_shards, ShardRow};
 
 /// Errors specific to the orchestrator.
 #[derive(Debug, thiserror::Error)]
@@ -182,7 +182,10 @@ impl Orchestrator {
         // row will need its own host/port columns.
         let shard_rows = match &db_pool {
             Some(pool) => query_all_shards(pool).await,
-            None => vec![ShardRow { name: "Shard".to_string(), protected: false }],
+            None => vec![ShardRow {
+                name: "Shard".to_string(),
+                protected: false,
+            }],
         };
         for row in shard_rows {
             let shard = ShardInfo {
@@ -196,40 +199,28 @@ impl Orchestrator {
 
         // 2. Start auth service
         tracing::trace!(addr = %state.auth.logon_addr, "Starting auth service");
-        state
-            .auth
-            .start()
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Auth service failed to start");
-                OrchestratorError::AuthStartFailed(e.to_string())
-            })?;
+        state.auth.start().await.map_err(|e| {
+            tracing::error!(error = %e, "Auth service failed to start");
+            OrchestratorError::AuthStartFailed(e.to_string())
+        })?;
         tracing::trace!("Auth service started successfully");
 
         // 3. Start base service (wire in pending_logins from auth first)
         let pending_logins = state.auth.pending_logins_arc();
         state.base.set_pending_logins(pending_logins);
         tracing::trace!(addr = %state.base.listener_addr, "Starting base service");
-        state
-            .base
-            .start()
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Base service failed to start");
-                OrchestratorError::BaseStartFailed(e.to_string())
-            })?;
+        state.base.start().await.map_err(|e| {
+            tracing::error!(error = %e, "Base service failed to start");
+            OrchestratorError::BaseStartFailed(e.to_string())
+        })?;
         tracing::trace!("Base service started successfully");
 
         // 4. Start cell service
         tracing::trace!(addr = %state.cell.listener_addr, "Starting cell service");
-        state
-            .cell
-            .start()
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Cell service failed to start");
-                OrchestratorError::CellStartFailed(e.to_string())
-            })?;
+        state.cell.start().await.map_err(|e| {
+            tracing::error!(error = %e, "Cell service failed to start");
+            OrchestratorError::CellStartFailed(e.to_string())
+        })?;
         tracing::trace!("Cell service started successfully");
 
         // 5. Start minigame server
@@ -238,10 +229,8 @@ impl Orchestrator {
         let mg_result_tx = state.cell.cell_to_base_tx();
         if let Some(result_tx) = mg_result_tx {
             tokio::spawn(async move {
-                crate::minigame::server::run(
-                    "0.0.0.0", mg_port, mg_port,
-                    mg_registry, result_tx,
-                ).await;
+                crate::minigame::server::run("0.0.0.0", mg_port, mg_port, mg_registry, result_tx)
+                    .await;
             });
             tracing::info!(port = mg_port, "Minigame server started");
         } else {

@@ -111,7 +111,6 @@ pub struct CellEntity {
     pub level: u32,
 
     // ── Template-driven fields (populated from DB spawnlist + entity_templates) ──
-
     /// Source template ID from `entity_templates.template_id`.
     pub template_id: Option<i32>,
 
@@ -200,7 +199,6 @@ pub struct CellEntity {
     // and on the `Stat[AMMO_SLOT_1+slot]` map. Use `active_ammo()`,
     // `active_clip_size()`, `active_ammo_type()`, and `set_slot_ammo()` to
     // read and write — never re-introduce a shadow scalar.
-
     /// When `Some(t)`, a reload is in progress and the magazine is not yet
     /// available; fire paths must reject until `Instant::now() >= t`. The
     /// reload-completion tick (cell::service::reload_completion_tick) refills
@@ -255,7 +253,6 @@ pub struct CellEntity {
     pub active_bandolier_slot: i32,
 
     // ── Ring transporter state ──────────────────────────────────────────────
-
     /// Region ID of the ring pad the player is currently interacting with.
     /// Set when the player triggers a ring switch (Python `interact()`),
     /// cleared when they pick a destination (Python `selectDestination`).

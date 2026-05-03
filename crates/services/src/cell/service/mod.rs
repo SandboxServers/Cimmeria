@@ -61,9 +61,7 @@ impl CellService {
     pub fn new(config: &ServerConfig) -> Self {
         let listener_addr = format!("{}:{}", config.cell_host, config.cell_port)
             .parse()
-            .unwrap_or_else(|_| {
-                SocketAddr::from(([127, 0, 0, 1], config.cell_port))
-            });
+            .unwrap_or_else(|_| SocketAddr::from(([127, 0, 0, 1], config.cell_port)));
 
         Self {
             listener_addr,

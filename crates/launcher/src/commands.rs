@@ -50,13 +50,8 @@ pub fn cmd_load_config(state: State<'_, AppState>) -> LauncherConfig {
 }
 
 #[tauri::command]
-pub fn cmd_save_config(
-    state: State<'_, AppState>,
-    config: LauncherConfig,
-) -> Result<(), String> {
-    config
-        .save(&state.config_path)
-        .map_err(|e| e.to_string())?;
+pub fn cmd_save_config(state: State<'_, AppState>, config: LauncherConfig) -> Result<(), String> {
+    config.save(&state.config_path).map_err(|e| e.to_string())?;
     *state.config.lock().unwrap() = config;
     Ok(())
 }
@@ -121,12 +116,20 @@ pub async fn cmd_download_and_install(
     info!("Downloading installer from {}", ARCHIVE_URL);
 
     let app_dl = app.clone();
-    download_file(ARCHIVE_URL, &archive_path, cancel.clone(), move |progress: DownloadProgress| {
-        let _ = app_dl.emit("download-progress", &progress);
-    })
+    download_file(
+        ARCHIVE_URL,
+        &archive_path,
+        cancel.clone(),
+        move |progress: DownloadProgress| {
+            let _ = app_dl.emit("download-progress", &progress);
+        },
+    )
     .await
     .map_err(|e| {
-        let _ = app.emit("install-error", &serde_json::json!({ "message": e.to_string() }));
+        let _ = app.emit(
+            "install-error",
+            &serde_json::json!({ "message": e.to_string() }),
+        );
         e.to_string()
     })?;
 
@@ -162,7 +165,10 @@ pub async fn cmd_download_and_install(
     if !output.status.success() {
         let code = output.status.code().unwrap_or(-1);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("7za RAR extraction failed (code {}): {}", code, stderr));
+        return Err(format!(
+            "7za RAR extraction failed (code {}): {}",
+            code, stderr
+        ));
     }
 
     let _ = app.emit(
@@ -204,10 +210,7 @@ pub async fn cmd_download_and_install(
             },
         );
 
-        let cab_args = build_extract_args(
-            cab.to_str().unwrap(),
-            &install_path,
-        );
+        let cab_args = build_extract_args(cab.to_str().unwrap(), &install_path);
 
         let cab_output = app
             .shell()
@@ -242,9 +245,7 @@ pub async fn cmd_download_and_install(
     {
         let mut config = state.config.lock().unwrap();
         config.install_path = install_path;
-        config
-            .save(&state.config_path)
-            .map_err(|e| e.to_string())?;
+        config.save(&state.config_path).map_err(|e| e.to_string())?;
     }
 
     // Clean up temp files
@@ -283,10 +284,7 @@ pub async fn cmd_check_for_updates(
 }
 
 #[tauri::command]
-pub async fn cmd_apply_updates(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn cmd_apply_updates(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let (patch_server_url, install_path) = {
         let config = state.config.lock().unwrap();
         (config.patch_server_url.clone(), config.install_path.clone())

@@ -83,20 +83,17 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"Version" => {
-                                    script.version =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    script.version = String::from_utf8(attr.value.to_vec())?;
                                 }
                                 b"DatasetVersion" => {
                                     script.dataset_version =
                                         String::from_utf8(attr.value.to_vec())?;
                                 }
                                 b"Module" => {
-                                    script.module =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    script.module = String::from_utf8(attr.value.to_vec())?;
                                 }
                                 b"Type" => {
-                                    script.script_type =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    script.script_type = String::from_utf8(attr.value.to_vec())?;
                                 }
                                 b"NextId" => {
                                     let s = String::from_utf8(attr.value.to_vec())?;
@@ -122,8 +119,7 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                                     node.id = s.parse().unwrap_or(0);
                                 }
                                 b"Ref" => {
-                                    node.ref_name =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    node.ref_name = String::from_utf8(attr.value.to_vec())?;
                                 }
                                 b"X" => {
                                     let s = String::from_utf8(attr.value.to_vec())?;
@@ -166,8 +162,7 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                                         name = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Flags" => {
-                                        let s =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        let s = String::from_utf8(attr.value.to_vec())?;
                                         flags = s.parse().unwrap_or(0);
                                     }
                                     _ => {}
@@ -190,16 +185,14 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                                     conn.out_node = s.parse().unwrap_or(0);
                                 }
                                 b"OutPort" => {
-                                    conn.out_port =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    conn.out_port = String::from_utf8(attr.value.to_vec())?;
                                 }
                                 b"InNode" => {
                                     let s = String::from_utf8(attr.value.to_vec())?;
                                     conn.in_node = s.parse().unwrap_or(0);
                                 }
                                 b"InPort" => {
-                                    conn.in_port =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    conn.in_port = String::from_utf8(attr.value.to_vec())?;
                                 }
                                 _ => {}
                             }
@@ -223,8 +216,7 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                                     comment.id = s.parse().unwrap_or(0);
                                 }
                                 b"Text" => {
-                                    comment.text =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    comment.text = String::from_utf8(attr.value.to_vec())?;
                                 }
                                 b"X" => {
                                     let s = String::from_utf8(attr.value.to_vec())?;
@@ -264,7 +256,11 @@ pub fn load_script(path: &Path) -> Result<ScriptFile> {
                 }
             }
             Ok(Event::Eof) => break,
-            Err(e) => bail!("XML parse error at position {}: {}", reader.error_position(), e),
+            Err(e) => bail!(
+                "XML parse error at position {}: {}",
+                reader.error_position(),
+                e
+            ),
             _ => {}
         }
         buf.clear();

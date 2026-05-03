@@ -12,7 +12,10 @@ use super::*;
 fn cell_method_name_known() {
     assert_eq!(cell_method_name(CM_SET_TARGET_ID), "setTargetID");
     assert_eq!(cell_method_name(CM_SET_CROUCHED), "setCrouched");
-    assert_eq!(cell_method_name(CM_REQUEST_HOLSTER_WEAPON), "requestHolsterWeapon");
+    assert_eq!(
+        cell_method_name(CM_REQUEST_HOLSTER_WEAPON),
+        "requestHolsterWeapon"
+    );
 }
 
 #[test]
@@ -89,13 +92,19 @@ fn new_method_indices_correct() {
 
 #[test]
 fn new_method_names_resolve() {
-    assert_eq!(cell_method_name(CM_TRIGGER_REGION), "triggerClientHintedGenericRegion");
+    assert_eq!(
+        cell_method_name(CM_TRIGGER_REGION),
+        "triggerClientHintedGenericRegion"
+    );
     assert_eq!(cell_method_name(CM_REQUEST_RELOAD), "requestReload");
 }
 
 #[test]
 fn quest_critical_method_names() {
-    assert_eq!(cell_method_name(CM_DIALOG_BUTTON_CHOICE), "dialogButtonChoice");
+    assert_eq!(
+        cell_method_name(CM_DIALOG_BUTTON_CHOICE),
+        "dialogButtonChoice"
+    );
     assert_eq!(cell_method_name(CM_INITIAL_RESPONSE), "initialResponse");
     assert_eq!(cell_method_name(CM_USE_ITEM), "useItem");
 }
@@ -115,30 +124,34 @@ fn make_test_space_mgr() -> SpaceManager {
 async fn dispatch_trigger_region_enter_fires_event() {
     use crate::cell::space_manager::RegionData;
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
     if let Some(e) = mgr.get_entity_mut(1) {
         e.player_id = Some(100);
     }
 
     // Register a region with runtime_id=2 so the dispatch can look it up
-    mgr.regions.insert(2, RegionData {
-        runtime_id: 2,
-        db_set_id: 42,
-        tag: "Castle_Cellblock.Region2".to_string(),
-        world_name: "Castle_CellBlock".to_string(),
-        height: 0.0,
-        radius: 0.0,
-        flags: 1,
-        points: vec![[0.0; 3]; 4],
-    });
+    mgr.regions.insert(
+        2,
+        RegionData {
+            runtime_id: 2,
+            db_set_id: 42,
+            tag: "Castle_Cellblock.Region2".to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 0.0,
+            radius: 0.0,
+            flags: 1,
+            points: vec![[0.0; 3]; 4],
+        },
+    );
 
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
 
     // Build args: INT32 region_id=2, UINT8 bEntering=1, VECTOR3 position
     let mut args = Vec::new();
-    args.extend_from_slice(&2i32.to_le_bytes());  // region_id
-    args.push(1);                                  // bEntering = true
+    args.extend_from_slice(&2i32.to_le_bytes()); // region_id
+    args.push(1); // bEntering = true
     args.extend_from_slice(&0.0f32.to_le_bytes()); // x
     args.extend_from_slice(&0.0f32.to_le_bytes()); // y
     args.extend_from_slice(&0.0f32.to_le_bytes()); // z
@@ -146,26 +159,33 @@ async fn dispatch_trigger_region_enter_fires_event() {
     dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
 
     // No chains registered so no messages, but no panic = dispatch worked
-    assert!(rx.try_recv().is_err(), "Empty engine should produce no messages");
+    assert!(
+        rx.try_recv().is_err(),
+        "Empty engine should produce no messages"
+    );
 }
 
 #[tokio::test]
 async fn dispatch_trigger_region_exit() {
     use crate::cell::space_manager::RegionData;
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     // Register a region with runtime_id=3
-    mgr.regions.insert(3, RegionData {
-        runtime_id: 3,
-        db_set_id: 43,
-        tag: "Castle_Cellblock.Region3".to_string(),
-        world_name: "Castle_CellBlock".to_string(),
-        height: 0.0,
-        radius: 0.0,
-        flags: 1,
-        points: vec![[0.0; 3]; 4],
-    });
+    mgr.regions.insert(
+        3,
+        RegionData {
+            runtime_id: 3,
+            db_set_id: 43,
+            tag: "Castle_Cellblock.Region3".to_string(),
+            world_name: "Castle_CellBlock".to_string(),
+            height: 0.0,
+            radius: 0.0,
+            flags: 1,
+            points: vec![[0.0; 3]; 4],
+        },
+    );
 
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     let (tx, _rx) = mpsc::channel(16);
@@ -182,7 +202,8 @@ async fn dispatch_trigger_region_exit() {
 #[tokio::test]
 async fn dispatch_trigger_region_unknown_id_warns() {
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     // No regions registered — runtime_id 99 should be unknown
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
@@ -201,7 +222,8 @@ async fn dispatch_trigger_region_unknown_id_warns() {
 #[tokio::test]
 async fn dispatch_trigger_region_ignores_short_args() {
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     let (tx, _rx) = mpsc::channel(16);
@@ -218,18 +240,22 @@ async fn dispatch_reload_sends_entity_property() {
     use cimmeria_entity::stats::AMMO_SLOT_1;
 
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     // Stage C: shadow scalars are gone. Seed the bandolier item + AmmoSlot
     // stat the same way `InitPlayerState` does for a real world entry.
     if let Some(e) = mgr.get_entity_mut(1) {
-        e.bandolier_items.insert(0, BandolierItem {
-            item_id: 1,
-            clip_size: 30,
-            default_ammo_type: 2,
-            current_ammo: 5,
-            cur_ammo_type: 2,
-        });
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: 2,
+                current_ammo: 5,
+                cur_ammo_type: 2,
+            },
+        );
         if let Some(stat) = e.stats.get_mut(AMMO_SLOT_1) {
             stat.update(0, 5, 30);
             stat.clear_dirty();
@@ -245,15 +271,26 @@ async fn dispatch_reload_sends_entity_property() {
     // Reload sets the deadline but does NOT immediately refill — the magazine
     // stays at the pre-reload count until the reload tick runs past warmup.
     let entity = mgr.get_entity(1).unwrap();
-    assert_eq!(entity.active_ammo(), 5, "magazine should not refill until warmup elapses");
-    assert!(entity.reload_complete_at.is_some(), "reload deadline should be set");
+    assert_eq!(
+        entity.active_ammo(),
+        5,
+        "magazine should not refill until warmup elapses"
+    );
+    assert!(
+        entity.reload_complete_at.is_some(),
+        "reload deadline should be set"
+    );
 
     // Reload sends a TimerUpdate (method 12) for the cooldown bar; the
     // onEntityProperty(AmmoTypeId) packet only fires when an event_set
     // sequence is mapped, which this test deliberately doesn't set up.
     let msg = rx.try_recv().unwrap();
     match msg {
-        CellToBaseMsg::EntityMethodCall { entity_id, method_index, .. } => {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            ..
+        } => {
             assert_eq!(entity_id, 1);
             assert_eq!(method_index, 12, "expected TimerUpdate first");
         }
@@ -267,17 +304,21 @@ async fn dispatch_reload_already_full_no_message() {
     use cimmeria_entity::stats::AMMO_SLOT_1;
 
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     // Already at max — bandolier item with clip_size == current_ammo.
     if let Some(e) = mgr.get_entity_mut(1) {
-        e.bandolier_items.insert(0, BandolierItem {
-            item_id: 1,
-            clip_size: 30,
-            default_ammo_type: 0,
-            current_ammo: 30,
-            cur_ammo_type: 0,
-        });
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: 0,
+                current_ammo: 30,
+                cur_ammo_type: 0,
+            },
+        );
         if let Some(stat) = e.stats.get_mut(AMMO_SLOT_1) {
             stat.update(0, 30, 30);
             stat.clear_dirty();

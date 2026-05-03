@@ -101,18 +101,14 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                             current_prop_type = None;
                             current_prop_flags = None;
                         }
-                        Section::ClientMethods
-                        | Section::CellMethods
-                        | Section::BaseMethods => {
+                        Section::ClientMethods | Section::CellMethods | Section::BaseMethods => {
                             // This tag is a method name.
                             current_method_name = Some(tag);
                             current_method_exposed = false;
                             current_method_args = Vec::new();
                         }
-                        Section::Implements => {
-                            if tag == "Interface" {
-                                in_interface = true;
-                            }
+                        Section::Implements if tag == "Interface" => {
+                            in_interface = true;
                         }
                         _ => {}
                     }
@@ -143,11 +139,8 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                 } else if depth == 2 {
                     // Self-closing element at top section level in root.
                     // e.g. <Volatile/> or <ServerOnly/>
-                } else if depth >= 3 && current_method_name.is_some() {
-                    match tag.as_str() {
-                        "Exposed" => current_method_exposed = true,
-                        _ => {}
-                    }
+                } else if depth >= 3 && current_method_name.is_some() && tag.as_str() == "Exposed" {
+                    current_method_exposed = true
                 }
             }
             Ok(Event::Text(ref e)) => {
@@ -174,21 +167,12 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                         }
                         _ => {}
                     }
-                } else if current_method_name.is_some() {
-                    match method_field {
-                        MethodField::Arg => {
-                            // The text before <ArgName> is the type.
-                            // We take the first whitespace-delimited word as the type.
-                            let type_str = text
-                                .split_whitespace()
-                                .next()
-                                .unwrap_or(&text)
-                                .to_string();
-                            if !type_str.is_empty() {
-                                current_method_args.push(type_str);
-                            }
-                        }
-                        _ => {}
+                } else if current_method_name.is_some() && method_field == MethodField::Arg {
+                    // The text before <ArgName> is the type.
+                    // We take the first whitespace-delimited word as the type.
+                    let type_str = text.split_whitespace().next().unwrap_or(&text).to_string();
+                    if !type_str.is_empty() {
+                        current_method_args.push(type_str);
                     }
                 }
             }
@@ -244,9 +228,7 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                     section = Section::None;
                 }
 
-                if depth > 0 {
-                    depth -= 1;
-                }
+                depth = depth.saturating_sub(1);
             }
             Ok(Event::Eof) => break,
             Err(e) => {

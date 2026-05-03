@@ -249,7 +249,11 @@ pub fn build_outgoing(
 ) -> BytesMut {
     let footer_size = first_req_offset.map_or(0usize, |_| 2)
         + seq_id.map_or(0usize, |_| 4)
-        + if acks.is_empty() { 0 } else { acks.len() * 4 + 1 };
+        + if acks.is_empty() {
+            0
+        } else {
+            acks.len() * 4 + 1
+        };
 
     let mut buf = BytesMut::with_capacity(1 + body.len() + footer_size);
 
@@ -352,14 +356,14 @@ pub fn build_fragmented_bundle(
 ) -> (Vec<Vec<u8>>, u32) {
     if body.len() <= FRAGMENT_BODY_SIZE {
         // Fits in one packet — no fragmentation needed.
-        let flags = base_flags | FLAG_HAS_SEQUENCE
-            | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+        let flags =
+            base_flags | FLAG_HAS_SEQUENCE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
         let plaintext = build_outgoing(flags, body, Some(base_seq), acks, None);
         return (vec![encrypt(&plaintext)], 1);
     }
 
     // Calculate fragment count and sequence range.
-    let num_frags = (body.len() + FRAGMENT_BODY_SIZE - 1) / FRAGMENT_BODY_SIZE;
+    let num_frags = body.len().div_ceil(FRAGMENT_BODY_SIZE);
     let frag_begin = base_seq;
     let frag_end = base_seq + num_frags as u32 - 1;
 
@@ -369,10 +373,13 @@ pub fn build_fragmented_bundle(
         // Only first fragment carries acks.
         let pkt_acks: &[u32] = if i == 0 { acks } else { &[] };
         let flags = base_flags
-            | if pkt_acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
-        let plaintext = build_outgoing_fragmented(
-            flags, chunk, seq, frag_begin, frag_end, pkt_acks,
-        );
+            | if pkt_acks.is_empty() {
+                0
+            } else {
+                FLAG_HAS_ACKS
+            };
+        let plaintext =
+            build_outgoing_fragmented(flags, chunk, seq, frag_begin, frag_end, pkt_acks);
         packets.push(encrypt(&plaintext));
     }
 
@@ -495,7 +502,7 @@ mod tests {
         raw.extend_from_slice(&42u32.to_le_bytes()); // accountId
         raw.push(20u8); // ticketLen
         raw.extend_from_slice(b"12345678901234567890"); // ticket (20 bytes)
-        // footer:
+                                                        // footer:
         raw.extend_from_slice(&1u16.to_le_bytes()); // first_req_offset=1
         raw.extend_from_slice(&7u32.to_le_bytes()); // seq_id=7
 
@@ -554,7 +561,7 @@ mod tests {
     fn parse_seq_truncated_fails() {
         // flags says HAS_SEQUENCE but only 3 footer bytes available
         let raw = [FLAG_HAS_SEQUENCE, 0x01, 0x02, 0x03]; // only 3 bytes after flags
-        // seq_id needs 4 bytes, we only have 3
+                                                         // seq_id needs 4 bytes, we only have 3
         assert!(parse_incoming(&raw).is_err());
     }
 

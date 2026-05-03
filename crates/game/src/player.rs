@@ -8,10 +8,8 @@ pub const MAX_LEVEL: u32 = 20;
 /// Cumulative XP thresholds per level, ported from `python/common/Constants.py:127-139`.
 /// Index 0 is unused (level 0 doesn't exist). Level N requires `LEVEL_XP[N]` total XP.
 const LEVEL_XP: [u64; 21] = [
-    0,
-    // Levels 1-10
-    100, 200, 300, 600, 1_000, 1_600, 2_500, 4_000, 6_000, 9_000,
-    // Levels 11-20
+    0, // Levels 1-10
+    100, 200, 300, 600, 1_000, 1_600, 2_500, 4_000, 6_000, 9_000, // Levels 11-20
     14_000, 18_000, 25_000, 40_000, 60_000, 90_000, 120_000, 180_000, 250_000, 400_000,
 ];
 
@@ -35,7 +33,12 @@ pub struct PlayerState {
 
 impl PlayerState {
     /// Create a new level-1 player with zero experience.
-    pub fn new(account_id: AccountId, character_name: String, archetype: String, faction: String) -> Self {
+    pub fn new(
+        account_id: AccountId,
+        character_name: String,
+        archetype: String,
+        faction: String,
+    ) -> Self {
         Self {
             account_id,
             character_name,
@@ -199,7 +202,8 @@ mod tests {
             assert!(
                 LEVEL_XP[i] <= LEVEL_XP[i + 1],
                 "XP table not monotonic at index {i}: {} > {}",
-                LEVEL_XP[i], LEVEL_XP[i + 1]
+                LEVEL_XP[i],
+                LEVEL_XP[i + 1]
             );
         }
     }

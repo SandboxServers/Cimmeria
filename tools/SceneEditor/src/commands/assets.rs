@@ -7,7 +7,7 @@ use std::io::Cursor;
 
 use crate::state::AppState;
 use cimmeria_upk::Package;
-use cimmeria_upk_objects::{PackageIndex, PixelFormat, deserialize_texture2d};
+use cimmeria_upk_objects::{deserialize_texture2d, PackageIndex, PixelFormat};
 use serde::Serialize;
 
 // ---- Response types --------------------------------------------------------
@@ -56,9 +56,7 @@ pub struct TextureThumbnail {
 /// Scan all packages in `{cooked_pc}/Packages/` and build the package index.
 /// Returns package count and class distribution summary.
 #[tauri::command]
-pub async fn scan_packages(
-    state: tauri::State<'_, AppState>,
-) -> Result<PackageScanResult, String> {
+pub async fn scan_packages(state: tauri::State<'_, AppState>) -> Result<PackageScanResult, String> {
     let cooked_pc = {
         let guard = state.cooked_pc_path.lock().unwrap();
         guard.clone().ok_or("CookedPC path not set")?
@@ -115,11 +113,11 @@ pub async fn scan_packages(
 
 /// List all packages that were scanned.
 #[tauri::command]
-pub async fn list_packages(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<PackageInfo>, String> {
+pub async fn list_packages(state: tauri::State<'_, AppState>) -> Result<Vec<PackageInfo>, String> {
     let idx_guard = state.package_index.lock().unwrap();
-    let idx = idx_guard.as_ref().ok_or("Package index not built — run scan_packages first")?;
+    let idx = idx_guard
+        .as_ref()
+        .ok_or("Package index not built — run scan_packages first")?;
 
     // Collect unique package names with their export counts.
     // The exports map is keyed by (package_name, object_name), so we group by
@@ -205,7 +203,9 @@ pub async fn search_assets(
     limit: Option<usize>,
 ) -> Result<Vec<SearchResult>, String> {
     let idx_guard = state.package_index.lock().unwrap();
-    let idx = idx_guard.as_ref().ok_or("Package index not built — run scan_packages first")?;
+    let idx = idx_guard
+        .as_ref()
+        .ok_or("Package index not built — run scan_packages first")?;
 
     let query_lower = query.to_lowercase();
     let class_filter_lower = class_filter.as_deref().map(|s| s.to_lowercase());
@@ -305,7 +305,10 @@ pub async fn get_texture_thumbnail(
     }
 
     if mip.is_bulk_compressed {
-        return Err("Mip data is LZO/ZLIB compressed — decompression not yet supported for thumbnails".into());
+        return Err(
+            "Mip data is LZO/ZLIB compressed — decompression not yet supported for thumbnails"
+                .into(),
+        );
     }
 
     let mip_w = mip.size_x;
@@ -445,9 +448,7 @@ fn decode_to_rgba(
             }
             Ok(rgba)
         }
-        PixelFormat::Unknown(id) => {
-            Err(format!("Unsupported pixel format: Unknown({})", id))
-        }
+        PixelFormat::Unknown(id) => Err(format!("Unsupported pixel format: Unknown({})", id)),
     }
 }
 
@@ -456,9 +457,9 @@ fn u32_pixels_to_rgba(pixels: &[u32]) -> Vec<u8> {
     let mut rgba = Vec::with_capacity(pixels.len() * 4);
     for &pixel in pixels {
         rgba.push(((pixel >> 16) & 0xFF) as u8); // R
-        rgba.push(((pixel >> 8) & 0xFF) as u8);  // G
-        rgba.push((pixel & 0xFF) as u8);          // B
-        rgba.push(((pixel >> 24) & 0xFF) as u8);  // A
+        rgba.push(((pixel >> 8) & 0xFF) as u8); // G
+        rgba.push((pixel & 0xFF) as u8); // B
+        rgba.push(((pixel >> 24) & 0xFF) as u8); // A
     }
     rgba
 }

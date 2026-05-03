@@ -26,7 +26,7 @@ pub async fn load_stargates(
         "SELECT s.stargate_id, w.world AS world_name, \
                 s.x_pos, s.y_pos, s.z_pos, s.yaw \
          FROM resources.stargates s \
-         JOIN resources.worlds w ON s.world_id = w.world_id"
+         JOIN resources.worlds w ON s.world_id = w.world_id",
     )
     .fetch_all(pool)
     .await?;
@@ -34,13 +34,16 @@ pub async fn load_stargates(
     let mut map = std::collections::HashMap::with_capacity(rows.len());
     for r in &rows {
         let id: i32 = r.get("stargate_id");
-        map.insert(id, StargateEntry {
-            world_name: r.get("world_name"),
-            x: r.get::<f64, _>("x_pos") as f32,
-            y: r.get::<f64, _>("y_pos") as f32,
-            z: r.get::<f64, _>("z_pos") as f32,
-            yaw: r.get::<f64, _>("yaw") as f32,
-        });
+        map.insert(
+            id,
+            StargateEntry {
+                world_name: r.get("world_name"),
+                x: r.get::<f64, _>("x_pos") as f32,
+                y: r.get::<f64, _>("y_pos") as f32,
+                z: r.get::<f64, _>("z_pos") as f32,
+                yaw: r.get::<f64, _>("yaw") as f32,
+            },
+        );
     }
 
     tracing::info!(count = map.len(), "Loaded stargates cache");

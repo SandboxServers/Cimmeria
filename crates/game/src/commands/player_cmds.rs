@@ -3,10 +3,34 @@ use cimmeria_commands::registry::{CommandHandler, CommandRegistry, CommandResult
 
 /// Register all player-accessible commands into the given registry.
 pub fn register_player_commands(registry: &mut CommandRegistry) {
-    registry.register("stuck", "Unstick your character", "/stuck", AccessLevel::Player, stuck_handler());
-    registry.register("wave", "Wave emote", "/wave [target]", AccessLevel::Player, wave_handler());
-    registry.register("sit", "Sit down / stand up", "/sit", AccessLevel::Player, sit_handler());
-    registry.register("who", "List online players", "/who [filter]", AccessLevel::Player, who_handler());
+    registry.register(
+        "stuck",
+        "Unstick your character",
+        "/stuck",
+        AccessLevel::Player,
+        stuck_handler(),
+    );
+    registry.register(
+        "wave",
+        "Wave emote",
+        "/wave [target]",
+        AccessLevel::Player,
+        wave_handler(),
+    );
+    registry.register(
+        "sit",
+        "Sit down / stand up",
+        "/sit",
+        AccessLevel::Player,
+        sit_handler(),
+    );
+    registry.register(
+        "who",
+        "List online players",
+        "/who [filter]",
+        AccessLevel::Player,
+        who_handler(),
+    );
 }
 
 fn stuck_handler() -> CommandHandler {

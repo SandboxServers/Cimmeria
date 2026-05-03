@@ -1,0 +1,19 @@
+# Project-level clippy thresholds.
+#
+# These raise two defaults that don't fit the shape of this codebase:
+#
+# - `too-many-arguments-threshold` (default 7) — handlers in
+#   `crates/services/src/base/world_entry/methods/` take socket, connected
+#   map, entity_to_addr map, db_pool, cell_tx, plus the call's own
+#   parameters. The natural API has 8–13 args; refactoring every handler
+#   into a context struct is a separate architectural change. 14 is one
+#   above the current worst case (handle_grant_xp at 13).
+#
+# - `type-complexity-threshold` (default 250) — the `(Arc<UdpSocket>,
+#   Arc<Mutex<HashMap<u32, SocketAddr>>>, Arc<Mutex<HashMap<SocketAddr,
+#   ConnectedClientState>>>)` tuple returned by test fixture builders is
+#   inherently nested. Hoisting to a type alias is cosmetic and not worth
+#   blocking CI for; keeping the literal at the call site is the
+#   readable choice.
+too-many-arguments-threshold = 14
+type-complexity-threshold = 500

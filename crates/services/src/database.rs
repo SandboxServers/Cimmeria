@@ -112,7 +112,8 @@ mod tests {
 
     #[test]
     fn libpq_to_url_full() {
-        let url = libpq_to_url("host=localhost port=5433 user=w-testing password=w-testing dbname=sgw");
+        let url =
+            libpq_to_url("host=localhost port=5433 user=w-testing password=w-testing dbname=sgw");
         assert_eq!(url, "postgres://w-testing:w-testing@localhost:5433/sgw");
     }
 

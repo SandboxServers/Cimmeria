@@ -127,7 +127,13 @@ pub async fn handle_mission_update(
     .await;
 
     match result {
-        Ok(_) => tracing::debug!(player_id, mission_id, status, repeats, "Mission state persisted"),
+        Ok(_) => tracing::debug!(
+            player_id,
+            mission_id,
+            status,
+            repeats,
+            "Mission state persisted"
+        ),
         Err(e) => tracing::error!(player_id, mission_id, "Failed to persist mission: {e}"),
     }
 }
@@ -148,10 +154,12 @@ mod tests {
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         let _ = sqlx::query("DELETE FROM sgw_mission WHERE player_id = $1")
             .bind(player_id)
-            .execute(pool).await;
+            .execute(pool)
+            .await;
         let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
             .bind(account_id)
-            .execute(pool).await;
+            .execute(pool)
+            .await;
     }
 
     async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32) {
@@ -159,8 +167,11 @@ mod tests {
             "INSERT INTO account (account_id, account_name, password) \
              VALUES ($1, $2, '')",
         )
-        .bind(account_id).bind(format!("mission-test-{account_id}"))
-        .execute(pool).await.expect("insert account");
+        .bind(account_id)
+        .bind(format!("mission-test-{account_id}"))
+        .execute(pool)
+        .await
+        .expect("insert account");
 
         sqlx::query(
             "INSERT INTO sgw_player (\
@@ -170,8 +181,12 @@ mod tests {
              ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
                        0.0, 0.0, 0.0, 0, 0)",
         )
-        .bind(account_id).bind(player_id).bind(format!("test-{player_id}"))
-        .execute(pool).await.expect("insert player");
+        .bind(account_id)
+        .bind(player_id)
+        .bind(format!("test-{player_id}"))
+        .execute(pool)
+        .await
+        .expect("insert player");
     }
 
     /// Happy path: handle_mission_update INSERTs a row with all fields present.
@@ -185,27 +200,52 @@ mod tests {
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_mission_update(
-            player_id, 12345, 2, Some(7),
-            &[1, 2, 3], &[10, 20], &[30], &[],
+            player_id,
+            12345,
+            2,
+            Some(7),
+            &[1, 2, 3],
+            &[10, 20],
+            &[30],
+            &[],
             5,
             &db_pool,
-        ).await;
+        )
+        .await;
 
         // Filter on (player_id, mission_id) and use fetch_one so a regression
         // that inserted multiple rows would surface either as the count check
         // failing or as fetch_one's "expected one row" error.
         let row_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sgw_mission WHERE player_id = $1 AND mission_id = $2",
-        ).bind(player_id).bind(12345).fetch_one(&pool).await.unwrap();
+        )
+        .bind(player_id)
+        .bind(12345)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(row_count, 1, "INSERT must produce exactly one row");
 
-        let row: (i32, i32, Option<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, i32) = sqlx::query_as(
+        let row: (
+            i32,
+            i32,
+            Option<i32>,
+            Vec<i32>,
+            Vec<i32>,
+            Vec<i32>,
+            Vec<i32>,
+            i32,
+        ) = sqlx::query_as(
             "SELECT mission_id, status, current_step_id, \
                     completed_step_ids, completed_objective_ids, \
                     active_objective_ids, failed_objective_ids, repeats \
              FROM sgw_mission WHERE player_id = $1 AND mission_id = $2",
         )
-        .bind(player_id).bind(12345).fetch_one(&pool).await.unwrap();
+        .bind(player_id)
+        .bind(12345)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(row.0, 12345, "mission_id");
         assert_eq!(row.1, 2, "status");
         assert_eq!(row.2, Some(7), "current_step_id");
@@ -232,22 +272,20 @@ mod tests {
         let db_pool = Some(Arc::new(pool.clone()));
 
         // Seed: mission already at repeats=3, status=1.
-        handle_mission_update(
-            player_id, 9999, 1, None, &[], &[], &[], &[], 3,
-            &db_pool,
-        ).await;
+        handle_mission_update(player_id, 9999, 1, None, &[], &[], &[], &[], 3, &db_pool).await;
 
         // Re-complete: cell now sends status=2, repeats=4.
-        handle_mission_update(
-            player_id, 9999, 2, None, &[], &[], &[], &[], 4,
-            &db_pool,
-        ).await;
+        handle_mission_update(player_id, 9999, 2, None, &[], &[], &[], &[], 4, &db_pool).await;
 
         let (status, repeats): (i32, i32) = sqlx::query_as(
             "SELECT status, repeats FROM sgw_mission \
              WHERE player_id = $1 AND mission_id = $2",
         )
-        .bind(player_id).bind(9999).fetch_one(&pool).await.unwrap();
+        .bind(player_id)
+        .bind(9999)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(status, 2, "status must update on conflict");
         assert_eq!(
             repeats, 4,
@@ -281,7 +319,10 @@ mod tests {
                  active_objective_ids, failed_objective_ids, repeats) \
              VALUES ($1, 1, 500, NULL, '{}', '{}', '{}', '{}', 0)",
         )
-        .bind(player_id).execute(&pool).await.expect("insert oversize-status mission");
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .expect("insert oversize-status mission");
 
         let db_pool = Some(Arc::new(pool.clone()));
         let missions = query_saved_missions(&db_pool, player_id).await;
@@ -312,7 +353,10 @@ mod tests {
                  active_objective_ids, failed_objective_ids, repeats) \
              VALUES ($1, 1, -200, NULL, '{}', '{}', '{}', '{}', 0)",
         )
-        .bind(player_id).execute(&pool).await.expect("insert negative-status mission");
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .expect("insert negative-status mission");
 
         let db_pool = Some(Arc::new(pool.clone()));
         let missions = query_saved_missions(&db_pool, player_id).await;

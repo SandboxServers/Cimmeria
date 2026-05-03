@@ -28,9 +28,13 @@ use std::path::PathBuf;
 /// `parent()` hops land on the workspace root. The seed SQL files then
 /// live at `<workspace>/db/resources/Content/Seed/`.
 fn workspace_root() -> PathBuf {
-    let manifest_dir =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir.parent().unwrap().parent().unwrap().to_path_buf()
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
 }
 
 /// Scan a chain SQL file. Returns:
@@ -70,7 +74,9 @@ fn scan_chains(sql: &str) -> (HashMap<i32, String>, HashSet<String>) {
         };
 
         // Quoted strings on the line, in order.
-        let quoted: Vec<&str> = cursor.split('\'').enumerate()
+        let quoted: Vec<&str> = cursor
+            .split('\'')
+            .enumerate()
             .filter_map(|(i, s)| if i % 2 == 1 { Some(s) } else { None })
             .collect();
 
@@ -78,7 +84,9 @@ fn scan_chains(sql: &str) -> (HashMap<i32, String>, HashSet<String>) {
             // Layout: (chain_id, 'interact_tag', 'NPC_tag', 'scope', ...)
             // Quoted strings: ['interact_tag', 'NPC_tag', 'scope']
             if let Some(npc_tag) = quoted.get(1) {
-                interact_tag_chains.entry(chain_id).or_insert_with(|| npc_tag.to_string());
+                interact_tag_chains
+                    .entry(chain_id)
+                    .or_insert_with(|| npc_tag.to_string());
             }
         }
         if cursor.contains("'set_interaction_type'") {
@@ -150,7 +158,11 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
 #[test]
 fn every_interact_tag_chain_has_set_interaction_type() {
     let seed_dir = workspace_root().join("db/resources/Content/Seed");
-    assert!(seed_dir.exists(), "seed dir not found: {}", seed_dir.display());
+    assert!(
+        seed_dir.exists(),
+        "seed dir not found: {}",
+        seed_dir.display()
+    );
 
     let mut violations = Vec::new();
 
@@ -162,8 +174,8 @@ fn every_interact_tag_chain_has_set_interaction_type() {
             continue;
         }
 
-        let sql = fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let sql =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         let (interact_tag_chains, tags_with_sit) = scan_chains(&sql);
 
         for (chain_id, npc_tag) in &interact_tag_chains {

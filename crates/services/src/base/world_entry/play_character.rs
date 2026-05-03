@@ -36,9 +36,7 @@ pub(crate) async fn handle_play_character(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Guard: only send once per connection.
     let arcs = {
-        let mut clients = connected
-            .lock()
-            .map_err(|_| "connected lock poisoned")?;
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get_mut(&addr) {
             if !c.world_entry_sent {
                 c.world_entry_sent = true;
@@ -58,7 +56,8 @@ pub(crate) async fn handle_play_character(
     };
 
     // Query character data from DB and resolve space via CellService
-    let entry_info = query_world_entry(db_pool, account_id, player_id, entity_manager, cell_tx).await;
+    let entry_info =
+        query_world_entry(db_pool, account_id, player_id, entity_manager, cell_tx).await;
 
     // query_world_entry returns NO_ENTITY_ID as a "world entry failed"
     // sentinel (DB error or character not found). Bail before dispatching any

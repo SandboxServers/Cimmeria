@@ -19,7 +19,6 @@ use crate::context::ExecutionContext;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Action {
     // ── Original generic actions ──────────────────────────────────────────
-
     /// Award experience points to the source entity.
     GrantXP { amount: u64 },
 
@@ -35,7 +34,10 @@ pub enum Action {
     RemoveItem { item_id: i32, count: i32 },
 
     /// Apply a timed or permanent effect to the source entity.
-    ApplyEffect { effect_id: i32, duration_secs: Option<f32> },
+    ApplyEffect {
+        effect_id: i32,
+        duration_secs: Option<f32>,
+    },
 
     /// Remove an active effect from the source entity.
     RemoveEffect { effect_id: i32 },
@@ -44,7 +46,10 @@ pub enum Action {
     Teleport { space_id: i32, position: [f32; 3] },
 
     /// Spawn a new entity from a template at the given position.
-    SpawnEntity { template_id: i32, position: [f32; 3] },
+    SpawnEntity {
+        template_id: i32,
+        position: [f32; 3],
+    },
 
     /// Despawn the target entity (from context).
     DespawnEntity,
@@ -100,7 +105,6 @@ pub enum Action {
     },
 
     // ── DB-driven action types ────────────────────────────────────────────
-
     /// Accept and start tracking a mission.
     AcceptMission { mission_id: i32 },
 
@@ -115,19 +119,13 @@ pub enum Action {
     },
 
     /// Remove a dialog set entry from an NPC.
-    RemoveDialogSet {
-        dialog_set_id: i32,
-        slot: i32,
-    },
+    RemoveDialogSet { dialog_set_id: i32, slot: i32 },
 
     /// Play a cinematic sequence/cutscene.
     PlaySequence { sequence_id: i32 },
 
     /// Advance a mission to a specific step.
-    AdvanceStep {
-        mission_id: i32,
-        step_id: i32,
-    },
+    AdvanceStep { mission_id: i32, step_id: i32 },
 
     /// Set or modify interaction type flags on a tagged entity.
     SetInteractionType {
@@ -143,10 +141,7 @@ pub enum Action {
     },
 
     /// Set the aggression level on a tagged NPC.
-    SetAggression {
-        entity_tag: String,
-        level: i32,
-    },
+    SetAggression { entity_tag: String, level: i32 },
 
     /// Destroy a tagged entity (remove from world).
     DestroyTaggedEntity { entity_tag: String },
@@ -177,31 +172,19 @@ pub enum Action {
     AbandonMission { mission_id: i32 },
 
     /// Fail a specific objective within a mission.
-    FailObjective {
-        mission_id: i32,
-        objective_id: i32,
-    },
+    FailObjective { mission_id: i32, objective_id: i32 },
 
     /// Increment a named counter.
-    IncrementCounter {
-        counter_name: String,
-        amount: i32,
-    },
+    IncrementCounter { counter_name: String, amount: i32 },
 
     /// Reset a named counter to zero.
     ResetCounter { counter_name: String },
 
     /// Complete a specific objective within a mission.
-    CompleteObjective {
-        mission_id: i32,
-        objective_id: i32,
-    },
+    CompleteObjective { mission_id: i32, objective_id: i32 },
 
     /// Set the visibility of a tagged entity.
-    SetVisible {
-        entity_tag: String,
-        visible: bool,
-    },
+    SetVisible { entity_tag: String, visible: bool },
 
     /// Move a tagged entity or the player to a destination.
     MoveEntity {
@@ -212,7 +195,6 @@ pub enum Action {
     },
 
     // ── Space script action types ────────────────────────────────────────
-
     /// Animated NPC pathing — moves a tagged entity along a path with walk animation.
     /// Unlike MoveEntity (instant teleport), this triggers movement over time.
     MoveWaypoint {
@@ -222,10 +204,7 @@ pub enum Action {
     },
 
     /// Equip an item to an equipment slot (typically Bandolier bag_id=3).
-    SetActiveSlot {
-        bag_id: i32,
-        slot: i32,
-    },
+    SetActiveSlot { bag_id: i32, slot: i32 },
 
     /// Force-fire an ability on an entity (or self if entity_tag is None).
     LaunchAbility {
@@ -279,7 +258,10 @@ impl Action {
             _ => {
                 // All other actions are executed by the CellService via resolve_event().
                 // Calling execute() directly on them is not supported for DB-driven chains.
-                ActionResult::Error(format!("Action {:?} must be executed via resolve_event()", self))
+                ActionResult::Error(format!(
+                    "Action {:?} must be executed via resolve_event()",
+                    self
+                ))
             }
         }
     }
@@ -354,12 +336,20 @@ mod tests {
 
     #[test]
     fn grant_item_with_container() {
-        let action = Action::GrantItem { item_id: 55, count: 1, container_id: Some(3) };
+        let action = Action::GrantItem {
+            item_id: 55,
+            count: 1,
+            container_id: Some(3),
+        };
         let json = serde_json::to_string(&action).unwrap();
         assert!(json.contains("container_id"));
         let deserialized: Action = serde_json::from_str(&json).unwrap();
         match deserialized {
-            Action::GrantItem { item_id, count, container_id } => {
+            Action::GrantItem {
+                item_id,
+                count,
+                container_id,
+            } => {
                 assert_eq!(item_id, 55);
                 assert_eq!(count, 1);
                 assert_eq!(container_id, Some(3));
@@ -388,7 +378,11 @@ mod tests {
         let json = serde_json::to_string(&action).unwrap();
         let deserialized: Action = serde_json::from_str(&json).unwrap();
         match deserialized {
-            Action::MoveWaypoint { entity_tag, destination, speed } => {
+            Action::MoveWaypoint {
+                entity_tag,
+                destination,
+                speed,
+            } => {
                 assert_eq!(entity_tag, "NID_Guard_01");
                 assert_eq!(destination, [-296.715, 68.511, -166.125]);
                 assert!((speed - 1.5).abs() < f32::EPSILON);
@@ -420,7 +414,10 @@ mod tests {
         let json = serde_json::to_string(&action).unwrap();
         let deserialized: Action = serde_json::from_str(&json).unwrap();
         match deserialized {
-            Action::LaunchAbility { ability_id, entity_tag } => {
+            Action::LaunchAbility {
+                ability_id,
+                entity_tag,
+            } => {
                 assert_eq!(ability_id, 1372);
                 assert_eq!(entity_tag, Some("NID_Guard_01".to_string()));
             }
@@ -433,7 +430,10 @@ mod tests {
         let json = r#"{"LaunchAbility": {"ability_id": 500}}"#;
         let deserialized: Action = serde_json::from_str(json).unwrap();
         match deserialized {
-            Action::LaunchAbility { ability_id, entity_tag } => {
+            Action::LaunchAbility {
+                ability_id,
+                entity_tag,
+            } => {
                 assert_eq!(ability_id, 500);
                 assert_eq!(entity_tag, None);
             }

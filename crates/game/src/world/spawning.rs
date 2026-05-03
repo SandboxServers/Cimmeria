@@ -36,7 +36,13 @@ pub struct PendingRespawn {
 
 impl SpawnSet {
     /// Create a new spawn set.
-    pub fn new(set_id: i32, space_id: i32, moniker: String, max_alive: u32, respawn_delay_secs: f32) -> Self {
+    pub fn new(
+        set_id: i32,
+        space_id: i32,
+        moniker: String,
+        max_alive: u32,
+        respawn_delay_secs: f32,
+    ) -> Self {
         Self {
             set_id,
             space_id,
@@ -99,9 +105,21 @@ mod tests {
     fn initial_spawn_respects_max() {
         let mut set = SpawnSet::new(1, 1, "jaffa".to_string(), 2, 30.0);
         set.points = vec![
-            SpawnPoint { point_id: 1, position: Vector3::zero(), rotation_yaw: 0.0 },
-            SpawnPoint { point_id: 2, position: Vector3::zero(), rotation_yaw: 0.0 },
-            SpawnPoint { point_id: 3, position: Vector3::zero(), rotation_yaw: 0.0 },
+            SpawnPoint {
+                point_id: 1,
+                position: Vector3::zero(),
+                rotation_yaw: 0.0,
+            },
+            SpawnPoint {
+                point_id: 2,
+                position: Vector3::zero(),
+                rotation_yaw: 0.0,
+            },
+            SpawnPoint {
+                point_id: 3,
+                position: Vector3::zero(),
+                rotation_yaw: 0.0,
+            },
         ];
         let spawned = set.initial_spawn();
         assert_eq!(spawned.len(), 2);

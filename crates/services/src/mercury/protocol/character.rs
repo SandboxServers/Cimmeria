@@ -7,10 +7,9 @@
 use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 
 use super::{
-    encrypt_packet, write_wstring, REPLY_FLAGS,
-    BASEMSG_CREATE_BASE_PLAYER, BASEMSG_ON_CHARACTER_LIST,
-    BASEMSG_ON_CHARACTER_CREATE_FAILED, BASEMSG_ON_CHARACTER_VISUALS,
-    ACCOUNT_CLASS_ID, CharacterInfo,
+    encrypt_packet, write_wstring, CharacterInfo, ACCOUNT_CLASS_ID, BASEMSG_CREATE_BASE_PLAYER,
+    BASEMSG_ON_CHARACTER_CREATE_FAILED, BASEMSG_ON_CHARACTER_LIST, BASEMSG_ON_CHARACTER_VISUALS,
+    REPLY_FLAGS,
 };
 
 /// Serialize one `CharacterInfo` FIXED_DICT into the byte stream. Shared by

@@ -312,9 +312,7 @@ impl NavMesh {
 
     /// Find the closest valid navmesh position to the given point.
     pub fn get_nearest_point(&self, pos: &Vector3) -> Vector3 {
-        self.find_nearest_poly(pos)
-            .map(|(_, p)| p)
-            .unwrap_or(*pos)
+        self.find_nearest_poly(pos).map(|(_, p)| p).unwrap_or(*pos)
     }
 
     /// Sample the navmesh surface height at the given XZ position.
@@ -429,10 +427,7 @@ impl NavMesh {
             )
         };
         if dt_status_failed(status) || start_ref == 0 {
-            tracing::warn!(
-                ?start,
-                "NavMesh::find_path: no start poly for position"
-            );
+            tracing::warn!(?start, "NavMesh::find_path: no start poly for position");
             return None;
         }
 
@@ -449,10 +444,7 @@ impl NavMesh {
             )
         };
         if dt_status_failed(status) || end_ref == 0 {
-            tracing::warn!(
-                ?end,
-                "NavMesh::find_path: no end poly for position"
-            );
+            tracing::warn!(?end, "NavMesh::find_path: no end poly for position");
             return None;
         }
 
@@ -472,10 +464,7 @@ impl NavMesh {
             )
         };
         if dt_status_failed(status) || path_count == 0 {
-            tracing::debug!(
-                ?start, ?end,
-                "NavMesh::find_path: no poly path found"
-            );
+            tracing::debug!(?start, ?end, "NavMesh::find_path: no poly path found");
             return None;
         }
 
@@ -496,7 +485,8 @@ impl NavMesh {
         };
         if dt_status_failed(status) || straight_count == 0 {
             tracing::debug!(
-                ?start, ?end,
+                ?start,
+                ?end,
                 "NavMesh::find_path: straight path failed, returning endpoints"
             );
             // Fallback: return direct start→end (Detour found a poly path

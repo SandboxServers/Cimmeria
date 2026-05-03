@@ -28,10 +28,11 @@ impl SpaceManager {
             let player_ids: Vec<u32> = space.players.iter().copied().collect();
 
             for &player_id in &player_ids {
-                let (player_pos, aoi_radius, player_interactions) = match space.entities.get(&player_id) {
-                    Some(e) => (e.position, e.aoi_radius, e.available_interactions.clone()),
-                    None => continue,
-                };
+                let (player_pos, aoi_radius, player_interactions) =
+                    match space.entities.get(&player_id) {
+                        Some(e) => (e.position, e.aoi_radius, e.available_interactions.clone()),
+                        None => continue,
+                    };
 
                 // Query the grid for nearby entities
                 let candidates = space.space.get_entities_in_range(&player_pos, aoi_radius);
@@ -88,7 +89,11 @@ impl SpaceManager {
                                 space_id: space.space_id,
                                 class_id: other.class_id,
                                 position: [other.position.x, other.position.y, other.position.z],
-                                direction: [other.direction.x, other.direction.y, other.direction.z],
+                                direction: [
+                                    other.direction.x,
+                                    other.direction.y,
+                                    other.direction.z,
+                                ],
                                 level: other.level,
                                 npc_data,
                             });
@@ -106,18 +111,23 @@ impl SpaceManager {
                                 if let Some(tmpl_id) = other.template_id {
                                     if let Some(entries) = player_interactions.get(&tmpl_id) {
                                         let base = other.interaction_type_flags;
-                                        let merged = base | entries.iter().fold(0i64, |acc, &(_, _, f)| acc | f);
+                                        let merged = base
+                                            | entries.iter().fold(0i64, |acc, &(_, _, f)| acc | f);
                                         if merged != base {
                                             tracing::info!(
-                                                player_id, entity_id = eid,
-                                                template_id = tmpl_id, base, merged,
+                                                player_id,
+                                                entity_id = eid,
+                                                template_id = tmpl_id,
+                                                base,
+                                                merged,
                                                 "AoI: dynamicUpdate InteractionType (base→merged)"
                                             );
                                         }
                                         events.push(CellToBaseMsg::WitnessEntityMethod {
                                             witness_id: player_id,
                                             entity_id: eid,
-                                            method_index: crate::mercury::method_idx::INTERACTION_TYPE,
+                                            method_index:
+                                                crate::mercury::method_idx::INTERACTION_TYPE,
                                             args: (merged as u64).to_le_bytes().to_vec(),
                                         });
 
@@ -158,7 +168,11 @@ impl SpaceManager {
                                 entity_id: eid,
                                 space_id: space.space_id,
                                 position: [other.position.x, other.position.y, other.position.z],
-                                direction: [other.direction.x, other.direction.y, other.direction.z],
+                                direction: [
+                                    other.direction.x,
+                                    other.direction.y,
+                                    other.direction.z,
+                                ],
                                 velocity: other.velocity,
                             });
                         }
@@ -167,9 +181,7 @@ impl SpaceManager {
 
                 // Update the witness set
                 if let Some(entity) = space.entities.get_mut(&player_id) {
-                    entity.witnesses = current_aoi.iter()
-                        .map(|&id| EntityId(id as i32))
-                        .collect();
+                    entity.witnesses = current_aoi.iter().map(|&id| EntityId(id as i32)).collect();
                 }
             }
         }

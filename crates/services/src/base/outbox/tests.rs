@@ -9,7 +9,10 @@ use super::*;
 
 #[test]
 fn payload_serializes_with_kind_tag() {
-    let p = CellOutboxPayload::ItemUsed { type_id: 42, target_id: 17 };
+    let p = CellOutboxPayload::ItemUsed {
+        type_id: 42,
+        target_id: 17,
+    };
     let json = serde_json::to_value(&p).unwrap();
     // kind tag matters: it's how a future variant gets disambiguated on
     // deserialize, and an accidental rename would silently break in-flight
@@ -21,7 +24,10 @@ fn payload_serializes_with_kind_tag() {
 
 #[test]
 fn payload_roundtrips_through_json() {
-    let p = CellOutboxPayload::ItemUsed { type_id: -7, target_id: 0 };
+    let p = CellOutboxPayload::ItemUsed {
+        type_id: -7,
+        target_id: 0,
+    };
     let json = serde_json::to_string(&p).unwrap();
     let back: CellOutboxPayload = serde_json::from_str(&json).unwrap();
     assert_eq!(back, p);
@@ -33,7 +39,11 @@ fn event_type_string_is_stable() {
     // breaks any in-flight rows on existing databases — the test exists
     // to make that breakage loud at refactor time.
     assert_eq!(
-        CellOutboxPayload::ItemUsed { type_id: 0, target_id: 0 }.event_type(),
+        CellOutboxPayload::ItemUsed {
+            type_id: 0,
+            target_id: 0
+        }
+        .event_type(),
         "item_used",
     );
 }
@@ -52,7 +62,11 @@ fn row_to_message_builds_item_used() {
     };
     let msg = row_to_message(&row).expect("known event_type should produce message");
     match msg {
-        BaseToCellMsg::ItemUsed { entity_id, type_id, target_id } => {
+        BaseToCellMsg::ItemUsed {
+            entity_id,
+            type_id,
+            target_id,
+        } => {
             assert_eq!(entity_id, 1234);
             assert_eq!(type_id, 19);
             assert_eq!(target_id, 5);
@@ -91,18 +105,25 @@ fn persistence_contract_strings_are_stable_for_all_variants() {
     // every in-flight row on existing databases.
     let cases: &[(CellOutboxPayload, &str)] = &[
         (
-            CellOutboxPayload::ItemUsed { type_id: 0, target_id: 0 },
+            CellOutboxPayload::ItemUsed {
+                type_id: 0,
+                target_id: 0,
+            },
             "item_used",
         ),
         (
             CellOutboxPayload::InventoryItemGranted {
-                item_id: 0, container_id: 0, slot_id: 0, quantity: 0,
+                item_id: 0,
+                container_id: 0,
+                slot_id: 0,
+                quantity: 0,
             },
             "inventory_item_granted",
         ),
         (
             CellOutboxPayload::InventoryItemRemoved {
-                item_id: 0, source_container_id: 0,
+                item_id: 0,
+                source_container_id: 0,
             },
             "inventory_item_removed",
         ),
@@ -110,7 +131,8 @@ fn persistence_contract_strings_are_stable_for_all_variants() {
 
     for (variant, expected) in cases {
         assert_eq!(
-            variant.event_type(), *expected,
+            variant.event_type(),
+            *expected,
             "event_type() drift for {variant:?}",
         );
         let json = serde_json::to_value(variant).unwrap();
@@ -161,7 +183,11 @@ fn row_to_message_builds_inventory_item_granted() {
     };
     match row_to_message(&row).expect("known event_type") {
         BaseToCellMsg::InventoryItemGranted {
-            entity_id, item_id, container_id, slot_id, quantity,
+            entity_id,
+            item_id,
+            container_id,
+            slot_id,
+            quantity,
         } => {
             assert_eq!(entity_id, 42);
             assert_eq!(item_id, 100_007);
@@ -187,7 +213,9 @@ fn row_to_message_builds_inventory_item_removed() {
     };
     match row_to_message(&row).expect("known event_type") {
         BaseToCellMsg::InventoryItemRemoved {
-            entity_id, item_id, source_container_id,
+            entity_id,
+            item_id,
+            source_container_id,
         } => {
             assert_eq!(entity_id, 42);
             assert_eq!(item_id, 100_008);
@@ -208,7 +236,8 @@ fn row_to_message_returns_none_on_event_type_payload_mismatch() {
         entity_id: 1,
         event_type: "inventory_item_granted".to_string(),
         payload: sqlx::types::Json(CellOutboxPayload::ItemUsed {
-            type_id: 0, target_id: 0,
+            type_id: 0,
+            target_id: 0,
         }),
         attempts: 0,
     };
@@ -266,7 +295,10 @@ async fn enqueue_in_tx_writes_row_atomic_with_caller_commit() {
     let entity_id = TEST_ENTITY_BASE + 1;
     cleanup(&pool, entity_id).await;
 
-    let payload = CellOutboxPayload::ItemUsed { type_id: 19, target_id: 0 };
+    let payload = CellOutboxPayload::ItemUsed {
+        type_id: 19,
+        target_id: 0,
+    };
 
     // Open a tx, enqueue, but DON'T commit. A separate connection must
     // not see the row.
@@ -275,27 +307,29 @@ async fn enqueue_in_tx_writes_row_atomic_with_caller_commit() {
     assert!(id > 0, "RETURNING id should produce a real BIGSERIAL value");
 
     // Separate-connection visibility check — must be invisible pre-commit.
-    let visible_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM cell_event_outbox WHERE entity_id = $1",
-    )
-    .bind(entity_id as i32)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(visible_count, 0,
-        "row enqueued in uncommitted tx must not be visible to other connections");
+    let visible_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cell_event_outbox WHERE entity_id = $1")
+            .bind(entity_id as i32)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        visible_count, 0,
+        "row enqueued in uncommitted tx must not be visible to other connections"
+    );
 
     // Roll back. Row should never appear.
     tx.rollback().await.unwrap();
-    let post_rollback_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM cell_event_outbox WHERE entity_id = $1",
-    )
-    .bind(entity_id as i32)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(post_rollback_count, 0,
-        "row enqueued in rolled-back tx must not persist");
+    let post_rollback_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cell_event_outbox WHERE entity_id = $1")
+            .bind(entity_id as i32)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        post_rollback_count, 0,
+        "row enqueued in rolled-back tx must not persist"
+    );
 }
 
 #[tokio::test]
@@ -307,7 +341,10 @@ async fn enqueue_then_drain_round_trips_message_and_marks_delivered() {
     let entity_id = TEST_ENTITY_BASE + 2;
     cleanup(&pool, entity_id).await;
 
-    let payload = CellOutboxPayload::ItemUsed { type_id: 42, target_id: 7 };
+    let payload = CellOutboxPayload::ItemUsed {
+        type_id: 42,
+        target_id: 7,
+    };
     let id = enqueue(&pool, entity_id, &payload).await.unwrap();
     assert!(id > 0);
 
@@ -318,9 +355,15 @@ async fn enqueue_then_drain_round_trips_message_and_marks_delivered() {
     assert_eq!(stats.send_failed, 0);
 
     // The dispatched message reflects the row contents.
-    let msg = rx.try_recv().expect("drainer should have sent the BaseToCellMsg");
+    let msg = rx
+        .try_recv()
+        .expect("drainer should have sent the BaseToCellMsg");
     match msg {
-        BaseToCellMsg::ItemUsed { entity_id: e, type_id, target_id } => {
+        BaseToCellMsg::ItemUsed {
+            entity_id: e,
+            type_id,
+            target_id,
+        } => {
             assert_eq!(e, entity_id);
             assert_eq!(type_id, 42);
             assert_eq!(target_id, 7);
@@ -338,7 +381,10 @@ async fn enqueue_then_drain_round_trips_message_and_marks_delivered() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(undelivered, 0, "drainer's mark_delivered should have cleared the row");
+    assert_eq!(
+        undelivered, 0,
+        "drainer's mark_delivered should have cleared the row"
+    );
 
     cleanup(&pool, entity_id).await;
 }
@@ -353,8 +399,14 @@ async fn drain_stops_at_first_send_failure_and_records_attempt() {
     let entity_id = TEST_ENTITY_BASE + 3;
     cleanup(&pool, entity_id).await;
 
-    let payload_a = CellOutboxPayload::ItemUsed { type_id: 1, target_id: 0 };
-    let payload_b = CellOutboxPayload::ItemUsed { type_id: 2, target_id: 0 };
+    let payload_a = CellOutboxPayload::ItemUsed {
+        type_id: 1,
+        target_id: 0,
+    };
+    let payload_b = CellOutboxPayload::ItemUsed {
+        type_id: 2,
+        target_id: 0,
+    };
     enqueue(&pool, entity_id, &payload_a).await.unwrap();
     enqueue(&pool, entity_id, &payload_b).await.unwrap();
 
@@ -364,7 +416,10 @@ async fn drain_stops_at_first_send_failure_and_records_attempt() {
     let stats = drain_undelivered(&pool, &tx).await.unwrap();
 
     assert_eq!(stats.delivered, 0);
-    assert_eq!(stats.send_failed, 1, "first row's send must fail (and be the only attempt this pass)");
+    assert_eq!(
+        stats.send_failed, 1,
+        "first row's send must fail (and be the only attempt this pass)"
+    );
 
     // Both rows still undelivered (drainer broke the batch on the first
     // failure), and the first row's attempts column is now > 0.
@@ -376,18 +431,21 @@ async fn drain_stops_at_first_send_failure_and_records_attempt() {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!(still_undelivered, 2,
-        "both rows must remain undelivered after the batch break");
+    assert_eq!(
+        still_undelivered, 2,
+        "both rows must remain undelivered after the batch break"
+    );
 
-    let failed_attempts: i32 = sqlx::query_scalar(
-        "SELECT MAX(attempts) FROM cell_event_outbox WHERE entity_id = $1",
-    )
-    .bind(entity_id as i32)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert!(failed_attempts >= 1,
-        "record_failure should have bumped the attempts counter on the failed row");
+    let failed_attempts: i32 =
+        sqlx::query_scalar("SELECT MAX(attempts) FROM cell_event_outbox WHERE entity_id = $1")
+            .bind(entity_id as i32)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        failed_attempts >= 1,
+        "record_failure should have bumped the attempts counter on the failed row"
+    );
 
     cleanup(&pool, entity_id).await;
 }

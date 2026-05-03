@@ -1,7 +1,7 @@
-use tokio::sync::mpsc;
-use cimmeria_content_engine::chain::ChainEngine;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_content_engine::chain::ChainEngine;
+use tokio::sync::mpsc;
 
 use super::constants::*;
 
@@ -31,9 +31,7 @@ pub async fn dispatch(
         LOOT_ITEM => {
             if args.len() >= 4 {
                 let index = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                crate::cell::interactions::handle_loot_item(
-                    entity_id, index, tx, space_mgr,
-                ).await;
+                crate::cell::interactions::handle_loot_item(entity_id, index, tx, space_mgr).await;
             }
             true
         }
@@ -55,7 +53,11 @@ pub async fn dispatch(
                         None => (None, None),
                     },
                     Err(_) => {
-                        tracing::warn!(entity_id, region_id, "triggerClientHintedGenericRegion: negative region_id, ignoring");
+                        tracing::warn!(
+                            entity_id,
+                            region_id,
+                            "triggerClientHintedGenericRegion: negative region_id, ignoring"
+                        );
                         (None, None)
                     }
                 };
@@ -63,17 +65,21 @@ pub async fn dispatch(
                 if let Some(tag) = region_tag {
                     tracing::info!(entity_id, region_id, %tag, b_entering, "triggerClientHintedGenericRegion");
 
-                    let player_id = space_mgr.get_entity(entity_id)
-                        .and_then(|e| e.player_id).unwrap_or(0);
+                    let player_id = space_mgr
+                        .get_entity(entity_id)
+                        .and_then(|e| e.player_id)
+                        .unwrap_or(0);
 
                     if b_entering {
                         crate::cell::content::fire_enter_region(
                             entity_id, player_id, &tag, engine, tx, space_mgr,
-                        ).await;
+                        )
+                        .await;
                     } else {
                         crate::cell::content::fire_exit_region(
                             entity_id, player_id, &tag, engine, tx, space_mgr,
-                        ).await;
+                        )
+                        .await;
                     }
 
                     // Forward to the ring transporter FSM if this region is a
@@ -81,10 +87,15 @@ pub async fn dispatch(
                     if let Some(set_id) = db_set_id {
                         crate::cell::ring_transport::handle_region_trigger(
                             set_id, b_entering, entity_id, tx, space_mgr, engine,
-                        ).await;
+                        )
+                        .await;
                     }
                 } else {
-                    tracing::warn!(entity_id, region_id, "Unknown region ID in triggerClientHintedGenericRegion");
+                    tracing::warn!(
+                        entity_id,
+                        region_id,
+                        "Unknown region ID in triggerClientHintedGenericRegion"
+                    );
                 }
             }
             true
@@ -108,10 +119,21 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let region_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let destination_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, region_id, destination_id, "setRingTransporterDestination");
+                tracing::info!(
+                    entity_id,
+                    region_id,
+                    destination_id,
+                    "setRingTransporterDestination"
+                );
                 crate::cell::ring_transport::handle_select_destination(
-                    region_id, destination_id, entity_id, tx, space_mgr, engine,
-                ).await;
+                    region_id,
+                    destination_id,
+                    entity_id,
+                    tx,
+                    space_mgr,
+                    engine,
+                )
+                .await;
             }
             true
         }
@@ -175,7 +197,14 @@ async fn handle_reload(
     entity.reload_complete_at = Some(std::time::Instant::now() + warmup_duration);
     entity.reload_slot_id = Some(entity.active_bandolier_slot);
 
-    tracing::info!(entity_id, old, target = target_ammo, warmup, cooldown, "Weapon reload started");
+    tracing::info!(
+        entity_id,
+        old,
+        target = target_ammo,
+        warmup,
+        cooldown,
+        "Weapon reload started"
+    );
 
     let timer_args = cimmeria_entity::abilities::serialize_timer_update(
         ABILITY_RELOAD_WEAPON,
@@ -184,11 +213,13 @@ async fn handle_reload(
         total_time,
         0.0,
     );
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: 12,
-        args: timer_args,
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: 12,
+            args: timer_args,
+        })
+        .await;
 
     {
         use crate::cell::combat::{BSF_HOLSTER, BSF_IN_COMBAT};
@@ -198,11 +229,13 @@ async fn handle_reload(
             e.state_field &= !BSF_HOLSTER;
             if e.state_field != old {
                 let new_state = e.state_field;
-                let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index: 19,
-                    args: new_state.to_le_bytes().to_vec(),
-                }).await;
+                let _ = tx
+                    .send(CellToBaseMsg::EntityMethodCall {
+                        entity_id,
+                        method_index: 19,
+                        args: new_state.to_le_bytes().to_vec(),
+                    })
+                    .await;
             }
         }
     }
@@ -220,24 +253,33 @@ async fn handle_reload(
             seq_args.extend_from_slice(&0u32.to_le_bytes());
             seq_args.push(0);
             seq_args.extend_from_slice(&0i32.to_le_bytes());
-            let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: 1,
-                args: seq_args,
-            }).await;
+            let _ = tx
+                .send(CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index: 1,
+                    args: seq_args,
+                })
+                .await;
         } else {
-            tracing::debug!(entity_id, event_set_id = esid, "reload: no Ability_End sequence found");
+            tracing::debug!(
+                entity_id,
+                event_set_id = esid,
+                "reload: no Ability_End sequence found"
+            );
         }
     }
 
     let mut args = Vec::with_capacity(8);
     args.extend_from_slice(&7i32.to_le_bytes());
-    let ammo_type = space_mgr.get_entity(entity_id)
+    let ammo_type = space_mgr
+        .get_entity(entity_id)
         .map_or(0, |e| e.active_ammo_type());
     args.extend_from_slice(&ammo_type.to_le_bytes());
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: 7,
-        args,
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: 7,
+            args,
+        })
+        .await;
 }

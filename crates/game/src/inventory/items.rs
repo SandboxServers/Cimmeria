@@ -38,7 +38,14 @@ pub struct ItemInstance {
 
 impl ItemInstance {
     /// Create a new item instance from a template.
-    pub fn new(instance_id: i64, template_id: i32, name: String, item_type: ItemType, quality: ItemQuality, max_stack: u32) -> Self {
+    pub fn new(
+        instance_id: i64,
+        template_id: i32,
+        name: String,
+        item_type: ItemType,
+        quality: ItemQuality,
+        max_stack: u32,
+    ) -> Self {
         Self {
             instance_id,
             template_id,
@@ -72,13 +79,27 @@ mod tests {
 
     #[test]
     fn single_stack_not_stackable() {
-        let item = ItemInstance::new(1, 100, "Zat'nik'tel".to_string(), ItemType::Weapon, ItemQuality::Rare, 1);
+        let item = ItemInstance::new(
+            1,
+            100,
+            "Zat'nik'tel".to_string(),
+            ItemType::Weapon,
+            ItemQuality::Rare,
+            1,
+        );
         assert!(!item.is_stackable());
     }
 
     #[test]
     fn stackable_item_accepts_units() {
-        let mut item = ItemInstance::new(1, 200, "Tretonin".to_string(), ItemType::Consumable, ItemQuality::Common, 10);
+        let mut item = ItemInstance::new(
+            1,
+            200,
+            "Tretonin".to_string(),
+            ItemType::Consumable,
+            ItemQuality::Common,
+            10,
+        );
         let overflow = item.add_to_stack(5);
         assert_eq!(overflow, 0);
         assert_eq!(item.stack_count, 6);
@@ -86,7 +107,14 @@ mod tests {
 
     #[test]
     fn stack_overflow_returns_remainder() {
-        let mut item = ItemInstance::new(1, 200, "Tretonin".to_string(), ItemType::Consumable, ItemQuality::Common, 5);
+        let mut item = ItemInstance::new(
+            1,
+            200,
+            "Tretonin".to_string(),
+            ItemType::Consumable,
+            ItemQuality::Common,
+            5,
+        );
         let overflow = item.add_to_stack(10);
         assert_eq!(overflow, 6);
         assert_eq!(item.stack_count, 5);

@@ -39,7 +39,7 @@ pub async fn load_mission_defs(
     let step_rows = sqlx::query(
         "SELECT DISTINCT ON (mission_id) mission_id, step_id \
          FROM resources.mission_steps \
-         ORDER BY mission_id, index ASC"
+         ORDER BY mission_id, index ASC",
     )
     .fetch_all(pool)
     .await?;
@@ -48,10 +48,13 @@ pub async fn load_mission_defs(
     for r in &step_rows {
         let mission_id: i32 = r.get("mission_id");
         let step_id: i32 = r.get("step_id");
-        map.insert(mission_id, MissionDefEntry {
-            step_id,
-            objectives: Vec::new(),
-        });
+        map.insert(
+            mission_id,
+            MissionDefEntry {
+                step_id,
+                objectives: Vec::new(),
+            },
+        );
     }
 
     // Load objectives for all steps we just loaded
@@ -60,7 +63,7 @@ pub async fn load_mission_defs(
         let obj_rows = sqlx::query(
             "SELECT step_id, objective_id, is_hidden, is_optional \
              FROM resources.mission_objectives \
-             WHERE step_id = ANY($1)"
+             WHERE step_id = ANY($1)",
         )
         .bind(&step_ids)
         .fetch_all(pool)
@@ -102,7 +105,7 @@ pub async fn load_step_objectives(
 
     let rows = sqlx::query(
         "SELECT step_id, objective_id, is_hidden, is_optional \
-         FROM resources.mission_objectives ORDER BY step_id, objective_id"
+         FROM resources.mission_objectives ORDER BY step_id, objective_id",
     )
     .fetch_all(pool)
     .await?;

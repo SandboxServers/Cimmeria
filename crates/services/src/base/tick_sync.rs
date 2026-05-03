@@ -12,8 +12,8 @@ use cimmeria_entity::manager::EntityManager;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::build_ongoing_tick_sync;
 
-use super::ConnectedClientState;
 use super::helpers::destroy_client_entities;
+use super::ConnectedClientState;
 
 /// Per-connection tick-sync heartbeat task.
 pub(crate) async fn run_tick_loop(
@@ -70,7 +70,7 @@ pub(crate) async fn run_tick_loop(
             break;
         }
 
-        if tick % 100 == 0 {
+        if tick.is_multiple_of(100) {
             tracing::debug!(%addr, tick, seq_id, "Tick-sync heartbeat (every 100th)");
         }
 

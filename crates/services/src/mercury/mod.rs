@@ -20,35 +20,32 @@ use cimmeria_mercury::packet::{FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 
-pub mod types;
-pub mod protocol;
 pub mod aoi;
+pub mod protocol;
+pub mod types;
 pub mod world_data;
 
 // ── Re-exports ───────────────────────────────────────────────────────────────
 // All items that were previously `pub` in mercury_ext.rs are re-exported here
 // so that `use crate::mercury::*` provides the same names.
 
-pub use types::{CharacterInfo, WorldEntryInfo, ArchetypeStats, PlayerLoadData};
+pub use types::{ArchetypeStats, CharacterInfo, PlayerLoadData, WorldEntryInfo};
 
 pub use protocol::{
-    build_connect_reply, build_time_sync, build_char_list, build_on_character_list,
-    build_ongoing_tick_sync, build_reset_entities, build_logged_off,
-    build_char_create_failed, build_character_visuals, build_resource_fragment,
-    build_version_info,
+    build_char_create_failed, build_char_list, build_character_visuals, build_connect_reply,
+    build_logged_off, build_on_character_list, build_ongoing_tick_sync, build_reset_entities,
+    build_resource_fragment, build_time_sync, build_version_info,
 };
 
 pub use aoi::{
-    build_create_entity_base, build_create_entity_cascade,
-    build_entity_invisible, build_entity_leave, build_avatar_update, build_forced_position,
-    build_entity_method_packet,
+    build_avatar_update, build_create_entity_base, build_create_entity_cascade,
+    build_entity_invisible, build_entity_leave, build_entity_method_packet, build_forced_position,
 };
 
 pub use world_data::{
-    build_create_player, build_enter_world, build_enter_world_body,
-    build_on_player_data_loaded, build_setup_world_parameters,
-    build_map_loaded, build_map_loaded_body, fragment_map_loaded, fragment_count,
-    archetype_stats, archetype_ability_tree,
+    archetype_ability_tree, archetype_stats, build_create_player, build_enter_world,
+    build_enter_world_body, build_map_loaded, build_map_loaded_body, build_on_player_data_loaded,
+    build_setup_world_parameters, fragment_count, fragment_map_loaded,
 };
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -107,19 +104,14 @@ pub(crate) const BASEMSG_LOGGED_OFF: u8 = 0x37;
 pub(crate) const ACCOUNT_CLASS_ID: u8 = 0x07;
 /// SGWPlayer entity class ID (EntityTypeID 2 in entity definitions).
 pub(crate) const SGWPLAYER_CLASS_ID: u8 = 0x02;
-/// SGWGmPlayer entity class ID (EntityTypeID 3 in entity definitions).
-/// Used for accounts with access_level > 0, per `python/base/Account.py:293-296`.
-pub(crate) const SGWGMPLAYER_CLASS_ID: u8 = 0x03;
 /// Default space ID for CombatSim (matches reference server pcap: 0x10010 = 65552).
 pub const DEFAULT_SPACE_ID: u32 = 65552;
 
 /// 16 ARGB skin tint values indexed by SkinTintColorID (0-15).
 /// Source: `python/common/Constants.py:4-9` — `SKIN_TINTS` array.
 pub const SKIN_TINTS: [u32; 16] = [
-    0x2F1308FF, 0x180A08FF, 0x15100DFF, 0x9C4F22FF,
-    0x370405FF, 0x2F1219FF, 0x6C1F0DFF, 0x4F1A09FF,
-    0xB45B32FF, 0x632319FF, 0x3A2417FF, 0xF8B487FF,
-    0xD57D51FF, 0xC36141FF, 0xDF8250FF, 0x8D3F24FF,
+    0x2F1308FF, 0x180A08FF, 0x15100DFF, 0x9C4F22FF, 0x370405FF, 0x2F1219FF, 0x6C1F0DFF, 0x4F1A09FF,
+    0xB45B32FF, 0x632319FF, 0x3A2417FF, 0xF8B487FF, 0xD57D51FF, 0xC36141FF, 0xDF8250FF, 0x8D3F24FF,
 ];
 
 /// Resource fragment flags.
@@ -253,7 +245,11 @@ pub fn append_entity_method(body: &mut Vec<u8>, method_index: u16, entity_id: u3
 
     // Diagnostic logging for visual methods
     if method_index == method_idx::BEING_APPEARANCE || method_index == method_idx::ON_ENTITY_TINT {
-        let method_name = if method_index == method_idx::BEING_APPEARANCE { "BeingAppearance" } else { "onEntityTint" };
+        let method_name = if method_index == method_idx::BEING_APPEARANCE {
+            "BeingAppearance"
+        } else {
+            "onEntityTint"
+        };
         tracing::debug!(
             method_index,
             method_name,

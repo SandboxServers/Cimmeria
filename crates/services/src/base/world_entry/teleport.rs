@@ -16,8 +16,8 @@ use tokio::net::UdpSocket;
 
 use crate::mercury::{build_entity_method_packet, build_forced_position};
 
-use super::super::ConnectedClientState;
 use super::super::helpers::send_to_witness;
+use super::super::ConnectedClientState;
 
 /// Authoritative same-world teleport: snap the player's avatar to `position`.
 ///
@@ -61,17 +61,21 @@ pub(super) async fn handle_teleport_player(
     };
 
     tracing::info!(
-        entity_id, ?position, space_id,
+        entity_id,
+        ?position,
+        space_id,
         "TeleportPlayer: snapping avatar"
     );
 
     // 1. Engine-level snap.
     send_to_witness(
-        socket, connected, entity_to_addr, entity_id,
-        |key, seq, acks| {
-            build_forced_position(key, seq, acks, entity_id, space_id, position)
-        },
-    ).await;
+        socket,
+        connected,
+        entity_to_addr,
+        entity_id,
+        |key, seq, acks| build_forced_position(key, seq, acks, entity_id, space_id, position),
+    )
+    .await;
 
     // 2. Streaming-load waiting flag (method 116). Direction is zeroed —
     //    we don't currently rotate the avatar on ring travel.
@@ -81,12 +85,22 @@ pub(super) async fn handle_teleport_player(
     }
     args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
     send_to_witness(
-        socket, connected, entity_to_addr, entity_id,
+        socket,
+        connected,
+        entity_to_addr,
+        entity_id,
         |key, seq, acks| {
-            build_entity_method_packet(key, seq, acks, entity_id,
-                crate::cell::client_methods::player::ON_PLAYER_TELEPORT, &args)
+            build_entity_method_packet(
+                key,
+                seq,
+                acks,
+                entity_id,
+                crate::cell::client_methods::player::ON_PLAYER_TELEPORT,
+                &args,
+            )
         },
-    ).await;
+    )
+    .await;
 
     // 3. Persist. Mirrors gate_travel's fail-closed on missing active_player_id.
     if let Some(pool) = db_pool {
@@ -94,7 +108,8 @@ pub(super) async fn handle_teleport_player(
             Some(p) => p,
             None => {
                 tracing::error!(
-                    entity_id, account_id,
+                    entity_id,
+                    account_id,
                     "TeleportPlayer: no active_player_id cached — refusing to persist"
                 );
                 return;
@@ -102,15 +117,23 @@ pub(super) async fn handle_teleport_player(
         };
         let res = sqlx::query(
             "UPDATE sgw_player SET pos_x = $1, pos_y = $2, pos_z = $3 \
-             WHERE player_id = $4 AND account_id = $5"
+             WHERE player_id = $4 AND account_id = $5",
         )
-        .bind(position[0]).bind(position[1]).bind(position[2])
-        .bind(pid).bind(account_id as i32)
-        .execute(pool.as_ref()).await;
+        .bind(position[0])
+        .bind(position[1])
+        .bind(position[2])
+        .bind(pid)
+        .bind(account_id as i32)
+        .execute(pool.as_ref())
+        .await;
         match res {
             Ok(r) if r.rows_affected() == 0 => {
-                tracing::warn!(entity_id, pid, account_id,
-                    "TeleportPlayer: persistence UPDATE matched 0 rows");
+                tracing::warn!(
+                    entity_id,
+                    pid,
+                    account_id,
+                    "TeleportPlayer: persistence UPDATE matched 0 rows"
+                );
             }
             Ok(_) => {}
             Err(e) => {

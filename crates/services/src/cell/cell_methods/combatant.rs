@@ -6,9 +6,9 @@
 //!
 //! Reference: `python/cell/SGWBeing.py:746-770`
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 /// Set crouched state.
 pub const SET_CROUCHED: u16 = 5;
@@ -30,7 +30,9 @@ pub async fn dispatch(
 ) -> bool {
     match method_index {
         SET_CROUCHED => {
-            if args.is_empty() { return true; }
+            if args.is_empty() {
+                return true;
+            }
             let crouched = args[0] as i8;
             tracing::debug!(entity_id, crouched, "setCrouched");
 
@@ -43,11 +45,13 @@ pub async fn dispatch(
                 }
                 if e.state_field != old {
                     let new_state = e.state_field;
-                    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                        entity_id,
-                        method_index: 19, // onStateFieldUpdate
-                        args: new_state.to_le_bytes().to_vec(),
-                    }).await;
+                    let _ = tx
+                        .send(CellToBaseMsg::EntityMethodCall {
+                            entity_id,
+                            method_index: 19, // onStateFieldUpdate
+                            args: new_state.to_le_bytes().to_vec(),
+                        })
+                        .await;
                     // TODO: also send to witnesses via AoI broadcast
                 }
             }
@@ -58,7 +62,9 @@ pub async fn dispatch(
             true
         }
         REQUEST_HOLSTER_WEAPON => {
-            if args.is_empty() { return true; }
+            if args.is_empty() {
+                return true;
+            }
             let holstered = args[0] as i8;
             tracing::debug!(entity_id, holstered, "requestHolsterWeapon");
 
@@ -71,11 +77,13 @@ pub async fn dispatch(
                 }
                 if e.state_field != old {
                     let new_state = e.state_field;
-                    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                        entity_id,
-                        method_index: 19, // onStateFieldUpdate
-                        args: new_state.to_le_bytes().to_vec(),
-                    }).await;
+                    let _ = tx
+                        .send(CellToBaseMsg::EntityMethodCall {
+                            entity_id,
+                            method_index: 19, // onStateFieldUpdate
+                            args: new_state.to_le_bytes().to_vec(),
+                        })
+                        .await;
                     // TODO: also send to witnesses via AoI broadcast
                 }
             }

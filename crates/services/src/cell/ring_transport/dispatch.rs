@@ -16,8 +16,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 
 use super::transporter::{Effect, State};
 use super::wire_helpers::{
-    send_destination_list, send_play_sequence, send_visible, update_state_flag,
-    BSF_MOVEMENT_LOCK,
+    send_destination_list, send_play_sequence, send_visible, update_state_flag, BSF_MOVEMENT_LOCK,
 };
 use crate::cell::content;
 use crate::cell::messages::CellToBaseMsg;
@@ -45,15 +44,28 @@ async fn dispatch_effect_inner(
     engine: &ChainEngine,
 ) {
     match effect {
-        Effect::PlaySequence { entity_id, event_set_id, region_event } => {
+        Effect::PlaySequence {
+            entity_id,
+            event_set_id,
+            region_event,
+        } => {
             send_play_sequence(entity_id, event_set_id, region_event, tx, space_mgr).await;
         }
-        Effect::OnTeleportOut { entity_id, region_id, destination_id } => {
+        Effect::OnTeleportOut {
+            entity_id,
+            region_id,
+            destination_id,
+        } => {
             // No client wire call: this is a script-level event hook. The
             // current content engine has no `teleport_out` trigger registered,
             // so we just log. Add a TriggerType / loader entry if/when content
             // authoring needs it.
-            tracing::debug!(entity_id, region_id, destination_id, "ring: onTeleportOut event (no chain trigger registered)");
+            tracing::debug!(
+                entity_id,
+                region_id,
+                destination_id,
+                "ring: onTeleportOut event (no chain trigger registered)"
+            );
         }
         Effect::LockMovement { entity_id } => {
             update_state_flag(entity_id, BSF_MOVEMENT_LOCK, true, tx, space_mgr).await;
@@ -67,7 +79,12 @@ async fn dispatch_effect_inner(
         Effect::ShowPlayer { entity_id } => {
             send_visible(entity_id, true, tx, space_mgr).await;
         }
-        Effect::TeleportPlayer { entity_id, position, world_name, destination_region_id } => {
+        Effect::TeleportPlayer {
+            entity_id,
+            position,
+            world_name,
+            destination_region_id,
+        } => {
             // Resolve the authoritative space_id from the cell — bailing if the
             // entity is gone, because the alternative (synthesizing 0) would
             // dispatch a bogus snap and still mark the destination ring loaded.
@@ -81,7 +98,8 @@ async fn dispatch_effect_inner(
                     return;
                 }
             };
-            if !same_world_teleport(entity_id, position, &world_name, space_id, tx, space_mgr).await {
+            if !same_world_teleport(entity_id, position, &world_name, space_id, tx, space_mgr).await
+            {
                 // Send failed — don't mark loaded; let the destination time out.
                 return;
             }
@@ -92,7 +110,12 @@ async fn dispatch_effect_inner(
             // see TeleportCrossWorld branch.
             mark_player_loaded(destination_region_id, entity_id, tx, space_mgr, engine).await;
         }
-        Effect::TeleportCrossWorld { entity_id, position, world_name, destination_region_id } => {
+        Effect::TeleportCrossWorld {
+            entity_id,
+            position,
+            world_name,
+            destination_region_id,
+        } => {
             // Cross-world is rejected up-front in `handle_select_destination`,
             // so the FSM should never produce this effect. Surface as error
             // (not panic) to keep the cell loop running if we ever regress.
@@ -102,7 +125,10 @@ async fn dispatch_effect_inner(
                  should have been rejected at selectDestination"
             );
         }
-        Effect::FireTeleportIn { entity_id, region_id } => {
+        Effect::FireTeleportIn {
+            entity_id,
+            region_id,
+        } => {
             let Some(player_id) = space_mgr.get_entity(entity_id).and_then(|e| e.player_id) else {
                 tracing::error!(
                     entity_id, region_id,
@@ -112,7 +138,11 @@ async fn dispatch_effect_inner(
             };
             content::fire_teleport_in(entity_id, player_id, region_id, engine, tx, space_mgr).await;
         }
-        Effect::SendDestinationList { entity_id, source_region_id, destinations } => {
+        Effect::SendDestinationList {
+            entity_id,
+            source_region_id,
+            destinations,
+        } => {
             send_destination_list(entity_id, source_region_id, &destinations, tx, space_mgr).await;
         }
     }
@@ -226,7 +256,14 @@ async fn same_world_teleport(
     // (method 116) for streaming-load coordination. The bare 116-only path the
     // previous version used does NOT move the avatar — see SGWPlayer.def comment
     // and the `handle_teleport_player` handler.
-    if let Err(e) = tx.send(CellToBaseMsg::TeleportPlayer { entity_id, space_id, position }).await {
+    if let Err(e) = tx
+        .send(CellToBaseMsg::TeleportPlayer {
+            entity_id,
+            space_id,
+            position,
+        })
+        .await
+    {
         tracing::error!(entity_id, space_id, ?position, error = %e,
             "TeleportPlayer: cell→base channel send failed");
         return false;

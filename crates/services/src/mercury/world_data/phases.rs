@@ -3,11 +3,9 @@
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
 use super::{
-    encrypt_packet, write_wstring, append_entity_method, method_idx,
-    REPLY_FLAGS, BASEMSG_CREATE_BASE_PLAYER, BASEMSG_SPACE_VIEWPORT_INFO,
-    BASEMSG_CREATE_CELL_PLAYER, BASEMSG_FORCED_POSITION,
-    WorldEntryInfo,
-    client_map_for_world, world_id_for_name, build_world_params_args,
+    append_entity_method, build_world_params_args, client_map_for_world, encrypt_packet,
+    method_idx, world_id_for_name, write_wstring, WorldEntryInfo, BASEMSG_CREATE_BASE_PLAYER,
+    BASEMSG_CREATE_CELL_PLAYER, BASEMSG_FORCED_POSITION, BASEMSG_SPACE_VIEWPORT_INFO, REPLY_FLAGS,
 };
 
 // ── World entry builders ─────────────────────────────────────────────────────
@@ -58,7 +56,12 @@ pub fn build_create_player(
         args.extend_from_slice(&0.0f32.to_le_bytes()); // X
         args.extend_from_slice(&0.0f32.to_le_bytes()); // Y = 0
         args.extend_from_slice(&info.rot[1].to_le_bytes()); // Z = heading
-        append_entity_method(&mut body, method_idx::ON_CLIENT_MAP_LOAD, info.player_entity_id, &args);
+        append_entity_method(
+            &mut body,
+            method_idx::ON_CLIENT_MAP_LOAD,
+            info.player_entity_id,
+            &args,
+        );
     }
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
@@ -107,7 +110,7 @@ pub fn build_enter_world_body(info: &WorldEntryInfo) -> Vec<u8> {
     for &c in &[0.0f32, 0.0, 0.0] {
         body.extend_from_slice(&c.to_le_bytes());
     } // velocity = zero
-    // C++ sends rotX, rotZ, rotY (swapped)
+      // C++ sends rotX, rotZ, rotY (swapped)
     body.extend_from_slice(&info.rot[0].to_le_bytes()); // rotX
     body.extend_from_slice(&info.rot[2].to_le_bytes()); // rotZ (swapped)
     body.extend_from_slice(&info.rot[1].to_le_bytes()); // rotY (swapped)
@@ -166,7 +169,12 @@ pub fn build_setup_world_parameters(
 ) -> Vec<u8> {
     let mut body = Vec::new();
     let args = build_world_params_args("CombatSim");
-    append_entity_method(&mut body, method_idx::SETUP_WORLD_PARAMETERS, entity_id, &args);
+    append_entity_method(
+        &mut body,
+        method_idx::SETUP_WORLD_PARAMETERS,
+        entity_id,
+        &args,
+    );
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq), acks, None);

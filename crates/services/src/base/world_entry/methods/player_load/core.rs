@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use crate::mercury::PlayerLoadData;
 use super::meta::{default_player_load_data, query_archetype_ability_tree, query_bandolier_items};
+use crate::mercury::PlayerLoadData;
 
 /// Container IDs used in equipment-visual queries. Mirrors the DB schema:
 /// 3 = bandolier, 4..=14 = the eleven equipment slots (head, torso, etc.).
@@ -183,41 +183,6 @@ pub async fn query_player_load_data(
         }
         Err(e) => {
             tracing::error!(player_id, "Failed to query player load data: {e}");
-            default_player_load_data()
-        }
-    }
-}
-
-/// Query player load data using just the account_id (for gate travel where we
-/// don't have the player_id readily available in ConnectedClientState).
-pub async fn query_player_load_data_by_account(
-    db_pool: &Option<Arc<PgPool>>,
-    account_id: u32,
-) -> PlayerLoadData {
-    let pool = match db_pool {
-        Some(p) => p,
-        None => return default_player_load_data(),
-    };
-
-    #[derive(sqlx::FromRow)]
-    struct PlayerRow {
-        player_id: i32,
-    }
-
-    match sqlx::query_as::<_, PlayerRow>(
-        "SELECT player_id FROM sgw_player WHERE account_id = $1 ORDER BY player_id LIMIT 1",
-    )
-    .bind(account_id as i32)
-    .fetch_optional(pool.as_ref())
-    .await
-    {
-        Ok(Some(row)) => query_player_load_data(db_pool, account_id, row.player_id).await,
-        Ok(None) => {
-            tracing::warn!(account_id, "query_player_load_data_by_account: no player for account");
-            default_player_load_data()
-        }
-        Err(e) => {
-            tracing::error!(account_id, "query_player_load_data_by_account: lookup failed: {e}");
             default_player_load_data()
         }
     }

@@ -1,5 +1,5 @@
-use cimmeria_common::types::EntityId;
 use cimmeria_common::math::Vector3;
+use cimmeria_common::types::EntityId;
 
 /// Parse a command string into the command name and its arguments.
 ///

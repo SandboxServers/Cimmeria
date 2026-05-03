@@ -83,7 +83,7 @@ impl ChainEngine {
         let bucket = self.chains_by_trigger.entry(trigger_type).or_default();
         bucket.push(chain);
         // Re-sort by priority descending so higher-priority chains run first.
-        bucket.sort_by(|a, b| b.priority.cmp(&a.priority));
+        bucket.sort_by_key(|c| std::cmp::Reverse(c.priority));
     }
 
     /// Return the total number of registered chains (enabled and disabled).
@@ -237,7 +237,9 @@ impl ChainEngine {
     /// has access to game state (SpaceManager, channels, etc.) that the engine
     /// itself doesn't know about.
     pub fn resolve_event(&self, event: &TriggerEvent, ctx: &ExecutionContext) -> ResolvedActions {
-        let mut resolved = ResolvedActions { actions: Vec::new() };
+        let mut resolved = ResolvedActions {
+            actions: Vec::new(),
+        };
 
         let chains = match self.chains_by_trigger.get(&event.trigger_type) {
             Some(chains) => chains,
@@ -298,12 +300,7 @@ mod tests {
     #[test]
     fn register_chain_increases_count() {
         let mut engine = ChainEngine::new();
-        let chain = make_chain(
-            1,
-            Trigger::OnEntityCreated { entity_type: None },
-            vec![],
-            0,
-        );
+        let chain = make_chain(1, Trigger::OnEntityCreated { entity_type: None }, vec![], 0);
         engine.register_chain(chain);
         assert_eq!(engine.chain_count(), 1);
         assert_eq!(engine.chains_for_trigger(&TriggerType::EntityCreated), 1);
@@ -460,13 +457,19 @@ mod tests {
         ));
         engine.register_chain(make_chain(
             2,
-            Trigger::OnEntityDeath { entity_type: None, entity_tag: None },
+            Trigger::OnEntityDeath {
+                entity_type: None,
+                entity_tag: None,
+            },
             vec![],
             0,
         ));
         engine.register_chain(make_chain(
             3,
-            Trigger::OnEntityDeath { entity_type: None, entity_tag: None },
+            Trigger::OnEntityDeath {
+                entity_type: None,
+                entity_tag: None,
+            },
             vec![],
             0,
         ));

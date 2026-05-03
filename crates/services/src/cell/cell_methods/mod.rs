@@ -11,15 +11,15 @@
 //! See `docs/protocol/cell-method-dispatch-table.md` for the complete
 //! 109-method table.
 
-pub mod being;
 pub mod ability_manager;
+pub mod being;
+pub mod black_market;
 pub mod combatant;
-pub mod organization;
-pub mod minigame;
+pub mod contact_list;
 pub mod gate_travel;
 pub mod inventory;
 pub mod mail;
+pub mod minigame;
 pub mod missionary;
-pub mod contact_list;
-pub mod black_market;
+pub mod organization;
 pub mod player;

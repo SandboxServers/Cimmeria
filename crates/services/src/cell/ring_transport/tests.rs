@@ -29,12 +29,19 @@ fn make_test_space_mgr() -> SpaceManager {
 
 fn ring(id: i32, world: &str, dests: Vec<i32>, pos: [f32; 3]) -> RingRegion {
     RingRegion {
-        region_id: id, world_id: 12, world_name: world.to_string(),
-        x: pos[0], y: pos[1], z: pos[2],
+        region_id: id,
+        world_id: 12,
+        world_name: world.to_string(),
+        x: pos[0],
+        y: pos[1],
+        z: pos[2],
         tag: format!("Ring{id}"),
-        height: 1.7, radius: 3.5,
-        event_set_id: 100, display_name_id: 7508,
-        destination_ids: dests, point_set_id: 2000 + id,
+        height: 1.7,
+        radius: 3.5,
+        event_set_id: 100,
+        display_name_id: 7508,
+        destination_ids: dests,
+        point_set_id: 2000 + id,
     }
 }
 
@@ -50,7 +57,8 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     regions.insert(1, ring(1, "Castle_CellBlock", vec![2], [0.0, 0.0, 0.0]));
     regions.insert(2, ring(2, "Castle_CellBlock", vec![1], [10.0, 20.0, 30.0]));
     mgr.ring_transporters.load(&regions);
-    mgr.ring_point_set_to_region = regions.iter()
+    mgr.ring_point_set_to_region = regions
+        .iter()
         .map(|(rid, r)| (r.point_set_id, *rid))
         .collect();
     mgr.ring_regions = regions;
@@ -60,7 +68,8 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     mgr.sequence_map.insert((100, 8001), 9001);
 
     // Spawn the player entity in the source space.
-    mgr.create_entity(42, "Castle_CellBlock", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+    mgr.create_entity(42, "Castle_CellBlock", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
     mgr.connect_entity(42);
     if let Some(p) = mgr.get_entity_mut(42) {
         p.player_id = Some(700);
@@ -93,16 +102,26 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     // 3. Player walks onto the source pad's region (point_set 2001).
     handle_region_trigger(2001, true, 42, &tx, &mut mgr, &engine).await;
     // Auto-start: source SendWait → SendWarmup, dest RecvWait → RecvWarmup.
-    assert_eq!(mgr.ring_transporters.get(1).unwrap().state, State::SendWarmup);
-    assert_eq!(mgr.ring_transporters.get(2).unwrap().state, State::RecvWarmup);
+    assert_eq!(
+        mgr.ring_transporters.get(1).unwrap().state,
+        State::SendWarmup
+    );
+    assert_eq!(
+        mgr.ring_transporters.get(2).unwrap().state,
+        State::RecvWarmup
+    );
 
     // 4. Drain effects so far (should include movement lock and play_sequence).
     let mut got_lock = false;
     let mut got_sequence = false;
     while let Ok(msg) = rx.try_recv() {
         if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
-            if method_index == ON_STATE_FIELD_UPDATE { got_lock = true; }
-            if method_index == ON_SEQUENCE { got_sequence = true; }
+            if method_index == ON_STATE_FIELD_UPDATE {
+                got_lock = true;
+            }
+            if method_index == ON_SEQUENCE {
+                got_sequence = true;
+            }
         }
     }
     assert!(got_lock, "BSF_MovementLock not applied");
@@ -113,7 +132,11 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     //    transition through the proper dispatch path so TeleportPlayer's
     //    effects run, including the `mark_player_loaded` cross-link which
     //    moves the destination through RemoteLoadWait → RemoteWarmup.
-    let hide_effects = mgr.ring_transporters.get_mut(1).unwrap().hide_timer_expired();
+    let hide_effects = mgr
+        .ring_transporters
+        .get_mut(1)
+        .unwrap()
+        .hide_timer_expired();
     dispatch_effects(hide_effects, &tx, &mut mgr, &engine).await;
 
     let dst_pos = {
@@ -123,7 +146,10 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     // Capture num_players BEFORE warmup (which clears send_players as part
     // of the source's reset to Idle).
     let warmup_num_players = mgr.ring_transporters.get(1).unwrap().send_players.len() as u32;
-    let warmup_effects = mgr.ring_transporters.get_mut(1).unwrap()
+    let warmup_effects = mgr
+        .ring_transporters
+        .get_mut(1)
+        .unwrap()
         .warmup_timer_expired(dst_pos.0, &dst_pos.1);
     // Same ordering as the production tick: count update before teleport
     // so `mark_player_loaded` can advance the FSM synchronously.
@@ -137,13 +163,18 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     let mut remaining = Vec::new();
     while let Ok(msg) = rx.try_recv() {
         match msg {
-            CellToBaseMsg::TeleportPlayer { entity_id, space_id, position } => {
+            CellToBaseMsg::TeleportPlayer {
+                entity_id,
+                space_id,
+                position,
+            } => {
                 teleport_msg = Some((entity_id, space_id, position));
             }
             other => remaining.push(other),
         }
     }
-    let (eid, space_id, pos) = teleport_msg.expect("TeleportPlayer not emitted by warmup→teleport step");
+    let (eid, space_id, pos) =
+        teleport_msg.expect("TeleportPlayer not emitted by warmup→teleport step");
     assert_eq!(eid, 42);
     assert_ne!(space_id, 0, "TeleportPlayer must carry a non-zero space_id");
     assert!((pos[0] - 10.0).abs() < 0.001);
@@ -158,11 +189,18 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     // states; let's force the cooldown to fire.
     let dst_state = mgr.ring_transporters.get(2).unwrap().state;
     if dst_state == State::RemoteWarmup {
-        let effs = mgr.ring_transporters.get_mut(2).unwrap()
+        let effs = mgr
+            .ring_transporters
+            .get_mut(2)
+            .unwrap()
             .remote_warmup_timer_expired(std::time::Instant::now());
         dispatch_effects(effs, &tx, &mut mgr, &engine).await;
     }
-    let cd_effects = mgr.ring_transporters.get_mut(2).unwrap().cooldown_timer_expired();
+    let cd_effects = mgr
+        .ring_transporters
+        .get_mut(2)
+        .unwrap()
+        .cooldown_timer_expired();
     dispatch_effects(cd_effects, &tx, &mut mgr, &engine).await;
 
     // 6. Verify final state.
@@ -170,14 +208,29 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     let player_pos = mgr.get_entity(42).unwrap().position;
     // `update_entity_position` was called inside same_world_teleport with
     // the destination's coords; verify the player landed there.
-    assert!((player_pos.x - 10.0).abs() < 0.001, "player x: {} (expected 10.0)", player_pos.x);
-    assert!((player_pos.y - 20.0).abs() < 0.001, "player y: {}", player_pos.y);
-    assert!((player_pos.z - 30.0).abs() < 0.001, "player z: {}", player_pos.z);
+    assert!(
+        (player_pos.x - 10.0).abs() < 0.001,
+        "player x: {} (expected 10.0)",
+        player_pos.x
+    );
+    assert!(
+        (player_pos.y - 20.0).abs() < 0.001,
+        "player y: {}",
+        player_pos.y
+    );
+    assert!(
+        (player_pos.z - 30.0).abs() < 0.001,
+        "player z: {}",
+        player_pos.z
+    );
 
     // Movement lock should have been cleared on cooldown.
     let final_state_field = mgr.get_entity(42).unwrap().state_field;
-    assert_eq!(final_state_field & BSF_MOVEMENT_LOCK, 0,
-        "BSF_MovementLock not cleared at cooldown");
+    assert_eq!(
+        final_state_field & BSF_MOVEMENT_LOCK,
+        0,
+        "BSF_MovementLock not cleared at cooldown"
+    );
 }
 
 /// Cross-world ring travel is rejected before any state transitions.
@@ -193,12 +246,14 @@ async fn select_destination_cross_world_rejected() {
     // to a different world without the GateTravel-style hand-off.
     regions.insert(2, ring(2, "Agnos", vec![1], [10.0; 3]));
     mgr.ring_transporters.load(&regions);
-    mgr.ring_point_set_to_region = regions.iter()
+    mgr.ring_point_set_to_region = regions
+        .iter()
         .map(|(rid, r)| (r.point_set_id, *rid))
         .collect();
     mgr.ring_regions = regions;
 
-    mgr.create_entity(42, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(42, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
 
@@ -207,8 +262,18 @@ async fn select_destination_cross_world_rejected() {
     // Both rings stayed Idle — no half-running ceremony to recover from.
     assert_eq!(mgr.ring_transporters.get(1).unwrap().state, State::Idle);
     assert_eq!(mgr.ring_transporters.get(2).unwrap().state, State::Idle);
-    assert!(mgr.ring_transporters.get(1).unwrap().remote_region_id.is_none());
-    assert!(mgr.ring_transporters.get(2).unwrap().remote_region_id.is_none());
+    assert!(mgr
+        .ring_transporters
+        .get(1)
+        .unwrap()
+        .remote_region_id
+        .is_none());
+    assert!(mgr
+        .ring_transporters
+        .get(2)
+        .unwrap()
+        .remote_region_id
+        .is_none());
     // No effects dispatched.
     assert!(rx.try_recv().is_err());
 }
@@ -221,12 +286,14 @@ async fn select_destination_self_rejected() {
     regions.insert(1, ring(1, "Castle_CellBlock", vec![1, 2], [0.0; 3]));
     regions.insert(2, ring(2, "Castle_CellBlock", vec![1], [10.0; 3]));
     mgr.ring_transporters.load(&regions);
-    mgr.ring_point_set_to_region = regions.iter()
+    mgr.ring_point_set_to_region = regions
+        .iter()
         .map(|(rid, r)| (r.point_set_id, *rid))
         .collect();
     mgr.ring_regions = regions;
 
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
     let (tx, mut rx) = mpsc::channel(8);
     let engine = ChainEngine::new();
 

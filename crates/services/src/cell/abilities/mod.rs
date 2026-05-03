@@ -30,6 +30,6 @@ mod tests;
 
 // Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
 pub use dispatch::handle_use_ability_on_ground;
-pub use use_ability::handle_use_ability;
 pub(crate) use loot_drop::INT_NORMAL_LOOT;
 pub(crate) use messaging::send_entity_method;
+pub use use_ability::handle_use_ability;

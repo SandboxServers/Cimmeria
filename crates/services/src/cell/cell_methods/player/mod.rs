@@ -1,11 +1,11 @@
-pub mod constants;
-mod dispatch;
 pub mod combat;
+pub mod constants;
+pub mod crafting;
+mod dispatch;
 pub mod interaction;
+pub mod social;
 pub mod vendor;
 pub mod world;
-pub mod crafting;
-pub mod social;
 
-pub use dispatch::dispatch;
 pub use constants::*;
+pub use dispatch::dispatch;

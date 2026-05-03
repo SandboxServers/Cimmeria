@@ -24,34 +24,40 @@ pub(crate) async fn send_entity_method(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    let is_player = space_mgr.get_entity(entity_id)
-        .map_or(false, |e| e.is_player);
+    let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
 
     if is_player {
-        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index,
-            args,
-        }).await;
+        let _ = tx
+            .send(CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                args,
+            })
+            .await;
     } else {
         let witnesses = space_mgr.get_witnesses_of(entity_id);
         if witnesses.is_empty() {
             tracing::warn!(
-                entity_id, method_index,
+                entity_id,
+                method_index,
                 "send_entity_method: NPC has no witnesses, method dropped"
             );
         }
         for witness_id in witnesses {
             tracing::debug!(
-                witness_id, entity_id, method_index,
-                "send_entity_method: routing NPC method to witness"
-            );
-            let _ = tx.send(CellToBaseMsg::WitnessEntityMethod {
                 witness_id,
                 entity_id,
                 method_index,
-                args: args.clone(),
-            }).await;
+                "send_entity_method: routing NPC method to witness"
+            );
+            let _ = tx
+                .send(CellToBaseMsg::WitnessEntityMethod {
+                    witness_id,
+                    entity_id,
+                    method_index,
+                    args: args.clone(),
+                })
+                .await;
         }
     }
 }

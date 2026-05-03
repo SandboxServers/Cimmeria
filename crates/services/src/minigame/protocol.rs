@@ -107,13 +107,11 @@ pub fn parse_message(xml: &str) -> Option<SfsMessage> {
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"action" => {
-                                    body_action =
-                                        String::from_utf8_lossy(&attr.value).to_string();
+                                    body_action = String::from_utf8_lossy(&attr.value).to_string();
                                 }
                                 b"r" => {
-                                    body_r = String::from_utf8_lossy(&attr.value)
-                                        .parse()
-                                        .unwrap_or(0);
+                                    body_r =
+                                        String::from_utf8_lossy(&attr.value).parse().unwrap_or(0);
                                 }
                                 _ => {}
                             }
@@ -122,17 +120,14 @@ pub fn parse_message(xml: &str) -> Option<SfsMessage> {
                     "ver" if in_body => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"v" {
-                                ver_version = String::from_utf8_lossy(&attr.value)
-                                    .parse()
-                                    .ok();
+                                ver_version = String::from_utf8_lossy(&attr.value).parse().ok();
                             }
                         }
                     }
                     "login" if in_body => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"z" {
-                                login_zone =
-                                    String::from_utf8_lossy(&attr.value).to_string();
+                                login_zone = String::from_utf8_lossy(&attr.value).to_string();
                             }
                         }
                     }
@@ -181,18 +176,14 @@ pub fn parse_message(xml: &str) -> Option<SfsMessage> {
     let _ = body_r; // Used in routing but not needed for parsing
 
     match (msg_type.as_str(), body_action.as_str()) {
-        ("sys", "verChk") => {
-            Some(SfsMessage::VersionCheck {
-                version: ver_version.unwrap_or(0),
-            })
-        }
-        ("sys", "login") => {
-            Some(SfsMessage::Login {
-                zone: login_zone,
-                nick,
-                password,
-            })
-        }
+        ("sys", "verChk") => Some(SfsMessage::VersionCheck {
+            version: ver_version.unwrap_or(0),
+        }),
+        ("sys", "login") => Some(SfsMessage::Login {
+            zone: login_zone,
+            nick,
+            password,
+        }),
         ("xt", "xtReq") => {
             // Parse the CDATA content as a nested XML dataObj
             let (cmd, params) = parse_extension_data(&body_text)?;
@@ -238,12 +229,10 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"n" => {
-                                    var_name =
-                                        String::from_utf8_lossy(&attr.value).to_string();
+                                    var_name = String::from_utf8_lossy(&attr.value).to_string();
                                 }
                                 b"t" => {
-                                    var_type =
-                                        String::from_utf8_lossy(&attr.value).to_string();
+                                    var_type = String::from_utf8_lossy(&attr.value).to_string();
                                 }
                                 _ => {}
                             }
@@ -253,8 +242,7 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
                         in_obj = true;
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"o" {
-                                obj_name =
-                                    String::from_utf8_lossy(&attr.value).to_string();
+                                obj_name = String::from_utf8_lossy(&attr.value).to_string();
                             }
                         }
                     }

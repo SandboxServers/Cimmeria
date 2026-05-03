@@ -166,19 +166,21 @@ impl StatList {
     pub fn apply_archetype(&mut self, arch: &ArchetypeStatValues) {
         for &(id, min, cur, max) in &[
             (COORDINATION, 0, arch.coordination, arch.coordination),
-            (ENGAGEMENT,   0, arch.engagement,   arch.engagement),
-            (FORTITUDE,    0, arch.fortitude,     arch.fortitude),
-            (MORALE,       0, arch.morale,        arch.morale),
-            (PERCEPTION,   0, arch.perception,    arch.perception),
-            (INTELLIGENCE, 0, arch.intelligence,  arch.intelligence),
-            (HEALTH,       0, arch.health,        arch.health),
-            (FOCUS,        0, arch.focus,          arch.focus),
-            (KINETIC_RES,  0, 40,                  2000),
-            (MENTAL_RES,   0, 20,                  2000),
-            (HEALTH_RES,   0, 30,                  2000),
-            (DEPLOYMENT_BAR_AMMO, 0, 0,            1),
+            (ENGAGEMENT, 0, arch.engagement, arch.engagement),
+            (FORTITUDE, 0, arch.fortitude, arch.fortitude),
+            (MORALE, 0, arch.morale, arch.morale),
+            (PERCEPTION, 0, arch.perception, arch.perception),
+            (INTELLIGENCE, 0, arch.intelligence, arch.intelligence),
+            (HEALTH, 0, arch.health, arch.health),
+            (FOCUS, 0, arch.focus, arch.focus),
+            (KINETIC_RES, 0, 40, 2000),
+            (MENTAL_RES, 0, 20, 2000),
+            (HEALTH_RES, 0, 30, 2000),
+            (DEPLOYMENT_BAR_AMMO, 0, 0, 1),
         ] {
-            let stat = self.stats.get_mut(&id)
+            let stat = self
+                .stats
+                .get_mut(&id)
                 .expect("apply_archetype: core stat missing from StatList::new()");
             stat.update(min, cur, max);
             stat.set_base(min, cur, max);
@@ -196,65 +198,69 @@ impl StatList {
 
     /// Serialize all base stats as a `StatUpdateList` for `onStatBaseUpdate`.
     pub fn serialize_all_base(&self) -> Vec<u8> {
-        self.serialize_entries(self.stats.iter().map(|(&id, s)| (id, s.base_min, s.base_cur, s.base_max)))
+        self.serialize_entries(
+            self.stats
+                .iter()
+                .map(|(&id, s)| (id, s.base_min, s.base_cur, s.base_max)),
+        )
     }
 
     /// Serialize only dirty stats for `onStatUpdate`.
     pub fn serialize_dirty(&self) -> Vec<u8> {
         self.serialize_entries(
-            self.stats.iter()
+            self.stats
+                .iter()
                 .filter(|(_, s)| s.dirty)
-                .map(|(&id, s)| (id, s.min, s.cur, s.max))
+                .map(|(&id, s)| (id, s.min, s.cur, s.max)),
         )
     }
 
     /// Serialize only base-dirty stats for `onStatBaseUpdate`.
     pub fn serialize_dirty_base(&self) -> Vec<u8> {
         self.serialize_entries(
-            self.stats.iter()
+            self.stats
+                .iter()
                 .filter(|(_, s)| s.base_dirty)
-                .map(|(&id, s)| (id, s.base_min, s.base_cur, s.base_max))
+                .map(|(&id, s)| (id, s.base_min, s.base_cur, s.base_max)),
         )
     }
 
     /// Serialize only public stats for witness updates (`onStatUpdate`).
     pub fn serialize_public(&self) -> Vec<u8> {
         self.serialize_entries(
-            PUBLIC_STATS.iter()
-                .filter_map(|&id| self.stats.get(&id).map(|s| (id, s.min, s.cur, s.max)))
+            PUBLIC_STATS
+                .iter()
+                .filter_map(|&id| self.stats.get(&id).map(|s| (id, s.min, s.cur, s.max))),
         )
     }
 
     /// Serialize only public base stats for witness updates (`onStatBaseUpdate`).
     pub fn serialize_public_base(&self) -> Vec<u8> {
-        self.serialize_entries(
-            PUBLIC_STATS.iter()
-                .filter_map(|&id| self.stats.get(&id).map(|s| (id, s.base_min, s.base_cur, s.base_max)))
-        )
+        self.serialize_entries(PUBLIC_STATS.iter().filter_map(|&id| {
+            self.stats
+                .get(&id)
+                .map(|s| (id, s.base_min, s.base_cur, s.base_max))
+        }))
     }
 
     /// Serialize only dirty public stats for witness updates.
     pub fn serialize_dirty_public(&self) -> Vec<u8> {
-        self.serialize_entries(
-            PUBLIC_STATS.iter()
-                .filter_map(|&id| {
-                    self.stats.get(&id)
-                        .filter(|s| s.dirty)
-                        .map(|s| (id, s.min, s.cur, s.max))
-                })
-        )
+        self.serialize_entries(PUBLIC_STATS.iter().filter_map(|&id| {
+            self.stats
+                .get(&id)
+                .filter(|s| s.dirty)
+                .map(|s| (id, s.min, s.cur, s.max))
+        }))
     }
 
     /// Serialize only dirty public base stats for witness updates.
     pub fn serialize_dirty_public_base(&self) -> Vec<u8> {
-        self.serialize_entries(
-            PUBLIC_STATS.iter()
-                .filter_map(|&id| {
-                    self.stats.get(&id)
-                        .filter(|s| s.base_dirty)
-                        .map(|s| (id, s.base_min, s.base_cur, s.base_max))
-                })
-        )
+        self.serialize_entries(PUBLIC_STATS.iter().filter_map(|&id| {
+            self.stats
+                .get(&id)
+                .filter(|s| s.base_dirty)
+                .map(|s| (id, s.base_min, s.base_cur, s.base_max))
+        }))
     }
 
     /// Clear all dirty flags after sending updates.
@@ -301,14 +307,18 @@ impl StatList {
 
         let bonus_health = arch.health_per_level * (level as i32 - 1);
         let new_health_max = arch.health + bonus_health;
-        let stat = self.stats.get_mut(&HEALTH)
+        let stat = self
+            .stats
+            .get_mut(&HEALTH)
             .expect("scale_for_level: HEALTH missing from StatList::new()");
         stat.update(0, new_health_max, new_health_max);
         stat.set_base(0, new_health_max, new_health_max);
 
         let bonus_focus = arch.focus_per_level * (level as i32 - 1);
         let new_focus_max = arch.focus + bonus_focus;
-        let stat = self.stats.get_mut(&FOCUS)
+        let stat = self
+            .stats
+            .get_mut(&FOCUS)
             .expect("scale_for_level: FOCUS missing from StatList::new()");
         stat.update(0, new_focus_max, new_focus_max);
         stat.set_base(0, new_focus_max, new_focus_max);

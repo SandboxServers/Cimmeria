@@ -7,10 +7,7 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
 /// Run one tick of AoI processing across all spaces.
-pub(super) async fn run_aoi_tick(
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
+pub(super) async fn run_aoi_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     let events = space_mgr.compute_aoi_changes();
     for event in events {
         if tx.send(event).await.is_err() {
@@ -36,12 +33,14 @@ pub(super) async fn reload_completion_tick(
 
     // Snapshot ready-to-promote player IDs first to avoid holding a borrow on
     // `space_mgr` across the `send_entity_method` await below.
-    let ready: Vec<u32> = space_mgr.all_player_entity_ids()
+    let ready: Vec<u32> = space_mgr
+        .all_player_entity_ids()
         .into_iter()
         .filter(|&eid| {
-            space_mgr.get_entity(eid)
+            space_mgr
+                .get_entity(eid)
                 .and_then(|e| e.reload_complete_at)
-                .map_or(false, |t| now >= t)
+                .is_some_and(|t| now >= t)
         })
         .collect();
 
@@ -64,7 +63,10 @@ pub(super) async fn reload_completion_tick(
                     // Defensive: shouldn't happen — reload_complete_at is only
                     // set together with reload_slot_id. Clear and move on.
                     entity.reload_complete_at = None;
-                    tracing::warn!(entity_id, "reload tick: deadline set without slot_id, clearing");
+                    tracing::warn!(
+                        entity_id,
+                        "reload tick: deadline set without slot_id, clearing"
+                    );
                     continue;
                 }
             };
@@ -81,7 +83,11 @@ pub(super) async fn reload_completion_tick(
             entity.reload_slot_id = None;
 
             if new_ammo.is_none() {
-                tracing::debug!(entity_id, slot_id, "reload tick: pinned slot empty, no refill");
+                tracing::debug!(
+                    entity_id,
+                    slot_id,
+                    "reload tick: pinned slot empty, no refill"
+                );
                 continue;
             }
 
@@ -92,9 +98,13 @@ pub(super) async fn reload_completion_tick(
             let payload = entity.stats.serialize_dirty();
             entity.stats.clear_dirty();
 
-            let (item_id, cur_ammo, cur_ammo_type) = entity.bandolier_items.get(&slot_id)
+            let (item_id, cur_ammo, cur_ammo_type) = entity
+                .bandolier_items
+                .get(&slot_id)
                 .map_or((0, 0, 0), |i| (i.item_id, i.current_ammo, i.cur_ammo_type));
-            let persist = entity.player_id.map(|pid| (pid, slot_id, item_id, cur_ammo, cur_ammo_type));
+            let persist = entity
+                .player_id
+                .map(|pid| (pid, slot_id, item_id, cur_ammo, cur_ammo_type));
 
             (payload, persist)
         };
@@ -103,19 +113,22 @@ pub(super) async fn reload_completion_tick(
         // refill was a no-op (e.g. magazine was already at clip_size when the
         // deadline elapsed because of a concurrent path).
         if !stat_payload.is_empty() {
-            super::super::abilities::send_entity_method(entity_id, 20, stat_payload, tx, space_mgr).await;
+            super::super::abilities::send_entity_method(entity_id, 20, stat_payload, tx, space_mgr)
+                .await;
         }
 
         // Phase 3: persistence. CellToBaseMsg::BandolierAmmoUpdate is consumed
         // by base's existing handler that writes `sgw_inventory.ammo`.
         if let Some((player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type)) = persist {
-            let _ = tx.send(CellToBaseMsg::BandolierAmmoUpdate {
-                player_id,
-                slot_id,
-                expected_item_id,
-                current_ammo,
-                cur_ammo_type,
-            }).await;
+            let _ = tx
+                .send(CellToBaseMsg::BandolierAmmoUpdate {
+                    player_id,
+                    slot_id,
+                    expected_item_id,
+                    current_ammo,
+                    cur_ammo_type,
+                })
+                .await;
         }
     }
 }
@@ -128,11 +141,13 @@ pub(super) async fn reload_completion_tick(
 /// the AoI tick's `EntityMoved` messages.
 pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
     // Collect NPCs that have active paths
-    let moving_npcs: Vec<u32> = space_mgr.all_npc_entity_ids()
+    let moving_npcs: Vec<u32> = space_mgr
+        .all_npc_entity_ids()
         .iter()
         .filter(|&&eid| {
-            space_mgr.get_entity(eid)
-                .map_or(false, |e| !e.nav_path.is_empty())
+            space_mgr
+                .get_entity(eid)
+                .is_some_and(|e| !e.nav_path.is_empty())
         })
         .copied()
         .collect();
@@ -166,7 +181,9 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
 
             // Peek at the NEXT waypoint (index 1) to compute velocity toward it
             let next_next_wp = if path_len > 1 {
-                space_mgr.get_entity(npc_id).and_then(|e| e.nav_path.get(1).copied())
+                space_mgr
+                    .get_entity(npc_id)
+                    .and_then(|e| e.nav_path.get(1).copied())
             } else {
                 None
             };
@@ -179,7 +196,11 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
                 let nd = (ndx * ndx + ndy * ndy + ndz * ndz).sqrt();
                 if nd > 0.001 {
                     (
-                        [ndx / nd * speed_per_sec, ndy / nd * speed_per_sec, ndz / nd * speed_per_sec],
+                        [
+                            ndx / nd * speed_per_sec,
+                            ndy / nd * speed_per_sec,
+                            ndz / nd * speed_per_sec,
+                        ],
                         ndx.atan2(ndz),
                     )
                 } else {
@@ -222,7 +243,8 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
                 dz / dist * speed_per_sec,
             ];
 
-            if (npc_id % 10000) < 5 { // log a few NPCs
+            if (npc_id % 10000) < 5 {
+                // log a few NPCs
                 tracing::debug!(
                     npc_id,
                     cur = format_args!("({:.1},{:.1},{:.1})", cur_pos.x, cur_pos.y, cur_pos.z),
@@ -232,12 +254,7 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
                 );
             }
 
-            space_mgr.update_entity_position(
-                npc_id,
-                [new_x, new_y, new_z],
-                [0, 0, 0],
-                velocity,
-            );
+            space_mgr.update_entity_position(npc_id, [new_x, new_y, new_z], [0, 0, 0], velocity);
             // Set yaw directly as radians (pack_angle reads direction.y)
             if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                 npc.direction = cimmeria_common::Vector3::new(0.0, yaw, 0.0);

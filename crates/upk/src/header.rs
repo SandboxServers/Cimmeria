@@ -27,7 +27,7 @@ pub struct CompressedChunk {
 
 /// FPackageFileSummary — the package header.
 /// Parsed following FUN_004bcab0 in SGW.exe.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PackageHeader {
     pub tag: u32,
     pub epic_version: u16,
@@ -50,44 +50,20 @@ pub struct PackageHeader {
     pub compressed_chunks: Vec<CompressedChunk>,
 }
 
-impl Default for PackageHeader {
-    fn default() -> Self {
-        Self {
-            tag: 0,
-            epic_version: 0,
-            licensee_version: 0,
-            total_header_size: 0,
-            folder_name: String::new(),
-            package_flags: 0,
-            name_count: 0,
-            name_offset: 0,
-            export_count: 0,
-            export_offset: 0,
-            import_count: 0,
-            import_offset: 0,
-            depends_offset: 0,
-            guid: [0; 4],
-            generations: Vec::new(),
-            engine_version: 0,
-            cooker_version: 0,
-            compression_flags: 0,
-            compressed_chunks: Vec::new(),
-        }
-    }
-}
-
 impl PackageHeader {
     /// Parse the package header from a binary stream.
     pub fn parse<R: Read + Seek>(reader: &mut BinaryReader<R>) -> Result<Self> {
         use crate::error::UpkError;
 
         reader.seek(0)?;
-        let mut h = Self::default();
-
-        h.tag = reader.read_u32()?;
-        if h.tag != PACKAGE_FILE_TAG {
-            return Err(UpkError::InvalidTag(h.tag));
+        let tag = reader.read_u32()?;
+        if tag != PACKAGE_FILE_TAG {
+            return Err(UpkError::InvalidTag(tag));
         }
+        let mut h = Self {
+            tag,
+            ..Self::default()
+        };
 
         let packed_version = reader.read_u32()?;
         h.epic_version = (packed_version & 0xFFFF) as u16;

@@ -28,8 +28,7 @@ pub async fn fire_player_loaded(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
 
     ctx.set_param("world_name".to_string(), serde_json::json!(world_name));
 
@@ -60,8 +59,10 @@ pub async fn fire_player_loaded(
 
     // Diagnostic: confirm mission 622 state after chain execution
     if let Some(entity) = space_mgr.get_entity(entity_id) {
-        let m622_active = entity.missions.get_mission(622)
-            .map_or(false, |m| m.status == 1);
+        let m622_active = entity
+            .missions
+            .get_mission(622)
+            .is_some_and(|m| m.status == 1);
         tracing::info!(
             entity_id, player_id, %world_name,
             mission_622_active = m622_active,
@@ -80,8 +81,7 @@ pub async fn fire_dialog_open(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("dialog_id".to_string(), serde_json::json!(dialog_id));
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
@@ -89,7 +89,9 @@ pub async fn fire_dialog_open(
     }
 
     // Diagnostic: show mission 622 state and chain count before resolution
-    let mission_status = ctx.params.get("mission_622_status")
+    let mission_status = ctx
+        .params
+        .get("mission_622_status")
         .and_then(|v| v.as_str())
         .unwrap_or("<not set>");
     tracing::info!(
@@ -109,7 +111,8 @@ pub async fn fire_dialog_open(
     let resolved = engine.resolve_event(&event, &ctx);
 
     tracing::info!(
-        entity_id, dialog_id,
+        entity_id,
+        dialog_id,
         matched_actions = resolved.actions.len(),
         "fire_dialog_open: resolved"
     );
@@ -130,10 +133,12 @@ pub async fn fire_interact_tag(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("entity_tag".to_string(), serde_json::json!(tag));
-    ctx.set_param("target_entity_id".to_string(), serde_json::json!(target_entity_id));
+    ctx.set_param(
+        "target_entity_id".to_string(),
+        serde_json::json!(target_entity_id),
+    );
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
@@ -172,10 +177,15 @@ pub async fn fire_interact_template(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
-    ctx.set_param("template_name".to_string(), serde_json::json!(template_name));
-    ctx.set_param("target_entity_id".to_string(), serde_json::json!(target_entity_id));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
+    ctx.set_param(
+        "template_name".to_string(),
+        serde_json::json!(template_name),
+    );
+    ctx.set_param(
+        "target_entity_id".to_string(),
+        serde_json::json!(target_entity_id),
+    );
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
@@ -214,8 +224,8 @@ pub async fn fire_entity_death(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(killer_entity_id as i32));
+    let mut ctx =
+        ExecutionContext::new().with_source(cimmeria_common::EntityId(killer_entity_id as i32));
     ctx.set_param("entity_tag".to_string(), serde_json::json!(entity_tag));
 
     if let Some(entity) = space_mgr.get_entity(killer_entity_id) {
@@ -255,11 +265,11 @@ pub async fn fire_enter_region(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("region_key".to_string(), serde_json::json!(region_tag));
 
-    let world_name = space_mgr.get_entity_world_name(entity_id)
+    let world_name = space_mgr
+        .get_entity_world_name(entity_id)
         .unwrap_or_else(|| "Unknown".to_string());
     ctx.set_param("world_name".to_string(), serde_json::json!(&world_name));
 
@@ -297,11 +307,11 @@ pub async fn fire_exit_region(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("region_key".to_string(), serde_json::json!(region_tag));
 
-    let world_name = space_mgr.get_entity_world_name(entity_id)
+    let world_name = space_mgr
+        .get_entity_world_name(entity_id)
         .unwrap_or_else(|| "Unknown".to_string());
     ctx.set_param("world_name".to_string(), serde_json::json!(&world_name));
 
@@ -338,8 +348,7 @@ pub async fn fire_dialog_choice(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("dialog_id".to_string(), serde_json::json!(dialog_id));
     ctx.set_param("button_id".to_string(), serde_json::json!(button_id));
 
@@ -356,9 +365,19 @@ pub async fn fire_dialog_choice(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
-        tracing::info!(entity_id, player_id, dialog_id, actions = resolved.actions.len(), "fire_dialog_choice: matched");
+        tracing::info!(
+            entity_id,
+            player_id,
+            dialog_id,
+            actions = resolved.actions.len(),
+            "fire_dialog_choice: matched"
+        );
     } else {
-        tracing::debug!(entity_id, dialog_id, "fire_dialog_choice: no chains matched");
+        tracing::debug!(
+            entity_id,
+            dialog_id,
+            "fire_dialog_choice: no chains matched"
+        );
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
@@ -372,8 +391,7 @@ pub async fn fire_item_use(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("item_id".to_string(), serde_json::json!(item_id));
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
@@ -393,7 +411,13 @@ pub async fn fire_item_use(
     let resolved = engine.resolve_event(&event, &ctx);
     let matched = !resolved.actions.is_empty();
     if matched {
-        tracing::info!(entity_id, player_id, item_id, actions = resolved.actions.len(), "fire_item_use: matched");
+        tracing::info!(
+            entity_id,
+            player_id,
+            item_id,
+            actions = resolved.actions.len(),
+            "fire_item_use: matched"
+        );
     } else {
         tracing::debug!(entity_id, item_id, "fire_item_use: no chains matched");
     }
@@ -414,8 +438,7 @@ pub async fn fire_teleport_in(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let mut ctx = ExecutionContext::new()
-        .with_source(cimmeria_common::EntityId(entity_id as i32));
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("region_id".to_string(), serde_json::json!(region_id));
     // The content engine's `teleport_in` trigger reads `region_id` as i64 (see
     // `Trigger::OnTeleportIn::matches` in crates/content-engine/src/triggers.rs).
@@ -438,7 +461,13 @@ pub async fn fire_teleport_in(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
-        tracing::info!(entity_id, player_id, region_id, actions = resolved.actions.len(), "fire_teleport_in: matched");
+        tracing::info!(
+            entity_id,
+            player_id,
+            region_id,
+            actions = resolved.actions.len(),
+            "fire_teleport_in: matched"
+        );
     } else {
         tracing::debug!(entity_id, region_id, "fire_teleport_in: no chains matched");
     }
@@ -459,11 +488,20 @@ pub async fn fire_chain_by_id(
 ) {
     let actions = engine.get_chain_actions(chain_id);
     if actions.is_empty() {
-        tracing::warn!(chain_id, entity_id, "fire_chain_by_id: chain not found or has no actions");
+        tracing::warn!(
+            chain_id,
+            entity_id,
+            "fire_chain_by_id: chain not found or has no actions"
+        );
         return;
     }
 
-    tracing::info!(chain_id, entity_id, action_count = actions.len(), "fire_chain_by_id: executing");
+    tracing::info!(
+        chain_id,
+        entity_id,
+        action_count = actions.len(),
+        "fire_chain_by_id: executing"
+    );
     let resolved = cimmeria_content_engine::chain::ResolvedActions {
         actions: actions.into_iter().map(|a| (chain_id, a)).collect(),
     };

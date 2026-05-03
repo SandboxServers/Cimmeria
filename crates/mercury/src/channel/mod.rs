@@ -163,13 +163,11 @@ impl Channel {
     /// until acknowledged or the retry limit is reached.
     pub fn send_packet(&mut self, mut packet: Packet) -> Result<()> {
         if self.tx_window.len() >= consts::TX_WINDOW_SIZE {
-            return Err(cimmeria_common::CimmeriaError::Channel(
-                format!(
-                    "TX window full ({} packets), cannot enqueue seq={}",
-                    self.tx_window.len(),
-                    self.next_tx_seq,
-                ),
-            ));
+            return Err(cimmeria_common::CimmeriaError::Channel(format!(
+                "TX window full ({} packets), cannot enqueue seq={}",
+                self.tx_window.len(),
+                self.next_tx_seq,
+            )));
         }
 
         // Stamp the outgoing sequence number onto the packet.
@@ -314,9 +312,10 @@ impl Channel {
         // Check if any TX entry has BEEN RETRIED past the budget — i.e.,
         // the MAX_RETRIES'th retransmit also timed out without ACK. See
         // the doc above for why this is `>` not `>=`.
-        let max_retries_exceeded = self.tx_window.iter().any(|entry| {
-            entry.retransmit_count > consts::MAX_RETRIES
-        });
+        let max_retries_exceeded = self
+            .tx_window
+            .iter()
+            .any(|entry| entry.retransmit_count > consts::MAX_RETRIES);
 
         // Peer has been silent past the configured tolerance — assume dead.
         let peer_idle_timeout = peer_idle_ms > consts::INACTIVITY_TIMEOUT_MS;
@@ -348,4 +347,3 @@ impl Channel {
         self.last_received = Instant::now();
     }
 }
-

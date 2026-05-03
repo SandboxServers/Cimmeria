@@ -6,10 +6,10 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use crate::base::{ConnectedClientState, helpers};
+use super::super::player_load::meta::query_bandolier_items_tx;
+use crate::base::{helpers, ConnectedClientState};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx};
-use super::super::player_load::meta::query_bandolier_items_tx;
 
 pub async fn send_cash_changed_to_client(
     entity_id: u32,
@@ -74,7 +74,11 @@ pub async fn sync_bandolier_after_inventory_change(
         Ok(v) => v.unwrap_or(0),
         Err(e) => {
             let _ = db_tx.rollback().await;
-            tracing::error!(entity_id, player_id, "sync_bandolier: read slot failed: {e}");
+            tracing::error!(
+                entity_id,
+                player_id,
+                "sync_bandolier: read slot failed: {e}"
+            );
             return;
         }
     };
@@ -85,7 +89,11 @@ pub async fn sync_bandolier_after_inventory_change(
         Ok(items) => items,
         Err(e) => {
             let _ = db_tx.rollback().await;
-            tracing::error!(entity_id, player_id, "sync_bandolier: read items failed: {e}");
+            tracing::error!(
+                entity_id,
+                player_id,
+                "sync_bandolier: read items failed: {e}"
+            );
             return;
         }
     };
@@ -121,17 +129,28 @@ pub async fn sync_bandolier_after_inventory_change(
             .map(|(slot, _)| *slot)
             .min()
             .expect("bandolier_items is non-empty (empty case returned above)");
-        if let Err(e) = sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
-            .bind(active_slot)
-            .bind(player_id)
-            .execute(&mut *db_tx)
-            .await
+        if let Err(e) =
+            sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
+                .bind(active_slot)
+                .bind(player_id)
+                .execute(&mut *db_tx)
+                .await
         {
             let _ = db_tx.rollback().await;
-            tracing::error!(entity_id, player_id, active_slot, "Failed to update bandolier slot: {e}");
+            tracing::error!(
+                entity_id,
+                player_id,
+                active_slot,
+                "Failed to update bandolier slot: {e}"
+            );
             return;
         }
-        tracing::debug!(entity_id, player_id, active_slot, "Bandolier active slot updated");
+        tracing::debug!(
+            entity_id,
+            player_id,
+            active_slot,
+            "Bandolier active slot updated"
+        );
     }
 
     if let Err(e) = db_tx.commit().await {

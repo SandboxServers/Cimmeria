@@ -5,13 +5,13 @@ use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 
 use crate::mercury::{
-    build_resource_fragment, build_version_info,
-    FRAG_FIRST, FRAG_FIRST_AND_LAST, FRAG_LAST, FRAG_MIDDLE,
+    build_resource_fragment, build_version_info, FRAG_FIRST, FRAG_FIRST_AND_LAST, FRAG_LAST,
+    FRAG_MIDDLE,
 };
 
-use super::ConnectedClientState;
 use super::helpers::{drain_acks_and_seq, get_active_entity_id};
 use super::resources::{CategoryData, ResourceCache};
+use super::ConnectedClientState;
 
 /// Handle `versionInfoRequest` (0xC0).
 ///
@@ -66,7 +66,16 @@ pub(crate) async fn handle_version_info_request(
 
     let active_eid = get_active_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let pkt = build_version_info(&key, seq, &acks, category_id, version, 0, invalidate_all, active_eid);
+    let pkt = build_version_info(
+        &key,
+        seq,
+        &acks,
+        category_id,
+        version,
+        0,
+        invalidate_all,
+        active_eid,
+    );
     socket.send_to(&pkt, addr).await?;
 
     Ok(())
@@ -130,9 +139,7 @@ pub(crate) async fn send_category_resources(
 
             let (acks, seq) = drain_acks_and_seq(connected, addr)?;
             let pkt = build_resource_fragment(
-                &key, seq, &acks,
-                data_id, i as u8, frag_flags,
-                mt, cat_id, elem, chunk,
+                &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat_id, elem, chunk,
             );
             socket.send_to(&pkt, addr).await?;
         }
@@ -227,9 +234,7 @@ pub(crate) async fn handle_element_data_request(
 
         let (acks, seq) = drain_acks_and_seq(connected, addr)?;
         let pkt = build_resource_fragment(
-            &key, seq, &acks,
-            data_id, i as u8, frag_flags,
-            mt, cat, elem, chunk,
+            &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
         );
         socket.send_to(&pkt, addr).await?;
     }

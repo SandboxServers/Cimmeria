@@ -5,10 +5,7 @@
 
 use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 
-use super::{
-    encrypt_packet, REPLY_FLAGS,
-    BASEMSG_RESOURCE_FRAGMENT, BASEMSG_ON_VERSION_INFO,
-};
+use super::{encrypt_packet, BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT, REPLY_FLAGS};
 
 /// Build and encrypt a `BASEMSG_RESOURCE_FRAGMENT` (0x36).
 ///

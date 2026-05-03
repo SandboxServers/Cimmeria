@@ -40,6 +40,12 @@ struct SessionRegistryInner {
     next_room_id: u32,
 }
 
+impl Default for SessionRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionRegistry {
     pub fn new() -> Self {
         Self {
