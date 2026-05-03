@@ -452,3 +452,6 @@ pub async fn handle_move_inventory_item(
         .await;
     }
 }
+
+#[cfg(test)]
+mod tests;
