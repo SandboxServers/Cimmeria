@@ -57,6 +57,14 @@ pub mod consts {
     /// Maximum number of fragments a single message may be split across.
     pub const MAX_FRAGMENTS: usize = 64;
 
+    /// How long an in-progress fragment reassembly is kept before being
+    /// discarded as orphaned. Tied to the worst-case interval over which
+    /// the remaining fragments could still arrive — generous because UDP
+    /// reordering can stretch fragment delivery, and the cost of holding
+    /// a few KB longer is far less than the cost of dropping a usable
+    /// bundle that was about to complete.
+    pub const FRAGMENT_REASSEMBLY_TIMEOUT_MS: u64 = 30_000;
+
     /// Protocol version exchanged during channel creation handshake.
     pub const PROTOCOL_VERSION: u32 = 391;
 }
