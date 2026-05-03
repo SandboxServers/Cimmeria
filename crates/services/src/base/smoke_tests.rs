@@ -1,5 +1,5 @@
 //! End-to-end live-DB smoke tests that exercise full multi-handler
-//! flows against the seeded database (Group D of #79).
+//! flows against the seeded database.
 //!
 //! Unlike the per-handler tests under
 //! `world_entry/methods/.../tests.rs`, these tests run a single
@@ -8,12 +8,18 @@
 //! surfaces as an error — so the only thing the Rust harness needs
 //! to do is execute the script and assert `is_ok()`.
 //!
-//! Each script wraps its body in `BEGIN ... ROLLBACK` so a passing
-//! run leaves the DB byte-identical to the start. Failed assertions
-//! also roll back (the EXCEPTION aborts the surrounding transaction
-//! and we never reach the script's own ROLLBACK statement, but the
-//! EXCEPTION itself triggers Postgres's automatic rollback). Either
-//! way, the seed data is unchanged after the test.
+//! Rollback semantics on pass vs fail:
+//!
+//! - **Pass:** the script's own `BEGIN ... ROLLBACK` wrapper leaves
+//!   the DB byte-identical to the start.
+//! - **Fail:** a PL/pgSQL `RAISE EXCEPTION` aborts the statement and
+//!   Postgres marks the session's transaction as aborted (it does
+//!   *not* issue an automatic `ROLLBACK` itself — further commands
+//!   on the connection would fail with "current transaction is
+//!   aborted" until an explicit `ROLLBACK`). sqlx surfaces the
+//!   error to the harness, the test panics, and the pool issues
+//!   `ROLLBACK` on connection release. Net effect: seed data
+//!   unchanged regardless of pass or fail.
 
 use crate::test_support::require_db_or_skip;
 
