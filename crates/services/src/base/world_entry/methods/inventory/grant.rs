@@ -586,14 +586,23 @@ mod handle_grant_item_tests {
             &db_pool, &None, &socket, &conn, &e2a,
         ).await;
 
-        let row: Option<(i32, i32, i32)> = sqlx::query_as(
+        // Assert "exactly one row" structurally rather than via fetch_optional,
+        // which would silently pick whichever row matched first and could
+        // mask a regression that inserted multiple rows.
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sgw_inventory \
+             WHERE character_id = $1 AND container_id = 1",
+        ).bind(player_id).fetch_one(&pool).await.unwrap();
+        assert_eq!(count, 1, "grant must INSERT exactly one row");
+
+        let row: (i32, i32, i32) = sqlx::query_as(
             "SELECT type_id, slot_id, stack_size FROM sgw_inventory \
              WHERE character_id = $1 AND container_id = 1",
-        ).bind(player_id).fetch_optional(&pool).await.unwrap();
+        ).bind(player_id).fetch_one(&pool).await.unwrap();
         assert_eq!(
             row,
-            Some((type_id, 0, 3)),
-            "grant must INSERT exactly one row at slot 0 with the requested type_id and count",
+            (type_id, 0, 3),
+            "grant inserted at slot 0 with the requested type_id and count",
         );
 
         cleanup(&pool, account_id, player_id, entity_id).await;
@@ -601,14 +610,25 @@ mod handle_grant_item_tests {
 
     /// Regression guard: pg_advisory_xact_lock on (player_id, container_id)
     /// inside `reserve_free_inventory_slots` must serialize concurrent grants
-    /// so each picks a distinct slot. Without it, both calls see slot 0 free,
-    /// both INSERT into slot 0, and the unique-slot index forces one of them
-    /// to fail — turning a routine grant into a user-visible error.
+    /// so each picks a distinct slot. Without it, multiple calls see the same
+    /// slot free, all INSERT into it, and the unique-slot index forces all
+    /// but one to fail — turning a routine grant into a user-visible error.
     ///
-    /// Runs both grants via tokio::join! so they hold separate connections
-    /// from the pool (test_pool() bounds at 4) and contend for the lock.
-    #[tokio::test]
+    /// Runs four grants on separately-spawned tasks (so the scheduler can't
+    /// trivially serialize them onto a single connection), each holding its
+    /// own pool connection (test_pool() bounds at 4 — exact match). A barrier
+    /// forces all four to call into reserve_free_inventory_slots near
+    /// simultaneously, maximising contention on the advisory lock.
+    ///
+    /// The single-pair version of this test could plausibly false-negative
+    /// when scheduling/DB timing happens to serialize the two futures and
+    /// they pick slots 0 then 1 anyway. Four grants colliding makes a
+    /// no-lock implementation overwhelmingly likely to drop at least one
+    /// row to the unique-slot index.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_grants_to_same_container_get_distinct_slots() {
+        use tokio::sync::Barrier;
+
         let pool = require_db_or_skip!();
         let account_id = TEST_BASE + 100;
         let player_id = TEST_BASE + 101;
@@ -619,19 +639,29 @@ mod handle_grant_item_tests {
 
         let (socket, e2a, conn) = make_state(entity_id);
         let db_pool = Some(Arc::new(pool.clone()));
+        const N: usize = 4;
+        let barrier = Arc::new(Barrier::new(N));
 
-        // Two grants race on the same (player_id, container_id) advisory lock.
-        // Both must succeed and end up in different slots — slot 0 and slot 1.
-        tokio::join!(
-            handle_grant_item(
-                entity_id, player_id, type_id, 1, 1,
-                &db_pool, &None, &socket, &conn, &e2a,
-            ),
-            handle_grant_item(
-                entity_id, player_id, type_id, 1, 1,
-                &db_pool, &None, &socket, &conn, &e2a,
-            ),
-        );
+        let mut handles = Vec::with_capacity(N);
+        for _ in 0..N {
+            let db_pool = db_pool.clone();
+            let socket = socket.clone();
+            let conn = conn.clone();
+            let e2a = e2a.clone();
+            let barrier = barrier.clone();
+            handles.push(tokio::spawn(async move {
+                // Synchronise so all N calls hit the slot-reservation lock
+                // attempt at roughly the same moment.
+                barrier.wait().await;
+                handle_grant_item(
+                    entity_id, player_id, type_id, 1, 1,
+                    &db_pool, &None, &socket, &conn, &e2a,
+                ).await;
+            }));
+        }
+        for h in handles {
+            h.await.expect("grant task panicked");
+        }
 
         let slots: Vec<i32> = sqlx::query_scalar(
             "SELECT slot_id FROM sgw_inventory \
@@ -640,14 +670,16 @@ mod handle_grant_item_tests {
         ).bind(player_id).fetch_all(&pool).await.unwrap();
 
         assert_eq!(
-            slots.len(),
-            2,
-            "both concurrent grants must INSERT (got {} rows). \
-             A missing row means the unique-slot index rejected one of them, \
-             which is exactly the regression the advisory lock prevents.",
+            slots.len(), N,
+            "all {N} concurrent grants must INSERT (got {} rows). A missing \
+             row means the unique-slot index rejected one — exactly the \
+             regression the advisory lock prevents.",
             slots.len(),
         );
-        assert_eq!(slots, vec![0, 1], "concurrent grants must pick distinct, sequential free slots");
+        assert_eq!(
+            slots, (0..N as i32).collect::<Vec<_>>(),
+            "concurrent grants must pick distinct, sequential slots 0..{N}",
+        );
 
         cleanup(&pool, account_id, player_id, entity_id).await;
     }
