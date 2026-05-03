@@ -45,24 +45,41 @@ mod tests;
 /// Event types persisted in `cell_event_outbox.event_type`. Stable strings —
 /// changing one breaks in-flight rows on existing databases.
 const EVENT_TYPE_ITEM_USED: &str = "item_used";
+const EVENT_TYPE_INVENTORY_ITEM_GRANTED: &str = "inventory_item_granted";
+const EVENT_TYPE_INVENTORY_ITEM_REMOVED: &str = "inventory_item_removed";
 
 /// Strongly-typed payload variants. Serialized as JSON into the
 /// `cell_event_outbox.payload` JSONB column. Adding a new variant requires
 /// only (a) a new enum arm here, (b) a matching `event_type` constant, and
-/// (c) an arm in [`row_to_message`].
+/// (c) an arm in [`row_to_message`] AND in [`try_dispatch_now`].
 ///
 /// Variants intentionally don't carry `entity_id` — it lives in its own
 /// indexed column for ordering / per-entity drainer scoping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CellOutboxPayload {
-    ItemUsed { type_id: i32, target_id: i32 },
+    ItemUsed {
+        type_id: i32,
+        target_id: i32,
+    },
+    InventoryItemGranted {
+        item_id: i32,
+        container_id: i32,
+        slot_id: i32,
+        quantity: i32,
+    },
+    InventoryItemRemoved {
+        item_id: i32,
+        source_container_id: i32,
+    },
 }
 
 impl CellOutboxPayload {
     fn event_type(&self) -> &'static str {
         match self {
             CellOutboxPayload::ItemUsed { .. } => EVENT_TYPE_ITEM_USED,
+            CellOutboxPayload::InventoryItemGranted { .. } => EVENT_TYPE_INVENTORY_ITEM_GRANTED,
+            CellOutboxPayload::InventoryItemRemoved { .. } => EVENT_TYPE_INVENTORY_ITEM_REMOVED,
         }
     }
 }
@@ -101,10 +118,10 @@ pub async fn enqueue(
 }
 
 /// INSERT inside a caller-owned transaction so the outbox row commits
-/// atomically with the caller's DB-visible state change. Reserved for
-/// callers that already mutate the DB (grant/remove); `handle_use_inventory_item`
-/// uses [`enqueue`] instead because it has no surrounding tx.
-#[allow(dead_code)]
+/// atomically with the caller's DB-visible state change. Used by grant /
+/// remove / vendor purchase / vendor sell — anything that already opens a
+/// transaction for an inventory mutation. `handle_use_inventory_item` uses
+/// [`enqueue`] instead because it has no surrounding tx.
 pub async fn enqueue_in_tx(
     tx: &mut Transaction<'_, Postgres>,
     entity_id: u32,
@@ -158,14 +175,33 @@ async fn record_failure(pool: &PgPool, id: i64, error: &str) {
 /// on `attempts`. Without this gate, a single bad row turns into a continuous
 /// warn-spam at the 5s drain interval.
 fn row_to_message(row: &OutboxRow) -> Option<BaseToCellMsg> {
+    let entity_id = row.entity_id as u32;
     match (row.event_type.as_str(), &*row.payload) {
         (EVENT_TYPE_ITEM_USED, CellOutboxPayload::ItemUsed { type_id, target_id }) => {
             Some(BaseToCellMsg::ItemUsed {
-                entity_id: row.entity_id as u32,
+                entity_id,
                 type_id: *type_id,
                 target_id: *target_id,
             })
         }
+        (
+            EVENT_TYPE_INVENTORY_ITEM_GRANTED,
+            CellOutboxPayload::InventoryItemGranted { item_id, container_id, slot_id, quantity },
+        ) => Some(BaseToCellMsg::InventoryItemGranted {
+            entity_id,
+            item_id: *item_id,
+            container_id: *container_id,
+            slot_id: *slot_id,
+            quantity: *quantity,
+        }),
+        (
+            EVENT_TYPE_INVENTORY_ITEM_REMOVED,
+            CellOutboxPayload::InventoryItemRemoved { item_id, source_container_id },
+        ) => Some(BaseToCellMsg::InventoryItemRemoved {
+            entity_id,
+            item_id: *item_id,
+            source_container_id: *source_container_id,
+        }),
         _ => None,
     }
 }
@@ -187,6 +223,14 @@ pub async fn try_dispatch_now(
             type_id,
             target_id,
         },
+        CellOutboxPayload::InventoryItemGranted {
+            item_id, container_id, slot_id, quantity,
+        } => BaseToCellMsg::InventoryItemGranted {
+            entity_id, item_id, container_id, slot_id, quantity,
+        },
+        CellOutboxPayload::InventoryItemRemoved { item_id, source_container_id } => {
+            BaseToCellMsg::InventoryItemRemoved { entity_id, item_id, source_container_id }
+        }
     };
     match cell_tx.send(msg).await {
         Ok(()) => {

@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
+use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
@@ -372,6 +373,31 @@ pub async fn handle_sell_vendor_items(
         None
     };
 
+    // Enqueue one outbox row per removed item inside the same tx so the
+    // entire sell (cash credit + N inventory removes + N cell notifications)
+    // is atomic. If any outbox INSERT fails we abort the whole sell — better
+    // than committing partial state that leaves the cell with no durable
+    // notification path.
+    let mut outbox_pending: Vec<(i64, CellOutboxPayload)> =
+        Vec::with_capacity(removed_items.len());
+    for (item_id, container_id) in &removed_items {
+        let payload = CellOutboxPayload::InventoryItemRemoved {
+            item_id: *item_id,
+            source_container_id: *container_id,
+        };
+        match outbox::enqueue_in_tx(&mut tx, entity_id, &payload).await {
+            Ok(id) => outbox_pending.push((id, payload)),
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(
+                    entity_id, player_id, item_id,
+                    "SellVendorItems: outbox enqueue failed, aborting: {e}"
+                );
+                return;
+            }
+        }
+    }
+
     if let Err(e) = tx.commit().await {
         tracing::error!(entity_id, player_id, "SellVendorItems: commit failed: {e}");
         return;
@@ -396,14 +422,8 @@ pub async fn handle_sell_vendor_items(
     // incremental price clears we'd compute from `removed_items`.
 
     if let Some(cell_tx) = cell_tx {
-        for (item_id, container_id) in &removed_items {
-            let _ = cell_tx
-                .send(BaseToCellMsg::InventoryItemRemoved {
-                    entity_id,
-                    item_id: *item_id,
-                    source_container_id: *container_id,
-                })
-                .await;
+        for (outbox_id, payload) in outbox_pending {
+            outbox::try_dispatch_now(pool.as_ref(), cell_tx, outbox_id, entity_id, payload).await;
         }
     }
 

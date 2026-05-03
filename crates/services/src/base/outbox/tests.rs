@@ -80,6 +80,142 @@ fn row_to_message_returns_none_for_unknown_event_type() {
 }
 
 #[test]
+fn persistence_contract_strings_are_stable_for_all_variants() {
+    // Each variant has TWO persistence contracts that must agree:
+    //   - `event_type()` returns the string written to the
+    //     `cell_event_outbox.event_type` VARCHAR column.
+    //   - serde's `tag = "kind"` writes the same string into the
+    //     payload JSONB body.
+    // `row_to_message` matches on (event_type, payload) so both must
+    // line up; pin them together here. Changing either string breaks
+    // every in-flight row on existing databases.
+    let cases: &[(CellOutboxPayload, &str)] = &[
+        (
+            CellOutboxPayload::ItemUsed { type_id: 0, target_id: 0 },
+            "item_used",
+        ),
+        (
+            CellOutboxPayload::InventoryItemGranted {
+                item_id: 0, container_id: 0, slot_id: 0, quantity: 0,
+            },
+            "inventory_item_granted",
+        ),
+        (
+            CellOutboxPayload::InventoryItemRemoved {
+                item_id: 0, source_container_id: 0,
+            },
+            "inventory_item_removed",
+        ),
+    ];
+
+    for (variant, expected) in cases {
+        assert_eq!(
+            variant.event_type(), *expected,
+            "event_type() drift for {variant:?}",
+        );
+        let json = serde_json::to_value(variant).unwrap();
+        assert_eq!(
+            json["kind"], *expected,
+            "JSON `kind` tag drift for {variant:?}",
+        );
+    }
+}
+
+#[test]
+fn inventory_item_granted_roundtrips() {
+    let p = CellOutboxPayload::InventoryItemGranted {
+        item_id: 100_001,
+        container_id: 1,
+        slot_id: 5,
+        quantity: 3,
+    };
+    let json = serde_json::to_string(&p).unwrap();
+    let back: CellOutboxPayload = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, p);
+}
+
+#[test]
+fn inventory_item_removed_roundtrips() {
+    let p = CellOutboxPayload::InventoryItemRemoved {
+        item_id: 100_002,
+        source_container_id: 3,
+    };
+    let json = serde_json::to_string(&p).unwrap();
+    let back: CellOutboxPayload = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, p);
+}
+
+#[test]
+fn row_to_message_builds_inventory_item_granted() {
+    let row = OutboxRow {
+        id: 200,
+        entity_id: 42,
+        event_type: "inventory_item_granted".to_string(),
+        payload: sqlx::types::Json(CellOutboxPayload::InventoryItemGranted {
+            item_id: 100_007,
+            container_id: 1,
+            slot_id: 2,
+            quantity: 1,
+        }),
+        attempts: 0,
+    };
+    match row_to_message(&row).expect("known event_type") {
+        BaseToCellMsg::InventoryItemGranted {
+            entity_id, item_id, container_id, slot_id, quantity,
+        } => {
+            assert_eq!(entity_id, 42);
+            assert_eq!(item_id, 100_007);
+            assert_eq!(container_id, 1);
+            assert_eq!(slot_id, 2);
+            assert_eq!(quantity, 1);
+        }
+        _ => panic!("expected InventoryItemGranted"),
+    }
+}
+
+#[test]
+fn row_to_message_builds_inventory_item_removed() {
+    let row = OutboxRow {
+        id: 201,
+        entity_id: 42,
+        event_type: "inventory_item_removed".to_string(),
+        payload: sqlx::types::Json(CellOutboxPayload::InventoryItemRemoved {
+            item_id: 100_008,
+            source_container_id: 3,
+        }),
+        attempts: 0,
+    };
+    match row_to_message(&row).expect("known event_type") {
+        BaseToCellMsg::InventoryItemRemoved {
+            entity_id, item_id, source_container_id,
+        } => {
+            assert_eq!(entity_id, 42);
+            assert_eq!(item_id, 100_008);
+            assert_eq!(source_container_id, 3);
+        }
+        _ => panic!("expected InventoryItemRemoved"),
+    }
+}
+
+#[test]
+fn row_to_message_returns_none_on_event_type_payload_mismatch() {
+    // Defensive: an event_type that says "granted" but a payload that
+    // shape-matches a different variant (legacy data, hand-edited row,
+    // future variant rename half-rolled) must not silently dispatch the
+    // wrong message — drainer should skip and log.
+    let row = OutboxRow {
+        id: 202,
+        entity_id: 1,
+        event_type: "inventory_item_granted".to_string(),
+        payload: sqlx::types::Json(CellOutboxPayload::ItemUsed {
+            type_id: 0, target_id: 0,
+        }),
+        attempts: 0,
+    };
+    assert!(row_to_message(&row).is_none());
+}
+
+#[test]
 fn drain_stats_default_is_all_zero() {
     // The drainer's "no work" path returns `Default` and the periodic-log
     // gate suppresses on all-zero. Pin the default values so a future
