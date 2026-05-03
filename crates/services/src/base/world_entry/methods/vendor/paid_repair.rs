@@ -289,3 +289,186 @@ pub async fn handle_paid_repair_inventory_items(
         "Vendor repair completed"
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+
+    /// Sentinel base for paid-repair tests. Distinct from prior live-DB sentinels:
+    /// outbox (0x7000_0000), grant_cash (+0x100), move (+0x200), grant_item (+0x300),
+    /// missions (+0x400), mail (+0x500), vendor/repair free path (+0x600).
+    const TEST_BASE: i32 = 0x7000_0700;
+
+    /// Vendor template seeded in resources.entity_templates with a populated
+    /// `repair_item_list` (verified via `SELECT template_id FROM
+    /// resources.entity_templates WHERE repair_item_list IS NOT NULL`).
+    /// design_id=21 is one of three repairable items keyed off this template;
+    /// its row in resources.item_list_items has naquadah=1000, so a
+    /// 50%-durability item costs `(1000 * (100 - 50)) / 100 = 500`.
+    const SEEDED_REPAIR_VENDOR_TEMPLATE_ID: i32 = 25;
+    const REPAIRABLE_TYPE_ID: i32 = 21;
+    const REPAIRABLE_TYPE_PRICE: i32 = 1_000;
+
+    async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+        let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
+            .bind(player_id).execute(pool).await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id).execute(pool).await;
+    }
+
+    async fn insert_account_and_player(
+        pool: &PgPool, account_id: i32, player_id: i32, naquadah: i32,
+    ) {
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password) \
+             VALUES ($1, $2, '')",
+        )
+        .bind(account_id).bind(format!("paid-repair-{account_id}"))
+        .execute(pool).await.expect("insert account");
+
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah\
+             ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                       0.0, 0.0, 0.0, 0, $4)",
+        )
+        .bind(account_id).bind(player_id).bind(format!("test-{player_id}")).bind(naquadah)
+        .execute(pool).await.expect("insert player");
+    }
+
+    async fn insert_damaged_item(
+        pool: &PgPool, player_id: i32, type_id: i32, slot_id: i32, durability: i32,
+    ) -> i32 {
+        sqlx::query_scalar(
+            "INSERT INTO sgw_inventory \
+                (character_id, type_id, stack_size, slot_id, container_id, \
+                 bound, durability, charges) \
+             VALUES ($1, $2, 1, $3, 1, false, $4, 0) RETURNING item_id",
+        )
+        .bind(player_id).bind(type_id).bind(slot_id).bind(durability)
+        .fetch_one(pool).await.expect("insert inventory row")
+    }
+
+    async fn read_durability_and_naquadah(
+        pool: &PgPool, player_id: i32, item_id: i32,
+    ) -> (i32, i32) {
+        let durability: i32 = sqlx::query_scalar(
+            "SELECT durability FROM sgw_inventory \
+             WHERE character_id = $1 AND item_id = $2",
+        )
+        .bind(player_id).bind(item_id).fetch_one(pool).await.unwrap();
+        let naquadah: i32 = sqlx::query_scalar(
+            "SELECT naquadah FROM sgw_player WHERE player_id = $1",
+        )
+        .bind(player_id).fetch_one(pool).await.unwrap();
+        (durability, naquadah)
+    }
+
+    fn make_state(entity_id: u32) -> (
+        Arc<UdpSocket>,
+        Arc<Mutex<HashMap<u32, SocketAddr>>>,
+        Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    ) {
+        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
+        std_sock.set_nonblocking(true).unwrap();
+        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+        let entity_to_addr = Arc::new(Mutex::new({
+            let mut m = HashMap::new();
+            m.insert(entity_id, fake_addr);
+            m
+        }));
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        (socket, entity_to_addr, connected)
+    }
+
+    /// Happy path: vendor charges naquadah and restores durability to 100.
+    /// Pins the cost formula: a 50%-durability item with naquadah=1000 costs
+    /// (1000 * (100 - 50)) / 100 = 500.
+    #[tokio::test]
+    async fn happy_path_charges_balance_and_restores_durability() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE;
+        let player_id = TEST_BASE + 1;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id, 2_000).await;
+        let item = insert_damaged_item(&pool, player_id, REPAIRABLE_TYPE_ID, 0, 50).await;
+
+        let (socket, e2a, conn) = make_state(0x7000_0701);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        handle_paid_repair_inventory_items(
+            0x7000_0701, player_id, vec![item], SEEDED_REPAIR_VENDOR_TEMPLATE_ID,
+            &db_pool, &socket, &conn, &e2a,
+        ).await;
+
+        let expected_cost = REPAIRABLE_TYPE_PRICE * (100 - 50) / 100;
+        let (durability, naquadah) = read_durability_and_naquadah(&pool, player_id, item).await;
+        assert_eq!(durability, 100, "repair must restore durability to 100");
+        assert_eq!(
+            naquadah, 2_000 - expected_cost,
+            "balance must drop by exactly the computed cost ({expected_cost})",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Insufficient naquadah path: tx must roll back so neither durability
+    /// nor balance change. Pre-fix bug would have left durability at 100
+    /// while the cash UPDATE silently failed (or vice versa).
+    #[tokio::test]
+    async fn insufficient_naquadah_rolls_back_durability_and_balance() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 100;
+        let player_id = TEST_BASE + 101;
+        cleanup(&pool, account_id, player_id).await;
+        // 100 naquadah but a 50%-durability item costs 500 — insufficient.
+        insert_account_and_player(&pool, account_id, player_id, 100).await;
+        let item = insert_damaged_item(&pool, player_id, REPAIRABLE_TYPE_ID, 0, 50).await;
+
+        let (socket, e2a, conn) = make_state(0x7000_0702);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        handle_paid_repair_inventory_items(
+            0x7000_0702, player_id, vec![item], SEEDED_REPAIR_VENDOR_TEMPLATE_ID,
+            &db_pool, &socket, &conn, &e2a,
+        ).await;
+
+        let (durability, naquadah) = read_durability_and_naquadah(&pool, player_id, item).await;
+        assert_eq!(durability, 50, "durability must stay at 50 — repair was rejected");
+        assert_eq!(naquadah, 100, "balance must stay at 100 — no cash drain");
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Unknown vendor_template_id: load_vendor_template_lists returns None
+    /// and the function bails before any DB writes. Verifies via the
+    /// invariant "no DB changes" rather than log inspection.
+    #[tokio::test]
+    async fn unknown_vendor_template_drops_request() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 200;
+        let player_id = TEST_BASE + 201;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id, 2_000).await;
+        let item = insert_damaged_item(&pool, player_id, REPAIRABLE_TYPE_ID, 0, 50).await;
+
+        let (socket, e2a, conn) = make_state(0x7000_0703);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        // template_id = 999_999_999 is not in resources.entity_templates.
+        handle_paid_repair_inventory_items(
+            0x7000_0703, player_id, vec![item], 999_999_999,
+            &db_pool, &socket, &conn, &e2a,
+        ).await;
+
+        let (durability, naquadah) = read_durability_and_naquadah(&pool, player_id, item).await;
+        assert_eq!(durability, 50, "no repair when vendor template doesn't exist");
+        assert_eq!(naquadah, 2_000, "no charge when vendor template doesn't exist");
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+}
