@@ -2,9 +2,12 @@
 //!
 //! Closes the gap between "base committed a DB change" and "cell fires the
 //! corresponding `OnItemUse` / inventory chain event". The previous
-//! best-effort `cell_tx.send(...)` could lose events on a closed/saturated
-//! channel — for `OnItemUse` that strands mission progression with no
-//! recovery path.
+//! best-effort `cell_tx.send(...)` could lose events when the receiver
+//! was dropped (cell task panic / shut down) — for `OnItemUse` that
+//! strands mission progression with no recovery path. (Note: tokio mpsc
+//! `send().await` does not error on a full channel — it backpressures —
+//! so this guards specifically against a torn-down receiver, not
+//! saturation.)
 //!
 //! Two write paths:
 //!   * [`enqueue`] — INSERT a row in its own short-lived statement. Used by
@@ -71,6 +74,10 @@ struct OutboxRow {
     entity_id: i32,
     event_type: String,
     payload: Json<CellOutboxPayload>,
+    /// Used to rate-limit poison-row warnings — first encounter logs WARN,
+    /// subsequent retries log DEBUG so a single bad row doesn't spam the
+    /// log every drain interval.
+    attempts: i32,
 }
 
 /// INSERT a fresh outbox row using a one-shot statement (no caller tx).
@@ -144,8 +151,12 @@ async fn record_failure(pool: &PgPool, id: i64, error: &str) {
 
 /// Build the `BaseToCellMsg` for a stored outbox row. Returns `None` if the
 /// row's `event_type` is unknown (forward-compat: a newer base wrote an event
-/// type this version doesn't understand). Such rows are left undelivered for
-/// a redeploy / rollback to handle.
+/// type this version doesn't understand) or doesn't match the payload shape.
+///
+/// No logging here — the drainer is the only caller and decides whether to
+/// log (first encounter) or stay quiet (already-flagged poison row), based
+/// on `attempts`. Without this gate, a single bad row turns into a continuous
+/// warn-spam at the 5s drain interval. (Copilot review on #124.)
 fn row_to_message(row: &OutboxRow) -> Option<BaseToCellMsg> {
     match (row.event_type.as_str(), &*row.payload) {
         (EVENT_TYPE_ITEM_USED, CellOutboxPayload::ItemUsed { type_id, target_id }) => {
@@ -155,17 +166,7 @@ fn row_to_message(row: &OutboxRow) -> Option<BaseToCellMsg> {
                 target_id: *target_id,
             })
         }
-        // event_type / payload variant mismatch — should not happen unless
-        // someone hand-edited the table or the JSON shape drifted from the
-        // event_type tag. Logged so it's visible.
-        _ => {
-            tracing::warn!(
-                outbox_id = row.id,
-                event_type = %row.event_type,
-                "outbox: row event_type/payload mismatch; leaving undelivered"
-            );
-            None
-        }
+        _ => None,
     }
 }
 
@@ -213,21 +214,39 @@ pub async fn try_dispatch_now(
 /// from monopolising the channel under a backlog spike.
 const DRAIN_BATCH_SIZE: i64 = 64;
 
-/// Drain a single batch of undelivered rows. Returns the number of rows
-/// the drainer handled (whether dispatched, marked delivered, or skipped
-/// due to row→message mismatch). Exposed pub(crate) so the periodic loop
-/// and tests can both call it.
+/// Outcome of a single drain pass — separates "rows successfully delivered"
+/// from "rows skipped without action" so the operator log isn't misleading
+/// when the drainer breaks early on a closed channel. Returned via
+/// [`drain_undelivered`].
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct DrainStats {
+    /// Rows whose `delivered_at` was set during this pass.
+    pub delivered: usize,
+    /// Rows skipped because `row_to_message` rejected them (unknown
+    /// event_type / payload mismatch).
+    pub skipped_bad: usize,
+    /// Rows that hit a send error this pass — the loop breaks on the first
+    /// such row, so this is at most 1 today, but it's a count so future
+    /// "keep going on transient errors" changes don't change the API shape.
+    pub send_failed: usize,
+}
+
+/// Drain a single batch of undelivered rows. Returns per-outcome counts
+/// rather than just `rows.len()` — the loop breaks early on a closed cell
+/// channel, so a raw row count would overstate progress (Copilot review
+/// on #124). Exposed pub(crate) so the periodic loop and tests can both
+/// call it.
 pub(crate) async fn drain_undelivered(
     pool: &PgPool,
     cell_tx: &mpsc::Sender<BaseToCellMsg>,
-) -> Result<usize, sqlx::Error> {
+) -> Result<DrainStats, sqlx::Error> {
     // ORDER BY id keeps per-entity FIFO (id is BIGSERIAL — strictly
     // increasing per insert across all entities, so per-entity ordering is
     // implied by global ordering). LIMIT bounds the batch so we don't
     // hold the channel under a backlog. No FOR UPDATE SKIP LOCKED yet —
     // single-writer base assumption (#96 out-of-scope: multi-instance HA).
     let rows: Vec<OutboxRow> = sqlx::query_as::<_, OutboxRow>(
-        "SELECT id, entity_id, event_type, payload \
+        "SELECT id, entity_id, event_type, payload, attempts \
          FROM cell_event_outbox \
          WHERE delivered_at IS NULL \
          ORDER BY id \
@@ -237,11 +256,30 @@ pub(crate) async fn drain_undelivered(
     .fetch_all(pool)
     .await?;
 
-    let count = rows.len();
+    let mut stats = DrainStats::default();
     for row in rows {
         let id = row.id;
         let Some(msg) = row_to_message(&row) else {
-            // row_to_message logs the mismatch; skip to next.
+            // Poison row — log loud once (first encounter) then drop to
+            // debug for subsequent retries. Without the rate-limit, the
+            // 5s drainer interval turns one bad row into permanent warn
+            // spam (Copilot review on #124).
+            if row.attempts == 0 {
+                tracing::warn!(
+                    outbox_id = id, event_type = %row.event_type, attempts = row.attempts,
+                    "outbox: row event_type/payload mismatch — left undelivered for redeploy/rollback"
+                );
+            } else {
+                tracing::debug!(
+                    outbox_id = id, event_type = %row.event_type, attempts = row.attempts,
+                    "outbox: row event_type/payload mismatch (already flagged)"
+                );
+            }
+            // Bump attempts so the next pass can stay quiet, and so
+            // operators have a count for dead-letter triage when that
+            // ships.
+            record_failure(pool, id, &format!("unknown event_type: {}", row.event_type)).await;
+            stats.skipped_bad += 1;
             continue;
         };
         match cell_tx.send(msg).await {
@@ -252,21 +290,23 @@ pub(crate) async fn drain_undelivered(
                         "outbox: drainer dispatch succeeded but mark_delivered failed: {e}"
                     );
                 }
+                stats.delivered += 1;
             }
             Err(e) => {
                 tracing::warn!(
                     outbox_id = id,
-                    "outbox: drainer cell channel send failed; will retry next pass: {e}"
+                    "outbox: drainer cell channel send failed (receiver dropped); will retry next pass: {e}"
                 );
                 record_failure(pool, id, &format!("drainer send: {e}")).await;
-                // Channel is closed — stop the batch; subsequent rows would
+                stats.send_failed += 1;
+                // Receiver is gone — stop the batch; subsequent rows would
                 // hit the same error. The next periodic pass will retry
-                // when (if) the channel is rebuilt.
+                // if (when) the channel is rebuilt.
                 break;
             }
         }
     }
-    Ok(count)
+    Ok(stats)
 }
 
 /// Default drainer interval. Fast enough that a transient channel hiccup
@@ -293,7 +333,13 @@ pub fn spawn_drainer(pool: Arc<PgPool>, cell_tx: mpsc::Sender<BaseToCellMsg>) {
         loop {
             ticker.tick().await;
             match drain_undelivered(&pool, &cell_tx).await {
-                Ok(n) if n > 0 => tracing::debug!(drained = n, "outbox: periodic drain"),
+                Ok(s) if s.delivered > 0 || s.skipped_bad > 0 || s.send_failed > 0 => {
+                    tracing::debug!(
+                        delivered = s.delivered, skipped_bad = s.skipped_bad,
+                        send_failed = s.send_failed,
+                        "outbox: periodic drain"
+                    );
+                }
                 Ok(_) => {}
                 Err(e) => tracing::warn!("outbox: periodic drain failed: {e}"),
             }

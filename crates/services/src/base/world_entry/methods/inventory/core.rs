@@ -327,11 +327,15 @@ pub async fn handle_remove_inventory_item(
 ///
 /// Delivery durability (issue #96): the `ItemUsed` event is enqueued in
 /// `cell_event_outbox` first, then dispatched on the in-process channel.
-/// If the channel is closed/saturated the row stays undelivered and the
-/// background drainer ([`crate::base::outbox::spawn_drainer`]) retries it.
-/// The cell-side `BaseToCellMsg::ItemUsed` handler is idempotent — chain
-/// conditions self-gate on `step_status = active` so a duplicate fire
-/// from a drainer retry is harmless.
+/// `tokio::sync::mpsc::Sender::send().await` only fails when the receiver
+/// is dropped (e.g., cell task panicked / shut down) — full channels
+/// backpressure rather than error — so this guards specifically against
+/// a torn-down receiver. The undelivered row is replayed by the
+/// background drainer ([`crate::base::outbox::spawn_drainer`]) once a
+/// healthy cell channel is back. The cell-side `BaseToCellMsg::ItemUsed`
+/// handler is idempotent — chain conditions self-gate on
+/// `step_status = active` so a duplicate fire from a drainer retry is
+/// harmless.
 pub async fn handle_use_inventory_item(
     entity_id: u32,
     player_id: i32,

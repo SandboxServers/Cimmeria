@@ -2,16 +2,21 @@
 --
 -- Bridges the gap between "base committed a DB change" and "cell fires the
 -- corresponding content event over the in-process mpsc channel". Without
--- this, an mpsc send failure (cell restart, channel saturation, panic
--- between commit and send) would silently strand chains that gate on the
--- event — most notably mission progression on `OnItemUse`. See issue #96.
+-- this, an mpsc send failure (receiver dropped — cell task panic / shut
+-- down, or panic between commit and send) would silently strand chains
+-- that gate on the event — most notably mission progression on
+-- `OnItemUse`. See issue #96.
+--
+-- (Note: `tokio::mpsc::Sender::send().await` does not error on a full
+-- channel — it backpressures. The failure mode this protects against is
+-- specifically a torn-down receiver, not saturation.)
 --
 -- Lifecycle:
 --   1. Base writes a row inside the same tx as (or alongside) the
 --      DB-visible state change.
 --   2. Base immediately attempts an in-process `cell_tx.send(...)`.
 --   3. On success → row is marked `delivered_at = NOW()`.
---   4. On failure (channel closed, full, etc.) → row stays undelivered;
+--   4. On failure (receiver dropped) → row stays undelivered;
 --      a background drainer retries on a periodic timer + on startup.
 --
 -- The cell-side handler must be idempotent because retries can fan out

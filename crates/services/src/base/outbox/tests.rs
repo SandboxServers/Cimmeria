@@ -48,6 +48,7 @@ fn row_to_message_builds_item_used() {
             type_id: 19,
             target_id: 5,
         }),
+        attempts: 0,
     };
     let msg = row_to_message(&row).expect("known event_type should produce message");
     match msg {
@@ -63,8 +64,8 @@ fn row_to_message_builds_item_used() {
 #[test]
 fn row_to_message_returns_none_for_unknown_event_type() {
     // Forward-compat: a future base might enqueue an event_type this
-    // build doesn't know. Drainer must skip it (logged via warn), not
-    // panic / mis-dispatch.
+    // build doesn't know. Drainer must skip it (and rate-limit logging
+    // off `attempts`), not panic / mis-dispatch.
     let row = OutboxRow {
         id: 100,
         entity_id: 1,
@@ -73,6 +74,18 @@ fn row_to_message_returns_none_for_unknown_event_type() {
             type_id: 0,
             target_id: 0,
         }),
+        attempts: 0,
     };
     assert!(row_to_message(&row).is_none());
+}
+
+#[test]
+fn drain_stats_default_is_all_zero() {
+    // The drainer's "no work" path returns `Default` and the periodic-log
+    // gate suppresses on all-zero. Pin the default values so a future
+    // refactor doesn't accidentally turn an empty drain into spam.
+    let s = DrainStats::default();
+    assert_eq!(s.delivered, 0);
+    assert_eq!(s.skipped_bad, 0);
+    assert_eq!(s.send_failed, 0);
 }
