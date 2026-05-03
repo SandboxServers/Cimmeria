@@ -260,3 +260,151 @@ pub(crate) async fn handle_request_character_visuals(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod query_character_list_tests {
+    //! Live-DB integration tests for query_character_list.
+    //!
+    //! Skip cleanly when DATABASE_URL is unset; against the bundled
+    //! local Postgres they exercise the no-pool short-circuit, the
+    //! happy-path round-trip with multiple characters, and the
+    //! account-isolation guarantee.
+
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+
+    /// Sentinel base for character-list tests. Distinct from prior
+    /// live-DB sentinels (outbox 0x000 / grant_cash +0x100 /
+    /// move +0x200 / grant_item +0x300 / missions +0x400 / mail +0x500 /
+    /// vendor/repair +0x600 / paid_repair +0x700 / sell +0x800 /
+    /// buyback +0x900 / purchase +0x0A00 / ammo +0x0B00 /
+    /// vendor_data +0x0C00 / player_load_meta +0x0D00 /
+    /// vendor_helpers +0x0E00 / player_load_core +0x0F00).
+    const TEST_BASE: i32 = 0x7000_1000;
+
+    async fn cleanup(pool: &PgPool, account_ids: &[i32]) {
+        for account_id in account_ids {
+            let _ = sqlx::query("DELETE FROM sgw_player WHERE account_id = $1")
+                .bind(account_id)
+                .execute(pool)
+                .await;
+            let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+                .bind(account_id)
+                .execute(pool)
+                .await;
+        }
+    }
+
+    async fn insert_account(pool: &PgPool, account_id: i32) {
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password) \
+             VALUES ($1, $2, '')",
+        )
+        .bind(account_id)
+        .bind(format!("char-list-{account_id}"))
+        .execute(pool)
+        .await
+        .expect("insert account");
+    }
+
+    async fn insert_character(
+        pool: &PgPool,
+        account_id: i32,
+        player_id: i32,
+        name: &str,
+        archetype: i32,
+        level: i32,
+    ) {
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah, bandolier_slot\
+             ) VALUES ($1, $2, $3, 1, $4, 1, $5, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                       0.0, 0.0, 0.0, 0, 0, 0)",
+        )
+        .bind(account_id)
+        .bind(player_id)
+        .bind(level)
+        .bind(archetype)
+        .bind(name)
+        .execute(pool)
+        .await
+        .expect("insert character");
+    }
+
+    /// No DB pool short-circuits to an empty Vec. Important because
+    /// the offline path in connect_loop relies on this returning
+    /// empty rather than erroring.
+    #[tokio::test]
+    async fn no_pool_returns_empty() {
+        // No `require_db_or_skip!()` — exercises the None branch.
+        let chars = query_character_list(&None, 0).await;
+        assert!(chars.is_empty());
+    }
+
+    /// Happy path: two characters under one account come back ordered
+    /// by `player_id`, with name/level/archetype round-tripped. Bug
+    /// shape: a regression to ORDER BY player_name (or any unstable
+    /// ordering) breaks the client-side "first character" pick on the
+    /// character-select screen.
+    #[tokio::test]
+    async fn returns_account_characters_ordered_by_player_id() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE;
+        let player_a = TEST_BASE + 2;
+        let player_b = TEST_BASE + 1;
+        cleanup(&pool, &[account_id]).await;
+        insert_account(&pool, account_id).await;
+        // Insert in reverse player_id order so a "rows return in
+        // insertion order" regression would put zelda first.
+        insert_character(&pool, account_id, player_a, "zelda", 3, 5).await;
+        insert_character(&pool, account_id, player_b, "alpha", 1, 7).await;
+
+        let db_pool = Some(Arc::new(pool.clone()));
+        let chars = query_character_list(&db_pool, account_id as u32).await;
+
+        assert_eq!(chars.len(), 2);
+        assert_eq!(
+            chars[0].player_id, player_b,
+            "lowest player_id (alpha) must come first — locks ORDER BY player_id",
+        );
+        assert_eq!(chars[0].name, "alpha");
+        assert_eq!(chars[0].level, 7);
+        assert_eq!(chars[0].archetype, 1);
+        assert_eq!(chars[1].player_id, player_a);
+        assert_eq!(chars[1].name, "zelda");
+
+        cleanup(&pool, &[account_id]).await;
+    }
+
+    /// Account isolation: characters under a different account_id MUST
+    /// NOT leak through. Bug shape: a refactor that drops the WHERE
+    /// account_id predicate (or passes the wrong bind position) would
+    /// turn the character-select screen into "every character on the
+    /// shard" — a session-confusion + privacy vector.
+    #[tokio::test]
+    async fn other_accounts_characters_are_isolated() {
+        let pool = require_db_or_skip!();
+        let account_mine = TEST_BASE + 100;
+        let account_other = TEST_BASE + 101;
+        let player_mine = TEST_BASE + 102;
+        let player_other = TEST_BASE + 103;
+        cleanup(&pool, &[account_mine, account_other]).await;
+        insert_account(&pool, account_mine).await;
+        insert_account(&pool, account_other).await;
+        insert_character(&pool, account_mine, player_mine, "mine", 1, 1).await;
+        insert_character(&pool, account_other, player_other, "other", 2, 2).await;
+
+        let db_pool = Some(Arc::new(pool.clone()));
+        let chars = query_character_list(&db_pool, account_mine as u32).await;
+
+        assert_eq!(chars.len(), 1);
+        assert_eq!(
+            chars[0].player_id, player_mine,
+            "only the queried account's character may be returned",
+        );
+
+        cleanup(&pool, &[account_mine, account_other]).await;
+    }
+}
