@@ -18,8 +18,6 @@ DECLARE
     v_count integer;
     v_stack integer;
     v_slot integer;
-    v_container integer;
-    v_old_stack integer;
 
     -- Sentinel slot used in the three-step swap. Mirrors the
     -- `RESERVED_SENTINEL_SLOT` convention in the move handler — pick
