@@ -1,0 +1,52 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch — saves runner minutes when a
+# PR gets force-pushed during review.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Tauri members of the workspace pull in heavy GUI dependencies and have
+  # their own Linux-build prerequisites; keep them out of CI builds. Names
+  # match the exclude list in CLAUDE.md.
+  WORKSPACE_EXCLUDES: >-
+    --exclude cimmeria-app
+    --exclude cimmeria-content-editor
+    --exclude cimmeria-scene-editor
+
+jobs:
+  check:
+    name: cargo check (workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: workspace-check
+      - name: cargo check
+        run: cargo check --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets
+
+  test:
+    name: cargo test -p cimmeria-services
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: services-test
+      # Live-DB tests use the test_support::require_db_or_skip! macro and
+      # self-skip when DATABASE_URL is unset, so this run only exercises
+      # the unit + non-DB integration tests. The DB-integration job is a
+      # follow-up that needs schema + seed loading.
+      - name: cargo test
+        run: cargo test -p cimmeria-services
