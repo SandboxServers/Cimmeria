@@ -98,23 +98,26 @@ pub fn calculate_qr(attacker: &StatList, defender: &StatList, ranged: bool) -> f
 /// else:       betavariate(α - qr * mult, α)        # α grows -> mean ↑
 /// ```
 ///
-/// The previous Rust port replaced this with a linear bias on a uniform
-/// random — that produced the wrong distribution shape, especially at the
-/// crit/double-crit tails (issue #116). The retail damage curve depends
-/// on the beta tails, not the mean, so the linear approximation was
-/// silently off-spec at every QR value other than 0.
+/// The retail damage curve depends on the beta distribution's tails (the
+/// crit/double-crit bands), so a linear-bias approximation is silently
+/// off-spec at every QR value other than 0 — the prior Rust port took
+/// that shortcut.
 ///
-/// Note the counter-intuitive sign convention: positive QR (attacker
-/// stronger) yields lower `qr_rand`; the `(1 + qr)` post-multiply at
-/// [`calculate_damage`] is what compensates the damage scaling. See the
-/// `mean_*` tests below for the expected per-QR distribution mean.
+/// Note the counter-intuitive sign convention preserved from python:
+/// positive QR (attacker stronger) yields LOWER `qr_rand`; the `(1 + qr)`
+/// post-multiply at [`calculate_damage`] is what compensates the damage
+/// scaling. See the `mean_*` tests below for the expected per-QR
+/// distribution mean.
 ///
 /// `seed` makes the roll deterministic per (entity, ability, sequence) so
-/// unit tests and live combat behave the same on the same input. Use
-/// [`super::super::abilities::rng::pseudo_random_seed`] to derive it.
+/// unit tests and live combat behave the same on the same input. Uses
+/// `ChaCha8Rng` (not `StdRng`) so the deterministic stream is stable
+/// across `rand` releases — `StdRng`'s underlying algorithm is allowed to
+/// change between minor versions, which would silently shift replay
+/// results.
 pub fn calculate_result(qr: f64, seed: u64) -> QrResult {
     use rand::SeedableRng;
-    use rand::rngs::StdRng;
+    use rand_chacha::ChaCha8Rng;
     use rand_distr::{Beta, Distribution};
 
     let (alpha, beta) = if qr >= 0.0 {
@@ -127,7 +130,7 @@ pub fn calculate_result(qr: f64, seed: u64) -> QrResult {
     // perturbed side only ever grows), so Beta::new can't fail unless
     // QR is NaN/inf — which we treat as a programming error.
     let dist = Beta::new(alpha, beta).expect("alpha/beta both > 0 by construction");
-    let mut rng = StdRng::seed_from_u64(seed);
+    let mut rng = ChaCha8Rng::seed_from_u64(seed);
     let qr_rand = dist.sample(&mut rng);
 
     QrResult {
@@ -325,10 +328,9 @@ mod tests {
     }
 
     // ── Result-code thresholds ────────────────────────────────────────
-    // Pure threshold checks decoupled from the (random) beta sample —
-    // before #116 these tested calculate_result directly via a uniform
-    // input, but the beta sampler doesn't permit "pass me a specific
-    // qr_rand", so the threshold table is now its own helper.
+    // Pure threshold checks decoupled from the (random) beta sample.
+    // The beta sampler doesn't permit "pass me a specific qr_rand", so
+    // the threshold table is exposed as its own helper for direct testing.
     #[test]
     fn result_code_miss_below_miss_threshold() {
         assert_eq!(qr_rand_to_result_code(0.03), RC_MISS);
@@ -366,18 +368,17 @@ mod tests {
 
     // ── Beta-distribution shape ───────────────────────────────────────
     //
-    // These statistical tests exist to assert the python-reference shape:
-    // `Beta(1.4, 1.4 + qr*2.0)`. The key behaviors that the prior linear
-    // approximation broke:
+    // Statistical tests pinning the python-reference two-branch shape:
     //
-    //   * At QR = 0 the distribution should be symmetric around 0.5,
-    //     producing an even mix of crits/misses.
-    //   * At positive QR the mean climbs toward 1.0 → crit rate climbs
-    //     much faster than the linear bias suggested.
-    //   * At negative QR the mean drops toward 0.0 → miss rate climbs
-    //     much faster.
+    //   if qr >= 0: Beta(α, α + qr*mult)   → β grows → mean drops below 0.5
+    //   else:       Beta(α - qr*mult, α)   → α grows → mean climbs above 0.5
     //
-    // Tolerances are generous (5%) because we're sampling 10k draws, not
+    // Counter-intuitive but preserved on purpose (see `calculate_result`
+    // doc): positive QR pulls the mean DOWN — the `(1 + qr)` post-multiply
+    // in `calculate_damage` is what makes the damage curve increase with
+    // attacker advantage despite the lower sampled value.
+    //
+    // Tolerances are generous (~3%) because we're sampling 10k draws, not
     // computing the analytic CDF — small variance is expected.
 
     fn distribution_mean(qr: f64, samples: usize) -> f64 {

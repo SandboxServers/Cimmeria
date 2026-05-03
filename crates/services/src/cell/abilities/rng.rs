@@ -4,14 +4,21 @@
 //! Reproducible by design so unit tests can assert on combat outcomes — same
 //! (entity, ability, sequence) triple always produces the same beta sample.
 //!
-//! The previous version returned a uniform `f64` and the QR pipeline applied
-//! a linear bias on top. As of #116 we sample from a real Beta(1.4, 1.4+2qr)
-//! distribution, so callers want a seed they can hand to a seeded RNG rather
-//! than a single random value — the beta sampler internally needs multiple
-//! draws.
+//! Returns a `u64` seed (rather than a uniform `f64`) because the QR
+//! sampler now draws from a two-branch Beta distribution
+//! (`AbilityManager.py:181-184`):
+//!
+//! ```text
+//! if qr >= 0: betavariate(α, α + qr * mult)
+//! else:       betavariate(α - qr * mult, α)
+//! ```
+//!
+//! Beta sampling internally consumes multiple uniform draws, so the
+//! caller hands it a seeded RNG rather than a single value.
 
 /// Build a deterministic 64-bit seed from entity/ability/sequence. Caller
-/// passes this to `StdRng::seed_from_u64`.
+/// passes this to `ChaCha8Rng::seed_from_u64` (or any other
+/// stable seeded RNG).
 ///
 /// Folding three 32-bit prime multipliers into a 64-bit space keeps the
 /// avalanche behavior of the prior 32-bit hash while giving the seed enough
