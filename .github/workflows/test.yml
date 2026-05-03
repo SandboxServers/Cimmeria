@@ -29,6 +29,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # `.cargo/config.toml` pins `linker = "clang"` and `-fuse-ld=mold`
+      # for x86_64-unknown-linux-gnu (the WSL dev convention). Install
+      # both on the runner so cargo's clang invocation finds them.
+      - name: install clang + mold
+        run: sudo apt-get update && sudo apt-get install -y clang mold
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: workspace-check
@@ -41,6 +46,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: install clang + mold
+        run: sudo apt-get update && sudo apt-get install -y clang mold
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: services-test
