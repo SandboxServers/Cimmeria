@@ -75,7 +75,6 @@ struct Timers {
     cooldown_at: Option<Instant>,
 }
 
-
 /// Effects produced by FSM transitions. The state machine never touches the
 /// world directly; the high-level executor consumes these and dispatches them
 /// (sends wire methods, teleports entities, fires chain events).
@@ -88,11 +87,19 @@ pub enum Effect {
     /// Play a Kismet sequence on the given player (used for both Teleport_Out
     /// and Teleport_In — Python only fires it on the first player to keep the
     /// matinee from desyncing).
-    PlaySequence { entity_id: u32, event_set_id: i32, region_event: RegionEvent },
+    PlaySequence {
+        entity_id: u32,
+        event_set_id: i32,
+        region_event: RegionEvent,
+    },
     /// Fire `teleport::out` script event on the given player.
     /// Currently no chain triggers register on this in our content engine, but
     /// we emit it for parity in case content scripts add one later.
-    OnTeleportOut { entity_id: u32, region_id: i32, destination_id: i32 },
+    OnTeleportOut {
+        entity_id: u32,
+        region_id: i32,
+        destination_id: i32,
+    },
     /// Set `BSF_MovementLock` on the player and broadcast onStateFieldUpdate.
     LockMovement { entity_id: u32 },
     /// Clear `BSF_MovementLock` on the player and broadcast onStateFieldUpdate.
@@ -103,15 +110,29 @@ pub enum Effect {
     ShowPlayer { entity_id: u32 },
     /// Move player to the destination ring's position. Same world (cross-world
     /// is not yet supported — see [`Effect::TeleportCrossWorld`]).
-    TeleportPlayer { entity_id: u32, position: [f32; 3], world_name: String, destination_region_id: i32 },
+    TeleportPlayer {
+        entity_id: u32,
+        position: [f32; 3],
+        world_name: String,
+        destination_region_id: i32,
+    },
     /// Cross-world teleport — currently unimplemented; emitted as a warn so
     /// future work can wire it up without changing the FSM.
-    TeleportCrossWorld { entity_id: u32, position: [f32; 3], world_name: String, destination_region_id: i32 },
+    TeleportCrossWorld {
+        entity_id: u32,
+        position: [f32; 3],
+        world_name: String,
+        destination_region_id: i32,
+    },
     /// Fire the `teleport_in` content engine event with `region_id` as the key.
     /// Chain 1044 (Castle_CellBlock) hooks this to complete mission 640.
     FireTeleportIn { entity_id: u32, region_id: i32 },
     /// Send `onRingTransporterList` to the player's client.
-    SendDestinationList { entity_id: u32, source_region_id: i32, destinations: Vec<i32> },
+    SendDestinationList {
+        entity_id: u32,
+        source_region_id: i32,
+        destinations: Vec<i32>,
+    },
 }
 
 /// Which Kismet sequence to look up in the region's event set.
@@ -313,7 +334,8 @@ impl RingTransporter {
     pub fn hide_timer_expired(&mut self) -> Vec<Effect> {
         debug_assert_eq!(self.state, State::SendWarmup);
         self.timers.hide_at = None;
-        self.send_players.iter()
+        self.send_players
+            .iter()
             .map(|&eid| Effect::HidePlayer { entity_id: eid })
             .collect()
     }
@@ -337,7 +359,8 @@ impl RingTransporter {
         let dst_region = self.remote_region_id.unwrap_or(0);
         let send_world = self.world_name.clone();
         let players: Vec<u32> = std::mem::take(&mut self.send_players);
-        let effects: Vec<Effect> = players.iter()
+        let effects: Vec<Effect> = players
+            .iter()
             .map(|&eid| {
                 if dst_world == send_world {
                     Effect::TeleportPlayer {
@@ -407,7 +430,9 @@ impl RingTransporter {
         self.state = State::Cooldown;
         self.timers.remote_warmup_at = None;
 
-        let effects: Vec<Effect> = self.players_loaded.iter()
+        let effects: Vec<Effect> = self
+            .players_loaded
+            .iter()
             .map(|&eid| Effect::ShowPlayer { entity_id: eid })
             .collect();
 
@@ -437,7 +462,10 @@ impl RingTransporter {
         let mut effects = Vec::with_capacity(self.players_loaded.len() * 2);
         for &eid in &self.players_loaded {
             effects.push(Effect::UnlockMovement { entity_id: eid });
-            effects.push(Effect::FireTeleportIn { entity_id: eid, region_id });
+            effects.push(Effect::FireTeleportIn {
+                entity_id: eid,
+                region_id,
+            });
         }
         // Reset destination-side state in preparation for the next run.
         self.players_loaded.clear();
@@ -451,10 +479,26 @@ impl RingTransporter {
     /// each tick. Returns the *kind* of deadline so the caller knows which
     /// state-transition method to call.
     fn elapsed_deadline(&self, now: Instant) -> Option<DeadlineKind> {
-        if let Some(t) = self.timers.hide_at      { if now >= t { return Some(DeadlineKind::Hide); } }
-        if let Some(t) = self.timers.warmup_at    { if now >= t { return Some(DeadlineKind::Warmup); } }
-        if let Some(t) = self.timers.remote_warmup_at { if now >= t { return Some(DeadlineKind::RemoteWarmup); } }
-        if let Some(t) = self.timers.cooldown_at  { if now >= t { return Some(DeadlineKind::Cooldown); } }
+        if let Some(t) = self.timers.hide_at {
+            if now >= t {
+                return Some(DeadlineKind::Hide);
+            }
+        }
+        if let Some(t) = self.timers.warmup_at {
+            if now >= t {
+                return Some(DeadlineKind::Warmup);
+            }
+        }
+        if let Some(t) = self.timers.remote_warmup_at {
+            if now >= t {
+                return Some(DeadlineKind::RemoteWarmup);
+            }
+        }
+        if let Some(t) = self.timers.cooldown_at {
+            if now >= t {
+                return Some(DeadlineKind::Cooldown);
+            }
+        }
         None
     }
 }
@@ -486,7 +530,8 @@ impl RingTransporterManager {
     pub fn load(&mut self, ring_regions: &HashMap<i32, RingRegion>) {
         self.regions.clear();
         for (id, region) in ring_regions {
-            self.regions.insert(*id, RingTransporter::from_region(region));
+            self.regions
+                .insert(*id, RingTransporter::from_region(region));
         }
     }
 
@@ -501,7 +546,8 @@ impl RingTransporterManager {
     /// Return all region_ids that have an elapsed deadline at `now`. Used by
     /// the tick to drive timers forward.
     pub fn ready_regions(&self, now: Instant) -> Vec<(i32, RawDeadline)> {
-        self.regions.iter()
+        self.regions
+            .iter()
             .filter_map(|(id, r)| r.elapsed_deadline(now).map(|dk| (*id, RawDeadline(dk))))
             .collect()
     }
@@ -513,10 +559,18 @@ impl RingTransporterManager {
 pub struct RawDeadline(DeadlineKind);
 
 impl RawDeadline {
-    pub(crate) fn is_hide(self) -> bool { self.0 == DeadlineKind::Hide }
-    pub(crate) fn is_warmup(self) -> bool { self.0 == DeadlineKind::Warmup }
-    pub(crate) fn is_remote_warmup(self) -> bool { self.0 == DeadlineKind::RemoteWarmup }
-    pub(crate) fn is_cooldown(self) -> bool { self.0 == DeadlineKind::Cooldown }
+    pub(crate) fn is_hide(self) -> bool {
+        self.0 == DeadlineKind::Hide
+    }
+    pub(crate) fn is_warmup(self) -> bool {
+        self.0 == DeadlineKind::Warmup
+    }
+    pub(crate) fn is_remote_warmup(self) -> bool {
+        self.0 == DeadlineKind::RemoteWarmup
+    }
+    pub(crate) fn is_cooldown(self) -> bool {
+        self.0 == DeadlineKind::Cooldown
+    }
 }
 
 #[cfg(test)]
@@ -528,11 +582,16 @@ mod tests {
             region_id: id,
             world_id: 12,
             world_name: world.to_string(),
-            x: 1.0, y: 2.0, z: 3.0,
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
             tag: format!("Ring{id}"),
-            height: 1.7, radius: 3.5,
-            event_set_id: 100, display_name_id: 7508,
-            destination_ids: dests, point_set_id: 200,
+            height: 1.7,
+            radius: 3.5,
+            event_set_id: 100,
+            display_name_id: 7508,
+            destination_ids: dests,
+            point_set_id: 200,
         }
     }
 
@@ -546,12 +605,21 @@ mod tests {
     #[test]
     fn validate_destination_rejects_self_busy_unknown() {
         let mut r = RingTransporter::from_region(&make_region(1, "Castle", vec![2, 3]));
-        assert_eq!(r.validate_destination(99), Err("destination not in region's destination list"));
-        assert_eq!(r.validate_destination(1), Err("destination not in region's destination list"));
+        assert_eq!(
+            r.validate_destination(99),
+            Err("destination not in region's destination list")
+        );
+        assert_eq!(
+            r.validate_destination(1),
+            Err("destination not in region's destination list")
+        );
         // Self-as-dest is filtered at load time, so it'd hit the "not in list" branch first.
         // Force a self-list entry to test the source==dest guard.
         r.destination_ids.push(1);
-        assert_eq!(r.validate_destination(1), Err("source and destination cannot be the same"));
+        assert_eq!(
+            r.validate_destination(1),
+            Err("source and destination cannot be the same")
+        );
 
         r.state = State::SendWait;
         assert_eq!(r.validate_destination(2), Err("source ring is busy"));
@@ -587,7 +655,14 @@ mod tests {
         assert_eq!(src.state, State::SendWarmup);
         // Should produce: PlaySequence (1) + OnTeleportOut + LockMovement = 3 for one player.
         assert!(matches!(effs[0], Effect::PlaySequence { .. }));
-        assert!(matches!(effs[1], Effect::OnTeleportOut { region_id: 1, destination_id: 2, .. }));
+        assert!(matches!(
+            effs[1],
+            Effect::OnTeleportOut {
+                region_id: 1,
+                destination_id: 2,
+                ..
+            }
+        ));
         assert!(matches!(effs[2], Effect::LockMovement { entity_id: 100 }));
         assert_eq!(effs.len(), 3);
 
@@ -608,7 +683,12 @@ mod tests {
         assert!(src.send_players.is_empty());
         assert_eq!(effs.len(), 1);
         match &effs[0] {
-            Effect::TeleportPlayer { entity_id, position, world_name, destination_region_id } => {
+            Effect::TeleportPlayer {
+                entity_id,
+                position,
+                world_name,
+                destination_region_id,
+            } => {
                 assert_eq!(*entity_id, 100);
                 assert_eq!(*position, [10.0, 20.0, 30.0]);
                 assert_eq!(world_name, "Castle");
@@ -663,7 +743,13 @@ mod tests {
         assert_eq!(dst.state, State::Idle);
         assert_eq!(effs.len(), 2); // unlock + fire teleport_in
         assert!(matches!(effs[0], Effect::UnlockMovement { entity_id: 100 }));
-        assert!(matches!(effs[1], Effect::FireTeleportIn { entity_id: 100, region_id: 2 }));
+        assert!(matches!(
+            effs[1],
+            Effect::FireTeleportIn {
+                entity_id: 100,
+                region_id: 2
+            }
+        ));
         assert!(dst.players_loaded.is_empty());
         assert!(dst.remote_region_id.is_none());
     }

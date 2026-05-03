@@ -101,9 +101,7 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                             current_prop_type = None;
                             current_prop_flags = None;
                         }
-                        Section::ClientMethods
-                        | Section::CellMethods
-                        | Section::BaseMethods => {
+                        Section::ClientMethods | Section::CellMethods | Section::BaseMethods => {
                             // This tag is a method name.
                             current_method_name = Some(tag);
                             current_method_exposed = false;
@@ -179,11 +177,8 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
                         MethodField::Arg => {
                             // The text before <ArgName> is the type.
                             // We take the first whitespace-delimited word as the type.
-                            let type_str = text
-                                .split_whitespace()
-                                .next()
-                                .unwrap_or(&text)
-                                .to_string();
+                            let type_str =
+                                text.split_whitespace().next().unwrap_or(&text).to_string();
                             if !type_str.is_empty() {
                                 current_method_args.push(type_str);
                             }

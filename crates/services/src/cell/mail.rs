@@ -37,11 +37,13 @@ pub async fn handle_request_mail_headers(
     let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "requestMailHeaders") else {
         return;
     };
-    let _ = tx.send(CellToBaseMsg::MailRequest {
-        entity_id,
-        player_id,
-        op: MailOp::RequestHeaders { b_archive },
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::MailRequest {
+            entity_id,
+            player_id,
+            op: MailOp::RequestHeaders { b_archive },
+        })
+        .await;
 }
 
 /// Forward a `requestMailBody` call to BaseApp for DB execution.
@@ -54,11 +56,13 @@ pub async fn handle_request_mail_body(
     let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "requestMailBody") else {
         return;
     };
-    let _ = tx.send(CellToBaseMsg::MailRequest {
-        entity_id,
-        player_id,
-        op: MailOp::RequestBody { mail_id },
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::MailRequest {
+            entity_id,
+            player_id,
+            op: MailOp::RequestBody { mail_id },
+        })
+        .await;
 }
 
 /// Forward a `deleteMailMessage` call to BaseApp for DB execution.
@@ -71,11 +75,13 @@ pub async fn handle_delete_mail(
     let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "deleteMailMessage") else {
         return;
     };
-    let _ = tx.send(CellToBaseMsg::MailRequest {
-        entity_id,
-        player_id,
-        op: MailOp::Delete { mail_id },
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::MailRequest {
+            entity_id,
+            player_id,
+            op: MailOp::Delete { mail_id },
+        })
+        .await;
 }
 
 /// Forward an `archiveMailMessage` call to BaseApp for DB execution.
@@ -88,11 +94,13 @@ pub async fn handle_archive_mail(
     let Some(player_id) = resolve_mail_player_id(entity_id, space_mgr, "archiveMailMessage") else {
         return;
     };
-    let _ = tx.send(CellToBaseMsg::MailRequest {
-        entity_id,
-        player_id,
-        op: MailOp::Archive { mail_id },
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::MailRequest {
+            entity_id,
+            player_id,
+            op: MailOp::Archive { mail_id },
+        })
+        .await;
 }
 
 // ── Wire format helpers for BaseApp to build mail response packets ───────────
@@ -108,10 +116,7 @@ pub async fn handle_archive_mail(
 ///     subjectId(i32), cash(i32), sentTime(f32), readTime(f32), flags(i32)
 /// - MessageAttachments: ARRAY of MessageAttachment FIXED_DICT (always empty)
 ///   - count: u32 LE (= 0)
-pub fn serialize_on_mail_header_info(
-    b_archive: u8,
-    headers: &[MailHeader],
-) -> Vec<u8> {
+pub fn serialize_on_mail_header_info(b_archive: u8, headers: &[MailHeader]) -> Vec<u8> {
     let mut args = Vec::with_capacity(2 + 4 + headers.len() * 64 + 4);
 
     // ResetCategory: always 0
@@ -155,12 +160,9 @@ pub fn serialize_on_mail_header_info(
 /// - BodyText: WSTRING
 /// - BodyId: INT32 (always 0)
 /// - ToText: WSTRING (recipient name)
-pub fn serialize_on_mail_read(
-    mail_id: i32,
-    body_text: &str,
-    recipient_name: &str,
-) -> Vec<u8> {
-    let mut args = Vec::with_capacity(4 + 4 + body_text.len() * 2 + 8 + recipient_name.len() * 2 + 8);
+pub fn serialize_on_mail_read(mail_id: i32, body_text: &str, recipient_name: &str) -> Vec<u8> {
+    let mut args =
+        Vec::with_capacity(4 + 4 + body_text.len() * 2 + 8 + recipient_name.len() * 2 + 8);
 
     // MailId: INT32
     args.extend_from_slice(&mail_id.to_le_bytes());
@@ -215,7 +217,7 @@ mod tests {
         assert_eq!(args.len(), 1 + 1 + 4 + 4);
         assert_eq!(args[0], 0); // ResetCategory
         assert_eq!(args[1], 0); // bArchive
-        // Headers count = 0
+                                // Headers count = 0
         assert_eq!(u32::from_le_bytes([args[2], args[3], args[4], args[5]]), 0);
         // Attachments count = 0
         assert_eq!(u32::from_le_bytes([args[6], args[7], args[8], args[9]]), 0);
@@ -245,7 +247,12 @@ mod tests {
 
         // First header starts at offset 6
         let offset = 6;
-        let id = i32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]);
+        let id = i32::from_le_bytes([
+            args[offset],
+            args[offset + 1],
+            args[offset + 2],
+            args[offset + 3],
+        ]);
         assert_eq!(id, 42);
     }
 
@@ -277,7 +284,8 @@ mod tests {
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        mgr.create_entity(entity_id, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(entity_id, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(e) = mgr.get_entity_mut(entity_id) {
             e.player_id = Some(player_id);
         }
@@ -292,7 +300,11 @@ mod tests {
 
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::MailRequest { entity_id, player_id, op } => {
+            CellToBaseMsg::MailRequest {
+                entity_id,
+                player_id,
+                op,
+            } => {
                 assert_eq!(entity_id, 1);
                 assert_eq!(player_id, 42);
                 match op {
@@ -312,7 +324,11 @@ mod tests {
 
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::MailRequest { entity_id, player_id, op } => {
+            CellToBaseMsg::MailRequest {
+                entity_id,
+                player_id,
+                op,
+            } => {
                 assert_eq!(entity_id, 1);
                 assert_eq!(player_id, 42);
                 match op {
@@ -332,7 +348,11 @@ mod tests {
 
         let msg = rx.try_recv().unwrap();
         match msg {
-            CellToBaseMsg::MailRequest { entity_id, player_id, op } => {
+            CellToBaseMsg::MailRequest {
+                entity_id,
+                player_id,
+                op,
+            } => {
                 assert_eq!(entity_id, 1);
                 assert_eq!(player_id, 42);
                 match op {
@@ -354,10 +374,15 @@ mod tests {
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         space_mgr.parse_spaces_xml(spaces_xml).unwrap();
         space_mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        space_mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        space_mgr
+            .create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         // entity intentionally has no player_id
 
         handle_request_mail_headers(1, 0, &tx, &space_mgr).await;
-        assert!(rx.try_recv().is_err(), "Expected no message when player_id is unset");
+        assert!(
+            rx.try_recv().is_err(),
+            "Expected no message when player_id is unset"
+        );
     }
 }

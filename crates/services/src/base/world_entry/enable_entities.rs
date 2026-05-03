@@ -22,9 +22,9 @@ use cimmeria_entity::manager::EntityManager;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_char_list, build_create_player};
 
-use super::super::ConnectedClientState;
 use super::super::character::query_character_list;
 use super::super::helpers::{drain_acks_and_seq, get_account_entity_id};
+use super::super::ConnectedClientState;
 
 /// Handle `ENABLE_ENTITIES` (0x08) -- dispatches char list or create-player step.
 ///

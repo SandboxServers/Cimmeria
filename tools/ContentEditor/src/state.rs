@@ -71,9 +71,10 @@ impl AppState {
             .max_connections(5)
             .after_connect(|conn, _meta| {
                 Box::pin(async move {
-                    tracing::debug!("New pool connection: setting search_path to resources, public");
-                    conn.execute("SET search_path TO resources, public")
-                        .await?;
+                    tracing::debug!(
+                        "New pool connection: setting search_path to resources, public"
+                    );
+                    conn.execute("SET search_path TO resources, public").await?;
                     Ok(())
                 })
             })
@@ -114,7 +115,11 @@ impl AppState {
     }
 
     pub fn seed_dir(&self) -> PathBuf {
-        self.repo_root.join("db").join("resources").join("Content").join("Seed")
+        self.repo_root
+            .join("db")
+            .join("resources")
+            .join("Content")
+            .join("Seed")
     }
 
     pub fn scripts_dir(&self) -> PathBuf {
@@ -126,11 +131,17 @@ impl AppState {
         if let Some(defs) = self.script_defs.get() {
             return Ok(defs);
         }
-        tracing::debug!("Loading script definitions from {}", self.repo_root.display());
+        tracing::debug!(
+            "Loading script definitions from {}",
+            self.repo_root.display()
+        );
         let defs = crate::script::definitions::load_definitions(&self.repo_root)
             .map_err(|e| format!("Failed to load script definitions: {e}"))?;
-        tracing::info!("Loaded script definitions: {} nodes, {} enums",
-            defs.nodes.len(), defs.enums.len());
+        tracing::info!(
+            "Loaded script definitions: {} nodes, {} enums",
+            defs.nodes.len(),
+            defs.enums.len()
+        );
         // If another thread beat us, that's fine -- just return whichever won
         let _ = self.script_defs.set(defs);
         Ok(self.script_defs.get().unwrap())

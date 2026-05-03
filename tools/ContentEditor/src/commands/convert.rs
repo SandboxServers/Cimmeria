@@ -125,7 +125,10 @@ fn convert_script(script: &ScriptFile, options: &ConvertOptions) -> ConvertResul
             }
         };
 
-        let fire_once = node_prop(event_node, "Fire Only Once").as_deref().unwrap_or("false") == "true";
+        let fire_once = node_prop(event_node, "Fire Only Once")
+            .as_deref()
+            .unwrap_or("false")
+            == "true";
 
         // Walk the graph from this event's output connections
         let conns = outgoing.get(&event_node.id).cloned().unwrap_or_default();
@@ -261,8 +264,14 @@ fn walk_chain(
                         sort_order: 0,
                     });
                     walk_chain(
-                        conn.in_node, node_map, outgoing, incoming,
-                        conditions, actions, entity_tag_ctx, warnings,
+                        conn.in_node,
+                        node_map,
+                        outgoing,
+                        incoming,
+                        conditions,
+                        actions,
+                        entity_tag_ctx,
+                        warnings,
                     );
                 }
             }
@@ -288,8 +297,14 @@ fn walk_chain(
                         sort_order: 0,
                     });
                     walk_chain(
-                        conn.in_node, node_map, outgoing, incoming,
-                        conditions, actions, entity_tag_ctx, warnings,
+                        conn.in_node,
+                        node_map,
+                        outgoing,
+                        incoming,
+                        conditions,
+                        actions,
+                        entity_tag_ctx,
+                        warnings,
                     );
                 }
             }
@@ -304,8 +319,14 @@ fn walk_chain(
                 for conn in conns {
                     if conn.out_port == "Found" || conn.out_port == "Out" {
                         walk_chain(
-                            conn.in_node, node_map, outgoing, incoming,
-                            conditions, actions, entity_tag_ctx, warnings,
+                            conn.in_node,
+                            node_map,
+                            outgoing,
+                            incoming,
+                            conditions,
+                            actions,
+                            entity_tag_ctx,
+                            warnings,
                         );
                     }
                 }
@@ -318,8 +339,14 @@ fn walk_chain(
                 for conn in conns {
                     if conn.out_port == "Successful" || conn.out_port == "Out" {
                         walk_chain(
-                            conn.in_node, node_map, outgoing, incoming,
-                            conditions, actions, entity_tag_ctx, warnings,
+                            conn.in_node,
+                            node_map,
+                            outgoing,
+                            incoming,
+                            conditions,
+                            actions,
+                            entity_tag_ctx,
+                            warnings,
                         );
                     }
                 }
@@ -328,8 +355,7 @@ fn walk_chain(
         }
         "Cmp_Int" => {
             // Conditional branch — resolve what property/value is being compared
-            let (property_name, compare_value) =
-                resolve_cmp_inputs(node_id, incoming, node_map);
+            let (property_name, compare_value) = resolve_cmp_inputs(node_id, incoming, node_map);
 
             if let Some(conns) = outgoing.get(&node_id) {
                 for conn in conns {
@@ -351,8 +377,14 @@ fn walk_chain(
                         });
                     }
                     walk_chain(
-                        conn.in_node, node_map, outgoing, incoming,
-                        conditions, actions, entity_tag_ctx, warnings,
+                        conn.in_node,
+                        node_map,
+                        outgoing,
+                        incoming,
+                        conditions,
+                        actions,
+                        entity_tag_ctx,
+                        warnings,
                     );
                 }
             }
@@ -374,8 +406,14 @@ fn walk_chain(
                 continue;
             }
             walk_chain(
-                conn.in_node, node_map, outgoing, incoming,
-                conditions, actions, entity_tag_ctx, warnings,
+                conn.in_node,
+                node_map,
+                outgoing,
+                incoming,
+                conditions,
+                actions,
+                entity_tag_ctx,
+                warnings,
             );
         }
     }
@@ -404,7 +442,10 @@ fn is_event_node(ref_name: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 fn convert_event_to_trigger(node: &ScriptNode) -> Option<SaveTriggerInput> {
-    let fire_once = node_prop(node, "Fire Only Once").as_deref().unwrap_or("false") == "true";
+    let fire_once = node_prop(node, "Fire Only Once")
+        .as_deref()
+        .unwrap_or("false")
+        == "true";
 
     let (event_type, event_key) = match node.ref_name.as_str() {
         "Event_Loaded" | "Event_ScriptLoaded" => ("player_loaded".to_string(), None),
@@ -479,8 +520,8 @@ fn convert_node_to_action(
             })
         }
         "Act_Dialog" | "Act_DisplayDialog" => {
-            let dialog_id = node_prop_i32(node, "Dialog Set")
-                .or_else(|| node_prop_i32(node, "Dialog Id"));
+            let dialog_id =
+                node_prop_i32(node, "Dialog Set").or_else(|| node_prop_i32(node, "Dialog Id"));
             Some(SaveActionInput {
                 action_type: "display_dialog".to_string(),
                 target_id: dialog_id,
@@ -515,8 +556,8 @@ fn convert_node_to_action(
             })
         }
         "Act_Sequence" | "Act_PlaySequence" => {
-            let seq_id = node_prop_i32(node, "Sequence Id")
-                .or_else(|| node_prop_i32(node, "Cinematic Id"));
+            let seq_id =
+                node_prop_i32(node, "Sequence Id").or_else(|| node_prop_i32(node, "Cinematic Id"));
             Some(SaveActionInput {
                 action_type: "play_sequence".to_string(),
                 target_id: seq_id,
@@ -915,10 +956,7 @@ mod tests {
                     vec![("Enabled", "true"), ("Interaction Type", "8388608")],
                 ),
             ],
-            vec![
-                make_conn(1, "Out", 2, "In"),
-                make_conn(2, "Found", 3, "In"),
-            ],
+            vec![make_conn(1, "Out", 2, "In"), make_conn(2, "Found", 3, "In")],
         );
 
         let result = convert_script(&script, &default_options());
@@ -1057,10 +1095,7 @@ mod tests {
         let result = convert_script(&script, &default_options());
         assert_eq!(result.chains.len(), 1);
         assert_eq!(result.chains[0].actions[0].action_type, "generate_threat");
-        assert_eq!(
-            result.chains[0].actions[0].params["threat_level"],
-            1000
-        );
+        assert_eq!(result.chains[0].actions[0].params["threat_level"], 1000);
     }
 
     #[test]
@@ -1068,24 +1103,32 @@ mod tests {
         // Pattern: Event → GetProperty → Var_Int(archetype) → Cmp_Int(A=archetype, B=8) → AddDialog
         let script = make_script(
             vec![
-                make_node(1, "Event_EntityInteract", vec![("Enabled", "true"), ("Tag", "Guard")]),
+                make_node(
+                    1,
+                    "Event_EntityInteract",
+                    vec![("Enabled", "true"), ("Tag", "Guard")],
+                ),
                 make_node(2, "Act_GetProperty", vec![("Enabled", "true")]),
-                make_node(3, "Var_Int", vec![("Enabled", "true")]),       // stores archetype
+                make_node(3, "Var_Int", vec![("Enabled", "true")]), // stores archetype
                 make_node(4, "Var_Int", vec![("Enabled", "true"), ("Value", "8")]), // constant
                 make_node(5, "Cmp_Int", vec![("Enabled", "true")]),
                 make_node(
                     6,
                     "Act_AddDialog",
-                    vec![("Enabled", "true"), ("Dialog Set Map", "5866"), ("Entity Template", "17")],
+                    vec![
+                        ("Enabled", "true"),
+                        ("Dialog Set Map", "5866"),
+                        ("Entity Template", "17"),
+                    ],
                 ),
             ],
             vec![
                 make_conn(1, "Out", 2, "In"),
-                make_conn(2, "Archetype", 3, "Set"),   // GetProperty.Archetype → Var_Int.Set
-                make_conn(2, "Successful", 5, "In"),    // GetProperty.Successful → Cmp_Int.In
-                make_conn(3, "Value", 5, "A"),          // Var_Int → Cmp_Int.A
-                make_conn(4, "Value", 5, "B"),          // Var_Int(8) → Cmp_Int.B
-                make_conn(5, "A == B", 6, "In"),        // Cmp_Int.A==B → AddDialog
+                make_conn(2, "Archetype", 3, "Set"), // GetProperty.Archetype → Var_Int.Set
+                make_conn(2, "Successful", 5, "In"), // GetProperty.Successful → Cmp_Int.In
+                make_conn(3, "Value", 5, "A"),       // Var_Int → Cmp_Int.A
+                make_conn(4, "Value", 5, "B"),       // Var_Int(8) → Cmp_Int.B
+                make_conn(5, "A == B", 6, "In"),     // Cmp_Int.A==B → AddDialog
             ],
         );
 
@@ -1095,7 +1138,10 @@ mod tests {
 
         let chain = &result.chains[0];
         // Should have an archetype condition
-        let arch_cond = chain.conditions.iter().find(|c| c.condition_type == "archetype");
+        let arch_cond = chain
+            .conditions
+            .iter()
+            .find(|c| c.condition_type == "archetype");
         assert!(arch_cond.is_some(), "expected archetype condition");
         let cond = arch_cond.unwrap();
         assert_eq!(cond.operator, "eq");
@@ -1119,10 +1165,7 @@ mod tests {
                     vec![("Enabled", "true"), ("String Id", "100")],
                 ),
             ],
-            vec![
-                make_conn(1, "Out", 2, "In"),
-                make_conn(2, "Value", 3, "In"),
-            ],
+            vec![make_conn(1, "Out", 2, "In"), make_conn(2, "Value", 3, "In")],
         );
 
         let result = convert_script(&script, &default_options());

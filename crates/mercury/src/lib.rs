@@ -8,15 +8,15 @@
 //! Additionally provides TCP inter-service framing via the Unified protocol
 //! (length-prefixed messages between Auth, Base, and Cell services).
 
-pub mod packet;
-pub mod channel;
-pub mod nub;
 pub mod bundle;
-pub mod unpacker;
-pub mod encryption;
-pub mod unified;
+pub mod channel;
 pub mod codec;
+pub mod encryption;
 pub mod messages;
+pub mod nub;
+pub mod packet;
+pub mod unified;
+pub mod unpacker;
 
 /// Mercury protocol constants — these MUST match the C++ implementation exactly.
 ///

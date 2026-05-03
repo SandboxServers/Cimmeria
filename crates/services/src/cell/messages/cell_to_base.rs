@@ -6,10 +6,7 @@ use super::data::{MailOp, NpcAoIData};
 #[derive(Debug)]
 pub enum CellToBaseMsg {
     /// Notification that a space exists (sent at startup and on dynamic creation).
-    SpaceData {
-        space_id: u32,
-        world_name: String,
-    },
+    SpaceData { space_id: u32, world_name: String },
 
     /// Response to `CreateEntity` — entity placed in a space.
     EntityCreated {
@@ -43,10 +40,7 @@ pub enum CellToBaseMsg {
     },
 
     /// An entity left a witness's Area of Interest.
-    LeftAoI {
-        witness_id: u32,
-        entity_id: u32,
-    },
+    LeftAoI { witness_id: u32, entity_id: u32 },
 
     /// Send a server→client entity method call to the entity's client.
     ///
@@ -103,10 +97,7 @@ pub enum CellToBaseMsg {
     /// The CellService computes the XP amount from the mob's level and sends
     /// this to BaseApp, which updates the player's XP/level and sends client
     /// notifications.
-    GrantXP {
-        entity_id: u32,
-        xp_amount: u64,
-    },
+    GrantXP { entity_id: u32, xp_amount: u64 },
 
     /// Grant an item to a player and persist to `sgw_inventory`.
     GrantItem {
@@ -302,10 +293,7 @@ pub enum CellToBaseMsg {
     /// `ClientHandler::leaveAoI(entity_id, deleteEntity=false)`. Used by the
     /// ring-transport hide phase; pair with a `WitnessEntityMethod` calling
     /// `onVisible(1)` to restore.
-    EntityInvisible {
-        witness_id: u32,
-        entity_id: u32,
-    },
+    EntityInvisible { witness_id: u32, entity_id: u32 },
 
     /// Start a minigame session for a player (Cell → Base).
     StartMinigame {

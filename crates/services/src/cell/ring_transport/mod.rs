@@ -32,11 +32,8 @@ mod tests;
 
 pub use regions::{load_ring_regions, RingRegion};
 pub use runtime::{
-    handle_interact, handle_region_trigger, handle_select_destination,
-    run_tick_with_engine,
+    handle_interact, handle_region_trigger, handle_select_destination, run_tick_with_engine,
 };
-pub use transporter::{
-    Effect, RegionEvent, RingTransporter, RingTransporterManager, State,
-};
+pub use transporter::{Effect, RegionEvent, RingTransporter, RingTransporterManager, State};
 pub use wire::{build_on_ring_transporter_list, encode_region_info};
 pub use wire_helpers::{BSF_MOVEMENT_LOCK, METHOD_ON_RING_TRANSPORTER_LIST};

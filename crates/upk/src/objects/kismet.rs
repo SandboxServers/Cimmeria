@@ -3,7 +3,7 @@
 //! Parses UE3 Kismet visual script nodes (SeqEvent_*, SeqAct_*, SeqCond_*, SeqVar_*,
 //! Sequence) and reconstructs the wiring graph for content chain conversion.
 
-use byteorder::{LittleEndian, ByteOrder};
+use byteorder::{ByteOrder, LittleEndian};
 use std::collections::HashMap;
 
 use crate::names::NameEntry;
@@ -11,9 +11,7 @@ use crate::package::Package;
 use crate::properties::{self, PropValue, TaggedProperty};
 
 /// Kismet class prefixes for identifying Kismet exports.
-const KISMET_PREFIXES: &[&str] = &[
-    "Sequence", "SeqAct_", "SeqEvent_", "SeqCond_", "SeqVar_",
-];
+const KISMET_PREFIXES: &[&str] = &["Sequence", "SeqAct_", "SeqEvent_", "SeqCond_", "SeqVar_"];
 
 /// Check if a class name is a Kismet sequence class.
 pub fn is_kismet_class(class_name: &str) -> bool {
@@ -217,9 +215,15 @@ fn parse_kismet_node(
 
     // Grab extra server-relevant properties
     for key in &[
-        "EventName", "bOpen", "Duration", "PlayRate",
-        "bEnabled", "bClientSideOnly", "MaxTriggerCount",
-        "ReTriggerDelay", "Originator",
+        "EventName",
+        "bOpen",
+        "Duration",
+        "PlayRate",
+        "bEnabled",
+        "bClientSideOnly",
+        "MaxTriggerCount",
+        "ReTriggerDelay",
+        "Originator",
     ] {
         if let Some(val) = extract_kismet_prop(&props, key) {
             node.properties.insert(key.to_string(), val);
@@ -282,7 +286,8 @@ fn parse_link_array(
                     if inner_pos >= inner_data.len() {
                         break;
                     }
-                    let (inner_props, np) = parse_nested_tagged_props(&inner_data, inner_pos, names);
+                    let (inner_props, np) =
+                        parse_nested_tagged_props(&inner_data, inner_pos, names);
                     inner_pos = np;
 
                     let target_op = find_object_prop(&inner_props, "LinkedOp").unwrap_or(0);
@@ -333,7 +338,11 @@ fn parse_link_array(
 
 /// Parse tagged properties from a byte buffer (nested within an array element).
 /// Returns (properties, new_position).
-fn parse_nested_tagged_props(data: &[u8], offset: usize, names: &[NameEntry]) -> (Vec<TaggedProperty>, usize) {
+fn parse_nested_tagged_props(
+    data: &[u8],
+    offset: usize,
+    names: &[NameEntry],
+) -> (Vec<TaggedProperty>, usize) {
     let props = properties::parse_tagged_properties(data, offset, names);
 
     // Calculate how far we consumed. We need to find the "None" terminator position.
@@ -456,8 +465,10 @@ fn find_array_prop(props: &[TaggedProperty], name: &str) -> Option<Vec<u8>> {
 
 /// Extract a server-relevant property as a KismetPropValue.
 fn extract_kismet_prop(props: &[TaggedProperty], name: &str) -> Option<KismetPropValue> {
-    props.iter().find(|p| p.name == name).and_then(|p| {
-        match &p.value {
+    props
+        .iter()
+        .find(|p| p.name == name)
+        .and_then(|p| match &p.value {
             PropValue::Int(v) => Some(KismetPropValue::Int(*v)),
             PropValue::Float(v) => Some(KismetPropValue::Float(*v)),
             PropValue::Bool(v) => Some(KismetPropValue::Bool(*v)),
@@ -465,6 +476,5 @@ fn extract_kismet_prop(props: &[TaggedProperty], name: &str) -> Option<KismetPro
             PropValue::Name(v) => Some(KismetPropValue::Name(v.clone())),
             PropValue::Object(v) => Some(KismetPropValue::Object(*v)),
             _ => None,
-        }
-    })
+        })
 }

@@ -234,8 +234,7 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:9000".parse().unwrap();
         let ch = nub.get_or_create_channel(addr);
         // Backdate last_sent past the keepalive window.
-        ch.last_sent = Instant::now()
-            - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
+        ch.last_sent = Instant::now() - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
 
         let actions = nub.tick();
 
@@ -257,8 +256,7 @@ mod tests {
         let mut nub = nub().await;
         let addr: SocketAddr = "127.0.0.1:9001".parse().unwrap();
         let ch = nub.get_or_create_channel(addr);
-        ch.last_sent = Instant::now()
-            - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
+        ch.last_sent = Instant::now() - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
 
         let first = nub.tick();
         assert_eq!(first.keepalives, vec![addr]);
@@ -266,14 +264,19 @@ mod tests {
         // No touch_sent in between — adjacent tick still flags the same
         // address (caller hasn't confirmed the send).
         let second = nub.tick();
-        assert_eq!(second.keepalives, vec![addr],
-            "without caller touch_sent, tick must re-flag the dropped action");
+        assert_eq!(
+            second.keepalives,
+            vec![addr],
+            "without caller touch_sent, tick must re-flag the dropped action"
+        );
 
         // Now simulate the caller emitting + acknowledging the send.
         nub.get_channel_mut(&addr).unwrap().touch_sent();
         let third = nub.tick();
-        assert!(third.keepalives.is_empty(),
-            "after caller touch_sent, tick must not re-schedule");
+        assert!(
+            third.keepalives.is_empty(),
+            "after caller touch_sent, tick must not re-schedule"
+        );
     }
 
     #[tokio::test]
@@ -284,12 +287,11 @@ mod tests {
         ch.send_packet(test_packet()).unwrap();
         // Backdate the entry's last_sent past the ACK_TIMEOUT_MS window
         // so check_timeouts considers it expired.
-        ch.tx_window[0].last_sent = Instant::now()
-            - Duration::from_millis(consts::ACK_TIMEOUT_MS + 100);
+        ch.tx_window[0].last_sent =
+            Instant::now() - Duration::from_millis(consts::ACK_TIMEOUT_MS + 100);
         // Also backdate last_sent so we can see whether retransmits skip
         // re-flagging keepalive (they should — check_timeouts bumps last_sent).
-        ch.last_sent = Instant::now()
-            - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
+        ch.last_sent = Instant::now() - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
 
         let actions = nub.tick();
 
@@ -316,15 +318,20 @@ mod tests {
         // Pre-set retransmit_count to MAX_RETRIES - 1 and backdate so
         // check_timeouts will bump it to exactly MAX_RETRIES on this tick.
         ch.tx_window[0].retransmit_count = consts::MAX_RETRIES - 1;
-        ch.tx_window[0].last_sent = Instant::now()
-            - Duration::from_millis(consts::ACK_TIMEOUT_MS + 100);
+        ch.tx_window[0].last_sent =
+            Instant::now() - Duration::from_millis(consts::ACK_TIMEOUT_MS + 100);
 
         let actions = nub.tick();
 
-        assert_eq!(actions.retransmits.len(), 1,
-            "MAX_RETRIES'th retry must still go on the wire");
-        assert!(actions.dead_channels.is_empty(),
-            "channel must NOT be reaped on the same tick its packet hit MAX_RETRIES");
+        assert_eq!(
+            actions.retransmits.len(),
+            1,
+            "MAX_RETRIES'th retry must still go on the wire"
+        );
+        assert!(
+            actions.dead_channels.is_empty(),
+            "channel must NOT be reaped on the same tick its packet hit MAX_RETRIES"
+        );
         assert_eq!(nub.channel_count(), 1);
     }
 
@@ -352,8 +359,8 @@ mod tests {
         // this, abandoned reassembly state would accumulate per channel
         // until the channel itself dies — and a chatty peer streaming
         // fragments would keep the channel alive indefinitely.
-        use bytes::Bytes;
         use crate::packet::{build_outgoing_fragmented, parse_incoming};
+        use bytes::Bytes;
 
         let mut nub = nub().await;
         let addr: SocketAddr = "127.0.0.1:9006".parse().unwrap();
@@ -377,18 +384,14 @@ mod tests {
         // that completing the bundle now requires all three fragments —
         // a stale-buffered f0 would have caused a duplicate-fragment
         // dedup that never completes.
-        let f0 = parse_incoming(
-            &build_outgoing_fragmented(0, b"part-1", 60, 60, 62, &[])
-        ).unwrap();
-        let f1 = parse_incoming(
-            &build_outgoing_fragmented(0, b"part-2", 61, 60, 62, &[])
-        ).unwrap();
-        let f2 = parse_incoming(
-            &build_outgoing_fragmented(0, b"part-3", 62, 60, 62, &[])
-        ).unwrap();
+        let f0 = parse_incoming(&build_outgoing_fragmented(0, b"part-1", 60, 60, 62, &[])).unwrap();
+        let f1 = parse_incoming(&build_outgoing_fragmented(0, b"part-2", 61, 60, 62, &[])).unwrap();
+        let f2 = parse_incoming(&build_outgoing_fragmented(0, b"part-3", 62, 60, 62, &[])).unwrap();
         assert!(ch.reassemble_parsed(&f0).unwrap().is_none());
         assert!(ch.reassemble_parsed(&f1).unwrap().is_none());
-        let body = ch.reassemble_parsed(&f2).unwrap()
+        let body = ch
+            .reassemble_parsed(&f2)
+            .unwrap()
             .expect("post-cleanup, the bundle completes from scratch");
         assert_eq!(body.as_ref(), Bytes::from_static(b"part-1part-2part-3"));
 
@@ -406,17 +409,22 @@ mod tests {
         let ch = nub.get_or_create_channel(addr);
         // Make this channel both pruneable AND keepalive-eligible — only
         // the prune outcome should appear in actions.
-        ch.last_received = Instant::now()
-            - Duration::from_millis(consts::INACTIVITY_TIMEOUT_MS + 100);
-        ch.last_sent = Instant::now()
-            - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
+        ch.last_received =
+            Instant::now() - Duration::from_millis(consts::INACTIVITY_TIMEOUT_MS + 100);
+        ch.last_sent = Instant::now() - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
 
         let actions = nub.tick();
 
         assert_eq!(actions.dead_channels.len(), 1);
         assert_eq!(actions.dead_channels[0].0, addr);
-        assert!(actions.keepalives.is_empty(),
-            "pruned channel must not also be keepalive-scheduled");
-        assert_eq!(nub.channel_count(), 0, "dead channel should be removed from registry");
+        assert!(
+            actions.keepalives.is_empty(),
+            "pruned channel must not also be keepalive-scheduled"
+        );
+        assert_eq!(
+            nub.channel_count(),
+            0,
+            "dead channel should be removed from registry"
+        );
     }
 }

@@ -15,9 +15,7 @@ use commands::AppState;
 use config::LauncherConfig;
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())

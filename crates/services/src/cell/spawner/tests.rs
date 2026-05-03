@@ -1,5 +1,5 @@
-use super::*;
 use super::super::space_manager::SpaceManager;
+use super::*;
 
 fn make_manager_with_worlds() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
@@ -23,7 +23,9 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
     SpawnRecord {
         spawn_id: 1,
         world_name: world_name.to_string(),
-        x: 10.0, y: 0.0, z: 20.0,
+        x: 10.0,
+        y: 0.0,
+        z: 20.0,
         heading: 1.57,
         tag: tag.map(|t| t.to_string()),
         template_id: 14,

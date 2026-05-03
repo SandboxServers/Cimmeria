@@ -1,7 +1,7 @@
-use tokio::sync::mpsc;
 use cimmeria_entity::abilities::AbilityDef;
 use cimmeria_entity::cell_entity::BandolierItem;
 use cimmeria_entity::stats::{AMMO_SLOT_1, AMMO_SLOT_2};
+use tokio::sync::mpsc;
 
 use crate::cell::abilities::handle_use_ability;
 use crate::cell::messages::CellToBaseMsg;
@@ -23,22 +23,25 @@ fn make_test_space_mgr() -> SpaceManager {
 /// Register a no-warmup, ranged ability with `required_ammo = 1` and no
 /// event-set (silences onSequence noise during tests).
 fn register_test_fire_ability(mgr: &mut SpaceManager, ability_id: i32) {
-    mgr.ability_defs.insert(ability_id, AbilityDef {
+    mgr.ability_defs.insert(
         ability_id,
-        name: format!("test_fire_{ability_id}"),
-        cooldown: 0.001, // very short so back-to-back fires aren't gated
-        warmup: 0.0,
-        flags: 0,
-        is_ranged: true,
-        min_range: 0,
-        max_range: 30,
-        target_type_id: 0,
-        effect_ids: vec![],
-        moniker_ids: vec![],
-        required_ammo: 1,
-        event_set_id: None,
-        velocity: 0.0,
-    });
+        AbilityDef {
+            ability_id,
+            name: format!("test_fire_{ability_id}"),
+            cooldown: 0.001, // very short so back-to-back fires aren't gated
+            warmup: 0.0,
+            flags: 0,
+            is_ranged: true,
+            min_range: 0,
+            max_range: 30,
+            target_type_id: 0,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            required_ammo: 1,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
 }
 
 /// Stage E: per-slot ammo must survive an active-slot swap.
@@ -51,7 +54,8 @@ fn register_test_fire_ability(mgr: &mut SpaceManager, ability_id: i32) {
 #[tokio::test]
 async fn slot_swap_preserves_per_slot_ammo() {
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     let ability_id = 5001;
     register_test_fire_ability(&mut mgr, ability_id);
@@ -61,17 +65,35 @@ async fn slot_swap_preserves_per_slot_ammo() {
         e.is_player = true;
         e.player_id = Some(100);
         e.abilities.add_ability(ability_id);
-        e.bandolier_items.insert(0, BandolierItem {
-            item_id: 10, clip_size: 30, default_ammo_type: 1,
-            current_ammo: 30, cur_ammo_type: 1,
-        });
-        e.bandolier_items.insert(1, BandolierItem {
-            item_id: 11, clip_size: 12, default_ammo_type: 7,
-            current_ammo: 12, cur_ammo_type: 7,
-        });
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        );
+        e.bandolier_items.insert(
+            1,
+            BandolierItem {
+                item_id: 11,
+                clip_size: 12,
+                default_ammo_type: 7,
+                current_ammo: 12,
+                cur_ammo_type: 7,
+            },
+        );
         e.active_bandolier_slot = 0;
-        if let Some(s) = e.stats.get_mut(AMMO_SLOT_1) { s.update(0, 30, 30); s.clear_dirty(); }
-        if let Some(s) = e.stats.get_mut(AMMO_SLOT_2) { s.update(0, 12, 12); s.clear_dirty(); }
+        if let Some(s) = e.stats.get_mut(AMMO_SLOT_1) {
+            s.update(0, 30, 30);
+            s.clear_dirty();
+        }
+        if let Some(s) = e.stats.get_mut(AMMO_SLOT_2) {
+            s.update(0, 12, 12);
+            s.clear_dirty();
+        }
     }
 
     let (tx, mut rx) = mpsc::channel(64);
@@ -84,7 +106,10 @@ async fn slot_swap_preserves_per_slot_ammo() {
         e.abilities.clear_all_cooldowns();
     }
     handle_use_ability(1, ability_id, 0, &tx, &mut mgr).await;
-    assert_eq!(mgr.get_entity(1).unwrap().bandolier_items[&0].current_ammo, 28);
+    assert_eq!(
+        mgr.get_entity(1).unwrap().bandolier_items[&0].current_ammo,
+        28
+    );
 
     // Drain rx so the swap-message assertions below can scan a clean buffer.
     while rx.try_recv().is_ok() {}
@@ -95,16 +120,35 @@ async fn slot_swap_preserves_per_slot_ammo() {
     swap_args.extend_from_slice(&3i32.to_le_bytes());
     swap_args.extend_from_slice(&1i32.to_le_bytes());
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
-    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &swap_args, &tx, &mut mgr, &engine).await;
+    dispatch(
+        1,
+        REQUEST_ACTIVE_SLOT_CHANGE,
+        &swap_args,
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
 
     // Stage D message order on swap: BandolierAmmoUpdate(prev=0, ammo=28)
     // → ActiveSlotUpdate(1) → onEntityProperty(AmmoTypeId, slot1.cur_ammo_type=7).
-    let m1 = rx.try_recv().expect("expected BandolierAmmoUpdate(prev slot)");
+    let m1 = rx
+        .try_recv()
+        .expect("expected BandolierAmmoUpdate(prev slot)");
     match m1 {
-        CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type } => {
+        CellToBaseMsg::BandolierAmmoUpdate {
+            player_id,
+            slot_id,
+            expected_item_id,
+            current_ammo,
+            cur_ammo_type,
+        } => {
             assert_eq!(player_id, 100);
             assert_eq!(slot_id, 0, "first swap msg should flush prev slot 0");
-            assert_eq!(expected_item_id, 10, "should carry slot 0's item_id for TOCTOU guard");
+            assert_eq!(
+                expected_item_id, 10,
+                "should carry slot 0's item_id for TOCTOU guard"
+            );
             assert_eq!(current_ammo, 28);
             assert_eq!(cur_ammo_type, 1);
         }
@@ -118,9 +162,15 @@ async fn slot_swap_preserves_per_slot_ammo() {
         }
         other => panic!("expected ActiveSlotUpdate, got {other:?}"),
     }
-    let m3 = rx.try_recv().expect("expected onEntityProperty(AmmoTypeId)");
+    let m3 = rx
+        .try_recv()
+        .expect("expected onEntityProperty(AmmoTypeId)");
     match m3 {
-        CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } => {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
             assert_eq!(entity_id, 1);
             assert_eq!(
                 method_index,
@@ -140,19 +190,40 @@ async fn slot_swap_preserves_per_slot_ammo() {
         e.abilities.clear_all_cooldowns();
     }
     handle_use_ability(1, ability_id, 0, &tx, &mut mgr).await;
-    assert_eq!(mgr.get_entity(1).unwrap().bandolier_items[&1].current_ammo, 11);
+    assert_eq!(
+        mgr.get_entity(1).unwrap().bandolier_items[&1].current_ammo,
+        11
+    );
 
     // ── Swap back to slot 0 ─────────────────────────────────────────
     let mut swap_back = Vec::with_capacity(8);
     swap_back.extend_from_slice(&3i32.to_le_bytes());
     swap_back.extend_from_slice(&0i32.to_le_bytes());
-    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &swap_back, &tx, &mut mgr, &engine).await;
+    dispatch(
+        1,
+        REQUEST_ACTIVE_SLOT_CHANGE,
+        &swap_back,
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
 
     // Slot 0's ammo is preserved across the swap.
     let entity = mgr.get_entity(1).unwrap();
-    assert_eq!(entity.bandolier_items[&0].current_ammo, 28, "slot 0 ammo preserved across swap");
-    assert_eq!(entity.bandolier_items[&1].current_ammo, 11, "slot 1 ammo preserved across swap");
-    assert_eq!(entity.stats.get(AMMO_SLOT_1).unwrap().cur, 28, "AmmoSlot1 stat still reads 28");
+    assert_eq!(
+        entity.bandolier_items[&0].current_ammo, 28,
+        "slot 0 ammo preserved across swap"
+    );
+    assert_eq!(
+        entity.bandolier_items[&1].current_ammo, 11,
+        "slot 1 ammo preserved across swap"
+    );
+    assert_eq!(
+        entity.stats.get(AMMO_SLOT_1).unwrap().cur,
+        28,
+        "AmmoSlot1 stat still reads 28"
+    );
     assert_eq!(entity.active_bandolier_slot, 0);
 }
 
@@ -166,24 +237,35 @@ async fn slot_swap_cancels_in_flight_reload() {
     use cimmeria_entity::cell_entity::BandolierItem;
 
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
-        e.bandolier_items.insert(0, BandolierItem {
-            item_id: 10, clip_size: 30, default_ammo_type: 1,
-            current_ammo: 5, cur_ammo_type: 1,
-        });
-        e.bandolier_items.insert(1, BandolierItem {
-            item_id: 11, clip_size: 12, default_ammo_type: 7,
-            current_ammo: 8, cur_ammo_type: 7,
-        });
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 5,
+                cur_ammo_type: 1,
+            },
+        );
+        e.bandolier_items.insert(
+            1,
+            BandolierItem {
+                item_id: 11,
+                clip_size: 12,
+                default_ammo_type: 7,
+                current_ammo: 8,
+                cur_ammo_type: 7,
+            },
+        );
         e.active_bandolier_slot = 0;
         // Simulate a reload of slot 0 currently warming up.
-        e.reload_complete_at = Some(
-            std::time::Instant::now() + std::time::Duration::from_secs(10),
-        );
+        e.reload_complete_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
         e.reload_slot_id = Some(0);
     }
     mgr.connect_entity(1);
@@ -198,10 +280,22 @@ async fn slot_swap_cancels_in_flight_reload() {
     dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &swap, &tx, &mut mgr, &engine).await;
 
     let entity = mgr.get_entity(1).unwrap();
-    assert!(entity.reload_complete_at.is_none(), "swap should cancel in-flight reload");
-    assert!(entity.reload_slot_id.is_none(), "swap should clear pinned slot");
-    assert_eq!(entity.bandolier_items[&0].current_ammo, 5, "cancelled reload must NOT refill slot 0");
-    assert_eq!(entity.bandolier_items[&1].current_ammo, 8, "slot 1 untouched");
+    assert!(
+        entity.reload_complete_at.is_none(),
+        "swap should cancel in-flight reload"
+    );
+    assert!(
+        entity.reload_slot_id.is_none(),
+        "swap should clear pinned slot"
+    );
+    assert_eq!(
+        entity.bandolier_items[&0].current_ammo, 5,
+        "cancelled reload must NOT refill slot 0"
+    );
+    assert_eq!(
+        entity.bandolier_items[&1].current_ammo, 8,
+        "slot 1 untouched"
+    );
     assert_eq!(entity.active_bandolier_slot, 1);
 
     // Drain the rx so the channel doesn't error if assertions above
@@ -216,15 +310,22 @@ async fn slot_swap_cancels_in_flight_reload() {
 #[tokio::test]
 async fn request_ammo_change_updates_slot_and_sends_property() {
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
-        e.bandolier_items.insert(0, BandolierItem {
-            item_id: 42, clip_size: 30, default_ammo_type: 1,
-            current_ammo: 20, cur_ammo_type: 1,
-        });
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 42,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 20,
+                cur_ammo_type: 1,
+            },
+        );
         e.active_bandolier_slot = 0;
     }
 
@@ -241,15 +342,27 @@ async fn request_ammo_change_updates_slot_and_sends_property() {
     // Slot mutated, dirty NOT set (drained immediately by the handler).
     let entity = mgr.get_entity(1).unwrap();
     assert_eq!(entity.bandolier_items[&0].cur_ammo_type, 3);
-    assert!(!entity.bandolier_ammo_dirty.contains(&0), "dirty flag should be drained immediately");
+    assert!(
+        !entity.bandolier_ammo_dirty.contains(&0),
+        "dirty flag should be drained immediately"
+    );
 
     // First message: BandolierAmmoUpdate carrying the new type + existing ammo.
     let m1 = rx.try_recv().expect("expected BandolierAmmoUpdate");
     match m1 {
-        CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type } => {
+        CellToBaseMsg::BandolierAmmoUpdate {
+            player_id,
+            slot_id,
+            expected_item_id,
+            current_ammo,
+            cur_ammo_type,
+        } => {
             assert_eq!(player_id, 100);
             assert_eq!(slot_id, 0);
-            assert_eq!(expected_item_id, 42, "should carry the slot's item_id for TOCTOU guard");
+            assert_eq!(
+                expected_item_id, 42,
+                "should carry the slot's item_id for TOCTOU guard"
+            );
             assert_eq!(current_ammo, 20);
             assert_eq!(cur_ammo_type, 3);
         }
@@ -259,7 +372,11 @@ async fn request_ammo_change_updates_slot_and_sends_property() {
     // Second message: onEntityProperty(AmmoTypeId, 3) since slot is active.
     let m2 = rx.try_recv().expect("expected onEntityProperty");
     match m2 {
-        CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } => {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
             assert_eq!(entity_id, 1);
             assert_eq!(
                 method_index,
@@ -286,15 +403,22 @@ async fn request_ammo_change_updates_slot_and_sends_property() {
 async fn request_ammo_change_rejects_non_positive() {
     for bad_ammo_type in [0i32, -1, -42] {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
 
         if let Some(e) = mgr.get_entity_mut(1) {
             e.is_player = true;
             e.player_id = Some(100);
-            e.bandolier_items.insert(0, BandolierItem {
-                item_id: 42, clip_size: 30, default_ammo_type: 1,
-                current_ammo: 20, cur_ammo_type: 1,
-            });
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 42,
+                    clip_size: 30,
+                    default_ammo_type: 1,
+                    current_ammo: 20,
+                    cur_ammo_type: 1,
+                },
+            );
             e.active_bandolier_slot = 0;
         }
 
@@ -307,13 +431,23 @@ async fn request_ammo_change_rejects_non_positive() {
         let engine = cimmeria_content_engine::chain::ChainEngine::new();
         let handled = dispatch(1, REQUEST_AMMO_CHANGE, &args, &tx, &mut mgr, &engine).await;
 
-        assert!(handled, "REQUEST_AMMO_CHANGE should be claimed (bad_ammo_type={bad_ammo_type})");
-        assert!(rx.try_recv().is_err(), "no rx messages for bad_ammo_type={bad_ammo_type}");
+        assert!(
+            handled,
+            "REQUEST_AMMO_CHANGE should be claimed (bad_ammo_type={bad_ammo_type})"
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "no rx messages for bad_ammo_type={bad_ammo_type}"
+        );
         let entity = mgr.get_entity(1).unwrap();
-        assert_eq!(entity.bandolier_items[&0].cur_ammo_type, 1,
-            "cur_ammo_type should be unchanged for bad_ammo_type={bad_ammo_type}");
-        assert!(!entity.bandolier_ammo_dirty.contains(&0),
-            "no dirty flag for bad_ammo_type={bad_ammo_type}");
+        assert_eq!(
+            entity.bandolier_items[&0].cur_ammo_type, 1,
+            "cur_ammo_type should be unchanged for bad_ammo_type={bad_ammo_type}"
+        );
+        assert!(
+            !entity.bandolier_ammo_dirty.contains(&0),
+            "no dirty flag for bad_ammo_type={bad_ammo_type}"
+        );
     }
 }
 
@@ -327,22 +461,32 @@ async fn request_ammo_change_rejects_unlisted_subtype() {
     use crate::cell::spawner::WeaponDef;
 
     let mut mgr = make_test_space_mgr();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
     // Seed the item_defs cache so the validation runs (without an
     // entry, the handler falls through and accepts any positive value).
-    mgr.item_defs.insert(42, WeaponDef {
-        clip_size: 30,
-        default_ammo_type: 1,
-        allowed_ammo_types: vec![1, 3, 5],  // 7 not allowed
-    });
+    mgr.item_defs.insert(
+        42,
+        WeaponDef {
+            clip_size: 30,
+            default_ammo_type: 1,
+            allowed_ammo_types: vec![1, 3, 5], // 7 not allowed
+        },
+    );
 
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
-        e.bandolier_items.insert(0, BandolierItem {
-            item_id: 42, clip_size: 30, default_ammo_type: 1,
-            current_ammo: 20, cur_ammo_type: 1,
-        });
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 42,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 20,
+                cur_ammo_type: 1,
+            },
+        );
         e.active_bandolier_slot = 0;
     }
 
@@ -357,9 +501,15 @@ async fn request_ammo_change_rejects_unlisted_subtype() {
     let handled = dispatch(1, REQUEST_AMMO_CHANGE, &args, &tx, &mut mgr, &engine).await;
 
     assert!(handled);
-    assert!(rx.try_recv().is_err(), "no rx messages for unlisted ammo_type");
+    assert!(
+        rx.try_recv().is_err(),
+        "no rx messages for unlisted ammo_type"
+    );
     let entity = mgr.get_entity(1).unwrap();
-    assert_eq!(entity.bandolier_items[&0].cur_ammo_type, 1, "cur_ammo_type unchanged");
+    assert_eq!(
+        entity.bandolier_items[&0].cur_ammo_type, 1,
+        "cur_ammo_type unchanged"
+    );
     assert!(!entity.bandolier_ammo_dirty.contains(&0));
 }
 
@@ -373,7 +523,8 @@ async fn request_active_slot_change_rejects_out_of_range_slot() {
 
     for bad_slot in [-1i32, 5, 99, i32::MAX] {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
 
         if let Some(e) = mgr.get_entity_mut(1) {
             e.is_player = true;
@@ -386,14 +537,21 @@ async fn request_active_slot_change_rejects_out_of_range_slot() {
         let engine = build_engine(None).await;
 
         let mut args = Vec::with_capacity(8);
-        args.extend_from_slice(&3i32.to_le_bytes());      // bag_id = 3
-        args.extend_from_slice(&bad_slot.to_le_bytes());  // out-of-range slot
+        args.extend_from_slice(&3i32.to_le_bytes()); // bag_id = 3
+        args.extend_from_slice(&bad_slot.to_le_bytes()); // out-of-range slot
 
         let handled = dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
-        assert!(handled, "handler claims the index even when slot is invalid (bad_slot={bad_slot})");
-        assert!(rx.try_recv().is_err(), "no messages emitted for bad_slot={bad_slot}");
+        assert!(
+            handled,
+            "handler claims the index even when slot is invalid (bad_slot={bad_slot})"
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "no messages emitted for bad_slot={bad_slot}"
+        );
         assert_eq!(
-            mgr.get_entity(1).unwrap().active_bandolier_slot, 0,
+            mgr.get_entity(1).unwrap().active_bandolier_slot,
+            0,
             "active_bandolier_slot must not change for bad_slot={bad_slot}"
         );
     }

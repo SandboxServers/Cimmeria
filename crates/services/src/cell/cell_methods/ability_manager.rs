@@ -1,8 +1,8 @@
 //! SGWAbilityManager interface exposed CellMethods (indices 2–4).
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 /// Toggle combat debug overlay.
 pub const TOGGLE_COMBAT_DEBUG: u16 = 2;

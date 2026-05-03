@@ -45,7 +45,8 @@ pub fn generate_threat(
         if target.ai_state == AiState::Idle {
             target.ai_state = AiState::Fighting;
             tracing::info!(
-                npc_id = target_id, attacker = attacker_id,
+                npc_id = target_id,
+                attacker = attacker_id,
                 "NPC aggro: Idle -> Fighting"
             );
         }
@@ -87,7 +88,9 @@ pub fn enter_player_combat(
         player.state_field |= super::state::BSF_IN_COMBAT;
         if player.state_field != old {
             tracing::debug!(
-                player_id, mob_id, new_state = player.state_field,
+                player_id,
+                mob_id,
+                new_state = player.state_field,
                 "enter_player_combat: BSF_InCombat set (first threatened mob)"
             );
             return Some(player.state_field);
@@ -120,7 +123,9 @@ pub fn exit_player_combat(
         player.state_field &= !super::state::BSF_IN_COMBAT;
         if player.state_field != old {
             tracing::debug!(
-                player_id, mob_id, new_state = player.state_field,
+                player_id,
+                mob_id,
+                new_state = player.state_field,
                 "exit_player_combat: BSF_InCombat cleared (last threatened mob removed)"
             );
             return Some(player.state_field);
@@ -184,22 +189,26 @@ mod tests {
 
         // Create a player entity (mark is_player so the new threat helpers
         // recognize it; create_entity defaults to is_player=false).
-        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
         mgr.get_entity_mut(1).unwrap().is_player = true;
 
         // Create an NPC entity
-        mgr.spawn_npc(100, "Agnos", [15.0, 0.0, 15.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(100, "Agnos", [15.0, 0.0, 15.0], [0.0; 3])
+            .unwrap();
 
         mgr
     }
 
     fn add_player(mgr: &mut SpaceManager, id: u32, x: f32) {
-        mgr.create_entity(id, "Agnos", [x, 0.0, 10.0], [0.0; 3]).unwrap();
+        mgr.create_entity(id, "Agnos", [x, 0.0, 10.0], [0.0; 3])
+            .unwrap();
         mgr.get_entity_mut(id).unwrap().is_player = true;
     }
 
     fn add_npc(mgr: &mut SpaceManager, id: u32, x: f32) {
-        mgr.spawn_npc(id, "Agnos", [x, 0.0, 15.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(id, "Agnos", [x, 0.0, 15.0], [0.0; 3])
+            .unwrap();
     }
 
     // ── generate_threat: NPC-side state preserved from pre-#92 behavior ────
@@ -241,7 +250,9 @@ mod tests {
         assert_eq!(npc.threat_list[&1], 50.0);
         assert_eq!(npc.threat_list[&2], 100.0);
 
-        let top = npc.threat_list.iter()
+        let top = npc
+            .threat_list
+            .iter()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
             .map(|(&id, _)| id);
         assert_eq!(top, Some(2));
@@ -285,7 +296,11 @@ mod tests {
         let player = mgr.get_entity(1).unwrap();
         assert!(player.threatened_mobs.contains(&100));
         assert_eq!(player.threatened_mobs.len(), 1);
-        assert_ne!(player.state_field & BSF_IN_COMBAT, 0, "BSF_InCombat must be set");
+        assert_ne!(
+            player.state_field & BSF_IN_COMBAT,
+            0,
+            "BSF_InCombat must be set"
+        );
         assert_eq!(result, Some(player.state_field));
     }
 
@@ -336,7 +351,11 @@ mod tests {
 
         let player = mgr.get_entity(1).unwrap();
         assert!(player.threatened_mobs.is_empty());
-        assert_eq!(player.state_field & BSF_IN_COMBAT, 0, "BSF_InCombat must be cleared");
+        assert_eq!(
+            player.state_field & BSF_IN_COMBAT,
+            0,
+            "BSF_InCombat must be cleared"
+        );
         assert_eq!(result, Some(player.state_field));
     }
 
@@ -380,7 +399,10 @@ mod tests {
         let mut mgr = make_test_space_mgr_with_npc();
 
         let result = generate_threat(&mut mgr, 1, 100, 50.0);
-        assert!(result.is_some(), "first aggro must return new state for broadcast");
+        assert!(
+            result.is_some(),
+            "first aggro must return new state for broadcast"
+        );
 
         let player = mgr.get_entity(1).unwrap();
         assert!(player.threatened_mobs.contains(&100));
@@ -422,7 +444,10 @@ mod tests {
 
         let to_broadcast = clear_dead_npc_from_all_player_threat(&mut mgr, 100);
         assert_eq!(to_broadcast.len(), 1);
-        assert_eq!(to_broadcast[0].0, 1, "player_id must be in the broadcast list");
+        assert_eq!(
+            to_broadcast[0].0, 1,
+            "player_id must be in the broadcast list"
+        );
 
         let player = mgr.get_entity(1).unwrap();
         assert!(player.threatened_mobs.is_empty());
@@ -440,7 +465,10 @@ mod tests {
 
         // NPC 100 dies — player still has 101 on the list.
         let to_broadcast = clear_dead_npc_from_all_player_threat(&mut mgr, 100);
-        assert!(to_broadcast.is_empty(), "no broadcast: player still in combat");
+        assert!(
+            to_broadcast.is_empty(),
+            "no broadcast: player still in combat"
+        );
 
         let player = mgr.get_entity(1).unwrap();
         assert_eq!(player.threatened_mobs.len(), 1);

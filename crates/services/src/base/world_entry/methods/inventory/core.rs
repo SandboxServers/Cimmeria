@@ -6,12 +6,12 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use crate::base::outbox::{self, CellOutboxPayload};
-use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{build_entity_method_packet, method_idx};
 use super::super::super::super::helpers::send_to_witness;
 use super::super::super::super::ConnectedClientState;
 use super::super::vendor::helpers::sync_bandolier_after_inventory_change;
+use crate::base::outbox::{self, CellOutboxPayload};
+use crate::cell::messages::BaseToCellMsg;
+use crate::mercury::{build_entity_method_packet, method_idx};
 
 const INVENTORY_ITEM_SELECT: &str = r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
@@ -74,22 +74,23 @@ pub async fn send_full_inventory_update(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> usize {
-    let all_items: Vec<InventoryRow> =
-        match sqlx::query_as::<_, InventoryRow>(INVENTORY_ITEM_SELECT)
-            .bind(player_id)
-            .fetch_all(pool.as_ref())
-            .await
-        {
-            Ok(rows) => rows,
-            Err(e) => {
-                tracing::error!(
+    let all_items: Vec<InventoryRow> = match sqlx::query_as::<_, InventoryRow>(
+        INVENTORY_ITEM_SELECT,
+    )
+    .bind(player_id)
+    .fetch_all(pool.as_ref())
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!(
                     entity_id,
                     player_id,
                     "send_full_inventory_update: query failed, refusing to broadcast empty inventory: {e}"
                 );
-                return 0;
-            }
-        };
+            return 0;
+        }
+    };
 
     let mut args = Vec::with_capacity(4 + all_items.len() * 48);
     args.extend_from_slice(&(all_items.len() as u32).to_le_bytes());
@@ -144,11 +145,15 @@ async fn send_on_remove_item(
     args.extend_from_slice(&1u32.to_le_bytes()); // ARRAY<INT32> count
     args.extend_from_slice(&item_id.to_le_bytes());
     send_to_witness(
-        socket, connected, entity_to_addr, entity_id,
+        socket,
+        connected,
+        entity_to_addr,
+        entity_id,
         |key, seq, acks| {
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_REMOVE_ITEM, &args)
         },
-    ).await;
+    )
+    .await;
 }
 
 /// Remove an inventory item from player inventory and sync client.
@@ -184,7 +189,11 @@ pub async fn handle_remove_inventory_item(
     let mut tx = match pool.begin().await {
         Ok(t) => t,
         Err(e) => {
-            tracing::error!(player_id, item_id, "RemoveInventoryItem: begin tx failed: {e}");
+            tracing::error!(
+                player_id,
+                item_id,
+                "RemoveInventoryItem: begin tx failed: {e}"
+            );
             return;
         }
     };
@@ -201,7 +210,11 @@ pub async fn handle_remove_inventory_item(
         Ok(opt) => opt,
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(player_id, item_id, "RemoveInventoryItem: source query failed: {e}");
+            tracing::error!(
+                player_id,
+                item_id,
+                "RemoveInventoryItem: source query failed: {e}"
+            );
             return;
         }
     };
@@ -268,7 +281,8 @@ pub async fn handle_remove_inventory_item(
             Err(e) => {
                 let _ = tx.rollback().await;
                 tracing::error!(
-                    player_id, item_id,
+                    player_id,
+                    item_id,
                     "RemoveInventoryItem: outbox enqueue failed, aborting: {e}"
                 );
                 return;
@@ -279,7 +293,11 @@ pub async fn handle_remove_inventory_item(
     };
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(player_id, item_id, "RemoveInventoryItem: commit failed: {e}");
+        tracing::error!(
+            player_id,
+            item_id,
+            "RemoveInventoryItem: commit failed: {e}"
+        );
         return;
     }
 
@@ -396,7 +414,11 @@ pub async fn handle_use_inventory_item(
     };
 
     tracing::info!(
-        entity_id, player_id, item_id, type_id, target_id,
+        entity_id,
+        player_id,
+        item_id,
+        type_id,
+        target_id,
         "UseInventoryItem: firing ItemUsed (no consumption — chain decides)"
     );
 
@@ -410,7 +432,10 @@ pub async fn handle_use_inventory_item(
             // The player can re-use the item; ownership lookup above is
             // idempotent.
             tracing::error!(
-                entity_id, player_id, item_id, type_id,
+                entity_id,
+                player_id,
+                item_id,
+                type_id,
                 "UseInventoryItem: outbox enqueue failed; ItemUsed not dispatched: {e}"
             );
             return;
@@ -421,7 +446,8 @@ pub async fn handle_use_inventory_item(
         outbox::try_dispatch_now(pool.as_ref(), cell_tx, outbox_id, entity_id, payload).await;
     } else {
         tracing::debug!(
-            entity_id, outbox_id,
+            entity_id,
+            outbox_id,
             "UseInventoryItem: no cell channel; row left for drainer"
         );
     }
@@ -457,14 +483,23 @@ pub async fn handle_remove_inventory_item_by_type(
     };
 
     if count <= 0 {
-        tracing::warn!(player_id, type_id, count, "RemoveInventoryItemByType: invalid count");
+        tracing::warn!(
+            player_id,
+            type_id,
+            count,
+            "RemoveInventoryItemByType: invalid count"
+        );
         return;
     }
 
     let mut tx = match pool.begin().await {
         Ok(t) => t,
         Err(e) => {
-            tracing::error!(player_id, type_id, "RemoveInventoryItemByType: begin tx failed: {e}");
+            tracing::error!(
+                player_id,
+                type_id,
+                "RemoveInventoryItemByType: begin tx failed: {e}"
+            );
             return;
         }
     };
@@ -499,7 +534,11 @@ pub async fn handle_remove_inventory_item_by_type(
         Ok(opt) => opt,
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(player_id, type_id, "RemoveInventoryItemByType: source query failed: {e}");
+            tracing::error!(
+                player_id,
+                type_id,
+                "RemoveInventoryItemByType: source query failed: {e}"
+            );
             return;
         }
     };
@@ -507,7 +546,8 @@ pub async fn handle_remove_inventory_item_by_type(
     let Some(source) = source else {
         let _ = tx.rollback().await;
         tracing::warn!(
-            player_id, type_id,
+            player_id,
+            type_id,
             "RemoveInventoryItemByType: no instance of this design id owned by character"
         );
         return;
@@ -523,7 +563,10 @@ pub async fn handle_remove_inventory_item_by_type(
         // needs multi-stack draining, that's a new RPC variant, not a
         // silent extension of this one.
         tracing::warn!(
-            player_id, type_id, requested = count, available = source.stack_size,
+            player_id,
+            type_id,
+            requested = count,
+            available = source.stack_size,
             "RemoveInventoryItemByType: requested count exceeds stack size; removing whole stack"
         );
     }
@@ -556,12 +599,20 @@ pub async fn handle_remove_inventory_item_by_type(
         Ok(r) if r.rows_affected() == 1 => {}
         Ok(_) => {
             let _ = tx.rollback().await;
-            tracing::warn!(player_id, type_id, "RemoveInventoryItemByType: no rows changed");
+            tracing::warn!(
+                player_id,
+                type_id,
+                "RemoveInventoryItemByType: no rows changed"
+            );
             return;
         }
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(player_id, type_id, "RemoveInventoryItemByType: update failed: {e}");
+            tracing::error!(
+                player_id,
+                type_id,
+                "RemoveInventoryItemByType: update failed: {e}"
+            );
             return;
         }
     }
@@ -576,7 +627,8 @@ pub async fn handle_remove_inventory_item_by_type(
             Err(e) => {
                 let _ = tx.rollback().await;
                 tracing::error!(
-                    player_id, type_id,
+                    player_id,
+                    type_id,
                     "RemoveInventoryItemByType: outbox enqueue failed, aborting: {e}"
                 );
                 return;
@@ -587,20 +639,42 @@ pub async fn handle_remove_inventory_item_by_type(
     };
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(player_id, type_id, "RemoveInventoryItemByType: commit failed: {e}");
+        tracing::error!(
+            player_id,
+            type_id,
+            "RemoveInventoryItemByType: commit failed: {e}"
+        );
         return;
     }
 
     if removed_all {
-        send_on_remove_item(entity_id, removed_item_id, socket, connected, entity_to_addr).await;
+        send_on_remove_item(
+            entity_id,
+            removed_item_id,
+            socket,
+            connected,
+            entity_to_addr,
+        )
+        .await;
     }
 
     let total_items = send_full_inventory_update(
-        entity_id, player_id, pool, socket, connected, entity_to_addr,
-    ).await;
+        entity_id,
+        player_id,
+        pool,
+        socket,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 
     tracing::info!(
-        entity_id, player_id, type_id, count, removed_all, total_items,
+        entity_id,
+        player_id,
+        type_id,
+        count,
+        removed_all,
+        total_items,
         "RemoveInventoryItemByType: persisted"
     );
 
@@ -610,7 +684,14 @@ pub async fn handle_remove_inventory_item_by_type(
 
     if source.container_id == 3 {
         sync_bandolier_after_inventory_change(
-            entity_id, player_id, db_pool, cell_tx, socket, connected, entity_to_addr,
-        ).await;
+            entity_id,
+            player_id,
+            db_pool,
+            cell_tx,
+            socket,
+            connected,
+            entity_to_addr,
+        )
+        .await;
     }
 }

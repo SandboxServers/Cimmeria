@@ -156,9 +156,11 @@ pub async fn extract_kismet_graph(
             category: category.to_string(),
             input_pins: node.input_links.iter().map(|l| l.desc.clone()).collect(),
             output_pins: node.output_links.iter().map(|l| l.desc.clone()).collect(),
-            variable_pins: node.variable_links.iter().map(|l| {
-                l.property_name.as_deref().unwrap_or(&l.desc).to_string()
-            }).collect(),
+            variable_pins: node
+                .variable_links
+                .iter()
+                .map(|l| l.property_name.as_deref().unwrap_or(&l.desc).to_string())
+                .collect(),
             properties,
         });
 

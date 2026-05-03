@@ -1,8 +1,8 @@
 //! MinigamePlayer interface exposed CellMethods (indices 20–34).
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 pub const DEBUG_START: u16 = 20;
 pub const DEBUG_SPECTATE: u16 = 21;
@@ -52,7 +52,11 @@ pub async fn dispatch(
         DEBUG_INSTANCE => {
             if args.len() >= 4 {
                 let instance_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, instance_id, "UNIMPLEMENTED: debugMinigameInstance");
+                tracing::info!(
+                    entity_id,
+                    instance_id,
+                    "UNIMPLEMENTED: debugMinigameInstance"
+                );
             }
             true
         }
@@ -60,7 +64,12 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let host_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let game_def_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, host_entity_id, game_def_id, "UNIMPLEMENTED: startMinigame");
+                tracing::info!(
+                    entity_id,
+                    host_entity_id,
+                    game_def_id,
+                    "UNIMPLEMENTED: startMinigame"
+                );
             }
             true
         }
@@ -69,7 +78,13 @@ pub async fn dispatch(
                 let game_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let winner_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let loser_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
-                tracing::info!(entity_id, game_id, winner_id, loser_id, "UNIMPLEMENTED: endCurrentMinigame");
+                tracing::info!(
+                    entity_id,
+                    game_id,
+                    winner_id,
+                    loser_id,
+                    "UNIMPLEMENTED: endCurrentMinigame"
+                );
             }
             true
         }
@@ -91,7 +106,12 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let game_def_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let help_level = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, game_def_id, help_level, "UNIMPLEMENTED: registerToMinigameHelp");
+                tracing::info!(
+                    entity_id,
+                    game_def_id,
+                    help_level,
+                    "UNIMPLEMENTED: registerToMinigameHelp"
+                );
             }
             true
         }
@@ -99,7 +119,12 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let game_def_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let help_level = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, game_def_id, help_level, "UNIMPLEMENTED: updateRegisterToMinigameHelp");
+                tracing::info!(
+                    entity_id,
+                    game_def_id,
+                    help_level,
+                    "UNIMPLEMENTED: updateRegisterToMinigameHelp"
+                );
             }
             true
         }
@@ -135,7 +160,12 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let game_def_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, target_entity_id, game_def_id, "UNIMPLEMENTED: minigameContactRequest");
+                tracing::info!(
+                    entity_id,
+                    target_entity_id,
+                    game_def_id,
+                    "UNIMPLEMENTED: minigameContactRequest"
+                );
             }
             true
         }

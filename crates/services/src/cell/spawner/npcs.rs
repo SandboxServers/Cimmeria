@@ -48,9 +48,9 @@ pub struct SpawnRecord {
 pub fn class_id_for_class(class: &str) -> u8 {
     match class {
         "spawnable" => 0x00, // SGWSpawnableEntity
-        "being"     => 0x01, // SGWBeing
-        "mob"       => 0x04, // SGWMob
-        _           => 0x04, // Default to SGWMob
+        "being" => 0x01,     // SGWBeing
+        "mob" => 0x04,       // SGWMob
+        _ => 0x04,           // Default to SGWMob
     }
 }
 
@@ -73,7 +73,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
         FROM resources.spawnlist s \
         JOIN resources.entity_templates t ON s.template_id = t.template_id \
         JOIN resources.worlds w ON s.world_id = w.world_id \
-        ORDER BY s.spawn_id"
+        ORDER BY s.spawn_id",
     )
     .fetch_all(pool)
     .await?;

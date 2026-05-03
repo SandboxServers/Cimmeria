@@ -6,7 +6,9 @@
 /// Starting coordinates:
 /// - Praxis (Castle_CellBlock): (-334.231, 73.472, -228.026)
 /// - SGU (SGC_W1): (201.5, 1.31, 49.724)
-pub(crate) fn chardef_lookup(id: i32) -> Option<(i32, i32, i32, &'static str, &'static str, f32, f32, f32)> {
+pub(crate) fn chardef_lookup(
+    id: i32,
+) -> Option<(i32, i32, i32, &'static str, &'static str, f32, f32, f32)> {
     // (alignment, archetype, gender, bodyset, starting_world, pos_x, pos_y, pos_z)
     // Alignment: 1=Praxis, 2=SGU
     // Gender: 0=Male, 1=Female (EGender enum: GENDER_Male=0, GENDER_Female=1)
@@ -16,30 +18,237 @@ pub(crate) fn chardef_lookup(id: i32) -> Option<(i32, i32, i32, &'static str, &'
     const SGU_POS: (f32, f32, f32) = (201.5, 1.31, 49.724);
 
     match id {
-        1  => Some((1, 1, 1, "BS_HumanMale.BS_HumanMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Soldier Male
-        2  => Some((2, 1, 1, "BS_HumanMale.BS_HumanMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Soldier Male
-        3  => Some((1, 2, 1, "BS_HumanMale.BS_HumanMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Commando Male
-        4  => Some((2, 2, 1, "BS_HumanMale.BS_HumanMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Commando Male
-        5  => Some((1, 4, 1, "BS_HumanMale.BS_HumanMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Archeologist Male
-        6  => Some((2, 4, 1, "BS_HumanMale.BS_HumanMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Archeologist Male
-        7  => Some((1, 8, 1, "BS_JaffaMale.BS_JaffaMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Jaffa Male
-        8  => Some((2, 7, 1, "BS_JaffaMale.BS_JaffaMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Shol'va Male
-        9  => Some((2, 5, 1, "BS_Asgard.BS_Asgard",           "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Asgard Male
-        10 => Some((1, 6, 1, "BS_GoauldMale.BS_GoauldMale",   "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Goa'uld Male
-        11 => Some((1, 1, 2, "BS_HumanFemale.BS_HumanFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Soldier Female
-        12 => Some((2, 1, 2, "BS_HumanFemale.BS_HumanFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Soldier Female
-        13 => Some((1, 2, 2, "BS_HumanFemale.BS_HumanFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Commando Female
-        14 => Some((2, 2, 2, "BS_HumanFemale.BS_HumanFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Commando Female
-        15 => Some((1, 4, 2, "BS_HumanFemale.BS_HumanFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Archeologist Female
-        16 => Some((2, 4, 2, "BS_HumanFemale.BS_HumanFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Archeologist Female
-        17 => Some((1, 8, 2, "BS_JaffaFemale.BS_JaffaFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Jaffa Female
-        18 => Some((2, 7, 2, "BS_JaffaFemale.BS_JaffaFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Shol'va Female
-        19 => Some((1, 6, 2, "BS_GoauldFemale.BS_GoauldFemale","Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Goa'uld Female
-        20 => Some((1, 3, 1, "BS_HumanMale.BS_HumanMale",     "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Scientist Male
-        21 => Some((2, 3, 1, "BS_HumanMale.BS_HumanMale",     "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Scientist Male
-        22 => Some((1, 3, 2, "BS_HumanFemale.BS_HumanFemale", "Castle_CellBlock", PRAXIS_POS.0, PRAXIS_POS.1, PRAXIS_POS.2)), // Praxis Scientist Female
-        23 => Some((2, 3, 2, "BS_HumanFemale.BS_HumanFemale", "SGC_W1",           SGU_POS.0,    SGU_POS.1,    SGU_POS.2)),    // SGU Scientist Female
-        _  => None,
+        1 => Some((
+            1,
+            1,
+            1,
+            "BS_HumanMale.BS_HumanMale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Soldier Male
+        2 => Some((
+            2,
+            1,
+            1,
+            "BS_HumanMale.BS_HumanMale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Soldier Male
+        3 => Some((
+            1,
+            2,
+            1,
+            "BS_HumanMale.BS_HumanMale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Commando Male
+        4 => Some((
+            2,
+            2,
+            1,
+            "BS_HumanMale.BS_HumanMale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Commando Male
+        5 => Some((
+            1,
+            4,
+            1,
+            "BS_HumanMale.BS_HumanMale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Archeologist Male
+        6 => Some((
+            2,
+            4,
+            1,
+            "BS_HumanMale.BS_HumanMale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Archeologist Male
+        7 => Some((
+            1,
+            8,
+            1,
+            "BS_JaffaMale.BS_JaffaMale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Jaffa Male
+        8 => Some((
+            2,
+            7,
+            1,
+            "BS_JaffaMale.BS_JaffaMale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Shol'va Male
+        9 => Some((
+            2,
+            5,
+            1,
+            "BS_Asgard.BS_Asgard",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Asgard Male
+        10 => Some((
+            1,
+            6,
+            1,
+            "BS_GoauldMale.BS_GoauldMale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Goa'uld Male
+        11 => Some((
+            1,
+            1,
+            2,
+            "BS_HumanFemale.BS_HumanFemale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Soldier Female
+        12 => Some((
+            2,
+            1,
+            2,
+            "BS_HumanFemale.BS_HumanFemale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Soldier Female
+        13 => Some((
+            1,
+            2,
+            2,
+            "BS_HumanFemale.BS_HumanFemale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Commando Female
+        14 => Some((
+            2,
+            2,
+            2,
+            "BS_HumanFemale.BS_HumanFemale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Commando Female
+        15 => Some((
+            1,
+            4,
+            2,
+            "BS_HumanFemale.BS_HumanFemale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Archeologist Female
+        16 => Some((
+            2,
+            4,
+            2,
+            "BS_HumanFemale.BS_HumanFemale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Archeologist Female
+        17 => Some((
+            1,
+            8,
+            2,
+            "BS_JaffaFemale.BS_JaffaFemale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Jaffa Female
+        18 => Some((
+            2,
+            7,
+            2,
+            "BS_JaffaFemale.BS_JaffaFemale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Shol'va Female
+        19 => Some((
+            1,
+            6,
+            2,
+            "BS_GoauldFemale.BS_GoauldFemale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Goa'uld Female
+        20 => Some((
+            1,
+            3,
+            1,
+            "BS_HumanMale.BS_HumanMale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Scientist Male
+        21 => Some((
+            2,
+            3,
+            1,
+            "BS_HumanMale.BS_HumanMale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Scientist Male
+        22 => Some((
+            1,
+            3,
+            2,
+            "BS_HumanFemale.BS_HumanFemale",
+            "Castle_CellBlock",
+            PRAXIS_POS.0,
+            PRAXIS_POS.1,
+            PRAXIS_POS.2,
+        )), // Praxis Scientist Female
+        23 => Some((
+            2,
+            3,
+            2,
+            "BS_HumanFemale.BS_HumanFemale",
+            "SGC_W1",
+            SGU_POS.0,
+            SGU_POS.1,
+            SGU_POS.2,
+        )), // SGU Scientist Female
+        _ => None,
     }
 }
 

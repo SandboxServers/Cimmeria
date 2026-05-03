@@ -16,20 +16,20 @@ use crate::mercury::{PlayerLoadData, WorldEntryInfo};
 
 // ── Submodules ───────────────────────────────────────────────────────────────
 
-pub(crate) mod chardef;
-pub(crate) mod resources;
-pub(crate) mod helpers;
-pub(crate) mod connect_loop;
-pub(crate) mod login;
 pub(crate) mod character;
 pub(crate) mod character_create;
+pub(crate) mod chardef;
+pub(crate) mod connect_loop;
 pub(crate) mod cooked_data;
+pub(crate) mod dispatch;
+pub(crate) mod helpers;
+pub(crate) mod login;
 pub(crate) mod outbox;
+pub(crate) mod resources;
 mod service;
+pub(crate) mod tick_sync;
 pub(crate) mod world_entry;
 pub(crate) mod world_entry_appearance;
-pub(crate) mod dispatch;
-pub(crate) mod tick_sync;
 
 pub use service::BaseService;
 

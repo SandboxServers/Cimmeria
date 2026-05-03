@@ -1,9 +1,7 @@
 use crate::state::AppState;
 
 #[tauri::command]
-pub async fn hot_reload(
-    state: tauri::State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn hot_reload(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let url = state.server_url().await;
     let reload_url = format!("{url}/api/content/reload");
 

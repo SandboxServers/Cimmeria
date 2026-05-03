@@ -62,7 +62,10 @@ impl InventoryContainer {
 
     /// Iterate over all occupied slots with their indices.
     pub fn items(&self) -> impl Iterator<Item = (usize, &ItemInstance)> {
-        self.slots.iter().enumerate().filter_map(|(i, s)| s.as_ref().map(|item| (i, item)))
+        self.slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| s.as_ref().map(|item| (i, item)))
     }
 }
 
@@ -72,7 +75,14 @@ mod tests {
     use crate::inventory::items::{ItemQuality, ItemType};
 
     fn test_item(id: i64) -> ItemInstance {
-        ItemInstance::new(id, 1, format!("Item_{}", id), ItemType::Misc, ItemQuality::Common, 1)
+        ItemInstance::new(
+            id,
+            1,
+            format!("Item_{}", id),
+            ItemType::Misc,
+            ItemQuality::Common,
+            1,
+        )
     }
 
     #[test]

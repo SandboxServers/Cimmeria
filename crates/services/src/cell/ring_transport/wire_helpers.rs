@@ -34,14 +34,14 @@ const KISMET_VIEW_EVENT_INVOKER: u8 = 3;
 /// `cell/content/executor.rs::PlaySequence` and `cell_methods/player/world.rs`).
 fn build_on_sequence_args(seq_id: i32, entity_id: u32) -> Vec<u8> {
     let mut args = Vec::with_capacity(26);
-    args.extend_from_slice(&seq_id.to_le_bytes());                  // KismetEventSetSeqID
-    args.extend_from_slice(&(entity_id as i32).to_le_bytes());      // SourceID
-    args.extend_from_slice(&(entity_id as i32).to_le_bytes());      // TargetID
-    args.push(1);                                                   // PrimaryTarget = true
-    args.extend_from_slice(&0.0f32.to_le_bytes());                  // ImpactTime
-    args.extend_from_slice(&0u32.to_le_bytes());                    // NameValuePairs count = 0
-    args.push(KISMET_VIEW_EVENT_INVOKER);                           // ViewType
-    args.extend_from_slice(&0i32.to_le_bytes());                    // InstanceId
+    args.extend_from_slice(&seq_id.to_le_bytes()); // KismetEventSetSeqID
+    args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
+    args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID
+    args.push(1); // PrimaryTarget = true
+    args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
+    args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count = 0
+    args.push(KISMET_VIEW_EVENT_INVOKER); // ViewType
+    args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
     args
 }
 
@@ -57,18 +57,21 @@ pub(super) async fn send_play_sequence(
         Some(&id) => id,
         None => {
             tracing::warn!(
-                event_set_id, event_id,
+                event_set_id,
+                event_id,
                 "ring sequence not in event_sets_sequences map — kismet sequence will not play"
             );
             return;
         }
     };
     let args = build_on_sequence_args(seq_id, entity_id);
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: ON_SEQUENCE,
-        args,
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_SEQUENCE,
+            args,
+        })
+        .await;
 }
 
 pub(super) async fn update_state_flag(
@@ -80,16 +83,22 @@ pub(super) async fn update_state_flag(
 ) {
     let new_state = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => {
-            if set { e.state_field |= flag; } else { e.state_field &= !flag; }
+            if set {
+                e.state_field |= flag;
+            } else {
+                e.state_field &= !flag;
+            }
             e.state_field
         }
         None => return,
     };
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: ON_STATE_FIELD_UPDATE,
-        args: new_state.to_le_bytes().to_vec(),
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: ON_STATE_FIELD_UPDATE,
+            args: new_state.to_le_bytes().to_vec(),
+        })
+        .await;
 }
 
 /// Broadcasts a visibility change to every witness of the entity (and the
@@ -126,7 +135,10 @@ pub(super) async fn send_visible(
                 args: vec![1],
             }
         } else {
-            CellToBaseMsg::EntityInvisible { witness_id, entity_id }
+            CellToBaseMsg::EntityInvisible {
+                witness_id,
+                entity_id,
+            }
         };
         let _ = tx.send(msg).await;
     }
@@ -142,28 +154,39 @@ pub(super) async fn send_destination_list(
     let source = match space_mgr.ring_regions.get(&source_region_id) {
         Some(r) => r,
         None => {
-            tracing::warn!(source_region_id, "send_destination_list: source region not in cache");
+            tracing::warn!(
+                source_region_id,
+                "send_destination_list: source region not in cache"
+            );
             return;
         }
     };
-    let dests: Vec<&RingRegion> = destinations.iter()
+    let dests: Vec<&RingRegion> = destinations
+        .iter()
         .filter_map(|id| {
             let r = space_mgr.ring_regions.get(id);
             if r.is_none() {
-                tracing::warn!(invalid_id = id, "ring destination id not in cache — skipping");
+                tracing::warn!(
+                    invalid_id = id,
+                    "ring destination id not in cache — skipping"
+                );
             }
             r
         })
         .collect();
 
     let payload = build_on_ring_transporter_list(source, &dests);
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: METHOD_ON_RING_TRANSPORTER_LIST,
-        args: payload,
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: METHOD_ON_RING_TRANSPORTER_LIST,
+            args: payload,
+        })
+        .await;
     tracing::info!(
-        entity_id, source_region_id, destination_count = dests.len(),
+        entity_id,
+        source_region_id,
+        destination_count = dests.len(),
         "Sent onRingTransporterList"
     );
 }

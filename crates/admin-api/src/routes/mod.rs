@@ -4,13 +4,13 @@
 //! the shared `Orchestrator` as Axum state for accessing server internals.
 
 pub mod audit;
-pub mod entities;
-pub mod spaces;
+pub mod auth;
+pub mod config;
 pub mod content;
 pub mod editor;
+pub mod entities;
 pub mod players;
-pub mod config;
-pub mod auth;
+pub mod spaces;
 
 use std::sync::Arc;
 

@@ -80,9 +80,7 @@ fn find_pg_data() -> Option<PathBuf> {
 /// Check if PostgreSQL is reachable on the given host:port.
 async fn pg_is_running(host: &str, port: u16) -> bool {
     let addr = format!("{}:{}", host, port);
-    tokio::net::TcpStream::connect(&addr)
-        .await
-        .is_ok()
+    tokio::net::TcpStream::connect(&addr).await.is_ok()
 }
 
 /// Ensure PostgreSQL is running before we try to connect. If it's not listening
@@ -172,7 +170,11 @@ pub(crate) async fn ensure_postgresql_running(conn_str: &str) {
     // Wait for PostgreSQL to accept connections (up to 10 seconds)
     for i in 0..20 {
         if pg_is_running(&host, port).await {
-            tracing::info!(port, attempts = i + 1, "PostgreSQL is accepting connections");
+            tracing::info!(
+                port,
+                attempts = i + 1,
+                "PostgreSQL is accepting connections"
+            );
             return;
         }
         tokio::time::sleep(Duration::from_millis(500)).await;

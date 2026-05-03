@@ -77,8 +77,6 @@ fn main() {
     );
 
     // Save
-    index
-        .save(Path::new(output))
-        .expect("Failed to save index");
+    index.save(Path::new(output)).expect("Failed to save index");
     println!("Saved to {}", output);
 }

@@ -8,9 +8,9 @@
 //! (replacing the original Qt-based ServerEd tool) and by any HTTP client
 //! for server administration.
 
+pub mod middleware;
 pub mod routes;
 pub mod ws;
-pub mod middleware;
 
 use std::sync::Arc;
 

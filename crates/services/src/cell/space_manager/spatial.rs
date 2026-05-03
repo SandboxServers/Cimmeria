@@ -38,7 +38,12 @@ impl SpaceManager {
 
     /// Find a path between two positions within the space containing `entity_id`.
     /// Returns waypoints or `None` if no path exists or no navmesh is loaded.
-    pub fn find_path(&self, entity_id: u32, start: &Vector3, end: &Vector3) -> Option<Vec<Vector3>> {
+    pub fn find_path(
+        &self,
+        entity_id: u32,
+        start: &Vector3,
+        end: &Vector3,
+    ) -> Option<Vec<Vector3>> {
         let space_id = self.entity_space.get(&entity_id)?;
         let space = self.spaces.get(space_id)?;
         let navmesh = space.navmesh.as_ref()?;

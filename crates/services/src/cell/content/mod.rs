@@ -14,19 +14,21 @@ mod mission_context;
 // callers across the cell service already use.
 pub use engine_loader::build_engine;
 pub use event_dispatch::{
-    fire_chain_by_id, fire_dialog_choice, fire_dialog_open, fire_entity_death, fire_enter_region,
-    fire_exit_region, fire_interact_tag, fire_interact_template, fire_item_use,
-    fire_player_loaded, fire_teleport_in,
+    fire_chain_by_id, fire_dialog_choice, fire_dialog_open, fire_enter_region, fire_entity_death,
+    fire_exit_region, fire_interact_tag, fire_interact_template, fire_item_use, fire_player_loaded,
+    fire_teleport_in,
 };
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::executor::item_container;
     use super::mission_context::populate_mission_context;
+    use super::*;
     use crate::cell::space_manager::SpaceManager;
     use cimmeria_content_engine::chain::ChainEngine;
-    use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE, MISSION_COMPLETED};
+    use cimmeria_entity::missions::{
+        MissionInstance, MissionObjective, MISSION_COMPLETED, STATUS_ACTIVE,
+    };
     use tokio::sync::mpsc;
 
     fn make_test_space_mgr() -> SpaceManager {
@@ -43,16 +45,16 @@ mod tests {
         use std::collections::HashMap;
         // Simulate DB-loaded container_sets: weapons→bandolier, mission items→mission bag
         let mut map = HashMap::new();
-        map.insert(55, 3);   // SI 3 9mm Pistol → bandolier
-        map.insert(21, 3);   // weapon → bandolier
+        map.insert(55, 3); // SI 3 9mm Pistol → bandolier
+        map.insert(21, 3); // weapon → bandolier
         map.insert(3730, 2); // Frost's Letter → mission bag
-        map.insert(19, 2);   // Ambernol Vial → mission bag
+        map.insert(19, 2); // Ambernol Vial → mission bag
 
         assert_eq!(item_container(55, &map), 3);
         assert_eq!(item_container(21, &map), 3);
-        assert_eq!(item_container(3730, &map), 2);  // was wrongly 1 before
-        assert_eq!(item_container(19, &map), 2);    // was wrongly 1 before
-        assert_eq!(item_container(999, &map), 1);   // unknown item defaults to INV_Main
+        assert_eq!(item_container(3730, &map), 2); // was wrongly 1 before
+        assert_eq!(item_container(19, &map), 2); // was wrongly 1 before
+        assert_eq!(item_container(999, &map), 1); // unknown item defaults to INV_Main
     }
 
     // ── populate_mission_context ──────────────────────────────────────────
@@ -60,12 +62,20 @@ mod tests {
     #[test]
     fn populate_mission_context_sets_active_status() {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
 
         // Add an active mission
-        let mission = MissionInstance::new(622, 700, vec![
-            MissionObjective { objective_id: 800, status: STATUS_ACTIVE, hidden: false, optional: false },
-        ]);
+        let mission = MissionInstance::new(
+            622,
+            700,
+            vec![MissionObjective {
+                objective_id: 800,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: false,
+            }],
+        );
         mgr.get_entity_mut(1).unwrap().missions.add_mission(mission);
 
         let entity = mgr.get_entity(1).unwrap();
@@ -73,11 +83,15 @@ mod tests {
         populate_mission_context(entity, &mut ctx);
 
         assert_eq!(
-            ctx.params.get("mission_622_status").and_then(|v| v.as_str()),
+            ctx.params
+                .get("mission_622_status")
+                .and_then(|v| v.as_str()),
             Some("active"),
         );
         assert_eq!(
-            ctx.params.get("mission_622_step_700_status").and_then(|v| v.as_str()),
+            ctx.params
+                .get("mission_622_step_700_status")
+                .and_then(|v| v.as_str()),
             Some("active"),
         );
     }
@@ -85,7 +99,8 @@ mod tests {
     #[test]
     fn populate_mission_context_sets_completed_status() {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
 
         let mut mission = MissionInstance::new(622, 700, vec![]);
         mission.complete();
@@ -96,7 +111,9 @@ mod tests {
         populate_mission_context(entity, &mut ctx);
 
         assert_eq!(
-            ctx.params.get("mission_622_status").and_then(|v| v.as_str()),
+            ctx.params
+                .get("mission_622_status")
+                .and_then(|v| v.as_str()),
             Some("completed"),
         );
     }
@@ -104,7 +121,8 @@ mod tests {
     #[test]
     fn populate_mission_context_empty_when_no_missions() {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
 
         let entity = mgr.get_entity(1).unwrap();
         let mut ctx = cimmeria_content_engine::context::ExecutionContext::new();
@@ -119,7 +137,8 @@ mod tests {
     #[tokio::test]
     async fn fire_enter_region_uses_tag_as_key() {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
         mgr.get_entity_mut(1).unwrap().player_id = Some(100);
 
         let engine = ChainEngine::new();
@@ -135,7 +154,8 @@ mod tests {
     #[tokio::test]
     async fn fire_exit_region_uses_tag_as_key() {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
 
         let engine = ChainEngine::new();
         let (tx, _rx) = mpsc::channel(16);
@@ -149,7 +169,8 @@ mod tests {
     #[tokio::test]
     async fn fire_entity_death_no_chains_no_crash() {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
 
         let engine = ChainEngine::new();
         let (tx, mut rx) = mpsc::channel(16);
@@ -165,7 +186,8 @@ mod tests {
     #[tokio::test]
     async fn fire_player_loaded_with_existing_missions_preserves_context() {
         let mut mgr = make_test_space_mgr();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
 
         // Pre-populate a completed mission (simulating re-login restore)
         {

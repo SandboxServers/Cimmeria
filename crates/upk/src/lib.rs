@@ -33,6 +33,8 @@ pub use exports::ExportEntry;
 pub use header::PackageHeader;
 pub use imports::ImportEntry;
 pub use names::NameEntry;
-pub use objects::actor::{ActorData, extract_actors};
+pub use objects::actor::{extract_actors, ActorData};
 pub use package::Package;
-pub use properties::{PropValue, TaggedProperty, parse_tagged_properties, parse_tagged_properties_with_end};
+pub use properties::{
+    parse_tagged_properties, parse_tagged_properties_with_end, PropValue, TaggedProperty,
+};

@@ -3,8 +3,11 @@
 
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
+use super::{
+    append_entity_method, encrypt_packet, method_idx, write_wstring, BASEMSG_FORCED_POSITION,
+    REPLY_FLAGS,
+};
 use crate::cell::messages::NpcAoIData;
-use super::{encrypt_packet, append_entity_method, write_wstring, method_idx, REPLY_FLAGS, BASEMSG_FORCED_POSITION};
 
 /// `GENERICPROPERTY_DatabaseId` — maps to speaker_id for dialog-capable entities.
 const GENERICPROPERTY_DATABASE_ID: i32 = 9;
@@ -104,7 +107,9 @@ pub fn build_create_entity_cascade(
         if let Some(event_set_id) = d.event_set_id {
             if event_set_id != 0 {
                 append_entity_method(
-                    &mut body, method_idx::ON_KISMET_EVENT_SET_UPDATE, entity_id,
+                    &mut body,
+                    method_idx::ON_KISMET_EVENT_SET_UPDATE,
+                    entity_id,
                     &event_set_id.to_le_bytes(),
                 );
             }
@@ -119,7 +124,9 @@ pub fn build_create_entity_cascade(
     // 4. InteractionType(interactionType) — base flags (dynamic merged flags sent separately)
     if let Some(d) = npc_data {
         append_entity_method(
-            &mut body, method_idx::INTERACTION_TYPE, entity_id,
+            &mut body,
+            method_idx::INTERACTION_TYPE,
+            entity_id,
             &(d.interaction_type as u64).to_le_bytes(),
         );
     }
@@ -129,7 +136,9 @@ pub fn build_create_entity_cascade(
         if let Some(name_id) = d.name_id {
             if name_id != 0 {
                 append_entity_method(
-                    &mut body, method_idx::ON_BEING_NAME_ID_UPDATE, entity_id,
+                    &mut body,
+                    method_idx::ON_BEING_NAME_ID_UPDATE,
+                    entity_id,
                     &name_id.to_le_bytes(),
                 );
             }
@@ -137,7 +146,12 @@ pub fn build_create_entity_cascade(
     }
 
     // 6. onEntityFlags
-    append_entity_method(&mut body, method_idx::ON_ENTITY_FLAGS, entity_id, &entity_flags.to_le_bytes());
+    append_entity_method(
+        &mut body,
+        method_idx::ON_ENTITY_FLAGS,
+        entity_id,
+        &entity_flags.to_le_bytes(),
+    );
 
     // 7. onVisible(1) — CRITICAL: registers entity with the client's viewport
     append_entity_method(&mut body, method_idx::ON_VISIBLE, entity_id, &[1u8]);
@@ -145,23 +159,48 @@ pub fn build_create_entity_cascade(
     // ── SGWBeing.createOnClient ──
     if class_id != 0x00 {
         // 8. onLevelUpdate(level)
-        append_entity_method(&mut body, method_idx::ON_LEVEL_UPDATE, entity_id, &(level as i32).to_le_bytes());
+        append_entity_method(
+            &mut body,
+            method_idx::ON_LEVEL_UPDATE,
+            entity_id,
+            &(level as i32).to_le_bytes(),
+        );
         // 9. onTargetUpdate(0) — no current target
         // C++ sends this; missing it may leave the entity partially uninitialized.
-        append_entity_method(&mut body, method_idx::ON_TARGET_UPDATE, entity_id, &0i32.to_le_bytes());
+        append_entity_method(
+            &mut body,
+            method_idx::ON_TARGET_UPDATE,
+            entity_id,
+            &0i32.to_le_bytes(),
+        );
         // 10. onAlignmentUpdate
-        append_entity_method(&mut body, method_idx::ON_ALIGNMENT_UPDATE, entity_id, &[align]);
+        append_entity_method(
+            &mut body,
+            method_idx::ON_ALIGNMENT_UPDATE,
+            entity_id,
+            &[align],
+        );
         // 11. onFactionUpdate
         append_entity_method(&mut body, method_idx::ON_FACTION_UPDATE, entity_id, &[fac]);
         // 12. onStateFieldUpdate(0) — alive state
-        append_entity_method(&mut body, method_idx::ON_STATE_FIELD_UPDATE, entity_id, &0u32.to_le_bytes());
+        append_entity_method(
+            &mut body,
+            method_idx::ON_STATE_FIELD_UPDATE,
+            entity_id,
+            &0u32.to_le_bytes(),
+        );
 
         // 13-14. onStatBaseUpdate + onStatUpdate — NPC stat data
         // C++ sends 180 bytes each (4-byte count + 11×16-byte stats = 180).
         // Without populated stats, the client doesn't consider the entity
         // "ready" for interaction (right-click blocked).
         let stat_data = build_default_npc_stats();
-        append_entity_method(&mut body, method_idx::ON_STAT_BASE_UPDATE, entity_id, &stat_data);
+        append_entity_method(
+            &mut body,
+            method_idx::ON_STAT_BASE_UPDATE,
+            entity_id,
+            &stat_data,
+        );
         append_entity_method(&mut body, method_idx::ON_STAT_UPDATE, entity_id, &stat_data);
     }
 
@@ -198,12 +237,7 @@ pub fn build_entity_invisible(
 ///
 /// Matches C++ `ClientHandler::leaveAoI(id, deleteEntity=true)` from
 /// `client_handler.cpp:516-539`.
-pub fn build_entity_leave(
-    key: &[u8; 32],
-    seq_id: u32,
-    acks: &[u32],
-    entity_id: u32,
-) -> Vec<u8> {
+pub fn build_entity_leave(key: &[u8; 32], seq_id: u32, acks: &[u32], entity_id: u32) -> Vec<u8> {
     let mut body = Vec::with_capacity(24);
 
     // ENTITY_INVISIBLE (0x0B, CONSTANT_LENGTH = 5)
@@ -287,7 +321,7 @@ pub fn build_forced_position(
     }
     body.extend_from_slice(&[0u8; 12]); // velocity = 0,0,0
     body.extend_from_slice(&[0u8; 12]); // rotation = 0,0,0 (yaw/pitch/roll)
-    body.push(0x01);                    // flags
+    body.push(0x01); // flags
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
@@ -322,17 +356,17 @@ fn build_default_npc_stats() -> Vec<u8> {
     use cimmeria_entity::stats::*;
     // (stat_id, min, current, max) — from SGWBeing.statsTemplate defaults
     let stats: &[(i32, i32, i32, i32)] = &[
-        (HEALTH,            0,    100, 100),
-        (FOCUS,             0,      0,   0),
-        (COORDINATION,      0,      1,   1),
-        (ENGAGEMENT,        0,      1,   1),
-        (FORTITUDE,         0,      1,   1),
-        (MORALE,            0,      1,   1),
-        (PERCEPTION,        0,      1,   1),
-        (INTELLIGENCE,      0,      1,   1),
-        (ACCURACY,      -1000,      0, 1000),
-        (MOVEMENT_SPEED_MOD, 0,   100, 500),
-        (DEFENSE,           0,      0,   0),
+        (HEALTH, 0, 100, 100),
+        (FOCUS, 0, 0, 0),
+        (COORDINATION, 0, 1, 1),
+        (ENGAGEMENT, 0, 1, 1),
+        (FORTITUDE, 0, 1, 1),
+        (MORALE, 0, 1, 1),
+        (PERCEPTION, 0, 1, 1),
+        (INTELLIGENCE, 0, 1, 1),
+        (ACCURACY, -1000, 0, 1000),
+        (MOVEMENT_SPEED_MOD, 0, 100, 500),
+        (DEFENSE, 0, 0, 0),
     ];
     let mut buf = Vec::with_capacity(4 + stats.len() * 16);
     buf.extend_from_slice(&(stats.len() as u32).to_le_bytes());
@@ -454,7 +488,14 @@ mod tests {
     /// staying put.
     #[test]
     fn forced_position_wire_layout() {
-        let pkt = build_forced_position(&TEST_KEY, 1, &[], 0x12345678, 0x0001_0010, [10.0, 20.0, 30.0]);
+        let pkt = build_forced_position(
+            &TEST_KEY,
+            1,
+            &[],
+            0x12345678,
+            0x0001_0010,
+            [10.0, 20.0, 30.0],
+        );
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         let pt = enc.decrypt(&pkt).unwrap();
 
@@ -485,8 +526,13 @@ mod tests {
     #[test]
     fn create_entity_base_wire_layout() {
         let pkt = build_create_entity_base(
-            &TEST_KEY, 1, &[],
-            0xDEADBEEF, 0x42, [10.0, 20.0, 30.0], [0.0, 0.0, 0.0],
+            &TEST_KEY,
+            1,
+            &[],
+            0xDEADBEEF,
+            0x42,
+            [10.0, 20.0, 30.0],
+            [0.0, 0.0, 0.0],
         );
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
         let pt = enc.decrypt(&pkt).unwrap();
@@ -494,7 +540,11 @@ mod tests {
         // Body starts at offset 1 (offset 0 is flags).
         // CREATE_ENTITY: [0x09][word_len=8 LE][entity_id u32][0xFF][class_id][0x00][0x00]
         assert_eq!(pt[1], BASEMSG_CREATE_ENTITY);
-        assert_eq!(u16::from_le_bytes([pt[2], pt[3]]), 8, "CREATE_ENTITY wordLength");
+        assert_eq!(
+            u16::from_le_bytes([pt[2], pt[3]]),
+            8,
+            "CREATE_ENTITY wordLength"
+        );
         assert_eq!(&pt[4..8], &0xDEADBEEFu32.to_le_bytes());
         assert_eq!(pt[8], 0xFF, "idAlias = no alias");
         assert_eq!(pt[9], 0x42, "class_id");
@@ -507,10 +557,18 @@ mod tests {
         assert_eq!(&pt[17..21], &10.0f32.to_le_bytes());
         assert_eq!(&pt[21..25], &20.0f32.to_le_bytes());
         assert_eq!(&pt[25..29], &30.0f32.to_le_bytes());
-        assert_eq!(&pt[29..34], &[0u8; 5], "velocity bytes (zero on initial pose)");
+        assert_eq!(
+            &pt[29..34],
+            &[0u8; 5],
+            "velocity bytes (zero on initial pose)"
+        );
         assert_eq!(pt[34], 0x01, "physics mode");
         // yaw/pitch/roll are direction[1]/[0]/[2] — all zero direction packs to 0
-        assert_eq!(&pt[35..38], &[0u8; 3], "yaw/pitch/roll = 0 for zero direction");
+        assert_eq!(
+            &pt[35..38],
+            &[0u8; 3],
+            "yaw/pitch/roll = 0 for zero direction"
+        );
 
         // Body length = 11 (CREATE_ENTITY) + 26 (UPDATE_AVATAR) = 37 bytes,
         // occupying pt[1..38]. With FLAG_HAS_SEQUENCE the seq_id (we passed
@@ -558,7 +616,11 @@ mod tests {
         // LEAVE_AOI next at offset 7:
         //   [0x0C][word_len=8 LE][entity_id u32][cacheStamp=0 u32]
         assert_eq!(pt[7], BASEMSG_LEAVE_AOI);
-        assert_eq!(u16::from_le_bytes([pt[8], pt[9]]), 8, "LEAVE_AOI wordLength");
+        assert_eq!(
+            u16::from_le_bytes([pt[8], pt[9]]),
+            8,
+            "LEAVE_AOI wordLength"
+        );
         assert_eq!(&pt[10..14], &0xCAFEF00Du32.to_le_bytes());
         assert_eq!(&pt[14..18], &0u32.to_le_bytes(), "cacheStamp = 0");
     }
@@ -569,7 +631,9 @@ mod tests {
     #[test]
     fn avatar_update_wire_layout() {
         let pkt = build_avatar_update(
-            &TEST_KEY, 1, &[],
+            &TEST_KEY,
+            1,
+            &[],
             0x00ABCDEF,
             [100.0, 200.0, 300.0],
             [0.0, 0.0, 0.0], // zero velocity — packed to 5 zero bytes
@@ -587,7 +651,11 @@ mod tests {
         // Zero velocity packed via pack_velocity_xyz — exact bytes are an
         // implementation detail of the packer, but a zero input MUST round-
         // trip to all zeros so a missing-update doesn't drift the ghost.
-        assert_eq!(&pt[18..23], &[0u8; 5], "zero velocity must pack to 5 zero bytes");
+        assert_eq!(
+            &pt[18..23],
+            &[0u8; 5],
+            "zero velocity must pack to 5 zero bytes"
+        );
         assert_eq!(pt[23], 0x01, "physics mode");
         assert_eq!(&pt[24..27], &[0u8; 3], "yaw/pitch/roll for zero direction");
     }

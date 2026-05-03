@@ -346,10 +346,7 @@ pub async fn list_items(
 }
 
 #[tauri::command]
-pub async fn get_item(
-    state: tauri::State<'_, AppState>,
-    item_id: i32,
-) -> Result<Item, String> {
+pub async fn get_item(state: tauri::State<'_, AppState>, item_id: i32) -> Result<Item, String> {
     tracing::debug!("get_item called, item_id={item_id:?}");
     let pool = state.pool()?;
 
@@ -394,7 +391,9 @@ pub async fn get_item(
         max_melee_range: r.get("max_melee_range"),
         min_melee_range: r.get("min_melee_range"),
         discipline_ids: r.get::<Vec<i32>, _>("discipline_ids"),
-        ammo_types: r.get::<Option<Vec<String>>, _>("ammo_types").unwrap_or_default(),
+        ammo_types: r
+            .get::<Option<Vec<String>>, _>("ammo_types")
+            .unwrap_or_default(),
         default_ammo_type: r.get("default_ammo_type"),
         clip_size: r.get("clip_size"),
         charges: r.get("charges"),
@@ -402,10 +401,7 @@ pub async fn get_item(
 }
 
 #[tauri::command]
-pub async fn save_item(
-    state: tauri::State<'_, AppState>,
-    item: Item,
-) -> Result<i32, String> {
+pub async fn save_item(state: tauri::State<'_, AppState>, item: Item) -> Result<i32, String> {
     tracing::debug!("save_item called");
     let pool = state.pool()?;
 
@@ -484,10 +480,7 @@ pub async fn save_item(
 }
 
 #[tauri::command]
-pub async fn delete_item(
-    state: tauri::State<'_, AppState>,
-    item_id: i32,
-) -> Result<(), String> {
+pub async fn delete_item(state: tauri::State<'_, AppState>, item_id: i32) -> Result<(), String> {
     tracing::debug!("delete_item called, item_id={item_id:?}");
     let pool = state.pool()?;
 
@@ -978,14 +971,12 @@ pub async fn save_mission(
         .map_err(|e| format!("Failed to insert reward group: {e}"))?;
 
         for reward in &rg.rewards {
-            sqlx::query(
-                "INSERT INTO mission_rewards (group_id, item_id) VALUES ($1, $2)",
-            )
-            .bind(group_id)
-            .bind(reward.item_id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| format!("Failed to insert reward: {e}"))?;
+            sqlx::query("INSERT INTO mission_rewards (group_id, item_id) VALUES ($1, $2)")
+                .bind(group_id)
+                .bind(reward.item_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("Failed to insert reward: {e}"))?;
         }
     }
 
@@ -993,8 +984,11 @@ pub async fn save_mission(
         .await
         .map_err(|e| format!("Failed to commit mission save: {e}"))?;
 
-    tracing::info!("Saved mission {mission_id} with {} steps, {} reward groups",
-        mission.steps.len(), mission.reward_groups.len());
+    tracing::info!(
+        "Saved mission {mission_id} with {} steps, {} reward groups",
+        mission.steps.len(),
+        mission.reward_groups.len()
+    );
     Ok(mission_id)
 }
 
@@ -1134,14 +1128,13 @@ pub async fn get_loot_table(
     tracing::debug!("get_loot_table called, loot_table_id={loot_table_id:?}");
     let pool = state.pool()?;
 
-    let header = sqlx::query(
-        "SELECT loot_table_id, description FROM loot_tables WHERE loot_table_id = $1",
-    )
-    .bind(loot_table_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| format!("Failed to get loot table: {e}"))?
-    .ok_or_else(|| format!("Loot table {loot_table_id} not found"))?;
+    let header =
+        sqlx::query("SELECT loot_table_id, description FROM loot_tables WHERE loot_table_id = $1")
+            .bind(loot_table_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| format!("Failed to get loot table: {e}"))?
+            .ok_or_else(|| format!("Loot table {loot_table_id} not found"))?;
 
     let entry_rows = sqlx::query(
         "SELECT loot_id, design_id, min_quantity, max_quantity, probability \
@@ -1227,8 +1220,10 @@ pub async fn save_loot_table(
         .await
         .map_err(|e| format!("Failed to commit loot table save: {e}"))?;
 
-    tracing::info!("Saved loot table {loot_table_id} with {} entries",
-        loot_table.entries.len());
+    tracing::info!(
+        "Saved loot table {loot_table_id} with {} entries",
+        loot_table.entries.len()
+    );
     Ok(loot_table_id)
 }
 
@@ -1483,7 +1478,9 @@ pub async fn get_ability(
         moniker_ids: ar.get::<Vec<i64>, _>("moniker_ids"),
         event_set_id: ar.get("event_set_id"),
         required_ammo: ar.get("required_ammo"),
-        positions: ar.get::<Option<Vec<String>>, _>("positions").unwrap_or_default(),
+        positions: ar
+            .get::<Option<Vec<String>>, _>("positions")
+            .unwrap_or_default(),
         item_monikers: ar.get::<Vec<i64>, _>("item_monikers"),
         effects,
     })
@@ -1634,15 +1631,13 @@ pub async fn save_ability(
         .map_err(|e| format!("Failed to insert effect: {e}"))?;
 
         for nvp in &effect.nvps {
-            sqlx::query(
-                "INSERT INTO effect_nvps (effect_id, name, value) VALUES ($1, $2, $3)",
-            )
-            .bind(effect.effect_id)
-            .bind(&nvp.name)
-            .bind(&nvp.value)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| format!("Failed to insert effect NVP: {e}"))?;
+            sqlx::query("INSERT INTO effect_nvps (effect_id, name, value) VALUES ($1, $2, $3)")
+                .bind(effect.effect_id)
+                .bind(&nvp.name)
+                .bind(&nvp.value)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| format!("Failed to insert effect NVP: {e}"))?;
         }
     }
 
@@ -1650,7 +1645,10 @@ pub async fn save_ability(
         .await
         .map_err(|e| format!("Failed to commit ability save: {e}"))?;
 
-    tracing::info!("Saved ability {ability_id} with {} effects", ability.effects.len());
+    tracing::info!(
+        "Saved ability {ability_id} with {} effects",
+        ability.effects.len()
+    );
     Ok(ability_id)
 }
 

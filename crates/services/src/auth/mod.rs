@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use sqlx::PgPool;
 use tokio::sync::broadcast;
 
-use crate::audit::{LoginEventBuffer, LoginEvent};
+use crate::audit::{LoginEvent, LoginEventBuffer};
 
 // ── Expiration constants ─────────────────────────────────────────────────────
 

@@ -6,16 +6,16 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use crate::base::outbox::{self, CellOutboxPayload};
-use crate::cell::messages::BaseToCellMsg;
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
-use super::purchase_helpers::normalize_item_quantities;
-use super::store::handle_open_vendor_store;
 use super::data::load_vendor_sell_prices;
-use super::serializers::reserve_free_inventory_slots;
 use super::helpers::{send_cash_changed_to_client, sync_bandolier_after_inventory_change};
 use super::purchase_helpers::load_vendor_template_lists;
+use super::purchase_helpers::normalize_item_quantities;
+use super::serializers::reserve_free_inventory_slots;
+use super::store::handle_open_vendor_store;
+use crate::base::outbox::{self, CellOutboxPayload};
+use crate::cell::messages::BaseToCellMsg;
 
 const INV_BANDOLIER: i32 = 3;
 const INV_BUYBACK: i32 = 16;
@@ -316,29 +316,37 @@ pub async fn handle_sell_vendor_items(
         // would error on overflow and rollback the entire sale, surfacing as
         // a confusing failure to the player. Pre-checking lets us return a
         // clean refusal instead of relying on PostgreSQL to error.
-        let current_balance: i32 =
-            match sqlx::query_scalar::<_, i32>("SELECT naquadah FROM sgw_player WHERE player_id = $1 FOR UPDATE")
-                .bind(player_id)
-                .fetch_optional(&mut *tx)
-                .await
-            {
-                Ok(Some(b)) => b,
-                Ok(None) => {
-                    let _ = tx.rollback().await;
-                    tracing::warn!(entity_id, player_id, "SellVendorItems: player not found");
-                    return;
-                }
-                Err(e) => {
-                    let _ = tx.rollback().await;
-                    tracing::error!(entity_id, player_id, "SellVendorItems: balance read failed: {e}");
-                    return;
-                }
-            };
+        let current_balance: i32 = match sqlx::query_scalar::<_, i32>(
+            "SELECT naquadah FROM sgw_player WHERE player_id = $1 FOR UPDATE",
+        )
+        .bind(player_id)
+        .fetch_optional(&mut *tx)
+        .await
+        {
+            Ok(Some(b)) => b,
+            Ok(None) => {
+                let _ = tx.rollback().await;
+                tracing::warn!(entity_id, player_id, "SellVendorItems: player not found");
+                return;
+            }
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(
+                    entity_id,
+                    player_id,
+                    "SellVendorItems: balance read failed: {e}"
+                );
+                return;
+            }
+        };
 
         if current_balance.checked_add(total_cash_gain).is_none() {
             let _ = tx.rollback().await;
             tracing::warn!(
-                entity_id, player_id, current_balance, total_cash_gain,
+                entity_id,
+                player_id,
+                current_balance,
+                total_cash_gain,
                 "SellVendorItems: refusing sale — naquadah balance would overflow i32"
             );
             return;
@@ -378,8 +386,7 @@ pub async fn handle_sell_vendor_items(
     // is atomic. If any outbox INSERT fails we abort the whole sell — better
     // than committing partial state that leaves the cell with no durable
     // notification path.
-    let mut outbox_pending: Vec<(i64, CellOutboxPayload)> =
-        Vec::with_capacity(removed_items.len());
+    let mut outbox_pending: Vec<(i64, CellOutboxPayload)> = Vec::with_capacity(removed_items.len());
     for (item_id, container_id) in &removed_items {
         let payload = CellOutboxPayload::InventoryItemRemoved {
             item_id: *item_id,
@@ -390,7 +397,9 @@ pub async fn handle_sell_vendor_items(
             Err(e) => {
                 let _ = tx.rollback().await;
                 tracing::error!(
-                    entity_id, player_id, item_id,
+                    entity_id,
+                    player_id,
+                    item_id,
                     "SellVendorItems: outbox enqueue failed, aborting: {e}"
                 );
                 return;

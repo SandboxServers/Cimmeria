@@ -43,14 +43,26 @@ pub(crate) async fn handle_gate_travel(
     db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Look up client socket from entity_id
-    let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied()
+    let addr = entity_to_addr
+        .lock()
+        .unwrap()
+        .get(&entity_id)
+        .copied()
         .ok_or("Gate travel: no client addr for entity")?;
 
     // Get client state
     let (key, account_id, _access_level, pending_acks_arc, next_seq) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        let c = clients.get(&addr).ok_or("Gate travel: client state not found")?;
-        (c.key, c.account_id, c.access_level, Arc::clone(&c.pending_acks), Arc::clone(&c.next_seq))
+        let c = clients
+            .get(&addr)
+            .ok_or("Gate travel: client state not found")?;
+        (
+            c.key,
+            c.account_id,
+            c.access_level,
+            Arc::clone(&c.pending_acks),
+            Arc::clone(&c.next_seq),
+        )
     };
 
     tracing::info!(
@@ -62,13 +74,17 @@ pub(crate) async fn handle_gate_travel(
     // resolved space_id via oneshot (needed for the world-entry wire packet).
     let space_id = if let Some(tx) = cell_tx {
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        if tx.send(BaseToCellMsg::CreateEntity {
-            entity_id,
-            world_name: target_world_name.to_string(),
-            position,
-            rotation,
-            reply_tx,
-        }).await.is_ok() {
+        if tx
+            .send(BaseToCellMsg::CreateEntity {
+                entity_id,
+                world_name: target_world_name.to_string(),
+                position,
+                rotation,
+                reply_tx,
+            })
+            .await
+            .is_ok()
+        {
             match reply_rx.await {
                 Ok(sid) => sid,
                 Err(_) => {

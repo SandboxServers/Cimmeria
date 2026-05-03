@@ -2,11 +2,10 @@
 //! packet sizes, determinism (CBC with zero IV), length-prefix widths, and
 //! entity-method encoding boundaries.
 
-use super::*;
 use super::super::{
-    FRAG_FIRST_AND_LAST, BASEMSG_RESOURCE_FRAGMENT, BASEMSG_LOGGED_OFF,
-    write_wstring,
+    write_wstring, BASEMSG_LOGGED_OFF, BASEMSG_RESOURCE_FRAGMENT, FRAG_FIRST_AND_LAST,
 };
+use super::*;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 
@@ -16,13 +15,21 @@ const TEST_KEY: [u8; 32] = [0x42u8; 32];
 fn connect_reply_size() {
     let ticket = b"12345678901234567890";
     let out = build_connect_reply(0xDEADBEEF, ticket, &TEST_KEY, 1);
-    assert_eq!(out.len(), 64, "reply should be 64 bytes: 48 ciphertext + 16 HMAC");
+    assert_eq!(
+        out.len(),
+        64,
+        "reply should be 64 bytes: 48 ciphertext + 16 HMAC"
+    );
 }
 
 #[test]
 fn time_sync_size() {
     let out = build_time_sync(&TEST_KEY, 2);
-    assert_eq!(out.len(), 48, "time sync should be 48 bytes: 32 ciphertext + 16 HMAC");
+    assert_eq!(
+        out.len(),
+        48,
+        "time sync should be 48 bytes: 32 ciphertext + 16 HMAC"
+    );
 }
 
 #[test]
@@ -30,7 +37,10 @@ fn connect_reply_deterministic() {
     let ticket = b"AABBCCDDEEFF00112233";
     let a = build_connect_reply(1, ticket, &TEST_KEY, 1);
     let b = build_connect_reply(1, ticket, &TEST_KEY, 1);
-    assert_eq!(a, b, "same inputs → same encrypted output (deterministic CBC with zero IV)");
+    assert_eq!(
+        a, b,
+        "same inputs → same encrypted output (deterministic CBC with zero IV)"
+    );
 }
 
 #[test]
@@ -103,7 +113,10 @@ fn ongoing_tick_sync_with_acks() {
 fn ongoing_tick_sync_changes_with_tick() {
     let a = build_ongoing_tick_sync(&TEST_KEY, 4, 0, &[]);
     let b = build_ongoing_tick_sync(&TEST_KEY, 4, 1, &[]);
-    assert_ne!(a, b, "different tick values must produce different ciphertexts");
+    assert_ne!(
+        a, b,
+        "different tick values must produce different ciphertexts"
+    );
 }
 
 #[test]
@@ -126,12 +139,12 @@ fn resource_fragment_produces_output() {
         &TEST_KEY,
         5,
         &[],
-        1,    // data_id
-        0,    // chunk_id
+        1, // data_id
+        0, // chunk_id
         FRAG_FIRST_AND_LAST,
-        Some(0),    // msg_type = MESSAGE_CacheData
-        Some(7),    // category_id = char_creation
-        Some(1),    // element_id
+        Some(0), // msg_type = MESSAGE_CacheData
+        Some(7), // category_id = char_creation
+        Some(1), // element_id
         xml,
     );
     assert!(!out.is_empty());
@@ -174,12 +187,12 @@ fn resource_fragment_uses_u16_length_prefix() {
         &TEST_KEY,
         5,
         &[],
-        1,    // data_id
-        0,    // chunk_id
+        1, // data_id
+        0, // chunk_id
         FRAG_FIRST_AND_LAST,
-        Some(0),  // msg_type
-        Some(7),  // category_id
-        Some(1),  // element_id
+        Some(0), // msg_type
+        Some(7), // category_id
+        Some(1), // element_id
         xml,
     );
 
@@ -238,7 +251,10 @@ fn logged_off_body_contains_msg_id_and_reason() {
     // Body starts after flags byte at offset 1 (seq is in the footer).
     let body_start = 1;
     assert!(plaintext.len() > body_start + 1);
-    assert_eq!(plaintext[body_start], BASEMSG_LOGGED_OFF, "msg_id should be 0x37");
+    assert_eq!(
+        plaintext[body_start], BASEMSG_LOGGED_OFF,
+        "msg_id should be 0x37"
+    );
     assert_eq!(plaintext[body_start + 1], 0x00, "reason should be 0");
 }
 

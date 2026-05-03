@@ -10,9 +10,7 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{
-    TIMER_ABILITY_COOLDOWN, serialize_timer_update,
-};
+use cimmeria_entity::abilities::{serialize_timer_update, TIMER_ABILITY_COOLDOWN};
 
 use super::super::combat;
 use super::super::messages::CellToBaseMsg;
@@ -67,7 +65,11 @@ pub async fn handle_use_ability(
             return false;
         }
         if !entity.abilities.has_ability(ability_id) {
-            tracing::debug!(entity_id, ability_id, "useAbility: entity does not have ability");
+            tracing::debug!(
+                entity_id,
+                ability_id,
+                "useAbility: entity does not have ability"
+            );
             return false;
         }
         if entity.abilities.is_on_cooldown(ability_id) {
@@ -80,14 +82,31 @@ pub async fn handle_use_ability(
             if let Some(target) = space_mgr.get_entity(target_id as u32) {
                 // Don't attack dead targets
                 if combat::is_dead_state(target.state_field) {
-                    tracing::debug!(entity_id, ability_id, target_id, "useAbility: target is dead");
+                    tracing::debug!(
+                        entity_id,
+                        ability_id,
+                        target_id,
+                        "useAbility: target is dead"
+                    );
                     return false;
                 }
                 // Range check
-                let max_range = ability_def.as_ref().map_or(30.0, |d| if d.max_range > 0 { d.max_range as f32 } else { 30.0 });
+                let max_range = ability_def.as_ref().map_or(30.0, |d| {
+                    if d.max_range > 0 {
+                        d.max_range as f32
+                    } else {
+                        30.0
+                    }
+                });
                 let dist = entity.position.distance_to(&target.position);
                 if dist > max_range {
-                    tracing::debug!(entity_id, ability_id, distance = dist, max_range, "useAbility: target out of range");
+                    tracing::debug!(
+                        entity_id,
+                        ability_id,
+                        distance = dist,
+                        max_range,
+                        "useAbility: target out of range"
+                    );
                     out_of_range = true;
                 }
             }
@@ -97,14 +116,16 @@ pub async fn handle_use_ability(
     if out_of_range {
         // Send onErrorCode to player: ERRORCODE_SYSTEM_Ability=0, CONDITION_FEEDBACK_OutsideWeaponRange=42
         let mut err_args = Vec::with_capacity(7);
-        err_args.push(0u8);                                     // SystemID
-        err_args.extend_from_slice(&ability_id.to_le_bytes());  // InstanceID
-        err_args.extend_from_slice(&42u16.to_le_bytes());       // ErrorCodeID
-        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: 121, // ON_ERROR_CODE
-            args: err_args,
-        }).await;
+        err_args.push(0u8); // SystemID
+        err_args.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
+        err_args.extend_from_slice(&42u16.to_le_bytes()); // ErrorCodeID
+        let _ = tx
+            .send(CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index: 121, // ON_ERROR_CODE
+                args: err_args,
+            })
+            .await;
         return false;
     }
 
@@ -126,23 +147,35 @@ pub async fn handle_use_ability(
     // against pre-refill ammo and then be silently overwritten by the tick,
     // effectively granting free ammo. The tick is the sole authority that
     // clears `reload_complete_at`, so we gate on its presence.
-    if required_ammo > 0
-        && entity.is_player
-        && entity.reload_complete_at.is_some()
-    {
-        tracing::debug!(entity_id, ability_id, "useAbility: reload in progress, blocking fire");
+    if required_ammo > 0 && entity.is_player && entity.reload_complete_at.is_some() {
+        tracing::debug!(
+            entity_id,
+            ability_id,
+            "useAbility: reload in progress, blocking fire"
+        );
         return false;
     }
 
     let current_ammo = entity.active_ammo();
     if required_ammo > 0 && entity.is_player && current_ammo < required_ammo {
-        tracing::debug!(entity_id, ability_id, current = current_ammo, required = required_ammo, "useAbility: not enough ammo");
+        tracing::debug!(
+            entity_id,
+            ability_id,
+            current = current_ammo,
+            required = required_ammo,
+            "useAbility: not enough ammo"
+        );
         return false;
     }
 
-    let cooldown_secs = ability_def.as_ref().map_or(2.0, |d| if d.cooldown > 0.0 { d.cooldown } else { 0.5 });
+    let cooldown_secs =
+        ability_def
+            .as_ref()
+            .map_or(2.0, |d| if d.cooldown > 0.0 { d.cooldown } else { 0.5 });
     let cooldown_duration = std::time::Duration::from_secs_f32(cooldown_secs);
-    entity.abilities.start_ability_cooldown(ability_id, cooldown_duration);
+    entity
+        .abilities
+        .start_ability_cooldown(ability_id, cooldown_duration);
 
     // Consume ammo (players only). Routes through `set_slot_ammo` so the
     // AmmoSlot{N} stat updates and the slot is marked dirty for batched
@@ -154,14 +187,22 @@ pub async fn handle_use_ability(
         let slot = entity.active_bandolier_slot;
         entity.set_slot_ammo(slot, new_ammo);
         needs_ammo_stat_send = true;
-        tracing::debug!(entity_id, ability_id, ammo_remaining = entity.active_ammo(), "useAbility: consumed ammo");
+        tracing::debug!(
+            entity_id,
+            ability_id,
+            ammo_remaining = entity.active_ammo(),
+            "useAbility: consumed ammo"
+        );
     }
 
     // Get effect sequence ID for this ability invocation
     let effect_seq = entity.abilities.next_effect_id();
 
     tracing::info!(
-        entity_id, ability_id, target_id, cooldown_secs,
+        entity_id,
+        ability_id,
+        target_id,
+        cooldown_secs,
         ability_name = ability_def.as_ref().map_or("unknown", |d| &d.name),
         "useAbility: launched"
     );
@@ -190,11 +231,18 @@ pub async fn handle_use_ability(
         let entity = space_mgr.get_entity_mut(entity_id);
         if let Some(e) = entity {
             let old_state = e.state_field;
-            e.state_field |= BSF_IN_COMBAT;   // Enter combat
-            e.state_field &= !BSF_HOLSTER;     // Unholster weapon
+            e.state_field |= BSF_IN_COMBAT; // Enter combat
+            e.state_field &= !BSF_HOLSTER; // Unholster weapon
             if e.state_field != old_state {
                 let new_state = e.state_field;
-                send_entity_method(entity_id, 19, new_state.to_le_bytes().to_vec(), tx, space_mgr).await;
+                send_entity_method(
+                    entity_id,
+                    19,
+                    new_state.to_le_bytes().to_vec(),
+                    tx,
+                    space_mgr,
+                )
+                .await;
             }
         }
     }
@@ -209,35 +257,44 @@ pub async fn handle_use_ability(
         // Send Ability_Begin (event_id 1000) if the ability has a warmup phase
         let warmup = ability_def.as_ref().map_or(0.0, |d| d.warmup);
         if warmup > 0.0 {
-            if let Some(&begin_seq_id) = space_mgr.sequence_map.get(&(event_set_id, EVENT_ABILITY_BEGIN)) {
+            if let Some(&begin_seq_id) = space_mgr
+                .sequence_map
+                .get(&(event_set_id, EVENT_ABILITY_BEGIN))
+            {
                 let mut seq_args = Vec::with_capacity(28);
-                seq_args.extend_from_slice(&begin_seq_id.to_le_bytes());       // KismetEventSetSeqID (sequence_id)
+                seq_args.extend_from_slice(&begin_seq_id.to_le_bytes()); // KismetEventSetSeqID (sequence_id)
                 seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
-                seq_args.extend_from_slice(&target_id.to_le_bytes());          // TargetID
-                seq_args.push(1);                                               // PrimaryTarget = true
-                seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
-                seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs array count = 0
-                seq_args.push(0);                                               // ViewType = KISMET_VIEW_Witness
+                seq_args.extend_from_slice(&target_id.to_le_bytes()); // TargetID
+                seq_args.push(1); // PrimaryTarget = true
+                seq_args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
+                seq_args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs array count = 0
+                seq_args.push(0); // ViewType = KISMET_VIEW_Witness
                 seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
-                send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
+                send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await;
+                // 1 = onSequence
             }
         }
 
         // Send Ability_End (event_id 1001) — the main ability fire animation
-        if let Some(&end_seq_id) = space_mgr.sequence_map.get(&(event_set_id, EVENT_ABILITY_END)) {
+        if let Some(&end_seq_id) = space_mgr
+            .sequence_map
+            .get(&(event_set_id, EVENT_ABILITY_END))
+        {
             let mut seq_args = Vec::with_capacity(28);
-            seq_args.extend_from_slice(&end_seq_id.to_le_bytes());         // KismetEventSetSeqID (sequence_id)
+            seq_args.extend_from_slice(&end_seq_id.to_le_bytes()); // KismetEventSetSeqID (sequence_id)
             seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID
-            seq_args.extend_from_slice(&target_id.to_le_bytes());          // TargetID
-            seq_args.push(1);                                               // PrimaryTarget = true
-            seq_args.extend_from_slice(&0.0f32.to_le_bytes());            // ImpactTime
-            seq_args.extend_from_slice(&0u32.to_le_bytes());               // NameValuePairs array count = 0
-            seq_args.push(0);                                               // ViewType = KISMET_VIEW_Witness
+            seq_args.extend_from_slice(&target_id.to_le_bytes()); // TargetID
+            seq_args.push(1); // PrimaryTarget = true
+            seq_args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
+            seq_args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs array count = 0
+            seq_args.push(0); // ViewType = KISMET_VIEW_Witness
             seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
             send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
         } else {
             tracing::debug!(
-                entity_id, ability_id, event_set_id,
+                entity_id,
+                ability_id,
+                event_set_id,
                 "onSequence: no Ability_End sequence found for event_set"
             );
         }
@@ -268,6 +325,7 @@ pub async fn handle_use_ability(
         needs_ammo_stat_send,
         tx,
         space_mgr,
-    ).await;
+    )
+    .await;
     true
 }

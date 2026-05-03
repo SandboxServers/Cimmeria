@@ -7,9 +7,9 @@
 //!
 //! Tagged properties provide: SizeX, SizeY, Format (ByteProperty), MipTailBaseIdx.
 
-use byteorder::{LittleEndian, ByteOrder};
 use crate::bulk_data::parse_bulk_data_v486;
 use crate::error::{ObjectError, Result};
+use byteorder::{ByteOrder, LittleEndian};
 
 /// A decoded UE3 Texture2D object.
 #[derive(Debug)]
@@ -57,17 +57,20 @@ impl PixelFormat {
     /// Bytes per 4x4 block for block-compressed formats, or bytes per pixel.
     pub fn block_size(&self) -> usize {
         match self {
-            PixelFormat::DXT1 => 8,           // 8 bytes per 4x4 block
-            PixelFormat::DXT3 | PixelFormat::DXT5 => 16,  // 16 bytes per 4x4 block
-            PixelFormat::A8R8G8B8 => 4,       // 4 bytes per pixel
-            PixelFormat::G8 => 1,             // 1 byte per pixel
-            PixelFormat::Unknown(_) => 4,     // assume 4 bpp
+            PixelFormat::DXT1 => 8,                      // 8 bytes per 4x4 block
+            PixelFormat::DXT3 | PixelFormat::DXT5 => 16, // 16 bytes per 4x4 block
+            PixelFormat::A8R8G8B8 => 4,                  // 4 bytes per pixel
+            PixelFormat::G8 => 1,                        // 1 byte per pixel
+            PixelFormat::Unknown(_) => 4,                // assume 4 bpp
         }
     }
 
     /// Whether this format uses block compression (DXT).
     pub fn is_block_compressed(&self) -> bool {
-        matches!(self, PixelFormat::DXT1 | PixelFormat::DXT3 | PixelFormat::DXT5)
+        matches!(
+            self,
+            PixelFormat::DXT1 | PixelFormat::DXT3 | PixelFormat::DXT5
+        )
     }
 }
 
@@ -89,13 +92,9 @@ pub struct MipLevel {
 ///
 /// `data` is the raw bytes from `pkg.read_export_data(export)`.
 /// `names` is the package name table for property parsing.
-pub fn deserialize_texture2d(
-    data: &[u8],
-    names: &[cimmeria_upk::NameEntry],
-) -> Result<Texture2D> {
+pub fn deserialize_texture2d(data: &[u8], names: &[cimmeria_upk::NameEntry]) -> Result<Texture2D> {
     // 1. Parse tagged properties starting after NetIndex (offset 4)
-    let (props, bin_offset) =
-        cimmeria_upk::parse_tagged_properties_with_end(data, 4, names);
+    let (props, bin_offset) = cimmeria_upk::parse_tagged_properties_with_end(data, 4, names);
 
     // Extract key properties
     let size_x = find_int(&props, "SizeX").unwrap_or(0) as u32;

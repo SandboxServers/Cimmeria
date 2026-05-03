@@ -63,10 +63,23 @@ pub async fn handle_chat_message(
 ) {
     match channel {
         CHAN_SAY | CHAN_EMOTE | CHAN_YELL => {
-            broadcast_to_witnesses(entity_id, speaker_name, speaker_flags, channel, text, tx, space_mgr).await;
+            broadcast_to_witnesses(
+                entity_id,
+                speaker_name,
+                speaker_flags,
+                channel,
+                text,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
         _ => {
-            tracing::debug!(entity_id, channel, "Chat channel not handled by CellService");
+            tracing::debug!(
+                entity_id,
+                channel,
+                "Chat channel not handled by CellService"
+            );
         }
     }
 }
@@ -113,20 +126,24 @@ async fn broadcast_to_witnesses(
 
     // Send to each witness
     for witness_id in witnesses {
-        let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-            entity_id: witness_id,
-            method_index: ON_PLAYER_COMMUNICATION,
-            args: args.clone(),
-        }).await;
+        let _ = tx
+            .send(CellToBaseMsg::EntityMethodCall {
+                entity_id: witness_id,
+                method_index: ON_PLAYER_COMMUNICATION,
+                args: args.clone(),
+            })
+            .await;
     }
 
     // Also send to the sender themselves (client needs server echo for say channel,
     // and sending for all spatial channels is harmless)
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id: sender_id,
-        method_index: ON_PLAYER_COMMUNICATION,
-        args,
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id: sender_id,
+            method_index: ON_PLAYER_COMMUNICATION,
+            args,
+        })
+        .await;
 }
 
 /// Serialize `onPlayerCommunication(Speaker, SpeakerFlags, Channel, Text)` args.
@@ -192,7 +209,12 @@ mod tests {
         offset += 1;
 
         // Text: "Hello" = 5 UTF-16 chars
-        let text_len = u32::from_le_bytes([args[offset], args[offset+1], args[offset+2], args[offset+3]]);
+        let text_len = u32::from_le_bytes([
+            args[offset],
+            args[offset + 1],
+            args[offset + 2],
+            args[offset + 3],
+        ]);
         assert_eq!(text_len, 5);
         offset += 4 + 5 * 2; // 4 + 10 = 14
 
@@ -238,8 +260,10 @@ mod tests {
         mgr.create_startup_spaces(cxml).unwrap();
 
         // Create two players near each other
-        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
-        mgr.create_entity(2, "Agnos", [15.0, 0.0, 15.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
+        mgr.create_entity(2, "Agnos", [15.0, 0.0, 15.0], [0.0; 3])
+            .unwrap();
         mgr.connect_entity(1);
         mgr.connect_entity(2);
 
@@ -261,7 +285,11 @@ mod tests {
 
         // Check the first is to witness entity 2
         match &msgs[0] {
-            CellToBaseMsg::EntityMethodCall { entity_id, method_index, .. } => {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                ..
+            } => {
                 assert_eq!(*entity_id, 2);
                 assert_eq!(*method_index, ON_PLAYER_COMMUNICATION);
             }
@@ -270,7 +298,11 @@ mod tests {
 
         // Check the second is to sender entity 1
         match &msgs[1] {
-            CellToBaseMsg::EntityMethodCall { entity_id, method_index, .. } => {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id,
+                method_index,
+                ..
+            } => {
                 assert_eq!(*entity_id, 1);
                 assert_eq!(*method_index, ON_PLAYER_COMMUNICATION);
             }
@@ -285,7 +317,8 @@ mod tests {
         let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
         mgr.create_startup_spaces(cxml).unwrap();
-        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
 

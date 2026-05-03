@@ -32,22 +32,16 @@ mod tests;
 
 // Public re-exports — keep `super::spawner::Foo` paths stable for sibling modules.
 pub use abilities::{
-    EVENT_ABILITY_BEGIN, EVENT_ABILITY_END,
-    load_ability_defs, load_effect_defs, load_event_set_sequences,
+    load_ability_defs, load_effect_defs, load_event_set_sequences, EVENT_ABILITY_BEGIN,
+    EVENT_ABILITY_END,
 };
-pub use dialogs::{DialogSetMapEntry, load_dialog_set_maps};
-pub use loot::{
-    LootTableEntry, WeaponDef,
-    load_item_containers, load_item_defs, load_loot_tables,
-};
-pub use missions::{
-    MissionDefEntry, MissionObjectiveDef,
-    load_mission_defs, load_step_objectives,
-};
+pub use dialogs::{load_dialog_set_maps, DialogSetMapEntry};
+pub use loot::{load_item_containers, load_item_defs, load_loot_tables, LootTableEntry, WeaponDef};
+pub use missions::{load_mission_defs, load_step_objectives, MissionDefEntry, MissionObjectiveDef};
 pub use npcs::{
-    SpawnRecord, class_id_for_class, load_spawns_from_db,
-    spawn_instance_npcs_from_records, spawn_npcs_from_records,
+    class_id_for_class, load_spawns_from_db, spawn_instance_npcs_from_records,
+    spawn_npcs_from_records, SpawnRecord,
 };
-pub use regions::{RegionLoadData, load_regions_from_db};
-pub use respawners::{RespawnerDef, load_respawners};
-pub use stargates::{StargateEntry, load_stargates};
+pub use regions::{load_regions_from_db, RegionLoadData};
+pub use respawners::{load_respawners, RespawnerDef};
+pub use stargates::{load_stargates, StargateEntry};

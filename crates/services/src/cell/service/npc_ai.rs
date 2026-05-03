@@ -10,19 +10,15 @@ use super::super::space_manager::SpaceManager;
 /// NPC AI tick — for each NPC in Fighting state: find top threat target,
 /// check leash distance, attack with default ability. For NPCs in Leashing
 /// state: reset to Idle when close enough to spawn point, restore health.
-pub(super) async fn npc_ai_tick(
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
+pub(super) async fn npc_ai_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     use cimmeria_entity::cell_entity::AiState;
 
     // Snapshot NPC IDs and their AI state so we don't hold a borrow on space_mgr
     // while calling handle_use_ability (which needs &mut SpaceManager).
-    let npc_snapshot: Vec<(u32, AiState)> = space_mgr.all_npc_entity_ids()
+    let npc_snapshot: Vec<(u32, AiState)> = space_mgr
+        .all_npc_entity_ids()
         .iter()
-        .filter_map(|&eid| {
-            space_mgr.get_entity(eid).map(|e| (eid, e.ai_state))
-        })
+        .filter_map(|&eid| space_mgr.get_entity(eid).map(|e| (eid, e.ai_state)))
         .filter(|(_, state)| *state == AiState::Fighting || *state == AiState::Leashing)
         .collect();
 
@@ -40,13 +36,9 @@ pub(super) async fn npc_ai_tick(
 }
 
 /// NPC fighting behavior: attack top-threat target or leash if too far from spawn.
-async fn npc_ai_fight(
-    npc_id: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    use cimmeria_entity::cell_entity::AiState;
+async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     use super::super::combat;
+    use cimmeria_entity::cell_entity::AiState;
 
     // Read NPC state (immutable borrow)
     let (top_target, spawn_pos, npc_pos, is_stationary) = {
@@ -56,7 +48,9 @@ async fn npc_ai_fight(
         };
 
         // Find highest-threat target
-        let top = npc.threat_list.iter()
+        let top = npc
+            .threat_list
+            .iter()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(&eid, _)| eid);
 
@@ -80,12 +74,18 @@ async fn npc_ai_fight(
     let target_pos = match space_mgr.get_entity(target_id) {
         Some(t) => {
             // Don't attack dead targets
-            let is_dead = t.stats.get(cimmeria_entity::stats::HEALTH)
+            let is_dead = t
+                .stats
+                .get(cimmeria_entity::stats::HEALTH)
                 .map_or(true, |s| s.cur <= 0);
             if is_dead {
                 if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                     npc.threat_list.remove(&target_id);
-                    tracing::debug!(npc_id, target = target_id, "NPC AI: target is dead, removing from threat");
+                    tracing::debug!(
+                        npc_id,
+                        target = target_id,
+                        "NPC AI: target is dead, removing from threat"
+                    );
                 }
                 return;
             }
@@ -108,7 +108,8 @@ async fn npc_ai_fight(
                 npc.ai_state = AiState::Leashing;
                 npc.threat_list.clear();
                 tracing::info!(
-                    npc_id, target = target_id,
+                    npc_id,
+                    target = target_id,
                     distance = dist_to_spawn,
                     "NPC AI: target too far from spawn, leashing"
                 );
@@ -153,19 +154,25 @@ async fn npc_ai_fight(
         if needs_repath {
             if let Some(path) = space_mgr.find_path(npc_id, &npc_pos, &target_pos) {
                 if path.len() > 1 {
-                    let waypoints: std::collections::VecDeque<_> = path.into_iter().skip(1).collect();
+                    let waypoints: std::collections::VecDeque<_> =
+                        path.into_iter().skip(1).collect();
                     if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                         npc.nav_path = waypoints;
                     }
                     tracing::debug!(
-                        npc_id, target = target_id,
-                        in_range, has_los,
+                        npc_id,
+                        target = target_id,
+                        in_range,
+                        has_los,
                         "NPC AI: pathfinding toward target"
                     );
                 }
             } else {
                 tracing::debug!(
-                    npc_id, target = target_id, in_range, has_los,
+                    npc_id,
+                    target = target_id,
+                    in_range,
+                    has_los,
                     "NPC AI: no path to target"
                 );
             }
@@ -179,25 +186,27 @@ async fn npc_ai_fight(
     }
 
     // Attack the target with the default ability
-    tracing::debug!(npc_id, target = target_id, distance = dist_to_target, "NPC AI: attacking top threat target");
+    tracing::debug!(
+        npc_id,
+        target = target_id,
+        distance = dist_to_target,
+        "NPC AI: attacking top threat target"
+    );
     super::super::abilities::handle_use_ability(
         npc_id,
         combat::NPC_DEFAULT_ABILITY,
         target_id as i32,
         tx,
         space_mgr,
-    ).await;
+    )
+    .await;
 }
 
 /// NPC leashing behavior: reset to Idle and restore health.
 ///
 /// In a full implementation this would pathfind the NPC back to spawn.
 /// For now we snap back instantly and restore health.
-async fn npc_ai_leash(
-    npc_id: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
+async fn npc_ai_leash(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     use cimmeria_entity::cell_entity::AiState;
 
     let (stat_update, state_field) = {
@@ -226,7 +235,10 @@ async fn npc_ai_leash(
         // place on a leashing NPC, so unsetting them would be defensive
         // paranoia against an unreachable code path.
 
-        tracing::info!(npc_id, "NPC AI: leash complete, reset to Idle with full health");
+        tracing::info!(
+            npc_id,
+            "NPC AI: leash complete, reset to Idle with full health"
+        );
 
         // Collect data before dropping the mutable borrow
         let stat_update = npc.stats.serialize_dirty();

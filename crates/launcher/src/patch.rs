@@ -21,11 +21,12 @@ fn find_pattern(data: &[u8], pattern: &[u8]) -> Option<usize> {
 pub fn patch_hostname(data: &mut [u8], new_host: &str) -> Result<usize, PatchError> {
     let host_bytes = new_host.as_bytes();
     if host_bytes.len() > MAX_HOST_LEN {
-        return Err(PatchError::AddressTooLong { len: host_bytes.len() });
+        return Err(PatchError::AddressTooLong {
+            len: host_bytes.len(),
+        });
     }
 
-    let offset = find_pattern(data, ORIGINAL_HOST)
-        .ok_or(PatchError::PatternNotFound)?;
+    let offset = find_pattern(data, ORIGINAL_HOST).ok_or(PatchError::PatternNotFound)?;
 
     data[offset..offset + host_bytes.len()].copy_from_slice(host_bytes);
     for i in host_bytes.len()..MAX_HOST_LEN {

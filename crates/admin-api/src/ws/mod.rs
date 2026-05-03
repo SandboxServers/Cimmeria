@@ -7,8 +7,8 @@
 
 pub mod broadcast_layer;
 pub mod entity_stream;
-pub mod log_stream;
 pub mod event_stream;
+pub mod log_stream;
 
 use std::sync::Arc;
 

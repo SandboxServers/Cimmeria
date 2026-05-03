@@ -25,9 +25,9 @@
 //! [`ChainEngine`]: chain::ChainEngine
 //! [`ExecutionContext`]: context::ExecutionContext
 
-pub mod chain;
-pub mod triggers;
-pub mod conditions;
 pub mod actions;
+pub mod chain;
+pub mod conditions;
 pub mod context;
 pub mod loader;
+pub mod triggers;

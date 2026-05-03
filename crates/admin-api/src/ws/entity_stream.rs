@@ -5,8 +5,8 @@
 
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::extract::ws::{WebSocket, WebSocketUpgrade};
+use axum::extract::State;
 use axum::response::Response;
 
 use cimmeria_services::orchestrator::Orchestrator;

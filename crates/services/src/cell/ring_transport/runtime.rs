@@ -48,7 +48,8 @@ pub async fn run_tick_with_engine(
             let count = iterations.entry(region_id).or_insert(0);
             if *count >= MAX_PER_REGION {
                 tracing::error!(
-                    region_id, max = MAX_PER_REGION,
+                    region_id,
+                    max = MAX_PER_REGION,
                     "ring tick: hit per-region transition cap — possible FSM loop"
                 );
                 continue;
@@ -76,11 +77,21 @@ async fn run_one_deadline(
 ) {
     // Resolve any cross-region lookups (warmup needs the destination's
     // position) BEFORE taking a `&mut` to the source transporter.
-    let (destination_for_warmup, warmup_num_players, warmup_dst_id): (Option<RingRegion>, u32, i32) = if deadline.is_warmup() {
-        let (dst_id, num_players) = space_mgr.ring_transporters.get(region_id)
+    let (destination_for_warmup, warmup_num_players, warmup_dst_id): (
+        Option<RingRegion>,
+        u32,
+        i32,
+    ) = if deadline.is_warmup() {
+        let (dst_id, num_players) = space_mgr
+            .ring_transporters
+            .get(region_id)
             .map(|t| (t.remote_region_id.unwrap_or(0), t.send_players.len() as u32))
             .unwrap_or((0, 0));
-        (space_mgr.ring_regions.get(&dst_id).cloned(), num_players, dst_id)
+        (
+            space_mgr.ring_regions.get(&dst_id).cloned(),
+            num_players,
+            dst_id,
+        )
     } else {
         (None, 0, 0)
     };
@@ -115,7 +126,8 @@ async fn run_one_deadline(
     // its `playerLoaded` callback is genuinely async (waits for the
     // client's `mapLoaded`). We collapse the timing into one tick.
     if deadline.is_warmup() {
-        advance_destination_after_warmup(warmup_dst_id, warmup_num_players, tx, space_mgr, engine).await;
+        advance_destination_after_warmup(warmup_dst_id, warmup_num_players, tx, space_mgr, engine)
+            .await;
     }
 
     dispatch_effects(effects, tx, space_mgr, engine).await;
@@ -159,7 +171,11 @@ pub async fn handle_interact(
     engine: &ChainEngine,
 ) {
     if space_mgr.ring_transporters.get(region_id).is_none() {
-        tracing::warn!(region_id, entity_id, "TriggerTransporter: no transporter loaded for region");
+        tracing::warn!(
+            region_id,
+            entity_id,
+            "TriggerTransporter: no transporter loaded for region"
+        );
         return;
     }
 
@@ -196,14 +212,20 @@ pub async fn handle_select_destination(
             src.world_name.clone()
         }
         None => {
-            tracing::warn!(source_region_id, "selectDestination: source transporter not loaded");
+            tracing::warn!(
+                source_region_id,
+                "selectDestination: source transporter not loaded"
+            );
             return;
         }
     };
     let dst_world = match space_mgr.ring_transporters.get(destination_region_id) {
         Some(dst) => dst.world_name.clone(),
         None => {
-            tracing::warn!(destination_region_id, "selectDestination: destination transporter not loaded");
+            tracing::warn!(
+                destination_region_id,
+                "selectDestination: destination transporter not loaded"
+            );
             return;
         }
     };
@@ -222,10 +244,14 @@ pub async fn handle_select_destination(
         src.enter_send_wait(destination_region_id);
     }
     {
-        let dst_state = space_mgr.ring_transporters.get(destination_region_id).map(|d| d.state);
+        let dst_state = space_mgr
+            .ring_transporters
+            .get(destination_region_id)
+            .map(|d| d.state);
         if dst_state != Some(State::Idle) {
             tracing::warn!(
-                destination_region_id, ?dst_state,
+                destination_region_id,
+                ?dst_state,
                 "selectDestination: destination busy — aborting"
             );
             // Reset the source we just nudged into SendWait.
@@ -249,10 +275,19 @@ pub async fn handle_select_destination(
         player.destination_ring_id = Some(destination_region_id);
     }
 
-    let auto_start = space_mgr.ring_transporters.get(source_region_id)
+    let auto_start = space_mgr
+        .ring_transporters
+        .get(source_region_id)
         .map_or(false, |t| t.should_auto_start());
     if auto_start {
-        kick_off_warmup(source_region_id, destination_region_id, tx, space_mgr, engine).await;
+        kick_off_warmup(
+            source_region_id,
+            destination_region_id,
+            tx,
+            space_mgr,
+            engine,
+        )
+        .await;
     }
 }
 
@@ -267,7 +302,11 @@ pub async fn handle_region_trigger(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    let region_id = match space_mgr.ring_point_set_to_region.get(&point_set_id).copied() {
+    let region_id = match space_mgr
+        .ring_point_set_to_region
+        .get(&point_set_id)
+        .copied()
+    {
         Some(id) => id,
         None => return,
     };
@@ -276,10 +315,14 @@ pub async fn handle_region_trigger(
         t.region_triggered(entering, entity_id);
     }
 
-    let auto_start = space_mgr.ring_transporters.get(region_id)
+    let auto_start = space_mgr
+        .ring_transporters
+        .get(region_id)
         .map_or(false, |t| t.should_auto_start());
     if auto_start {
-        let dst_id = space_mgr.ring_transporters.get(region_id)
+        let dst_id = space_mgr
+            .ring_transporters
+            .get(region_id)
             .and_then(|t| t.remote_region_id);
         if let Some(dst_id) = dst_id {
             kick_off_warmup(region_id, dst_id, tx, space_mgr, engine).await;

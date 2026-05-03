@@ -8,12 +8,12 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
 use crate::mercury::{
-    build_char_create_failed, build_character_visuals, build_on_character_list,
-    CharacterInfo, SKIN_TINTS,
+    build_char_create_failed, build_character_visuals, build_on_character_list, CharacterInfo,
+    SKIN_TINTS,
 };
 
-use super::ConnectedClientState;
 use super::helpers::{drain_acks_and_seq, get_account_entity_id};
+use super::ConnectedClientState;
 
 /// Query the character list from the database.
 pub(crate) async fn query_character_list(
@@ -53,7 +53,11 @@ pub(crate) async fn query_character_list(
     .await
     {
         Ok(rows) => {
-            tracing::info!(account_id, count = rows.len(), "Character list query result");
+            tracing::info!(
+                account_id,
+                count = rows.len(),
+                "Character list query result"
+            );
             rows.into_iter()
                 .map(|r| CharacterInfo {
                     player_id: r.player_id,
@@ -110,13 +114,11 @@ pub(crate) async fn handle_delete_character(
         }
     };
 
-    let result = sqlx::query(
-        "DELETE FROM sgw_player WHERE player_id = $1 AND account_id = $2",
-    )
-    .bind(player_id)
-    .bind(account_id as i32)
-    .execute(pool.as_ref())
-    .await;
+    let result = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1 AND account_id = $2")
+        .bind(player_id)
+        .bind(account_id as i32)
+        .execute(pool.as_ref())
+        .await;
 
     match result {
         Ok(r) => {
@@ -161,7 +163,10 @@ pub(crate) async fn handle_request_character_visuals(
 
     let account_id = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients.get(&addr).ok_or("addr not in connected map")?.account_id
+        clients
+            .get(&addr)
+            .ok_or("addr not in connected map")?
+            .account_id
     };
 
     let row = sqlx::query_as::<_, (String, Vec<String>, i32, i32)>(
@@ -207,7 +212,10 @@ pub(crate) async fn handle_request_character_visuals(
             {
                 Ok(v) => v,
                 Err(e) => {
-                    tracing::error!(player_id, "character visuals query failed (skipping appearance overlay): {e}");
+                    tracing::error!(
+                        player_id,
+                        "character visuals query failed (skipping appearance overlay): {e}"
+                    );
                     Vec::new()
                 }
             };
@@ -221,11 +229,16 @@ pub(crate) async fn handle_request_character_visuals(
                 "Sending character visuals"
             );
 
-            let skin_tint = SKIN_TINTS.get(skin_color_id as usize).copied().unwrap_or(0x2F1308FF);
+            let skin_tint = SKIN_TINTS
+                .get(skin_color_id as usize)
+                .copied()
+                .unwrap_or(0x2F1308FF);
             let account_eid = get_account_entity_id(connected, addr)?;
             let (acks, seq) = drain_acks_and_seq(connected, addr)?;
             let pkt = build_character_visuals(
-                &key, seq, &acks,
+                &key,
+                seq,
+                &acks,
                 player_id,
                 &bodyset,
                 &components,

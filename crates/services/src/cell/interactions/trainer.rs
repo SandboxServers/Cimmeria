@@ -22,20 +22,28 @@ pub(super) async fn send_trainer_open(
     // For now, mark all as trainable (1)
     let count = all_abilities.len() as u32;
     let mut args = Vec::with_capacity(8 + all_abilities.len() * 5);
-    args.extend_from_slice(&npc_entity_id.to_le_bytes());  // TrainerID
-    args.extend_from_slice(&count.to_le_bytes());           // ability count
+    args.extend_from_slice(&npc_entity_id.to_le_bytes()); // TrainerID
+    args.extend_from_slice(&count.to_le_bytes()); // ability count
     for ability_id in &all_abilities {
-        args.extend_from_slice(&ability_id.to_le_bytes());  // abilityID
-        args.push(1);                                       // trainable = true
+        args.extend_from_slice(&ability_id.to_le_bytes()); // abilityID
+        args.push(1); // trainable = true
     }
-    args.extend_from_slice(&1000i32.to_le_bytes());         // CostToRespec
+    args.extend_from_slice(&1000i32.to_le_bytes()); // CostToRespec
 
-    tracing::debug!(player_id, npc_entity_id, archetype_id, count, "Sending onTrainerOpen");
-    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-        entity_id: player_id,
-        method_index: crate::mercury::method_idx::ON_TRAINER_OPEN,
-        args,
-    }).await;
+    tracing::debug!(
+        player_id,
+        npc_entity_id,
+        archetype_id,
+        count,
+        "Sending onTrainerOpen"
+    );
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id: player_id,
+            method_index: crate::mercury::method_idx::ON_TRAINER_OPEN,
+            args,
+        })
+        .await;
 }
 
 #[cfg(test)]
@@ -59,7 +67,10 @@ mod tests {
         assert_eq!(args.len(), 27);
         assert_eq!(u32::from_le_bytes([args[4], args[5], args[6], args[7]]), 3);
         // First ability
-        assert_eq!(i32::from_le_bytes([args[8], args[9], args[10], args[11]]), 597);
+        assert_eq!(
+            i32::from_le_bytes([args[8], args[9], args[10], args[11]]),
+            597
+        );
         assert_eq!(args[12], 1); // trainable
     }
 }

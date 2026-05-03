@@ -18,20 +18,14 @@ pub enum BaseToCellMsg {
     },
 
     /// Destroy a cell entity (player left, entity despawned).
-    DestroyEntity {
-        entity_id: u32,
-    },
+    DestroyEntity { entity_id: u32 },
 
     /// Mark an entity as having a client controller (player).
     /// Sent after world entry packets are delivered to the client.
-    ConnectEntity {
-        entity_id: u32,
-    },
+    ConnectEntity { entity_id: u32 },
 
     /// Remove client controller from an entity (player disconnected).
-    DisconnectEntity {
-        entity_id: u32,
-    },
+    DisconnectEntity { entity_id: u32 },
 
     /// Client position/movement update forwarded from `avatarUpdateExplicit`.
     EntityMove {

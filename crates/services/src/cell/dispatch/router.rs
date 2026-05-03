@@ -47,7 +47,8 @@ pub async fn dispatch_cell_method(
         return;
     }
     // SGWInventoryManager interface (36–42) — needs engine for useItem content chains
-    if cell_methods::inventory::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await {
+    if cell_methods::inventory::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await
+    {
         return;
     }
     // SGWMailManager interface (43–51)

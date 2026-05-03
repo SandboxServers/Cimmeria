@@ -10,18 +10,18 @@
 //! half (spatial state, managed by CellApp). Communication between halves and
 //! with clients uses typed mailboxes that serialize calls over Mercury.
 
+pub mod abilities;
 pub mod base_entity;
 pub mod cell_entity;
-pub mod mailbox;
-pub mod manager;
-pub mod properties;
-pub mod space;
-pub mod world_grid;
-pub mod abilities;
-pub mod inventory;
-pub mod missions;
-pub mod movement;
 pub mod detour_ffi;
 pub mod interaction_flags;
+pub mod inventory;
+pub mod mailbox;
+pub mod manager;
+pub mod missions;
+pub mod movement;
 pub mod navigation;
+pub mod properties;
+pub mod space;
 pub mod stats;
+pub mod world_grid;

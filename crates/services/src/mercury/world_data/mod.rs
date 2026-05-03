@@ -14,26 +14,25 @@ mod tests;
 // Matches the public API that mercury/mod.rs imports from `world_data::*`.
 
 pub use phases::{
-    build_create_player, build_enter_world, build_enter_world_body,
-    build_on_player_data_loaded, build_setup_world_parameters,
+    build_create_player, build_enter_world, build_enter_world_body, build_on_player_data_loaded,
+    build_setup_world_parameters,
 };
 
 pub use map_loaded::{
-    build_map_loaded, build_map_loaded_body, fragment_map_loaded, fragment_count,
+    build_map_loaded, build_map_loaded_body, fragment_count, fragment_map_loaded,
 };
 
-pub use stats::{archetype_stats, archetype_ability_tree};
+pub use stats::{archetype_ability_tree, archetype_stats};
 
 // ── Shared imports from parent (mercury) ─────────────────────────────────────
 // Used by submodules via `super::`.
 
+pub(crate) use super::types::{ArchetypeStats, PlayerLoadData, WorldEntryInfo};
 pub(crate) use super::{
-    encrypt_packet, write_wstring, append_entity_method, method_idx,
-    REPLY_FLAGS, BASEMSG_CREATE_BASE_PLAYER, BASEMSG_SPACE_VIEWPORT_INFO,
-    BASEMSG_CREATE_CELL_PLAYER, BASEMSG_FORCED_POSITION,
+    append_entity_method, encrypt_packet, method_idx, write_wstring, BASEMSG_CREATE_BASE_PLAYER,
+    BASEMSG_CREATE_CELL_PLAYER, BASEMSG_FORCED_POSITION, BASEMSG_SPACE_VIEWPORT_INFO, REPLY_FLAGS,
     SKIN_TINTS,
 };
-pub(crate) use super::types::{ArchetypeStats, PlayerLoadData, WorldEntryInfo};
 
 // ── Data lookup functions ────────────────────────────────────────────────────
 // Used by both phases.rs and map_loaded.rs, so they live here.
@@ -105,26 +104,26 @@ pub(crate) fn client_map_for_world(world_name: &str) -> &str {
 pub(crate) fn build_world_params_args(world_name: &str) -> Vec<u8> {
     let mut args = Vec::with_capacity(88);
     args.extend_from_slice(&world_id_for_name(world_name).to_le_bytes()); // worldId
-    args.extend_from_slice(&0i32.to_le_bytes());       // weatherSetId
-    args.extend_from_slice(&1i32.to_le_bytes());       // minToRealMinutes
-    args.extend_from_slice(&1440i32.to_le_bytes());    // minutesPerDay
-    args.extend_from_slice(&100000i32.to_le_bytes());  // currentTimeInSeconds
-    args.extend_from_slice(&(-9.8f32).to_le_bytes());  // gravity
-    args.extend_from_slice(&6.0f32.to_le_bytes());     // runSpeed
-    args.extend_from_slice(&4.0f32.to_le_bytes());     // sidewaysRunSpeed
-    args.extend_from_slice(&3.0f32.to_le_bytes());     // backwardsRunSpeed
-    args.extend_from_slice(&2.0f32.to_le_bytes());     // walkSpeed
-    args.extend_from_slice(&1.5f32.to_le_bytes());     // sidewaysWalkSpeed
-    args.extend_from_slice(&1.0f32.to_le_bytes());     // backwardsWalkSpeed
-    args.extend_from_slice(&3.0f32.to_le_bytes());     // crouchRunSpeed
-    args.extend_from_slice(&2.0f32.to_le_bytes());     // sidewaysCrouchRunSpeed
-    args.extend_from_slice(&1.5f32.to_le_bytes());     // backwardsCrouchRunSpeed
-    args.extend_from_slice(&1.5f32.to_le_bytes());     // crouchWalkSpeed
-    args.extend_from_slice(&1.0f32.to_le_bytes());     // sidewaysCrouchWalkSpeed
-    args.extend_from_slice(&0.75f32.to_le_bytes());    // backwardsCrouchWalkSpeed
-    args.extend_from_slice(&4.0f32.to_le_bytes());     // swimSpeed
-    args.extend_from_slice(&2.5f32.to_le_bytes());     // sidewaysSwimSpeed
-    args.extend_from_slice(&2.0f32.to_le_bytes());     // backwardsSwimSpeed
-    args.extend_from_slice(&8.0f32.to_le_bytes());     // jumpSpeed
+    args.extend_from_slice(&0i32.to_le_bytes()); // weatherSetId
+    args.extend_from_slice(&1i32.to_le_bytes()); // minToRealMinutes
+    args.extend_from_slice(&1440i32.to_le_bytes()); // minutesPerDay
+    args.extend_from_slice(&100000i32.to_le_bytes()); // currentTimeInSeconds
+    args.extend_from_slice(&(-9.8f32).to_le_bytes()); // gravity
+    args.extend_from_slice(&6.0f32.to_le_bytes()); // runSpeed
+    args.extend_from_slice(&4.0f32.to_le_bytes()); // sidewaysRunSpeed
+    args.extend_from_slice(&3.0f32.to_le_bytes()); // backwardsRunSpeed
+    args.extend_from_slice(&2.0f32.to_le_bytes()); // walkSpeed
+    args.extend_from_slice(&1.5f32.to_le_bytes()); // sidewaysWalkSpeed
+    args.extend_from_slice(&1.0f32.to_le_bytes()); // backwardsWalkSpeed
+    args.extend_from_slice(&3.0f32.to_le_bytes()); // crouchRunSpeed
+    args.extend_from_slice(&2.0f32.to_le_bytes()); // sidewaysCrouchRunSpeed
+    args.extend_from_slice(&1.5f32.to_le_bytes()); // backwardsCrouchRunSpeed
+    args.extend_from_slice(&1.5f32.to_le_bytes()); // crouchWalkSpeed
+    args.extend_from_slice(&1.0f32.to_le_bytes()); // sidewaysCrouchWalkSpeed
+    args.extend_from_slice(&0.75f32.to_le_bytes()); // backwardsCrouchWalkSpeed
+    args.extend_from_slice(&4.0f32.to_le_bytes()); // swimSpeed
+    args.extend_from_slice(&2.5f32.to_le_bytes()); // sidewaysSwimSpeed
+    args.extend_from_slice(&2.0f32.to_le_bytes()); // backwardsSwimSpeed
+    args.extend_from_slice(&8.0f32.to_le_bytes()); // jumpSpeed
     args
 }

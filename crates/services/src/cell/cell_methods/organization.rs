@@ -1,8 +1,8 @@
 //! OrganizationMember interface exposed CellMethods (indices 8–19).
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 pub const INVITE_RESPONSE: u16 = 8;
 pub const LEAVE: u16 = 9;
@@ -29,7 +29,12 @@ pub async fn dispatch(
             if args.len() >= 5 {
                 let request_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let response = args[4];
-                tracing::info!(entity_id, request_id, response, "UNIMPLEMENTED: organizationInviteResponse");
+                tracing::info!(
+                    entity_id,
+                    request_id,
+                    response,
+                    "UNIMPLEMENTED: organizationInviteResponse"
+                );
             }
             true
         }
@@ -46,7 +51,14 @@ pub async fn dispatch(
                 let x = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
-                tracing::info!(entity_id, org_id, x, y, z, "UNIMPLEMENTED: BroadcastMinimapPing");
+                tracing::info!(
+                    entity_id,
+                    org_id,
+                    x,
+                    y,
+                    z,
+                    "UNIMPLEMENTED: BroadcastMinimapPing"
+                );
             }
             true
         }
@@ -54,7 +66,12 @@ pub async fn dispatch(
             if args.len() >= 5 {
                 let org_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let response = args[4];
-                tracing::info!(entity_id, org_id, response, "UNIMPLEMENTED: strikeTeamResponse");
+                tracing::info!(
+                    entity_id,
+                    org_id,
+                    response,
+                    "UNIMPLEMENTED: strikeTeamResponse"
+                );
             }
             true
         }
@@ -62,7 +79,12 @@ pub async fn dispatch(
             if args.len() >= 5 {
                 let org_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let response = args[4];
-                tracing::info!(entity_id, org_id, response, "UNIMPLEMENTED: pvpOrganizationLeaveResponse");
+                tracing::info!(
+                    entity_id,
+                    org_id,
+                    response,
+                    "UNIMPLEMENTED: pvpOrganizationLeaveResponse"
+                );
             }
             true
         }
@@ -92,7 +114,13 @@ pub async fn dispatch(
                 let org_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let rank = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let permissions = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
-                tracing::info!(entity_id, org_id, rank, permissions, "UNIMPLEMENTED: organizationSetRankPermissions");
+                tracing::info!(
+                    entity_id,
+                    org_id,
+                    rank,
+                    permissions,
+                    "UNIMPLEMENTED: organizationSetRankPermissions"
+                );
             }
             true
         }
@@ -100,7 +128,12 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let org_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let rank = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, org_id, rank, "UNIMPLEMENTED: organizationSetRankName");
+                tracing::info!(
+                    entity_id,
+                    org_id,
+                    rank,
+                    "UNIMPLEMENTED: organizationSetRankName"
+                );
             }
             true
         }
@@ -115,7 +148,12 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let org_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let cash = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::info!(entity_id, org_id, cash, "UNIMPLEMENTED: organizationTransferCash");
+                tracing::info!(
+                    entity_id,
+                    org_id,
+                    cash,
+                    "UNIMPLEMENTED: organizationTransferCash"
+                );
             }
             true
         }

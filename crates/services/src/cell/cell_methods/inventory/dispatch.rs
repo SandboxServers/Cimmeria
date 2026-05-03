@@ -1,14 +1,14 @@
 //! Top-level dispatch for SGWInventoryManager method indices (36–42).
 
-use tokio::sync::mpsc;
-use cimmeria_content_engine::chain::ChainEngine;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_content_engine::chain::ChainEngine;
+use tokio::sync::mpsc;
 
 use super::bandolier::{handle_request_active_slot_change, handle_request_ammo_change};
 use super::constants::{
-    LIST_ITEMS, MOVE_ITEM, REMOVE_ITEM, REPAIR_ITEM_REQUEST,
-    REQUEST_ACTIVE_SLOT_CHANGE, REQUEST_AMMO_CHANGE, USE_ITEM,
+    LIST_ITEMS, MOVE_ITEM, REMOVE_ITEM, REPAIR_ITEM_REQUEST, REQUEST_ACTIVE_SLOT_CHANGE,
+    REQUEST_AMMO_CHANGE, USE_ITEM,
 };
 use super::item_ops::{
     handle_list_items, handle_move_item, handle_remove_item, handle_repair_item_request,

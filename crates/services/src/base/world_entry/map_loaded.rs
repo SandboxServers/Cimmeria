@@ -19,10 +19,10 @@ use crate::mercury::{
     build_enter_world, build_map_loaded_body, fragment_count, fragment_map_loaded,
 };
 
-use super::super::{ConnectedClientState, PendingClientReadyInfo};
 use super::super::world_entry_appearance::{
     build_appearance_args, build_tint_args, handle_cancel_movie,
 };
+use super::super::{ConnectedClientState, PendingClientReadyInfo};
 use super::methods::default_player_load_data;
 
 /// Enter world: send VIEWPORT + CELL_PLAYER + FORCED_POSITION + entity data.
@@ -47,9 +47,13 @@ pub(crate) async fn handle_map_loaded(
     let (entry_info, player_data) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
-        let entry = c.pending_map_loaded.take()
+        let entry = c
+            .pending_map_loaded
+            .take()
             .ok_or("handle_map_loaded: no pending world entry")?;
-        let data = c.pending_player_load_data.take()
+        let data = c
+            .pending_player_load_data
+            .take()
             .unwrap_or_else(default_player_load_data);
         (entry, data)
     };
@@ -75,9 +79,7 @@ pub(crate) async fn handle_map_loaded(
     // Previously we combined everything into one fragmented bundle, which caused
     // BeingAppearance to be silently dropped (HOLD FOR TRANSACTION) because the
     // entity was still in its creation transaction during bundle processing.
-    let map_body = build_map_loaded_body(
-        entry_info.player_entity_id, &player_data, &entry_info,
-    );
+    let map_body = build_map_loaded_body(entry_info.player_entity_id, &player_data, &entry_info);
 
     let map_frags = fragment_count(map_body.len());
     // Reserve 1 seq for the standalone enter-world packet + N seqs for map fragments.
@@ -115,7 +117,8 @@ pub(crate) async fn handle_map_loaded(
         socket.send_to(pkt_data, addr).await?;
     }
 
-    let total_bytes: usize = enter_world_pkt.len() + map_packets.iter().map(|p| p.len()).sum::<usize>();
+    let total_bytes: usize =
+        enter_world_pkt.len() + map_packets.iter().map(|p| p.len()).sum::<usize>();
     let pkt_count = 1 + map_packets.len();
     tracing::info!(%addr, player = %player_data.player_name,
         level = player_data.level, archetype = player_data.archetype,
@@ -125,12 +128,10 @@ pub(crate) async fn handle_map_loaded(
     // Clear first_login flag in DB after sending the intro movie
     if player_data.first_login != 0 {
         if let Some(ref pool) = db_pool {
-            let _ = sqlx::query(
-                "UPDATE sgw_player SET first_login = 0 WHERE player_id = $1",
-            )
-            .bind(player_data.player_id)
-            .execute(pool.as_ref())
-            .await;
+            let _ = sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
+                .bind(player_data.player_id)
+                .execute(pool.as_ref())
+                .await;
         }
 
         // The first-login cinematic (onPlayMovie) blocks the client from
@@ -144,8 +145,10 @@ pub(crate) async fn handle_map_loaded(
         let delay_entity_id = entry_info.player_entity_id;
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            tracing::info!(entity_id = delay_entity_id,
-                "Cinematic timer: resending BeingAppearance after 10s delay");
+            tracing::info!(
+                entity_id = delay_entity_id,
+                "Cinematic timer: resending BeingAppearance after 10s delay"
+            );
             handle_cancel_movie(
                 &delay_socket,
                 // Look up addr from entity_to_addr since it's stable
@@ -159,7 +162,8 @@ pub(crate) async fn handle_map_loaded(
                 delay_entity_id,
                 &delay_connected,
                 &delay_entity_to_addr,
-            ).await;
+            )
+            .await;
         });
     }
 
@@ -167,7 +171,10 @@ pub(crate) async fn handle_map_loaded(
     // resource responses and future client-targeted traffic can resolve the
     // socket, but defer CellService player initialization until the client
     // explicitly signals readiness (matches C++ SGWPlayer.onClientReady).
-    entity_to_addr.lock().unwrap().insert(entry_info.player_entity_id, addr);
+    entity_to_addr
+        .lock()
+        .unwrap()
+        .insert(entry_info.player_entity_id, addr);
 
     // Cache BeingAppearance + onEntityTint args for resend after onClientReady.
     // The first copy in the mapLoaded bundle may be dropped because the entity is

@@ -203,9 +203,13 @@ mod tests {
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
-            .bind(player_id).execute(pool).await;
+            .bind(player_id)
+            .execute(pool)
+            .await;
         let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
-            .bind(account_id).execute(pool).await;
+            .bind(account_id)
+            .execute(pool)
+            .await;
     }
 
     async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32) {
@@ -213,8 +217,11 @@ mod tests {
             "INSERT INTO account (account_id, account_name, password) \
              VALUES ($1, $2, '')",
         )
-        .bind(account_id).bind(format!("repair-test-{account_id}"))
-        .execute(pool).await.expect("insert account");
+        .bind(account_id)
+        .bind(format!("repair-test-{account_id}"))
+        .execute(pool)
+        .await
+        .expect("insert account");
 
         sqlx::query(
             "INSERT INTO sgw_player (\
@@ -224,8 +231,12 @@ mod tests {
              ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
                        0.0, 0.0, 0.0, 0, 0)",
         )
-        .bind(account_id).bind(player_id).bind(format!("test-{player_id}"))
-        .execute(pool).await.expect("insert player");
+        .bind(account_id)
+        .bind(player_id)
+        .bind(format!("test-{player_id}"))
+        .execute(pool)
+        .await
+        .expect("insert player");
     }
 
     async fn pick_main_bag_type_id(pool: &PgPool) -> i32 {
@@ -233,13 +244,20 @@ mod tests {
             "SELECT item_id FROM resources.items \
              WHERE container_sets IS NULL OR 1 = ANY(container_sets) \
              ORDER BY item_id LIMIT 1",
-        ).fetch_one(pool).await.expect("pick item_id")
+        )
+        .fetch_one(pool)
+        .await
+        .expect("pick item_id")
     }
 
     /// Insert a sgw_inventory row with the given durability. Returns the
     /// auto-generated item_id.
     async fn insert_item_with_durability(
-        pool: &PgPool, player_id: i32, type_id: i32, slot_id: i32, durability: i32,
+        pool: &PgPool,
+        player_id: i32,
+        type_id: i32,
+        slot_id: i32,
+        durability: i32,
     ) -> i32 {
         sqlx::query_scalar(
             "INSERT INTO sgw_inventory \
@@ -247,8 +265,13 @@ mod tests {
                  bound, durability, charges) \
              VALUES ($1, $2, 1, $3, 1, false, $4, 0) RETURNING item_id",
         )
-        .bind(player_id).bind(type_id).bind(slot_id).bind(durability)
-        .fetch_one(pool).await.expect("insert inventory row")
+        .bind(player_id)
+        .bind(type_id)
+        .bind(slot_id)
+        .bind(durability)
+        .fetch_one(pool)
+        .await
+        .expect("insert inventory row")
     }
 
     async fn durability_of(pool: &PgPool, player_id: i32, item_id: i32) -> i32 {
@@ -256,10 +279,16 @@ mod tests {
             "SELECT durability FROM sgw_inventory \
              WHERE character_id = $1 AND item_id = $2",
         )
-        .bind(player_id).bind(item_id).fetch_one(pool).await.unwrap()
+        .bind(player_id)
+        .bind(item_id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
     }
 
-    fn make_state(entity_id: u32) -> (
+    fn make_state(
+        entity_id: u32,
+    ) -> (
         Arc<UdpSocket>,
         Arc<Mutex<HashMap<u32, SocketAddr>>>,
         Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -293,12 +322,22 @@ mod tests {
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_repair_inventory_item(
-            0x7000_0601, player_id, item, 0.30,
-            &db_pool, &socket, &conn, &e2a,
-        ).await;
+            0x7000_0601,
+            player_id,
+            item,
+            0.30,
+            &db_pool,
+            &socket,
+            &conn,
+            &e2a,
+        )
+        .await;
 
-        assert_eq!(durability_of(&pool, player_id, item).await, 80,
-            "50 + round(0.30 * 100) = 80");
+        assert_eq!(
+            durability_of(&pool, player_id, item).await,
+            80,
+            "50 + round(0.30 * 100) = 80"
+        );
 
         cleanup(&pool, account_id, player_id).await;
     }
@@ -320,12 +359,22 @@ mod tests {
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_repair_inventory_item(
-            0x7000_0602, player_id, item, 1.0,
-            &db_pool, &socket, &conn, &e2a,
-        ).await;
+            0x7000_0602,
+            player_id,
+            item,
+            1.0,
+            &db_pool,
+            &socket,
+            &conn,
+            &e2a,
+        )
+        .await;
 
-        assert_eq!(durability_of(&pool, player_id, item).await, 100,
-            "95 + 100 must clamp to 100, not pass through to 195");
+        assert_eq!(
+            durability_of(&pool, player_id, item).await,
+            100,
+            "95 + 100 must clamp to 100, not pass through to 195"
+        );
 
         cleanup(&pool, account_id, player_id).await;
     }
@@ -349,15 +398,27 @@ mod tests {
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_repair_inventory_items(
-            0x7000_0603, player_id, vec![damaged, full],
+            0x7000_0603,
+            player_id,
+            vec![damaged, full],
             None, // free repair
-            &db_pool, &socket, &conn, &e2a,
-        ).await;
+            &db_pool,
+            &socket,
+            &conn,
+            &e2a,
+        )
+        .await;
 
-        assert_eq!(durability_of(&pool, player_id, damaged).await, 100,
-            "free repair sets damaged item to 100");
-        assert_eq!(durability_of(&pool, player_id, full).await, 100,
-            "already-full item must stay at 100 (the < 100 WHERE filter skips it)");
+        assert_eq!(
+            durability_of(&pool, player_id, damaged).await,
+            100,
+            "free repair sets damaged item to 100"
+        );
+        assert_eq!(
+            durability_of(&pool, player_id, full).await,
+            100,
+            "already-full item must stay at 100 (the < 100 WHERE filter skips it)"
+        );
 
         cleanup(&pool, account_id, player_id).await;
     }

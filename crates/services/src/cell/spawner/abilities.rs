@@ -27,7 +27,7 @@ pub async fn load_event_set_sequences(
     let rows = sqlx::query(
         "SELECT ess.event_set_id, s.sequence_id, s.event_id \
          FROM resources.event_sets_sequences ess \
-         JOIN resources.sequences s ON s.sequence_id = ess.sequence_id"
+         JOIN resources.sequences s ON s.sequence_id = ess.sequence_id",
     )
     .fetch_all(pool)
     .await?;
@@ -45,34 +45,39 @@ pub async fn load_event_set_sequences(
 }
 
 /// Load all ability definitions from `resources.abilities`.
-pub async fn load_ability_defs(pool: &PgPool) -> Result<std::collections::HashMap<i32, cimmeria_entity::abilities::AbilityDef>, sqlx::Error> {
+pub async fn load_ability_defs(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, cimmeria_entity::abilities::AbilityDef>, sqlx::Error> {
     let rows = sqlx::query_as::<_, AbilityRow>(
         "SELECT ability_id, name, cooldown, warmup, flags, is_ranged, \
          min_range, max_range, target_type_id, effect_ids, \
          required_ammo, event_set_id, velocity \
-         FROM resources.abilities"
+         FROM resources.abilities",
     )
     .fetch_all(pool)
     .await?;
 
     let mut defs = std::collections::HashMap::with_capacity(rows.len());
     for r in rows {
-        defs.insert(r.ability_id, cimmeria_entity::abilities::AbilityDef {
-            ability_id: r.ability_id,
-            name: r.name,
-            cooldown: r.cooldown,
-            warmup: r.warmup,
-            flags: r.flags as u32,
-            is_ranged: r.is_ranged,
-            min_range: r.min_range,
-            max_range: r.max_range,
-            target_type_id: r.target_type_id,
-            effect_ids: r.effect_ids,
-            moniker_ids: vec![],
-            required_ammo: r.required_ammo,
-            event_set_id: r.event_set_id,
-            velocity: r.velocity,
-        });
+        defs.insert(
+            r.ability_id,
+            cimmeria_entity::abilities::AbilityDef {
+                ability_id: r.ability_id,
+                name: r.name,
+                cooldown: r.cooldown,
+                warmup: r.warmup,
+                flags: r.flags as u32,
+                is_ranged: r.is_ranged,
+                min_range: r.min_range,
+                max_range: r.max_range,
+                target_type_id: r.target_type_id,
+                effect_ids: r.effect_ids,
+                moniker_ids: vec![],
+                required_ammo: r.required_ammo,
+                event_set_id: r.event_set_id,
+                velocity: r.velocity,
+            },
+        );
     }
 
     tracing::info!(count = defs.len(), "Loaded ability definitions");
@@ -97,11 +102,13 @@ struct AbilityRow {
 }
 
 /// Load all effect definitions from `resources.effects` + `resources.effect_nvps`.
-pub async fn load_effect_defs(pool: &PgPool) -> Result<std::collections::HashMap<i32, cimmeria_entity::abilities::EffectDef>, sqlx::Error> {
+pub async fn load_effect_defs(
+    pool: &PgPool,
+) -> Result<std::collections::HashMap<i32, cimmeria_entity::abilities::EffectDef>, sqlx::Error> {
     // Load effects
     let rows = sqlx::query_as::<_, EffectRow>(
         "SELECT effect_id, ability_id, delay, effect_sequence, event_set_id, script_name \
-         FROM resources.effects"
+         FROM resources.effects",
     )
     .fetch_all(pool)
     .await?;
@@ -109,20 +116,23 @@ pub async fn load_effect_defs(pool: &PgPool) -> Result<std::collections::HashMap
     let mut defs: std::collections::HashMap<i32, cimmeria_entity::abilities::EffectDef> =
         std::collections::HashMap::with_capacity(rows.len());
     for r in rows {
-        defs.insert(r.effect_id, cimmeria_entity::abilities::EffectDef {
-            effect_id: r.effect_id,
-            ability_id: r.ability_id,
-            delay: r.delay,
-            effect_sequence: r.effect_sequence,
-            event_set_id: r.event_set_id,
-            script_name: r.script_name,
-            params: std::collections::HashMap::new(),
-        });
+        defs.insert(
+            r.effect_id,
+            cimmeria_entity::abilities::EffectDef {
+                effect_id: r.effect_id,
+                ability_id: r.ability_id,
+                delay: r.delay,
+                effect_sequence: r.effect_sequence,
+                event_set_id: r.event_set_id,
+                script_name: r.script_name,
+                params: std::collections::HashMap::new(),
+            },
+        );
     }
 
     // Load NVPs and attach to effects
     let nvps = sqlx::query_as::<_, EffectNvpRow>(
-        "SELECT effect_id, name, value FROM resources.effect_nvps"
+        "SELECT effect_id, name, value FROM resources.effect_nvps",
     )
     .fetch_all(pool)
     .await?;

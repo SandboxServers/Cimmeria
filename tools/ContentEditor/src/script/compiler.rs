@@ -186,12 +186,7 @@ impl CompGraph {
 
     // --- Link query helpers (match C++ hasOutboundLinksAll / hasInboundLinksAny) ---
 
-    fn has_outbound_links_all(
-        &self,
-        node_idx: usize,
-        conn_flags: u32,
-        node_flags: u32,
-    ) -> bool {
+    fn has_outbound_links_all(&self, node_idx: usize, conn_flags: u32, node_flags: u32) -> bool {
         for &ci in &self.nodes[node_idx].out_links {
             let c = &self.connections[ci];
             if c.is_alive()
@@ -204,17 +199,10 @@ impl CompGraph {
         false
     }
 
-    fn has_inbound_links_all(
-        &self,
-        node_idx: usize,
-        conn_flags: u32,
-        _node_flags: u32,
-    ) -> bool {
+    fn has_inbound_links_all(&self, node_idx: usize, conn_flags: u32, _node_flags: u32) -> bool {
         for &ci in &self.nodes[node_idx].in_links {
             let c = &self.connections[ci];
-            if c.is_alive()
-                && (conn_flags == 0 || (c.flags & conn_flags) == conn_flags)
-            {
+            if c.is_alive() && (conn_flags == 0 || (c.flags & conn_flags) == conn_flags) {
                 return true;
             }
         }
@@ -222,12 +210,7 @@ impl CompGraph {
     }
 
     #[allow(dead_code)]
-    fn has_outbound_links_any(
-        &self,
-        node_idx: usize,
-        conn_flags: u32,
-        node_flags: u32,
-    ) -> bool {
+    fn has_outbound_links_any(&self, node_idx: usize, conn_flags: u32, node_flags: u32) -> bool {
         for &ci in &self.nodes[node_idx].out_links {
             let c = &self.connections[ci];
             if c.is_alive()
@@ -240,12 +223,7 @@ impl CompGraph {
         false
     }
 
-    fn has_inbound_links_any(
-        &self,
-        node_idx: usize,
-        conn_flags: u32,
-        _node_flags: u32,
-    ) -> bool {
+    fn has_inbound_links_any(&self, node_idx: usize, conn_flags: u32, _node_flags: u32) -> bool {
         for &ci in &self.nodes[node_idx].in_links {
             let c = &self.connections[ci];
             if c.is_alive() && (conn_flags == 0 || (c.flags & conn_flags) != 0) {
@@ -262,8 +240,11 @@ impl CompGraph {
 
 /// Compile a script graph to Python source code.
 pub fn compile_script(script: &ScriptFile, defs: &ScriptDefinitions) -> Result<String> {
-    let template_map: HashMap<&str, &NodeTemplate> =
-        defs.nodes.iter().map(|n| (n.ref_name.as_str(), n)).collect();
+    let template_map: HashMap<&str, &NodeTemplate> = defs
+        .nodes
+        .iter()
+        .map(|n| (n.ref_name.as_str(), n))
+        .collect();
 
     let mut graph = build_graph(script, defs, &template_map)?;
     optimize_and_compile(&mut graph)?;
@@ -366,13 +347,55 @@ fn build_graph(
             }
         }
 
-        add_script_node(&mut graph, snode.id, "StaticInitScript", NF::STATIC_INIT_SCRIPT, &tpl.static_init_script);
-        add_script_node(&mut graph, snode.id, "StaticTeardownScript", NF::STATIC_TEARDOWN_SCRIPT, &tpl.static_teardown_script);
-        add_script_node(&mut graph, snode.id, "PreInitScript", NF::PRE_INIT_SCRIPT, &tpl.pre_init_script);
-        add_script_node(&mut graph, snode.id, "InitScript", NF::INIT_SCRIPT, &tpl.init_script);
-        add_script_node(&mut graph, snode.id, "TeardownScript", NF::TEARDOWN_SCRIPT, &tpl.teardown_script);
-        add_script_node(&mut graph, snode.id, "PersistScript", NF::PERSIST_SCRIPT, &tpl.persist_script);
-        add_script_node(&mut graph, snode.id, "RestoreScript", NF::RESTORE_SCRIPT, &tpl.restore_script);
+        add_script_node(
+            &mut graph,
+            snode.id,
+            "StaticInitScript",
+            NF::STATIC_INIT_SCRIPT,
+            &tpl.static_init_script,
+        );
+        add_script_node(
+            &mut graph,
+            snode.id,
+            "StaticTeardownScript",
+            NF::STATIC_TEARDOWN_SCRIPT,
+            &tpl.static_teardown_script,
+        );
+        add_script_node(
+            &mut graph,
+            snode.id,
+            "PreInitScript",
+            NF::PRE_INIT_SCRIPT,
+            &tpl.pre_init_script,
+        );
+        add_script_node(
+            &mut graph,
+            snode.id,
+            "InitScript",
+            NF::INIT_SCRIPT,
+            &tpl.init_script,
+        );
+        add_script_node(
+            &mut graph,
+            snode.id,
+            "TeardownScript",
+            NF::TEARDOWN_SCRIPT,
+            &tpl.teardown_script,
+        );
+        add_script_node(
+            &mut graph,
+            snode.id,
+            "PersistScript",
+            NF::PERSIST_SCRIPT,
+            &tpl.persist_script,
+        );
+        add_script_node(
+            &mut graph,
+            snode.id,
+            "RestoreScript",
+            NF::RESTORE_SCRIPT,
+            &tpl.restore_script,
+        );
 
         // Named methods
         for method in &tpl.methods {
@@ -564,13 +587,10 @@ fn find_compilation_order(graph: &mut CompGraph) -> Result<()> {
                 continue;
             }
             // All inbound sources must be processed
-            let all_deps_ready = graph.nodes[ni]
-                .in_links
-                .iter()
-                .all(|&ci| {
-                    let c = &graph.connections[ci];
-                    c.flags & CF::ELIMINATE != 0 || processed.contains(&c.source)
-                });
+            let all_deps_ready = graph.nodes[ni].in_links.iter().all(|&ci| {
+                let c = &graph.connections[ci];
+                c.flags & CF::ELIMINATE != 0 || processed.contains(&c.source)
+            });
 
             if !all_deps_ready {
                 continue;
@@ -780,7 +800,15 @@ fn compile_body(
         // Script / InputPort: compile the text script with substitutions
         let script_text = graph.nodes[port_ni].script.clone();
         let block_id = graph.nodes[port_ni].block_id;
-        compile_script_text(graph, context_ni, block_id, &script_text, 0, allow_inlining, ordered)
+        compile_script_text(
+            graph,
+            context_ni,
+            block_id,
+            &script_text,
+            0,
+            allow_inlining,
+            ordered,
+        )
     }
 }
 
@@ -895,8 +923,12 @@ fn compile_script_text(
                 add_line = false;
                 break;
             } else if replacement.len() == 1 {
-                current_line =
-                    format!("{}{}{}", &current_line[..start], replacement[0], &current_line[start + full_match.len()..]);
+                current_line = format!(
+                    "{}{}{}",
+                    &current_line[..start],
+                    replacement[0],
+                    &current_line[start + full_match.len()..]
+                );
             } else {
                 // Multi-line expansion: only allowed at start of line (after indentation)
                 let prefix = &current_line[..start];
@@ -1005,7 +1037,10 @@ fn compile_preproc_conditional(
     // PROPERTY(Name) == "value"
     if let Some((prop_name, expected)) = parse_property_expr(args) {
         let block = graph.blocks.get(&block_id);
-        let actual = block.and_then(|b| b.property(&prop_name)).cloned().unwrap_or_default();
+        let actual = block
+            .and_then(|b| b.property(&prop_name))
+            .cloned()
+            .unwrap_or_default();
         let matches = actual == expected;
         let condition_true = matches ^ negate;
         if !condition_true {
@@ -1017,7 +1052,11 @@ fn compile_preproc_conditional(
         return;
     }
 
-    tracing::warn!("#IF: unrecognized expression '{}' in block {}", args, block_id);
+    tracing::warn!(
+        "#IF: unrecognized expression '{}' in block {}",
+        args,
+        block_id
+    );
     precomp_levels.push(true); // default: include
 }
 
@@ -1390,7 +1429,11 @@ fn compile_function_name(graph: &CompGraph, ni: usize) -> String {
     let node = &graph.nodes[ni];
     match node.node_type {
         ScriptNodeType::OutputPort => {
-            format!("n{}_propagator_{}", node.block_id, sanitize_name(&node.name))
+            format!(
+                "n{}_propagator_{}",
+                node.block_id,
+                sanitize_name(&node.name)
+            )
         }
         ScriptNodeType::InputPort => {
             format!("n{}_trigger_{}", node.block_id, sanitize_name(&node.name))
@@ -1459,7 +1502,10 @@ fn reindent_script_str(script: &str, indentation: usize) -> Vec<String> {
     if script.is_empty() {
         return Vec::new();
     }
-    let lines: Vec<&str> = script.split(|c| c == '\r' || c == '\n').filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = script
+        .split(|c| c == '\r' || c == '\n')
+        .filter(|l| !l.is_empty())
+        .collect();
     if lines.is_empty() {
         return Vec::new();
     }
@@ -1514,15 +1560,9 @@ fn emit_python(
     // Header
     out.push_str("# Automatically generated by Atrea Script Editor\r\n");
     out.push_str(&format!("# Script Version: {}\r\n", script.version));
-    out.push_str(&format!(
-        "# Dataset Version: {}\r\n",
-        defs.dataset_version
-    ));
+    out.push_str(&format!("# Dataset Version: {}\r\n", defs.dataset_version));
     out.push_str("\r\n");
-    out.push_str(&format!(
-        "from cell.Script import {}\r\n",
-        parent_class
-    ));
+    out.push_str(&format!("from cell.Script import {}\r\n", parent_class));
 
     // Collect imports from all used block templates
     let mut seen_imports = HashSet::new();
@@ -1549,10 +1589,7 @@ fn emit_python(
     };
 
     out.push_str("\r\n");
-    out.push_str(&format!(
-        "class {}({}):\r\n",
-        class_name, parent_class
-    ));
+    out.push_str(&format!("class {}({}):\r\n", class_name, parent_class));
 
     // Collect lifecycle scripts
     let mut static_init = String::new();
@@ -1576,8 +1613,8 @@ fn emit_python(
         let is_persist = node.flags & NF::PERSIST_SCRIPT != 0;
         let is_restore = node.flags & NF::RESTORE_SCRIPT != 0;
         let is_named_method = node.flags & NF::NAMED_METHOD != 0;
-        let is_port =
-            node.node_type == ScriptNodeType::InputPort || node.node_type == ScriptNodeType::OutputPort;
+        let is_port = node.node_type == ScriptNodeType::InputPort
+            || node.node_type == ScriptNodeType::OutputPort;
         let is_trigger = node.flags & NF::TRIGGER != 0;
 
         let reindented = || -> String {
@@ -1650,10 +1687,7 @@ fn emit_python(
                     );
                 }
             }
-            out.push_str(&format!(
-                "\t{} = None\r\n",
-                compile_name_node(graph, ni)
-            ));
+            out.push_str(&format!("\t{} = None\r\n", compile_name_node(graph, ni)));
             if node.node_type == ScriptNodeType::OutputPort && node.should_emit_function() {
                 let script = reindented();
                 if !script.is_empty() {

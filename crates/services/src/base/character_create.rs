@@ -9,11 +9,11 @@ use tokio::net::UdpSocket;
 
 use crate::mercury::read_wstring;
 
-use super::ConnectedClientState;
+use super::character::{query_character_list, send_char_create_failed};
 use super::chardef::chardef_lookup;
 use super::helpers::{drain_acks_and_seq, get_account_entity_id};
 use super::resources::{bag_max_slots, bag_min_slot, BAG_FILL_ORDER};
-use super::character::{query_character_list, send_char_create_failed};
+use super::ConnectedClientState;
 
 /// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
 pub(crate) async fn handle_create_character(
@@ -80,7 +80,10 @@ pub(crate) async fn handle_create_character(
         return Ok(());
     }
     let char_def_id = i32::from_le_bytes([
-        payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+        payload[off],
+        payload[off + 1],
+        payload[off + 2],
+        payload[off + 3],
     ]);
     off += 4;
 
@@ -91,7 +94,10 @@ pub(crate) async fn handle_create_character(
         return Ok(());
     }
     let visual_count = u32::from_le_bytes([
-        payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+        payload[off],
+        payload[off + 1],
+        payload[off + 2],
+        payload[off + 3],
     ]) as usize;
     off += 4;
     // Each VisualChoices = { VisGroupId: INT32, ChoiceId: INT32 } = 8 bytes
@@ -103,11 +109,17 @@ pub(crate) async fn handle_create_character(
     let mut visual_choices: Vec<(i32, i32)> = Vec::with_capacity(visual_count);
     for _ in 0..visual_count {
         let vis_group_id = i32::from_le_bytes([
-            payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+            payload[off],
+            payload[off + 1],
+            payload[off + 2],
+            payload[off + 3],
         ]);
         off += 4;
         let choice_id = i32::from_le_bytes([
-            payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+            payload[off],
+            payload[off + 1],
+            payload[off + 2],
+            payload[off + 3],
         ]);
         off += 4;
         visual_choices.push((vis_group_id, choice_id));
@@ -119,7 +131,10 @@ pub(crate) async fn handle_create_character(
         return Ok(());
     }
     let skin_tint_color_id = i32::from_le_bytes([
-        payload[off], payload[off + 1], payload[off + 2], payload[off + 3],
+        payload[off],
+        payload[off + 1],
+        payload[off + 2],
+        payload[off + 3],
     ]);
 
     // Skin tint validation (matches Python Account.py: ERROR_CharacterCreationInvalidSkinColor).
@@ -157,7 +172,18 @@ pub(crate) async fn handle_create_character(
     // ── Resolve visual choices (matches CharacterCreation.py:getAllChoices) ───
 
     // Query all visual groups and their choices for this char_def_id
-    let vg_rows = sqlx::query_as::<_, (i32, String, Option<i32>, Option<String>, Option<i32>, Option<bool>, Option<i32>)>(
+    let vg_rows = sqlx::query_as::<
+        _,
+        (
+            i32,
+            String,
+            Option<i32>,
+            Option<String>,
+            Option<i32>,
+            Option<bool>,
+            Option<i32>,
+        ),
+    >(
         "SELECT vg.vis_group_id, vg.vis_type::text, \
                 c.choice_id, c.component, c.item_id, c.item_bound, c.item_durability \
          FROM resources.char_creation_visgroups vg \
@@ -189,19 +215,23 @@ pub(crate) async fn handle_create_character(
         vis_type: String,
         choices: std::collections::BTreeMap<i32, ChoiceData>,
     }
-    let mut visgroups: std::collections::BTreeMap<i32, VisGroup> = std::collections::BTreeMap::new();
+    let mut visgroups: std::collections::BTreeMap<i32, VisGroup> =
+        std::collections::BTreeMap::new();
     for (vg_id, vis_type, choice_id, component, item_id, item_bound, item_durability) in &vg_rows {
         let group = visgroups.entry(*vg_id).or_insert_with(|| VisGroup {
             vis_type: vis_type.clone(),
             choices: std::collections::BTreeMap::new(),
         });
         if let (Some(cid), Some(comp)) = (choice_id, component) {
-            group.choices.insert(*cid, ChoiceData {
-                component: comp.clone(),
-                item_id: *item_id,
-                item_bound: item_bound.unwrap_or(false),
-                item_durability: item_durability.unwrap_or(-1),
-            });
+            group.choices.insert(
+                *cid,
+                ChoiceData {
+                    component: comp.clone(),
+                    item_id: *item_id,
+                    item_bound: item_bound.unwrap_or(false),
+                    item_durability: item_durability.unwrap_or(-1),
+                },
+            );
         }
     }
 
@@ -237,12 +267,15 @@ pub(crate) async fn handle_create_character(
                 return Ok(());
             }
         };
-        resolved.insert(vg_id, ResolvedChoice {
-            component: choice.component.clone(),
-            item_id: choice.item_id,
-            item_bound: choice.item_bound,
-            item_durability: choice.item_durability,
-        });
+        resolved.insert(
+            vg_id,
+            ResolvedChoice {
+                component: choice.component.clone(),
+                item_id: choice.item_id,
+                item_bound: choice.item_bound,
+                item_durability: choice.item_durability,
+            },
+        );
     }
 
     // Auto-select forced groups; reject missing optional groups
@@ -250,12 +283,15 @@ pub(crate) async fn handle_create_character(
         if !resolved.contains_key(&vg_id) {
             if group.vis_type == "VIS_Forced" {
                 if let Some((_, choice)) = group.choices.iter().next() {
-                    resolved.insert(vg_id, ResolvedChoice {
-                        component: choice.component.clone(),
-                        item_id: choice.item_id,
-                        item_bound: choice.item_bound,
-                        item_durability: choice.item_durability,
-                    });
+                    resolved.insert(
+                        vg_id,
+                        ResolvedChoice {
+                            component: choice.component.clone(),
+                            item_id: choice.item_id,
+                            item_bound: choice.item_bound,
+                            item_durability: choice.item_durability,
+                        },
+                    );
                 }
             } else {
                 tracing::warn!(%addr, vg_id, char_def_id, "Missing choice for optional visual group");
@@ -268,7 +304,11 @@ pub(crate) async fn handle_create_character(
     // ── Separate body components from item components (Account.py:156-161) ───
 
     let mut body_components: Vec<String> = Vec::new();
-    struct ItemChoice { item_id: i32, item_bound: bool, item_durability: i32 }
+    struct ItemChoice {
+        item_id: i32,
+        item_bound: bool,
+        item_durability: i32,
+    }
     let mut item_choices: Vec<ItemChoice> = Vec::new();
 
     for choice in resolved.values() {
@@ -285,19 +325,21 @@ pub(crate) async fn handle_create_character(
 
     // ── Look up world_id (Account.py:163) ───
 
-    let world_id: Option<i32> = match sqlx::query_scalar(
-        "SELECT world_id FROM resources.worlds WHERE world = $1",
-    )
-    .bind(world_location)
-    .fetch_optional(pool.as_ref())
-    .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(world_location, "character_create: world_id lookup failed: {e}");
-            None
-        }
-    };
+    let world_id: Option<i32> =
+        match sqlx::query_scalar("SELECT world_id FROM resources.worlds WHERE world = $1")
+            .bind(world_location)
+            .fetch_optional(pool.as_ref())
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(
+                    world_location,
+                    "character_create: world_id lookup failed: {e}"
+                );
+                None
+            }
+        };
 
     // ── Look up starting abilities (Account.py:166) ───
 
@@ -310,7 +352,10 @@ pub(crate) async fn handle_create_character(
     {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(char_def_id, "character_create: starting abilities lookup failed: {e}");
+            tracing::error!(
+                char_def_id,
+                "character_create: starting abilities lookup failed: {e}"
+            );
             Vec::new()
         }
     };
@@ -370,7 +415,10 @@ pub(crate) async fn handle_create_character(
                 .unwrap_or_default();
 
                 // Find the best container from BagFillOrder
-                let bag_id = match BAG_FILL_ORDER.iter().find(|&&bag| container_sets.contains(&bag)) {
+                let bag_id = match BAG_FILL_ORDER
+                    .iter()
+                    .find(|&&bag| container_sets.contains(&bag))
+                {
                     Some(&bag) => bag,
                     None => {
                         tracing::warn!(%addr, item_id = item.item_id, "No valid container for starter item");
@@ -378,7 +426,9 @@ pub(crate) async fn handle_create_character(
                     }
                 };
 
-                let entry = slot_indices.entry(bag_id).or_insert_with(|| bag_min_slot(bag_id));
+                let entry = slot_indices
+                    .entry(bag_id)
+                    .or_insert_with(|| bag_min_slot(bag_id));
                 let current_slot = *entry;
                 *entry += 1;
 
@@ -411,7 +461,8 @@ pub(crate) async fn handle_create_character(
             let characters = query_character_list(db_pool, account_id).await;
             let account_eid = get_account_entity_id(connected, addr)?;
             let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-            let pkt = crate::mercury::build_on_character_list(&key, seq, &acks, &characters, account_eid);
+            let pkt =
+                crate::mercury::build_on_character_list(&key, seq, &acks, &characters, account_eid);
             tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list");
             socket.send_to(&pkt, addr).await?;
         }
@@ -451,7 +502,10 @@ fn validate_character_name(name: &str) -> Result<(), &'static str> {
     if name.contains("  ") {
         return Err("consecutive spaces");
     }
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '\'') {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == ' ' || c == '-' || c == '\'')
+    {
         return Err("invalid characters (only letters, digits, spaces, hyphens, apostrophes)");
     }
     Ok(())

@@ -20,12 +20,10 @@ pub(crate) const INT_NORMAL_LOOT: i64 = 4611686018427387904;
 /// entity's interaction_type_flags to INT_NormalLoot and adds a Loot interaction.
 ///
 /// Reference: `python/cell/SGWMob.py:onDead()`, `python/cell/interactions/Lootable.py`
-pub(super) fn generate_loot_on_death(
-    target_eid: u32,
-    space_mgr: &mut SpaceManager,
-) {
+pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManager) {
     // Read loot_table_id before mutable borrow
-    let loot_table_id = space_mgr.get_entity(target_eid)
+    let loot_table_id = space_mgr
+        .get_entity(target_eid)
         .and_then(|e| e.loot_table_id);
 
     let loot_table_id = match loot_table_id {
@@ -81,7 +79,8 @@ pub(super) fn generate_loot_on_death(
                     index,
                 });
 
-                let name = entry.design_id
+                let name = entry
+                    .design_id
                     .map(|id| format!("item_{id}"))
                     .unwrap_or_else(|| "naquadah".to_string());
                 tracing::debug!(
@@ -100,7 +99,8 @@ pub(super) fn generate_loot_on_death(
         target.interaction_type_flags |= INT_NORMAL_LOOT;
         target.interaction_type = Some(cimmeria_entity::cell_entity::NpcInteractionType::Loot);
         tracing::debug!(
-            target_eid, items = target.loot.len(),
+            target_eid,
+            items = target.loot.len(),
             "NPC has loot — set INT_NormalLoot interaction"
         );
     }

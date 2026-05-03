@@ -69,10 +69,7 @@ macro_rules! require_db_or_skip {
         match $crate::test_support::test_pool().await {
             Ok(p) => p,
             Err(reason) => {
-                eprintln!(
-                    "{}: skipping live-DB test ({reason})",
-                    module_path!(),
-                );
+                eprintln!("{}: skipping live-DB test ({reason})", module_path!(),);
                 return;
             }
         }

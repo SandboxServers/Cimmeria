@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use bytes::{Bytes, BytesMut, BufMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use cimmeria_common::{CimmeriaError, Result};
 
 use crate::consts::MAX_FRAGMENTS;
@@ -208,9 +208,7 @@ impl FragmentAssembler {
         }
 
         let seq = pkt.seq_id.ok_or_else(|| {
-            CimmeriaError::FragmentReassembly(
-                "FLAG_FRAGMENTED packet missing seq_id footer".into(),
-            )
+            CimmeriaError::FragmentReassembly("FLAG_FRAGMENTED packet missing seq_id footer".into())
         })?;
         let begin = pkt.frag_begin.ok_or_else(|| {
             CimmeriaError::FragmentReassembly(
@@ -343,9 +341,16 @@ mod tests {
         let parsed = parse_incoming(&raw).unwrap();
 
         let mut asm = FragmentAssembler::new();
-        let body = asm.process_parsed(&parsed).unwrap().expect("non-fragmented should pass through");
+        let body = asm
+            .process_parsed(&parsed)
+            .unwrap()
+            .expect("non-fragmented should pass through");
         assert_eq!(body.as_ref(), b"hello");
-        assert_eq!(asm.pending_count(), 0, "no reassembly state for pass-through");
+        assert_eq!(
+            asm.pending_count(),
+            0,
+            "no reassembly state for pass-through"
+        );
     }
 
     #[test]
@@ -359,7 +364,10 @@ mod tests {
 
         assert!(asm.process_parsed(&f0).unwrap().is_none());
         assert!(asm.process_parsed(&f1).unwrap().is_none());
-        let body = asm.process_parsed(&f2).unwrap().expect("third fragment completes");
+        let body = asm
+            .process_parsed(&f2)
+            .unwrap()
+            .expect("third fragment completes");
         assert_eq!(body.as_ref(), b"AAABBBCCC");
         assert_eq!(asm.pending_count(), 0);
     }
@@ -376,7 +384,10 @@ mod tests {
 
         assert!(asm.process_parsed(&f2).unwrap().is_none());
         assert!(asm.process_parsed(&f0).unwrap().is_none());
-        let body = asm.process_parsed(&f1).unwrap().expect("last (index 1) completes");
+        let body = asm
+            .process_parsed(&f1)
+            .unwrap()
+            .expect("last (index 1) completes");
         assert_eq!(body.as_ref(), b"xxxyyyzzz");
     }
 
@@ -392,7 +403,10 @@ mod tests {
         assert!(asm.process_parsed(&f0).unwrap().is_none());
         // Duplicate of f0 — assembler should ignore.
         assert!(asm.process_parsed(&f0).unwrap().is_none());
-        let body = asm.process_parsed(&f1).unwrap().expect("f1 still completes once after dup f0");
+        let body = asm
+            .process_parsed(&f1)
+            .unwrap()
+            .expect("f1 still completes once after dup f0");
         assert_eq!(body.as_ref(), b"hello world");
     }
 
@@ -420,7 +434,11 @@ mod tests {
         let mut asm = FragmentAssembler::new();
         let err = asm.process_parsed(&pkt).unwrap_err();
         assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
-        assert_eq!(asm.pending_count(), 0, "rejected range must not register pending");
+        assert_eq!(
+            asm.pending_count(),
+            0,
+            "rejected range must not register pending"
+        );
     }
 
     #[test]
@@ -457,7 +475,11 @@ mod tests {
         let mut asm = FragmentAssembler::new();
         let err = asm.process_parsed(&pkt).unwrap_err();
         assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
-        assert_eq!(asm.pending_count(), 0, "rejected packet must not register pending state");
+        assert_eq!(
+            asm.pending_count(),
+            0,
+            "rejected packet must not register pending state"
+        );
     }
 
     #[test]

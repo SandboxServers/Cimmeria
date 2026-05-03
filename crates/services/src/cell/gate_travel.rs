@@ -43,7 +43,11 @@ pub async fn handle_dial_gate(
     let gate = match space_mgr.stargates.get(&target_address_id) {
         Some(g) => g.clone(),
         None => {
-            tracing::warn!(entity_id, target_address_id, "onDialGate: invalid stargate address");
+            tracing::warn!(
+                entity_id,
+                target_address_id,
+                "onDialGate: invalid stargate address"
+            );
             return;
         }
     };
@@ -78,9 +82,7 @@ pub async fn handle_dial_gate(
     // to the cross-world re-spawn.
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         if let Some(player_id) = entity.player_id {
-            super::cell_methods::inventory::flush_dirty_bandolier_ammo(
-                entity, player_id, tx,
-            ).await;
+            super::cell_methods::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx).await;
         }
     }
 
@@ -88,18 +90,20 @@ pub async fn handle_dial_gate(
     space_mgr.destroy_entity(entity_id);
 
     // Tell BaseApp to perform the world transition (RESET_ENTITIES + new world entry)
-    let _ = tx.send(CellToBaseMsg::GateTravel {
-        entity_id,
-        target_world_name: gate.world_name.clone(),
-        position: [gate.x, gate.y, gate.z],
-        rotation: [0.0, 0.0, gate.yaw],
-    }).await;
+    let _ = tx
+        .send(CellToBaseMsg::GateTravel {
+            entity_id,
+            target_world_name: gate.world_name.clone(),
+            position: [gate.x, gate.y, gate.z],
+            rotation: [0.0, 0.0, gate.yaw],
+        })
+        .await;
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::spawner::StargateEntry;
+    use super::*;
 
     fn make_manager_with_stargates() -> SpaceManager {
         let mut mgr = SpaceManager::new(1);
@@ -115,15 +119,36 @@ mod tests {
         mgr.create_startup_spaces(cxml).unwrap();
 
         // Populate stargates cache (simulates DB load)
-        mgr.stargates.insert(1, StargateEntry {
-            world_name: "Agnos".to_string(), x: 0.0, y: 0.0, z: 0.0, yaw: 0.0,
-        });
-        mgr.stargates.insert(2, StargateEntry {
-            world_name: "Castle".to_string(), x: 761.677, y: 63.466, z: 551.716, yaw: 2.152,
-        });
-        mgr.stargates.insert(15, StargateEntry {
-            world_name: "Agnos".to_string(), x: 0.0, y: 0.0, z: 0.0, yaw: 0.0,
-        });
+        mgr.stargates.insert(
+            1,
+            StargateEntry {
+                world_name: "Agnos".to_string(),
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                yaw: 0.0,
+            },
+        );
+        mgr.stargates.insert(
+            2,
+            StargateEntry {
+                world_name: "Castle".to_string(),
+                x: 761.677,
+                y: 63.466,
+                z: 551.716,
+                yaw: 2.152,
+            },
+        );
+        mgr.stargates.insert(
+            15,
+            StargateEntry {
+                world_name: "Agnos".to_string(),
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                yaw: 0.0,
+            },
+        );
 
         mgr
     }
@@ -131,7 +156,8 @@ mod tests {
     #[tokio::test]
     async fn dial_gate_to_unknown_address_is_noop() {
         let mut mgr = make_manager_with_stargates();
-        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
         handle_dial_gate(1, 999, 0, &tx, &mut mgr).await;
@@ -149,7 +175,8 @@ mod tests {
     #[tokio::test]
     async fn dial_gate_same_world_is_noop() {
         let mut mgr = make_manager_with_stargates();
-        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
         handle_dial_gate(1, 1, 0, &tx, &mut mgr).await;
@@ -160,7 +187,8 @@ mod tests {
     #[tokio::test]
     async fn dial_gate_valid_sends_gate_travel() {
         let mut mgr = make_manager_with_stargates();
-        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+            .unwrap();
         mgr.connect_entity(1);
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
@@ -170,7 +198,12 @@ mod tests {
 
         let msg = rx.try_recv().expect("Expected GateTravel message");
         match msg {
-            CellToBaseMsg::GateTravel { entity_id, target_world_name, position, .. } => {
+            CellToBaseMsg::GateTravel {
+                entity_id,
+                target_world_name,
+                position,
+                ..
+            } => {
                 assert_eq!(entity_id, 1);
                 assert_eq!(target_world_name, "Castle");
                 assert!((position[0] - 761.677).abs() < 0.01);

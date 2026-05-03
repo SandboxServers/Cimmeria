@@ -53,10 +53,25 @@ fn build_map_loaded_produces_multiple_packets() {
         active_bandolier_slot: 0,
         bandolier_items: vec![],
     };
-    let entry = WorldEntryInfo { player_entity_id: 42, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
+    let entry = WorldEntryInfo {
+        player_entity_id: 42,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
+        world_stargates: vec![],
+    };
     let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 42, &data, &entry);
-    assert!(!packets.is_empty(), "mapLoaded should produce at least one packet");
-    assert_eq!(seqs as usize, packets.len(), "seqs_consumed should match packet count");
+    assert!(
+        !packets.is_empty(),
+        "mapLoaded should produce at least one packet"
+    );
+    assert_eq!(
+        seqs as usize,
+        packets.len(),
+        "seqs_consumed should match packet count"
+    );
     for (i, pkt) in packets.iter().enumerate() {
         assert!(!pkt.is_empty(), "packet {} should not be empty", i);
     }
@@ -89,15 +104,28 @@ fn build_map_loaded_each_packet_decrypts_within_limit() {
         active_bandolier_slot: 0,
         bandolier_items: vec![],
     };
-    let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
+    let entry = WorldEntryInfo {
+        player_entity_id: 100,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
+        world_stargates: vec![],
+    };
     let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     // Mercury MAX_BODY_LENGTH is 1411 bytes
     const MAX_PLAINTEXT: usize = 1411;
     for (i, pkt) in packets.iter().enumerate() {
         let pt = enc.decrypt(pkt).unwrap();
-        assert!(pt.len() <= MAX_PLAINTEXT,
-            "packet {} plaintext {} bytes exceeds {} limit", i, pt.len(), MAX_PLAINTEXT);
+        assert!(
+            pt.len() <= MAX_PLAINTEXT,
+            "packet {} plaintext {} bytes exceeds {} limit",
+            i,
+            pt.len(),
+            MAX_PLAINTEXT
+        );
     }
 }
 
@@ -128,7 +156,15 @@ fn build_map_loaded_contains_setup_world_params_and_player_data_loaded() {
         active_bandolier_slot: 0,
         bandolier_items: vec![],
     };
-    let entry = WorldEntryInfo { player_entity_id: 100, space_id: 65552, pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02, world_stargates: vec![] };
+    let entry = WorldEntryInfo {
+        player_entity_id: 100,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
+        world_stargates: vec![],
+    };
     let (packets, _seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
 
@@ -141,11 +177,20 @@ fn build_map_loaded_contains_setup_world_params_and_player_data_loaded() {
         all_bytes.extend_from_slice(&pt[1..]);
     }
     // setupWorldParameters = 0xFA should be present
-    assert!(all_bytes.contains(&0xFA), "should contain setupWorldParameters (0xFA)");
+    assert!(
+        all_bytes.contains(&0xFA),
+        "should contain setupWorldParameters (0xFA)"
+    );
     // onPlayerDataLoaded = 0xF3 should be present
-    assert!(all_bytes.contains(&0xF3), "should contain onPlayerDataLoaded (0xF3)");
+    assert!(
+        all_bytes.contains(&0xF3),
+        "should contain onPlayerDataLoaded (0xF3)"
+    );
     // onAbilityTreeInfo uses extended 0xBD
-    assert!(all_bytes.contains(&0xBD), "should contain extended encoding marker (0xBD)");
+    assert!(
+        all_bytes.contains(&0xBD),
+        "should contain extended encoding marker (0xBD)"
+    );
 }
 
 #[test]
@@ -178,16 +223,23 @@ fn build_map_loaded_uses_mercury_fragmentation() {
         bandolier_items: vec![],
     };
     let entry = WorldEntryInfo {
-        player_entity_id: 100, space_id: 65552,
-        pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02,
+        player_entity_id: 100,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
         world_stargates: vec![],
     };
     let (packets, seqs) = build_map_loaded(&TEST_KEY, 10, &[], 100, &data, &entry);
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
 
     // Must produce multiple packets (body > 1300 bytes)
-    assert!(packets.len() > 1,
-        "Expected multiple fragments, got {} packet(s)", packets.len());
+    assert!(
+        packets.len() > 1,
+        "Expected multiple fragments, got {} packet(s)",
+        packets.len()
+    );
     assert_eq!(seqs as usize, packets.len());
 
     for (i, pkt) in packets.iter().enumerate() {
@@ -195,37 +247,68 @@ fn build_map_loaded_uses_mercury_fragmentation() {
         let flags = pt[0];
 
         // Every fragment must have FLAG_FRAGMENTED (0x20) and FLAG_HAS_SEQUENCE (0x40)
-        assert!(flags & FLAG_FRAGMENTED != 0,
-            "Packet {} flags=0x{:02X} missing FLAG_FRAGMENTED (0x20)", i, flags);
-        assert!(flags & FLAG_HAS_SEQUENCE != 0,
-            "Packet {} flags=0x{:02X} missing FLAG_HAS_SEQUENCE (0x40)", i, flags);
+        assert!(
+            flags & FLAG_FRAGMENTED != 0,
+            "Packet {} flags=0x{:02X} missing FLAG_FRAGMENTED (0x20)",
+            i,
+            flags
+        );
+        assert!(
+            flags & FLAG_HAS_SEQUENCE != 0,
+            "Packet {} flags=0x{:02X} missing FLAG_HAS_SEQUENCE (0x40)",
+            i,
+            flags
+        );
 
         // Parse footers from the end: seq_id (4), frag_end (4), frag_begin (4)
         let len = pt.len();
-        let seq_id = u32::from_le_bytes(pt[len-4..len].try_into().unwrap());
-        let frag_end = u32::from_le_bytes(pt[len-8..len-4].try_into().unwrap());
-        let frag_begin = u32::from_le_bytes(pt[len-12..len-8].try_into().unwrap());
+        let seq_id = u32::from_le_bytes(pt[len - 4..len].try_into().unwrap());
+        let frag_end = u32::from_le_bytes(pt[len - 8..len - 4].try_into().unwrap());
+        let frag_begin = u32::from_le_bytes(pt[len - 12..len - 8].try_into().unwrap());
 
         // frag_begin should be base_seq (10)
-        assert_eq!(frag_begin, 10,
-            "Packet {} frag_begin={} expected 10", i, frag_begin);
+        assert_eq!(
+            frag_begin, 10,
+            "Packet {} frag_begin={} expected 10",
+            i, frag_begin
+        );
         // frag_end should be base_seq + num_frags - 1
         let expected_frag_end = 10 + packets.len() as u32 - 1;
-        assert_eq!(frag_end, expected_frag_end,
-            "Packet {} frag_end={} expected {}", i, frag_end, expected_frag_end);
+        assert_eq!(
+            frag_end, expected_frag_end,
+            "Packet {} frag_end={} expected {}",
+            i, frag_end, expected_frag_end
+        );
         // seq_id should be base_seq + i
-        assert_eq!(seq_id, 10 + i as u32,
-            "Packet {} seq_id={} expected {}", i, seq_id, 10 + i as u32);
+        assert_eq!(
+            seq_id,
+            10 + i as u32,
+            "Packet {} seq_id={} expected {}",
+            i,
+            seq_id,
+            10 + i as u32
+        );
 
         // Body chunk size: for non-last fragments, should be FRAGMENT_BODY_SIZE (1300)
         let body_len = len - 1 - 12; // flags(1) + footers(12) subtracted
         if i < packets.len() - 1 {
-            assert_eq!(body_len, 1300,
-                "Packet {} body_len={} expected 1300 (FRAGMENT_BODY_SIZE)", i, body_len);
+            assert_eq!(
+                body_len, 1300,
+                "Packet {} body_len={} expected 1300 (FRAGMENT_BODY_SIZE)",
+                i, body_len
+            );
         }
 
-        eprintln!("Fragment {}: plaintext_len={} flags=0x{:02X} body={} seq={} frag=[{}-{}]",
-            i, pt.len(), flags, body_len, seq_id, frag_begin, frag_end);
+        eprintln!(
+            "Fragment {}: plaintext_len={} flags=0x{:02X} body={} seq={} frag=[{}-{}]",
+            i,
+            pt.len(),
+            flags,
+            body_len,
+            seq_id,
+            frag_begin,
+            frag_end
+        );
     }
 }
 
@@ -275,7 +358,10 @@ fn being_appearance_wire_encoding() {
     append_entity_method(&mut body, method_idx::BEING_APPEARANCE, entity_id, &args);
 
     // method_index=26 < 61 -> direct: msg_id = 26 | 0x80 = 0x9A
-    assert_eq!(body[0], 0x9A, "msg_id should be 0x9A for BeingAppearance (index 26)");
+    assert_eq!(
+        body[0], 0x9A,
+        "msg_id should be 0x9A for BeingAppearance (index 26)"
+    );
 
     // word_len (u16 LE) at offset 1-2
     let word_len = u16::from_le_bytes([body[1], body[2]]);
@@ -288,46 +374,64 @@ fn being_appearance_wire_encoding() {
 
     // bodyset WSTRING at offset 7
     let off = 7;
-    let bs_char_count = u32::from_le_bytes([body[off], body[off+1], body[off+2], body[off+3]]);
-    assert_eq!(bs_char_count as usize, bodyset.len(), "bodyset char_count should match");
+    let bs_char_count =
+        u32::from_le_bytes([body[off], body[off + 1], body[off + 2], body[off + 3]]);
+    assert_eq!(
+        bs_char_count as usize,
+        bodyset.len(),
+        "bodyset char_count should match"
+    );
 
     // Verify bodyset UTF-16LE chars
     let bs_data_start = off + 4;
     for (i, ch) in bodyset.encode_utf16().enumerate() {
-        let wire_ch = u16::from_le_bytes([
-            body[bs_data_start + i * 2],
-            body[bs_data_start + i * 2 + 1],
-        ]);
+        let wire_ch =
+            u16::from_le_bytes([body[bs_data_start + i * 2], body[bs_data_start + i * 2 + 1]]);
         assert_eq!(wire_ch, ch, "bodyset char {i} mismatch");
     }
 
     // Component array count
     let comp_off = bs_data_start + bodyset.len() * 2;
     let comp_count = u32::from_le_bytes([
-        body[comp_off], body[comp_off+1], body[comp_off+2], body[comp_off+3],
+        body[comp_off],
+        body[comp_off + 1],
+        body[comp_off + 2],
+        body[comp_off + 3],
     ]);
-    assert_eq!(comp_count, components.len() as u32, "component count mismatch");
+    assert_eq!(
+        comp_count,
+        components.len() as u32,
+        "component count mismatch"
+    );
 
     // Verify each component WSTRING
     let mut cursor = comp_off + 4;
     for (idx, comp) in components.iter().enumerate() {
         let cc = u32::from_le_bytes([
-            body[cursor], body[cursor+1], body[cursor+2], body[cursor+3],
+            body[cursor],
+            body[cursor + 1],
+            body[cursor + 2],
+            body[cursor + 3],
         ]);
-        assert_eq!(cc as usize, comp.len(), "component {idx} char_count mismatch");
+        assert_eq!(
+            cc as usize,
+            comp.len(),
+            "component {idx} char_count mismatch"
+        );
         cursor += 4;
         for (i, ch) in comp.encode_utf16().enumerate() {
-            let wire_ch = u16::from_le_bytes([
-                body[cursor + i * 2],
-                body[cursor + i * 2 + 1],
-            ]);
+            let wire_ch = u16::from_le_bytes([body[cursor + i * 2], body[cursor + i * 2 + 1]]);
             assert_eq!(wire_ch, ch, "component {idx} char {i} mismatch");
         }
         cursor += comp.len() * 2;
     }
 
     // Verify total length
-    assert_eq!(cursor, body.len(), "total body length should match parsed position");
+    assert_eq!(
+        cursor,
+        body.len(),
+        "total body length should match parsed position"
+    );
 }
 
 /// Verify onEntityTint wire encoding: 3x u32 LE
@@ -347,10 +451,16 @@ fn entity_tint_wire_encoding() {
     append_entity_method(&mut body, method_idx::ON_ENTITY_TINT, entity_id, &args);
 
     // method_index=10 < 61 -> direct: msg_id = 10 | 0x80 = 0x8A
-    assert_eq!(body[0], 0x8A, "msg_id should be 0x8A for onEntityTint (index 10)");
+    assert_eq!(
+        body[0], 0x8A,
+        "msg_id should be 0x8A for onEntityTint (index 10)"
+    );
 
     let word_len = u16::from_le_bytes([body[1], body[2]]);
-    assert_eq!(word_len, 16, "word_len should be 4 (entity_id) + 12 (3x u32)");
+    assert_eq!(
+        word_len, 16,
+        "word_len should be 4 (entity_id) + 12 (3x u32)"
+    );
 
     let eid = u32::from_le_bytes([body[3], body[4], body[5], body[6]]);
     assert_eq!(eid, entity_id);
@@ -402,19 +512,35 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
         // Slot 1, 3, 4 are empty — their AmmoSlot stats must stay
         // at the default (0, 0, 0).
         bandolier_items: vec![
-            (0, BandolierItem {
-                item_id: 100, clip_size: 15, default_ammo_type: 1,
-                current_ammo: 8, cur_ammo_type: 1,
-            }),
-            (2, BandolierItem {
-                item_id: 101, clip_size: 12, default_ammo_type: 7,
-                current_ammo: 12, cur_ammo_type: 7,
-            }),
+            (
+                0,
+                BandolierItem {
+                    item_id: 100,
+                    clip_size: 15,
+                    default_ammo_type: 1,
+                    current_ammo: 8,
+                    cur_ammo_type: 1,
+                },
+            ),
+            (
+                2,
+                BandolierItem {
+                    item_id: 101,
+                    clip_size: 12,
+                    default_ammo_type: 7,
+                    current_ammo: 12,
+                    cur_ammo_type: 7,
+                },
+            ),
         ],
     };
     let entry = WorldEntryInfo {
-        player_entity_id: 100, space_id: 65552,
-        pos: [0.0; 3], rot: [0.0; 3], world_name: "CombatSim".into(), class_id: 0x02,
+        player_entity_id: 100,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
         world_stargates: vec![],
     };
     // Assert against the raw, unfragmented mapLoaded body to avoid coupling
@@ -426,21 +552,19 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
     //
     // Stat IDs: AMMO_SLOT_1=49, AMMO_SLOT_3=51 (skipping the empty slot 1).
     let ammo_slot_1_tuple: [u8; 16] = [
-        49, 0, 0, 0,   // stat_id = 49 (AMMO_SLOT_1)
-         0, 0, 0, 0,   // min = 0
-         8, 0, 0, 0,   // cur = 8
-        15, 0, 0, 0,   // max = 15
+        49, 0, 0, 0, // stat_id = 49 (AMMO_SLOT_1)
+        0, 0, 0, 0, // min = 0
+        8, 0, 0, 0, // cur = 8
+        15, 0, 0, 0, // max = 15
     ];
     let ammo_slot_3_tuple: [u8; 16] = [
-        51, 0, 0, 0,   // stat_id = 51 (AMMO_SLOT_3 — slot index 2)
-         0, 0, 0, 0,   // min = 0
-        12, 0, 0, 0,   // cur = 12
-        12, 0, 0, 0,   // max = 12
+        51, 0, 0, 0, // stat_id = 51 (AMMO_SLOT_3 — slot index 2)
+        0, 0, 0, 0, // min = 0
+        12, 0, 0, 0, // cur = 12
+        12, 0, 0, 0, // max = 12
     ];
 
-    let contains = |needle: &[u8]| {
-        all_bytes.windows(needle.len()).any(|w| w == needle)
-    };
+    let contains = |needle: &[u8]| all_bytes.windows(needle.len()).any(|w| w == needle);
 
     assert!(
         contains(&ammo_slot_1_tuple),
@@ -454,12 +578,7 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
     // Empty slot 1 (stat id 50) must NOT appear with a non-zero cur value.
     // We look for a slot-1 tuple matching some plausible stale value (15)
     // to make sure no leak from elsewhere overwrote it.
-    let stale_slot_2: [u8; 16] = [
-        50, 0, 0, 0,
-         0, 0, 0, 0,
-        15, 0, 0, 0,
-        15, 0, 0, 0,
-    ];
+    let stale_slot_2: [u8; 16] = [50, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 15, 0, 0, 0];
     assert!(
         !contains(&stale_slot_2),
         "empty slot 1 should not have stale clip_size in its AmmoSlot stat",
@@ -577,12 +696,21 @@ fn world_stargates_round_trips_through_setup_stargate_info() {
     // didn't desync the buffer.
     let known_off = 4 + 3 * 4;
     let known_count = u32::from_le_bytes([
-        args[known_off], args[known_off + 1], args[known_off + 2], args[known_off + 3],
+        args[known_off],
+        args[known_off + 1],
+        args[known_off + 2],
+        args[known_off + 3],
     ]);
-    assert_eq!(known_count, 2, "knownStargates count mismatch (alignment drift?)");
+    assert_eq!(
+        known_count, 2,
+        "knownStargates count mismatch (alignment drift?)"
+    );
     assert_eq!(
         i32::from_le_bytes([
-            args[known_off + 4], args[known_off + 5], args[known_off + 6], args[known_off + 7],
+            args[known_off + 4],
+            args[known_off + 5],
+            args[known_off + 6],
+            args[known_off + 7],
         ]),
         777,
     );
@@ -629,14 +757,26 @@ fn active_bandolier_slot_drives_ammo_type_id_property() {
     let mut data = sample_player_load_data();
     data.active_bandolier_slot = 2;
     data.bandolier_items = vec![
-        (0, BandolierItem {
-            item_id: 100, clip_size: 15, default_ammo_type: 1,
-            current_ammo: 8, cur_ammo_type: 1,
-        }),
-        (2, BandolierItem {
-            item_id: 200, clip_size: 12, default_ammo_type: 7,
-            current_ammo: 12, cur_ammo_type: 7,
-        }),
+        (
+            0,
+            BandolierItem {
+                item_id: 100,
+                clip_size: 15,
+                default_ammo_type: 1,
+                current_ammo: 8,
+                cur_ammo_type: 1,
+            },
+        ),
+        (
+            2,
+            BandolierItem {
+                item_id: 200,
+                clip_size: 12,
+                default_ammo_type: 7,
+                current_ammo: 12,
+                cur_ammo_type: 7,
+            },
+        ),
     ];
     let entry = sample_world_entry();
 
@@ -656,7 +796,10 @@ fn active_bandolier_slot_drives_ammo_type_id_property() {
         .expect("AmmoTypeId onEntityProperty not found in mapLoaded body");
     let val_off = pos + prefix.len();
     let value = i32::from_le_bytes([
-        body[val_off], body[val_off + 1], body[val_off + 2], body[val_off + 3],
+        body[val_off],
+        body[val_off + 1],
+        body[val_off + 2],
+        body[val_off + 3],
     ]);
     assert_eq!(
         value, 7,
@@ -674,12 +817,16 @@ fn active_bandolier_slot_with_no_item_emits_ammo_type_zero() {
 
     let mut data = sample_player_load_data();
     data.active_bandolier_slot = 1; // no item lives here
-    data.bandolier_items = vec![
-        (0, BandolierItem {
-            item_id: 100, clip_size: 15, default_ammo_type: 9,
-            current_ammo: 8, cur_ammo_type: 9,
-        }),
-    ];
+    data.bandolier_items = vec![(
+        0,
+        BandolierItem {
+            item_id: 100,
+            clip_size: 15,
+            default_ammo_type: 9,
+            current_ammo: 8,
+            cur_ammo_type: 9,
+        },
+    )];
     let entry = sample_world_entry();
 
     let body = build_map_loaded_body(entry.player_entity_id, &data, &entry);
@@ -695,7 +842,13 @@ fn active_bandolier_slot_with_no_item_emits_ammo_type_zero() {
         .expect("AmmoTypeId onEntityProperty not found in mapLoaded body");
     let val_off = pos + prefix.len();
     let value = i32::from_le_bytes([
-        body[val_off], body[val_off + 1], body[val_off + 2], body[val_off + 3],
+        body[val_off],
+        body[val_off + 1],
+        body[val_off + 2],
+        body[val_off + 3],
     ]);
-    assert_eq!(value, 0, "AmmoTypeId must fall back to 0 when active slot is empty");
+    assert_eq!(
+        value, 0,
+        "AmmoTypeId must fall back to 0 when active slot is empty"
+    );
 }

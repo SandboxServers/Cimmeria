@@ -30,7 +30,7 @@ pub async fn load_loot_tables(
     let rows = sqlx::query(
         "SELECT loot_table_id, design_id, min_quantity, max_quantity, probability \
          FROM resources.loot \
-         ORDER BY loot_table_id, loot_id"
+         ORDER BY loot_table_id, loot_id",
     )
     .fetch_all(pool)
     .await?;
@@ -142,7 +142,14 @@ pub async fn load_item_defs(
         let clip_size: i32 = r.get("clip_size");
         let default_ammo_type: i32 = r.get("default_ammo_type_id");
         let allowed_ammo_types: Vec<i32> = r.get("allowed_ammo_type_ids");
-        map.insert(item_id, WeaponDef { clip_size, default_ammo_type, allowed_ammo_types });
+        map.insert(
+            item_id,
+            WeaponDef {
+                clip_size,
+                default_ammo_type,
+                allowed_ammo_types,
+            },
+        );
     }
 
     tracing::info!(count = map.len(), "Loaded weapon defs");

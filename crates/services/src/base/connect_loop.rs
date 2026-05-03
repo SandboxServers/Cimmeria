@@ -9,11 +9,12 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::MercuryEncryption;
-use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE, FLAG_RELIABLE};
+use cimmeria_mercury::packet::{
+    parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE, FLAG_RELIABLE,
+};
 
 use crate::cell::messages::BaseToCellMsg;
 
-use super::ConnectedClientState;
 use super::character::{handle_delete_character, handle_request_character_visuals};
 use super::character_create::handle_create_character;
 use super::cooked_data::{handle_element_data_request, handle_version_info_request};
@@ -22,9 +23,10 @@ use super::helpers::{destroy_client_entities, to_hex};
 use super::login::{handle_log_off, handle_login, parse_baseapp_login};
 use super::resources::ResourceCache;
 use super::world_entry::{
-    handle_enable_entities, handle_map_loaded, handle_on_client_ready,
-    handle_play_character, handle_cancel_movie,
+    handle_cancel_movie, handle_enable_entities, handle_map_loaded, handle_on_client_ready,
+    handle_play_character,
 };
+use super::ConnectedClientState;
 
 /// Main receive loop -- one per running `BaseService`.
 pub(crate) async fn run_connect_loop(
@@ -37,7 +39,6 @@ pub(crate) async fn run_connect_loop(
     entity_manager: Arc<Mutex<EntityManager>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-
     let mut buf = [0u8; 4096];
 
     loop {
@@ -94,10 +95,14 @@ async fn handle_datagram(
     }
 
     // Check for an established encrypted channel first.
-    let channel_key: Option<(MercuryEncryption, [u8; 32], u32, Arc<Mutex<Vec<u32>>>, Arc<Mutex<Instant>>)> = {
-        let clients = connected
-            .lock()
-            .map_err(|_| "connected lock poisoned")?;
+    let channel_key: Option<(
+        MercuryEncryption,
+        [u8; 32],
+        u32,
+        Arc<Mutex<Vec<u32>>>,
+        Arc<Mutex<Instant>>,
+    )> = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients.get(&addr).map(|c| {
             (
                 c.enc.clone(),
@@ -113,10 +118,21 @@ async fn handle_datagram(
         // Update last-recv timestamp on every packet from this client.
         *last_recv.lock().unwrap() = Instant::now();
         return handle_encrypted_datagram(
-            socket, addr, raw, enc, key, account_id,
-            &pending_acks, connected, db_pool, resource_cache, entity_manager, cell_tx,
+            socket,
+            addr,
+            raw,
+            enc,
+            key,
+            account_id,
+            &pending_acks,
+            connected,
+            db_pool,
+            resource_cache,
+            entity_manager,
+            cell_tx,
             entity_to_addr,
-        ).await;
+        )
+        .await;
     }
 
     // Not yet connected -- only accept the unencrypted Phase 3 login (flags=0x41).
@@ -129,7 +145,18 @@ async fn handle_datagram(
     match parse_baseapp_login(raw) {
         Ok((request_id, ticket_str)) => {
             tracing::info!(%addr, ticket = %ticket_str, "baseAppLogin received");
-            handle_login(socket, addr, request_id, &ticket_str, pending_logins, connected, entity_manager, cell_tx, entity_to_addr).await
+            handle_login(
+                socket,
+                addr,
+                request_id,
+                &ticket_str,
+                pending_logins,
+                connected,
+                entity_manager,
+                cell_tx,
+                entity_to_addr,
+            )
+            .await
         }
         Err(e) => {
             tracing::warn!(%addr, "Failed to parse baseAppLogin: {e}");
@@ -280,7 +307,18 @@ pub(crate) async fn handle_encrypted_datagram(
             // ENABLE_ENTITIES (0x08) -- client re-enables entity system after RESET_ENTITIES
             0x08 => {
                 tracing::info!(%addr, "Client sent ENABLE_ENTITIES");
-                handle_enable_entities(socket, addr, key, account_id, connected, db_pool, entity_manager, cell_tx, entity_to_addr).await?;
+                handle_enable_entities(
+                    socket,
+                    addr,
+                    key,
+                    account_id,
+                    connected,
+                    db_pool,
+                    entity_manager,
+                    cell_tx,
+                    entity_to_addr,
+                )
+                .await?;
             }
             // AVATAR_UPDATE_EXPLICIT (0x03) -- client movement update (40 bytes)
             // Wire: [spaceId:u32][vehicleId:u32][pos:3xf32][vel:3xf32][dir:3xi8][flags:u8][cells:3xu8][updateId:u8]
@@ -289,30 +327,68 @@ pub(crate) async fn handle_encrypted_datagram(
                 if payload.len() >= 40 {
                     if let Some(ref tx) = cell_tx {
                         // Look up the player entity_id from connection state
-                        let entity_id = connected.lock().unwrap()
+                        let entity_id = connected
+                            .lock()
+                            .unwrap()
                             .get(&addr)
                             .and_then(|c| c.player_entity_id);
                         if let Some(entity_id) = entity_id {
                             // payload[0..4] = spaceId (not used here -- client confirms which space)
                             // payload[4..8] = vehicleId (unused)
                             let pos = [
-                                f32::from_le_bytes([payload[8], payload[9], payload[10], payload[11]]),
-                                f32::from_le_bytes([payload[12], payload[13], payload[14], payload[15]]),
-                                f32::from_le_bytes([payload[16], payload[17], payload[18], payload[19]]),
+                                f32::from_le_bytes([
+                                    payload[8],
+                                    payload[9],
+                                    payload[10],
+                                    payload[11],
+                                ]),
+                                f32::from_le_bytes([
+                                    payload[12],
+                                    payload[13],
+                                    payload[14],
+                                    payload[15],
+                                ]),
+                                f32::from_le_bytes([
+                                    payload[16],
+                                    payload[17],
+                                    payload[18],
+                                    payload[19],
+                                ]),
                             ];
                             let vel = [
-                                f32::from_le_bytes([payload[20], payload[21], payload[22], payload[23]]),
-                                f32::from_le_bytes([payload[24], payload[25], payload[26], payload[27]]),
-                                f32::from_le_bytes([payload[28], payload[29], payload[30], payload[31]]),
+                                f32::from_le_bytes([
+                                    payload[20],
+                                    payload[21],
+                                    payload[22],
+                                    payload[23],
+                                ]),
+                                f32::from_le_bytes([
+                                    payload[24],
+                                    payload[25],
+                                    payload[26],
+                                    payload[27],
+                                ]),
+                                f32::from_le_bytes([
+                                    payload[28],
+                                    payload[29],
+                                    payload[30],
+                                    payload[31],
+                                ]),
                             ];
                             let dir = [payload[32] as i8, payload[33] as i8, payload[34] as i8];
-                            tracing::trace!(entity_id, ?pos, "AVATAR_UPDATE_EXPLICIT -> CellService");
-                            let _ = tx.send(BaseToCellMsg::EntityMove {
+                            tracing::trace!(
                                 entity_id,
-                                position: pos,
-                                direction: dir,
-                                velocity: vel,
-                            }).await;
+                                ?pos,
+                                "AVATAR_UPDATE_EXPLICIT -> CellService"
+                            );
+                            let _ = tx
+                                .send(BaseToCellMsg::EntityMove {
+                                    entity_id,
+                                    position: pos,
+                                    direction: dir,
+                                    velocity: vel,
+                                })
+                                .await;
                         }
                     }
                 }
@@ -332,14 +408,12 @@ pub(crate) async fn handle_encrypted_datagram(
             // These are not part of the active entity's base-method namespace.
             // The client sends them both before and after entering the world.
             0xC0 => {
-                handle_version_info_request(
-                    socket, addr, key, payload, connected, resource_cache,
-                ).await?;
+                handle_version_info_request(socket, addr, key, payload, connected, resource_cache)
+                    .await?;
             }
             0xC1 => {
-                handle_element_data_request(
-                    socket, addr, key, payload, connected, resource_cache,
-                ).await?;
+                handle_element_data_request(socket, addr, key, payload, connected, resource_cache)
+                    .await?;
             }
 
             // ── Entity base method calls (0xC0+) ──
@@ -365,15 +439,30 @@ pub(crate) async fn handle_encrypted_datagram(
                     match id {
                         sgw_player_base::ON_CLIENT_READY => {
                             handle_on_client_ready(
-                                addr, connected, cell_tx, socket, entity_to_addr, db_pool,
-                            ).await?;
+                                addr,
+                                connected,
+                                cell_tx,
+                                socket,
+                                entity_to_addr,
+                                db_pool,
+                            )
+                            .await?;
                         }
                         _ => {
                             // SGWPlayer base method dispatch
                             dispatch_sgw_player_base_method(
-                                id, payload, &player_name, addr, socket, key,
-                                connected, entity_manager, cell_tx, entity_to_addr,
-                            ).await?;
+                                id,
+                                payload,
+                                &player_name,
+                                addr,
+                                socket,
+                                key,
+                                connected,
+                                entity_manager,
+                                cell_tx,
+                                entity_to_addr,
+                            )
+                            .await?;
                         }
                     }
                 } else {
@@ -381,15 +470,22 @@ pub(crate) async fn handle_encrypted_datagram(
                     match id {
                         0xC2 => {
                             handle_log_off(
-                                socket, addr, key, connected, entity_manager, cell_tx, entity_to_addr,
-                            ).await?;
+                                socket,
+                                addr,
+                                key,
+                                connected,
+                                entity_manager,
+                                cell_tx,
+                                entity_to_addr,
+                            )
+                            .await?;
                         }
                         0xC3 => {
                             tracing::info!(%addr, "Client requests createCharacter");
                             handle_create_character(
-                                socket, addr, key, account_id, payload,
-                                connected, db_pool,
-                            ).await?;
+                                socket, addr, key, account_id, payload, connected, db_pool,
+                            )
+                            .await?;
                         }
                         0xC4 => {
                             let player_id = if payload.len() >= 4 {
@@ -398,26 +494,42 @@ pub(crate) async fn handle_encrypted_datagram(
                                 0
                             };
                             tracing::info!(%addr, player_id, "Client requests playCharacter");
-                            handle_play_character(socket, addr, key, account_id, player_id, connected, db_pool, entity_manager, cell_tx).await?;
+                            handle_play_character(
+                                socket,
+                                addr,
+                                key,
+                                account_id,
+                                player_id,
+                                connected,
+                                db_pool,
+                                entity_manager,
+                                cell_tx,
+                            )
+                            .await?;
                         }
                         0xC5 => {
                             let player_id = if payload.len() >= 4 {
                                 i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
-                            } else { 0 };
+                            } else {
+                                0
+                            };
                             tracing::info!(%addr, player_id, "Client requests deleteCharacter");
                             handle_delete_character(
-                                socket, addr, key, account_id, player_id,
-                                connected, db_pool,
-                            ).await?;
+                                socket, addr, key, account_id, player_id, connected, db_pool,
+                            )
+                            .await?;
                         }
                         0xC6 => {
                             let player_id = if payload.len() >= 4 {
                                 i32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])
-                            } else { 0 };
+                            } else {
+                                0
+                            };
                             tracing::debug!(%addr, player_id, "Client sent requestCharacterVisuals");
                             handle_request_character_visuals(
                                 socket, addr, key, player_id, connected, db_pool,
-                            ).await?;
+                            )
+                            .await?;
                         }
                         0xC7 => {
                             tracing::debug!(%addr, "Client sent onClientVersion -- acknowledged");
@@ -441,12 +553,22 @@ pub(crate) async fn handle_encrypted_datagram(
                 // VIEWPORT + CELL + POSITION + the full entity data bundle.
                 let map_loaded_pending = {
                     let clients = connected.lock().unwrap();
-                    clients.get(&addr).map_or(false, |c| c.pending_map_loaded.is_some())
+                    clients
+                        .get(&addr)
+                        .map_or(false, |c| c.pending_map_loaded.is_some())
                 };
                 if map_loaded_pending && id == 0x99 {
                     if let Err(e) = handle_map_loaded(
-                        socket, addr, key, connected, cell_tx, entity_to_addr, db_pool,
-                    ).await {
+                        socket,
+                        addr,
+                        key,
+                        connected,
+                        cell_tx,
+                        entity_to_addr,
+                        db_pool,
+                    )
+                    .await
+                    {
                         tracing::error!(%addr, error = %e, "Enter world (mapLoaded) failed");
                     }
                 }
@@ -470,7 +592,8 @@ pub(crate) async fn handle_encrypted_datagram(
                         tracing::warn!(%addr, msg_id = format_args!("{:#04x}", id), payload_len = payload.len(), "Cell method payload too short for entityId prefix");
                         continue;
                     }
-                    let entity_id_from_client = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+                    let entity_id_from_client =
+                        u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
                     let method_payload = &payload[4..];
 
                     if id == 0xBD {
@@ -478,7 +601,11 @@ pub(crate) async fn handle_encrypted_datagram(
                         if !method_payload.is_empty() {
                             let sub_index = method_payload[0] as u16;
                             let method_index = sub_index + 61;
-                            let args = if method_payload.len() > 1 { method_payload[1..].to_vec() } else { Vec::new() };
+                            let args = if method_payload.len() > 1 {
+                                method_payload[1..].to_vec()
+                            } else {
+                                Vec::new()
+                            };
                             tracing::debug!(
                                 %addr,
                                 entity_id = entity_id_from_client,
@@ -494,25 +621,36 @@ pub(crate) async fn handle_encrypted_datagram(
                             const CM_CANCEL_MOVIE: u16 = 108;
                             if method_index == CM_CANCEL_MOVIE {
                                 tracing::info!(%addr, entity_id = player_eid, "cancelMovie received — resending BeingAppearance + onEntityTint");
-                                handle_cancel_movie(socket, addr, player_eid, connected, entity_to_addr).await;
+                                handle_cancel_movie(
+                                    socket,
+                                    addr,
+                                    player_eid,
+                                    connected,
+                                    entity_to_addr,
+                                )
+                                .await;
                             }
 
                             if let Some(ref tx) = cell_tx {
-                                let _ = tx.send(BaseToCellMsg::CellMethodCall {
-                                    entity_id: player_eid,
-                                    method_index,
-                                    args,
-                                }).await;
+                                let _ = tx
+                                    .send(BaseToCellMsg::CellMethodCall {
+                                        entity_id: player_eid,
+                                        method_index,
+                                        args,
+                                    })
+                                    .await;
                             }
                         }
                     } else {
                         let method_index = (id - 0x80) as u16;
                         if let Some(ref tx) = cell_tx {
-                            let _ = tx.send(BaseToCellMsg::CellMethodCall {
-                                entity_id: player_eid,
-                                method_index,
-                                args: method_payload.to_vec(),
-                            }).await;
+                            let _ = tx
+                                .send(BaseToCellMsg::CellMethodCall {
+                                    entity_id: player_eid,
+                                    method_index,
+                                    args: method_payload.to_vec(),
+                                })
+                                .await;
                         }
                     }
                 } else {

@@ -30,9 +30,7 @@ pub struct RegionLoadData {
 /// client can hit-test them.
 ///
 /// Reference: `python/cell/GenericRegion.py:GenericRegionManager.load()`
-pub async fn load_regions_from_db(
-    pool: &PgPool,
-) -> Result<Vec<RegionLoadData>, sqlx::Error> {
+pub async fn load_regions_from_db(pool: &PgPool) -> Result<Vec<RegionLoadData>, sqlx::Error> {
     use sqlx::Row;
 
     let region_rows = sqlx::query(
@@ -41,7 +39,7 @@ pub async fn load_regions_from_db(
          FROM resources.point_sets ps \
          JOIN resources.worlds w ON ps.world_id = w.world_id \
          WHERE ps.type = 'AreaSet' \
-         ORDER BY ps.set_id"
+         ORDER BY ps.set_id",
     )
     .fetch_all(pool)
     .await?;
@@ -51,7 +49,8 @@ pub async fn load_regions_from_db(
     }
 
     // Collect all set_ids to batch-fetch points
-    let set_ids: Vec<i32> = region_rows.iter()
+    let set_ids: Vec<i32> = region_rows
+        .iter()
         .map(|r| r.get::<i32, _>("set_id"))
         .collect();
 
@@ -59,7 +58,7 @@ pub async fn load_regions_from_db(
         "SELECT set_id, x, y, z \
          FROM resources.point_set_points \
          WHERE set_id = ANY($1) \
-         ORDER BY set_id, point_id"
+         ORDER BY set_id, point_id",
     )
     .bind(&set_ids)
     .fetch_all(pool)
@@ -73,9 +72,7 @@ pub async fn load_regions_from_db(
         let x: f32 = r.get("x");
         let y: f32 = r.get("y");
         let z: f32 = r.get("z");
-        points_by_set.entry(set_id)
-            .or_default()
-            .push([x, y, z]);
+        points_by_set.entry(set_id).or_default().push([x, y, z]);
     }
 
     let mut regions = Vec::with_capacity(region_rows.len());
@@ -97,9 +94,9 @@ pub async fn load_regions_from_db(
             let r = radius;
             let h = height;
             points = vec![
-                [px - r, py,     pz - r],
-                [px - r, py,     pz + r],
-                [px + r, py,     pz + r],
+                [px - r, py, pz - r],
+                [px - r, py, pz + r],
+                [px + r, py, pz + r],
                 [px + r, py + h, pz - r],
             ];
         }
@@ -115,6 +112,9 @@ pub async fn load_regions_from_db(
         });
     }
 
-    tracing::info!(count = regions.len(), "Loaded generic regions from database");
+    tracing::info!(
+        count = regions.len(),
+        "Loaded generic regions from database"
+    );
     Ok(regions)
 }

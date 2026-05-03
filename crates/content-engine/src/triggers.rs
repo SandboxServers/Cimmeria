@@ -181,128 +181,142 @@ impl Trigger {
         }
 
         match self {
-            Trigger::OnEntityCreated { entity_type } | Trigger::OnEntityDestroyed { entity_type } => {
-                match entity_type {
-                    Some(expected) => event.params.get("entity_type")
-                        .and_then(|v| v.as_str())
-                        .map_or(false, |actual| actual == expected),
-                    None => true,
-                }
-            }
-            Trigger::OnEntityDeath { entity_type, entity_tag } => {
+            Trigger::OnEntityCreated { entity_type }
+            | Trigger::OnEntityDestroyed { entity_type } => match entity_type {
+                Some(expected) => event
+                    .params
+                    .get("entity_type")
+                    .and_then(|v| v.as_str())
+                    .map_or(false, |actual| actual == expected),
+                None => true,
+            },
+            Trigger::OnEntityDeath {
+                entity_type,
+                entity_tag,
+            } => {
                 // If entity_tag is set, match on tag (DB entity_dead_tag pattern)
                 if let Some(tag) = entity_tag {
-                    return event.params.get("entity_tag")
+                    return event
+                        .params
+                        .get("entity_tag")
                         .and_then(|v| v.as_str())
                         .map_or(false, |actual| actual == tag);
                 }
                 // Otherwise match on entity_type (original pattern)
                 match entity_type {
-                    Some(expected) => event.params.get("entity_type")
+                    Some(expected) => event
+                        .params
+                        .get("entity_type")
                         .and_then(|v| v.as_str())
                         .map_or(false, |actual| actual == expected),
                     None => true,
                 }
             }
-            Trigger::OnAbilityUsed { ability_id } => {
-                match ability_id {
-                    Some(expected) => event.params.get("ability_id")
-                        .and_then(|v| v.as_i64())
-                        .map_or(false, |actual| actual == *expected as i64),
-                    None => true,
-                }
-            }
-            Trigger::OnInteraction { interaction_type } => {
-                match interaction_type {
-                    Some(expected) => event.params.get("interaction_type")
-                        .and_then(|v| v.as_str())
-                        .map_or(false, |actual| actual == expected),
-                    None => true,
-                }
-            }
-            Trigger::OnRegionEnter { region_key } => {
-                event.params.get("region_key")
+            Trigger::OnAbilityUsed { ability_id } => match ability_id {
+                Some(expected) => event
+                    .params
+                    .get("ability_id")
+                    .and_then(|v| v.as_i64())
+                    .map_or(false, |actual| actual == *expected as i64),
+                None => true,
+            },
+            Trigger::OnInteraction { interaction_type } => match interaction_type {
+                Some(expected) => event
+                    .params
+                    .get("interaction_type")
                     .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == region_key)
-            }
-            Trigger::OnRegionExit { region_key } => {
-                event.params.get("region_key")
-                    .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == region_key)
-            }
+                    .map_or(false, |actual| actual == expected),
+                None => true,
+            },
+            Trigger::OnRegionEnter { region_key } => event
+                .params
+                .get("region_key")
+                .and_then(|v| v.as_str())
+                .map_or(false, |actual| actual == region_key),
+            Trigger::OnRegionExit { region_key } => event
+                .params
+                .get("region_key")
+                .and_then(|v| v.as_str())
+                .map_or(false, |actual| actual == region_key),
             Trigger::OnMissionStep { mission_id, step } => {
-                let mission_match = event.params.get("mission_id")
+                let mission_match = event
+                    .params
+                    .get("mission_id")
                     .and_then(|v| v.as_i64())
                     .map_or(false, |actual| actual == *mission_id as i64);
-                let step_match = event.params.get("step")
+                let step_match = event
+                    .params
+                    .get("step")
                     .and_then(|v| v.as_i64())
                     .map_or(false, |actual| actual == *step as i64);
                 mission_match && step_match
             }
-            Trigger::OnItemAcquired { item_id } => {
-                match item_id {
-                    Some(expected) => event.params.get("item_id")
-                        .and_then(|v| v.as_i64())
-                        .map_or(false, |actual| actual == *expected as i64),
-                    None => true,
-                }
-            }
-            Trigger::OnTimer { timer_name } => {
-                event.params.get("timer_name")
-                    .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == timer_name)
-            }
-            Trigger::OnCustomEvent { event_name } => {
-                event.params.get("event_name")
-                    .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == event_name)
-            }
-            Trigger::OnPlayerLoaded { world_name } => {
-                match world_name {
-                    Some(expected) => event.params.get("world_name")
-                        .and_then(|v| v.as_str())
-                        .map_or(false, |actual| actual == expected),
-                    None => true,
-                }
-            }
-            Trigger::OnDialogOpen { dialog_id } | Trigger::OnDialogChoice { dialog_id } => {
-                event.params.get("dialog_id")
+            Trigger::OnItemAcquired { item_id } => match item_id {
+                Some(expected) => event
+                    .params
+                    .get("item_id")
                     .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *dialog_id as i64)
-            }
-            Trigger::OnInteractTag { entity_tag } => {
-                event.params.get("entity_tag")
+                    .map_or(false, |actual| actual == *expected as i64),
+                None => true,
+            },
+            Trigger::OnTimer { timer_name } => event
+                .params
+                .get("timer_name")
+                .and_then(|v| v.as_str())
+                .map_or(false, |actual| actual == timer_name),
+            Trigger::OnCustomEvent { event_name } => event
+                .params
+                .get("event_name")
+                .and_then(|v| v.as_str())
+                .map_or(false, |actual| actual == event_name),
+            Trigger::OnPlayerLoaded { world_name } => match world_name {
+                Some(expected) => event
+                    .params
+                    .get("world_name")
                     .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == entity_tag)
-            }
-            Trigger::OnInteractTemplate { template_name } => {
-                event.params.get("template_name")
-                    .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == template_name)
-            }
-            Trigger::OnItemUse { item_id } => {
-                event.params.get("item_id")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *item_id as i64)
-            }
-            Trigger::OnTeleportIn { region_id } => {
-                event.params.get("region_id")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *region_id as i64)
-            }
+                    .map_or(false, |actual| actual == expected),
+                None => true,
+            },
+            Trigger::OnDialogOpen { dialog_id } | Trigger::OnDialogChoice { dialog_id } => event
+                .params
+                .get("dialog_id")
+                .and_then(|v| v.as_i64())
+                .map_or(false, |actual| actual == *dialog_id as i64),
+            Trigger::OnInteractTag { entity_tag } => event
+                .params
+                .get("entity_tag")
+                .and_then(|v| v.as_str())
+                .map_or(false, |actual| actual == entity_tag),
+            Trigger::OnInteractTemplate { template_name } => event
+                .params
+                .get("template_name")
+                .and_then(|v| v.as_str())
+                .map_or(false, |actual| actual == template_name),
+            Trigger::OnItemUse { item_id } => event
+                .params
+                .get("item_id")
+                .and_then(|v| v.as_i64())
+                .map_or(false, |actual| actual == *item_id as i64),
+            Trigger::OnTeleportIn { region_id } => event
+                .params
+                .get("region_id")
+                .and_then(|v| v.as_i64())
+                .map_or(false, |actual| actual == *region_id as i64),
             // Unit triggers match any event of the right type
-            Trigger::OnEffectInit | Trigger::OnEffectPulseBegin |
-            Trigger::OnEffectPulseEnd | Trigger::OnEffectRemoved => true,
-            Trigger::OnMissionCompleted { mission_id } => {
-                event.params.get("mission_id")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *mission_id as i64)
-            }
-            Trigger::OnDialogSetOpen { dialog_set_name } => {
-                event.params.get("dialog_set_name")
-                    .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == dialog_set_name)
-            }
+            Trigger::OnEffectInit
+            | Trigger::OnEffectPulseBegin
+            | Trigger::OnEffectPulseEnd
+            | Trigger::OnEffectRemoved => true,
+            Trigger::OnMissionCompleted { mission_id } => event
+                .params
+                .get("mission_id")
+                .and_then(|v| v.as_i64())
+                .map_or(false, |actual| actual == *mission_id as i64),
+            Trigger::OnDialogSetOpen { dialog_set_name } => event
+                .params
+                .get("dialog_set_name")
+                .and_then(|v| v.as_str())
+                .map_or(false, |actual| actual == dialog_set_name),
         }
     }
 }
@@ -311,12 +325,18 @@ impl Trigger {
 mod tests {
     use super::*;
 
-    fn make_event(trigger_type: TriggerType, params: Vec<(&str, serde_json::Value)>) -> TriggerEvent {
+    fn make_event(
+        trigger_type: TriggerType,
+        params: Vec<(&str, serde_json::Value)>,
+    ) -> TriggerEvent {
         TriggerEvent {
             trigger_type,
             source_entity: None,
             target_entity: None,
-            params: params.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            params: params
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
         }
     }
 
@@ -325,21 +345,30 @@ mod tests {
         let t = Trigger::OnEntityCreated { entity_type: None };
         assert_eq!(t.trigger_type(), TriggerType::EntityCreated);
 
-        let t = Trigger::OnTimer { timer_name: "respawn".to_string() };
+        let t = Trigger::OnTimer {
+            timer_name: "respawn".to_string(),
+        };
         assert_eq!(t.trigger_type(), TriggerType::Timer);
 
         let t = Trigger::OnDialogChoice { dialog_id: 100 };
         assert_eq!(t.trigger_type(), TriggerType::DialogChoice);
 
-        assert_eq!(Trigger::OnEffectInit.trigger_type(), TriggerType::EffectInit);
+        assert_eq!(
+            Trigger::OnEffectInit.trigger_type(),
+            TriggerType::EffectInit
+        );
     }
 
     #[test]
     fn wildcard_trigger_matches_any() {
         let trigger = Trigger::OnEntityCreated { entity_type: None };
-        let event = make_event(TriggerType::EntityCreated, vec![
-            ("entity_type", serde_json::Value::String("SGWMob".to_string())),
-        ]);
+        let event = make_event(
+            TriggerType::EntityCreated,
+            vec![(
+                "entity_type",
+                serde_json::Value::String("SGWMob".to_string()),
+            )],
+        );
         assert!(trigger.matches(&event));
     }
 
@@ -348,9 +377,13 @@ mod tests {
         let trigger = Trigger::OnEntityCreated {
             entity_type: Some("SGWMob".to_string()),
         };
-        let event = make_event(TriggerType::EntityCreated, vec![
-            ("entity_type", serde_json::Value::String("SGWMob".to_string())),
-        ]);
+        let event = make_event(
+            TriggerType::EntityCreated,
+            vec![(
+                "entity_type",
+                serde_json::Value::String("SGWMob".to_string()),
+            )],
+        );
         assert!(trigger.matches(&event));
     }
 
@@ -359,9 +392,13 @@ mod tests {
         let trigger = Trigger::OnEntityCreated {
             entity_type: Some("SGWMob".to_string()),
         };
-        let event = make_event(TriggerType::EntityCreated, vec![
-            ("entity_type", serde_json::Value::String("SGWPlayer".to_string())),
-        ]);
+        let event = make_event(
+            TriggerType::EntityCreated,
+            vec![(
+                "entity_type",
+                serde_json::Value::String("SGWPlayer".to_string()),
+            )],
+        );
         assert!(!trigger.matches(&event));
     }
 
@@ -374,63 +411,88 @@ mod tests {
 
     #[test]
     fn region_enter_matches_correct_key() {
-        let trigger = Trigger::OnRegionEnter { region_key: "Castle_Cellblock.Region2".to_string() };
-        let event = make_event(TriggerType::RegionEnter, vec![
-            ("region_key", serde_json::json!("Castle_Cellblock.Region2")),
-        ]);
+        let trigger = Trigger::OnRegionEnter {
+            region_key: "Castle_Cellblock.Region2".to_string(),
+        };
+        let event = make_event(
+            TriggerType::RegionEnter,
+            vec![("region_key", serde_json::json!("Castle_Cellblock.Region2"))],
+        );
         assert!(trigger.matches(&event));
     }
 
     #[test]
     fn region_enter_rejects_wrong_key() {
-        let trigger = Trigger::OnRegionEnter { region_key: "Castle_Cellblock.Region2".to_string() };
-        let event = make_event(TriggerType::RegionEnter, vec![
-            ("region_key", serde_json::json!("SGC_W1.Region1")),
-        ]);
+        let trigger = Trigger::OnRegionEnter {
+            region_key: "Castle_Cellblock.Region2".to_string(),
+        };
+        let event = make_event(
+            TriggerType::RegionEnter,
+            vec![("region_key", serde_json::json!("SGC_W1.Region1"))],
+        );
         assert!(!trigger.matches(&event));
     }
 
     #[test]
     fn mission_step_requires_both_fields() {
-        let trigger = Trigger::OnMissionStep { mission_id: 10, step: 3 };
+        let trigger = Trigger::OnMissionStep {
+            mission_id: 10,
+            step: 3,
+        };
 
-        let event = make_event(TriggerType::MissionStep, vec![
-            ("mission_id", serde_json::json!(10)),
-            ("step", serde_json::json!(3)),
-        ]);
+        let event = make_event(
+            TriggerType::MissionStep,
+            vec![
+                ("mission_id", serde_json::json!(10)),
+                ("step", serde_json::json!(3)),
+            ],
+        );
         assert!(trigger.matches(&event));
 
-        let event = make_event(TriggerType::MissionStep, vec![
-            ("mission_id", serde_json::json!(10)),
-            ("step", serde_json::json!(1)),
-        ]);
+        let event = make_event(
+            TriggerType::MissionStep,
+            vec![
+                ("mission_id", serde_json::json!(10)),
+                ("step", serde_json::json!(1)),
+            ],
+        );
         assert!(!trigger.matches(&event));
     }
 
     #[test]
     fn custom_event_matches_name() {
-        let trigger = Trigger::OnCustomEvent { event_name: "boss_phase_2".to_string() };
-        let event = make_event(TriggerType::CustomEvent, vec![
-            ("event_name", serde_json::Value::String("boss_phase_2".to_string())),
-        ]);
+        let trigger = Trigger::OnCustomEvent {
+            event_name: "boss_phase_2".to_string(),
+        };
+        let event = make_event(
+            TriggerType::CustomEvent,
+            vec![(
+                "event_name",
+                serde_json::Value::String("boss_phase_2".to_string()),
+            )],
+        );
         assert!(trigger.matches(&event));
     }
 
     #[test]
     fn dialog_choice_matches() {
         let trigger = Trigger::OnDialogChoice { dialog_id: 5021 };
-        let event = make_event(TriggerType::DialogChoice, vec![
-            ("dialog_id", serde_json::json!(5021)),
-        ]);
+        let event = make_event(
+            TriggerType::DialogChoice,
+            vec![("dialog_id", serde_json::json!(5021))],
+        );
         assert!(trigger.matches(&event));
     }
 
     #[test]
     fn interact_tag_matches() {
-        let trigger = Trigger::OnInteractTag { entity_tag: "ArmYourself_FrostBody".to_string() };
-        let event = make_event(TriggerType::InteractTag, vec![
-            ("entity_tag", serde_json::json!("ArmYourself_FrostBody")),
-        ]);
+        let trigger = Trigger::OnInteractTag {
+            entity_tag: "ArmYourself_FrostBody".to_string(),
+        };
+        let event = make_event(
+            TriggerType::InteractTag,
+            vec![("entity_tag", serde_json::json!("ArmYourself_FrostBody"))],
+        );
         assert!(trigger.matches(&event));
     }
 
@@ -440,9 +502,10 @@ mod tests {
             entity_type: None,
             entity_tag: Some("Hallway01_Guard".to_string()),
         };
-        let event = make_event(TriggerType::EntityDeath, vec![
-            ("entity_tag", serde_json::json!("Hallway01_Guard")),
-        ]);
+        let event = make_event(
+            TriggerType::EntityDeath,
+            vec![("entity_tag", serde_json::json!("Hallway01_Guard"))],
+        );
         assert!(trigger.matches(&event));
     }
 
@@ -456,9 +519,10 @@ mod tests {
     #[test]
     fn mission_completed_matches() {
         let trigger = Trigger::OnMissionCompleted { mission_id: 1559 };
-        let event = make_event(TriggerType::MissionCompleted, vec![
-            ("mission_id", serde_json::json!(1559)),
-        ]);
+        let event = make_event(
+            TriggerType::MissionCompleted,
+            vec![("mission_id", serde_json::json!(1559))],
+        );
         assert!(trigger.matches(&event));
     }
 }

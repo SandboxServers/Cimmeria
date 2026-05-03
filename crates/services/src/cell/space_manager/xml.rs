@@ -32,7 +32,9 @@ impl SpaceManager {
 
         loop {
             match reader.read_event_into(&mut buf) {
-                Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e)) if e.name().as_ref() == b"Space" => {
+                Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e))
+                    if e.name().as_ref() == b"Space" =>
+                {
                     let mut world_name = String::new();
                     let mut instanced = false;
                     let mut min_x: i32 = 0;
@@ -44,27 +46,34 @@ impl SpaceManager {
                         let attr = attr_res.map_err(|err| {
                             format!("spaces.xml: malformed Space attribute: {err}")
                         })?;
-                        let key = std::str::from_utf8(attr.key.as_ref()).map_err(|err| {
-                            format!("spaces.xml: non-UTF8 attribute key: {err}")
-                        })?;
+                        let key = std::str::from_utf8(attr.key.as_ref())
+                            .map_err(|err| format!("spaces.xml: non-UTF8 attribute key: {err}"))?;
                         let val = std::str::from_utf8(&attr.value).map_err(|err| {
                             format!("spaces.xml: non-UTF8 value for {key}: {err}")
                         })?;
                         match key {
                             "WorldName" => world_name = val.to_string(),
                             "Instanced" => instanced = val == "true",
-                            "MinX" => min_x = val.parse().map_err(|err| {
-                                format!("spaces.xml: MinX={val:?} not a valid i32: {err}")
-                            })?,
-                            "MaxX" => max_x = val.parse().map_err(|err| {
-                                format!("spaces.xml: MaxX={val:?} not a valid i32: {err}")
-                            })?,
-                            "MinY" => min_y = val.parse().map_err(|err| {
-                                format!("spaces.xml: MinY={val:?} not a valid i32: {err}")
-                            })?,
-                            "MaxY" => max_y = val.parse().map_err(|err| {
-                                format!("spaces.xml: MaxY={val:?} not a valid i32: {err}")
-                            })?,
+                            "MinX" => {
+                                min_x = val.parse().map_err(|err| {
+                                    format!("spaces.xml: MinX={val:?} not a valid i32: {err}")
+                                })?
+                            }
+                            "MaxX" => {
+                                max_x = val.parse().map_err(|err| {
+                                    format!("spaces.xml: MaxX={val:?} not a valid i32: {err}")
+                                })?
+                            }
+                            "MinY" => {
+                                min_y = val.parse().map_err(|err| {
+                                    format!("spaces.xml: MinY={val:?} not a valid i32: {err}")
+                                })?
+                            }
+                            "MaxY" => {
+                                max_y = val.parse().map_err(|err| {
+                                    format!("spaces.xml: MaxY={val:?} not a valid i32: {err}")
+                                })?
+                            }
                             _ => {}
                         }
                     }
@@ -75,14 +84,17 @@ impl SpaceManager {
                             instanced,
                             "Loaded world definition"
                         );
-                        self.worlds.insert(world_name.clone(), WorldDef {
-                            world_name,
-                            instanced,
-                            min_x,
-                            max_x,
-                            min_y,
-                            max_y,
-                        });
+                        self.worlds.insert(
+                            world_name.clone(),
+                            WorldDef {
+                                world_name,
+                                instanced,
+                                min_x,
+                                max_x,
+                                min_y,
+                                max_y,
+                            },
+                        );
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -92,7 +104,10 @@ impl SpaceManager {
             buf.clear();
         }
 
-        tracing::info!(count = self.worlds.len(), "Parsed world definitions from spaces.xml");
+        tracing::info!(
+            count = self.worlds.len(),
+            "Parsed world definitions from spaces.xml"
+        );
         Ok(())
     }
 
@@ -106,7 +121,9 @@ impl SpaceManager {
 
         loop {
             match reader.read_event_into(&mut buf) {
-                Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e)) if e.name().as_ref() == b"Space" => {
+                Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e))
+                    if e.name().as_ref() == b"Space" =>
+                {
                     let mut world_name = String::new();
                     for attr_res in e.attributes() {
                         let attr = attr_res.map_err(|err| {
@@ -142,7 +159,11 @@ impl SpaceManager {
 
         tracing::info!(
             count = self.spaces.len(),
-            id_range = format_args!("{}..{}", (self.cell_id as u32) << 16, ((self.cell_id as u32) << 16) | (self.next_local_id.saturating_sub(1))),
+            id_range = format_args!(
+                "{}..{}",
+                (self.cell_id as u32) << 16,
+                ((self.cell_id as u32) << 16) | (self.next_local_id.saturating_sub(1))
+            ),
             "Created startup spaces from cell_spaces.xml"
         );
         Ok(())

@@ -22,31 +22,41 @@ pub(crate) async fn query_all_shards(pool: &Arc<PgPool>) -> Vec<ShardRow> {
         protected: bool,
     }
 
-    match sqlx::query_as::<_, DbShardRow>(
-        "SELECT name, protected FROM shards ORDER BY shard_id",
-    )
-    .fetch_all(pool.as_ref())
-    .await
+    match sqlx::query_as::<_, DbShardRow>("SELECT name, protected FROM shards ORDER BY shard_id")
+        .fetch_all(pool.as_ref())
+        .await
     {
         Ok(rows) => {
             let shards: Vec<ShardRow> = rows
                 .into_iter()
                 .filter_map(|r| {
-                    r.name.map(|n| ShardRow { name: n, protected: r.protected })
+                    r.name.map(|n| ShardRow {
+                        name: n,
+                        protected: r.protected,
+                    })
                 })
                 .collect();
             if shards.is_empty() {
                 tracing::error!("No shards found in database — using fallback name 'Shard'. Run: INSERT INTO shards (shard_id, name, key, protected) VALUES (1, 'Test', '', false);");
-                vec![ShardRow { name: "Shard".to_string(), protected: false }]
+                vec![ShardRow {
+                    name: "Shard".to_string(),
+                    protected: false,
+                }]
             } else {
-                tracing::info!(count = shards.len(), "Loaded shards from database: {:?}",
-                    shards.iter().map(|s| &s.name).collect::<Vec<_>>());
+                tracing::info!(
+                    count = shards.len(),
+                    "Loaded shards from database: {:?}",
+                    shards.iter().map(|s| &s.name).collect::<Vec<_>>()
+                );
                 shards
             }
         }
         Err(e) => {
             tracing::error!("Failed to query shards table: {e} — using fallback name 'Shard'. Ensure the 'shards' table exists (re-run Initialize-CimmeriaDatabase -Force).");
-            vec![ShardRow { name: "Shard".to_string(), protected: false }]
+            vec![ShardRow {
+                name: "Shard".to_string(),
+                protected: false,
+            }]
         }
     }
 }

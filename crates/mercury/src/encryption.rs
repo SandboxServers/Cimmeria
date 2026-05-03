@@ -155,11 +155,10 @@ impl MercuryEncryption {
         let mut mac = HmacMd5::new_from_slice(&self.hmac_key)
             .map_err(|e| CimmeriaError::Encryption(format!("HMAC init failed: {e}")))?;
         mac.update(ciphertext);
-        mac.verify_slice(received_tag)
-            .map_err(|_| {
-                tracing::warn!(input_len = data.len(), "HMAC-MD5 verification failed");
-                CimmeriaError::Encryption("HMAC-MD5 verification failed".into())
-            })?;
+        mac.verify_slice(received_tag).map_err(|_| {
+            tracing::warn!(input_len = data.len(), "HMAC-MD5 verification failed");
+            CimmeriaError::Encryption("HMAC-MD5 verification failed".into())
+        })?;
 
         // Decrypt with AES-256-CBC.
         let decryptor = Aes256CbcDec::new_from_slices(&self.aes_key, &self.iv)
@@ -195,9 +194,7 @@ fn pkcs7_pad(data: &[u8]) -> Vec<u8> {
 /// Validate and strip PKCS7 padding.
 fn pkcs7_unpad(data: &[u8]) -> Result<&[u8]> {
     if data.is_empty() {
-        return Err(CimmeriaError::Encryption(
-            "cannot unpad empty data".into(),
-        ));
+        return Err(CimmeriaError::Encryption("cannot unpad empty data".into()));
     }
 
     let pad_byte = *data.last().unwrap();

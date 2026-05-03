@@ -3,10 +3,10 @@
 //! on the cell entity, so each carefully scopes its `&mut` borrows around
 //! await points.
 
-use tokio::sync::mpsc;
-use cimmeria_entity::cell_entity::CellEntity;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_entity::cell_entity::CellEntity;
+use tokio::sync::mpsc;
 
 use super::constants::{build_entity_property_args, GENERICPROPERTY_AMMO_TYPE_ID};
 
@@ -36,13 +36,16 @@ pub async fn flush_dirty_bandolier_ammo(
                 continue;
             }
         };
-        match tx.send(CellToBaseMsg::BandolierAmmoUpdate {
-            player_id,
-            slot_id,
-            expected_item_id: item_id,
-            current_ammo,
-            cur_ammo_type,
-        }).await {
+        match tx
+            .send(CellToBaseMsg::BandolierAmmoUpdate {
+                player_id,
+                slot_id,
+                expected_item_id: item_id,
+                current_ammo,
+                cur_ammo_type,
+            })
+            .await
+        {
             Ok(()) => {
                 entity.bandolier_ammo_dirty.remove(&slot_id);
             }
@@ -67,7 +70,11 @@ pub(super) async fn handle_request_active_slot_change(
     space_mgr: &mut SpaceManager,
 ) {
     if args.len() < 8 {
-        tracing::warn!(entity_id, args_len = args.len(), "requestActiveSlotChange: truncated args");
+        tracing::warn!(
+            entity_id,
+            args_len = args.len(),
+            "requestActiveSlotChange: truncated args"
+        );
         return;
     }
     let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -78,12 +85,22 @@ pub(super) async fn handle_request_active_slot_change(
     // entity in an impossible local state, cancel any in-flight
     // reload, and propagate via ActiveSlotUpdate to base.
     if !(0..5).contains(&slot_id) {
-        tracing::warn!(entity_id, bag_id, slot_id, "requestActiveSlotChange: slot_id out of range, rejecting");
+        tracing::warn!(
+            entity_id,
+            bag_id,
+            slot_id,
+            "requestActiveSlotChange: slot_id out of range, rejecting"
+        );
         return;
     }
     // Only bandolier (container 3) carries an active slot.
     if bag_id != 3 {
-        tracing::warn!(entity_id, bag_id, slot_id, "requestActiveSlotChange: ignoring non-bandolier container");
+        tracing::warn!(
+            entity_id,
+            bag_id,
+            slot_id,
+            "requestActiveSlotChange: ignoring non-bandolier container"
+        );
         return;
     }
 
@@ -92,7 +109,10 @@ pub(super) async fn handle_request_active_slot_change(
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(id) => Some(id),
         None => {
-            tracing::warn!(entity_id, "requestActiveSlotChange dropped: entity has no player_id");
+            tracing::warn!(
+                entity_id,
+                "requestActiveSlotChange dropped: entity has no player_id"
+            );
             None
         }
     };
@@ -115,7 +135,12 @@ pub(super) async fn handle_request_active_slot_change(
         let prev_slot = entity.active_bandolier_slot;
         let prev_persist = if entity.bandolier_ammo_dirty.contains(&prev_slot) {
             entity.bandolier_items.get(&prev_slot).map(|item| {
-                (prev_slot, item.item_id, item.current_ammo, item.cur_ammo_type)
+                (
+                    prev_slot,
+                    item.item_id,
+                    item.current_ammo,
+                    item.cur_ammo_type,
+                )
             })
         } else {
             None
@@ -135,12 +160,15 @@ pub(super) async fn handle_request_active_slot_change(
             entity.reload_complete_at = None;
             entity.reload_slot_id = None;
             tracing::debug!(
-                entity_id, prev_slot, new_slot = slot_id,
+                entity_id,
+                prev_slot,
+                new_slot = slot_id,
                 "active slot change cancelled in-flight reload"
             );
         }
         entity.active_bandolier_slot = slot_id;
-        let new_ammo_type = entity.bandolier_items
+        let new_ammo_type = entity
+            .bandolier_items
             .get(&slot_id)
             .map(|i| i.cur_ammo_type);
         (prev_persist, new_ammo_type)
@@ -151,13 +179,16 @@ pub(super) async fn handle_request_active_slot_change(
     // message is accepted by the channel.
     if let Some(player_id) = player_id {
         if let Some((p_slot, item_id, current_ammo, cur_ammo_type)) = prev_persist {
-            match tx.send(CellToBaseMsg::BandolierAmmoUpdate {
-                player_id,
-                slot_id: p_slot,
-                expected_item_id: item_id,
-                current_ammo,
-                cur_ammo_type,
-            }).await {
+            match tx
+                .send(CellToBaseMsg::BandolierAmmoUpdate {
+                    player_id,
+                    slot_id: p_slot,
+                    expected_item_id: item_id,
+                    current_ammo,
+                    cur_ammo_type,
+                })
+                .await
+            {
                 Ok(()) => {
                     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                         entity.bandolier_ammo_dirty.remove(&p_slot);
@@ -173,7 +204,10 @@ pub(super) async fn handle_request_active_slot_change(
                 }
             }
         }
-        if let Err(e) = tx.send(CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id }).await {
+        if let Err(e) = tx
+            .send(CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id })
+            .await
+        {
             tracing::warn!(
                 entity_id, player_id, slot_id,
                 error = %e,
@@ -187,17 +221,15 @@ pub(super) async fn handle_request_active_slot_change(
     // send 0 to mirror legacy "no weapon equipped" behavior
     // (SGWPlayer.py:522 — `activeItem.ammoType if activeItem else 0`).
     let property_value = new_ammo_type.unwrap_or(0);
-    let property_args = build_entity_property_args(
-        GENERICPROPERTY_AMMO_TYPE_ID,
-        property_value,
-    );
+    let property_args = build_entity_property_args(GENERICPROPERTY_AMMO_TYPE_ID, property_value);
     crate::cell::abilities::send_entity_method(
         entity_id,
         crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY,
         property_args,
         tx,
         space_mgr,
-    ).await;
+    )
+    .await;
 }
 
 pub(super) async fn handle_request_ammo_change(
@@ -207,7 +239,11 @@ pub(super) async fn handle_request_ammo_change(
     space_mgr: &mut SpaceManager,
 ) {
     if args.len() < 8 {
-        tracing::warn!(entity_id, args_len = args.len(), "requestAmmoChange: truncated args");
+        tracing::warn!(
+            entity_id,
+            args_len = args.len(),
+            "requestAmmoChange: truncated args"
+        );
         return;
     }
     let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
@@ -224,7 +260,12 @@ pub(super) async fn handle_request_ammo_change(
     // TODO: validate against item.ammo_types whitelist
     //       (see crates/entity/src/inventory.rs:81 — `Item.ammo_types`).
     if ammo_type <= 0 {
-        tracing::warn!(entity_id, item_id, ammo_type, "requestAmmoChange: rejecting non-positive ammo_type");
+        tracing::warn!(
+            entity_id,
+            item_id,
+            ammo_type,
+            "requestAmmoChange: rejecting non-positive ammo_type"
+        );
         return;
     }
 
@@ -247,19 +288,26 @@ pub(super) async fn handle_request_ammo_change(
         // doesn't carry a slot/instance id, so duplicate weapons
         // are ambiguous — reject rather than guess. A future
         // protocol revision should add slot id to the message.
-        let matches: Vec<i32> = entity.bandolier_items.iter()
+        let matches: Vec<i32> = entity
+            .bandolier_items
+            .iter()
             .filter(|(_, item)| item.item_id == item_id)
             .map(|(s, _)| *s)
             .collect();
         let slot = match matches.as_slice() {
             [s] => *s,
             [] => {
-                tracing::warn!(entity_id, item_id, "requestAmmoChange: item not in bandolier");
+                tracing::warn!(
+                    entity_id,
+                    item_id,
+                    "requestAmmoChange: item not in bandolier"
+                );
                 return;
             }
             ambiguous => {
                 tracing::warn!(
-                    entity_id, item_id,
+                    entity_id,
+                    item_id,
                     slot_count = ambiguous.len(),
                     "requestAmmoChange: ambiguous — multiple slots hold this item_id, rejecting"
                 );
@@ -295,19 +343,26 @@ pub(super) async fn handle_request_ammo_change(
         entity.bandolier_ammo_dirty.insert(slot);
         let is_active = slot == entity.active_bandolier_slot;
         let player_id = entity.player_id;
-        (player_id, (slot, item_id_for_persist, current_ammo, ammo_type), is_active)
+        (
+            player_id,
+            (slot, item_id_for_persist, current_ammo, ammo_type),
+            is_active,
+        )
     };
 
     // Phase 2: persist + (if active) refresh the client's ammo-type indicator.
     if let Some(player_id) = player_id {
         let (slot_id, expected_item_id, current_ammo, cur_ammo_type) = persist;
-        match tx.send(CellToBaseMsg::BandolierAmmoUpdate {
-            player_id,
-            slot_id,
-            expected_item_id,
-            current_ammo,
-            cur_ammo_type,
-        }).await {
+        match tx
+            .send(CellToBaseMsg::BandolierAmmoUpdate {
+                player_id,
+                slot_id,
+                expected_item_id,
+                current_ammo,
+                cur_ammo_type,
+            })
+            .await
+        {
             Ok(()) => {
                 if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                     entity.bandolier_ammo_dirty.remove(&slot_id);
@@ -322,20 +377,21 @@ pub(super) async fn handle_request_ammo_change(
             }
         }
     } else {
-        tracing::warn!(entity_id, "requestAmmoChange: entity has no player_id — skipping persist");
+        tracing::warn!(
+            entity_id,
+            "requestAmmoChange: entity has no player_id — skipping persist"
+        );
     }
 
     if is_active {
-        let property_args = build_entity_property_args(
-            GENERICPROPERTY_AMMO_TYPE_ID,
-            ammo_type,
-        );
+        let property_args = build_entity_property_args(GENERICPROPERTY_AMMO_TYPE_ID, ammo_type);
         crate::cell::abilities::send_entity_method(
             entity_id,
             crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY,
             property_args,
             tx,
             space_mgr,
-        ).await;
+        )
+        .await;
     }
 }

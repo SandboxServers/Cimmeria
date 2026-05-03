@@ -7,9 +7,9 @@ use tokio::net::UdpSocket;
 
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
-use crate::mercury::{build_entity_method_packet, method_idx};
 use super::super::super::helpers::send_to_witness;
 use super::super::super::ConnectedClientState;
+use crate::mercury::{build_entity_method_packet, method_idx};
 
 const LEVEL_XP: [u64; 21] = [
     0, 100, 200, 300, 600, 1_000, 1_600, 2_500, 4_000, 6_000, 9_000, 14_000, 18_000, 25_000,
@@ -122,7 +122,11 @@ pub async fn handle_grant_xp(
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    tracing::error!(entity_id, player_id, "GrantXP: persistence UPDATE failed: {e}");
+                    tracing::error!(
+                        entity_id,
+                        player_id,
+                        "GrantXP: persistence UPDATE failed: {e}"
+                    );
                     return;
                 }
             }
@@ -140,7 +144,9 @@ pub async fn handle_grant_xp(
             // Mirrors the no-DB branch in handle_grant_cash: the in-memory
             // state is updated but un-authoritative. Log loudly.
             tracing::warn!(
-                entity_id, total_xp, new_level,
+                entity_id,
+                total_xp,
+                new_level,
                 "GrantXP: no DB pool — XP/level not persisted, will be lost on reconnect"
             );
         }
@@ -308,11 +314,21 @@ pub async fn handle_grant_cash(
         {
             Ok(Some(total)) => total,
             Ok(None) => {
-                tracing::warn!(entity_id, player_id, amount, "GrantCash: player row not found, dropping grant");
+                tracing::warn!(
+                    entity_id,
+                    player_id,
+                    amount,
+                    "GrantCash: player row not found, dropping grant"
+                );
                 return;
             }
             Err(e) => {
-                tracing::error!(entity_id, player_id, amount, "GrantCash: UPDATE failed: {e}");
+                tracing::error!(
+                    entity_id,
+                    player_id,
+                    amount,
+                    "GrantCash: UPDATE failed: {e}"
+                );
                 return;
             }
         };
@@ -343,7 +359,9 @@ pub async fn handle_grant_cash(
         // as the absolute total — the client treats the payload as a new total
         // and would desync from what the server (eventually) persists.
         tracing::warn!(
-            entity_id, player_id, amount,
+            entity_id,
+            player_id,
+            amount,
             "GrantCash: no DB pool, dropping grant (cannot send authoritative onCashChanged)"
         );
     }

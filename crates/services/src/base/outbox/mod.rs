@@ -34,7 +34,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Postgres, Transaction, types::Json};
+use sqlx::{types::Json, PgPool, Postgres, Transaction};
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -162,7 +162,10 @@ async fn record_failure(pool: &PgPool, id: i64, error: &str) {
     .execute(pool)
     .await;
     if let Err(e) = res {
-        tracing::warn!(outbox_id = id, "outbox: failed to record dispatch failure: {e}");
+        tracing::warn!(
+            outbox_id = id,
+            "outbox: failed to record dispatch failure: {e}"
+        );
     }
 }
 
@@ -186,7 +189,12 @@ fn row_to_message(row: &OutboxRow) -> Option<BaseToCellMsg> {
         }
         (
             EVENT_TYPE_INVENTORY_ITEM_GRANTED,
-            CellOutboxPayload::InventoryItemGranted { item_id, container_id, slot_id, quantity },
+            CellOutboxPayload::InventoryItemGranted {
+                item_id,
+                container_id,
+                slot_id,
+                quantity,
+            },
         ) => Some(BaseToCellMsg::InventoryItemGranted {
             entity_id,
             item_id: *item_id,
@@ -196,7 +204,10 @@ fn row_to_message(row: &OutboxRow) -> Option<BaseToCellMsg> {
         }),
         (
             EVENT_TYPE_INVENTORY_ITEM_REMOVED,
-            CellOutboxPayload::InventoryItemRemoved { item_id, source_container_id },
+            CellOutboxPayload::InventoryItemRemoved {
+                item_id,
+                source_container_id,
+            },
         ) => Some(BaseToCellMsg::InventoryItemRemoved {
             entity_id,
             item_id: *item_id,
@@ -224,13 +235,25 @@ pub async fn try_dispatch_now(
             target_id,
         },
         CellOutboxPayload::InventoryItemGranted {
-            item_id, container_id, slot_id, quantity,
+            item_id,
+            container_id,
+            slot_id,
+            quantity,
         } => BaseToCellMsg::InventoryItemGranted {
-            entity_id, item_id, container_id, slot_id, quantity,
+            entity_id,
+            item_id,
+            container_id,
+            slot_id,
+            quantity,
         },
-        CellOutboxPayload::InventoryItemRemoved { item_id, source_container_id } => {
-            BaseToCellMsg::InventoryItemRemoved { entity_id, item_id, source_container_id }
-        }
+        CellOutboxPayload::InventoryItemRemoved {
+            item_id,
+            source_container_id,
+        } => BaseToCellMsg::InventoryItemRemoved {
+            entity_id,
+            item_id,
+            source_container_id,
+        },
     };
     match cell_tx.send(msg).await {
         Ok(()) => {
@@ -378,7 +401,8 @@ pub fn spawn_drainer(pool: Arc<PgPool>, cell_tx: mpsc::Sender<BaseToCellMsg>) {
             match drain_undelivered(&pool, &cell_tx).await {
                 Ok(s) if s.delivered > 0 || s.skipped_bad > 0 || s.send_failed > 0 => {
                     tracing::debug!(
-                        delivered = s.delivered, skipped_bad = s.skipped_bad,
+                        delivered = s.delivered,
+                        skipped_bad = s.skipped_bad,
                         send_failed = s.send_failed,
                         "outbox: periodic drain"
                     );

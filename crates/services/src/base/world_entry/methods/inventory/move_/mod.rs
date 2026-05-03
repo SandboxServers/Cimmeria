@@ -6,13 +6,13 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use crate::cell::messages::BaseToCellMsg;
 use super::super::super::super::helpers::send_to_witness;
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 use super::super::super::super::ConnectedClientState;
+use super::super::vendor::helpers::sync_bandolier_after_inventory_change;
 use super::core::send_full_inventory_update;
 use super::grant::item_allows_container;
-use super::super::vendor::helpers::sync_bandolier_after_inventory_change;
+use crate::cell::messages::BaseToCellMsg;
 
 #[derive(sqlx::FromRow)]
 struct InventoryInstanceRow {
@@ -59,8 +59,14 @@ pub async fn handle_move_inventory_item(
         || quantity <= 0
     {
         tracing::warn!(
-            player_id, item_id, target_container_id, target_slot_id,
-            quantity, min_slot, max_slots, "MoveInventoryItem: invalid target or quantity"
+            player_id,
+            item_id,
+            target_container_id,
+            target_slot_id,
+            quantity,
+            min_slot,
+            max_slots,
+            "MoveInventoryItem: invalid target or quantity"
         );
         return;
     }
@@ -91,7 +97,12 @@ pub async fn handle_move_inventory_item(
         .await
     {
         let _ = tx.rollback().await;
-        tracing::error!(player_id, item_id, target_container_id, "MoveInventoryItem: advisory lock failed: {e}");
+        tracing::error!(
+            player_id,
+            item_id,
+            target_container_id,
+            "MoveInventoryItem: advisory lock failed: {e}"
+        );
         return;
     }
 
@@ -110,7 +121,12 @@ pub async fn handle_move_inventory_item(
         .await
     {
         let _ = tx.rollback().await;
-        tracing::error!(player_id, item_id, target_container_id, "MoveInventoryItem: target container lock failed: {e}");
+        tracing::error!(
+            player_id,
+            item_id,
+            target_container_id,
+            "MoveInventoryItem: target container lock failed: {e}"
+        );
         return;
     }
 
@@ -128,12 +144,20 @@ pub async fn handle_move_inventory_item(
         Ok(Some(row)) => row,
         Ok(None) => {
             let _ = tx.rollback().await;
-            tracing::warn!(player_id, item_id, "MoveInventoryItem: source item not found");
+            tracing::warn!(
+                player_id,
+                item_id,
+                "MoveInventoryItem: source item not found"
+            );
             return;
         }
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(player_id, item_id, "MoveInventoryItem: source query failed: {e}");
+            tracing::error!(
+                player_id,
+                item_id,
+                "MoveInventoryItem: source query failed: {e}"
+            );
             return;
         }
     };
@@ -141,7 +165,10 @@ pub async fn handle_move_inventory_item(
     if quantity > source.stack_size {
         let _ = tx.rollback().await;
         tracing::warn!(
-            player_id, item_id, quantity, stack_size = source.stack_size,
+            player_id,
+            item_id,
+            quantity,
+            stack_size = source.stack_size,
             "MoveInventoryItem: requested quantity exceeds stack — rejecting"
         );
         return;
@@ -164,7 +191,12 @@ pub async fn handle_move_inventory_item(
             .await
         {
             let _ = tx.rollback().await;
-            tracing::error!(player_id, item_id, source_container_id = source.container_id, "MoveInventoryItem: source container lock failed: {e}");
+            tracing::error!(
+                player_id,
+                item_id,
+                source_container_id = source.container_id,
+                "MoveInventoryItem: source container lock failed: {e}"
+            );
             return;
         }
     }
@@ -172,7 +204,10 @@ pub async fn handle_move_inventory_item(
     if !item_allows_container(pool, source.type_id, target_container_id).await {
         let _ = tx.rollback().await;
         tracing::warn!(
-            player_id, item_id, type_id = source.type_id, target_container_id,
+            player_id,
+            item_id,
+            type_id = source.type_id,
+            target_container_id,
             "MoveInventoryItem: item cannot be moved into target container"
         );
         return;
@@ -205,7 +240,10 @@ pub async fn handle_move_inventory_item(
         if occupied.is_some() {
             let _ = tx.rollback().await;
             tracing::warn!(
-                player_id, item_id, target_container_id, target_slot_id,
+                player_id,
+                item_id,
+                target_container_id,
+                target_slot_id,
                 "MoveInventoryItem: cannot split onto occupied slot"
             );
             return;
@@ -225,14 +263,20 @@ pub async fn handle_move_inventory_item(
             Ok(r) => r.rows_affected(),
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(player_id, item_id, "MoveInventoryItem: split decrement failed: {e}");
+                tracing::error!(
+                    player_id,
+                    item_id,
+                    "MoveInventoryItem: split decrement failed: {e}"
+                );
                 return;
             }
         };
         if update_rows != 1 {
             let _ = tx.rollback().await;
             tracing::warn!(
-                player_id, item_id, quantity,
+                player_id,
+                item_id,
+                quantity,
                 "MoveInventoryItem: split decrement matched 0 rows (concurrent modification?)"
             );
             return;
@@ -257,13 +301,21 @@ pub async fn handle_move_inventory_item(
         match insert {
             Ok(r) if r.rows_affected() == 1 => {
                 if let Err(e) = tx.commit().await {
-                    tracing::error!(player_id, item_id, "MoveInventoryItem: split commit failed: {e}");
+                    tracing::error!(
+                        player_id,
+                        item_id,
+                        "MoveInventoryItem: split commit failed: {e}"
+                    );
                     return;
                 }
             }
             Ok(_) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(player_id, item_id, "MoveInventoryItem: split insert affected 0 rows");
+                tracing::warn!(
+                    player_id,
+                    item_id,
+                    "MoveInventoryItem: split insert affected 0 rows"
+                );
                 return;
             }
             Err(e) => {
@@ -276,7 +328,10 @@ pub async fn handle_move_inventory_item(
         if !item_allows_container(pool, occupied_item_type, source.container_id).await {
             let _ = tx.rollback().await;
             tracing::warn!(
-                player_id, item_id, occupied_item_id, occupied_item_type,
+                player_id,
+                item_id,
+                occupied_item_id,
+                occupied_item_type,
                 source_container_id = source.container_id,
                 "MoveInventoryItem: occupied item cannot be swapped into source container"
             );
@@ -313,12 +368,20 @@ pub async fn handle_move_inventory_item(
             Ok(r) if r.rows_affected() == 1 => {}
             Ok(_) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(player_id, item_id, "MoveInventoryItem: park-source matched 0 rows");
+                tracing::warn!(
+                    player_id,
+                    item_id,
+                    "MoveInventoryItem: park-source matched 0 rows"
+                );
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(player_id, item_id, "MoveInventoryItem: park-source failed: {e}");
+                tracing::error!(
+                    player_id,
+                    item_id,
+                    "MoveInventoryItem: park-source failed: {e}"
+                );
                 return;
             }
         }
@@ -338,14 +401,20 @@ pub async fn handle_move_inventory_item(
             Ok(r) => r.rows_affected(),
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(player_id, item_id, "MoveInventoryItem: swap-occupied failed: {e}");
+                tracing::error!(
+                    player_id,
+                    item_id,
+                    "MoveInventoryItem: swap-occupied failed: {e}"
+                );
                 return;
             }
         };
         if move_occupied_rows != 1 {
             let _ = tx.rollback().await;
             tracing::warn!(
-                player_id, item_id, occupied_item_id,
+                player_id,
+                item_id,
+                occupied_item_id,
                 "MoveInventoryItem: swap-occupied matched 0 rows"
             );
             return;
@@ -365,13 +434,21 @@ pub async fn handle_move_inventory_item(
         match move_source {
             Ok(r) if r.rows_affected() == 1 => {
                 if let Err(e) = tx.commit().await {
-                    tracing::error!(player_id, item_id, "MoveInventoryItem: swap commit failed: {e}");
+                    tracing::error!(
+                        player_id,
+                        item_id,
+                        "MoveInventoryItem: swap commit failed: {e}"
+                    );
                     return;
                 }
             }
             Ok(_) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(player_id, item_id, "MoveInventoryItem: swap-source matched 0 rows");
+                tracing::warn!(
+                    player_id,
+                    item_id,
+                    "MoveInventoryItem: swap-source matched 0 rows"
+                );
                 return;
             }
             Err(e) => {
@@ -395,7 +472,11 @@ pub async fn handle_move_inventory_item(
         match result {
             Ok(r) if r.rows_affected() == 1 => {
                 if let Err(e) = tx.commit().await {
-                    tracing::error!(player_id, item_id, "MoveInventoryItem: simple commit failed: {e}");
+                    tracing::error!(
+                        player_id,
+                        item_id,
+                        "MoveInventoryItem: simple commit failed: {e}"
+                    );
                     return;
                 }
             }
@@ -423,7 +504,10 @@ pub async fn handle_move_inventory_item(
     .await;
 
     tracing::debug!(
-        entity_id, player_id, item_id, total_items,
+        entity_id,
+        player_id,
+        item_id,
+        total_items,
         "Inventory move persisted"
     );
 

@@ -72,9 +72,7 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
     ),
     tag = "Config"
 )]
-pub async fn get_config(
-    State(orchestrator): State<Arc<Orchestrator>>,
-) -> Json<serde_json::Value> {
+pub async fn get_config(State(orchestrator): State<Arc<Orchestrator>>) -> Json<serde_json::Value> {
     let state = orchestrator.state();
     let state = state.read().await;
     Json(serde_json::json!({
@@ -120,9 +118,7 @@ pub async fn update_config(
     ),
     tag = "Config"
 )]
-pub async fn get_status(
-    State(orchestrator): State<Arc<Orchestrator>>,
-) -> Json<serde_json::Value> {
+pub async fn get_status(State(orchestrator): State<Arc<Orchestrator>>) -> Json<serde_json::Value> {
     let uptime = orchestrator.uptime().await;
     let state = orchestrator.state();
     let state = state.read().await;

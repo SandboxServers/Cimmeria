@@ -15,9 +15,9 @@ use crate::auth::PendingLogin;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync};
 
-use super::ConnectedClientState;
 use super::helpers::{destroy_client_entities, to_hex};
 use super::tick_sync::run_tick_loop;
+use super::ConnectedClientState;
 
 /// Validate ticket, send Phase 3 reply + time-sync, register the encrypted channel.
 pub(crate) async fn handle_login(
@@ -54,9 +54,7 @@ pub(crate) async fn handle_login(
     // (Account.py:286-290), but we also guard at login to prevent stale sessions.
     {
         let evict_addr: Option<(SocketAddr, [u8; 32])> = {
-            let clients = connected
-                .lock()
-                .map_err(|_| "connected lock poisoned")?;
+            let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
             clients.iter().find_map(|(existing_addr, c)| {
                 if c.account_id == login.account_id && *existing_addr != addr {
                     Some((*existing_addr, c.key))
@@ -77,7 +75,9 @@ pub(crate) async fn handle_login(
                 let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
                 if let Some(c) = clients.get_mut(&old_addr) {
                     let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-                    let seq = c.next_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let seq = c
+                        .next_seq
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     (acks, seq)
                 } else {
                     (vec![], 0)
@@ -110,11 +110,14 @@ pub(crate) async fn handle_login(
         let pending_acks = Arc::new(Mutex::new(Vec::new()));
         let last_recv = Arc::new(Mutex::new(Instant::now()));
         let cancelled = Arc::new(AtomicBool::new(false));
-        let arcs = (Arc::clone(&pending_acks), Arc::clone(&last_recv), Arc::clone(&next_seq), Arc::clone(&cancelled));
+        let arcs = (
+            Arc::clone(&pending_acks),
+            Arc::clone(&last_recv),
+            Arc::clone(&next_seq),
+            Arc::clone(&cancelled),
+        );
 
-        let mut clients = connected
-            .lock()
-            .map_err(|_| "connected lock poisoned")?;
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients.insert(
             addr,
             ConnectedClientState {
@@ -274,9 +277,13 @@ pub(crate) async fn handle_log_off(
     let (acks, seq) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let client = clients.get_mut(&addr).ok_or("no session for addr")?;
-        client.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        client
+            .cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         let acks: Vec<u32> = client.pending_acks.lock().unwrap().drain(..).collect();
-        let seq = client.next_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let seq = client
+            .next_seq
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         (acks, seq)
     };
 

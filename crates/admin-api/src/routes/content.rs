@@ -87,9 +87,7 @@ pub async fn list_categories(
     ),
     tag = "Content"
 )]
-pub async fn list_items(
-    State(_orchestrator): State<Arc<Orchestrator>>,
-) -> Json<serde_json::Value> {
+pub async fn list_items(State(_orchestrator): State<Arc<Orchestrator>>) -> Json<serde_json::Value> {
     // TODO: Query content engine for item definitions
     Json(serde_json::json!({
         "status": "ok",
@@ -168,7 +166,17 @@ pub async fn get_summary(
     .await;
 
     match (summary_result, scopes_result) {
-        (Ok((world_count, scripted_world_count, mission_count, story_mission_count, hidden_mission_count, scripted_mission_count)), Ok(top_space_mission_counts)) => Json(ContentSummaryResponse {
+        (
+            Ok((
+                world_count,
+                scripted_world_count,
+                mission_count,
+                story_mission_count,
+                hidden_mission_count,
+                scripted_mission_count,
+            )),
+            Ok(top_space_mission_counts),
+        ) => Json(ContentSummaryResponse {
             status: "ok",
             available: true,
             reason: None,

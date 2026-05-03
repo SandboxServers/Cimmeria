@@ -86,7 +86,10 @@ pub fn build_chains_from_rows(
 
     let mut conditions_by_chain: HashMap<i32, Vec<DbConditionRow>> = HashMap::new();
     for row in condition_rows {
-        conditions_by_chain.entry(row.chain_id).or_default().push(row);
+        conditions_by_chain
+            .entry(row.chain_id)
+            .or_default()
+            .push(row);
     }
 
     let mut actions_by_chain: HashMap<i32, Vec<DbActionRow>> = HashMap::new();
@@ -98,7 +101,9 @@ pub fn build_chains_from_rows(
 
     for row in chain_rows {
         let chain_id = row.chain_id;
-        let name = row.description.unwrap_or_else(|| format!("chain_{}", chain_id));
+        let name = row
+            .description
+            .unwrap_or_else(|| format!("chain_{}", chain_id));
 
         // Build trigger — take the first trigger row (chains have 0 or 1 triggers)
         let mut trigger_list = triggers_by_chain.remove(&chain_id).unwrap_or_default();
@@ -159,7 +164,9 @@ pub fn build_chains_from_rows(
 fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
     let key = row.event_key.as_deref();
     match row.event_type.as_str() {
-        "player_loaded" => Some(Trigger::OnPlayerLoaded { world_name: key.map(|s| s.to_string()) }),
+        "player_loaded" => Some(Trigger::OnPlayerLoaded {
+            world_name: key.map(|s| s.to_string()),
+        }),
         "dialog_open" => Some(Trigger::OnDialogOpen {
             dialog_id: key?.parse().ok()?,
         }),
@@ -209,28 +216,49 @@ fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
         "mission_status" => {
             let mission_id = row.target_id?;
             let status = parse_mission_status(row.value.as_deref()?)?;
-            Some(Condition::MissionStatus { mission_id, operator: op, expected_status: status })
+            Some(Condition::MissionStatus {
+                mission_id,
+                operator: op,
+                expected_status: status,
+            })
         }
         "step_status" => {
             let mission_id = row.target_id?;
             let step_id = row.target_key.as_deref()?.parse().ok()?;
             let status = parse_step_status(row.value.as_deref()?)?;
-            Some(Condition::StepStatus { mission_id, step_id, operator: op, expected_status: status })
+            Some(Condition::StepStatus {
+                mission_id,
+                step_id,
+                operator: op,
+                expected_status: status,
+            })
         }
         "archetype" => {
             let archetype_id = row.value.as_deref()?.parse().ok()?;
-            Some(Condition::Archetype { operator: op, archetype_id })
+            Some(Condition::Archetype {
+                operator: op,
+                archetype_id,
+            })
         }
         "objective_status" => {
             let mission_id = row.target_id?;
             let objective_id = row.target_key.as_deref()?.parse().ok()?;
             let expected = row.value.as_deref()?.to_string();
-            Some(Condition::ObjectiveStatus { mission_id, objective_id, operator: op, expected_status: expected })
+            Some(Condition::ObjectiveStatus {
+                mission_id,
+                objective_id,
+                operator: op,
+                expected_status: expected,
+            })
         }
         "counter" => {
             let counter_name = row.target_key.as_deref()?.to_string();
             let value = row.value.as_deref()?.parse().ok()?;
-            Some(Condition::Counter { counter_name, operator: op, value })
+            Some(Condition::Counter {
+                counter_name,
+                operator: op,
+                value,
+            })
         }
         _ => None,
     }
@@ -240,40 +268,75 @@ fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
 fn convert_action(row: &DbActionRow) -> Option<Action> {
     let params = &row.params;
     match row.action_type.as_str() {
-        "accept_mission" => Some(Action::AcceptMission { mission_id: row.target_id? }),
-        "complete_mission" => Some(Action::CompleteMission { mission_id: row.target_id? }),
-        "display_dialog" => Some(Action::DisplayDialog { dialog_id: row.target_id? }),
+        "accept_mission" => Some(Action::AcceptMission {
+            mission_id: row.target_id?,
+        }),
+        "complete_mission" => Some(Action::CompleteMission {
+            mission_id: row.target_id?,
+        }),
+        "display_dialog" => Some(Action::DisplayDialog {
+            dialog_id: row.target_id?,
+        }),
         "add_dialog_set" => {
             let dialog_set_id = row.target_id?;
             let slot = params.get("slot").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let mission_id = params.get("mission_id").and_then(|v| v.as_i64()).map(|v| v as i32);
-            Some(Action::AddDialogSet { dialog_set_id, slot, mission_id })
+            let mission_id = params
+                .get("mission_id")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+            Some(Action::AddDialogSet {
+                dialog_set_id,
+                slot,
+                mission_id,
+            })
         }
         "remove_dialog_set" => {
             let dialog_set_id = row.target_id?;
             let slot = params.get("slot").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            Some(Action::RemoveDialogSet { dialog_set_id, slot })
+            Some(Action::RemoveDialogSet {
+                dialog_set_id,
+                slot,
+            })
         }
         "add_item" => {
             let item_id = row.target_id?;
             let qty = params.get("qty").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
-            let container = params.get("container").and_then(|v| v.as_i64()).map(|v| v as i32);
-            Some(Action::GrantItem { item_id, count: qty, container_id: container })
+            let container = params
+                .get("container")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+            Some(Action::GrantItem {
+                item_id,
+                count: qty,
+                container_id: container,
+            })
         }
         "remove_item" => {
             let item_id = row.target_id?;
             let qty = params.get("qty").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
-            Some(Action::RemoveItem { item_id, count: qty })
+            Some(Action::RemoveItem {
+                item_id,
+                count: qty,
+            })
         }
-        "play_sequence" => Some(Action::PlaySequence { sequence_id: row.target_id? }),
+        "play_sequence" => Some(Action::PlaySequence {
+            sequence_id: row.target_id?,
+        }),
         "advance_step" => {
             let mission_id = row.target_id?;
             let step_id = row.target_key.as_deref()?.parse().ok()?;
-            Some(Action::AdvanceStep { mission_id, step_id })
+            Some(Action::AdvanceStep {
+                mission_id,
+                step_id,
+            })
         }
         "set_interaction_type" => {
             let entity_tag = row.target_key.as_deref()?.to_string();
-            let operation = params.get("op").and_then(|v| v.as_str()).unwrap_or("|").to_string();
+            let operation = params
+                .get("op")
+                .and_then(|v| v.as_str())
+                .unwrap_or("|")
+                .to_string();
             // Accept either an integer literal (legacy form, e.g.,
             // `'mask': 256`) or a symbolic name from EInteractionNotification
             // Type (`'mask': 'INT_MinigameLivewire'`). The symbolic form is
@@ -295,15 +358,23 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
                 }
                 _ => 0,
             };
-            Some(Action::SetInteractionType { entity_tag, operation, mask })
+            Some(Action::SetInteractionType {
+                entity_tag,
+                operation,
+                mask,
+            })
         }
         "start_minigame" => {
             let minigame_type = row.target_key.as_deref().unwrap_or("").to_string();
-            let chains = params.get("on_victory_chains")
+            let chains = params
+                .get("on_victory_chains")
                 .and_then(|v| v.as_array())
                 .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect())
                 .unwrap_or_default();
-            Some(Action::StartMinigame { minigame_type, on_victory_chains: chains })
+            Some(Action::StartMinigame {
+                minigame_type,
+                on_victory_chains: chains,
+            })
         }
         "set_aggression" => {
             let entity_tag = row.target_key.as_deref()?.to_string();
@@ -318,12 +389,25 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
             let region_id = params.get("regionId").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             Some(Action::TriggerTransporter { region_id })
         }
-        "system_message" => Some(Action::SystemMessage { message_id: row.target_id? }),
+        "system_message" => Some(Action::SystemMessage {
+            message_id: row.target_id?,
+        }),
         "qr_combat_damage" => {
             let stat_id = params.get("stat_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let source_id = params.get("source_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            let amount_nvp = params.get("amount_nvp").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            Some(Action::QrCombatDamage { stat_id, source_id, amount_nvp })
+            let source_id = params
+                .get("source_id")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            let amount_nvp = params
+                .get("amount_nvp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(Action::QrCombatDamage {
+                stat_id,
+                source_id,
+                amount_nvp,
+            })
         }
         "change_stat" => {
             let stat_id = params.get("stat_id").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
@@ -331,23 +415,42 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
             let max = params.get("max").and_then(|v| v.as_i64()).map(|v| v as i32);
             let use_ammo_stat = params.get("use_ammo_stat").and_then(|v| v.as_bool());
             let set_to_max = params.get("set_to_max").and_then(|v| v.as_bool());
-            Some(Action::ChangeStat { stat_id, min, max, use_ammo_stat, set_to_max })
+            Some(Action::ChangeStat {
+                stat_id,
+                min,
+                max,
+                use_ammo_stat,
+                set_to_max,
+            })
         }
         "apply_effect" => {
             let effect_id = row.target_id?;
-            Some(Action::ApplyEffect { effect_id, duration_secs: None })
+            Some(Action::ApplyEffect {
+                effect_id,
+                duration_secs: None,
+            })
         }
-        "remove_effect" => Some(Action::RemoveEffect { effect_id: row.target_id? }),
-        "abandon_mission" => Some(Action::AbandonMission { mission_id: row.target_id? }),
+        "remove_effect" => Some(Action::RemoveEffect {
+            effect_id: row.target_id?,
+        }),
+        "abandon_mission" => Some(Action::AbandonMission {
+            mission_id: row.target_id?,
+        }),
         "fail_objective" => {
             let mission_id = row.target_id?;
             let objective_id = row.target_key.as_deref()?.parse().ok()?;
-            Some(Action::FailObjective { mission_id, objective_id })
+            Some(Action::FailObjective {
+                mission_id,
+                objective_id,
+            })
         }
         "increment_counter" => {
             let counter_name = row.target_key.as_deref()?.to_string();
             let amount = params.get("amount").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
-            Some(Action::IncrementCounter { counter_name, amount })
+            Some(Action::IncrementCounter {
+                counter_name,
+                amount,
+            })
         }
         "reset_counter" => {
             let counter_name = row.target_key.as_deref()?.to_string();
@@ -356,27 +459,54 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
         "complete_objective" => {
             let mission_id = row.target_id?;
             let objective_id = row.target_key.as_deref()?.parse().ok()?;
-            Some(Action::CompleteObjective { mission_id, objective_id })
+            Some(Action::CompleteObjective {
+                mission_id,
+                objective_id,
+            })
         }
         "set_visible" => {
             let entity_tag = row.target_key.as_deref()?.to_string();
-            let visible = params.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
-            Some(Action::SetVisible { entity_tag, visible })
+            let visible = params
+                .get("visible")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            Some(Action::SetVisible {
+                entity_tag,
+                visible,
+            })
         }
         "move_entity" => {
             let entity_tag = row.target_key.as_deref().map(|s| s.to_string());
-            let dest_str = params.get("destination").and_then(|v| v.as_str()).unwrap_or("0,0,0");
+            let dest_str = params
+                .get("destination")
+                .and_then(|v| v.as_str())
+                .unwrap_or("0,0,0");
             let destination = parse_destination(dest_str);
-            let world = params.get("world").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let world = params
+                .get("world")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             let use_player = params.get("use_player").and_then(|v| v.as_bool());
-            Some(Action::MoveEntity { entity_tag, destination, world, use_player })
+            Some(Action::MoveEntity {
+                entity_tag,
+                destination,
+                world,
+                use_player,
+            })
         }
         "move_waypoint" => {
             let entity_tag = row.target_key.as_deref()?.to_string();
-            let dest_str = params.get("destination").and_then(|v| v.as_str()).unwrap_or("0,0,0");
+            let dest_str = params
+                .get("destination")
+                .and_then(|v| v.as_str())
+                .unwrap_or("0,0,0");
             let destination = parse_destination(dest_str);
             let speed = params.get("speed").and_then(|v| v.as_f64()).unwrap_or(1.0) as f32;
-            Some(Action::MoveWaypoint { entity_tag, destination, speed })
+            Some(Action::MoveWaypoint {
+                entity_tag,
+                destination,
+                speed,
+            })
         }
         "set_active_slot" => {
             let bag_id = params.get("bag_id").and_then(|v| v.as_i64()).unwrap_or(3) as i32;
@@ -386,18 +516,37 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
         "launch_ability" => {
             let ability_id = row.target_id?;
             let entity_tag = row.target_key.as_deref().map(|s| s.to_string());
-            Some(Action::LaunchAbility { ability_id, entity_tag })
+            Some(Action::LaunchAbility {
+                ability_id,
+                entity_tag,
+            })
         }
         "add_dialog" => {
             let dialog_set_id = row.target_id?;
-            let entity_template = params.get("entity_template").and_then(|v| v.as_i64()).map(|v| v as i32);
-            let mission_id = params.get("mission_id").and_then(|v| v.as_i64()).map(|v| v as i32);
-            Some(Action::AddDialog { dialog_set_id, entity_template, mission_id })
+            let entity_template = params
+                .get("entity_template")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+            let mission_id = params
+                .get("mission_id")
+                .and_then(|v| v.as_i64())
+                .map(|v| v as i32);
+            Some(Action::AddDialog {
+                dialog_set_id,
+                entity_template,
+                mission_id,
+            })
         }
         "generate_threat" => {
             let entity_tag = row.target_key.as_deref().map(|s| s.to_string());
-            let threat_level = params.get("threat_level").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-            Some(Action::GenerateThreat { entity_tag, threat_level })
+            let threat_level = params
+                .get("threat_level")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            Some(Action::GenerateThreat {
+                entity_tag,
+                threat_level,
+            })
         }
         _ => None,
     }
@@ -572,7 +721,10 @@ mod tests {
 
     #[test]
     fn parse_destination_valid() {
-        assert_eq!(parse_destination("-123.625,1.311,-246.858"), [-123.625, 1.311, -246.858]);
+        assert_eq!(
+            parse_destination("-123.625,1.311,-246.858"),
+            [-123.625, 1.311, -246.858]
+        );
     }
 
     #[test]
@@ -592,7 +744,9 @@ mod tests {
         };
         let trigger = convert_trigger(&row).unwrap();
         match trigger {
-            Trigger::OnInteractTag { entity_tag } => assert_eq!(entity_tag, "ArmYourself_FrostBody"),
+            Trigger::OnInteractTag { entity_tag } => {
+                assert_eq!(entity_tag, "ArmYourself_FrostBody")
+            }
             other => panic!("Expected OnInteractTag, got {:?}", other),
         }
     }
@@ -610,7 +764,11 @@ mod tests {
         };
         let action = convert_action(&row).unwrap();
         match action {
-            Action::MoveWaypoint { entity_tag, destination, speed } => {
+            Action::MoveWaypoint {
+                entity_tag,
+                destination,
+                speed,
+            } => {
                 assert_eq!(entity_tag, "NID_Guard_01");
                 assert_eq!(destination, [-296.715, 68.511, -166.125]);
                 assert!((speed - 1.5).abs() < f32::EPSILON);
@@ -674,7 +832,10 @@ mod tests {
         };
         let action = convert_action(&row).unwrap();
         match action {
-            Action::LaunchAbility { ability_id, entity_tag } => {
+            Action::LaunchAbility {
+                ability_id,
+                entity_tag,
+            } => {
                 assert_eq!(ability_id, 1372);
                 assert_eq!(entity_tag, Some("NID_Guard_01".to_string()));
             }
@@ -695,7 +856,11 @@ mod tests {
         };
         let condition = convert_condition(&row).unwrap();
         match condition {
-            Condition::Counter { counter_name, operator, value } => {
+            Condition::Counter {
+                counter_name,
+                operator,
+                value,
+            } => {
                 assert_eq!(counter_name, "hallway01_kills");
                 assert_eq!(operator, ComparisonOp::Gte);
                 assert_eq!(value, 3);

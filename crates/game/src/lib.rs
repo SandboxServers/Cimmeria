@@ -4,14 +4,14 @@
 //! scripting layer with native Rust implementations of player, NPC, mob, combat,
 //! inventory, mission, social, interaction, world, and command systems.
 
-pub mod player;
 pub mod being;
-pub mod mob;
-pub mod npc;
 pub mod combat;
+pub mod commands;
+pub mod interactions;
 pub mod inventory;
 pub mod missions;
+pub mod mob;
+pub mod npc;
+pub mod player;
 pub mod social;
-pub mod interactions;
 pub mod world;
-pub mod commands;

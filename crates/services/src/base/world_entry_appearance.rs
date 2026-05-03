@@ -11,12 +11,10 @@ use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{
-    build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS,
-};
+use crate::mercury::{build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
 
-use super::ConnectedClientState;
 use super::helpers::send_to_witness;
+use super::ConnectedClientState;
 
 // ── Appearance data builders ────────────────────────────────────────────────
 
@@ -90,9 +88,8 @@ pub(crate) async fn handle_on_client_ready(
     );
 
     // Query saved missions from DB before sending InitPlayerState
-    let saved_missions = super::world_entry::methods::query_saved_missions(
-        db_pool, pending.player_id,
-    ).await;
+    let saved_missions =
+        super::world_entry::methods::query_saved_missions(db_pool, pending.player_id).await;
 
     // Query player abilities from DB
     let abilities: Vec<i32> = if let Some(pool) = db_pool {
@@ -130,7 +127,8 @@ pub(crate) async fn handle_on_client_ready(
         let items = super::world_entry::methods::player_load::meta::query_bandolier_items(
             db_pool,
             pending.player_id,
-        ).await;
+        )
+        .await;
 
         (slot, items)
     } else {
@@ -138,42 +136,58 @@ pub(crate) async fn handle_on_client_ready(
     };
 
     if let Some(ref tx) = cell_tx {
-        let _ = tx.send(BaseToCellMsg::ConnectEntity {
-            entity_id,
-        }).await;
+        let _ = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await;
 
-        let _ = tx.send(BaseToCellMsg::InitPlayerState {
-            entity_id,
-            player_id: pending.player_id,
-            world_name: pending.world_name.clone(),
-            saved_missions,
-            abilities,
-            active_bandolier_slot,
-            bandolier_items,
-        }).await;
+        let _ = tx
+            .send(BaseToCellMsg::InitPlayerState {
+                entity_id,
+                player_id: pending.player_id,
+                world_name: pending.world_name.clone(),
+                saved_missions,
+                abilities,
+                active_bandolier_slot,
+                bandolier_items,
+            })
+            .await;
     }
 
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
     send_to_witness(
-        socket, connected, entity_to_addr, entity_id,
+        socket,
+        connected,
+        entity_to_addr,
+        entity_id,
         |key, seq, acks| {
             build_entity_method_packet(
-                key, seq, acks, entity_id,
-                method_idx::BEING_APPEARANCE, &appearance_args,
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::BEING_APPEARANCE,
+                &appearance_args,
             )
         },
-    ).await;
+    )
+    .await;
     send_to_witness(
-        socket, connected, entity_to_addr, entity_id,
+        socket,
+        connected,
+        entity_to_addr,
+        entity_id,
         |key, seq, acks| {
             build_entity_method_packet(
-                key, seq, acks, entity_id,
-                method_idx::ON_ENTITY_TINT, &tint_args,
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::ON_ENTITY_TINT,
+                &tint_args,
             )
         },
-    ).await;
+    )
+    .await;
 
     tracing::info!(%addr, entity_id, "World entry finalized (BeingAppearance resent)");
     Ok(())
@@ -194,12 +208,12 @@ pub(crate) async fn handle_cancel_movie(
 ) {
     let cached = {
         let clients = connected.lock().unwrap();
-        clients.get(&addr).and_then(|c| {
-            match (&c.cached_appearance_args, &c.cached_tint_args) {
+        clients
+            .get(&addr)
+            .and_then(|c| match (&c.cached_appearance_args, &c.cached_tint_args) {
                 (Some(a), Some(t)) => Some((a.clone(), t.clone())),
                 _ => None,
-            }
-        })
+            })
     };
 
     let Some((appearance_args, tint_args)) = cached else {
@@ -208,23 +222,39 @@ pub(crate) async fn handle_cancel_movie(
     };
 
     send_to_witness(
-        socket, connected, entity_to_addr, entity_id,
+        socket,
+        connected,
+        entity_to_addr,
+        entity_id,
         |key, seq, acks| {
             build_entity_method_packet(
-                key, seq, acks, entity_id,
-                method_idx::BEING_APPEARANCE, &appearance_args,
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::BEING_APPEARANCE,
+                &appearance_args,
             )
         },
-    ).await;
+    )
+    .await;
     send_to_witness(
-        socket, connected, entity_to_addr, entity_id,
+        socket,
+        connected,
+        entity_to_addr,
+        entity_id,
         |key, seq, acks| {
             build_entity_method_packet(
-                key, seq, acks, entity_id,
-                method_idx::ON_ENTITY_TINT, &tint_args,
+                key,
+                seq,
+                acks,
+                entity_id,
+                method_idx::ON_ENTITY_TINT,
+                &tint_args,
             )
         },
-    ).await;
+    )
+    .await;
 
     tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent after cinematic");
 }

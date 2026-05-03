@@ -33,9 +33,8 @@ pub async fn query_world_entry(
     // row) we return `player_entity_id = 0` as a "no entry" sentinel so the
     // caller can detect the failure without us also burning an unregistered
     // ID that the cell service never learns about.
-    let alloc_entity = || -> u32 {
-        entity_manager.lock().unwrap().create_entity("SGWPlayer").0 as u32
-    };
+    let alloc_entity =
+        || -> u32 { entity_manager.lock().unwrap().create_entity("SGWPlayer").0 as u32 };
     let default_entry_with_eid = |player_eid: u32| WorldEntryInfo {
         player_entity_id: player_eid,
         space_id: DEFAULT_SPACE_ID,
@@ -158,11 +157,19 @@ pub async fn query_world_entry(
             }
         }
         Ok(None) => {
-            tracing::warn!(player_id, account_id, "Character not found for world entry — returning sentinel entity id");
+            tracing::warn!(
+                player_id,
+                account_id,
+                "Character not found for world entry — returning sentinel entity id"
+            );
             default_entry_with_eid(NO_ENTITY_ID)
         }
         Err(e) => {
-            tracing::error!(player_id, account_id, "Failed to query world entry ({e}) — returning sentinel entity id");
+            tracing::error!(
+                player_id,
+                account_id,
+                "Failed to query world entry ({e}) — returning sentinel entity id"
+            );
             default_entry_with_eid(NO_ENTITY_ID)
         }
     }
@@ -172,10 +179,7 @@ pub async fn query_world_entry(
 ///
 /// These IDs populate `setupStargateInfo(worldStargateIds, ...)` and are
 /// separate from the player's learned/known address book.
-pub async fn query_world_stargates(
-    db_pool: &Option<Arc<PgPool>>,
-    world_name: &str,
-) -> Vec<i32> {
+pub async fn query_world_stargates(db_pool: &Option<Arc<PgPool>>, world_name: &str) -> Vec<i32> {
     let pool = match db_pool {
         Some(p) => p,
         None => return vec![],

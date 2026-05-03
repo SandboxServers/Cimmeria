@@ -189,10 +189,21 @@ mod tests {
 
         // Wire format must be [msg_id][u16 LE length][payload] with NO count prefix.
         // First byte is the message_id directly, not a message count.
-        assert_eq!(encoded[0], 0x42, "first byte must be message_id, not a count prefix");
+        assert_eq!(
+            encoded[0], 0x42,
+            "first byte must be message_id, not a count prefix"
+        );
         let payload_len = u16::from_le_bytes([encoded[1], encoded[2]]);
         assert_eq!(payload_len, 4, "u16 LE length must equal payload size");
-        assert_eq!(&encoded[3..], b"test", "payload bytes must follow the length");
-        assert_eq!(encoded.len(), 1 + 2 + 4, "total size: 1 (id) + 2 (len) + 4 (payload)");
+        assert_eq!(
+            &encoded[3..],
+            b"test",
+            "payload bytes must follow the length"
+        );
+        assert_eq!(
+            encoded.len(),
+            1 + 2 + 4,
+            "total size: 1 (id) + 2 (len) + 4 (payload)"
+        );
     }
 }

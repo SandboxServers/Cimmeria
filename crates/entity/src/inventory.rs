@@ -33,24 +33,24 @@ pub const INV_COMMAND_BANK: i32 = 20;
 
 /// Default bag sizes from `python/common/Constants.py:142-160`.
 pub const BAG_SIZES: &[(i32, i32)] = &[
-    (INV_MAIN,       40),
-    (INV_MISSION,   100),
-    (INV_BANDOLIER,   4),
-    (INV_HEAD,        1),
-    (INV_FACE,        1),
-    (INV_NECK,        1),
-    (INV_CHEST,       1),
-    (INV_HANDS,       1),
-    (INV_WAIST,       1),
-    (INV_BACK,        1),
-    (INV_LEGS,        1),
-    (INV_FEET,        1),
-    (INV_ARTIFACT1,   1),
-    (INV_ARTIFACT2,   1),
-    (INV_CRAFTING,  100),
-    (INV_BUYBACK,    12),
-    (INV_BANK,      100),
-    (INV_AUCTION,   100),
+    (INV_MAIN, 40),
+    (INV_MISSION, 100),
+    (INV_BANDOLIER, 4),
+    (INV_HEAD, 1),
+    (INV_FACE, 1),
+    (INV_NECK, 1),
+    (INV_CHEST, 1),
+    (INV_HANDS, 1),
+    (INV_WAIST, 1),
+    (INV_BACK, 1),
+    (INV_LEGS, 1),
+    (INV_FEET, 1),
+    (INV_ARTIFACT1, 1),
+    (INV_ARTIFACT2, 1),
+    (INV_CRAFTING, 100),
+    (INV_BUYBACK, 12),
+    (INV_BANK, 100),
+    (INV_AUCTION, 100),
     (INV_TEAM_BANK, 100),
 ];
 
@@ -235,7 +235,10 @@ mod tests {
     fn serialize_cash() {
         let inv = Inventory::new(1234);
         let data = inv.serialize_cash();
-        assert_eq!(i32::from_le_bytes([data[0], data[1], data[2], data[3]]), 1234);
+        assert_eq!(
+            i32::from_le_bytes([data[0], data[1], data[2], data[3]]),
+            1234
+        );
     }
 
     #[test]

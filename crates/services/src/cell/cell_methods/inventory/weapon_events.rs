@@ -1,8 +1,8 @@
 //! Weapon attack event broadcast helpers.
 
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 /// Fire a weapon attack event for an equipped item.
 /// Called after a ranged weapon attack is launched.

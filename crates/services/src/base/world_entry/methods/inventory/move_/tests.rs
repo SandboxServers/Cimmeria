@@ -33,7 +33,9 @@ async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i3
     )
     .bind(account_id)
     .bind(format!("move-inv-{account_id}"))
-    .execute(pool).await.expect("insert account");
+    .execute(pool)
+    .await
+    .expect("insert account");
 
     sqlx::query(
         "INSERT INTO sgw_player (\
@@ -46,7 +48,9 @@ async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i3
     .bind(account_id)
     .bind(player_id)
     .bind(format!("test-{player_id}"))
-    .execute(pool).await.expect("insert player");
+    .execute(pool)
+    .await
+    .expect("insert player");
 }
 
 /// Picks `count` distinct item_ids from resources.items whose
@@ -61,9 +65,12 @@ async fn pick_main_bag_type_ids(pool: &PgPool, count: usize) -> Vec<i32> {
          ORDER BY item_id LIMIT $1",
     )
     .bind(count as i64)
-    .fetch_all(pool).await.expect("pick item_ids");
+    .fetch_all(pool)
+    .await
+    .expect("pick item_ids");
     assert_eq!(
-        ids.len(), count,
+        ids.len(),
+        count,
         "resources.items has fewer than {count} container-1-allowed types — \
          the bundled seed (db/resources/Items/Seed/items.sql) must be loaded \
          before running live-DB tests",
@@ -75,9 +82,10 @@ async fn pick_main_bag_type_ids(pool: &PgPool, count: usize) -> Vec<i32> {
 /// Hard-coded sentinels collide with the auto-increment sequence as it
 /// advances over time; deriving from MAX(item_id) is stable across runs.
 async fn unused_item_id(pool: &PgPool) -> i32 {
-    let max_id: Option<i32> = sqlx::query_scalar(
-        "SELECT MAX(item_id) FROM sgw_inventory",
-    ).fetch_one(pool).await.expect("MAX(item_id) query");
+    let max_id: Option<i32> = sqlx::query_scalar("SELECT MAX(item_id) FROM sgw_inventory")
+        .fetch_one(pool)
+        .await
+        .expect("MAX(item_id) query");
     max_id.unwrap_or(10_000) + 1_000_000
 }
 
@@ -104,7 +112,9 @@ async fn insert_item(
     .bind(stack_size)
     .bind(slot_id)
     .bind(container_id)
-    .fetch_one(pool).await.expect("insert inventory row")
+    .fetch_one(pool)
+    .await
+    .expect("insert inventory row")
 }
 
 async fn slot_of(pool: &PgPool, player_id: i32, item_id: i32) -> Option<(i32, i32, i32)> {
@@ -114,10 +124,14 @@ async fn slot_of(pool: &PgPool, player_id: i32, item_id: i32) -> Option<(i32, i3
     )
     .bind(player_id)
     .bind(item_id)
-    .fetch_optional(pool).await.expect("slot_of query")
+    .fetch_optional(pool)
+    .await
+    .expect("slot_of query")
 }
 
-fn make_state(entity_id: u32) -> (
+fn make_state(
+    entity_id: u32,
+) -> (
     Arc<UdpSocket>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -153,14 +167,20 @@ async fn simple_move_relocates_full_stack_to_empty_slot() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
-        9_999_010, player_id, item_a, 1, 5, 1,
-        &db_pool, &None, &socket, &conn, &e2a,
-    ).await;
+        9_999_010, player_id, item_a, 1, 5, 1, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
 
-    assert_eq!(slot_of(&pool, player_id, item_a).await, Some((1, 5, 1)),
-        "item_a moved from slot 0 to slot 5");
-    assert_eq!(slot_of(&pool, player_id, item_b).await, Some((1, 1, 1)),
-        "item_b at slot 1 must be untouched");
+    assert_eq!(
+        slot_of(&pool, player_id, item_a).await,
+        Some((1, 5, 1)),
+        "item_a moved from slot 0 to slot 5"
+    );
+    assert_eq!(
+        slot_of(&pool, player_id, item_b).await,
+        Some((1, 1, 1)),
+        "item_b at slot 1 must be untouched"
+    );
 
     cleanup(&pool, account_id, player_id).await;
 }
@@ -185,9 +205,9 @@ async fn swap_exchanges_two_items_full_stacks() {
 
     // Move A from slot 0 → slot 7 (occupied by B). Both should exchange.
     handle_move_inventory_item(
-        9_999_011, player_id, item_a, 1, 7, 1,
-        &db_pool, &None, &socket, &conn, &e2a,
-    ).await;
+        9_999_011, player_id, item_a, 1, 7, 1, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
 
     assert_eq!(slot_of(&pool, player_id, item_a).await, Some((1, 7, 1)));
     assert_eq!(slot_of(&pool, player_id, item_b).await, Some((1, 0, 1)));
@@ -217,13 +237,16 @@ async fn split_rejected_when_target_occupied() {
 
     // Try to split 2 of A into slot 3 (occupied by B). Should reject.
     handle_move_inventory_item(
-        9_999_012, player_id, item_a, 1, 3, 2,
-        &db_pool, &None, &socket, &conn, &e2a,
-    ).await;
+        9_999_012, player_id, item_a, 1, 3, 2, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
 
     // A's stack must still be 5 — split decrement was rolled back.
-    assert_eq!(slot_of(&pool, player_id, item_a).await, Some((1, 0, 5)),
-        "split rejection must not decrement source stack");
+    assert_eq!(
+        slot_of(&pool, player_id, item_a).await,
+        Some((1, 0, 5)),
+        "split rejection must not decrement source stack"
+    );
     // B unchanged.
     assert_eq!(slot_of(&pool, player_id, item_b).await, Some((1, 3, 1)));
     // No new row inserted at slot 3.
@@ -231,7 +254,10 @@ async fn split_rejected_when_target_occupied() {
         "SELECT COUNT(*) FROM sgw_inventory \
          WHERE character_id = $1 AND container_id = 1 AND slot_id = 3",
     )
-    .bind(player_id).fetch_one(&pool).await.unwrap();
+    .bind(player_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
     assert_eq!(row_count, 1, "exactly one row at slot 3 (the original B)");
 
     cleanup(&pool, account_id, player_id).await;
@@ -257,9 +283,9 @@ async fn split_into_empty_slot_creates_new_row_and_decrements_source() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
-        9_999_013, player_id, item_a, 1, 8, 2,
-        &db_pool, &None, &socket, &conn, &e2a,
-    ).await;
+        9_999_013, player_id, item_a, 1, 8, 2, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
 
     // Source stack: 5 - 2 = 3, still at slot 0.
     assert_eq!(slot_of(&pool, player_id, item_a).await, Some((1, 0, 3)));
@@ -269,9 +295,15 @@ async fn split_into_empty_slot_creates_new_row_and_decrements_source() {
         "SELECT type_id, slot_id, stack_size FROM sgw_inventory \
          WHERE character_id = $1 AND container_id = 1 AND slot_id = 8",
     )
-    .bind(player_id).fetch_optional(&pool).await.unwrap();
-    assert_eq!(new_row, Some((types[0], 8, 2)),
-        "split must create a new row at the target with the same type_id");
+    .bind(player_id)
+    .fetch_optional(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        new_row,
+        Some((types[0], 8, 2)),
+        "split must create a new row at the target with the same type_id"
+    );
 
     cleanup(&pool, account_id, player_id).await;
 }
@@ -295,14 +327,31 @@ async fn source_item_not_found_makes_no_changes() {
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
-        9_999_014, player_id, nonexistent_item_id, 1, 7, 1,
-        &db_pool, &None, &socket, &conn, &e2a,
-    ).await;
+        9_999_014,
+        player_id,
+        nonexistent_item_id,
+        1,
+        7,
+        1,
+        &db_pool,
+        &None,
+        &socket,
+        &conn,
+        &e2a,
+    )
+    .await;
 
-    assert_eq!(slot_of(&pool, player_id, bystander).await, Some((1, 4, 1)),
-        "bystander must be untouched when source item doesn't exist");
-    assert!(slot_of(&pool, player_id, nonexistent_item_id).await.is_none(),
-        "function must not INSERT a phantom row for the missing source");
+    assert_eq!(
+        slot_of(&pool, player_id, bystander).await,
+        Some((1, 4, 1)),
+        "bystander must be untouched when source item doesn't exist"
+    );
+    assert!(
+        slot_of(&pool, player_id, nonexistent_item_id)
+            .await
+            .is_none(),
+        "function must not INSERT a phantom row for the missing source"
+    );
 
     cleanup(&pool, account_id, player_id).await;
 }

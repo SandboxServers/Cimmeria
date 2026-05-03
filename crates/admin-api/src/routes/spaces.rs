@@ -61,9 +61,7 @@ pub fn routes() -> Router<Arc<Orchestrator>> {
     ),
     tag = "Spaces"
 )]
-pub async fn list_spaces(
-    State(orchestrator): State<Arc<Orchestrator>>,
-) -> Json<SpaceListResponse> {
+pub async fn list_spaces(State(orchestrator): State<Arc<Orchestrator>>) -> Json<SpaceListResponse> {
     let pool = {
         let state = orchestrator.state();
         let state = state.read().await;

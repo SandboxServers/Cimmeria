@@ -46,7 +46,12 @@ impl DamageEvent {
 /// mitigation, and resist calculation.
 ///
 /// Returns the finalized event with `final_amount` set.
-pub fn calculate_damage(mut event: DamageEvent, target_armor: i32, crit_chance: f32, crit_mult: f32) -> DamageEvent {
+pub fn calculate_damage(
+    mut event: DamageEvent,
+    target_armor: i32,
+    crit_chance: f32,
+    crit_mult: f32,
+) -> DamageEvent {
     // Crit roll
     let roll: f32 = rand::random();
     if roll < crit_chance {

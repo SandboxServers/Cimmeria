@@ -38,32 +38,68 @@ struct DifficultyParams {
 
 const DIFFICULTY_LEVELS: [DifficultyParams; 4] = [
     DifficultyParams {
-        countdown_rate: 20.0, timer_base: 30.0, timer_multiplier: 0.588235,
-        playfield_base: 6.0, playfield_tech_comp: 0.075472, goals: 2,
-        moving_base: 2.0, moving_tech_comp: 0.188679, move_timer_divider: 2.5,
-        obstacles_base: 2.0, obstacles_tech_comp: 0.188679,
-        obstacle_timer_base: 5.0, obstacle_timer_level: 5.0, read_out: "I-",
+        countdown_rate: 20.0,
+        timer_base: 30.0,
+        timer_multiplier: 0.588235,
+        playfield_base: 6.0,
+        playfield_tech_comp: 0.075472,
+        goals: 2,
+        moving_base: 2.0,
+        moving_tech_comp: 0.188679,
+        move_timer_divider: 2.5,
+        obstacles_base: 2.0,
+        obstacles_tech_comp: 0.188679,
+        obstacle_timer_base: 5.0,
+        obstacle_timer_level: 5.0,
+        read_out: "I-",
     },
     DifficultyParams {
-        countdown_rate: 17.0, timer_base: 20.0, timer_multiplier: 0.588235,
-        playfield_base: 6.0, playfield_tech_comp: 0.094340, goals: 4,
-        moving_base: 2.0, moving_tech_comp: 0.188679, move_timer_divider: 2.0,
-        obstacles_base: 2.0, obstacles_tech_comp: 0.188679,
-        obstacle_timer_base: 6.0, obstacle_timer_level: 5.0, read_out: "S-",
+        countdown_rate: 17.0,
+        timer_base: 20.0,
+        timer_multiplier: 0.588235,
+        playfield_base: 6.0,
+        playfield_tech_comp: 0.094340,
+        goals: 4,
+        moving_base: 2.0,
+        moving_tech_comp: 0.188679,
+        move_timer_divider: 2.0,
+        obstacles_base: 2.0,
+        obstacles_tech_comp: 0.188679,
+        obstacle_timer_base: 6.0,
+        obstacle_timer_level: 5.0,
+        read_out: "S-",
     },
     DifficultyParams {
-        countdown_rate: 15.0, timer_base: 20.0, timer_multiplier: 0.392157,
-        playfield_base: 6.0, playfield_tech_comp: 0.094340, goals: 4,
-        moving_base: 3.0, moving_tech_comp: 0.245283, move_timer_divider: 1.5,
-        obstacles_base: 3.0, obstacles_tech_comp: 0.245283,
-        obstacle_timer_base: 7.0, obstacle_timer_level: 5.0, read_out: "C-",
+        countdown_rate: 15.0,
+        timer_base: 20.0,
+        timer_multiplier: 0.392157,
+        playfield_base: 6.0,
+        playfield_tech_comp: 0.094340,
+        goals: 4,
+        moving_base: 3.0,
+        moving_tech_comp: 0.245283,
+        move_timer_divider: 1.5,
+        obstacles_base: 3.0,
+        obstacles_tech_comp: 0.245283,
+        obstacle_timer_base: 7.0,
+        obstacle_timer_level: 5.0,
+        read_out: "C-",
     },
     DifficultyParams {
-        countdown_rate: 12.0, timer_base: 12.0, timer_multiplier: 0.372549,
-        playfield_base: 6.0, playfield_tech_comp: 0.150943, goals: 6,
-        moving_base: 5.0, moving_tech_comp: 0.320755, move_timer_divider: 1.0,
-        obstacles_base: 3.0, obstacles_tech_comp: 0.245283,
-        obstacle_timer_base: 9.0, obstacle_timer_level: 5.0, read_out: "E-",
+        countdown_rate: 12.0,
+        timer_base: 12.0,
+        timer_multiplier: 0.372549,
+        playfield_base: 6.0,
+        playfield_tech_comp: 0.150943,
+        goals: 6,
+        moving_base: 5.0,
+        moving_tech_comp: 0.320755,
+        move_timer_divider: 1.0,
+        obstacles_base: 3.0,
+        obstacles_tech_comp: 0.245283,
+        obstacle_timer_base: 9.0,
+        obstacle_timer_level: 5.0,
+        read_out: "E-",
     },
 ];
 
@@ -74,10 +110,23 @@ const OBSTACLE_SOUNDS: &[&str] = &["hackMG/obsta/low", "hackMG/obsta/mid", "hack
 
 const PLAYFIELD_WIRES: &[&str] = &["pGray", "pRust", "pBronze", "pGreen"];
 const PLAYFIELD_ELECTRODES: &[&str] = &[
-    "pProcessorFan1", "pPurpleBlack1", "pPurpleBlack2", "pOrangeSilver1",
-    "pOrangeSilver2", "pLEDWhite", "pLEDRed", "pLEDBlue", "pLEDGreen", "pLEDYellow",
+    "pProcessorFan1",
+    "pPurpleBlack1",
+    "pPurpleBlack2",
+    "pOrangeSilver1",
+    "pOrangeSilver2",
+    "pLEDWhite",
+    "pLEDRed",
+    "pLEDBlue",
+    "pLEDGreen",
+    "pLEDYellow",
 ];
-const MOVING_WIRES: &[&str] = &["mYellowStripe", "mPurpleStripe", "mOrangeStripe", "mBlackStripe"];
+const MOVING_WIRES: &[&str] = &[
+    "mYellowStripe",
+    "mPurpleStripe",
+    "mOrangeStripe",
+    "mBlackStripe",
+];
 const MOVING_ELECTRODES: &[&str] = &["mGear", "mMicroChip1", "mMicroChip2"];
 const GOAL_WIRES: &[&str] = &["gGreenBlack", "gRedSilver", "gBlackGreen"];
 const OBSTACLE_WIRES: &[&str] = &["oRed", "oGreen", "oBlack"];
@@ -113,7 +162,7 @@ pub struct LivewireGame {
     initialized: bool,
     game_started: bool,
     playfield_active: bool,
-    timer_state: u32,  // 0=stopped, 1=countdown, 2=time-stop cheat, 3=time-reverse cheat
+    timer_state: u32, // 0=stopped, 1=countdown, 2=time-stop cheat, 3=time-reverse cheat
     time_remaining: f64,
     countdown_rate: f64,
     time_units: f64,
@@ -173,10 +222,12 @@ impl LivewireGame {
 
         let param_timer = (level.timer_base + tc * level.timer_multiplier).floor();
         self.goal_total = level.goals;
-        let _playfield_total = (level.playfield_base + tc * level.playfield_tech_comp).floor() as u32;
+        let _playfield_total =
+            (level.playfield_base + tc * level.playfield_tech_comp).floor() as u32;
         let _moving_total = (level.moving_base + tc * level.moving_tech_comp).floor() as u32;
         self.move_timer = tc / level.move_timer_divider;
-        let _obstacle_total = (level.obstacles_base + tc * level.obstacles_tech_comp).floor() as u32;
+        let _obstacle_total =
+            (level.obstacles_base + tc * level.obstacles_tech_comp).floor() as u32;
         self.obstacle_timer = level.obstacle_timer_base + (tc / 5.0) * level.obstacle_timer_level;
         self.countdown_rate = 1.0 / level.countdown_rate;
         self.time_remaining = level.countdown_rate + 0.25;
@@ -187,14 +238,18 @@ impl LivewireGame {
         self.time_units = match timer_type {
             0 => param_timer + tc / 1.7,
             1 => 17.0 + tc * 4.5f64.powf(1.25),
-            _ => 6.0 * (self.obstacle_timer / 10.0 * self.goal_total as f64)
-                + (21.0 + self.player_level as f64),
+            _ => {
+                6.0 * (self.obstacle_timer / 10.0 * self.goal_total as f64)
+                    + (21.0 + self.player_level as f64)
+            }
         };
     }
 
     fn find_available_depth(&self, start: u32) -> u32 {
         let mut d = start;
-        while self.wires.contains_key(&d) { d += 1; }
+        while self.wires.contains_key(&d) {
+            d += 1;
+        }
         d
     }
 
@@ -231,7 +286,8 @@ impl LivewireGame {
         let level = &DIFFICULTY_LEVELS[idx];
         let tc = self.tech_competency as f64;
 
-        let playfield_total = (level.playfield_base + tc * level.playfield_tech_comp).floor() as u32;
+        let playfield_total =
+            (level.playfield_base + tc * level.playfield_tech_comp).floor() as u32;
         let moving_total = (level.moving_base + tc * level.moving_tech_comp).floor() as u32;
         let obstacle_total = (level.obstacles_base + tc * level.obstacles_tech_comp).floor() as u32;
 
@@ -243,9 +299,18 @@ impl LivewireGame {
             let sound = self.random_item(PLAYFIELD_SOUNDS).to_string();
             let x = self.rng.random_range(375.0..900.0);
             let y = self.rng.random_range(250.0..700.0);
-            self.wires.insert(depth, Wire {
-                name: format!("pe{}", i + 1), lib, depth, sound, x, y, cut: false,
-            });
+            self.wires.insert(
+                depth,
+                Wire {
+                    name: format!("pe{}", i + 1),
+                    lib,
+                    depth,
+                    sound,
+                    x,
+                    y,
+                    cut: false,
+                },
+            );
         }
 
         // Playfield wires
@@ -254,10 +319,18 @@ impl LivewireGame {
             let lib = self.random_item(PLAYFIELD_WIRES).to_string();
             let sound = self.random_item(PLAYFIELD_SOUNDS).to_string();
             let y = self.random_y();
-            self.wires.insert(depth, Wire {
-                name: format!("p{}", i + 1), lib, depth, sound,
-                x: WIRE_LOCATION_X, y, cut: false,
-            });
+            self.wires.insert(
+                depth,
+                Wire {
+                    name: format!("p{}", i + 1),
+                    lib,
+                    depth,
+                    sound,
+                    x: WIRE_LOCATION_X,
+                    y,
+                    cut: false,
+                },
+            );
         }
 
         // Goal wires
@@ -269,10 +342,18 @@ impl LivewireGame {
             let sound = self.random_item(GOAL_SOUNDS).to_string();
             let y_idx = self.rng.random_range(0..WIRE_LOCATION_Y.len());
             let y = WIRE_LOCATION_Y[y_idx];
-            self.wires.insert(depth, Wire {
-                name: format!("g{}", i + 1), lib, depth, sound,
-                x: WIRE_LOCATION_X, y, cut: false,
-            });
+            self.wires.insert(
+                depth,
+                Wire {
+                    name: format!("g{}", i + 1),
+                    lib,
+                    depth,
+                    sound,
+                    x: WIRE_LOCATION_X,
+                    y,
+                    cut: false,
+                },
+            );
             self.glow_points.push(format!("attach{}", y_idx + 1));
         }
 
@@ -284,9 +365,18 @@ impl LivewireGame {
             let sound = self.random_item(MOVING_SOUNDS).to_string();
             let x = self.rng.random_range(375.0..900.0);
             let y = self.rng.random_range(250.0..700.0);
-            self.wires.insert(depth, Wire {
-                name: format!("me{}", i + 1), lib, depth, sound, x, y, cut: false,
-            });
+            self.wires.insert(
+                depth,
+                Wire {
+                    name: format!("me{}", i + 1),
+                    lib,
+                    depth,
+                    sound,
+                    x,
+                    y,
+                    cut: false,
+                },
+            );
         }
 
         // Moving wires
@@ -295,10 +385,18 @@ impl LivewireGame {
             let lib = self.random_item(MOVING_WIRES).to_string();
             let sound = self.random_item(MOVING_SOUNDS).to_string();
             let y = self.random_y();
-            self.wires.insert(depth, Wire {
-                name: format!("m{}", i + 1), lib, depth, sound,
-                x: WIRE_LOCATION_X, y, cut: false,
-            });
+            self.wires.insert(
+                depth,
+                Wire {
+                    name: format!("m{}", i + 1),
+                    lib,
+                    depth,
+                    sound,
+                    x: WIRE_LOCATION_X,
+                    y,
+                    cut: false,
+                },
+            );
         }
 
         // Obstacle wires
@@ -309,10 +407,18 @@ impl LivewireGame {
             let lib = format!("{base}{variant}");
             let sound = self.random_item(OBSTACLE_SOUNDS).to_string();
             let y = self.random_y();
-            self.wires.insert(depth, Wire {
-                name: format!("o{}", i + 1), lib, depth, sound,
-                x: WIRE_LOCATION_X, y, cut: false,
-            });
+            self.wires.insert(
+                depth,
+                Wire {
+                    name: format!("o{}", i + 1),
+                    lib,
+                    depth,
+                    sound,
+                    x: WIRE_LOCATION_X,
+                    y,
+                    cut: false,
+                },
+            );
         }
     }
 
@@ -323,20 +429,29 @@ impl LivewireGame {
             keys.iter().map(|k| &self.wires[k]).collect()
         };
 
-        let wire_names: Vec<SfsValue> = wires.iter()
-            .map(|w| SfsValue::String(w.name.clone())).collect();
-        let wire_libs: Vec<SfsValue> = wires.iter()
-            .map(|w| SfsValue::String(w.lib.clone())).collect();
-        let wire_sounds: Vec<SfsValue> = wires.iter()
-            .map(|w| SfsValue::String(w.sound.clone())).collect();
-        let wire_xs: Vec<SfsValue> = wires.iter()
-            .map(|w| SfsValue::Number(w.x)).collect();
-        let wire_ys: Vec<SfsValue> = wires.iter()
-            .map(|w| SfsValue::Number(w.y)).collect();
-        let wire_depths: Vec<SfsValue> = wires.iter()
-            .map(|w| SfsValue::Number(w.depth as f64)).collect();
-        let glow_points: Vec<SfsValue> = self.glow_points.iter()
-            .map(|g| SfsValue::String(g.clone())).collect();
+        let wire_names: Vec<SfsValue> = wires
+            .iter()
+            .map(|w| SfsValue::String(w.name.clone()))
+            .collect();
+        let wire_libs: Vec<SfsValue> = wires
+            .iter()
+            .map(|w| SfsValue::String(w.lib.clone()))
+            .collect();
+        let wire_sounds: Vec<SfsValue> = wires
+            .iter()
+            .map(|w| SfsValue::String(w.sound.clone()))
+            .collect();
+        let wire_xs: Vec<SfsValue> = wires.iter().map(|w| SfsValue::Number(w.x)).collect();
+        let wire_ys: Vec<SfsValue> = wires.iter().map(|w| SfsValue::Number(w.y)).collect();
+        let wire_depths: Vec<SfsValue> = wires
+            .iter()
+            .map(|w| SfsValue::Number(w.depth as f64))
+            .collect();
+        let glow_points: Vec<SfsValue> = self
+            .glow_points
+            .iter()
+            .map(|g| SfsValue::String(g.clone()))
+            .collect();
 
         // Pack arrays as objects with numeric keys (SFS convention)
         fn array_to_obj(arr: Vec<SfsValue>) -> SfsValue {
@@ -426,7 +541,8 @@ impl MinigameInstance for LivewireGame {
             }
 
             "processover" => {
-                let wirename = params.get("wirename")
+                let wirename = params
+                    .get("wirename")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 vec![GameOutput::Send(sfs_vars! {
@@ -436,7 +552,8 @@ impl MinigameInstance for LivewireGame {
             }
 
             "processout" => {
-                let wirename = params.get("wirename")
+                let wirename = params
+                    .get("wirename")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 vec![GameOutput::Send(sfs_vars! {
@@ -446,7 +563,8 @@ impl MinigameInstance for LivewireGame {
             }
 
             "processmove" => {
-                let wirename = params.get("wirename")
+                let wirename = params
+                    .get("wirename")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
@@ -457,8 +575,7 @@ impl MinigameInstance for LivewireGame {
                 }
 
                 // Find the wire
-                let wire = self.wires.values_mut()
-                    .find(|w| w.name == wirename);
+                let wire = self.wires.values_mut().find(|w| w.name == wirename);
                 let wire = match wire {
                     Some(w) => w,
                     None => {

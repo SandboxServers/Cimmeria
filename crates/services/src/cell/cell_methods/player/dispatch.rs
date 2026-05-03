@@ -1,7 +1,7 @@
-use tokio::sync::mpsc;
-use cimmeria_content_engine::chain::ChainEngine;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_content_engine::chain::ChainEngine;
+use tokio::sync::mpsc;
 
 pub use super::constants::*;
 
@@ -36,7 +36,8 @@ pub async fn dispatch(
             // social. Implicit constant ordering:
             //   ORG_CREATION ≤ SPEND_APPLIED_SCIENCE_POINTS < CRAFT
             //   ≤ RESPEC_CRAFTING ≤ CANCEL_MOVIE
-            if (super::constants::CRAFT..=super::constants::RESPEC_CRAFTING).contains(&method_index) {
+            if (super::constants::CRAFT..=super::constants::RESPEC_CRAFTING).contains(&method_index)
+            {
                 super::crafting::dispatch(entity_id, method_index, args, tx, space_mgr).await
             } else {
                 super::social::dispatch(entity_id, method_index, args, tx, space_mgr).await
@@ -93,7 +94,8 @@ mod tests {
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
 
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
@@ -123,7 +125,8 @@ mod tests {
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
 
         let (tx, _rx) = mpsc::channel(64);
         let engine = ChainEngine::new();
@@ -141,7 +144,10 @@ mod tests {
             (CLIENT_CHALLENGE_RESPONSE, "social (high half)"),
         ] {
             let handled = dispatch(1, method, &[], &tx, &mut mgr, &engine).await;
-            assert!(handled, "{label} arm must route method {method} and return true");
+            assert!(
+                handled,
+                "{label} arm must route method {method} and return true"
+            );
         }
     }
 
@@ -154,7 +160,8 @@ mod tests {
 <Spaces><Space WorldName="Agnos" /></Spaces>"#;
         mgr.parse_spaces_xml(spaces_xml).unwrap();
         mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
 
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();

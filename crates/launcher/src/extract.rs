@@ -52,7 +52,10 @@ mod tests {
     #[test]
     fn test_build_extract_args() {
         let args = build_extract_args("C:\\temp\\archive.rar", "C:\\Games\\SGW");
-        assert_eq!(args, vec!["e", "C:\\temp\\archive.rar", "-oC:\\Games\\SGW", "-y"]);
+        assert_eq!(
+            args,
+            vec!["e", "C:\\temp\\archive.rar", "-oC:\\Games\\SGW", "-y"]
+        );
     }
 
     #[test]
@@ -64,7 +67,12 @@ mod tests {
 
         let cabs = count_cab_files(dir.path()).unwrap();
         assert_eq!(cabs.len(), 2);
-        assert!(cabs[0].file_name().unwrap().to_str().unwrap().ends_with(".cab"));
+        assert!(cabs[0]
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .ends_with(".cab"));
     }
 
     #[test]

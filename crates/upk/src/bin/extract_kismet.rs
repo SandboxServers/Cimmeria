@@ -2,8 +2,8 @@
 //!
 //! Usage: extract-kismet <file.umap|zone_dir> [--summary] [--graph]
 
-use cimmeria_upk::Package;
 use cimmeria_upk::objects::kismet::{self, KismetNode};
+use cimmeria_upk::Package;
 use std::collections::HashMap;
 use std::env;
 use std::path::Path;
@@ -41,11 +41,7 @@ fn main() {
     };
 
     for file_path in &files {
-        let tile_name = file_path
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let tile_name = file_path.file_name().unwrap().to_string_lossy().to_string();
         tile_count += 1;
 
         match Package::open(file_path.to_str().unwrap()) {
@@ -119,7 +115,13 @@ fn main() {
         root_seqs.sort_by_key(|s| &s.full_path);
 
         for seq in root_seqs {
-            print_sequence_tree(&all_nodes, &sequences, seq, 2, &mut std::collections::HashSet::new());
+            print_sequence_tree(
+                &all_nodes,
+                &sequences,
+                seq,
+                2,
+                &mut std::collections::HashSet::new(),
+            );
         }
 
         // Show wired event chains
@@ -140,7 +142,8 @@ fn main() {
                 } else {
                     format!(" ({})", event.obj_comment)
                 };
-                let total_conns: usize = event.output_links.iter().map(|l| l.connections.len()).sum();
+                let total_conns: usize =
+                    event.output_links.iter().map(|l| l.connections.len()).sum();
                 println!(
                     "  {} [{}] -> {} outputs{}",
                     event.class_name, event.tile, total_conns, comment
@@ -151,7 +154,10 @@ fn main() {
                         let target_desc = target
                             .map(|t| format!("{} '{}'", t.class_name, t.object_name))
                             .unwrap_or_else(|| format!("?{}", conn.target_key));
-                        println!("    -> {} [input {}] {}", link.desc, conn.input_idx, target_desc);
+                        println!(
+                            "    -> {} [input {}] {}",
+                            link.desc, conn.input_idx, target_desc
+                        );
                     }
                 }
             }

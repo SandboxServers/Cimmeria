@@ -168,7 +168,8 @@ pub async fn export_to_seed_file(
                 let delay_ms: i32 = action.get("delay_ms");
                 let sort_order: i32 = action.get("sort_order");
 
-                let params_str = serde_json::to_string(&params).unwrap_or_else(|_| "'{}'".to_string());
+                let params_str =
+                    serde_json::to_string(&params).unwrap_or_else(|_| "'{}'".to_string());
                 let separator = if i < actions.len() - 1 { "," } else { ";" };
 
                 writeln!(

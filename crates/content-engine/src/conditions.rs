@@ -30,14 +30,10 @@ pub enum Condition {
     },
 
     /// The source entity must have the specified ability.
-    HasAbility {
-        ability_id: i32,
-    },
+    HasAbility { ability_id: i32 },
 
     /// The source entity must currently be within the specified region.
-    InRegion {
-        region_id: i32,
-    },
+    InRegion { region_id: i32 },
 
     /// Faction standing check.
     FactionCheck {
@@ -46,12 +42,9 @@ pub enum Condition {
     },
 
     /// Free-form expression for complex conditions.
-    CustomExpression {
-        expression: String,
-    },
+    CustomExpression { expression: String },
 
     // ── DB-driven condition types ─────────────────────────────────────────
-
     /// Check if a mission has a specific status (not_active, active, completed).
     MissionStatus {
         mission_id: i32,
@@ -127,33 +120,35 @@ impl Condition {
     /// Evaluate this condition against the current execution context.
     pub fn evaluate(&self, ctx: &ExecutionContext) -> bool {
         match self {
-            Condition::PropertyEquals { property, value } => {
-                ctx.params.get(property)
-                    .map_or(false, |actual| actual == value)
-            }
-            Condition::PropertyInRange { property, min, max } => {
-                ctx.params.get(property)
-                    .and_then(|v| v.as_f64())
-                    .map_or(false, |val| val >= *min && val <= *max)
-            }
+            Condition::PropertyEquals { property, value } => ctx
+                .params
+                .get(property)
+                .map_or(false, |actual| actual == value),
+            Condition::PropertyInRange { property, min, max } => ctx
+                .params
+                .get(property)
+                .and_then(|v| v.as_f64())
+                .map_or(false, |val| val >= *min && val <= *max),
             Condition::HasItem { item_id, min_count } => {
                 let key = format!("item_{}_count", item_id);
                 let required = min_count.unwrap_or(1) as f64;
-                ctx.params.get(&key)
+                ctx.params
+                    .get(&key)
                     .and_then(|v| v.as_f64())
                     .map_or(false, |count| count >= required)
             }
             Condition::HasAbility { ability_id } => {
                 let key = format!("ability_{}", ability_id);
-                ctx.params.get(&key)
+                ctx.params
+                    .get(&key)
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false)
             }
-            Condition::InRegion { region_id } => {
-                ctx.params.get("current_region")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *region_id as i64)
-            }
+            Condition::InRegion { region_id } => ctx
+                .params
+                .get("current_region")
+                .and_then(|v| v.as_i64())
+                .map_or(false, |actual| actual == *region_id as i64),
             Condition::FactionCheck { faction, relation } => {
                 let key = format!("faction_{}", faction);
                 let expected = match relation {
@@ -161,21 +156,27 @@ impl Condition {
                     FactionRelation::Neutral => "Neutral",
                     FactionRelation::Hostile => "Hostile",
                 };
-                ctx.params.get(&key)
+                ctx.params
+                    .get(&key)
                     .and_then(|v| v.as_str())
                     .map_or(false, |actual| actual == expected)
             }
-            Condition::CustomExpression { expression } => {
-                ctx.params.get(expression)
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            }
+            Condition::CustomExpression { expression } => ctx
+                .params
+                .get(expression)
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
 
             // ── DB-driven conditions ──────────────────────────────────────
-
-            Condition::MissionStatus { mission_id, operator, expected_status } => {
+            Condition::MissionStatus {
+                mission_id,
+                operator,
+                expected_status,
+            } => {
                 let key = format!("mission_{}_status", mission_id);
-                let actual_str = ctx.params.get(&key)
+                let actual_str = ctx
+                    .params
+                    .get(&key)
                     .and_then(|v| v.as_str())
                     .unwrap_or("not_active");
                 let expected_str = match expected_status {
@@ -185,9 +186,16 @@ impl Condition {
                 };
                 compare_str(actual_str, expected_str, operator)
             }
-            Condition::StepStatus { mission_id, step_id, operator, expected_status } => {
+            Condition::StepStatus {
+                mission_id,
+                step_id,
+                operator,
+                expected_status,
+            } => {
                 let key = format!("mission_{}_step_{}_status", mission_id, step_id);
-                let actual_str = ctx.params.get(&key)
+                let actual_str = ctx
+                    .params
+                    .get(&key)
                     .and_then(|v| v.as_str())
                     .unwrap_or("not_active");
                 let expected_str = match expected_status {
@@ -196,24 +204,38 @@ impl Condition {
                 };
                 compare_str(actual_str, expected_str, operator)
             }
-            Condition::Archetype { operator, archetype_id } => {
-                let actual = ctx.params.get("archetype")
+            Condition::Archetype {
+                operator,
+                archetype_id,
+            } => {
+                let actual = ctx
+                    .params
+                    .get("archetype")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(-1);
                 compare_i64(actual, *archetype_id as i64, operator)
             }
-            Condition::ObjectiveStatus { mission_id, objective_id, operator, expected_status } => {
+            Condition::ObjectiveStatus {
+                mission_id,
+                objective_id,
+                operator,
+                expected_status,
+            } => {
                 let key = format!("mission_{}_obj_{}_status", mission_id, objective_id);
-                let actual_str = ctx.params.get(&key)
+                let actual_str = ctx
+                    .params
+                    .get(&key)
                     .and_then(|v| v.as_str())
                     .unwrap_or("not_active");
                 compare_str(actual_str, expected_status, operator)
             }
-            Condition::Counter { counter_name, operator, value } => {
+            Condition::Counter {
+                counter_name,
+                operator,
+                value,
+            } => {
                 let key = format!("counter_{}", counter_name);
-                let actual = ctx.params.get(&key)
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
+                let actual = ctx.params.get(&key).and_then(|v| v.as_i64()).unwrap_or(0);
                 compare_i64(actual, *value as i64, operator)
             }
         }
@@ -302,7 +324,10 @@ mod tests {
             expected_status: MissionStatusValue::Active,
         };
         let mut ctx = ExecutionContext::new();
-        ctx.set_param("mission_622_status".to_string(), serde_json::json!("not_active"));
+        ctx.set_param(
+            "mission_622_status".to_string(),
+            serde_json::json!("not_active"),
+        );
         assert!(condition.evaluate(&ctx));
     }
 
@@ -315,7 +340,10 @@ mod tests {
             expected_status: StepStatusValue::Active,
         };
         let mut ctx = ExecutionContext::new();
-        ctx.set_param("mission_638_step_2114_status".to_string(), serde_json::json!("active"));
+        ctx.set_param(
+            "mission_638_step_2114_status".to_string(),
+            serde_json::json!("active"),
+        );
         assert!(condition.evaluate(&ctx));
     }
 

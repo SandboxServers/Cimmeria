@@ -13,25 +13,24 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::mercury::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
-    build_entity_invisible, build_entity_leave, build_entity_method_packet,
-    build_reset_entities, method_idx,
+    build_entity_invisible, build_entity_leave, build_entity_method_packet, build_reset_entities,
+    method_idx,
 };
 
-use super::super::ConnectedClientState;
 use super::super::helpers::send_to_witness;
+use super::super::ConnectedClientState;
 use super::gate_travel::handle_gate_travel;
-use super::teleport::handle_teleport_player;
 use super::methods::inventory::update_bandolier_ammo;
 use super::methods::{
     handle_buyback_vendor_items, handle_grant_cash, handle_grant_item, handle_grant_xp,
     handle_mail_request, handle_mission_update, handle_move_inventory_item,
-    handle_open_vendor_store, handle_purchase_vendor_items,
-    handle_recharge_inventory_items, handle_remove_inventory_item,
-    handle_remove_inventory_item_by_type, handle_repair_inventory_item,
-    handle_repair_inventory_items, handle_sell_vendor_items, handle_use_inventory_item,
-    send_full_inventory_update,
+    handle_open_vendor_store, handle_purchase_vendor_items, handle_recharge_inventory_items,
+    handle_remove_inventory_item, handle_remove_inventory_item_by_type,
+    handle_repair_inventory_item, handle_repair_inventory_items, handle_sell_vendor_items,
+    handle_use_inventory_item, send_full_inventory_update,
 };
 use super::space_registry::register_space;
+use super::teleport::handle_teleport_player;
 
 /// Handle a message from CellService -- dispatches AoI packets to witness clients.
 pub(crate) async fn handle_cell_message(
@@ -46,122 +45,302 @@ pub(crate) async fn handle_cell_message(
     minigame_external_port: u16,
 ) {
     match msg {
-        CellToBaseMsg::SpaceData { space_id, world_name } => {
+        CellToBaseMsg::SpaceData {
+            space_id,
+            world_name,
+        } => {
             register_space(world_name, space_id);
         }
-        CellToBaseMsg::EntityCreated { entity_id, space_id, position } => {
-            tracing::debug!(entity_id, space_id, ?position, "CellService: entity created");
+        CellToBaseMsg::EntityCreated {
+            entity_id,
+            space_id,
+            position,
+        } => {
+            tracing::debug!(
+                entity_id,
+                space_id,
+                ?position,
+                "CellService: entity created"
+            );
         }
-        CellToBaseMsg::EnteredAoI { witness_id, entity_id, space_id: _, class_id, position, direction, level, npc_data } => {
-            tracing::debug!(witness_id, entity_id, class_id, level, "AoI: entity entered witness range");
+        CellToBaseMsg::EnteredAoI {
+            witness_id,
+            entity_id,
+            space_id: _,
+            class_id,
+            position,
+            direction,
+            level,
+            npc_data,
+        } => {
+            tracing::debug!(
+                witness_id,
+                entity_id,
+                class_id,
+                level,
+                "AoI: entity entered witness range"
+            );
             // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate)
             send_to_witness(
-                socket, connected, entity_to_addr, witness_id,
+                socket,
+                connected,
+                entity_to_addr,
+                witness_id,
                 |key, seq, acks| {
                     build_create_entity_base(
-                        key, seq, acks, entity_id,
-                        class_id, position, direction,
+                        key, seq, acks, entity_id, class_id, position, direction,
                     )
                 },
-            ).await;
+            )
+            .await;
             // Packet 2: createOnClient() property cascade (CellApp round-trip)
             send_to_witness(
-                socket, connected, entity_to_addr, witness_id,
+                socket,
+                connected,
+                entity_to_addr,
+                witness_id,
                 |key, seq, acks| {
                     build_create_entity_cascade(
-                        key, seq, acks, entity_id,
-                        class_id, level, npc_data.as_ref(),
+                        key,
+                        seq,
+                        acks,
+                        entity_id,
+                        class_id,
+                        level,
+                        npc_data.as_ref(),
                     )
                 },
-            ).await;
+            )
+            .await;
         }
-        CellToBaseMsg::LeftAoI { witness_id, entity_id } => {
+        CellToBaseMsg::LeftAoI {
+            witness_id,
+            entity_id,
+        } => {
             tracing::debug!(witness_id, entity_id, "AoI: entity left witness range");
             send_to_witness(
-                socket, connected, entity_to_addr, witness_id,
-                |key, seq, acks| {
-                    build_entity_leave(key, seq, acks, entity_id)
-                },
-            ).await;
+                socket,
+                connected,
+                entity_to_addr,
+                witness_id,
+                |key, seq, acks| build_entity_leave(key, seq, acks, entity_id),
+            )
+            .await;
         }
-        CellToBaseMsg::EntityMoved { witness_id, entity_id, space_id: _, position, direction, velocity } => {
+        CellToBaseMsg::EntityMoved {
+            witness_id,
+            entity_id,
+            space_id: _,
+            position,
+            direction,
+            velocity,
+        } => {
             tracing::trace!(witness_id, entity_id, "AoI: entity position update");
             send_to_witness(
-                socket, connected, entity_to_addr, witness_id,
+                socket,
+                connected,
+                entity_to_addr,
+                witness_id,
                 |key, seq, acks| {
-                    build_avatar_update(
-                        key, seq, acks, entity_id,
-                        position, velocity, direction,
-                    )
+                    build_avatar_update(key, seq, acks, entity_id, position, velocity, direction)
                 },
-            ).await;
+            )
+            .await;
         }
-        CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } => {
-            tracing::debug!(entity_id, method_index, args_len = args.len(), "CellService->client entity method call");
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            tracing::debug!(
+                entity_id,
+                method_index,
+                args_len = args.len(),
+                "CellService->client entity method call"
+            );
             send_to_witness(
-                socket, connected, entity_to_addr, entity_id,
+                socket,
+                connected,
+                entity_to_addr,
+                entity_id,
                 |key, seq, acks| {
                     build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
                 },
-            ).await;
+            )
+            .await;
         }
-        CellToBaseMsg::GateTravel { entity_id, target_world_name, position, rotation } => {
+        CellToBaseMsg::GateTravel {
+            entity_id,
+            target_world_name,
+            position,
+            rotation,
+        } => {
             if let Err(e) = handle_gate_travel(
-                entity_id, &target_world_name, position, rotation,
-                socket, connected, entity_to_addr, cell_tx, db_pool,
-            ).await {
+                entity_id,
+                &target_world_name,
+                position,
+                rotation,
+                socket,
+                connected,
+                entity_to_addr,
+                cell_tx,
+                db_pool,
+            )
+            .await
+            {
                 tracing::error!(entity_id, world = %target_world_name, "Gate travel failed: {e}");
             }
         }
-        CellToBaseMsg::MailRequest { entity_id, player_id, op } => {
-            handle_mail_request(entity_id, player_id, op, socket, connected, entity_to_addr, db_pool).await;
+        CellToBaseMsg::MailRequest {
+            entity_id,
+            player_id,
+            op,
+        } => {
+            handle_mail_request(
+                entity_id,
+                player_id,
+                op,
+                socket,
+                connected,
+                entity_to_addr,
+                db_pool,
+            )
+            .await;
         }
-        CellToBaseMsg::MissionUpdate { player_id, mission_id, status, current_step_id,
-                                        completed_step_ids, completed_objective_ids, active_objective_ids,
-                                        failed_objective_ids, repeats } => {
+        CellToBaseMsg::MissionUpdate {
+            player_id,
+            mission_id,
+            status,
+            current_step_id,
+            completed_step_ids,
+            completed_objective_ids,
+            active_objective_ids,
+            failed_objective_ids,
+            repeats,
+        } => {
             handle_mission_update(
-                player_id, mission_id, status, current_step_id,
-                &completed_step_ids, &completed_objective_ids, &active_objective_ids,
-                &failed_objective_ids, repeats, db_pool,
-            ).await;
+                player_id,
+                mission_id,
+                status,
+                current_step_id,
+                &completed_step_ids,
+                &completed_objective_ids,
+                &active_objective_ids,
+                &failed_objective_ids,
+                repeats,
+                db_pool,
+            )
+            .await;
         }
-        CellToBaseMsg::GrantXP { entity_id, xp_amount } => {
-            handle_grant_xp(entity_id, xp_amount, db_pool, socket, connected, entity_to_addr).await;
+        CellToBaseMsg::GrantXP {
+            entity_id,
+            xp_amount,
+        } => {
+            handle_grant_xp(
+                entity_id,
+                xp_amount,
+                db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::GrantItem { entity_id, player_id, item_id, container_id, count } => {
+        CellToBaseMsg::GrantItem {
+            entity_id,
+            player_id,
+            item_id,
+            container_id,
+            count,
+        } => {
             handle_grant_item(
-                entity_id, player_id, item_id, container_id, count,
-                db_pool, cell_tx, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                item_id,
+                container_id,
+                count,
+                db_pool,
+                cell_tx,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::GrantCash { entity_id, player_id, amount } => {
-            handle_grant_cash(entity_id, player_id, amount, db_pool, socket, connected, entity_to_addr).await;
+        CellToBaseMsg::GrantCash {
+            entity_id,
+            player_id,
+            amount,
+        } => {
+            handle_grant_cash(
+                entity_id,
+                player_id,
+                amount,
+                db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::WitnessEntityMethod { witness_id, entity_id, method_index, args } => {
-            tracing::debug!(witness_id, entity_id, method_index, "Broadcast entity method to witness");
+        CellToBaseMsg::WitnessEntityMethod {
+            witness_id,
+            entity_id,
+            method_index,
+            args,
+        } => {
+            tracing::debug!(
+                witness_id,
+                entity_id,
+                method_index,
+                "Broadcast entity method to witness"
+            );
             send_to_witness(
-                socket, connected, entity_to_addr, witness_id,
+                socket,
+                connected,
+                entity_to_addr,
+                witness_id,
                 |key, seq, acks| {
                     build_entity_method_packet(key, seq, acks, entity_id, method_index, &args)
                 },
-            ).await;
+            )
+            .await;
         }
-        CellToBaseMsg::EntityInvisible { witness_id, entity_id } => {
+        CellToBaseMsg::EntityInvisible {
+            witness_id,
+            entity_id,
+        } => {
             tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
             send_to_witness(
-                socket, connected, entity_to_addr, witness_id,
-                |key, seq, acks| {
-                    build_entity_invisible(key, seq, acks, entity_id)
-                },
-            ).await;
+                socket,
+                connected,
+                entity_to_addr,
+                witness_id,
+                |key, seq, acks| build_entity_invisible(key, seq, acks, entity_id),
+            )
+            .await;
         }
-        CellToBaseMsg::TeleportPlayer { entity_id, space_id, position } => {
+        CellToBaseMsg::TeleportPlayer {
+            entity_id,
+            space_id,
+            position,
+        } => {
             handle_teleport_player(
-                entity_id, space_id, position,
-                socket, connected, entity_to_addr, db_pool,
-            ).await;
+                entity_id,
+                space_id,
+                position,
+                socket,
+                connected,
+                entity_to_addr,
+                db_pool,
+            )
+            .await;
         }
-        CellToBaseMsg::RespawnReload { entity_id, world_name, spawn_pos } => {
+        CellToBaseMsg::RespawnReload {
+            entity_id,
+            world_name,
+            spawn_pos,
+        } => {
             tracing::info!(entity_id, %world_name, ?spawn_pos, "RespawnReload: triggering map reload");
 
             // 1a. Send RESET_ENTITIES to destroy the ragdolled pawn.
@@ -169,46 +348,58 @@ pub(crate) async fn handle_cell_message(
             // retains its ragdoll physics mode. RESET_ENTITIES forces the client
             // to destroy all entities so mapLoaded creates them fresh.
             send_to_witness(
-                socket, connected, entity_to_addr, entity_id,
-                |key, seq, acks| {
-                    build_reset_entities(key, seq, acks)
-                },
-            ).await;
+                socket,
+                connected,
+                entity_to_addr,
+                entity_id,
+                |key, seq, acks| build_reset_entities(key, seq, acks),
+            )
+            .await;
 
             // 1b. Send onClientMapLoad to trigger loading screen
             let mut ml_args = Vec::new();
             crate::mercury::write_wstring(&mut ml_args, &world_name); // areaName
             crate::mercury::write_wstring(&mut ml_args, &world_name); // mapPath
-            ml_args.extend_from_slice(&0i32.to_le_bytes());           // WorldID
-            ml_args.extend_from_slice(&spawn_pos[0].to_le_bytes());   // Location X
-            ml_args.extend_from_slice(&spawn_pos[1].to_le_bytes());   // Location Y
-            ml_args.extend_from_slice(&spawn_pos[2].to_le_bytes());   // Location Z
-            ml_args.extend_from_slice(&0.0f32.to_le_bytes());         // Direction X
-            ml_args.extend_from_slice(&0.0f32.to_le_bytes());         // Direction Y
-            ml_args.extend_from_slice(&0.0f32.to_le_bytes());         // Direction Z
+            ml_args.extend_from_slice(&0i32.to_le_bytes()); // WorldID
+            ml_args.extend_from_slice(&spawn_pos[0].to_le_bytes()); // Location X
+            ml_args.extend_from_slice(&spawn_pos[1].to_le_bytes()); // Location Y
+            ml_args.extend_from_slice(&spawn_pos[2].to_le_bytes()); // Location Z
+            ml_args.extend_from_slice(&0.0f32.to_le_bytes()); // Direction X
+            ml_args.extend_from_slice(&0.0f32.to_le_bytes()); // Direction Y
+            ml_args.extend_from_slice(&0.0f32.to_le_bytes()); // Direction Z
             send_to_witness(
-                socket, connected, entity_to_addr, entity_id,
+                socket,
+                connected,
+                entity_to_addr,
+                entity_id,
                 |key, seq, acks| {
-                    build_entity_method_packet(key, seq, acks, entity_id,
-                        method_idx::ON_CLIENT_MAP_LOAD, &ml_args)
+                    build_entity_method_packet(
+                        key,
+                        seq,
+                        acks,
+                        entity_id,
+                        method_idx::ON_CLIENT_MAP_LOAD,
+                        &ml_args,
+                    )
                 },
-            ).await;
+            )
+            .await;
 
             // 2. Set up pending_client_ready so the next onClientReady triggers
             //    a fresh mapLoaded sequence (stats, appearance, state_field=0).
             //    This is what actually clears the ragdoll — the full world re-entry.
             //    We query player_id from the DB via account_id since we don't cache it.
-            let addr = {
-                entity_to_addr.lock().unwrap().get(&entity_id).copied()
-            };
+            let addr = { entity_to_addr.lock().unwrap().get(&entity_id).copied() };
             if let Some(addr) = addr {
                 let (account_id, cached_player_id, appearance_args, tint_args) = {
                     let clients = connected.lock().unwrap();
                     if let Some(c) = clients.get(&addr) {
-                        (c.account_id,
-                         c.active_player_id,
-                         c.cached_appearance_args.clone().unwrap_or_default(),
-                         c.cached_tint_args.clone().unwrap_or_default())
+                        (
+                            c.account_id,
+                            c.active_player_id,
+                            c.cached_appearance_args.clone().unwrap_or_default(),
+                            c.cached_tint_args.clone().unwrap_or_default(),
+                        )
                     } else {
                         (0, None, vec![], vec![])
                     }
@@ -242,23 +433,40 @@ pub(crate) async fn handle_cell_message(
                 }
             }
         }
-        CellToBaseMsg::StartMinigame { entity_id, player_id, game_name, difficulty, on_victory_chains } => {
+        CellToBaseMsg::StartMinigame {
+            entity_id,
+            player_id,
+            game_name,
+            difficulty,
+            on_victory_chains,
+        } => {
             tracing::info!(entity_id, player_id, %game_name, difficulty, "Starting minigame session");
             if let Some(registry) = minigame_registry {
                 let seed = rand::random::<u32>();
-                let ticket = registry.register(
-                    entity_id, player_id, game_name.clone(), difficulty,
-                    1, // tech_competency — TODO: read from player entity
-                    seed, 0, 0, 1, // abilities, intelligence, player_level
-                    on_victory_chains,
-                ).await;
+                let ticket = registry
+                    .register(
+                        entity_id,
+                        player_id,
+                        game_name.clone(),
+                        difficulty,
+                        1, // tech_competency — TODO: read from player entity
+                        seed,
+                        0,
+                        0,
+                        1, // abilities, intelligence, player_level
+                        on_victory_chains,
+                    )
+                    .await;
 
                 if let Some(ticket) = ticket {
                     // Build URL: http://unused/{ip}/{port}/{gameName}/{entityId}/{ticket}
                     let url = format!(
                         "http://unused/{}/{}/{}/{}/{}",
-                        minigame_external_host, minigame_external_port,
-                        game_name, entity_id, ticket
+                        minigame_external_host,
+                        minigame_external_port,
+                        game_name,
+                        entity_id,
+                        ticket
                     );
                     tracing::info!(entity_id, %url, "Sending onStartMinigame to client");
 
@@ -272,120 +480,283 @@ pub(crate) async fn handle_cell_message(
                     }
                     let method = crate::cell::dispatch::CLIENT_MG_ON_START_MINIGAME;
                     send_to_witness(
-                        socket, connected, entity_to_addr, entity_id,
+                        socket,
+                        connected,
+                        entity_to_addr,
+                        entity_id,
                         |key, seq, acks| {
                             build_entity_method_packet(key, seq, acks, entity_id, method, &args)
                         },
-                    ).await;
+                    )
+                    .await;
                 } else {
-                    tracing::warn!(entity_id, "Failed to register minigame session (duplicate?)");
+                    tracing::warn!(
+                        entity_id,
+                        "Failed to register minigame session (duplicate?)"
+                    );
                 }
             }
         }
-        CellToBaseMsg::MinigameResult { entity_id, result_code, on_victory_chains } => {
+        CellToBaseMsg::MinigameResult {
+            entity_id,
+            result_code,
+            on_victory_chains,
+        } => {
             tracing::info!(entity_id, result_code, "Minigame result received");
             // Send onEndMinigame to client
             let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
             send_to_witness(
-                socket, connected, entity_to_addr, entity_id,
-                |key, seq, acks| {
-                    build_entity_method_packet(key, seq, acks, entity_id, method, &[])
-                },
-            ).await;
+                socket,
+                connected,
+                entity_to_addr,
+                entity_id,
+                |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method, &[]),
+            )
+            .await;
             // Forward to CellApp for victory chain processing
             if let Some(cell_tx) = cell_tx {
-                let _ = cell_tx.send(BaseToCellMsg::MinigameResult {
-                    entity_id,
-                    result_code,
-                    on_victory_chains,
-                }).await;
+                let _ = cell_tx
+                    .send(BaseToCellMsg::MinigameResult {
+                        entity_id,
+                        result_code,
+                        on_victory_chains,
+                    })
+                    .await;
             }
         }
-        CellToBaseMsg::OpenVendorStore { entity_id, player_id, vendor_entity_id, vendor_template_id } => {
+        CellToBaseMsg::OpenVendorStore {
+            entity_id,
+            player_id,
+            vendor_entity_id,
+            vendor_template_id,
+        } => {
             handle_open_vendor_store(
-                entity_id, player_id, vendor_entity_id, vendor_template_id,
-                &db_pool, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                vendor_entity_id,
+                vendor_template_id,
+                &db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::PurchaseVendorItems { entity_id, player_id, vendor_entity_id, vendor_template_id, items } => {
+        CellToBaseMsg::PurchaseVendorItems {
+            entity_id,
+            player_id,
+            vendor_entity_id,
+            vendor_template_id,
+            items,
+        } => {
             handle_purchase_vendor_items(
-                entity_id, player_id, vendor_entity_id, vendor_template_id, items,
-                &db_pool, cell_tx, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                vendor_entity_id,
+                vendor_template_id,
+                items,
+                &db_pool,
+                cell_tx,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::SellVendorItems { entity_id, player_id, vendor_entity_id, vendor_template_id, items } => {
+        CellToBaseMsg::SellVendorItems {
+            entity_id,
+            player_id,
+            vendor_entity_id,
+            vendor_template_id,
+            items,
+        } => {
             handle_sell_vendor_items(
-                entity_id, player_id, vendor_entity_id, vendor_template_id, items,
-                &db_pool, cell_tx, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                vendor_entity_id,
+                vendor_template_id,
+                items,
+                &db_pool,
+                cell_tx,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::BuybackVendorItems { entity_id, player_id, vendor_entity_id, vendor_template_id, items } => {
+        CellToBaseMsg::BuybackVendorItems {
+            entity_id,
+            player_id,
+            vendor_entity_id,
+            vendor_template_id,
+            items,
+        } => {
             handle_buyback_vendor_items(
-                entity_id, player_id, vendor_entity_id, vendor_template_id, items,
-                &db_pool, cell_tx, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                vendor_entity_id,
+                vendor_template_id,
+                items,
+                &db_pool,
+                cell_tx,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::ListInventoryItems { entity_id, player_id } => {
+        CellToBaseMsg::ListInventoryItems {
+            entity_id,
+            player_id,
+        } => {
             if let Some(pool) = &db_pool {
-                send_full_inventory_update(entity_id, player_id, pool, socket, connected, entity_to_addr).await;
+                send_full_inventory_update(
+                    entity_id,
+                    player_id,
+                    pool,
+                    socket,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
             }
         }
-        CellToBaseMsg::MoveInventoryItem { entity_id, player_id, item_id, target_container_id, target_slot_id, quantity } => {
+        CellToBaseMsg::MoveInventoryItem {
+            entity_id,
+            player_id,
+            item_id,
+            target_container_id,
+            target_slot_id,
+            quantity,
+        } => {
             handle_move_inventory_item(
-                entity_id, player_id, item_id, target_container_id, target_slot_id, quantity,
-                &db_pool, cell_tx, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                item_id,
+                target_container_id,
+                target_slot_id,
+                quantity,
+                &db_pool,
+                cell_tx,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::RemoveInventoryItem { entity_id, player_id, item_id, quantity } => {
+        CellToBaseMsg::RemoveInventoryItem {
+            entity_id,
+            player_id,
+            item_id,
+            quantity,
+        } => {
             handle_remove_inventory_item(
-                entity_id, player_id, item_id, quantity,
-                &db_pool, cell_tx, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                item_id,
+                quantity,
+                &db_pool,
+                cell_tx,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::UseInventoryItem { entity_id, player_id, item_id, target_id } => {
-            handle_use_inventory_item(
-                entity_id, player_id, item_id, target_id,
-                &db_pool, cell_tx,
-            ).await;
+        CellToBaseMsg::UseInventoryItem {
+            entity_id,
+            player_id,
+            item_id,
+            target_id,
+        } => {
+            handle_use_inventory_item(entity_id, player_id, item_id, target_id, &db_pool, cell_tx)
+                .await;
         }
-        CellToBaseMsg::RemoveInventoryItemByType { entity_id, player_id, type_id, count } => {
+        CellToBaseMsg::RemoveInventoryItemByType {
+            entity_id,
+            player_id,
+            type_id,
+            count,
+        } => {
             handle_remove_inventory_item_by_type(
-                entity_id, player_id, type_id, count,
-                &db_pool, cell_tx, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                type_id,
+                count,
+                &db_pool,
+                cell_tx,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::RepairInventoryItem { entity_id, player_id, item_id, repair_ratio } => {
+        CellToBaseMsg::RepairInventoryItem {
+            entity_id,
+            player_id,
+            item_id,
+            repair_ratio,
+        } => {
             handle_repair_inventory_item(
-                entity_id, player_id, item_id, repair_ratio,
-                &db_pool, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                item_id,
+                repair_ratio,
+                &db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::RepairInventoryItems { entity_id, player_id, item_ids, vendor_template_id } => {
+        CellToBaseMsg::RepairInventoryItems {
+            entity_id,
+            player_id,
+            item_ids,
+            vendor_template_id,
+        } => {
             // Route through the wrapper so the `None` (free repair) path is
             // reachable. The wrapper dispatches to handle_paid_repair when a
             // template id is supplied and to the free-repair UPDATE otherwise.
             handle_repair_inventory_items(
-                entity_id, player_id, item_ids, vendor_template_id,
-                &db_pool, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                item_ids,
+                vendor_template_id,
+                &db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
-        CellToBaseMsg::RechargeInventoryItems { entity_id, player_id, item_ids, vendor_template_id } => {
+        CellToBaseMsg::RechargeInventoryItems {
+            entity_id,
+            player_id,
+            item_ids,
+            vendor_template_id,
+        } => {
             // Route through the wrapper so the `None` (free recharge) path is
             // reachable. The wrapper dispatches to handle_paid_recharge when a
             // template id is supplied and to the free-recharge UPDATE otherwise.
             handle_recharge_inventory_items(
-                entity_id, player_id, item_ids, vendor_template_id,
-                &db_pool, socket, connected, entity_to_addr,
-            ).await;
+                entity_id,
+                player_id,
+                item_ids,
+                vendor_template_id,
+                &db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
         CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id } => {
             if let Some(pool) = db_pool {
                 // The schema column is `bandolier_slot` (see sgw_player.sql);
                 // an earlier draft used `active_bandolier_slot` which never
                 // existed and would hard-fail at runtime.
-                match sqlx::query(
-                    "UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2"
-                )
+                match sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
                     .bind(slot_id)
                     .bind(player_id)
                     .execute(pool.as_ref())
@@ -401,7 +772,13 @@ pub(crate) async fn handle_cell_message(
                 }
             }
         }
-        CellToBaseMsg::BandolierAmmoUpdate { player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type } => {
+        CellToBaseMsg::BandolierAmmoUpdate {
+            player_id,
+            slot_id,
+            expected_item_id,
+            current_ammo,
+            cur_ammo_type,
+        } => {
             // `player_id` from the cell is the DB character_id (matches the
             // `ActiveSlotUpdate` convention right above).
             //
@@ -415,15 +792,26 @@ pub(crate) async fn handle_cell_message(
                 || expected_item_id <= 0
             {
                 tracing::warn!(
-                    player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type,
+                    player_id,
+                    slot_id,
+                    expected_item_id,
+                    current_ammo,
+                    cur_ammo_type,
                     "BandolierAmmoUpdate: dropping out-of-range payload"
                 );
                 return;
             }
             if let Some(pool) = db_pool {
                 if let Err(e) = update_bandolier_ammo(
-                    pool.as_ref(), player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type,
-                ).await {
+                    pool.as_ref(),
+                    player_id,
+                    slot_id,
+                    expected_item_id,
+                    current_ammo,
+                    cur_ammo_type,
+                )
+                .await
+                {
                     tracing::warn!(
                         player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type, error = %e,
                         "BandolierAmmoUpdate: DB write failed"
@@ -433,4 +821,3 @@ pub(crate) async fn handle_cell_message(
         }
     }
 }
-

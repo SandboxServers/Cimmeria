@@ -282,15 +282,16 @@ fn script_file_to_dto(sf: &xml_format::ScriptFile) -> ScriptFileDto {
 
 /// List all .script files under data/scripts/ with type/module info.
 #[tauri::command]
-pub async fn list_scripts(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<ScriptEntry>, String> {
+pub async fn list_scripts(state: tauri::State<'_, AppState>) -> Result<Vec<ScriptEntry>, String> {
     let scripts_dir = state.scripts_dir();
     tracing::debug!("list_scripts: scanning {}", scripts_dir.display());
     let mut entries = Vec::new();
 
     if !scripts_dir.exists() {
-        tracing::warn!("list_scripts: scripts_dir does not exist: {}", scripts_dir.display());
+        tracing::warn!(
+            "list_scripts: scripts_dir does not exist: {}",
+            scripts_dir.display()
+        );
         return Ok(entries);
     }
 
@@ -367,7 +368,11 @@ pub async fn load_script(
         tracing::error!("Failed to load script {}: {e}", full_path.display());
         format!("Failed to load script: {e}")
     })?;
-    tracing::debug!("load_script: loaded {} nodes, {} connections", sf.nodes.len(), sf.connections.len());
+    tracing::debug!(
+        "load_script: loaded {} nodes, {} connections",
+        sf.nodes.len(),
+        sf.connections.len()
+    );
     Ok(script_file_to_dto(&sf))
 }
 
@@ -395,7 +400,8 @@ pub async fn compile_script(
 ) -> Result<CompileResult, String> {
     let full_path = state.scripts_dir().join(&path);
     tracing::debug!("compile_script: {}", full_path.display());
-    let sf = xml_format::load_script(&full_path).map_err(|e| format!("Failed to load script: {e}"))?;
+    let sf =
+        xml_format::load_script(&full_path).map_err(|e| format!("Failed to load script: {e}"))?;
 
     let defs = state
         .script_definitions()
@@ -426,7 +432,10 @@ pub async fn load_node_templates(
     let defs = state
         .script_definitions()
         .map_err(|e| format!("Failed to load definitions: {e}"))?;
-    tracing::debug!("load_node_templates: returning {} templates", defs.nodes.len());
+    tracing::debug!(
+        "load_node_templates: returning {} templates",
+        defs.nodes.len()
+    );
     Ok(defs.nodes.iter().map(NodeTemplateDto::from).collect())
 }
 

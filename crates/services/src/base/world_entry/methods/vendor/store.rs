@@ -5,11 +5,17 @@ use std::sync::{Arc, Mutex};
 use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
-use crate::mercury::{build_entity_method_packet, method_idx};
 use super::super::super::super::helpers::send_to_witness;
 use super::super::super::super::ConnectedClientState;
-use super::serializers::{serialize_empty_store_open, serialize_store_open, serialize_store_update, StoreItem, StoreItemCost, StoreItemCostUpdate};
-use super::data::{load_store_buy_items, load_vendor_sell_prices, load_vendor_buyback_prices, load_vendor_repair_prices, load_vendor_recharge_prices};
+use super::data::{
+    load_store_buy_items, load_vendor_buyback_prices, load_vendor_recharge_prices,
+    load_vendor_repair_prices, load_vendor_sell_prices,
+};
+use super::serializers::{
+    serialize_empty_store_open, serialize_store_open, serialize_store_update, StoreItem,
+    StoreItemCost, StoreItemCostUpdate,
+};
+use crate::mercury::{build_entity_method_packet, method_idx};
 
 const INV_BUYBACK: i32 = 16;
 
@@ -97,7 +103,8 @@ pub async fn handle_open_vendor_store(
     let sell_prices = load_vendor_sell_prices(pool, player_id, template.sell_item_list).await;
     let buyback_prices = load_vendor_buyback_prices(pool, player_id).await;
     let repair_prices = load_vendor_repair_prices(pool, player_id, template.repair_item_list).await;
-    let recharge_prices = load_vendor_recharge_prices(pool, player_id, template.recharge_item_list).await;
+    let recharge_prices =
+        load_vendor_recharge_prices(pool, player_id, template.recharge_item_list).await;
 
     let args = serialize_store_open(
         vendor_entity_id,

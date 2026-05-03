@@ -180,10 +180,7 @@ async fn main() {
 /// Background task that persists [`LoginEvent`]s to the `login_audit` table.
 ///
 /// Tolerates DB unavailability — logs a warning and keeps running.
-async fn audit_writer_loop(
-    pool: sqlx::PgPool,
-    mut rx: broadcast::Receiver<LoginEvent>,
-) {
+async fn audit_writer_loop(pool: sqlx::PgPool, mut rx: broadcast::Receiver<LoginEvent>) {
     tracing::info!("Audit writer started");
     loop {
         match rx.recv().await {
@@ -228,11 +225,7 @@ fn archive_previous_logs() {
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map_or(false, |ext| ext == "log")
-        })
+        .filter(|e| e.path().extension().map_or(false, |ext| ext == "log"))
         .collect();
 
     if entries.is_empty() {
@@ -242,7 +235,10 @@ fn archive_previous_logs() {
     let ts = chrono_timestamp();
     let archive_dir = logs_dir.join("archive").join(&ts);
     if let Err(e) = fs::create_dir_all(&archive_dir) {
-        eprintln!("Failed to create archive directory {}: {e}", archive_dir.display());
+        eprintln!(
+            "Failed to create archive directory {}: {e}",
+            archive_dir.display()
+        );
         return;
     }
 
@@ -254,7 +250,11 @@ fn archive_previous_logs() {
         }
     }
 
-    eprintln!("Archived {} log file(s) to {}", entries.len(), archive_dir.display());
+    eprintln!(
+        "Archived {} log file(s) to {}",
+        entries.len(),
+        archive_dir.display()
+    );
 }
 
 /// Generate a filesystem-safe timestamp like `2026-03-03T14-30-22`.
@@ -362,8 +362,8 @@ fn init_logging(
     let mut layers: Vec<BoxLayer> = Vec::new();
 
     // ── Console (stdout, coloured, RUST_LOG or info) ─────────────────────
-    let console_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let console_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     layers.push(Box::new(fmt::layer().with_filter(console_filter)));
 
     // ── server.log (JSON, all modules, info) ─────────────────────────────
@@ -464,29 +464,24 @@ fn init_logging(
 
     // ── WebSocket broadcast (debug+, all modules) ─────────────────────
     layers.push(Box::new(
-        BroadcastLayer::new(log_tx, log_buffer)
-            .with_filter(EnvFilter::new(
-                "debug,tungstenite=info,tokio_tungstenite=info,hyper=info",
-            )),
+        BroadcastLayer::new(log_tx, log_buffer).with_filter(EnvFilter::new(
+            "debug,tungstenite=info,tokio_tungstenite=info,hyper=info",
+        )),
     ));
 
     // ── Cosmos DB (optional, filtered to useful events only) ─────────
     if let Some(layer) = cosmos_layer {
-        layers.push(Box::new(
-            layer.with_filter(EnvFilter::new(
-                "debug,\
+        layers.push(Box::new(layer.with_filter(EnvFilter::new(
+            "debug,\
                  cimmeria_services::base::connect_loop=info,\
                  cimmeria_mercury::encryption=info,\
                  cimmeria_services::base::tick_sync=info,\
                  tungstenite=off,tokio_tungstenite=off,hyper=off",
-            )),
-        ));
+        ))));
     }
 
     // Assemble the subscriber — one `.with()` call on the whole Vec.
-    tracing_subscriber::registry()
-        .with(layers)
-        .init();
+    tracing_subscriber::registry().with(layers).init();
 
     guards
 }

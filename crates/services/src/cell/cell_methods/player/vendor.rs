@@ -1,6 +1,6 @@
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 use super::constants::*;
 
@@ -49,7 +49,10 @@ fn read_i32_array(args: &[u8], offset: &mut usize) -> Option<Vec<(i32, i32)>> {
 fn read_trailing_template_id(args: &[u8], offset: usize) -> Option<i32> {
     if args.len() >= offset + 4 {
         Some(i32::from_le_bytes([
-            args[offset], args[offset + 1], args[offset + 2], args[offset + 3],
+            args[offset],
+            args[offset + 1],
+            args[offset + 2],
+            args[offset + 3],
         ]))
     } else {
         None
@@ -77,7 +80,11 @@ fn vendor_context(entity_id: u32, space_mgr: &SpaceManager) -> Option<VendorSess
     let server_template_id = space_mgr
         .get_entity(vendor_entity_id_u32)
         .and_then(|v| v.template_id);
-    Some(VendorSession { player_id, vendor_entity_id, server_template_id })
+    Some(VendorSession {
+        player_id,
+        vendor_entity_id,
+        server_template_id,
+    })
 }
 
 /// Validate that the client-supplied template id matches the vendor that was
@@ -144,7 +151,11 @@ pub async fn dispatch(
             let session = match vendor_context(entity_id, space_mgr) {
                 Some(s) => s,
                 None => {
-                    tracing::warn!(entity_id, op = op_name, "vendor op: no active vendor context (player_id or vendor_entity unset)");
+                    tracing::warn!(
+                        entity_id,
+                        op = op_name,
+                        "vendor op: no active vendor context (player_id or vendor_entity unset)"
+                    );
                     return true;
                 }
             };
@@ -153,7 +164,12 @@ pub async fn dispatch(
             let items = match read_i32_array(args, &mut offset) {
                 Some(items) => items,
                 None => {
-                    tracing::warn!(entity_id, op = op_name, args_len = args.len(), "vendor op: malformed item array in args");
+                    tracing::warn!(
+                        entity_id,
+                        op = op_name,
+                        args_len = args.len(),
+                        "vendor op: malformed item array in args"
+                    );
                     return true;
                 }
             };
@@ -165,44 +181,64 @@ pub async fn dispatch(
             // and in all cases where the client supplied one, it must match the
             // vendor that was actually opened so a client can't spoof it.
             let validated_template_id = match trailing_template_id {
-                Some(client_id) => match validate_template_id(entity_id, op_name, &session, client_id) {
-                    Some(server_id) => Some(server_id),
-                    None => return true,
-                },
+                Some(client_id) => {
+                    match validate_template_id(entity_id, op_name, &session, client_id) {
+                        Some(server_id) => Some(server_id),
+                        None => return true,
+                    }
+                }
                 None => None,
             };
 
             let msg = match method_index {
                 PURCHASE_ITEMS => match validated_template_id {
                     Some(vendor_template_id) => CellToBaseMsg::PurchaseVendorItems {
-                        entity_id, player_id: session.player_id,
+                        entity_id,
+                        player_id: session.player_id,
                         vendor_entity_id: session.vendor_entity_id,
-                        vendor_template_id, items,
+                        vendor_template_id,
+                        items,
                     },
                     None => {
-                        tracing::warn!(entity_id, op = op_name, "vendor op: missing vendor_template_id");
+                        tracing::warn!(
+                            entity_id,
+                            op = op_name,
+                            "vendor op: missing vendor_template_id"
+                        );
                         return true;
                     }
                 },
                 SELL_ITEMS => match validated_template_id {
                     Some(vendor_template_id) => CellToBaseMsg::SellVendorItems {
-                        entity_id, player_id: session.player_id,
+                        entity_id,
+                        player_id: session.player_id,
                         vendor_entity_id: session.vendor_entity_id,
-                        vendor_template_id, items,
+                        vendor_template_id,
+                        items,
                     },
                     None => {
-                        tracing::warn!(entity_id, op = op_name, "vendor op: missing vendor_template_id");
+                        tracing::warn!(
+                            entity_id,
+                            op = op_name,
+                            "vendor op: missing vendor_template_id"
+                        );
                         return true;
                     }
                 },
                 BUYBACK_ITEMS => match validated_template_id {
                     Some(vendor_template_id) => CellToBaseMsg::BuybackVendorItems {
-                        entity_id, player_id: session.player_id,
+                        entity_id,
+                        player_id: session.player_id,
                         vendor_entity_id: session.vendor_entity_id,
-                        vendor_template_id, items,
+                        vendor_template_id,
+                        items,
                     },
                     None => {
-                        tracing::warn!(entity_id, op = op_name, "vendor op: missing vendor_template_id");
+                        tracing::warn!(
+                            entity_id,
+                            op = op_name,
+                            "vendor op: missing vendor_template_id"
+                        );
                         return true;
                     }
                 },
@@ -222,7 +258,11 @@ pub async fn dispatch(
             };
 
             if let Err(e) = tx.send(msg).await {
-                tracing::warn!(entity_id, op = op_name, "vendor op: cell->base channel closed: {e}");
+                tracing::warn!(
+                    entity_id,
+                    op = op_name,
+                    "vendor op: cell->base channel closed: {e}"
+                );
             }
             true
         }
@@ -350,10 +390,12 @@ mod vendor_context_tests {
     #[test]
     fn returns_none_when_player_id_missing() {
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         // player.player_id deliberately left None.
         let vendor = mgr.allocate_npc_id();
-        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(p) = mgr.get_entity_mut(1) {
             p.vendor_entity = Some(vendor);
         }
@@ -363,7 +405,8 @@ mod vendor_context_tests {
     #[test]
     fn returns_none_when_vendor_entity_unset() {
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(p) = mgr.get_entity_mut(1) {
             p.player_id = Some(4242);
             // p.vendor_entity deliberately left None — no vendor opened.
@@ -374,9 +417,11 @@ mod vendor_context_tests {
     #[test]
     fn happy_path_returns_session_with_template_id() {
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         let vendor = mgr.allocate_npc_id();
-        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(v) = mgr.get_entity_mut(vendor) {
             v.template_id = Some(9001);
         }
@@ -395,9 +440,11 @@ mod vendor_context_tests {
         // validate_template_id at the caller treats that as a rejection
         // (so a client can't open a templateless vendor and submit ops).
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         let vendor = mgr.allocate_npc_id();
-        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.spawn_npc(vendor, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         // Deliberately not setting template_id on the vendor.
         if let Some(p) = mgr.get_entity_mut(1) {
             p.player_id = Some(4242);
@@ -413,7 +460,8 @@ mod vendor_context_tests {
         // returns Some with server_template_id: None — the caller's
         // validate_template_id arm logs and rejects the op.
         let mut mgr = make_space_manager();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
         if let Some(p) = mgr.get_entity_mut(1) {
             p.player_id = Some(4242);
             p.vendor_entity = Some(123456); // no entity at this id

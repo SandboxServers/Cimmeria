@@ -96,7 +96,10 @@ pub async fn load_vendor_purchase_lines(
         // PurchaseVendorItems but has no buy_item_list is either a
         // misconfiguration or an unexpected client request, neither of which
         // should be hidden behind debug-level filtering in production.
-        tracing::warn!(vendor_template_id, "PurchaseVendorItems: vendor has no buy list");
+        tracing::warn!(
+            vendor_template_id,
+            "PurchaseVendorItems: vendor has no buy list"
+        );
         return None;
     };
 
@@ -163,7 +166,10 @@ pub async fn load_vendor_purchase_lines(
     for (index, requested_quantity) in items {
         if *requested_quantity <= 0 || *requested_quantity > MAX_VENDOR_PURCHASE_QUANTITY {
             tracing::warn!(
-                vendor_template_id, buy_item_list, index, requested_quantity,
+                vendor_template_id,
+                buy_item_list,
+                index,
+                requested_quantity,
                 cap = MAX_VENDOR_PURCHASE_QUANTITY,
                 "PurchaseVendorItems: requested quantity out of range"
             );
@@ -184,16 +190,21 @@ pub async fn load_vendor_purchase_lines(
             Some(quantity) if quantity > 0 => quantity,
             Some(quantity) => {
                 tracing::warn!(
-                    vendor_template_id, index,
-                    row_quantity = row.quantity, requested_quantity, computed = quantity,
+                    vendor_template_id,
+                    index,
+                    row_quantity = row.quantity,
+                    requested_quantity,
+                    computed = quantity,
                     "PurchaseVendorItems: rejecting non-positive grant quantity"
                 );
                 return None;
             }
             None => {
                 tracing::warn!(
-                    vendor_template_id, index,
-                    row_quantity = row.quantity, requested_quantity,
+                    vendor_template_id,
+                    index,
+                    row_quantity = row.quantity,
+                    requested_quantity,
                     "PurchaseVendorItems: grant quantity overflow"
                 );
                 return None;
@@ -204,16 +215,21 @@ pub async fn load_vendor_purchase_lines(
             Some(cost) if cost >= 0 => cost,
             Some(cost) => {
                 tracing::warn!(
-                    vendor_template_id, index,
-                    naquadah = row.naquadah, requested_quantity, computed = cost,
+                    vendor_template_id,
+                    index,
+                    naquadah = row.naquadah,
+                    requested_quantity,
+                    computed = cost,
                     "PurchaseVendorItems: rejecting negative cash cost"
                 );
                 return None;
             }
             None => {
                 tracing::warn!(
-                    vendor_template_id, index,
-                    naquadah = row.naquadah, requested_quantity,
+                    vendor_template_id,
+                    index,
+                    naquadah = row.naquadah,
+                    requested_quantity,
                     "PurchaseVendorItems: cash cost overflow"
                 );
                 return None;
@@ -227,16 +243,23 @@ pub async fn load_vendor_purchase_lines(
                     Some(t) if t > 0 => t,
                     Some(t) => {
                         tracing::warn!(
-                            vendor_template_id, index, design_id,
-                            unit = quantity, requested_quantity, computed = t,
+                            vendor_template_id,
+                            index,
+                            design_id,
+                            unit = quantity,
+                            requested_quantity,
+                            computed = t,
                             "PurchaseVendorItems: rejecting non-positive item cost"
                         );
                         return None;
                     }
                     None => {
                         tracing::warn!(
-                            vendor_template_id, index, design_id,
-                            unit = quantity, requested_quantity,
+                            vendor_template_id,
+                            index,
+                            design_id,
+                            unit = quantity,
+                            requested_quantity,
                             "PurchaseVendorItems: item cost overflow"
                         );
                         return None;
@@ -317,7 +340,10 @@ pub async fn consume_design_quantity(
 }
 
 /// Normalize and deduplicate item quantity pairs.
-pub fn normalize_item_quantities(items: Vec<(i32, i32)>, allow_zero_item_id: bool) -> Vec<(i32, i32)> {
+pub fn normalize_item_quantities(
+    items: Vec<(i32, i32)>,
+    allow_zero_item_id: bool,
+) -> Vec<(i32, i32)> {
     let mut normalized: Vec<(i32, i32)> = Vec::new();
     for (item_id, quantity) in items {
         if quantity <= 0
@@ -352,7 +378,11 @@ mod normalize_item_quantities_tests {
     #[test]
     fn drops_non_positive_item_ids_when_zero_disallowed() {
         let out = normalize_item_quantities(vec![(0, 5), (-1, 5), (3, 5)], false);
-        assert_eq!(out, vec![(3, 5)], "id 0 and -1 must be dropped when allow_zero_item_id=false");
+        assert_eq!(
+            out,
+            vec![(3, 5)],
+            "id 0 and -1 must be dropped when allow_zero_item_id=false"
+        );
     }
 
     #[test]
@@ -383,9 +413,7 @@ mod normalize_item_quantities_tests {
         // saturating_add prevents a malicious client from wrapping the merged
         // quantity into a negative — without it, two i32::MAX entries would
         // sum to -2 and slip past downstream "quantity > 0" guards.
-        let out = normalize_item_quantities(
-            vec![(1, i32::MAX), (1, i32::MAX)], false,
-        );
+        let out = normalize_item_quantities(vec![(1, i32::MAX), (1, i32::MAX)], false);
         assert_eq!(out, vec![(1, i32::MAX)]);
     }
 

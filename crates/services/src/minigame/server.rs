@@ -65,19 +65,20 @@ async fn handle_connection(
     let mut buf_len = 0usize;
 
     // Phase 1: Version check
-    let api_version = match read_and_handle_version(&mut stream, &mut buf, &mut buf_len, external_port).await {
-        Some(v) => v,
-        None => return,
-    };
+    let api_version =
+        match read_and_handle_version(&mut stream, &mut buf, &mut buf_len, external_port).await {
+            Some(v) => v,
+            None => return,
+        };
 
     // Phase 2: Login
-    let (session, mut game) = match read_and_handle_login(
-        &mut stream, &mut buf, &mut buf_len,
-        api_version, &registry,
-    ).await {
-        Some(pair) => pair,
-        None => return,
-    };
+    let (session, mut game) =
+        match read_and_handle_login(&mut stream, &mut buf, &mut buf_len, api_version, &registry)
+            .await
+        {
+            Some(pair) => pair,
+            None => return,
+        };
 
     let entity_id = session.entity_id;
     let room_id = registry.allocate_room_id().await;
@@ -93,13 +94,17 @@ async fn handle_connection(
          <rm id='{room_id}' priv='0' temp='0' game='1' ucnt='1' maxu='1' scnt='0' maxs='100'>\
          <n><![CDATA[{game_name}-{room_id}]]></n></rm></body></msg>"
     );
-    if send_null_terminated(&mut stream, &rm_list).await.is_err() { return; }
+    if send_null_terminated(&mut stream, &rm_list).await.is_err() {
+        return;
+    }
 
     // loginSucceeded
     let login_ok = protocol::encode_extension_raw(
-        "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginSucceeded</var>"
+        "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginSucceeded</var>",
     );
-    if send_null_terminated(&mut stream, &login_ok).await.is_err() { return; }
+    if send_null_terminated(&mut stream, &login_ok).await.is_err() {
+        return;
+    }
 
     // joinOK with game params
     let join_ok = format!(
@@ -123,37 +128,51 @@ async fn handle_connection(
          <u i='999' m='0' s='0' p='1'><n><![CDATA[{user_id}]]></n><vars></vars></u>\
          </uLs>\
          </body></msg>",
-        session.abilities_mask, session.seed, session.difficulty,
-        session.tech_competency, session.player_level, session.intelligence,
+        session.abilities_mask,
+        session.seed,
+        session.difficulty,
+        session.tech_competency,
+        session.player_level,
+        session.intelligence,
     );
-    if send_null_terminated(&mut stream, &join_ok).await.is_err() { return; }
+    if send_null_terminated(&mut stream, &join_ok).await.is_err() {
+        return;
+    }
 
     // uCount
-    let u_count = format!(
-        "<msg t='sys'><body action='uCount' r='{room_id}' u='1' s='0'></body></msg>"
-    );
-    if send_null_terminated(&mut stream, &u_count).await.is_err() { return; }
+    let u_count =
+        format!("<msg t='sys'><body action='uCount' r='{room_id}' u='1' s='0'></body></msg>");
+    if send_null_terminated(&mut stream, &u_count).await.is_err() {
+        return;
+    }
 
     // Start the game — call started() on the instance
     let outputs = game.started();
     for output in &outputs {
         if let GameOutput::Send(vars) = output {
             let msg = protocol::encode_extension(vars);
-            if send_null_terminated(&mut stream, &msg).await.is_err() { return; }
+            if send_null_terminated(&mut stream, &msg).await.is_err() {
+                return;
+            }
         }
     }
 
     // onPlayerJoinGame
-    let join_game = protocol::encode_extension_raw(
-        &format!("<var n='_cmd' t='s'>onPlayerJoinGame</var><var n='PlayerId' t='s'>{user_id}</var>")
-    );
-    if send_null_terminated(&mut stream, &join_game).await.is_err() { return; }
+    let join_game = protocol::encode_extension_raw(&format!(
+        "<var n='_cmd' t='s'>onPlayerJoinGame</var><var n='PlayerId' t='s'>{user_id}</var>"
+    ));
+    if send_null_terminated(&mut stream, &join_game).await.is_err() {
+        return;
+    }
 
     // onGameBegin
-    let game_begin = protocol::encode_extension_raw(
-        "<var n='_cmd' t='s'>onGameBegin</var>"
-    );
-    if send_null_terminated(&mut stream, &game_begin).await.is_err() { return; }
+    let game_begin = protocol::encode_extension_raw("<var n='_cmd' t='s'>onGameBegin</var>");
+    if send_null_terminated(&mut stream, &game_begin)
+        .await
+        .is_err()
+    {
+        return;
+    }
 
     tracing::info!(entity_id, game = %game_name, room_id, "Minigame started");
 
@@ -269,17 +288,16 @@ async fn handle_connection(
     }
 
     // Cleanup: send close sequence
-    let leave = protocol::encode_extension_raw(
-        &format!("<var n='_cmd' t='s'>onPlayerLeaveGame</var><var n='PlayerId' t='s'>{user_id}</var>")
-    );
+    let leave = protocol::encode_extension_raw(&format!(
+        "<var n='_cmd' t='s'>onPlayerLeaveGame</var><var n='PlayerId' t='s'>{user_id}</var>"
+    ));
     let _ = send_null_terminated(&mut stream, &leave).await;
 
     let end = protocol::encode_extension_raw("<var n='_cmd' t='s'>onGameEnd</var>");
     let _ = send_null_terminated(&mut stream, &end).await;
 
-    let room_del = format!(
-        "<msg t='sys'><body action='roomDel'><rm id='{room_id}' /></body></msg>"
-    );
+    let room_del =
+        format!("<msg t='sys'><body action='roomDel'><rm id='{room_id}' /></body></msg>");
     let _ = send_null_terminated(&mut stream, &room_del).await;
 
     // Remove session
@@ -330,11 +348,15 @@ async fn read_and_handle_login(
     let parsed = protocol::parse_message(&msg)?;
 
     match parsed {
-        SfsMessage::Login { zone, nick, password } => {
+        SfsMessage::Login {
+            zone,
+            nick,
+            password,
+        } => {
             // Check API version
             if api_version != API_VERSION {
                 let fail = protocol::encode_extension_raw(
-                    "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>"
+                    "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>",
                 );
                 let _ = send_null_terminated(stream, &fail).await;
                 tracing::warn!(api_version, expected = API_VERSION, "Bad API version");
@@ -348,7 +370,7 @@ async fn read_and_handle_login(
             let game = create_game(&session);
             if game.is_none() {
                 let fail = protocol::encode_extension_raw(
-                    "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>"
+                    "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>",
                 );
                 let _ = send_null_terminated(stream, &fail).await;
                 tracing::warn!(entity_id, game = %zone, "Failed to create minigame");

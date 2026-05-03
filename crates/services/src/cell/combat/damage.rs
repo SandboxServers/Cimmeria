@@ -10,22 +10,17 @@
 //! Reference: `python/cell/AbilityManager.py:13-231` (DamageCalc class)
 
 use cimmeria_entity::abilities::{
-    ClientEffectResult,
-    DT_ENERGY, DT_HAZMAT, DT_PHYSICAL, DT_PSIONIC,
-    RC_CRITICAL, RC_DOUBLE_CRITICAL, RC_GLANCING, RC_HIT, RC_MISS,
-    SRC_MORTAL, SRC_NONE,
+    ClientEffectResult, DT_ENERGY, DT_HAZMAT, DT_PHYSICAL, DT_PSIONIC, RC_CRITICAL,
+    RC_DOUBLE_CRITICAL, RC_GLANCING, RC_HIT, RC_MISS, SRC_MORTAL, SRC_NONE,
 };
 use cimmeria_entity::stats::{
-    StatList,
-    COORDINATION, ENGAGEMENT, PERCEPTION, FORTITUDE, INTELLIGENCE,
-    ACCURACY, DEFENSE, QR_MOD, AWARENESS, DAMAGE, PENETRATION, MITIGATION,
-    HEALTH, FOCUS,
-    PHYSICAL_AF, ENERGY_AF, HAZMAT_AF, PSIONIC_AF,
-    PHYSICAL_DENSITY, ENERGY_DENSITY, HAZMAT_DENSITY, PSIONIC_DENSITY,
-    ABSORB_PHYSICAL, ABSORB_ENERGY, ABSORB_HAZMAT, ABSORB_PSIONIC, ABSORB_UNTYPED,
-    ABSORB_PHYSICAL_ITEM, ABSORB_ENERGY_ITEM, ABSORB_HAZMAT_ITEM, ABSORB_PSIONIC_ITEM, ABSORB_UNTYPED_ITEM,
-    ABSORB_PHYSICAL_ENERGY, ABSORB_ENERGY_ENERGY, ABSORB_HAZMAT_ENERGY, ABSORB_PSIONIC_ENERGY, ABSORB_UNTYPED_ENERGY,
-    HEALTH_RES, MENTAL_RES,
+    StatList, ABSORB_ENERGY, ABSORB_ENERGY_ENERGY, ABSORB_ENERGY_ITEM, ABSORB_HAZMAT,
+    ABSORB_HAZMAT_ENERGY, ABSORB_HAZMAT_ITEM, ABSORB_PHYSICAL, ABSORB_PHYSICAL_ENERGY,
+    ABSORB_PHYSICAL_ITEM, ABSORB_PSIONIC, ABSORB_PSIONIC_ENERGY, ABSORB_PSIONIC_ITEM,
+    ABSORB_UNTYPED, ABSORB_UNTYPED_ENERGY, ABSORB_UNTYPED_ITEM, ACCURACY, AWARENESS, COORDINATION,
+    DAMAGE, DEFENSE, ENERGY_AF, ENERGY_DENSITY, ENGAGEMENT, FOCUS, FORTITUDE, HAZMAT_AF,
+    HAZMAT_DENSITY, HEALTH, HEALTH_RES, INTELLIGENCE, MENTAL_RES, MITIGATION, PENETRATION,
+    PERCEPTION, PHYSICAL_AF, PHYSICAL_DENSITY, PSIONIC_AF, PSIONIC_DENSITY, QR_MOD,
 };
 
 // ── QR Configuration ─────────────────────────────────────────────────────────
@@ -292,9 +287,16 @@ mod tests {
     fn make_attacker() -> StatList {
         let mut stats = StatList::new();
         stats.apply_archetype(&ArchetypeStatValues {
-            coordination: 5, engagement: 4, fortitude: 3, morale: 4,
-            perception: 3, intelligence: 2, health: 760, focus: 1570,
-            health_per_level: 10, focus_per_level: 70,
+            coordination: 5,
+            engagement: 4,
+            fortitude: 3,
+            morale: 4,
+            perception: 3,
+            intelligence: 2,
+            health: 760,
+            focus: 1570,
+            health_per_level: 10,
+            focus_per_level: 70,
         });
         stats
     }
@@ -302,9 +304,16 @@ mod tests {
     fn make_defender() -> StatList {
         let mut stats = StatList::new();
         stats.apply_archetype(&ArchetypeStatValues {
-            coordination: 3, engagement: 3, fortitude: 3, morale: 3,
-            perception: 3, intelligence: 2, health: 500, focus: 500,
-            health_per_level: 10, focus_per_level: 70,
+            coordination: 3,
+            engagement: 3,
+            fortitude: 3,
+            morale: 3,
+            perception: 3,
+            intelligence: 2,
+            health: 500,
+            focus: 500,
+            health_per_level: 10,
+            focus_per_level: 70,
         });
         stats
     }
@@ -409,7 +418,10 @@ mod tests {
     fn mean_at_qr_zero_matches_beta_1_4_1_4() {
         // Beta(1.4, 1.4) is symmetric: mean α/(α+β) = 1.4/2.8 = 0.5.
         let mean = distribution_mean(0.0, 10_000);
-        assert!((mean - 0.5).abs() < 0.02, "mean at QR=0 should be ~0.5, got {mean}");
+        assert!(
+            (mean - 0.5).abs() < 0.02,
+            "mean at QR=0 should be ~0.5, got {mean}"
+        );
     }
 
     #[test]
@@ -420,7 +432,10 @@ mod tests {
         // in `calculate_damage` is what makes the damage scaling work out;
         // the threshold logic is the same on both sides of QR=0.
         let mean = distribution_mean(1.0, 10_000);
-        assert!((mean - 0.292).abs() < 0.03, "mean at QR=+1 should be ~0.29, got {mean}");
+        assert!(
+            (mean - 0.292).abs() < 0.03,
+            "mean at QR=+1 should be ~0.29, got {mean}"
+        );
     }
 
     #[test]
@@ -430,7 +445,10 @@ mod tests {
         // HIGHER qr_rand — but `(1+qr)` at calculate_damage time scales the
         // resulting damage down sharply (and to 0 once qr ≤ -1).
         let mean = distribution_mean(-1.0, 10_000);
-        assert!((mean - 0.708).abs() < 0.03, "mean at QR=-1 should be ~0.71, got {mean}");
+        assert!(
+            (mean - 0.708).abs() < 0.03,
+            "mean at QR=-1 should be ~0.71, got {mean}"
+        );
     }
 
     #[test]
@@ -449,7 +467,10 @@ mod tests {
         // of Beta(1.4, 1.4) extends past 0.8). Without this, a regression
         // to a degenerate distribution would silently zero out crits.
         let crit_rate = crit_or_better_fraction(0.0, 10_000);
-        assert!(crit_rate > 0.05, "crit rate at QR=0 should be >5%, got {crit_rate}");
+        assert!(
+            crit_rate > 0.05,
+            "crit rate at QR=0 should be >5%, got {crit_rate}"
+        );
     }
 
     #[test]
@@ -485,13 +506,25 @@ mod tests {
         let mut defender = make_defender();
         let initial_hp = defender.get(HEALTH).unwrap().cur;
 
-        let qr_result = QrResult { qr_rand: 0.5, result_code: RC_HIT, qr: 0.1 };
+        let qr_result = QrResult {
+            qr_rand: 0.5,
+            result_code: RC_HIT,
+            qr: 0.1,
+        };
         let (results, _total) = calculate_damage(
-            &qr_result, 100, DT_PHYSICAL, HEALTH, &attacker, &mut defender,
+            &qr_result,
+            100,
+            DT_PHYSICAL,
+            HEALTH,
+            &attacker,
+            &mut defender,
         );
 
         let final_hp = defender.get(HEALTH).unwrap().cur;
-        assert!(final_hp < initial_hp, "Health should decrease: {initial_hp} -> {final_hp}");
+        assert!(
+            final_hp < initial_hp,
+            "Health should decrease: {initial_hp} -> {final_hp}"
+        );
         assert!(!results.is_empty());
         assert!(results[0].delta < 0, "Delta should be negative (damage)");
     }
@@ -503,9 +536,18 @@ mod tests {
         let initial_hp = defender.get(HEALTH).unwrap().cur;
 
         // qr_rand = 0 → raw damage = 0
-        let qr_result = QrResult { qr_rand: 0.0, result_code: RC_MISS, qr: 0.0 };
+        let qr_result = QrResult {
+            qr_rand: 0.0,
+            result_code: RC_MISS,
+            qr: 0.0,
+        };
         let (results, total) = calculate_damage(
-            &qr_result, 100, DT_PHYSICAL, HEALTH, &attacker, &mut defender,
+            &qr_result,
+            100,
+            DT_PHYSICAL,
+            HEALTH,
+            &attacker,
+            &mut defender,
         );
 
         assert_eq!(total, 0);
@@ -520,9 +562,18 @@ mod tests {
         // Set defender to very low health
         defender.get_mut(HEALTH).unwrap().set_current(1);
 
-        let qr_result = QrResult { qr_rand: 0.8, result_code: RC_CRITICAL, qr: 0.5 };
+        let qr_result = QrResult {
+            qr_rand: 0.8,
+            result_code: RC_CRITICAL,
+            qr: 0.5,
+        };
         let (results, _) = calculate_damage(
-            &qr_result, 500, DT_PHYSICAL, HEALTH, &attacker, &mut defender,
+            &qr_result,
+            500,
+            DT_PHYSICAL,
+            HEALTH,
+            &attacker,
+            &mut defender,
         );
 
         assert_eq!(defender.get(HEALTH).unwrap().cur, 0);
@@ -535,10 +586,13 @@ mod tests {
         let mut defender = make_defender();
         let initial_focus = defender.get(FOCUS).unwrap().cur;
 
-        let qr_result = QrResult { qr_rand: 0.5, result_code: RC_HIT, qr: 0.0 };
-        let (results, _) = calculate_damage(
-            &qr_result, 50, DT_ENERGY, FOCUS, &attacker, &mut defender,
-        );
+        let qr_result = QrResult {
+            qr_rand: 0.5,
+            result_code: RC_HIT,
+            qr: 0.0,
+        };
+        let (results, _) =
+            calculate_damage(&qr_result, 50, DT_ENERGY, FOCUS, &attacker, &mut defender);
 
         let final_focus = defender.get(FOCUS).unwrap().cur;
         assert!(final_focus < initial_focus);
@@ -551,9 +605,18 @@ mod tests {
         let mut defender = make_defender();
         defender.get_mut(HEALTH).unwrap().set_current(10);
 
-        let qr_result = QrResult { qr_rand: 0.9, result_code: RC_CRITICAL, qr: 1.0 };
+        let qr_result = QrResult {
+            qr_rand: 0.9,
+            result_code: RC_CRITICAL,
+            qr: 1.0,
+        };
         let (results, _) = calculate_damage(
-            &qr_result, 9999, DT_PHYSICAL, HEALTH, &attacker, &mut defender,
+            &qr_result,
+            9999,
+            DT_PHYSICAL,
+            HEALTH,
+            &attacker,
+            &mut defender,
         );
 
         assert_eq!(defender.get(HEALTH).unwrap().cur, 0);

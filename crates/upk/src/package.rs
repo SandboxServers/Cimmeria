@@ -41,11 +41,8 @@ impl Package {
         // Parse tables from either decompressed buffer or original file
         let (names, imports, exports) = if let Some(ref data) = decompressed {
             let mut mem_reader = BinaryReader::new(Cursor::new(data.as_slice()));
-            let names = names::parse_name_table(
-                &mut mem_reader,
-                header.name_offset,
-                header.name_count,
-            )?;
+            let names =
+                names::parse_name_table(&mut mem_reader, header.name_offset, header.name_count)?;
             let imports = imports::parse_import_table(
                 &mut mem_reader,
                 header.import_offset,
@@ -61,11 +58,8 @@ impl Package {
             )?;
             (names, imports, exports)
         } else {
-            let names = names::parse_name_table(
-                &mut reader,
-                header.name_offset,
-                header.name_count,
-            )?;
+            let names =
+                names::parse_name_table(&mut reader, header.name_offset, header.name_count)?;
             let imports = imports::parse_import_table(
                 &mut reader,
                 header.import_offset,
@@ -256,11 +250,9 @@ fn decompress_chunk(
         pos += comp_sz;
 
         if compression_flags & COMPRESS_LZO != 0 {
-            let decompressed = lzokay_native::decompress(
-                &mut std::io::Cursor::new(compressed),
-                Some(uncomp_sz),
-            )
-            .map_err(|e| UpkError::LzoError(format!("{:?}", e)))?;
+            let decompressed =
+                lzokay_native::decompress(&mut std::io::Cursor::new(compressed), Some(uncomp_sz))
+                    .map_err(|e| UpkError::LzoError(format!("{:?}", e)))?;
             output[write_pos..write_pos + decompressed.len()].copy_from_slice(&decompressed);
             write_pos += decompressed.len();
         } else {

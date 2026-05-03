@@ -19,7 +19,13 @@ pub(super) async fn handle_base_message(
     spawn_records: &[spawner::SpawnRecord],
 ) {
     match msg {
-        BaseToCellMsg::CreateEntity { entity_id, world_name, position, rotation, reply_tx } => {
+        BaseToCellMsg::CreateEntity {
+            entity_id,
+            world_name,
+            position,
+            rotation,
+            reply_tx,
+        } => {
             tracing::debug!(entity_id, %world_name, ?position, "CreateEntity");
 
             // For instanced worlds, every CreateEntity gets a new space with its
@@ -32,23 +38,32 @@ pub(super) async fn handle_base_message(
                     if is_instanced {
                         // Notify BaseApp about the new instanced space so it can
                         // route entity messages to it
-                        let _ = tx.send(CellToBaseMsg::SpaceData {
-                            space_id,
-                            world_name: world_name.clone(),
-                        }).await;
+                        let _ = tx
+                            .send(CellToBaseMsg::SpaceData {
+                                space_id,
+                                world_name: world_name.clone(),
+                            })
+                            .await;
 
-                        let npc_count = spawner::spawn_instance_npcs_from_records(spawn_records, &world_name, space_id, space_mgr);
+                        let npc_count = spawner::spawn_instance_npcs_from_records(
+                            spawn_records,
+                            &world_name,
+                            space_id,
+                            space_mgr,
+                        );
                         if npc_count > 0 {
                             tracing::info!(world = %world_name, space_id, npc_count, "Spawned instance NPCs");
                         }
                     }
 
                     let _ = reply_tx.send(space_id);
-                    let _ = tx.send(CellToBaseMsg::EntityCreated {
-                        entity_id,
-                        space_id,
-                        position,
-                    }).await;
+                    let _ = tx
+                        .send(CellToBaseMsg::EntityCreated {
+                            entity_id,
+                            space_id,
+                            position,
+                        })
+                        .await;
                 }
                 Err(e) => {
                     tracing::error!(entity_id, %world_name, "Failed to create entity: {e}");
@@ -65,7 +80,8 @@ pub(super) async fn handle_base_message(
                 if let Some(player_id) = entity.player_id {
                     super::super::cell_methods::inventory::flush_dirty_bandolier_ammo(
                         entity, player_id, tx,
-                    ).await;
+                    )
+                    .await;
                 }
             }
             space_mgr.destroy_entity(entity_id);
@@ -87,26 +103,60 @@ pub(super) async fn handle_base_message(
                 if let Some(player_id) = entity.player_id {
                     super::super::cell_methods::inventory::flush_dirty_bandolier_ammo(
                         entity, player_id, tx,
-                    ).await;
+                    )
+                    .await;
                 }
             }
             space_mgr.disconnect_entity(entity_id, tx).await;
         }
 
-        BaseToCellMsg::EntityMove { entity_id, position, direction, velocity } => {
+        BaseToCellMsg::EntityMove {
+            entity_id,
+            position,
+            direction,
+            velocity,
+        } => {
             tracing::trace!(entity_id, ?position, "EntityMove");
             space_mgr.update_entity_position(entity_id, position, direction, velocity);
         }
 
-        BaseToCellMsg::CellMethodCall { entity_id, method_index, args } => {
-            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine).await;
+        BaseToCellMsg::CellMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine)
+                .await;
         }
 
-        BaseToCellMsg::ChatMessage { entity_id, speaker_name, speaker_flags, channel, text } => {
-            chat::handle_chat_message(entity_id, &speaker_name, speaker_flags, channel, &text, tx, space_mgr).await;
+        BaseToCellMsg::ChatMessage {
+            entity_id,
+            speaker_name,
+            speaker_flags,
+            channel,
+            text,
+        } => {
+            chat::handle_chat_message(
+                entity_id,
+                &speaker_name,
+                speaker_flags,
+                channel,
+                &text,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
 
-        BaseToCellMsg::InitPlayerState { entity_id, player_id, world_name, saved_missions, abilities, active_bandolier_slot, bandolier_items } => {
+        BaseToCellMsg::InitPlayerState {
+            entity_id,
+            player_id,
+            world_name,
+            saved_missions,
+            abilities,
+            active_bandolier_slot,
+            bandolier_items,
+        } => {
             tracing::debug!(entity_id, player_id, %world_name, saved_count = saved_missions.len(), ability_count = abilities.len(), "InitPlayerState");
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.player_id = Some(player_id);
@@ -115,7 +165,11 @@ pub(super) async fn handle_base_message(
                 for &ability_id in &abilities {
                     entity.abilities.add_ability(ability_id);
                 }
-                tracing::debug!(entity_id, count = abilities.len(), "Registered player abilities on cell entity");
+                tracing::debug!(
+                    entity_id,
+                    count = abilities.len(),
+                    "Registered player abilities on cell entity"
+                );
 
                 // Apply bandolier state to entity (Bug #2: restore persisted bandolier slot and items)
                 entity.active_bandolier_slot = active_bandolier_slot;
@@ -133,7 +187,8 @@ pub(super) async fn handle_base_message(
                 // bounds — without this seed, every later refill/decrement
                 // would silently pin to 0. Clearing dirty avoids a duplicate
                 // stat send (the initial mapLoaded uses serialize_all()).
-                let slot_seed: Vec<(i32, i32, i32)> = entity.bandolier_items
+                let slot_seed: Vec<(i32, i32, i32)> = entity
+                    .bandolier_items
                     .iter()
                     .map(|(&slot, item)| (slot, item.current_ammo, item.clip_size))
                     .collect();
@@ -149,8 +204,12 @@ pub(super) async fn handle_base_message(
                 // chain conditions correctly see existing mission state and
                 // don't re-trigger already-active or completed missions.
                 for saved in &saved_missions {
-                    use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED};
-                    let objectives: Vec<MissionObjective> = saved.active_objective_ids.iter()
+                    use cimmeria_entity::missions::{
+                        MissionInstance, MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED,
+                    };
+                    let objectives: Vec<MissionObjective> = saved
+                        .active_objective_ids
+                        .iter()
                         .map(|&oid| {
                             let status = if saved.completed_objective_ids.contains(&oid) {
                                 STATUS_COMPLETED
@@ -181,8 +240,10 @@ pub(super) async fn handle_base_message(
 
                     entity.missions.add_mission(mission);
                     tracing::debug!(
-                        entity_id, mission_id = saved.mission_id,
-                        status = saved.status, "Restored saved mission"
+                        entity_id,
+                        mission_id = saved.mission_id,
+                        status = saved.status,
+                        "Restored saved mission"
                     );
                 }
                 entity.saved_missions_loaded = true;
@@ -194,7 +255,8 @@ pub(super) async fn handle_base_message(
             // now register all regions so the client can fire triggerRegion events.
             {
                 use super::super::space_manager::REGION_FLAG_CLIENT_HINTED;
-                let world_regions: Vec<_> = space_mgr.regions_for_world(&world_name)
+                let world_regions: Vec<_> = space_mgr
+                    .regions_for_world(&world_name)
                     .iter()
                     .filter(|r| r.flags & REGION_FLAG_CLIENT_HINTED != 0)
                     .map(|r| (r.runtime_id, r.height, r.radius, r.flags, r.points.clone()))
@@ -213,11 +275,13 @@ pub(super) async fn handle_base_message(
                         args.extend_from_slice(&p[1].to_le_bytes()); // y
                         args.extend_from_slice(&p[2].to_le_bytes()); // z
                     }
-                    let _ = tx.send(CellToBaseMsg::EntityMethodCall {
-                        entity_id,
-                        method_index: 125, // addClientHintedGenericRegion
-                        args,
-                    }).await;
+                    let _ = tx
+                        .send(CellToBaseMsg::EntityMethodCall {
+                            entity_id,
+                            method_index: 125, // addClientHintedGenericRegion
+                            args,
+                        })
+                        .await;
                 }
                 if region_count > 0 {
                     tracing::info!(
@@ -227,29 +291,44 @@ pub(super) async fn handle_base_message(
                 }
             }
 
-            content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
+            content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr)
+                .await;
         }
 
         BaseToCellMsg::ReloadContentEngine => {}
 
-        BaseToCellMsg::MinigameResult { entity_id, result_code, on_victory_chains } => {
+        BaseToCellMsg::MinigameResult {
+            entity_id,
+            result_code,
+            on_victory_chains,
+        } => {
             tracing::info!(entity_id, result_code, chains = ?on_victory_chains, "Minigame result");
             if result_code == 1 {
                 // Victory — fire on_victory_chains through the content engine
-                let player_id = space_mgr.get_entity(entity_id)
+                let player_id = space_mgr
+                    .get_entity(entity_id)
                     .and_then(|e| e.player_id)
                     .unwrap_or(0);
                 for chain_id in &on_victory_chains {
                     content::fire_chain_by_id(
                         *chain_id as i64,
-                        entity_id, player_id,
-                        engine, tx, space_mgr,
-                    ).await;
+                        entity_id,
+                        player_id,
+                        engine,
+                        tx,
+                        space_mgr,
+                    )
+                    .await;
                 }
             }
         }
 
-        BaseToCellMsg::UpdateBandolierItem { entity_id, slot_id, item, make_active } => {
+        BaseToCellMsg::UpdateBandolierItem {
+            entity_id,
+            slot_id,
+            item,
+            make_active,
+        } => {
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.bandolier_items.insert(slot_id, item);
                 if make_active {
@@ -258,7 +337,11 @@ pub(super) async fn handle_base_message(
             }
         }
 
-        BaseToCellMsg::SyncBandolierItems { entity_id, active_bandolier_slot, bandolier_items } => {
+        BaseToCellMsg::SyncBandolierItems {
+            entity_id,
+            active_bandolier_slot,
+            bandolier_items,
+        } => {
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.active_bandolier_slot = active_bandolier_slot;
                 entity.bandolier_items = bandolier_items.into_iter().collect();
@@ -272,7 +355,9 @@ pub(super) async fn handle_base_message(
                 // (0, 0, 0) so an empty slot's bar clears.
                 let new_states: Vec<(i32, i32, i32)> = (0..5)
                     .map(|slot_id| {
-                        let (cur, max) = entity.bandolier_items.get(&slot_id)
+                        let (cur, max) = entity
+                            .bandolier_items
+                            .get(&slot_id)
                             .map_or((0, 0), |item| (item.current_ammo, item.clip_size));
                         (slot_id, cur, max)
                     })
@@ -290,26 +375,59 @@ pub(super) async fn handle_base_message(
                 if !payload.is_empty() {
                     super::super::abilities::send_entity_method(
                         entity_id, 20, payload, tx, space_mgr,
-                    ).await;
+                    )
+                    .await;
                 }
             }
         }
 
         // Bandolier state is re-synced via SyncBandolierItems; these handlers are
         // logging-only — base owns the inventory mutation, cell only learns about it.
-        BaseToCellMsg::InventoryItemMoveApplied { entity_id, item_id, source_container_id, target_container_id, swapped_item_id } => {
+        BaseToCellMsg::InventoryItemMoveApplied {
+            entity_id,
+            item_id,
+            source_container_id,
+            target_container_id,
+            swapped_item_id,
+        } => {
             tracing::debug!(entity_id, item_id, source = source_container_id, target = target_container_id, swapped_item_id = ?swapped_item_id, "Item moved in inventory");
         }
 
-        BaseToCellMsg::InventoryItemRemoved { entity_id, item_id, source_container_id } => {
-            tracing::debug!(entity_id, item_id, source = source_container_id, "Item removed from inventory");
+        BaseToCellMsg::InventoryItemRemoved {
+            entity_id,
+            item_id,
+            source_container_id,
+        } => {
+            tracing::debug!(
+                entity_id,
+                item_id,
+                source = source_container_id,
+                "Item removed from inventory"
+            );
         }
 
-        BaseToCellMsg::InventoryItemGranted { entity_id, item_id, container_id, slot_id, quantity } => {
-            tracing::debug!(entity_id, item_id, container_id, slot_id, quantity, "Item granted to player");
+        BaseToCellMsg::InventoryItemGranted {
+            entity_id,
+            item_id,
+            container_id,
+            slot_id,
+            quantity,
+        } => {
+            tracing::debug!(
+                entity_id,
+                item_id,
+                container_id,
+                slot_id,
+                quantity,
+                "Item granted to player"
+            );
         }
 
-        BaseToCellMsg::ItemUsed { entity_id, type_id, target_id } => {
+        BaseToCellMsg::ItemUsed {
+            entity_id,
+            type_id,
+            target_id,
+        } => {
             // Base committed the consumption transaction; fire `OnItemUse` so
             // any chain conditioned on `item_use::<type_id>` can run. Mission
             // progression that gates on this only advances after the vial is
@@ -319,13 +437,20 @@ pub(super) async fn handle_base_message(
                 Some(pid) => pid,
                 None => {
                     tracing::warn!(
-                        entity_id, type_id,
+                        entity_id,
+                        type_id,
                         "ItemUsed: entity has no player_id — content event dropped"
                     );
                     return;
                 }
             };
-            tracing::debug!(entity_id, player_id, type_id, target_id, "ItemUsed: firing OnItemUse");
+            tracing::debug!(
+                entity_id,
+                player_id,
+                type_id,
+                target_id,
+                "ItemUsed: firing OnItemUse"
+            );
             content::fire_item_use(entity_id, player_id, type_id, engine, tx, space_mgr).await;
         }
     }

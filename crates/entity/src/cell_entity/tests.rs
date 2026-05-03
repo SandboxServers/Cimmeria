@@ -129,7 +129,9 @@ fn threat_list_operations() {
     assert_eq!(entity.threat_list[&10], 75.0);
 
     // Top threat target
-    let top = entity.threat_list.iter()
+    let top = entity
+        .threat_list
+        .iter()
         .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
         .map(|(&id, _)| id);
     assert_eq!(top, Some(20));
@@ -172,11 +174,19 @@ fn active_ammo_helpers_with_no_item_return_zero() {
 fn active_ammo_helpers_read_from_active_slot() {
     let mut entity = make_entity();
     entity.active_bandolier_slot = 1;
-    entity.bandolier_items.insert(0, make_bandolier_item(100, 30));
-    entity.bandolier_items.insert(1, BandolierItem {
-        item_id: 200, clip_size: 12, default_ammo_type: 2,
-        current_ammo: 8, cur_ammo_type: 2,
-    });
+    entity
+        .bandolier_items
+        .insert(0, make_bandolier_item(100, 30));
+    entity.bandolier_items.insert(
+        1,
+        BandolierItem {
+            item_id: 200,
+            clip_size: 12,
+            default_ammo_type: 2,
+            current_ammo: 8,
+            cur_ammo_type: 2,
+        },
+    );
 
     assert_eq!(entity.active_ammo(), 8);
     assert_eq!(entity.active_clip_size(), 12);
@@ -197,7 +207,9 @@ fn seed_ammo_stat(entity: &mut CellEntity, slot_id: i32, clip: i32) {
 #[test]
 fn set_slot_ammo_clamps_and_marks_dirty() {
     let mut entity = make_entity();
-    entity.bandolier_items.insert(0, make_bandolier_item(100, 30));
+    entity
+        .bandolier_items
+        .insert(0, make_bandolier_item(100, 30));
     seed_ammo_stat(&mut entity, 0, 30);
 
     // Clamp above clip_size.
@@ -225,10 +237,16 @@ fn set_slot_ammo_unequipped_returns_none() {
 #[test]
 fn refill_active_slot_fills_to_clip_size() {
     let mut entity = make_entity();
-    entity.bandolier_items.insert(0, BandolierItem {
-        item_id: 100, clip_size: 30, default_ammo_type: 1,
-        current_ammo: 5, cur_ammo_type: 1,
-    });
+    entity.bandolier_items.insert(
+        0,
+        BandolierItem {
+            item_id: 100,
+            clip_size: 30,
+            default_ammo_type: 1,
+            current_ammo: 5,
+            cur_ammo_type: 1,
+        },
+    );
     seed_ammo_stat(&mut entity, 0, 30);
 
     let result = entity.refill_active_slot();

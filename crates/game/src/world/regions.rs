@@ -27,7 +27,13 @@ pub struct Region {
 
 impl Region {
     /// Create a new spherical region.
-    pub fn sphere(region_id: i32, name: String, space_id: i32, center: Vector3, radius: f32) -> Self {
+    pub fn sphere(
+        region_id: i32,
+        name: String,
+        space_id: i32,
+        center: Vector3,
+        radius: f32,
+    ) -> Self {
         Self {
             region_id,
             name,

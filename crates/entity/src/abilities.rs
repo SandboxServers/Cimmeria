@@ -96,12 +96,18 @@ pub struct EffectDef {
 impl EffectDef {
     /// Get a param as i32, returning 0 if missing or unparseable.
     pub fn param_i32(&self, name: &str) -> i32 {
-        self.params.get(name).and_then(|v| v.parse().ok()).unwrap_or(0)
+        self.params
+            .get(name)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
     }
 
     /// Get a param as f32, returning 0.0 if missing or unparseable.
     pub fn param_f32(&self, name: &str) -> f32 {
-        self.params.get(name).and_then(|v| v.parse().ok()).unwrap_or(0.0)
+        self.params
+            .get(name)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0)
     }
 }
 
@@ -246,10 +252,13 @@ impl AbilityManager {
 
     /// Start a cooldown for an ability.
     pub fn start_ability_cooldown(&mut self, ability_id: i32, duration: Duration) {
-        self.ability_cooldowns.insert(ability_id, CooldownEntry {
-            expires_at: Instant::now() + duration,
-            total_duration: duration,
-        });
+        self.ability_cooldowns.insert(
+            ability_id,
+            CooldownEntry {
+                expires_at: Instant::now() + duration,
+                total_duration: duration,
+            },
+        );
     }
 
     /// Start cooldowns for an ability and its moniker groups.
@@ -265,10 +274,13 @@ impl AbilityManager {
             duration
         };
         for &moniker_id in &ability.moniker_ids {
-            self.moniker_cooldowns.insert(moniker_id, CooldownEntry {
-                expires_at: Instant::now() + moniker_duration,
-                total_duration: moniker_duration,
-            });
+            self.moniker_cooldowns.insert(
+                moniker_id,
+                CooldownEntry {
+                    expires_at: Instant::now() + moniker_duration,
+                    total_duration: moniker_duration,
+                },
+            );
         }
     }
 
@@ -481,8 +493,14 @@ mod tests {
         assert!(mgr.can_use_ability(&ability).is_ok());
 
         // Unknown ability
-        let unknown = AbilityDef { ability_id: 999, ..test_ability() };
-        assert_eq!(mgr.can_use_ability(&unknown).unwrap_err(), "entity does not have ability");
+        let unknown = AbilityDef {
+            ability_id: 999,
+            ..test_ability()
+        };
+        assert_eq!(
+            mgr.can_use_ability(&unknown).unwrap_err(),
+            "entity does not have ability"
+        );
     }
 
     #[test]
@@ -490,7 +508,10 @@ mod tests {
         let mut mgr = AbilityManager::with_abilities(&[597]);
         let ability = test_ability();
         mgr.start_ability_cooldown(597, Duration::from_secs(5));
-        assert_eq!(mgr.can_use_ability(&ability).unwrap_err(), "ability on cooldown");
+        assert_eq!(
+            mgr.can_use_ability(&ability).unwrap_err(),
+            "ability on cooldown"
+        );
     }
 
     #[test]
@@ -518,7 +539,10 @@ mod tests {
         assert_eq!(data.len(), 12);
         for i in 0..3 {
             let count = u32::from_le_bytes([
-                data[i * 4], data[i * 4 + 1], data[i * 4 + 2], data[i * 4 + 3],
+                data[i * 4],
+                data[i * 4 + 1],
+                data[i * 4 + 2],
+                data[i * 4 + 3],
             ]);
             assert_eq!(count, 0);
         }
@@ -527,11 +551,7 @@ mod tests {
     #[test]
     fn ability_tree_with_data() {
         let tree = AbilityTreeData {
-            trees: [
-                vec![592, 1005, 642],
-                vec![597, 646, 641],
-                vec![],
-            ],
+            trees: [vec![592, 1005, 642], vec![597, 646, 641], vec![]],
         };
         let data = tree.serialize();
         // tree0: count(4) + 3*4=12 = 16
@@ -567,14 +587,12 @@ mod tests {
 
     #[test]
     fn serialize_effect_results_with_stats() {
-        let results = vec![
-            ClientEffectResult {
-                stat_id: 10, // health
-                delta: -50,
-                damage_code: DT_PHYSICAL,
-                stat_result_code: SRC_NONE,
-            },
-        ];
+        let results = vec![ClientEffectResult {
+            stat_id: 10, // health
+            delta: -50,
+            damage_code: DT_PHYSICAL,
+            stat_result_code: SRC_NONE,
+        }];
         let data = serialize_effect_results(100, 597, 101, 200, RC_CRITICAL, &results);
         assert_eq!(data.len(), 21 + 7); // 21 header + 7 per result
         assert_eq!(data[16], RC_CRITICAL);
@@ -606,10 +624,13 @@ mod tests {
     fn cleanup_expired_removes_old() {
         let mut mgr = AbilityManager::with_abilities(&[597]);
         // Add a cooldown that already expired
-        mgr.ability_cooldowns.insert(597, CooldownEntry {
-            expires_at: Instant::now() - Duration::from_secs(1),
-            total_duration: Duration::from_secs(5),
-        });
+        mgr.ability_cooldowns.insert(
+            597,
+            CooldownEntry {
+                expires_at: Instant::now() - Duration::from_secs(1),
+                total_duration: Duration::from_secs(5),
+            },
+        );
         assert_eq!(mgr.ability_cooldowns.len(), 1);
         mgr.cleanup_expired();
         assert_eq!(mgr.ability_cooldowns.len(), 0);

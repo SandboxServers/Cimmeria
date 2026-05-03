@@ -134,10 +134,16 @@ pub struct SaveCounterInput {
 pub fn routes() -> Router<Arc<Orchestrator>> {
     Router::new()
         .route("/content/{id}", get(load_content).delete(delete_content))
-        .route("/content/{scope_id}/{mission_id}", get(load_content_with_mission).delete(delete_content_with_mission))
+        .route(
+            "/content/{scope_id}/{mission_id}",
+            get(load_content_with_mission).delete(delete_content_with_mission),
+        )
         .route("/content", post(save_content))
         .route("/draft/{scope_id}", get(load_draft))
-        .route("/draft/{scope_id}/{mission_id}", get(load_draft_with_mission))
+        .route(
+            "/draft/{scope_id}/{mission_id}",
+            get(load_draft_with_mission),
+        )
         .route("/draft", post(save_draft))
 }
 
@@ -366,10 +372,18 @@ pub async fn save_content(
     for chain in &payload.chains {
         // Delete existing chain and children if updating
         if let Some(existing_id) = chain.chain_id {
-            for table in &["content_counters", "content_actions", "content_conditions", "content_triggers", "content_chains"] {
+            for table in &[
+                "content_counters",
+                "content_actions",
+                "content_conditions",
+                "content_triggers",
+                "content_chains",
+            ] {
                 let q = format!("DELETE FROM {table} WHERE chain_id = $1");
                 if let Err(e) = sqlx::query(&q).bind(existing_id).execute(&mut *tx).await {
-                    return Json(serde_json::json!({ "error": format!("Delete from {table} failed: {e}") }));
+                    return Json(
+                        serde_json::json!({ "error": format!("Delete from {table} failed: {e}") }),
+                    );
                 }
             }
         }
@@ -404,7 +418,9 @@ pub async fn save_content(
 
         let chain_id = match chain_id_result {
             Ok(id) => id,
-            Err(e) => return Json(serde_json::json!({ "error": format!("Insert chain failed: {e}") })),
+            Err(e) => {
+                return Json(serde_json::json!({ "error": format!("Insert chain failed: {e}") }))
+            }
         };
 
         for t in &chain.triggers {
@@ -448,8 +464,13 @@ pub async fn save_content(
                 "INSERT INTO content_counters (chain_id, counter_name, target_value, reset_on) \
                  VALUES ($1, $2, $3, $4)",
             )
-            .bind(chain_id).bind(&ct.counter_name).bind(ct.target_value).bind(&ct.reset_on)
-            .execute(&mut *tx).await {
+            .bind(chain_id)
+            .bind(&ct.counter_name)
+            .bind(ct.target_value)
+            .bind(&ct.reset_on)
+            .execute(&mut *tx)
+            .await
+            {
                 return Json(serde_json::json!({ "error": format!("Insert counter failed: {e}") }));
             }
         }
@@ -486,10 +507,18 @@ pub async fn delete_content(
         return Json(serde_json::json!({ "error": "Database unavailable" }));
     };
 
-    for table in &["content_counters", "content_actions", "content_conditions", "content_triggers", "content_chains"] {
+    for table in &[
+        "content_counters",
+        "content_actions",
+        "content_conditions",
+        "content_triggers",
+        "content_chains",
+    ] {
         let q = format!("DELETE FROM {table} WHERE chain_id = $1");
         if let Err(e) = sqlx::query(&q).bind(id).execute(&pool).await {
-            return Json(serde_json::json!({ "error": format!("Delete from {table} failed: {e}") }));
+            return Json(
+                serde_json::json!({ "error": format!("Delete from {table} failed: {e}") }),
+            );
         }
     }
 

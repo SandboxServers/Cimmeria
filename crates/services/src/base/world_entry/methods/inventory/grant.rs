@@ -6,13 +6,13 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use crate::base::outbox::{self, CellOutboxPayload};
-use crate::base::{ConnectedClientState, helpers, world_entry_appearance};
-use crate::cell::messages::BaseToCellMsg;
-use crate::mercury::{build_entity_method_packet, method_idx};
-use super::core::send_full_inventory_update;
 use super::super::player_load::core::query_player_load_data;
 use super::super::vendor::serializers::reserve_free_inventory_slots;
+use super::core::send_full_inventory_update;
+use crate::base::outbox::{self, CellOutboxPayload};
+use crate::base::{helpers, world_entry_appearance, ConnectedClientState};
+use crate::cell::messages::BaseToCellMsg;
+use crate::mercury::{build_entity_method_packet, method_idx};
 
 /// Normalize item ID array: remove dupes, sort, filter invalid IDs.
 pub fn normalize_item_ids(mut item_ids: Vec<i32>) -> Vec<i32> {
@@ -40,7 +40,11 @@ pub async fn item_allows_container(pool: &Arc<PgPool>, type_id: i32, container_i
     let container_sets: Option<Vec<i32>> = match result {
         Ok(row) => row.flatten(),
         Err(e) => {
-            tracing::error!(type_id, container_id, "item_allows_container query failed: {e}");
+            tracing::error!(
+                type_id,
+                container_id,
+                "item_allows_container query failed: {e}"
+            );
             return false;
         }
     };
@@ -84,26 +88,42 @@ pub async fn handle_grant_item(
 
     // Reserve a free slot via the same hole-filling helper used by vendor purchase.
     // (reserve_free_inventory_slots takes a per-(player, container) advisory lock.)
-    let next_slot: i32 = match reserve_free_inventory_slots(&mut db_tx, player_id, container_id, 1).await {
-        Ok(Some(slots)) => match slots.into_iter().next() {
-            Some(s) => s,
-            None => {
+    let next_slot: i32 =
+        match reserve_free_inventory_slots(&mut db_tx, player_id, container_id, 1).await {
+            Ok(Some(slots)) => match slots.into_iter().next() {
+                Some(s) => s,
+                None => {
+                    let _ = db_tx.rollback().await;
+                    tracing::warn!(
+                        player_id,
+                        item_id,
+                        container_id,
+                        "GrantItem: reserve returned empty"
+                    );
+                    return;
+                }
+            },
+            Ok(None) => {
                 let _ = db_tx.rollback().await;
-                tracing::warn!(player_id, item_id, container_id, "GrantItem: reserve returned empty");
+                tracing::warn!(
+                    player_id,
+                    item_id,
+                    container_id,
+                    "GrantItem: container full"
+                );
                 return;
             }
-        },
-        Ok(None) => {
-            let _ = db_tx.rollback().await;
-            tracing::warn!(player_id, item_id, container_id, "GrantItem: container full");
-            return;
-        }
-        Err(e) => {
-            let _ = db_tx.rollback().await;
-            tracing::error!(player_id, item_id, container_id, "GrantItem: slot reserve failed: {e}");
-            return;
-        }
-    };
+            Err(e) => {
+                let _ = db_tx.rollback().await;
+                tracing::error!(
+                    player_id,
+                    item_id,
+                    container_id,
+                    "GrantItem: slot reserve failed: {e}"
+                );
+                return;
+            }
+        };
 
     // Default charges to the item's full charge capacity (consumables/abilities ammo)
     // rather than always inserting `charges = 0`. A DB error here aborts the grant
@@ -239,7 +259,11 @@ pub async fn handle_grant_item(
             // The player retries the grant trigger, which is idempotent at
             // the chain level.
             let _ = db_tx.rollback().await;
-            tracing::error!(player_id, item_id, "GrantItem: outbox enqueue failed, aborting: {e}");
+            tracing::error!(
+                player_id,
+                item_id,
+                "GrantItem: outbox enqueue failed, aborting: {e}"
+            );
             return;
         }
     };
@@ -359,7 +383,9 @@ pub async fn handle_grant_item(
                         .await
                     {
                         tracing::warn!(
-                            entity_id, player_id, item_id,
+                            entity_id,
+                            player_id,
+                            item_id,
                             "GrantItem: cell channel closed sending UpdateBandolierItem: {e}"
                         );
                     }
@@ -379,8 +405,15 @@ pub async fn handle_grant_item(
                         tracing::warn!(item_id, "GrantItem: no resources.items row for granted bandolier item; falling back to full bandolier resync");
                     }
                     super::super::vendor::helpers::sync_bandolier_after_inventory_change(
-                        entity_id, player_id, db_pool, cell_tx, socket, connected, entity_to_addr,
-                    ).await;
+                        entity_id,
+                        player_id,
+                        db_pool,
+                        cell_tx,
+                        socket,
+                        connected,
+                        entity_to_addr,
+                    )
+                    .await;
                 }
             }
         }
@@ -402,7 +435,10 @@ pub async fn handle_grant_item(
 
     if visual.is_some() {
         tracing::info!(
-            entity_id, player_id, item_id, container_id,
+            entity_id,
+            player_id,
+            item_id,
+            container_id,
             "Equipped item has visual — resending BeingAppearance"
         );
 
@@ -510,13 +546,16 @@ mod handle_grant_item_tests {
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32, entity_id: u32) {
         let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
             .bind(entity_id as i32)
-            .execute(pool).await;
+            .execute(pool)
+            .await;
         let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
             .bind(player_id)
-            .execute(pool).await;
+            .execute(pool)
+            .await;
         let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
             .bind(account_id)
-            .execute(pool).await;
+            .execute(pool)
+            .await;
     }
 
     async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32) {
@@ -524,8 +563,11 @@ mod handle_grant_item_tests {
             "INSERT INTO account (account_id, account_name, password) \
              VALUES ($1, $2, '')",
         )
-        .bind(account_id).bind(format!("grant-item-{account_id}"))
-        .execute(pool).await.expect("insert account");
+        .bind(account_id)
+        .bind(format!("grant-item-{account_id}"))
+        .execute(pool)
+        .await
+        .expect("insert account");
 
         sqlx::query(
             "INSERT INTO sgw_player (\
@@ -535,8 +577,12 @@ mod handle_grant_item_tests {
              ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
                        0.0, 0.0, 0.0, 0, 0)",
         )
-        .bind(account_id).bind(player_id).bind(format!("test-{player_id}"))
-        .execute(pool).await.expect("insert player");
+        .bind(account_id)
+        .bind(player_id)
+        .bind(format!("test-{player_id}"))
+        .execute(pool)
+        .await
+        .expect("insert player");
     }
 
     async fn pick_main_bag_type_id(pool: &PgPool) -> i32 {
@@ -544,10 +590,15 @@ mod handle_grant_item_tests {
             "SELECT item_id FROM resources.items \
              WHERE container_sets IS NULL OR 1 = ANY(container_sets) \
              ORDER BY item_id LIMIT 1",
-        ).fetch_one(pool).await.expect("pick item_id")
+        )
+        .fetch_one(pool)
+        .await
+        .expect("pick item_id")
     }
 
-    fn make_state(entity_id: u32) -> (
+    fn make_state(
+        entity_id: u32,
+    ) -> (
         Arc<UdpSocket>,
         Arc<Mutex<HashMap<u32, SocketAddr>>>,
         Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -582,9 +633,9 @@ mod handle_grant_item_tests {
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_grant_item(
-            entity_id, player_id, type_id, 1, 3,
-            &db_pool, &None, &socket, &conn, &e2a,
-        ).await;
+            entity_id, player_id, type_id, 1, 3, &db_pool, &None, &socket, &conn, &e2a,
+        )
+        .await;
 
         // Assert "exactly one row" structurally rather than via fetch_optional,
         // which would silently pick whichever row matched first and could
@@ -592,13 +643,21 @@ mod handle_grant_item_tests {
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sgw_inventory \
              WHERE character_id = $1 AND container_id = 1",
-        ).bind(player_id).fetch_one(&pool).await.unwrap();
+        )
+        .bind(player_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(count, 1, "grant must INSERT exactly one row");
 
         let row: (i32, i32, i32) = sqlx::query_as(
             "SELECT type_id, slot_id, stack_size FROM sgw_inventory \
              WHERE character_id = $1 AND container_id = 1",
-        ).bind(player_id).fetch_one(&pool).await.unwrap();
+        )
+        .bind(player_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(
             row,
             (type_id, 0, 3),
@@ -654,9 +713,9 @@ mod handle_grant_item_tests {
                 // attempt at roughly the same moment.
                 barrier.wait().await;
                 handle_grant_item(
-                    entity_id, player_id, type_id, 1, 1,
-                    &db_pool, &None, &socket, &conn, &e2a,
-                ).await;
+                    entity_id, player_id, type_id, 1, 1, &db_pool, &None, &socket, &conn, &e2a,
+                )
+                .await;
             }));
         }
         for h in handles {
@@ -667,17 +726,23 @@ mod handle_grant_item_tests {
             "SELECT slot_id FROM sgw_inventory \
              WHERE character_id = $1 AND container_id = 1 \
              ORDER BY slot_id",
-        ).bind(player_id).fetch_all(&pool).await.unwrap();
+        )
+        .bind(player_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
 
         assert_eq!(
-            slots.len(), N,
+            slots.len(),
+            N,
             "all {N} concurrent grants must INSERT (got {} rows). A missing \
              row means the unique-slot index rejected one — exactly the \
              regression the advisory lock prevents.",
             slots.len(),
         );
         assert_eq!(
-            slots, (0..N as i32).collect::<Vec<_>>(),
+            slots,
+            (0..N as i32).collect::<Vec<_>>(),
             "concurrent grants must pick distinct, sequential slots 0..{N}",
         );
 

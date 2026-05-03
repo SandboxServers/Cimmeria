@@ -98,8 +98,7 @@ pub fn deserialize_static_mesh(
     names: &[cimmeria_upk::NameEntry],
 ) -> Result<StaticMesh> {
     // 1. Parse tagged properties (start at offset 4, after NetIndex)
-    let (_props, bin_offset) =
-        cimmeria_upk::parse_tagged_properties_with_end(data, 4, names);
+    let (_props, bin_offset) = cimmeria_upk::parse_tagged_properties_with_end(data, 4, names);
 
     let mut pos = bin_offset;
 
@@ -374,7 +373,9 @@ fn parse_vertices(data: &[u8], count: usize, stride: usize) -> Result<Vec<Vertex
         if base + stride > data.len() {
             return Err(ObjectError::InvalidData(format!(
                 "Vertex {} at offset {} exceeds data length {}",
-                i, base, data.len()
+                i,
+                base,
+                data.len()
             )));
         }
 

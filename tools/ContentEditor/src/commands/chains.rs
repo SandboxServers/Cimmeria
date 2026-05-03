@@ -114,9 +114,7 @@ pub struct SaveCounterInput {
 }
 
 #[tauri::command]
-pub async fn list_spaces(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<SpaceEntry>, String> {
+pub async fn list_spaces(state: tauri::State<'_, AppState>) -> Result<Vec<SpaceEntry>, String> {
     tracing::debug!("list_spaces called");
     let pool = state.pool()?;
 
@@ -425,25 +423,30 @@ pub async fn save_chains(
 }
 
 #[tauri::command]
-pub async fn delete_chain(
-    state: tauri::State<'_, AppState>,
-    chain_id: i32,
-) -> Result<(), String> {
+pub async fn delete_chain(state: tauri::State<'_, AppState>, chain_id: i32) -> Result<(), String> {
     tracing::debug!("delete_chain called, chain_id={chain_id}");
     let pool = state.pool()?;
 
     // Manual cascade: children first, then chain
     sqlx::query("DELETE FROM content_counters WHERE chain_id = $1")
-        .bind(chain_id).execute(pool).await
+        .bind(chain_id)
+        .execute(pool)
+        .await
         .map_err(|e| format!("Failed to delete counters: {e}"))?;
     sqlx::query("DELETE FROM content_actions WHERE chain_id = $1")
-        .bind(chain_id).execute(pool).await
+        .bind(chain_id)
+        .execute(pool)
+        .await
         .map_err(|e| format!("Failed to delete actions: {e}"))?;
     sqlx::query("DELETE FROM content_conditions WHERE chain_id = $1")
-        .bind(chain_id).execute(pool).await
+        .bind(chain_id)
+        .execute(pool)
+        .await
         .map_err(|e| format!("Failed to delete conditions: {e}"))?;
     sqlx::query("DELETE FROM content_triggers WHERE chain_id = $1")
-        .bind(chain_id).execute(pool).await
+        .bind(chain_id)
+        .execute(pool)
+        .await
         .map_err(|e| format!("Failed to delete triggers: {e}"))?;
     sqlx::query("DELETE FROM content_chains WHERE chain_id = $1")
         .bind(chain_id)

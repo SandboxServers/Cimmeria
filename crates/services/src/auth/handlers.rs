@@ -7,18 +7,18 @@ use std::time::Instant;
 
 use axum::{
     extract::{ConnectInfo, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
-use quick_xml::{Reader, events::Event};
+use quick_xml::{events::Event, Reader};
 use rand::Rng;
 use sqlx::PgPool;
 
 use crate::audit::emit_login_event;
 
 use super::{
-    HandlerState, PendingLogin, SessionRecord, LoginReq,
-    SESSION_TTL, PROTOCOL_DIGEST, LOGIN_NS, SELECT_NS, XML_DECL,
+    HandlerState, LoginReq, PendingLogin, SessionRecord, LOGIN_NS, PROTOCOL_DIGEST, SELECT_NS,
+    SESSION_TTL, XML_DECL,
 };
 
 // ── Axum handlers ────────────────────────────────────────────────────────────
@@ -46,14 +46,32 @@ pub(super) async fn handle_user_auth(
     macro_rules! audit {
         ($outcome:expr) => {
             if let (Some(tx), Some(buf)) = (&state.login_tx, &state.login_buffer) {
-                emit_login_event(tx, buf, &req.account_name, None, &client_ip,
-                    "credential_check", $outcome, None, None);
+                emit_login_event(
+                    tx,
+                    buf,
+                    &req.account_name,
+                    None,
+                    &client_ip,
+                    "credential_check",
+                    $outcome,
+                    None,
+                    None,
+                );
             }
         };
         ($outcome:expr, id=$id:expr) => {
             if let (Some(tx), Some(buf)) = (&state.login_tx, &state.login_buffer) {
-                emit_login_event(tx, buf, &req.account_name, Some($id), &client_ip,
-                    "credential_check", $outcome, None, None);
+                emit_login_event(
+                    tx,
+                    buf,
+                    &req.account_name,
+                    Some($id),
+                    &client_ip,
+                    "credential_check",
+                    $outcome,
+                    None,
+                    None,
+                );
             }
         };
     }
@@ -66,13 +84,14 @@ pub(super) async fn handle_user_auth(
     }
     let name_ok = req.account_name.len() >= 3
         && req.account_name.len() <= 20
-        && req.account_name.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-');
+        && req
+            .account_name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-');
     if !name_ok {
         return login_error(1, "The specified account name is invalid.");
     }
-    if !state.developer_mode
-        && req.protocol_digest.to_uppercase() != PROTOCOL_DIGEST
-    {
+    if !state.developer_mode && req.protocol_digest.to_uppercase() != PROTOCOL_DIGEST {
         tracing::warn!(got = %req.protocol_digest, expected = PROTOCOL_DIGEST, "Protocol digest mismatch");
         audit!("protocol_mismatch");
         return login_error(
@@ -113,7 +132,7 @@ pub(super) async fn handle_user_auth(
     };
 
     if state.shards.is_empty() {
-        audit!("no_shards", id=account_id);
+        audit!("no_shards", id = account_id);
         return login_error(7, "No shards are available to the authentication server.");
     }
 
@@ -133,7 +152,7 @@ pub(super) async fn handle_user_auth(
     }
 
     tracing::info!(user = %req.account_name, account_id, access_level, ip = %client_ip, "Phase 1 success");
-    audit!("success", id=account_id);
+    audit!("success", id = account_id);
 
     let xml = login_success_xml(account_id, &state.shards);
     (
@@ -165,9 +184,7 @@ pub(super) async fn handle_server_selection(
     };
 
     // Consume session (remove from map) — each SID is single-use for Phase 2.
-    let session = {
-        state.sessions.lock().unwrap().remove(&sid)
-    };
+    let session = { state.sessions.lock().unwrap().remove(&sid) };
     let session = match session {
         Some(s) if s.created.elapsed() < SESSION_TTL => s,
         Some(_) => {
@@ -227,8 +244,15 @@ pub(super) async fn handle_server_selection(
 
     if let (Some(tx), Some(buf)) = (&state.login_tx, &state.login_buffer) {
         emit_login_event(
-            tx, buf, &session.account_name, Some(session.account_id),
-            &client_ip, "shard_selection", "success", Some(&shard.name), None,
+            tx,
+            buf,
+            &session.account_name,
+            Some(session.account_id),
+            &client_ip,
+            "shard_selection",
+            "success",
+            Some(&shard.name),
+            None,
         );
     }
 
@@ -251,8 +275,7 @@ fn parse_login_request(body: &str) -> Result<LoginReq, String> {
                 if e.local_name().as_ref() == b"SGWLoginRequest" {
                     let mut req = LoginReq::default();
                     for attr in e.attributes().flatten() {
-                        let val =
-                            String::from_utf8_lossy(attr.value.as_ref()).into_owned();
+                        let val = String::from_utf8_lossy(attr.value.as_ref()).into_owned();
                         match attr.key.as_ref() {
                             b"SKU" => req.sku = val,
                             b"AccountName" => req.account_name = val,
@@ -279,9 +302,7 @@ fn parse_server_selection(body: &str) -> Result<String, String> {
                 if e.local_name().as_ref() == b"SGWSelectServerRequest" {
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"ServerSelection" {
-                            return Ok(
-                                String::from_utf8_lossy(attr.value.as_ref()).into_owned()
-                            );
+                            return Ok(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
                         }
                     }
                 }
@@ -312,7 +333,12 @@ fn login_error(_code: u32, msg: &str) -> Response {
          </ns2:SGWLoginResponse>",
         ns = LOGIN_NS,
     );
-    (StatusCode::OK, [(header::CONTENT_TYPE, "text/xml".to_string())], xml).into_response()
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/xml".to_string())],
+        xml,
+    )
+        .into_response()
 }
 
 fn login_success_xml(account_id: u32, shards: &[super::ShardInfo]) -> String {
@@ -347,7 +373,12 @@ fn select_error(_code: u32, msg: &str) -> Response {
          </ns3:SGWServerLocationResponse>",
         ns = SELECT_NS,
     );
-    (StatusCode::OK, [(header::CONTENT_TYPE, "text/xml".to_string())], xml).into_response()
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/xml".to_string())],
+        xml,
+    )
+        .into_response()
 }
 
 fn server_location_xml(shard: &super::ShardInfo, session_key: &str, ticket: &str) -> String {

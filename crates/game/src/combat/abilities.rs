@@ -14,7 +14,14 @@ pub struct AbilityInstance {
 
 impl AbilityInstance {
     /// Create a new ability instance with no cooldown active.
-    pub fn new(ability_id: i32, name: String, cooldown_secs: f32, energy_cost: i32, base_damage: i32, range: f32) -> Self {
+    pub fn new(
+        ability_id: i32,
+        name: String,
+        cooldown_secs: f32,
+        energy_cost: i32,
+        base_damage: i32,
+        range: f32,
+    ) -> Self {
         Self {
             ability_id,
             name,

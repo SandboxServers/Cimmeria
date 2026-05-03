@@ -91,9 +91,7 @@ pub async fn load_mesh(
 
 /// Return a list of all unique StaticMesh names referenced by loaded actors.
 #[tauri::command]
-pub async fn list_mesh_refs(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<String>, String> {
+pub async fn list_mesh_refs(state: tauri::State<'_, AppState>) -> Result<Vec<String>, String> {
     let guard = state.loaded_zone.lock().unwrap();
     let zone = guard.as_ref().ok_or("No zone loaded")?;
 
@@ -176,10 +174,7 @@ fn load_mesh_via_index(index: &PackageIndex, mesh_name: &str) -> Option<Result<M
 }
 
 /// Open a package file and deserialize a specific export as a StaticMesh.
-fn load_mesh_from_location(
-    file_path: &Path,
-    export_index: usize,
-) -> Result<MeshData, String> {
+fn load_mesh_from_location(file_path: &Path, export_index: usize) -> Result<MeshData, String> {
     let pkg = Package::open(file_path)
         .map_err(|e| format!("Open package {}: {e}", file_path.display()))?;
 
@@ -192,8 +187,8 @@ fn load_mesh_from_location(
         .read_export_data(export)
         .map_err(|e| format!("Read export: {e}"))?;
 
-    let mesh = deserialize_static_mesh(&data, &pkg.names)
-        .map_err(|e| format!("Deserialize: {e}"))?;
+    let mesh =
+        deserialize_static_mesh(&data, &pkg.names).map_err(|e| format!("Deserialize: {e}"))?;
 
     convert_mesh_to_data(&mesh)
 }
@@ -234,7 +229,10 @@ fn convert_mesh_to_data(
 }
 
 /// Brute-force search for a StaticMesh across all .upk files.
-fn find_and_load_mesh_brute_force(packages_dir: &Path, mesh_name: &str) -> Result<MeshData, String> {
+fn find_and_load_mesh_brute_force(
+    packages_dir: &Path,
+    mesh_name: &str,
+) -> Result<MeshData, String> {
     let walker = walk_upk_files(packages_dir);
 
     for upk_path in walker {
@@ -263,7 +261,10 @@ fn find_and_load_mesh_brute_force(packages_dir: &Path, mesh_name: &str) -> Resul
         }
     }
 
-    Err(format!("StaticMesh '{}' not found in any package", mesh_name))
+    Err(format!(
+        "StaticMesh '{}' not found in any package",
+        mesh_name
+    ))
 }
 
 fn walk_upk_files(dir: &Path) -> Vec<std::path::PathBuf> {
@@ -335,17 +336,15 @@ pub async fn get_mesh_materials(
     let export = pkg
         .exports
         .iter()
-        .find(|e| {
-            pkg.export_class_name(e) == "StaticMesh" && e.object_name == mesh_name
-        })
+        .find(|e| pkg.export_class_name(e) == "StaticMesh" && e.object_name == mesh_name)
         .ok_or_else(|| format!("StaticMesh '{}' not found in package exports", mesh_name))?;
 
     let data = pkg
         .read_export_data(export)
         .map_err(|e| format!("Read export: {e}"))?;
 
-    let mesh = deserialize_static_mesh(&data, &pkg.names)
-        .map_err(|e| format!("Deserialize: {e}"))?;
+    let mesh =
+        deserialize_static_mesh(&data, &pkg.names).map_err(|e| format!("Deserialize: {e}"))?;
 
     if mesh.lod_models.is_empty() {
         return Ok(Vec::new());
@@ -424,11 +423,17 @@ fn find_texture_for_material(
 
         // Score: prefer shorter names (closer match) and diffuse textures
         let mut score = 1;
-        if obj_lower.ends_with("_d") || obj_lower.ends_with("_diff") || obj_lower.ends_with("_diffuse") {
+        if obj_lower.ends_with("_d")
+            || obj_lower.ends_with("_diff")
+            || obj_lower.ends_with("_diffuse")
+        {
             score += 10;
         }
         // Penalize normal maps, spec maps, etc.
-        if obj_lower.ends_with("_n") || obj_lower.ends_with("_norm") || obj_lower.ends_with("_normal") {
+        if obj_lower.ends_with("_n")
+            || obj_lower.ends_with("_norm")
+            || obj_lower.ends_with("_normal")
+        {
             continue;
         }
         if obj_lower.ends_with("_s") || obj_lower.ends_with("_spec") {

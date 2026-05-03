@@ -27,18 +27,19 @@ impl SpaceManager {
         let pos = Vector3::new(position[0], position[1], position[2]);
         let dir = Vector3::new(direction[0], direction[1], direction[2]);
 
-        let mut cell_entity = CellEntity::new(
-            EntityId(entity_id as i32),
-            SpaceId(space_id as i32),
-            pos,
-        );
+        let mut cell_entity =
+            CellEntity::new(EntityId(entity_id as i32), SpaceId(space_id as i32), pos);
         cell_entity.direction = dir;
         cell_entity.class_id = 0x04; // SGWMob
         cell_entity.is_player = false;
         cell_entity.spawn_position = Some(pos);
-        cell_entity.abilities.add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
+        cell_entity
+            .abilities
+            .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
 
-        let space = self.spaces.get_mut(&space_id)
+        let space = self
+            .spaces
+            .get_mut(&space_id)
             .ok_or_else(|| format!("Space {space_id} disappeared"))?;
 
         space.space.add_entity(EntityId(entity_id as i32), &pos);
@@ -100,11 +101,7 @@ impl SpaceManager {
         // heading is yaw (rotation.y), x and z rotation are 0
         let dir = Vector3::new(0.0, record.heading, 0.0);
 
-        let mut e = CellEntity::new(
-            EntityId(entity_id as i32),
-            SpaceId(space_id as i32),
-            pos,
-        );
+        let mut e = CellEntity::new(EntityId(entity_id as i32), SpaceId(space_id as i32), pos);
         e.direction = dir;
         e.class_id = super::super::spawner::class_id_for_class(&record.class);
         e.is_player = false;
@@ -131,9 +128,10 @@ impl SpaceManager {
         e.loot_table_id = record.loot_table_id;
 
         // Give NPCs a default combat ability and stats so they can fight back
-        e.abilities.add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
+        e.abilities
+            .add_ability(super::super::combat::NPC_DEFAULT_ABILITY);
         // Initialize NPC health based on level (simple scaling)
-        use cimmeria_entity::stats::{HEALTH, FOCUS};
+        use cimmeria_entity::stats::{FOCUS, HEALTH};
         let hp = 200 + (e.level as i32 * 50);
         if let Some(stat) = e.stats.get_mut(HEALTH) {
             stat.max = hp;
@@ -144,7 +142,9 @@ impl SpaceManager {
             stat.set_current(200);
         }
 
-        let space = self.spaces.get_mut(&space_id)
+        let space = self
+            .spaces
+            .get_mut(&space_id)
             .ok_or_else(|| format!("Space {space_id} disappeared"))?;
 
         space.space.add_entity(EntityId(entity_id as i32), &pos);

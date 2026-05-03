@@ -1,6 +1,6 @@
-use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use tokio::sync::mpsc;
 
 use super::constants::*;
 
@@ -17,7 +17,13 @@ pub async fn dispatch(
                 let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let ability_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let target_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
-                tracing::info!(entity_id, pet_entity_id, ability_id, target_id, "UNIMPLEMENTED: petInvokeAbility");
+                tracing::info!(
+                    entity_id,
+                    pet_entity_id,
+                    ability_id,
+                    target_id,
+                    "UNIMPLEMENTED: petInvokeAbility"
+                );
             }
             true
         }
@@ -27,7 +33,13 @@ pub async fn dispatch(
                 let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let ability_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let toggle = args[8] as i8;
-                tracing::info!(entity_id, pet_entity_id, ability_id, toggle, "UNIMPLEMENTED: petAbilityToggle");
+                tracing::info!(
+                    entity_id,
+                    pet_entity_id,
+                    ability_id,
+                    toggle,
+                    "UNIMPLEMENTED: petAbilityToggle"
+                );
             }
             true
         }
@@ -36,7 +48,12 @@ pub async fn dispatch(
             if args.len() >= 5 {
                 let pet_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let stance = args[4] as i8;
-                tracing::info!(entity_id, pet_entity_id, stance, "UNIMPLEMENTED: petChangeStance");
+                tracing::info!(
+                    entity_id,
+                    pet_entity_id,
+                    stance,
+                    "UNIMPLEMENTED: petChangeStance"
+                );
             }
             true
         }
@@ -49,7 +66,11 @@ pub async fn dispatch(
         SPEND_APPLIED_SCIENCE_POINTS => {
             if args.len() >= 4 {
                 let discipline_seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, discipline_seq_id, "UNIMPLEMENTED: spendAppliedSciencePoints");
+                tracing::info!(
+                    entity_id,
+                    discipline_seq_id,
+                    "UNIMPLEMENTED: spendAppliedSciencePoints"
+                );
             }
             true
         }
@@ -57,7 +78,11 @@ pub async fn dispatch(
         CLIENT_CHALLENGE_RESPONSE => {
             if args.len() >= 4 {
                 let challenge = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, challenge, "UNIMPLEMENTED: onClientChallengeResponse");
+                tracing::info!(
+                    entity_id,
+                    challenge,
+                    "UNIMPLEMENTED: onClientChallengeResponse"
+                );
             }
             true
         }
@@ -86,7 +111,11 @@ pub async fn dispatch(
         TRADE_REQUEST_CANCEL => {
             if args.len() >= 4 {
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, target_entity_id, "UNIMPLEMENTED: tradeRequestCancel");
+                tracing::info!(
+                    entity_id,
+                    target_entity_id,
+                    "UNIMPLEMENTED: tradeRequestCancel"
+                );
             }
             true
         }
@@ -94,7 +123,11 @@ pub async fn dispatch(
         TRADE_UPDATE_PROPOSAL => {
             if args.len() >= 4 {
                 let target_entity_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::info!(entity_id, target_entity_id, "UNIMPLEMENTED: tradeUpdateProposal");
+                tracing::info!(
+                    entity_id,
+                    target_entity_id,
+                    "UNIMPLEMENTED: tradeUpdateProposal"
+                );
             }
             true
         }
@@ -104,7 +137,13 @@ pub async fn dispatch(
                 let local_version_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let remote_version_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let lock_state = args[8] as i8;
-                tracing::info!(entity_id, local_version_id, remote_version_id, lock_state, "UNIMPLEMENTED: tradeLockState");
+                tracing::info!(
+                    entity_id,
+                    local_version_id,
+                    remote_version_id,
+                    lock_state,
+                    "UNIMPLEMENTED: tradeLockState"
+                );
             }
             true
         }

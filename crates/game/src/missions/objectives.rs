@@ -19,20 +19,11 @@ pub enum MissionObjective {
         current: u32,
     },
     /// Enter a specific region in the world.
-    VisitRegion {
-        region_id: i32,
-        visited: bool,
-    },
+    VisitRegion { region_id: i32, visited: bool },
     /// Talk to a specific NPC.
-    TalkToNpc {
-        npc_moniker: String,
-        talked: bool,
-    },
+    TalkToNpc { npc_moniker: String, talked: bool },
     /// Interact with a specific world object.
-    UseObject {
-        interaction_id: i32,
-        used: bool,
-    },
+    UseObject { interaction_id: i32, used: bool },
     /// Survive for a duration (escort/defense missions).
     Timer {
         duration_secs: f32,
@@ -44,30 +35,56 @@ impl MissionObjective {
     /// Returns `true` if this objective has been fully completed.
     pub fn is_complete(&self) -> bool {
         match self {
-            MissionObjective::KillCount { required, current, .. } => current >= required,
-            MissionObjective::CollectItem { required, current, .. } => current >= required,
+            MissionObjective::KillCount {
+                required, current, ..
+            } => current >= required,
+            MissionObjective::CollectItem {
+                required, current, ..
+            } => current >= required,
             MissionObjective::VisitRegion { visited, .. } => *visited,
             MissionObjective::TalkToNpc { talked, .. } => *talked,
             MissionObjective::UseObject { used, .. } => *used,
-            MissionObjective::Timer { duration_secs, elapsed_secs } => elapsed_secs >= duration_secs,
+            MissionObjective::Timer {
+                duration_secs,
+                elapsed_secs,
+            } => elapsed_secs >= duration_secs,
         }
     }
 
     /// Completion ratio for progress display (0.0 to 1.0).
     pub fn progress(&self) -> f32 {
         match self {
-            MissionObjective::KillCount { required, current, .. } => {
-                *current as f32 / *required as f32
+            MissionObjective::KillCount {
+                required, current, ..
+            } => *current as f32 / *required as f32,
+            MissionObjective::CollectItem {
+                required, current, ..
+            } => *current as f32 / *required as f32,
+            MissionObjective::VisitRegion { visited, .. } => {
+                if *visited {
+                    1.0
+                } else {
+                    0.0
+                }
             }
-            MissionObjective::CollectItem { required, current, .. } => {
-                *current as f32 / *required as f32
+            MissionObjective::TalkToNpc { talked, .. } => {
+                if *talked {
+                    1.0
+                } else {
+                    0.0
+                }
             }
-            MissionObjective::VisitRegion { visited, .. } => if *visited { 1.0 } else { 0.0 },
-            MissionObjective::TalkToNpc { talked, .. } => if *talked { 1.0 } else { 0.0 },
-            MissionObjective::UseObject { used, .. } => if *used { 1.0 } else { 0.0 },
-            MissionObjective::Timer { duration_secs, elapsed_secs } => {
-                (elapsed_secs / duration_secs).min(1.0)
+            MissionObjective::UseObject { used, .. } => {
+                if *used {
+                    1.0
+                } else {
+                    0.0
+                }
             }
+            MissionObjective::Timer {
+                duration_secs,
+                elapsed_secs,
+            } => (elapsed_secs / duration_secs).min(1.0),
         }
     }
 }

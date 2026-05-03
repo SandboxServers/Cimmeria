@@ -101,10 +101,10 @@ pub fn load_definitions(repo_root: &Path) -> Result<ScriptDefinitions> {
     let nodes_path = repo_root.join("entities/editor/Nodes.xml");
     let enums_path = repo_root.join("entities/editor/enumerations.xml");
 
-    let (nodes, database_refs, dataset_version) =
-        parse_nodes_xml(&nodes_path).with_context(|| format!("parsing {}", nodes_path.display()))?;
-    let enums =
-        parse_enumerations_xml(&enums_path).with_context(|| format!("parsing {}", enums_path.display()))?;
+    let (nodes, database_refs, dataset_version) = parse_nodes_xml(&nodes_path)
+        .with_context(|| format!("parsing {}", nodes_path.display()))?;
+    let enums = parse_enumerations_xml(&enums_path)
+        .with_context(|| format!("parsing {}", enums_path.display()))?;
 
     Ok(ScriptDefinitions {
         nodes,
@@ -150,8 +150,7 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                         "Nodes" => {
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"Version" {
-                                    dataset_version =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    dataset_version = String::from_utf8(attr.value.to_vec())?;
                                 }
                             }
                         }
@@ -165,12 +164,10 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
                                     b"Ref" => {
-                                        db_ref.ref_name =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        db_ref.ref_name = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"NullValue" => {
-                                        db_ref.null_value =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        db_ref.null_value = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     _ => {}
                                 }
@@ -200,20 +197,16 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
                                     b"Ref" => {
-                                        node.ref_name =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        node.ref_name = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Name" => {
-                                        node.display_name =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        node.display_name = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Type" => {
-                                        node.node_type =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        node.node_type = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Category" => {
-                                        node.category =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        node.category = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     _ => {}
                                 }
@@ -239,45 +232,39 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
                                     b"Name" => {
-                                        port.name =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        port.name = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Type" => {
-                                        port.port_type =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        port.port_type = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Direction" => {
-                                        port.direction =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        port.direction = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"DefaultHide" => {
-                                        port.default_hide =
-                                            attr.value.as_ref() == b"true";
+                                        port.default_hide = attr.value.as_ref() == b"true";
                                     }
                                     b"Required" => {
-                                        port.required =
-                                            attr.value.as_ref() == b"true";
+                                        port.required = attr.value.as_ref() == b"true";
                                     }
                                     _ => {}
                                 }
                             }
                             // Port has a Start tag, so it may contain inline script text.
                             // We'll transition to InNodePort to capture that.
-                            let node =
-                                if let State::InNode(n) = std::mem::replace(&mut state, State::Skip)
-                                {
-                                    n
-                                } else {
-                                    unreachable!()
-                                };
+                            let node = if let State::InNode(n) =
+                                std::mem::replace(&mut state, State::Skip)
+                            {
+                                n
+                            } else {
+                                unreachable!()
+                            };
                             state = State::InNodePort(node, port);
                             text_buf.clear();
                         } else if tag == "Method" {
                             let mut method_name = String::new();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"Name" {
-                                    method_name =
-                                        String::from_utf8(attr.value.to_vec())?;
+                                    method_name = String::from_utf8(attr.value.to_vec())?;
                                 }
                             }
                             current_child_tag = Some(format!("Method:{}", method_name));
@@ -309,24 +296,19 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
                                     b"Name" => {
-                                        port.name =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        port.name = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Type" => {
-                                        port.port_type =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        port.port_type = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Direction" => {
-                                        port.direction =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        port.direction = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"DefaultHide" => {
-                                        port.default_hide =
-                                            attr.value.as_ref() == b"true";
+                                        port.default_hide = attr.value.as_ref() == b"true";
                                     }
                                     b"Required" => {
-                                        port.required =
-                                            attr.value.as_ref() == b"true";
+                                        port.required = attr.value.as_ref() == b"true";
                                     }
                                     _ => {}
                                 }
@@ -342,21 +324,18 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                             for attr in e.attributes().flatten() {
                                 match attr.key.as_ref() {
                                     b"Name" => {
-                                        prop.name =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        prop.name = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"Type" => {
-                                        prop.prop_type =
-                                            String::from_utf8(attr.value.to_vec())?;
+                                        prop.prop_type = String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"DefaultValue" => {
                                         prop.default_value =
                                             String::from_utf8(attr.value.to_vec())?;
                                     }
                                     b"DatabaseRef" => {
-                                        prop.database_ref = Some(
-                                            String::from_utf8(attr.value.to_vec())?,
-                                        );
+                                        prop.database_ref =
+                                            Some(String::from_utf8(attr.value.to_vec())?);
                                     }
                                     _ => {}
                                 }
@@ -528,7 +507,11 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                 }
             }
             Ok(Event::Eof) => break,
-            Err(e) => bail!("XML parse error at position {}: {}", reader.error_position(), e),
+            Err(e) => bail!(
+                "XML parse error at position {}: {}",
+                reader.error_position(),
+                e
+            ),
             _ => {}
         }
         buf.clear();
@@ -710,7 +693,11 @@ fn parse_enumerations_xml(path: &Path) -> Result<Vec<EnumDefinition>> {
                 }
             }
             Ok(Event::Eof) => break,
-            Err(e) => bail!("XML parse error at position {}: {}", reader.error_position(), e),
+            Err(e) => bail!(
+                "XML parse error at position {}: {}",
+                reader.error_position(),
+                e
+            ),
             _ => {}
         }
         buf.clear();

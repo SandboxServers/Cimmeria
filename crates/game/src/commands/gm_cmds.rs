@@ -3,12 +3,48 @@ use cimmeria_commands::registry::{CommandHandler, CommandRegistry, CommandResult
 
 /// Register all GM/admin commands into the given registry.
 pub fn register_gm_commands(registry: &mut CommandRegistry) {
-    registry.register("spawn", "Spawn an entity", "/spawn <moniker> [count]", AccessLevel::GameMaster, spawn_handler());
-    registry.register("teleport", "Teleport to coordinates or a player", "/teleport <x> <y> <z> | /teleport <player>", AccessLevel::GameMaster, teleport_handler());
-    registry.register("kill", "Kill a target entity", "/kill [target]", AccessLevel::GameMaster, kill_handler());
-    registry.register("give", "Give an item to a player", "/give <player> <item_id> [count]", AccessLevel::GameMaster, give_handler());
-    registry.register("setlevel", "Set a player's level", "/setlevel <player> <level>", AccessLevel::Admin, setlevel_handler());
-    registry.register("shutdown", "Shut down the server", "/shutdown [delay_secs]", AccessLevel::Admin, shutdown_handler());
+    registry.register(
+        "spawn",
+        "Spawn an entity",
+        "/spawn <moniker> [count]",
+        AccessLevel::GameMaster,
+        spawn_handler(),
+    );
+    registry.register(
+        "teleport",
+        "Teleport to coordinates or a player",
+        "/teleport <x> <y> <z> | /teleport <player>",
+        AccessLevel::GameMaster,
+        teleport_handler(),
+    );
+    registry.register(
+        "kill",
+        "Kill a target entity",
+        "/kill [target]",
+        AccessLevel::GameMaster,
+        kill_handler(),
+    );
+    registry.register(
+        "give",
+        "Give an item to a player",
+        "/give <player> <item_id> [count]",
+        AccessLevel::GameMaster,
+        give_handler(),
+    );
+    registry.register(
+        "setlevel",
+        "Set a player's level",
+        "/setlevel <player> <level>",
+        AccessLevel::Admin,
+        setlevel_handler(),
+    );
+    registry.register(
+        "shutdown",
+        "Shut down the server",
+        "/shutdown [delay_secs]",
+        AccessLevel::Admin,
+        shutdown_handler(),
+    );
 }
 
 fn spawn_handler() -> CommandHandler {
@@ -60,7 +96,10 @@ fn give_handler() -> CommandHandler {
             "GM give item"
         );
         // TODO: look up item template, create instance, add to player inventory
-        CommandResult::Success(format!("Giving {} x{} of item {} .", player, count, item_id))
+        CommandResult::Success(format!(
+            "Giving {} x{} of item {} .",
+            player, count, item_id
+        ))
     })
 }
 

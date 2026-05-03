@@ -21,7 +21,12 @@ pub struct MobState {
 
 impl MobState {
     /// Create a new mob with the given spawn configuration.
-    pub fn new(spawn_id: i32, stats: BeingStats, aggro_radius: f32, respawn_time_secs: u32) -> Self {
+    pub fn new(
+        spawn_id: i32,
+        stats: BeingStats,
+        aggro_radius: f32,
+        respawn_time_secs: u32,
+    ) -> Self {
         Self {
             spawn_id,
             stats,

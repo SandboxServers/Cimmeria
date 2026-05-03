@@ -78,7 +78,9 @@ impl SpaceManager {
         }
 
         // Check if we know about this world at all
-        let world_def = self.worlds.get(world_name)
+        let world_def = self
+            .worlds
+            .get(world_name)
             .ok_or_else(|| format!("Unknown world: {world_name}"))?;
 
         if !world_def.instanced {

@@ -88,13 +88,15 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 
             if let Some(player_eid) = player_eid {
                 if let Some(ref tx) = cell_tx {
-                    let _ = tx.send(BaseToCellMsg::ChatMessage {
-                        entity_id: player_eid,
-                        speaker_name: speaker.to_string(),
-                        speaker_flags: 0, // TODO: compute from AFK/DND/GM status
-                        channel,
-                        text,
-                    }).await;
+                    let _ = tx
+                        .send(BaseToCellMsg::ChatMessage {
+                            entity_id: player_eid,
+                            speaker_name: speaker.to_string(),
+                            speaker_flags: 0, // TODO: compute from AFK/DND/GM status
+                            channel,
+                            text,
+                        })
+                        .await;
                 }
             }
         }

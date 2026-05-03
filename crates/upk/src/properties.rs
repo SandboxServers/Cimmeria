@@ -4,8 +4,8 @@
 //! Format: FName name + FName type + i32 size + i32 array_index + [conditional extras] + value bytes.
 //! Terminated by the "None" FName.
 
-use byteorder::{LittleEndian, ByteOrder};
 use crate::names::NameEntry;
+use byteorder::{ByteOrder, LittleEndian};
 
 /// A parsed tagged property value.
 #[derive(Debug, Clone)]
@@ -38,13 +38,21 @@ pub struct TaggedProperty {
 /// `names` is the package's name table for resolving FName references.
 ///
 /// Returns a list of properties. Stops at the "None" terminator or end of data.
-pub fn parse_tagged_properties(data: &[u8], offset: usize, names: &[NameEntry]) -> Vec<TaggedProperty> {
+pub fn parse_tagged_properties(
+    data: &[u8],
+    offset: usize,
+    names: &[NameEntry],
+) -> Vec<TaggedProperty> {
     parse_tagged_properties_with_end(data, offset, names).0
 }
 
 /// Like [`parse_tagged_properties`] but also returns the byte offset immediately
 /// after the "None" terminator (i.e., where class-specific binary data begins).
-pub fn parse_tagged_properties_with_end(data: &[u8], offset: usize, names: &[NameEntry]) -> (Vec<TaggedProperty>, usize) {
+pub fn parse_tagged_properties_with_end(
+    data: &[u8],
+    offset: usize,
+    names: &[NameEntry],
+) -> (Vec<TaggedProperty>, usize) {
     let mut props = Vec::new();
     let mut pos = offset;
 
@@ -138,9 +146,7 @@ pub fn parse_tagged_properties_with_end(data: &[u8], offset: usize, names: &[Nam
             "FloatProperty" if prop_size == 4 => {
                 PropValue::Float(LittleEndian::read_f32(value_data))
             }
-            "IntProperty" if prop_size == 4 => {
-                PropValue::Int(LittleEndian::read_i32(value_data))
-            }
+            "IntProperty" if prop_size == 4 => PropValue::Int(LittleEndian::read_i32(value_data)),
             "ObjectProperty" if prop_size == 4 => {
                 PropValue::Object(LittleEndian::read_i32(value_data))
             }
@@ -153,45 +159,37 @@ pub fn parse_tagged_properties_with_end(data: &[u8], offset: usize, names: &[Nam
                 };
                 PropValue::Name(n)
             }
-            "StrProperty" => {
-                PropValue::Str(parse_fstring_from_bytes(value_data))
-            }
-            "StructProperty" => {
-                match struct_type.as_str() {
-                    "Vector" if prop_size == 12 => PropValue::Vector {
-                        x: LittleEndian::read_f32(&value_data[0..]),
-                        y: LittleEndian::read_f32(&value_data[4..]),
-                        z: LittleEndian::read_f32(&value_data[8..]),
-                    },
-                    "Rotator" if prop_size == 12 => PropValue::Rotator {
-                        pitch: LittleEndian::read_i32(&value_data[0..]),
-                        yaw: LittleEndian::read_i32(&value_data[4..]),
-                        roll: LittleEndian::read_i32(&value_data[8..]),
-                    },
-                    "Color" if prop_size == 4 => PropValue::Color {
-                        b: value_data[0],
-                        g: value_data[1],
-                        r: value_data[2],
-                        a: value_data[3],
-                    },
-                    "LinearColor" if prop_size == 16 => PropValue::LinearColor {
-                        r: LittleEndian::read_f32(&value_data[0..]),
-                        g: LittleEndian::read_f32(&value_data[4..]),
-                        b: LittleEndian::read_f32(&value_data[8..]),
-                        a: LittleEndian::read_f32(&value_data[12..]),
-                    },
-                    _ => PropValue::Struct {
-                        struct_type: struct_type.clone(),
-                        data: value_data.to_vec(),
-                    },
-                }
-            }
-            "ArrayProperty" => {
-                PropValue::Array(value_data.to_vec())
-            }
-            "ByteProperty" => {
-                PropValue::Byte(value_data.to_vec())
-            }
+            "StrProperty" => PropValue::Str(parse_fstring_from_bytes(value_data)),
+            "StructProperty" => match struct_type.as_str() {
+                "Vector" if prop_size == 12 => PropValue::Vector {
+                    x: LittleEndian::read_f32(&value_data[0..]),
+                    y: LittleEndian::read_f32(&value_data[4..]),
+                    z: LittleEndian::read_f32(&value_data[8..]),
+                },
+                "Rotator" if prop_size == 12 => PropValue::Rotator {
+                    pitch: LittleEndian::read_i32(&value_data[0..]),
+                    yaw: LittleEndian::read_i32(&value_data[4..]),
+                    roll: LittleEndian::read_i32(&value_data[8..]),
+                },
+                "Color" if prop_size == 4 => PropValue::Color {
+                    b: value_data[0],
+                    g: value_data[1],
+                    r: value_data[2],
+                    a: value_data[3],
+                },
+                "LinearColor" if prop_size == 16 => PropValue::LinearColor {
+                    r: LittleEndian::read_f32(&value_data[0..]),
+                    g: LittleEndian::read_f32(&value_data[4..]),
+                    b: LittleEndian::read_f32(&value_data[8..]),
+                    a: LittleEndian::read_f32(&value_data[12..]),
+                },
+                _ => PropValue::Struct {
+                    struct_type: struct_type.clone(),
+                    data: value_data.to_vec(),
+                },
+            },
+            "ArrayProperty" => PropValue::Array(value_data.to_vec()),
+            "ByteProperty" => PropValue::Byte(value_data.to_vec()),
             _ => PropValue::Raw {
                 type_name: type_name.clone(),
                 data: value_data.to_vec(),

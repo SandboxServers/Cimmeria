@@ -6,13 +6,15 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use crate::base::outbox::{self, CellOutboxPayload};
-use crate::cell::messages::BaseToCellMsg;
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
-use super::purchase_helpers::{load_vendor_purchase_lines, consume_design_quantity, normalize_item_quantities};
-use super::store::handle_open_vendor_store;
 use super::helpers::send_cash_changed_to_client;
+use super::purchase_helpers::{
+    consume_design_quantity, load_vendor_purchase_lines, normalize_item_quantities,
+};
+use super::store::handle_open_vendor_store;
+use crate::base::outbox::{self, CellOutboxPayload};
+use crate::cell::messages::BaseToCellMsg;
 
 const INV_MAIN: i32 = 1;
 
@@ -86,7 +88,11 @@ pub async fn handle_purchase_vendor_items(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(entity_id, player_id, "PurchaseVendorItems: begin failed: {e}");
+            tracing::error!(
+                entity_id,
+                player_id,
+                "PurchaseVendorItems: begin failed: {e}"
+            );
             return;
         }
     };
@@ -136,14 +142,22 @@ pub async fn handle_purchase_vendor_items(
             Ok(balance) => balance,
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(entity_id, player_id, "PurchaseVendorItems: balance query failed: {e}");
+                tracing::error!(
+                    entity_id,
+                    player_id,
+                    "PurchaseVendorItems: balance query failed: {e}"
+                );
                 return;
             }
         };
 
     let Some(balance) = balance else {
         let _ = tx.rollback().await;
-        tracing::warn!(entity_id, player_id, "PurchaseVendorItems: player not found");
+        tracing::warn!(
+            entity_id,
+            player_id,
+            "PurchaseVendorItems: player not found"
+        );
         return;
     };
 
@@ -184,7 +198,14 @@ pub async fn handle_purchase_vendor_items(
         balance
     };
 
-    let mut grant_slots = match super::serializers::reserve_free_inventory_slots(&mut tx, player_id, INV_MAIN, lines.len()).await {
+    let mut grant_slots = match super::serializers::reserve_free_inventory_slots(
+        &mut tx,
+        player_id,
+        INV_MAIN,
+        lines.len(),
+    )
+    .await
+    {
         Ok(Some(slots)) => slots.into_iter(),
         Ok(None) => {
             let _ = tx.rollback().await;
@@ -198,7 +219,11 @@ pub async fn handle_purchase_vendor_items(
         }
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(entity_id, player_id, "PurchaseVendorItems: slot query failed: {e}");
+            tracing::error!(
+                entity_id,
+                player_id,
+                "PurchaseVendorItems: slot query failed: {e}"
+            );
             return;
         }
     };
@@ -260,8 +285,7 @@ pub async fn handle_purchase_vendor_items(
     // entire purchase (cash debit + N inventory inserts + N cell
     // notifications) is atomic. If any outbox INSERT fails we abort the
     // whole purchase.
-    let mut outbox_pending: Vec<(i64, CellOutboxPayload)> =
-        Vec::with_capacity(granted.len());
+    let mut outbox_pending: Vec<(i64, CellOutboxPayload)> = Vec::with_capacity(granted.len());
     for (design_id, slot_id, quantity) in &granted {
         let payload = CellOutboxPayload::InventoryItemGranted {
             item_id: *design_id,
@@ -274,7 +298,9 @@ pub async fn handle_purchase_vendor_items(
             Err(e) => {
                 let _ = tx.rollback().await;
                 tracing::error!(
-                    entity_id, player_id, design_id,
+                    entity_id,
+                    player_id,
+                    design_id,
                     "PurchaseVendorItems: outbox enqueue failed, aborting: {e}"
                 );
                 return;
@@ -283,12 +309,17 @@ pub async fn handle_purchase_vendor_items(
     }
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(entity_id, player_id, "PurchaseVendorItems: commit failed: {e}");
+        tracing::error!(
+            entity_id,
+            player_id,
+            "PurchaseVendorItems: commit failed: {e}"
+        );
         return;
     }
 
     if total_cash_cost > 0 {
-        send_cash_changed_to_client(entity_id, new_cash_total, socket, connected, entity_to_addr).await;
+        send_cash_changed_to_client(entity_id, new_cash_total, socket, connected, entity_to_addr)
+            .await;
     }
 
     let total_items = send_full_inventory_update(

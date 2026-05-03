@@ -2,10 +2,10 @@
 //!
 //! Usage: extract-actors <file.umap|zone_dir> [--json] [--summary]
 
-use cimmeria_upk::{Package, extract_actors};
+use cimmeria_upk::{extract_actors, Package};
+use std::collections::HashMap;
 use std::env;
 use std::path::Path;
-use std::collections::HashMap;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -115,8 +115,12 @@ fn main() {
                     "  {} \"{}\" @ ({:.1}, {:.1}, {:.1}) rot({:.1}, {:.1}, {:.1}) scale={:.2}",
                     actor.class_name,
                     actor.object_name,
-                    actor.location[0], actor.location[1], actor.location[2],
-                    actor.rotation_deg[0], actor.rotation_deg[1], actor.rotation_deg[2],
+                    actor.location[0],
+                    actor.location[1],
+                    actor.location[2],
+                    actor.rotation_deg[0],
+                    actor.rotation_deg[1],
+                    actor.rotation_deg[2],
                     actor.draw_scale
                 );
             }

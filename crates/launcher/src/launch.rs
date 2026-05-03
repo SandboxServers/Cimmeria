@@ -20,9 +20,7 @@ pub fn verify_installation(install_path: &str) -> Result<std::path::PathBuf, Lau
 
 pub fn launch_game(install_path: &str) -> Result<u32, LaunchError> {
     let exe_path = verify_installation(install_path)?;
-    let child = Command::new(&exe_path)
-        .current_dir(install_path)
-        .spawn()?;
+    let child = Command::new(&exe_path).current_dir(install_path).spawn()?;
     Ok(child.id())
 }
 

@@ -143,19 +143,29 @@ pub fn mask_for_name(name: &str) -> Option<i64> {
         "INT_VendorCraftMaterials" => Some(INT_VENDOR_CRAFT_MATERIALS),
         "INT_VendorCraftElectronics" => Some(INT_VENDOR_CRAFT_ELECTRONICS),
         "INT_AStoryMissionPending" => Some(INT_A_STORY_MISSION_PENDING),
-        "INT_AStoryMissionAvaliable" | "INT_AStoryMissionAvailable" => Some(INT_A_STORY_MISSION_AVAILABLE),
+        "INT_AStoryMissionAvaliable" | "INT_AStoryMissionAvailable" => {
+            Some(INT_A_STORY_MISSION_AVAILABLE)
+        }
         "INT_AStoryMissionActive" => Some(INT_A_STORY_MISSION_ACTIVE),
         "INT_AStoryMissionTurnIn" => Some(INT_A_STORY_MISSION_TURN_IN),
         "INT_NonAStoryMissionPending" => Some(INT_NON_A_STORY_MISSION_PENDING),
-        "INT_NonAStoryMissionAvaliable" | "INT_NonAStoryMissionAvailable" => Some(INT_NON_A_STORY_MISSION_AVAILABLE),
+        "INT_NonAStoryMissionAvaliable" | "INT_NonAStoryMissionAvailable" => {
+            Some(INT_NON_A_STORY_MISSION_AVAILABLE)
+        }
         "INT_NonAStoryMissionActive" => Some(INT_NON_A_STORY_MISSION_ACTIVE),
         "INT_NonAStoryMissionTurnIn" => Some(INT_NON_A_STORY_MISSION_TURN_IN),
         "INT_MissionWorldObject" => Some(INT_MISSION_WORLD_OBJECT),
         "INT_MissionWaypoint" => Some(INT_MISSION_WAYPOINT),
         "INT_DrossPile" => Some(INT_DROSS_PILE),
-        "INT_AttackableInPoorCover" | "INT_Attackable_In_Poor_Cover" => Some(INT_ATTACKABLE_IN_POOR_COVER),
-        "INT_AttackableInNormalCover" | "INT_Attackable_In_Normal_Cover" => Some(INT_ATTACKABLE_IN_NORMAL_COVER),
-        "INT_AttackableInGoodCover" | "INT_Attackable_In_Good_Cover" => Some(INT_ATTACKABLE_IN_GOOD_COVER),
+        "INT_AttackableInPoorCover" | "INT_Attackable_In_Poor_Cover" => {
+            Some(INT_ATTACKABLE_IN_POOR_COVER)
+        }
+        "INT_AttackableInNormalCover" | "INT_Attackable_In_Normal_Cover" => {
+            Some(INT_ATTACKABLE_IN_NORMAL_COVER)
+        }
+        "INT_AttackableInGoodCover" | "INT_Attackable_In_Good_Cover" => {
+            Some(INT_ATTACKABLE_IN_GOOD_COVER)
+        }
         "INT_Machine_ReverseEng" => Some(INT_MACHINE_REVERSE_ENG),
         "INT_Machine_Biomedical" => Some(INT_MACHINE_BIOMEDICAL),
         "INT_Machine_Power" => Some(INT_MACHINE_POWER),

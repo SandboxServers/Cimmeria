@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use crate::mercury::PlayerLoadData;
 use super::meta::{default_player_load_data, query_archetype_ability_tree, query_bandolier_items};
+use crate::mercury::PlayerLoadData;
 
 /// Container IDs used in equipment-visual queries. Mirrors the DB schema:
 /// 3 = bandolier, 4..=14 = the eleven equipment slots (head, torso, etc.).
@@ -213,11 +213,17 @@ pub async fn query_player_load_data_by_account(
     {
         Ok(Some(row)) => query_player_load_data(db_pool, account_id, row.player_id).await,
         Ok(None) => {
-            tracing::warn!(account_id, "query_player_load_data_by_account: no player for account");
+            tracing::warn!(
+                account_id,
+                "query_player_load_data_by_account: no player for account"
+            );
             default_player_load_data()
         }
         Err(e) => {
-            tracing::error!(account_id, "query_player_load_data_by_account: lookup failed: {e}");
+            tracing::error!(
+                account_id,
+                "query_player_load_data_by_account: lookup failed: {e}"
+            );
             default_player_load_data()
         }
     }

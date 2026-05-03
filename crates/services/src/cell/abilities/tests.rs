@@ -4,7 +4,7 @@
 //! - Determinism + uniqueness asserts for `pseudo_random_seed`.
 //! - End-to-end fire of `handle_use_ability` covering the ammo-consume path.
 
-use cimmeria_entity::abilities::{TIMER_ABILITY_COOLDOWN, serialize_timer_update};
+use cimmeria_entity::abilities::{serialize_timer_update, TIMER_ABILITY_COOLDOWN};
 use tokio::sync::mpsc;
 
 use super::super::messages::CellToBaseMsg;
@@ -54,7 +54,10 @@ fn pseudo_random_seed_avoids_obvious_collisions() {
         for ability_id in 1..=10 {
             for seq in 0..10 {
                 let s = pseudo_random_seed(entity_id, ability_id, seq);
-                assert!(seen.insert(s), "collision at ({entity_id}, {ability_id}, {seq})");
+                assert!(
+                    seen.insert(s),
+                    "collision at ({entity_id}, {ability_id}, {seq})"
+                );
             }
         }
     }
@@ -73,28 +76,33 @@ async fn consume_ammo_writes_ammoslot_stat_and_marks_dirty() {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
-    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#).unwrap();
-    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
 
     // A ranged ability with required_ammo = 1, no warmup, short cooldown.
     // event_set_id = None → no onSequence sends, keeping rx noise down.
     let ability_id = 4242;
-    mgr.ability_defs.insert(ability_id, AbilityDef {
+    mgr.ability_defs.insert(
         ability_id,
-        name: "test_fire".to_string(),
-        cooldown: 0.5,
-        warmup: 0.0,
-        flags: 0,
-        is_ranged: true,
-        min_range: 0,
-        max_range: 30,
-        target_type_id: 0,
-        effect_ids: vec![],
-        moniker_ids: vec![],
-        required_ammo: 1,
-        event_set_id: None,
-        velocity: 0.0,
-    });
+        AbilityDef {
+            ability_id,
+            name: "test_fire".to_string(),
+            cooldown: 0.5,
+            warmup: 0.0,
+            flags: 0,
+            is_ranged: true,
+            min_range: 0,
+            max_range: 30,
+            target_type_id: 0,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            required_ammo: 1,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
 
     // Player setup: bandolier slot 0 holds a 30-round magazine, full.
     // is_player must be true so `send_entity_method` routes the
@@ -103,13 +111,16 @@ async fn consume_ammo_writes_ammoslot_stat_and_marks_dirty() {
         e.is_player = true;
         e.player_id = Some(100);
         e.abilities.add_ability(ability_id);
-        e.bandolier_items.insert(0, BandolierItem {
-            item_id: 1,
-            clip_size: 30,
-            default_ammo_type: 2,
-            current_ammo: 30,
-            cur_ammo_type: 2,
-        });
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 1,
+                clip_size: 30,
+                default_ammo_type: 2,
+                current_ammo: 30,
+                cur_ammo_type: 2,
+            },
+        );
         if let Some(stat) = e.stats.get_mut(AMMO_SLOT_1) {
             stat.update(0, 30, 30);
             stat.clear_dirty();
@@ -124,16 +135,31 @@ async fn consume_ammo_writes_ammoslot_stat_and_marks_dirty() {
 
     // ── Entity-state assertions ─────────────────────────────────────
     let entity = mgr.get_entity(1).unwrap();
-    assert_eq!(entity.bandolier_items[&0].current_ammo, 29, "current_ammo should decrement by required_ammo");
-    assert_eq!(entity.stats.get(AMMO_SLOT_1).unwrap().cur, 29, "AmmoSlot1 stat should mirror current_ammo");
-    assert!(entity.bandolier_ammo_dirty.contains(&0), "active slot should be marked dirty for batched persist");
+    assert_eq!(
+        entity.bandolier_items[&0].current_ammo, 29,
+        "current_ammo should decrement by required_ammo"
+    );
+    assert_eq!(
+        entity.stats.get(AMMO_SLOT_1).unwrap().cur,
+        29,
+        "AmmoSlot1 stat should mirror current_ammo"
+    );
+    assert!(
+        entity.bandolier_ammo_dirty.contains(&0),
+        "active slot should be marked dirty for batched persist"
+    );
 
     // ── Wire-message assertions ─────────────────────────────────────
     // Drain rx and find the onStatUpdate (method 20). Other messages
     // (onTimerUpdate=12, onStateFieldUpdate=19) may also arrive.
     let mut found_stat_update = false;
     while let Ok(msg) = rx.try_recv() {
-        if let CellToBaseMsg::EntityMethodCall { entity_id, method_index, args } = msg {
+        if let CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } = msg
+        {
             if method_index == 20 && entity_id == 1 {
                 // Stat list payload: count:u32, then per-stat (id:i32, min:i32, cur:i32, max:i32).
                 assert!(args.len() >= 4, "stat update payload too short");
@@ -143,8 +169,18 @@ async fn consume_ammo_writes_ammoslot_stat_and_marks_dirty() {
                 let mut found_ammo = false;
                 for i in 0..count as usize {
                     let off = 4 + i * 16;
-                    let stat_id = i32::from_le_bytes([args[off], args[off+1], args[off+2], args[off+3]]);
-                    let cur = i32::from_le_bytes([args[off+8], args[off+9], args[off+10], args[off+11]]);
+                    let stat_id = i32::from_le_bytes([
+                        args[off],
+                        args[off + 1],
+                        args[off + 2],
+                        args[off + 3],
+                    ]);
+                    let cur = i32::from_le_bytes([
+                        args[off + 8],
+                        args[off + 9],
+                        args[off + 10],
+                        args[off + 11],
+                    ]);
                     if stat_id == AMMO_SLOT_1 {
                         assert_eq!(cur, 29, "onStatUpdate should report AmmoSlot1.cur = 29");
                         found_ammo = true;
@@ -155,5 +191,8 @@ async fn consume_ammo_writes_ammoslot_stat_and_marks_dirty() {
             }
         }
     }
-    assert!(found_stat_update, "expected an EntityMethodCall(method=20, onStatUpdate) carrying AmmoSlot1");
+    assert!(
+        found_stat_update,
+        "expected an EntityMethodCall(method=20, onStatUpdate) carrying AmmoSlot1"
+    );
 }

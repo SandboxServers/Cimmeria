@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use axum::{Router, routing::post};
+use axum::{routing::post, Router};
 use sqlx::PgPool;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
@@ -13,11 +13,10 @@ use cimmeria_common::ServerConfig;
 
 use crate::audit::{LoginEvent, LoginEventBuffer};
 
+use super::handlers::{handle_server_selection, handle_user_auth};
 use super::{
-    AuthError, HandlerState, PendingLogin, ShardInfo,
-    SESSION_TTL, TICKET_TTL, REAPER_INTERVAL,
+    AuthError, HandlerState, PendingLogin, ShardInfo, REAPER_INTERVAL, SESSION_TTL, TICKET_TTL,
 };
-use super::handlers::{handle_user_auth, handle_server_selection};
 
 // ── AuthService ──────────────────────────────────────────────────────────────
 
@@ -104,7 +103,11 @@ impl AuthService {
     /// listener is bound; the task runs until the process exits.
     pub async fn start(&mut self) -> Result<(), AuthError> {
         tracing::info!(addr = %self.logon_addr, "Starting auth HTTP listener");
-        tracing::trace!(shard_count = self.shards.len(), developer_mode = self.developer_mode, "Auth service config");
+        tracing::trace!(
+            shard_count = self.shards.len(),
+            developer_mode = self.developer_mode,
+            "Auth service config"
+        );
 
         let sessions = Arc::new(Mutex::new(HashMap::new()));
         let pending_logins = Arc::clone(&self.pending_logins);
@@ -159,7 +162,8 @@ impl AuthService {
                     };
                     if expired_sessions > 0 || expired_tickets > 0 {
                         tracing::debug!(
-                            expired_sessions, expired_tickets,
+                            expired_sessions,
+                            expired_tickets,
                             "Reaped expired auth entries"
                         );
                     }
