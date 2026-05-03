@@ -465,3 +465,237 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
         "empty slot 1 should not have stale clip_size in its AmmoSlot stat",
     );
 }
+
+fn sample_player_load_data() -> PlayerLoadData {
+    PlayerLoadData {
+        player_id: 1,
+        level: 5,
+        player_name: "RoundTrip".into(),
+        extra_name: String::new(),
+        alignment: 1,
+        archetype: 2,
+        gender: 1,
+        bodyset: "BS_HumanMale.BS_HumanMale".into(),
+        components: vec![],
+        exp: 0,
+        naquadah: 0,
+        known_stargates: vec![],
+        abilities: vec![],
+        training_points: 0,
+        applied_science_points: 0,
+        blueprint_ids: vec![],
+        first_login: 0,
+        access_level: 0,
+        skin_color_id: 0,
+        ability_tree: archetype_ability_tree(2),
+        items: vec![],
+        active_bandolier_slot: 0,
+        bandolier_items: vec![],
+    }
+}
+
+fn sample_world_entry() -> WorldEntryInfo {
+    WorldEntryInfo {
+        player_entity_id: 100,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
+        world_stargates: vec![],
+    }
+}
+
+/// Locate a `setupStargateInfo` (method index 65, extended encoding) call for
+/// `entity_id` inside an unfragmented mapLoaded body and return its raw args
+/// (the bytes after the sub-index byte, up to the encoded payload length).
+///
+/// Wire layout for an extended entity-method call:
+///   `0xBD | payload_len:u16 LE | entity_id:u32 LE | sub_index:u8 | args...`
+/// where payload_len = 4 + 1 + args.len() and sub_index = method_index - 61.
+fn find_setup_stargate_info_args(body: &[u8], entity_id: u32) -> &[u8] {
+    let sub_index = (method_idx::SETUP_STARGATE_INFO - 61) as u8;
+    let eid = entity_id.to_le_bytes();
+    let mut i = 0;
+    while i < body.len() {
+        if body[i] == 0xBD && i + 8 <= body.len() {
+            let payload_len = u16::from_le_bytes([body[i + 1], body[i + 2]]) as usize;
+            // A 0xBD byte that appears inside another method's args is not a
+            // record start. Reject any apparent header whose payload_len is
+            // too small to cover (eid + sub_index = 5) or that runs past the
+            // body's end, and advance one byte instead of trusting a bogus
+            // length to skip past the (non-)record.
+            if payload_len >= 5 && i + 3 + payload_len <= body.len() {
+                let header_end = i + 3 + 4 + 1; // marker + len + eid + sub_index
+                if body[i + 3..i + 7] == eid && body[i + 7] == sub_index {
+                    let args_len = payload_len - 5;
+                    return &body[header_end..header_end + args_len];
+                }
+                // Real entity-method record, just not ours — skip past it.
+                i += 3 + payload_len;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    panic!("setupStargateInfo call not found in mapLoaded body for entity_id={entity_id}");
+}
+
+/// `world_stargates: Vec<i32>` on `WorldEntryInfo` must round-trip through
+/// `setupStargateInfo` exactly — count prefix + i32 LE entries — and must
+/// come *before* the `knownStargates` array.
+#[test]
+fn world_stargates_round_trips_through_setup_stargate_info() {
+    let mut data = sample_player_load_data();
+    // Distinctive non-overlapping values so the assertion can't accidentally
+    // match `known_stargates` data later in the same args buffer.
+    data.known_stargates = vec![777, 888];
+    let mut entry = sample_world_entry();
+    entry.world_stargates = vec![1234, 5678, 9012];
+
+    let body = build_map_loaded_body(entry.player_entity_id, &data, &entry);
+    let args = find_setup_stargate_info_args(&body, entry.player_entity_id);
+
+    // worldStargateIds: u32 count + count * i32 LE
+    let world_count = u32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+    assert_eq!(world_count, 3, "world_stargates count prefix mismatch");
+    assert_eq!(
+        i32::from_le_bytes([args[4], args[5], args[6], args[7]]),
+        1234,
+    );
+    assert_eq!(
+        i32::from_le_bytes([args[8], args[9], args[10], args[11]]),
+        5678,
+    );
+    assert_eq!(
+        i32::from_le_bytes([args[12], args[13], args[14], args[15]]),
+        9012,
+    );
+
+    // Immediately after the world_stargates payload comes the knownStargateIds
+    // array. Verify it parses cleanly — proves the world_stargates section
+    // didn't desync the buffer.
+    let known_off = 4 + 3 * 4;
+    let known_count = u32::from_le_bytes([
+        args[known_off], args[known_off + 1], args[known_off + 2], args[known_off + 3],
+    ]);
+    assert_eq!(known_count, 2, "knownStargates count mismatch (alignment drift?)");
+    assert_eq!(
+        i32::from_le_bytes([
+            args[known_off + 4], args[known_off + 5], args[known_off + 6], args[known_off + 7],
+        ]),
+        777,
+    );
+}
+
+/// An empty `world_stargates` must still emit a u32(0) count prefix. Eliding
+/// the empty array entirely makes the client read the next field's bytes as
+/// the world count and corrupts the gate-travel address book.
+#[test]
+fn empty_world_stargates_still_emits_zero_count_prefix() {
+    let mut data = sample_player_load_data();
+    data.known_stargates = vec![42];
+    let entry = sample_world_entry(); // world_stargates is empty by default
+
+    let body = build_map_loaded_body(entry.player_entity_id, &data, &entry);
+    let args = find_setup_stargate_info_args(&body, entry.player_entity_id);
+
+    // Empty world_stargates: count = 0, no entries.
+    assert_eq!(
+        u32::from_le_bytes([args[0], args[1], args[2], args[3]]),
+        0,
+        "empty world_stargates must still emit a u32(0) count prefix",
+    );
+    // knownStargates count + value follow immediately.
+    assert_eq!(
+        u32::from_le_bytes([args[4], args[5], args[6], args[7]]),
+        1,
+        "knownStargates count read garbage — empty world_stargates desynced the buffer",
+    );
+    assert_eq!(
+        i32::from_le_bytes([args[8], args[9], args[10], args[11]]),
+        42,
+    );
+}
+
+/// Regression guard: `active_bandolier_slot` selects which bandolier item's
+/// `cur_ammo_type` is sent as the `AmmoTypeId` (prop_id = 3) entity property.
+/// If this regresses (e.g. always reads slot 0), the client UI shows the
+/// wrong ammo for non-default active weapons after re-login.
+#[test]
+fn active_bandolier_slot_drives_ammo_type_id_property() {
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut data = sample_player_load_data();
+    data.active_bandolier_slot = 2;
+    data.bandolier_items = vec![
+        (0, BandolierItem {
+            item_id: 100, clip_size: 15, default_ammo_type: 1,
+            current_ammo: 8, cur_ammo_type: 1,
+        }),
+        (2, BandolierItem {
+            item_id: 200, clip_size: 12, default_ammo_type: 7,
+            current_ammo: 12, cur_ammo_type: 7,
+        }),
+    ];
+    let entry = sample_world_entry();
+
+    let body = build_map_loaded_body(entry.player_entity_id, &data, &entry);
+
+    // onEntityProperty is direct-encoded (index 7 < 61): 0x87 | u16 word_len=12
+    // | u32 entity_id | i32 prop_id | i32 value. Match prop_id = 3 (AmmoTypeId)
+    // for our entity_id and pull the i32 value.
+    let msg_id: u8 = (method_idx::ON_ENTITY_PROPERTY as u8) | 0x80;
+    let eid = entry.player_entity_id.to_le_bytes();
+    // payload_len = 4 (entity_id) + 8 (prop_id + value args) = 12
+    let prefix = [msg_id, 12, 0, eid[0], eid[1], eid[2], eid[3], 3, 0, 0, 0];
+
+    let pos = body
+        .windows(prefix.len())
+        .position(|w| w == prefix)
+        .expect("AmmoTypeId onEntityProperty not found in mapLoaded body");
+    let val_off = pos + prefix.len();
+    let value = i32::from_le_bytes([
+        body[val_off], body[val_off + 1], body[val_off + 2], body[val_off + 3],
+    ]);
+    assert_eq!(
+        value, 7,
+        "AmmoTypeId must equal slot 2's cur_ammo_type (active_bandolier_slot=2), not slot 0's",
+    );
+}
+
+/// Regression guard companion: when `active_bandolier_slot` points at a slot
+/// with no item, `AmmoTypeId` falls back to 0 — matches legacy "no weapon
+/// equipped" behavior. Without the fallback the wire could leak whatever
+/// happened to be in the previously-active slot.
+#[test]
+fn active_bandolier_slot_with_no_item_emits_ammo_type_zero() {
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut data = sample_player_load_data();
+    data.active_bandolier_slot = 1; // no item lives here
+    data.bandolier_items = vec![
+        (0, BandolierItem {
+            item_id: 100, clip_size: 15, default_ammo_type: 9,
+            current_ammo: 8, cur_ammo_type: 9,
+        }),
+    ];
+    let entry = sample_world_entry();
+
+    let body = build_map_loaded_body(entry.player_entity_id, &data, &entry);
+
+    let msg_id: u8 = (method_idx::ON_ENTITY_PROPERTY as u8) | 0x80;
+    let eid = entry.player_entity_id.to_le_bytes();
+    // payload_len = 4 (entity_id) + 8 (prop_id + value args) = 12
+    let prefix = [msg_id, 12, 0, eid[0], eid[1], eid[2], eid[3], 3, 0, 0, 0];
+
+    let pos = body
+        .windows(prefix.len())
+        .position(|w| w == prefix)
+        .expect("AmmoTypeId onEntityProperty not found in mapLoaded body");
+    let val_off = pos + prefix.len();
+    let value = i32::from_le_bytes([
+        body[val_off], body[val_off + 1], body[val_off + 2], body[val_off + 3],
+    ]);
+    assert_eq!(value, 0, "AmmoTypeId must fall back to 0 when active slot is empty");
+}
