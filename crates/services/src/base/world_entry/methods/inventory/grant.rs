@@ -458,3 +458,42 @@ pub async fn handle_grant_item(
         .await;
     }
 }
+
+#[cfg(test)]
+mod normalize_item_ids_tests {
+    use super::normalize_item_ids;
+
+    #[test]
+    fn drops_non_positive_ids() {
+        assert_eq!(normalize_item_ids(vec![-3, 0, 1, 2]), vec![1, 2]);
+    }
+
+    #[test]
+    fn dedupes_repeated_ids() {
+        assert_eq!(normalize_item_ids(vec![5, 5, 5]), vec![5]);
+    }
+
+    #[test]
+    fn sorts_ascending() {
+        assert_eq!(normalize_item_ids(vec![3, 1, 2]), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn empty_input_returns_empty() {
+        assert!(normalize_item_ids(Vec::new()).is_empty());
+    }
+
+    #[test]
+    fn all_invalid_returns_empty() {
+        assert!(normalize_item_ids(vec![-1, 0, -100]).is_empty());
+    }
+
+    #[test]
+    fn combined_dedupe_sort_filter() {
+        // Mixed bag: i32::MIN, zeros, dupes, out-of-order positives. Result
+        // must be sorted, deduped, and contain only the positive ids exactly
+        // once each.
+        let out = normalize_item_ids(vec![10, -1, 5, 10, 0, 5, i32::MIN, 7, 5]);
+        assert_eq!(out, vec![5, 7, 10]);
+    }
+}
