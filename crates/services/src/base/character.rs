@@ -273,13 +273,11 @@ mod query_character_list_tests {
     use super::*;
     use crate::test_support::require_db_or_skip;
 
-    /// Sentinel base for character-list tests. Distinct from prior
-    /// live-DB sentinels (outbox 0x000 / grant_cash +0x100 /
-    /// move +0x200 / grant_item +0x300 / missions +0x400 / mail +0x500 /
-    /// vendor/repair +0x600 / paid_repair +0x700 / sell +0x800 /
-    /// buyback +0x900 / purchase +0x0A00 / ammo +0x0B00 /
-    /// vendor_data +0x0C00 / player_load_meta +0x0D00 /
-    /// vendor_helpers +0x0E00 / player_load_core +0x0F00).
+    /// Sentinel base for the character-list tests, stepped past the
+    /// highest live-DB sentinel reserved elsewhere in the crate. The
+    /// sibling sentinels are listed alongside their owning test
+    /// files; the +0x100 step here just reserves a fresh slot so
+    /// concurrent live-DB runs don't collide on account/player ids.
     const TEST_BASE: i32 = 0x7000_1000;
 
     async fn cleanup(pool: &PgPool, account_ids: &[i32]) {
