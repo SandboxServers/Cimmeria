@@ -15,6 +15,9 @@ use crate::base::ConnectedClientState;
 
 use super::VENDOR_FILTER_BAGS;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(sqlx::FromRow)]
 struct StoreItemCostRow {
     cost: i32,

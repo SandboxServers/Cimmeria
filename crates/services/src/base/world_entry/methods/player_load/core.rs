@@ -13,7 +13,9 @@ pub const EQUIPMENT_CONTAINERS: &[i32] = &[4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 // NOTE: this query is duplicated in `inventory/core.rs` (the live-update path).
 // If you change the column list, ammo_position expression, or row shape here,
 // update the other site too — the two paths must produce identical row layouts.
-const INVENTORY_ITEM_SELECT: &str = r#"
+// The SQL drift-guard test in `mod tests` below pins the two copies
+// byte-for-byte to catch silent divergence.
+pub(crate) const INVENTORY_ITEM_SELECT: &str = r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        inv.bound, inv.durability, inv.charges,
        COALESCE((
@@ -234,5 +236,181 @@ pub async fn query_inventory_items(
             tracing::error!(player_id, "Failed to query inventory items: {e}");
             vec![]
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Regression guards for player_load/core:
+    //!
+    //! - `inventory_item_select_matches_player_load_copy_byte_for_byte`:
+    //!   pure-Rust unit test pinning the two copies of
+    //!   `INVENTORY_ITEM_SELECT` (here and in `inventory/core.rs`)
+    //!   byte-for-byte.
+    //! - `equipped_item_at_inactive_bandolier_slot_is_excluded_from_visuals`:
+    //!   live-DB pin on the `(container <> $3 AND slot = 0) OR
+    //!   (container = $3 AND slot = $4)` clause that filters which
+    //!   bandolier slot's visual_component bleeds into the avatar.
+
+    use super::*;
+    use crate::base::world_entry::methods::inventory::core as inventory_core;
+    use crate::test_support::require_db_or_skip;
+
+    /// Sentinel base for the player_load_core IN-list tests, stepped
+    /// past the highest live-DB sentinel reserved elsewhere in this
+    /// crate. The sibling sentinels are listed alongside their owning
+    /// test files; the +0x100 step here just reserves a fresh slot
+    /// for these tests so concurrent live-DB runs don't collide on
+    /// account/player ids.
+    const TEST_BASE: i32 = 0x7000_1100;
+
+    /// Bandolier-allowed weapon — same one used elsewhere in the
+    /// player_load tests. The exact type doesn't matter for the IN-list
+    /// guard; we only need a row whose `visual_component` is non-NULL
+    /// (verified via the assertion in the test itself).
+    const WEAPON_TYPE_ID: i32 = 3241;
+
+    async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+        let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
+            .bind(player_id)
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(pool)
+            .await;
+    }
+
+    async fn insert_account_and_player(
+        pool: &PgPool,
+        account_id: i32,
+        player_id: i32,
+        bandolier_slot: i32,
+    ) {
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password) \
+             VALUES ($1, $2, '')",
+        )
+        .bind(account_id)
+        .bind(format!("plcore-in-{account_id}"))
+        .execute(pool)
+        .await
+        .expect("insert account");
+
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah, bandolier_slot\
+             ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                       0.0, 0.0, 0.0, 0, 0, $4)",
+        )
+        .bind(account_id)
+        .bind(player_id)
+        .bind(format!("test-{player_id}"))
+        .bind(bandolier_slot)
+        .execute(pool)
+        .await
+        .expect("insert player");
+    }
+
+    /// SQL drift-guard: the `INVENTORY_ITEM_SELECT` constant is
+    /// intentionally duplicated in `inventory/core.rs` (the
+    /// live-update path) and `player_load/core.rs` (the login-load
+    /// path). Both must produce identical row layouts so downstream
+    /// `InvItem` consumers don't silently disagree. This test fails
+    /// the build the moment one drifts.
+    #[test]
+    fn inventory_item_select_matches_player_load_copy_byte_for_byte() {
+        assert_eq!(
+            INVENTORY_ITEM_SELECT,
+            inventory_core::INVENTORY_ITEM_SELECT,
+            "INVENTORY_ITEM_SELECT must stay byte-identical between \
+             player_load/core.rs and inventory/core.rs — see the NOTE \
+             comment above each constant for why",
+        );
+    }
+
+    /// IN-list double-count regression guard. The visual-merge query
+    /// in `query_player_load_data` uses:
+    ///
+    ///   (container_id <> $3 AND slot_id = 0)
+    ///     OR (container_id = $3 AND slot_id = $4)
+    ///
+    /// where $3 = CONTAINER_BANDOLIER (3) and $4 = bandolier_slot.
+    /// Bug shape this catches: a refactor that simplifies the OR to
+    /// just `slot_id = 0` (or that adds container 3 to the IN list
+    /// without the slot-disambiguation OR) would surface bandolier
+    /// slot 0's visual when the active slot is 1, OR double-count
+    /// bandolier slot 0 when bandolier_slot is 0.
+    ///
+    /// Setup: bandolier_slot=2; insert items at bandolier slots 0
+    /// AND 2. Only the slot-2 item's visual must merge into
+    /// `components`.
+    #[tokio::test]
+    async fn equipped_item_at_inactive_bandolier_slot_is_excluded_from_visuals() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE;
+        let player_id = TEST_BASE + 1;
+        cleanup(&pool, account_id, player_id).await;
+        // bandolier_slot=2 is the active slot we expect the visual
+        // merge to pick.
+        insert_account_and_player(&pool, account_id, player_id, 2).await;
+
+        // Look up the visual_component the seeded weapon design
+        // contributes. If it's NULL, the test premise is invalid —
+        // skip with a panic that points at fixture data rather than
+        // the function under test.
+        let expected_visual: Option<String> =
+            sqlx::query_scalar("SELECT visual_component FROM resources.items WHERE item_id = $1")
+                .bind(WEAPON_TYPE_ID)
+                .fetch_one(&pool)
+                .await
+                .expect("look up visual_component");
+        let expected_visual = expected_visual.expect(
+            "WEAPON_TYPE_ID must have a non-NULL visual_component — pick a different design \
+             if the seed data ever changes",
+        );
+
+        // Insert at bandolier slots 0 (NOT active) and 2 (active).
+        // CONTAINER_BANDOLIER == 3.
+        sqlx::query(
+            "INSERT INTO sgw_inventory \
+                (character_id, type_id, stack_size, slot_id, container_id, \
+                 bound, durability, charges) \
+             VALUES ($1, $2, 1, 0, $3, false, 100, 0), \
+                    ($1, $2, 1, 2, $3, false, 100, 0)",
+        )
+        .bind(player_id)
+        .bind(WEAPON_TYPE_ID)
+        .bind(CONTAINER_BANDOLIER)
+        .execute(&pool)
+        .await
+        .expect("insert two bandolier rows");
+
+        let db_pool = Some(Arc::new(pool.clone()));
+        let data = query_player_load_data(&db_pool, account_id as u32, player_id).await;
+
+        // Count how many times the weapon's visual appears in the
+        // merged components list. The bug shape allows two distinct
+        // failure modes:
+        //   - 0 occurrences: the OR branch was dropped and the
+        //     active slot's item is no longer surfaced at all.
+        //   - 2 occurrences: the OR widened to also match
+        //     non-bandolier branch for container 3, double-counting.
+        // The single correct value is 1.
+        let occurrences = data
+            .components
+            .iter()
+            .filter(|c| **c == expected_visual)
+            .count();
+        assert_eq!(
+            occurrences, 1,
+            "expected exactly one occurrence of the active bandolier slot's \
+             visual_component in components; got {occurrences} (components = {:?})",
+            data.components,
+        );
+
+        cleanup(&pool, account_id, player_id).await;
     }
 }

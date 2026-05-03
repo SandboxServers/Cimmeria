@@ -13,7 +13,12 @@ use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx};
 
-const INVENTORY_ITEM_SELECT: &str = r#"
+/// `pub(crate)` so the duplicate copy in `player_load/core.rs` can be
+/// pinned against this one by the SQL drift-guard test
+/// `inventory_item_select_matches_player_load_copy_byte_for_byte`. Both
+/// paths must produce identical row layouts; if they ever diverge, every
+/// downstream `InvItem` consumer breaks in a hard-to-diagnose way.
+pub(crate) const INVENTORY_ITEM_SELECT: &str = r#"
 SELECT inv.item_id, inv.type_id, inv.stack_size, inv.slot_id, inv.container_id,
        inv.bound, inv.durability, inv.charges,
        COALESCE((
