@@ -24,6 +24,7 @@ pub(crate) mod login;
 pub(crate) mod character;
 pub(crate) mod character_create;
 pub(crate) mod cooked_data;
+pub(crate) mod outbox;
 mod service;
 pub(crate) mod world_entry;
 pub(crate) mod world_entry_appearance;

@@ -18,6 +18,7 @@ use crate::minigame::SessionRegistry;
 use super::{
     BaseError, ConnectedClientState, OnlinePlayer, archetype_name,
     connect_loop::run_connect_loop,
+    outbox,
     resources::ResourceCache,
     world_entry::handle_cell_message,
 };
@@ -192,6 +193,18 @@ impl BaseService {
                 }
                 tracing::debug!("Base service CellToBase message handler exited");
             });
+        }
+
+        // Spawn the cell_event_outbox drainer. The startup pass
+        // replays any rows orphaned by the previous shutdown; the periodic
+        // ticker covers transient channel failures during steady-state.
+        // Requires both a DB pool and a cell channel — gated on both.
+        if let (Some(pool), Some(tx)) = (self.db_pool.clone(), cell_tx.clone()) {
+            outbox::spawn_drainer(pool, tx);
+        } else {
+            tracing::debug!(
+                "Skipping cell_event_outbox drainer: db_pool or cell_tx not configured"
+            );
         }
 
         self.is_running = true;
