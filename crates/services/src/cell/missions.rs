@@ -155,10 +155,18 @@ pub async fn accept_mission(
         None => return,
     };
 
-    let mission = MissionInstance::new(mission_id, step_id, objectives.clone());
+    // Carry forward `repeats` from any prior instance of this mission --
+    // `add_mission` overwrites by mission_id, and a fresh `MissionInstance::new`
+    // initializes `repeats = 0`. Without this read-then-set, re-accepting a
+    // previously-completed repeatable mission would silently reset the counter
+    // (which then UPSERTs through `MissionUpdate`), defeating `numRepeats`
+    // gating. Spotted by Copilot on PR #125.
+    let prior_repeats = entity.missions.get_mission(mission_id).map_or(0, |m| m.repeats);
+    let mut mission = MissionInstance::new(mission_id, step_id, objectives.clone());
+    mission.repeats = prior_repeats;
     entity.missions.add_mission(mission);
 
-    tracing::info!(entity_id, mission_id, step_id, "Mission accepted");
+    tracing::info!(entity_id, mission_id, step_id, prior_repeats, "Mission accepted");
 
     // Send onMissionUpdate
     let mut args = Vec::with_capacity(9);
@@ -409,6 +417,35 @@ mod tests {
             _ => panic!("unexpected message"),
         }).collect();
         assert_eq!(indices, vec![80, 81, 82]);
+    }
+
+    #[tokio::test]
+    async fn re_accept_preserves_repeat_counter() {
+        // Regression for the Copilot finding on PR #125: `accept_mission` was
+        // overwriting the existing MissionInstance with a fresh one (repeats=0),
+        // so re-accepting a previously-completed repeatable mission would
+        // silently reset the counter -- which then UPSERTed back to 0 on the
+        // DB row, defeating the entire #118 fix for repeatable missions.
+        let mut mgr = super::super::space_manager::SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+
+        // Seed prior state: completed once, repeats == 1.
+        {
+            let entity = mgr.get_entity_mut(1).unwrap();
+            let mut prior = MissionInstance::new(100, 200, vec![]);
+            prior.complete(); // sets repeats = 1
+            entity.missions.add_mission(prior);
+        }
+
+        let (tx, _rx) = mpsc::channel(16);
+        accept_mission(1, 100, 200, make_objectives(), &tx, &mut mgr).await;
+
+        let m = mgr.get_entity(1).unwrap().missions.get_mission(100).unwrap();
+        assert_eq!(m.repeats, 1, "re-accept must carry forward prior repeats count");
     }
 
     #[tokio::test]
