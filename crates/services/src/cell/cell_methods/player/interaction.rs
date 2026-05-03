@@ -359,9 +359,11 @@ mod tests {
         let handled = dispatch(1, INTERACT, &args, &tx, &mut mgr, &engine).await;
         assert!(handled, "INTERACT must always return true (handled)");
 
-        // No combat-side effects. Method 16 = onTargetUpdate (the hostile
-        // reroute marker); useAbility downstream would also surface as a
-        // base->cell ability call. We assert neither appears.
+        // Method 16 = onTargetUpdate is the canonical hostile-reroute marker
+        // emitted at the top of the is_hostile branch (interaction.rs:53-56).
+        // Asserting it never appears is a precise probe for "the hostile
+        // reroute didn't run" — the alive_hostile_reroutes_to_useability test
+        // pins the converse direction, so together they bracket the branch.
         while let Ok(msg) = rx.try_recv() {
             if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
                 assert_ne!(
