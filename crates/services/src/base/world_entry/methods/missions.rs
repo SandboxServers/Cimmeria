@@ -191,14 +191,21 @@ mod tests {
             &db_pool,
         ).await;
 
-        let row: Option<(i32, i32, Option<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, i32)> = sqlx::query_as(
+        // Filter on (player_id, mission_id) and use fetch_one so a regression
+        // that inserted multiple rows would surface either as the count check
+        // failing or as fetch_one's "expected one row" error.
+        let row_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sgw_mission WHERE player_id = $1 AND mission_id = $2",
+        ).bind(player_id).bind(12345).fetch_one(&pool).await.unwrap();
+        assert_eq!(row_count, 1, "INSERT must produce exactly one row");
+
+        let row: (i32, i32, Option<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, i32) = sqlx::query_as(
             "SELECT mission_id, status, current_step_id, \
                     completed_step_ids, completed_objective_ids, \
                     active_objective_ids, failed_objective_ids, repeats \
-             FROM sgw_mission WHERE player_id = $1",
+             FROM sgw_mission WHERE player_id = $1 AND mission_id = $2",
         )
-        .bind(player_id).fetch_optional(&pool).await.unwrap();
-        let row = row.expect("INSERT should have produced a row");
+        .bind(player_id).bind(12345).fetch_one(&pool).await.unwrap();
         assert_eq!(row.0, 12345, "mission_id");
         assert_eq!(row.1, 2, "status");
         assert_eq!(row.2, Some(7), "current_step_id");
