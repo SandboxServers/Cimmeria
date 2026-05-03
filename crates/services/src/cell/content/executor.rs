@@ -11,6 +11,18 @@ use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+/// Look up a mission's current `repeats` count from the cell-side player
+/// instance. Returns 0 when the entity or mission isn't tracked — the cell
+/// is the authoritative source for this value, so a missing entry means
+/// "no completions yet" and 0 is the correct default.
+fn mission_repeats(space_mgr: &SpaceManager, entity_id: u32, mission_id: i32) -> i32 {
+    space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.missions.get_mission(mission_id))
+        .map(|m| m.repeats)
+        .unwrap_or(0)
+}
+
 /// Execute resolved actions from the content engine against the game state.
 pub(super) async fn execute_actions(
     resolved: ResolvedActions,
@@ -37,6 +49,10 @@ pub(super) async fn execute_actions(
                     crate::cell::missions::accept_mission(
                         entity_id, mission_id, step_id, objectives, tx, space_mgr,
                     ).await;
+                    // Read repeats AFTER the helper runs — for a re-accept of
+                    // a previously-completed repeatable mission, the count
+                    // restored from DB is what should round-trip back, not 0.
+                    let repeats = mission_repeats(space_mgr, entity_id, mission_id);
                     if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                         player_id,
                         mission_id,
@@ -46,6 +62,7 @@ pub(super) async fn execute_actions(
                         completed_objective_ids: vec![],
                         active_objective_ids: vec![step_id],
                         failed_objective_ids: vec![],
+                        repeats,
                     }).await {
                         tracing::error!(
                             entity_id, player_id, mission_id, step_id,
@@ -62,6 +79,9 @@ pub(super) async fn execute_actions(
                 crate::cell::missions::complete_mission_direct(
                     entity_id, mission_id, tx, space_mgr,
                 ).await;
+                // Read repeats AFTER complete_mission_direct so we capture
+                // the post-bump value (`MissionInstance::complete` increments).
+                let repeats = mission_repeats(space_mgr, entity_id, mission_id);
                 if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,
@@ -71,6 +91,7 @@ pub(super) async fn execute_actions(
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![],
                     failed_objective_ids: vec![],
+                    repeats,
                 }).await {
                     tracing::error!(
                         entity_id, player_id, mission_id, chain_id, error = %e,
@@ -166,6 +187,7 @@ pub(super) async fn execute_actions(
             Action::AdvanceStep { mission_id, step_id } => {
                 tracing::info!(entity_id, mission_id, step_id, chain_id, "Content: advancing step");
                 crate::cell::missions::advance_step(entity_id, mission_id, step_id, tx, space_mgr).await;
+                let repeats = mission_repeats(space_mgr, entity_id, mission_id);
                 if let Err(e) = tx.send(CellToBaseMsg::MissionUpdate {
                     player_id,
                     mission_id,
@@ -175,6 +197,7 @@ pub(super) async fn execute_actions(
                     completed_objective_ids: vec![],
                     active_objective_ids: vec![step_id],
                     failed_objective_ids: vec![],
+                    repeats,
                 }).await {
                     tracing::error!(
                         entity_id, player_id, mission_id, step_id,

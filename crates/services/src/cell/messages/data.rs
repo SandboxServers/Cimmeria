@@ -54,4 +54,9 @@ pub struct SavedMission {
     pub completed_objective_ids: Vec<i32>,
     pub active_objective_ids: Vec<i32>,
     pub failed_objective_ids: Vec<i32>,
+    /// Cumulative completion+failure count from `sgw_mission.repeats`. Must
+    /// be restored onto `MissionInstance.repeats` so a relog after N completions
+    /// of a repeatable mission correctly gates re-acceptance against
+    /// `mission.numRepeats` rather than appearing to reset to 0.
+    pub repeats: i32,
 }
