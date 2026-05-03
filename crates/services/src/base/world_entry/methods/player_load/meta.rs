@@ -225,23 +225,37 @@ mod tests {
     use super::*;
     use crate::test_support::require_db_or_skip;
 
-    /// Sentinel base for player_load/meta tests. Distinct from prior
-    /// live-DB sentinels (outbox 0x000 / grant_cash +0x100 /
-    /// move +0x200 / grant_item +0x300 / missions +0x400 / mail +0x500 /
-    /// vendor/repair +0x600 / paid_repair +0x700 / sell +0x800 /
-    /// buyback +0x900 / purchase +0x0A00 / ammo +0x0B00 /
-    /// vendor_data +0x0C00).
+    /// Sentinel base for player_load/meta tests, stepped past prior
+    /// live-DB sentinels reserved elsewhere in the crate.
     const TEST_BASE: i32 = 0x7000_0D00;
 
-    /// Bandolier-allowed weapon design with clip_size=15 and
-    /// default_ammo_type=Bullet_Default. Verified against
-    /// resources.items in the seed; the enum index for
-    /// Bullet_Default is 1.
-    const WEAPON_TYPE_ID: i32 = 3241;
-    const EXPECTED_CLIP_SIZE: i32 = 15;
-    const EXPECTED_DEFAULT_AMMO_INDEX: i32 = 1;
-
     const INV_BANDOLIER: i32 = 3;
+
+    /// Picked at runtime in each test rather than hard-coded. The
+    /// behavior under test is the `cur_ammo_type=0 -> default` fallback
+    /// in `map_bandolier_rows`, which doesn't care which specific
+    /// weapon design is used — it only needs *a* bandolier-allowed
+    /// design with a non-NULL `default_ammo_type` and `clip_size > 0`.
+    /// Querying lets the test follow seed-data renumbers automatically.
+    /// Returns `(weapon_type_id, expected_clip_size, expected_default_ammo_index)`.
+    async fn pick_bandolier_weapon_with_stats(pool: &PgPool) -> (i32, i32, i32) {
+        sqlx::query_as::<_, (i32, i32, i32)>(
+            "SELECT ri.item_id, ri.clip_size, \
+                    array_position(enum_range(NULL::resources.\"EAmmoType\"), \
+                                   ri.default_ammo_type) - 1 \
+             FROM resources.items ri \
+             WHERE (ri.container_sets IS NULL OR 3 = ANY(ri.container_sets)) \
+               AND ri.default_ammo_type IS NOT NULL \
+               AND ri.clip_size > 0 \
+             ORDER BY ri.item_id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .expect(
+            "seed must provide a bandolier-allowed weapon with default_ammo_type \
+             and clip_size > 0",
+        )
+    }
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
@@ -284,6 +298,7 @@ mod tests {
     async fn insert_bandolier_row(
         pool: &PgPool,
         player_id: i32,
+        weapon_type_id: i32,
         slot_id: i32,
         cur_ammo_type: i32,
         ammo: i32,
@@ -295,7 +310,7 @@ mod tests {
              VALUES ($1, $2, 1, $3, $4, false, 100, 0, $5, $6)",
         )
         .bind(player_id)
-        .bind(WEAPON_TYPE_ID)
+        .bind(weapon_type_id)
         .bind(slot_id)
         .bind(INV_BANDOLIER)
         .bind(ammo)
@@ -312,14 +327,19 @@ mod tests {
     #[tokio::test]
     async fn bandolier_zero_cur_ammo_type_falls_back_to_default_ammo() {
         let pool = require_db_or_skip!();
+        let (weapon_type, expected_clip_size, expected_default_ammo_index) =
+            pick_bandolier_weapon_with_stats(&pool).await;
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
         cleanup(&pool, account_id, player_id).await;
         insert_account_and_player(&pool, account_id, player_id).await;
-        // Slot 1: cur_ammo_type=0 — must fall back to default index (1).
-        insert_bandolier_row(&pool, player_id, 1, 0, 7).await;
-        // Slot 2: cur_ammo_type=5 — must be returned verbatim.
-        insert_bandolier_row(&pool, player_id, 2, 5, 12).await;
+        // Slot 1: cur_ammo_type=0 — must fall back to weapon's default.
+        insert_bandolier_row(&pool, player_id, weapon_type, 1, 0, 7).await;
+        // Slot 2: cur_ammo_type set to a value distinct from the default
+        // so the verbatim-passthrough assertion can't coincidentally
+        // match the fallback.
+        let explicit_cur_ammo_type = expected_default_ammo_index + 1;
+        insert_bandolier_row(&pool, player_id, weapon_type, 2, explicit_cur_ammo_type, 12).await;
 
         let db_pool = Some(Arc::new(pool.clone()));
         let items = query_bandolier_items(&db_pool, player_id).await;
@@ -328,21 +348,24 @@ mod tests {
         let by_slot: std::collections::HashMap<i32, _> = items.into_iter().collect();
 
         let slot1 = by_slot.get(&1).expect("slot 1 must be present");
-        assert_eq!(slot1.item_id, WEAPON_TYPE_ID);
-        assert_eq!(slot1.clip_size, EXPECTED_CLIP_SIZE);
-        assert_eq!(slot1.default_ammo_type, EXPECTED_DEFAULT_AMMO_INDEX);
+        assert_eq!(slot1.item_id, weapon_type);
+        assert_eq!(slot1.clip_size, expected_clip_size);
+        assert_eq!(slot1.default_ammo_type, expected_default_ammo_index);
         assert_eq!(
             slot1.current_ammo, 7,
             "current_ammo must round-trip from inv.ammo"
         );
+        // The behavior under test is the fallback itself — assert
+        // structurally rather than against a specific enum index, so
+        // the test follows seed renumbers automatically.
         assert_eq!(
-            slot1.cur_ammo_type, EXPECTED_DEFAULT_AMMO_INDEX,
+            slot1.cur_ammo_type, slot1.default_ammo_type,
             "cur_ammo_type=0 must fall back to default_ammo_type",
         );
 
         let slot2 = by_slot.get(&2).expect("slot 2 must be present");
         assert_eq!(
-            slot2.cur_ammo_type, 5,
+            slot2.cur_ammo_type, explicit_cur_ammo_type,
             "non-zero cur_ammo_type must be returned verbatim",
         );
 
