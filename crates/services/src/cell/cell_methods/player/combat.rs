@@ -168,7 +168,11 @@ async fn handle_respawn(
     let stat_update = entity.stats.serialize_dirty();
     entity.stats.clear_dirty();
 
-    entity.state_field = 0;
+    // Respawn is a hard reset — drop both the bit pattern AND the per-flag
+    // counters so we don't leak refs from death's BSF_Dead/BSF_MovementLock
+    // sets. Raw `state_field = 0` would clear the bits but leave stale
+    // counters that the next ref-counted unset would see as still-positive.
+    entity.clear_all_state_flags();
     entity.abilities.clear_all_cooldowns();
 
     tracing::info!(entity_id, "Player respawned, state_field=0");

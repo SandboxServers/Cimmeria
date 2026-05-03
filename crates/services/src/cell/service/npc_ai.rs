@@ -221,8 +221,12 @@ async fn npc_ai_leash(
         npc.threat_list.clear();
         npc.abilities.clear_all_cooldowns();
 
-        // Clear dead flag from the NPC's actual state_field
-        super::super::combat::clear_dead_state(&mut npc.state_field);
+        // Clear dead flag from the NPC's actual state_field. NPC leash-reset
+        // is the symmetric counterpart of damage-apply's death set, so a
+        // single unset is balanced. Movement-lock that death also set gets
+        // unset alongside since the NPC is fully alive again.
+        npc.unset_state_flag(super::super::combat::BSF_DEAD);
+        npc.unset_state_flag(super::super::combat::BSF_MOVEMENT_LOCK);
 
         tracing::info!(npc_id, "NPC AI: leash complete, reset to Idle with full health");
 
