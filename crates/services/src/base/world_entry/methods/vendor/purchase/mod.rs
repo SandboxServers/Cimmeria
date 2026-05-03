@@ -16,6 +16,9 @@ use super::store::handle_open_vendor_store;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 
+#[cfg(test)]
+mod tests;
+
 const INV_MAIN: i32 = 1;
 
 /// Transactionally purchase vendor-list entries and refresh inventory/cash.
