@@ -1,3 +1,4 @@
+use crate::cell::client_methods::{being, spawnable_entity};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
@@ -216,7 +217,7 @@ async fn handle_reload(
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
-            method_index: 12,
+            method_index: being::ON_TIMER_UPDATE,
             args: timer_args,
         })
         .await;
@@ -232,7 +233,7 @@ async fn handle_reload(
                 let _ = tx
                     .send(CellToBaseMsg::EntityMethodCall {
                         entity_id,
-                        method_index: 19,
+                        method_index: being::ON_STATE_FIELD_UPDATE,
                         args: new_state.to_le_bytes().to_vec(),
                     })
                     .await;
@@ -256,7 +257,7 @@ async fn handle_reload(
             let _ = tx
                 .send(CellToBaseMsg::EntityMethodCall {
                     entity_id,
-                    method_index: 1,
+                    method_index: spawnable_entity::ON_SEQUENCE,
                     args: seq_args,
                 })
                 .await;
@@ -278,7 +279,7 @@ async fn handle_reload(
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
-            method_index: 7,
+            method_index: spawnable_entity::ON_ENTITY_PROPERTY,
             args,
         })
         .await;
