@@ -80,26 +80,45 @@ fn row_to_message_returns_none_for_unknown_event_type() {
 }
 
 #[test]
-fn payload_kind_tags_are_stable_for_all_variants() {
-    // The kind tag is the persistence contract — changing one breaks
-    // every in-flight row on existing databases. Pin them so a future
-    // rename surfaces here, not in production.
-    assert_eq!(
-        CellOutboxPayload::ItemUsed { type_id: 0, target_id: 0 }.event_type(),
-        "item_used",
-    );
-    assert_eq!(
-        CellOutboxPayload::InventoryItemGranted {
-            item_id: 0, container_id: 0, slot_id: 0, quantity: 0,
-        }.event_type(),
-        "inventory_item_granted",
-    );
-    assert_eq!(
-        CellOutboxPayload::InventoryItemRemoved {
-            item_id: 0, source_container_id: 0,
-        }.event_type(),
-        "inventory_item_removed",
-    );
+fn persistence_contract_strings_are_stable_for_all_variants() {
+    // Each variant has TWO persistence contracts that must agree:
+    //   - `event_type()` returns the string written to the
+    //     `cell_event_outbox.event_type` VARCHAR column.
+    //   - serde's `tag = "kind"` writes the same string into the
+    //     payload JSONB body.
+    // `row_to_message` matches on (event_type, payload) so both must
+    // line up; pin them together here. Changing either string breaks
+    // every in-flight row on existing databases.
+    let cases: &[(CellOutboxPayload, &str)] = &[
+        (
+            CellOutboxPayload::ItemUsed { type_id: 0, target_id: 0 },
+            "item_used",
+        ),
+        (
+            CellOutboxPayload::InventoryItemGranted {
+                item_id: 0, container_id: 0, slot_id: 0, quantity: 0,
+            },
+            "inventory_item_granted",
+        ),
+        (
+            CellOutboxPayload::InventoryItemRemoved {
+                item_id: 0, source_container_id: 0,
+            },
+            "inventory_item_removed",
+        ),
+    ];
+
+    for (variant, expected) in cases {
+        assert_eq!(
+            variant.event_type(), *expected,
+            "event_type() drift for {variant:?}",
+        );
+        let json = serde_json::to_value(variant).unwrap();
+        assert_eq!(
+            json["kind"], *expected,
+            "JSON `kind` tag drift for {variant:?}",
+        );
+    }
 }
 
 #[test]
