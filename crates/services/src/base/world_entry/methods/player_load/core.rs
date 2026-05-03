@@ -252,27 +252,39 @@ mod tests {
     //!   sentinel.
     //! - `query_player_load_data` happy path round-trips key fields.
     //!
-    //! The active-equipment-visual merge ($3/$4 join in
-    //! `query_player_load_data`) is exercised implicitly by the happy
-    //! path: an item at the active bandolier slot must contribute its
-    //! visual_component string to `components`.
+    //! The visual-merge SQL in `query_player_load_data` (the
+    //! `(container_id <> $3 AND slot_id = 0) OR (container_id = $3
+    //! AND slot_id = $4)` clause) is NOT exercised by these tests —
+    //! the seed items used here have NULL `visual_component` and the
+    //! inventory rows go in container 1, not equipment slots
+    //! (4..=14) or the bandolier (3). That clause is covered
+    //! separately by the IN-list double-count regression guard added
+    //! alongside the SQL drift-guard.
 
     use super::*;
     use crate::test_support::require_db_or_skip;
 
-    /// Sentinel base for player_load/core tests. Distinct from prior
-    /// live-DB sentinels (outbox 0x000 / grant_cash +0x100 /
-    /// move +0x200 / grant_item +0x300 / missions +0x400 / mail +0x500 /
-    /// vendor/repair +0x600 / paid_repair +0x700 / sell +0x800 /
-    /// buyback +0x900 / purchase +0x0A00 / ammo +0x0B00 /
-    /// vendor_data +0x0C00 / player_load_meta +0x0D00 /
-    /// vendor_helpers +0x0E00).
+    /// Sentinel base for player_load/core tests, stepped past prior
+    /// live-DB sentinels reserved elsewhere in the crate.
     const TEST_BASE: i32 = 0x7000_0F00;
 
-    /// Bandolier-allowed weapon. The query_inventory_items happy path
-    /// is type-agnostic but pinning a known type makes the assertions
-    /// readable.
-    const WEAPON_TYPE_ID: i32 = 3241;
+    /// Picked at runtime rather than hard-coded. The behavior under
+    /// test (slot_id+1 wire conversion, account-isolation,
+    /// round-trip of basic fields) is type-agnostic — querying
+    /// `resources.items` for *any* main-bag-allowed item lets the
+    /// test follow seed-data renumbers automatically. Also satisfies
+    /// the `sgw_inventory.type_id` FK without coupling to a specific
+    /// design id.
+    async fn pick_main_bag_type_id(pool: &PgPool) -> i32 {
+        sqlx::query_scalar::<_, i32>(
+            "SELECT item_id FROM resources.items \
+             WHERE container_sets IS NULL OR 1 = ANY(container_sets) \
+             ORDER BY item_id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .expect("seed must provide at least one main-bag-allowed item")
+    }
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
@@ -350,14 +362,15 @@ mod tests {
     #[tokio::test]
     async fn query_inventory_items_wire_slot_is_one_based() {
         let pool = require_db_or_skip!();
+        let type_id = pick_main_bag_type_id(&pool).await;
         let account_id = TEST_BASE;
         let player_id = TEST_BASE + 1;
         cleanup(&pool, account_id, player_id).await;
         insert_account_and_player(&pool, account_id, player_id, 1, "wire-slot").await;
         // Slot 0 in DB.
-        let _ = insert_inventory_row(&pool, player_id, WEAPON_TYPE_ID, 1, 0).await;
+        let _ = insert_inventory_row(&pool, player_id, type_id, 1, 0).await;
         // Slot 5 in DB.
-        let _ = insert_inventory_row(&pool, player_id, WEAPON_TYPE_ID, 1, 5).await;
+        let _ = insert_inventory_row(&pool, player_id, type_id, 1, 5).await;
 
         let items = query_inventory_items(&pool, player_id).await;
         assert_eq!(items.len(), 2);
@@ -429,11 +442,12 @@ mod tests {
     #[tokio::test]
     async fn query_player_load_data_round_trips_basic_fields() {
         let pool = require_db_or_skip!();
+        let type_id = pick_main_bag_type_id(&pool).await;
         let account_id = TEST_BASE + 200;
         let player_id = TEST_BASE + 201;
         cleanup(&pool, account_id, player_id).await;
         insert_account_and_player(&pool, account_id, player_id, 1, "happy-path").await;
-        let _ = insert_inventory_row(&pool, player_id, WEAPON_TYPE_ID, 1, 0).await;
+        let _ = insert_inventory_row(&pool, player_id, type_id, 1, 0).await;
 
         let db_pool = Some(Arc::new(pool.clone()));
         let data = query_player_load_data(&db_pool, account_id as u32, player_id).await;
@@ -452,7 +466,7 @@ mod tests {
             data.items[0].slot_id, 1,
             "wire slot_id must be DB slot+1 (0 -> 1)",
         );
-        assert_eq!(data.items[0].dbid, WEAPON_TYPE_ID);
+        assert_eq!(data.items[0].dbid, type_id);
 
         cleanup(&pool, account_id, player_id).await;
     }
