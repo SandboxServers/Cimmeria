@@ -512,9 +512,17 @@ mod tests {
         // yaw/pitch/roll are direction[1]/[0]/[2] — all zero direction packs to 0
         assert_eq!(&pt[35..38], &[0u8; 3], "yaw/pitch/roll = 0 for zero direction");
 
-        // Total body length = 12 (CREATE_ENTITY) + 26 (UPDATE_AVATAR) = 38
-        // After flags(1) and footers, the body region must be exactly that.
-        assert_eq!(&pt[1..39].len(), &38);
+        // Body length = 11 (CREATE_ENTITY) + 26 (UPDATE_AVATAR) = 37 bytes,
+        // occupying pt[1..38]. With FLAG_HAS_SEQUENCE the seq_id (we passed
+        // 1) is appended as a u32 footer immediately after the body, so
+        // pt[38..42] must equal the seq_id LE bytes. Asserting that pins
+        // "the body is exactly 37 bytes" — a layout drift would shift the
+        // footer and fail this check.
+        assert_eq!(
+            u32::from_le_bytes([pt[38], pt[39], pt[40], pt[41]]),
+            1,
+            "seq_id footer must start at pt[38] (proves body length = 37)",
+        );
     }
 
     /// `build_entity_invisible` is the smallest AoI builder — 6-byte body.
