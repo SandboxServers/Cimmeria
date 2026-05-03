@@ -12,7 +12,7 @@ use crate::mercury::read_wstring;
 use super::ConnectedClientState;
 use super::chardef::chardef_lookup;
 use super::helpers::{drain_acks_and_seq, get_account_entity_id};
-use super::resources::{bag_max_slots, BAG_FILL_ORDER, INV_BANDOLIER};
+use super::resources::{bag_max_slots, bag_min_slot, BAG_FILL_ORDER};
 use super::character::{query_character_list, send_char_create_failed};
 
 /// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
@@ -378,9 +378,7 @@ pub(crate) async fn handle_create_character(
                     }
                 };
 
-                let entry = slot_indices.entry(bag_id).or_insert_with(|| {
-                    if bag_id == INV_BANDOLIER { 1 } else { 0 }
-                });
+                let entry = slot_indices.entry(bag_id).or_insert_with(|| bag_min_slot(bag_id));
                 let current_slot = *entry;
                 *entry += 1;
 

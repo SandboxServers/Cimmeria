@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
 use super::super::super::super::helpers::send_to_witness;
-use super::super::super::super::resources::bag_max_slots;
+use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 use super::super::super::super::ConnectedClientState;
 use super::core::send_full_inventory_update;
 use super::grant::item_allows_container;
@@ -48,10 +48,19 @@ pub async fn handle_move_inventory_item(
     };
 
     let max_slots = bag_max_slots(target_container_id);
-    if target_container_id <= 0 || target_slot_id < 0 || target_slot_id >= max_slots || quantity <= 0 {
+    let min_slot = bag_min_slot(target_container_id);
+    // Reject sub-min slot targets — for the bandolier this blocks moving
+    // anything into slot 0, which is reserved for the fist-weapon default
+    // (issue #119). Without this guard, a manual drag from the main bag
+    // to bandolier-slot-0 would clobber the fallback.
+    if target_container_id <= 0
+        || target_slot_id < min_slot
+        || target_slot_id >= max_slots
+        || quantity <= 0
+    {
         tracing::warn!(
             player_id, item_id, target_container_id, target_slot_id,
-            quantity, max_slots, "MoveInventoryItem: invalid target or quantity"
+            quantity, min_slot, max_slots, "MoveInventoryItem: invalid target or quantity"
         );
         return;
     }

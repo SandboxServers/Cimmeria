@@ -39,6 +39,18 @@ pub(crate) fn bag_max_slots(container_id: i32) -> i32 {
     }
 }
 
+/// Lowest assignable slot for a container. The bandolier reserves slot 0
+/// for the empty/fist default weapon — `active_bandolier_slot = 0` with no
+/// item present is the canonical "fists equipped" state, so any real grant
+/// or move targeting slot 0 of the bandolier would overwrite that fallback
+/// (issue #119). Python parity: `Account.py:191` —
+/// `slotIndices[bagId] = 1 if bagId == Atrea.enums.INV_Bandolier else 0`.
+///
+/// All other containers start at 0.
+pub(crate) fn bag_min_slot(container_id: i32) -> i32 {
+    if container_id == INV_BANDOLIER { 1 } else { 0 }
+}
+
 // ── Resource cache ───────────────────────────────────────────────────────────
 
 /// Per-category cooked data loaded from a PAK file.
