@@ -422,3 +422,271 @@ mod normalize_item_quantities_tests {
         assert!(normalize_item_quantities(Vec::new(), false).is_empty());
     }
 }
+
+#[cfg(test)]
+mod consume_design_quantity_tests {
+    //! Live-DB integration tests for consume_design_quantity.
+    //!
+    //! Skip cleanly when DATABASE_URL is unset; against the bundled
+    //! local Postgres they exercise the four meaningful branches:
+    //!
+    //! - `quantity <= 0` short-circuits without touching state.
+    //! - Insufficient inventory across all VENDOR_COST_BAGS returns
+    //!   Ok(false), no rows mutated.
+    //! - A full-stack consumption deletes the row.
+    //! - A partial-stack consumption decrements `stack_size`.
+    //! - A multi-stack consumption deletes earlier stacks until the
+    //!   running remainder fits in the last partial.
+
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+
+    /// Sentinel base. Steps past the highest live-DB sentinel reserved
+    /// elsewhere in the crate; the sibling sentinels are listed
+    /// alongside their owning test files.
+    const TEST_BASE: i32 = 0x7000_1200;
+
+    /// Bandolier-allowed weapon. The `consume_design_quantity` query
+    /// scans `VENDOR_COST_BAGS = [INV_MAIN, 2, 15]`, so we insert the
+    /// stacks in INV_MAIN (1) where the function will find them.
+    const PREREQ_TYPE_ID: i32 = 55;
+
+    const INV_MAIN: i32 = 1;
+    const INV_BANK: i32 = 2;
+
+    async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+        let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
+            .bind(player_id)
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(pool)
+            .await;
+    }
+
+    async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32) {
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password) \
+             VALUES ($1, $2, '')",
+        )
+        .bind(account_id)
+        .bind(format!("cdq-{account_id}"))
+        .execute(pool)
+        .await
+        .expect("insert account");
+
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah, bandolier_slot\
+             ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                       0.0, 0.0, 0.0, 0, 0, 0)",
+        )
+        .bind(account_id)
+        .bind(player_id)
+        .bind(format!("test-{player_id}"))
+        .execute(pool)
+        .await
+        .expect("insert player");
+    }
+
+    async fn insert_stack(
+        pool: &PgPool,
+        player_id: i32,
+        type_id: i32,
+        container_id: i32,
+        slot_id: i32,
+        stack_size: i32,
+    ) -> i32 {
+        sqlx::query_scalar(
+            "INSERT INTO sgw_inventory \
+                (character_id, type_id, stack_size, slot_id, container_id, \
+                 bound, durability, charges) \
+             VALUES ($1, $2, $3, $4, $5, false, 100, 0) \
+             RETURNING item_id",
+        )
+        .bind(player_id)
+        .bind(type_id)
+        .bind(stack_size)
+        .bind(slot_id)
+        .bind(container_id)
+        .fetch_one(pool)
+        .await
+        .expect("insert stack")
+    }
+
+    async fn stack_size_of(pool: &PgPool, item_id: i32) -> Option<i32> {
+        sqlx::query_scalar("SELECT stack_size FROM sgw_inventory WHERE item_id = $1")
+            .bind(item_id)
+            .fetch_optional(pool)
+            .await
+            .expect("stack_size_of")
+    }
+
+    /// `quantity <= 0` short-circuits to Ok(true) without touching
+    /// state. Bug shape this catches: a regression that runs the
+    /// scan-and-delete loop with a non-positive quantity would either
+    /// loop forever (negative remaining) or no-op silently after
+    /// holding `FOR UPDATE` locks for nothing.
+    #[tokio::test]
+    async fn zero_quantity_short_circuits_without_state_change() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE;
+        let player_id = TEST_BASE + 1;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let item = insert_stack(&pool, player_id, PREREQ_TYPE_ID, INV_MAIN, 0, 5).await;
+
+        let mut tx = pool.begin().await.expect("begin tx");
+        let result = consume_design_quantity(&mut tx, player_id, PREREQ_TYPE_ID, 0).await;
+        tx.commit().await.expect("commit");
+
+        assert!(
+            matches!(result, Ok(true)),
+            "zero quantity must return Ok(true)"
+        );
+        assert_eq!(
+            stack_size_of(&pool, item).await,
+            Some(5),
+            "zero quantity must not modify the stack",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Insufficient available inventory across all VENDOR_COST_BAGS
+    /// returns Ok(false) and leaves all rows untouched. The function
+    /// sums in i64 to defend against pathological pre-image overflow,
+    /// then compares back against the i32 quantity — a refactor that
+    /// drops the i64 cast would silently allow underflow on
+    /// adversarial inputs.
+    #[tokio::test]
+    async fn insufficient_inventory_returns_false_without_mutation() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 100;
+        let player_id = TEST_BASE + 101;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        // Player has 3 in MAIN + 2 in BANK = 5 available; we ask for 6.
+        let main_item = insert_stack(&pool, player_id, PREREQ_TYPE_ID, INV_MAIN, 0, 3).await;
+        let bank_item = insert_stack(&pool, player_id, PREREQ_TYPE_ID, INV_BANK, 0, 2).await;
+
+        let mut tx = pool.begin().await.expect("begin tx");
+        let result = consume_design_quantity(&mut tx, player_id, PREREQ_TYPE_ID, 6).await;
+        tx.commit().await.expect("commit");
+
+        assert!(
+            matches!(result, Ok(false)),
+            "insufficient must return Ok(false)"
+        );
+        assert_eq!(
+            stack_size_of(&pool, main_item).await,
+            Some(3),
+            "MAIN stack must NOT be touched on insufficient",
+        );
+        assert_eq!(
+            stack_size_of(&pool, bank_item).await,
+            Some(2),
+            "BANK stack must NOT be touched on insufficient",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Full-stack consumption deletes the row. Bug shape: a refactor
+    /// that uses UPDATE-to-zero instead of DELETE leaves an orphan
+    /// `stack_size = 0` row which downstream UI / inventory queries
+    /// have to repeatedly filter out.
+    #[tokio::test]
+    async fn full_stack_consume_deletes_row() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 200;
+        let player_id = TEST_BASE + 201;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let item = insert_stack(&pool, player_id, PREREQ_TYPE_ID, INV_MAIN, 0, 5).await;
+
+        let mut tx = pool.begin().await.expect("begin tx");
+        let result = consume_design_quantity(&mut tx, player_id, PREREQ_TYPE_ID, 5).await;
+        tx.commit().await.expect("commit");
+
+        assert!(matches!(result, Ok(true)));
+        assert_eq!(
+            stack_size_of(&pool, item).await,
+            None,
+            "full-stack consume must DELETE the row, not zero it out",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Partial-stack consumption decrements `stack_size` and leaves
+    /// the row in place. The `stack_size - $1` arithmetic here is the
+    /// math the multi-stack path also depends on — pinning it
+    /// independently keeps the multi-stack test from masking a
+    /// regression in the partial branch.
+    #[tokio::test]
+    async fn partial_stack_consume_decrements_size() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 300;
+        let player_id = TEST_BASE + 301;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let item = insert_stack(&pool, player_id, PREREQ_TYPE_ID, INV_MAIN, 0, 10).await;
+
+        let mut tx = pool.begin().await.expect("begin tx");
+        let result = consume_design_quantity(&mut tx, player_id, PREREQ_TYPE_ID, 3).await;
+        tx.commit().await.expect("commit");
+
+        assert!(matches!(result, Ok(true)));
+        assert_eq!(
+            stack_size_of(&pool, item).await,
+            Some(7),
+            "partial consume must reduce stack_size by exactly the requested amount",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Multi-stack consumption: walks stacks in (container_id, slot_id)
+    /// order, deleting full stacks until the remainder fits in the
+    /// last partial. The function sees [MAIN slot 0 = 4, MAIN slot 1
+    /// = 4, BANK slot 0 = 4] and consumes 9 — must delete both MAIN
+    /// stacks and decrement BANK to 3.
+    #[tokio::test]
+    async fn multi_stack_consume_walks_stacks_in_order() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 400;
+        let player_id = TEST_BASE + 401;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let main_a = insert_stack(&pool, player_id, PREREQ_TYPE_ID, INV_MAIN, 0, 4).await;
+        let main_b = insert_stack(&pool, player_id, PREREQ_TYPE_ID, INV_MAIN, 1, 4).await;
+        let bank_c = insert_stack(&pool, player_id, PREREQ_TYPE_ID, INV_BANK, 0, 4).await;
+
+        let mut tx = pool.begin().await.expect("begin tx");
+        let result = consume_design_quantity(&mut tx, player_id, PREREQ_TYPE_ID, 9).await;
+        tx.commit().await.expect("commit");
+
+        assert!(matches!(result, Ok(true)));
+        assert_eq!(
+            stack_size_of(&pool, main_a).await,
+            None,
+            "MAIN slot 0 (first in scan order) must be fully consumed and deleted",
+        );
+        assert_eq!(
+            stack_size_of(&pool, main_b).await,
+            None,
+            "MAIN slot 1 must also be fully consumed",
+        );
+        assert_eq!(
+            stack_size_of(&pool, bank_c).await,
+            Some(3),
+            "BANK slot 0 holds the remainder; 4 - (9 - 4 - 4) = 3",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+}
