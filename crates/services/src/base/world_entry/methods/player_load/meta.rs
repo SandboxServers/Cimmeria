@@ -140,17 +140,21 @@ pub async fn query_bandolier_items_tx(
 /// `archetype_id` is the array-position (0-based) of the value in the
 /// `resources."EArchetype"` enum — verified by the
 /// `archetype_count_matches_earchetype_enum_cardinality` test below to match
-/// `cimmeria_entity::stats::ARCHETYPE_COUNT`. The SQL maps the i32 to the enum
-/// value via `enum_range(NULL::"EArchetype")[$1 + 1]` so adding a new
-/// archetype to the enum doesn't require a Rust change here.
+/// `cimmeria_entity::stats::ARCHETYPE_COUNT`. The SQL maps the i32 to the
+/// enum value via `enum_range(NULL::resources."EArchetype")[$1 + 1]` so
+/// adding a new archetype to the enum doesn't require a Rust change here.
 pub async fn query_archetype_ability_tree(
     pool: &PgPool,
     archetype_id: i32,
 ) -> Option<AbilityTreeData> {
-    // Negative ids would either underflow `$1 + 1` to 0 (Postgres array indexing
-    // is 1-based, so this just returns NULL → 0 rows) or trigger a `BIGINT
-    // overflow` on `i32::MIN + 1`. Short-circuit instead so the failure mode is
-    // identical to the prior `archetype_resource_name(< 0) == None` path.
+    // Negative ids would compute a 0-or-negative array subscript; Postgres
+    // array indexing is 1-based and returns NULL for out-of-range subscripts,
+    // so the query would still match 0 rows and behave correctly. Guarding
+    // here is purely a fast path that avoids a DB round-trip on bogus input
+    // and preserves the behavior of the prior `archetype_resource_name(< 0)
+    // == None` short-circuit. (Note: `$1 + 1` doesn't underflow at i32::MIN —
+    // the int4 + int4 arithmetic stays in range; the only overflow case in
+    // the SQL would be `archetype_id == i32::MAX`, which we never produce.)
     if archetype_id < 0 {
         return None;
     }

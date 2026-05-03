@@ -12,8 +12,10 @@
 --
 -- The live-DB test `archetype_count_matches_earchetype_enum_cardinality`
 -- in `crates/services/src/base/world_entry/methods/player_load/meta.rs`
--- pins this list against ARCHETYPE_COUNT and fails CI loud if you bump
--- the enum without updating the const.
+-- asserts this enum's cardinality matches ARCHETYPE_COUNT — bumping the
+-- enum without bumping the const fails CI. The checklist below is NOT
+-- mechanically validated; treat the test failure as a prompt to walk
+-- every item before bumping the const.
 --
 
 CREATE TYPE "EArchetype" AS ENUM (
