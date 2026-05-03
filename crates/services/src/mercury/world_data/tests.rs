@@ -520,17 +520,21 @@ fn find_setup_stargate_info_args(body: &[u8], entity_id: u32) -> &[u8] {
     while i < body.len() {
         if body[i] == 0xBD && i + 8 <= body.len() {
             let payload_len = u16::from_le_bytes([body[i + 1], body[i + 2]]) as usize;
-            let header_end = i + 3 + 4 + 1; // marker + len + eid + sub_index
-            if header_end <= body.len()
-                && body[i + 3..i + 7] == eid
-                && body[i + 7] == sub_index
-            {
-                let args_len = payload_len - 5;
-                return &body[header_end..header_end + args_len];
+            // A 0xBD byte that appears inside another method's args is not a
+            // record start. Reject any apparent header whose payload_len is
+            // too small to cover (eid + sub_index = 5) or that runs past the
+            // body's end, and advance one byte instead of trusting a bogus
+            // length to skip past the (non-)record.
+            if payload_len >= 5 && i + 3 + payload_len <= body.len() {
+                let header_end = i + 3 + 4 + 1; // marker + len + eid + sub_index
+                if body[i + 3..i + 7] == eid && body[i + 7] == sub_index {
+                    let args_len = payload_len - 5;
+                    return &body[header_end..header_end + args_len];
+                }
+                // Real entity-method record, just not ours — skip past it.
+                i += 3 + payload_len;
+                continue;
             }
-            // Not our method — skip past this entire entity-method record.
-            i += 3 + payload_len;
-            continue;
         }
         i += 1;
     }
@@ -638,7 +642,7 @@ fn active_bandolier_slot_drives_ammo_type_id_property() {
 
     let body = build_map_loaded_body(entry.player_entity_id, &data, &entry);
 
-    // onEntityProperty is direct-encoded (index 7 < 61): 0x87 | u16 word_len=8
+    // onEntityProperty is direct-encoded (index 7 < 61): 0x87 | u16 word_len=12
     // | u32 entity_id | i32 prop_id | i32 value. Match prop_id = 3 (AmmoTypeId)
     // for our entity_id and pull the i32 value.
     let msg_id: u8 = (method_idx::ON_ENTITY_PROPERTY as u8) | 0x80;
