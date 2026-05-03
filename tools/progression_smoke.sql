@@ -77,9 +77,9 @@ BEGIN
     -- ── Stage 1: GrantCash to player A only ─────────────────────────
     -- Mirrors handle_grant_cash (mod.rs:305-307):
     --   UPDATE sgw_player SET naquadah = naquadah + $1 WHERE player_id = $2
-    -- The regression guard #143 covers: a refactor that swaps the
-    -- WHERE to account_id would credit BOTH characters on this
-    -- account. The script asserts player B's naquadah stays at the
+    -- This must stay scoped to player_id. If a refactor changes the
+    -- WHERE to account_id, both characters on this account would be
+    -- credited. The script asserts player B's naquadah stays at the
     -- starting value to catch that.
     UPDATE sgw_player
        SET naquadah = naquadah + v_grant_amount
