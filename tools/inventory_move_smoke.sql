@@ -22,7 +22,7 @@ DECLARE
     -- Sentinel slot used in the three-step swap. Mirrors the
     -- `RESERVED_SENTINEL_SLOT` convention in the move handler — pick
     -- a value high enough that it can't collide with a real bag slot.
-    v_sentinel_slot integer := 9_999;
+    v_sentinel_slot integer := 9999;
 
     -- Container 1 = INV_MAIN. Both moves and splits stay within this
     -- container; cross-container moves don't add coverage past what
