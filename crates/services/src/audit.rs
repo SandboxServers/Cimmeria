@@ -42,6 +42,12 @@ pub struct LoginEventBuffer {
     inner: Arc<Mutex<VecDeque<LoginEvent>>>,
 }
 
+impl Default for LoginEventBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LoginEventBuffer {
     pub fn new() -> Self {
         Self {

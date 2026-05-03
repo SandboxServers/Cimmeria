@@ -101,9 +101,10 @@ mod tests {
 
     #[test]
     fn registry_constructs_without_panic() {
-        let registry = EntityRegistry::new();
-        // The registry should have at least zero entries (it should not panic).
-        assert!(registry.len() >= 0);
+        // Constructing the registry must not panic. usize::len() is always
+        // >= 0 by definition, so we don't assert on the count itself —
+        // just that `new()` doesn't trip an internal invariant.
+        let _registry = EntityRegistry::new();
     }
 
     #[test]

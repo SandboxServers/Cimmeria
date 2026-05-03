@@ -272,7 +272,7 @@ async fn kill_server(state: &SupervisorState) -> Result<(), String> {
             Ok(Some(exit)) => {
                 *state.last_exit_code.lock().await = exit.code();
                 *guard = None;
-                return Ok(());
+                Ok(())
             }
             Ok(None) => {
                 child

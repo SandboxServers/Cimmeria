@@ -231,7 +231,7 @@ fn decompress_chunk(
     let total_uncomp = i32::from_le_bytes(chunk_data[pos..pos + 4].try_into().unwrap()) as usize;
     pos += 4;
 
-    let num_blocks = (total_uncomp + block_size - 1) / block_size;
+    let num_blocks = total_uncomp.div_ceil(block_size);
 
     // Read sub-block sizes
     let mut sub_blocks = Vec::with_capacity(num_blocks);

@@ -72,7 +72,7 @@ pub fn build_create_entity_base(
 ///
 /// Sent in a separate packet after [`build_create_entity_base`] so the client
 /// has processed CREATE_ENTITY first. Mirrors the CellApp's `createOnClient()`
-/// + `SGWBeing.createOnClient()` Python cascade that arrives after the
+/// then `SGWBeing.createOnClient()` Python cascade that arrives after the
 /// BaseApp→CellApp `sendRequestEntityUpdate` round trip.
 pub fn build_create_entity_cascade(
     key: &[u8; 32],

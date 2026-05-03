@@ -555,7 +555,7 @@ pub(crate) async fn handle_encrypted_datagram(
                     let clients = connected.lock().unwrap();
                     clients
                         .get(&addr)
-                        .map_or(false, |c| c.pending_map_loaded.is_some())
+                        .is_some_and(|c| c.pending_map_loaded.is_some())
                 };
                 if map_loaded_pending && id == 0x99 {
                     if let Err(e) = handle_map_loaded(

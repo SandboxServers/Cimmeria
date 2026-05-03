@@ -83,7 +83,7 @@ impl ChainEngine {
         let bucket = self.chains_by_trigger.entry(trigger_type).or_default();
         bucket.push(chain);
         // Re-sort by priority descending so higher-priority chains run first.
-        bucket.sort_by(|a, b| b.priority.cmp(&a.priority));
+        bucket.sort_by_key(|c| std::cmp::Reverse(c.priority));
     }
 
     /// Return the total number of registered chains (enabled and disabled).

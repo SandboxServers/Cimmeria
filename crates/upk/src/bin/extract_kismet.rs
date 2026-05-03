@@ -30,7 +30,7 @@ fn main() {
             .filter(|e| {
                 e.path()
                     .extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("umap"))
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("umap"))
             })
             .map(|e| e.path())
             .collect();
@@ -67,7 +67,7 @@ fn main() {
         *class_counts.entry(&node.class_name).or_default() += 1;
     }
     let mut sorted: Vec<_> = class_counts.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
 
     // Count content chains (events with output connections)
     let chain_count: usize = all_nodes
@@ -115,13 +115,7 @@ fn main() {
         root_seqs.sort_by_key(|s| &s.full_path);
 
         for seq in root_seqs {
-            print_sequence_tree(
-                &all_nodes,
-                &sequences,
-                seq,
-                2,
-                &mut std::collections::HashSet::new(),
-            );
+            print_sequence_tree(&sequences, seq, 2, &mut std::collections::HashSet::new());
         }
 
         // Show wired event chains
@@ -169,7 +163,6 @@ fn main() {
 }
 
 fn print_sequence_tree(
-    all_nodes: &HashMap<String, KismetNode>,
     sequences: &HashMap<String, KismetNode>,
     seq: &KismetNode,
     indent: usize,
@@ -196,7 +189,7 @@ fn print_sequence_tree(
 
     for obj_key in &seq.sequence_objects {
         if let Some(child_seq) = sequences.get(obj_key) {
-            print_sequence_tree(all_nodes, sequences, child_seq, indent + 2, visited);
+            print_sequence_tree(sequences, child_seq, indent + 2, visited);
         }
     }
 }

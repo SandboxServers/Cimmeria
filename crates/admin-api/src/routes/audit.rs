@@ -73,7 +73,7 @@ async fn list_login_events(
         }
     };
 
-    let limit = params.limit.unwrap_or(50).min(500).max(1);
+    let limit = params.limit.unwrap_or(50).clamp(1, 500);
     let fetch_limit = limit + 1;
 
     // Build query with dynamic WHERE clauses.

@@ -228,8 +228,10 @@ mod tests {
 
     #[tokio::test]
     async fn start_sets_running() {
-        let mut config = ServerConfig::default();
-        config.logon_port = 0; // OS-assigned port to avoid conflicts in tests
+        let config = ServerConfig {
+            logon_port: 0, // OS-assigned port to avoid conflicts in tests
+            ..ServerConfig::default()
+        };
         let mut svc = AuthService::new(&config);
         svc.start().await.unwrap();
         assert!(svc.is_running);

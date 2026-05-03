@@ -311,12 +311,7 @@ pub(super) async fn handle_base_message(
                     .unwrap_or(0);
                 for chain_id in &on_victory_chains {
                     content::fire_chain_by_id(
-                        *chain_id as i64,
-                        entity_id,
-                        player_id,
-                        engine,
-                        tx,
-                        space_mgr,
+                        *chain_id, entity_id, player_id, engine, tx, space_mgr,
                     )
                     .await;
                 }

@@ -271,21 +271,21 @@ fn parse_login_request(body: &str) -> Result<LoginReq, String> {
     let mut reader = Reader::from_str(body);
     loop {
         match reader.read_event() {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e)) => {
-                if e.local_name().as_ref() == b"SGWLoginRequest" {
-                    let mut req = LoginReq::default();
-                    for attr in e.attributes().flatten() {
-                        let val = String::from_utf8_lossy(attr.value.as_ref()).into_owned();
-                        match attr.key.as_ref() {
-                            b"SKU" => req.sku = val,
-                            b"AccountName" => req.account_name = val,
-                            b"Password" => req.password = val,
-                            b"ProtocolDigest" => req.protocol_digest = val,
-                            _ => {}
-                        }
+            Ok(Event::Empty(e)) | Ok(Event::Start(e))
+                if e.local_name().as_ref() == b"SGWLoginRequest" =>
+            {
+                let mut req = LoginReq::default();
+                for attr in e.attributes().flatten() {
+                    let val = String::from_utf8_lossy(attr.value.as_ref()).into_owned();
+                    match attr.key.as_ref() {
+                        b"SKU" => req.sku = val,
+                        b"AccountName" => req.account_name = val,
+                        b"Password" => req.password = val,
+                        b"ProtocolDigest" => req.protocol_digest = val,
+                        _ => {}
                     }
-                    return Ok(req);
                 }
+                return Ok(req);
             }
             Ok(Event::Eof) | Err(_) => break,
             _ => {}
@@ -298,12 +298,12 @@ fn parse_server_selection(body: &str) -> Result<String, String> {
     let mut reader = Reader::from_str(body);
     loop {
         match reader.read_event() {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e)) => {
-                if e.local_name().as_ref() == b"SGWSelectServerRequest" {
-                    for attr in e.attributes().flatten() {
-                        if attr.key.as_ref() == b"ServerSelection" {
-                            return Ok(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
-                        }
+            Ok(Event::Empty(e)) | Ok(Event::Start(e))
+                if e.local_name().as_ref() == b"SGWSelectServerRequest" =>
+            {
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"ServerSelection" {
+                        return Ok(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
                     }
                 }
             }

@@ -147,7 +147,7 @@ pub async fn handle_use_ability_on_ground(
         }
     });
 
-    let primary_in_range = targets.first().map_or(false, |&(target_eid, _)| {
+    let primary_in_range = targets.first().is_some_and(|&(target_eid, _)| {
         match (
             space_mgr.get_entity(entity_id),
             space_mgr.get_entity(target_eid),
@@ -184,10 +184,10 @@ pub async fn handle_use_ability_on_ground(
     let alive_before: Vec<(u32, bool)> = targets
         .iter()
         .map(|&(eid, _)| {
-            let alive = space_mgr.get_entity(eid).map_or(false, |e| {
+            let alive = space_mgr.get_entity(eid).is_some_and(|e| {
                 e.stats
                     .get(cimmeria_entity::stats::HEALTH)
-                    .map_or(false, |s| s.cur > 0)
+                    .is_some_and(|s| s.cur > 0)
             });
             (eid, alive)
         })
@@ -259,10 +259,10 @@ pub async fn handle_use_ability_on_ground(
         if !was_alive {
             continue;
         }
-        let now_dead = space_mgr.get_entity(eid).map_or(false, |e| {
+        let now_dead = space_mgr.get_entity(eid).is_some_and(|e| {
             e.stats
                 .get(cimmeria_entity::stats::HEALTH)
-                .map_or(false, |s| s.cur <= 0)
+                .is_some_and(|s| s.cur <= 0)
         });
         if now_dead {
             deaths.push(eid);

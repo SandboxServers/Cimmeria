@@ -107,7 +107,7 @@ pub fn generate_rust_code(defs: &[EntityDef]) -> String {
     out.push_str(
         "// =============================================================================\n",
     );
-    out.push_str("\n");
+    out.push('\n');
 
     // Property flags enum (shared across all entities).
     out.push_str("/// BigWorld property distribution flags.\n");
@@ -189,8 +189,12 @@ fn generate_entity_struct(out: &mut String, def: &EntityDef) {
         ));
     }
 
-    // Struct definition.
-    out.push_str("#[derive(Debug, Clone)]\n");
+    // Struct definition. Every property type in this codebase already
+    // has a `Default` impl with the value the previous hand-written impl
+    // produced (Vector3 derives Default to zero, primitives to 0/false,
+    // String/Vec to empty), so #[derive(Default)] is equivalent and
+    // avoids clippy's `derivable_impls` warning on the generated code.
+    out.push_str("#[derive(Debug, Clone, Default)]\n");
     out.push_str(&format!("pub struct {} {{\n", struct_name));
 
     for prop in &def.properties {
@@ -208,23 +212,6 @@ fn generate_entity_struct(out: &mut String, def: &EntityDef) {
         out.push_str("    _marker: (),\n");
     }
 
-    out.push_str("}\n\n");
-
-    // Default impl.
-    out.push_str(&format!("impl Default for {} {{\n", struct_name));
-    out.push_str("    fn default() -> Self {\n");
-    out.push_str("        Self {\n");
-    for prop in &def.properties {
-        let ident = sanitize_ident(&prop.name);
-        let rust_type = bw_type_to_rust(&prop.bw_type);
-        let default = default_for_rust_type(&rust_type);
-        out.push_str(&format!("            {}: {},\n", ident, default));
-    }
-    if def.properties.is_empty() {
-        out.push_str("            _marker: (),\n");
-    }
-    out.push_str("        }\n");
-    out.push_str("    }\n");
     out.push_str("}\n\n");
 
     // EntityDefTrait impl.
@@ -296,33 +283,6 @@ fn generate_method_infos(out: &mut String, fn_name: &str, methods: &[DefMethod])
     }
     out.push_str("        ]\n");
     out.push_str("    }\n");
-}
-
-/// Return a Rust default-value expression for the given Rust type string.
-fn default_for_rust_type(rust_type: &str) -> &str {
-    match rust_type {
-        "String" => "String::new()",
-        "i8" => "0",
-        "i16" => "0",
-        "i32" => "0",
-        "i64" => "0",
-        "u8" => "0",
-        "u16" => "0",
-        "u32" => "0",
-        "u64" => "0",
-        "f32" => "0.0",
-        "f64" => "0.0",
-        "bool" => "false",
-        "cimmeria_common::math::Vector3" => "cimmeria_common::math::Vector3::zero()",
-        "()" => "()",
-        _ => {
-            if rust_type.starts_with("Vec<") {
-                "Vec::new()"
-            } else {
-                "()"
-            }
-        }
-    }
 }
 
 /// Generate the `ENTITY_TYPE_DATA` array and `entity_type_count()` function

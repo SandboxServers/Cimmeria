@@ -70,7 +70,7 @@ pub fn fragment_count(body_len: usize) -> u32 {
     if body_len <= FRAGMENT_BODY_SIZE {
         1
     } else {
-        ((body_len + FRAGMENT_BODY_SIZE - 1) / FRAGMENT_BODY_SIZE) as u32
+        body_len.div_ceil(FRAGMENT_BODY_SIZE) as u32
     }
 }
 

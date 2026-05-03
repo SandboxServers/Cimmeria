@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use sqlx::{PgPool, Postgres, Transaction};
+use sqlx::{Postgres, Transaction};
 
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 

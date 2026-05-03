@@ -12,12 +12,9 @@ use super::data::{
     load_vendor_repair_prices, load_vendor_sell_prices,
 };
 use super::serializers::{
-    serialize_empty_store_open, serialize_store_open, serialize_store_update, StoreItem,
-    StoreItemCost, StoreItemCostUpdate,
+    serialize_empty_store_open, serialize_store_open, serialize_store_update, StoreItemCostUpdate,
 };
 use crate::mercury::{build_entity_method_packet, method_idx};
-
-const INV_BUYBACK: i32 = 16;
 
 #[derive(sqlx::FromRow)]
 pub struct VendorTemplateLists {
@@ -142,28 +139,6 @@ pub async fn handle_open_vendor_store(
         recharge_count,
         "OpenVendorStore: sent"
     );
-}
-
-/// Clear the player's buyback inventory (container 16).
-pub async fn clear_buyback_items(db_pool: &Option<Arc<PgPool>>, player_id: i32) {
-    let Some(pool) = db_pool else {
-        return;
-    };
-
-    match sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1 AND container_id = $2")
-        .bind(player_id)
-        .bind(INV_BUYBACK)
-        .execute(pool.as_ref())
-        .await
-    {
-        Ok(result) if result.rows_affected() > 0 => tracing::debug!(
-            player_id,
-            cleared = result.rows_affected(),
-            "Cleared session buyback inventory"
-        ),
-        Ok(_) => {}
-        Err(e) => tracing::error!(player_id, "Failed to clear buyback inventory: {e}"),
-    }
 }
 
 /// Send vendor store open to client.

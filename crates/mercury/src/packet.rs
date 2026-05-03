@@ -363,7 +363,7 @@ pub fn build_fragmented_bundle(
     }
 
     // Calculate fragment count and sequence range.
-    let num_frags = (body.len() + FRAGMENT_BODY_SIZE - 1) / FRAGMENT_BODY_SIZE;
+    let num_frags = body.len().div_ceil(FRAGMENT_BODY_SIZE);
     let frag_begin = base_seq;
     let frag_end = base_seq + num_frags as u32 - 1;
 

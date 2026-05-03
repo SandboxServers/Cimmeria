@@ -137,10 +137,11 @@ impl Nub {
     /// re-flag keepalives every interval until the caller calls
     /// `touch_sent` after a successful send.
     pub fn tick(&mut self) -> TickActions {
-        let mut actions = TickActions::default();
-
         // 1. Prune dead first.
-        actions.dead_channels = self.prune_dead_channels();
+        let mut actions = TickActions {
+            dead_channels: self.prune_dead_channels(),
+            ..TickActions::default()
+        };
 
         // 2. Sweep stale fragment-reassembly state on every channel.
         let frag_timeout = std::time::Duration::from_millis(consts::FRAGMENT_REASSEMBLY_TIMEOUT_MS);

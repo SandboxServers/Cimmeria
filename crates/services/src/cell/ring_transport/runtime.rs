@@ -278,7 +278,7 @@ pub async fn handle_select_destination(
     let auto_start = space_mgr
         .ring_transporters
         .get(source_region_id)
-        .map_or(false, |t| t.should_auto_start());
+        .is_some_and(|t| t.should_auto_start());
     if auto_start {
         kick_off_warmup(
             source_region_id,
@@ -318,7 +318,7 @@ pub async fn handle_region_trigger(
     let auto_start = space_mgr
         .ring_transporters
         .get(region_id)
-        .map_or(false, |t| t.should_auto_start());
+        .is_some_and(|t| t.should_auto_start());
     if auto_start {
         let dst_id = space_mgr
             .ring_transporters

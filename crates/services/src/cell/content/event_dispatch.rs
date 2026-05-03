@@ -62,7 +62,7 @@ pub async fn fire_player_loaded(
         let m622_active = entity
             .missions
             .get_mission(622)
-            .map_or(false, |m| m.status == 1);
+            .is_some_and(|m| m.status == 1);
         tracing::info!(
             entity_id, player_id, %world_name,
             mission_622_active = m622_active,

@@ -187,7 +187,7 @@ fn pkcs7_pad(data: &[u8]) -> Vec<u8> {
     let pad_len = AES_BLOCK_SIZE - (data.len() % AES_BLOCK_SIZE);
     let mut padded = Vec::with_capacity(data.len() + pad_len);
     padded.extend_from_slice(data);
-    padded.extend(std::iter::repeat(pad_len as u8).take(pad_len));
+    padded.extend(std::iter::repeat_n(pad_len as u8, pad_len));
     padded
 }
 

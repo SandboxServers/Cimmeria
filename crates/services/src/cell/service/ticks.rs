@@ -40,7 +40,7 @@ pub(super) async fn reload_completion_tick(
             space_mgr
                 .get_entity(eid)
                 .and_then(|e| e.reload_complete_at)
-                .map_or(false, |t| now >= t)
+                .is_some_and(|t| now >= t)
         })
         .collect();
 
@@ -147,7 +147,7 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
         .filter(|&&eid| {
             space_mgr
                 .get_entity(eid)
-                .map_or(false, |e| !e.nav_path.is_empty())
+                .is_some_and(|e| !e.nav_path.is_empty())
         })
         .copied()
         .collect();

@@ -6,7 +6,6 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use super::super::super::super::helpers::send_to_witness;
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 use super::super::super::super::ConnectedClientState;
 use super::super::vendor::helpers::sync_bandolier_after_inventory_change;

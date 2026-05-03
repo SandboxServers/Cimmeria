@@ -122,9 +122,7 @@ pub(super) async fn apply_damage_to_target(
         (15, 0)
     };
     // Temp: 2x player damage so players can kill NPCs before dying
-    let is_player_attacker = space_mgr
-        .get_entity(entity_id)
-        .map_or(false, |e| e.is_player);
+    let is_player_attacker = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     let health_base_damage = if is_player_attacker {
         health_base_damage * 2
     } else {
@@ -167,7 +165,7 @@ pub(super) async fn apply_damage_to_target(
     }
 
     // Check if target died — use entity's state_field so we preserve other flags
-    let target_died = target.stats.get(HEALTH).map_or(false, |s| s.cur <= 0);
+    let target_died = target.stats.get(HEALTH).is_some_and(|s| s.cur <= 0);
     if target_died {
         target.set_state_flag(combat::BSF_DEAD);
         target.set_state_flag(combat::BSF_MOVEMENT_LOCK); // prevent movement while dead
@@ -219,12 +217,10 @@ pub(super) async fn apply_damage_to_target(
         &effect_results,
     );
 
-    let attacker_is_player = space_mgr
-        .get_entity(entity_id)
-        .map_or(false, |e| e.is_player);
+    let attacker_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     let target_is_player = space_mgr
         .get_entity(target_eid)
-        .map_or(false, |e| e.is_player);
+        .is_some_and(|e| e.is_player);
 
     // Send to attacker
     send_entity_method(
@@ -291,14 +287,9 @@ pub(super) async fn apply_damage_to_target(
         // Look up the death sequence from the target's event set via sequence_map
         {
             const EVENT_ENTITY_DEATH: i32 = 5001;
-            // Use event set 1025 (Mob) for NPCs, 1025 for players too (same death anim)
-            let event_set_id = space_mgr.get_entity(target_eid).and_then(|e| {
-                if e.is_player {
-                    Some(1025)
-                } else {
-                    Some(1025)
-                }
-            });
+            // Event set 1025 (Mob) drives the death anim for both NPCs and
+            // players today. If they ever diverge, branch on `e.is_player`.
+            let event_set_id = space_mgr.get_entity(target_eid).map(|_| 1025);
             if let Some(esid) = event_set_id {
                 if let Some(&death_seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ENTITY_DEATH))
                 {

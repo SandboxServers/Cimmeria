@@ -164,7 +164,7 @@ impl SpaceManager {
                 space
                     .entities
                     .get(&pid)
-                    .map_or(false, |p| p.witnesses.contains(&target_eid))
+                    .is_some_and(|p| p.witnesses.contains(&target_eid))
             })
             .copied()
             .collect()

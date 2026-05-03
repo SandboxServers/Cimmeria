@@ -1,6 +1,6 @@
-/// All 42 SGWPlayer cell method indices (67–108).
-///
-/// Reference: `python/cell/SGWPlayer.py` exposed method table.
+//! All 42 SGWPlayer cell method indices (67–108).
+//!
+//! Reference: `python/cell/SGWPlayer.py` exposed method table.
 
 pub const CALL_FOR_AID: u16 = 67;
 pub const USE_ABILITY: u16 = 68;

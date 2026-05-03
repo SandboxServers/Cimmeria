@@ -187,7 +187,7 @@ impl Trigger {
                     .params
                     .get("entity_type")
                     .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == expected),
+                    .is_some_and(|actual| actual == expected),
                 None => true,
             },
             Trigger::OnEntityDeath {
@@ -200,7 +200,7 @@ impl Trigger {
                         .params
                         .get("entity_tag")
                         .and_then(|v| v.as_str())
-                        .map_or(false, |actual| actual == tag);
+                        .is_some_and(|actual| actual == tag);
                 }
                 // Otherwise match on entity_type (original pattern)
                 match entity_type {
@@ -208,16 +208,15 @@ impl Trigger {
                         .params
                         .get("entity_type")
                         .and_then(|v| v.as_str())
-                        .map_or(false, |actual| actual == expected),
+                        .is_some_and(|actual| actual == expected),
                     None => true,
                 }
             }
             Trigger::OnAbilityUsed { ability_id } => match ability_id {
-                Some(expected) => event
-                    .params
-                    .get("ability_id")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *expected as i64),
+                Some(expected) => {
+                    event.params.get("ability_id").and_then(|v| v.as_i64())
+                        == Some(*expected as i64)
+                }
                 None => true,
             },
             Trigger::OnInteraction { interaction_type } => match interaction_type {
@@ -225,98 +224,82 @@ impl Trigger {
                     .params
                     .get("interaction_type")
                     .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == expected),
+                    .is_some_and(|actual| actual == expected),
                 None => true,
             },
             Trigger::OnRegionEnter { region_key } => event
                 .params
                 .get("region_key")
                 .and_then(|v| v.as_str())
-                .map_or(false, |actual| actual == region_key),
+                .is_some_and(|actual| actual == region_key),
             Trigger::OnRegionExit { region_key } => event
                 .params
                 .get("region_key")
                 .and_then(|v| v.as_str())
-                .map_or(false, |actual| actual == region_key),
+                .is_some_and(|actual| actual == region_key),
             Trigger::OnMissionStep { mission_id, step } => {
-                let mission_match = event
-                    .params
-                    .get("mission_id")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *mission_id as i64);
-                let step_match = event
-                    .params
-                    .get("step")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *step as i64);
+                let mission_match = event.params.get("mission_id").and_then(|v| v.as_i64())
+                    == Some(*mission_id as i64);
+                let step_match =
+                    event.params.get("step").and_then(|v| v.as_i64()) == Some(*step as i64);
                 mission_match && step_match
             }
             Trigger::OnItemAcquired { item_id } => match item_id {
-                Some(expected) => event
-                    .params
-                    .get("item_id")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |actual| actual == *expected as i64),
+                Some(expected) => {
+                    event.params.get("item_id").and_then(|v| v.as_i64()) == Some(*expected as i64)
+                }
                 None => true,
             },
             Trigger::OnTimer { timer_name } => event
                 .params
                 .get("timer_name")
                 .and_then(|v| v.as_str())
-                .map_or(false, |actual| actual == timer_name),
+                .is_some_and(|actual| actual == timer_name),
             Trigger::OnCustomEvent { event_name } => event
                 .params
                 .get("event_name")
                 .and_then(|v| v.as_str())
-                .map_or(false, |actual| actual == event_name),
+                .is_some_and(|actual| actual == event_name),
             Trigger::OnPlayerLoaded { world_name } => match world_name {
                 Some(expected) => event
                     .params
                     .get("world_name")
                     .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == expected),
+                    .is_some_and(|actual| actual == expected),
                 None => true,
             },
-            Trigger::OnDialogOpen { dialog_id } | Trigger::OnDialogChoice { dialog_id } => event
-                .params
-                .get("dialog_id")
-                .and_then(|v| v.as_i64())
-                .map_or(false, |actual| actual == *dialog_id as i64),
+            Trigger::OnDialogOpen { dialog_id } | Trigger::OnDialogChoice { dialog_id } => {
+                event.params.get("dialog_id").and_then(|v| v.as_i64()) == Some(*dialog_id as i64)
+            }
             Trigger::OnInteractTag { entity_tag } => event
                 .params
                 .get("entity_tag")
                 .and_then(|v| v.as_str())
-                .map_or(false, |actual| actual == entity_tag),
+                .is_some_and(|actual| actual == entity_tag),
             Trigger::OnInteractTemplate { template_name } => event
                 .params
                 .get("template_name")
                 .and_then(|v| v.as_str())
-                .map_or(false, |actual| actual == template_name),
-            Trigger::OnItemUse { item_id } => event
-                .params
-                .get("item_id")
-                .and_then(|v| v.as_i64())
-                .map_or(false, |actual| actual == *item_id as i64),
-            Trigger::OnTeleportIn { region_id } => event
-                .params
-                .get("region_id")
-                .and_then(|v| v.as_i64())
-                .map_or(false, |actual| actual == *region_id as i64),
+                .is_some_and(|actual| actual == template_name),
+            Trigger::OnItemUse { item_id } => {
+                event.params.get("item_id").and_then(|v| v.as_i64()) == Some(*item_id as i64)
+            }
+            Trigger::OnTeleportIn { region_id } => {
+                event.params.get("region_id").and_then(|v| v.as_i64()) == Some(*region_id as i64)
+            }
             // Unit triggers match any event of the right type
             Trigger::OnEffectInit
             | Trigger::OnEffectPulseBegin
             | Trigger::OnEffectPulseEnd
             | Trigger::OnEffectRemoved => true,
-            Trigger::OnMissionCompleted { mission_id } => event
-                .params
-                .get("mission_id")
-                .and_then(|v| v.as_i64())
-                .map_or(false, |actual| actual == *mission_id as i64),
+            Trigger::OnMissionCompleted { mission_id } => {
+                event.params.get("mission_id").and_then(|v| v.as_i64()) == Some(*mission_id as i64)
+            }
             Trigger::OnDialogSetOpen { dialog_set_name } => event
                 .params
                 .get("dialog_set_name")
                 .and_then(|v| v.as_str())
-                .map_or(false, |actual| actual == dialog_set_name),
+                .is_some_and(|actual| actual == dialog_set_name),
         }
     }
 }

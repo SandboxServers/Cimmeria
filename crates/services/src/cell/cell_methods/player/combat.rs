@@ -36,8 +36,8 @@ pub async fn dispatch(
                 // handle_use_ability already performed on the original kill),
                 // double-counting mission progress on every post-death swing.
                 let was_alive_before = if target_id > 0 {
-                    space_mgr.get_entity(target_id as u32).map_or(false, |t| {
-                        !t.is_player && t.stats.get(HEALTH).map_or(false, |s| s.cur > 0)
+                    space_mgr.get_entity(target_id as u32).is_some_and(|t| {
+                        !t.is_player && t.stats.get(HEALTH).is_some_and(|s| s.cur > 0)
                     })
                 } else {
                     false
@@ -57,7 +57,7 @@ pub async fn dispatch(
                     let target_eid = target_id as u32;
                     let just_died = space_mgr
                         .get_entity(target_eid)
-                        .map_or(false, |t| t.stats.get(HEALTH).map_or(false, |s| s.cur <= 0));
+                        .is_some_and(|t| t.stats.get(HEALTH).is_some_and(|s| s.cur <= 0));
                     if just_died {
                         let tag = space_mgr.get_entity(target_eid).and_then(|t| t.tag.clone());
                         if let Some(tag) = tag {

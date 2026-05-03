@@ -120,22 +120,21 @@ impl Condition {
     /// Evaluate this condition against the current execution context.
     pub fn evaluate(&self, ctx: &ExecutionContext) -> bool {
         match self {
-            Condition::PropertyEquals { property, value } => ctx
-                .params
-                .get(property)
-                .map_or(false, |actual| actual == value),
+            Condition::PropertyEquals { property, value } => {
+                ctx.params.get(property) == Some(value)
+            }
             Condition::PropertyInRange { property, min, max } => ctx
                 .params
                 .get(property)
                 .and_then(|v| v.as_f64())
-                .map_or(false, |val| val >= *min && val <= *max),
+                .is_some_and(|val| val >= *min && val <= *max),
             Condition::HasItem { item_id, min_count } => {
                 let key = format!("item_{}_count", item_id);
                 let required = min_count.unwrap_or(1) as f64;
                 ctx.params
                     .get(&key)
                     .and_then(|v| v.as_f64())
-                    .map_or(false, |count| count >= required)
+                    .is_some_and(|count| count >= required)
             }
             Condition::HasAbility { ability_id } => {
                 let key = format!("ability_{}", ability_id);
@@ -144,11 +143,9 @@ impl Condition {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false)
             }
-            Condition::InRegion { region_id } => ctx
-                .params
-                .get("current_region")
-                .and_then(|v| v.as_i64())
-                .map_or(false, |actual| actual == *region_id as i64),
+            Condition::InRegion { region_id } => {
+                ctx.params.get("current_region").and_then(|v| v.as_i64()) == Some(*region_id as i64)
+            }
             Condition::FactionCheck { faction, relation } => {
                 let key = format!("faction_{}", faction);
                 let expected = match relation {
@@ -156,10 +153,7 @@ impl Condition {
                     FactionRelation::Neutral => "Neutral",
                     FactionRelation::Hostile => "Hostile",
                 };
-                ctx.params
-                    .get(&key)
-                    .and_then(|v| v.as_str())
-                    .map_or(false, |actual| actual == expected)
+                ctx.params.get(&key).and_then(|v| v.as_str()) == Some(expected)
             }
             Condition::CustomExpression { expression } => ctx
                 .params

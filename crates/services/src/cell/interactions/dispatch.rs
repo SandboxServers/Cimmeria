@@ -119,7 +119,7 @@ pub async fn handle_interact(
                 target_entity_id,
                 "interact: vendor → OpenVendorStore"
             );
-            send_store_open(entity_id, target_entity_id as u32, tx, space_mgr).await;
+            send_store_open(entity_id, target_entity_id, tx, space_mgr).await;
             None
         }
         Some(NpcInteractionType::Trainer { archetype_id }) => {

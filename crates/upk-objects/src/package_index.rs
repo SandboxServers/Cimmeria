@@ -91,7 +91,7 @@ impl PackageIndex {
                 export_count += 1;
             }
 
-            if package_count % 500 == 0 {
+            if package_count.is_multiple_of(500) {
                 tracing::info!(
                     "Indexed {}/{} packages ({} exports so far)...",
                     package_count,

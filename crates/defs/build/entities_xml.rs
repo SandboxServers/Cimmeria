@@ -47,20 +47,17 @@ pub fn parse_entities_xml(path: &Path) -> Vec<String> {
                     names.push(tag);
                 }
             }
-            Ok(Event::Empty(ref e)) => {
+            Ok(Event::Empty(ref e))
                 // Self-closing tag — depth doesn't advance, so direct
                 // children of <root> fire here at depth == 1.
-                if depth == 1 {
+                if depth == 1 => {
                     let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     if tag != "root" {
                         names.push(tag);
                     }
                 }
-            }
             Ok(Event::End(_)) => {
-                if depth > 0 {
-                    depth -= 1;
-                }
+                depth = depth.saturating_sub(1);
             }
             Ok(Event::Eof) => break,
             Err(e) => {

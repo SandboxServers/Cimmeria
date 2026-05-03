@@ -77,7 +77,7 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
             let is_dead = t
                 .stats
                 .get(cimmeria_entity::stats::HEALTH)
-                .map_or(true, |s| s.cur <= 0);
+                .is_none_or(|s| s.cur <= 0);
             if is_dead {
                 if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
                     npc.threat_list.remove(&target_id);

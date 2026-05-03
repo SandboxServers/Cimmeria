@@ -30,7 +30,7 @@ fn main() {
             .filter(|e| {
                 e.path()
                     .extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("umap"))
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("umap"))
             })
             .collect();
 
@@ -39,14 +39,12 @@ fn main() {
             match Package::open(entry.path().to_str().unwrap()) {
                 Ok(pkg) => {
                     let actors = extract_actors(&pkg);
-                    if !summary_only && !as_json {
-                        if !actors.is_empty() {
-                            println!(
-                                "  {} — {} actors",
-                                entry.path().file_name().unwrap().to_string_lossy(),
-                                actors.len()
-                            );
-                        }
+                    if !summary_only && !as_json && !actors.is_empty() {
+                        println!(
+                            "  {} — {} actors",
+                            entry.path().file_name().unwrap().to_string_lossy(),
+                            actors.len()
+                        );
                     }
                     all_actors.extend(actors);
                 }
@@ -97,7 +95,7 @@ fn main() {
             *counts.entry(&actor.class_name).or_default() += 1;
         }
         let mut sorted: Vec<_> = counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|&(_, n)| std::cmp::Reverse(n));
 
         println!("\n=== Actor Extraction Summary ===");
         println!("Files processed: {}", file_count);

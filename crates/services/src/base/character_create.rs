@@ -280,18 +280,15 @@ pub(crate) async fn handle_create_character(
 
     // Auto-select forced groups; reject missing optional groups
     for (&vg_id, group) in &visgroups {
-        if !resolved.contains_key(&vg_id) {
+        if let std::collections::hash_map::Entry::Vacant(e) = resolved.entry(vg_id) {
             if group.vis_type == "VIS_Forced" {
                 if let Some((_, choice)) = group.choices.iter().next() {
-                    resolved.insert(
-                        vg_id,
-                        ResolvedChoice {
-                            component: choice.component.clone(),
-                            item_id: choice.item_id,
-                            item_bound: choice.item_bound,
-                            item_durability: choice.item_durability,
-                        },
-                    );
+                    e.insert(ResolvedChoice {
+                        component: choice.component.clone(),
+                        item_id: choice.item_id,
+                        item_bound: choice.item_bound,
+                        item_durability: choice.item_durability,
+                    });
                 }
             } else {
                 tracing::warn!(%addr, vg_id, char_def_id, "Missing choice for optional visual group");

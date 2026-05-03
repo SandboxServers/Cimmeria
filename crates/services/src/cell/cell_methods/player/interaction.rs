@@ -44,7 +44,7 @@ pub async fn dispatch(
                 // every right-click on a corpse silently became an auto-attack and
                 // the loot interaction never fired (proven via x32dbg trace at
                 // FUN_00e84b20: client correctly sent interact, server intercepted).
-                let is_hostile = space_mgr.get_entity(target_entity_u32).map_or(false, |t| {
+                let is_hostile = space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
                     !t.is_player
                         && t.faction == 10
                         && !crate::cell::combat::is_dead_state(t.state_field)
@@ -80,11 +80,11 @@ pub async fn dispatch(
                     // depends on tagged kills (e.g., FindAmbernol drone → step
                     // 2144 → 2343) silently stalls.
                     let was_alive_before =
-                        space_mgr.get_entity(target_entity_u32).map_or(false, |t| {
+                        space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
                             !t.is_player
                                 && t.stats
                                     .get(cimmeria_entity::stats::HEALTH)
-                                    .map_or(false, |s| s.cur > 0)
+                                    .is_some_and(|s| s.cur > 0)
                         });
 
                     crate::cell::abilities::handle_use_ability(
@@ -97,12 +97,11 @@ pub async fn dispatch(
                     .await;
 
                     if was_alive_before {
-                        let just_died =
-                            space_mgr.get_entity(target_entity_u32).map_or(false, |t| {
-                                t.stats
-                                    .get(cimmeria_entity::stats::HEALTH)
-                                    .map_or(false, |s| s.cur <= 0)
-                            });
+                        let just_died = space_mgr.get_entity(target_entity_u32).is_some_and(|t| {
+                            t.stats
+                                .get(cimmeria_entity::stats::HEALTH)
+                                .is_some_and(|s| s.cur <= 0)
+                        });
                         if just_died {
                             let tag = space_mgr
                                 .get_entity(target_entity_u32)

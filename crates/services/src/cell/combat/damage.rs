@@ -203,7 +203,7 @@ pub fn calculate_damage(
     };
 
     // Check for lethal damage
-    let is_dead = stat_id == HEALTH && defender.get(HEALTH).map_or(false, |s| s.cur <= 0);
+    let is_dead = stat_id == HEALTH && defender.get(HEALTH).is_some_and(|s| s.cur <= 0);
     let src = if is_dead { SRC_MORTAL } else { SRC_NONE };
 
     results.push(ClientEffectResult {

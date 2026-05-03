@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn effect_expires_after_duration() {
-        let mut effect = ActiveEffect::new(1, EffectType::DamageOverTime, 1, 2, 5.0, 1.0, 10);
+        let effect = ActiveEffect::new(1, EffectType::DamageOverTime, 1, 2, 5.0, 1.0, 10);
         assert!(!effect.is_expired());
 
         let mut effects = vec![effect.clone()];

@@ -1,4 +1,4 @@
-name: test
+name: ci
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 # Cancel superseded runs on the same branch — saves runner minutes when a
 # PR gets force-pushed during review.
 concurrency:
-  group: test-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -16,8 +16,6 @@ env:
   CARGO_INCREMENTAL: 0
   # Tauri / GTK-using members of the workspace pull in heavy GUI deps and
   # have their own Linux-build prerequisites; keep them out of CI builds.
-  # CLAUDE.md enumerates three editor crates; `sgw-launcher` (crates/launcher)
-  # is also Tauri-based and pulls glib-sys, so exclude it here too.
   WORKSPACE_EXCLUDES: >-
     --exclude cimmeria-app
     --exclude cimmeria-content-editor
@@ -29,21 +27,36 @@ env:
   RECAST_VERSION: "1.6.0"
 
 jobs:
-  check:
-    name: cargo check (workspace)
+  # cargo fmt is fast enough that we don't bother caching or installing
+  # native deps. Fails the pipeline with a clear "run cargo fmt" message
+  # instead of auto-fixing.
+  fmt:
+    name: cargo fmt --check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      # `.cargo/config.toml` pins `linker = "clang"` and `-fuse-ld=mold`
-      # for x86_64-unknown-linux-gnu (the WSL dev convention). Install
-      # both on the runner so cargo's clang invocation finds them.
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        run: |
+          if ! cargo fmt --all -- --check; then
+            echo "::error::Formatting differs from rustfmt. Run 'cargo fmt --all' locally and commit the result."
+            exit 1
+          fi
+
+  # clippy with -D warnings. Project-level thresholds for too_many_arguments
+  # and type_complexity live in clippy.toml at the repo root.
+  clippy:
+    name: cargo clippy -D warnings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
-      # crates/entity/build.rs compiles the Detour navmesh library from
-      # external/recast. external/ is gitignored and populated locally by
-      # setup.ps1 (bootstrap/CimmeriaBootstrap/...Install-CimmeriaDependencies.ps1).
-      # Mirror that hydration in CI so cc-rs has the C++ sources.
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -55,10 +68,40 @@ jobs:
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: workspace-check
-      - name: cargo check
-        run: cargo check --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets
+          shared-key: clippy
+      - name: cargo clippy
+        run: |
+          cargo clippy --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets -- -D warnings
 
+  # cargo build catches link-time errors that cargo check misses (build
+  # scripts, codegen output, dynamic-link issues).
+  build:
+    name: cargo build (workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: install clang + mold
+        run: sudo apt-get update && sudo apt-get install -y clang mold
+      - name: hydrate external/recast
+        run: |
+          mkdir -p external
+          curl -sL --retry 3 \
+            -o /tmp/recast.zip \
+            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
+          unzip -q /tmp/recast.zip -d /tmp/recast_extract
+          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
+          test -f external/recast/Detour/Source/DetourAssert.cpp
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: build
+      - name: cargo build
+        run: cargo build --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets
+
+  # cargo test: live-DB tests use test_support::require_db_or_skip! and
+  # self-skip when DATABASE_URL is unset, so this baseline exercises only
+  # the unit + non-DB integration tests. A follow-up will add a postgres
+  # service container and run the DB-integration suite under DATABASE_URL.
   test:
     name: cargo test (workspace)
     runs-on: ubuntu-latest
@@ -78,13 +121,6 @@ jobs:
           test -f external/recast/Detour/Source/DetourAssert.cpp
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: workspace-test
-      # Run all non-Tauri workspace tests. Live-DB tests in cimmeria-services
-      # use test_support::require_db_or_skip! and self-skip when DATABASE_URL
-      # is unset, so this baseline exercises unit + non-DB integration tests
-      # across cimmeria-services, cimmeria-mercury, cimmeria-content-engine,
-      # and the rest of the non-GUI workspace. A follow-up job will add a
-      # postgres-services container with schema + seed loading for the
-      # live-DB suite.
+          shared-key: test
       - name: cargo test
         run: cargo test --workspace ${{ env.WORKSPACE_EXCLUDES }}

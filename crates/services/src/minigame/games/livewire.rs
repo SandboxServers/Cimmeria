@@ -189,7 +189,7 @@ pub struct LivewireGame {
 impl LivewireGame {
     pub fn new(session: &MinigameSession) -> Self {
         Self {
-            difficulty: session.difficulty.max(1).min(4),
+            difficulty: session.difficulty.clamp(1, 4),
             tech_competency: session.tech_competency,
             abilities_mask: session.abilities_mask,
             player_level: session.player_level,

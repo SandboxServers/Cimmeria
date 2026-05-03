@@ -225,7 +225,7 @@ fn archive_previous_logs() {
         .into_iter()
         .flatten()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "log"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "log"))
         .collect();
 
     if entries.is_empty() {

@@ -64,6 +64,29 @@ pkill -f "cargo|rustc"
 
 Solution: `W-NG.sln` (VS2026, MSVC v145). Bootstrap via `setup.ps1` (wraps the `CimmeriaBootstrap` PowerShell module — see [bootstrap/CimmeriaBootstrap/README.md](bootstrap/CimmeriaBootstrap/README.md) for individual functions).
 
+## Pre-PR checklist
+
+CI (`.github/workflows/test.yml`) gates four checks on every PR — run all four locally before pushing or the pipeline will fail and you'll round-trip:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace \
+  --exclude cimmeria-app --exclude cimmeria-content-editor \
+  --exclude cimmeria-scene-editor --exclude sgw-launcher \
+  --all-targets -- -D warnings
+cargo build --workspace \
+  --exclude cimmeria-app --exclude cimmeria-content-editor \
+  --exclude cimmeria-scene-editor --exclude sgw-launcher --all-targets
+cargo test --workspace \
+  --exclude cimmeria-app --exclude cimmeria-content-editor \
+  --exclude cimmeria-scene-editor --exclude sgw-launcher
+```
+
+- **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
+- **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site.
+- **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
+- **test fails** → live-DB tests in `crates/services` self-skip when `DATABASE_URL` is unset, so CI exercises only the unit + non-DB integration suite. To run the live-DB suite locally, point `DATABASE_URL` at the bundled Postgres; under heavy parallelism some live-DB tests will collide on shared sentinel ranges, so use `cargo test … -- --test-threads=1` if you see flakes.
+
 ## File organization
 
 Files should "do what it says on the tin" — a reader (human or LLM) should predict a file's contents from its name. Split large files along natural seams to keep both LLM context and human review tractable.

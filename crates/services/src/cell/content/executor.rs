@@ -376,7 +376,7 @@ pub(super) async fn execute_actions(
                     let target_eid = cimmeria_common::EntityId(target_id as i32);
                     let in_witness_set = space_mgr
                         .get_entity(entity_id)
-                        .map_or(false, |p| p.witnesses.contains(&target_eid));
+                        .is_some_and(|p| p.witnesses.contains(&target_eid));
 
                     if in_witness_set {
                         let base_flags = space_mgr
@@ -819,7 +819,7 @@ async fn send_interaction_update_if_visible(
         let target_eid = cimmeria_common::EntityId(target_id as i32);
         let in_witness_set = space_mgr
             .get_entity(entity_id)
-            .map_or(false, |p| p.witnesses.contains(&target_eid));
+            .is_some_and(|p| p.witnesses.contains(&target_eid));
 
         if in_witness_set {
             let base_flags = space_mgr

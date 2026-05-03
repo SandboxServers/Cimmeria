@@ -321,8 +321,8 @@ pub(super) async fn handle_request_ammo_change(
         // render. Falls through when the cache entry is
         // missing — see comment at the snapshot site.
         if let Some(def) = weapon_def.as_ref() {
-            let allowed = ammo_type == def.default_ammo_type
-                || def.allowed_ammo_types.iter().any(|&a| a == ammo_type);
+            let allowed =
+                ammo_type == def.default_ammo_type || def.allowed_ammo_types.contains(&ammo_type);
             if !allowed {
                 tracing::warn!(
                     entity_id, item_id, ammo_type,

@@ -269,7 +269,7 @@ pub async fn handle_use_ability(
                 seq_args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
                 seq_args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs array count = 0
                 seq_args.push(0); // ViewType = KISMET_VIEW_Witness
-                seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
+                seq_args.extend_from_slice(&effect_seq.to_le_bytes()); // InstanceId
                 send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await;
                 // 1 = onSequence
             }
@@ -288,7 +288,7 @@ pub async fn handle_use_ability(
             seq_args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
             seq_args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs array count = 0
             seq_args.push(0); // ViewType = KISMET_VIEW_Witness
-            seq_args.extend_from_slice(&(effect_seq as i32).to_le_bytes()); // InstanceId
+            seq_args.extend_from_slice(&effect_seq.to_le_bytes()); // InstanceId
             send_entity_method(entity_id, 1, seq_args, tx, space_mgr).await; // 1 = onSequence
         } else {
             tracing::debug!(

@@ -72,7 +72,7 @@ pub(super) async fn run_cell_loop(
                 super::ticks::npc_movement_tick(&mut space_mgr);
 
                 // NPC AI runs every 20th AoI tick (2 seconds at 100ms intervals)
-                if aoi_tick_counter % 20 == 0 {
+                if aoi_tick_counter.is_multiple_of(20) {
                     super::npc_ai::npc_ai_tick(tx, &mut space_mgr).await;
                 }
             }

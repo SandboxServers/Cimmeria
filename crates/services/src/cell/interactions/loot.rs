@@ -145,18 +145,8 @@ pub async fn handle_loot_item(
         "Player looted item"
     );
 
-    if removed_item.design_id.is_none() {
-        // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
-        let _ = tx
-            .send(CellToBaseMsg::GrantCash {
-                entity_id,
-                player_id,
-                amount: removed_item.quantity,
-            })
-            .await;
-    } else {
+    if let Some(design_id) = removed_item.design_id {
         // Item — grant via GrantItem to base for persistence + onUpdateItem
-        let design_id = removed_item.design_id.unwrap();
         // Look up preferred container from item_containers cache, default to INV_Main (1)
         let container_id = space_mgr
             .item_containers
@@ -172,12 +162,21 @@ pub async fn handle_loot_item(
                 count: removed_item.quantity,
             })
             .await;
+    } else {
+        // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
+        let _ = tx
+            .send(CellToBaseMsg::GrantCash {
+                entity_id,
+                player_id,
+                amount: removed_item.quantity,
+            })
+            .await;
     }
 
     // Check if loot is now empty
     let loot_empty = space_mgr
         .get_entity(target_eid)
-        .map_or(true, |e| e.loot.is_empty());
+        .is_none_or(|e| e.loot.is_empty());
 
     if loot_empty {
         // Clear ONLY the loot bit; preserve other interaction flags (quest tags,

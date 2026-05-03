@@ -290,7 +290,7 @@ pub async fn handle_grant_cash(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let addr = {
+    let _addr = {
         let map = entity_to_addr.lock().unwrap();
         match map.get(&entity_id) {
             Some(a) => *a,

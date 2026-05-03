@@ -8,7 +8,6 @@ use tokio::sync::mpsc;
 
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
-use super::data::load_vendor_sell_prices;
 use super::helpers::{send_cash_changed_to_client, sync_bandolier_after_inventory_change};
 use super::purchase_helpers::load_vendor_template_lists;
 use super::purchase_helpers::normalize_item_quantities;

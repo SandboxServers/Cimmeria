@@ -352,7 +352,7 @@ pub(crate) async fn handle_cell_message(
                 connected,
                 entity_to_addr,
                 entity_id,
-                |key, seq, acks| build_reset_entities(key, seq, acks),
+                build_reset_entities,
             )
             .await;
 
@@ -535,7 +535,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 vendor_entity_id,
                 vendor_template_id,
-                &db_pool,
+                db_pool,
                 socket,
                 connected,
                 entity_to_addr,
@@ -555,7 +555,7 @@ pub(crate) async fn handle_cell_message(
                 vendor_entity_id,
                 vendor_template_id,
                 items,
-                &db_pool,
+                db_pool,
                 cell_tx,
                 socket,
                 connected,
@@ -576,7 +576,7 @@ pub(crate) async fn handle_cell_message(
                 vendor_entity_id,
                 vendor_template_id,
                 items,
-                &db_pool,
+                db_pool,
                 cell_tx,
                 socket,
                 connected,
@@ -597,7 +597,7 @@ pub(crate) async fn handle_cell_message(
                 vendor_entity_id,
                 vendor_template_id,
                 items,
-                &db_pool,
+                db_pool,
                 cell_tx,
                 socket,
                 connected,
@@ -636,7 +636,7 @@ pub(crate) async fn handle_cell_message(
                 target_container_id,
                 target_slot_id,
                 quantity,
-                &db_pool,
+                db_pool,
                 cell_tx,
                 socket,
                 connected,
@@ -655,7 +655,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 item_id,
                 quantity,
-                &db_pool,
+                db_pool,
                 cell_tx,
                 socket,
                 connected,
@@ -669,7 +669,7 @@ pub(crate) async fn handle_cell_message(
             item_id,
             target_id,
         } => {
-            handle_use_inventory_item(entity_id, player_id, item_id, target_id, &db_pool, cell_tx)
+            handle_use_inventory_item(entity_id, player_id, item_id, target_id, db_pool, cell_tx)
                 .await;
         }
         CellToBaseMsg::RemoveInventoryItemByType {
@@ -683,7 +683,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 type_id,
                 count,
-                &db_pool,
+                db_pool,
                 cell_tx,
                 socket,
                 connected,
@@ -702,7 +702,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 item_id,
                 repair_ratio,
-                &db_pool,
+                db_pool,
                 socket,
                 connected,
                 entity_to_addr,
@@ -723,7 +723,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 item_ids,
                 vendor_template_id,
-                &db_pool,
+                db_pool,
                 socket,
                 connected,
                 entity_to_addr,
@@ -744,7 +744,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 item_ids,
                 vendor_template_id,
-                &db_pool,
+                db_pool,
                 socket,
                 connected,
                 entity_to_addr,

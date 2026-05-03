@@ -45,13 +45,8 @@ struct InventoryRow {
 
 #[derive(sqlx::FromRow)]
 struct InventoryInstanceRow {
-    type_id: i32,
     stack_size: i32,
     container_id: i32,
-    slot_id: i32,
-    bound: bool,
-    durability: i32,
-    charges: i32,
 }
 
 /// Lighter row for [`handle_remove_inventory_item_by_type`], which needs
@@ -199,7 +194,7 @@ pub async fn handle_remove_inventory_item(
     };
 
     let source = match sqlx::query_as::<_, InventoryInstanceRow>(
-        "SELECT type_id, stack_size, container_id, slot_id, bound, durability, charges \
+        "SELECT stack_size, container_id \
          FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 LIMIT 1 FOR UPDATE",
     )
     .bind(player_id)

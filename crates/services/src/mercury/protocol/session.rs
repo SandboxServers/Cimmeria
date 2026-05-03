@@ -105,9 +105,10 @@ pub fn build_reset_entities(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8
 pub fn build_logged_off(key: &[u8; 32], seq_id: u32, acks: &[u32]) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
-    let mut body = Vec::with_capacity(2);
-    body.push(BASEMSG_LOGGED_OFF);
-    body.push(0x00); // reason = 0 (normal logoff)
+    let body = vec![
+        BASEMSG_LOGGED_OFF,
+        0x00, // reason = 0 (normal logoff)
+    ];
 
     let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);

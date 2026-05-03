@@ -143,8 +143,10 @@ mod tests {
 
     #[tokio::test]
     async fn start_sets_running() {
-        let mut config = ServerConfig::default();
-        config.base_port = 0;
+        let config = ServerConfig {
+            base_port: 0,
+            ..ServerConfig::default()
+        };
         let mut svc = BaseService::new(&config);
         svc.start().await.unwrap();
         assert!(svc.is_running);

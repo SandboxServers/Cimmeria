@@ -70,7 +70,7 @@ pub(crate) async fn run_tick_loop(
             break;
         }
 
-        if tick % 100 == 0 {
+        if tick.is_multiple_of(100) {
             tracing::debug!(%addr, tick, seq_id, "Tick-sync heartbeat (every 100th)");
         }
 

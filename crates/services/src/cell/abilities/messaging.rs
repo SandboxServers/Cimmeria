@@ -24,9 +24,7 @@ pub(crate) async fn send_entity_method(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    let is_player = space_mgr
-        .get_entity(entity_id)
-        .map_or(false, |e| e.is_player);
+    let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
 
     if is_player {
         let _ = tx
