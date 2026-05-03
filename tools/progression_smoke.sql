@@ -101,7 +101,7 @@ BEGIN
     END IF;
 
     -- ── Stage 2: GrantXP to player A only ───────────────────────────
-    -- Mirrors handle_grant_xp (mod.rs:104-107):
+    -- Mirrors the handle_grant_xp contract:
     --   UPDATE sgw_player SET exp = $1, level = $2, training_points = $3
     --     WHERE player_id = $4
     -- Same multi-character isolation concern: player B's xp/level/tp
