@@ -414,3 +414,237 @@ mod tests {
         cleanup(&pool, account_id, player_id).await;
     }
 }
+
+#[cfg(test)]
+mod inventory_loader_tests {
+    //! Live-DB integration tests for the player_load core loaders:
+    //!
+    //! - `query_inventory_items` slot_id+1 wire conversion (DB stores
+    //!   0-indexed; wire is 1-indexed).
+    //! - `query_player_load_data` no-pool short-circuit returns the
+    //!   default sentinel.
+    //! - `query_player_load_data` player-not-found returns the default
+    //!   sentinel.
+    //! - `query_player_load_data` happy path round-trips key fields.
+    //!
+    //! The visual-merge SQL in `query_player_load_data` (the
+    //! `(container_id <> $3 AND slot_id = 0) OR (container_id = $3
+    //! AND slot_id = $4)` clause) is NOT exercised by these tests —
+    //! the seed items used here have NULL `visual_component` and the
+    //! inventory rows go in container 1, not equipment slots
+    //! (4..=14) or the bandolier (3). That clause is covered
+    //! separately by the IN-list double-count regression guard in
+    //! the sibling `tests` module.
+
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+
+    /// Sentinel base, stepped past the IN-list test sentinel
+    /// (0x7000_1100) and other sibling reservations elsewhere in the
+    /// crate so concurrent live-DB runs don't collide on
+    /// account/player ids.
+    const TEST_BASE: i32 = 0x7000_1500;
+
+    /// Picked at runtime rather than hard-coded. The behavior under
+    /// test (slot_id+1 wire conversion, account-isolation,
+    /// round-trip of basic fields) is type-agnostic — querying
+    /// `resources.items` for *any* main-bag-allowed item lets the
+    /// test follow seed-data renumbers automatically. Also satisfies
+    /// the `sgw_inventory.type_id` FK without coupling to a specific
+    /// design id.
+    async fn pick_main_bag_type_id(pool: &PgPool) -> i32 {
+        sqlx::query_scalar::<_, i32>(
+            "SELECT item_id FROM resources.items \
+             WHERE container_sets IS NULL OR 1 = ANY(container_sets) \
+             ORDER BY item_id LIMIT 1",
+        )
+        .fetch_one(pool)
+        .await
+        .expect("seed must provide at least one main-bag-allowed item")
+    }
+
+    async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+        let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
+            .bind(player_id)
+            .execute(pool)
+            .await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(pool)
+            .await;
+    }
+
+    async fn insert_account_and_player(
+        pool: &PgPool,
+        account_id: i32,
+        player_id: i32,
+        archetype: i32,
+        player_name: &str,
+    ) {
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password) \
+             VALUES ($1, $2, '')",
+        )
+        .bind(account_id)
+        .bind(format!("core-test-{account_id}"))
+        .execute(pool)
+        .await
+        .expect("insert account");
+
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah, bandolier_slot\
+             ) VALUES ($1, $2, 7, 1, $3, 1, $4, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                       0.0, 0.0, 0.0, 0, 1234, 0)",
+        )
+        .bind(account_id)
+        .bind(player_id)
+        .bind(archetype)
+        .bind(player_name)
+        .execute(pool)
+        .await
+        .expect("insert player");
+    }
+
+    async fn insert_inventory_row(
+        pool: &PgPool,
+        player_id: i32,
+        type_id: i32,
+        container_id: i32,
+        slot_id: i32,
+    ) -> i32 {
+        sqlx::query_scalar(
+            "INSERT INTO sgw_inventory \
+                (character_id, type_id, stack_size, slot_id, container_id, \
+                 bound, durability, charges) \
+             VALUES ($1, $2, 1, $3, $4, false, 100, 0) \
+             RETURNING item_id",
+        )
+        .bind(player_id)
+        .bind(type_id)
+        .bind(slot_id)
+        .bind(container_id)
+        .fetch_one(pool)
+        .await
+        .expect("insert inventory row")
+    }
+
+    /// `query_inventory_items` converts the 0-indexed DB slot_id to
+    /// the 1-indexed wire slot_id. This is documented at the bottom
+    /// of core.rs ("slot_id is stored 0-indexed in DB but sent
+    /// 1-indexed on the wire") and a regression flips item placement
+    /// in every UI panel for every player. Pin it.
+    #[tokio::test]
+    async fn query_inventory_items_wire_slot_is_one_based() {
+        let pool = require_db_or_skip!();
+        let type_id = pick_main_bag_type_id(&pool).await;
+        let account_id = TEST_BASE;
+        let player_id = TEST_BASE + 1;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id, 1, "wire-slot").await;
+        // Slot 0 in DB.
+        let _ = insert_inventory_row(&pool, player_id, type_id, 1, 0).await;
+        // Slot 5 in DB.
+        let _ = insert_inventory_row(&pool, player_id, type_id, 1, 5).await;
+
+        let items = query_inventory_items(&pool, player_id).await;
+        assert_eq!(items.len(), 2);
+
+        let wire_slots: Vec<i32> = items.iter().map(|i| i.slot_id).collect();
+        assert!(
+            wire_slots.contains(&1),
+            "DB slot 0 must be reported as wire slot 1; got {wire_slots:?}",
+        );
+        assert!(
+            wire_slots.contains(&6),
+            "DB slot 5 must be reported as wire slot 6; got {wire_slots:?}",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// No DB pool short-circuits to `default_player_load_data()` —
+    /// the offline-mode sentinel callers rely on. The default's
+    /// `player_id == 0` and `player_name == "Unknown"` are stable
+    /// markers we can assert on without coupling to every default
+    /// field.
+    #[tokio::test]
+    async fn query_player_load_data_no_pool_returns_default_sentinel() {
+        // No `require_db_or_skip!()` — this branch deliberately
+        // exercises the None pool path and runs even when
+        // DATABASE_URL is unset.
+        let data = query_player_load_data(&None, 0, 0).await;
+
+        assert_eq!(data.player_id, 0, "default sentinel uses player_id=0");
+        assert_eq!(
+            data.player_name, "Unknown",
+            "default sentinel uses 'Unknown' name",
+        );
+    }
+
+    /// Player-not-found (mismatched account_id / player_id) returns
+    /// the same default sentinel as the no-pool path. Bug shape this
+    /// catches: a refactor that swaps the WHERE clause's binding
+    /// order would let any player_id match any account_id, which is
+    /// a session-confusion vector.
+    #[tokio::test]
+    async fn query_player_load_data_account_mismatch_returns_default() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 100;
+        let player_id = TEST_BASE + 101;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id, 1, "real").await;
+
+        let db_pool = Some(Arc::new(pool.clone()));
+        // Wrong account_id (1) for this player_id — must NOT load.
+        let data = query_player_load_data(&db_pool, 1, player_id).await;
+
+        assert_eq!(
+            data.player_id, 0,
+            "account/player mismatch must return the default sentinel, NOT \
+             a leaked load of the real player",
+        );
+        assert_eq!(data.player_name, "Unknown");
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Happy path: a real account+player+inventory loads through with
+    /// fields round-tripped from the DB. Asserts the load surface
+    /// most likely to silently regress: level (i32), name (string),
+    /// archetype (drives ability tree), and items[] (the inventory
+    /// query joining on resources.items).
+    #[tokio::test]
+    async fn query_player_load_data_round_trips_basic_fields() {
+        let pool = require_db_or_skip!();
+        let type_id = pick_main_bag_type_id(&pool).await;
+        let account_id = TEST_BASE + 200;
+        let player_id = TEST_BASE + 201;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id, 1, "happy-path").await;
+        let _ = insert_inventory_row(&pool, player_id, type_id, 1, 0).await;
+
+        let db_pool = Some(Arc::new(pool.clone()));
+        let data = query_player_load_data(&db_pool, account_id as u32, player_id).await;
+
+        assert_eq!(data.player_id, player_id);
+        assert_eq!(data.level, 7, "level must round-trip from sgw_player");
+        assert_eq!(data.player_name, "happy-path");
+        assert_eq!(data.archetype, 1, "archetype must round-trip");
+        assert_eq!(data.naquadah, 1234, "naquadah must round-trip");
+        assert_eq!(
+            data.items.len(),
+            1,
+            "inventory query must surface the seeded item",
+        );
+        assert_eq!(
+            data.items[0].slot_id, 1,
+            "wire slot_id must be DB slot+1 (0 -> 1)",
+        );
+        assert_eq!(data.items[0].dbid, type_id);
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+}
