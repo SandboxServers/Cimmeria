@@ -3,14 +3,16 @@
 //! Skip cleanly when DATABASE_URL is unset.
 //!
 //! The seeded `resources.items` has zero rows with `charges > 0`, so a
-//! meaningful happy-path test needs dedicated test fixture data
-//! (issue #79 explicitly sanctions this option). Each test inserts a
-//! synthetic `resources.items` row with a sentinel `item_id`, links it
-//! into the seeded recharge list (item_list_id=2) via
-//! `resources.item_list_items`, runs the handler, then cleans up.
-//! Order matters: `sgw_inventory.type_id` FKs into `resources.items`
-//! with ON DELETE RESTRICT, so the inventory row must be removed
-//! before the synthetic design.
+//! meaningful happy-path test needs dedicated fixture data: a
+//! synthetic `resources.items` row with `charges > 0`, plus a matching
+//! `resources.item_list_items` row that puts it in vendor 25's
+//! recharge list. Both fixture rows are keyed at sentinel `item_id`
+//! values far outside the seeded sequences and are inserted
+//! idempotently (`ON CONFLICT (item_id) DO NOTHING`). The synthetic
+//! rows are NOT deleted by per-test cleanup because `cargo test` runs
+//! tests in parallel within a binary, and deleting a shared FK target
+//! between another test's insert and handler call would surface as
+//! flaky PK conflicts or FK violations.
 
 use super::*;
 use crate::test_support::require_db_or_skip;
@@ -38,9 +40,21 @@ const SYNTH_BASE_CHARGES: i32 = 100;
 /// arithmetic in their head.
 const SYNTH_RECHARGE_NAQUADAH: i32 = 1_000;
 
+/// Sentinel item_id for the `resources.item_list_items` link row.
+/// `item_list_items_pkey` is on `item_id` (auto-increment), so picking
+/// a fixed sentinel lets the link insert use `ON CONFLICT (item_id)
+/// DO NOTHING` and stay idempotent across concurrent tests.
+const SYNTH_RECHARGE_LIST_LINK_ID: i32 = 0x7FFF_BBBC;
+
 const INV_MAIN: i32 = 1;
 
 async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+    // Per-test rows only. The synthetic `resources.items` design and
+    // its `item_list_items` link row are intentionally NOT deleted:
+    // `cargo test` runs tests in parallel within a binary, and
+    // deleting a shared FK target between tests' insert/handler calls
+    // causes spurious failures. The sentinel ids sit well outside any
+    // production data range, so leaving them in place is safe.
     let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
         .bind(player_id)
         .execute(pool)
@@ -49,24 +63,19 @@ async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
         .bind(account_id)
         .execute(pool)
         .await;
-    // ON DELETE CASCADE on item_list_items.design_id → items.item_id
-    // means the items DELETE drops the list-link row too.
-    let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = $1")
-        .bind(SYNTH_RECHARGEABLE_TYPE_ID)
-        .execute(pool)
-        .await;
 }
 
 /// Insert the synthetic resources.items row and the matching
 /// resources.item_list_items entry that puts it in vendor 25's
-/// recharge list. Returns nothing — the design id is the
-/// SYNTH_RECHARGEABLE_TYPE_ID constant above.
+/// recharge list. Both inserts are idempotent so concurrent tests
+/// don't race on the shared sentinel rows.
 async fn insert_synthetic_rechargeable_design(pool: &PgPool) {
     sqlx::query(
         "INSERT INTO resources.items (\
             item_id, description, name, quality_id, tech_comp, tier, \
             max_stack_size, charges \
-         ) VALUES ($1, '', $2, 'ITEM_QUALITY_Normal', 0, 1, 1, $3)",
+         ) VALUES ($1, '', $2, 'ITEM_QUALITY_Normal', 0, 1, 1, $3) \
+         ON CONFLICT (item_id) DO NOTHING",
     )
     .bind(SYNTH_RECHARGEABLE_TYPE_ID)
     .bind(format!("synth-rechargeable-{SYNTH_RECHARGEABLE_TYPE_ID}"))
@@ -77,9 +86,11 @@ async fn insert_synthetic_rechargeable_design(pool: &PgPool) {
 
     sqlx::query(
         "INSERT INTO resources.item_list_items \
-            (item_list_id, design_id, quantity, naquadah) \
-         VALUES ($1, $2, 1, $3)",
+            (item_id, item_list_id, design_id, quantity, naquadah) \
+         VALUES ($1, $2, $3, 1, $4) \
+         ON CONFLICT (item_id) DO NOTHING",
     )
+    .bind(SYNTH_RECHARGE_LIST_LINK_ID)
     .bind(SEEDED_RECHARGE_LIST_ID)
     .bind(SYNTH_RECHARGEABLE_TYPE_ID)
     .bind(SYNTH_RECHARGE_NAQUADAH)

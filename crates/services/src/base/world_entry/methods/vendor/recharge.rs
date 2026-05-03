@@ -176,14 +176,14 @@ mod free_recharge_tests {
     //! Skip cleanly when DATABASE_URL is unset.
     //!
     //! The seeded `resources.items` has zero rows with `charges > 0`,
-    //! so a meaningful happy-path test has to insert dedicated test
-    //! fixture data into `resources.items` (issue #79 explicitly
-    //! sanctions this option). Each test inserts a synthetic row with
-    //! a sentinel `item_id`, runs the handler, and cleans up — order
-    //! matters because `sgw_inventory.type_id` FKs into
-    //! `resources.items` with ON DELETE RESTRICT.
+    //! so a meaningful happy-path test has to insert dedicated fixture
+    //! data into `resources.items` keyed at a sentinel `item_id` far
+    //! outside the seeded sequence. The fixture row is inserted
+    //! idempotently (`ON CONFLICT (item_id) DO NOTHING`) and is NOT
+    //! deleted by per-test cleanup — concurrent tests would otherwise
+    //! race on PK-conflict / FK-violation between insert and cleanup.
     //!
-    //! The paid branch is covered by `paid_recharge::recharge_tests`.
+    //! The paid branch is covered by `paid_recharge::tests`.
 
     use super::*;
     use crate::test_support::require_db_or_skip;
@@ -203,6 +203,13 @@ mod free_recharge_tests {
     const INV_MAIN: i32 = 1;
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+        // Per-test rows only. The synthetic `resources.items` row at
+        // `SYNTH_RECHARGEABLE_TYPE_ID` is intentionally NOT deleted:
+        // `cargo test` runs tests in parallel within a binary, and
+        // deleting a shared FK target between tests' insert/handler
+        // calls causes spurious failures. The sentinel id sits well
+        // outside any production data range, so leaving it in place
+        // is safe.
         let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
             .bind(player_id)
             .execute(pool)
@@ -211,24 +218,20 @@ mod free_recharge_tests {
             .bind(account_id)
             .execute(pool)
             .await;
-        // resources.items must come AFTER any referencing sgw_inventory
-        // rows; ON DELETE RESTRICT enforces that order.
-        let _ = sqlx::query("DELETE FROM resources.items WHERE item_id = $1")
-            .bind(SYNTH_RECHARGEABLE_TYPE_ID)
-            .execute(pool)
-            .await;
     }
 
     /// Insert a synthetic resources.items row keyed by
     /// `SYNTH_RECHARGEABLE_TYPE_ID` with `charges > 0` so the
     /// `WHERE ri.charges > 0 AND inv.charges < ri.charges` filter
-    /// matches inventory rows we hang off it.
+    /// matches inventory rows we hang off it. Idempotent so
+    /// concurrent tests don't fight over the PK.
     async fn insert_synthetic_rechargeable_design(pool: &PgPool) {
         sqlx::query(
             "INSERT INTO resources.items (\
                 item_id, description, name, quality_id, tech_comp, tier, \
                 max_stack_size, charges \
-             ) VALUES ($1, '', $2, 'ITEM_QUALITY_Normal', 0, 1, 1, $3)",
+             ) VALUES ($1, '', $2, 'ITEM_QUALITY_Normal', 0, 1, 1, $3) \
+             ON CONFLICT (item_id) DO NOTHING",
         )
         .bind(SYNTH_RECHARGEABLE_TYPE_ID)
         .bind(format!("synth-rechargeable-{SYNTH_RECHARGEABLE_TYPE_ID}"))
