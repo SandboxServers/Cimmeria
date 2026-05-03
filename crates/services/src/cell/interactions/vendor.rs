@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bails_silently_when_player_id_missing() {
+    async fn does_not_send_when_player_id_missing() {
         let mut mgr = make_space_manager();
         mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
         // Note: deliberately NOT setting player.player_id — that's the regression.
@@ -126,10 +126,10 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(8);
         send_store_open(1, vendor_entity_id, &tx, &mut mgr).await;
 
-        // The bug fixed in #77 was that this path sent OpenVendorStore with
-        // player_id: 0 — which then routed to whatever character row had id 0
-        // and corrupted that account's vendor session. The fix bails before
-        // the send. Asserting an empty channel pins that.
+        // Without the missing-player_id guard, this path would send
+        // OpenVendorStore { player_id: 0, .. }, which then routes to whatever
+        // character row has id 0 and corrupts that account's vendor session.
+        // The function must return early before reaching the send.
         assert!(
             collect_open_vendor_messages(&mut rx).is_empty(),
             "must not send OpenVendorStore when player has no player_id",
@@ -137,7 +137,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bails_silently_when_vendor_entity_id_exceeds_i32_max() {
+    async fn does_not_send_when_vendor_entity_id_exceeds_i32_max() {
         let mut mgr = make_space_manager();
         mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(p) = mgr.get_entity_mut(1) {
