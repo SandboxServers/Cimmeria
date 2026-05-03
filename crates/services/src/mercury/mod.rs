@@ -144,6 +144,7 @@ pub mod method_idx {
     pub const ON_BEING_NAME_ID_UPDATE: u16 = 11;
 
     // SGWBeing interface (12–19)
+    pub const ON_TIMER_UPDATE: u16 = 12;
     pub const ON_EFFECT_RESULTS: u16 = 14;
     pub const ON_LEVEL_UPDATE: u16 = 15;
     pub const ON_TARGET_UPDATE: u16 = 16;
