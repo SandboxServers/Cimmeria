@@ -11,7 +11,7 @@ pub mod threat;
 
 pub use damage::{calculate_damage, calculate_qr, calculate_result, QrResult};
 pub use state::{
-    clear_dead_state, is_dead_state, set_dead_state, BSF_DEAD, BSF_HOLSTER, BSF_IN_COMBAT,
+    is_dead_state, BSF_DEAD, BSF_HOLSTER, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK,
     PLAYER_STATE_DEAD,
 };
 pub use threat::{

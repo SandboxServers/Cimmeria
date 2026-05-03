@@ -153,8 +153,8 @@ pub(super) async fn apply_damage_to_target(
     // Check if target died — use entity's state_field so we preserve other flags
     let target_died = target.stats.get(HEALTH).map_or(false, |s| s.cur <= 0);
     if target_died {
-        combat::set_dead_state(&mut target.state_field);
-        target.state_field |= 1 << 6; // BSF_MovementLock — prevent movement while dead
+        target.set_state_flag(combat::BSF_DEAD);
+        target.set_state_flag(combat::BSF_MOVEMENT_LOCK); // prevent movement while dead
         // Transition NPC AI to Dead so it stops fighting and moving
         if !target.is_player {
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
@@ -166,10 +166,13 @@ pub(super) async fn apply_damage_to_target(
             // bits (quest tags, mission interactions) must survive death. The dead-state
             // bit handles cursor distinction client-side; we don't need to clear
             // `INT_Attackable` to suppress the shootable cursor.
-            target.state_field &= !combat::BSF_IN_COMBAT; // BSF_InCombat — clear so witnesses' clients stop
-                                                          // treating this NPC as a combat target. Mirrors
-                                                          // python `unsetStateFlag(BSF_InCombat)` at
-                                                          // SGWMob.py:292 when the threat list empties.
+            // BSF_IN_COMBAT is intentionally written via raw bitmask ops
+            // across the codebase (use_ability sets it on weapon-fire,
+            // threat module clears it when the threat list drains). Mixing
+            // it with `unset_state_flag` here would hit the zero-counter
+            // no-op path and leave the bit stuck — NPCs would render as
+            // still-in-combat after death. Mirrors python SGWMob.py:292.
+            target.state_field &= !combat::BSF_IN_COMBAT;
         }
         tracing::info!(
             attacker = entity_id, target = target_eid,

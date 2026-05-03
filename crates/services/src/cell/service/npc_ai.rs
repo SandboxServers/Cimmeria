@@ -216,13 +216,15 @@ async fn npc_ai_leash(
             health.set_current(health.max);
         }
 
-        // Clear dead state flag
         npc.ai_state = AiState::Idle;
         npc.threat_list.clear();
         npc.abilities.clear_all_cooldowns();
 
-        // Clear dead flag from the NPC's actual state_field
-        super::super::combat::clear_dead_state(&mut npc.state_field);
+        // No state-flag unsetting here: leash only fires when the NPC is
+        // alive (the AI state machine routes dead NPCs to AiState::Dead, not
+        // Leashing). BSF_DEAD/BSF_MOVEMENT_LOCK were never set in the first
+        // place on a leashing NPC, so unsetting them would be defensive
+        // paranoia against an unreachable code path.
 
         tracing::info!(npc_id, "NPC AI: leash complete, reset to Idle with full health");
 

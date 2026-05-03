@@ -216,7 +216,7 @@ mod tests {
         mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(npc) = mgr.get_entity_mut(npc_id) {
             npc.faction = 10;            // hostile
-            npc.state_field = 0;          // alive
+            npc.clear_all_state_flags(); // alive — hard reset (counters too)
         }
 
         let (tx, mut rx) = mpsc::channel(16);
@@ -259,7 +259,7 @@ mod tests {
         mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(npc) = mgr.get_entity_mut(npc_id) {
             npc.faction = 10; // hostile
-            crate::cell::combat::set_dead_state(&mut npc.state_field);
+            npc.set_state_flag(crate::cell::combat::BSF_DEAD);
             npc.interaction_type = Some(NpcInteractionType::Loot);
             // Seed real loot. Without this, the test only proves dispatch
             // routes to method 114 — the corpse could be empty and the test
