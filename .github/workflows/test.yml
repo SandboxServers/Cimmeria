@@ -98,12 +98,13 @@ jobs:
       - name: cargo build
         run: cargo build --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets
 
-  # cargo test: live-DB tests use test_support::require_db_or_skip! and
-  # self-skip when DATABASE_URL is unset, so this baseline exercises only
-  # the unit + non-DB integration tests. A follow-up will add a postgres
-  # service container and run the DB-integration suite under DATABASE_URL.
+  # cargo test (no DB). Live-DB tests in cimmeria-services use
+  # test_support::require_db_or_skip! and self-skip when DATABASE_URL is
+  # unset, so this job covers the unit + non-DB integration tests across
+  # the whole workspace (mercury, content-engine, services unit tests, etc.).
+  # The live-DB suite runs in the dedicated `test-live-db` job below.
   test:
-    name: cargo test (workspace)
+    name: cargo test (workspace, no DB)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -124,3 +125,59 @@ jobs:
           shared-key: test
       - name: cargo test
         run: cargo test --workspace ${{ env.WORKSPACE_EXCLUDES }}
+
+  # cargo test against a live Postgres. Schema is loaded from
+  # db/database.sql (which `\ir`-includes everything in db/sgw and
+  # db/resources, including seed data). The live-DB regression guards
+  # we've written for vendor / inventory / progression / mail / missions
+  # actually fire in this job — the prior `test` job's
+  # require_db_or_skip! short-circuits without DATABASE_URL.
+  #
+  # --test-threads=1 because some live-DB tests share sentinel id ranges
+  # and collide under parallel execution against a single shared DB.
+  # That's a fixture-design constraint, not a bug in the handlers.
+  test-live-db:
+    name: cargo test -p cimmeria-services (live DB)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Match the bundled local Postgres in external/postgresql_server/.
+        image: postgres:17.9
+        env:
+          POSTGRES_USER: w-testing
+          POSTGRES_PASSWORD: w-testing
+          POSTGRES_DB: sgw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: install clang + mold + psql
+        run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+      - name: hydrate external/recast
+        run: |
+          mkdir -p external
+          curl -sL --retry 3 \
+            -o /tmp/recast.zip \
+            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
+          unzip -q /tmp/recast.zip -d /tmp/recast_extract
+          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
+          test -f external/recast/Detour/Source/DetourAssert.cpp
+      - name: load schema + seeds
+        env:
+          PGPASSWORD: w-testing
+        run: |
+          psql -h localhost -U w-testing -d sgw -v ON_ERROR_STOP=1 -f db/database.sql
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test-live-db
+      - name: cargo test (live DB)
+        run: |
+          cargo test -p cimmeria-services --lib -- --test-threads=1
