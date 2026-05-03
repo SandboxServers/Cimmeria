@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
+use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
@@ -255,6 +256,32 @@ pub async fn handle_purchase_vendor_items(
         }
     }
 
+    // Enqueue one outbox row per granted item inside the same tx so the
+    // entire purchase (cash debit + N inventory inserts + N cell
+    // notifications) is atomic. If any outbox INSERT fails we abort the
+    // whole purchase.
+    let mut outbox_pending: Vec<(i64, CellOutboxPayload)> =
+        Vec::with_capacity(granted.len());
+    for (design_id, slot_id, quantity) in &granted {
+        let payload = CellOutboxPayload::InventoryItemGranted {
+            item_id: *design_id,
+            container_id: INV_MAIN,
+            slot_id: *slot_id,
+            quantity: *quantity,
+        };
+        match outbox::enqueue_in_tx(&mut tx, entity_id, &payload).await {
+            Ok(id) => outbox_pending.push((id, payload)),
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(
+                    entity_id, player_id, design_id,
+                    "PurchaseVendorItems: outbox enqueue failed, aborting: {e}"
+                );
+                return;
+            }
+        }
+    }
+
     if let Err(e) = tx.commit().await {
         tracing::error!(entity_id, player_id, "PurchaseVendorItems: commit failed: {e}");
         return;
@@ -275,25 +302,8 @@ pub async fn handle_purchase_vendor_items(
     .await;
 
     if let Some(cell_tx) = cell_tx {
-        for (design_id, slot_id, quantity) in &granted {
-            if let Err(e) = cell_tx
-                .send(BaseToCellMsg::InventoryItemGranted {
-                    entity_id,
-                    item_id: *design_id,
-                    container_id: INV_MAIN,
-                    slot_id: *slot_id,
-                    quantity: *quantity,
-                })
-                .await
-            {
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    design_id,
-                    "PurchaseVendorItems: cell channel closed during InventoryItemGranted: {e}"
-                );
-                break;
-            }
+        for (outbox_id, payload) in outbox_pending {
+            outbox::try_dispatch_now(pool.as_ref(), cell_tx, outbox_id, entity_id, payload).await;
         }
     }
 

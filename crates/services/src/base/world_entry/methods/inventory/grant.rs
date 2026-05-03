@@ -6,6 +6,7 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
+use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::{ConnectedClientState, helpers, world_entry_appearance};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx};
@@ -220,6 +221,29 @@ pub async fn handle_grant_item(
         }
     }
 
+    // Enqueue the cell-notification BEFORE commit so the outbox row and the
+    // inventory mutation become visible atomically. After commit, try the
+    // in-process dispatch; if the cell receiver is gone, the row stays
+    // undelivered for the background drainer to retry.
+    let outbox_payload = CellOutboxPayload::InventoryItemGranted {
+        item_id,
+        container_id,
+        slot_id: next_slot,
+        quantity: count,
+    };
+    let outbox_id = match outbox::enqueue_in_tx(&mut db_tx, entity_id, &outbox_payload).await {
+        Ok(id) => id,
+        Err(e) => {
+            // Outbox INSERT failed — abort the grant rather than commit
+            // an inventory mutation we can't durably notify the cell about.
+            // The player retries the grant trigger, which is idempotent at
+            // the chain level.
+            let _ = db_tx.rollback().await;
+            tracing::error!(player_id, item_id, "GrantItem: outbox enqueue failed, aborting: {e}");
+            return;
+        }
+    };
+
     if let Err(e) = db_tx.commit().await {
         tracing::error!(player_id, item_id, "GrantItem: commit failed: {e}");
         return;
@@ -243,23 +267,7 @@ pub async fn handle_grant_item(
     );
 
     if let Some(tx) = cell_tx {
-        if let Err(e) = tx
-            .send(BaseToCellMsg::InventoryItemGranted {
-                entity_id,
-                item_id,
-                container_id,
-                slot_id: next_slot,
-                quantity: count,
-            })
-            .await
-        {
-            tracing::warn!(
-                entity_id,
-                player_id,
-                item_id,
-                "GrantItem: cell channel closed while emitting InventoryItemGranted: {e}"
-            );
-        }
+        outbox::try_dispatch_now(pool.as_ref(), tx, outbox_id, entity_id, outbox_payload).await;
     }
 
     let is_equipped = (3..=14).contains(&container_id);

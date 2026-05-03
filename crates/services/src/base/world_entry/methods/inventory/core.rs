@@ -253,6 +253,31 @@ pub async fn handle_remove_inventory_item(
         }
     }
 
+    // Enqueue the cell-notification BEFORE commit so the outbox row and the
+    // inventory mutation become visible atomically. Only fired on full removal
+    // — partial decrement doesn't change which item-instances exist on the
+    // cell side. If outbox INSERT fails we abort the remove rather than leave
+    // the inventory mutated without a durable notification path.
+    let outbox_payload_id = if removed_all {
+        let payload = CellOutboxPayload::InventoryItemRemoved {
+            item_id,
+            source_container_id: source.container_id,
+        };
+        match outbox::enqueue_in_tx(&mut tx, entity_id, &payload).await {
+            Ok(id) => Some((id, payload)),
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(
+                    player_id, item_id,
+                    "RemoveInventoryItem: outbox enqueue failed, aborting: {e}"
+                );
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
     if let Err(e) = tx.commit().await {
         tracing::error!(player_id, item_id, "RemoveInventoryItem: commit failed: {e}");
         return;
@@ -281,16 +306,8 @@ pub async fn handle_remove_inventory_item(
         "Inventory remove persisted"
     );
 
-    if removed_all {
-        if let Some(cell_tx) = cell_tx {
-            let _ = cell_tx
-                .send(BaseToCellMsg::InventoryItemRemoved {
-                    entity_id,
-                    item_id,
-                    source_container_id: source.container_id,
-                })
-                .await;
-        }
+    if let (Some((outbox_id, payload)), Some(tx)) = (outbox_payload_id, cell_tx) {
+        outbox::try_dispatch_now(pool.as_ref(), tx, outbox_id, entity_id, payload).await;
     }
 
     if source.container_id == 3 {
@@ -549,6 +566,26 @@ pub async fn handle_remove_inventory_item_by_type(
         }
     }
 
+    let outbox_payload_id = if removed_all {
+        let payload = CellOutboxPayload::InventoryItemRemoved {
+            item_id: removed_item_id,
+            source_container_id: source.container_id,
+        };
+        match outbox::enqueue_in_tx(&mut tx, entity_id, &payload).await {
+            Ok(id) => Some((id, payload)),
+            Err(e) => {
+                let _ = tx.rollback().await;
+                tracing::error!(
+                    player_id, type_id,
+                    "RemoveInventoryItemByType: outbox enqueue failed, aborting: {e}"
+                );
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
     if let Err(e) = tx.commit().await {
         tracing::error!(player_id, type_id, "RemoveInventoryItemByType: commit failed: {e}");
         return;
@@ -567,14 +604,8 @@ pub async fn handle_remove_inventory_item_by_type(
         "RemoveInventoryItemByType: persisted"
     );
 
-    if removed_all {
-        if let Some(cell_tx) = cell_tx {
-            let _ = cell_tx.send(BaseToCellMsg::InventoryItemRemoved {
-                entity_id,
-                item_id: removed_item_id,
-                source_container_id: source.container_id,
-            }).await;
-        }
+    if let (Some((outbox_id, payload)), Some(tx)) = (outbox_payload_id, cell_tx) {
+        outbox::try_dispatch_now(pool.as_ref(), tx, outbox_id, entity_id, payload).await;
     }
 
     if source.container_id == 3 {
