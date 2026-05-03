@@ -22,9 +22,9 @@ use crate::test_support::require_db_or_skip;
 
 /// Chain 3026 (`db/resources/Content/Seed/sgc_w1_chains.sql`):
 /// `dialog_choice('5365')` accepts mission 1562, gated by
-/// `mission_status(1562) = 'not_active'`. The condition is the
-/// regression guard added in #77 — without it, every dialog re-display
-/// re-accepts the mission and resets progress.
+/// `mission_status(1562) = 'not_active'`. That condition is the
+/// regression guard: without it, every dialog re-display re-accepts
+/// the mission and resets progress.
 ///
 /// Test 1: with `mission_1562_status = 'not_active'`, the chain matches
 /// and the engine resolves its actions. Pins the happy-path acceptance.
