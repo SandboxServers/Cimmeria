@@ -338,3 +338,59 @@ pub fn normalize_item_quantities(items: Vec<(i32, i32)>, allow_zero_item_id: boo
     }
     normalized
 }
+
+#[cfg(test)]
+mod normalize_item_quantities_tests {
+    use super::normalize_item_quantities;
+
+    #[test]
+    fn drops_non_positive_quantities() {
+        let out = normalize_item_quantities(vec![(1, 5), (2, 0), (3, -7)], false);
+        assert_eq!(out, vec![(1, 5)]);
+    }
+
+    #[test]
+    fn drops_non_positive_item_ids_when_zero_disallowed() {
+        let out = normalize_item_quantities(vec![(0, 5), (-1, 5), (3, 5)], false);
+        assert_eq!(out, vec![(3, 5)], "id 0 and -1 must be dropped when allow_zero_item_id=false");
+    }
+
+    #[test]
+    fn keeps_zero_item_id_when_allowed_but_still_drops_negative() {
+        // The flag allows item_id == 0 (e.g. the "any item" wildcard in some
+        // recipe contexts) but a negative id is always invalid.
+        let out = normalize_item_quantities(vec![(0, 5), (-1, 5), (3, 5)], true);
+        assert_eq!(out, vec![(0, 5), (3, 5)]);
+    }
+
+    #[test]
+    fn dedupes_by_summing_quantities() {
+        let out = normalize_item_quantities(vec![(7, 1), (7, 2), (7, 4)], false);
+        assert_eq!(out, vec![(7, 7)]);
+    }
+
+    #[test]
+    fn preserves_first_occurrence_order() {
+        // Note: function does NOT sort — dedupe-by-linear-scan keeps the order
+        // of the first occurrence. Locking that in so a future "let's sort
+        // these for determinism" refactor would have to be deliberate.
+        let out = normalize_item_quantities(vec![(3, 1), (1, 1), (2, 1)], false);
+        assert_eq!(out, vec![(3, 1), (1, 1), (2, 1)]);
+    }
+
+    #[test]
+    fn dedupe_uses_saturating_add_on_overflow() {
+        // saturating_add prevents a malicious client from wrapping the merged
+        // quantity into a negative — without it, two i32::MAX entries would
+        // sum to -2 and slip past downstream "quantity > 0" guards.
+        let out = normalize_item_quantities(
+            vec![(1, i32::MAX), (1, i32::MAX)], false,
+        );
+        assert_eq!(out, vec![(1, i32::MAX)]);
+    }
+
+    #[test]
+    fn empty_input_returns_empty() {
+        assert!(normalize_item_quantities(Vec::new(), false).is_empty());
+    }
+}
