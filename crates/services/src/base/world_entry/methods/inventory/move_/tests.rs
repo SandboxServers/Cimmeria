@@ -355,3 +355,244 @@ async fn source_item_not_found_makes_no_changes() {
 
     cleanup(&pool, account_id, player_id).await;
 }
+
+// ── Concurrency regression guards (issue #84) ────────────────────────────────
+//
+// Issue #84 enumerates 7 concurrency-vs-uniqueness scenarios discovered during
+// the PR #77 CodeRabbit review (passes 7/8/9). The tests below cover the move-
+// vs-grant lock contention path and the opposite-direction-swap deadlock-free
+// guarantee. They use grant_item alongside move so cleanup also drains the
+// outbox table that handle_grant_item writes to pre-commit.
+
+use super::super::grant::handle_grant_item;
+use crate::base::ConnectedClientState;
+
+/// Cleanup variant that also drains cell_event_outbox rows enqueued by
+/// handle_grant_item. Mirrors the pattern from inventory/grant.rs's tests.
+async fn cleanup_with_outbox(pool: &PgPool, account_id: i32, player_id: i32, entity_id: u32) {
+    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
+        .bind(entity_id as i32)
+        .execute(pool).await;
+    cleanup(pool, account_id, player_id).await;
+}
+
+/// Re-make the (socket, e2a, conn) tuple inside a multi-thread tokio runtime
+/// so spawned tasks each get their own UDP/state context. Same pattern as
+/// the grant_item concurrency test (#145).
+fn make_state_for_entity(entity_id: u32) -> (
+    Arc<UdpSocket>,
+    Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) {
+    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
+    std_sock.set_nonblocking(true).unwrap();
+    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+    let entity_to_addr = Arc::new(Mutex::new({
+        let mut m = HashMap::new();
+        m.insert(entity_id, fake_addr);
+        m
+    }));
+    let connected = Arc::new(Mutex::new(HashMap::new()));
+    (socket, entity_to_addr, connected)
+}
+
+/// Regression guard: a move and a grant against the same container must
+/// serialize through the per-(player, container) advisory lock so they pick
+/// distinct slots. Without that lock, both the move's `reserve_free_inventory_slots`-
+/// equivalent target read and the grant's slot reservation could see the
+/// same slot free, both INSERT/UPDATE into it, and the unique-slot index
+/// rejects one — turning a legitimate operation into a user-visible error.
+///
+/// Setup: A at (1, 0). Spawn move A → (1, 7) and a concurrent grant of a
+/// new item into container 1. Both must commit cleanly with all rows on
+/// distinct slots.
+///
+/// Note on the source/target axis from #84: with the current item seed no
+/// resources.items row allows both container 1 and container 2, so the
+/// move can't cross containers and "move-vs-grant on target" vs
+/// "...on source" collapse to the same single-container scenario. Both
+/// directions exercise the same `pg_advisory_xact_lock(player_id, 1)`
+/// primitive, so the single test below covers both.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn move_and_concurrent_grant_serialize_on_container_lock() {
+    use tokio::sync::Barrier;
+
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 500;
+    let player_id = TEST_BASE + 501;
+    let entity_id: u32 = 0x7000_0210;
+    cleanup_with_outbox(&pool, account_id, player_id, entity_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    let types = pick_main_bag_type_ids(&pool, 2).await;
+    let item_a = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
+
+    let (socket, e2a, conn) = make_state_for_entity(entity_id);
+    let db_pool = Some(Arc::new(pool.clone()));
+    let barrier = Arc::new(Barrier::new(2));
+
+    let move_handle = {
+        let db_pool = db_pool.clone();
+        let socket = socket.clone();
+        let conn = conn.clone();
+        let e2a = e2a.clone();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            barrier.wait().await;
+            handle_move_inventory_item(
+                entity_id, player_id, item_a, 1, 7, 1,
+                &db_pool, &None, &socket, &conn, &e2a,
+            ).await;
+        })
+    };
+    let grant_handle = {
+        let grant_type = types[1];
+        let db_pool = db_pool.clone();
+        let socket = socket.clone();
+        let conn = conn.clone();
+        let e2a = e2a.clone();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            barrier.wait().await;
+            handle_grant_item(
+                entity_id, player_id, grant_type, 1, 1,
+                &db_pool, &None, &socket, &conn, &e2a,
+            ).await;
+        })
+    };
+    move_handle.await.expect("move task panicked");
+    grant_handle.await.expect("grant task panicked");
+
+    // Final state: 2 rows in container 1, both on distinct slots, no row
+    // at slot = -1 (proving the swap sentinel — if any was used — was
+    // cleaned up; in this test no swap happens but the assertion costs
+    // nothing and locks in the no-leak invariant).
+    let rows: Vec<(i32, i32)> = sqlx::query_as(
+        "SELECT item_id, slot_id FROM sgw_inventory \
+         WHERE character_id = $1 AND container_id = 1 \
+         ORDER BY slot_id",
+    )
+    .bind(player_id).fetch_all(&pool).await.unwrap();
+
+    assert_eq!(rows.len(), 2,
+        "both move and grant must commit (got {} rows)", rows.len());
+    let slot_ids: Vec<i32> = rows.iter().map(|(_, s)| *s).collect();
+    let mut sorted = slot_ids.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(sorted.len(), 2, "slot_ids must be distinct: {slot_ids:?}");
+    assert!(slot_ids.iter().all(|&s| s >= 0),
+        "no row may be left at the swap sentinel slot -1: {slot_ids:?}");
+
+    // A must end up at (1, 7) regardless of scheduling — the move's target
+    // is fixed. The grant lands at whichever slot was free at its turn
+    // (slot 0 if the move ran first; slot 1 if the grant ran first while
+    // A was still at slot 0).
+    let a_slot = rows.iter().find(|(id, _)| *id == item_a).map(|(_, s)| *s);
+    assert_eq!(a_slot, Some(7), "moved item A must land at its requested target slot 7");
+
+    cleanup_with_outbox(&pool, account_id, player_id, entity_id).await;
+}
+
+/// Regression guard for the original (player_id, 0) per-player lock comment
+/// in move_/mod.rs: opposite-direction concurrent moves (A→B's slot, B→A's
+/// slot) must NOT deadlock on FOR-UPDATE row locks. The per-player advisory
+/// lock serializes them so the second move re-reads its source after the
+/// first commits — and finds it already at the requested target, hitting
+/// the same-source-as-target early return.
+///
+/// Without the per-player lock, each move locks its own source row first,
+/// then tries to FOR-UPDATE the other's source as the swap path's occupant
+/// query — classic AB-BA deadlock.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn opposite_direction_concurrent_swaps_do_not_deadlock() {
+    use tokio::sync::Barrier;
+
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 600;
+    let player_id = TEST_BASE + 601;
+    let entity_id: u32 = 0x7000_0220;
+    cleanup_with_outbox(&pool, account_id, player_id, entity_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    let types = pick_main_bag_type_ids(&pool, 2).await;
+    let item_a = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
+    let item_b = insert_item(&pool, player_id, types[1], 1, 5, 1).await;
+
+    let (socket, e2a, conn) = make_state_for_entity(entity_id);
+    let db_pool = Some(Arc::new(pool.clone()));
+    let barrier = Arc::new(Barrier::new(2));
+
+    // Move A → (1, 5) and Move B → (1, 0) concurrently. Both target the
+    // other's slot. Per-player lock makes them sequential: whichever wins
+    // the lock first does a real swap, the other re-reads source and sees
+    // its destination matches its current location (early return at the
+    // same-slot check) or attempts a self-swap (also a no-op).
+    let move1 = {
+        let db_pool = db_pool.clone();
+        let socket = socket.clone();
+        let conn = conn.clone();
+        let e2a = e2a.clone();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            barrier.wait().await;
+            handle_move_inventory_item(
+                entity_id, player_id, item_a, 1, 5, 1,
+                &db_pool, &None, &socket, &conn, &e2a,
+            ).await;
+        })
+    };
+    let move2 = {
+        let db_pool = db_pool.clone();
+        let socket = socket.clone();
+        let conn = conn.clone();
+        let e2a = e2a.clone();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            barrier.wait().await;
+            handle_move_inventory_item(
+                entity_id, player_id, item_b, 1, 0, 1,
+                &db_pool, &None, &socket, &conn, &e2a,
+            ).await;
+        })
+    };
+
+    // Cap each move with a timeout so a deadlock surfaces as a test failure
+    // rather than wedging the whole suite. 5s is generous — both moves
+    // together complete in <100ms when the lock works.
+    let timeout = std::time::Duration::from_secs(5);
+    tokio::time::timeout(timeout, async {
+        move1.await.expect("move1 task panicked");
+        move2.await.expect("move2 task panicked");
+    })
+    .await
+    .expect("opposite-direction moves deadlocked or hung past 5s");
+
+    let rows: Vec<(i32, i32, i32)> = sqlx::query_as(
+        "SELECT item_id, container_id, slot_id FROM sgw_inventory \
+         WHERE character_id = $1 \
+         ORDER BY slot_id",
+    )
+    .bind(player_id).fetch_all(&pool).await.unwrap();
+
+    assert_eq!(rows.len(), 2, "both items must still exist (got {})", rows.len());
+    assert!(rows.iter().all(|(_, _, s)| *s >= 0),
+        "no row may be left at the swap sentinel slot -1: {rows:?}");
+    let slots: Vec<i32> = rows.iter().map(|(_, _, s)| *s).collect();
+    let mut sorted = slots.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(sorted.len(), 2,
+        "slot_ids must be distinct (no double-occupancy): {slots:?}");
+
+    // The exact A/B placement depends on which move acquired the lock
+    // first. Either outcome is valid; what matters is that A and B occupy
+    // distinct positions in container 1.
+    let a_pos = rows.iter().find(|(id, _, _)| *id == item_a).map(|(_, c, s)| (*c, *s));
+    let b_pos = rows.iter().find(|(id, _, _)| *id == item_b).map(|(_, c, s)| (*c, *s));
+    assert!(a_pos.is_some() && b_pos.is_some(), "both items must be present");
+    assert_ne!(a_pos, b_pos, "A and B must be at different positions");
+
+    cleanup_with_outbox(&pool, account_id, player_id, entity_id).await;
+}
