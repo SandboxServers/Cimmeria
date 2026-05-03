@@ -165,7 +165,13 @@ pub(super) async fn apply_damage_to_target(
             // bits (quest tags, mission interactions) must survive death. The dead-state
             // bit handles cursor distinction client-side; we don't need to clear
             // `INT_Attackable` to suppress the shootable cursor.
-            target.unset_state_flag(combat::BSF_IN_COMBAT); // mirrors python SGWMob.py:292
+            // BSF_IN_COMBAT is intentionally written via raw bitmask ops
+            // across the codebase (use_ability sets it on weapon-fire,
+            // threat module clears it when the threat list drains). Mixing
+            // it with `unset_state_flag` here would hit the zero-counter
+            // no-op path and leave the bit stuck — NPCs would render as
+            // still-in-combat after death. Mirrors python SGWMob.py:292.
+            target.state_field &= !combat::BSF_IN_COMBAT;
         }
         tracing::info!(
             attacker = entity_id, target = target_eid,

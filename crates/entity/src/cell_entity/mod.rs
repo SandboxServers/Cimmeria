@@ -167,20 +167,22 @@ pub struct CellEntity {
     /// Bit 6: BSF_MovementLock, Bit 7: BSF_Walking, Bit 8: BSF_Holster.
     ///
     /// **Read** this field directly for serialization, AoI updates, and
-    /// `is_dead` checks. **Write** through [`Self::set_state_flag`] /
-    /// [`Self::unset_state_flag`] / [`Self::clear_all_state_flags`] so the
-    /// per-flag counter (`state_flag_counts`) stays consistent — raw `|=` /
-    /// `&= !` would lose the multi-source semantics that issue #117 wired in.
+    /// `is_dead` checks. **Writes** depend on the flag's source model — see
+    /// the helper-block doc on [`Self::set_state_flag`] for the cutoff
+    /// between ref-counted flags (multi-source: BSF_DEAD, BSF_MOVEMENT_LOCK)
+    /// and raw-bitmask flags (idempotent input or externally deduped).
     pub state_field: u32,
 
     /// Per-flag set/unset counter, keyed by the bit *mask* (e.g. `1 << 6`
     /// for BSF_MovementLock — same shape as the constants in
-    /// `crate::cell::combat::state`). When two sources both set a flag, the
-    /// counter holds 2; only the second `unset` actually clears the bit on
-    /// `state_field`. Matches the python pattern used by `addMovementLock`
-    /// (`SGWBeing.py:770-787`) and the generic `combatantStates` map
-    /// (`SGWBeing.py:697-734`). Without this, two stuns from different
-    /// abilities clearing one stun would silently drop both.
+    /// `crate::cell::combat::state`). Only flags managed by
+    /// [`Self::set_state_flag`] / [`Self::unset_state_flag`] populate this
+    /// map; flags written via raw bitmask ops never touch it.
+    ///
+    /// When two sources both set a counted flag, the counter holds 2;
+    /// only the second `unset` actually clears the bit on `state_field`.
+    /// Matches python's `addMovementLock` (`SGWBeing.py:770-787`) and the
+    /// generic `combatantStates` map (`SGWBeing.py:697-734`).
     ///
     /// Single-bit masks only — multi-bit masks would conflate counts across
     /// independent flags. Helpers debug-assert single-bit invariant.
@@ -411,7 +413,7 @@ impl CellEntity {
         self.position.distance_squared_to(other_pos) <= self.aoi_radius * self.aoi_radius
     }
 
-    // ── State-field flag helpers (#117) ──────────────────────────────────────
+    // ── State-field flag helpers ─────────────────────────────────────────────
     //
     // Mirror python's per-flag counter pattern (`SGWBeing.py:697-734` for the
     // generic `combatantStates` map; `:770-787` for the dedicated movement-lock
@@ -433,9 +435,11 @@ impl CellEntity {
     //     gated on `threatened_mobs` non-empty in `combat::threat`).
     //
     // Mixing the two patterns on the same flag will desync the counter from
-    // the bit. If you migrate a flag to the helpers, migrate ALL its writers
-    // in the same change, and force-reset via `clear_all_state_flags` on any
-    // hard-reset path (respawn, world entry).
+    // the bit: a raw `|=` doesn't bump the counter, so the next `unset_*`
+    // helper sees count==0, takes the no-op branch, and **does not clear the
+    // bit** — a real production hazard. If you migrate a flag to the helpers,
+    // migrate ALL its writers in the same change, and force-reset via
+    // `clear_all_state_flags` on any hard-reset path (respawn, world entry).
 
     /// Increment the per-flag counter and set the bit on a 0->1 transition.
     /// Returns `true` when the bit transitioned (caller should send
@@ -459,32 +463,42 @@ impl CellEntity {
     /// Decrement the per-flag counter and clear the bit on a 1->0 transition.
     /// Returns `true` when the bit transitioned (caller should send
     /// `onStateFieldUpdate`); `false` when other sources are still holding
-    /// the flag set.
+    /// the flag set, when no source has set it, or when the bit is clear.
     ///
-    /// Decrements at zero are a no-op + `tracing::warn!` — they indicate a
-    /// missing prior `set_state_flag`, which usually means a code path is
-    /// clearing without having owned the set side.
+    /// **A best-effort clear (no prior `set_state_flag`) is a silent no-op.**
+    /// The earlier version warned + inserted a 0-entry into the counter map
+    /// on every stray clear, which (a) leaked map entries on hot paths like
+    /// `npc_ai_leash` that defensively unset flags they may not own, and
+    /// (b) buried real desync warnings under the noise. If a caller mixes
+    /// raw `|=` with `unset_state_flag`, the bit stays stuck and the
+    /// debug_assert on misuse below isn't enough to catch it — that's a
+    /// project-policy issue documented in the helper-block doc above.
     pub fn unset_state_flag(&mut self, mask: u32) -> bool {
         debug_assert!(
             mask.count_ones() == 1,
             "state_flag helpers require single-bit masks (got {mask:#x})"
         );
-        let count = self.state_flag_counts.entry(mask).or_insert(0);
+        // Use `get_mut` so missing keys aren't materialized — best-effort
+        // clears on flags this entity has never owned should be a no-op,
+        // not a map-growth event.
+        let Some(count) = self.state_flag_counts.get_mut(&mask) else {
+            return false;
+        };
         if *count == 0 {
-            tracing::warn!(
-                entity_id = self.entity_id.0,
-                mask = format_args!("{:#x}", mask),
-                "unset_state_flag called with zero counter — caller likely cleared without owning the set"
-            );
             return false;
         }
         *count -= 1;
-        if *count == 0 && self.state_field & mask != 0 {
-            self.state_field &= !mask;
-            true
-        } else {
-            false
+        if *count == 0 {
+            // Drained the last ref — drop the entry rather than leaving a
+            // 0-count straggler so the map stays bounded by the set of
+            // flags currently held, not the set ever touched.
+            self.state_flag_counts.remove(&mask);
+            if self.state_field & mask != 0 {
+                self.state_field &= !mask;
+                return true;
+            }
         }
+        false
     }
 
     /// Force-clear all state flags and counters. Used by respawn paths

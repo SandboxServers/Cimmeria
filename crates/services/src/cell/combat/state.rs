@@ -26,7 +26,7 @@ pub const BSF_DEAD: u32 = 1 << BSF_DEAD_BIT;
 /// last (single-target) aggro source.
 pub const BSF_IN_COMBAT: u32 = 1 << 3;
 
-/// `BSF_MovementLock` mask. Multi-source flag (#117): death applies it,
+/// `BSF_MovementLock` mask. Multi-source flag: death applies it,
 /// future stun/fear effects will too. Going through the ref-counted entity
 /// helpers means clearing one source doesn't drop the others.
 /// From python `Atrea.enums.BSF_MovementLock = 6`.
@@ -70,9 +70,9 @@ mod tests {
 
     #[test]
     fn refcount_keeps_flag_set_after_partial_unset() {
-        // Issue #117 regression: two sources both set a flag (e.g. two
-        // stuns applying BSF_MovementLock); clearing one MUST keep the bit
-        // set until the second clear drains the counter.
+        // Multi-source semantics: two stuns both setting BSF_MovementLock
+        // bump the counter to 2; clearing one MUST keep the bit set until
+        // the second clear drains the counter.
         let mut e = entity();
         assert!(e.set_state_flag(BSF_MOVEMENT_LOCK), "first set should transition");
         assert!(!e.set_state_flag(BSF_MOVEMENT_LOCK), "second set must not re-fire");
@@ -92,6 +92,31 @@ mod tests {
         let mut e = entity();
         assert!(!e.unset_state_flag(BSF_DEAD), "unset on empty counter is a no-op");
         assert_eq!(e.state_field, 0);
+    }
+
+    #[test]
+    fn unset_on_unowned_flag_does_not_grow_counter_map() {
+        // Hot paths that defensively unset flags they may not own (e.g.
+        // npc_ai cleanup loops) shouldn't leak map entries — best-effort
+        // clears must stay zero-cost.
+        let mut e = entity();
+        for _ in 0..100 {
+            e.unset_state_flag(BSF_DEAD);
+            e.unset_state_flag(BSF_MOVEMENT_LOCK);
+            e.unset_state_flag(BSF_HOLSTER);
+        }
+        assert!(e.state_flag_counts.is_empty(), "no map entries from stray unsets");
+    }
+
+    #[test]
+    fn drained_counter_drops_map_entry() {
+        // After a balanced set/unset pair the counter map should hold no
+        // residual zero-count entry. Otherwise the map grows without bound
+        // for any flag ever touched, even ones currently unheld.
+        let mut e = entity();
+        e.set_state_flag(BSF_DEAD);
+        e.unset_state_flag(BSF_DEAD);
+        assert!(e.state_flag_counts.is_empty(), "drained counter should be removed");
     }
 
     #[test]
