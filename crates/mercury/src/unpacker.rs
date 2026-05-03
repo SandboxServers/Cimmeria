@@ -20,6 +20,7 @@ use bytes::{Bytes, BytesMut, BufMut};
 use cimmeria_common::{CimmeriaError, Result};
 
 use crate::consts::MAX_FRAGMENTS;
+use crate::packet::ParsedPacket;
 
 /// Tracks the in-progress reassembly of a single fragmented message.
 #[derive(Debug)]
@@ -179,6 +180,85 @@ impl FragmentAssembler {
     pub fn pending_count(&self) -> usize {
         self.pending.len()
     }
+
+    /// Feed a freshly-parsed Mercury packet into the assembler.
+    ///
+    /// The receive-path integration that issue #121 was filing for: the
+    /// `FragmentAssembler` existed but had zero callers, so any inbound
+    /// packet larger than a single datagram (initial inventory snapshot,
+    /// full ability list, large region descriptor) was silently dropped
+    /// or mis-decoded by downstream code that didn't understand the
+    /// fragment footers.
+    ///
+    /// Returns:
+    /// - `Ok(Some(body))` when the packet is non-fragmented (body passes
+    ///   through verbatim) OR when this packet completes a fragmented
+    ///   bundle (body is the assembled payload).
+    /// - `Ok(None)` when the packet is one of N fragments and we're still
+    ///   waiting for the rest.
+    /// - `Err(_)` for malformed fragment metadata: missing
+    ///   `seq_id`/`frag_begin`/`frag_end` (the parser should have set them
+    ///   together but defensive), inverted range, fragment count exceeding
+    ///   `MAX_FRAGMENTS`, or this packet's seq outside the declared range.
+    ///
+    /// Mapping from parser footers to assembler keys:
+    /// - reassembly key = `frag_begin` (the bundle's anchor seq)
+    /// - total fragments = `frag_end - frag_begin + 1`
+    /// - this fragment's index = `seq_id - frag_begin`
+    pub fn process_parsed(&mut self, pkt: &ParsedPacket) -> Result<Option<Bytes>> {
+        if !pkt.is_fragmented() {
+            // Pass-through: caller hands us non-fragmented packets too so
+            // the receive path doesn't have to branch.
+            return Ok(Some(pkt.body.clone()));
+        }
+
+        let seq = pkt.seq_id.ok_or_else(|| {
+            CimmeriaError::FragmentReassembly(
+                "FLAG_FRAGMENTED packet missing seq_id footer".into(),
+            )
+        })?;
+        let begin = pkt.frag_begin.ok_or_else(|| {
+            CimmeriaError::FragmentReassembly(
+                "FLAG_FRAGMENTED packet missing frag_begin footer".into(),
+            )
+        })?;
+        let end = pkt.frag_end.ok_or_else(|| {
+            CimmeriaError::FragmentReassembly(
+                "FLAG_FRAGMENTED packet missing frag_end footer".into(),
+            )
+        })?;
+
+        if end < begin {
+            return Err(CimmeriaError::FragmentReassembly(format!(
+                "inverted fragment range: frag_begin={begin}, frag_end={end}"
+            )));
+        }
+        let total_u32 = end - begin + 1;
+        // The assembler stores total_fragments as u8 (capped by MAX_FRAGMENTS).
+        // Reject anything that would overflow OR exceed the cap before we
+        // even try the cast — the cap exists to bound reassembly memory
+        // per peer, so a malicious or buggy sender shouldn't be able to
+        // push us past it.
+        if total_u32 as usize > MAX_FRAGMENTS {
+            return Err(CimmeriaError::FragmentReassembly(format!(
+                "fragment range {begin}..={end} ({total_u32} fragments) exceeds MAX_FRAGMENTS {MAX_FRAGMENTS}"
+            )));
+        }
+        let total_frags = total_u32 as u8;
+
+        // seq must lie within the range — otherwise we'd map to a
+        // nonsensical fragment index. wrapping_sub catches `seq < begin`
+        // since the diff would be huge.
+        let idx_u32 = seq.wrapping_sub(begin);
+        if idx_u32 >= total_u32 {
+            return Err(CimmeriaError::FragmentReassembly(format!(
+                "seq {seq} outside fragment range {begin}..={end}"
+            )));
+        }
+        let frag_index = idx_u32 as u8;
+
+        self.add_fragment(begin, frag_index, total_frags, pkt.body.clone())
+    }
 }
 
 impl Default for FragmentAssembler {
@@ -240,6 +320,133 @@ mod tests {
         let err = asm
             .add_fragment(1, 0, 0, Bytes::from_static(b"bad"))
             .unwrap_err();
+        assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
+    }
+
+    // ── #121: receive-path integration via process_parsed ────────────
+
+    /// Helper: build a fragmented Mercury packet via the public encoder
+    /// then parse it back. Mirrors what the live receive loop will do
+    /// per fragment after this PR wires the assembler into channel.rs.
+    fn build_then_parse_fragment(
+        seq: u32,
+        frag_begin: u32,
+        frag_end: u32,
+        body: &[u8],
+    ) -> ParsedPacket {
+        use crate::packet::{build_outgoing_fragmented, parse_incoming};
+        let raw = build_outgoing_fragmented(0, body, seq, frag_begin, frag_end, &[]);
+        parse_incoming(&raw).unwrap()
+    }
+
+    #[test]
+    fn process_parsed_passes_through_non_fragmented() {
+        use crate::packet::{build_outgoing, parse_incoming, FLAG_HAS_SEQUENCE};
+        let raw = build_outgoing(FLAG_HAS_SEQUENCE, b"hello", Some(7), &[], None);
+        let parsed = parse_incoming(&raw).unwrap();
+
+        let mut asm = FragmentAssembler::new();
+        let body = asm.process_parsed(&parsed).unwrap().expect("non-fragmented should pass through");
+        assert_eq!(body.as_ref(), b"hello");
+        assert_eq!(asm.pending_count(), 0, "no reassembly state for pass-through");
+    }
+
+    #[test]
+    fn process_parsed_reassembles_in_order_3_fragment_bundle() {
+        // The named acceptance criterion from #121: a hand-built 3-fragment
+        // bundle round-trips through parse + assembler integration.
+        let mut asm = FragmentAssembler::new();
+        let f0 = build_then_parse_fragment(10, 10, 12, b"AAA");
+        let f1 = build_then_parse_fragment(11, 10, 12, b"BBB");
+        let f2 = build_then_parse_fragment(12, 10, 12, b"CCC");
+
+        assert!(asm.process_parsed(&f0).unwrap().is_none());
+        assert!(asm.process_parsed(&f1).unwrap().is_none());
+        let body = asm.process_parsed(&f2).unwrap().expect("third fragment completes");
+        assert_eq!(body.as_ref(), b"AAABBBCCC");
+        assert_eq!(asm.pending_count(), 0);
+    }
+
+    #[test]
+    fn process_parsed_reassembles_out_of_order() {
+        // UDP: fragments may arrive in any order. The assembler keys by
+        // first_seq and indexes by (seq - begin), so insertion order
+        // doesn't matter as long as all fragments share the same range.
+        let mut asm = FragmentAssembler::new();
+        let f0 = build_then_parse_fragment(20, 20, 22, b"xxx");
+        let f1 = build_then_parse_fragment(21, 20, 22, b"yyy");
+        let f2 = build_then_parse_fragment(22, 20, 22, b"zzz");
+
+        assert!(asm.process_parsed(&f2).unwrap().is_none());
+        assert!(asm.process_parsed(&f0).unwrap().is_none());
+        let body = asm.process_parsed(&f1).unwrap().expect("last (index 1) completes");
+        assert_eq!(body.as_ref(), b"xxxyyyzzz");
+    }
+
+    #[test]
+    fn process_parsed_handles_duplicate_fragments() {
+        // UDP can deliver duplicates. A second copy of the same fragment
+        // must not double-count toward `received_count` and must not
+        // overwrite the already-stored payload.
+        let mut asm = FragmentAssembler::new();
+        let f0 = build_then_parse_fragment(30, 30, 31, b"hello ");
+        let f1 = build_then_parse_fragment(31, 30, 31, b"world");
+
+        assert!(asm.process_parsed(&f0).unwrap().is_none());
+        // Duplicate of f0 — assembler should ignore.
+        assert!(asm.process_parsed(&f0).unwrap().is_none());
+        let body = asm.process_parsed(&f1).unwrap().expect("f1 still completes once after dup f0");
+        assert_eq!(body.as_ref(), b"hello world");
+    }
+
+    #[test]
+    fn process_parsed_times_out_incomplete_set() {
+        // Acceptance criterion: cleanup with a missing fragment after the
+        // bounded window discards the partial set without panicking.
+        let mut asm = FragmentAssembler::new();
+        let f0 = build_then_parse_fragment(40, 40, 42, b"only-one");
+        assert!(asm.process_parsed(&f0).unwrap().is_none());
+        assert_eq!(asm.pending_count(), 1);
+
+        asm.cleanup_stale(std::time::Duration::ZERO);
+        assert_eq!(asm.pending_count(), 0, "stale partial set must be reaped");
+    }
+
+    #[test]
+    fn process_parsed_rejects_fragment_count_above_max() {
+        // The cap exists to bound per-peer reassembly memory. Synthesize
+        // a packet whose declared range would exceed MAX_FRAGMENTS and
+        // verify we error instead of allocating a giant buffer.
+        let oversized_end = MAX_FRAGMENTS as u32; // begin=0, end=MAX → MAX+1 fragments
+        let pkt = build_then_parse_fragment(0, 0, oversized_end, b"x");
+
+        let mut asm = FragmentAssembler::new();
+        let err = asm.process_parsed(&pkt).unwrap_err();
+        assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
+        assert_eq!(asm.pending_count(), 0, "rejected range must not register pending");
+    }
+
+    #[test]
+    fn process_parsed_rejects_seq_outside_range() {
+        // seq < frag_begin (wrapping_sub catches this via huge diff) and
+        // seq > frag_end both surface as "outside range" errors. Without
+        // this guard, `seq - begin` would index past the fragments vec
+        // and the assembler would silently drop the bytes.
+        let pkt = build_then_parse_fragment(99, 10, 12, b"way-out");
+
+        let mut asm = FragmentAssembler::new();
+        let err = asm.process_parsed(&pkt).unwrap_err();
+        assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
+    }
+
+    #[test]
+    fn process_parsed_rejects_inverted_range() {
+        // frag_end < frag_begin can't represent a real range and would
+        // underflow the fragment-count math. Caught at the helper.
+        let pkt = build_then_parse_fragment(5, 10, 4, b"bad");
+
+        let mut asm = FragmentAssembler::new();
+        let err = asm.process_parsed(&pkt).unwrap_err();
         assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
     }
 
