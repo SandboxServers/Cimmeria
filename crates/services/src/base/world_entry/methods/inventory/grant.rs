@@ -497,3 +497,158 @@ mod normalize_item_ids_tests {
         assert_eq!(out, vec![5, 7, 10]);
     }
 }
+
+#[cfg(test)]
+mod handle_grant_item_tests {
+    use super::*;
+    use crate::test_support::require_db_or_skip;
+
+    /// Sentinel base for grant-item tests. Distinct from move_inventory
+    /// (0x7000_0200) and grant_cash (0x7000_0100).
+    const TEST_BASE: i32 = 0x7000_0300;
+
+    async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32, entity_id: u32) {
+        let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
+            .bind(entity_id as i32)
+            .execute(pool).await;
+        let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
+            .bind(player_id)
+            .execute(pool).await;
+        let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+            .bind(account_id)
+            .execute(pool).await;
+    }
+
+    async fn insert_account_and_player(pool: &PgPool, account_id: i32, player_id: i32) {
+        sqlx::query(
+            "INSERT INTO account (account_id, account_name, password) \
+             VALUES ($1, $2, '')",
+        )
+        .bind(account_id).bind(format!("grant-item-{account_id}"))
+        .execute(pool).await.expect("insert account");
+
+        sqlx::query(
+            "INSERT INTO sgw_player (\
+                account_id, player_id, level, alignment, archetype, gender, \
+                player_name, extra_name, world_location, bodyset, \
+                pos_x, pos_y, pos_z, skin_color_id, naquadah\
+             ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', 'CombatSim', 'BS_HumanMale.BS_HumanMale', \
+                       0.0, 0.0, 0.0, 0, 0)",
+        )
+        .bind(account_id).bind(player_id).bind(format!("test-{player_id}"))
+        .execute(pool).await.expect("insert player");
+    }
+
+    async fn pick_main_bag_type_id(pool: &PgPool) -> i32 {
+        sqlx::query_scalar::<_, i32>(
+            "SELECT item_id FROM resources.items \
+             WHERE container_sets IS NULL OR 1 = ANY(container_sets) \
+             ORDER BY item_id LIMIT 1",
+        ).fetch_one(pool).await.expect("pick item_id")
+    }
+
+    fn make_state(entity_id: u32) -> (
+        Arc<UdpSocket>,
+        Arc<Mutex<HashMap<u32, SocketAddr>>>,
+        Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    ) {
+        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
+        std_sock.set_nonblocking(true).unwrap();
+        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+        let entity_to_addr = Arc::new(Mutex::new({
+            let mut m = HashMap::new();
+            m.insert(entity_id, fake_addr);
+            m
+        }));
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        (socket, entity_to_addr, connected)
+    }
+
+    /// Happy path: a grant inserts exactly one row at the lowest free slot
+    /// in the target container, with the requested type_id and stack size.
+    /// Pins the basic INSERT contract before the concurrency test stresses it.
+    #[tokio::test]
+    async fn grants_single_item_into_lowest_free_slot() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE;
+        let player_id = TEST_BASE + 1;
+        let entity_id: u32 = 0x7000_0301;
+        cleanup(&pool, account_id, player_id, entity_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let type_id = pick_main_bag_type_id(&pool).await;
+
+        let (socket, e2a, conn) = make_state(entity_id);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        handle_grant_item(
+            entity_id, player_id, type_id, 1, 3,
+            &db_pool, &None, &socket, &conn, &e2a,
+        ).await;
+
+        let row: Option<(i32, i32, i32)> = sqlx::query_as(
+            "SELECT type_id, slot_id, stack_size FROM sgw_inventory \
+             WHERE character_id = $1 AND container_id = 1",
+        ).bind(player_id).fetch_optional(&pool).await.unwrap();
+        assert_eq!(
+            row,
+            Some((type_id, 0, 3)),
+            "grant must INSERT exactly one row at slot 0 with the requested type_id and count",
+        );
+
+        cleanup(&pool, account_id, player_id, entity_id).await;
+    }
+
+    /// Regression guard: pg_advisory_xact_lock on (player_id, container_id)
+    /// inside `reserve_free_inventory_slots` must serialize concurrent grants
+    /// so each picks a distinct slot. Without it, both calls see slot 0 free,
+    /// both INSERT into slot 0, and the unique-slot index forces one of them
+    /// to fail — turning a routine grant into a user-visible error.
+    ///
+    /// Runs both grants via tokio::join! so they hold separate connections
+    /// from the pool (test_pool() bounds at 4) and contend for the lock.
+    #[tokio::test]
+    async fn concurrent_grants_to_same_container_get_distinct_slots() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 100;
+        let player_id = TEST_BASE + 101;
+        let entity_id: u32 = 0x7000_0302;
+        cleanup(&pool, account_id, player_id, entity_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let type_id = pick_main_bag_type_id(&pool).await;
+
+        let (socket, e2a, conn) = make_state(entity_id);
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        // Two grants race on the same (player_id, container_id) advisory lock.
+        // Both must succeed and end up in different slots — slot 0 and slot 1.
+        tokio::join!(
+            handle_grant_item(
+                entity_id, player_id, type_id, 1, 1,
+                &db_pool, &None, &socket, &conn, &e2a,
+            ),
+            handle_grant_item(
+                entity_id, player_id, type_id, 1, 1,
+                &db_pool, &None, &socket, &conn, &e2a,
+            ),
+        );
+
+        let slots: Vec<i32> = sqlx::query_scalar(
+            "SELECT slot_id FROM sgw_inventory \
+             WHERE character_id = $1 AND container_id = 1 \
+             ORDER BY slot_id",
+        ).bind(player_id).fetch_all(&pool).await.unwrap();
+
+        assert_eq!(
+            slots.len(),
+            2,
+            "both concurrent grants must INSERT (got {} rows). \
+             A missing row means the unique-slot index rejected one of them, \
+             which is exactly the regression the advisory lock prevents.",
+            slots.len(),
+        );
+        assert_eq!(slots, vec![0, 1], "concurrent grants must pick distinct, sequential free slots");
+
+        cleanup(&pool, account_id, player_id, entity_id).await;
+    }
+}
