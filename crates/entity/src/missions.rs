@@ -49,6 +49,12 @@ pub struct MissionInstance {
     pub completed_steps: Vec<i32>,
     /// Whether this mission is hidden from the mission log.
     pub is_hidden: bool,
+    /// Cumulative count of completions+failures. Repeatable missions gate
+    /// re-acceptance on this vs. `mission.numRepeats` (python parity:
+    /// `MissionManager.py:134` checks `repeats > mission.numRepeats`).
+    /// Bumped by [`Self::complete`] and [`Self::fail`] to match python's
+    /// `MissionManager.py:252,281`.
+    pub repeats: i32,
 }
 
 impl MissionInstance {
@@ -62,6 +68,7 @@ impl MissionInstance {
             completed_objectives: Vec::new(),
             completed_steps: Vec::new(),
             is_hidden: false,
+            repeats: 0,
         }
     }
 
@@ -74,12 +81,20 @@ impl MissionInstance {
         for obj in &mut self.active_objectives {
             obj.status = STATUS_COMPLETED;
         }
+        // Python parity: `MissionManager.py:252` increments on completion.
+        // The repeat counter is what gates re-acceptance for repeatable
+        // missions; missing this bump strands the player at the cap.
+        self.repeats += 1;
     }
 
     /// Mark this mission as failed.
     pub fn fail(&mut self) {
         self.status = MISSION_FAILED;
         self.current_step_id = None;
+        // Python parity: `MissionManager.py:281` — fail also counts as a
+        // repeat tick. Important for missions where failure is part of the
+        // expected lifecycle (failed-then-retry chains).
+        self.repeats += 1;
     }
 
     /// Complete a specific objective by ID.
@@ -239,6 +254,10 @@ mod tests {
         assert_eq!(m.current_step_id, None);
         assert!(m.completed_steps.contains(&200));
         assert!(m.active_objectives.iter().all(|o| o.status == STATUS_COMPLETED));
+        // Python parity: complete() increments repeats. This is the bug
+        // class fixed by #118 — without the bump, repeatable missions
+        // appear to reset on relog instead of advancing the counter.
+        assert_eq!(m.repeats, 1);
     }
 
     #[test]
@@ -247,6 +266,33 @@ mod tests {
         m.fail();
         assert_eq!(m.status, MISSION_FAILED);
         assert_eq!(m.current_step_id, None);
+        // Python parity: fail() also increments repeats (MissionManager.py:281).
+        assert_eq!(m.repeats, 1);
+    }
+
+    #[test]
+    fn repeats_increments_across_multiple_completions() {
+        // Simulates a repeatable mission cycled through accept→complete twice.
+        // After the second pass, repeats should be 2 — what gates re-acceptance
+        // against the mission's `numRepeats` cap.
+        let mut m = test_mission();
+        m.complete();
+        assert_eq!(m.repeats, 1);
+
+        // Second pass: re-init objectives the same way the manager would on
+        // re-acceptance, but reuse the same instance to test the counter
+        // accumulates rather than resets.
+        m.status = MISSION_ACTIVE;
+        m.current_step_id = Some(200);
+        m.complete();
+        assert_eq!(m.repeats, 2);
+    }
+
+    #[test]
+    fn new_mission_starts_at_zero_repeats() {
+        // Sanity: a fresh mission instance has never been completed.
+        let m = test_mission();
+        assert_eq!(m.repeats, 0);
     }
 
     #[test]

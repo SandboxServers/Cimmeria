@@ -81,7 +81,11 @@ pub enum CellToBaseMsg {
 
     /// Persist a mission state change to the database.
     ///
-    /// Uses `INSERT ... ON CONFLICT DO UPDATE` on `sgw_mission`.
+    /// Uses `INSERT ... ON CONFLICT DO UPDATE` on `sgw_mission`. The
+    /// `repeats` field MUST be carried through every update — the cell
+    /// holds the authoritative count (bumped by `MissionInstance::complete`/
+    /// `fail`), and skipping it on UPSERT silently resets the counter on
+    /// the row, breaking repeatable-mission gating (#118).
     MissionUpdate {
         player_id: i32,
         mission_id: i32,
@@ -91,6 +95,7 @@ pub enum CellToBaseMsg {
         completed_objective_ids: Vec<i32>,
         active_objective_ids: Vec<i32>,
         failed_objective_ids: Vec<i32>,
+        repeats: i32,
     },
 
     /// Grant XP to a player entity (from a mob kill).

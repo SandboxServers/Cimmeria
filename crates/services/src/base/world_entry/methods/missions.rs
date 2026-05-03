@@ -22,11 +22,13 @@ pub async fn query_saved_missions(
         completed_objective_ids: Vec<i32>,
         active_objective_ids: Vec<i32>,
         failed_objective_ids: Vec<i32>,
+        repeats: i32,
     }
 
     match sqlx::query_as::<_, MissionRow>(
         "SELECT mission_id, status, current_step_id, \
-         completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids \
+         completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids, \
+         repeats \
          FROM sgw_mission WHERE player_id = $1",
     )
     .bind(player_id)
@@ -55,6 +57,7 @@ pub async fn query_saved_missions(
                         completed_objective_ids: r.completed_objective_ids,
                         active_objective_ids: r.active_objective_ids,
                         failed_objective_ids: r.failed_objective_ids,
+                        repeats: r.repeats,
                     }
                 })
                 .collect();
@@ -81,6 +84,7 @@ pub async fn handle_mission_update(
     completed_objective_ids: &[i32],
     active_objective_ids: &[i32],
     failed_objective_ids: &[i32],
+    repeats: i32,
     db_pool: &Option<Arc<PgPool>>,
 ) {
     let pool = match db_pool {
@@ -91,17 +95,24 @@ pub async fn handle_mission_update(
         }
     };
 
+    // `repeats = EXCLUDED.repeats` is the fix for #118 — the prior UPSERT
+    // omitted this column, so re-completing a repeatable mission appeared to
+    // reset the counter on relog instead of advancing it. Cell is the
+    // authoritative source for the post-bump value (set by
+    // `MissionInstance::complete`/`fail`).
     let result = sqlx::query(
         "INSERT INTO sgw_mission (player_id, mission_id, status, current_step_id, \
-         completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids, \
+         repeats) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
          ON CONFLICT (player_id, mission_id) DO UPDATE SET \
          status = EXCLUDED.status, \
          current_step_id = EXCLUDED.current_step_id, \
          completed_step_ids = EXCLUDED.completed_step_ids, \
          completed_objective_ids = EXCLUDED.completed_objective_ids, \
          active_objective_ids = EXCLUDED.active_objective_ids, \
-         failed_objective_ids = EXCLUDED.failed_objective_ids",
+         failed_objective_ids = EXCLUDED.failed_objective_ids, \
+         repeats = EXCLUDED.repeats",
     )
     .bind(player_id)
     .bind(mission_id)
@@ -111,11 +122,12 @@ pub async fn handle_mission_update(
     .bind(completed_objective_ids)
     .bind(active_objective_ids)
     .bind(failed_objective_ids)
+    .bind(repeats)
     .execute(pool.as_ref())
     .await;
 
     match result {
-        Ok(_) => tracing::debug!(player_id, mission_id, status, "Mission state persisted"),
+        Ok(_) => tracing::debug!(player_id, mission_id, status, repeats, "Mission state persisted"),
         Err(e) => tracing::error!(player_id, mission_id, "Failed to persist mission: {e}"),
     }
 }

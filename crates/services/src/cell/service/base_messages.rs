@@ -174,6 +174,10 @@ pub(super) async fn handle_base_message(
                     mission.status = saved.status;
                     mission.completed_steps = saved.completed_step_ids.clone();
                     mission.completed_objectives = saved.completed_objective_ids.clone();
+                    // Without this, `complete()` on a re-accepted repeatable
+                    // mission post-relog would jump from 0 -> 1 instead of
+                    // N -> N+1, defeating the numRepeats cap. (#118)
+                    mission.repeats = saved.repeats;
 
                     entity.missions.add_mission(mission);
                     tracing::debug!(

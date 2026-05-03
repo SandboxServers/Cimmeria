@@ -10,6 +10,7 @@ fn saved_mission_debug_prints() {
         completed_objective_ids: vec![],
         active_objective_ids: vec![800, 801],
         failed_objective_ids: vec![],
+        repeats: 0,
     };
     let debug = format!("{:?}", m);
     assert!(debug.contains("622"));
@@ -26,6 +27,7 @@ fn saved_mission_clone() {
         completed_objective_ids: vec![801],
         active_objective_ids: vec![800],
         failed_objective_ids: vec![],
+        repeats: 3,
     };
     let cloned = m.clone();
     assert_eq!(cloned.mission_id, 622);
@@ -35,6 +37,7 @@ fn saved_mission_clone() {
     assert_eq!(cloned.completed_objective_ids, vec![801]);
     assert_eq!(cloned.active_objective_ids, vec![800]);
     assert!(cloned.failed_objective_ids.is_empty());
+    assert_eq!(cloned.repeats, 3);
 }
 
 #[test]
@@ -47,11 +50,13 @@ fn saved_mission_completed_status() {
         completed_objective_ids: vec![800, 801],
         active_objective_ids: vec![],
         failed_objective_ids: vec![],
+        repeats: 1,
     };
     assert_eq!(m.status, 2);
     assert!(m.current_step_id.is_none());
     assert_eq!(m.completed_step_ids.len(), 1);
     assert_eq!(m.completed_objective_ids.len(), 2);
+    assert_eq!(m.repeats, 1);
 }
 
 #[test]

@@ -118,11 +118,11 @@ pub(crate) async fn handle_cell_message(
         }
         CellToBaseMsg::MissionUpdate { player_id, mission_id, status, current_step_id,
                                         completed_step_ids, completed_objective_ids, active_objective_ids,
-                                        failed_objective_ids } => {
+                                        failed_objective_ids, repeats } => {
             handle_mission_update(
                 player_id, mission_id, status, current_step_id,
                 &completed_step_ids, &completed_objective_ids, &active_objective_ids,
-                &failed_objective_ids, db_pool,
+                &failed_objective_ids, repeats, db_pool,
             ).await;
         }
         CellToBaseMsg::GrantXP { entity_id, xp_amount } => {
