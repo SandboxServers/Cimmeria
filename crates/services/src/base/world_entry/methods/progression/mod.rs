@@ -348,3 +348,6 @@ pub async fn handle_grant_cash(
         );
     }
 }
+
+#[cfg(test)]
+mod tests;
