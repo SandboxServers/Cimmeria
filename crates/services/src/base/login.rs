@@ -320,13 +320,13 @@ mod tests {
         assert!(result.is_err());
     }
 
-    /// Decode rejects mixed-case + invalid hex characters with a clear
-    /// error rather than silently producing zero bytes. Auth feeds this
-    /// raw from the upstream POST body, so a malformed key must surface
-    /// as a Phase 3 reject, not a silent connection with a wrong key.
+    /// Decode rejects non-hex characters with a clear error rather than
+    /// silently producing zero bytes. Auth feeds this raw from the
+    /// upstream POST body, so a malformed key must surface as a Phase 3
+    /// reject, not a silent connection with a wrong key.
     #[test]
     fn decode_session_key_rejects_invalid_hex() {
-        // 64 chars but with non-hex characters
+        // 64 chars, all non-hex characters (Z is outside [0-9A-Fa-f]).
         let s = "ZZ".repeat(32);
         assert!(decode_session_key(&s).is_err());
     }
@@ -369,12 +369,33 @@ mod tests {
     /// `baseAppLogin`) must reject — the auth → base seam is the first
     /// validation point a malformed Phase 3 packet hits, and silently
     /// continuing past truncation would index OOB on the ticket bytes.
+    ///
+    /// The packet IS well-formed at the `parse_incoming` layer (valid
+    /// flags + footers); only the body is short. The error must come
+    /// from `parse_baseapp_login`'s own `body.len() < 34` check, not
+    /// from underflow in the upstream packet parser.
     #[test]
     fn parse_baseapp_login_rejects_truncated_body() {
-        let mut raw = vec![0x41u8, 0x00u8];
-        raw.extend_from_slice(&25u16.to_le_bytes());
-        // Stop here — body is far too short for the fixed-length fields.
-        assert!(parse_baseapp_login(&raw).is_err());
+        // FLAG_HAS_REQUESTS | FLAG_HAS_SEQUENCE = 0x41. With these flags the
+        // upstream parser strips the trailing 2-byte request count + 4-byte
+        // seq_id from the buffer before yielding the body. So:
+        //   raw = [flags][..body..][num_requests u16][seq_id u32]
+        // Make body 13 bytes (msg_id 0x00 + word_len 25u16 + 10 zero filler).
+        // 13 < 34, so parse_baseapp_login's own length guard fires.
+        let mut raw = vec![0x41u8]; // flags
+        raw.push(0x00u8); // msg_id
+        raw.extend_from_slice(&25u16.to_le_bytes()); // word_len (well-formed)
+        raw.extend_from_slice(&[0u8; 10]); // zero filler — body total = 13 bytes
+        raw.extend_from_slice(&1u16.to_le_bytes()); // num_requests footer
+        raw.extend_from_slice(&7u32.to_le_bytes()); // seq_id footer
+
+        let err = parse_baseapp_login(&raw)
+            .expect_err("13-byte body must trigger the 34-byte length guard");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("body too short") || msg.contains("34"),
+            "error must come from parse_baseapp_login's body-length check, got: {msg}"
+        );
     }
 
     /// An unexpected msg_id must reject — the parser is keyed on 0x00

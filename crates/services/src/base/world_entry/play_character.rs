@@ -145,18 +145,19 @@ mod tests {
     //!
     //! `world_entry_sent` is a one-shot latch on ConnectedClientState — it
     //! prevents duplicate RESET_ENTITIES dispatches when the client retries
-    //! `playCharacter`. The interesting cases are:
-    //!   * already latched → second call is a no-op (no socket send).
-    //!   * NO_ENTITY_ID failure path → latch is reset so the client can
-    //!     retry without being silently dropped.
+    //! `playCharacter`. Cases covered:
+    //!   * already latched → second call is a no-op (no overwrite of
+    //!     `pending_player_entity_id`).
+    //!   * no-DB success path → CombatSim default routes through, latch
+    //!     flips, world_name + active_player_id get cached.
     //!   * unknown addr (ConnectedClientState gone) → no panic, no latch
     //!     change.
     //!
-    //! These tests don't drive the full play-character flow (that needs a
-    //! real DB for `query_world_entry`); they pin the latch logic that
-    //! gates everything else. Without them, a regression to the latch
-    //! semantics could silently drop world-entry retries on transient
-    //! DB hiccups.
+    //! Not covered here: the NO_ENTITY_ID failure path (latch reset on
+    //! a failed query_world_entry) — that path requires a real DB pool
+    //! that returns no rows, which is out of scope for unit tests.
+    //! The DB-success branch (live-DB seeded) is exercised by the
+    //! integration tests under `methods/world_entry_db.rs::tests`.
 
     use super::*;
     use cimmeria_mercury::encryption::MercuryEncryption;
