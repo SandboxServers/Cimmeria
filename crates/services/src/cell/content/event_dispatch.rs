@@ -511,7 +511,9 @@ pub async fn fire_chain_by_id(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cell::space_manager::SpaceManager;
+    // SpaceManager is re-exported through `super::*` because the parent
+    // module imports it; no separate `use crate::cell::space_manager::SpaceManager`
+    // needed here.
 
     /// Build the standard Castle-startup-space fixture used across the
     /// abilities/ event-dispatch tests. One player at id=1, one NPC at
