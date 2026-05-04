@@ -443,10 +443,13 @@ async fn sentinel_slot_does_not_leak_when_swap_tx_rolls_back() {
 ///   - silently land the purchase on a slot the move was about to vacate,
 ///     producing an inconsistent end state.
 ///
-/// Setup: player has item A at (1, 0) and 5000 naquadah. Vendor template
-/// 25's buy list (item_list_id=1) seeds at least one positive-cash entry
-/// targeting INV_MAIN. Spawn a move A→(1, 7) and a concurrent purchase
-/// of store_index 0 from vendor 25 against the same player and container.
+/// Setup: player has item A at (1, 0) and 5000 naquadah. The cheapest
+/// seeded cash-priced vendor entry without item prerequisites is
+/// resolved at runtime — this avoids pinning the test to a specific
+/// vendor template, store_index, or design id, so seed-data renumbers
+/// follow automatically. Spawn a move A→(1, 7) and a concurrent
+/// purchase of that resolved entry against the same player and
+/// container.
 ///
 /// End-state invariants (lock-order independent):
 /// - A ends at (1, 7) with stack 1.
@@ -458,7 +461,7 @@ async fn sentinel_slot_does_not_leak_when_swap_tx_rolls_back() {
 ///   refactor doesn't silently undo this guarantee).
 /// - No row anywhere holds `slot_id = -1` (the swap sentinel must not
 ///   leak past commit).
-/// - Naquadah = 5000 - purchase_price (verified by reading the seed).
+/// - Naquadah dropped by exactly the resolved entry's price.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
     use tokio::sync::Barrier;
@@ -476,31 +479,54 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
     // creates the row at naquadah = 0 to keep the broader test fixture
     // simple; the purchase path needs a positive balance to exercise
     // the cash-debit branch.
-    sqlx::query("UPDATE sgw_player SET naquadah = 5_000 WHERE player_id = $1")
+    let starting_naquadah: i32 = 5_000;
+    sqlx::query("UPDATE sgw_player SET naquadah = $1 WHERE player_id = $2")
+        .bind(starting_naquadah)
         .bind(player_id)
         .execute(&pool)
         .await
         .expect("top up naquadah");
 
-    // Resolve vendor template 25's first cash-priced buy entry from
-    // resources.item_list_items so the test isn't pinned to a specific
-    // design id beyond what the seed provides.
+    // Resolve the cheapest seeded cash-priced buy entry that has no
+    // item prerequisites. ORDER BY naquadah ASC picks the actual
+    // cheapest; the NOT EXISTS guard excludes entries with item-prereq
+    // rows in `resources.item_list_prices` since the test's player has
+    // only its starter inventory and can't satisfy them.
+    //
+    // The store_index calculation MUST match handle_purchase_vendor_items'
+    // load_vendor_purchase_lines (purchase_helpers.rs:108-114), which
+    // computes ROW_NUMBER over the *unfiltered* buy list. Filtering
+    // before the window function (e.g. excluding item-prereq rows
+    // inside the WHERE) would re-rank surviving rows and the test
+    // would address the wrong entry. Mirror the handler's structure
+    // exactly: window first, filter outside.
     let (vendor_template_id, store_index, expected_price): (i32, i32, i32) = sqlx::query_as(
-        "SELECT et.template_id, \
-                (ROW_NUMBER() OVER (ORDER BY ili.item_id) - 1)::INT AS store_index, \
-                ili.naquadah \
-         FROM resources.entity_templates et \
-         JOIN resources.item_list_items ili ON ili.item_list_id = et.buy_item_list \
-         WHERE et.buy_item_list IS NOT NULL AND ili.naquadah > 0 \
-         ORDER BY et.template_id, ili.item_id LIMIT 1",
+        "WITH ordered AS ( \
+            SELECT et.template_id, \
+                   (ROW_NUMBER() OVER (PARTITION BY et.template_id ORDER BY ili.item_id) - 1)::INT \
+                       AS store_index, \
+                   ili.item_id AS list_item_id, \
+                   ili.naquadah \
+            FROM resources.entity_templates et \
+            JOIN resources.item_list_items ili ON ili.item_list_id = et.buy_item_list \
+            WHERE et.buy_item_list IS NOT NULL \
+         ) \
+         SELECT template_id, store_index, naquadah \
+         FROM ordered \
+         WHERE naquadah > 0 \
+           AND NOT EXISTS ( \
+               SELECT 1 FROM resources.item_list_prices ilp \
+               WHERE ilp.item_id = ordered.list_item_id \
+           ) \
+         ORDER BY naquadah ASC, template_id, store_index LIMIT 1",
     )
     .fetch_one(&pool)
     .await
-    .expect("resolve a positive-price vendor purchase entry");
+    .expect("resolve a positive-price vendor purchase entry without item prerequisites");
     assert!(
-        expected_price <= 5_000,
-        "test assumes the cheapest seeded vendor purchase costs <= 5000 naquadah; \
-         got {expected_price}",
+        expected_price <= starting_naquadah,
+        "starting naquadah ({starting_naquadah}) must cover the cheapest \
+         seeded vendor purchase price; got {expected_price}",
     );
 
     let types = pick_main_bag_type_ids(&pool, 1).await;
@@ -617,10 +643,10 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
             .expect("read final naquadah");
     assert_eq!(
         final_naquadah,
-        5_000 - expected_price,
+        starting_naquadah - expected_price,
         "naquadah must drop by exactly the purchase price; \
          expected {} got {final_naquadah}",
-        5_000 - expected_price,
+        starting_naquadah - expected_price,
     );
 
     cleanup_with_outbox(&pool, account_id, player_id, entity_id).await;

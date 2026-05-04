@@ -192,11 +192,13 @@ mod tests {
     /// otherwise a concurrent grant could legitimately reserve `slot_id = -1`
     /// and collide with the parked sentinel.
     ///
-    /// This test pins that invariant for every container the game uses
-    /// (1..=16 covers main, mission, bandolier, equipment slots 4..=14,
-    /// crafting, vendor buyback). An out-of-range container_id returning 0
-    /// is fine — `bag_max_slots` returns 0 there too, so no slot is ever
-    /// reservable.
+    /// This test pins that invariant across `container_id` 0..=16. The
+    /// game-defined range is 1..=16 (main, mission, bandolier, equipment
+    /// slots 4..=14, crafting, vendor buyback); 0 is included as a sentinel
+    /// for "no container" so the symmetry with `bag_max_slots` (which
+    /// returns 0 for 0) is also exercised. Any out-of-range container_id
+    /// returning 0 from `bag_min_slot` is fine — `bag_max_slots` returns 0
+    /// there too, so no slot is ever reservable.
     ///
     /// Documented as the regression guard in `move_/mod.rs`'s swap-path
     /// comment (`bag_max_slots() never reserves negative slots, so
