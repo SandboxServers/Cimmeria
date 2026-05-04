@@ -334,6 +334,7 @@ pub async fn handle_use_ability(
 mod tests {
     use super::*;
     use crate::cell::space_manager::SpaceManager;
+    use crate::mercury::method_idx;
     use cimmeria_entity::abilities::AbilityDef;
 
     fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
@@ -446,12 +447,12 @@ mod tests {
             .find_map(|m| match m {
                 CellToBaseMsg::EntityMethodCall {
                     entity_id: 1,
-                    method_index: 121,
+                    method_index,
                     args,
-                } => Some(args.clone()),
+                } if *method_index == method_idx::ON_ERROR_CODE => Some(args.clone()),
                 _ => None,
             })
-            .expect("out-of-range must emit onErrorCode (method 121)");
+            .expect("out-of-range must emit onErrorCode");
         // Layout: u8 SystemID + i32 InstanceID + u16 ErrorCodeID = 7 bytes.
         assert_eq!(err.len(), 7);
         assert_eq!(err[0], 0, "SystemID should be ERRORCODE_SYSTEM_Ability=0");
