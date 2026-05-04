@@ -566,4 +566,325 @@ mod tests {
 
         cleanup(&pool, account_id).await;
     }
+
+    /// Receive smoke: an admin/system row inserted for character B is
+    /// queryable via the same SELECT shape RequestHeaders uses. The
+    /// "send" half of the flow lives in upstream tooling (no in-game
+    /// send path in the server today), so this test pins what the
+    /// server actually sees on the wire — the row, fetchable by
+    /// character_id, with the inserted subject and sender_id round-
+    /// tripping through the column types.
+    #[tokio::test]
+    async fn mail_inserted_for_character_b_is_queryable_via_request_headers_select() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 300;
+        let char_a = TEST_BASE + 301; // sender
+        let char_b = TEST_BASE + 302; // recipient
+        cleanup(&pool, account_id).await;
+        insert_account_with_two_chars(&pool, account_id, char_a, char_b).await;
+
+        // "Send" — admin/system inserts a mail addressed to B from A.
+        let mail_id: i32 = sqlx::query_scalar(
+            "INSERT INTO sgw_gate_mail \
+                (character_id, sender_name, sender_id, subject, message, cash, sent_time, read_time, flags) \
+             VALUES ($1, 'admin', $2, 'Welcome', 'first body', 0, 0, 0, 0) RETURNING mail_id",
+        )
+        .bind(char_b)
+        .bind(char_a)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        // "Receive" — RequestHeaders' SELECT shape, run directly so the
+        // test asserts the row contents rather than the UDP wire output.
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            mail_id: i32,
+            sender_id: Option<i32>,
+            subject: String,
+        }
+        let rows: Vec<Row> = sqlx::query_as(
+            "SELECT mail_id, sender_id, subject FROM sgw_gate_mail \
+             WHERE character_id = $1 ORDER BY mail_id DESC",
+        )
+        .bind(char_b)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(
+            rows.len(),
+            1,
+            "B must see exactly the one mail addressed to it"
+        );
+        assert_eq!(rows[0].mail_id, mail_id);
+        assert_eq!(
+            rows[0].sender_id,
+            Some(char_a),
+            "sender_id round-trips so the client can render the From column"
+        );
+        assert_eq!(rows[0].subject, "Welcome");
+
+        // Sanity: A's inbox is empty — the same mail_id must NOT show
+        // up under the wrong character_id (a JOIN drift would surface
+        // here).
+        let a_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM sgw_gate_mail WHERE character_id = $1")
+                .bind(char_a)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            a_count, 0,
+            "sender (char_a) inbox must be empty — sgw_gate_mail.character_id is the recipient column"
+        );
+
+        cleanup(&pool, account_id).await;
+    }
+
+    /// `MailOp::RequestBody` on an unread mail must update `read_time`
+    /// from 0 to a positive UNIX-epoch second value. Without this, the
+    /// client's "new mail" indicator never clears.
+    #[tokio::test]
+    async fn request_body_marks_unread_mail_as_read_via_read_time_update() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 400;
+        let char_a = TEST_BASE + 401;
+        let char_b = TEST_BASE + 402;
+        cleanup(&pool, account_id).await;
+        insert_account_with_two_chars(&pool, account_id, char_a, char_b).await;
+
+        let mail_id = insert_mail(&pool, char_a, "unread").await;
+        let initial: i32 =
+            sqlx::query_scalar("SELECT read_time FROM sgw_gate_mail WHERE mail_id = $1")
+                .bind(mail_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            initial, 0,
+            "fixture sanity: insert_mail leaves read_time = 0"
+        );
+
+        let (socket, e2a, conn) = make_state(0x7000_0531);
+        let db_pool = Some(Arc::new(pool.clone()));
+        handle_mail_request(
+            0x7000_0531,
+            char_a,
+            MailOp::RequestBody { mail_id },
+            &socket,
+            &conn,
+            &e2a,
+            &db_pool,
+        )
+        .await;
+
+        let after: i32 =
+            sqlx::query_scalar("SELECT read_time FROM sgw_gate_mail WHERE mail_id = $1")
+                .bind(mail_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(
+            after > 0,
+            "RequestBody on unread mail must set read_time > 0 (got {after})",
+        );
+
+        cleanup(&pool, account_id).await;
+    }
+
+    /// `RequestBody` re-issued on an already-read mail must NOT
+    /// overwrite `read_time` — the SQL has `AND read_time = 0` precisely
+    /// to preserve the *first* read timestamp. Without this guard the
+    /// mail's "first read" UI label would silently re-anchor on every
+    /// re-open.
+    #[tokio::test]
+    async fn request_body_does_not_overwrite_existing_read_time() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 500;
+        let char_a = TEST_BASE + 501;
+        let char_b = TEST_BASE + 502;
+        cleanup(&pool, account_id).await;
+        insert_account_with_two_chars(&pool, account_id, char_a, char_b).await;
+
+        // Seed mail with a known non-zero read_time.
+        const ORIGINAL_READ_TIME: i32 = 12_345;
+        let mail_id: i32 = sqlx::query_scalar(
+            "INSERT INTO sgw_gate_mail \
+                (character_id, sender_id, subject, message, cash, sent_time, read_time, flags) \
+             VALUES ($1, NULL, 'already-read', 'body', 0, 0, $2, 0) RETURNING mail_id",
+        )
+        .bind(char_a)
+        .bind(ORIGINAL_READ_TIME)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        let (socket, e2a, conn) = make_state(0x7000_0541);
+        let db_pool = Some(Arc::new(pool.clone()));
+        handle_mail_request(
+            0x7000_0541,
+            char_a,
+            MailOp::RequestBody { mail_id },
+            &socket,
+            &conn,
+            &e2a,
+            &db_pool,
+        )
+        .await;
+
+        let after: i32 =
+            sqlx::query_scalar("SELECT read_time FROM sgw_gate_mail WHERE mail_id = $1")
+                .bind(mail_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            after, ORIGINAL_READ_TIME,
+            "RequestBody must preserve the first-read timestamp \
+             (the `AND read_time = 0` guard exists for this)",
+        );
+
+        cleanup(&pool, account_id).await;
+    }
+
+    /// Security boundary: character A requesting RequestBody on a mail
+    /// owned by character B (same account) must NOT mark B's mail read.
+    /// The SELECT filters by `character_id = $2`, returns None, and the
+    /// `Ok(Some(row))` arm's UPDATE never runs — so B's `read_time`
+    /// stays at 0. A regression that moved the UPDATE outside the
+    /// `Some(row)` match arm would silently flip B's read indicator.
+    #[tokio::test]
+    async fn request_body_by_other_character_does_not_mark_target_mail_read() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 600;
+        let char_a = TEST_BASE + 601;
+        let char_b = TEST_BASE + 602;
+        cleanup(&pool, account_id).await;
+        insert_account_with_two_chars(&pool, account_id, char_a, char_b).await;
+
+        let mail_b = insert_mail(&pool, char_b, "for B").await;
+
+        let (socket, e2a, conn) = make_state(0x7000_0551);
+        let db_pool = Some(Arc::new(pool.clone()));
+        // A requests body of B's mail.
+        handle_mail_request(
+            0x7000_0551,
+            char_a,
+            MailOp::RequestBody { mail_id: mail_b },
+            &socket,
+            &conn,
+            &e2a,
+            &db_pool,
+        )
+        .await;
+
+        let read_time: i32 =
+            sqlx::query_scalar("SELECT read_time FROM sgw_gate_mail WHERE mail_id = $1")
+                .bind(mail_b)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            read_time, 0,
+            "B's mail must remain unread when A requests its body — \
+             the SELECT's character_id filter is the security boundary"
+        );
+
+        cleanup(&pool, account_id).await;
+    }
+
+    /// Full receive lifecycle for one mail: insert → request headers
+    /// (smoke via SQL since the function output is wire-only) → request
+    /// body (read_time bumps, content visible to recipient) → delete
+    /// (row gone). This is the cross-step pin called out in #123 Group B.
+    #[tokio::test]
+    async fn receive_lifecycle_request_headers_then_body_then_delete() {
+        let pool = require_db_or_skip!();
+        let account_id = TEST_BASE + 700;
+        let char_a = TEST_BASE + 701; // sender
+        let char_b = TEST_BASE + 702; // recipient
+        cleanup(&pool, account_id).await;
+        insert_account_with_two_chars(&pool, account_id, char_a, char_b).await;
+
+        // ── send: row inserted addressed to B from A ────────────────
+        let mail_id: i32 = sqlx::query_scalar(
+            "INSERT INTO sgw_gate_mail \
+                (character_id, sender_name, sender_id, subject, message, cash, sent_time, read_time, flags) \
+             VALUES ($1, 'A', $2, 'hello', 'body-text', 0, 0, 0, 0) RETURNING mail_id",
+        )
+        .bind(char_b)
+        .bind(char_a)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        // ── headers: B's inbox shows the row ────────────────────────
+        // (handle_mail_request emits a UDP packet; we assert the
+        // underlying SELECT shape sees the mail. A regression to a
+        // bad WHERE clause here is what `delete_only_affects_target_character`
+        // already guards from the destructive side, but the read side
+        // wasn't pinned.)
+        let in_b_inbox: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sgw_gate_mail \
+             WHERE character_id = $1 AND mail_id = $2",
+        )
+        .bind(char_b)
+        .bind(mail_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            in_b_inbox, 1,
+            "B's RequestHeaders SELECT must find the mail"
+        );
+
+        // ── body: B reads, read_time bumps ──────────────────────────
+        let (socket, e2a, conn) = make_state(0x7000_0561);
+        let db_pool = Some(Arc::new(pool.clone()));
+        handle_mail_request(
+            0x7000_0561,
+            char_b,
+            MailOp::RequestBody { mail_id },
+            &socket,
+            &conn,
+            &e2a,
+            &db_pool,
+        )
+        .await;
+        let read_after_body: i32 =
+            sqlx::query_scalar("SELECT read_time FROM sgw_gate_mail WHERE mail_id = $1")
+                .bind(mail_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(
+            read_after_body > 0,
+            "RequestBody by the recipient must mark the mail read"
+        );
+
+        // ── delete: B removes the mail ─────────────────────────────
+        handle_mail_request(
+            0x7000_0561,
+            char_b,
+            MailOp::Delete { mail_id },
+            &socket,
+            &conn,
+            &e2a,
+            &db_pool,
+        )
+        .await;
+        let still_exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sgw_gate_mail WHERE mail_id = $1)")
+                .bind(mail_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(
+            !still_exists,
+            "Delete by the recipient must clear the row at the end of the receive lifecycle"
+        );
+
+        cleanup(&pool, account_id).await;
+    }
 }
