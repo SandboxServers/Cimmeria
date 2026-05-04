@@ -31,3 +31,8 @@ anyhow = { workspace = true }
 # endpoints in-process). Already used elsewhere in the workspace, so
 # version comes from the workspace lock.
 reqwest = { workspace = true }
+
+# Property-based testing — used by the AoI differential test to drive
+# random entity walks across many ticks and verify that the per-event
+# diff-accumulated witness set always equals the actual witness set.
+proptest = { workspace = true }
