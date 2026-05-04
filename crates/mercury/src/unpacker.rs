@@ -505,4 +505,72 @@ mod tests {
         asm.cleanup_stale(std::time::Duration::ZERO);
         assert_eq!(asm.pending_count(), 0);
     }
+
+    /// Two fragments arriving for the same `first_seq` must agree on
+    /// `total_frags`. A peer (or attacker) sending a second fragment
+    /// with a different declared count is a protocol violation; the
+    /// assembler must reject rather than silently re-shape the
+    /// pending message.
+    #[test]
+    fn add_fragment_rejects_conflicting_total_fragments() {
+        let mut asm = FragmentAssembler::new();
+        // First fragment: declares 3 total.
+        asm.add_fragment(50, 0, 3, Bytes::from_static(b"aaa"))
+            .unwrap();
+        // Second fragment for the SAME first_seq but declares 5 total.
+        let err = asm
+            .add_fragment(50, 1, 5, Bytes::from_static(b"bbb"))
+            .unwrap_err();
+        assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
+        // Pending entry must remain (rejecting the new fragment must
+        // not wipe the in-progress reassembly that a well-behaved peer
+        // is still completing).
+        assert_eq!(asm.pending_count(), 1);
+    }
+
+    /// `cleanup_stale` removes ONLY entries older than `max_age`,
+    /// not the whole map. Pin the per-entry age check by mixing a
+    /// stale entry (added pre-sleep) with a fresh entry (added
+    /// post-sleep), then choosing a `max_age` that's between the
+    /// two. A regression that drops the per-entry `started_at`
+    /// comparison and clears the whole map would also delete the
+    /// fresh entry.
+    #[test]
+    fn cleanup_stale_reaps_only_old_entries_keeps_fresh_ones() {
+        let mut asm = FragmentAssembler::new();
+        // Stale entry: added now, will be older than max_age below
+        // after the sleep.
+        asm.add_fragment(10, 0, 3, Bytes::from_static(b"a"))
+            .unwrap();
+        // Sleep so the next add_fragment has a noticeably-younger
+        // `started_at`. 50ms is well above any reasonable scheduler
+        // jitter while still keeping the test fast.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        // Fresh entry.
+        asm.add_fragment(20, 0, 3, Bytes::from_static(b"b"))
+            .unwrap();
+        assert_eq!(asm.pending_count(), 2);
+
+        // 25ms cap: stale entry (>=50ms old) gets reaped, fresh
+        // entry (~0ms old) survives.
+        asm.cleanup_stale(std::time::Duration::from_millis(25));
+
+        assert_eq!(
+            asm.pending_count(),
+            1,
+            "stale entry should be reaped, fresh entry should remain"
+        );
+        // The fresh entry's first_seq is 20; sanity-check it's the
+        // survivor by completing it and observing the assembled
+        // payload.
+        let _ = asm.add_fragment(20, 1, 3, Bytes::from_static(b"b"));
+        let result = asm
+            .add_fragment(20, 2, 3, Bytes::from_static(b"b"))
+            .unwrap();
+        assert_eq!(
+            result.expect("fresh entry must complete").as_ref(),
+            b"bbb",
+            "the surviving entry must be the fresh one (first_seq=20)"
+        );
+    }
 }
