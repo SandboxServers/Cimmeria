@@ -33,6 +33,24 @@ Default to **none**. Add a comment only when the **why** is non-obvious: a hidde
 
 When adding a client method call, confirm the index against `docs/protocol/client-method-dispatch-table.md` and byte layout against `entities/defs/*.def`. Notable trap: `onPlayerTeleport` (method 116) is a streaming-load hint, not an authoritative move — use `BASEMSG_FORCED_POSITION` (`build_forced_position` in `mercury/aoi.rs`) for actual avatar snaps.
 
+## Required tests on every PR
+
+A PR that changes runtime behaviour must add or update a test. **Read [TESTING.md](../TESTING.md) before writing one** — it has the picker for the seven test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference) and the gotchas mined from review comments since PR #131. Reviewer non-negotiables:
+
+- The test must fail when the fix is reverted (regression-guard shape, not happy-path).
+- Tighten assertions: composite keys, exact final positions, `== 1` not `>= 1`, exact byte strings for serializers.
+- Don't hard-code seed ids — re-fetch baselines or assert by relationship (`slot.cur_ammo_type == slot.default_ammo_type`).
+- Sentinel ids fit in `i32`; cleanup deletes by exact sentinel, not by range.
+- Live-DB tests use `require_db_or_skip!` and run with `--test-threads=1`.
+- Test names match the assertion. If the assertion changes, rename.
+- No PR or issue numbers in source comments — provenance lives in the PR body.
+
+If a single feature touches several layers (handler logic + serializer + SQL + cross-handler invariant), expect to add several test types — see TESTING.md "When one feature needs more than one test".
+
+## Required docs on every PR
+
+A PR that changes user-visible behaviour, public surface, file layout, build steps, or test policy must update the corresponding doc(s). For non-trivial doc work, prefer the **Documentation Writer** agent over freehand edits — it follows the Diátaxis framework (tutorials / how-to / reference / explanations) and keeps voice consistent with the rest of `docs/`. The mapping of "what changed → what to update" is in [CLAUDE.md](../CLAUDE.md) under "Required documentation for every PR". Index entries in `docs/readme.md` and per-section `README.md` files must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
+
 ## Where to find more
 
-Full conventions: `CLAUDE.md`. Architecture: `docs/architecture/`. Content engine: `docs/architecture/data-driven-content-engine.md`. Migration roadmap: `docs/architecture/migration-roadmap.md`.
+Full conventions: `CLAUDE.md`. Testing: `TESTING.md`. Architecture: `docs/architecture/`. Content engine: `docs/architecture/data-driven-content-engine.md`. Migration roadmap: `docs/architecture/migration-roadmap.md`. Live-DB infra: `docs/architecture/integration-test-infra.md`.

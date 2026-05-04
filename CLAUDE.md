@@ -92,6 +92,37 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
 - **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
 - **test-live-db fails** → CI runs `cargo test -p cimmeria-services --lib -- --test-threads=1` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. `--test-threads=1` is required: some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
 
+## Required testing for every PR
+
+A PR that changes runtime behavior without adding or updating a test will be sent back. **Before writing a test, read [TESTING.md](TESTING.md)** — it covers the seven test types we use (unit / wire-format / live-DB / smoke / concurrency / chain-replay / legacy reference), the picker for which type fits which bug shape, and the gotchas mined from PR reviews #131 onwards.
+
+The non-negotiables:
+
+- **Pick the right type.** If you change a `WHERE` clause or `rows_affected` invariant, you need a live-DB regression guard, not a unit test. If you change a serializer, you need a byte-exact wire-format test. The picker table is in TESTING.md.
+- **Reproduce the bug shape.** A regression guard must fail when the fix is reverted; if it doesn't, it's a happy-path test, not a guard. PR reviewers will check.
+- **One feature can need multiple tests.** Vendor stack changes typically need unit + wire-format + live-DB + smoke. Don't skip a layer because "the next layer up will catch it" — that's the bug shape TESTING.md exists to prevent.
+- **Live-DB tests use `require_db_or_skip!`** and run with `--test-threads=1`. Sentinels fit in `i32`. Cleanup deletes by exact sentinel, not by range. See `crates/services/src/test_support.rs`.
+
+## Required documentation for every PR
+
+A PR that changes user-visible behavior, public surface, file layout, build steps, or test policy must include the corresponding doc update. **CI does not gate this; reviewers do.** When updating, prefer to use the **Documentation Writer agent** (Diátaxis-aware: tutorials / how-to / reference / explanation) rather than freehand edits — it keeps voice and structure consistent with the rest of `docs/`.
+
+The map of "what changed → what to update":
+
+| If you change… | Update… |
+|---|---|
+| The README's listed feature set, status, or structure | [README.md](README.md) |
+| The pre-PR checklist, build commands, or repo invariants | [CLAUDE.md](CLAUDE.md) and [.github/copilot-instructions.md](.github/copilot-instructions.md) |
+| Test conventions, types, or gotchas | [TESTING.md](TESTING.md) (and re-link from README if a new section is added) |
+| Live-DB infra or local setup | [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) |
+| Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) and the crate diagram in [README.md](README.md) |
+| Wire format, method indices, or message catalog | [docs/protocol/client-method-dispatch-table.md](docs/protocol/client-method-dispatch-table.md), [docs/protocol/message-catalog.md](docs/protocol/message-catalog.md), the rest of [docs/protocol/](docs/protocol/), the canonical entity definitions under [entities/defs/](entities/defs/), and `crates/services/src/mercury/method_idx.rs` constants |
+| Architecture decisions (cell/base split, outbox, state-flag conventions, etc.) | New or amended doc under [docs/architecture/](docs/architecture/) |
+| Game systems, content chains, or content-engine actions | [docs/game-systems.md](docs/game-systems.md) and/or [docs/content/](docs/content/), plus [.github/instructions/content-chains.instructions.md](.github/instructions/content-chains.instructions.md) if review rules shift |
+| Project status, gap analysis, or roadmap | [docs/project-status.md](docs/project-status.md), [docs/gap-analysis.md](docs/gap-analysis.md), [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md) |
+
+Index entries in [docs/readme.md](docs/readme.md) and the per-section `README.md` files (`docs/content/README.md`, `docs/protocol/README.md`, etc.) must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
+
 ## File organization
 
 Files should "do what it says on the tin" — a reader (human or LLM) should predict a file's contents from its name. Split large files along natural seams to keep both LLM context and human review tractable.

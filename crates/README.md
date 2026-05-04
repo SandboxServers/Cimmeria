@@ -2,6 +2,8 @@
 
 This directory is the primary codebase. All active server development happens here. The C++ code in `src/` is the legacy reference implementation.
 
+For testing conventions across these crates — test types, when to use which, common gotchas — see **[../TESTING.md](../TESTING.md)**.
+
 ## Crate Overview
 
 ```
@@ -47,6 +49,22 @@ cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor
 ```
 
 See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
+
+## Testing
+
+The workspace currently carries **878 `#[test]` / `#[tokio::test]` cases across 136 files**, of which 84 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+
+```bash
+# Unit + non-DB integration (covers ~794 tests):
+cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
+  --exclude cimmeria-scene-editor --exclude sgw-launcher
+
+# Live-DB tests (start the bundled Postgres on :5433 first, then):
+DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
+  cargo test -p cimmeria-services --lib -- --test-threads=1
+```
+
+`--test-threads=1` is required for the live-DB run — some guards share sentinel id ranges and would collide under parallel execution. See [../TESTING.md](../TESTING.md) for the full picker, gotchas, and review checklist.
 
 ## Key Source Files
 

@@ -53,32 +53,40 @@ crate's `pub` API, which would force us to make implementation
 modules `pub` purely for testing — leaking surface for no
 production gain.
 
-Each live-DB test gates on `DATABASE_URL` at runtime:
+Each live-DB test gates on `DATABASE_URL` at runtime via the
+`require_db_or_skip!` macro, which wraps the pool open and the
+skip-with-reason branch:
 
 ```rust
+use crate::test_support::require_db_or_skip;
+
 #[tokio::test]
 async fn outbox_round_trip_against_real_db() {
-    let pool = match crate::test_support::test_pool().await {
-        Some(p) => p,
-        None => {
-            eprintln!("DATABASE_URL not set; skipping");
-            return;
-        }
-    };
+    let pool = require_db_or_skip!();
     // ... real-DB assertions ...
 }
 ```
 
-`test_support::test_pool()` reads `DATABASE_URL`, opens a `PgPool`,
-and returns `None` (so the test skips) when the variable is unset
-or the connection fails. The unit-test suite stays green on a fresh
-checkout — only `DATABASE_URL=postgres://… cargo test` exercises the
-integration path.
+`test_support::test_pool()` returns
+`Result<PgPool, SkipReason>`, where `SkipReason` distinguishes
+`NotConfigured` (DATABASE_URL unset or empty — silent skip) from
+`ConnectFailed(String)` (variable set but `connect()` failed —
+surfaces sqlx's underlying error so the developer can fix it). The
+macro logs the reason via `eprintln!("{module_path}: skipping
+live-DB test ({reason})")` and returns from the test on either
+shape. The unit-test suite stays green on a fresh checkout — only
+`DATABASE_URL=postgres://… cargo test` exercises the integration
+path.
 
 Each test is responsible for its own data isolation: either work
 inside a transaction it rolls back at the end (works for tests that
-don't need to span their own commit boundary), or pick a unique
-sentinel and delete its own rows on cleanup.
+don't need to span their own commit boundary), or pick a sentinel
+from the module's reserved `0x7000_xxxx` slot and delete its own
+rows on cleanup. The reserved-slot scheme is documented per-module
+(see `crates/services/src/base/character.rs:276-281` and
+`crates/services/src/base/world_entry/methods/missions.rs:146-148`
+for the canonical doc-comment shape) and is also summarised in the
+"Sentinel id discipline" section of [TESTING.md](../../TESTING.md).
 
 ## Setup for local dev
 
