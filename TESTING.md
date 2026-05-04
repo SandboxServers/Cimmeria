@@ -57,10 +57,10 @@ This guide is the playbook for writing tests that survive review and catch real 
 **For**: SQL invariants that pure unit tests can't reach — `WHERE` clauses, `rows_affected` shapes, advisory locks, `ON CONFLICT` semantics, the `flags` column's role in vendor buyback, multi-character isolation. **Every Group A regression guard in PRs #143–#175 is this kind.**
 
 **Patterns to follow:**
-- Pick a **negative sentinel `entity_id`** (e.g., `-1_000_007`) and use it for both inserts and cleanup. Document the per-module sentinel range in a module-doc comment.
-- Sentinels must fit in `i32` if the column type is `INTEGER`. `0xDEAD_0000` is a `u32` that wraps to a negative i32 and can step on another module's range — bind as `i64` or pick a smaller sentinel.
-- Run with `--test-threads=1`. Some guards share sentinel ranges and collide under parallel execution. CI enforces this; local repro must match.
-- Cleanup must `DELETE WHERE entity_id = $sentinel`, not `WHERE entity_id < 0`. The latter reaches into other modules.
+- Pick a **positive `0x7000_xxxx` sentinel base** for the module's test ids (e.g., `const TEST_BASE: i32 = 0x7000_0400;` for missions, `0x7000_1000` for character-list, `0x7000_0800` for vendor sell). Each module reserves its own slot in this range; the existing modules document neighbours in a doc-comment so the next contributor can step past them. See `crates/services/src/base/character.rs:281` and `crates/services/src/base/world_entry/methods/missions.rs:146-148` for the canonical comment shape.
+- The base must fit in `i32` because the `entity_id`/`account_id`/`player_id` columns are `INTEGER`. `0x7000_xxxx` does (it's well below `i32::MAX`); a `u32` like `0xDEAD_0000` wraps to a negative when bound `as i32` and lands in another module's territory — don't reach for high-bit constants.
+- Run with `--test-threads=1`. Even within the partitioned-range scheme, some guards share rows in `resources.*` and collide under parallel execution. CI enforces this; local repro must match.
+- Cleanup must `DELETE WHERE <id> = $sentinel` (or `IN (...)` over the exact ids the test inserted), not a range predicate like `WHERE entity_id < 0` or `WHERE account_id BETWEEN base AND base+0xFF`. Range deletes can reach into a sibling module's slot if the partitioning ever drifts.
 - For shared rows (resources.items inserts), use `ON CONFLICT DO NOTHING` so test B's insert doesn't conflict with test A's leftover, and **don't `DELETE` shared rows in cleanup** — let them leak for the next run.
 - **Reproduce the bug shape.** A `handle_grant_cash` regression guard must seed two characters on the same account, grant to one, and assert the other's balance is unchanged. That's the shape the bug took (PR #143). A test that just grants and asserts the credit went through is a happy-path test, not a regression guard.
 
@@ -163,13 +163,14 @@ This section is mined from review comments since the test push began. Each item 
 - **Re-fetch baseline values inside the test.** Hard-coded constants like `WEAPON_TYPE_ID = 3241` or specific clip-size enums break when seeds change (PRs #160, #158, #162).
 - **Mirror the handler's predicate** when the picker query selects a fixture row. If the handler filters on a sellable-flag bitmask, the picker must too — otherwise the test passes for the wrong reason (PR #154).
 - **Assert by relationship**, not by id: `slot.cur_ammo_type == slot.default_ammo_type` survives seed churn; `slot.cur_ammo_type == 3241` does not.
-- **Never use a "definitely nonexistent" id like `99_999_999`.** The sequence may have advanced past it. Use a negative sentinel (if the column allows) or `MAX(id) + 1` computed at runtime (PR #144).
+- **Never use a "definitely nonexistent" id like `99_999_999`.** The sequence may have advanced past it. Use a sentinel from your module's reserved `0x7000_xxxx` slot (see "Sentinel id discipline") or `MAX(id) + 1` computed at runtime (PR #144).
 - **Assert fixture cardinality up front.** If `pick_main_bag_type_ids(2)` can return one row, assert `types.len() == 2` so the failure points at missing fixture data, not a cryptic out-of-bounds panic (PR #144).
 
 ### Sentinel id discipline
 
-- **Sentinels for `INTEGER` columns must fit in `i32` range.** `0xDEAD_0000` as `u32` wraps to negative when bound `as i32` and can step on another module's cleanup (PRs #134, #150).
-- **Document and partition sentinel ranges per module.** Cleanup `DELETE WHERE entity_id = $sentinel` (precise) beats `DELETE WHERE entity_id < 0` (reaches into other modules) (PRs #154, #163).
+- **Reserve a positive `0x7000_xxxx` base per module** and partition the low byte (or low two bytes) for individual tests. Existing reservations include `0x7000_0100` (grant_cash), `0x7000_0200` (move_inventory), `0x7000_0300` (grant_item), `0x7000_0400` (missions), `0x7000_0600` (vendor repair), `0x7000_0800` (vendor sell), `0x7000_0B00` (inventory ammo), `0x7000_1000` (character-list), `0x7000_1200` (purchase_helpers), `0x7000_1300` (vendor recharge). Document the neighbours in a module-doc comment so the next contributor can step past them (`crates/services/src/base/character.rs:276-281` is the canonical shape).
+- **Sentinels for `INTEGER` columns must fit in `i32` range.** `0x7000_xxxx` does. `0xDEAD_0000` as `u32` wraps to negative when bound `as i32` and lands in another module's territory — don't reach for high-bit constants (PRs #134, #150).
+- **Cleanup must delete by exact id**, not by range. `DELETE WHERE entity_id = $sentinel` (or `IN (...)` over the exact ids the test inserted) beats `DELETE WHERE entity_id BETWEEN base AND base+0xFF` — range deletes can reach into a sibling module's slot if partitioning ever drifts (PRs #154, #163).
 - **Don't share-row `DELETE` in cleanup.** For rows you `INSERT INTO resources.items` to set up the fixture, use `ON CONFLICT DO NOTHING` and let the row leak — otherwise test B's cleanup yanks a row out from under test A (PR #164).
 
 ### Concurrency
@@ -248,7 +249,7 @@ Before opening a PR that adds tests:
 - [ ] Test name matches the assertion.
 - [ ] Assertions are tight (`==` not `>=`, composite keys not single-column filters, exact positions not "distinct").
 - [ ] No hard-coded resource ids; baseline values re-fetched at runtime.
-- [ ] Sentinels fit in `i32`; cleanup deletes by sentinel, not by range.
+- [ ] Sentinels are positive `0x7000_xxxx` ids in your module's reserved slot; cleanup deletes by exact id, not by range.
 - [ ] Live-DB tests use `require_db_or_skip!`.
 - [ ] Concurrency tests use `tokio::time::timeout` and capture `Result`s.
 - [ ] No PR/issue numbers in source comments.
