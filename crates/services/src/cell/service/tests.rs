@@ -1,11 +1,12 @@
 //! CellService tick + handler tests — exercise reload-completion, bandolier
-//! seeding, logout flushes, and disconnect-flush ordering without spinning up
-//! a full ChainEngine.
+//! seeding, logout flushes, disconnect-flush ordering, and NPC AI state
+//! transitions without spinning up a full ChainEngine.
 
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
-use cimmeria_entity::cell_entity::BandolierItem;
-use cimmeria_entity::stats::{AMMO_SLOT_1, AMMO_SLOT_2, AMMO_SLOT_3};
+use cimmeria_common::Vector3;
+use cimmeria_entity::cell_entity::{AiState, BandolierItem};
+use cimmeria_entity::stats::{AMMO_SLOT_1, AMMO_SLOT_2, AMMO_SLOT_3, HEALTH};
 use tokio::sync::mpsc;
 
 fn make_test_space_mgr() -> SpaceManager {
@@ -380,4 +381,172 @@ async fn disconnect_entity_flushes_dirty_ammo_before_destroy() {
         mgr.get_entity(1).is_none(),
         "entity should be destroyed after disconnect"
     );
+}
+
+// ── NPC AI tick ───────────────────────────────────────────────────────
+//
+// These cover the four arms of `npc_ai_tick` that previously had zero
+// coverage — Fighting → Idle (no threat), Fighting → Leashing (target
+// past LEASH_DISTANCE from spawn), stationary-no-pathfind, and
+// Leashing → Idle (snap back + heal).
+
+/// Build a Castle_CellBlock space and seed an NPC at id=200 in
+/// AiState::Fighting with the given spawn position. Returns the
+/// SpaceManager. Caller layers in the threat list and ability defs.
+fn make_ai_fixture(npc_spawn: [f32; 3], npc_pos: [f32; 3]) -> SpaceManager {
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(200, "Castle_CellBlock", npc_pos, [0.0; 3])
+        .unwrap();
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.is_player = false;
+        npc.class_id = 0x04; // SGWMob — required for all_npc_entity_ids()
+        npc.ai_state = AiState::Fighting;
+        npc.spawn_position = Some(Vector3::new(npc_spawn[0], npc_spawn[1], npc_spawn[2]));
+        if let Some(h) = npc.stats.get_mut(HEALTH) {
+            h.update(0, 100, 100);
+            h.clear_dirty();
+        }
+    }
+    mgr
+}
+
+/// Fighting NPC with an empty threat list resets to Idle. The
+/// regression guard for the early-return that re-enables this NPC
+/// to be re-aggrod by the next attacker.
+#[tokio::test]
+async fn npc_ai_fighting_with_empty_threat_resets_to_idle() {
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    let (tx, _rx) = mpsc::channel(8);
+    super::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    assert!(matches!(
+        mgr.get_entity(200).unwrap().ai_state,
+        AiState::Idle
+    ));
+}
+
+/// Target sitting past `LEASH_DISTANCE` (50.0) from the NPC's spawn
+/// triggers AiState::Leashing and clears the threat list. Pin the
+/// transition so a refactor that drops the leash branch can't
+/// silently let mobs path across the whole zone.
+#[tokio::test]
+async fn npc_ai_target_beyond_leash_distance_triggers_leashing() {
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    // Target player at distance 100 from spawn (LEASH_DISTANCE=50).
+    mgr.create_entity(100, "Castle_CellBlock", [100.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.is_player = true;
+        p.player_id = Some(1);
+        if let Some(h) = p.stats.get_mut(HEALTH) {
+            h.update(0, 100, 100);
+            h.clear_dirty();
+        }
+    }
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.threat_list.insert(100, 1.0);
+    }
+    let (tx, _rx) = mpsc::channel(8);
+    super::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(matches!(npc.ai_state, AiState::Leashing));
+    assert!(
+        npc.threat_list.is_empty(),
+        "leashing must clear the threat list"
+    );
+}
+
+/// A dead target is removed from the threat list without leashing or
+/// transitioning to Idle (the NPC stays Fighting so it picks up the
+/// next-highest threat next tick).
+#[tokio::test]
+async fn npc_ai_dead_target_is_removed_from_threat() {
+    let mut mgr = make_ai_fixture([0.0; 3], [10.0, 0.0, 0.0]);
+    // Target close to NPC, but health=0.
+    mgr.create_entity(100, "Castle_CellBlock", [11.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.is_player = true;
+        if let Some(h) = p.stats.get_mut(HEALTH) {
+            h.update(0, 0, 100);
+            h.clear_dirty();
+        }
+    }
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.threat_list.insert(100, 5.0);
+    }
+    let (tx, _rx) = mpsc::channel(8);
+    super::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(
+        !npc.threat_list.contains_key(&100),
+        "dead target must be removed from threat list"
+    );
+    assert!(
+        matches!(npc.ai_state, AiState::Fighting),
+        "AI stays Fighting so next tick picks up another target"
+    );
+}
+
+/// Stationary NPC out of attack range / LOS does NOT pathfind. Pin
+/// so a refactor that runs the pathfinder unconditionally doesn't
+/// turn turrets into chasers.
+#[tokio::test]
+async fn npc_ai_stationary_does_not_pathfind_when_out_of_range() {
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    // Target at distance 40 (within LEASH=50 but past NPC_ATTACK_RANGE=30).
+    mgr.create_entity(100, "Castle_CellBlock", [40.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(100) {
+        p.is_player = true;
+        if let Some(h) = p.stats.get_mut(HEALTH) {
+            h.update(0, 100, 100);
+            h.clear_dirty();
+        }
+    }
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.threat_list.insert(100, 1.0);
+        npc.is_stationary = true;
+    }
+    let (tx, _rx) = mpsc::channel(8);
+    super::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(
+        npc.nav_path.is_empty(),
+        "stationary NPC must not populate a nav path; got {:?}",
+        npc.nav_path
+    );
+    assert!(
+        matches!(npc.ai_state, AiState::Fighting),
+        "stationary NPC stays Fighting; only the leash branch transitions"
+    );
+}
+
+/// Leashing tick: NPC snaps back to spawn, health restores to max,
+/// AI resets to Idle, threat list clears, cooldowns clear. The
+/// canary for the "leash never returns to Idle" hang.
+#[tokio::test]
+async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
+    let mut mgr = make_ai_fixture([0.0; 3], [40.0, 0.0, 40.0]);
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        npc.ai_state = AiState::Leashing;
+        if let Some(h) = npc.stats.get_mut(HEALTH) {
+            h.update(0, 5, 100); // damaged
+            h.clear_dirty();
+        }
+    }
+    let (tx, _rx) = mpsc::channel(16);
+    super::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(matches!(npc.ai_state, AiState::Idle));
+    assert_eq!(
+        npc.position,
+        Vector3::new(0.0, 0.0, 0.0),
+        "leash must snap NPC back to spawn"
+    );
+    assert_eq!(
+        npc.stats.get(HEALTH).unwrap().cur,
+        100,
+        "leash must restore health to max"
+    );
+    assert!(npc.threat_list.is_empty());
 }
