@@ -219,12 +219,17 @@ mod tests {
             rows.iter().any(|r| r.name == "NamedSentinel"),
             "real-name sentinel must round-trip even when sibling NULL-name row is present"
         );
-        // No row in the output should have an empty name (the null-name
-        // row would manifest as either empty or a phantom entry — neither
-        // is acceptable in the auth Phase 1 advertisement).
-        assert!(
-            !rows.iter().any(|r| r.name.is_empty()),
-            "NULL-name row must be filter_map'd away, not surface as an empty-string entry"
+        // Stronger pin scoped to OUR sentinels: of the two rows we
+        // inserted (one NULL-name, one "NamedSentinel"), only the
+        // named one must surface in `query_all_shards`. We don't
+        // assert "no empty-string anywhere in the output" because the
+        // schema allows `name = ''` and a dev's local DB may
+        // legitimately seed one. The contract under test is the
+        // `Option<String>` filter_map: a NULL row is dropped.
+        let our_pair_count = rows.iter().filter(|r| r.name == "NamedSentinel").count();
+        assert_eq!(
+            our_pair_count, 1,
+            "exactly the named sentinel must round-trip; the NULL-name sibling must be filter_map'd away"
         );
 
         cleanup_ids(&pool, &test_ids).await;

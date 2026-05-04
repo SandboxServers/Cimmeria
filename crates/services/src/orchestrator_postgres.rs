@@ -229,10 +229,16 @@ mod tests {
     #[test]
     fn parse_pg_host_reads_explicit_value() {
         assert_eq!(parse_pg_host("host=db.internal port=5433"), "db.internal");
-        // First-token-wins is fine because libpq itself takes the last
-        // duplicate; we just need to be predictable for the auto-start
-        // localhost gate. Pin behavior so a future refactor doesn't
-        // accidentally change it.
+        // We DIVERGE from libpq here on purpose. libpq takes the last
+        // `host=` token when duplicates appear; we take the first.
+        // Connection strings in this repo are author-curated (config
+        // files, not user input), so duplicates indicate a config bug
+        // rather than a legitimate override. First-token-wins gives a
+        // deterministic result for the localhost auto-start gate
+        // without us having to model libpq's full precedence rules.
+        // The pin below makes that divergence explicit so a future
+        // refactor toward libpq compatibility doesn't silently flip
+        // which host the gate checks.
         assert_eq!(
             parse_pg_host("host=first.example host=second.example"),
             "first.example"
