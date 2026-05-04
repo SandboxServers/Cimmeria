@@ -21,8 +21,8 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | 152 |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 878 across 136 files |
-| Live-DB regression guards | 84 |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 1071 across 166 files |
+| Live-DB regression guards | 110 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 
@@ -36,6 +36,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | [Client Tools](client-tools.md) | Launcher, editor mode, debug tools available in the client |
 | [Building the Server](building.md) | How to build and run the Cimmeria server emulator |
 | [Testing Guide](../TESTING.md) | Test types, picker for which to use when, gotchas mined from PR reviews |
+| [Test Inventory](testing/inventory/README.md) | Catalogue of every test in the workspace, one file per crate, with kind / system / first-commit date / what-it-tests |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |
 | [Game Data](game-data.md) | What game content exists (items, abilities, missions) and what is missing |
 | [Commands Reference](commands.md) | Player commands, chat, GM tools, and debug commands |

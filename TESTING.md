@@ -3,8 +3,9 @@
 > **Audience**: Engineers writing or reviewing tests in the Cimmeria workspace.
 > **Type**: Reference + how-to.
 > **Companion docs**: [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) (live-DB infra rationale and local setup), [CLAUDE.md](CLAUDE.md) (pre-PR checklist), [.github/copilot-instructions.md](.github/copilot-instructions.md) (review checklist).
+> **See also**: [docs/testing/inventory/README.md](docs/testing/inventory/README.md) — catalogue of every test in the workspace (the "what tests exist" reference; this file is the "how to write a test" playbook).
 
-The Rust workspace currently has **878 `#[test]` / `#[tokio::test]` cases across 136 files**: 84 are live-DB regression guards (`require_db_or_skip!`) and 3 are end-to-end PL/pgSQL smoke scripts. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo test` (workspace, no DB), and `cargo test -p cimmeria-services --lib -- --test-threads=1` against a live `postgres:17.9` service container.
+The Rust workspace currently has **1071 `#[test]` / `#[tokio::test]` cases across 166 files**: 110 are live-DB regression guards (`require_db_or_skip!`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — keep it in sync when you add or remove a test. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo test` (workspace, no DB), and `cargo test -p cimmeria-services --lib -- --test-threads=1` against a live `postgres:17.9` service container.
 
 This guide is the playbook for writing tests that survive review and catch real regressions. **Read it before opening a PR that adds tests.**
 

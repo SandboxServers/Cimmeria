@@ -172,6 +172,9 @@ tools/SceneEditor/gen/
 package_index.bin
 
 docs/~$content-engine-data-template.xlsx
+
+# Test inventory regeneration scratch (extractor + JSON output)
+docs/testing/.scratch/
 sgw-launcher.exe
 sgw-launcher.exe
 

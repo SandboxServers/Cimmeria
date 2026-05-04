@@ -44,6 +44,7 @@ A PR that changes runtime behaviour must add or update a test. **Read [TESTING.m
 - Live-DB tests use `require_db_or_skip!` and run with `--test-threads=1`.
 - Test names match the assertion. If the assertion changes, rename.
 - No PR or issue numbers in source comments — provenance lives in the PR body.
+- Update [docs/testing/inventory/<crate>.md](../docs/testing/inventory/) when adding or removing a test. Inventory drift is a review-blocker.
 
 If a single feature touches several layers (handler logic + serializer + SQL + cross-handler invariant), expect to add several test types — see TESTING.md "When one feature needs more than one test".
 
