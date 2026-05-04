@@ -270,13 +270,19 @@ jobs:
           path: target/coverage/
           retention-days: 14
       - name: upload to Codecov
-        # Public repo, so no token needed. Codecov ingests cobertura.xml,
-        # posts a sticky PR comment with delta vs main, and renders the
-        # per-file coverage overlay in GitHub's Files-Changed tab. Settings
-        # (advisory vs blocking, drop tolerance, path ignores) live in
-        # codecov.yml at the repo root.
-        uses: codecov/codecov-action@v4
+        # Codecov ingests cobertura.xml, posts a sticky PR comment with delta
+        # vs main, and renders the per-file coverage overlay in GitHub's
+        # Files-Changed tab. Settings (advisory vs blocking, drop tolerance,
+        # path ignores) live in codecov.yml at the repo root.
+        #
+        # CODECOV_TOKEN is required even for public repos — Codecov disabled
+        # tokenless uploads. Fork PRs won't see the secret and will skip the
+        # upload (the action exits 0 when no token is present); coverage
+        # deltas for fork PRs come via Codecov's GitHub App on the merge
+        # commit instead.
+        uses: codecov/codecov-action@v5
         with:
           files: target/coverage/cobertura.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: true
