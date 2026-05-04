@@ -21,6 +21,9 @@ use super::super::ConnectedClientState;
 use super::methods::{query_player_load_data, query_world_stargates};
 use super::space_registry::resolve_space_id_fallback;
 
+#[cfg(test)]
+mod tests;
+
 /// Handle a gate travel request from CellService.
 ///
 /// This re-uses the world entry flow (teardown -> create player -> enter world):
