@@ -284,6 +284,19 @@ async fn cleanup(pool: &sqlx::PgPool, entity_id: u32) {
         .await;
 }
 
+/// Clear ALL undelivered rows ahead of a failure-injection test. The
+/// drainer scans the first 64 undelivered rows globally (`ORDER BY id
+/// LIMIT 64`) and breaks on the first send error, so any older
+/// undelivered backlog (e.g. left behind by a prior test that panicked)
+/// would be processed BEFORE our sentinel row and prevent us from
+/// reaching it. Tests run under `--test-threads=1` so a global wipe is
+/// safe — no other live-DB test is in-flight.
+async fn purge_undelivered_backlog(pool: &sqlx::PgPool) {
+    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE delivered_at IS NULL")
+        .execute(pool)
+        .await;
+}
+
 #[tokio::test]
 async fn enqueue_in_tx_writes_row_atomic_with_caller_commit() {
     // Pin the atomicity contract: a row enqueued inside a tx is INVISIBLE
@@ -445,6 +458,259 @@ async fn drain_stops_at_first_send_failure_and_records_attempt() {
     assert!(
         failed_attempts >= 1,
         "record_failure should have bumped the attempts counter on the failed row"
+    );
+
+    cleanup(&pool, entity_id).await;
+}
+
+/// Drain mpsc messages addressed to `entity_id` and return matching ItemUsed
+/// payloads. The outbox is a shared table — concurrent live-DB tests can leave
+/// undelivered rows that drain alongside ours, so global stats counts are not
+/// safe to assert; per-entity filtering is.
+fn drain_item_used_for(rx: &mut mpsc::Receiver<BaseToCellMsg>, entity_id: u32) -> Vec<(i32, i32)> {
+    let mut hits = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        if let BaseToCellMsg::ItemUsed {
+            entity_id: e,
+            type_id,
+            target_id,
+        } = msg
+        {
+            if e == entity_id {
+                hits.push((type_id, target_id));
+            }
+        }
+    }
+    hits
+}
+
+#[tokio::test]
+async fn injected_send_failure_replays_on_next_drain_with_payload_intact() {
+    // Durability contract: when a cell→base dispatch fails (receiver gone /
+    // task panic / shutdown race), the row stays in the outbox and is
+    // replayed verbatim on the next drain pass. The closed-channel test
+    // above covers the "row stays" half; this covers the "row replays
+    // intact" half — the operator sees the message once on the *retry*
+    // with the same payload bytes.
+    let pool = require_db_or_skip!();
+    let entity_id = TEST_ENTITY_BASE + 4;
+    cleanup(&pool, entity_id).await;
+    // Wipe any leftover backlog from a prior crashed test — the drainer
+    // limits to 64 rows globally and breaks on first send error, so
+    // backlog ahead of our row would prevent us from being reached.
+    purge_undelivered_backlog(&pool).await;
+
+    let payload = CellOutboxPayload::ItemUsed {
+        type_id: 4242,
+        target_id: 1337,
+    };
+    let row_id = enqueue(&pool, entity_id, &payload).await.unwrap();
+
+    // Pass 1: dropped receiver. The drainer reaches our row and fails to
+    // send. We can't assert global `send_failed == 1` because the shared
+    // outbox may carry undelivered rows from concurrent tests; instead
+    // assert ROW state: still undelivered + attempts column bumped.
+    let (closed_tx, closed_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(8);
+    drop(closed_rx);
+    drain_undelivered(&pool, &closed_tx).await.unwrap();
+
+    let (still_undelivered, attempts): (bool, i32) = sqlx::query_as(
+        "SELECT delivered_at IS NULL, attempts FROM cell_event_outbox WHERE id = $1",
+    )
+    .bind(row_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        still_undelivered,
+        "row must remain undelivered after pass-1 send failure"
+    );
+    // `cleanup` zeros our row's attempts at test start; one failed pass
+    // calls record_failure exactly once. Equality (not >=) catches a
+    // regression that double-bumps on a single failed pass.
+    assert_eq!(
+        attempts, 1,
+        "exactly one failed pass must have recorded exactly one attempt (got {attempts})"
+    );
+
+    // Pass 2: fresh channel. Our row drains and dispatches the original
+    // payload bytes verbatim; mark_delivered fires on success.
+    let (live_tx, mut live_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(64);
+    drain_undelivered(&pool, &live_tx).await.unwrap();
+
+    let hits = drain_item_used_for(&mut live_rx, entity_id);
+    assert_eq!(
+        hits,
+        vec![(4242, 1337)],
+        "exactly one ItemUsed with the original payload bytes must arrive on the retry"
+    );
+
+    // Row is now marked delivered.
+    let final_delivered: bool =
+        sqlx::query_scalar("SELECT delivered_at IS NOT NULL FROM cell_event_outbox WHERE id = $1")
+            .bind(row_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        final_delivered,
+        "successful pass-2 dispatch must set delivered_at"
+    );
+
+    // Pass 3 with a fresh channel: our row must NOT redeliver. Drainer
+    // may still emit other tests' rows; filter again by entity_id.
+    let (third_tx, mut third_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(64);
+    drain_undelivered(&pool, &third_tx).await.unwrap();
+    assert!(
+        drain_item_used_for(&mut third_rx, entity_id).is_empty(),
+        "delivered row must not redeliver"
+    );
+
+    cleanup(&pool, entity_id).await;
+}
+
+#[tokio::test]
+async fn try_dispatch_now_failure_leaves_row_for_drainer_replay() {
+    // The hot-path companion to the drainer-replay case above: when the
+    // post-enqueue `try_dispatch_now` lands on a closed channel (cell
+    // task gone between enqueue and send), the durability guarantee
+    // says the row stays put and the periodic drainer picks it up
+    // later. Without this, a single channel-closed window between
+    // enqueue and immediate-dispatch would silently drop the event
+    // even though the row is in the database.
+    let pool = require_db_or_skip!();
+    let entity_id = TEST_ENTITY_BASE + 5;
+    cleanup(&pool, entity_id).await;
+    purge_undelivered_backlog(&pool).await;
+
+    let payload = CellOutboxPayload::ItemUsed {
+        type_id: 99,
+        target_id: 11,
+    };
+    let row_id = enqueue(&pool, entity_id, &payload).await.unwrap();
+
+    // Inject the failure: try_dispatch_now sees a closed receiver.
+    let (closed_tx, closed_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(8);
+    drop(closed_rx);
+    try_dispatch_now(&pool, &closed_tx, row_id, entity_id, payload.clone()).await;
+
+    // Row must still be undelivered (try_dispatch_now's failure path is
+    // log-and-leave, not log-and-mark-delivered).
+    let undelivered_after_try: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cell_event_outbox \
+         WHERE id = $1 AND delivered_at IS NULL",
+    )
+    .bind(row_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        undelivered_after_try, 1,
+        "failed try_dispatch_now must leave the row for the drainer"
+    );
+
+    // Drainer with a working channel finishes the job. Filter the
+    // dispatched messages to our sentinel — concurrent tests' rows in
+    // the same shared outbox may also drain on this pass.
+    let (live_tx, mut live_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(64);
+    drain_undelivered(&pool, &live_tx).await.unwrap();
+    let hits = drain_item_used_for(&mut live_rx, entity_id);
+    assert_eq!(
+        hits,
+        vec![(99, 11)],
+        "drainer must replay the row try_dispatch_now skipped, with the original payload"
+    );
+
+    cleanup(&pool, entity_id).await;
+}
+
+#[tokio::test]
+async fn poison_row_does_not_block_following_rows_in_same_batch() {
+    // Adversarial mix: a poison row (event_type/payload mismatch) at the
+    // head of the batch must skip cleanly without blocking the next
+    // legitimate row. `row_to_message` returns None on the poison row,
+    // the drainer logs it once, bumps `attempts`, and `continue`s — so
+    // a single bad row from a half-rolled deployment doesn't strand
+    // every subsequent valid event for the same entity.
+    let pool = require_db_or_skip!();
+    let entity_id = TEST_ENTITY_BASE + 6;
+    cleanup(&pool, entity_id).await;
+    purge_undelivered_backlog(&pool).await;
+
+    // Hand-craft a poison row: event_type says "inventory_item_granted"
+    // but the payload JSON shape is ItemUsed. row_to_message rejects
+    // the (event_type, payload) pair.
+    let poison_payload = serde_json::json!({
+        "kind": "item_used",
+        "type_id": 1,
+        "target_id": 0,
+    });
+    let poison_id: i64 = sqlx::query_scalar(
+        "INSERT INTO cell_event_outbox (entity_id, event_type, payload) \
+         VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(entity_id as i32)
+    .bind("inventory_item_granted")
+    .bind(sqlx::types::Json(&poison_payload))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // Legitimate row enqueued *after* the poison row, so global id order
+    // puts the poison row first in the batch.
+    let good_payload = CellOutboxPayload::ItemUsed {
+        type_id: 7,
+        target_id: 3,
+    };
+    let good_id = enqueue(&pool, entity_id, &good_payload).await.unwrap();
+    assert!(
+        good_id > poison_id,
+        "BIGSERIAL must place the good row after the poison row"
+    );
+
+    // Drain. Stats counts span the whole table (other tests' undelivered
+    // rows would be drained alongside ours), so we assert per-row state
+    // rather than global stats.
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(64);
+    drain_undelivered(&pool, &tx).await.unwrap();
+
+    // Poison row was bumped via record_failure but NOT marked delivered —
+    // it's left undelivered for operator triage on the next pass.
+    let (poison_attempts, poison_undelivered): (i32, bool) = sqlx::query_as(
+        "SELECT attempts, delivered_at IS NULL FROM cell_event_outbox WHERE id = $1",
+    )
+    .bind(poison_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        poison_attempts, 1,
+        "poison row must be flagged once per pass"
+    );
+    assert!(
+        poison_undelivered,
+        "poison row must remain undelivered (skipped, not dispatched)"
+    );
+
+    // Good row IS marked delivered — the poison row didn't block it.
+    let good_delivered: bool =
+        sqlx::query_scalar("SELECT delivered_at IS NOT NULL FROM cell_event_outbox WHERE id = $1")
+            .bind(good_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        good_delivered,
+        "legitimate row behind the poison row must drain successfully"
+    );
+
+    // Filter dispatched messages by sentinel entity_id: exactly the good
+    // payload, no phantom message from the poison row.
+    let hits = drain_item_used_for(&mut rx, entity_id);
+    assert_eq!(
+        hits,
+        vec![(7, 3)],
+        "exactly one ItemUsed for the good payload — poison row must not produce a message"
     );
 
     cleanup(&pool, entity_id).await;
