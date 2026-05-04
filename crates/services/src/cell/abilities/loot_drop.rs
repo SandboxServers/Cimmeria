@@ -111,3 +111,194 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
 pub(super) fn kill_xp(mob_level: u32) -> u64 {
     10 * mob_level as u64
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cell::space_manager::SpaceManager;
+    use crate::cell::spawner::LootTableEntry;
+    use cimmeria_entity::cell_entity::NpcInteractionType;
+
+    /// Build a minimal `SpaceManager` with one entity at id=1 in a space
+    /// large enough that AoI math doesn't intrude. The returned id is 1
+    /// so callers can address the entity directly without juggling a return.
+    fn make_mgr_with_entity() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        mgr
+    }
+
+    #[test]
+    fn kill_xp_scales_linearly_with_mob_level() {
+        assert_eq!(kill_xp(0), 0);
+        assert_eq!(kill_xp(1), 10);
+        assert_eq!(kill_xp(50), 500);
+    }
+
+    #[test]
+    fn kill_xp_does_not_overflow_at_u32_max() {
+        // 10 * u32::MAX fits in u64 — pin the widening so a careless
+        // refactor to u32 multiplication wouldn't slip through.
+        let xp = kill_xp(u32::MAX);
+        assert_eq!(xp, 10u64 * u32::MAX as u64);
+    }
+
+    #[test]
+    fn no_loot_table_id_is_a_no_op() {
+        let mut mgr = make_mgr_with_entity();
+        // loot_table_id defaults to None; nothing else needs to be set.
+        generate_loot_on_death(1, &mut mgr);
+        let e = mgr.get_entity(1).unwrap();
+        assert!(e.loot.is_empty());
+        assert_eq!(e.interaction_type_flags, 0);
+        assert!(e.interaction_type.is_none());
+    }
+
+    #[test]
+    fn missing_loot_table_entries_is_a_no_op() {
+        let mut mgr = make_mgr_with_entity();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.loot_table_id = Some(999);
+        }
+        // mgr.loot_tables has no entry for 999 — should warn and return.
+        generate_loot_on_death(1, &mut mgr);
+        let e = mgr.get_entity(1).unwrap();
+        assert!(e.loot.is_empty());
+        assert_eq!(e.interaction_type_flags, 0);
+    }
+
+    #[test]
+    fn probability_one_drops_loot_and_sets_int_normal_loot() {
+        let mut mgr = make_mgr_with_entity();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.loot_table_id = Some(42);
+            // Pre-existing interaction bit must survive — Python parity
+            // (`SGWMob.onDead`) OR-merges INT_NormalLoot rather than overwriting.
+            e.interaction_type_flags = 1 << 5;
+        }
+        mgr.loot_tables.insert(
+            42,
+            vec![LootTableEntry {
+                design_id: Some(7),
+                min_quantity: 3,
+                max_quantity: 3,
+                probability: 1.0,
+            }],
+        );
+
+        generate_loot_on_death(1, &mut mgr);
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(e.loot.len(), 1, "probability=1 entry must always drop");
+        assert_eq!(e.loot[0].design_id, Some(7));
+        assert_eq!(e.loot[0].quantity, 3);
+        // INT_NormalLoot (1<<62) is OR-merged on top of the pre-existing bit.
+        assert_eq!(e.interaction_type_flags, INT_NORMAL_LOOT | (1 << 5));
+        assert!(matches!(e.interaction_type, Some(NpcInteractionType::Loot)));
+    }
+
+    #[test]
+    fn probability_zero_drops_no_loot_and_leaves_flags_untouched() {
+        let mut mgr = make_mgr_with_entity();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.loot_table_id = Some(42);
+        }
+        mgr.loot_tables.insert(
+            42,
+            vec![LootTableEntry {
+                design_id: Some(7),
+                min_quantity: 1,
+                max_quantity: 1,
+                probability: 0.0,
+            }],
+        );
+
+        generate_loot_on_death(1, &mut mgr);
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(e.loot.is_empty());
+        assert_eq!(
+            e.interaction_type_flags, 0,
+            "no drops -> INT_NormalLoot must NOT be set"
+        );
+        assert!(e.interaction_type.is_none());
+    }
+
+    /// Regression guard for the malformed-row branch: when a DB row has
+    /// `min_quantity > max_quantity`, the original `(max - min + 1) as u32`
+    /// math wraps and produces wildly out-of-range quantities. The handler
+    /// falls back to `min_quantity` and logs a warning. If a refactor ever
+    /// drops the `min > max` check, this test fails because the recorded
+    /// quantity diverges from `min`.
+    #[test]
+    fn min_greater_than_max_falls_back_to_min_quantity() {
+        let mut mgr = make_mgr_with_entity();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.loot_table_id = Some(42);
+        }
+        mgr.loot_tables.insert(
+            42,
+            vec![LootTableEntry {
+                design_id: Some(99),
+                min_quantity: 5,
+                max_quantity: 2, // intentionally inverted
+                probability: 1.0,
+            }],
+        );
+
+        generate_loot_on_death(1, &mut mgr);
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(e.loot.len(), 1);
+        assert_eq!(
+            e.loot[0].quantity, 5,
+            "min > max must fall back to min, not the wrapping subtraction result"
+        );
+    }
+
+    #[test]
+    fn each_dropped_item_gets_a_unique_increasing_index() {
+        let mut mgr = make_mgr_with_entity();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.loot_table_id = Some(42);
+            e.next_loot_index = 100;
+        }
+        mgr.loot_tables.insert(
+            42,
+            vec![
+                LootTableEntry {
+                    design_id: Some(1),
+                    min_quantity: 1,
+                    max_quantity: 1,
+                    probability: 1.0,
+                },
+                LootTableEntry {
+                    design_id: Some(2),
+                    min_quantity: 1,
+                    max_quantity: 1,
+                    probability: 1.0,
+                },
+                LootTableEntry {
+                    design_id: Some(3),
+                    min_quantity: 1,
+                    max_quantity: 1,
+                    probability: 1.0,
+                },
+            ],
+        );
+
+        generate_loot_on_death(1, &mut mgr);
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(e.loot.len(), 3);
+        assert_eq!(e.loot[0].index, 100);
+        assert_eq!(e.loot[1].index, 101);
+        assert_eq!(e.loot[2].index, 102);
+        assert_eq!(e.next_loot_index, 103);
+    }
+}
