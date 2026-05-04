@@ -181,3 +181,102 @@ jobs:
       - name: cargo test (live DB)
         run: |
           cargo test -p cimmeria-services --lib -- --test-threads=1
+
+  # Coverage report. Same matrix as the test + test-live-db jobs combined,
+  # instrumented under cargo-llvm-cov. Two passes share counter data via
+  # `--no-report`: the workspace pass picks up unit + non-DB integration
+  # coverage, the second pass runs `-p cimmeria-services --lib` against a
+  # live Postgres so the require_db_or_skip! guards actually count.
+  # `cargo llvm-cov report` then merges them into one HTML/cobertura/summary.
+  #
+  # Non-blocking: continue-on-error so a coverage-tool flake doesn't gate
+  # merges. The artifact + summary log are advisory — the PR-gating signal
+  # is still test/test-live-db turning green.
+  coverage:
+    name: cargo llvm-cov (workspace + live DB)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:17.9
+        env:
+          POSTGRES_USER: w-testing
+          POSTGRES_PASSWORD: w-testing
+          POSTGRES_DB: sgw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - name: install clang + mold + psql
+        run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+      - name: hydrate external/recast
+        run: |
+          mkdir -p external
+          curl -sL --retry 3 \
+            -o /tmp/recast.zip \
+            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
+          unzip -q /tmp/recast.zip -d /tmp/recast_extract
+          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
+          test -f external/recast/Detour/Source/DetourAssert.cpp
+      - name: load schema + seeds
+        env:
+          PGPASSWORD: w-testing
+        run: |
+          psql -h localhost -U w-testing -d sgw -v ON_ERROR_STOP=1 -f db/database.sql
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: coverage
+      - name: install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: clean stale counter data
+        run: cargo llvm-cov clean --workspace
+      - name: workspace pass (no DB)
+        # DATABASE_URL is set on the job, but we deliberately unset it here so
+        # the live-DB tests skip in this pass — they're owned by the second
+        # pass below, which runs with --test-threads=1.
+        env:
+          DATABASE_URL: ""
+        run: |
+          cargo llvm-cov --workspace ${{ env.WORKSPACE_EXCLUDES }} --no-report
+      - name: services live-DB pass
+        run: |
+          cargo llvm-cov -p cimmeria-services --lib --no-report -- --test-threads=1
+      - name: render reports
+        run: |
+          mkdir -p target/coverage
+          cargo llvm-cov report --html --output-dir target/coverage/html
+          cargo llvm-cov report --cobertura --output-path target/coverage/cobertura.xml
+          cargo llvm-cov report --summary-only | tee target/coverage/summary.txt
+      - name: print summary to job log
+        run: |
+          echo "## Coverage summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat target/coverage/summary.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/coverage/
+          retention-days: 14
+      - name: upload to Codecov
+        # Public repo, so no token needed. Codecov ingests cobertura.xml,
+        # posts a sticky PR comment with delta vs main, and renders the
+        # per-file coverage overlay in GitHub's Files-Changed tab. Settings
+        # (advisory vs blocking, drop tolerance, path ignores) live in
+        # codecov.yml at the repo root.
+        uses: codecov/codecov-action@v4
+        with:
+          files: target/coverage/cobertura.xml
+          fail_ci_if_error: false
+          verbose: true
