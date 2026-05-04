@@ -428,15 +428,20 @@ mod tests {
         }
     }
 
-    /// PKCS7 unpadding must reject any pad byte > AES_BLOCK_SIZE. A
-    /// crafted ciphertext that decrypts to a tail byte of, say, 0xFF
-    /// would otherwise be interpreted as "strip 255 bytes" and panic
-    /// or return wrong-length output.
+    /// PKCS7 unpadding must reject any pad byte > AES_BLOCK_SIZE.
+    /// Use a buffer LARGER than the would-be pad_len so the
+    /// `pad_len > data.len()` guard does NOT also fire — that way
+    /// the test isolates the > AES_BLOCK_SIZE branch specifically.
+    /// With pad_len = AES_BLOCK_SIZE + 1 = 17 in an 18-byte buffer:
+    /// `pad_len > AES_BLOCK_SIZE` (17 > 16) rejects (the branch
+    /// under test); `pad_len > data.len()` (17 > 18) is false, so
+    /// that guard would NOT catch it. If a regression drops the
+    /// `> AES_BLOCK_SIZE` check, the function would happily strip 17
+    /// bytes from the 18-byte buffer and produce a 1-byte plaintext.
     #[test]
     fn pkcs7_unpad_rejects_pad_byte_above_block_size() {
-        // Build raw bytes ending in 0xFF, which is an invalid PKCS7 pad.
-        let mut buf = vec![0u8; 16];
-        buf[15] = 0xFF;
+        let mut buf = vec![0u8; 18];
+        buf[17] = (AES_BLOCK_SIZE + 1) as u8; // 17, just above the cap
         let err = pkcs7_unpad(&buf).unwrap_err();
         assert!(matches!(err, CimmeriaError::Encryption(_)));
     }

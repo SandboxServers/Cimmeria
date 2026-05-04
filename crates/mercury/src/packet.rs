@@ -687,4 +687,39 @@ mod tests {
             "body must be empty when only acks are present"
         );
     }
+
+    /// Full matrix: FLAG_PIGGYBACK | FLAG_HAS_ACKS | FLAG_FRAGMENTED |
+    /// FLAG_RELIABLE | FLAG_HAS_SEQUENCE all set together. The #123
+    /// "flag combination matrix" item names piggyback explicitly;
+    /// this round-trips the bit through build/parse so a regression
+    /// that strips or relocates the piggyback bit gets caught.
+    /// Cimmeria doesn't actually parse piggyback sub-packets (see
+    /// the FLAG_PIGGYBACK doc-comment in this file), so the body is
+    /// just the same opaque payload the other tests use; the only
+    /// thing this test pins beyond the existing matrix is the flag
+    /// bit's preservation.
+    #[test]
+    fn round_trip_with_piggyback_in_full_matrix() {
+        let acks = [301u32];
+        let raw = build_outgoing_fragmented(
+            FLAG_RELIABLE | FLAG_ON_CHANNEL | FLAG_HAS_ACKS | FLAG_PIGGYBACK,
+            b"piggy-payload",
+            700,
+            700,
+            701,
+            &acks,
+        );
+        let pkt = parse_incoming(&raw).unwrap();
+        assert!(
+            pkt.flags & FLAG_PIGGYBACK != 0,
+            "piggyback bit must round-trip through build/parse"
+        );
+        assert!(pkt.flags & FLAG_FRAGMENTED != 0);
+        assert!(pkt.flags & FLAG_HAS_SEQUENCE != 0);
+        assert!(pkt.flags & FLAG_RELIABLE != 0);
+        assert!(pkt.flags & FLAG_HAS_ACKS != 0);
+        assert_eq!(pkt.seq_id, Some(700));
+        assert_eq!(pkt.acks, vec![301u32]);
+        assert_eq!(pkt.body.as_ref(), b"piggy-payload");
+    }
 }
