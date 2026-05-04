@@ -320,6 +320,30 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Decode rejects mixed-case + invalid hex characters with a clear
+    /// error rather than silently producing zero bytes. Auth feeds this
+    /// raw from the upstream POST body, so a malformed key must surface
+    /// as a Phase 3 reject, not a silent connection with a wrong key.
+    #[test]
+    fn decode_session_key_rejects_invalid_hex() {
+        // 64 chars but with non-hex characters
+        let s = "ZZ".repeat(32);
+        assert!(decode_session_key(&s).is_err());
+    }
+
+    /// Mixed lowercase hex must round-trip identically to uppercase —
+    /// the auth service may emit either depending on upstream casing.
+    #[test]
+    fn decode_session_key_accepts_lowercase_hex() {
+        let upper = "AABBCCDD".repeat(8);
+        let lower = "aabbccdd".repeat(8);
+        assert_eq!(
+            decode_session_key(&upper).unwrap(),
+            decode_session_key(&lower).unwrap(),
+            "uppercase and lowercase hex must decode to the same key bytes"
+        );
+    }
+
     #[test]
     fn parse_baseapp_login_valid() {
         let mut raw = Vec::new();
@@ -339,5 +363,285 @@ mod tests {
         let (req_id, ticket) = parse_baseapp_login(&raw).unwrap();
         assert_eq!(req_id, 0xCAFEBABE);
         assert_eq!(ticket, "ABCDEF1234567890ABCD");
+    }
+
+    /// Truncated body (less than the 34-byte fixed header for a valid
+    /// `baseAppLogin`) must reject — the auth → base seam is the first
+    /// validation point a malformed Phase 3 packet hits, and silently
+    /// continuing past truncation would index OOB on the ticket bytes.
+    #[test]
+    fn parse_baseapp_login_rejects_truncated_body() {
+        let mut raw = vec![0x41u8, 0x00u8];
+        raw.extend_from_slice(&25u16.to_le_bytes());
+        // Stop here — body is far too short for the fixed-length fields.
+        assert!(parse_baseapp_login(&raw).is_err());
+    }
+
+    /// An unexpected msg_id must reject — the parser is keyed on 0x00
+    /// (`baseAppLogin`). Without this guard a misrouted packet of a
+    /// different shape would surface as a confusing "ticketLen wrong"
+    /// error instead of the clear msg_id mismatch.
+    #[test]
+    fn parse_baseapp_login_rejects_wrong_msg_id() {
+        let mut raw = vec![0x41u8, 0x99u8]; // msg_id = 0x99 (not 0x00)
+        raw.extend_from_slice(&25u16.to_le_bytes());
+        raw.extend_from_slice(&0u32.to_le_bytes());
+        raw.extend_from_slice(&0u16.to_le_bytes());
+        raw.extend_from_slice(&1u32.to_le_bytes());
+        raw.push(20u8);
+        raw.extend_from_slice(b"ABCDEF1234567890ABCD");
+        raw.extend_from_slice(&1u16.to_le_bytes());
+        raw.extend_from_slice(&3u32.to_le_bytes());
+        let err = parse_baseapp_login(&raw).unwrap_err().to_string();
+        assert!(
+            err.contains("msg_id"),
+            "error message should mention msg_id, got: {err}"
+        );
+    }
+
+    // ── Auth → base login handoff seam ─────────────────────────────────────
+    //
+    // The Phase 3 handoff is the auth↔base seam: auth created a
+    // PendingLogin during shard select, and base consumes it when the
+    // client connects via Mercury UDP. Without these tests, a regression
+    // in the handoff (forgotten ticket consume, wrong key copied into
+    // ConnectedClientState, missing duplicate-login evict) silently
+    // corrupts every subsequent encrypted packet.
+    //
+    // These tests bind a real local UdpSocket so the `socket.send_to`
+    // calls inside handle_login complete successfully — but we don't
+    // inspect the wire output. The assertions are about state after the
+    // handoff, not about packet bytes (those are pinned in
+    // mercury/protocol/tests).
+
+    use crate::auth::PendingLogin;
+    use cimmeria_entity::manager::EntityManager;
+
+    fn make_pending_login(account_id: u32, key_byte: u8) -> PendingLogin {
+        PendingLogin {
+            account_id,
+            access_level: 0,
+            ticket: "TICKET00000000000001".to_string(),
+            // 32-byte key encoded as 64 hex chars, all the same byte.
+            session_key: format!("{:02X}", key_byte).repeat(32),
+            created: Instant::now(),
+        }
+    }
+
+    /// Helper: bind a local UdpSocket so the send_to calls inside
+    /// handle_login don't fail. Address is "127.0.0.1:0" — kernel-assigned
+    /// port; we don't care which one since nobody's listening on the
+    /// peer addr.
+    async fn make_udp_socket() -> Arc<UdpSocket> {
+        let s = UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP");
+        Arc::new(s)
+    }
+
+    /// Stop the tick-sync loop spawned by handle_login. Without this,
+    /// the spawned task leaks across tests (it sleeps + sends every
+    /// 100ms forever). Setting cancelled=true on the loop's flag ends
+    /// it on the next tick.
+    fn cancel_session(
+        connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+        addr: SocketAddr,
+    ) {
+        if let Ok(map) = connected.lock() {
+            if let Some(c) = map.get(&addr) {
+                c.cancelled
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// Phase 3 happy path: a valid ticket gets consumed, the connected
+    /// map gets a fully-populated ConnectedClientState, and the account
+    /// entity is created in the entity manager. Pins the auth → base
+    /// seam end-to-end at the state level.
+    #[tokio::test]
+    async fn login_consumes_ticket_and_registers_connected_client_state() {
+        let socket = make_udp_socket().await;
+        let addr: SocketAddr = "127.0.0.1:55555".parse().unwrap();
+
+        let pending_logins = Arc::new(Mutex::new(HashMap::new()));
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+        let cell_tx = None;
+
+        let pending = make_pending_login(0xDEAD_BEEF, 0xAB);
+        let ticket = pending.ticket.clone();
+        let expected_account_id = pending.account_id;
+        pending_logins
+            .lock()
+            .unwrap()
+            .insert(ticket.clone(), pending);
+
+        // Pre-seed sanity: ticket present, no connected entries.
+        assert_eq!(pending_logins.lock().unwrap().len(), 1);
+        assert!(connected.lock().unwrap().is_empty());
+
+        handle_login(
+            &socket,
+            addr,
+            0xCAFE_BABE,
+            &ticket,
+            &pending_logins,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("Phase 3 handoff");
+
+        // Ticket consumed — Phase 3 is single-shot.
+        assert!(
+            pending_logins.lock().unwrap().is_empty(),
+            "ticket must be removed from pending_logins after consumption"
+        );
+
+        // Connected client state populated with the right account_id and
+        // a key matching the session_key bytes. Any drift here breaks
+        // the entire encrypted channel.
+        let state = connected
+            .lock()
+            .unwrap()
+            .get(&addr)
+            .map(|c| {
+                (
+                    c.account_id,
+                    c.access_level,
+                    c.key,
+                    c.world_entry_sent,
+                    c.char_list_sent,
+                )
+            })
+            .expect("connected entry present");
+        assert_eq!(state.0, expected_account_id, "account_id from PendingLogin");
+        assert_eq!(state.1, 0, "access_level from PendingLogin");
+        assert_eq!(state.2, [0xABu8; 32], "key matches the decoded session_key");
+        assert!(
+            !state.3,
+            "world_entry_sent starts false (no playCharacter yet)"
+        );
+        assert!(!state.4, "char_list_sent starts false");
+
+        cancel_session(&connected, addr);
+    }
+
+    /// Phase 3 with an unknown ticket must NOT register a connected
+    /// state — the function logs and returns Ok. Without this, a
+    /// replayed-ticket packet from a stale client could create a
+    /// half-initialized ConnectedClientState (no key, no account).
+    #[tokio::test]
+    async fn login_with_unknown_ticket_does_not_register_state() {
+        let socket = make_udp_socket().await;
+        let addr: SocketAddr = "127.0.0.1:55556".parse().unwrap();
+
+        let pending_logins = Arc::new(Mutex::new(HashMap::new()));
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+        let cell_tx = None;
+
+        // pending_logins is empty — any ticket lookup must miss.
+        handle_login(
+            &socket,
+            addr,
+            1,
+            "DOES_NOT_EXIST_00000",
+            &pending_logins,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("Phase 3 with unknown ticket returns Ok and logs");
+
+        assert!(
+            connected.lock().unwrap().is_empty(),
+            "unknown ticket must not produce a ConnectedClientState"
+        );
+    }
+
+    /// Duplicate-login eviction (KI-7): when a second Phase 3 lands for
+    /// the same account_id from a different SocketAddr, the prior
+    /// session is evicted — its addr removed from `connected` and
+    /// LOGGED_OFF dispatched to the old client. Without this, two
+    /// active sessions per account corrupt entity state on both sides.
+    #[tokio::test]
+    async fn second_login_for_same_account_evicts_first_session() {
+        let socket = make_udp_socket().await;
+        let addr_a: SocketAddr = "127.0.0.1:55557".parse().unwrap();
+        let addr_b: SocketAddr = "127.0.0.1:55558".parse().unwrap();
+
+        let pending_logins = Arc::new(Mutex::new(HashMap::new()));
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+        let cell_tx = None;
+
+        const ACCOUNT_ID: u32 = 0xC0FF_EE42;
+
+        // Session A: original login.
+        let mut p_a = make_pending_login(ACCOUNT_ID, 0x01);
+        p_a.ticket = "TICKETA000000000001A".to_string();
+        let ticket_a = p_a.ticket.clone();
+        pending_logins.lock().unwrap().insert(ticket_a.clone(), p_a);
+        handle_login(
+            &socket,
+            addr_a,
+            1,
+            &ticket_a,
+            &pending_logins,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("first login");
+        assert!(
+            connected.lock().unwrap().contains_key(&addr_a),
+            "session A registered after first login"
+        );
+
+        // Session B: same account_id, different addr — must evict A.
+        let mut p_b = make_pending_login(ACCOUNT_ID, 0x02);
+        p_b.ticket = "TICKETB000000000002B".to_string();
+        let ticket_b = p_b.ticket.clone();
+        pending_logins.lock().unwrap().insert(ticket_b.clone(), p_b);
+        handle_login(
+            &socket,
+            addr_b,
+            2,
+            &ticket_b,
+            &pending_logins,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("second login");
+
+        let map = connected.lock().unwrap();
+        assert!(
+            !map.contains_key(&addr_a),
+            "addr_a (session A) must be evicted when account_id collides on a new addr",
+        );
+        assert!(
+            map.contains_key(&addr_b),
+            "addr_b (session B) takes the slot"
+        );
+        assert_eq!(
+            map.get(&addr_b).unwrap().key,
+            [0x02u8; 32],
+            "session B's key must come from its OWN PendingLogin, not A's stale one"
+        );
+        drop(map);
+
+        cancel_session(&connected, addr_b);
     }
 }
