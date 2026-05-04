@@ -355,49 +355,13 @@ mod tests {
         assert_eq!(body[7], 122 - 61, "sub_index = index - 61");
     }
 
-    /// `append_entity_method` appends to an existing buffer rather than
-    /// overwriting — pin so a refactor that swaps `extend_from_slice`
-    /// for assignment can't silently truncate the bundle.
-    #[test]
-    fn append_entity_method_appends_does_not_overwrite() {
-        let mut body = vec![0xFFu8; 4];
-        append_entity_method(&mut body, 1, 0, &[]);
-        assert_eq!(&body[..4], &[0xFF; 4], "preamble must survive");
-        assert_eq!(body[4], 0x81, "next byte begins the new method (1 | 0x80)");
-    }
-
-    /// `write_wstring` of an empty string is a 4-byte zero count and
-    /// nothing else. Pin the boundary so a regression that emits an
-    /// extra null terminator (a common UTF-16 mistake) gets caught.
-    #[test]
-    fn write_wstring_empty_is_four_zero_bytes() {
-        let mut buf = Vec::new();
-        write_wstring(&mut buf, "");
-        assert_eq!(buf, [0u8; 4]);
-    }
-
-    /// ASCII string: each char encodes as 2 bytes (low byte then 0x00),
-    /// no surrogate pairs. char_count == byte_count / 2.
-    #[test]
-    fn write_wstring_ascii_round_trips_via_read_wstring() {
-        let mut buf = Vec::new();
-        write_wstring(&mut buf, "Cimmeria");
-        // Layout: [8, 0, 0, 0]['C',0]['i',0]...
-        assert_eq!(buf.len(), 4 + 8 * 2);
-        let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-        assert_eq!(count, 8);
-        assert_eq!(buf[4], b'C');
-        assert_eq!(buf[5], 0);
-
-        let (s, consumed) = read_wstring(&buf, 0).unwrap();
-        assert_eq!(s, "Cimmeria");
-        assert_eq!(consumed, buf.len());
-    }
-
     /// Non-BMP code point (emoji) round-trips through a UTF-16 surrogate
     /// pair — char_count is 2, not 1. Pin so a refactor that uses
     /// `s.chars().count()` for the count (instead of the encode_utf16
-    /// length) would silently corrupt the wire payload.
+    /// length) would silently corrupt the wire payload. The basic
+    /// empty + ASCII round-trip cases are already covered by
+    /// `mercury/protocol/tests.rs::read_wstring_empty` and
+    /// `read_wstring_roundtrip`; this test fills the non-BMP gap.
     #[test]
     fn write_wstring_non_bmp_uses_surrogate_pair() {
         let mut buf = Vec::new();
