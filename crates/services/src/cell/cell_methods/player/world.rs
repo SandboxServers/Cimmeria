@@ -284,3 +284,193 @@ async fn handle_reload(
         })
         .await;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cimmeria_entity::abilities::AbilityDef;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    fn make_mgr_with_player() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+        }
+        mgr.connect_entity(1);
+        mgr
+    }
+
+    #[tokio::test]
+    async fn dispatch_returns_false_for_unknown_method() {
+        let mut mgr = make_mgr_with_player();
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(8);
+        let handled = dispatch(1, 9999, &[], &tx, &mut mgr, &engine).await;
+        assert!(!handled);
+    }
+
+    /// SET_AUTO_CYCLE flips entity.abilities.auto_cycle. When
+    /// disabled, must clear auto_cycle_ability_id too — otherwise a
+    /// stale ability id would re-trigger on the next enable cycle.
+    #[tokio::test]
+    async fn set_auto_cycle_disable_clears_ability_id() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.abilities.auto_cycle = true;
+            e.abilities.auto_cycle_ability_id = Some(597);
+        }
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(8);
+
+        // args = [0] → enabled = false
+        let handled = dispatch(1, SET_AUTO_CYCLE, &[0], &tx, &mut mgr, &engine).await;
+        assert!(handled);
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(!e.abilities.auto_cycle);
+        assert!(
+            e.abilities.auto_cycle_ability_id.is_none(),
+            "disable must also clear auto_cycle_ability_id"
+        );
+    }
+
+    /// SET_AUTO_CYCLE enable doesn't touch auto_cycle_ability_id —
+    /// that's set elsewhere. Pin so a refactor that conflates the
+    /// two doesn't leak.
+    #[tokio::test]
+    async fn set_auto_cycle_enable_only_sets_flag() {
+        let mut mgr = make_mgr_with_player();
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(8);
+
+        let handled = dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+        assert!(handled);
+        let e = mgr.get_entity(1).unwrap();
+        assert!(e.abilities.auto_cycle);
+        // auto_cycle_ability_id stays None (was never set)
+        assert!(e.abilities.auto_cycle_ability_id.is_none());
+    }
+
+    /// TRIGGER_REGION with a negative region_id must be rejected
+    /// without crashing — historical regression where i32 → u32
+    /// cast sign-extended into a high u32 that no real region
+    /// matched, but the warn log was the only signal.
+    #[tokio::test]
+    async fn trigger_region_with_negative_id_rejects_cleanly() {
+        let mut mgr = make_mgr_with_player();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        // Layout: i32 region_id + u8 b_entering + 3 × f32 position.
+        let mut args = Vec::with_capacity(17);
+        args.extend_from_slice(&(-5i32).to_le_bytes());
+        args.push(1);
+        args.extend_from_slice(&0.0f32.to_le_bytes());
+        args.extend_from_slice(&0.0f32.to_le_bytes());
+        args.extend_from_slice(&0.0f32.to_le_bytes());
+
+        let handled = dispatch(1, TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+        assert!(
+            handled,
+            "TRIGGER_REGION must claim the method even when region_id is bogus"
+        );
+        // No region match → no fire_*_region cascades, no ring_transport.
+        assert!(
+            rx.try_recv().is_err(),
+            "negative region_id must not emit packets"
+        );
+    }
+
+    /// `handle_reload` is a no-op when the active slot is at full
+    /// clip and no reload is in flight. Pin so a refactor that
+    /// always starts a reload (and therefore wastes ammo on every
+    /// keypress) gets caught.
+    #[tokio::test]
+    async fn handle_reload_no_op_when_already_full() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 30, // full
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+        }
+        let (tx, mut rx) = mpsc::channel(8);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            e.reload_complete_at.is_none(),
+            "no reload should be queued when full"
+        );
+        assert!(rx.try_recv().is_err(), "no packets should be emitted");
+    }
+
+    /// `handle_reload` from an empty magazine pins the slot id at
+    /// the time of issue. If the player swaps mid-reload, the
+    /// completion tick must refill THIS slot, not whatever slot is
+    /// active when the deadline elapses.
+    #[tokio::test]
+    async fn handle_reload_pins_reload_slot_id_to_current_active_slot() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.bandolier_items.insert(
+                2,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 2;
+        }
+        // Seed the reload AbilityDef so warmup/cooldown/event_set are read.
+        mgr.ability_defs.insert(
+            596,
+            AbilityDef {
+                ability_id: 596,
+                name: "reload".to_string(),
+                cooldown: 1.0,
+                warmup: 0.5,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 0,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+        let (tx, _rx) = mpsc::channel(16);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            e.reload_complete_at.is_some(),
+            "reload must arm the deadline"
+        );
+        assert_eq!(
+            e.reload_slot_id,
+            Some(2),
+            "reload_slot_id must capture the active slot at issue time, not be re-read at completion"
+        );
+    }
+}
