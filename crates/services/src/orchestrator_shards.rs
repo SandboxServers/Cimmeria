@@ -80,12 +80,19 @@ mod tests {
     use crate::test_support::require_db_or_skip;
 
     /// Sentinel `shard_id` base. Keep above `i32::MAX / 2` so a bug that
-    /// truncates to `i16` would land somewhere obviously wrong.
+    /// truncates to `i16` would land somewhere obviously wrong. Each
+    /// test uses its own dense slot inside this base so cleanup can be
+    /// scoped to the rows the test actually inserts (rather than a
+    /// blanket `>= TEST_SHARD_BASE` that would also nuke rows from
+    /// concurrent tests).
     const TEST_SHARD_BASE: i32 = 0x7000_0000;
 
-    async fn cleanup(pool: &PgPool) {
-        let _ = sqlx::query("DELETE FROM shards WHERE shard_id >= $1")
-            .bind(TEST_SHARD_BASE)
+    /// Delete only the rows the test actually inserted. Per-test
+    /// scoping keeps a future addition that uses a different sentinel
+    /// slot from accidentally nuking a sibling test's rows.
+    async fn cleanup_ids(pool: &PgPool, ids: &[i32]) {
+        let _ = sqlx::query("DELETE FROM shards WHERE shard_id = ANY($1)")
+            .bind(ids)
             .execute(pool)
             .await;
     }
@@ -121,20 +128,30 @@ mod tests {
     /// `shard_id` order. The auth service relies on stable ordering
     /// for Phase 1 advertisement — clients pin shards by index, so a
     /// flipped order silently re-maps which shard the user lands on.
+    ///
+    /// Names are chosen to sort OPPOSITELY to shard_id ("ZSentLow" is
+    /// alphabetically last but has the LOW shard_id; "ASentHigh" is
+    /// alphabetically first but has the HIGH shard_id). A regression
+    /// that accidentally `ORDER BY name` (or any non-`shard_id` order)
+    /// would produce the alphabetic order — which is the OPPOSITE of
+    /// what we assert here. Without that name choice the test would
+    /// silently pass even if `ORDER BY shard_id` got swapped for
+    /// `ORDER BY name`, since the two would coincide.
     #[tokio::test]
     async fn query_all_shards_orders_results_by_shard_id() {
         let pool = Arc::new(require_db_or_skip!());
-        cleanup(&pool).await;
+        let low_id = TEST_SHARD_BASE + 0x10;
+        let high_id = TEST_SHARD_BASE + 0x20;
+        let test_ids = [low_id, high_id];
+        cleanup_ids(&pool, &test_ids).await;
 
         // Insert in REVERSE shard_id order so a missing ORDER BY would
-        // surface as the inserted-order list.
-        let high_id = TEST_SHARD_BASE + 0x20;
-        let low_id = TEST_SHARD_BASE + 0x10;
+        // surface as the inserted-order list (high before low).
         sqlx::query(
             "INSERT INTO shards (shard_id, name, key, protected) VALUES ($1, $2, '', false)",
         )
         .bind(high_id)
-        .bind("ZShardHigh")
+        .bind("ASentHigh") // alphabetically first, but high shard_id
         .execute(pool.as_ref())
         .await
         .unwrap();
@@ -142,13 +159,13 @@ mod tests {
             "INSERT INTO shards (shard_id, name, key, protected) VALUES ($1, $2, '', false)",
         )
         .bind(low_id)
-        .bind("AShardLow")
+        .bind("ZSentLow") // alphabetically last, but low shard_id
         .execute(pool.as_ref())
         .await
         .unwrap();
 
         let rows = query_all_shards(&pool).await;
-        let positions: Vec<usize> = ["AShardLow", "ZShardHigh"]
+        let positions: Vec<usize> = ["ZSentLow", "ASentHigh"]
             .iter()
             .filter_map(|name| rows.iter().position(|r| r.name == *name))
             .collect();
@@ -157,12 +174,17 @@ mod tests {
             2,
             "both inserted sentinels must round-trip through query_all_shards"
         );
+        // ZSentLow (shard_id=low) must come BEFORE ASentHigh (shard_id=high).
+        // Alphabetic order would put ASentHigh first — failing this assertion
+        // means the query is sorting by name (or insertion order, which also
+        // puts ASentHigh first) instead of shard_id.
         assert!(
             positions[0] < positions[1],
-            "AShardLow (shard_id={low_id}) must appear before ZShardHigh (shard_id={high_id}) — query missed ORDER BY"
+            "ZSentLow (shard_id={low_id}) must appear before ASentHigh (shard_id={high_id}) — \
+             query is using name/insert order instead of shard_id"
         );
 
-        cleanup(&pool).await;
+        cleanup_ids(&pool, &test_ids).await;
     }
 
     /// `query_all_shards` filters out rows whose `name` is NULL — the
@@ -174,10 +196,10 @@ mod tests {
     #[tokio::test]
     async fn query_all_shards_filters_null_name_rows() {
         let pool = Arc::new(require_db_or_skip!());
-        cleanup(&pool).await;
-
         let null_name_id = TEST_SHARD_BASE + 0x30;
         let real_name_id = TEST_SHARD_BASE + 0x31;
+        let test_ids = [null_name_id, real_name_id];
+        cleanup_ids(&pool, &test_ids).await;
         sqlx::query(
             "INSERT INTO shards (shard_id, name, key, protected) VALUES ($1, NULL, '', false)",
         )
@@ -205,7 +227,7 @@ mod tests {
             "NULL-name row must be filter_map'd away, not surface as an empty-string entry"
         );
 
-        cleanup(&pool).await;
+        cleanup_ids(&pool, &test_ids).await;
     }
 
     /// `protected` column round-trips end-to-end. Auth Phase 1 advertises
@@ -215,10 +237,10 @@ mod tests {
     #[tokio::test]
     async fn query_all_shards_preserves_protected_flag() {
         let pool = Arc::new(require_db_or_skip!());
-        cleanup(&pool).await;
-
         let protected_id = TEST_SHARD_BASE + 0x40;
         let unprotected_id = TEST_SHARD_BASE + 0x41;
+        let test_ids = [protected_id, unprotected_id];
+        cleanup_ids(&pool, &test_ids).await;
         sqlx::query("INSERT INTO shards (shard_id, name, key, protected) VALUES ($1, 'ProtSentinel', '', true)")
             .bind(protected_id)
             .execute(pool.as_ref())
@@ -242,6 +264,6 @@ mod tests {
         assert!(prot.protected, "protected=true must round-trip");
         assert!(!open.protected, "protected=false must round-trip");
 
-        cleanup(&pool).await;
+        cleanup_ids(&pool, &test_ids).await;
     }
 }
