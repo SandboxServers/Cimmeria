@@ -314,3 +314,166 @@ pub(crate) fn encrypt_packet(plaintext: &[u8], key: &[u8; 32]) -> Vec<u8> {
     enc.encrypt(plaintext)
         .expect("Mercury packet encryption failed")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Direct encoding for method indices < 61. Wire layout:
+    /// `[(index | 0x80): u8] [word_len: u16 LE] [entity_id: u32 LE] [args]`
+    /// where `word_len = 4 (entity_id) + args.len()`.
+    #[test]
+    fn append_entity_method_direct_encoding_for_low_index() {
+        let mut body = Vec::new();
+        let args = [0xAA, 0xBB, 0xCC];
+        // Pick index 12 (onTimerUpdate). 12 | 0x80 = 0x8C.
+        append_entity_method(&mut body, 12, 0xDEAD_BEEF, &args);
+
+        assert_eq!(body[0], 0x8C, "msg_id must be (index | 0x80)");
+        let word_len = u16::from_le_bytes([body[1], body[2]]);
+        assert_eq!(word_len, 4 + args.len() as u16);
+        let entity_id = u32::from_le_bytes([body[3], body[4], body[5], body[6]]);
+        assert_eq!(entity_id, 0xDEAD_BEEF);
+        assert_eq!(&body[7..], &args);
+    }
+
+    /// Extended encoding for method indices >= 61. Wire layout:
+    /// `[0xBD: u8] [word_len: u16 LE] [entity_id: u32 LE]
+    ///   [sub_index = (index - 61): u8] [args]`
+    /// where `word_len = 4 (entity_id) + 1 (sub_index) + args.len()`.
+    /// The boundary index 61 must round-trip into sub_index 0.
+    #[test]
+    fn append_entity_method_extended_encoding_at_boundary_61() {
+        let mut body = Vec::new();
+        let args = [0x11, 0x22];
+        append_entity_method(&mut body, 61, 0x12345678, &args);
+
+        assert_eq!(body[0], 0xBD, "extended marker must be 0xBD");
+        let word_len = u16::from_le_bytes([body[1], body[2]]);
+        assert_eq!(word_len, (4 + 1 + args.len()) as u16);
+        let entity_id = u32::from_le_bytes([body[3], body[4], body[5], body[6]]);
+        assert_eq!(entity_id, 0x12345678);
+        assert_eq!(body[7], 0, "sub_index for index 61 must be 0");
+        assert_eq!(&body[8..], &args);
+    }
+
+    /// Pin index 122 (setupWorldParameters) — the comment in the source
+    /// calls this out as a verified-working extended-encoded method. A
+    /// regression that flips the >= 61 boundary would silently break it.
+    #[test]
+    fn append_entity_method_extended_encoding_at_index_122() {
+        let mut body = Vec::new();
+        append_entity_method(&mut body, 122, 1, &[]);
+
+        assert_eq!(body[0], 0xBD);
+        let word_len = u16::from_le_bytes([body[1], body[2]]);
+        assert_eq!(word_len, 4 + 1, "no args, only entity_id + sub_index");
+        assert_eq!(body[7], 122 - 61, "sub_index = index - 61");
+    }
+
+    /// `append_entity_method` appends to an existing buffer rather than
+    /// overwriting — pin so a refactor that swaps `extend_from_slice`
+    /// for assignment can't silently truncate the bundle.
+    #[test]
+    fn append_entity_method_appends_does_not_overwrite() {
+        let mut body = vec![0xFFu8; 4];
+        append_entity_method(&mut body, 1, 0, &[]);
+        assert_eq!(&body[..4], &[0xFF; 4], "preamble must survive");
+        assert_eq!(body[4], 0x81, "next byte begins the new method (1 | 0x80)");
+    }
+
+    /// `write_wstring` of an empty string is a 4-byte zero count and
+    /// nothing else. Pin the boundary so a regression that emits an
+    /// extra null terminator (a common UTF-16 mistake) gets caught.
+    #[test]
+    fn write_wstring_empty_is_four_zero_bytes() {
+        let mut buf = Vec::new();
+        write_wstring(&mut buf, "");
+        assert_eq!(buf, [0u8; 4]);
+    }
+
+    /// ASCII string: each char encodes as 2 bytes (low byte then 0x00),
+    /// no surrogate pairs. char_count == byte_count / 2.
+    #[test]
+    fn write_wstring_ascii_round_trips_via_read_wstring() {
+        let mut buf = Vec::new();
+        write_wstring(&mut buf, "Cimmeria");
+        // Layout: [8, 0, 0, 0]['C',0]['i',0]...
+        assert_eq!(buf.len(), 4 + 8 * 2);
+        let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+        assert_eq!(count, 8);
+        assert_eq!(buf[4], b'C');
+        assert_eq!(buf[5], 0);
+
+        let (s, consumed) = read_wstring(&buf, 0).unwrap();
+        assert_eq!(s, "Cimmeria");
+        assert_eq!(consumed, buf.len());
+    }
+
+    /// Non-BMP code point (emoji) round-trips through a UTF-16 surrogate
+    /// pair — char_count is 2, not 1. Pin so a refactor that uses
+    /// `s.chars().count()` for the count (instead of the encode_utf16
+    /// length) would silently corrupt the wire payload.
+    #[test]
+    fn write_wstring_non_bmp_uses_surrogate_pair() {
+        let mut buf = Vec::new();
+        // "🌟" (U+1F31F) is outside the BMP and encodes to 2 UTF-16 code
+        // units (D83C DF1F).
+        write_wstring(&mut buf, "🌟");
+        let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+        assert_eq!(count, 2, "non-BMP char encodes to 2 UTF-16 code units");
+        assert_eq!(buf.len(), 4 + 4);
+        let (s, consumed) = read_wstring(&buf, 0).unwrap();
+        assert_eq!(s, "🌟");
+        assert_eq!(consumed, buf.len());
+    }
+
+    /// `read_wstring` from an offset > 0 must read the count + chars
+    /// starting at that offset, returning bytes_consumed relative to
+    /// the wstring's start (NOT the buffer's start). Pin so callers
+    /// can chain reads of multiple wstrings in one buffer.
+    #[test]
+    fn read_wstring_with_offset() {
+        let mut buf = vec![0xAAu8; 5]; // junk preamble
+        write_wstring(&mut buf, "hi");
+        // wstring starts at offset 5; total byte len = 4 + 4 = 8.
+        let (s, consumed) = read_wstring(&buf, 5).unwrap();
+        assert_eq!(s, "hi");
+        assert_eq!(
+            consumed, 8,
+            "consumed must be the wstring's byte length, not absolute end offset"
+        );
+    }
+
+    /// Truncated wstring returns Err — both for "not enough bytes for
+    /// the length field" and "length field claims more bytes than the
+    /// buffer holds". Pin both branches; an earlier version that
+    /// panicked on the second case would crash on adversarial input.
+    #[test]
+    fn read_wstring_rejects_truncated_inputs() {
+        // Case 1: only 3 bytes available, can't even read the count.
+        let buf = [0u8, 0, 0];
+        assert!(read_wstring(&buf, 0).is_err());
+
+        // Case 2: count claims 10 chars (20 bytes) but only 4 bytes of
+        // payload available.
+        let mut buf = vec![10u8, 0, 0, 0]; // count = 10
+        buf.extend_from_slice(&[0u8; 4]); // only 2 chars worth of payload
+        assert!(read_wstring(&buf, 0).is_err());
+    }
+
+    /// `encrypt_packet` produces byte-identical output to
+    /// `MercuryEncryption::from_session_key(key).encrypt(plaintext).unwrap()`.
+    /// Pin so a refactor that swaps the wrapper for a different code
+    /// path can't silently change the wire bytes.
+    #[test]
+    fn encrypt_packet_matches_direct_encryption_call() {
+        let key = [0x42u8; 32];
+        let plaintext = b"hello mercury";
+        let via_helper = encrypt_packet(plaintext, &key);
+        let via_direct = MercuryEncryption::from_session_key(key)
+            .encrypt(plaintext)
+            .unwrap();
+        assert_eq!(via_helper, via_direct);
+    }
+}
