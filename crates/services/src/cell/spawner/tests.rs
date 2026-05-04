@@ -194,7 +194,10 @@ mod live_db {
         // container_id, never an array. Pin via type alone (the map's
         // value type is i32) but also assert non-empty so a future
         // refactor can't accidentally degrade to "table empty".
-        assert!(!map.is_empty(), "seeded resources.items has at least one row with container_sets");
+        assert!(
+            !map.is_empty(),
+            "seeded resources.items has at least one row with container_sets"
+        );
     }
 
     #[tokio::test]
