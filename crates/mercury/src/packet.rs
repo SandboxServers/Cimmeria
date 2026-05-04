@@ -584,6 +584,10 @@ mod tests {
     /// (innermost-to-outermost: first_req_offset → seq_id → acks → ack_count)
     /// because the existing tests cover each footer in isolation but never
     /// the full stack at once.
+    ///
+    /// Asserts the EXACT raw byte sequence build_outgoing emits before
+    /// re-parsing, so a serializer/parser pair that both agree on a
+    /// wrong layout can't slip through.
     #[test]
     fn round_trip_reliable_with_seq_and_acks() {
         let flags = FLAG_RELIABLE | FLAG_HAS_SEQUENCE | FLAG_HAS_ACKS | FLAG_ON_CHANNEL;
@@ -591,8 +595,24 @@ mod tests {
         let acks = [101u32, 102, 103];
 
         let raw = build_outgoing(flags, body, Some(7), &acks, None);
-        let pkt = parse_incoming(&raw).unwrap();
+        // Hand-computed wire layout:
+        //   [flags:u8] [body:5] [seq_id:u32 LE = 7]
+        //   [ack[0]:u32 LE = 101] [ack[1]:u32 LE = 102] [ack[2]:u32 LE = 103]
+        //   [ack_count:u8 = 3]
+        // No first_req_offset (FLAG_HAS_REQUESTS not set), no fragment ids.
+        // Total: 1 + 5 + 4 + 4*3 + 1 = 23 bytes.
+        let expected: &[u8] = &[
+            flags, // flags byte
+            0xAB, 0xCD, 0xEF, 0x12, 0x34, // body
+            7, 0, 0, 0, // seq_id = 7
+            101, 0, 0, 0, // ack[0]
+            102, 0, 0, 0, // ack[1]
+            103, 0, 0, 0, // ack[2]
+            3, // ack_count
+        ];
+        assert_eq!(raw.as_ref(), expected, "byte-exact wire layout");
 
+        let pkt = parse_incoming(&raw).unwrap();
         assert_eq!(pkt.flags, flags);
         assert_eq!(pkt.seq_id, Some(7));
         assert_eq!(pkt.acks, vec![101u32, 102, 103]);
@@ -607,6 +627,9 @@ mod tests {
     /// responsible for setting FLAG_HAS_ACKS in the base flags;
     /// build_outgoing_fragmented OR-merges FLAG_FRAGMENTED |
     /// FLAG_HAS_SEQUENCE on top.
+    ///
+    /// Asserts byte-exact output before re-parsing so a co-broken
+    /// builder/parser pair can't pass.
     #[test]
     fn round_trip_fragmented_with_reliable_and_acks() {
         let acks = [201u32, 202];
@@ -618,8 +641,24 @@ mod tests {
             502,
             &acks,
         );
-        let pkt = parse_incoming(&raw).unwrap();
+        // Hand-computed wire layout:
+        //   [flags:u8] [body:16] [frag_begin:u32 LE = 500]
+        //   [frag_end:u32 LE = 502] [seq_id:u32 LE = 500]
+        //   [ack[0]:u32 LE = 201] [ack[1]:u32 LE = 202] [ack_count:u8 = 2]
+        // Total: 1 + 16 + 4 + 4 + 4 + 4*2 + 1 = 38 bytes.
+        let expected_flags =
+            FLAG_RELIABLE | FLAG_ON_CHANNEL | FLAG_HAS_ACKS | FLAG_FRAGMENTED | FLAG_HAS_SEQUENCE;
+        let mut expected = vec![expected_flags];
+        expected.extend_from_slice(b"fragment-payload");
+        expected.extend_from_slice(&500u32.to_le_bytes()); // frag_begin
+        expected.extend_from_slice(&502u32.to_le_bytes()); // frag_end
+        expected.extend_from_slice(&500u32.to_le_bytes()); // seq_id
+        expected.extend_from_slice(&201u32.to_le_bytes()); // ack[0]
+        expected.extend_from_slice(&202u32.to_le_bytes()); // ack[1]
+        expected.push(2); // ack_count
+        assert_eq!(raw.as_ref(), expected.as_slice(), "byte-exact wire layout");
 
+        let pkt = parse_incoming(&raw).unwrap();
         assert!(pkt.flags & FLAG_FRAGMENTED != 0);
         assert!(pkt.flags & FLAG_HAS_SEQUENCE != 0);
         assert!(pkt.flags & FLAG_RELIABLE != 0);

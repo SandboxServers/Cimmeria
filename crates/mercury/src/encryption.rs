@@ -364,15 +364,31 @@ mod tests {
     /// rather than letting it slip through to a garbage plaintext —
     /// the encrypt-then-MAC ordering guarantees we reject before the
     /// AES decrypt step runs.
+    ///
+    /// Pin via `from_session_key` on both sides so the only thing that
+    /// differs is the 32-byte key (zero IV, HMAC key == AES key on both).
+    /// `test_keys()`-derived ciphertext would also have a different IV
+    /// and HMAC key, which would mask whether HMAC truly catches the
+    /// AES-key mismatch alone.
     #[test]
     fn decrypt_with_wrong_key_fails_hmac_verification() {
         let plaintext = b"secret payload";
-        let ct = test_keys().encrypt(plaintext).unwrap();
+        let ct = MercuryEncryption::from_session_key([0x55u8; 32])
+            .encrypt(plaintext)
+            .unwrap();
 
-        // A different 32-byte key — same shape, different bytes.
+        // Same `from_session_key` shape so IV and HMAC-key derivation
+        // are identical to the encrypt side — only the AES/HMAC key
+        // bytes differ.
         let wrong = MercuryEncryption::from_session_key([0xAAu8; 32]);
         let err = wrong.decrypt(&ct).unwrap_err();
-        assert!(matches!(err, CimmeriaError::Encryption(_)));
+        let CimmeriaError::Encryption(msg) = err else {
+            panic!("expected Encryption error");
+        };
+        assert!(
+            msg.contains("HMAC-MD5 verification failed"),
+            "wrong-key decrypt must be caught by HMAC verify branch (encrypt-then-MAC), got: {msg}"
+        );
     }
 
     /// Buffer exactly `HMAC_TAG_LEN` bytes (16) has an empty ciphertext
@@ -384,7 +400,13 @@ mod tests {
         let enc = test_keys();
         // 16 bytes = exactly the HMAC tag; ciphertext portion is empty.
         let err = enc.decrypt(&[0u8; 16]).unwrap_err();
-        assert!(matches!(err, CimmeriaError::Encryption(_)));
+        let CimmeriaError::Encryption(msg) = err else {
+            panic!("expected Encryption error");
+        };
+        assert!(
+            msg.contains("ciphertext portion is empty"),
+            "empty-ciphertext input must hit the dedicated guard, not slip into HMAC verify; got: {msg}"
+        );
     }
 
     /// Buffer with a ciphertext portion that's not a multiple of the
