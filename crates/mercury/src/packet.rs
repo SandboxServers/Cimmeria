@@ -24,6 +24,9 @@ use bytes::{BufMut, Bytes, BytesMut};
 use cimmeria_common::{CimmeriaError, Result};
 
 #[cfg(test)]
+mod parse_proptest;
+
+#[cfg(test)]
 mod replay_smoke;
 
 // ── Flag byte constants (C++ packet.hpp) ────────────────────────────────────
