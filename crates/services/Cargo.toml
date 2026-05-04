@@ -25,3 +25,9 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+# HTTP client for the login smoke (drives the auth Phase 1 / Phase 2
+# endpoints in-process). Already used elsewhere in the workspace, so
+# version comes from the workspace lock.
+reqwest = { workspace = true }
