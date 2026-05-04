@@ -180,7 +180,10 @@ mod live_db {
         // the cache is non-empty (the seed has weapons) and that every cached
         // entry's clip_size is non-negative (clip_size is i32 in the
         // resources.items column; negative would indicate a sign-extend bug).
-        assert!(!map.is_empty(), "seeded resources.items has weapons with clip_size populated");
+        assert!(
+            !map.is_empty(),
+            "seeded resources.items has weapons with clip_size populated"
+        );
         for (item_id, def) in &map {
             assert!(
                 def.clip_size >= 0,
