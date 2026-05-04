@@ -314,3 +314,114 @@ pub(crate) fn encrypt_packet(plaintext: &[u8], key: &[u8; 32]) -> Vec<u8> {
     enc.encrypt(plaintext)
         .expect("Mercury packet encryption failed")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Direct encoding for method indices < 61. Wire layout:
+    /// `[(index | 0x80): u8] [word_len: u16 LE] [entity_id: u32 LE] [args]`
+    /// where `word_len = 4 (entity_id) + args.len()`.
+    #[test]
+    fn append_entity_method_direct_encoding_for_low_index() {
+        let mut body = Vec::new();
+        let args = [0xAA, 0xBB, 0xCC];
+        // Pick index 12 (onTimerUpdate). 12 | 0x80 = 0x8C.
+        append_entity_method(&mut body, 12, 0xDEAD_BEEF, &args);
+
+        assert_eq!(body[0], 0x8C, "msg_id must be (index | 0x80)");
+        let word_len = u16::from_le_bytes([body[1], body[2]]);
+        assert_eq!(word_len, 4 + args.len() as u16);
+        let entity_id = u32::from_le_bytes([body[3], body[4], body[5], body[6]]);
+        assert_eq!(entity_id, 0xDEAD_BEEF);
+        assert_eq!(&body[7..], &args);
+    }
+
+    /// Pin index 122 (setupWorldParameters) — the source comment names
+    /// it as one of the indices verified to work over the wire
+    /// (alongside onPlayerDataLoaded=115). A regression that flips
+    /// the `>= 61` extended-encoding boundary would silently break
+    /// this method's wire shape. Note: the existing protocol-tests
+    /// cover the boundary case (index 61) and index 128; this test
+    /// fills the gap at the named-callsite middle of the range.
+    #[test]
+    fn append_entity_method_extended_encoding_at_index_122() {
+        let mut body = Vec::new();
+        append_entity_method(&mut body, 122, 1, &[]);
+
+        assert_eq!(body[0], 0xBD);
+        let word_len = u16::from_le_bytes([body[1], body[2]]);
+        assert_eq!(word_len, 4 + 1, "no args, only entity_id + sub_index");
+        assert_eq!(body[7], 122 - 61, "sub_index = index - 61");
+    }
+
+    /// Non-BMP code point (emoji) round-trips through a UTF-16 surrogate
+    /// pair — char_count is 2, not 1. Pin so a refactor that uses
+    /// `s.chars().count()` for the count (instead of the encode_utf16
+    /// length) would silently corrupt the wire payload. The basic
+    /// empty + ASCII round-trip cases are already covered by
+    /// `mercury/protocol/tests.rs::read_wstring_empty` and
+    /// `read_wstring_roundtrip`; this test fills the non-BMP gap.
+    #[test]
+    fn write_wstring_non_bmp_uses_surrogate_pair() {
+        let mut buf = Vec::new();
+        // "🌟" (U+1F31F) is outside the BMP and encodes to 2 UTF-16 code
+        // units (D83C DF1F).
+        write_wstring(&mut buf, "🌟");
+        let count = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+        assert_eq!(count, 2, "non-BMP char encodes to 2 UTF-16 code units");
+        assert_eq!(buf.len(), 4 + 4);
+        let (s, consumed) = read_wstring(&buf, 0).unwrap();
+        assert_eq!(s, "🌟");
+        assert_eq!(consumed, buf.len());
+    }
+
+    /// `read_wstring` from an offset > 0 must read the count + chars
+    /// starting at that offset, returning bytes_consumed relative to
+    /// the wstring's start (NOT the buffer's start). Pin so callers
+    /// can chain reads of multiple wstrings in one buffer.
+    #[test]
+    fn read_wstring_with_offset() {
+        let mut buf = vec![0xAAu8; 5]; // junk preamble
+        write_wstring(&mut buf, "hi");
+        // wstring starts at offset 5; total byte len = 4 + 4 = 8.
+        let (s, consumed) = read_wstring(&buf, 5).unwrap();
+        assert_eq!(s, "hi");
+        assert_eq!(
+            consumed, 8,
+            "consumed must be the wstring's byte length, not absolute end offset"
+        );
+    }
+
+    /// Truncated wstring returns Err — both for "not enough bytes for
+    /// the length field" and "length field claims more bytes than the
+    /// buffer holds". Pin both branches; an earlier version that
+    /// panicked on the second case would crash on adversarial input.
+    #[test]
+    fn read_wstring_rejects_truncated_inputs() {
+        // Case 1: only 3 bytes available, can't even read the count.
+        let buf = [0u8, 0, 0];
+        assert!(read_wstring(&buf, 0).is_err());
+
+        // Case 2: count claims 10 chars (20 bytes) but only 4 bytes of
+        // payload available.
+        let mut buf = vec![10u8, 0, 0, 0]; // count = 10
+        buf.extend_from_slice(&[0u8; 4]); // only 2 chars worth of payload
+        assert!(read_wstring(&buf, 0).is_err());
+    }
+
+    /// `encrypt_packet` produces byte-identical output to
+    /// `MercuryEncryption::from_session_key(key).encrypt(plaintext).unwrap()`.
+    /// Pin so a refactor that swaps the wrapper for a different code
+    /// path can't silently change the wire bytes.
+    #[test]
+    fn encrypt_packet_matches_direct_encryption_call() {
+        let key = [0x42u8; 32];
+        let plaintext = b"hello mercury";
+        let via_helper = encrypt_packet(plaintext, &key);
+        let via_direct = MercuryEncryption::from_session_key(key)
+            .encrypt(plaintext)
+            .unwrap();
+        assert_eq!(via_helper, via_direct);
+    }
+}
