@@ -219,11 +219,24 @@ fn aoi_persists_witness_set_so_subsequent_ticks_diff_correctly() {
     mgr.connect_entity(200);
 
     let first = mgr.compute_aoi_changes();
-    let first_entered = first
+    let first_entered: Vec<(u32, u32)> = first
         .iter()
-        .filter(|e| matches!(e, CellToBaseMsg::EnteredAoI { .. }))
-        .count();
-    assert!(first_entered >= 2, "first tick must populate AoI");
+        .filter_map(|e| match e {
+            CellToBaseMsg::EnteredAoI {
+                witness_id,
+                entity_id,
+                ..
+            } => Some((*witness_id, *entity_id)),
+            _ => None,
+        })
+        .collect();
+    // Two connected players in the same space, both within AoI radius:
+    // each must see the other once and exactly once. Tighter than
+    // ">= 2" so a regression that double-fires EnteredAoI in the same
+    // tick is caught.
+    assert_eq!(first_entered.len(), 2, "first tick must populate AoI");
+    assert!(first_entered.contains(&(100, 200)));
+    assert!(first_entered.contains(&(200, 100)));
 
     // Second tick with no movement: no further EnteredAoI events.
     let second = mgr.compute_aoi_changes();
@@ -278,9 +291,15 @@ async fn disconnect_emits_left_aoi_to_observers_then_destroys_entity() {
 }
 
 /// When the last player leaves an instanced space, the entire space
-/// instance must be destroyed (all NPCs removed too). A regression
-/// that just removes the player would leak instances on every map
-/// reload.
+/// instance must be destroyed AND every NPC inside it must be removed
+/// from the entity_space index. A regression that just removes the
+/// player would leak instances on every map reload.
+///
+/// Note: `create_entity` on an instanced world allocates a fresh
+/// instance per call, so we can't just call it twice with the same
+/// world name and expect both entities to share a space. We insert
+/// the NPC directly into the player's instance using the same
+/// pattern as `find_by_tag_does_not_cross_instance_boundaries` below.
 #[test]
 fn destroy_last_player_in_instanced_space_destroys_the_whole_space() {
     let mut mgr = make_manager();
@@ -288,17 +307,35 @@ fn destroy_last_player_in_instanced_space_destroys_the_whole_space() {
         .create_entity(100, "Castle_CellBlock", [0.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     mgr.connect_entity(100);
-    // Seed an NPC into the same instanced space.
-    mgr.create_entity(500, "Castle_CellBlock", [10.0, 0.0, 10.0], [0.0; 3])
-        .ok(); // either the same instance or a new one
-    let space_existed = mgr.spaces.contains_key(&space_id);
-    assert!(space_existed);
+
+    // Place an NPC directly into the player's instance.
+    let npc_id: u32 = 500;
+    {
+        let entity = CellEntity::new(
+            EntityId(npc_id as i32),
+            SpaceId(space_id as i32),
+            Vector3::default(),
+        );
+        mgr.spaces
+            .get_mut(&space_id)
+            .unwrap()
+            .entities
+            .insert(npc_id, entity);
+        mgr.entity_space.insert(npc_id, space_id);
+    }
+
+    assert!(mgr.spaces.contains_key(&space_id));
+    assert!(mgr.spaces[&space_id].entities.contains_key(&npc_id));
 
     mgr.destroy_entity(100);
 
     assert!(
         !mgr.spaces.contains_key(&space_id),
         "instanced space {space_id} must be destroyed when the last player leaves",
+    );
+    assert!(
+        !mgr.entity_space.contains_key(&npc_id),
+        "NPC entity_space mapping must be cleared when the host instance is destroyed"
     );
 }
 
