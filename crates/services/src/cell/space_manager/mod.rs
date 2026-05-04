@@ -24,6 +24,9 @@ mod tests;
 #[cfg(test)]
 mod aoi_churn_smoke;
 
+#[cfg(test)]
+mod aoi_differential_test;
+
 /// Grid cell size for spatial hashing (world units).
 pub(crate) const GRID_CELL_SIZE: f32 = 50.0;
 
