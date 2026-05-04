@@ -32,30 +32,29 @@ pub async fn handle_mail_request(
         }
     };
 
-    // Use poison-tolerant lock acquires so a panic in another thread doesn't
-    // cascade into a panic here.
-    let player_name = {
+    // Resolve the player_name only when a request arm actually needs it
+    // (RequestBody — the read packet carries the recipient's display
+    // name). Headers / Delete / Archive don't read the name, so doing
+    // the two-mutex lookup unconditionally would impose avoidable lock
+    // contention on the hot list-fetch path.
+    let lookup_player_name = || -> Option<String> {
         let addr_guard = match entity_to_addr.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        let addr = match addr_guard.get(&entity_id).copied() {
-            Some(a) => a,
-            None => {
-                drop(addr_guard);
-                tracing::warn!(entity_id, "Mail: no addr for player name lookup");
-                return;
-            }
-        };
+        let addr = addr_guard.get(&entity_id).copied();
         drop(addr_guard);
+        let addr = addr?;
         let clients = match connected.lock() {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        clients
-            .get(&addr)
-            .and_then(|c| c.player_name.clone())
-            .unwrap_or_default()
+        Some(
+            clients
+                .get(&addr)
+                .and_then(|c| c.player_name.clone())
+                .unwrap_or_default(),
+        )
     };
 
     match op {
@@ -147,7 +146,7 @@ pub async fn handle_mail_request(
                 message: String,
             }
 
-            match sqlx::query_as::<_, BodyRow>(
+            let row = match sqlx::query_as::<_, BodyRow>(
                 "SELECT message FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2",
             )
             .bind(mail_id)
@@ -155,45 +154,70 @@ pub async fn handle_mail_request(
             .fetch_optional(pool.as_ref())
             .await
             {
-                Ok(Some(row)) => {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i32;
-                    if let Err(e) = sqlx::query(
-                        "UPDATE sgw_gate_mail SET read_time = $1 WHERE mail_id = $2 AND read_time = 0",
-                    )
-                    .bind(now)
-                    .bind(mail_id)
-                    .execute(pool.as_ref())
-                    .await
-                    {
-                        tracing::warn!(entity_id, mail_id, "Mail: read_time UPDATE failed: {e}");
-                    }
-
-                    let args = mail::serialize_on_mail_read(mail_id, &row.message, &player_name);
-                    send_to_witness(
-                        socket,
-                        connected,
-                        entity_to_addr,
+                Ok(Some(row)) => row,
+                // Distinguish "row missing for this character" (legitimate
+                // permission boundary or stale client request) from "DB
+                // error" (operator-actionable). Folding both into the
+                // same warn string would hide connection failures /
+                // schema mismatches behind a benign-looking message.
+                Ok(None) => {
+                    tracing::warn!(
                         entity_id,
-                        |key, seq, acks| {
-                            build_entity_method_packet(
-                                key,
-                                seq,
-                                acks,
-                                entity_id,
-                                method_idx::ON_MAIL_READ,
-                                &args,
-                            )
-                        },
-                    )
-                    .await;
+                        mail_id,
+                        player_id,
+                        "Mail body not found for this character_id"
+                    );
+                    return;
                 }
-                _ => {
-                    tracing::warn!(entity_id, mail_id, "Mail body not found");
+                Err(e) => {
+                    tracing::error!(
+                        entity_id, mail_id, player_id, error = %e,
+                        "Mail body query failed"
+                    );
+                    return;
                 }
+            };
+
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i32;
+            if let Err(e) = sqlx::query(
+                "UPDATE sgw_gate_mail SET read_time = $1 WHERE mail_id = $2 AND read_time = 0",
+            )
+            .bind(now)
+            .bind(mail_id)
+            .execute(pool.as_ref())
+            .await
+            {
+                tracing::warn!(entity_id, mail_id, "Mail: read_time UPDATE failed: {e}");
             }
+
+            let player_name = match lookup_player_name() {
+                Some(n) => n,
+                None => {
+                    tracing::warn!(entity_id, "Mail: no addr for player name lookup");
+                    return;
+                }
+            };
+            let args = mail::serialize_on_mail_read(mail_id, &row.message, &player_name);
+            send_to_witness(
+                socket,
+                connected,
+                entity_to_addr,
+                entity_id,
+                |key, seq, acks| {
+                    build_entity_method_packet(
+                        key,
+                        seq,
+                        acks,
+                        entity_id,
+                        method_idx::ON_MAIL_READ,
+                        &args,
+                    )
+                },
+            )
+            .await;
         }
 
         MailOp::Delete { mail_id } => {
