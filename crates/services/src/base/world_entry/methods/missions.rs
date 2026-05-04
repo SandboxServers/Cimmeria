@@ -336,6 +336,305 @@ mod tests {
         cleanup(&pool, account_id, player_id).await;
     }
 
+    /// Cross-service triangle: cell completion → CellToBaseMsg::MissionUpdate
+    /// (routed through `cell_dispatch::handle_cell_message`, the actual
+    /// production bridge) → base UPSERT → re-login query. Routing through
+    /// `handle_cell_message` instead of calling `handle_mission_update`
+    /// directly catches a regression in the dispatch arm itself — e.g.
+    /// dropping `repeats` from the destructure or wiring one of the Vec
+    /// fields to the wrong handler argument.
+    ///
+    /// What the test does NOT pin: the `current_step_id`, `completed_step_ids`,
+    /// `completed_objective_ids`, `active_objective_ids`, `failed_objective_ids`
+    /// fields are all empty / None on the wire because the executor
+    /// (cell/content/executor.rs::CompleteMission) hardcodes them empty
+    /// for completion — that's the production message shape, lossy by
+    /// design. The cell-side `MissionInstance` does carry the completed
+    /// step + objective in `completed_steps` / `completed_objectives`,
+    /// but those values are not transmitted to base today. Adding wire
+    /// fidelity for them is a separate concern; this test pins the
+    /// EXISTING contract (lossy completion) round-trips end-to-end.
+    #[tokio::test]
+    async fn mission_completion_cell_to_base_to_db_to_relogin_round_trip() {
+        use crate::base::world_entry::handle_cell_message;
+        use crate::cell::messages::CellToBaseMsg;
+        use crate::cell::missions::{accept_mission, complete_mission_direct};
+        use crate::cell::space_manager::SpaceManager;
+        use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
+        use std::collections::HashMap;
+        use std::sync::Mutex;
+        use tokio::net::UdpSocket;
+        use tokio::sync::mpsc;
+
+        let pool = require_db_or_skip!();
+        let account_id = TEST_PLAYER_BASE + 400;
+        let player_id = TEST_PLAYER_BASE + 401;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        // ── 1. Cell-side setup ──────────────────────────────────────
+        const MISSION_ID: i32 = 0x7000_0410;
+        const STEP_ID: i32 = 0x7000_0411;
+        const OBJ_ID: i32 = 0x7000_0412;
+        const ENTITY_ID: u32 = 1;
+
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(ENTITY_ID, "Agnos", [0.0; 3], [0.0; 3])
+            .unwrap();
+
+        let (tx, _rx) = mpsc::channel::<CellToBaseMsg>(64);
+        let objectives = vec![MissionObjective {
+            objective_id: OBJ_ID,
+            status: STATUS_ACTIVE,
+            hidden: false,
+            optional: false,
+        }];
+        accept_mission(ENTITY_ID, MISSION_ID, STEP_ID, objectives, &tx, &mut mgr).await;
+
+        // ── 2. Cell-side completion ─────────────────────────────────
+        complete_mission_direct(ENTITY_ID, MISSION_ID, &tx, &mut mgr).await;
+        let post_repeats = mgr
+            .get_entity(ENTITY_ID)
+            .and_then(|e| e.missions.get_mission(MISSION_ID))
+            .map(|m| m.repeats)
+            .unwrap();
+        assert_eq!(
+            post_repeats, 1,
+            "MissionInstance::complete must bump repeats (Python parity)",
+        );
+
+        // ── 3. Build the EXACT message the executor emits ───────────
+        // Field set mirrors crates/services/src/cell/content/executor.rs
+        // CompleteMission arm. Empty Vecs / None are the executor's
+        // intentional contract for a "completed" message.
+        let msg = CellToBaseMsg::MissionUpdate {
+            player_id,
+            mission_id: MISSION_ID,
+            status: 2,
+            current_step_id: None,
+            completed_step_ids: vec![],
+            completed_objective_ids: vec![],
+            active_objective_ids: vec![],
+            failed_objective_ids: vec![],
+            repeats: post_repeats,
+        };
+
+        // ── 4. Drive through the production cell_dispatch arm ──────
+        // handle_cell_message is the actual cell→base bridge — a
+        // regression in its MissionUpdate destructure (dropped repeats,
+        // mis-bound Vec args) breaks the test here rather than silently
+        // shipping. The MissionUpdate arm only touches db_pool; the
+        // socket / connected / cell_tx / minigame fields aren't used,
+        // so we wire the minimum stubs.
+        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP"));
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+        let cell_tx_opt: Option<mpsc::Sender<crate::cell::messages::BaseToCellMsg>> = None;
+        let minigame_registry = None;
+        handle_cell_message(
+            msg,
+            &socket,
+            &connected,
+            &entity_to_addr,
+            &cell_tx_opt,
+            &db_pool,
+            &minigame_registry,
+            "127.0.0.1",
+            0,
+        )
+        .await;
+
+        // ── 5. Re-login: query_saved_missions reads the row back ────
+        let restored = query_saved_missions(&db_pool, player_id).await;
+        let mission = restored
+            .iter()
+            .find(|m| m.mission_id == MISSION_ID)
+            .expect("mission_id must round-trip across cell→base→DB");
+        assert_eq!(mission.status, 2, "status round-trip");
+        assert_eq!(
+            mission.repeats, post_repeats,
+            "repeats from cell-side bump must round-trip via the cell_dispatch bridge",
+        );
+        assert!(
+            mission.current_step_id.is_none(),
+            "completion clears current_step_id"
+        );
+        // Pin the executor's lossy contract end-to-end: the wire shape
+        // sends empty Vecs, so the DB row + re-login query reflect that.
+        assert!(mission.completed_step_ids.is_empty());
+        assert!(mission.completed_objective_ids.is_empty());
+        assert!(mission.active_objective_ids.is_empty());
+        assert!(mission.failed_objective_ids.is_empty());
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
+    /// Repeat-counter cross-service round-trip: complete the mission twice
+    /// across two cell→base→DB cycles. Pins that the post-bump `repeats`
+    /// from the SECOND completion is what the DB row carries — the
+    /// counter advances rather than stalling. A regression here would
+    /// silently re-strand repeatable missions even with the
+    /// `EXCLUDED.repeats` UPSERT in place, because the cell→base bridge
+    /// or the UPSERT could regress independently.
+    #[tokio::test]
+    async fn second_completion_advances_persisted_repeats_counter_end_to_end() {
+        use crate::cell::missions::{accept_mission, complete_mission_direct};
+        use crate::cell::space_manager::SpaceManager;
+        use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
+        use tokio::sync::mpsc;
+
+        let pool = require_db_or_skip!();
+        let account_id = TEST_PLAYER_BASE + 500;
+        let player_id = TEST_PLAYER_BASE + 501;
+        cleanup(&pool, account_id, player_id).await;
+        insert_account_and_player(&pool, account_id, player_id).await;
+        let db_pool = Some(Arc::new(pool.clone()));
+
+        const MISSION_ID: i32 = 0x7000_0510;
+        const STEP_ID: i32 = 0x7000_0511;
+        const OBJ_ID: i32 = 0x7000_0512;
+        const ENTITY_ID: u32 = 1;
+
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
+        let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Agnos" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(cxml).unwrap();
+        mgr.create_entity(ENTITY_ID, "Agnos", [0.0; 3], [0.0; 3])
+            .unwrap();
+
+        let (tx, _rx) = mpsc::channel::<crate::cell::messages::CellToBaseMsg>(64);
+        let objectives = || {
+            vec![MissionObjective {
+                objective_id: OBJ_ID,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: false,
+            }]
+        };
+
+        // ── First completion: repeats 0 → 1 ─────────────────────────
+        accept_mission(ENTITY_ID, MISSION_ID, STEP_ID, objectives(), &tx, &mut mgr).await;
+        complete_mission_direct(ENTITY_ID, MISSION_ID, &tx, &mut mgr).await;
+        let after_first = mgr
+            .get_entity(ENTITY_ID)
+            .and_then(|e| e.missions.get_mission(MISSION_ID))
+            .map(|m| m.repeats)
+            .unwrap();
+        assert_eq!(after_first, 1, "first completion bumps repeats to 1");
+        handle_mission_update(
+            player_id,
+            MISSION_ID,
+            2,
+            None,
+            &[],
+            &[],
+            &[],
+            &[],
+            after_first,
+            &db_pool,
+        )
+        .await;
+
+        // ── Simulate a relog: drop the cell-side mission and rebuild
+        //    it from query_saved_missions, mirroring what
+        //    cell/service/base_messages.rs does on InitPlayerState.
+        //    This pins the production restore path as well as the
+        //    write path — if `query_saved_missions` (or its column
+        //    mapping) drops `repeats`, the seeded MissionInstance
+        //    starts at 0 and the second cycle ends at 1 instead of 2.
+        {
+            let entity = mgr.get_entity_mut(ENTITY_ID).unwrap();
+            // Wipe in-memory state: a fresh login starts with no missions.
+            entity.missions = Default::default();
+        }
+        let saved = query_saved_missions(&db_pool, player_id).await;
+        let saved_for_us = saved
+            .iter()
+            .find(|m| m.mission_id == MISSION_ID)
+            .expect("relog must find the persisted mission");
+        assert_eq!(
+            saved_for_us.repeats, 1,
+            "relog round-trip must read back the persisted repeats — \
+             a 0 here means query_saved_missions's column mapping dropped the field"
+        );
+        // Seed cell-side from SavedMission, matching the production
+        // path in cell::service::base_messages::InitPlayerState.
+        {
+            use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};
+            let entity = mgr.get_entity_mut(ENTITY_ID).unwrap();
+            let objs: Vec<MissionObjective> = saved_for_us
+                .active_objective_ids
+                .iter()
+                .map(|&oid| MissionObjective {
+                    objective_id: oid,
+                    status: STATUS_ACTIVE,
+                    hidden: false,
+                    optional: false,
+                })
+                .collect();
+            let mut mi = MissionInstance::new(
+                saved_for_us.mission_id,
+                saved_for_us.current_step_id.unwrap_or(0),
+                objs,
+            );
+            mi.status = saved_for_us.status;
+            mi.completed_steps = saved_for_us.completed_step_ids.clone();
+            mi.completed_objectives = saved_for_us.completed_objective_ids.clone();
+            // The load-bearing field — `accept_mission` will read
+            // m.repeats off this seeded instance and carry it forward.
+            mi.repeats = saved_for_us.repeats;
+            entity.missions.add_mission(mi);
+        }
+
+        // ── Re-accept (now reads `repeats` off the DB-restored state)
+        //    and complete again: the bump should go 1 → 2.
+        accept_mission(ENTITY_ID, MISSION_ID, STEP_ID, objectives(), &tx, &mut mgr).await;
+        complete_mission_direct(ENTITY_ID, MISSION_ID, &tx, &mut mgr).await;
+        let after_second = mgr
+            .get_entity(ENTITY_ID)
+            .and_then(|e| e.missions.get_mission(MISSION_ID))
+            .map(|m| m.repeats)
+            .unwrap();
+        assert_eq!(
+            after_second, 2,
+            "second completion advances repeats from the DB-restored value: \
+             re-accept must carry forward what query_saved_missions returned"
+        );
+        handle_mission_update(
+            player_id,
+            MISSION_ID,
+            2,
+            None,
+            &[],
+            &[],
+            &[],
+            &[],
+            after_second,
+            &db_pool,
+        )
+        .await;
+
+        // ── Final relog query: DB row carries the post-second-bump count ─
+        let restored = query_saved_missions(&db_pool, player_id).await;
+        let mission = restored
+            .iter()
+            .find(|m| m.mission_id == MISSION_ID)
+            .expect("mission must round-trip");
+        assert_eq!(
+            mission.repeats, 2,
+            "DB row must carry the cell's post-second-completion repeats — \
+             a 1 here means the UPSERT regressed to dropping the column on conflict",
+        );
+
+        cleanup(&pool, account_id, player_id).await;
+    }
+
     /// Companion: clamp on the negative side too. A status of -200 must
     /// clamp to i8::MIN (-128), not wrap to +56.
     #[tokio::test]
