@@ -137,3 +137,199 @@ fn find_entity_by_tag_works() {
     let not_found = mgr.find_entity_by_tag(npc_id, "NonexistentTag");
     assert_eq!(not_found, None);
 }
+
+/// Live-DB sanity tests for the spawner loader functions.
+///
+/// Each loader is a thin sqlx query that maps `resources.*` rows into a
+/// runtime cache. The tests below run each loader against the seeded DB
+/// and assert (a) it doesn't error, (b) the cache is non-empty (the
+/// seeded resources schema has rows for every loaded table), (c) sample
+/// rows have plausible shape. These are byte-cheap regression guards
+/// for column renames, type drift, and JOIN breakage that the rest of
+/// the test suite wouldn't catch — sqlx surfaces those as `Err` from
+/// the loader.
+mod live_db {
+    use crate::cell::spawner::*;
+    use crate::test_support::require_db_or_skip;
+
+    #[tokio::test]
+    async fn load_loot_tables_returns_seeded_data_with_non_empty_entries() {
+        let pool = require_db_or_skip!();
+        let map = load_loot_tables(&pool)
+            .await
+            .expect("load_loot_tables must succeed against seeded DB");
+        assert!(!map.is_empty(), "seeded resources.loot has rows");
+        for (id, entries) in &map {
+            assert!(
+                !entries.is_empty(),
+                "loot_table {id} present in map but has no entries",
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_item_defs_returns_only_weapons_with_clip_size() {
+        let pool = require_db_or_skip!();
+        let map = load_item_defs(&pool)
+            .await
+            .expect("load_item_defs must succeed against seeded DB");
+        // Loader filters `WHERE clip_size IS NOT NULL` — every cached row
+        // must have a positive clip_size by construction.
+        for (item_id, def) in &map {
+            assert!(
+                def.clip_size > 0,
+                "item {item_id} surfaced from load_item_defs with non-positive clip_size {}",
+                def.clip_size
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_item_containers_returns_first_element_only() {
+        let pool = require_db_or_skip!();
+        let map = load_item_containers(&pool)
+            .await
+            .expect("load_item_containers must succeed against seeded DB");
+        // The query maps to `container_sets[1]` — every value is a single
+        // container_id, never an array. Pin via type alone (the map's
+        // value type is i32) but also assert non-empty so a future
+        // refactor can't accidentally degrade to "table empty".
+        assert!(!map.is_empty(), "seeded resources.items has at least one row with container_sets");
+    }
+
+    #[tokio::test]
+    async fn load_respawners_returns_seeded_rows_with_world_names() {
+        let pool = require_db_or_skip!();
+        let respawners = load_respawners(&pool)
+            .await
+            .expect("load_respawners must succeed");
+        assert!(!respawners.is_empty());
+        for r in &respawners {
+            assert!(
+                !r.world_name.is_empty(),
+                "respawner {} has empty world_name — JOIN to resources.worlds broke",
+                r.respawner_id
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_spawns_returns_records_with_resolved_world_names() {
+        let pool = require_db_or_skip!();
+        let records = load_spawns_from_db(&pool)
+            .await
+            .expect("load_spawns_from_db must succeed");
+        assert!(!records.is_empty(), "seeded resources.spawnlist has rows");
+        for r in &records {
+            assert!(
+                !r.world_name.is_empty(),
+                "spawn {} has empty world_name — JOIN to resources.worlds broke",
+                r.spawn_id
+            );
+            assert!(
+                !r.template_name.is_empty(),
+                "spawn {} has empty template_name — JOIN to entity_templates broke",
+                r.spawn_id
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_mission_defs_only_includes_missions_with_a_step() {
+        let pool = require_db_or_skip!();
+        let map = load_mission_defs(&pool)
+            .await
+            .expect("load_mission_defs must succeed");
+        assert!(!map.is_empty(), "seeded mission_steps has rows");
+        for (mission_id, entry) in &map {
+            assert!(
+                entry.step_id > 0,
+                "mission {mission_id} has non-positive step_id {}",
+                entry.step_id
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_step_objectives_groups_by_step_id() {
+        let pool = require_db_or_skip!();
+        let map = load_step_objectives(&pool)
+            .await
+            .expect("load_step_objectives must succeed");
+        assert!(!map.is_empty());
+        for (step_id, objs) in &map {
+            assert!(
+                !objs.is_empty(),
+                "step {step_id} present in map with no objectives — should have been filtered out"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_dialog_set_maps_drops_rows_with_null_dialog_id() {
+        let pool = require_db_or_skip!();
+        let map = load_dialog_set_maps(&pool)
+            .await
+            .expect("load_dialog_set_maps must succeed");
+        // The loader explicitly drops rows where `dialog_id IS NULL` —
+        // every cached entry must have a positive dialog_id by construction.
+        for (set_map_id, entry) in &map {
+            assert!(
+                entry.dialog_id > 0,
+                "dialog_set_map_id {set_map_id} surfaced with non-positive dialog_id {}",
+                entry.dialog_id
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_stargates_resolves_world_join() {
+        let pool = require_db_or_skip!();
+        let map = load_stargates(&pool)
+            .await
+            .expect("load_stargates must succeed");
+        assert!(!map.is_empty());
+        for (id, entry) in &map {
+            assert!(
+                !entry.world_name.is_empty(),
+                "stargate {id} has empty world_name — JOIN to resources.worlds broke"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn load_regions_applies_single_point_cylinder_workaround() {
+        let pool = require_db_or_skip!();
+        let regions = load_regions_from_db(&pool)
+            .await
+            .expect("load_regions_from_db must succeed");
+        // Locate any region that the workaround should have expanded:
+        // single-point input + radius > 0 → 4-point bounding box. The
+        // workaround is the load-bearing piece of `GenericRegion.workaround()`
+        // — if a refactor drops it, single-point cylinders silently lose
+        // their hit-test geometry.
+        let expanded = regions
+            .iter()
+            .find(|r| r.radius > 0.0 && r.points.len() == 4);
+        if let Some(r) = expanded {
+            // 4-point box: opposing-corner x distance == 2*radius.
+            let dx = (r.points[2][0] - r.points[0][0]).abs();
+            let dz = (r.points[2][2] - r.points[0][2]).abs();
+            assert!(
+                (dx - 2.0 * r.radius).abs() < 1e-3,
+                "expanded region {} x-extent {dx} should be 2*radius {}",
+                r.set_id,
+                2.0 * r.radius
+            );
+            assert!(
+                (dz - 2.0 * r.radius).abs() < 1e-3,
+                "expanded region {} z-extent {dz} should be 2*radius {}",
+                r.set_id,
+                2.0 * r.radius
+            );
+        }
+        // Even if seed data has no single-point cylinders, the loader
+        // must succeed and return *something* — point_sets is seeded.
+        assert!(!regions.is_empty());
+    }
+}
