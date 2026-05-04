@@ -377,16 +377,20 @@ mod tests {
     #[test]
     fn parse_baseapp_login_rejects_truncated_body() {
         // FLAG_HAS_REQUESTS | FLAG_HAS_SEQUENCE = 0x41. With these flags the
-        // upstream parser strips the trailing 2-byte request count + 4-byte
-        // seq_id from the buffer before yielding the body. So:
-        //   raw = [flags][..body..][num_requests u16][seq_id u32]
-        // Make body 13 bytes (msg_id 0x00 + word_len 25u16 + 10 zero filler).
-        // 13 < 34, so parse_baseapp_login's own length guard fires.
+        // upstream parser strips two trailing footers from the buffer
+        // before yielding the body (innermost → outermost):
+        //   * first_req_offset (u16) — where requests begin in the body
+        //   * seq_id           (u32)
+        // Layout:
+        //   raw = [flags][..body..][first_req_offset u16][seq_id u32]
+        // We give a 13-byte body (msg_id 0x00 + word_len 25u16 + 10
+        // zero filler). 13 < 34, so parse_baseapp_login's own length
+        // guard fires AFTER the upstream parser succeeds.
         let mut raw = vec![0x41u8]; // flags
         raw.push(0x00u8); // msg_id
         raw.extend_from_slice(&25u16.to_le_bytes()); // word_len (well-formed)
         raw.extend_from_slice(&[0u8; 10]); // zero filler — body total = 13 bytes
-        raw.extend_from_slice(&1u16.to_le_bytes()); // num_requests footer
+        raw.extend_from_slice(&0u16.to_le_bytes()); // first_req_offset footer
         raw.extend_from_slice(&7u32.to_le_bytes()); // seq_id footer
 
         let err = parse_baseapp_login(&raw)

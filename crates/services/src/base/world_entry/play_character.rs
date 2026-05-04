@@ -156,8 +156,9 @@ mod tests {
     //! Not covered here: the NO_ENTITY_ID failure path (latch reset on
     //! a failed query_world_entry) — that path requires a real DB pool
     //! that returns no rows, which is out of scope for unit tests.
-    //! The DB-success branch (live-DB seeded) is exercised by the
-    //! integration tests under `methods/world_entry_db.rs::tests`.
+    //! The DB-success branch needs live-DB scaffolding that doesn't
+    //! exist yet for this module; filing as a follow-up rather than
+    //! claiming coverage that isn't there.
 
     use super::*;
     use cimmeria_mercury::encryption::MercuryEncryption;
