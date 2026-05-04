@@ -1,0 +1,29 @@
+[package]
+name = "cimmeria-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+# This crate is excluded from the workspace because libfuzzer-sys
+# requires nightly Rust. Run manually from this directory under a
+# nightly toolchain — see README.md.
+
+[dependencies]
+libfuzzer-sys = "0.4"
+cimmeria-mercury = { path = "../crates/mercury" }
+cimmeria-common = { path = "../crates/common" }
+
+[[bin]]
+name = "parse_incoming"
+path = "fuzz_targets/parse_incoming.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "add_fragment"
+path = "fuzz_targets/add_fragment.rs"
+test = false
+doc = false

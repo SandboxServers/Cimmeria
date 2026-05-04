@@ -2,6 +2,10 @@
 resolver = "2"
 exclude = [
     "tools/SGWLauncher/src-tauri",
+    # cargo-fuzz target — depends on libfuzzer-sys which requires
+    # nightly Rust. Run manually via `cargo +nightly fuzz run <target>`
+    # from inside `fuzz/`. See fuzz/README.md for invocation.
+    "fuzz",
 ]
 members = [
     "crates/common",
@@ -94,6 +98,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # Auth
 jsonwebtoken = "9"
+
+# Property-based testing (used as dev-dependency in mercury)
+proptest = "1"
 
 # Logging
 tracing = "0.1"
