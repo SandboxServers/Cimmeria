@@ -284,39 +284,52 @@ mod tests {
         assert_eq!(buf, expected, "byte-exact wire layout");
     }
 
-    /// Non-ASCII regression guard: write_wstring must emit
-    /// UTF-16-LE code units (with a UTF-16 char_count), not a
-    /// UTF-8 byte sequence (with a UTF-8 byte length). A drift to
-    /// UTF-8 would produce identical bytes for ASCII but corrupt
-    /// the wire payload for any character above 0x7F.
+    /// Non-BMP regression guard: write_wstring must use the
+    /// UTF-16 code-unit count, NOT `chars().count()`, for the
+    /// length prefix. Pick "🌟" (U+1F31F) — a single Unicode
+    /// scalar that requires a UTF-16 surrogate PAIR (D83C DF1F),
+    /// so:
+    ///   - `chars().count()`           = 1
+    ///   - `encode_utf16().count()`    = 2
+    ///   - UTF-8 byte length           = 4
     ///
-    /// "café" in UTF-16: c (0x0063), a (0x0061), f (0x0066),
-    /// é (0x00E9) → char_count = 4, byte_count = 8.
-    /// In UTF-8 the same string would be 5 bytes (é is two bytes).
-    /// Pinning byte-exact UTF-16-LE catches the drift.
+    /// All three values are distinct, so the byte-exact assertion
+    /// catches both the "drifted to UTF-8" regression and the
+    /// "used chars().count() instead of encode_utf16().count()"
+    /// regression. (A simpler character like é wouldn't distinguish
+    /// the second case because its chars and UTF-16 counts agree.)
     #[test]
-    fn build_appearance_args_emits_utf16_for_non_ascii_components() {
-        let buf = build_appearance_args("Body", &["café".to_string()]);
+    fn build_appearance_args_emits_utf16_for_non_bmp_components() {
+        let buf = build_appearance_args("Body", &["🌟".to_string()]);
         let expected: &[u8] = &[
             // bodyset wstring: "Body"
             4, 0, 0, 0, b'B', 0, b'o', 0, b'd', 0, b'y', 0, // component_count = 1
-            1, 0, 0, 0, // component "café": char_count=4, then UTF-16-LE code units
-            4, 0, 0, 0, // c (0x0063), a (0x0061), f (0x0066), é (0x00E9)
-            0x63, 0x00, 0x61, 0x00, 0x66, 0x00, 0xE9, 0x00,
+            1, 0, 0, 0,
+            // component "🌟": char_count = 2 (UTF-16 code units),
+            // then surrogate pair D83C DF1F as little-endian u16s.
+            2, 0, 0, 0, 0x3C, 0xD8, 0x1F, 0xDF,
         ];
         assert_eq!(
             buf, expected,
-            "non-ASCII string must serialize as UTF-16-LE, not UTF-8"
+            "non-BMP string must serialize as UTF-16-LE surrogate pair with code-unit count"
         );
     }
 
+    /// Empty-components case must emit the EXACT bodyset wstring
+    /// followed by a u32 zero count, with no trailing bytes. Pin
+    /// the full byte sequence (not just a length + count slice)
+    /// so a regression that drifts the bodyset payload bytes —
+    /// e.g. flipping endianness or emitting UTF-8 in the bodyset
+    /// while leaving the count zero — still fails this test.
     #[test]
     fn build_appearance_args_with_no_components_emits_zero_count() {
         let buf = build_appearance_args("X", &[]);
-        // bodyset "X": 4 + 2 = 6 bytes; then count=0 (4 bytes).
-        assert_eq!(buf.len(), 6 + 4);
-        assert_eq!(buf[0..4], [1, 0, 0, 0]);
-        assert_eq!(buf[6..10], [0, 0, 0, 0]);
+        let expected: &[u8] = &[
+            // bodyset "X": char_count = 1, then 'X' 0x00
+            1, 0, 0, 0, b'X', 0, // component_count = 0
+            0, 0, 0, 0,
+        ];
+        assert_eq!(buf, expected);
     }
 
     /// `build_tint_args` wire layout: `[u32 0][u32 0][u32 LE skin_tint]`.
