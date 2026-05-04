@@ -505,4 +505,45 @@ mod tests {
         asm.cleanup_stale(std::time::Duration::ZERO);
         assert_eq!(asm.pending_count(), 0);
     }
+
+    /// Two fragments arriving for the same `first_seq` must agree on
+    /// `total_frags`. A peer (or attacker) sending a second fragment
+    /// with a different declared count is a protocol violation; the
+    /// assembler must reject rather than silently re-shape the
+    /// pending message.
+    #[test]
+    fn add_fragment_rejects_conflicting_total_fragments() {
+        let mut asm = FragmentAssembler::new();
+        // First fragment: declares 3 total.
+        asm.add_fragment(50, 0, 3, Bytes::from_static(b"aaa"))
+            .unwrap();
+        // Second fragment for the SAME first_seq but declares 5 total.
+        let err = asm
+            .add_fragment(50, 1, 5, Bytes::from_static(b"bbb"))
+            .unwrap_err();
+        assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
+        // Pending entry must remain (rejecting the new fragment must
+        // not wipe the in-progress reassembly that a well-behaved peer
+        // is still completing).
+        assert_eq!(asm.pending_count(), 1);
+    }
+
+    /// `cleanup_stale` removes only entries older than `max_age` —
+    /// fresh entries from the same call to `add_fragment` must
+    /// survive. Pin the per-entry age check so a regression that
+    /// drops the `started_at` comparison and clears the whole map
+    /// can't slip through.
+    #[test]
+    fn cleanup_stale_leaves_fresh_entries_alone() {
+        let mut asm = FragmentAssembler::new();
+        asm.add_fragment(10, 0, 3, Bytes::from_static(b"a"))
+            .unwrap();
+        asm.add_fragment(20, 0, 3, Bytes::from_static(b"b"))
+            .unwrap();
+        assert_eq!(asm.pending_count(), 2);
+        // 1-hour max_age — both entries are fresh, neither should be
+        // reaped.
+        asm.cleanup_stale(std::time::Duration::from_secs(3600));
+        assert_eq!(asm.pending_count(), 2);
+    }
 }

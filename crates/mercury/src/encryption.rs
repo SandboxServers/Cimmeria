@@ -357,4 +357,77 @@ mod tests {
         assert!(debug.contains("REDACTED"));
         assert!(!debug.contains("42")); // Should not leak key bytes.
     }
+
+    /// Decrypting with a wrong key fails at HMAC verification (the
+    /// HMAC key is the same as the AES key, so a wrong AES key always
+    /// produces a wrong HMAC tag). Surface this as an Encryption error
+    /// rather than letting it slip through to a garbage plaintext —
+    /// the encrypt-then-MAC ordering guarantees we reject before the
+    /// AES decrypt step runs.
+    #[test]
+    fn decrypt_with_wrong_key_fails_hmac_verification() {
+        let plaintext = b"secret payload";
+        let ct = test_keys().encrypt(plaintext).unwrap();
+
+        // A different 32-byte key — same shape, different bytes.
+        let wrong = MercuryEncryption::from_session_key([0xAAu8; 32]);
+        let err = wrong.decrypt(&ct).unwrap_err();
+        assert!(matches!(err, CimmeriaError::Encryption(_)));
+    }
+
+    /// Buffer exactly `HMAC_TAG_LEN` bytes (16) has an empty ciphertext
+    /// portion. The "ciphertext too short" branch must reject before
+    /// the AES init runs — otherwise a mock plaintext could be coaxed
+    /// out of a degenerate empty-block decrypt.
+    #[test]
+    fn decrypt_buffer_exactly_hmac_tag_len_rejects_empty_ciphertext() {
+        let enc = test_keys();
+        // 16 bytes = exactly the HMAC tag; ciphertext portion is empty.
+        let err = enc.decrypt(&[0u8; 16]).unwrap_err();
+        assert!(matches!(err, CimmeriaError::Encryption(_)));
+    }
+
+    /// Buffer with a ciphertext portion that's not a multiple of the
+    /// AES block size must reject with the block-size error — never
+    /// fall through to the AES decrypt call (which would produce a
+    /// garbage / partial-block error harder to interpret).
+    #[test]
+    fn decrypt_non_block_aligned_ciphertext_rejects_before_aes() {
+        let enc = test_keys();
+        // 17 ciphertext bytes (not divisible by 16) + 16 HMAC = 33 bytes.
+        let buf = vec![0u8; 17 + HMAC_TAG_LEN];
+        let err = enc.decrypt(&buf).unwrap_err();
+        match err {
+            CimmeriaError::Encryption(msg) => assert!(
+                msg.contains("multiple of AES block size"),
+                "expected block-size error, got: {msg}"
+            ),
+            other => panic!("expected Encryption error, got {other:?}"),
+        }
+    }
+
+    /// PKCS7 unpadding must reject any pad byte > AES_BLOCK_SIZE. A
+    /// crafted ciphertext that decrypts to a tail byte of, say, 0xFF
+    /// would otherwise be interpreted as "strip 255 bytes" and panic
+    /// or return wrong-length output.
+    #[test]
+    fn pkcs7_unpad_rejects_pad_byte_above_block_size() {
+        // Build raw bytes ending in 0xFF, which is an invalid PKCS7 pad.
+        let mut buf = vec![0u8; 16];
+        buf[15] = 0xFF;
+        let err = pkcs7_unpad(&buf).unwrap_err();
+        assert!(matches!(err, CimmeriaError::Encryption(_)));
+    }
+
+    /// PKCS7 unpadding must reject a pad byte of 0 — the spec requires
+    /// every padding byte to equal the pad length, and 0 indicates
+    /// no padding was applied (which can't happen because the encoder
+    /// always pads to a full block, including a full block of pad when
+    /// the plaintext length is already block-aligned).
+    #[test]
+    fn pkcs7_unpad_rejects_zero_pad_byte() {
+        let buf = vec![0u8; 16]; // last byte is 0x00
+        let err = pkcs7_unpad(&buf).unwrap_err();
+        assert!(matches!(err, CimmeriaError::Encryption(_)));
+    }
 }

@@ -578,4 +578,74 @@ mod tests {
         assert!(!f2.is_reliable());
         assert!(f2.has_sequence());
     }
+
+    /// All-flags-on packet: FLAG_RELIABLE | FLAG_HAS_ACKS | FLAG_HAS_SEQUENCE
+    /// with a non-empty acks vector. Pins the footer-order invariant
+    /// (innermost-to-outermost: first_req_offset → seq_id → acks → ack_count)
+    /// because the existing tests cover each footer in isolation but never
+    /// the full stack at once.
+    #[test]
+    fn round_trip_reliable_with_seq_and_acks() {
+        let flags = FLAG_RELIABLE | FLAG_HAS_SEQUENCE | FLAG_HAS_ACKS | FLAG_ON_CHANNEL;
+        let body = b"\xAB\xCD\xEF\x12\x34";
+        let acks = [101u32, 102, 103];
+
+        let raw = build_outgoing(flags, body, Some(7), &acks, None);
+        let pkt = parse_incoming(&raw).unwrap();
+
+        assert_eq!(pkt.flags, flags);
+        assert_eq!(pkt.seq_id, Some(7));
+        assert_eq!(pkt.acks, vec![101u32, 102, 103]);
+        assert_eq!(pkt.body.as_ref(), body);
+        assert!(pkt.first_req_offset.is_none());
+    }
+
+    /// Fragmented + reliable + acks together: a real bundle for a large
+    /// reliable-channel message that piggybacks acks. Pin the layout
+    /// because the existing fragmentation tests don't exercise the
+    /// `acks` slice on `build_outgoing_fragmented`. The caller is
+    /// responsible for setting FLAG_HAS_ACKS in the base flags;
+    /// build_outgoing_fragmented OR-merges FLAG_FRAGMENTED |
+    /// FLAG_HAS_SEQUENCE on top.
+    #[test]
+    fn round_trip_fragmented_with_reliable_and_acks() {
+        let acks = [201u32, 202];
+        let raw = build_outgoing_fragmented(
+            FLAG_RELIABLE | FLAG_ON_CHANNEL | FLAG_HAS_ACKS,
+            b"fragment-payload",
+            500,
+            500,
+            502,
+            &acks,
+        );
+        let pkt = parse_incoming(&raw).unwrap();
+
+        assert!(pkt.flags & FLAG_FRAGMENTED != 0);
+        assert!(pkt.flags & FLAG_HAS_SEQUENCE != 0);
+        assert!(pkt.flags & FLAG_RELIABLE != 0);
+        assert!(pkt.flags & FLAG_HAS_ACKS != 0);
+        assert_eq!(pkt.seq_id, Some(500));
+        assert_eq!(pkt.frag_begin, Some(500));
+        assert_eq!(pkt.frag_end, Some(502));
+        assert_eq!(pkt.acks, vec![201u32, 202]);
+        assert_eq!(pkt.body.as_ref(), b"fragment-payload");
+    }
+
+    /// Empty body with acks-only footer. The body slice must be empty
+    /// even though the packet has substantive footer content; previous
+    /// versions of the parser bled the ack-count byte into `body` when
+    /// the body length was 0.
+    #[test]
+    fn parse_empty_body_with_acks_only() {
+        let flags = FLAG_HAS_ACKS;
+        let raw = build_outgoing(flags, b"", None, &[42u32, 43], None);
+        let pkt = parse_incoming(&raw).unwrap();
+
+        assert_eq!(pkt.flags, flags);
+        assert_eq!(pkt.acks, vec![42u32, 43]);
+        assert!(
+            pkt.body.is_empty(),
+            "body must be empty when only acks are present"
+        );
+    }
 }
