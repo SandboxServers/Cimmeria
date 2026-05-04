@@ -705,3 +705,6 @@ impl MinigameInstance for LivewireGame {
         true
     }
 }
+
+#[cfg(test)]
+mod tests;
