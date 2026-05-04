@@ -507,3 +507,92 @@ pub async fn fire_chain_by_id(
     };
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cell::space_manager::SpaceManager;
+
+    /// Build the standard Castle-startup-space fixture used across the
+    /// abilities/ event-dispatch tests. One player at id=1, one NPC at
+    /// id=2, both at the origin so any AoI-related assertion has both
+    /// in range.
+    fn make_mgr_with_player_and_npc() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+        }
+        mgr.connect_entity(1);
+        mgr
+    }
+
+    /// Empty engine: every fire_* function must complete without
+    /// panicking, emit no actions, and (for the bool-returning fns)
+    /// return false. Pin so a refactor that adds a `default chain`
+    /// fallback or panics on unmatched events gets caught.
+    #[tokio::test]
+    async fn fire_player_loaded_with_empty_engine_emits_nothing() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        fire_player_loaded(1, 100, "Castle", &engine, &tx, &mut mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "empty engine must produce no wire messages"
+        );
+    }
+
+    /// `fire_interact_tag` returns false when the engine has no chain
+    /// matching the InteractTag trigger. This is the load-bearing
+    /// "should the caller fall through to default handling?" signal,
+    /// per the doc comment.
+    #[tokio::test]
+    async fn fire_interact_tag_returns_false_when_no_chain_matches() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(8);
+
+        let matched = fire_interact_tag(1, 100, "SomeTag", 2, &engine, &tx, &mut mgr).await;
+        assert!(!matched);
+    }
+
+    /// `fire_interact_template` mirrors `fire_interact_tag` for
+    /// template-keyed interactions. Same return-shape contract.
+    #[tokio::test]
+    async fn fire_interact_template_returns_false_when_no_chain_matches() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(8);
+
+        let matched =
+            fire_interact_template(1, 100, "TemplateName", 2, &engine, &tx, &mut mgr).await;
+        assert!(!matched);
+    }
+
+    /// Missing source entity in the SpaceManager: fire_* must not
+    /// panic, must complete cleanly, and must not emit messages. The
+    /// pre-mutation entity-vanish branch — common after a destroy —
+    /// is the regression shape this guards against.
+    #[tokio::test]
+    async fn fire_player_loaded_handles_missing_entity_gracefully() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        // Destroy the player before firing.
+        mgr.destroy_entity(1);
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        fire_player_loaded(1, 100, "Castle", &engine, &tx, &mut mgr).await;
+        assert!(rx.try_recv().is_err());
+    }
+}
