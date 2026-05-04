@@ -258,3 +258,77 @@ pub(crate) async fn handle_cancel_movie(
 
     tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent after cinematic");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mercury::SKIN_TINTS;
+
+    /// `build_appearance_args` wire layout:
+    /// `[wstring bodyset] [u32 LE component_count] [wstring component]*`
+    /// where each wstring is `[u32 LE char_count] [UTF-16LE chars]`.
+    #[test]
+    fn build_appearance_args_emits_bodyset_count_components_layout() {
+        let buf = build_appearance_args("Body", &["A".to_string(), "BB".to_string()]);
+        // bodyset: 4 (count) + 8 (4 chars × 2 bytes)
+        assert_eq!(buf[0..4], [4, 0, 0, 0]);
+        assert_eq!(buf[4], b'B');
+        assert_eq!(buf[5], 0);
+        // 12 bytes of bodyset wstring done.
+        // count=2 little-endian
+        assert_eq!(buf[12..16], [2, 0, 0, 0]);
+        // component "A": [1,0,0,0]['A',0]
+        assert_eq!(buf[16..20], [1, 0, 0, 0]);
+        assert_eq!(buf[20], b'A');
+        assert_eq!(buf[21], 0);
+        // component "BB": [2,0,0,0]['B',0,'B',0]
+        assert_eq!(buf[22..26], [2, 0, 0, 0]);
+        assert_eq!(buf[26], b'B');
+        assert_eq!(buf[27], 0);
+        assert_eq!(buf[28], b'B');
+        assert_eq!(buf[29], 0);
+        assert_eq!(buf.len(), 30);
+    }
+
+    #[test]
+    fn build_appearance_args_with_no_components_emits_zero_count() {
+        let buf = build_appearance_args("X", &[]);
+        // bodyset "X": 4 + 2 = 6 bytes; then count=0 (4 bytes).
+        assert_eq!(buf.len(), 6 + 4);
+        assert_eq!(buf[0..4], [1, 0, 0, 0]);
+        assert_eq!(buf[6..10], [0, 0, 0, 0]);
+    }
+
+    /// `build_tint_args` wire layout: `[u32 0][u32 0][u32 LE skin_tint]`.
+    /// The first two slots are reserved for primary/secondary tints and
+    /// must always be zero.
+    #[test]
+    fn build_tint_args_layout_with_valid_skin_color_id() {
+        let buf = build_tint_args(3);
+        assert_eq!(buf.len(), 12);
+        assert_eq!(buf[0..4], [0, 0, 0, 0], "primary tint must be 0");
+        assert_eq!(buf[4..8], [0, 0, 0, 0], "secondary tint must be 0");
+        let tint = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        assert_eq!(tint, SKIN_TINTS[3]);
+    }
+
+    /// Out-of-range skin_color_id falls back to SKIN_TINTS[0]. Pin so a
+    /// future regression that panics on the index path can't crash the
+    /// world-entry flow.
+    #[test]
+    fn build_tint_args_clamps_oob_skin_color_id_to_zero() {
+        let buf = build_tint_args(999);
+        let tint = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        assert_eq!(tint, SKIN_TINTS[0]);
+    }
+
+    /// Negative skin_color_id casts to a huge usize and falls into the
+    /// fallback branch. Pin so the cast doesn't accidentally succeed
+    /// after a refactor (which would index into garbage).
+    #[test]
+    fn build_tint_args_negative_id_falls_back() {
+        let buf = build_tint_args(-1);
+        let tint = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        assert_eq!(tint, SKIN_TINTS[0]);
+    }
+}
