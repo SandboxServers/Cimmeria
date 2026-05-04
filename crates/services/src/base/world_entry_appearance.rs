@@ -258,3 +258,110 @@ pub(crate) async fn handle_cancel_movie(
 
     tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent after cinematic");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mercury::SKIN_TINTS;
+
+    /// `build_appearance_args` wire layout:
+    /// `[wstring bodyset] [u32 LE component_count] [wstring component]*`
+    /// where each wstring is `[u32 LE char_count] [UTF-16LE chars]`.
+    /// Asserts the COMPLETE byte vector against a hand-computed
+    /// expected slice — partial spot-checks would let a broken
+    /// implementation that emits the right first byte but wrong
+    /// subsequent ones still pass.
+    #[test]
+    fn build_appearance_args_emits_bodyset_count_components_layout() {
+        let buf = build_appearance_args("Body", &["A".to_string(), "BB".to_string()]);
+        let expected: &[u8] = &[
+            // bodyset wstring: count=4, then 'B' 0 'o' 0 'd' 0 'y' 0
+            4, 0, 0, 0, b'B', 0, b'o', 0, b'd', 0, b'y', 0, // component_count = 2
+            2, 0, 0, 0, // component "A": count=1, 'A' 0
+            1, 0, 0, 0, b'A', 0, // component "BB": count=2, 'B' 0 'B' 0
+            2, 0, 0, 0, b'B', 0, b'B', 0,
+        ];
+        assert_eq!(buf, expected, "byte-exact wire layout");
+    }
+
+    /// Non-BMP regression guard: write_wstring must use the
+    /// UTF-16 code-unit count, NOT `chars().count()`, for the
+    /// length prefix. Pick "🌟" (U+1F31F) — a single Unicode
+    /// scalar that requires a UTF-16 surrogate PAIR (D83C DF1F),
+    /// so:
+    ///   - `chars().count()`           = 1
+    ///   - `encode_utf16().count()`    = 2
+    ///   - UTF-8 byte length           = 4
+    ///
+    /// All three values are distinct, so the byte-exact assertion
+    /// catches both the "drifted to UTF-8" regression and the
+    /// "used chars().count() instead of encode_utf16().count()"
+    /// regression. (A simpler character like é wouldn't distinguish
+    /// the second case because its chars and UTF-16 counts agree.)
+    #[test]
+    fn build_appearance_args_emits_utf16_for_non_bmp_components() {
+        let buf = build_appearance_args("Body", &["🌟".to_string()]);
+        let expected: &[u8] = &[
+            // bodyset wstring: "Body"
+            4, 0, 0, 0, b'B', 0, b'o', 0, b'd', 0, b'y', 0, // component_count = 1
+            1, 0, 0, 0,
+            // component "🌟": char_count = 2 (UTF-16 code units),
+            // then surrogate pair D83C DF1F as little-endian u16s.
+            2, 0, 0, 0, 0x3C, 0xD8, 0x1F, 0xDF,
+        ];
+        assert_eq!(
+            buf, expected,
+            "non-BMP string must serialize as UTF-16-LE surrogate pair with code-unit count"
+        );
+    }
+
+    /// Empty-components case must emit the EXACT bodyset wstring
+    /// followed by a u32 zero count, with no trailing bytes. Pin
+    /// the full byte sequence (not just a length + count slice)
+    /// so a regression that drifts the bodyset payload bytes —
+    /// e.g. flipping endianness or emitting UTF-8 in the bodyset
+    /// while leaving the count zero — still fails this test.
+    #[test]
+    fn build_appearance_args_with_no_components_emits_zero_count() {
+        let buf = build_appearance_args("X", &[]);
+        let expected: &[u8] = &[
+            // bodyset "X": char_count = 1, then 'X' 0x00
+            1, 0, 0, 0, b'X', 0, // component_count = 0
+            0, 0, 0, 0,
+        ];
+        assert_eq!(buf, expected);
+    }
+
+    /// `build_tint_args` wire layout: `[u32 0][u32 0][u32 LE skin_tint]`.
+    /// The first two slots are reserved for primary/secondary tints and
+    /// must always be zero.
+    #[test]
+    fn build_tint_args_layout_with_valid_skin_color_id() {
+        let buf = build_tint_args(3);
+        assert_eq!(buf.len(), 12);
+        assert_eq!(buf[0..4], [0, 0, 0, 0], "primary tint must be 0");
+        assert_eq!(buf[4..8], [0, 0, 0, 0], "secondary tint must be 0");
+        let tint = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        assert_eq!(tint, SKIN_TINTS[3]);
+    }
+
+    /// Out-of-range skin_color_id falls back to SKIN_TINTS[0]. Pin so a
+    /// future regression that panics on the index path can't crash the
+    /// world-entry flow.
+    #[test]
+    fn build_tint_args_clamps_oob_skin_color_id_to_zero() {
+        let buf = build_tint_args(999);
+        let tint = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        assert_eq!(tint, SKIN_TINTS[0]);
+    }
+
+    /// Negative skin_color_id casts to a huge usize and falls into the
+    /// fallback branch. Pin so the cast doesn't accidentally succeed
+    /// after a refactor (which would index into garbage).
+    #[test]
+    fn build_tint_args_negative_id_falls_back() {
+        let buf = build_tint_args(-1);
+        let tint = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        assert_eq!(tint, SKIN_TINTS[0]);
+    }
+}
