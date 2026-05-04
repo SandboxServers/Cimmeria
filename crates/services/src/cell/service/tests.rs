@@ -529,6 +529,15 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
     let mut mgr = make_ai_fixture([0.0; 3], [40.0, 0.0, 40.0]);
     if let Some(npc) = mgr.get_entity_mut(200) {
         npc.ai_state = AiState::Leashing;
+        // Seed pre-leash state: a damaged NPC with stale threat targets
+        // and an active cooldown carried over from the Fighting phase.
+        // The leash tick must wipe ALL of these — pin each one so a
+        // regression that only handles ai_state but leaves threat or
+        // cooldowns dangling gets caught.
+        npc.threat_list.insert(100, 5.0);
+        npc.threat_list.insert(101, 2.0);
+        npc.abilities
+            .start_ability_cooldown(592, std::time::Duration::from_secs(60));
         if let Some(h) = npc.stats.get_mut(HEALTH) {
             h.update(0, 5, 100); // damaged
             h.clear_dirty();
@@ -548,5 +557,12 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
         100,
         "leash must restore health to max"
     );
-    assert!(npc.threat_list.is_empty());
+    assert!(
+        npc.threat_list.is_empty(),
+        "leash must wipe pre-seeded threat targets"
+    );
+    assert!(
+        !npc.abilities.is_on_cooldown(592),
+        "leash must clear pre-seeded cooldown"
+    );
 }
