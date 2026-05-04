@@ -541,12 +541,59 @@ mod tests {
         )
         .await;
 
-        // ── Re-accept: repeats carry forward ────────────────────────
-        // accept_mission reads prior repeats off the cell state and sets
-        // them on the fresh MissionInstance — so the second completion
-        // bumps from 1 to 2, not 0 to 1. Without this carry-forward, a
-        // re-accept would reset the counter on the cell and the next
-        // UPSERT would persist the reset value.
+        // ── Simulate a relog: drop the cell-side mission and rebuild
+        //    it from query_saved_missions, mirroring what
+        //    cell/service/base_messages.rs does on InitPlayerState.
+        //    This pins the production restore path as well as the
+        //    write path — if `query_saved_missions` (or its column
+        //    mapping) drops `repeats`, the seeded MissionInstance
+        //    starts at 0 and the second cycle ends at 1 instead of 2.
+        {
+            let entity = mgr.get_entity_mut(ENTITY_ID).unwrap();
+            // Wipe in-memory state: a fresh login starts with no missions.
+            entity.missions = Default::default();
+        }
+        let saved = query_saved_missions(&db_pool, player_id).await;
+        let saved_for_us = saved
+            .iter()
+            .find(|m| m.mission_id == MISSION_ID)
+            .expect("relog must find the persisted mission");
+        assert_eq!(
+            saved_for_us.repeats, 1,
+            "relog round-trip must read back the persisted repeats — \
+             a 0 here means query_saved_missions's column mapping dropped the field"
+        );
+        // Seed cell-side from SavedMission, matching the production
+        // path in cell::service::base_messages::InitPlayerState.
+        {
+            use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};
+            let entity = mgr.get_entity_mut(ENTITY_ID).unwrap();
+            let objs: Vec<MissionObjective> = saved_for_us
+                .active_objective_ids
+                .iter()
+                .map(|&oid| MissionObjective {
+                    objective_id: oid,
+                    status: STATUS_ACTIVE,
+                    hidden: false,
+                    optional: false,
+                })
+                .collect();
+            let mut mi = MissionInstance::new(
+                saved_for_us.mission_id,
+                saved_for_us.current_step_id.unwrap_or(0),
+                objs,
+            );
+            mi.status = saved_for_us.status;
+            mi.completed_steps = saved_for_us.completed_step_ids.clone();
+            mi.completed_objectives = saved_for_us.completed_objective_ids.clone();
+            // The load-bearing field — `accept_mission` will read
+            // m.repeats off this seeded instance and carry it forward.
+            mi.repeats = saved_for_us.repeats;
+            entity.missions.add_mission(mi);
+        }
+
+        // ── Re-accept (now reads `repeats` off the DB-restored state)
+        //    and complete again: the bump should go 1 → 2.
         accept_mission(ENTITY_ID, MISSION_ID, STEP_ID, objectives(), &tx, &mut mgr).await;
         complete_mission_direct(ENTITY_ID, MISSION_ID, &tx, &mut mgr).await;
         let after_second = mgr
@@ -556,7 +603,8 @@ mod tests {
             .unwrap();
         assert_eq!(
             after_second, 2,
-            "second completion advances repeats: re-accept must carry forward prior count"
+            "second completion advances repeats from the DB-restored value: \
+             re-accept must carry forward what query_saved_missions returned"
         );
         handle_mission_update(
             player_id,
@@ -572,7 +620,7 @@ mod tests {
         )
         .await;
 
-        // ── Re-login query: DB row carries the post-second-bump count ─
+        // ── Final relog query: DB row carries the post-second-bump count ─
         let restored = query_saved_missions(&db_pool, player_id).await;
         let mission = restored
             .iter()
