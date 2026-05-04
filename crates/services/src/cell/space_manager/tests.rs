@@ -350,8 +350,7 @@ fn find_by_tag_does_not_cross_instance_boundaries() {
 
     // Source player in instance A.
     {
-        let mut entity =
-            CellEntity::new(EntityId(100), SpaceId(inst_a as i32), Vector3::default());
+        let mut entity = CellEntity::new(EntityId(100), SpaceId(inst_a as i32), Vector3::default());
         entity.is_player = true;
         mgr.spaces
             .get_mut(&inst_a)
@@ -362,8 +361,7 @@ fn find_by_tag_does_not_cross_instance_boundaries() {
     }
     // Tagged NPC in instance B.
     {
-        let mut entity =
-            CellEntity::new(EntityId(500), SpaceId(inst_b as i32), Vector3::default());
+        let mut entity = CellEntity::new(EntityId(500), SpaceId(inst_b as i32), Vector3::default());
         entity.tag = Some("Boss".to_string());
         mgr.spaces
             .get_mut(&inst_b)
