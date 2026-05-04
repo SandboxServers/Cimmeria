@@ -215,6 +215,26 @@ impl LivewireGame {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn difficulty_for_test(&self) -> u32 {
+        self.difficulty
+    }
+
+    #[cfg(test)]
+    pub(crate) fn goal_total_for_test(&self) -> u32 {
+        self.goal_total
+    }
+
+    #[cfg(test)]
+    pub(crate) fn read_out_for_test(&self) -> &str {
+        &self.read_out
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wire_count_for_test(&self) -> usize {
+        self.wires.len()
+    }
+
     fn update_difficulty(&mut self) {
         let idx = (self.difficulty as usize - 1).min(3);
         let level = &DIFFICULTY_LEVELS[idx];
@@ -496,6 +516,11 @@ impl LivewireGame {
         self.update_difficulty();
         self.setup_wires();
     }
+
+    #[cfg(test)]
+    pub(crate) fn init_game_for_test(&mut self) {
+        self.init_game();
+    }
 }
 
 impl MinigameInstance for LivewireGame {
@@ -703,5 +728,128 @@ impl MinigameInstance for LivewireGame {
 
     fn needs_tick(&self) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_session(difficulty: u32, tech: u32, level: u32) -> MinigameSession {
+        MinigameSession {
+            entity_id: 1,
+            player_id: 100,
+            game_name: "livewire".to_string(),
+            difficulty,
+            tech_competency: tech,
+            seed: 0xDEADBEEF,
+            abilities_mask: 0,
+            intelligence: 0,
+            player_level: level,
+            ticket: String::new(),
+            on_victory_chains: vec![],
+            created_at: std::time::Instant::now(),
+        }
+    }
+
+    /// `LivewireGame::new` clamps difficulty to [1, 4]. Pin so a
+    /// future server bug (or malicious client) sending difficulty=0
+    /// or difficulty=99 can't index out-of-bounds in
+    /// DIFFICULTY_LEVELS during update_difficulty().
+    #[test]
+    fn new_clamps_difficulty_below_one() {
+        let g = LivewireGame::new(&make_session(0, 50, 5));
+        assert_eq!(g.difficulty_for_test(), 1);
+    }
+
+    #[test]
+    fn new_clamps_difficulty_above_four() {
+        let g = LivewireGame::new(&make_session(99, 50, 5));
+        assert_eq!(g.difficulty_for_test(), 4);
+    }
+
+    #[test]
+    fn new_preserves_difficulty_within_range() {
+        let g = LivewireGame::new(&make_session(3, 50, 5));
+        assert_eq!(g.difficulty_for_test(), 3);
+    }
+
+    /// `init_game` populates the wire grid via setup_wires. After
+    /// init the goal_total must equal the difficulty's seeded count
+    /// (2 / 4 / 4 / 6 for difficulties 1..4) and the wire HashMap
+    /// must be non-empty.
+    #[test]
+    fn init_game_populates_wires_and_goals_per_difficulty() {
+        for (difficulty, expected_goals) in [(1u32, 2u32), (2, 4), (3, 4), (4, 6)] {
+            let mut g = LivewireGame::new(&make_session(difficulty, 30, 5));
+            g.init_game_for_test();
+            assert_eq!(
+                g.goal_total_for_test(),
+                expected_goals,
+                "difficulty {difficulty} should seed goal_total {expected_goals}"
+            );
+            assert!(
+                g.wire_count_for_test() > 0,
+                "init_game must populate the wire grid"
+            );
+        }
+    }
+
+    /// `init_game` sets read_out to "<level_prefix><tech_competency>".
+    /// Pin the prefix so a refactor that drops the per-difficulty
+    /// label can't silently change what the player sees on the HUD.
+    #[test]
+    fn init_game_sets_read_out_prefix_per_difficulty() {
+        for (difficulty, prefix) in [(1u32, "I-"), (2, "S-"), (3, "C-"), (4, "E-")] {
+            let mut g = LivewireGame::new(&make_session(difficulty, 42, 5));
+            g.init_game_for_test();
+            assert_eq!(
+                g.read_out_for_test(),
+                &format!("{prefix}42"),
+                "difficulty {difficulty} prefix must be {prefix}"
+            );
+        }
+    }
+
+    /// Distinct seeds must produce distinct wire layouts. Pin so a
+    /// regression that always seeds StdRng from a constant (or
+    /// forgets to thread `session.seed` through) can't strip
+    /// per-room replay variability.
+    #[test]
+    fn different_seeds_produce_different_wire_layouts() {
+        let mut s1 = make_session(2, 30, 5);
+        s1.seed = 1;
+        let mut s2 = make_session(2, 30, 5);
+        s2.seed = 2;
+
+        let mut g1 = LivewireGame::new(&s1);
+        let mut g2 = LivewireGame::new(&s2);
+        g1.init_game_for_test();
+        g2.init_game_for_test();
+
+        // Compare the depth -> wire-name maps. Both games seed the
+        // same number of wires (same difficulty + tech_competency),
+        // but the depth assignment + wire-library picks vary by
+        // RNG seed.
+        let names1: std::collections::BTreeMap<u32, String> =
+            g1.wires.iter().map(|(&d, w)| (d, w.lib.clone())).collect();
+        let names2: std::collections::BTreeMap<u32, String> =
+            g2.wires.iter().map(|(&d, w)| (d, w.lib.clone())).collect();
+        assert_ne!(
+            names1, names2,
+            "different seeds must yield different layouts"
+        );
+    }
+
+    /// `started()` runs init_game and returns one Send output. Pin
+    /// the return-shape so a refactor that batches sends or routes
+    /// the initial state via a separate channel can't break the
+    /// MinigameInstance contract.
+    #[test]
+    fn started_returns_exactly_one_send_with_full_game_state() {
+        let mut g = LivewireGame::new(&make_session(2, 30, 5));
+        let outputs = g.started();
+        assert_eq!(outputs.len(), 1);
+        assert!(matches!(outputs[0], GameOutput::Send(_)));
     }
 }
