@@ -34,7 +34,7 @@ jobs:
     name: cargo fmt --check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -51,7 +51,7 @@ jobs:
     name: cargo clippy -D warnings
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -79,7 +79,7 @@ jobs:
     name: cargo build (workspace)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
@@ -107,7 +107,7 @@ jobs:
     name: cargo test (workspace, no DB)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
@@ -157,7 +157,7 @@ jobs:
     env:
       DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: install clang + mold + psql
         run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
@@ -213,7 +213,7 @@ jobs:
     env:
       DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -264,7 +264,7 @@ jobs:
           cat target/coverage/summary.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
       - name: upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: target/coverage/
