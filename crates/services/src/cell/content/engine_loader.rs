@@ -232,3 +232,52 @@ pub(super) async fn load_single_chain_for_test(
             .next(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `build_engine(None)` returns an empty engine — the codepath
+    /// the server takes when started without a DB pool. Pin so a
+    /// regression that panics on the None branch (e.g. via unwrap)
+    /// gets caught.
+    #[tokio::test]
+    async fn build_engine_with_none_returns_empty_engine() {
+        let engine = build_engine(None).await;
+        assert_eq!(engine.chain_count(), 0);
+    }
+
+    /// Live-DB sanity: against the seeded `resources.content_*` tables,
+    /// `build_engine` returns a non-empty engine. Catches a JOIN
+    /// breakage, a column rename, or a content_chains schema drift
+    /// that the rest of the test suite wouldn't surface.
+    #[tokio::test]
+    async fn build_engine_with_db_pool_loads_seeded_chains() {
+        let pool = crate::test_support::require_db_or_skip!();
+        let engine = build_engine(Some(&pool)).await;
+        assert!(
+            engine.chain_count() > 0,
+            "seeded resources.content_chains has rows; engine must load them"
+        );
+    }
+
+    /// `load_single_chain_for_test` returns `Ok(None)` for a chain id
+    /// that doesn't exist in the seed. Boundary used by the
+    /// chain-replay tests; pin so a regression that returns
+    /// `Some(empty_chain)` instead can't slip through.
+    ///
+    /// Sentinel uses the project's reserved 0x7000_xxxx range per
+    /// TESTING.md "Sentinel id discipline" rather than a raw negative
+    /// id. The seed's content_chains rows are positive low-thousands,
+    /// so 0x7000_2000 is guaranteed to miss without the loader needing
+    /// to special-case negatives.
+    #[tokio::test]
+    async fn load_single_chain_returns_none_for_missing_id() {
+        let pool = crate::test_support::require_db_or_skip!();
+        const TEST_MISSING_CHAIN_ID: i32 = 0x7000_2000;
+        let result = load_single_chain_for_test(&pool, TEST_MISSING_CHAIN_ID)
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+}
