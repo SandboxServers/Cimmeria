@@ -114,25 +114,32 @@ mod tests {
     use crate::cell::space_manager::SpaceManager;
     use crate::mercury::method_idx;
 
-    /// Build a `SpaceManager` with one player at id=1 and one NPC at id=2,
-    /// with the player witnessing the NPC. Mirrors the fixture used by the
-    /// integrated `tests.rs` so reviewers see one make-state shape across
-    /// the abilities tests.
+    /// Build a `SpaceManager` with one player at id=1 and one NPC at id=2
+    /// in the SAME startup space. We use the non-instanced "Castle" world
+    /// because instanced worlds (like Castle_CellBlock) allocate a fresh
+    /// space on every `create_entity` call — putting the player and NPC
+    /// in different spaces, where AoI never sees them.
+    ///
+    /// `connect_entity(1)` + an AoI tick populates the player's witness
+    /// set so messages addressed to the NPC fan out via
+    /// `WitnessEntityMethod` instead of being dropped at the empty-witness
+    /// branch of `send_entity_method`.
     fn make_mgr_with_player_and_npc() -> SpaceManager {
         let mut mgr = SpaceManager::new(1);
-        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
-        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
-            .unwrap();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
-            .unwrap();
-        mgr.create_entity(2, "Castle_CellBlock", [0.0; 3], [0.0; 3])
-            .unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
         if let Some(p) = mgr.get_entity_mut(1) {
             p.is_player = true;
             p.player_id = Some(100);
         }
-        // NPC keeps is_player=false; no player_id needed.
+        mgr.connect_entity(1);
+        let _ = mgr.compute_aoi_changes();
         mgr
     }
 
@@ -226,9 +233,7 @@ mod tests {
 
         let pairs = methods(&drain(&mut rx));
         assert!(
-            !pairs
-                .iter()
-                .any(|p| *p == (1, method_idx::ON_TARGET_UPDATE)),
+            !pairs.contains(&(1, method_idx::ON_TARGET_UPDATE)),
             "non-player attacker must not receive onTargetUpdate; got {pairs:?}"
         );
     }
@@ -251,13 +256,11 @@ mod tests {
 
         let pairs = methods(&drain(&mut rx));
         assert!(
-            !pairs
-                .iter()
-                .any(|p| *p == (2, method_idx::INTERACTION_TYPE)),
+            !pairs.contains(&(2, method_idx::INTERACTION_TYPE)),
             "player target must not receive INTERACTION_TYPE; got {pairs:?}"
         );
         assert!(
-            pairs.iter().any(|p| *p == (2, method_idx::ON_STATE_FIELD_UPDATE)),
+            pairs.contains(&(2, method_idx::ON_STATE_FIELD_UPDATE)),
             "player target must still receive onStateFieldUpdate; got {pairs:?}"
         );
     }
@@ -297,7 +300,11 @@ mod tests {
                 _ => None,
             })
             .expect("INTERACTION_TYPE must be sent for an NPC target");
-        assert_eq!(int_msg.len(), 8, "INTERACTION_TYPE payload must be exactly 8 bytes");
+        assert_eq!(
+            int_msg.len(),
+            8,
+            "INTERACTION_TYPE payload must be exactly 8 bytes"
+        );
         let u = u64::from_le_bytes(int_msg.try_into().unwrap());
         assert_eq!(
             u, high_bit_flag as u64,

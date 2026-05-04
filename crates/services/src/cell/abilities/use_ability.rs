@@ -415,7 +415,10 @@ mod tests {
 
         let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
         assert!(!committed);
-        assert!(drain(&mut rx).is_empty(), "cooldown rejection must not emit any wire packets");
+        assert!(
+            drain(&mut rx).is_empty(),
+            "cooldown rejection must not emit any wire packets"
+        );
     }
 
     /// Out-of-range hits the dedicated error-code branch — emits exactly
@@ -474,9 +477,8 @@ mod tests {
         make_player(&mut mgr, 1, [0.0; 3]);
         if let Some(p) = mgr.get_entity_mut(1) {
             p.abilities.add_ability(7);
-            p.reload_complete_at = Some(
-                std::time::Instant::now() - std::time::Duration::from_secs(1),
-            );
+            p.reload_complete_at =
+                Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
         }
         mgr.ability_defs.insert(7, make_ability(7, 1, 30));
         let (tx, mut rx) = mpsc::channel(8);
