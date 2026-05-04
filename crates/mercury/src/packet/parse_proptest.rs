@@ -1,8 +1,9 @@
 //! Property test: `parse_incoming` must never panic, regardless of
 //! input length or contents.
 //!
-//! The stable-Rust complement to the cargo-fuzz target in
-//! [`fuzz/fuzz_targets/parse_incoming.rs`](../../../../../fuzz/fuzz_targets/parse_incoming.rs).
+//! The stable-Rust complement to the cargo-fuzz target at
+//! `fuzz/fuzz_targets/parse_incoming.rs` (run via
+//! `cargo +nightly fuzz run parse_incoming` from `fuzz/`).
 //! Fuzzing requires nightly Rust (libfuzzer-sys); this proptest runs
 //! in every per-PR CI invocation under stable. It catches the
 //! obvious panic sources (unchecked indexing, integer overflow,
@@ -19,19 +20,24 @@ proptest! {
     #![proptest_config(ProptestConfig {
         // 4096 random byte sequences per run. Much higher than the
         // 256-case round-trip property because the input space here
-        // is wider (all u8 sequences in 0..=512 bytes long) and the
+        // is wider (all u8 sequences in 0..=1500 bytes long) and the
         // assertion is just "didn't panic" — fast to evaluate.
         cases: 4096,
         ..ProptestConfig::default()
     })]
 
     /// Arbitrary byte input must never crash the parser. Length range
-    /// 0..=512 covers: empty buffer (BufferUnderflow path), realistic
-    /// UDP datagrams (≤ MTU ~ 1500), and over-long inputs that exercise
-    /// the bound-strip arithmetic in `pop_u32_le!` etc.
+    /// 0..=1500 covers: empty buffer (BufferUnderflow path), every
+    /// length up through Ethernet MTU-sized UDP datagrams (Mercury's
+    /// PACKET_MAX_SIZE is 1472), and inputs longer than any valid
+    /// frame so the bound-strip arithmetic in `pop_u32_le!` etc.
+    /// gets exercised on payloads where every footer would still
+    /// have room. parse_incoming has no upper-length cap of its own,
+    /// so any byte budget here is fine — capping at 1500 keeps the
+    /// proptest runtime bounded.
     #[test]
     fn parse_incoming_never_panics_on_arbitrary_bytes(
-        raw in proptest::collection::vec(any::<u8>(), 0..=512),
+        raw in proptest::collection::vec(any::<u8>(), 0..=1500),
     ) {
         // The result is intentionally discarded — we only care that
         // the call returns rather than panicking. Wrapping in

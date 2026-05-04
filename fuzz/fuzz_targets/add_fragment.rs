@@ -1,13 +1,15 @@
 //! Fuzz target for `FragmentAssembler::process_parsed`.
 //!
 //! Fragment reassembly is the second corruption-exposed surface:
-//! after `parse_incoming` succeeds, fragmented packets feed their
-//! body bytes through `process_parsed`, which reads a 6-byte header
-//! (fragment_index, total_fragments, first_seq) and dispatches to
-//! the assembler. A pathological header (claiming 255 fragments,
-//! claiming index ≥ total, varying first_seq across fragments,
-//! sending the same fragment twice) is the second class of input
-//! that must not panic / OOM.
+//! after `parse_incoming` succeeds on a `FLAG_FRAGMENTED` packet,
+//! `process_parsed` reads the parsed FOOTER fields (`seq_id`,
+//! `frag_begin`, `frag_end`) — NOT a body header — to derive the
+//! reassembly key, this fragment's index, and the total fragment
+//! count. The body bytes are the fragment's payload. Adversarial
+//! inputs (frag_begin > frag_end, range exceeding MAX_FRAGMENTS,
+//! seq outside [frag_begin, frag_end], repeated indices, conflicting
+//! frag_begin / frag_end across fragments) must not panic, OOM, or
+//! unboundedly allocate.
 //!
 //! The harness chains parse_incoming → process_parsed so every
 //! input is exercised through the production decode path. We accept

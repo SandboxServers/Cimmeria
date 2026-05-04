@@ -28,5 +28,5 @@ digest = "0.10"
 [dev-dependencies]
 # Property-based "never panics on arbitrary bytes" coverage for
 # parse_incoming. Stable-Rust complement to the cargo-fuzz target
-# in /fuzz/parse_incoming.rs (which needs nightly).
+# at /fuzz/fuzz_targets/parse_incoming.rs (which needs nightly).
 proptest = { workspace = true }

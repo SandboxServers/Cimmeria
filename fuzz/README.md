@@ -8,10 +8,13 @@ most corruption-exposed surface in the codebase.
 - **`parse_incoming`** — drives `cimmeria_mercury::packet::parse_incoming`
   with arbitrary bytes. Must never panic on any input.
 - **`add_fragment`** — chains `parse_incoming` → `FragmentAssembler::process_parsed`.
-  Drives the fragment header parser + reassembly state machine with
-  arbitrary input. Must never panic regardless of how malicious the
-  fragment headers are (impossible total counts, conflicting first_seq
-  values across fragments, repeats, etc.).
+  Drives the reassembly state machine, which derives the reassembly
+  key / fragment index / total count from the parsed footer fields
+  (`seq_id`, `frag_begin`, `frag_end`) and treats the packet body as
+  fragment payload. Must never panic regardless of how malicious the
+  footer values are: inverted ranges (`frag_begin > frag_end`),
+  ranges exceeding `MAX_FRAGMENTS`, seq IDs outside
+  `[frag_begin, frag_end]`, etc.
 
 ## Why this crate is excluded from the workspace
 

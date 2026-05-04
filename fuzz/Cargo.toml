@@ -14,7 +14,6 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 cimmeria-mercury = { path = "../crates/mercury" }
-cimmeria-common = { path = "../crates/common" }
 
 [[bin]]
 name = "parse_incoming"
