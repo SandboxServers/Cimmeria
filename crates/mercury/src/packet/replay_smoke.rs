@@ -1,33 +1,38 @@
-//! Mercury packet-replay smoke: a synthesized stream of packet shapes
-//! that span the full flag/footer matrix, replayed through
-//! `parse_incoming` to catch wire-format drift.
+//! Mercury packet replay smoke. The module has two shapes of test:
 //!
-//! What this catches:
+//! 1. `replay_packet_stream_*` and `fragmented_packet_round_trips_*`
+//!    feed `build_outgoing` / `build_outgoing_fragmented` output
+//!    back through `parse_incoming`. These are round-trip-only —
+//!    they catch a regression in EITHER side that breaks the
+//!    symmetry, but a co-drift that changes both sides in the same
+//!    direction (e.g., consistent footer-order swap) would round-
+//!    trip cleanly.
 //!
-//! - Flag-bit re-allocations: if a future change repurposes one of
-//!   FLAG_HAS_REQUESTS / FLAG_HAS_ACKS / FLAG_FRAGMENTED / FLAG_HAS_SEQUENCE
-//!   bits without updating the parser, the affected shape's
-//!   round-trip would surface here.
+//! 2. `parser_decodes_hand_coded_byte_fixtures_per_wire_spec` is
+//!    the independent oracle. Its fixtures are literal byte
+//!    sequences derived from the wire-format spec at the top of
+//!    `packet.rs`, NOT from `build_outgoing`. A footer-order swap
+//!    in BOTH `build_outgoing` and `parse_incoming` would still
+//!    fail at least one byte fixture because the fixtures encode
+//!    the spec independently of either function.
 //!
-//! - Footer-order regressions: footers are stored innermost-first
-//!   (first_req_offset → seq_id → acks-with-count) and stripped
-//!   outermost-first on parse. A swap in either direction would
-//!   produce wrong field values when reading back.
+//! What the round-trip + oracle pair together catch:
 //!
-//! - First-byte / last-byte off-by-one in the parser's bounds checks:
-//!   covered by including a bare-flags packet (1 byte total) and a
-//!   maximum-flags packet that exercises every footer at once.
-//!
-//! Why this is a smoke and not in `packet::tests`: the per-builder
-//! tests in packet.rs assert one shape at a time. The smoke is
-//! valuable specifically because it asserts the whole matrix
-//! round-trips as a single batch — a refactor that breaks ONE shape
-//! while keeping per-shape tests passing (e.g., by changing both
-//! sides consistently in the wrong direction) would still surface
-//! here when the assembled stream goes through the production
-//! parser.
+//! - Flag-bit re-allocations: repurposing one of FLAG_HAS_REQUESTS /
+//!   FLAG_HAS_ACKS / FLAG_FRAGMENTED / FLAG_HAS_SEQUENCE without
+//!   updating the parser; the round-trip flags assertion fires.
+//! - Footer-order regressions: the byte fixtures pin the wire
+//!   layout independent of the helpers, so a co-drift that swaps
+//!   first_req_offset / seq_id / acks order in BOTH helpers is
+//!   caught by Fixture 4 (all footers at once).
+//! - First-byte / last-byte bounds: bare-flags fixture (1 byte
+//!   total) exercises the parser's empty-body path; the all-
+//!   footers fixture exercises the maximum offset.
+//! - Fragment footer placement: Fixture 5 (FLAG_FRAGMENTED |
+//!   FLAG_HAS_SEQUENCE) pins frag_begin / frag_end as innermost
+//!   footers, with seq_id outside.
 
-use crate::packet::{
+use super::{
     build_outgoing, build_outgoing_fragmented, parse_incoming, FLAG_FRAGMENTED, FLAG_HAS_ACKS,
     FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE, FLAG_RELIABLE,
 };
@@ -242,11 +247,13 @@ fn replay_stream_twice_in_a_row_produces_identical_decodes() {
 /// them outside the `seq_id` footer) would surface as a failed
 /// `frag_begin` / `frag_end` round-trip.
 ///
-/// Acks aren't included here because production never piggybacks
-/// them on fragments — `build_fragmented_bundle` and every existing
-/// call site pass `&[]` for the ack slice. Acks are the empty
-/// path; the all-acks combination has its own coverage in the
-/// non-fragmented matrix above.
+/// Production fragments DO carry piggybacked acks on the first
+/// fragment of a bundle — `build_fragmented_bundle` (`packet.rs`)
+/// passes the full ack slice to fragment 0 and `&[]` to the rest.
+/// That ack-bearing first-fragment shape is pinned by
+/// `round_trip_fragmented_with_reliable_and_acks` in `packet::tests`;
+/// this smoke covers the bare-fragment shape (later fragments,
+/// no acks) so the two together span both halves of the bundle.
 #[test]
 fn fragmented_packet_round_trips_frag_footers() {
     let body = b"fragment-payload-bytes";
@@ -256,7 +263,7 @@ fn fragmented_packet_round_trips_frag_footers() {
         0xABCD_1234, // seq_id
         100,         // frag_begin
         103,         // frag_end (4-fragment range)
-        &[],         // acks: production fragments never piggyback
+        &[],         // acks: bare-fragment shape (matches fragments 1+ of a bundle)
     );
 
     let parsed = parse_incoming(&raw).expect("fragmented packet must parse");
