@@ -11,11 +11,12 @@
 //! flag combo, large seq_id values near the `NULL_SEQUENCE` boundary,
 //! large `first_req_offset` values that span the full u16 range, etc.
 //!
-//! Note on the "varint round-trip" item from #123 Group E: the codebase
-//! has no varint encoding (none of the wire fields are LEB128 / similar
-//! variable-length). The closest analog is the packet round-trip
-//! itself — variable-length footer presence depending on flag bits —
-//! and that's what this module pins.
+//! Scope note: there is no varint / LEB128 encoding anywhere in the
+//! Mercury wire format — every field is fixed-width. The "variable-
+//! length" axis the codec actually has is the footer block, whose
+//! length depends on which flag bits are set in the leading flags
+//! byte. That's the variation this module exercises across its full
+//! cartesian product.
 
 use super::{
     build_outgoing, build_outgoing_fragmented, parse_incoming, FLAG_FRAGMENTED, FLAG_HAS_ACKS,
@@ -132,13 +133,23 @@ proptest! {
         // in replay_smoke.rs (acks would need FLAG_HAS_ACKS in the
         // caller-supplied flags too, exercised separately by the
         // first-fragment-of-a-bundle test in packet::tests).
-        let flags = passthrough & !FLAG_HAS_ACKS;
+        let flags_in = passthrough & !FLAG_HAS_ACKS;
+        // The expected output is the input plus the two bits the
+        // builder forces on. Pin the FULL flags byte rather than just
+        // the two builder-forced bits — a regression that dropped one
+        // of RELIABLE / ON_CHANNEL / INDEXED / PIGGYBACK passthrough
+        // bits would have passed the previous "FLAG_FRAGMENTED is set"
+        // assertion silently.
+        let expected_flags = flags_in | FLAG_FRAGMENTED | FLAG_HAS_SEQUENCE;
 
-        let raw = build_outgoing_fragmented(flags, &body, seq_id, frag_begin, frag_end, &[]);
+        let raw = build_outgoing_fragmented(flags_in, &body, seq_id, frag_begin, frag_end, &[]);
         let parsed = parse_incoming(&raw).expect("fragmented packet must parse");
 
-        prop_assert!(parsed.flags & FLAG_FRAGMENTED != 0);
-        prop_assert!(parsed.flags & FLAG_HAS_SEQUENCE != 0);
+        prop_assert_eq!(
+            parsed.flags,
+            expected_flags,
+            "flags byte must round-trip including ALL passthrough bits"
+        );
         prop_assert_eq!(parsed.body.as_ref(), body.as_slice(), "body round-trip");
         prop_assert_eq!(parsed.seq_id, Some(seq_id), "seq_id round-trip");
         prop_assert_eq!(parsed.frag_begin, Some(frag_begin), "frag_begin round-trip");
