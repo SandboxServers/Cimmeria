@@ -52,10 +52,10 @@ See the root [CLAUDE.md](../CLAUDE.md) for WSL memory management rules.
 
 ## Testing
 
-The workspace currently carries **878 `#[test]` / `#[tokio::test]` cases across 136 files**, of which 84 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
+The workspace currently carries **1071 `#[test]` / `#[tokio::test]` cases across 166 files**, of which 110 are live-DB regression guards and 3 are end-to-end PL/pgSQL smokes. Run the full suite:
 
 ```bash
-# Unit + non-DB integration (covers ~794 tests):
+# Unit + non-DB integration (covers ~961 tests):
 cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher
 
@@ -64,7 +64,7 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   cargo test -p cimmeria-services --lib -- --test-threads=1
 ```
 
-`--test-threads=1` is required for the live-DB run — some guards share sentinel id ranges and would collide under parallel execution. See [../TESTING.md](../TESTING.md) for the full picker, gotchas, and review checklist.
+`--test-threads=1` is required for the live-DB run — some guards share sentinel id ranges and would collide under parallel execution. See [../TESTING.md](../TESTING.md) for the full picker, gotchas, and review checklist, and [../docs/testing/inventory/README.md](../docs/testing/inventory/README.md) for the catalogue of every test in the workspace (one file per crate).
 
 ## Key Source Files
 
