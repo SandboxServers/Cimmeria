@@ -168,17 +168,23 @@ mod live_db {
     }
 
     #[tokio::test]
-    async fn load_item_defs_returns_only_weapons_with_clip_size() {
+    async fn load_item_defs_returns_seeded_weapons_with_clip_size_columns() {
         let pool = require_db_or_skip!();
         let map = load_item_defs(&pool)
             .await
             .expect("load_item_defs must succeed against seeded DB");
-        // Loader filters `WHERE clip_size IS NOT NULL` — every cached row
-        // must have a positive clip_size by construction.
+        // The loader filters `WHERE clip_size IS NOT NULL` — items with a
+        // populated clip_size column. The actual values include 0 (placeholder
+        // entries for non-loaded weapon templates), so we don't assert
+        // positivity here. The load_item_defs invariant we CAN pin is that
+        // the cache is non-empty (the seed has weapons) and that every cached
+        // entry's clip_size is non-negative (clip_size is i32 in the
+        // resources.items column; negative would indicate a sign-extend bug).
+        assert!(!map.is_empty(), "seeded resources.items has weapons with clip_size populated");
         for (item_id, def) in &map {
             assert!(
-                def.clip_size > 0,
-                "item {item_id} surfaced from load_item_defs with non-positive clip_size {}",
+                def.clip_size >= 0,
+                "item {item_id} surfaced from load_item_defs with negative clip_size {}",
                 def.clip_size
             );
         }
