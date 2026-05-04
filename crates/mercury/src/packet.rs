@@ -23,6 +23,9 @@ use bytes::{BufMut, Bytes, BytesMut};
 
 use cimmeria_common::{CimmeriaError, Result};
 
+#[cfg(test)]
+mod replay_smoke;
+
 // ── Flag byte constants (C++ packet.hpp) ────────────────────────────────────
 
 /// Packet contains messages with request IDs (footers include `first_req_offset`).
