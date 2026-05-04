@@ -186,3 +186,62 @@ pub(crate) async fn ensure_postgresql_running(conn_str: &str) {
          Check server/logs/postgresql.log for details."
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `parse_pg_port` ships the project default 5433 when the connection
+    /// string is missing the `port=` token. Hard-coded because the bundled
+    /// PostgreSQL on Windows binds to 5433 to avoid clashing with any
+    /// system Postgres on 5432; defaulting to 5432 would silently target
+    /// the wrong instance on dev boxes that have both running.
+    #[test]
+    fn parse_pg_port_returns_project_default_when_absent() {
+        assert_eq!(parse_pg_port(""), 5433);
+        assert_eq!(parse_pg_port("host=localhost user=cimmeria"), 5433);
+    }
+
+    /// Explicit `port=NNNN` token wins over the default. Whitespace-
+    /// separated tokens, libpq-style.
+    #[test]
+    fn parse_pg_port_reads_explicit_value() {
+        assert_eq!(parse_pg_port("host=localhost port=6543"), 6543);
+        assert_eq!(parse_pg_port("port=5432 host=db.example"), 5432);
+    }
+
+    /// A malformed `port=` value (non-numeric, out of range) must NOT
+    /// produce a panic — the parse silently falls back to the default.
+    /// This is the auto-start path running before any logging is wired,
+    /// so we'd rather start on the default port than crash the orchestrator.
+    #[test]
+    fn parse_pg_port_falls_back_on_unparseable_value() {
+        assert_eq!(parse_pg_port("port=not_a_number"), 5433);
+        assert_eq!(parse_pg_port("port=99999"), 5433); // > u16::MAX
+    }
+
+    #[test]
+    fn parse_pg_host_returns_localhost_default() {
+        assert_eq!(parse_pg_host(""), "localhost");
+        assert_eq!(parse_pg_host("port=5433 user=cimmeria"), "localhost");
+    }
+
+    #[test]
+    fn parse_pg_host_reads_explicit_value() {
+        assert_eq!(parse_pg_host("host=db.internal port=5433"), "db.internal");
+        // We DIVERGE from libpq here on purpose. libpq takes the last
+        // `host=` token when duplicates appear; we take the first.
+        // Connection strings in this repo are author-curated (config
+        // files, not user input), so duplicates indicate a config bug
+        // rather than a legitimate override. First-token-wins gives a
+        // deterministic result for the localhost auto-start gate
+        // without us having to model libpq's full precedence rules.
+        // The pin below makes that divergence explicit so a future
+        // refactor toward libpq compatibility doesn't silently flip
+        // which host the gate checks.
+        assert_eq!(
+            parse_pg_host("host=first.example host=second.example"),
+            "first.example"
+        );
+    }
+}
