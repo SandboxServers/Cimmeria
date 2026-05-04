@@ -39,10 +39,10 @@ comment:
 # sgw-launcher are Tauri/GUI surfaces excluded from CI, so their files
 # would show as 0% covered and skew the report).
 ignore:
-  - "crates/cimmeria-app/**"
+  - "src-tauri/**"
   - "crates/cimmeria-content-editor/**"
   - "crates/cimmeria-scene-editor/**"
-  - "crates/sgw-launcher/**"
+  - "crates/launcher/**"
   - "src/**"           # legacy C++ reference
   - "python/**"        # legacy Python reference
   - "tools/**"         # editor tools + smoke SQL scripts
