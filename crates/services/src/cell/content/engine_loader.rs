@@ -263,12 +263,21 @@ mod tests {
 
     /// `load_single_chain_for_test` returns `Ok(None)` for a chain id
     /// that doesn't exist in the seed. Boundary used by the
-    /// chain-replay tests; pin so a regression that returns `Some(empty_chain)`
-    /// instead can't slip through.
+    /// chain-replay tests; pin so a regression that returns
+    /// `Some(empty_chain)` instead can't slip through.
+    ///
+    /// Sentinel uses the project's reserved 0x7000_xxxx range per
+    /// TESTING.md "Sentinel id discipline" rather than a raw negative
+    /// id. The seed's content_chains rows are positive low-thousands,
+    /// so 0x7000_2000 is guaranteed to miss without the loader needing
+    /// to special-case negatives.
     #[tokio::test]
     async fn load_single_chain_returns_none_for_missing_id() {
         let pool = crate::test_support::require_db_or_skip!();
-        let result = load_single_chain_for_test(&pool, -999_999).await.unwrap();
+        const TEST_MISSING_CHAIN_ID: i32 = 0x7000_2000;
+        let result = load_single_chain_for_test(&pool, TEST_MISSING_CHAIN_ID)
+            .await
+            .unwrap();
         assert!(result.is_none());
     }
 }
