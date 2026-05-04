@@ -25,7 +25,6 @@
 //! in `handlers.rs`.
 
 use std::net::TcpListener as StdTcpListener;
-use std::time::Duration;
 
 use cimmeria_common::ServerConfig;
 
@@ -43,21 +42,6 @@ fn ephemeral_port() -> u16 {
     let port = listener.local_addr().expect("local_addr").port();
     drop(listener);
     port
-}
-
-/// Block on a future until it returns or the deadline expires.
-/// Used to wait for the auth listener to come up after `start()` —
-/// the start method spawns the server task and returns immediately,
-/// so the first request can race the bind.
-async fn wait_listening(addr: &str) {
-    let deadline = std::time::Instant::now() + Duration::from_secs(2);
-    while std::time::Instant::now() < deadline {
-        if tokio::net::TcpStream::connect(addr).await.is_ok() {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-    panic!("auth listener did not come up at {addr} within 2s");
 }
 
 #[tokio::test]
@@ -82,9 +66,11 @@ async fn login_smoke_drives_phase1_and_phase2_through_real_http_stack() {
     });
 
     // ── 2. Start the HTTP listener ──────────────────────────────────
+    // AuthService::start awaits TcpListener::bind before returning,
+    // so the listener is already accepting connections by the time
+    // we reach the first request below — no readiness probe needed.
     auth.start().await.expect("auth service must start");
     let base_url = format!("http://127.0.0.1:{port}");
-    wait_listening(&format!("127.0.0.1:{port}")).await;
 
     // Default reqwest::Client has no cookie store. We explicitly
     // forward the SID below so a regression that breaks the cookie
@@ -93,11 +79,13 @@ async fn login_smoke_drives_phase1_and_phase2_through_real_http_stack() {
     let client = reqwest::Client::new();
 
     // ── 3. Phase 1: POST /SGWLogin/UserAuth ─────────────────────────
+    // Raw-string body — backslashes are literal in `r#"..."#` and
+    // would land in the wire bytes, so this is plain XML on one
+    // logical line per element. Newlines inside attribute values are
+    // tolerated by quick-xml but not added here to keep the wire
+    // payload close to what the real client sends.
     let phase1_body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" \
-SKU="SGW_BETA" AccountName="smoke-user" \
-Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" \
-ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
+<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="smoke-user" Password="A94A8FE5CCB19BA61C4C0873D391E987982FBBD3" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
     let resp1 = client
         .post(format!("{base_url}/SGWLogin/UserAuth"))
         .header("Content-Type", "text/xml")
@@ -142,8 +130,7 @@ ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
 
     // ── 4. Phase 2: POST /SGWLogin/ServerSelection with Cookie ──────
     let phase2_body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" \
-ServerSelection="TestShard" />"#;
+<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" ServerSelection="TestShard" />"#;
     let resp2 = client
         .post(format!("{base_url}/SGWLogin/ServerSelection"))
         .header("Content-Type", "text/xml")
