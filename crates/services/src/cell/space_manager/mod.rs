@@ -21,6 +21,9 @@ mod xml;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod aoi_churn_smoke;
+
 /// Grid cell size for spatial hashing (world units).
 pub(crate) const GRID_CELL_SIZE: f32 = 50.0;
 
