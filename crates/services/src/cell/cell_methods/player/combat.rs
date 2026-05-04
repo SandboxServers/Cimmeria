@@ -358,9 +358,17 @@ mod tests {
     /// onEndAidWait + RespawnReload.
     #[tokio::test]
     async fn handle_respawn_restores_stats_clears_flags_and_sends_respawn_reload() {
+        use crate::cell::combat::{BSF_DEAD, BSF_MOVEMENT_LOCK};
         let mut mgr = make_mgr_with_player("Castle_CellBlock");
         if let Some(e) = mgr.get_entity_mut(1) {
-            // Damaged + flagged dead + an ability on cooldown.
+            // Damaged + flagged dead + an ability on cooldown. Use the
+            // refcounting set_state_flag helpers so the
+            // state_flag_counts map gets populated; that way the
+            // respawn assertion can distinguish `clear_all_state_flags`
+            // (which empties both `state_field` AND
+            // `state_flag_counts`) from a raw `state_field = 0` (which
+            // would leave stale counter entries — the regression shape
+            // this test guards against).
             if let Some(h) = e.stats.get_mut(HEALTH) {
                 h.update(0, 1, 100);
                 h.clear_dirty();
@@ -369,7 +377,12 @@ mod tests {
                 f.update(0, 0, 50);
                 f.clear_dirty();
             }
-            e.state_field = 0xFF;
+            e.set_state_flag(BSF_DEAD);
+            e.set_state_flag(BSF_MOVEMENT_LOCK);
+            assert!(
+                !e.state_flag_counts.is_empty(),
+                "fixture sanity: counters should be populated before respawn"
+            );
             e.abilities
                 .start_ability_cooldown(592, std::time::Duration::from_secs(60));
         }
@@ -387,7 +400,13 @@ mod tests {
             50,
             "FOCUS must be restored to max"
         );
-        assert_eq!(e.state_field, 0, "state flags must be fully cleared");
+        assert_eq!(e.state_field, 0, "state_field must be cleared");
+        assert!(
+            e.state_flag_counts.is_empty(),
+            "respawn must clear the per-flag refcount map too — \
+             a raw state_field=0 would leave stale counters and the \
+             next ref-counted unset would underflow back to a stuck bit"
+        );
         assert!(
             !e.abilities.is_on_cooldown(592),
             "respawn must clear ability cooldowns"
