@@ -217,10 +217,9 @@ pub(crate) async fn handle_gate_travel(
 
 #[cfg(test)]
 mod tests {
-    //! Tests for the gate-travel base→cell handoff seam.
+    //! Tests for the gate-travel cell↔base handoff seam.
     //!
-    //! `handle_gate_travel` had zero tests prior to this PR. The interesting
-    //! cases pin the cross-service contract:
+    //! What's pinned:
     //!   * cell-side `handle_dial_gate` emits a CellToBaseMsg::GateTravel
     //!     with the right target world / position fields — fed verbatim
     //!     into `handle_gate_travel`, the destination state lands in
@@ -231,14 +230,30 @@ mod tests {
     //!   * Missing entity_to_addr / connected entries surface as Err
     //!     (not silently dropped).
     //!
-    //! Cross-shard handoff (the literal #123 Group B wording) is NOT a
-    //! feature in current code — there's no live-shard registry. What
-    //! exists today is the cell→base→cell handoff *within a single
-    //! shard*, and that's what these tests pin.
+    //! Out of scope: multi-shard handoff (the codebase has no live-shard
+    //! registry today — `orchestrator_shards.rs` is a read-only loader).
+    //! These tests cover the cell→base→cell handoff within a single shard,
+    //! which is the production behavior.
     use super::*;
+    use crate::base::PendingClientReadyInfo;
     use cimmeria_mercury::encryption::MercuryEncryption;
     use std::sync::atomic::{AtomicBool, AtomicU32};
     use std::time::Instant;
+
+    /// Stub PendingClientReadyInfo for fixture seeding. Used to make the
+    /// `pending_client_ready.is_none()` post-condition a real regression
+    /// guard: if the fixture starts with `Some(...)` and the assertion
+    /// later requires `None`, then a regression that stops clearing the
+    /// field surfaces as a failed assertion.
+    fn stub_pending_ready() -> PendingClientReadyInfo {
+        PendingClientReadyInfo {
+            entity_id: 0,
+            player_id: 0,
+            world_name: "Stale".to_string(),
+            appearance_args: vec![0xAB],
+            tint_args: vec![0xCD],
+        }
+    }
 
     fn make_state() -> ConnectedClientState {
         ConnectedClientState {
@@ -258,7 +273,10 @@ mod tests {
             pending_world_entry: None,
             pending_player_load_data: None,
             pending_map_loaded: None,
-            pending_client_ready: None,
+            // Seeded with Some(...) so a regression that stops clearing
+            // it surfaces as a failed assertion in the round-trip test.
+            // Without seeding, asserting None would be a no-op.
+            pending_client_ready: Some(stub_pending_ready()),
             cached_appearance_args: None,
             cached_tint_args: None,
             cancelled: Arc::new(AtomicBool::new(false)),
@@ -398,32 +416,32 @@ mod tests {
         assert!(c.pending_client_ready.is_none());
     }
 
-    /// Active-player-id fail-closed guard. Without `active_player_id`
-    /// cached on ConnectedClientState (set during playCharacter), gate
-    /// travel must REFUSE to persist — otherwise a fallback like
-    /// "lowest player_id for the account" would silently corrupt a
-    /// DIFFERENT character's row on multi-character accounts. The
-    /// handler logs and returns Ok (no UDP packet sent).
+    /// Active-player-id fail-closed guard (unit-level). Without
+    /// `active_player_id` cached on ConnectedClientState (set during
+    /// playCharacter), gate travel must REFUSE to persist — otherwise a
+    /// fallback like "lowest player_id for the account" would silently
+    /// corrupt a DIFFERENT character's row on multi-character accounts.
+    /// The handler logs and returns Ok (no UDP packet sent).
     ///
     /// This test drives the persist branch by passing a non-None
     /// db_pool. Without the cached id, the persist guard returns early
     /// BEFORE the UPDATE runs — so we don't actually need a working DB
-    /// (the function exits before issuing the query). Pass a dummy pool
-    /// pointer so the `if let Some(pool) = db_pool` branch is taken.
+    /// (the function exits before issuing the query). The
+    /// `gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing`
+    /// live-DB sibling test below pins the stronger property that the
+    /// real DB rows are unchanged.
     #[tokio::test]
     async fn gate_travel_without_active_player_id_aborts_before_persist() {
-        // Build a not-actually-connectable PgPool. The test hits the
+        // Build a non-connectable PgPool. The test hits the
         // active_player_id guard first and never reaches the SQL, so
-        // even an unconnected pool is fine. lazy_connect avoids the
-        // up-front handshake.
-        let lazy_pool = match sqlx::postgres::PgPoolOptions::new()
+        // we never need to connect. connect_lazy returns Ok regardless
+        // of whether the URL is reachable; expect-on-build catches a
+        // genuine misconfiguration (URL syntax error) loudly.
+        let lazy_pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(1)
             .acquire_timeout(std::time::Duration::from_millis(1))
             .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/none")
-        {
-            Ok(p) => p,
-            Err(_) => return, // skip — couldn't even build the lazy pool shape
-        };
+            .expect("connect_lazy must succeed for any well-formed URL");
 
         let socket = make_socket().await;
         let addr: SocketAddr = "127.0.0.1:55701".parse().unwrap();
@@ -463,8 +481,122 @@ mod tests {
             map.get(&addr).unwrap().pending_world_entry.is_none(),
             "fail-closed abort must NOT populate pending_world_entry — \
              a populated entry here means the wrong-character corruption \
-             window from the issue is still open"
+             window is still open"
         );
+    }
+
+    /// Stronger pin (live-DB): when `active_player_id` is missing, the
+    /// persist branch must NOT issue an UPDATE — both characters on a
+    /// multi-character account keep their existing world_location and
+    /// pos_x/pos_y/pos_z columns. A regression that fell back to
+    /// "lowest player_id for the account" would write the destination
+    /// onto the wrong character's row, surfacing here as a column drift.
+    #[tokio::test]
+    async fn gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing() {
+        use crate::test_support::require_db_or_skip;
+
+        let pool = require_db_or_skip!();
+        const TEST_ACCOUNT: i32 = 0x7000_0700;
+        const CHAR_A: i32 = 0x7000_0701;
+        const CHAR_B: i32 = 0x7000_0702;
+
+        // Cleanup before + after to keep concurrent tests honest.
+        async fn cleanup(p: &PgPool) {
+            let _ = sqlx::query("DELETE FROM sgw_player WHERE account_id = $1")
+                .bind(TEST_ACCOUNT)
+                .execute(p)
+                .await;
+            let _ = sqlx::query("DELETE FROM account WHERE account_id = $1")
+                .bind(TEST_ACCOUNT)
+                .execute(p)
+                .await;
+        }
+        cleanup(&pool).await;
+
+        sqlx::query("INSERT INTO account (account_id, account_name, password) VALUES ($1, $2, '')")
+            .bind(TEST_ACCOUNT)
+            .bind(format!("gate-test-{TEST_ACCOUNT}"))
+            .execute(&pool)
+            .await
+            .expect("insert account");
+
+        // Two characters with distinct, recognisable world + position so a
+        // wrong-character UPDATE would produce a clearly different value.
+        for (pid, world, x) in [(CHAR_A, "Agnos", 100.0f32), (CHAR_B, "CombatSim", 200.0f32)] {
+            sqlx::query(
+                "INSERT INTO sgw_player (\
+                    account_id, player_id, level, alignment, archetype, gender, \
+                    player_name, extra_name, world_location, bodyset, \
+                    pos_x, pos_y, pos_z, skin_color_id, naquadah\
+                 ) VALUES ($1, $2, 1, 0, 1, 1, $3, '', $4, 'BS_HumanMale.BS_HumanMale', \
+                           $5, 0.0, 0.0, 0, 0)",
+            )
+            .bind(TEST_ACCOUNT)
+            .bind(pid)
+            .bind(format!("gate-test-{pid}"))
+            .bind(world)
+            .bind(x)
+            .execute(&pool)
+            .await
+            .expect("insert player");
+        }
+
+        // Wire the gate-travel call: no active_player_id, real DB pool
+        // pointing at the seeded rows.
+        let socket = make_socket().await;
+        let addr: SocketAddr = "127.0.0.1:55720".parse().unwrap();
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let mut state = make_state();
+        // Match the seeded account_id so a fallback "lowest player_id
+        // for the account" would actually touch our rows if it ran.
+        state.account_id = TEST_ACCOUNT as u32;
+        state.active_player_id = None;
+        connected.lock().unwrap().insert(addr, state);
+        let entity_to_addr = Arc::new(Mutex::new({
+            let mut m = HashMap::new();
+            m.insert(42u32, addr);
+            m
+        }));
+
+        let _ = handle_gate_travel(
+            42,
+            "Castle", // destination world that doesn't match either seeded row
+            [999.0, 999.0, 999.0],
+            [0.0; 3],
+            &socket,
+            &connected,
+            &entity_to_addr,
+            &None,
+            &Some(Arc::new(pool.clone())),
+        )
+        .await;
+
+        // Verify both rows kept their seeded values. Any column drift
+        // here means the persist branch ran and targeted the wrong
+        // character.
+        for (pid, expected_world, expected_x) in
+            [(CHAR_A, "Agnos", 100.0f32), (CHAR_B, "CombatSim", 200.0f32)]
+        {
+            let (world, pos_x): (String, f32) = sqlx::query_as(
+                "SELECT world_location, pos_x FROM sgw_player \
+                 WHERE player_id = $1 AND account_id = $2",
+            )
+            .bind(pid)
+            .bind(TEST_ACCOUNT)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(
+                world, expected_world,
+                "char {pid}'s world_location must be unchanged when fail-closed guard fires"
+            );
+            assert!(
+                (pos_x - expected_x).abs() < 0.01,
+                "char {pid}'s pos_x must be unchanged when fail-closed guard fires (got {pos_x}, expected {expected_x})"
+            );
+        }
+
+        cleanup(&pool).await;
     }
 
     /// Missing entity_to_addr entry: the cell told us about an entity_id
