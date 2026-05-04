@@ -111,8 +111,14 @@ pub(super) async fn apply_death_transition(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cell::combat::{BSF_DEAD, BSF_MOVEMENT_LOCK};
     use crate::cell::space_manager::SpaceManager;
     use crate::mercury::method_idx;
+
+    /// The state_field bytes a real death emits — mirrors what
+    /// damage_apply.rs sets at the kill site before invoking
+    /// `apply_death_transition`.
+    const DEAD_STATE: u32 = BSF_DEAD | BSF_MOVEMENT_LOCK;
 
     /// Build a `SpaceManager` with one player at id=1 and one NPC at id=2
     /// in the SAME startup space. We use the non-instanced "Castle" world
@@ -191,7 +197,12 @@ mod tests {
         if let Some(npc) = mgr.get_entity_mut(2) {
             npc.interaction_type_flags = 1 << 5; // pre-existing bit must survive
         }
-        let target_state = 0x80; // BSF_DEAD bit pretend-set
+        // The corpse-side state_field is whatever the caller already
+        // mutated before invoking apply_death_transition — typically
+        // BSF_DEAD | BSF_MOVEMENT_LOCK (set by damage_apply.rs at the
+        // kill site). Mirror that here so the state_field bytes are
+        // what a real death actually emits.
+        let target_state = DEAD_STATE;
         let (tx, mut rx) = mpsc::channel(32);
 
         apply_death_transition(2, 1, target_state, true, false, &tx, &mut mgr).await;
@@ -229,7 +240,7 @@ mod tests {
         }
         let (tx, mut rx) = mpsc::channel(32);
 
-        apply_death_transition(2, 1, 0x80, false, false, &tx, &mut mgr).await;
+        apply_death_transition(2, 1, DEAD_STATE, false, false, &tx, &mut mgr).await;
 
         let pairs = methods(&drain(&mut rx));
         assert!(
@@ -252,7 +263,7 @@ mod tests {
         }
         let (tx, mut rx) = mpsc::channel(32);
 
-        apply_death_transition(2, 1, 0x80, true, true, &tx, &mut mgr).await;
+        apply_death_transition(2, 1, DEAD_STATE, true, true, &tx, &mut mgr).await;
 
         let pairs = methods(&drain(&mut rx));
         assert!(
@@ -278,7 +289,7 @@ mod tests {
         }
         let (tx, mut rx) = mpsc::channel(32);
 
-        apply_death_transition(2, 1, 0x80, true, false, &tx, &mut mgr).await;
+        apply_death_transition(2, 1, DEAD_STATE, true, false, &tx, &mut mgr).await;
 
         let msgs = drain(&mut rx);
         let int_msg = msgs

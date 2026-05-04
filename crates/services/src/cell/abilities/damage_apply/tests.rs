@@ -221,13 +221,17 @@ async fn lethal_hit_against_player_target_emits_on_begin_aid_wait() {
     assert_eq!(time_to_aid, 30);
 }
 
-/// Defensive bail: attacker vanished between the consume mutation and
-/// the snapshot. No effect/stat packets should fire (target had no
-/// damage applied), but if `needs_ammo_stat_send` is true the helper
-/// must still flush the dirty ammo stat. Pin the bail-without-flush
-/// case so a refactor that swaps the two branches doesn't go unnoticed.
+/// Defensive bail: attacker vanished between the consume mutation
+/// and the snapshot. With `needs_ammo_stat_send = false` the helper
+/// must return cleanly without emitting any target packets. The
+/// twin scenario — `needs_ammo_stat_send = true` causing the
+/// dirty-ammo-stat flush even on bail — is covered by the
+/// AoE-secondary tests on `handle_use_ability_on_ground` (those
+/// pass `false` for secondaries but `true` for the primary, which
+/// exercises the flush branch). Pin the false-branch here so a
+/// refactor that always flushes regardless of the flag gets caught.
 #[tokio::test]
-async fn missing_attacker_bails_without_emitting_target_packets() {
+async fn missing_attacker_with_no_pending_flush_bails_without_target_packets() {
     let mut mgr = make_mgr_player_vs_npc();
     let ability = make_ability(7, vec![100]);
     mgr.effect_defs.insert(100, make_effect(100, 5));
