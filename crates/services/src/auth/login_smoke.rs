@@ -30,13 +30,12 @@ use cimmeria_common::ServerConfig;
 
 use super::{AuthService, ShardInfo};
 
-/// Bind a fresh ephemeral TCP listener on `127.0.0.1:0`, read the
-/// kernel-assigned port, drop the listener, and return the port.
-///
-/// There's a tiny race window between drop and the auth service
-/// re-binding to the same port — under `--test-threads=1` and a
-/// typical CI runner this hasn't been a flake source for the
-/// existing UDP-bind tests in this crate, but it's worth flagging.
+/// Pick a fresh ephemeral port by binding and immediately dropping a
+/// `127.0.0.1:0` listener — the kernel returns the next free port on
+/// the std listener and `AuthService::start` then binds that port via
+/// tokio. There is a TOCTOU window between drop and rebind where a
+/// concurrent test or process could grab the port; the retry loop in
+/// [`start_auth_on_ephemeral_port`] absorbs that race.
 fn ephemeral_port() -> u16 {
     let listener = StdTcpListener::bind("127.0.0.1:0").expect("bind ephemeral TCP listener");
     let port = listener.local_addr().expect("local_addr").port();
@@ -44,32 +43,67 @@ fn ephemeral_port() -> u16 {
     port
 }
 
+/// Construct + start an `AuthService` on a fresh ephemeral port,
+/// retrying with a different port if the bind races a concurrent
+/// claim. Caps at 5 attempts so a genuine bind failure (broken
+/// permissions, OS exhaustion) doesn't hang the test forever.
+///
+/// Returns the running service and the port it bound to. Closes the
+/// TOCTOU loophole the previous "bind once, hope nobody steals it"
+/// path had.
+async fn start_auth_on_ephemeral_port(
+    base_config: &ServerConfig,
+    shards: &[ShardInfo],
+) -> (AuthService, u16) {
+    const MAX_ATTEMPTS: usize = 5;
+    let mut last_err: Option<String> = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        let port = ephemeral_port();
+        let mut config = base_config.clone();
+        config.logon_port = port;
+        let mut auth = AuthService::new(&config);
+        for shard in shards {
+            auth.register_shard(shard.clone());
+        }
+        match auth.start().await {
+            Ok(()) => return (auth, port),
+            Err(e) => {
+                tracing::debug!(
+                    attempt,
+                    port,
+                    error = %e,
+                    "auth bind raced; retrying with a fresh port"
+                );
+                last_err = Some(e.to_string());
+            }
+        }
+    }
+    panic!(
+        "failed to start AuthService on an ephemeral port after {MAX_ATTEMPTS} attempts (last error: {last_err:?})"
+    );
+}
+
 #[tokio::test]
 async fn login_smoke_drives_phase1_and_phase2_through_real_http_stack() {
-    // ── 1. Configure auth on an ephemeral local port ────────────────
-    let port = ephemeral_port();
-    let config = ServerConfig {
+    // ── 1. Configure + start auth on an ephemeral local port ────────
+    // developer_mode short-circuits the DB credential check so this
+    // smoke runs without DATABASE_URL. The DB-credential path is
+    // covered by the per-handler tests in handlers.rs.
+    let base_config = ServerConfig {
         auth_host: "127.0.0.1".to_string(),
-        logon_port: port,
-        // developer_mode short-circuits the DB credential check so
-        // this smoke runs without DATABASE_URL. The DB-credential
-        // path is covered by the per-handler tests in handlers.rs.
         developer_mode: true,
         ..ServerConfig::default()
     };
-    let mut auth = AuthService::new(&config);
-    auth.register_shard(ShardInfo {
+    let shards = vec![ShardInfo {
         name: "TestShard".to_string(),
         host: "127.0.0.1".to_string(),
         port: 32832,
         protected: false,
-    });
-
-    // ── 2. Start the HTTP listener ──────────────────────────────────
+    }];
     // AuthService::start awaits TcpListener::bind before returning,
-    // so the listener is already accepting connections by the time
-    // we reach the first request below — no readiness probe needed.
-    auth.start().await.expect("auth service must start");
+    // so once start_auth_on_ephemeral_port returns Ok the listener
+    // is already accepting connections — no readiness probe needed.
+    let (mut auth, port) = start_auth_on_ephemeral_port(&base_config, &shards).await;
     let base_url = format!("http://127.0.0.1:{port}");
 
     // Default reqwest::Client has no cookie store. We explicitly
@@ -115,7 +149,15 @@ async fn login_smoke_drives_phase1_and_phase2_through_real_http_stack() {
     assert_eq!(
         sid.len(),
         40,
-        "SID matches the C++ session-cookie format (40-char alphanumeric)"
+        "SID matches the C++ session-cookie format (40 chars)"
+    );
+    // Charset pin: the C++ format is alphanumeric. Length-only check
+    // would still pass if the SID regressed to include punctuation,
+    // newlines, or quoted bytes — any of which break the
+    // `Cookie: SID=...` round-trip on the client side.
+    assert!(
+        sid.chars().all(|c| c.is_ascii_alphanumeric()),
+        "SID must be ASCII alphanumeric (got {sid:?})"
     );
 
     let phase1_xml = resp1.text().await.expect("Phase 1 body");
