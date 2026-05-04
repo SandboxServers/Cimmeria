@@ -12,6 +12,9 @@
 mod handlers;
 mod service;
 
+#[cfg(test)]
+mod login_smoke;
+
 pub use service::AuthService;
 
 use std::collections::HashMap;
