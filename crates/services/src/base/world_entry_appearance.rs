@@ -267,27 +267,47 @@ mod tests {
     /// `build_appearance_args` wire layout:
     /// `[wstring bodyset] [u32 LE component_count] [wstring component]*`
     /// where each wstring is `[u32 LE char_count] [UTF-16LE chars]`.
+    /// Asserts the COMPLETE byte vector against a hand-computed
+    /// expected slice — partial spot-checks would let a broken
+    /// implementation that emits the right first byte but wrong
+    /// subsequent ones still pass.
     #[test]
     fn build_appearance_args_emits_bodyset_count_components_layout() {
         let buf = build_appearance_args("Body", &["A".to_string(), "BB".to_string()]);
-        // bodyset: 4 (count) + 8 (4 chars × 2 bytes)
-        assert_eq!(buf[0..4], [4, 0, 0, 0]);
-        assert_eq!(buf[4], b'B');
-        assert_eq!(buf[5], 0);
-        // 12 bytes of bodyset wstring done.
-        // count=2 little-endian
-        assert_eq!(buf[12..16], [2, 0, 0, 0]);
-        // component "A": [1,0,0,0]['A',0]
-        assert_eq!(buf[16..20], [1, 0, 0, 0]);
-        assert_eq!(buf[20], b'A');
-        assert_eq!(buf[21], 0);
-        // component "BB": [2,0,0,0]['B',0,'B',0]
-        assert_eq!(buf[22..26], [2, 0, 0, 0]);
-        assert_eq!(buf[26], b'B');
-        assert_eq!(buf[27], 0);
-        assert_eq!(buf[28], b'B');
-        assert_eq!(buf[29], 0);
-        assert_eq!(buf.len(), 30);
+        let expected: &[u8] = &[
+            // bodyset wstring: count=4, then 'B' 0 'o' 0 'd' 0 'y' 0
+            4, 0, 0, 0, b'B', 0, b'o', 0, b'd', 0, b'y', 0, // component_count = 2
+            2, 0, 0, 0, // component "A": count=1, 'A' 0
+            1, 0, 0, 0, b'A', 0, // component "BB": count=2, 'B' 0 'B' 0
+            2, 0, 0, 0, b'B', 0, b'B', 0,
+        ];
+        assert_eq!(buf, expected, "byte-exact wire layout");
+    }
+
+    /// Non-ASCII regression guard: write_wstring must emit
+    /// UTF-16-LE code units (with a UTF-16 char_count), not a
+    /// UTF-8 byte sequence (with a UTF-8 byte length). A drift to
+    /// UTF-8 would produce identical bytes for ASCII but corrupt
+    /// the wire payload for any character above 0x7F.
+    ///
+    /// "café" in UTF-16: c (0x0063), a (0x0061), f (0x0066),
+    /// é (0x00E9) → char_count = 4, byte_count = 8.
+    /// In UTF-8 the same string would be 5 bytes (é is two bytes).
+    /// Pinning byte-exact UTF-16-LE catches the drift.
+    #[test]
+    fn build_appearance_args_emits_utf16_for_non_ascii_components() {
+        let buf = build_appearance_args("Body", &["café".to_string()]);
+        let expected: &[u8] = &[
+            // bodyset wstring: "Body"
+            4, 0, 0, 0, b'B', 0, b'o', 0, b'd', 0, b'y', 0, // component_count = 1
+            1, 0, 0, 0, // component "café": char_count=4, then UTF-16-LE code units
+            4, 0, 0, 0, // c (0x0063), a (0x0061), f (0x0066), é (0x00E9)
+            0x63, 0x00, 0x61, 0x00, 0x66, 0x00, 0xE9, 0x00,
+        ];
+        assert_eq!(
+            buf, expected,
+            "non-ASCII string must serialize as UTF-16-LE, not UTF-8"
+        );
     }
 
     #[test]
