@@ -161,6 +161,250 @@ fn aoi_detects_entity_leaving() {
     assert_eq!(left.len(), 2); // Both should lose sight of each other
 }
 
+/// AoI second-tick path: when an entity is in BOTH the previous and
+/// current witness sets, an `EntityMoved` event must fire so the
+/// witness gets the position update. This covers the third arm of
+/// `compute_aoi_changes` that the existing entered/left tests don't.
+#[test]
+fn aoi_emits_entity_moved_for_entities_in_both_previous_and_current_sets() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(100);
+    mgr.connect_entity(200);
+
+    // First tick populates the witness set.
+    let _ = mgr.compute_aoi_changes();
+    // Move 200 a small amount so it's still in 100's AoI.
+    mgr.update_entity_position(200, [25.0, 0.0, 25.0], [0, 0, 0], [1.0, 0.0, 0.0]);
+    let events = mgr.compute_aoi_changes();
+    let moved: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            CellToBaseMsg::EntityMoved {
+                witness_id,
+                entity_id,
+                velocity,
+                ..
+            } if *witness_id == 100 && *entity_id == 200 => Some(*velocity),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        moved.len(),
+        1,
+        "expected exactly one EntityMoved for 200 to witness 100; got events={events:?}"
+    );
+    assert_eq!(
+        moved[0],
+        [1.0, 0.0, 0.0],
+        "EntityMoved must carry the velocity from update_entity_position"
+    );
+}
+
+/// `compute_aoi_changes` must persist the new witness set on the
+/// player so that the NEXT tick's diff sees it. A regression that
+/// drops the `entity.witnesses = current_aoi` write would re-fire
+/// EnteredAoI on every tick.
+#[test]
+fn aoi_persists_witness_set_so_subsequent_ticks_diff_correctly() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(100);
+    mgr.connect_entity(200);
+
+    let first = mgr.compute_aoi_changes();
+    let first_entered = first
+        .iter()
+        .filter(|e| matches!(e, CellToBaseMsg::EnteredAoI { .. }))
+        .count();
+    assert!(first_entered >= 2, "first tick must populate AoI");
+
+    // Second tick with no movement: no further EnteredAoI events.
+    let second = mgr.compute_aoi_changes();
+    let second_entered = second
+        .iter()
+        .filter(|e| matches!(e, CellToBaseMsg::EnteredAoI { .. }))
+        .count();
+    assert_eq!(
+        second_entered, 0,
+        "second tick must not re-fire EnteredAoI; the witness set should already pin both",
+    );
+}
+
+/// Disconnecting a player must broadcast `LeftAoI` to every other
+/// player who currently has that player in their witness set.
+/// Regression guard: the broadcast iterates `space.players`, not the
+/// disconnecting entity's own `witnesses` (those point in the wrong
+/// direction).
+#[tokio::test]
+async fn disconnect_emits_left_aoi_to_observers_then_destroys_entity() {
+    use tokio::sync::mpsc;
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(200, "Agnos", [20.0, 0.0, 20.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(100);
+    mgr.connect_entity(200);
+    let _ = mgr.compute_aoi_changes(); // populate witness sets
+
+    let (tx, mut rx) = mpsc::channel(8);
+    mgr.disconnect_entity(100, &tx).await;
+
+    let mut left_msgs: Vec<(u32, u32)> = Vec::new();
+    while let Ok(m) = rx.try_recv() {
+        if let CellToBaseMsg::LeftAoI {
+            witness_id,
+            entity_id,
+        } = m
+        {
+            left_msgs.push((witness_id, entity_id));
+        }
+    }
+    assert_eq!(
+        left_msgs,
+        vec![(200, 100)],
+        "player 200 must receive LeftAoI for the disconnecting 100"
+    );
+    // The disconnecting entity must be fully destroyed (entity_space
+    // entry removed) — `destroy_entity` chains off the disconnect path.
+    assert!(!mgr.entity_space.contains_key(&100));
+}
+
+/// When the last player leaves an instanced space, the entire space
+/// instance must be destroyed (all NPCs removed too). A regression
+/// that just removes the player would leak instances on every map
+/// reload.
+#[test]
+fn destroy_last_player_in_instanced_space_destroys_the_whole_space() {
+    let mut mgr = make_manager();
+    let space_id = mgr
+        .create_entity(100, "Castle_CellBlock", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(100);
+    // Seed an NPC into the same instanced space.
+    mgr.create_entity(500, "Castle_CellBlock", [10.0, 0.0, 10.0], [0.0; 3])
+        .ok(); // either the same instance or a new one
+    let space_existed = mgr.spaces.contains_key(&space_id);
+    assert!(space_existed);
+
+    mgr.destroy_entity(100);
+
+    assert!(
+        !mgr.spaces.contains_key(&space_id),
+        "instanced space {space_id} must be destroyed when the last player leaves",
+    );
+}
+
+/// `get_witnesses_of` returns the player IDs whose current `witnesses`
+/// set contains the target. Restricted to the target's space so
+/// instanced worlds don't bleed across instances.
+#[test]
+fn get_witnesses_of_returns_only_players_in_the_targets_space() {
+    let mut mgr = make_manager();
+    // Player + NPC in Agnos.
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(900, "Agnos", [12.0, 0.0, 12.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(100);
+    // Player + NPC in Castle (different startup space).
+    mgr.create_entity(101, "Castle", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(901, "Castle", [12.0, 0.0, 12.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(101);
+
+    let _ = mgr.compute_aoi_changes();
+
+    // Player 100 sees NPC 900; player 101 sees NPC 901. Neither sees
+    // the other space's NPC.
+    let witnesses_900 = mgr.get_witnesses_of(900);
+    assert_eq!(witnesses_900, vec![100]);
+    let witnesses_901 = mgr.get_witnesses_of(901);
+    assert_eq!(witnesses_901, vec![101]);
+}
+
+#[test]
+fn get_witnesses_of_returns_empty_for_missing_entity() {
+    let mgr = make_manager();
+    assert!(mgr.get_witnesses_of(999_999).is_empty());
+}
+
+/// `find_entity_by_tag` and `find_entities_by_template` both restrict
+/// the search to the source entity's space. Pin the cross-instance
+/// invariant: a tagged entity in one Castle_CellBlock instance is
+/// invisible to a source in a different instance.
+#[test]
+fn find_by_tag_does_not_cross_instance_boundaries() {
+    let mut mgr = make_manager();
+    let inst_a = mgr.find_or_create_space("Castle_CellBlock").unwrap();
+    let inst_b = mgr.find_or_create_space("Castle_CellBlock").unwrap();
+    assert_ne!(inst_a, inst_b, "fixture sanity: two distinct instances");
+
+    // Source player in instance A.
+    {
+        let mut entity =
+            CellEntity::new(EntityId(100), SpaceId(inst_a as i32), Vector3::default());
+        entity.is_player = true;
+        mgr.spaces
+            .get_mut(&inst_a)
+            .unwrap()
+            .entities
+            .insert(100, entity);
+        mgr.entity_space.insert(100, inst_a);
+    }
+    // Tagged NPC in instance B.
+    {
+        let mut entity =
+            CellEntity::new(EntityId(500), SpaceId(inst_b as i32), Vector3::default());
+        entity.tag = Some("Boss".to_string());
+        mgr.spaces
+            .get_mut(&inst_b)
+            .unwrap()
+            .entities
+            .insert(500, entity);
+        mgr.entity_space.insert(500, inst_b);
+    }
+
+    assert_eq!(
+        mgr.find_entity_by_tag(100, "Boss"),
+        None,
+        "tag lookup must be scoped to the source entity's instance"
+    );
+}
+
+/// `update_entity_position` must keep the spatial grid in sync with
+/// the entity's `position`. A grid update miss would let AoI queries
+/// return stale neighbours.
+#[test]
+fn update_entity_position_keeps_spatial_grid_consistent() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    let space_id = mgr.entity_space[&100];
+
+    // Move far enough to land in a different grid cell.
+    mgr.update_entity_position(100, [500.0, 0.0, 500.0], [0, 0, 0], [0.0; 3]);
+
+    // Assert via the grid: an `aoi_radius` query around the new position
+    // must include the entity. A missed grid update would drop it.
+    let space = &mgr.spaces[&space_id];
+    let near = space
+        .space
+        .get_entities_in_range(&Vector3::new(500.0, 0.0, 500.0), 50.0);
+    assert!(
+        near.iter().any(|eid| eid.0 == 100),
+        "entity 100 must be reachable from the spatial grid at its new position"
+    );
+}
+
 #[test]
 fn space_id_scheme() {
     let mut mgr = SpaceManager::new(1);
