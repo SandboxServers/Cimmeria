@@ -660,33 +660,44 @@ mod tests {
         assert_eq!(&pt[24..27], &[0u8; 3], "yaw/pitch/roll for zero direction");
     }
 
-    /// Ghost-entity lifecycle as observed by a single witness: the three
-    /// packets that the client receives for a remote entity entering its
-    /// AoI, moving inside AoI, then leaving. Pins:
+    /// Ghost-entity lifecycle as observed by a single witness: the four
+    /// packets that the client receives across the lifecycle. Pins:
     ///
-    ///   - Packet ordering matches the C++ server's `cached_entity.cpp:199`
-    ///     and `client_handler.cpp:516-556` flow: CREATE_ENTITY first
-    ///     (so the client allocates the entity), UPDATE_AVATAR mid-life,
-    ///     ENTITY_INVISIBLE-then-LEAVE_AOI on exit (invisible-first prevents
-    ///     a one-frame "ghost" flicker).
-    ///   - All three packets reference the same entity_id end-to-end.
-    ///     Without this pin, an entity_id mismatch between phases would
-    ///     leak the ghost on the client (UPDATE_AVATAR with the right id
-    ///     but LEAVE_AOI with a stale alias).
-    ///   - seq_id is strictly monotonic across the lifecycle. Reordering
-    ///     packet 2 ahead of packet 1 would have the client UPDATE_AVATAR
-    ///     before the entity exists.
+    ///   - Phase 1a: CREATE_ENTITY + UPDATE_AVATAR in the same packet
+    ///     (`cached_entity.cpp:199` — entity is allocated and positioned
+    ///     before any property cascade).
+    ///   - Phase 1b: property cascade in a SEPARATE packet, AFTER 1a.
+    ///     The cascade body must NOT begin with CREATE_ENTITY (0x09) —
+    ///     it carries entity-method records (onEntityProperty, onVisible,
+    ///     etc.) configured against an entity the client has already
+    ///     allocated. A regression that fired the cascade before
+    ///     CREATE_ENTITY would surface as a corrupted/dropped entity on
+    ///     the client.
+    ///   - Phase 2: UPDATE_AVATAR ONLY in the move packet — the body's
+    ///     length matches the bare UPDATE_AVATAR record size, so a stray
+    ///     CREATE_ENTITY (or any other extra record) would show up as a
+    ///     longer body. Structural length pin replaces a brittle
+    ///     "no 0x09 byte anywhere in the body" scan, since 0x09 can
+    ///     legitimately appear as a payload byte (entity_id, packed
+    ///     velocity, float bytes).
+    ///   - Phase 3: ENTITY_INVISIBLE then LEAVE_AOI in the same packet
+    ///     (`client_handler.cpp:516-556` — invisible-first prevents a
+    ///     one-frame ghost flicker).
+    ///   - All four packets reference the same entity_id.
     ///
-    /// This is the integration counterpart to the per-builder wire-layout
-    /// tests above — it exercises the lifecycle as a sequence rather than
-    /// each builder in isolation.
+    /// Note on what this CAN'T pin: at the unit level we drive the
+    /// builders directly, so the seq_id values come from us — that means
+    /// we can pin "this builder writes back the seq_id we passed" but
+    /// NOT "the AoI dispatch loop hands these out in order". The
+    /// production ordering would need a `send_to_witness` / cell_dispatch
+    /// integration test (currently TODO; #123 Group B login-end-to-end).
     #[test]
-    fn ghost_lifecycle_emits_create_then_update_then_invisible_leave_in_seq() {
+    fn ghost_lifecycle_emits_create_cascade_update_invisible_leave_in_order() {
         const ENTITY_ID: u32 = 0xDEAD_BEEF;
         let enc = MercuryEncryption::from_session_key(TEST_KEY);
 
-        // ── tick N: entity enters witness AoI ────────────────────────────
-        let p1 = build_create_entity_base(
+        // ── phase 1a: CREATE_ENTITY + UPDATE_AVATAR (entry, immediate) ─
+        let p1a = build_create_entity_base(
             &TEST_KEY,
             1,
             &[],
@@ -695,24 +706,35 @@ mod tests {
             [10.0, 20.0, 30.0],
             [0.0, 0.0, 0.0],
         );
-        let pt1 = enc.decrypt(&p1).unwrap();
+        let pt1a = enc.decrypt(&p1a).unwrap();
         assert_eq!(
-            pt1[1], BASEMSG_CREATE_ENTITY,
-            "lifecycle phase 1 must be CREATE_ENTITY (0x09)"
+            pt1a[1], BASEMSG_CREATE_ENTITY,
+            "phase 1a must START with CREATE_ENTITY (0x09)"
         );
-        // CREATE_ENTITY's entity_id sits at pt[4..8].
-        assert_eq!(&pt1[4..8], &ENTITY_ID.to_le_bytes());
-        // Followed in the same packet by UPDATE_AVATAR carrying the same id.
+        assert_eq!(&pt1a[4..8], &ENTITY_ID.to_le_bytes());
         assert_eq!(
-            pt1[12], BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR,
+            pt1a[12], BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR,
             "CREATE_ENTITY must be immediately followed by UPDATE_AVATAR in the entry packet"
         );
-        assert_eq!(&pt1[13..17], &ENTITY_ID.to_le_bytes());
+        assert_eq!(&pt1a[13..17], &ENTITY_ID.to_le_bytes());
 
-        // ── tick N+k: entity moves while still inside AoI ────────────────
+        // ── phase 1b: property cascade (separate packet, AFTER 1a) ─────
+        // class_id=0x00 keeps the body minimal (only the
+        // SGWSpawnableEntity prefix), but the structural pin is what
+        // matters: the cascade's first body byte is an entity-method
+        // record (msg id 0x35 = ENTITY_METHOD), NOT CREATE_ENTITY.
+        let p1b = build_create_entity_cascade(&TEST_KEY, 2, &[], ENTITY_ID, 0x00, 0, None);
+        let pt1b = enc.decrypt(&p1b).unwrap();
+        assert_ne!(
+            pt1b[1], BASEMSG_CREATE_ENTITY,
+            "cascade must NOT begin with CREATE_ENTITY — that record belongs to phase 1a, \
+             a regression here would re-create the entity mid-cascade"
+        );
+
+        // ── phase 2: UPDATE_AVATAR only in the move packet ────────────
         let p2 = build_avatar_update(
             &TEST_KEY,
-            2,
+            3,
             &[],
             ENTITY_ID,
             [11.0, 20.0, 31.0],
@@ -722,24 +744,33 @@ mod tests {
         let pt2 = enc.decrypt(&p2).unwrap();
         assert_eq!(
             pt2[1], BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR,
-            "lifecycle phase 2 must be UPDATE_AVATAR (0x10)",
+            "phase 2 must be UPDATE_AVATAR (0x10)",
         );
         assert_eq!(&pt2[2..6], &ENTITY_ID.to_le_bytes());
-        // No CREATE_ENTITY (0x09) should appear in the body of the move
-        // packet — re-creating the entity mid-life would reset client-side
-        // state.
-        let move_body_end = pt2.len().saturating_sub(4); // strip the seq_id footer
-        assert!(
-            !pt2[1..move_body_end].contains(&BASEMSG_CREATE_ENTITY),
-            "UPDATE_AVATAR packet must not contain a stray CREATE_ENTITY (0x09)"
+
+        // Structural pin: the move packet body is exactly one
+        // UPDATE_AVATAR record (26 bytes — fixed CONSTANT_LENGTH for
+        // 0x10). Total decrypted = 1 (flags) + 26 (body) + 4 (seq_id
+        // footer) = 31. A stray CREATE_ENTITY or any other extra record
+        // would inflate the body and shift the seq_id footer, surfacing
+        // here. This replaces a brittle byte-scan check that would have
+        // matched 0x09 inside legitimate payload (entity_id, packed
+        // velocity, float bytes).
+        const FLAGS_LEN: usize = 1;
+        const UPDATE_AVATAR_BODY_LEN: usize = 26;
+        const SEQ_FOOTER_LEN: usize = 4;
+        assert_eq!(
+            pt2.len(),
+            FLAGS_LEN + UPDATE_AVATAR_BODY_LEN + SEQ_FOOTER_LEN,
+            "phase 2 body must be exactly one UPDATE_AVATAR record — extra bytes mean a stray record snuck in"
         );
 
-        // ── tick N+m: entity leaves AoI ──────────────────────────────────
-        let p3 = build_entity_leave(&TEST_KEY, 3, &[], ENTITY_ID);
+        // ── phase 3: ENTITY_INVISIBLE then LEAVE_AOI ──────────────────
+        let p3 = build_entity_leave(&TEST_KEY, 4, &[], ENTITY_ID);
         let pt3 = enc.decrypt(&p3).unwrap();
         assert_eq!(
             pt3[1], BASEMSG_ENTITY_INVISIBLE,
-            "lifecycle phase 3 must START with ENTITY_INVISIBLE (0x0B) — not LEAVE_AOI",
+            "phase 3 must START with ENTITY_INVISIBLE (0x0B) — not LEAVE_AOI",
         );
         assert_eq!(&pt3[2..6], &ENTITY_ID.to_le_bytes());
         assert_eq!(
@@ -748,21 +779,20 @@ mod tests {
         );
         assert_eq!(&pt3[10..14], &ENTITY_ID.to_le_bytes());
 
-        // ── seq_id monotonicity across the three packets ─────────────────
-        // Phase 1 body: CREATE_ENTITY (11 bytes) + UPDATE_AVATAR (26 bytes) = 37,
-        //   so seq_id sits at pt1[38..42].
-        // Phase 2 body: UPDATE_AVATAR (26 bytes), so seq_id at pt2[27..31].
-        // Phase 3 body: ENTITY_INVISIBLE (6) + LEAVE_AOI (11) = 17, so
-        //   seq_id at pt3[18..22].
-        let seq1 = u32::from_le_bytes([pt1[38], pt1[39], pt1[40], pt1[41]]);
+        // ── seq_id pin (per-builder write-back contract) ──────────────
+        // This pins each builder writes the seq_id we passed in. It's
+        // NOT enough on its own to prove dispatch-level ordering — that
+        // would need a send_to_witness driver — but it does catch a
+        // regression that drops or swaps the seq_id field inside a
+        // builder, which would corrupt every downstream ack.
+        // Phase 1a: CREATE_ENTITY (11) + UPDATE_AVATAR (26) = 37 → seq @ pt1a[38..42].
+        // Phase 2:  UPDATE_AVATAR (26)                          → seq @ pt2[27..31].
+        // Phase 3:  ENTITY_INVISIBLE (6) + LEAVE_AOI (11) = 17  → seq @ pt3[18..22].
+        let seq1a = u32::from_le_bytes([pt1a[38], pt1a[39], pt1a[40], pt1a[41]]);
         let seq2 = u32::from_le_bytes([pt2[27], pt2[28], pt2[29], pt2[30]]);
         let seq3 = u32::from_le_bytes([pt3[18], pt3[19], pt3[20], pt3[21]]);
-        assert_eq!(seq1, 1, "CREATE phase carries the seq_id we passed");
-        assert_eq!(seq2, 2, "UPDATE phase carries the seq_id we passed");
-        assert_eq!(seq3, 3, "LEAVE phase carries the seq_id we passed");
-        assert!(
-            seq1 < seq2 && seq2 < seq3,
-            "seq_id must be strictly monotonic across the ghost's lifecycle (got {seq1}, {seq2}, {seq3})"
-        );
+        assert_eq!(seq1a, 1);
+        assert_eq!(seq2, 3);
+        assert_eq!(seq3, 4);
     }
 }
