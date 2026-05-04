@@ -347,8 +347,11 @@ async fn sentinel_slot_does_not_leak_when_swap_tx_rolls_back() {
     // must restore both rows to their pre-swap state.
     let mut tx = pool.begin().await.expect("begin tx");
 
-    // Step 1: park source at slot_id = -1.
-    sqlx::query(
+    // Step 1: park source at slot_id = -1. Assert rows_affected == 1 so a
+    // future fixture mismatch (source row missing under this character)
+    // surfaces here as a clear failure rather than as a confusing SELECT
+    // error later in the test.
+    let park = sqlx::query(
         "UPDATE sgw_inventory SET slot_id = -1 \
          WHERE character_id = $1 AND item_id = $2",
     )
@@ -357,9 +360,16 @@ async fn sentinel_slot_does_not_leak_when_swap_tx_rolls_back() {
     .execute(&mut *tx)
     .await
     .expect("park source");
+    assert_eq!(
+        park.rows_affected(),
+        1,
+        "park-source UPDATE should affect exactly the source row; got {}",
+        park.rows_affected(),
+    );
 
-    // Step 2: move occupant into source's old slot.
-    sqlx::query(
+    // Step 2: move occupant into source's old slot. Same rows_affected
+    // guard for the same reason.
+    let move_occ = sqlx::query(
         "UPDATE sgw_inventory SET container_id = 1, slot_id = 0 \
          WHERE character_id = $1 AND item_id = $2",
     )
@@ -368,6 +378,12 @@ async fn sentinel_slot_does_not_leak_when_swap_tx_rolls_back() {
     .execute(&mut *tx)
     .await
     .expect("move occupant");
+    assert_eq!(
+        move_occ.rows_affected(),
+        1,
+        "move-occupant UPDATE should affect exactly the occupant row; got {}",
+        move_occ.rows_affected(),
+    );
 
     // Sanity-check inside the tx: source should be at -1 right now.
     let source_in_tx: i32 = sqlx::query_scalar(
@@ -475,23 +491,13 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
     cleanup_with_outbox(&pool, account_id, player_id, entity_id).await;
     insert_account_and_player(&pool, account_id, player_id).await;
 
-    // Top up naquadah on the existing player. insert_account_and_player
-    // creates the row at naquadah = 0 to keep the broader test fixture
-    // simple; the purchase path needs a positive balance to exercise
-    // the cash-debit branch.
-    let starting_naquadah: i32 = 5_000;
-    sqlx::query("UPDATE sgw_player SET naquadah = $1 WHERE player_id = $2")
-        .bind(starting_naquadah)
-        .bind(player_id)
-        .execute(&pool)
-        .await
-        .expect("top up naquadah");
-
     // Resolve the cheapest seeded cash-priced buy entry that has no
-    // item prerequisites. ORDER BY naquadah ASC picks the actual
-    // cheapest; the NOT EXISTS guard excludes entries with item-prereq
-    // rows in `resources.item_list_prices` since the test's player has
-    // only its starter inventory and can't satisfy them.
+    // item prerequisites BEFORE setting the player's naquadah, so the
+    // funded amount tracks whatever the seed actually charges. ORDER BY
+    // naquadah ASC picks the actual cheapest; the NOT EXISTS guard
+    // excludes entries with item-prereq rows in
+    // `resources.item_list_prices` since the test's player has only
+    // its starter inventory and can't satisfy them.
     //
     // The store_index calculation MUST match handle_purchase_vendor_items'
     // load_vendor_purchase_lines (purchase_helpers.rs:108-114), which
@@ -523,11 +529,20 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
     .fetch_one(&pool)
     .await
     .expect("resolve a positive-price vendor purchase entry without item prerequisites");
-    assert!(
-        expected_price <= starting_naquadah,
-        "starting naquadah ({starting_naquadah}) must cover the cheapest \
-         seeded vendor purchase price; got {expected_price}",
-    );
+
+    // Fund the player based on the resolved price + a buffer so the
+    // test stays seed-agnostic — a future seed bump on the cheapest
+    // entry is just a higher price, not a brittle <= 5000 assumption.
+    // The buffer keeps the post-purchase balance positive enough that
+    // the assertion's intent ("balance dropped by exactly the price")
+    // can't be satisfied by an accidental zero-out.
+    let starting_naquadah: i32 = expected_price + 1_000;
+    sqlx::query("UPDATE sgw_player SET naquadah = $1 WHERE player_id = $2")
+        .bind(starting_naquadah)
+        .bind(player_id)
+        .execute(&pool)
+        .await
+        .expect("top up naquadah");
 
     let types = pick_main_bag_type_ids(&pool, 1).await;
     let item_a = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
