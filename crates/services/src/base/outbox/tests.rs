@@ -284,6 +284,19 @@ async fn cleanup(pool: &sqlx::PgPool, entity_id: u32) {
         .await;
 }
 
+/// Clear ALL undelivered rows ahead of a failure-injection test. The
+/// drainer scans the first 64 undelivered rows globally (`ORDER BY id
+/// LIMIT 64`) and breaks on the first send error, so any older
+/// undelivered backlog (e.g. left behind by a prior test that panicked)
+/// would be processed BEFORE our sentinel row and prevent us from
+/// reaching it. Tests run under `--test-threads=1` so a global wipe is
+/// safe — no other live-DB test is in-flight.
+async fn purge_undelivered_backlog(pool: &sqlx::PgPool) {
+    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE delivered_at IS NULL")
+        .execute(pool)
+        .await;
+}
+
 #[tokio::test]
 async fn enqueue_in_tx_writes_row_atomic_with_caller_commit() {
     // Pin the atomicity contract: a row enqueued inside a tx is INVISIBLE
@@ -482,6 +495,10 @@ async fn injected_send_failure_replays_on_next_drain_with_payload_intact() {
     let pool = require_db_or_skip!();
     let entity_id = TEST_ENTITY_BASE + 4;
     cleanup(&pool, entity_id).await;
+    // Wipe any leftover backlog from a prior crashed test — the drainer
+    // limits to 64 rows globally and breaks on first send error, so
+    // backlog ahead of our row would prevent us from being reached.
+    purge_undelivered_backlog(&pool).await;
 
     let payload = CellOutboxPayload::ItemUsed {
         type_id: 4242,
@@ -564,6 +581,7 @@ async fn try_dispatch_now_failure_leaves_row_for_drainer_replay() {
     let pool = require_db_or_skip!();
     let entity_id = TEST_ENTITY_BASE + 5;
     cleanup(&pool, entity_id).await;
+    purge_undelivered_backlog(&pool).await;
 
     let payload = CellOutboxPayload::ItemUsed {
         type_id: 99,
@@ -617,6 +635,7 @@ async fn poison_row_does_not_block_following_rows_in_same_batch() {
     let pool = require_db_or_skip!();
     let entity_id = TEST_ENTITY_BASE + 6;
     cleanup(&pool, entity_id).await;
+    purge_undelivered_backlog(&pool).await;
 
     // Hand-craft a poison row: event_type says "inventory_item_granted"
     // but the payload JSON shape is ItemUsed. row_to_message rejects
