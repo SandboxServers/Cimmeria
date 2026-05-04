@@ -1,9 +1,14 @@
 //! Tests for `LivewireGame` — extracted to a sibling file to keep
-//! `livewire/mod.rs` under the 700-line hard cap. The test module
-//! is a child of `livewire` so private fields (`difficulty`,
-//! `goal_total`, `wires`, etc.) are reachable directly without
-//! per-field `#[cfg(test)]` accessors leaking into the production
-//! file.
+//! the production module separate from the tests. (The production
+//! `livewire/mod.rs` is still marginally over the 700-line hard cap
+//! because the Python port itself runs ~595 lines plus Rust
+//! boilerplate; bringing it fully under is a separate refactor PR.
+//! Splitting tests out is a strict improvement either way.)
+//!
+//! The test module is a child of `livewire` so private fields
+//! (`difficulty`, `goal_total`, `wires`, etc.) are reachable
+//! directly without per-field `#[cfg(test)]` accessors leaking into
+//! the production file.
 
 use super::*;
 
@@ -79,49 +84,51 @@ fn init_game_sets_read_out_prefix_per_difficulty() {
     }
 }
 
-/// Distinct seeds must produce distinct wire layouts. Pin so a
-/// regression that always seeds StdRng from a constant (or forgets
-/// to thread `session.seed` through) can't strip per-room replay
-/// variability.
+/// `session.seed` must thread through into the `StdRng` instance
+/// used by the layout generator. Pin via two complementary checks
+/// that are BOTH deterministic (no flakiness):
 ///
-/// The test compares wire COUNTS-per-library (a derivable property)
-/// rather than the full depth→lib map, so it doesn't tightly couple
-/// to the private `wires` HashMap layout. With ~10 distinct library
-/// strings drawn from the seeded random pools, two distinct seeds
-/// produce different counts with overwhelming probability — and the
-/// test fails deterministically (not flakily) if the seed isn't
-/// being used at all.
+/// 1. Same seed → identical layout. If this fails, the RNG isn't
+///    deterministic at all.
+/// 2. The two specific seeds 1 and 2 produce distinguishable
+///    layouts when init_game is run. If a regression always seeds
+///    `StdRng` from a constant (ignoring `session.seed`), both
+///    layouts collapse to identical and assertion #2 fails. The
+///    seeds are hand-picked so the layouts ARE distinct under the
+///    current implementation — re-pick if RNG semantics change.
 #[test]
-fn different_seeds_produce_different_wire_layouts() {
-    let mut s1 = make_session(4, 50, 5);
-    s1.seed = 1;
-    let mut s2 = make_session(4, 50, 5);
-    s2.seed = 2;
-
-    let mut g1 = LivewireGame::new(&s1);
-    let mut g2 = LivewireGame::new(&s2);
-    g1.init_game();
-    g2.init_game();
-
+fn session_seed_threads_through_into_layout_generator() {
     use std::collections::BTreeMap;
-    let counts1: BTreeMap<&str, usize> = g1.wires.values().fold(BTreeMap::new(), |mut acc, w| {
-        *acc.entry(w.lib.as_str()).or_insert(0) += 1;
-        acc
-    });
-    let counts2: BTreeMap<&str, usize> = g2.wires.values().fold(BTreeMap::new(), |mut acc, w| {
-        *acc.entry(w.lib.as_str()).or_insert(0) += 1;
-        acc
-    });
+
+    fn layout_for(seed: u32) -> BTreeMap<u32, String> {
+        let mut s = make_session(4, 50, 5);
+        s.seed = seed;
+        let mut g = LivewireGame::new(&s);
+        g.init_game();
+        g.wires.iter().map(|(&d, w)| (d, w.lib.clone())).collect()
+    }
+
+    // (1) Determinism: identical seed → identical layout.
+    assert_eq!(
+        layout_for(1),
+        layout_for(1),
+        "same seed must produce identical layout"
+    );
+
+    // (2) Seed actually drives layout: two hand-picked seeds whose
+    //     layouts are known to differ under the current RNG.
     assert_ne!(
-        counts1, counts2,
-        "different seeds must yield different per-library wire counts"
+        layout_for(1),
+        layout_for(2),
+        "seeds 1 and 2 must produce distinguishable layouts — \
+         a regression that ignores session.seed would collapse them"
     );
 }
 
 /// `started()` runs init_game and returns one Send carrying the
 /// full game-state SfsObject (timer/playfield/wire fields visible
 /// to the client). Pin both the return shape AND that the payload
-/// has the headline `_cmd=fullupdate` field — without that, the
+/// has the headline `_cmd=fullgamestate` field — without that, the
 /// test would only verify a Send variant, not that it's the
 /// initial-state payload.
 #[test]
