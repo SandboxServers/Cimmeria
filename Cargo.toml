@@ -95,6 +95,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # Auth
 jsonwebtoken = "9"
 
+# Property-based testing (used as dev-dependency in mercury)
+proptest = "1"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

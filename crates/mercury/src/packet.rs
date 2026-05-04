@@ -26,6 +26,9 @@ use cimmeria_common::{CimmeriaError, Result};
 #[cfg(test)]
 mod replay_smoke;
 
+#[cfg(test)]
+mod proptest_round_trip;
+
 // ── Flag byte constants (C++ packet.hpp) ────────────────────────────────────
 
 /// Packet contains messages with request IDs (footers include `first_req_offset`).

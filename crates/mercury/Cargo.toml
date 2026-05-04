@@ -24,3 +24,10 @@ md-5 = { workspace = true }
 tokio-util = { version = "0.7", features = ["codec"] }
 cipher = "0.4"
 digest = "0.10"
+
+[dev-dependencies]
+# Property-based round-trip tests for the wire-format codec. The
+# packet builders + parse_incoming are example-tested in
+# packet/replay_smoke.rs; proptest widens that coverage to the full
+# valid input space.
+proptest = { workspace = true }
