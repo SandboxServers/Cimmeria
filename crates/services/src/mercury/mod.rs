@@ -337,29 +337,13 @@ mod tests {
         assert_eq!(&body[7..], &args);
     }
 
-    /// Extended encoding for method indices >= 61. Wire layout:
-    /// `[0xBD: u8] [word_len: u16 LE] [entity_id: u32 LE]
-    ///   [sub_index = (index - 61): u8] [args]`
-    /// where `word_len = 4 (entity_id) + 1 (sub_index) + args.len()`.
-    /// The boundary index 61 must round-trip into sub_index 0.
-    #[test]
-    fn append_entity_method_extended_encoding_at_boundary_61() {
-        let mut body = Vec::new();
-        let args = [0x11, 0x22];
-        append_entity_method(&mut body, 61, 0x12345678, &args);
-
-        assert_eq!(body[0], 0xBD, "extended marker must be 0xBD");
-        let word_len = u16::from_le_bytes([body[1], body[2]]);
-        assert_eq!(word_len, (4 + 1 + args.len()) as u16);
-        let entity_id = u32::from_le_bytes([body[3], body[4], body[5], body[6]]);
-        assert_eq!(entity_id, 0x12345678);
-        assert_eq!(body[7], 0, "sub_index for index 61 must be 0");
-        assert_eq!(&body[8..], &args);
-    }
-
-    /// Pin index 122 (setupWorldParameters) — the comment in the source
-    /// calls this out as a verified-working extended-encoded method. A
-    /// regression that flips the >= 61 boundary would silently break it.
+    /// Pin index 122 (setupWorldParameters) — the source comment names
+    /// it as one of the indices verified to work over the wire
+    /// (alongside onPlayerDataLoaded=115). A regression that flips
+    /// the `>= 61` extended-encoding boundary would silently break
+    /// this method's wire shape. Note: the existing protocol-tests
+    /// cover the boundary case (index 61) and index 128; this test
+    /// fills the gap at the named-callsite middle of the range.
     #[test]
     fn append_entity_method_extended_encoding_at_index_122() {
         let mut body = Vec::new();
