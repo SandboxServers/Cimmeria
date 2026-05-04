@@ -2,6 +2,10 @@
 resolver = "2"
 exclude = [
     "tools/SGWLauncher/src-tauri",
+    # cargo-fuzz target — depends on libfuzzer-sys which requires
+    # nightly Rust. Run manually via `cargo +nightly fuzz run <target>`
+    # from inside `fuzz/`. See fuzz/README.md for invocation.
+    "fuzz",
 ]
 members = [
     "crates/common",
