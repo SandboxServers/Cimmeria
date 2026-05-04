@@ -1,0 +1,92 @@
+# Codecov configuration. Reference: https://docs.codecov.com/docs/codecov-yaml
+#
+# Coverage is advisory in this repo — the test + test-live-db jobs are the
+# blocking gate. The Codecov status check exists to surface drift in PR
+# review, not to fail builds on small fluctuations.
+
+coverage:
+  status:
+    project:
+      default:
+        # The whole-project check posts a status against the PR. We allow
+        # small drops (1%) without flagging — random scheduler ordering on
+        # async tests can shift counters by a fraction of a percent run to
+        # run, and a strict zero-tolerance gate would just teach reviewers
+        # to ignore the check.
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        # New code in the patch should be exercised. 70% is the floor for
+        # informational signal; reviewers can ask for more on a per-PR basis.
+        target: 70%
+        threshold: 0%
+        informational: true
+
+# PR comment shape. The defaults are noisy on a workspace this size, so we
+# scope the comment to a header + the per-component diff and trim file lists.
+comment:
+  layout: "header, diff, components, files, footer"
+  behavior: default
+  require_changes: true
+  require_base: false
+  require_head: true
+
+# Code that doesn't get instrumented or doesn't represent runtime behaviour.
+# Keep this list aligned with the cargo workspace's CI excludes
+# (cimmeria-app / cimmeria-content-editor / cimmeria-scene-editor /
+# sgw-launcher are Tauri/GUI surfaces excluded from CI, so their files
+# would show as 0% covered and skew the report).
+ignore:
+  - "crates/cimmeria-app/**"
+  - "crates/cimmeria-content-editor/**"
+  - "crates/cimmeria-scene-editor/**"
+  - "crates/sgw-launcher/**"
+  - "src/**"           # legacy C++ reference
+  - "python/**"        # legacy Python reference
+  - "tools/**"         # editor tools + smoke SQL scripts
+  - "bootstrap/**"
+  - "ghidra/**"
+  - "external/**"
+  - "**/build.rs"
+  - "**/tests/**"      # test code itself
+  - "**/*_tests.rs"
+
+# Components let the PR comment break coverage out by subsystem. Mirrors
+# the crate dependency graph in README.md so reviewers can see "the
+# mercury delta is +2.1%, the services delta is -0.4%" at a glance.
+component_management:
+  individual_components:
+    - component_id: mercury
+      name: mercury
+      paths:
+        - "crates/mercury/**"
+    - component_id: services
+      name: services
+      paths:
+        - "crates/services/**"
+    - component_id: content-engine
+      name: content-engine
+      paths:
+        - "crates/content-engine/**"
+    - component_id: entity
+      name: entity
+      paths:
+        - "crates/entity/**"
+    - component_id: game
+      name: game
+      paths:
+        - "crates/game/**"
+    - component_id: defs
+      name: defs
+      paths:
+        - "crates/defs/**"
+    - component_id: common
+      name: common
+      paths:
+        - "crates/common/**"
+    - component_id: commands
+      name: commands
+      paths:
+        - "crates/commands/**"
