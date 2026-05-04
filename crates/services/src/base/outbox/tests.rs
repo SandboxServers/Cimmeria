@@ -449,3 +449,209 @@ async fn drain_stops_at_first_send_failure_and_records_attempt() {
 
     cleanup(&pool, entity_id).await;
 }
+
+#[tokio::test]
+async fn injected_send_failure_replays_on_next_drain_with_payload_intact() {
+    // Durability contract: when a cell→base dispatch fails (receiver gone /
+    // task panic / shutdown race), the row stays in the outbox and is
+    // replayed verbatim on the next drain pass. The closed-channel test
+    // above covers the "row stays" half; this covers the "row replays
+    // intact" half — i.e., the operator sees the message once on the
+    // *retry* with the same payload bytes.
+    //
+    // This is the named gap in #123 Group B: "with cell→base failure
+    // injected, assert event is replayed and not dropped".
+    let pool = require_db_or_skip!();
+    let entity_id = TEST_ENTITY_BASE + 4;
+    cleanup(&pool, entity_id).await;
+
+    let payload = CellOutboxPayload::ItemUsed {
+        type_id: 4242,
+        target_id: 1337,
+    };
+    let row_id = enqueue(&pool, entity_id, &payload).await.unwrap();
+
+    // Pass 1: dropped receiver. Drainer logs send_failed=1, leaves the
+    // row undelivered, bumps attempts.
+    let (closed_tx, closed_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(8);
+    drop(closed_rx);
+    let s1 = drain_undelivered(&pool, &closed_tx).await.unwrap();
+    assert_eq!(s1.delivered, 0);
+    assert_eq!(
+        s1.send_failed, 1,
+        "injected dropped-receiver must fail send"
+    );
+
+    let attempts_after_pass1: i32 =
+        sqlx::query_scalar("SELECT attempts FROM cell_event_outbox WHERE id = $1")
+            .bind(row_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        attempts_after_pass1 >= 1,
+        "failed pass should have recorded an attempt"
+    );
+
+    // Pass 2: fresh channel. The same row drains, dispatches the *same*
+    // payload bytes, and is marked delivered.
+    let (live_tx, mut live_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(8);
+    let s2 = drain_undelivered(&pool, &live_tx).await.unwrap();
+    assert_eq!(
+        s2.delivered, 1,
+        "row that failed pass 1 must replay on pass 2"
+    );
+    assert_eq!(s2.send_failed, 0);
+
+    // Pin the replayed bytes match the original — the row is the source
+    // of truth, not the in-flight channel state from pass 1.
+    match live_rx.try_recv().expect("replayed message must arrive") {
+        BaseToCellMsg::ItemUsed {
+            entity_id: e,
+            type_id,
+            target_id,
+        } => {
+            assert_eq!(e, entity_id);
+            assert_eq!(type_id, 4242);
+            assert_eq!(target_id, 1337);
+        }
+        _ => panic!("expected ItemUsed on replay"),
+    }
+
+    // No further drain produces a duplicate — mark_delivered must have
+    // committed alongside the successful send.
+    let s3 = drain_undelivered(&pool, &live_tx).await.unwrap();
+    assert_eq!(
+        s3,
+        DrainStats::default(),
+        "delivered row must not redeliver"
+    );
+    assert!(
+        live_rx.try_recv().is_err(),
+        "no further messages once delivered_at is set"
+    );
+
+    cleanup(&pool, entity_id).await;
+}
+
+#[tokio::test]
+async fn try_dispatch_now_failure_leaves_row_for_drainer_replay() {
+    // The hot-path companion to the drainer-replay case above: when the
+    // post-enqueue `try_dispatch_now` lands on a closed channel (cell
+    // task gone between enqueue and send), the durability guarantee
+    // says the row stays put and the periodic drainer picks it up
+    // later. Without this, a single channel-closed window between
+    // enqueue and immediate-dispatch would silently drop the event
+    // even though the row is in the database.
+    let pool = require_db_or_skip!();
+    let entity_id = TEST_ENTITY_BASE + 5;
+    cleanup(&pool, entity_id).await;
+
+    let payload = CellOutboxPayload::ItemUsed {
+        type_id: 99,
+        target_id: 11,
+    };
+    let row_id = enqueue(&pool, entity_id, &payload).await.unwrap();
+
+    // Inject the failure: try_dispatch_now sees a closed receiver.
+    let (closed_tx, closed_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(8);
+    drop(closed_rx);
+    try_dispatch_now(&pool, &closed_tx, row_id, entity_id, payload.clone()).await;
+
+    // Row must still be undelivered (try_dispatch_now's failure path is
+    // log-and-leave, not log-and-mark-delivered).
+    let undelivered_after_try: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cell_event_outbox \
+         WHERE id = $1 AND delivered_at IS NULL",
+    )
+    .bind(row_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        undelivered_after_try, 1,
+        "failed try_dispatch_now must leave the row for the drainer"
+    );
+
+    // Drainer with a working channel finishes the job.
+    let (live_tx, mut live_rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(8);
+    let stats = drain_undelivered(&pool, &live_tx).await.unwrap();
+    assert_eq!(stats.delivered, 1);
+    let _ = live_rx
+        .try_recv()
+        .expect("drainer must replay the row try_dispatch_now skipped");
+
+    cleanup(&pool, entity_id).await;
+}
+
+#[tokio::test]
+async fn poison_row_does_not_block_following_rows_in_same_batch() {
+    // Adversarial mix: a poison row (event_type/payload mismatch) at the
+    // head of the batch must skip cleanly without blocking the next
+    // legitimate row. `row_to_message` returns None on the poison row,
+    // the drainer logs it once, bumps `attempts`, and `continue`s — so
+    // a single bad row from a half-rolled deployment doesn't strand
+    // every subsequent valid event for the same entity.
+    let pool = require_db_or_skip!();
+    let entity_id = TEST_ENTITY_BASE + 6;
+    cleanup(&pool, entity_id).await;
+
+    // Hand-craft a poison row: event_type says "inventory_item_granted"
+    // but the payload JSON shape is ItemUsed. row_to_message rejects
+    // the (event_type, payload) pair.
+    let poison_payload = serde_json::json!({
+        "kind": "item_used",
+        "type_id": 1,
+        "target_id": 0,
+    });
+    let poison_id: i64 = sqlx::query_scalar(
+        "INSERT INTO cell_event_outbox (entity_id, event_type, payload) \
+         VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(entity_id as i32)
+    .bind("inventory_item_granted")
+    .bind(sqlx::types::Json(&poison_payload))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // Legitimate row enqueued *after* the poison row, so global id order
+    // puts the poison row first in the batch.
+    let good_payload = CellOutboxPayload::ItemUsed {
+        type_id: 7,
+        target_id: 3,
+    };
+    let good_id = enqueue(&pool, entity_id, &good_payload).await.unwrap();
+    assert!(
+        good_id > poison_id,
+        "BIGSERIAL must place the good row after the poison row"
+    );
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<BaseToCellMsg>(8);
+    let stats = drain_undelivered(&pool, &tx).await.unwrap();
+    assert_eq!(
+        stats.skipped_bad, 1,
+        "poison row must be skipped, not delivered"
+    );
+    assert_eq!(
+        stats.delivered, 1,
+        "the legitimate row behind the poison row must still drain"
+    );
+
+    // The dispatched message is the good one, not the poison one.
+    match rx.try_recv().expect("good row should produce a message") {
+        BaseToCellMsg::ItemUsed {
+            type_id, target_id, ..
+        } => {
+            assert_eq!(type_id, 7);
+            assert_eq!(target_id, 3);
+        }
+        _ => panic!("expected good ItemUsed"),
+    }
+    assert!(
+        rx.try_recv().is_err(),
+        "poison row must not have produced a second message"
+    );
+
+    cleanup(&pool, entity_id).await;
+}
