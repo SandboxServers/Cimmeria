@@ -287,3 +287,230 @@ fn resolve_respawn_position(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cell::spawner::RespawnerDef;
+    use cimmeria_entity::stats::{FOCUS, HEALTH};
+
+    /// Build a SpaceManager with one player at id=1 in the
+    /// Castle_CellBlock instanced space (every dispatch test sees a
+    /// fresh world). Caller can override is_player and stats.
+    fn make_mgr_with_player(world: &str) -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = format!(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+        );
+        mgr.parse_spaces_xml(&xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, world, [42.0, 1.0, 17.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+        }
+        mgr.connect_entity(1);
+        mgr
+    }
+
+    #[tokio::test]
+    async fn dispatch_returns_false_for_unknown_method() {
+        let mut mgr = make_mgr_with_player("Castle_CellBlock");
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(8);
+        let handled = dispatch(1, 9999, &[], &tx, &mut mgr, &engine).await;
+        assert!(!handled);
+    }
+
+    /// USE_ABILITY with a too-short payload (< 8 bytes) must return
+    /// true (handler took the method) but not start any cooldown,
+    /// not consume any state, and not emit packets — the args are
+    /// silently ignored. Pre-seed an ability + cooldown-free state so
+    /// a regression that decodes garbage args and starts a cooldown
+    /// gets caught.
+    #[tokio::test]
+    async fn use_ability_with_short_args_silently_drops() {
+        let mut mgr = make_mgr_with_player("Castle_CellBlock");
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(7);
+        }
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        let handled = dispatch(1, USE_ABILITY, &[1u8, 2, 3], &tx, &mut mgr, &engine).await;
+        assert!(handled);
+        assert!(
+            rx.try_recv().is_err(),
+            "short USE_ABILITY must not emit packets"
+        );
+        assert!(
+            !mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+            "short USE_ABILITY must not start a cooldown"
+        );
+    }
+
+    /// `handle_respawn` is the load-bearing piece of CALL_FOR_AID.
+    /// Must restore HEALTH/FOCUS to max, clear all state flags, clear
+    /// ability cooldowns, update entity position to the resolved
+    /// spawn point (Castle default for Castle_CellBlock), and fire
+    /// onEndAidWait + RespawnReload.
+    #[tokio::test]
+    async fn handle_respawn_restores_stats_clears_flags_and_sends_respawn_reload() {
+        use crate::cell::combat::{BSF_DEAD, BSF_MOVEMENT_LOCK};
+        let mut mgr = make_mgr_with_player("Castle_CellBlock");
+        if let Some(e) = mgr.get_entity_mut(1) {
+            // Damaged + flagged dead + an ability on cooldown. Use the
+            // refcounting set_state_flag helpers so the
+            // state_flag_counts map gets populated; that way the
+            // respawn assertion can distinguish `clear_all_state_flags`
+            // (which empties both `state_field` AND
+            // `state_flag_counts`) from a raw `state_field = 0` (which
+            // would leave stale counter entries — the regression shape
+            // this test guards against).
+            if let Some(h) = e.stats.get_mut(HEALTH) {
+                h.update(0, 1, 100);
+                h.clear_dirty();
+            }
+            if let Some(f) = e.stats.get_mut(FOCUS) {
+                f.update(0, 0, 50);
+                f.clear_dirty();
+            }
+            e.set_state_flag(BSF_DEAD);
+            e.set_state_flag(BSF_MOVEMENT_LOCK);
+            assert!(
+                !e.state_flag_counts.is_empty(),
+                "fixture sanity: counters should be populated before respawn"
+            );
+            e.abilities
+                .start_ability_cooldown(592, std::time::Duration::from_secs(60));
+        }
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_respawn(1, -1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.stats.get(HEALTH).unwrap().cur,
+            100,
+            "HEALTH must be restored to max"
+        );
+        assert_eq!(
+            e.stats.get(FOCUS).unwrap().cur,
+            50,
+            "FOCUS must be restored to max"
+        );
+        assert_eq!(e.state_field, 0, "state_field must be cleared");
+        assert!(
+            e.state_flag_counts.is_empty(),
+            "respawn must clear the per-flag refcount map too — \
+             a raw state_field=0 would leave stale counters and the \
+             next ref-counted unset would underflow back to a stuck bit"
+        );
+        assert!(
+            !e.abilities.is_on_cooldown(592),
+            "respawn must clear ability cooldowns"
+        );
+        // Player started at [42.0, 1.0, 17.0] in make_mgr_with_player.
+        // Castle_CellBlock has no respawner registered → fallback to
+        // CASTLE_DEFAULT_POS = [-334.231, 73.472, -228.026]. Pin so a
+        // regression that drops the update_entity_position call
+        // (leaving the player at their corpse) gets caught.
+        assert_eq!(
+            [e.position.x, e.position.y, e.position.z],
+            [-334.231, 73.472, -228.026],
+            "respawn must teleport player to Castle default position"
+        );
+
+        // Drain rx and check for RespawnReload.
+        let mut saw_respawn_reload = false;
+        let mut saw_end_aid_wait = false;
+        while let Ok(m) = rx.try_recv() {
+            match m {
+                CellToBaseMsg::RespawnReload {
+                    entity_id,
+                    world_name,
+                    ..
+                } => {
+                    assert_eq!(entity_id, 1);
+                    assert_eq!(world_name, "Castle_CellBlock");
+                    saw_respawn_reload = true;
+                }
+                CellToBaseMsg::EntityMethodCall {
+                    entity_id,
+                    method_index,
+                    ..
+                } if entity_id == 1
+                    && method_index == crate::mercury::method_idx::ON_END_AID_WAIT =>
+                {
+                    saw_end_aid_wait = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_end_aid_wait, "respawn must emit onEndAidWait");
+        assert!(saw_respawn_reload, "respawn must emit RespawnReload");
+    }
+
+    /// `resolve_respawn_position` matches a respawner_id to its
+    /// stored position. The id-match path is the primary one — pin
+    /// it so a refactor that drops the iter().find() doesn't fall
+    /// back silently.
+    #[test]
+    fn resolve_respawn_position_uses_matching_respawner_id() {
+        let mut mgr = make_mgr_with_player("Castle_CellBlock");
+        mgr.respawners.push(RespawnerDef {
+            respawner_id: 42,
+            world_name: "Castle_CellBlock".to_string(),
+            name: "Hub".to_string(),
+            pos: [10.0, 20.0, 30.0],
+        });
+        let pos = resolve_respawn_position(42, 1, &mgr);
+        assert_eq!(pos, [10.0, 20.0, 30.0]);
+    }
+
+    /// `resolve_respawn_position` falls back to the world's first
+    /// respawner when the requested id isn't found. Pin so the
+    /// fallback path can't silently degrade to the Castle default
+    /// when the player's world has its own respawner registered.
+    #[test]
+    fn resolve_respawn_position_falls_back_to_world_respawner_on_id_miss() {
+        let mut mgr = make_mgr_with_player("Agnos_test");
+        mgr.respawners.push(RespawnerDef {
+            respawner_id: 7,
+            world_name: "Agnos_test".to_string(),
+            name: "Outpost".to_string(),
+            pos: [-5.0, 5.0, -5.0],
+        });
+        // respawner_id 999 doesn't exist.
+        let pos = resolve_respawn_position(999, 1, &mgr);
+        assert_eq!(pos, [-5.0, 5.0, -5.0]);
+    }
+
+    /// `resolve_respawn_position` returns CASTLE_DEFAULT_POS for
+    /// Castle_CellBlock when no respawners exist (ship-config
+    /// fallback). Pin the canonical fallback so a regression that
+    /// uses the in-place path inside Castle can't silently strand
+    /// players at their corpse.
+    #[test]
+    fn resolve_respawn_position_returns_castle_default_when_no_respawners() {
+        let mgr = make_mgr_with_player("Castle_CellBlock");
+        let pos = resolve_respawn_position(-1, 1, &mgr);
+        assert_eq!(pos, [-334.231, 73.472, -228.026]);
+    }
+
+    /// `resolve_respawn_position` for non-Castle worlds with no
+    /// respawner falls back to in-place (the player's current
+    /// position), NOT the Castle default. Pin the cross-world
+    /// teleport-prevention shape.
+    #[test]
+    fn resolve_respawn_position_uses_in_place_for_other_worlds_without_respawners() {
+        let mgr = make_mgr_with_player("Agnos_test");
+        let pos = resolve_respawn_position(-1, 1, &mgr);
+        assert_eq!(
+            pos,
+            [42.0, 1.0, 17.0],
+            "must respawn in place, not at Castle default"
+        );
+    }
+}
