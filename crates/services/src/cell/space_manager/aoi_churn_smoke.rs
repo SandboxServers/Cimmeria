@@ -36,31 +36,20 @@ fn make_manager() -> SpaceManager {
     mgr
 }
 
-/// Drive a 50-NPC + 1-player AoI scenario across a 100-tick walk.
+/// Walk a player past 50 NPCs and pin the per-pair lifecycle:
+/// every (player, NPC) pair must enter and leave AoI exactly once,
+/// the per-tick witness-set size must stay bounded by the spatial
+/// geometry, and disconnect must clear the player without taking
+/// any NPC mapping with it.
 ///
-/// Layout: NPCs are seeded at (X = i*20, 0, 0) for i in 0..50, so the
-/// line spans X = 0..980. The player starts at X = -200 (outside every
-/// NPC's 100-unit AoI radius) and walks to X = 1200 across 100 ticks
-/// of 14 units each — passing every NPC and exiting their range on
-/// the far side. With aoi_radius = 100, each NPC enters the player's
-/// witness set when the player crosses X = NPC_X - 100 and leaves
-/// when the player crosses X = NPC_X + 100.
-///
-/// Assertions:
-///
-/// - Every (player, NPC) pair enters AoI exactly once and leaves
-///   exactly once. A double-enter would mean the witness-set diff
-///   is broken; a double-leave would mean the leaver bookkeeping
-///   is broken; missing either side means a tick was dropped.
-/// - Peak witness set never exceeds 11 NPCs (the spatial bound is
-///   approximately `aoi_diameter / spacing`, plus one for the
-///   inclusive radius edge) — a regression that fails to expire
-///   entries from the witness set would let it grow unbounded.
-/// - Per-tick witness set monotonically tracks the spatial reality:
-///   after the walk completes (player at X = 1200), witness set is
-///   empty (every NPC behind us beyond aoi_radius).
-#[test]
-fn aoi_churn_walk_balances_enters_and_leaves_with_bounded_witness_set() {
+/// Why these specific bounds: with NPCs spaced 20 units apart and
+/// `aoi_radius = 100`, only ~10 NPCs fit in range at a time and
+/// each enters once when the player crosses `NPC_X - 100` and
+/// leaves once at `NPC_X + 100`. The bound check inside the loop
+/// catches a leak at the failing tick rather than after the walk
+/// completes.
+#[tokio::test]
+async fn aoi_churn_walk_balances_enters_and_leaves_with_bounded_witness_set() {
     const NPC_COUNT: u32 = 50;
     const NPC_SPACING: f32 = 20.0;
     const TICK_COUNT: u32 = 100;
@@ -121,10 +110,16 @@ fn aoi_churn_walk_balances_enters_and_leaves_with_bounded_witness_set() {
             }
         }
 
+        // Fail loudly if the player vanishes mid-walk — `unwrap_or(0)`
+        // would silently mask a regression that destroyed the player
+        // entity during a position update, and the rest of the loop's
+        // assertions would coincidentally pass against a zero-witness
+        // ghost.
         let witness_count = mgr
             .get_entity(PLAYER_ID)
-            .map(|e| e.witnesses.len())
-            .unwrap_or(0);
+            .unwrap_or_else(|| panic!("tick {tick}: player entity disappeared mid-walk"))
+            .witnesses
+            .len();
         peak_witnesses = peak_witnesses.max(witness_count);
         // Bounded witness-set guard: with NPCs every 20 units and a
         // 100-unit radius, at most ~10 NPCs are in range at any time.
@@ -159,10 +154,13 @@ fn aoi_churn_walk_balances_enters_and_leaves_with_bounded_witness_set() {
     // After the full traversal the player is at X = 1200, beyond
     // every NPC's range — witness set must be empty. A regression that
     // never expires entries would surface as a non-empty set here.
+    // Fail loudly if the player is missing rather than coercing to a
+    // sentinel that could mask a regression.
     let final_witnesses = mgr
         .get_entity(PLAYER_ID)
-        .map(|e| e.witnesses.len())
-        .unwrap_or(usize::MAX);
+        .expect("player entity must still exist after the final tick")
+        .witnesses
+        .len();
     assert_eq!(
         final_witnesses, 0,
         "player at X = 1200 is past every NPC; witness set must be empty after final tick"
@@ -174,8 +172,7 @@ fn aoi_churn_walk_balances_enters_and_leaves_with_bounded_witness_set() {
     // is connected), then destroys the player entity. NPCs persist in
     // the non-instanced space and remain in entity_space.
     let (tx, _rx) = tokio::sync::mpsc::channel(64);
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(mgr.disconnect_entity(PLAYER_ID, &tx));
+    mgr.disconnect_entity(PLAYER_ID, &tx).await;
 
     assert!(
         !mgr.entity_space.contains_key(&PLAYER_ID),
