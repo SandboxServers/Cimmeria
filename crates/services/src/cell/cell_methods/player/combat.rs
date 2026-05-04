@@ -325,11 +325,17 @@ mod tests {
     }
 
     /// USE_ABILITY with a too-short payload (< 8 bytes) must return
-    /// true (handler took the method) but not start any cooldown or
-    /// emit packets — the args are silently ignored.
+    /// true (handler took the method) but not start any cooldown,
+    /// not consume any state, and not emit packets — the args are
+    /// silently ignored. Pre-seed an ability + cooldown-free state so
+    /// a regression that decodes garbage args and starts a cooldown
+    /// gets caught.
     #[tokio::test]
     async fn use_ability_with_short_args_silently_drops() {
         let mut mgr = make_mgr_with_player("Castle_CellBlock");
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(7);
+        }
         let engine = ChainEngine::new();
         let (tx, mut rx) = mpsc::channel(8);
 
@@ -339,17 +345,22 @@ mod tests {
             rx.try_recv().is_err(),
             "short USE_ABILITY must not emit packets"
         );
+        assert!(
+            !mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+            "short USE_ABILITY must not start a cooldown"
+        );
     }
 
     /// `handle_respawn` is the load-bearing piece of CALL_FOR_AID.
-    /// Must restore HEALTH/FOCUS to max, clear all state flags, fire
-    /// onEndAidWait + RespawnReload, and update entity position to
-    /// the resolved spawn point.
+    /// Must restore HEALTH/FOCUS to max, clear all state flags, clear
+    /// ability cooldowns, update entity position to the resolved
+    /// spawn point (Castle default for Castle_CellBlock), and fire
+    /// onEndAidWait + RespawnReload.
     #[tokio::test]
     async fn handle_respawn_restores_stats_clears_flags_and_sends_respawn_reload() {
         let mut mgr = make_mgr_with_player("Castle_CellBlock");
         if let Some(e) = mgr.get_entity_mut(1) {
-            // Damaged + flagged dead.
+            // Damaged + flagged dead + an ability on cooldown.
             if let Some(h) = e.stats.get_mut(HEALTH) {
                 h.update(0, 1, 100);
                 h.clear_dirty();
@@ -359,6 +370,8 @@ mod tests {
                 f.clear_dirty();
             }
             e.state_field = 0xFF;
+            e.abilities
+                .start_ability_cooldown(592, std::time::Duration::from_secs(60));
         }
         let (tx, mut rx) = mpsc::channel(16);
         handle_respawn(1, -1, &tx, &mut mgr).await;
@@ -375,6 +388,20 @@ mod tests {
             "FOCUS must be restored to max"
         );
         assert_eq!(e.state_field, 0, "state flags must be fully cleared");
+        assert!(
+            !e.abilities.is_on_cooldown(592),
+            "respawn must clear ability cooldowns"
+        );
+        // Player started at [42.0, 1.0, 17.0] in make_mgr_with_player.
+        // Castle_CellBlock has no respawner registered → fallback to
+        // CASTLE_DEFAULT_POS = [-334.231, 73.472, -228.026]. Pin so a
+        // regression that drops the update_entity_position call
+        // (leaving the player at their corpse) gets caught.
+        assert_eq!(
+            [e.position.x, e.position.y, e.position.z],
+            [-334.231, 73.472, -228.026],
+            "respawn must teleport player to Castle default position"
+        );
 
         // Drain rx and check for RespawnReload.
         let mut saw_respawn_reload = false;
