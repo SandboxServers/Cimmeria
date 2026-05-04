@@ -18,6 +18,9 @@ pub mod packet;
 pub mod unified;
 pub mod unpacker;
 
+#[cfg(test)]
+mod replay_smoke;
+
 /// Mercury protocol constants — these MUST match the C++ implementation exactly.
 ///
 /// Values are derived from reverse-engineering the original BigWorld Mercury
