@@ -204,6 +204,107 @@ fn aoi_emits_entity_moved_for_entities_in_both_previous_and_current_sets() {
     );
 }
 
+/// Full ghost lifecycle as seen by witness 100 watching player 200
+/// across four ticks: enter → move → leave → re-enter. Pin:
+///
+///   - tick 1 (enter): exactly one `EnteredAoI(witness=100, entity=200)`.
+///   - tick 2 (move within radius): exactly one `EntityMoved` for
+///     200 to witness 100, no further `EnteredAoI` for the same pair.
+///     Without this, a regression that re-fires EnteredAoI on every
+///     tick would silently leak ghosts on the client.
+///   - tick 3 (leave): exactly one `LeftAoI` for 200 to witness 100,
+///     no `EntityMoved` for 200 (it's no longer in current_aoi).
+///   - tick 4 (re-enter): `EnteredAoI` fires again — the witness set
+///     was cleared on leave, so the diff sees the entity as fresh.
+///
+/// This is the cross-tick integration sibling of the per-tick tests
+/// above: they pin one transition each, this one pins the *sequence*
+/// the C++ server dispatches in `cached_entity.cpp:199` /
+/// `client_handler.cpp:516-556`.
+#[test]
+fn ghost_lifecycle_for_witness_enter_move_leave_reenter() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(200, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(100);
+    mgr.connect_entity(200);
+
+    // Helper to count events targeting witness 100 about entity 200.
+    fn count_for_pair(
+        events: &[CellToBaseMsg],
+        witness: u32,
+        entity: u32,
+    ) -> (usize, usize, usize) {
+        let mut entered = 0;
+        let mut moved = 0;
+        let mut left = 0;
+        for e in events {
+            match e {
+                CellToBaseMsg::EnteredAoI {
+                    witness_id,
+                    entity_id,
+                    ..
+                } if *witness_id == witness && *entity_id == entity => entered += 1,
+                CellToBaseMsg::EntityMoved {
+                    witness_id,
+                    entity_id,
+                    ..
+                } if *witness_id == witness && *entity_id == entity => moved += 1,
+                CellToBaseMsg::LeftAoI {
+                    witness_id,
+                    entity_id,
+                } if *witness_id == witness && *entity_id == entity => left += 1,
+                _ => {}
+            }
+        }
+        (entered, moved, left)
+    }
+
+    // ── tick 1: 200 enters 100's AoI ────────────────────────────────
+    let t1 = mgr.compute_aoi_changes();
+    let (e, m, l) = count_for_pair(&t1, 100, 200);
+    assert_eq!(
+        (e, m, l),
+        (1, 0, 0),
+        "tick 1 must fire exactly one EnteredAoI for the (100, 200) pair, no Moved/Left",
+    );
+
+    // ── tick 2: 200 moves a small amount, still inside 100's radius ──
+    mgr.update_entity_position(200, [12.0, 0.0, 12.0], [0, 0, 0], [1.0, 0.0, 0.0]);
+    let t2 = mgr.compute_aoi_changes();
+    let (e, m, l) = count_for_pair(&t2, 100, 200);
+    assert_eq!(
+        (e, m, l),
+        (0, 1, 0),
+        "tick 2 must fire EntityMoved (no re-enter, no leave) for the (100, 200) pair",
+    );
+
+    // ── tick 3: 200 leaves 100's AoI ────────────────────────────────
+    mgr.update_entity_position(200, [5000.0, 0.0, 5000.0], [0, 0, 0], [0.0; 3]);
+    let t3 = mgr.compute_aoi_changes();
+    let (e, m, l) = count_for_pair(&t3, 100, 200);
+    assert_eq!(
+        (e, m, l),
+        (0, 0, 1),
+        "tick 3 must fire LeftAoI exactly once and NOT emit EntityMoved for an out-of-range entity",
+    );
+
+    // ── tick 4: 200 returns into 100's AoI — must re-fire EnteredAoI ──
+    // Without this, a "remember-forever" witness set would silently
+    // suppress the second-life ghost packet and the client would never
+    // see the entity again.
+    mgr.update_entity_position(200, [10.0, 0.0, 10.0], [0, 0, 0], [0.0; 3]);
+    let t4 = mgr.compute_aoi_changes();
+    let (e, m, l) = count_for_pair(&t4, 100, 200);
+    assert_eq!(
+        (e, m, l),
+        (1, 0, 0),
+        "tick 4 must re-fire EnteredAoI when 200 returns; the diff is stateful per (witness, entity) pair",
+    );
+}
+
 /// `compute_aoi_changes` must persist the new witness set on the
 /// player so that the NEXT tick's diff sees it. A regression that
 /// drops the `entity.witnesses = current_aoi` write would re-fire

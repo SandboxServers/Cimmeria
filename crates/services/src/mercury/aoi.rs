@@ -659,4 +659,110 @@ mod tests {
         assert_eq!(pt[23], 0x01, "physics mode");
         assert_eq!(&pt[24..27], &[0u8; 3], "yaw/pitch/roll for zero direction");
     }
+
+    /// Ghost-entity lifecycle as observed by a single witness: the three
+    /// packets that the client receives for a remote entity entering its
+    /// AoI, moving inside AoI, then leaving. Pins:
+    ///
+    ///   - Packet ordering matches the C++ server's `cached_entity.cpp:199`
+    ///     and `client_handler.cpp:516-556` flow: CREATE_ENTITY first
+    ///     (so the client allocates the entity), UPDATE_AVATAR mid-life,
+    ///     ENTITY_INVISIBLE-then-LEAVE_AOI on exit (invisible-first prevents
+    ///     a one-frame "ghost" flicker).
+    ///   - All three packets reference the same entity_id end-to-end.
+    ///     Without this pin, an entity_id mismatch between phases would
+    ///     leak the ghost on the client (UPDATE_AVATAR with the right id
+    ///     but LEAVE_AOI with a stale alias).
+    ///   - seq_id is strictly monotonic across the lifecycle. Reordering
+    ///     packet 2 ahead of packet 1 would have the client UPDATE_AVATAR
+    ///     before the entity exists.
+    ///
+    /// This is the integration counterpart to the per-builder wire-layout
+    /// tests above — it exercises the lifecycle as a sequence rather than
+    /// each builder in isolation.
+    #[test]
+    fn ghost_lifecycle_emits_create_then_update_then_invisible_leave_in_seq() {
+        const ENTITY_ID: u32 = 0xDEAD_BEEF;
+        let enc = MercuryEncryption::from_session_key(TEST_KEY);
+
+        // ── tick N: entity enters witness AoI ────────────────────────────
+        let p1 = build_create_entity_base(
+            &TEST_KEY,
+            1,
+            &[],
+            ENTITY_ID,
+            0x04,
+            [10.0, 20.0, 30.0],
+            [0.0, 0.0, 0.0],
+        );
+        let pt1 = enc.decrypt(&p1).unwrap();
+        assert_eq!(
+            pt1[1], BASEMSG_CREATE_ENTITY,
+            "lifecycle phase 1 must be CREATE_ENTITY (0x09)"
+        );
+        // CREATE_ENTITY's entity_id sits at pt[4..8].
+        assert_eq!(&pt1[4..8], &ENTITY_ID.to_le_bytes());
+        // Followed in the same packet by UPDATE_AVATAR carrying the same id.
+        assert_eq!(
+            pt1[12], BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR,
+            "CREATE_ENTITY must be immediately followed by UPDATE_AVATAR in the entry packet"
+        );
+        assert_eq!(&pt1[13..17], &ENTITY_ID.to_le_bytes());
+
+        // ── tick N+k: entity moves while still inside AoI ────────────────
+        let p2 = build_avatar_update(
+            &TEST_KEY,
+            2,
+            &[],
+            ENTITY_ID,
+            [11.0, 20.0, 31.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        );
+        let pt2 = enc.decrypt(&p2).unwrap();
+        assert_eq!(
+            pt2[1], BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR,
+            "lifecycle phase 2 must be UPDATE_AVATAR (0x10)",
+        );
+        assert_eq!(&pt2[2..6], &ENTITY_ID.to_le_bytes());
+        // No CREATE_ENTITY (0x09) should appear in the body of the move
+        // packet — re-creating the entity mid-life would reset client-side
+        // state.
+        let move_body_end = pt2.len().saturating_sub(4); // strip the seq_id footer
+        assert!(
+            !pt2[1..move_body_end].contains(&BASEMSG_CREATE_ENTITY),
+            "UPDATE_AVATAR packet must not contain a stray CREATE_ENTITY (0x09)"
+        );
+
+        // ── tick N+m: entity leaves AoI ──────────────────────────────────
+        let p3 = build_entity_leave(&TEST_KEY, 3, &[], ENTITY_ID);
+        let pt3 = enc.decrypt(&p3).unwrap();
+        assert_eq!(
+            pt3[1], BASEMSG_ENTITY_INVISIBLE,
+            "lifecycle phase 3 must START with ENTITY_INVISIBLE (0x0B) — not LEAVE_AOI",
+        );
+        assert_eq!(&pt3[2..6], &ENTITY_ID.to_le_bytes());
+        assert_eq!(
+            pt3[7], BASEMSG_LEAVE_AOI,
+            "ENTITY_INVISIBLE must be followed by LEAVE_AOI (0x0C) in the same packet",
+        );
+        assert_eq!(&pt3[10..14], &ENTITY_ID.to_le_bytes());
+
+        // ── seq_id monotonicity across the three packets ─────────────────
+        // Phase 1 body: CREATE_ENTITY (11 bytes) + UPDATE_AVATAR (26 bytes) = 37,
+        //   so seq_id sits at pt1[38..42].
+        // Phase 2 body: UPDATE_AVATAR (26 bytes), so seq_id at pt2[27..31].
+        // Phase 3 body: ENTITY_INVISIBLE (6) + LEAVE_AOI (11) = 17, so
+        //   seq_id at pt3[18..22].
+        let seq1 = u32::from_le_bytes([pt1[38], pt1[39], pt1[40], pt1[41]]);
+        let seq2 = u32::from_le_bytes([pt2[27], pt2[28], pt2[29], pt2[30]]);
+        let seq3 = u32::from_le_bytes([pt3[18], pt3[19], pt3[20], pt3[21]]);
+        assert_eq!(seq1, 1, "CREATE phase carries the seq_id we passed");
+        assert_eq!(seq2, 2, "UPDATE phase carries the seq_id we passed");
+        assert_eq!(seq3, 3, "LEAVE phase carries the seq_id we passed");
+        assert!(
+            seq1 < seq2 && seq2 < seq3,
+            "seq_id must be strictly monotonic across the ghost's lifecycle (got {seq1}, {seq2}, {seq3})"
+        );
+    }
 }
