@@ -10,9 +10,10 @@ The project tracks **369 features** across 38 systems. **47% have code** (175 of
 
 **Tested end-to-end with the game client:**
 - Login and authentication (HTTP SOAP → shard select → Mercury UDP)
-- Mercury reliable UDP transport with AES-256 encryption
+- Mercury reliable UDP transport with AES-256 encryption, per-channel fragment reassembly
 - Game data pipeline (22 resource categories, 112,626 DB rows)
 - World entry, entity spawning, grid-based Area of Interest
+- Durable Base→Cell content event delivery via persistent outbox
 - One-command build and setup
 
 **Code exists, needs verification:**
@@ -22,6 +23,12 @@ Character creation (8 archetypes, 23 defs) | Inventory | Vendors | Chat | Crafti
 Combat & abilities | Effects | Missions | NPC AI | Stats & leveling | Stargate travel
 
 See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
+
+## Tests & CI
+
+The Rust workspace currently carries **878 `#[test]` / `#[tokio::test]` cases** across **136 files**, of which **84 are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo test` (workspace, no DB), and `cargo test -p cimmeria-services --lib -- --test-threads=1` against a `postgres:17.9` service container loaded from `db/database.sql`.
+
+For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
 ## Why Rust
 
@@ -155,7 +162,7 @@ Cimmeria/
 │   ├── resources/          Resource data (abilities, effects, archetypes — 18 game systems)
 │   └── deprecated/         Old monolithic schema files (reference only)
 ├── docs/                   152 documents
-├── tools/                  Editor tools (ServerEd, ContentEditor, SceneEditor, RE utilities)
+├── tools/                  Editor tools, RE utilities, and live-DB smoke SQL scripts (vendor_store_smoke.sql, inventory_move_smoke.sql, progression_smoke.sql)
 ├── bootstrap/              C++ dependency automation
 └── W-NG.sln                Visual Studio solution (C++ legacy build)
 ```
@@ -214,6 +221,8 @@ Test account: **test** / **test** (SHA1 hashed).
 - [Connection Flow](docs/connection-flow.md) — End-to-end login and world entry
 - [Project Status](docs/project-status.md) — What works and what's left
 - [Gap Analysis](docs/gap-analysis.md) — Per-feature completion tracking
+- [Testing Guide](TESTING.md) — Test types, when to use which, common gotchas
+- [Integration Test Infra](docs/architecture/integration-test-infra.md) — Live-DB test setup and rationale
 
 For reverse engineering: [docs/reverse-engineering/](docs/reverse-engineering/PLAN.md)
 

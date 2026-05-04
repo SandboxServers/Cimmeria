@@ -21,6 +21,9 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | 152 |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 878 across 136 files |
+| Live-DB regression guards | 84 |
+| End-to-end PL/pgSQL smoke scripts | 3 |
 
 
 ## Document Map
@@ -32,6 +35,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | [How SGW Works](how-sgw-works.md) | Technology overview -- BigWorld, CME, and how the pieces fit together |
 | [Client Tools](client-tools.md) | Launcher, editor mode, debug tools available in the client |
 | [Building the Server](building.md) | How to build and run the Cimmeria server emulator |
+| [Testing Guide](../TESTING.md) | Test types, picker for which to use when, gotchas mined from PR reviews |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |
 | [Game Data](game-data.md) | What game content exists (items, abilities, missions) and what is missing |
 | [Commands Reference](commands.md) | Player commands, chat, GM tools, and debug commands |
@@ -135,7 +139,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 7 documents.
+How the Cimmeria emulator itself is structured. 10 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -146,8 +150,11 @@ How the Cimmeria emulator itself is structured. 7 documents.
 | [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | Tech stack replacement analysis: 5 options (incremental upgrade through full C# rewrite), codebase audit, protocol feasibility, phased recommendation | Complete |
 | [data-driven-content-engine.md](architecture/data-driven-content-engine.md) | Data-driven content engine: replace per-script Python with DB-driven trigger/condition/action chains, full schema, worked examples, runtime implementation, migration path | Complete |
 | [tauri-rewrite.md](architecture/tauri-rewrite.md) | Tauri desktop app rewrite analysis: replacing Qt ServerEd with a modern Rust+TypeScript stack | Complete |
+| [migration-roadmap.md](architecture/migration-roadmap.md) | Dependency migration roadmap (PostgreSQL ✅, MSVC ✅, OpenSSL pending) and per-migration agent definitions | Complete |
+| [state-flag-conventions.md](architecture/state-flag-conventions.md) | Reference for state-flag write conventions: refcounted vs raw, who can clear, auth flow | Complete |
+| [integration-test-infra.md](architecture/integration-test-infra.md) | Live-DB test infrastructure: why no testcontainers, why no `sqlx::test`, local setup, isolation patterns | Complete |
 
-See also: [building.md](building.md), [connection-flow.md](connection-flow.md)
+See also: [building.md](building.md), [connection-flow.md](connection-flow.md), [../TESTING.md](../TESTING.md)
 
 ---
 
