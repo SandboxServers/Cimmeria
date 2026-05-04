@@ -334,7 +334,6 @@ pub async fn handle_use_ability(
 mod tests {
     use super::*;
     use crate::cell::space_manager::SpaceManager;
-    use crate::mercury::method_idx;
     use cimmeria_entity::abilities::AbilityDef;
 
     fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {

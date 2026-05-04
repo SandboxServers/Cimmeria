@@ -640,10 +640,7 @@ mod tests {
 
         let msgs = drain(&mut rx);
         assert!(
-            msgs.is_empty()
-                || !msgs
-                    .iter()
-                    .any(|m| has_method(&[m.clone()], 2, method_idx::ON_STAT_UPDATE)),
+            !has_method(&msgs, 2, method_idx::ON_STAT_UPDATE),
             "missing attacker must not emit a target onStatUpdate; got {msgs:?}"
         );
     }
