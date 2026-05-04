@@ -28,8 +28,8 @@
 //! parser.
 
 use crate::packet::{
-    build_outgoing, parse_incoming, FLAG_HAS_ACKS, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE,
-    FLAG_RELIABLE,
+    build_outgoing, build_outgoing_fragmented, parse_incoming, FLAG_FRAGMENTED, FLAG_HAS_ACKS,
+    FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE, FLAG_RELIABLE,
 };
 
 /// A single synthesized replay frame: builder inputs paired with
@@ -229,5 +229,166 @@ fn replay_stream_twice_in_a_row_produces_identical_decodes() {
             ),
             (Err(_), _) | (_, Err(_)) => panic!("frame `{label}`: parse_incoming returned Err on a packet built by build_outgoing"),
         }
+    }
+}
+
+/// Fragmented packets travel through `build_outgoing_fragmented` rather
+/// than `build_outgoing` and carry an extra `frag_begin` / `frag_end`
+/// footer pair (innermost). The main matrix test above intentionally
+/// omits this shape so its frame struct can stay flat; pin
+/// fragmentation here.
+///
+/// A regression that reorders or drops the frag footers (or moves
+/// them outside the `seq_id` footer) would surface as a failed
+/// `frag_begin` / `frag_end` round-trip.
+///
+/// Acks aren't included here because production never piggybacks
+/// them on fragments — `build_fragmented_bundle` and every existing
+/// call site pass `&[]` for the ack slice. Acks are the empty
+/// path; the all-acks combination has its own coverage in the
+/// non-fragmented matrix above.
+#[test]
+fn fragmented_packet_round_trips_frag_footers() {
+    let body = b"fragment-payload-bytes";
+    let raw = build_outgoing_fragmented(
+        FLAG_RELIABLE,
+        body,
+        0xABCD_1234, // seq_id
+        100,         // frag_begin
+        103,         // frag_end (4-fragment range)
+        &[],         // acks: production fragments never piggyback
+    );
+
+    let parsed = parse_incoming(&raw).expect("fragmented packet must parse");
+    assert!(
+        parsed.flags & FLAG_FRAGMENTED != 0,
+        "FLAG_FRAGMENTED bit must round-trip in flags byte"
+    );
+    assert!(
+        parsed.flags & FLAG_HAS_SEQUENCE != 0,
+        "build_outgoing_fragmented forces FLAG_HAS_SEQUENCE; bit must round-trip"
+    );
+    assert_eq!(parsed.body.as_ref(), body, "body must round-trip");
+    assert_eq!(parsed.seq_id, Some(0xABCD_1234), "seq_id must round-trip");
+    assert_eq!(parsed.frag_begin, Some(100), "frag_begin must round-trip");
+    assert_eq!(parsed.frag_end, Some(103), "frag_end must round-trip");
+    assert!(
+        parsed.acks.is_empty(),
+        "no piggybacked acks on this fragment"
+    );
+}
+
+/// Independent oracle for the parser. The `replay_packet_stream`
+/// test above feeds the output of `build_outgoing` back through
+/// `parse_incoming` — if both functions co-drift in the same
+/// direction (e.g., swap two footers consistently on both sides),
+/// the round-trip would still pass.
+///
+/// This test feeds **hand-coded byte sequences** into `parse_incoming`
+/// directly. The expected fields are derived from the wire-format
+/// spec at the top of `packet.rs`, NOT from the build helper. Any
+/// drift between the spec and the parser surfaces here without
+/// being papered over by a sympathetic builder regression.
+///
+/// Each fixture is a literal byte sequence with the layout in the
+/// comment above it; the assertions check the parser's output
+/// against the spec, not against another helper.
+#[test]
+fn parser_decodes_hand_coded_byte_fixtures_per_wire_spec() {
+    // Fixture 1: bare flags=0, no body, no footers. Single byte.
+    {
+        let raw: &[u8] = &[0x00];
+        let p = parse_incoming(raw).expect("bare flags must parse");
+        assert_eq!(p.flags, 0);
+        assert!(p.body.is_empty());
+        assert_eq!(p.seq_id, None);
+        assert_eq!(p.frag_begin, None);
+        assert_eq!(p.frag_end, None);
+        assert!(p.acks.is_empty());
+        assert_eq!(p.first_req_offset, None);
+    }
+
+    // Fixture 2: FLAG_HAS_SEQUENCE only, body = "AB", seq_id = 0x01020304.
+    // Layout: [flags=0x40][body=0x41 0x42][seq_id u32 LE = 04 03 02 01]
+    {
+        let raw: &[u8] = &[0x40, 0x41, 0x42, 0x04, 0x03, 0x02, 0x01];
+        let p = parse_incoming(raw).expect("seq-only fixture must parse");
+        assert_eq!(p.flags, FLAG_HAS_SEQUENCE);
+        assert_eq!(p.body.as_ref(), b"AB");
+        assert_eq!(p.seq_id, Some(0x01020304));
+        assert_eq!(p.first_req_offset, None);
+        assert!(p.acks.is_empty());
+    }
+
+    // Fixture 3: FLAG_HAS_ACKS only, body empty, two acks (5 then 9).
+    // Layout (acks-with-count is OUTERMOST footer):
+    //   [flags=0x04][acks: 05 00 00 00, 09 00 00 00][ack_count=2]
+    {
+        let raw: &[u8] = &[
+            0x04, // flags = FLAG_HAS_ACKS
+            0x05, 0x00, 0x00, 0x00, // ack[0] = 5
+            0x09, 0x00, 0x00, 0x00, // ack[1] = 9
+            0x02, // ack_count
+        ];
+        let p = parse_incoming(raw).expect("acks-only fixture must parse");
+        assert_eq!(p.flags, FLAG_HAS_ACKS);
+        assert_eq!(p.acks, vec![5, 9], "ack list order matches wire-byte order");
+        assert!(p.body.is_empty());
+        assert_eq!(p.seq_id, None);
+    }
+
+    // Fixture 4: All footers at once. flags = FLAG_HAS_REQUESTS |
+    // FLAG_HAS_SEQUENCE | FLAG_HAS_ACKS = 0x45.
+    // Body = "x" (1 byte). first_req_offset = 1, seq_id = 7,
+    // acks = [42, 99], ack_count = 2.
+    //
+    // Footer order (innermost → outermost):
+    //   first_req_offset u16 LE: 01 00
+    //   seq_id           u32 LE: 07 00 00 00
+    //   acks             u32 LE × 2: 2A 00 00 00, 63 00 00 00
+    //   ack_count        u8:    02
+    {
+        let raw: &[u8] = &[
+            0x45, // flags
+            0x78, // body byte 'x'
+            0x01, 0x00, // first_req_offset = 1
+            0x07, 0x00, 0x00, 0x00, // seq_id = 7
+            0x2A, 0x00, 0x00, 0x00, // ack[0] = 42
+            0x63, 0x00, 0x00, 0x00, // ack[1] = 99
+            0x02, // ack_count
+        ];
+        let p = parse_incoming(raw).expect("all-footers fixture must parse");
+        assert_eq!(
+            p.flags,
+            FLAG_HAS_REQUESTS | FLAG_HAS_SEQUENCE | FLAG_HAS_ACKS
+        );
+        assert_eq!(p.body.as_ref(), b"x");
+        assert_eq!(p.first_req_offset, Some(1));
+        assert_eq!(p.seq_id, Some(7));
+        assert_eq!(p.acks, vec![42, 99]);
+    }
+
+    // Fixture 5: Fragmented packet. flags = FLAG_FRAGMENTED |
+    // FLAG_HAS_SEQUENCE = 0x60. Body = "Q" (1 byte).
+    // frag_begin = 5, frag_end = 8, seq_id = 0x10.
+    //
+    // Footer order (innermost → outermost):
+    //   frag_begin u32 LE: 05 00 00 00
+    //   frag_end   u32 LE: 08 00 00 00
+    //   seq_id     u32 LE: 10 00 00 00
+    {
+        let raw: &[u8] = &[
+            0x60, // flags = FLAG_FRAGMENTED | FLAG_HAS_SEQUENCE
+            0x51, // body 'Q'
+            0x05, 0x00, 0x00, 0x00, // frag_begin = 5
+            0x08, 0x00, 0x00, 0x00, // frag_end   = 8
+            0x10, 0x00, 0x00, 0x00, // seq_id     = 16
+        ];
+        let p = parse_incoming(raw).expect("fragmented fixture must parse");
+        assert_eq!(p.flags, FLAG_FRAGMENTED | FLAG_HAS_SEQUENCE);
+        assert_eq!(p.body.as_ref(), b"Q");
+        assert_eq!(p.frag_begin, Some(5));
+        assert_eq!(p.frag_end, Some(8));
+        assert_eq!(p.seq_id, Some(0x10));
     }
 }
