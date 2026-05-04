@@ -689,8 +689,8 @@ mod tests {
     /// builders directly, so the seq_id values come from us — that means
     /// we can pin "this builder writes back the seq_id we passed" but
     /// NOT "the AoI dispatch loop hands these out in order". The
-    /// production ordering would need a `send_to_witness` / cell_dispatch
-    /// integration test (currently TODO; #123 Group B login-end-to-end).
+    /// production ordering would need a `send_to_witness` /
+    /// cell_dispatch integration test, which is a separate harness shape.
     #[test]
     fn ghost_lifecycle_emits_create_cascade_update_invisible_leave_in_order() {
         const ENTITY_ID: u32 = 0xDEAD_BEEF;
@@ -719,17 +719,68 @@ mod tests {
         assert_eq!(&pt1a[13..17], &ENTITY_ID.to_le_bytes());
 
         // ── phase 1b: property cascade (separate packet, AFTER 1a) ─────
-        // class_id=0x00 keeps the body minimal (only the
-        // SGWSpawnableEntity prefix), but the structural pin is what
-        // matters: the cascade's first body byte is an entity-method
-        // record (msg id 0x35 = ENTITY_METHOD), NOT CREATE_ENTITY.
+        // With class_id=0x00 and npc_data=None the cascade emits exactly
+        // two entity-method records (the SGWSpawnableEntity tail):
+        //   1. onEntityFlags(u64=0)   — direct encoding, msg_id = 4|0x80 = 0x84
+        //   2. onVisible(u8=1)        — direct encoding, msg_id = 8|0x80 = 0x88
+        // The structural pin asserts:
+        //   - the first record is onEntityFlags addressing OUR entity_id,
+        //     not CREATE_ENTITY (0x09) and not some other entity
+        //   - the second record is onVisible, also addressing OUR entity_id
+        //   - body length matches (15-byte onEntityFlags + 8-byte onVisible
+        //     record = 23 bytes total body)
+        // A regression that fired the cascade against the wrong entity_id,
+        // dropped the body entirely, or reordered the records would surface
+        // here.
         let p1b = build_create_entity_cascade(&TEST_KEY, 2, &[], ENTITY_ID, 0x00, 0, None);
         let pt1b = enc.decrypt(&p1b).unwrap();
-        assert_ne!(
-            pt1b[1], BASEMSG_CREATE_ENTITY,
-            "cascade must NOT begin with CREATE_ENTITY — that record belongs to phase 1a, \
-             a regression here would re-create the entity mid-cascade"
+        // Record 1: onEntityFlags @ pt1b[1..16]
+        //   [msg_id=0x84][word_len=12 LE][entity_id u32][entity_flags u64]
+        assert_eq!(
+            pt1b[1], 0x84,
+            "cascade record 1 must be onEntityFlags direct (4 | 0x80 = 0x84), not CREATE_ENTITY"
         );
+        assert_eq!(
+            u16::from_le_bytes([pt1b[2], pt1b[3]]),
+            12,
+            "onEntityFlags word_len = 4 entity_id + 8 entity_flags"
+        );
+        assert_eq!(
+            &pt1b[4..8],
+            &ENTITY_ID.to_le_bytes(),
+            "onEntityFlags must address OUR entity_id, not a stale id"
+        );
+        assert_eq!(
+            &pt1b[8..16],
+            &0u64.to_le_bytes(),
+            "default entity_flags = 0 when npc_data is None"
+        );
+        // Record 2: onVisible @ pt1b[16..24]
+        //   [msg_id=0xA1][word_len=5 LE][entity_id u32][visible u8=1]
+        assert_eq!(
+            pt1b[16], 0x88,
+            "cascade record 2 must be onVisible direct (8 | 0x80 = 0x88)"
+        );
+        assert_eq!(
+            u16::from_le_bytes([pt1b[17], pt1b[18]]),
+            5,
+            "onVisible word_len = 4 entity_id + 1 visible"
+        );
+        assert_eq!(
+            &pt1b[19..23],
+            &ENTITY_ID.to_le_bytes(),
+            "onVisible must address OUR entity_id"
+        );
+        assert_eq!(pt1b[23], 0x01, "onVisible flag = 1 (registers in viewport)");
+        // Total decrypted = 1 (flags) + 23 (body) + 4 (seq_id footer) = 28
+        assert_eq!(
+            pt1b.len(),
+            1 + 23 + 4,
+            "cascade body is exactly the two SGWSpawnableEntity records — extra bytes mean a stray record snuck in"
+        );
+        // Phase 1b seq_id footer @ pt1b[24..28]
+        let seq1b = u32::from_le_bytes([pt1b[24], pt1b[25], pt1b[26], pt1b[27]]);
+        assert_eq!(seq1b, 2, "phase 1b carries the seq_id we passed");
 
         // ── phase 2: UPDATE_AVATAR only in the move packet ────────────
         let p2 = build_avatar_update(
@@ -784,7 +835,9 @@ mod tests {
         // NOT enough on its own to prove dispatch-level ordering — that
         // would need a send_to_witness driver — but it does catch a
         // regression that drops or swaps the seq_id field inside a
-        // builder, which would corrupt every downstream ack.
+        // builder, which would corrupt every downstream ack. Phase 1b
+        // is asserted inline in its block above; phases 1a, 2, 3 are
+        // checked here using the documented body offsets.
         // Phase 1a: CREATE_ENTITY (11) + UPDATE_AVATAR (26) = 37 → seq @ pt1a[38..42].
         // Phase 2:  UPDATE_AVATAR (26)                          → seq @ pt2[27..31].
         // Phase 3:  ENTITY_INVISIBLE (6) + LEAVE_AOI (11) = 17  → seq @ pt3[18..22].
