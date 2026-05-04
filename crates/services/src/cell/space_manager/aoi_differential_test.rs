@@ -52,14 +52,16 @@ fn arb_initial_pos() -> impl Strategy<Value = [f32; 3]> {
     (r.clone(), r).prop_map(|(x, z)| [x, 0.0, z])
 }
 
-/// Per-tick displacement vector. Bounded so an entity can move at
-/// most ~50 units per tick — comparable to a sprint in real play —
-/// without teleporting across the entire world. Crucially, the
-/// magnitude can exceed the AoI radius (100), so a single tick can
+/// Per-tick displacement vector. Bounded at ±80 per axis so an entity
+/// can move up to ~113 units of euclidean distance in one tick —
+/// comfortably above the 100-unit AoI radius, so a single tick can
 /// move an entity from outside-AoI to inside or vice versa, exercising
-/// both transition arms of the diff.
+/// both transition arms of the diff. The previous ±50 cap maxed out
+/// at √(50²+50²) ≈ 70.7 which couldn't cross the radius in one tick;
+/// the comment claimed it could, and the sibling assertion needs
+/// outside↔inside crossings to actually exercise the fast-mover path.
 fn arb_step() -> impl Strategy<Value = [f32; 3]> {
-    let r = -50.0f32..=50.0f32;
+    let r = -80.0f32..=80.0f32;
     (r.clone(), r).prop_map(|(dx, dz)| [dx, 0.0, dz])
 }
 

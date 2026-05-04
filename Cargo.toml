@@ -95,7 +95,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # Auth
 jsonwebtoken = "9"
 
-# Property-based testing (used as dev-dependency in mercury + services)
+# Property-based testing (used as dev-dependency in services)
 proptest = "1"
 
 # Logging
