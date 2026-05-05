@@ -869,4 +869,26 @@ mod tests {
             other => panic!("Expected Counter, got {:?}", other),
         }
     }
+
+    /// `parse_step_status` accepts each of the three valid step states.
+    /// `completed` is the recently-added third leaf (matches the `completed_steps`
+    /// list populated in `services::cell::content::mission_context`); without
+    /// this case the chain seed would silently drop any condition that uses
+    /// `eq completed` for a step.
+    #[test]
+    fn parse_step_status_accepts_all_three_states() {
+        assert_eq!(
+            parse_step_status("not_active"),
+            Some(StepStatusValue::NotActive)
+        );
+        assert_eq!(parse_step_status("active"), Some(StepStatusValue::Active));
+        assert_eq!(
+            parse_step_status("completed"),
+            Some(StepStatusValue::Completed)
+        );
+        // Unknown values fall through to None — the loader logs a warning
+        // and skips the condition rather than misinterpreting it.
+        assert_eq!(parse_step_status("nonsense"), None);
+        assert_eq!(parse_step_status(""), None);
+    }
 }

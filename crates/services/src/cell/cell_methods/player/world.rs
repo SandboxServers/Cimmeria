@@ -518,6 +518,7 @@ mod tests {
     #[tokio::test]
     async fn handle_reload_sends_ability_begin_sequence() {
         use crate::cell::client_methods::spawnable_entity::ON_SEQUENCE;
+        use crate::cell::spawner::{EVENT_ABILITY_BEGIN, EVENT_ABILITY_END};
 
         let mut mgr = make_mgr_with_player();
         if let Some(e) = mgr.get_entity_mut(1) {
@@ -557,23 +558,13 @@ mod tests {
                 velocity: 0.0,
             },
         );
-        mgr.sequence_map.insert(
-            (
-                EVENT_SET_ID,
-                super::super::super::super::spawner::EVENT_ABILITY_BEGIN,
-            ),
-            BEGIN_SEQ_ID,
-        );
+        mgr.sequence_map
+            .insert((EVENT_SET_ID, EVENT_ABILITY_BEGIN), BEGIN_SEQ_ID);
         // Seed an `Ability_End` mapping too — the regression we're guarding
         // against would have sent THIS one synchronously at reload-start.
         const END_SEQ_ID: i32 = 9002;
-        mgr.sequence_map.insert(
-            (
-                EVENT_SET_ID,
-                super::super::super::super::spawner::EVENT_ABILITY_END,
-            ),
-            END_SEQ_ID,
-        );
+        mgr.sequence_map
+            .insert((EVENT_SET_ID, EVENT_ABILITY_END), END_SEQ_ID);
 
         let (tx, mut rx) = mpsc::channel(64);
         handle_reload(1, &tx, &mut mgr).await;

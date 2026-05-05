@@ -463,7 +463,14 @@ VALUES
   -- attention-drawing highlight while step 2121 is active. Cleared in chain
   -- 1055 when the player picks the P90 up; restored on login by chain 1062.
   (1053, 'set_interaction_type', NULL, 'Preparation_SMG1A',
-   '{"op": "|", "mask": 1073741824}', 0, 1);
+   '{"op": "|", "mask": 1073741824}', 0, 1),
+  -- Clear ColMarsh's mission-available bit (set by chain 1044 on
+  -- mission-640-complete). Once mission 641 is accepted, the briefing
+  -- dialog has been delivered and the icon should clear so it doesn't
+  -- linger as a stale "talk to me" indicator. Restored on a server
+  -- restart by chain 1063 (gated on 640-complete + 641-not_active).
+  (1053, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "~", "mask": 8388608}', 0, 2);
 
 -- Chain 1054: dialog choice 5022 (sci accepts briefing) → accept mission 641, highlight P90 locker
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -475,9 +482,11 @@ VALUES (1054, 'dialog_choice', '5022', 'player', false, 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1054, 'accept_mission', 641, NULL, '{}', 0, 0),
-  -- See chain 1053 for the highlight rationale.
+  -- See chain 1053 for the highlight + ColMarsh-clear rationale.
   (1054, 'set_interaction_type', NULL, 'Preparation_SMG1A',
-   '{"op": "|", "mask": 1073741824}', 0, 1);
+   '{"op": "|", "mask": 1073741824}', 0, 1),
+  (1054, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "~", "mask": 8388608}', 0, 2);
 
 -- Chain 1055: interact SMG1A while step 2121 active → give weapon, advance to step 3563
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -516,6 +525,28 @@ VALUES (1062, 'step_status', 641, '2121', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1062, 'set_interaction_type', NULL, 'Preparation_SMG1A',
         '{"op": "|", "mask": 1073741824}', 0, 0);
+
+-- Chain 1063: player_loaded + 640 completed + 641 not_active → restore ColMarsh
+-- mission-available bit on login. Chain 1044 sets the bit with `once: true`
+-- when the player teleports in post-rings, so a player who logs out at the
+-- "talk to ColMarsh to start mission 641" boundary loses the icon on restart
+-- (interaction_type flags don't persist on the entity across server restarts).
+-- Same restart-resilience pattern as chain 1062 (SMG1A) and chains 1045/1046
+-- (HackTheRings_Switch).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1063, '641 - Restore ColMarsh mission-available bit on login (640 done, 641 not started)', 'mission', 640, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1063, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1063, 'mission_status', 640, NULL, 'eq', 'completed', 0),
+  (1063, 'mission_status', 641, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1063, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+        '{"op": "|", "mask": 8388608}', 0, 0);
 
 -- Chain 1056: interact template 'Col Marsh (pet)' while step 3563 active + non-sci → dialog 3999
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)

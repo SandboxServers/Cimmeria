@@ -241,10 +241,14 @@ async fn chain_1051_fires_when_mission_641_not_accepted() {
         .iter()
         .filter(|(id, _)| *id == 1051)
         .count();
-    assert!(
-        chain_1051_actions > 0,
-        "chain 1051 must resolve actions when mission 641 hasn't been accepted; \
-         got {chain_1051_actions}",
+    // Chain 1051 resolves to exactly one action (`display_dialog 4001`) per
+    // the seed. Pinning `== 1` rather than `> 0` so a future seed change
+    // that accidentally adds an extra action — say, a stray `set_interaction_type`
+    // that wasn't intended for the briefing path — fails this guard.
+    assert_eq!(
+        chain_1051_actions, 1,
+        "chain 1051 must resolve exactly one action (display_dialog 4001) \
+         when mission 641 hasn't been accepted; got {chain_1051_actions}",
     );
 }
 
