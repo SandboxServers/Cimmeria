@@ -9,7 +9,7 @@
 
 Data-driven content runtime: trigger/condition/action chains for missions, dialogs, sequences, and interactions. Replaces the per-script Python in the legacy server.
 
-## All tests (63)
+## All tests (64)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|

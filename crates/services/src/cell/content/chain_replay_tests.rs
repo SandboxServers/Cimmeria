@@ -242,20 +242,32 @@ async fn chain_1051_fires_when_mission_641_not_accepted() {
         params: ctx.params.clone(),
     };
 
+    use cimmeria_content_engine::actions::Action;
     let resolved = engine.resolve_event(&event, &ctx);
-    let chain_1051_actions = resolved
+    let chain_1051_actions: Vec<_> = resolved
         .actions
         .iter()
         .filter(|(id, _)| *id == 1051)
-        .count();
+        .collect();
     // Chain 1051 resolves to exactly one action (`display_dialog 4001`) per
-    // the seed. Pinning `== 1` rather than `> 0` so a future seed change
-    // that accidentally adds an extra action — say, a stray `set_interaction_type`
-    // that wasn't intended for the briefing path — fails this guard.
+    // the seed. Pinning `== 1` rather than `> 0` AND pinning the action
+    // variant so a future seed change that swaps the action while keeping
+    // the count at 1 (e.g. accidentally turning the briefing dialog into a
+    // mission accept) also fails this guard.
     assert_eq!(
-        chain_1051_actions, 1,
-        "chain 1051 must resolve exactly one action (display_dialog 4001) \
-         when mission 641 hasn't been accepted; got {chain_1051_actions}",
+        chain_1051_actions.len(),
+        1,
+        "chain 1051 must resolve exactly one action when mission 641 \
+         hasn't been accepted; got {chain_1051_actions:?}",
+    );
+    assert!(
+        matches!(
+            chain_1051_actions[0].1,
+            Action::DisplayDialog { dialog_id: 4001 }
+        ),
+        "chain 1051's action must be `DisplayDialog {{ dialog_id: 4001 }}`; \
+         got {:?}",
+        chain_1051_actions[0].1,
     );
 }
 

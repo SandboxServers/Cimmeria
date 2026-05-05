@@ -133,10 +133,17 @@ pub(super) async fn reload_completion_tick(
 
         // Phase 4: fire the `Ability_End` sequence to signal "weapon ready
         // again" to the client. Pairs with the `Ability_Begin` sent at
-        // reload-start in `handle_reload`; legacy `AbilityManager.py:671-673`
-        // is the reference (`afterWarmup` plays Ability_End once the warmup
-        // timer elapses). Without this the client may stay in the reload
-        // animation pose until the next fire / weapon-swap forces a reset.
+        // reload-start in `handle_reload`.
+        //
+        // TODO(#210): inert against the current seed.
+        //   Same gap as `handle_reload`: ability 596 has `event_set_id = NULL`
+        //   in the seed, so this branch short-circuits in production. The
+        //   legacy `AbilityManager.py:671-673` reference is correct *for
+        //   abilities that follow the begin/end pattern*, but reload
+        //   specifically sources its animation from the player's archetype-
+        //   keyed item event set (`Item_Reload`, event id 4002) and is a
+        //   single-sequence shape — there is no separate end. #210 will
+        //   replace this branch outright once the archetype lookup lands.
         const ABILITY_RELOAD_WEAPON: i32 = 596;
         let event_set_id = space_mgr
             .ability_defs

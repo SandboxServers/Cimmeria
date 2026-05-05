@@ -242,15 +242,23 @@ async fn handle_reload(
     }
 
     // The reload's *warmup* IS the visible animation (drop mag, insert mag,
-    // chamber). Per legacy `AbilityManager.py:619-636`, that's driven by
-    // the `Ability_Begin` sequence fired at warmup start; the matching
-    // `Ability_End` is fired by `reload_completion_tick` once the warmup
-    // expires.
+    // chamber). Earlier this site sent `Ability_End` synchronously, which
+    // made the client either play the wrong animation or no animation at
+    // all (depending on the weapon's event set). Mirroring the fire-path
+    // begin/end split is the right shape for *most* warmup-gated abilities.
     //
-    // Earlier this site sent `Ability_End` synchronously, which made the
-    // client either play the wrong animation or no animation at all
-    // (depending on the weapon's event set). Mirroring the fire-path
-    // begin/end split fixes "reload doesn't show an animation".
+    // TODO(#210): inert against the current seed.
+    //   Reload (ability 596) has `event_set_id = NULL` in
+    //   `db/resources/Abilities/Seed/abilities.sql`, so this branch
+    //   short-circuits in production and no Ability_Begin packet ever
+    //   leaves the server. The legacy reload path (`SGWBeing.py:863-874`)
+    //   doesn't drive reload animations off the ability's event set at
+    //   all — it sources them from the player's archetype-keyed item
+    //   event set via `getItemSequence(Item_Reload)` (event id 4002).
+    //   The wiring here is kept (rather than ripped out) because the test
+    //   coverage already pins the byte layout, and #210 will replace the
+    //   `event_set_id` lookup with the archetype-keyed lookup once that
+    //   work lands. See the issue body for the full migration shape.
     if let Some(esid) = event_set_id {
         use crate::cell::spawner::EVENT_ABILITY_BEGIN;
 

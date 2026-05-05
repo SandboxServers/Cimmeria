@@ -40,6 +40,9 @@ async fn reload_completion_tick_refills_and_sends_stat() {
             s.update(0, 5, 30);
             s.clear_dirty();
         }
+        // Clear any other stats that `create_entity` may have left dirty so
+        // the wire assertion below can pin `count == 1` (only AmmoSlot1).
+        e.stats.clear_dirty();
     }
     // connect_entity inserts the entity into space.players, which
     // `all_player_entity_ids()` reads. Without it the tick skips the entity.
@@ -71,6 +74,11 @@ async fn reload_completion_tick_refills_and_sends_stat() {
 
     // ── Wire-message assertions ─────────────────────────────────────
     // First: onStatUpdate (method 20) carrying AmmoSlot1=30.
+    //
+    // The dirty set is cleared above to ensure `serialize_dirty` emits
+    // exactly the one stat the tick mutates (AMMO_SLOT_1). A regression
+    // that bundles unrelated stats into the same dirty payload would fail
+    // the `count == 1` assertion immediately.
     let m1 = rx.try_recv().expect("expected onStatUpdate");
     match m1 {
         CellToBaseMsg::EntityMethodCall {
@@ -81,24 +89,20 @@ async fn reload_completion_tick_refills_and_sends_stat() {
             assert_eq!(entity_id, 1);
             assert_eq!(method_index, 20);
             let count = u32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-            assert!(count >= 1);
-            let mut found_ammo = false;
-            for i in 0..count as usize {
-                let off = 4 + i * 16;
-                let stat_id =
-                    i32::from_le_bytes([args[off], args[off + 1], args[off + 2], args[off + 3]]);
-                let cur = i32::from_le_bytes([
-                    args[off + 8],
-                    args[off + 9],
-                    args[off + 10],
-                    args[off + 11],
-                ]);
-                if stat_id == AMMO_SLOT_1 {
-                    assert_eq!(cur, 30);
-                    found_ammo = true;
-                }
-            }
-            assert!(found_ammo, "onStatUpdate missing AmmoSlot1=30");
+            assert_eq!(
+                count, 1,
+                "reload-tick onStatUpdate must carry exactly AMMO_SLOT_1; \
+                 got {count} stats in payload"
+            );
+            // Stat tuple at offset 4 (16 bytes per stat): stat_id, min, cur, max.
+            let stat_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+            let min = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+            let cur = i32::from_le_bytes([args[12], args[13], args[14], args[15]]);
+            let max = i32::from_le_bytes([args[16], args[17], args[18], args[19]]);
+            assert_eq!(stat_id, AMMO_SLOT_1);
+            assert_eq!(min, 0);
+            assert_eq!(cur, 30, "magazine refilled to clip_size on the wire");
+            assert_eq!(max, 30);
         }
         other => panic!("expected EntityMethodCall, got {other:?}"),
     }

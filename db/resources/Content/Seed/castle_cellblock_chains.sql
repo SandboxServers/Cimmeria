@@ -540,7 +540,7 @@ VALUES (1062, 'set_interaction_type', NULL, 'Preparation_SMG1A',
 -- Same restart-resilience pattern as chain 1062 (SMG1A) and chains 1045/1046
 -- (HackTheRings_Switch).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1063, '641 - Restore ColMarsh mission-available bit on login (640 done, 641 not started)', 'mission', 640, true, 0);
+VALUES (1063, '641 - Restore ColMarsh mission-available bit on login (640 done, 641 not started)', 'mission', 641, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1063, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
