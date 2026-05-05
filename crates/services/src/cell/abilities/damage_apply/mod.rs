@@ -172,7 +172,13 @@ pub(super) async fn apply_damage_to_target(
                                                           // Transition NPC AI to Dead so it stops fighting and moving
         if !target.is_player {
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
-            target.threat_list.clear();
+            // Do NOT clear `threat_list` here: `apply_death_transition`
+            // calls `clear_dead_npc_from_all_player_threat`, which walks
+            // this list to drain each aggroed player's `threatened_mobs`
+            // and broadcast the BSF_InCombat clear. Wiping it here leaves
+            // every aggroed player permanently in-combat. The drain step
+            // runs further down in this same function, immediately after
+            // `apply_death_transition` consumes the list.
             target.nav_path.clear();
             target.velocity = [0.0; 3]; // Stop movement interpolation
                                         // NOTE: do NOT zero `interaction_type_flags` here. Python `SGWMob.onDead()`
@@ -282,6 +288,16 @@ pub(super) async fn apply_damage_to_target(
             space_mgr,
         )
         .await;
+
+        // Drain the dying NPC's `threat_list` now that the death-transition
+        // consumer has read it. Mirrors the deferred-clear contract described
+        // on `clear_dead_npc_from_all_player_threat` and prevents the corpse
+        // from holding stale aggro entries indefinitely.
+        if !target_is_player {
+            if let Some(corpse) = space_mgr.get_entity_mut(target_eid) {
+                corpse.threat_list.clear();
+            }
+        }
 
         // Send death animation via onSequence (Entity_Death = event_id 5001)
         // Look up the death sequence from the target's event set via sequence_map
