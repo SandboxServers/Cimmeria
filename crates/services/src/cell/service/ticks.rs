@@ -109,10 +109,11 @@ pub(super) async fn reload_completion_tick(
             (payload, persist)
         };
 
-        // Phase 2: send onStatUpdate — payload may be empty if refill was
-        // a no-op (e.g. magazine was already at clip_size when the deadline
-        // elapsed because of a concurrent path).
-        if !stat_payload.is_empty() {
+        // Phase 2: send onStatUpdate. Skip when no stats actually changed.
+        // `serialize_dirty` always emits a 4-byte u32 count prefix, so an
+        // `is_empty()` check would never fire and we'd send a zero-entry
+        // payload on no-op refills. Gate on the encoded count instead.
+        if stat_payload.len() > 4 {
             super::super::abilities::send_entity_method(
                 entity_id,
                 crate::mercury::method_idx::ON_STAT_UPDATE,
@@ -263,7 +264,11 @@ pub(super) async fn regen_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
             payload
         };
 
-        if !stat_payload.is_empty() {
+        // `serialize_dirty` always emits a 4-byte u32 count prefix, so
+        // `is_empty()` would never fire. Gate on the encoded count to
+        // suppress empty payloads when the eligibility filter raced with
+        // a concurrent state change and nothing actually got dirtied.
+        if stat_payload.len() > 4 {
             super::super::abilities::send_entity_method(
                 entity_id,
                 crate::mercury::method_idx::ON_STAT_UPDATE,

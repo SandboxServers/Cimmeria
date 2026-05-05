@@ -10,8 +10,8 @@
 //!   `DisconnectEntity` flush ordering.
 //! - [`npc_ai`] — `npc_ai_tick` state-machine transitions
 //!   (Fighting → Idle / Leashing, dead-target prune, stationary, leash snap).
-//! - [`regen`] — `regen_tick` out-of-combat health regen, in-combat /
-//!   dead gating, full-HP and zero-regen floor cases (#208).
+//! - [`regen`] — `regen_tick` out-of-combat HP/focus regen, threat-set /
+//!   dead gating, full-pool skip and zero-regen floor cases.
 
 use crate::cell::space_manager::SpaceManager;
 

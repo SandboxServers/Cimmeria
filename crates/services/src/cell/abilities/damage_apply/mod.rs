@@ -176,8 +176,9 @@ pub(super) async fn apply_damage_to_target(
             // calls `clear_dead_npc_from_all_player_threat`, which walks
             // this list to drain each aggroed player's `threatened_mobs`
             // and broadcast the BSF_InCombat clear. Wiping it here leaves
-            // every aggroed player permanently in-combat. The caller
-            // drains it after the death transition runs.
+            // every aggroed player permanently in-combat. The drain step
+            // runs further down in this same function, immediately after
+            // `apply_death_transition` consumes the list.
             target.nav_path.clear();
             target.velocity = [0.0; 3]; // Stop movement interpolation
                                         // NOTE: do NOT zero `interaction_type_flags` here. Python `SGWMob.onDead()`
