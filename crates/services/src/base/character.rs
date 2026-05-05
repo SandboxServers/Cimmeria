@@ -406,3 +406,35 @@ mod query_character_list_tests {
         cleanup(&pool, &[account_mine, account_other]).await;
     }
 }
+
+#[cfg(test)]
+mod delete_character_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+    use tokio::net::UdpSocket;
+
+    #[tokio::test]
+    async fn delete_character_no_db_short_circuits() {
+        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
+        std_sock.set_nonblocking(true).unwrap();
+        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let key = [0u8; 32];
+
+        let result = handle_delete_character(
+            &socket,
+            addr,
+            key,
+            1,
+            1,
+            &connected,
+            &None,
+        )
+        .await;
+        assert!(result.is_ok(), "no-DB mode must short-circuit without error");
+    }
+}
