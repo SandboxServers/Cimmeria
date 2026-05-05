@@ -569,28 +569,68 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(64);
         handle_reload(1, &tx, &mut mgr).await;
 
-        let mut saw_begin = false;
+        // ON_SEQUENCE wire layout (26 bytes — matches use_ability.rs's fire path):
+        //   sequence_id   i32 LE  @ 0..4
+        //   source_id     i32 LE  @ 4..8
+        //   target_id     i32 LE  @ 8..12
+        //   primary       u8      @ 12
+        //   impact_time   f32 LE  @ 13..17
+        //   nvp_count     u32 LE  @ 17..21
+        //   view_type     u8      @ 21
+        //   instance_id   i32 LE  @ 22..26
+        let mut begin_count = 0;
         while let Ok(msg) = rx.try_recv() {
             if let CellToBaseMsg::EntityMethodCall {
                 method_index, args, ..
             } = msg
             {
-                if method_index == ON_SEQUENCE && args.len() >= 4 {
+                if method_index == ON_SEQUENCE {
+                    assert_eq!(
+                        args.len(),
+                        26,
+                        "ON_SEQUENCE payload must be exactly 26 bytes — any drift \
+                         in the serializer would silently corrupt the kismet event \
+                         frame on the wire"
+                    );
                     let seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                     assert_ne!(
                         seq_id, END_SEQ_ID,
                         "reload-start must NOT send Ability_End (that's reload_completion_tick's job)"
                     );
-                    if seq_id == BEGIN_SEQ_ID {
-                        saw_begin = true;
+                    if seq_id != BEGIN_SEQ_ID {
+                        continue;
                     }
+                    let source_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                    let target_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+                    let primary = args[12];
+                    let impact_time = f32::from_le_bytes([args[13], args[14], args[15], args[16]]);
+                    let nvp_count = u32::from_le_bytes([args[17], args[18], args[19], args[20]]);
+                    let view_type = args[21];
+                    let instance_id = i32::from_le_bytes([args[22], args[23], args[24], args[25]]);
+                    assert_eq!(
+                        source_id, 1,
+                        "source = entity_id (player firing the reload)"
+                    );
+                    assert_eq!(target_id, 1, "reload targets self");
+                    assert_eq!(primary, 1, "primary target flag set");
+                    assert_eq!(impact_time, 0.0, "no projectile impact time for reload");
+                    assert_eq!(nvp_count, 0, "no name-value pairs in payload");
+                    assert_eq!(
+                        view_type, 0,
+                        "ViewType=0 (KISMET_VIEW_Witness) — matches use_ability.rs's \
+                         fire path so reload-begin animates consistently with weapon \
+                         fire animations"
+                    );
+                    assert_eq!(instance_id, 0, "no effect instance for the reload sequence");
+                    begin_count += 1;
                 }
             }
         }
-        assert!(
-            saw_begin,
-            "reload-start must send onSequence with the Ability_Begin sequence id; \
-             without it the client plays no visible reload animation",
+        assert_eq!(
+            begin_count, 1,
+            "reload-start must send exactly one onSequence with the Ability_Begin \
+             sequence id; without it the client plays no visible reload animation. \
+             Got {begin_count}.",
         );
     }
 }

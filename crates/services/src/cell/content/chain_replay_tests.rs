@@ -182,14 +182,21 @@ async fn chain_1034_includes_remove_item_for_ambernol() {
         .expect("DB query for chain 1034 must succeed")
         .expect("chain 1034 must exist in seeded content_chains");
 
-    let removes_vial = chain.actions.iter().any(
-        |a| matches!(a, Action::RemoveItem { item_id, count } if *item_id == 19 && *count == 1),
-    );
-    assert!(
-        removes_vial,
-        "chain 1034 must include `RemoveItem {{ item_id: 19, count: 1 }}` so the \
-         ambernol vial is consumed on use; loaded {} actions: {:?}",
-        chain.actions.len(),
+    let remove_vial_actions = chain
+        .actions
+        .iter()
+        .filter(
+            |a| matches!(a, Action::RemoveItem { item_id, count } if *item_id == 19 && *count == 1),
+        )
+        .count();
+    // Pin `== 1` rather than `>= 1` so a future seed change that
+    // accidentally duplicates the remove action (causing a stack-of-2
+    // vials to vanish in one use) fails this guard.
+    assert_eq!(
+        remove_vial_actions, 1,
+        "chain 1034 must include exactly one `RemoveItem {{ item_id: 19, count: 1 }}` \
+         so the ambernol vial is consumed on use; got {remove_vial_actions} \
+         matching actions. Full action list: {:?}",
         chain.actions,
     );
 }

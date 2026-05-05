@@ -2,8 +2,8 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-05-04  
-> **Total tests**: 550  
+> **Last updated**: 2026-05-05  
+> **Total tests**: 563  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 

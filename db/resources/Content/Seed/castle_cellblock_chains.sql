@@ -506,7 +506,13 @@ VALUES
   -- grabbed. Mirrors how chain 1042 toggles HackTheRings_Switch off the
   -- minigame icon as soon as the gating action completes.
   (1055, 'set_interaction_type', NULL, 'Preparation_SMG1A',
-   '{"op": "~", "mask": 1073741824}', 0, 2);
+   '{"op": "~", "mask": 1073741824}', 0, 2),
+  -- Re-set ColMarsh's mission-available marker so the player has a
+  -- visual cue to return to him for step 3563 ("Speak to Col. Marsh").
+  -- Cleared again by chain 1058/1059 once the briefing completes;
+  -- restored on login by chain 1064 if the player logs out at 3563.
+  (1055, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "|", "mask": 8388608}', 0, 3);
 
 -- Chain 1062: player_loaded + step 2121 active → restore P90 locker highlight on login.
 --   Same restart-resilience pattern as chains 1045/1046 for HackTheRings_Switch:
@@ -548,6 +554,39 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1063, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
         '{"op": "|", "mask": 8388608}', 0, 0);
 
+-- Chain 1064: player_loaded + step 3563 active → restore ColMarsh's
+-- "talk to me" marker (re-set after P90 pickup by chain 1055). Without this,
+-- a player who logs out at step 3563 boundary would log back in to a Marsh
+-- with no visual cue that they need to interact with him for the briefing.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1064, '641 - Restore ColMarsh marker on login (step 3563)', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1064, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1064, 'step_status', 641, '3563', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1064, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+        '{"op": "|", "mask": 8388608}', 0, 0);
+
+-- Chain 1065: player_loaded + step 3564 active → restore Terminal quest
+-- highlight (originally set by chain 1058/1059 on dialog accept). Mirrors
+-- chains 1062/1064 for SMG1A and ColMarsh respectively.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1065, '641 - Restore Terminal quest highlight on login (step 3564)', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1065, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1065, 'step_status', 641, '3564', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1065, 'set_interaction_type', NULL, 'Preparation_Terminal',
+        '{"op": "|", "mask": 1073741824}', 0, 0);
+
 -- Chain 1056: interact template 'Col Marsh (pet)' while step 3563 active + non-sci → dialog 3999
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1056, '641 - Talk to Col Marsh pet (non-sci): show dialog 3999', 'mission', 641, true, 0);
@@ -578,7 +617,8 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1057, 'display_dialog', 5023, NULL, '{}', 0, 0);
 
--- Chain 1058: dialog choice 3999 (non-sci briefed) → advance step 3564
+-- Chain 1058: dialog choice 3999 (non-sci briefed) → advance step 3564,
+-- swap quest markers from ColMarsh to the Terminal he's sending us to.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1058, '641 - Dialog choice 3999: advance step 3564', 'mission', 641, true, 0);
 
@@ -586,9 +626,19 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1058, 'dialog_choice', '3999', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1058, 'advance_step', 641, '3564', '{}', 0, 0);
+VALUES
+  (1058, 'advance_step', 641, '3564', '{}', 0, 0),
+  -- Briefing's done, clear ColMarsh's "talk to me" marker.
+  (1058, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "~", "mask": 8388608}', 0, 1),
+  -- Highlight the Terminal so the player has the same visual cue we
+  -- already give for the P90 locker / Ambernol vial. Cleared by chain
+  -- 1060 when they interact with it; restored on login by chain 1065.
+  (1058, 'set_interaction_type', NULL, 'Preparation_Terminal',
+   '{"op": "|", "mask": 1073741824}', 0, 2);
 
--- Chain 1059: dialog choice 5023 (sci briefed) → advance step 3564
+-- Chain 1059: dialog choice 5023 (sci briefed) → advance step 3564.
+-- Same marker churn as 1058; see that chain for the rationale.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1059, '641 - Dialog choice 5023: advance step 3564', 'mission', 641, true, 0);
 
@@ -596,7 +646,12 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1059, 'dialog_choice', '5023', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1059, 'advance_step', 641, '3564', '{}', 0, 0);
+VALUES
+  (1059, 'advance_step', 641, '3564', '{}', 0, 0),
+  (1059, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "~", "mask": 8388608}', 0, 1),
+  (1059, 'set_interaction_type', NULL, 'Preparation_Terminal',
+   '{"op": "|", "mask": 1073741824}', 0, 2);
 
 -- Chain 1060: interact terminal while step 3564 active → Livewire
 --   on_victory_chains: 1061
@@ -610,7 +665,12 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (1060, 'step_status', 641, '3564', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0);
+VALUES
+  (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0),
+  -- Clear the Terminal quest marker the moment the minigame starts;
+  -- player has reached and engaged with it, no need to keep highlighting it.
+  (1060, 'set_interaction_type', NULL, 'Preparation_Terminal',
+   '{"op": "~", "mask": 1073741824}', 0, 1);
 
 -- Chain 1061: Livewire victory → display final dialog, complete 641, accept 680
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -624,16 +684,22 @@ VALUES
   -- Make the second ring switch right-clickable with the RingNetwork icon. Same gap as 640:
   -- EscapeTheCellblock.py subscribes to the interact tag but never sets interactionType.
   (1061, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
-   '{"op": "|", "mask": 32}', 0, 3);
+   '{"op": "|", "mask": 32}', 0, 3),
+  -- Highlight the ring switch as the next quest objective so the player
+  -- has a visual cue. Cleared on teleport_in (chain 1072) when they
+  -- actually use it; restored on login by chain 1074.
+  (1061, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "|", "mask": 1073741824}', 0, 4);
 
 -- ============================================================
 -- MISSION 680 — Escape the Cellblock
 -- ============================================================
 
--- Chain 1074: player_loaded + step 2344 active → restore RingNetwork bit on the second switch.
+-- Chain 1074: player_loaded + step 2344 active → restore both the RingNetwork
+-- icon AND the quest highlight on the second switch.
 --   Same restart-resilience pattern as chains 1045/1046 for the first ring switch.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1074, '680 - Restore RingNetwork bit on login (step 2344)', 'mission', 680, true, 0);
+VALUES (1074, '680 - Restore RingSwitch bits on login (step 2344)', 'mission', 680, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1074, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
@@ -642,8 +708,13 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (1074, 'step_status', 680, '2344', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1074, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
-        '{"op": "|", "mask": 32}', 0, 0);
+VALUES
+  (1074, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "|", "mask": 32}', 0, 0),
+  -- Restore the quest highlight too (originally set by chain 1061 on
+  -- mission-680 acceptance).
+  (1074, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "|", "mask": 1073741824}', 0, 1);
 
 -- Chain 1071: interact ring switch while step 2344 active → trigger transporter to regionId=2
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -669,7 +740,11 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1072, 'advance_step', 680, '2345', '{}', 0, 0),
   (1072, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
-   '{"op": "~", "mask": 32}', 0, 1);
+   '{"op": "~", "mask": 32}', 0, 1),
+  -- Clear the quest highlight too — player has used the rings, no
+  -- longer need the "go here" indicator. Pairs with the set in chain 1061.
+  (1072, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "~", "mask": 1073741824}', 0, 2);
 
 -- Chain 1073: enter Region9 when 681 not yet active → accept mission 681
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
