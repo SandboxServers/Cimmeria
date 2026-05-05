@@ -11,9 +11,9 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (12, 2, NULL, 5, 0.800000012, 50);
 
 -- Health Slappack TC1 (item 2893, +500 HP) as a guaranteed drop on the
--- shared Cellblock guard table. Pairs with the out-of-combat regen tick
--- (#208): regen restores HP between fights, slappacks cover the burst
--- recovery for back-to-back encounters where regen alone can't keep up.
+-- shared Cellblock guard table. Pairs with the out-of-combat regen tick:
+-- regen restores HP between fights, slappacks cover the burst recovery
+-- for back-to-back encounters where regen alone can't keep up.
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (13, 2, 2893, 1, 1, 1);
 
 --

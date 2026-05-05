@@ -181,14 +181,13 @@ async fn lethal_hit_against_npc_emits_grant_xp_and_state_flip() {
     ));
 }
 
-/// Regression guard for the production root cause of #208 (regen never
-/// fires) and #219 (BSF_InCombat sticks): on a kill, the dying NPC's
-/// `threat_list` must survive long enough for `apply_death_transition` →
-/// `clear_dead_npc_from_all_player_threat` to walk it and drain each
-/// aggroed player's `threatened_mobs`. A previous version cleared
-/// `threat_list` at the kill site (before death.rs ran), which left
-/// every player permanently in combat — out-of-combat regen could never
-/// trigger because `threatened_mobs` was the gate's source of truth.
+/// On a kill, the dying NPC's `threat_list` must survive long enough
+/// for `apply_death_transition` → `clear_dead_npc_from_all_player_threat`
+/// to walk it and drain each aggroed player's `threatened_mobs`. A
+/// previous version cleared `threat_list` at the kill site (before
+/// death.rs ran), which left every player permanently in combat —
+/// out-of-combat regen could never trigger because `threatened_mobs`
+/// was the gate's source of truth.
 ///
 /// Pinning all three end-states here makes the ordering load-bearing:
 /// 1. `threatened_mobs` is empty (the gate the regen tick reads).
@@ -227,14 +226,15 @@ async fn lethal_hit_drains_threatened_mobs_and_clears_bsf_in_combat() {
     assert!(
         player.threatened_mobs.is_empty(),
         "player's threatened_mobs must drain on kill — this is the gate \
-         the out-of-combat regen tick reads (#208). Stuck non-empty \
-         set means regen never fires in production."
+         the out-of-combat regen tick reads. Stuck non-empty set means \
+         regen never fires in production."
     );
     assert_eq!(
         player.state_field & BSF_IN_COMBAT,
         0,
-        "BSF_InCombat must clear on the kill that empties threatened_mobs \
-         (#219). Stuck bit means HUD/cursor stay in combat-ready forever."
+        "BSF_InCombat must clear on the kill that empties \
+         threatened_mobs. Stuck bit means HUD/cursor stay in \
+         combat-ready forever."
     );
 
     let corpse = mgr.get_entity(2).unwrap();

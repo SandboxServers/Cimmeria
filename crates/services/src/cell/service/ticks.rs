@@ -174,7 +174,7 @@ pub(super) async fn reload_completion_tick(
     }
 }
 
-/// Out-of-combat health and focus regeneration. Issue #208.
+/// Out-of-combat health and focus regeneration.
 ///
 /// For each connected, alive player whose `threatened_mobs` set is empty,
 /// advance any pool whose `cur < max` toward `max` by its regen-stat
@@ -182,7 +182,7 @@ pub(super) async fn reload_completion_tick(
 /// every player class seeds `healthRegen` and `focusRegen` to 0 in
 /// `SGWBeing.statsTemplate` — still recovers between fights). All
 /// pool changes for a given player are bundled into a single
-/// `onStatUpdate` (method 20) via `serialize_dirty`.
+/// `onStatUpdate` via `serialize_dirty`.
 ///
 /// **Pool coverage**:
 /// - `HEALTH` — primary HP pool, damaged by `HealthDamage` effects.
@@ -196,25 +196,18 @@ pub(super) async fn reload_completion_tick(
 ///   noise in the wire payload.
 ///
 /// Why `threatened_mobs.is_empty()` instead of `BSF_IN_COMBAT == 0`: the
-/// flag has three setters ([`use_ability.rs`], reload in
-/// [`cell_methods/player/world.rs`], `enter_player_combat`) but only one
+/// flag has three setters (`use_ability.rs`, reload in
+/// `cell_methods/player/world.rs`, `enter_player_combat`) but only one
 /// clear path (death-driven `clear_dead_npc_from_all_player_threat`), so
 /// the bit gets stuck after one-shot kills, reload in isolation, and
 /// no-target self-casts. `threatened_mobs` is the actual source of
 /// aggro truth — empty set means no NPC currently has the player on its
-/// threat list. The stuck flag itself is tracked separately as #219;
-/// regen needs the right gate today.
+/// threat list.
 ///
 /// Cadence is 1 Hz — the caller must drive this on every 10th 100ms AoI
 /// tick. The per-call delta is therefore "points per second"; if cadence
 /// ever changes, the floors and the regen values need to be scaled
 /// together.
-///
-/// Out of scope: energy regen (see above), level-scaling formulas,
-/// `lastCombatTime`/`lastRegenTime` parity, and witness fan-out for the
-/// public HEALTH/FOCUS stats — `damage_apply` does not broadcast them
-/// either, so leaving them owner-only here keeps the wire shape
-/// consistent.
 pub(super) async fn regen_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     use crate::cell::combat::state::BSF_DEAD;
     use cimmeria_entity::stats::{FOCUS, FOCUS_REGEN, HEALTH, HEALTH_REGEN};
@@ -250,14 +243,6 @@ pub(super) async fn regen_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
                 None => continue,
             };
 
-            // Re-check inside the mutable borrow: `connect_entity` /
-            // `disconnect_entity` could have toggled state between the
-            // snapshot and here, and the floors below would otherwise
-            // tick a dead/aggroed player one final time.
-            if !entity.threatened_mobs.is_empty() || entity.state_field & BSF_DEAD != 0 {
-                continue;
-            }
-
             for &(pool_id, regen_id) in POOLS {
                 let regen = entity.stats.get(regen_id).map_or(0, |s| s.cur).max(1);
                 if let Some(pool) = entity.stats.get_mut(pool_id) {
@@ -273,8 +258,14 @@ pub(super) async fn regen_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
         };
 
         if !stat_payload.is_empty() {
-            super::super::abilities::send_entity_method(entity_id, 20, stat_payload, tx, space_mgr)
-                .await;
+            super::super::abilities::send_entity_method(
+                entity_id,
+                crate::mercury::method_idx::ON_STAT_UPDATE,
+                stat_payload,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
     }
 }

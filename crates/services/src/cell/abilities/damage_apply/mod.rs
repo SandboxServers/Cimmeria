@@ -172,13 +172,12 @@ pub(super) async fn apply_damage_to_target(
                                                           // Transition NPC AI to Dead so it stops fighting and moving
         if !target.is_player {
             target.ai_state = cimmeria_entity::cell_entity::AiState::Dead;
-            // NOTE: do NOT clear `threat_list` here. `apply_death_transition`
-            // below calls `clear_dead_npc_from_all_player_threat`, which walks
-            // this list to find players whose `threatened_mobs` need to be
-            // cleared (and BSF_InCombat broadcast). Wiping it here leaves
-            // every aggroed player permanently in-combat — the production
-            // root cause of #208 (regen never fires) and #219 (BSF_InCombat
-            // sticks). The caller (after apply_death_transition) drains it.
+            // Do NOT clear `threat_list` here: `apply_death_transition`
+            // calls `clear_dead_npc_from_all_player_threat`, which walks
+            // this list to drain each aggroed player's `threatened_mobs`
+            // and broadcast the BSF_InCombat clear. Wiping it here leaves
+            // every aggroed player permanently in-combat. The caller
+            // drains it after the death transition runs.
             target.nav_path.clear();
             target.velocity = [0.0; 3]; // Stop movement interpolation
                                         // NOTE: do NOT zero `interaction_type_flags` here. Python `SGWMob.onDead()`

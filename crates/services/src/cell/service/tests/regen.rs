@@ -1,15 +1,15 @@
-//! `regen_tick` out-of-combat health + focus regen coverage. Issue #208.
+//! `regen_tick` out-of-combat health + focus regen coverage.
 //!
 //! Three load-bearing guards here:
 //!
 //! 1. `regen_tick_blocked_while_threatened` — players with non-empty
 //!    `threatened_mobs` must not regen. Inverse: combat pacing collapses.
-//! 2. `regen_tick_runs_when_bsf_in_combat_is_stuck` — pins the actual
-//!    user-visible bug (#208 in production): `BSF_IN_COMBAT` sticks after
-//!    one-shot kills / reload / no-target self-casts because the bit's
-//!    setters bypass `threatened_mobs`. The gate must rely on
-//!    `threatened_mobs` (the source of aggro truth), not the broken bit,
-//!    or every player ends up "in combat" forever and never regens.
+//! 2. `regen_tick_runs_when_bsf_in_combat_is_stuck` — `BSF_IN_COMBAT`
+//!    sticks in production after one-shot kills / reload / no-target
+//!    self-casts because the bit's setters bypass `threatened_mobs`.
+//!    The gate must rely on `threatened_mobs` (the source of aggro
+//!    truth), not the broken bit, or every player ends up "in combat"
+//!    forever and never regens.
 //! 3. `regen_tick_bundles_health_and_focus_into_one_stat_update` — both
 //!    pools must land in a single `onStatUpdate` payload. Splitting them
 //!    into two messages would double the wire traffic for every regen
@@ -18,6 +18,7 @@
 use super::make_test_space_mgr;
 use crate::cell::combat::state::{BSF_DEAD, BSF_IN_COMBAT};
 use crate::cell::messages::CellToBaseMsg;
+use crate::mercury::method_idx;
 use cimmeria_entity::stats::{FOCUS, FOCUS_REGEN, HEALTH, HEALTH_REGEN};
 use tokio::sync::mpsc;
 
@@ -96,14 +97,13 @@ async fn regen_tick_blocked_while_threatened() {
     );
 }
 
-/// Regression guard for the production #208 bug: `BSF_IN_COMBAT` is
-/// stuck-set in three real code paths (one-shot kills, reload in
-/// isolation, no-target self-casts) because the bit's setters bypass
-/// `threatened_mobs`. If regen ever switches back to gating on the bit,
-/// every player ends up "permanently in combat" and the user-visible
-/// "no HP recovery between fights" bug returns. Pinning the inverse
-/// here — bit set, threat set empty → regen MUST run — is what makes
-/// the gate-source choice load-bearing.
+/// Regression guard: `BSF_IN_COMBAT` is stuck-set in three real code
+/// paths (one-shot kills, reload in isolation, no-target self-casts)
+/// because the bit's setters bypass `threatened_mobs`. If regen ever
+/// switches back to gating on the bit, every player ends up
+/// "permanently in combat" and the "no HP recovery between fights" bug
+/// returns. Pinning the inverse here — bit set, threat set empty →
+/// regen MUST run — is what makes the gate-source choice load-bearing.
 #[tokio::test]
 async fn regen_tick_runs_when_bsf_in_combat_is_stuck() {
     let mut mgr = make_test_space_mgr();
@@ -153,7 +153,7 @@ async fn regen_tick_advances_health_out_of_combat() {
             args,
         } => {
             assert_eq!(entity_id, 1);
-            assert_eq!(method_index, 20, "ON_STAT_UPDATE");
+            assert_eq!(method_index, method_idx::ON_STAT_UPDATE);
             // First i32 is count; locate the HEALTH entry by stat_id.
             let count = u32::from_le_bytes([args[0], args[1], args[2], args[3]]) as usize;
             let mut found = false;
@@ -317,7 +317,7 @@ async fn regen_tick_bundles_health_and_focus_into_one_stat_update() {
         CellToBaseMsg::EntityMethodCall {
             method_index, args, ..
         } => {
-            assert_eq!(method_index, 20, "ON_STAT_UPDATE");
+            assert_eq!(method_index, method_idx::ON_STAT_UPDATE);
             let count = u32::from_le_bytes([args[0], args[1], args[2], args[3]]) as usize;
             let mut found_health = false;
             let mut found_focus = false;

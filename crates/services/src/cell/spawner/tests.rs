@@ -170,9 +170,9 @@ mod live_db {
     /// Cellblock guard table (loot_table_id = 2) must include a guaranteed
     /// Health Slappack TC1 drop (item 2893). Without this, back-to-back
     /// Castle CellBlock guard fights leave players with no burst-recovery
-    /// option even with out-of-combat regen (#208). The seed file is the
-    /// source of truth — pinning probability = 1.0 here means a future
-    /// nerf has to update both the seed and this test consciously.
+    /// option even with out-of-combat regen. The seed file is the source
+    /// of truth — pinning probability = 1.0 here means a future nerf has
+    /// to update both the seed and this test consciously.
     #[tokio::test]
     async fn load_loot_tables_includes_guaranteed_slappack_for_cellblock_guards() {
         const CELLBLOCK_GUARD_LOOT_TABLE: i32 = 2;

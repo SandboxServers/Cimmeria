@@ -76,9 +76,9 @@ pub(super) async fn run_cell_loop(
                     super::npc_ai::npc_ai_tick(tx, &mut space_mgr).await;
                 }
 
-                // Out-of-combat health regen — 1 Hz (every 10th 100ms tick).
+                // Out-of-combat HP/focus regen — 1 Hz (every 10th 100ms tick).
                 // Cadence is wired here so the per-call delta in `regen_tick`
-                // can stay "HP per second" without an internal time check.
+                // can stay "points per second" without an internal time check.
                 if aoi_tick_counter.is_multiple_of(10) {
                     super::ticks::regen_tick(tx, &mut space_mgr).await;
                 }
