@@ -1,0 +1,69 @@
+--- a/crates/services/src/base/character.rs
++++ b/crates/services/src/base/character.rs
+@@ -406,3 +406,35 @@
+         cleanup(&pool, &[account_mine, account_other]).await;
+     }
+ }
++
++#[cfg(test)]
++mod delete_character_tests {
++    use super::*;
++    use std::collections::HashMap;
++    use std::net::SocketAddr;
++    use std::sync::{Arc, Mutex};
++    use tokio::net::UdpSocket;
++
++    #[tokio::test]
++    async fn delete_character_no_db_short_circuits() {
++        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
++        std_sock.set_nonblocking(true).unwrap();
++        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
++        let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
++        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
++            Arc::new(Mutex::new(HashMap::new()));
++        let key = [0u8; 32];
++
++        let result = handle_delete_character(
++            &socket,
++            addr,
++            key,
++            1,
++            1,
++            &connected,
++            &None,
++        )
++        .await;
++        assert!(result.is_ok(), "no-DB mode must short-circuit without error");
++    }
++}
+
+--- a/crates/services/src/auth/handlers.rs
++++ b/crates/services/src/auth/handlers.rs
+@@ -545,4 +545,25 @@
+         assert!(xml.contains(r#"Ticket="BBBB""#));
+         assert!(xml.contains(r#"Port="32832""#));
+     }
+-}
++
++    #[test]
++    fn parse_malformed_login_request_returns_error() {
++        // Missing required attributes.
++        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
++        let req = parse_login_request(body);
++        assert!(req.is_err(), "missing SKU/AccountName/Password must fail");
++
++        // Empty password that doesn't match SHA-1 length.
++        let body2 = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="test" Password="short" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
++        let req2 = parse_login_request(body2).unwrap();
++        assert_eq!(req2.password, "short");
++        // The handler later validates length (40) and hex chars.
++    }
++
++    #[test]
++    fn parse_server_selection_malformed_returns_error() {
++        let body = r#"<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
++        let sel = parse_server_selection(body);
++        assert!(sel.is_err(), "missing ServerSelection attribute must fail");
++    }
++}
+
