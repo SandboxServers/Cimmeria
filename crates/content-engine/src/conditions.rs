@@ -110,10 +110,17 @@ pub enum MissionStatusValue {
 }
 
 /// Step status values for StepStatus conditions.
+///
+/// `NotActive` is the catch-all for "this step is not the current step" — true
+/// both before the mission has been accepted and after the step has been
+/// advanced past. Use `Completed` (set by the populator from
+/// `MissionInstance.completed_steps`) when a chain needs to distinguish a step
+/// that's already been passed from one that hasn't been reached yet.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum StepStatusValue {
     NotActive,
     Active,
+    Completed,
 }
 
 impl Condition {
@@ -195,6 +202,7 @@ impl Condition {
                 let expected_str = match expected_status {
                     StepStatusValue::NotActive => "not_active",
                     StepStatusValue::Active => "active",
+                    StepStatusValue::Completed => "completed",
                 };
                 compare_str(actual_str, expected_str, operator)
             }
@@ -339,6 +347,53 @@ mod tests {
             serde_json::json!("active"),
         );
         assert!(condition.evaluate(&ctx));
+    }
+
+    /// `StepStatusValue::Completed` lets a chain check whether a step has
+    /// already been advanced past, distinct from "step never reached"
+    /// (the unwrap_or("not_active") fallback). Population is the
+    /// populator's job in `services::cell::content::mission_context`;
+    /// this test only pins the comparison rule.
+    #[test]
+    fn step_status_completed() {
+        let condition = Condition::StepStatus {
+            mission_id: 641,
+            step_id: 2121,
+            operator: ComparisonOp::Eq,
+            expected_status: StepStatusValue::Completed,
+        };
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param(
+            "mission_641_step_2121_status".to_string(),
+            serde_json::json!("completed"),
+        );
+        assert!(condition.evaluate(&ctx));
+
+        // Same step, but populator hasn't fired yet → param missing →
+        // evaluator falls back to "not_active" → `eq completed` must be false.
+        let empty = ExecutionContext::new();
+        assert!(!condition.evaluate(&empty));
+    }
+
+    /// A step that's currently active is NOT completed. Locks down the
+    /// "active overrides completed if both somehow set" behaviour at the
+    /// evaluator level — population order in `mission_context.rs` writes
+    /// `active` last so it wins, and this test pins that the comparator
+    /// doesn't accidentally treat them as equivalent.
+    #[test]
+    fn step_status_active_is_not_completed() {
+        let condition = Condition::StepStatus {
+            mission_id: 641,
+            step_id: 3563,
+            operator: ComparisonOp::Eq,
+            expected_status: StepStatusValue::Completed,
+        };
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param(
+            "mission_641_step_3563_status".to_string(),
+            serde_json::json!("active"),
+        );
+        assert!(!condition.evaluate(&ctx));
     }
 
     #[test]

@@ -192,6 +192,27 @@ pub async fn sync_bandolier_after_inventory_change(
             })
             .await;
     }
+
+    // Whenever the bandolier composition changes (item moved into/out of
+    // the active slot, active-slot auto-promoted because the previous
+    // selection was vacated), the appearance query in player_load needs
+    // to re-run — its bandolier visual filter keys off `bandolier_slot`
+    // AND the item rows present at that slot. Without this rebroadcast
+    // the player keeps seeing the previous weapon visual until the next
+    // login.
+    //
+    // Mirrors the refresh in `handle_grant_item` and the `ActiveSlotUpdate`
+    // handler. Idempotent on the wire — witnesses just receive the same
+    // packet they would have on next login.
+    super::super::inventory::refresh_player_appearance(
+        entity_id,
+        player_id,
+        db_pool,
+        socket,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 }
 
 #[cfg(test)]

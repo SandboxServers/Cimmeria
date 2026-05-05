@@ -585,6 +585,94 @@ fn build_map_loaded_seeds_ammo_slot_stats_from_bandolier_items() {
     );
 }
 
+/// Regression for the "switching back to slot 1 doesn't give my weapon
+/// back" bug surfaced in playtesting: on login, the client UI defaults
+/// the bandolier slot indicator to wire slot 1 regardless of the
+/// persisted `bandolier_slot`. If we don't seed the indicator from
+/// `data.active_bandolier_slot` in mapLoaded, the LUA
+/// `getActiveSlotForContainer(...) ~= N` keybind guard turns subsequent
+/// slot-change keypresses into client-side no-ops once the cell-side
+/// state diverges.
+///
+/// Asserts that `mapLoaded` carries `onActiveSlotUpdate(bag_id=3,
+/// wire_slot=server_slot+1)` so the client UI starts from the right slot.
+#[test]
+fn build_map_loaded_seeds_active_slot_indicator_from_persisted_slot() {
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let data = PlayerLoadData {
+        player_id: 1,
+        level: 1,
+        player_name: "SeedActive".into(),
+        extra_name: String::new(),
+        alignment: 1,
+        archetype: 2,
+        gender: 1,
+        bodyset: "BS_HumanMale.BS_HumanMale".into(),
+        components: vec![],
+        exp: 0,
+        naquadah: 0,
+        known_stargates: vec![],
+        abilities: vec![],
+        training_points: 0,
+        applied_science_points: 0,
+        blueprint_ids: vec![],
+        first_login: 0,
+        access_level: 0,
+        skin_color_id: 0,
+        ability_tree: archetype_ability_tree(2),
+        items: vec![],
+        // Persisted bandolier_slot = 2 (server-internal). The wire packet
+        // must report slot 3 (= server slot + 1) so the client UI
+        // highlights the correct bandolier window.
+        active_bandolier_slot: 2,
+        bandolier_items: vec![(
+            2,
+            BandolierItem {
+                item_id: 100,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        )],
+    };
+    let entry = WorldEntryInfo {
+        player_entity_id: 100,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
+        world_stargates: vec![],
+    };
+    let all_bytes = build_map_loaded_body(100, &data, &entry);
+
+    // onActiveSlotUpdate args layout (8 bytes):
+    //   bag_id:i32 LE | wire_slot:i32 LE
+    // For bandolier (bag 3) at server slot 2, wire slot is 3 (1-indexed).
+    let expected_active_slot_args: [u8; 8] = [
+        3, 0, 0, 0, // bag_id = 3 (bandolier)
+        3, 0, 0, 0, // wire_slot = active_bandolier_slot + 1
+    ];
+    let contains = |needle: &[u8]| all_bytes.windows(needle.len()).any(|w| w == needle);
+    assert!(
+        contains(&expected_active_slot_args),
+        "mapLoaded must carry onActiveSlotUpdate(3, server_slot+1) so the \
+         client UI initialises to the persisted bandolier slot",
+    );
+
+    // Negative pin: the *server-internal* slot must not appear as the
+    // wire value. If someone reverts the `+1` translation this assertion
+    // is what catches it.
+    let wrong_wire_args: [u8; 8] = [3, 0, 0, 0, 2, 0, 0, 0];
+    assert!(
+        !contains(&wrong_wire_args),
+        "wire slot must be 1-indexed (`Bag.py:369`); a 0-indexed `2` would \
+         desync the client UI by one slot",
+    );
+}
+
 fn sample_player_load_data() -> PlayerLoadData {
     PlayerLoadData {
         player_id: 1,

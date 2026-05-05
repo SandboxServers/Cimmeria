@@ -48,10 +48,11 @@ pub async fn handle_move_inventory_item(
 
     let max_slots = bag_max_slots(target_container_id);
     let min_slot = bag_min_slot(target_container_id);
-    // Reject sub-min slot targets — for the bandolier this blocks moving
-    // anything into slot 0, which is reserved for the fist-weapon default
-    // (issue #119). Without this guard, a manual drag from the main bag
-    // to bandolier-slot-0 would clobber the fallback.
+    // Reject out-of-range slot targets and non-positive quantities. The wire
+    // decoder is responsible for translating client-side 1-indexed slot IDs
+    // into the 0-indexed values this handler operates on, so a `target_slot_id
+    // < min_slot` here means the client genuinely asked for a slot below the
+    // container's allowed range (forged packet, off-by-one bug elsewhere).
     if target_container_id <= 0
         || target_slot_id < min_slot
         || target_slot_id >= max_slots

@@ -90,12 +90,21 @@ pub(super) async fn handle_move_item(
     if args.len() >= 16 {
         let item_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
         let target_container_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-        let target_slot_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+        let wire_slot_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
         let quantity = i32::from_le_bytes([args[12], args[13], args[14], args[15]]);
+        // Wire slot IDs are 1-indexed (matching the legacy convention in
+        // `SGWPlayer.py:2157` `moveItem(itemId, targetBag, targetSlot - 1, quantity)`).
+        // Translate to the 0-indexed server slot before forwarding to base —
+        // the base handler operates entirely in server-internal indexing.
+        // Saturating subtraction so a forged `i32::MIN` doesn't panic in
+        // debug builds — the resulting `i32::MIN` still fails base-side
+        // range validation.
+        let target_slot_id = wire_slot_id.saturating_sub(1);
         tracing::debug!(
             entity_id,
             item_id,
             target_container_id,
+            wire_slot_id,
             target_slot_id,
             quantity,
             "moveItem"

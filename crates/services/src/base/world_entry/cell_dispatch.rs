@@ -751,24 +751,55 @@ pub(crate) async fn handle_cell_message(
             )
             .await;
         }
-        CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id } => {
+        CellToBaseMsg::ActiveSlotUpdate {
+            entity_id,
+            player_id,
+            slot_id,
+        } => {
             if let Some(pool) = db_pool {
                 // The schema column is `bandolier_slot` (see sgw_player.sql);
                 // an earlier draft used `active_bandolier_slot` which never
                 // existed and would hard-fail at runtime.
-                match sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
-                    .bind(slot_id)
-                    .bind(player_id)
-                    .execute(pool.as_ref())
-                    .await
+                let updated = match sqlx::query(
+                    "UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2",
+                )
+                .bind(slot_id)
+                .bind(player_id)
+                .execute(pool.as_ref())
+                .await
                 {
                     Ok(res) if res.rows_affected() == 0 => {
                         tracing::warn!(player_id, slot_id, "ActiveSlotUpdate: no rows updated");
+                        false
                     }
-                    Ok(_) => {}
+                    Ok(_) => true,
                     Err(e) => {
                         tracing::warn!(player_id, slot_id, error = %e, "ActiveSlotUpdate: DB write failed");
+                        false
                     }
+                };
+                // Refresh the player's appearance after the slot is durable.
+                // The appearance query at `player_load/core.rs` filters
+                // bandolier visual components by the persisted `bandolier_slot`,
+                // so this re-query (and the resulting `BEING_APPEARANCE`
+                // broadcast) is what actually swaps the visible weapon on
+                // the model. Without it, F1-F4 changes the active slot but
+                // the player keeps holding whatever weapon was visible at
+                // login.
+                //
+                // Skip when the UPDATE didn't land — the appearance is still
+                // consistent with what the DB says, and a no-op refresh would
+                // just spam witnesses with the same packet they already have.
+                if updated {
+                    super::methods::inventory::refresh_player_appearance(
+                        entity_id,
+                        player_id,
+                        db_pool,
+                        socket,
+                        connected,
+                        entity_to_addr,
+                    )
+                    .await;
                 }
             }
         }

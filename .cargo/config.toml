@@ -17,10 +17,19 @@ test-workspace = "test --workspace --exclude cimmeria-app"
 linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
-# Windows MSVC: use lld-link for dramatically lower memory usage and faster linking.
-# lld-link is the MSVC-compatible lld frontend. Install via `rustup component add llvm-tools`.
+# Windows MSVC: use rust-lld (shipped with rustup as part of the toolchain
+# under `lib/rustlib/<target>/bin/rust-lld.exe`) for dramatically lower memory
+# usage and faster linking versus link.exe.
+#
+# `linker-flavor=lld-link` selects the MSVC-compatible lld frontend; rustc
+# resolves the bare `rust-lld` name via the toolchain's bin directory, so this
+# stays portable across rustup-managed Windows installs without a hardcoded
+# user profile path. Override locally if you have a non-rustup toolchain by
+# adding a `[target.x86_64-pc-windows-msvc]` block to your user-level
+# `~/.cargo/config.toml`.
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "linker=C:\\Users\\Steve\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\x86_64-pc-windows-msvc\\bin\\rust-lld.exe"]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=lld-link"]
 
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]

@@ -9,7 +9,7 @@ use crate::cell::space_manager::SpaceManager;
 
 use super::constants::GENERICPROPERTY_AMMO_TYPE_ID;
 use super::dispatch::dispatch;
-use super::{REQUEST_ACTIVE_SLOT_CHANGE, REQUEST_AMMO_CHANGE};
+use super::{MOVE_ITEM, REQUEST_ACTIVE_SLOT_CHANGE, REQUEST_AMMO_CHANGE};
 
 fn make_test_space_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
@@ -114,11 +114,13 @@ async fn slot_swap_preserves_per_slot_ammo() {
     // Drain rx so the swap-message assertions below can scan a clean buffer.
     while rx.try_recv().is_ok() {}
 
-    // ── Swap to slot 1 ──────────────────────────────────────────────
-    // Args: bag_id=3 (bandolier), slot_id=1.
+    // ── Swap to slot 1 (server-internal indexing) ──────────────────
+    // Wire slots are 1-indexed (legacy convention from `Bag.py:369` /
+    // `SGWPlayer.py:2192`), so swapping to server slot 1 means sending
+    // wire slot 2.
     let mut swap_args = Vec::with_capacity(8);
-    swap_args.extend_from_slice(&3i32.to_le_bytes());
-    swap_args.extend_from_slice(&1i32.to_le_bytes());
+    swap_args.extend_from_slice(&3i32.to_le_bytes()); // bag_id=3 (bandolier)
+    swap_args.extend_from_slice(&2i32.to_le_bytes()); // wire slot 2 → server slot 1
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     dispatch(
         1,
@@ -130,8 +132,11 @@ async fn slot_swap_preserves_per_slot_ammo() {
     )
     .await;
 
-    // Stage D message order on swap: BandolierAmmoUpdate(prev=0, ammo=28)
-    // → ActiveSlotUpdate(1) → onEntityProperty(AmmoTypeId, slot1.cur_ammo_type=7).
+    // Stage D message order on swap:
+    //   BandolierAmmoUpdate(prev=0, ammo=28)
+    //   → ActiveSlotUpdate(1)                          (base persistence)
+    //   → onActiveSlotUpdate(bagId=3, wireSlot=2)       (client UI indicator)
+    //   → onEntityProperty(AmmoTypeId, slot1.cur_ammo_type=7)
     let m1 = rx
         .try_recv()
         .expect("expected BandolierAmmoUpdate(prev slot)");
@@ -156,15 +161,18 @@ async fn slot_swap_preserves_per_slot_ammo() {
     }
     let m2 = rx.try_recv().expect("expected ActiveSlotUpdate");
     match m2 {
-        CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id } => {
+        CellToBaseMsg::ActiveSlotUpdate {
+            entity_id,
+            player_id,
+            slot_id,
+        } => {
+            assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(slot_id, 1);
         }
         other => panic!("expected ActiveSlotUpdate, got {other:?}"),
     }
-    let m3 = rx
-        .try_recv()
-        .expect("expected onEntityProperty(AmmoTypeId)");
+    let m3 = rx.try_recv().expect("expected onActiveSlotUpdate");
     match m3 {
         CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -174,8 +182,33 @@ async fn slot_swap_preserves_per_slot_ammo() {
             assert_eq!(entity_id, 1);
             assert_eq!(
                 method_index,
+                crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE,
+                "third swap msg should be onActiveSlotUpdate (the client UI indicator)"
+            );
+            let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+            let wire_slot = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+            assert_eq!(bag_id, 3, "bandolier bag");
+            assert_eq!(
+                wire_slot, 2,
+                "wire slot must be server slot + 1 (legacy `Bag.py:369`)"
+            );
+        }
+        other => panic!("expected EntityMethodCall(onActiveSlotUpdate), got {other:?}"),
+    }
+    let m4 = rx
+        .try_recv()
+        .expect("expected onEntityProperty(AmmoTypeId)");
+    match m4 {
+        CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index,
+            args,
+        } => {
+            assert_eq!(entity_id, 1);
+            assert_eq!(
+                method_index,
                 crate::cell::client_methods::spawnable_entity::ON_ENTITY_PROPERTY,
-                "third swap msg should be onEntityProperty"
+                "fourth swap msg should be onEntityProperty"
             );
             let prop_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
             let value = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
@@ -195,10 +228,10 @@ async fn slot_swap_preserves_per_slot_ammo() {
         11
     );
 
-    // ── Swap back to slot 0 ─────────────────────────────────────────
+    // ── Swap back to slot 0 (wire 1 → server 0) ─────────────────────
     let mut swap_back = Vec::with_capacity(8);
     swap_back.extend_from_slice(&3i32.to_le_bytes());
-    swap_back.extend_from_slice(&0i32.to_le_bytes());
+    swap_back.extend_from_slice(&1i32.to_le_bytes()); // wire slot 1 → server slot 0
     dispatch(
         1,
         REQUEST_ACTIVE_SLOT_CHANGE,
@@ -273,10 +306,10 @@ async fn slot_swap_cancels_in_flight_reload() {
     let (tx, mut rx) = mpsc::channel(64);
     let engine = build_engine(None).await;
 
-    // Swap to slot 1.
+    // Swap to slot 1 (server-internal). Wire slot is 1-indexed, so we send 2.
     let mut swap = Vec::with_capacity(8);
     swap.extend_from_slice(&3i32.to_le_bytes());
-    swap.extend_from_slice(&1i32.to_le_bytes());
+    swap.extend_from_slice(&2i32.to_le_bytes()); // wire slot 2 → server slot 1
     dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &swap, &tx, &mut mgr, &engine).await;
 
     let entity = mgr.get_entity(1).unwrap();
@@ -513,15 +546,26 @@ async fn request_ammo_change_rejects_unlisted_subtype() {
     assert!(!entity.bandolier_ammo_dirty.contains(&0));
 }
 
-/// CodeRabbit out-of-diff: REQUEST_ACTIVE_SLOT_CHANGE must reject slot_id
-/// outside 0..5 before mutating active_bandolier_slot or sending
-/// ActiveSlotUpdate. A forged value would otherwise leave the entity in
-/// an impossible state.
+/// REQUEST_ACTIVE_SLOT_CHANGE must reject any wire slot that maps outside
+/// the bandolier's server-side range (`0..bag_max_slots(3)` = `0..4`)
+/// before mutating active_bandolier_slot or sending ActiveSlotUpdate. A
+/// forged value would otherwise leave the entity in an impossible state.
+///
+/// Wire ↔ server translation is `server = wire - 1`, so the rejected wire
+/// values are: 0 (→ server -1), 5+ (→ server 4+), and any negative wire
+/// value (which the legacy client never sends but a forged packet might).
 #[tokio::test]
 async fn request_active_slot_change_rejects_out_of_range_slot() {
     use crate::cell::content::build_engine;
 
-    for bad_slot in [-1i32, 5, 99, i32::MAX] {
+    // Wire values that translate to invalid server slots:
+    //   0  → server -1 (below range)
+    //   5  → server  4 (above the 4-slot bandolier)
+    //   99 → server 98
+    //   -1 → server -2 (already below the floor)
+    //   i32::MAX → server i32::MAX-1 (above range)
+    //   i32::MIN → server i32::MIN (saturating_sub guards against debug-overflow panic)
+    for bad_wire_slot in [0i32, 5, 99, -1, i32::MAX, i32::MIN] {
         let mut mgr = make_test_space_mgr();
         mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
             .unwrap();
@@ -538,21 +582,189 @@ async fn request_active_slot_change_rejects_out_of_range_slot() {
 
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&3i32.to_le_bytes()); // bag_id = 3
-        args.extend_from_slice(&bad_slot.to_le_bytes()); // out-of-range slot
+        args.extend_from_slice(&bad_wire_slot.to_le_bytes());
 
         let handled = dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
         assert!(
             handled,
-            "handler claims the index even when slot is invalid (bad_slot={bad_slot})"
+            "handler claims the index even when slot is invalid (bad_wire_slot={bad_wire_slot})"
         );
         assert!(
             rx.try_recv().is_err(),
-            "no messages emitted for bad_slot={bad_slot}"
+            "no messages emitted for bad_wire_slot={bad_wire_slot}"
         );
         assert_eq!(
             mgr.get_entity(1).unwrap().active_bandolier_slot,
             0,
-            "active_bandolier_slot must not change for bad_slot={bad_slot}"
+            "active_bandolier_slot must not change for bad_wire_slot={bad_wire_slot}"
         );
+    }
+}
+
+/// Wire slot IDs are 1-indexed by client convention (`Bag.py:369`,
+/// `SGWPlayer.py:2192`). The wire decoder must subtract 1 before any
+/// mutation so the cell's `active_bandolier_slot` and the
+/// `ActiveSlotUpdate` message both carry the 0-indexed server slot.
+///
+/// Pins the translation: wire 1..=4 ↔ server 0..=3 across the entire
+/// 4-slot bandolier range. A regression here was the original cause of
+/// "switching between slots does not work at all" — the server treated
+/// wire 1 as server slot 1 (the second weapon, not the first), so
+/// keypress 1 either no-op'd or jumped to the wrong weapon.
+#[tokio::test]
+async fn request_active_slot_change_translates_wire_to_server_slot() {
+    use crate::cell::content::build_engine;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    for (wire_slot, expected_server_slot) in [(1i32, 0), (2, 1), (3, 2), (4, 3)] {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            // Seed all 4 slots so the swap doesn't bail on "empty target".
+            for slot_id in 0..4 {
+                e.bandolier_items.insert(
+                    slot_id,
+                    BandolierItem {
+                        item_id: 100 + slot_id,
+                        clip_size: 30,
+                        default_ammo_type: 1,
+                        current_ammo: 30,
+                        cur_ammo_type: 1,
+                    },
+                );
+            }
+            // Start at a slot that's distinct from every test case so each
+            // iteration genuinely exercises the swap path.
+            e.active_bandolier_slot = if expected_server_slot == 0 { 3 } else { 0 };
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(8);
+        let engine = build_engine(None).await;
+
+        let mut args = Vec::with_capacity(8);
+        args.extend_from_slice(&3i32.to_le_bytes());
+        args.extend_from_slice(&wire_slot.to_le_bytes());
+
+        dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            mgr.get_entity(1).unwrap().active_bandolier_slot,
+            expected_server_slot,
+            "wire slot {wire_slot} must land in cell as server slot {expected_server_slot}"
+        );
+
+        // Confirm two pieces of state both reflect the new server slot:
+        //   1. `ActiveSlotUpdate` to base: the persisted `bandolier_slot`
+        //      column must store the server-side index, not the wire-side
+        //      one (would cause the appearance query to filter the wrong
+        //      bandolier row and render the player without a weapon).
+        //   2. `onActiveSlotUpdate` (method 70) to the client: the
+        //      bandolier UI indicator must learn the new slot, otherwise
+        //      the LUA `getActiveSlotForContainer(...) ~= N` guard turns
+        //      subsequent keypresses for the slot it thinks is selected
+        //      into client-side no-ops. That's the bug behind "switching
+        //      back to the first bandolier slot does not give me my
+        //      weapon back" during play-testing.
+        let mut saw_active_slot_update = false;
+        let mut saw_client_indicator = false;
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::ActiveSlotUpdate { slot_id, .. } => {
+                    assert_eq!(
+                        slot_id, expected_server_slot,
+                        "ActiveSlotUpdate must carry the server slot, not the wire slot"
+                    );
+                    saw_active_slot_update = true;
+                }
+                CellToBaseMsg::EntityMethodCall {
+                    method_index, args, ..
+                } if method_index
+                    == crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE =>
+                {
+                    let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                    let wire_slot_field = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                    assert_eq!(bag_id, 3, "bandolier bag id on the wire indicator");
+                    assert_eq!(
+                        wire_slot_field,
+                        expected_server_slot + 1,
+                        "client indicator must carry wire slot (= server slot + 1)"
+                    );
+                    saw_client_indicator = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            saw_active_slot_update,
+            "expected an ActiveSlotUpdate message for wire_slot={wire_slot}"
+        );
+        assert!(
+            saw_client_indicator,
+            "expected an onActiveSlotUpdate (client UI indicator) for wire_slot={wire_slot}"
+        );
+    }
+}
+
+/// `handle_move_item`'s wire decoder must subtract 1 from the inbound
+/// `target_slot_id` so the base-side handler operates in 0-indexed
+/// server-internal coordinates. Mirrors legacy `SGWPlayer.py:2157`
+/// `moveItem(itemId, targetBag, targetSlot - 1, quantity)`.
+///
+/// Without this translation a drag onto wire slot 1 (intended fist /
+/// leftmost slot) would land at server slot 1 (the second slot from
+/// the left), corrupting the player's bandolier layout.
+#[tokio::test]
+async fn handle_move_item_translates_wire_slot_to_server_slot() {
+    use crate::cell::content::build_engine;
+
+    for (wire_slot, expected_server_slot) in [(1i32, 0), (2, 1), (3, 2), (4, 3)] {
+        let mut mgr = make_test_space_mgr();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(8);
+        let engine = build_engine(None).await;
+
+        // moveItem wire layout (16 bytes):
+        //   item_id              i32 LE @ 0..4
+        //   target_container_id  i32 LE @ 4..8
+        //   wire_slot_id         i32 LE @ 8..12   (1-indexed)
+        //   quantity             i32 LE @ 12..16
+        let mut args = Vec::with_capacity(16);
+        args.extend_from_slice(&5000i32.to_le_bytes()); // item_id (sentinel)
+        args.extend_from_slice(&3i32.to_le_bytes()); // target_container = bandolier
+        args.extend_from_slice(&wire_slot.to_le_bytes());
+        args.extend_from_slice(&1i32.to_le_bytes()); // quantity = 1
+
+        dispatch(1, MOVE_ITEM, &args, &tx, &mut mgr, &engine).await;
+
+        let msg = rx
+            .try_recv()
+            .expect("handle_move_item should forward MoveInventoryItem to base");
+        match msg {
+            CellToBaseMsg::MoveInventoryItem {
+                target_slot_id,
+                target_container_id,
+                ..
+            } => {
+                assert_eq!(target_container_id, 3, "bag id forwarded as-is");
+                assert_eq!(
+                    target_slot_id, expected_server_slot,
+                    "wire slot {wire_slot} must arrive at base as server slot \
+                     {expected_server_slot} (= wire_slot - 1)"
+                );
+            }
+            other => panic!("expected MoveInventoryItem, got {other:?}"),
+        }
     }
 }

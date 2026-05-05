@@ -414,7 +414,11 @@ VALUES
 -- BUG FIX: subscribe on correct tag 'Preparation_ColMarsh' not 'Preparation_ColMarshr'
 -- ============================================================
 
--- Chain 1051: interact ColMarsh while step 2121 not active + archetype != 8 (non-sci) → display dialog 4001
+-- Chain 1051: interact ColMarsh while mission 641 not yet accepted + archetype != 8 (non-sci) → display dialog 4001
+--   Gating on `mission_status 641 eq not_active` rather than `step_status 641 2121 eq not_active`:
+--   step 2121 is also "not_active" once the player has advanced past it (e.g. picked up the P90 and
+--   is on step 3563), which used to make this chain re-fire the briefing dialog and let chain 1053
+--   re-accept the mission, resetting progress to step 2121 in a loop.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1051, '641 - Interact ColMarsh (non-sci): show dialog 4001', 'mission', 641, true, 0);
 
@@ -423,13 +427,14 @@ VALUES (1051, 'interact_tag', 'Preparation_ColMarsh', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
-  (1051, 'step_status', 641, '2121', 'eq', 'not_active', 0),
+  (1051, 'mission_status', 641, NULL, 'eq', 'not_active', 0),
   (1051, 'archetype', NULL, NULL, 'neq', '8', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1051, 'display_dialog', 4001, NULL, '{}', 0, 0);
 
--- Chain 1052: interact ColMarsh while step 2121 not active + archetype == 8 (sci) → display dialog 5022
+-- Chain 1052: interact ColMarsh while mission 641 not yet accepted + archetype == 8 (sci) → display dialog 5022
+--   See chain 1051 for why this gates on mission_status rather than step_status.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1052, '641 - Interact ColMarsh (sci): show dialog 5022', 'mission', 641, true, 0);
 
@@ -438,13 +443,13 @@ VALUES (1052, 'interact_tag', 'Preparation_ColMarsh', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
-  (1052, 'step_status', 641, '2121', 'eq', 'not_active', 0),
+  (1052, 'mission_status', 641, NULL, 'eq', 'not_active', 0),
   (1052, 'archetype', NULL, NULL, 'eq', '8', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1052, 'display_dialog', 5022, NULL, '{}', 0, 0);
 
--- Chain 1053: dialog choice 4001 (non-sci accepts briefing) → accept mission 641
+-- Chain 1053: dialog choice 4001 (non-sci accepts briefing) → accept mission 641, highlight P90 locker
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1053, '641 - Dialog choice 4001: accept mission', 'mission', 641, true, 0);
 
@@ -452,9 +457,22 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1053, 'dialog_choice', '4001', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1053, 'accept_mission', 641, NULL, '{}', 0, 0);
+VALUES
+  (1053, 'accept_mission', 641, NULL, '{}', 0, 0),
+  -- Mark the P90 locker as a quest world object so the client renders the
+  -- attention-drawing highlight while step 2121 is active. Cleared in chain
+  -- 1055 when the player picks the P90 up; restored on login by chain 1062.
+  (1053, 'set_interaction_type', NULL, 'Preparation_SMG1A',
+   '{"op": "|", "mask": 1073741824}', 0, 1),
+  -- Clear ColMarsh's mission-available bit (set by chain 1044 on
+  -- mission-640-complete). Once mission 641 is accepted, the briefing
+  -- dialog has been delivered and the icon should clear so it doesn't
+  -- linger as a stale "talk to me" indicator. Restored on a server
+  -- restart by chain 1063 (gated on 640-complete + 641-not_active).
+  (1053, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "~", "mask": 8388608}', 0, 2);
 
--- Chain 1054: dialog choice 5022 (sci accepts briefing) → accept mission 641
+-- Chain 1054: dialog choice 5022 (sci accepts briefing) → accept mission 641, highlight P90 locker
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1054, '641 - Dialog choice 5022: accept mission', 'mission', 641, true, 0);
 
@@ -462,7 +480,13 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1054, 'dialog_choice', '5022', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1054, 'accept_mission', 641, NULL, '{}', 0, 0);
+VALUES
+  (1054, 'accept_mission', 641, NULL, '{}', 0, 0),
+  -- See chain 1053 for the highlight + ColMarsh-clear rationale.
+  (1054, 'set_interaction_type', NULL, 'Preparation_SMG1A',
+   '{"op": "|", "mask": 1073741824}', 0, 1),
+  (1054, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "~", "mask": 8388608}', 0, 2);
 
 -- Chain 1055: interact SMG1A while step 2121 active → give weapon, advance to step 3563
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -477,7 +501,91 @@ VALUES (1055, 'step_status', 641, '2121', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1055, 'add_item',    21, NULL, '{"container": 3, "qty": 1}', 0, 0),
-  (1055, 'advance_step', 641, '3563', '{}', 0, 1);
+  (1055, 'advance_step', 641, '3563', '{}', 0, 1),
+  -- Clear the quest-item highlight on the locker the moment the P90 is
+  -- grabbed. Mirrors how chain 1042 toggles HackTheRings_Switch off the
+  -- minigame icon as soon as the gating action completes.
+  (1055, 'set_interaction_type', NULL, 'Preparation_SMG1A',
+   '{"op": "~", "mask": 1073741824}', 0, 2),
+  -- Re-set ColMarsh's mission-available marker so the player has a
+  -- visual cue to return to him for step 3563 ("Speak to Col. Marsh").
+  -- Cleared again by chain 1058/1059 once the briefing completes;
+  -- restored on login by chain 1064 if the player logs out at 3563.
+  (1055, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "|", "mask": 8388608}', 0, 3);
+
+-- Chain 1062: player_loaded + step 2121 active → restore P90 locker highlight on login.
+--   Same restart-resilience pattern as chains 1045/1046 for HackTheRings_Switch:
+--   interaction_type flags are not persisted on the entity across server restarts,
+--   so a player who logged out mid-mission-641 would otherwise find the locker
+--   without the quest-item highlight that chain 1053/1054 originally set.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1062, '641 - Restore SMG1A highlight on login (step 2121)', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1062, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1062, 'step_status', 641, '2121', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1062, 'set_interaction_type', NULL, 'Preparation_SMG1A',
+        '{"op": "|", "mask": 1073741824}', 0, 0);
+
+-- Chain 1063: player_loaded + 640 completed + 641 not_active → restore ColMarsh
+-- mission-available bit on login. Chain 1044 sets the bit with `once: true`
+-- when the player teleports in post-rings, so a player who logs out at the
+-- "talk to ColMarsh to start mission 641" boundary loses the icon on restart
+-- (interaction_type flags don't persist on the entity across server restarts).
+-- Same restart-resilience pattern as chain 1062 (SMG1A) and chains 1045/1046
+-- (HackTheRings_Switch).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1063, '641 - Restore ColMarsh mission-available bit on login (640 done, 641 not started)', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1063, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1063, 'mission_status', 640, NULL, 'eq', 'completed', 0),
+  (1063, 'mission_status', 641, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1063, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+        '{"op": "|", "mask": 8388608}', 0, 0);
+
+-- Chain 1064: player_loaded + step 3563 active → restore ColMarsh's
+-- "talk to me" marker (re-set after P90 pickup by chain 1055). Without this,
+-- a player who logs out at step 3563 boundary would log back in to a Marsh
+-- with no visual cue that they need to interact with him for the briefing.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1064, '641 - Restore ColMarsh marker on login (step 3563)', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1064, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1064, 'step_status', 641, '3563', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1064, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+        '{"op": "|", "mask": 8388608}', 0, 0);
+
+-- Chain 1065: player_loaded + step 3564 active → restore Terminal quest
+-- highlight (originally set by chain 1058/1059 on dialog accept). Mirrors
+-- chains 1062/1064 for SMG1A and ColMarsh respectively.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1065, '641 - Restore Terminal quest highlight on login (step 3564)', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1065, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1065, 'step_status', 641, '3564', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1065, 'set_interaction_type', NULL, 'Preparation_Terminal',
+        '{"op": "|", "mask": 1073741824}', 0, 0);
 
 -- Chain 1056: interact template 'Col Marsh (pet)' while step 3563 active + non-sci → dialog 3999
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -509,7 +617,8 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1057, 'display_dialog', 5023, NULL, '{}', 0, 0);
 
--- Chain 1058: dialog choice 3999 (non-sci briefed) → advance step 3564
+-- Chain 1058: dialog choice 3999 (non-sci briefed) → advance step 3564,
+-- swap quest markers from ColMarsh to the Terminal he's sending us to.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1058, '641 - Dialog choice 3999: advance step 3564', 'mission', 641, true, 0);
 
@@ -517,9 +626,19 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1058, 'dialog_choice', '3999', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1058, 'advance_step', 641, '3564', '{}', 0, 0);
+VALUES
+  (1058, 'advance_step', 641, '3564', '{}', 0, 0),
+  -- Briefing's done, clear ColMarsh's "talk to me" marker.
+  (1058, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "~", "mask": 8388608}', 0, 1),
+  -- Highlight the Terminal so the player has the same visual cue we
+  -- already give for the P90 locker / Ambernol vial. Cleared by chain
+  -- 1060 when they interact with it; restored on login by chain 1065.
+  (1058, 'set_interaction_type', NULL, 'Preparation_Terminal',
+   '{"op": "|", "mask": 1073741824}', 0, 2);
 
--- Chain 1059: dialog choice 5023 (sci briefed) → advance step 3564
+-- Chain 1059: dialog choice 5023 (sci briefed) → advance step 3564.
+-- Same marker churn as 1058; see that chain for the rationale.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1059, '641 - Dialog choice 5023: advance step 3564', 'mission', 641, true, 0);
 
@@ -527,7 +646,12 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1059, 'dialog_choice', '5023', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1059, 'advance_step', 641, '3564', '{}', 0, 0);
+VALUES
+  (1059, 'advance_step', 641, '3564', '{}', 0, 0),
+  (1059, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "~", "mask": 8388608}', 0, 1),
+  (1059, 'set_interaction_type', NULL, 'Preparation_Terminal',
+   '{"op": "|", "mask": 1073741824}', 0, 2);
 
 -- Chain 1060: interact terminal while step 3564 active → Livewire
 --   on_victory_chains: 1061
@@ -541,7 +665,12 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (1060, 'step_status', 641, '3564', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0);
+VALUES
+  (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0),
+  -- Clear the Terminal quest marker the moment the minigame starts;
+  -- player has reached and engaged with it, no need to keep highlighting it.
+  (1060, 'set_interaction_type', NULL, 'Preparation_Terminal',
+   '{"op": "~", "mask": 1073741824}', 0, 1);
 
 -- Chain 1061: Livewire victory → display final dialog, complete 641, accept 680
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -555,16 +684,22 @@ VALUES
   -- Make the second ring switch right-clickable with the RingNetwork icon. Same gap as 640:
   -- EscapeTheCellblock.py subscribes to the interact tag but never sets interactionType.
   (1061, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
-   '{"op": "|", "mask": 32}', 0, 3);
+   '{"op": "|", "mask": 32}', 0, 3),
+  -- Highlight the ring switch as the next quest objective so the player
+  -- has a visual cue. Cleared on teleport_in (chain 1072) when they
+  -- actually use it; restored on login by chain 1074.
+  (1061, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "|", "mask": 1073741824}', 0, 4);
 
 -- ============================================================
 -- MISSION 680 — Escape the Cellblock
 -- ============================================================
 
--- Chain 1074: player_loaded + step 2344 active → restore RingNetwork bit on the second switch.
+-- Chain 1074: player_loaded + step 2344 active → restore both the RingNetwork
+-- icon AND the quest highlight on the second switch.
 --   Same restart-resilience pattern as chains 1045/1046 for the first ring switch.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1074, '680 - Restore RingNetwork bit on login (step 2344)', 'mission', 680, true, 0);
+VALUES (1074, '680 - Restore RingSwitch bits on login (step 2344)', 'mission', 680, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1074, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
@@ -573,8 +708,13 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (1074, 'step_status', 680, '2344', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1074, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
-        '{"op": "|", "mask": 32}', 0, 0);
+VALUES
+  (1074, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "|", "mask": 32}', 0, 0),
+  -- Restore the quest highlight too (originally set by chain 1061 on
+  -- mission-680 acceptance).
+  (1074, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "|", "mask": 1073741824}', 0, 1);
 
 -- Chain 1071: interact ring switch while step 2344 active → trigger transporter to regionId=2
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -600,7 +740,11 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1072, 'advance_step', 680, '2345', '{}', 0, 0),
   (1072, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
-   '{"op": "~", "mask": 32}', 0, 1);
+   '{"op": "~", "mask": 32}', 0, 1),
+  -- Clear the quest highlight too — player has used the rings, no
+  -- longer need the "go here" indicator. Pairs with the set in chain 1061.
+  (1072, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
+   '{"op": "~", "mask": 1073741824}', 0, 2);
 
 -- Chain 1073: enter Region9 when 681 not yet active → accept mission 681
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)

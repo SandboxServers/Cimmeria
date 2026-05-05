@@ -2,14 +2,14 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-05-04  
-> **Total tests**: 63  
+> **Last updated**: 2026-05-05  
+> **Total tests**: 64  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
 Data-driven content runtime: trigger/condition/action chains for missions, dialogs, sequences, and interactions. Replaces the per-script Python in the legacy server.
 
-## All tests (63)
+## All tests (64)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|

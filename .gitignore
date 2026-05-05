@@ -198,3 +198,5 @@ game/patches/*
 !game/sgw/README.md
 
 ghidra/*
+
+.scratch/*

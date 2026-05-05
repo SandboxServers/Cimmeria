@@ -130,6 +130,47 @@ pub(super) async fn reload_completion_tick(
                 })
                 .await;
         }
+
+        // Phase 4: fire the `Ability_End` sequence to signal "weapon ready
+        // again" to the client. Pairs with the `Ability_Begin` sent at
+        // reload-start in `handle_reload`.
+        //
+        // TODO(#210): inert against the current seed.
+        //   Same gap as `handle_reload`: ability 596 has `event_set_id = NULL`
+        //   in the seed, so this branch short-circuits in production. The
+        //   legacy `AbilityManager.py:671-673` reference is correct *for
+        //   abilities that follow the begin/end pattern*, but reload
+        //   specifically sources its animation from the player's archetype-
+        //   keyed item event set (`Item_Reload`, event id 4002) and is a
+        //   single-sequence shape — there is no separate end. #210 will
+        //   replace this branch outright once the archetype lookup lands.
+        const ABILITY_RELOAD_WEAPON: i32 = 596;
+        let event_set_id = space_mgr
+            .ability_defs
+            .get(&ABILITY_RELOAD_WEAPON)
+            .and_then(|d| d.event_set_id);
+        if let Some(esid) = event_set_id {
+            use super::super::spawner::EVENT_ABILITY_END;
+            if let Some(&seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ABILITY_END)) {
+                let mut seq_args = Vec::with_capacity(28);
+                seq_args.extend_from_slice(&seq_id.to_le_bytes());
+                seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
+                seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
+                seq_args.push(1);
+                seq_args.extend_from_slice(&0.0f32.to_le_bytes());
+                seq_args.extend_from_slice(&0u32.to_le_bytes());
+                seq_args.push(0);
+                seq_args.extend_from_slice(&0i32.to_le_bytes());
+                super::super::abilities::send_entity_method(
+                    entity_id,
+                    super::super::client_methods::spawnable_entity::ON_SEQUENCE,
+                    seq_args,
+                    tx,
+                    space_mgr,
+                )
+                .await;
+            }
+        }
     }
 }
 

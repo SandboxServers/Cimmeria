@@ -113,12 +113,13 @@ pub fn serialize_store_update(updates: &[StoreItemCostUpdate]) -> Vec<u8> {
 
 /// Find free inventory slots in a container, checking occupancy.
 ///
-/// `min_slot` is the lowest assignable slot (see [`bag_min_slot`]) — for the
-/// bandolier this is 1 because slot 0 is reserved for the empty/fist default
-/// weapon (issue #119). Filtering occupants by `min_slot` matters: if a row
-/// somehow lives in a sub-min slot (manual fixup, legacy data), it's
-/// excluded from the occupancy set so the function can still return real
-/// free slots above the threshold.
+/// `min_slot` is the lowest assignable slot (see [`bag_min_slot`]). All
+/// current containers start at 0; the parameter is preserved so a future
+/// container with a non-zero floor doesn't need a second occupancy filter.
+/// Filtering occupants by `min_slot` matters: if a row somehow lives in a
+/// sub-min slot (manual fixup, legacy data), it's excluded from the
+/// occupancy set so the function can still return real free slots above
+/// the threshold.
 pub fn free_inventory_slots(
     min_slot: i32,
     max_slots: i32,
@@ -411,34 +412,37 @@ mod free_inventory_slots_tests {
     }
 
     #[test]
-    fn skips_slot_0_for_bandolier() {
-        // Bug #119 regression: bandolier (container 3) must start at slot 1
-        // so the fist-weapon default at slot 0 isn't overwritten.
-        let slots = free_inventory_slots(1, 4, &[], 3).unwrap();
-        assert_eq!(slots, vec![1, 2, 3]);
+    fn allocates_from_zero_for_bandolier() {
+        // Bandolier (container 3) is 4 weapon slots indexed 0..3; there is
+        // no fist-weapon reservation, so the first granted weapon lands in
+        // slot 0. This was previously gated to slot 1 under a wrong
+        // assumption that slot 0 was the unarmed default.
+        let slots = free_inventory_slots(0, 4, &[], 3).unwrap();
+        assert_eq!(slots, vec![0, 1, 2]);
     }
 
     #[test]
-    fn bandolier_returns_none_when_only_slot_0_free() {
-        // 3 weapons already occupy slots 1,2,3; slot 0 is reserved.
-        // Asking for 1 more must return None, not [0].
-        let slots = free_inventory_slots(1, 4, &[1, 2, 3], 1);
-        assert!(slots.is_none(), "must not allocate the reserved slot 0");
+    fn bandolier_fills_slot_0_when_other_slots_occupied() {
+        // 3 weapons already occupy slots 1,2,3; slot 0 is the only free one
+        // and must be returned.
+        let slots = free_inventory_slots(0, 4, &[1, 2, 3], 1).unwrap();
+        assert_eq!(slots, vec![0]);
     }
 
     #[test]
     fn ignores_sub_min_occupants_when_finding_free_slots() {
-        // A stray row at slot 0 (legacy fixup) shouldn't make slot 1 look
+        // A stray row at slot -1 (legacy fixup / parked sentinel from the
+        // move handler's three-step swap) shouldn't make slot 0 look
         // occupied — the filter on `occupied_slots` is min/max bounded so
         // we still hand back the real free slot above the threshold.
-        let slots = free_inventory_slots(1, 4, &[0, 2], 2).unwrap();
-        assert_eq!(slots, vec![1, 3]);
+        let slots = free_inventory_slots(0, 4, &[-1, 2], 2).unwrap();
+        assert_eq!(slots, vec![0, 1]);
     }
 
     #[test]
     fn returns_empty_when_zero_needed() {
         assert_eq!(
-            free_inventory_slots(1, 4, &[], 0).unwrap(),
+            free_inventory_slots(0, 4, &[], 0).unwrap(),
             Vec::<i32>::new()
         );
     }

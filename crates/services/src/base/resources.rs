@@ -4,8 +4,6 @@ use std::sync::Arc;
 
 // ── Inventory constants (from python/Atrea/enums.py + Account.py) ────────────
 
-pub(crate) const INV_BANDOLIER: i32 = 3;
-
 /// Order in which starter items fill inventory bags (Account.py:12-31).
 /// Equipment slots first so items get equipped and show on the char select screen.
 pub(crate) const BAG_FILL_ORDER: &[i32] = &[
@@ -39,20 +37,16 @@ pub(crate) fn bag_max_slots(container_id: i32) -> i32 {
     }
 }
 
-/// Lowest assignable slot for a container. The bandolier reserves slot 0
-/// for the empty/fist default weapon — `active_bandolier_slot = 0` with no
-/// item present is the canonical "fists equipped" state, so any real grant
-/// or move targeting slot 0 of the bandolier would overwrite that fallback
-/// (issue #119). Python parity: `Account.py:191` —
-/// `slotIndices[bagId] = 1 if bagId == Atrea.enums.INV_Bandolier else 0`.
+/// Lowest assignable slot for a container. All current containers, including
+/// the bandolier, start at slot 0 — there is no fist-weapon reservation in
+/// this game's design (the bandolier is purely 4 weapon slots indexed 0..3).
 ///
-/// All other containers start at 0.
-pub(crate) fn bag_min_slot(container_id: i32) -> i32 {
-    if container_id == INV_BANDOLIER {
-        1
-    } else {
-        0
-    }
+/// Kept as a function (rather than inlining `0`) so the per-container
+/// nonneg invariant test in this file still has a hook, and so a future
+/// container with a different lower bound can be added without touching
+/// every call site.
+pub(crate) fn bag_min_slot(_container_id: i32) -> i32 {
+    0
 }
 
 // ── Resource cache ───────────────────────────────────────────────────────────

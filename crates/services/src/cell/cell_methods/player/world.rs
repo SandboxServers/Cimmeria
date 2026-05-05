@@ -241,10 +241,28 @@ async fn handle_reload(
         }
     }
 
+    // The reload's *warmup* IS the visible animation (drop mag, insert mag,
+    // chamber). Earlier this site sent `Ability_End` synchronously, which
+    // made the client either play the wrong animation or no animation at
+    // all (depending on the weapon's event set). Mirroring the fire-path
+    // begin/end split is the right shape for *most* warmup-gated abilities.
+    //
+    // TODO(#210): inert against the current seed.
+    //   Reload (ability 596) has `event_set_id = NULL` in
+    //   `db/resources/Abilities/Seed/abilities.sql`, so this branch
+    //   short-circuits in production and no Ability_Begin packet ever
+    //   leaves the server. The legacy reload path (`SGWBeing.py:863-874`)
+    //   doesn't drive reload animations off the ability's event set at
+    //   all — it sources them from the player's archetype-keyed item
+    //   event set via `getItemSequence(Item_Reload)` (event id 4002).
+    //   The wiring here is kept (rather than ripped out) because the test
+    //   coverage already pins the byte layout, and #210 will replace the
+    //   `event_set_id` lookup with the archetype-keyed lookup once that
+    //   work lands. See the issue body for the full migration shape.
     if let Some(esid) = event_set_id {
-        use crate::cell::spawner::EVENT_ABILITY_END;
+        use crate::cell::spawner::EVENT_ABILITY_BEGIN;
 
-        if let Some(&seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ABILITY_END)) {
+        if let Some(&seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ABILITY_BEGIN)) {
             let mut seq_args = Vec::with_capacity(28);
             seq_args.extend_from_slice(&seq_id.to_le_bytes());
             seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
@@ -265,7 +283,7 @@ async fn handle_reload(
             tracing::debug!(
                 entity_id,
                 event_set_id = esid,
-                "reload: no Ability_End sequence found"
+                "reload: no Ability_Begin sequence found"
             );
         }
     }
@@ -496,6 +514,131 @@ mod tests {
             e.reload_slot_id,
             Some(2),
             "reload_slot_id must capture the active slot at issue time, not be re-read at completion"
+        );
+    }
+
+    /// Reload-start must fire the `Ability_Begin` (event 1000) sequence so
+    /// the client plays the visible reload animation. Earlier this site
+    /// sent `Ability_End` (event 1001), which is what `reload_completion_tick`
+    /// fires once the warmup expires — sending it at start either played
+    /// the wrong animation or none at all (depending on weapon event set).
+    /// Legacy parity: `python/cell/AbilityManager.py:619-636`.
+    #[tokio::test]
+    async fn handle_reload_sends_ability_begin_sequence() {
+        use crate::cell::client_methods::spawnable_entity::ON_SEQUENCE;
+        use crate::cell::spawner::{EVENT_ABILITY_BEGIN, EVENT_ABILITY_END};
+
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+        }
+        // Reload AbilityDef with an event_set_id so the begin-sequence
+        // path runs, plus a sequence_map entry mapping (event_set, BEGIN)
+        // to a sentinel sequence id we can recognise on the wire.
+        const EVENT_SET_ID: i32 = 7777;
+        const BEGIN_SEQ_ID: i32 = 9001;
+        mgr.ability_defs.insert(
+            596,
+            AbilityDef {
+                ability_id: 596,
+                name: "reload".to_string(),
+                cooldown: 1.0,
+                warmup: 0.5,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 0,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: Some(EVENT_SET_ID),
+                velocity: 0.0,
+            },
+        );
+        mgr.sequence_map
+            .insert((EVENT_SET_ID, EVENT_ABILITY_BEGIN), BEGIN_SEQ_ID);
+        // Seed an `Ability_End` mapping too — the regression we're guarding
+        // against would have sent THIS one synchronously at reload-start.
+        const END_SEQ_ID: i32 = 9002;
+        mgr.sequence_map
+            .insert((EVENT_SET_ID, EVENT_ABILITY_END), END_SEQ_ID);
+
+        let (tx, mut rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        // ON_SEQUENCE wire layout (26 bytes — matches use_ability.rs's fire path):
+        //   sequence_id   i32 LE  @ 0..4
+        //   source_id     i32 LE  @ 4..8
+        //   target_id     i32 LE  @ 8..12
+        //   primary       u8      @ 12
+        //   impact_time   f32 LE  @ 13..17
+        //   nvp_count     u32 LE  @ 17..21
+        //   view_type     u8      @ 21
+        //   instance_id   i32 LE  @ 22..26
+        let mut begin_count = 0;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                method_index, args, ..
+            } = msg
+            {
+                if method_index == ON_SEQUENCE {
+                    assert_eq!(
+                        args.len(),
+                        26,
+                        "ON_SEQUENCE payload must be exactly 26 bytes — any drift \
+                         in the serializer would silently corrupt the kismet event \
+                         frame on the wire"
+                    );
+                    let seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                    assert_ne!(
+                        seq_id, END_SEQ_ID,
+                        "reload-start must NOT send Ability_End (that's reload_completion_tick's job)"
+                    );
+                    if seq_id != BEGIN_SEQ_ID {
+                        continue;
+                    }
+                    let source_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+                    let target_id = i32::from_le_bytes([args[8], args[9], args[10], args[11]]);
+                    let primary = args[12];
+                    let impact_time = f32::from_le_bytes([args[13], args[14], args[15], args[16]]);
+                    let nvp_count = u32::from_le_bytes([args[17], args[18], args[19], args[20]]);
+                    let view_type = args[21];
+                    let instance_id = i32::from_le_bytes([args[22], args[23], args[24], args[25]]);
+                    assert_eq!(
+                        source_id, 1,
+                        "source = entity_id (player firing the reload)"
+                    );
+                    assert_eq!(target_id, 1, "reload targets self");
+                    assert_eq!(primary, 1, "primary target flag set");
+                    assert_eq!(impact_time, 0.0, "no projectile impact time for reload");
+                    assert_eq!(nvp_count, 0, "no name-value pairs in payload");
+                    assert_eq!(
+                        view_type, 0,
+                        "ViewType=0 (KISMET_VIEW_Witness) — matches use_ability.rs's \
+                         fire path so reload-begin animates consistently with weapon \
+                         fire animations"
+                    );
+                    assert_eq!(instance_id, 0, "no effect instance for the reload sequence");
+                    begin_count += 1;
+                }
+            }
+        }
+        assert_eq!(
+            begin_count, 1,
+            "reload-start must send exactly one onSequence with the Ability_Begin \
+             sequence id; without it the client plays no visible reload animation. \
+             Got {begin_count}.",
         );
     }
 }
