@@ -181,6 +181,71 @@ async fn lethal_hit_against_npc_emits_grant_xp_and_state_flip() {
     ));
 }
 
+/// Regression guard for the production root cause of #208 (regen never
+/// fires) and #219 (BSF_InCombat sticks): on a kill, the dying NPC's
+/// `threat_list` must survive long enough for `apply_death_transition` →
+/// `clear_dead_npc_from_all_player_threat` to walk it and drain each
+/// aggroed player's `threatened_mobs`. A previous version cleared
+/// `threat_list` at the kill site (before death.rs ran), which left
+/// every player permanently in combat — out-of-combat regen could never
+/// trigger because `threatened_mobs` was the gate's source of truth.
+///
+/// Pinning all three end-states here makes the ordering load-bearing:
+/// 1. `threatened_mobs` is empty (the gate the regen tick reads).
+/// 2. `BSF_InCombat` is cleared (the wire signal the client reads).
+/// 3. The corpse's `threat_list` is drained (no stale aggro on the body).
+#[tokio::test]
+async fn lethal_hit_drains_threatened_mobs_and_clears_bsf_in_combat() {
+    use crate::cell::combat::state::BSF_IN_COMBAT;
+
+    let mut mgr = make_mgr_player_vs_npc();
+    let ability = make_ability(7, vec![100]);
+    mgr.ability_defs.insert(7, ability.clone());
+    mgr.effect_defs.insert(100, make_effect(100, 9999));
+
+    // Pre-seed the state a non-killing first shot would have produced:
+    // player has the NPC in `threatened_mobs`, NPC has the player in its
+    // `threat_list`, and BSF_InCombat is set on the player. The lethal
+    // hit below must drain all three.
+    if let Some(player) = mgr.get_entity_mut(1) {
+        player.threatened_mobs.insert(2);
+        player.state_field |= BSF_IN_COMBAT;
+    }
+    if let Some(npc) = mgr.get_entity_mut(2) {
+        npc.threat_list.insert(1, 100.0);
+        npc.level = 5;
+        if let Some(stat) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+            stat.update(0, 1, 100);
+            stat.clear_dirty();
+        }
+    }
+
+    let (tx, _rx) = mpsc::channel(64);
+    apply_damage_to_target(1, 2, 7, &Some(ability), 1, false, &tx, &mut mgr).await;
+
+    let player = mgr.get_entity(1).unwrap();
+    assert!(
+        player.threatened_mobs.is_empty(),
+        "player's threatened_mobs must drain on kill — this is the gate \
+         the out-of-combat regen tick reads (#208). Stuck non-empty \
+         set means regen never fires in production."
+    );
+    assert_eq!(
+        player.state_field & BSF_IN_COMBAT,
+        0,
+        "BSF_InCombat must clear on the kill that empties threatened_mobs \
+         (#219). Stuck bit means HUD/cursor stay in combat-ready forever."
+    );
+
+    let corpse = mgr.get_entity(2).unwrap();
+    assert!(
+        corpse.threat_list.is_empty(),
+        "corpse's threat_list drains AFTER apply_death_transition has \
+         consumed it — leaving stale aggro on the body would mask future \
+         re-spawn aggro state."
+    );
+}
+
 /// Player target dying: onBeginAidWait must fire so the client shows
 /// the Defeat Window. Carries a TimeToAid prefix and a respawner array.
 #[tokio::test]
