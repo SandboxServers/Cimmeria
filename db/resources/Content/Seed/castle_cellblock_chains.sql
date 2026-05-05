@@ -70,9 +70,34 @@ VALUES
 -- ============================================================
 -- MISSION 638 — Speak to Prisoner 329
 -- ============================================================
+--
+-- Dialog ID convention used throughout Mission 638 (and the rest of
+-- this seed):
+--   2xxx / 3xxx prefix → Tau'ri / Human dialogs.
+--   5xxx prefix        → Jaffa dialogs.
+--
+-- For Mission 638 specifically, the per-archetype mapping is:
+--
+--   Topic / step                        Human         Jaffa
+--   "Free Prisoner 329" topic dialog    2300          5021
+--   "Agree to escape" follow-up dialog  2299          5020
+--   dialog_set_map row (set_id 603)     2794          5866
+--
+-- Chains 1011/1012 add the *correct* dialog_set_map row to slot 17 so
+-- the prisoner only offers the topic dialog matching the player's
+-- archetype. Chains 1018/1019 remove the same marker after the player
+-- commits to the escape, so re-talking to the prisoner doesn't re-offer
+-- the topic.
+--
+-- A swap here is a user-visible bug (a Tau'ri player gets the
+-- "My symbiote will cure me" Jaffa dialog and vice versa) — issue #216.
+-- The chain-replay tests in
+-- `crates/services/src/cell/content/chain_replay_tests.rs`
+-- (`mission_638_*` group) regression-guard the resolved-action shape
+-- for both archetype branches.
 
--- Chain 1011: enter Region2 when 638 not active + non-Jaffa → accept + human dialog set
--- dialog_set 5866 maps to dialog 5021 (Human version of "Free Prisoner 329")
+-- Chain 1011: enter Region2 when 638 not active + non-Jaffa → accept + Human dialog set
+-- dialog_set_map 2794 (set_id 603) → dialog 2300 (Human "Free Prisoner 329")
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1011, '638 - Region2 entry: accept (non-Jaffa)', 'mission', 638, true, 0);
 
@@ -87,10 +112,10 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1011, 'accept_mission', 638, NULL, '{}', 0, 0),
-  (1011, 'add_dialog_set', 5866, NULL, '{"slot": 17}', 0, 1);
+  (1011, 'add_dialog_set', 2794, NULL, '{"slot": 17}', 0, 1);
 
 -- Chain 1012: enter Region2 when 638 not active + Jaffa → accept + Jaffa dialog set
--- dialog_set 2794 maps to dialog 2300 (Jaffa version — mentions symbiote)
+-- dialog_set_map 5866 (set_id 603) → dialog 5021 (Jaffa "Free Prisoner 329", mentions symbiote)
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1012, '638 - Region2 entry: accept (Jaffa)', 'mission', 638, true, 0);
 
@@ -105,7 +130,7 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1012, 'accept_mission', 638, NULL, '{}', 0, 0),
-  (1012, 'add_dialog_set', 2794, NULL, '{"slot": 17}', 0, 1);
+  (1012, 'add_dialog_set', 5866, NULL, '{"slot": 17}', 0, 1);
 
 -- Chain 1013: enter Region2 always → system message 5040
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -117,9 +142,9 @@ VALUES (1013, 'enter_region', 'Castle_Cellblock.Region2', 'player', false, 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1013, 'system_message', 5040, NULL, '{}', 0, 0);
 
--- Chain 1014: dialog choice 5021 (non-sci talk to 329) while step 2114 active → advance to 2115 + enable door
+-- Chain 1014: dialog choice 5021 (Jaffa talk to 329) while step 2114 active → advance to 2115 + enable door
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1014, '638 - Talk to Prisoner (non-sci): advance step to 2115', 'mission', 638, true, 0);
+VALUES (1014, '638 - Talk to Prisoner (Jaffa): advance step to 2115', 'mission', 638, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1014, 'dialog_choice', '5021', 'player', false, 0);
@@ -132,9 +157,9 @@ VALUES
   (1014, 'advance_step', 638, '2115', '{}', 0, 0),
   (1014, 'set_interaction_type', NULL, '329_CellDoorButton', '{"op": "|", "mask": 256}', 0, 1);
 
--- Chain 1015: dialog choice 2300 (sci talk to 329) while step 2114 active → advance to 2115 + enable door
+-- Chain 1015: dialog choice 2300 (Human talk to 329) while step 2114 active → advance to 2115 + enable door
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1015, '638 - Talk to Prisoner (sci): advance step to 2115', 'mission', 638, true, 0);
+VALUES (1015, '638 - Talk to Prisoner (Human): advance step to 2115', 'mission', 638, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1015, 'dialog_choice', '2300', 'player', false, 0);
@@ -174,9 +199,9 @@ VALUES
   (1017, 'play_sequence', 1749, NULL, '{}', 0, 1),
   (1017, 'set_interaction_type', NULL, '329_CellDoorButton', '{"op": "~", "mask": 256}', 0, 2);
 
--- Chain 1020: dialog choice 5021 (human) while step 2116 active → show follow-up dialog 5020
+-- Chain 1020: dialog choice 5021 (Jaffa) while step 2116 active → show follow-up dialog 5020
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1020, '638 - Post-minigame (human): show escape dialog', 'mission', 638, true, 0);
+VALUES (1020, '638 - Post-minigame (Jaffa): show escape dialog', 'mission', 638, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1020, 'dialog_choice', '5021', 'player', false, 0);
@@ -187,9 +212,9 @@ VALUES (1020, 'step_status', 638, '2116', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1020, 'display_dialog', 5020, NULL, '{}', 0, 0);
 
--- Chain 1021: dialog choice 2300 (Jaffa) while step 2116 active → show follow-up dialog 5020
+-- Chain 1021: dialog choice 2300 (Human) while step 2116 active → show follow-up dialog 5020
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1021, '638 - Post-minigame (Jaffa): show escape dialog', 'mission', 638, true, 0);
+VALUES (1021, '638 - Post-minigame (Human): show escape dialog', 'mission', 638, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1021, 'dialog_choice', '2300', 'player', false, 0);
@@ -200,9 +225,9 @@ VALUES (1021, 'step_status', 638, '2116', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1021, 'display_dialog', 5020, NULL, '{}', 0, 0);
 
--- Chain 1018: dialog choice 5020 (non-sci agree escape) while step 2116 active → finish 638, accept 639
+-- Chain 1018: dialog choice 5020 (Jaffa agree escape) while step 2116 active → finish 638, accept 639
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1018, '638 - Agree to help (non-sci): complete 638, accept 639', 'mission', 638, true, 0);
+VALUES (1018, '638 - Agree to help (Jaffa): complete 638, accept 639', 'mission', 638, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1018, 'dialog_choice', '5020', 'player', false, 0);
@@ -217,9 +242,9 @@ VALUES
   (1018, 'complete_mission', 638, NULL, '{}', 0, 2),
   (1018, 'remove_dialog_set', 5866, NULL, '{"slot": 17}', 0, 3);
 
--- Chain 1019: dialog choice 2299 (sci agree escape) while step 2116 active → finish 638, accept 639
+-- Chain 1019: dialog choice 2299 (Human agree escape) while step 2116 active → finish 638, accept 639
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1019, '638 - Agree to help (sci): complete 638, accept 639', 'mission', 638, true, 0);
+VALUES (1019, '638 - Agree to help (Human): complete 638, accept 639', 'mission', 638, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1019, 'dialog_choice', '2299', 'player', false, 0);
