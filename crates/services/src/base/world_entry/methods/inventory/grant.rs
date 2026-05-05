@@ -6,11 +6,11 @@ use sqlx::PgPool;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
-use super::super::player_load::core::query_player_load_data;
 use super::super::vendor::serializers::reserve_free_inventory_slots;
+use super::appearance::refresh_player_appearance;
 use super::core::send_full_inventory_update;
 use crate::base::outbox::{self, CellOutboxPayload};
-use crate::base::{helpers, world_entry_appearance, ConnectedClientState};
+use crate::base::{helpers, ConnectedClientState};
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx};
 
@@ -441,55 +441,13 @@ pub async fn handle_grant_item(
             container_id,
             "Equipped item has visual — resending BeingAppearance"
         );
-
-        let account_id = {
-            let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-                Some(a) => a,
-                None => return,
-            };
-            let clients = connected.lock().unwrap();
-            match clients.get(&addr) {
-                Some(c) => c.account_id,
-                None => return,
-            }
-        };
-
-        // TODO: replace with a narrow `query_player_appearance_data` that only
-        // returns bodyset+components — this full profile load is overkill for
-        // an appearance refresh and re-runs every other query in the load
-        // (abilities, missions, weapon stats, etc.).
-        let player_data = query_player_load_data(db_pool, account_id, player_id).await;
-        let appearance_args = world_entry_appearance::build_appearance_args(
-            &player_data.bodyset,
-            &player_data.components,
-        );
-
-        {
-            let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
-                Some(a) => a,
-                None => return,
-            };
-            let mut clients = connected.lock().unwrap();
-            if let Some(c) = clients.get_mut(&addr) {
-                c.cached_appearance_args = Some(appearance_args.clone());
-            }
-        }
-
-        helpers::send_to_witness(
+        refresh_player_appearance(
+            entity_id,
+            player_id,
+            db_pool,
             socket,
             connected,
             entity_to_addr,
-            entity_id,
-            |key, seq, acks| {
-                build_entity_method_packet(
-                    key,
-                    seq,
-                    acks,
-                    entity_id,
-                    method_idx::BEING_APPEARANCE,
-                    &appearance_args,
-                )
-            },
         )
         .await;
     }

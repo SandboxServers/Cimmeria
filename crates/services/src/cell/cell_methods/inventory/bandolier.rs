@@ -78,28 +78,47 @@ pub(super) async fn handle_request_active_slot_change(
         return;
     }
     let bag_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-    let slot_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-    tracing::debug!(entity_id, bag_id, slot_id, "requestActiveSlotChange");
-    // Reject out-of-range slots before any mutation. The bandolier
-    // has 5 slots (0-4); a forged value would otherwise leave the
-    // entity in an impossible local state, cancel any in-flight
-    // reload, and propagate via ActiveSlotUpdate to base.
-    if !(0..5).contains(&slot_id) {
-        tracing::warn!(
-            entity_id,
-            bag_id,
-            slot_id,
-            "requestActiveSlotChange: slot_id out of range, rejecting"
-        );
-        return;
-    }
-    // Only bandolier (container 3) carries an active slot.
+    let wire_slot_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
+    // Wire slot IDs are 1-indexed (matching the legacy convention in
+    // `Bag.py:369` `onActiveSlotUpdate(self.bagId, self.activeSlotId + 1)`
+    // and `SGWPlayer.py:2192` `updateActiveSlot(bagId, slotId - 1)`).
+    // Translate to the 0-indexed server slot before any further work.
+    // Saturating subtraction so a forged `i32::MIN` doesn't panic in debug
+    // builds — the resulting `i32::MIN` still fails the range check below.
+    let slot_id = wire_slot_id.saturating_sub(1);
+    tracing::debug!(
+        entity_id,
+        bag_id,
+        wire_slot_id,
+        slot_id,
+        "requestActiveSlotChange"
+    );
+    // Only bandolier (container 3) carries an active slot. Validate this
+    // before the slot range check so a forged non-bandolier request gets
+    // logged with the original bag_id rather than a misleading "out of
+    // range" message.
     if bag_id != 3 {
         tracing::warn!(
             entity_id,
             bag_id,
-            slot_id,
+            wire_slot_id,
             "requestActiveSlotChange: ignoring non-bandolier container"
+        );
+        return;
+    }
+    // Reject out-of-range slots before any mutation. Bound is `bag_max_slots(3)`
+    // (currently 4 → server slots 0..=3, wire slots 1..=4); a forged value
+    // would otherwise leave the entity in an impossible local state, cancel
+    // any in-flight reload, and propagate via ActiveSlotUpdate to base.
+    let max_slots = crate::base::resources::bag_max_slots(bag_id);
+    if !(0..max_slots).contains(&slot_id) {
+        tracing::warn!(
+            entity_id,
+            bag_id,
+            wire_slot_id,
+            slot_id,
+            max_slots,
+            "requestActiveSlotChange: slot_id out of range, rejecting"
         );
         return;
     }
@@ -205,7 +224,11 @@ pub(super) async fn handle_request_active_slot_change(
             }
         }
         if let Err(e) = tx
-            .send(CellToBaseMsg::ActiveSlotUpdate { player_id, slot_id })
+            .send(CellToBaseMsg::ActiveSlotUpdate {
+                entity_id,
+                player_id,
+                slot_id,
+            })
             .await
         {
             tracing::warn!(
@@ -215,6 +238,30 @@ pub(super) async fn handle_request_active_slot_change(
             );
         }
     }
+
+    // Tell the *client* about the new active slot so the bandolier UI
+    // updates its highlighted slot indicator. Without this packet, the
+    // client UI keeps thinking the previously-selected slot is active —
+    // and the LUA `BandolierMod.ActivateBandolierSlotN` keybinds gate on
+    // `getActiveSlotForContainer(...) ~= N`, so further keypresses for
+    // the slot the UI thinks is selected are silently dropped at the
+    // client. That presented as "switching back to the first bandolier
+    // slot does not give me my weapon back" during play-testing.
+    //
+    // Wire format matches `Bag.py:369` `onActiveSlotUpdate(bagId, activeSlotId + 1)`
+    // and the existing sites in `grant.rs` / `vendor/helpers.rs` that
+    // already use this method index — bag_id then 1-indexed wire slot.
+    let mut active_slot_args = Vec::with_capacity(8);
+    active_slot_args.extend_from_slice(&bag_id.to_le_bytes());
+    active_slot_args.extend_from_slice(&(slot_id + 1).to_le_bytes());
+    crate::cell::abilities::send_entity_method(
+        entity_id,
+        crate::cell::client_methods::inventory::ON_ACTIVE_SLOT_UPDATE,
+        active_slot_args,
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // Stage D: refresh the client's ammo-type indicator for the
     // newly-active slot. If the new slot is empty (no item),

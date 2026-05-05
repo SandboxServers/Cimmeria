@@ -587,6 +587,7 @@ fn parse_step_status(s: &str) -> Option<StepStatusValue> {
     match s {
         "not_active" => Some(StepStatusValue::NotActive),
         "active" => Some(StepStatusValue::Active),
+        "completed" => Some(StepStatusValue::Completed),
         _ => None,
     }
 }

@@ -241,10 +241,20 @@ async fn handle_reload(
         }
     }
 
+    // The reload's *warmup* IS the visible animation (drop mag, insert mag,
+    // chamber). Per legacy `AbilityManager.py:619-636`, that's driven by
+    // the `Ability_Begin` sequence fired at warmup start; the matching
+    // `Ability_End` is fired by `reload_completion_tick` once the warmup
+    // expires.
+    //
+    // Earlier this site sent `Ability_End` synchronously, which made the
+    // client either play the wrong animation or no animation at all
+    // (depending on the weapon's event set). Mirroring the fire-path
+    // begin/end split fixes "reload doesn't show an animation".
     if let Some(esid) = event_set_id {
-        use crate::cell::spawner::EVENT_ABILITY_END;
+        use crate::cell::spawner::EVENT_ABILITY_BEGIN;
 
-        if let Some(&seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ABILITY_END)) {
+        if let Some(&seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ABILITY_BEGIN)) {
             let mut seq_args = Vec::with_capacity(28);
             seq_args.extend_from_slice(&seq_id.to_le_bytes());
             seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
@@ -265,7 +275,7 @@ async fn handle_reload(
             tracing::debug!(
                 entity_id,
                 event_set_id = esid,
-                "reload: no Ability_End sequence found"
+                "reload: no Ability_Begin sequence found"
             );
         }
     }
@@ -496,6 +506,100 @@ mod tests {
             e.reload_slot_id,
             Some(2),
             "reload_slot_id must capture the active slot at issue time, not be re-read at completion"
+        );
+    }
+
+    /// Reload-start must fire the `Ability_Begin` (event 1000) sequence so
+    /// the client plays the visible reload animation. Earlier this site
+    /// sent `Ability_End` (event 1001), which is what `reload_completion_tick`
+    /// fires once the warmup expires — sending it at start either played
+    /// the wrong animation or none at all (depending on weapon event set).
+    /// Legacy parity: `python/cell/AbilityManager.py:619-636`.
+    #[tokio::test]
+    async fn handle_reload_sends_ability_begin_sequence() {
+        use crate::cell::client_methods::spawnable_entity::ON_SEQUENCE;
+
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+        }
+        // Reload AbilityDef with an event_set_id so the begin-sequence
+        // path runs, plus a sequence_map entry mapping (event_set, BEGIN)
+        // to a sentinel sequence id we can recognise on the wire.
+        const EVENT_SET_ID: i32 = 7777;
+        const BEGIN_SEQ_ID: i32 = 9001;
+        mgr.ability_defs.insert(
+            596,
+            AbilityDef {
+                ability_id: 596,
+                name: "reload".to_string(),
+                cooldown: 1.0,
+                warmup: 0.5,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 0,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: Some(EVENT_SET_ID),
+                velocity: 0.0,
+            },
+        );
+        mgr.sequence_map.insert(
+            (
+                EVENT_SET_ID,
+                super::super::super::super::spawner::EVENT_ABILITY_BEGIN,
+            ),
+            BEGIN_SEQ_ID,
+        );
+        // Seed an `Ability_End` mapping too — the regression we're guarding
+        // against would have sent THIS one synchronously at reload-start.
+        const END_SEQ_ID: i32 = 9002;
+        mgr.sequence_map.insert(
+            (
+                EVENT_SET_ID,
+                super::super::super::super::spawner::EVENT_ABILITY_END,
+            ),
+            END_SEQ_ID,
+        );
+
+        let (tx, mut rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let mut saw_begin = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                method_index, args, ..
+            } = msg
+            {
+                if method_index == ON_SEQUENCE && args.len() >= 4 {
+                    let seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                    assert_ne!(
+                        seq_id, END_SEQ_ID,
+                        "reload-start must NOT send Ability_End (that's reload_completion_tick's job)"
+                    );
+                    if seq_id == BEGIN_SEQ_ID {
+                        saw_begin = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            saw_begin,
+            "reload-start must send onSequence with the Ability_Begin sequence id; \
+             without it the client plays no visible reload animation",
         );
     }
 }

@@ -219,7 +219,16 @@ pub enum CellToBaseMsg {
     },
 
     /// Persist the player's active bandolier slot.
-    ActiveSlotUpdate { player_id: i32, slot_id: i32 },
+    ///
+    /// `entity_id` is carried so the base handler can broadcast a fresh
+    /// `BEING_APPEARANCE` to the player's witnesses after the slot is
+    /// persisted — without the appearance refresh, the player's model
+    /// keeps the previously-equipped weapon visual until the next login.
+    ActiveSlotUpdate {
+        entity_id: u32,
+        player_id: i32,
+        slot_id: i32,
+    },
 
     /// Persist a single bandolier slot's per-slot ammo state.
     ///

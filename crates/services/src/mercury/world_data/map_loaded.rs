@@ -323,6 +323,21 @@ fn build_map_loaded_body_inner(
         append_method!(method_idx::ON_BAG_INFO, &bag_info);
     }
 
+    // 21a. onActiveSlotUpdate(bagId, slotId) — initialise the client's
+    // bandolier slot indicator from the persisted `bandolier_slot`. Without
+    // this seed the client UI defaults to slot 1 (1-indexed) regardless of
+    // what the DB says, and the LUA `getActiveSlotForContainer(...)`
+    // comparator silently drops keypresses for whatever the client thinks
+    // is already active. Wire format matches `Bag.py:369` —
+    // `(bagId, activeSlotId + 1)`.
+    {
+        const CONTAINER_BANDOLIER: i32 = 3;
+        let mut args = Vec::with_capacity(8);
+        args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
+        args.extend_from_slice(&(data.active_bandolier_slot + 1).to_le_bytes());
+        append_method!(method_idx::ON_ACTIVE_SLOT_UPDATE, &args);
+    }
+
     // 21b. onUpdateItem(ARRAY<InvItem>) — all inventory items
     //      Reference: python/cell/Inventory.py flushUpdates() step 3
     if !data.items.is_empty() {

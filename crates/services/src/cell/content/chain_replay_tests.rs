@@ -161,3 +161,144 @@ async fn chain_3026_does_not_fire_when_mission_1562_is_completed() {
          mission_1562_status = 'completed'; got {chain_3026_actions}",
     );
 }
+
+/// Chain 1034 (`db/resources/Content/Seed/castle_cellblock_chains.sql`):
+/// `item_use 19` consumes the ambernol vial, completes mission 639, and
+/// accepts mission 640. The `remove_item` action is the load-bearing piece
+/// — without it, the player keeps the vial after using it (and any chain
+/// gated on "no longer holds vial" stays stuck).
+///
+/// Regression guard for an actual production bug: the seed file was
+/// updated to add the `remove_item` action, but a stale local DB without
+/// a re-seed surfaced as "ambernol use no longer removes the vial". This
+/// test would have failed in CI on the broken seed.
+#[tokio::test]
+async fn chain_1034_includes_remove_item_for_ambernol() {
+    use cimmeria_content_engine::actions::Action;
+
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1034)
+        .await
+        .expect("DB query for chain 1034 must succeed")
+        .expect("chain 1034 must exist in seeded content_chains");
+
+    let removes_vial = chain.actions.iter().any(
+        |a| matches!(a, Action::RemoveItem { item_id, count } if *item_id == 19 && *count == 1),
+    );
+    assert!(
+        removes_vial,
+        "chain 1034 must include `RemoveItem {{ item_id: 19, count: 1 }}` so the \
+         ambernol vial is consumed on use; loaded {} actions: {:?}",
+        chain.actions.len(),
+        chain.actions,
+    );
+}
+
+/// Chain 1051 (`db/resources/Content/Seed/castle_cellblock_chains.sql`):
+/// `interact_tag('Preparation_ColMarsh')` shows briefing dialog 4001 to
+/// non-sci players, gated by `mission_status(641) = 'not_active'`.
+///
+/// The regression guard: the original seed gated on
+/// `step_status(641, 2121) = 'not_active'`, which is also true *after*
+/// the player advances past step 2121 (e.g. picks up the P90). That made
+/// chain 1051 re-fire the briefing after pickup, chain 1053 re-accept
+/// the mission on dialog choice, and the player loop back to step 2121.
+///
+/// Test 1: with mission 641 not yet accepted, the chain matches
+/// (briefing is appropriate).
+#[tokio::test]
+async fn chain_1051_fires_when_mission_641_not_accepted() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1051)
+        .await
+        .expect("DB query for chain 1051 must succeed")
+        .expect("chain 1051 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "entity_tag".to_string(),
+        serde_json::json!("Preparation_ColMarsh"),
+    );
+    ctx.set_param(
+        "mission_641_status".to_string(),
+        serde_json::json!("not_active"),
+    );
+    ctx.set_param("archetype".to_string(), serde_json::json!(5)); // non-sci
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::InteractTag,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let chain_1051_actions = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1051)
+        .count();
+    assert!(
+        chain_1051_actions > 0,
+        "chain 1051 must resolve actions when mission 641 hasn't been accepted; \
+         got {chain_1051_actions}",
+    );
+}
+
+/// Test 2: once mission 641 is active, chain 1051 must NOT fire — that
+/// prevents the briefing dialog from re-showing and triggering the
+/// re-accept loop. This is the bug-shape regression guard.
+#[tokio::test]
+async fn chain_1051_does_not_fire_when_mission_641_active() {
+    let pool = require_db_or_skip!();
+    let chain = load_single_chain_for_test(&pool, 1051)
+        .await
+        .expect("DB query for chain 1051 must succeed")
+        .expect("chain 1051 must exist in seeded content_chains");
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param(
+        "entity_tag".to_string(),
+        serde_json::json!("Preparation_ColMarsh"),
+    );
+    ctx.set_param(
+        "mission_641_status".to_string(),
+        serde_json::json!("active"),
+    );
+    // Step 2121 has been advanced past — the OLD condition on
+    // `step_status(641, 2121) = 'not_active'` would still match this
+    // shape. Including it here proves the new condition genuinely uses
+    // mission_status, not step_status.
+    ctx.set_param(
+        "mission_641_step_2121_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    ctx.set_param("archetype".to_string(), serde_json::json!(5));
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::InteractTag,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    let chain_1051_actions = resolved
+        .actions
+        .iter()
+        .filter(|(id, _)| *id == 1051)
+        .count();
+    assert_eq!(
+        chain_1051_actions, 0,
+        "chain 1051 must NOT fire while mission 641 is active — the old \
+         step_status(641, 2121) condition would have re-fired the \
+         briefing after pickup and looped the quest. Got \
+         {chain_1051_actions} actions.",
+    );
+}
