@@ -243,19 +243,8 @@ pub async fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::make_space_manager;
     use cimmeria_entity::cell_entity::NpcInteractionType;
-
-    /// Standard test space setup: SpaceManager with a single Agnos space.
-    fn make_space_manager() -> SpaceManager {
-        let mut mgr = SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Spaces><Space WorldName="Agnos" /></Spaces>"#;
-        mgr.parse_spaces_xml(spaces_xml).unwrap();
-        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        mgr
-    }
 
     /// Right-clicking an ALIVE hostile NPC reroutes interact → useAbility.
     /// Baseline for the dead-corpse regression test below.
