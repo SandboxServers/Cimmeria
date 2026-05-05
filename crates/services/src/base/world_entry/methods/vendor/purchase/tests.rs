@@ -34,10 +34,11 @@ const ITEM_COST_STORE_INDEX: i32 = 1;
 const ITEM_COST_DESIGN_ID: i32 = 5192;
 const ITEM_COST_PREREQ_DESIGN_ID: i32 = 55;
 
-async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
-    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id < 0")
+async fn cleanup(pool: &PgPool, entity_id: i32, account_id: i32, player_id: i32) {
+    let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
+        .bind(entity_id)
         .execute(pool)
-        .await; // no-op safety net
+        .await;
     let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
         .bind(player_id)
         .execute(pool)
@@ -169,7 +170,8 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE;
     let player_id = TEST_BASE + 1;
-    cleanup(&pool, account_id, player_id).await;
+    let entity_id: i32 = 0x7000_0A01;
+    cleanup(&pool, entity_id, account_id, player_id).await;
     // Start with a known balance well above the price so we can assert
     // the exact delta rather than just "lower than before".
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
@@ -207,7 +209,7 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
         "balance must drop by exactly per-line cash_cost",
     );
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
 }
 
 /// Item-prerequisite path: the seeded line at store_index 1 costs no
@@ -220,7 +222,8 @@ async fn item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 100;
     let player_id = TEST_BASE + 101;
-    cleanup(&pool, account_id, player_id).await;
+    let entity_id: i32 = 0x7000_0A11;
+    cleanup(&pool, entity_id, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
     // Provide a 3-stack of the prereq so we can assert the post-purchase
     // stack drops by exactly 1, not "missing" or "zero".
@@ -267,7 +270,7 @@ async fn item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
         "naquadah must be unchanged when cash_cost is 0",
     );
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
 }
 
 /// Insufficient-cash rollback: a player below the line price gets the
@@ -279,7 +282,8 @@ async fn purchase_rejected_when_player_cannot_afford() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 200;
     let player_id = TEST_BASE + 201;
-    cleanup(&pool, account_id, player_id).await;
+    let entity_id: i32 = 0x7000_0A21;
+    cleanup(&pool, entity_id, account_id, player_id).await;
     // Less than PURE_CASH_PRICE — purchase must fail.
     insert_account_and_player(&pool, account_id, player_id, PURE_CASH_PRICE - 1).await;
 
@@ -311,7 +315,7 @@ async fn purchase_rejected_when_player_cannot_afford() {
         "balance must not change when the purchase is rolled back",
     );
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
 }
 
 /// A store_index outside the buy list (here: 99, well past the 3 seeded
@@ -323,7 +327,8 @@ async fn purchase_rejected_for_index_not_in_buy_list() {
     let pool = require_db_or_skip!();
     let account_id = TEST_BASE + 300;
     let player_id = TEST_BASE + 301;
-    cleanup(&pool, account_id, player_id).await;
+    let entity_id: i32 = 0x7000_0A31;
+    cleanup(&pool, entity_id, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
 
     let (socket, e2a, conn) = make_state(0x7000_0A31);
@@ -360,5 +365,5 @@ async fn purchase_rejected_for_index_not_in_buy_list() {
         "balance must not change when the index is invalid",
     );
 
-    cleanup(&pool, account_id, player_id).await;
+    cleanup(&pool, entity_id, account_id, player_id).await;
 }
