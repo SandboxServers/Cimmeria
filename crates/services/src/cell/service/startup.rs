@@ -280,16 +280,22 @@ impl CellService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_common::ServerConfig;
 
-    /// CellService::default() must produce a non-running service with no
-    /// loop handle. This is the minimal surface we can exercise without
-    /// real XML files / DB pools — larger startup tests are deferred to
-    /// the integration harness (issue #205 deferred bucket: startup.rs).
+    /// A freshly-constructed CellService must be inert: not running, no
+    /// loop handle, no shutdown signal. Larger startup tests are deferred
+    /// to the integration harness (issue #205 deferred bucket: startup.rs).
     #[test]
-    fn default_service_is_not_running() {
-        let svc = CellService::default();
+    fn fresh_service_is_not_running() {
+        let svc = CellService::new(&ServerConfig::default());
         assert!(!svc.is_running, "fresh CellService must not be running");
-        assert!(svc.cell_loop_handle.is_none(), "no loop handle before start()");
-        assert!(svc.shutdown_signal.is_none(), "no shutdown signal before start()");
+        assert!(
+            svc.cell_loop_handle.is_none(),
+            "no loop handle before start()"
+        );
+        assert!(
+            svc.shutdown_signal.is_none(),
+            "no shutdown signal before start()"
+        );
     }
 }

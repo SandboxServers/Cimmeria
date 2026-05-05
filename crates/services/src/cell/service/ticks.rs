@@ -308,14 +308,16 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
 mod tests {
     use super::*;
     use crate::cell::space_manager::SpaceManager;
-    use cimmeria_entity::cell_entity::BandolierItem;
 
     #[tokio::test]
     async fn aoi_tick_on_empty_space_manager_produces_no_messages() {
         let mut mgr = SpaceManager::new(1);
         let (tx, mut rx) = mpsc::channel(8);
         run_aoi_tick(&tx, &mut mgr).await;
-        assert!(rx.try_recv().is_err(), "empty space manager must produce zero AoI events");
+        assert!(
+            rx.try_recv().is_err(),
+            "empty space manager must produce zero AoI events"
+        );
     }
 
     #[test]
@@ -323,14 +325,18 @@ mod tests {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
-        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#)
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(200, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
-        mgr.create_entity(200, "Castle", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(npc) = mgr.get_entity_mut(200) {
             npc.is_player = false;
             npc.class_id = 0x04;
             npc.move_speed = 5.0;
-            npc.nav_path.push_back(cimmeria_common::Vector3::new(10.0, 0.0, 0.0));
+            npc.nav_path
+                .push_back(cimmeria_common::Vector3::new(10.0, 0.0, 0.0));
         }
 
         npc_movement_tick(&mut mgr);
@@ -353,9 +359,12 @@ mod tests {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
-        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#)
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(200, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
             .unwrap();
-        mgr.create_entity(200, "Castle", [0.0, 0.0, 0.0], [0.0; 3]).unwrap();
         if let Some(npc) = mgr.get_entity_mut(200) {
             npc.is_player = false;
             npc.class_id = 0x04;
@@ -374,7 +383,8 @@ mod tests {
         mgr.parse_spaces_xml(xml).unwrap();
         mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
             .unwrap();
-        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
         if let Some(e) = mgr.get_entity_mut(1) {
             e.is_player = true;
             e.player_id = Some(100);
@@ -389,7 +399,10 @@ mod tests {
         reload_completion_tick(&tx, &mut mgr).await;
 
         // No messages should be sent because the slot is empty.
-        assert!(rx.try_recv().is_err(), "empty slot must produce zero wire messages");
+        assert!(
+            rx.try_recv().is_err(),
+            "empty slot must produce zero wire messages"
+        );
         let entity = mgr.get_entity(1).unwrap();
         assert!(
             entity.reload_complete_at.is_none(),

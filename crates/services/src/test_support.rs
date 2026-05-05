@@ -101,6 +101,7 @@ pub(crate) fn make_space_manager() -> SpaceManager {
 /// Same as [`make_space_manager`], but also creates a player entity at
 /// the origin so tests that need an avatar don't repeat the entity
 /// creation boilerplate.
+#[allow(dead_code)]
 pub(crate) fn make_space_manager_with_player(entity_id: u32) -> SpaceManager {
     let mut mgr = make_space_manager();
     mgr.create_entity(entity_id, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])

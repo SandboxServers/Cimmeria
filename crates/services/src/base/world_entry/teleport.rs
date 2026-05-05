@@ -181,12 +181,11 @@ mod tests {
         std_sock.set_nonblocking(true).unwrap();
         let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
         let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
-        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
-            Arc::new(Mutex::new({
-                let mut m = HashMap::new();
-                m.insert(1, fake_addr);
-                m
-            }));
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> = Arc::new(Mutex::new({
+            let mut m = HashMap::new();
+            m.insert(1, fake_addr);
+            m
+        }));
         // connected map is empty — client state not found for fake_addr.
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new(HashMap::new()));

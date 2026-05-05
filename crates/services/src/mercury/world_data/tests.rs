@@ -1,8 +1,6 @@
 //! Tests for the `world_data` module — kept separate from `mod.rs` glue
 //! to keep that file readable.
 
-#![cfg(test)]
-
 use super::*;
 use cimmeria_mercury::encryption::MercuryEncryption;
 

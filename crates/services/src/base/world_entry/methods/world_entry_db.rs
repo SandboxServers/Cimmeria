@@ -226,15 +226,12 @@ mod tests {
         let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
         let (cell_tx, mut cell_rx) = mpsc::channel(4);
 
-        let handle = tokio::spawn(async move {
-            query_world_entry(&None, 1, 1, &mgr, &Some(cell_tx)).await
-        });
+        let handle =
+            tokio::spawn(async move { query_world_entry(&None, 1, 1, &mgr, &Some(cell_tx)).await });
 
         // Drive the CreateEntity round-trip so the oneshot doesn't hang.
-        if let Some(msg) = cell_rx.recv().await {
-            if let BaseToCellMsg::CreateEntity { reply_tx, .. } = msg {
-                let _ = reply_tx.send(DEFAULT_SPACE_ID);
-            }
+        if let Some(BaseToCellMsg::CreateEntity { reply_tx, .. }) = cell_rx.recv().await {
+            let _ = reply_tx.send(DEFAULT_SPACE_ID);
         }
 
         let entry = handle.await.unwrap();
@@ -245,11 +242,17 @@ mod tests {
     #[tokio::test]
     async fn query_world_stargates_no_db_returns_empty() {
         let result = query_world_stargates(&None, "CombatSim").await;
-        assert!(result.is_empty(), "no-DB mode must return empty stargate list");
+        assert!(
+            result.is_empty(),
+            "no-DB mode must return empty stargate list"
+        );
     }
 
     #[test]
     fn no_entity_id_sentinel_is_zero() {
-        assert_eq!(NO_ENTITY_ID, 0, "sentinel must remain 0 for downstream guards");
+        assert_eq!(
+            NO_ENTITY_ID, 0,
+            "sentinel must remain 0 for downstream guards"
+        );
     }
 }

@@ -228,7 +228,11 @@ async fn npc_ai_fight_picks_top_threat_among_multiple_live_targets() {
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
 
     // Three live targets at different positions (all in range + LOS).
-    for &(eid, pos) in &[(100, [5.0, 0.0, 0.0]), (101, [10.0, 0.0, 0.0]), (102, [15.0, 0.0, 0.0])] {
+    for &(eid, pos) in &[
+        (100, [5.0, 0.0, 0.0]),
+        (101, [10.0, 0.0, 0.0]),
+        (102, [15.0, 0.0, 0.0]),
+    ] {
         mgr.create_entity(eid, "Castle", pos, [0.0; 3]).unwrap();
         if let Some(p) = mgr.get_entity_mut(eid) {
             p.is_player = true;
@@ -273,7 +277,8 @@ async fn npc_ai_fight_picks_top_threat_among_multiple_live_targets() {
 async fn npc_ai_fight_nan_threat_does_not_panic() {
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
 
-    mgr.create_entity(100, "Castle", [5.0, 0.0, 0.0], [0.0; 3]).unwrap();
+    mgr.create_entity(100, "Castle", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
     if let Some(p) = mgr.get_entity_mut(100) {
         p.is_player = true;
         if let Some(h) = p.stats.get_mut(HEALTH) {
@@ -310,7 +315,8 @@ async fn npc_ai_leash_emits_stat_update_then_state_field_to_witnesses() {
     let mut mgr = make_ai_fixture([0.0; 3], [40.0, 0.0, 40.0]);
 
     // Add a player witness in the same space.
-    mgr.create_entity(1, "Castle", [5.0, 0.0, 5.0], [0.0; 3]).unwrap();
+    mgr.create_entity(1, "Castle", [5.0, 0.0, 5.0], [0.0; 3])
+        .unwrap();
     if let Some(p) = mgr.get_entity_mut(1) {
         p.is_player = true;
         p.player_id = Some(42);

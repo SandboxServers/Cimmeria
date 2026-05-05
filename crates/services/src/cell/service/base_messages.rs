@@ -506,7 +506,10 @@ mod tests {
             got_flush,
             "DestroyEntity must flush dirty bandolier ammo before tearing down"
         );
-        assert!(mgr.get_entity(1).is_none(), "entity must be destroyed after flush");
+        assert!(
+            mgr.get_entity(1).is_none(),
+            "entity must be destroyed after flush"
+        );
     }
 
     #[tokio::test]
@@ -578,7 +581,10 @@ mod tests {
         .await;
 
         let entity = mgr.get_entity(1).unwrap();
-        assert_eq!(entity.active_bandolier_slot, 2, "active_bandolier_slot must update");
+        assert_eq!(
+            entity.active_bandolier_slot, 2,
+            "active_bandolier_slot must update"
+        );
         assert!(
             entity.bandolier_items.contains_key(&2),
             "bandolier_items must contain the new slot"

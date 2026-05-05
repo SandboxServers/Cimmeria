@@ -425,16 +425,10 @@ mod delete_character_tests {
             Arc::new(Mutex::new(HashMap::new()));
         let key = [0u8; 32];
 
-        let result = handle_delete_character(
-            &socket,
-            addr,
-            key,
-            1,
-            1,
-            &connected,
-            &None,
-        )
-        .await;
-        assert!(result.is_ok(), "no-DB mode must short-circuit without error");
+        let result = handle_delete_character(&socket, addr, key, 1, 1, &connected, &None).await;
+        assert!(
+            result.is_ok(),
+            "no-DB mode must short-circuit without error"
+        );
     }
 }

@@ -146,10 +146,45 @@ pub(crate) async fn handle_enable_entities(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_mercury::encryption::MercuryEncryption;
     use std::collections::HashMap;
     use std::net::SocketAddr;
+    use std::sync::atomic::{AtomicBool, AtomicU32};
     use std::sync::{Arc, Mutex};
+    use std::time::Instant;
     use tokio::net::UdpSocket;
+
+    fn make_connected_state() -> ConnectedClientState {
+        ConnectedClientState {
+            enc: MercuryEncryption::from_session_key([0u8; 32]),
+            key: [0u8; 32],
+            account_id: 0,
+            access_level: 0,
+            char_list_sent: false,
+            world_entry_sent: false,
+            pending_player_entity_id: None,
+            player_entity_id: None,
+            next_seq: Arc::new(AtomicU32::new(1)),
+            pending_acks: Arc::new(Mutex::new(Vec::new())),
+            last_recv: Arc::new(Mutex::new(Instant::now())),
+            account_entity_id: 1,
+            next_data_id: 0,
+            pending_world_entry: None,
+            pending_player_load_data: None,
+            pending_map_loaded: None,
+            pending_client_ready: None,
+            cached_appearance_args: None,
+            cached_tint_args: None,
+            cancelled: Arc::new(AtomicBool::new(false)),
+            player_name: None,
+            player_level: None,
+            player_archetype: None,
+            world_name: None,
+            player_xp: None,
+            player_training_points: None,
+            active_player_id: None,
+        }
+    }
 
     #[tokio::test]
     async fn enable_entities_returns_ok_when_addr_not_in_connected_map() {
@@ -183,7 +218,7 @@ mod tests {
         std_sock.set_nonblocking(true).unwrap();
         let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
         let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
-        let mut client = ConnectedClientState::default();
+        let mut client = make_connected_state();
         client.char_list_sent = true;
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new({
@@ -205,6 +240,9 @@ mod tests {
             &Arc::new(Mutex::new(HashMap::new())),
         )
         .await;
-        assert!(result.is_ok(), "must short-circuit when char_list_sent is true");
+        assert!(
+            result.is_ok(),
+            "must short-circuit when char_list_sent is true"
+        );
     }
 }

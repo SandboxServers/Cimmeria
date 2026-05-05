@@ -12,7 +12,6 @@
 //!
 //! Non-concurrency move-handler tests live in the sibling `tests` module;
 //! the helpers from there are reused via `super::tests::…`.
-#![cfg(test)]
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

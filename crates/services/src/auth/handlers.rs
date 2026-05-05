@@ -285,6 +285,9 @@ fn parse_login_request(body: &str) -> Result<LoginReq, String> {
                         _ => {}
                     }
                 }
+                if req.sku.is_empty() || req.account_name.is_empty() || req.password.is_empty() {
+                    return Err("SGWLoginRequest missing required SKU/AccountName/Password".into());
+                }
                 return Ok(req);
             }
             Ok(Event::Eof) | Err(_) => break,

@@ -179,6 +179,7 @@ impl ResourceCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_entity::inventory::INV_BANDOLIER;
 
     /// bag_min_slot sentinel invariant (already tested above) — included
     /// here for completeness so the test module exercises both helpers.
@@ -195,13 +196,13 @@ mod tests {
 
     #[test]
     fn bag_max_slots_known_containers_match_constants() {
-        assert_eq!(bag_max_slots(1), 40);   // Main
-        assert_eq!(bag_max_slots(2), 100);  // Mission
-        assert_eq!(bag_max_slots(3), 4);    // Bandolier
-        assert_eq!(bag_max_slots(4), 1);    // Equipment start
-        assert_eq!(bag_max_slots(14), 1);   // Equipment end
+        assert_eq!(bag_max_slots(1), 40); // Main
+        assert_eq!(bag_max_slots(2), 100); // Mission
+        assert_eq!(bag_max_slots(3), 4); // Bandolier
+        assert_eq!(bag_max_slots(4), 1); // Equipment start
+        assert_eq!(bag_max_slots(14), 1); // Equipment end
         assert_eq!(bag_max_slots(15), 100); // Crafting
-        assert_eq!(bag_max_slots(16), 12);  // Vendor Buyback
+        assert_eq!(bag_max_slots(16), 12); // Vendor Buyback
     }
 
     #[test]
@@ -213,13 +214,10 @@ mod tests {
     }
 
     #[test]
-    fn bag_min_slot_bandolier_is_one() {
-        assert_eq!(bag_min_slot(INV_BANDOLIER), 1, "bandolier must reserve slot 0 for fists");
-    }
-
-    #[test]
-    fn bag_min_slot_other_containers_is_zero() {
-        for container_id in [1, 2, 4, 15, 16] {
+    fn bag_min_slot_is_zero_for_every_container() {
+        // Per resources.rs:40 doc: no container reserves slot 0 in this
+        // game's design — the bandolier is purely 4 weapon slots 0..3.
+        for container_id in [1, 2, INV_BANDOLIER, 4, 15, 16] {
             assert_eq!(
                 bag_min_slot(container_id),
                 0,
