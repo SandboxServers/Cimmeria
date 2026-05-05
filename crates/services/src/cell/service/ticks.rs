@@ -109,12 +109,18 @@ pub(super) async fn reload_completion_tick(
             (payload, persist)
         };
 
-        // Phase 2: send onStatUpdate (method 20) — payload may be empty if
-        // refill was a no-op (e.g. magazine was already at clip_size when the
-        // deadline elapsed because of a concurrent path).
+        // Phase 2: send onStatUpdate — payload may be empty if refill was
+        // a no-op (e.g. magazine was already at clip_size when the deadline
+        // elapsed because of a concurrent path).
         if !stat_payload.is_empty() {
-            super::super::abilities::send_entity_method(entity_id, 20, stat_payload, tx, space_mgr)
-                .await;
+            super::super::abilities::send_entity_method(
+                entity_id,
+                crate::mercury::method_idx::ON_STAT_UPDATE,
+                stat_payload,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
 
         // Phase 3: persistence. CellToBaseMsg::BandolierAmmoUpdate is consumed
