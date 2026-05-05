@@ -852,3 +852,14 @@ pub(crate) async fn handle_cell_message(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // Deferred per issue #205: handle_cell_message requires a live UDP
+    // socket, DB pool, cell/engine channels, and a fully-connected client
+    // state — the fixture cost exceeds the value-per-line for inline unit
+    // tests. Coverage is exercised by the chain-replay integration harness
+    // (issue #205, chain-replay PR) and the existing login→world_entry
+    // e2e smoke tests. Cell-method routing for individual subsystems is
+    // covered by their own dispatch tests (e.g. cell/cell_methods/player).
+}

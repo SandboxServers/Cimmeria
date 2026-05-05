@@ -143,3 +143,63 @@ pub(super) async fn handle_teleport_player(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+    use tokio::net::UdpSocket;
+
+    #[tokio::test]
+    async fn teleport_early_returns_when_entity_not_in_addr_map() {
+        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
+        std_sock.set_nonblocking(true).unwrap();
+        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        // entity_id 999 is not in the map — must early-return without panic.
+        handle_teleport_player(
+            999,
+            65536,
+            [10.0, 20.0, 30.0],
+            &socket,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn teleport_early_returns_when_client_state_missing() {
+        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
+        std_sock.set_nonblocking(true).unwrap();
+        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new({
+                let mut m = HashMap::new();
+                m.insert(1, fake_addr);
+                m
+            }));
+        // connected map is empty — client state not found for fake_addr.
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        handle_teleport_player(
+            1,
+            65536,
+            [10.0, 20.0, 30.0],
+            &socket,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+    }
+}

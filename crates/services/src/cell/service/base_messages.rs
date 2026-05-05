@@ -450,3 +450,138 @@ pub(super) async fn handle_base_message(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cell::space_manager::SpaceManager;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    #[tokio::test]
+    async fn destroy_entity_flushes_dirty_bandolier_before_destroy() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 10,
+                    clip_size: 30,
+                    default_ammo_type: 1,
+                    current_ammo: 17,
+                    cur_ammo_type: 1,
+                },
+            );
+            e.bandolier_ammo_dirty.insert(0);
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+
+        handle_base_message(
+            BaseToCellMsg::DestroyEntity { entity_id: 1 },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        // A BandolierAmmoUpdate must be sent before the entity is destroyed.
+        let mut got_flush = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::BandolierAmmoUpdate { player_id, .. } = msg {
+                assert_eq!(player_id, 100);
+                got_flush = true;
+            }
+        }
+        assert!(
+            got_flush,
+            "DestroyEntity must flush dirty bandolier ammo before tearing down"
+        );
+        assert!(mgr.get_entity(1).is_none(), "entity must be destroyed after flush");
+    }
+
+    #[tokio::test]
+    async fn entity_move_updates_position_in_space_manager() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+
+        handle_base_message(
+            BaseToCellMsg::EntityMove {
+                entity_id: 1,
+                position: [10.0, 20.0, 30.0],
+                direction: [0, 0, 0],
+                velocity: [1.0, 2.0, 3.0],
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let entity = mgr.get_entity(1).unwrap();
+        assert_eq!(entity.position.x, 10.0);
+        assert_eq!(entity.position.y, 20.0);
+        assert_eq!(entity.position.z, 30.0);
+    }
+
+    #[tokio::test]
+    async fn update_bandolier_item_inserts_slot_and_sets_active() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+
+        let item = BandolierItem {
+            item_id: 42,
+            clip_size: 25,
+            default_ammo_type: 2,
+            current_ammo: 25,
+            cur_ammo_type: 2,
+        };
+
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+
+        handle_base_message(
+            BaseToCellMsg::UpdateBandolierItem {
+                entity_id: 1,
+                slot_id: 2,
+                item,
+                make_active: true,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let entity = mgr.get_entity(1).unwrap();
+        assert_eq!(entity.active_bandolier_slot, 2, "active_bandolier_slot must update");
+        assert!(
+            entity.bandolier_items.contains_key(&2),
+            "bandolier_items must contain the new slot"
+        );
+    }
+}
