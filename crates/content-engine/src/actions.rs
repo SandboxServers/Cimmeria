@@ -160,12 +160,22 @@ pub enum Action {
     },
 
     /// Change a stat on the entity.
+    ///
+    /// Application order in the executor: `min` / `max` (bounds), then
+    /// `set_to_max` (sets `cur` to the new `max`), then `amount`
+    /// (additive delta, clamped to `[min, max]`). `amount` is the
+    /// "delta" path consumables use (e.g. Health Slappack TC1: +500
+    /// HP); the bounds-modifying fields are for buffs/debuffs that
+    /// shift the cap.
     ChangeStat {
         stat_id: i32,
         min: Option<i32>,
         max: Option<i32>,
         use_ammo_stat: Option<bool>,
         set_to_max: Option<bool>,
+        /// Additive delta applied to `cur` after bounds adjustments.
+        /// Positive heals, negative damages. Clamped via `Stat::change`.
+        amount: Option<i32>,
     },
 
     /// Abandon an active mission.

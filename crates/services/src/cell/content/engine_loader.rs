@@ -261,6 +261,89 @@ mod tests {
         );
     }
 
+    /// Live-DB guard: using a Health Slappack TC1 must resolve to the
+    /// heal-then-consume action pair. We assert the *behavior* of using
+    /// the item rather than pinning a specific chain id so a future
+    /// chain-id renumber (or a move from `consumables_chains.sql` to
+    /// some other seed file) doesn't fail this guard while the seeded
+    /// behavior is still correct.
+    ///
+    /// The pinned shape is the action pair itself: `change_stat HEALTH
+    /// amount=500` followed by `remove_item 2893 ×1`. If anyone changes
+    /// the heal amount, swaps the order, drops the remove_item, or
+    /// switches to `set_to_max`, the assertions fail with the exact
+    /// diff.
+    #[tokio::test]
+    async fn item_use_2893_resolves_to_health_slappack_heal_and_consume() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::context::ExecutionContext;
+        use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
+        use cimmeria_entity::stats::HEALTH;
+
+        const HEALTH_SLAPPACK_ITEM_ID: i32 = 2893;
+        const HEALTH_SLAPPACK_HEAL: i32 = 500;
+
+        let pool = crate::test_support::require_db_or_skip!();
+        let engine = build_engine(Some(&pool)).await;
+
+        // Fire `OnItemUse(2893)` — relationship-based lookup. The
+        // trigger filters on `item_id` so only chains keyed on item
+        // 2893 will match, regardless of which chain id they live at.
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param(
+            "item_id".to_string(),
+            serde_json::json!(HEALTH_SLAPPACK_ITEM_ID),
+        );
+        let event = TriggerEvent {
+            trigger_type: TriggerType::ItemUse,
+            source_entity: None,
+            target_entity: None,
+            params: ctx.params.clone(),
+        };
+
+        let resolved = engine.resolve_event(&event, &ctx);
+        let actions: Vec<&Action> = resolved.actions.iter().map(|(_, a)| a).collect();
+
+        assert_eq!(
+            actions.len(),
+            2,
+            "useItem(2893) must resolve to exactly two actions \
+             (change_stat then remove_item); got {} — chain wiring drift",
+            actions.len()
+        );
+
+        match actions[0] {
+            Action::ChangeStat {
+                stat_id,
+                amount,
+                set_to_max,
+                ..
+            } => {
+                assert_eq!(*stat_id, HEALTH, "first action must heal HEALTH");
+                assert_eq!(
+                    *amount,
+                    Some(HEALTH_SLAPPACK_HEAL),
+                    "Health Slappack TC1 description says +500 HP — \
+                     a balance change must update both the seed and this guard"
+                );
+                assert!(
+                    set_to_max.is_none() || set_to_max == &Some(false),
+                    "use the additive `amount` path, not set_to_max — \
+                     set_to_max would full-heal regardless of HP"
+                );
+            }
+            other => panic!("expected ChangeStat as first action, got {other:?}"),
+        }
+
+        match actions[1] {
+            Action::RemoveItem { item_id, count } => {
+                assert_eq!(*item_id, HEALTH_SLAPPACK_ITEM_ID);
+                assert_eq!(*count, 1, "consume one slappack per use");
+            }
+            other => panic!("expected RemoveItem as second action, got {other:?}"),
+        }
+    }
+
     /// `load_single_chain_for_test` returns `Ok(None)` for a chain id
     /// that doesn't exist in the seed. Boundary used by the
     /// chain-replay tests; pin so a regression that returns
