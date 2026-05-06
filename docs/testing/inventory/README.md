@@ -3,7 +3,7 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-05-05  
-> **Total tests catalogued**: 1101  
+> **Total tests catalogued**: 1107  
 > **Companion docs**: [TESTING.md](../../../TESTING.md) (the playbook for *how to write* tests), [maintenance.md](maintenance.md), [review-report.md](review-report.md) (audit findings — owned by the testing-validation-engineer agent)
 
 Catalogue of every test in the workspace. The playbook for *how to write* tests is [TESTING.md](../../../TESTING.md); this directory is the reference complement — what tests already exist, where they live, and what each one asserts.
@@ -14,7 +14,7 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 
 | Crate | Tests | File |
 |---|---:|---|
-| `services` | 579 | [services.md](services.md) |
+| `services` | 585 | [services.md](services.md) |
 | `entity` | 151 | [entity.md](entity.md) |
 | `mercury` | 97 | [mercury.md](mercury.md) |
 | `game` | 70 | [game.md](game.md) |
@@ -28,15 +28,15 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 | `tauri-app` | 6 | [tauri-app.md](tauri-app.md) |
 | `defs` | 5 | [defs.md](defs.md) |
 | `server` | 2 | [server.md](server.md) |
-| **Total** | **1101** | |
+| **Total** | **1107** | |
 
 ### By kind
 
 | Kind | Tests |
 |---|---:|
-| unit | 925 |
+| unit | 930 |
 | wire-format | 46 |
-| live-DB | 112 |
+| live-DB | 113 |
 | chain-replay | 6 |
 | smoke | 6 |
 | proptest | 4 |
@@ -46,7 +46,7 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 
 | Year | Tests |
 |---|---:|
-| 2026 | 1101 |
+| 2026 | 1107 |
 
 ## Reading guide
 

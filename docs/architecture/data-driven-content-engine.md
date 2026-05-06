@@ -425,8 +425,8 @@ Multiple conditions on the same chain use **AND** logic — all must pass. For *
 
 | action_type | target_id | target_key | params | Effect |
 |---|---|---|---|---|
-| `qr_combat_damage` | Stat ID | — | `{"school": N, "base": N, "use_crit": true, "use_resist": true}` | QR damage calculation |
-| `change_stat` | Stat ID | — | `{"min": N, "max": N}` | Modify entity stat |
+| `qr_combat_damage` | — | — | `{"stat_id": N, "source_id": N, "amount_nvp": "<NVP key>"}` | Apply QR-modulated combat damage to `stat_id` on the target. `source_id` is the damage source (e.g. 15 = ranged-energy); `amount_nvp` names the effect NVP key the runtime reads the base amount from at apply time. Used by effect chains (e.g. RangedEnergyDamage chain 2001 reads the `HealthDamage` NVP). |
+| `change_stat` | — | — | `{"stat_id": N, "amount": N, "min": N, "max": N, "set_to_max": bool, "use_ammo_stat": bool}` | Modify entity stat. `amount` is an additive delta on `cur` (positive heals, negative damages, clamped via `Stat::change`); bounds adjustments apply first so `set_to_max`/`amount` see the new range. Used by consumable chains (e.g. Health Slappack TC1: chain 4001 with `{"stat_id": 7, "amount": 500}`). `use_ammo_stat: true` (and the legacy `stat_id: -1` sentinel) is a placeholder that currently skips cleanly — active-ammo-slot resolution is a follow-up. |
 | `apply_effect` | Effect ID | — | — | Apply additional effect |
 | `remove_effect` | Effect ID | — | — | Remove effect |
 

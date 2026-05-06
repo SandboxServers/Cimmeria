@@ -3,7 +3,7 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-05-05  
-> **Total tests**: 579  
+> **Total tests**: 585  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
@@ -193,7 +193,7 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [build_tint_args_clamps_oob_skin_color_id_to_zero](../../../crates/services/src/base/world_entry_appearance.rs#L352) | unit | Base / World Entry Appearance | 2026-05-04 | Out-of-range skin_color_id falls back to SKIN_TINTS[0] |  |
 | [build_tint_args_negative_id_falls_back](../../../crates/services/src/base/world_entry_appearance.rs#L362) | unit | Base / World Entry Appearance | 2026-05-04 | Negative skin_color_id casts to a huge usize and falls into the fallback branch |  |
 
-## Cell service (287)
+## Cell service (293)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -341,11 +341,17 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [build_engine_with_none_returns_empty_engine](../../../crates/services/src/cell/content/engine_loader.rs#L245) | unit | Cell / Content / Engine Loader | 2026-05-04 | `build_engine(None)` returns an empty engine — the codepath the server takes when started without a DB pool |  |
 | [build_engine_with_db_pool_loads_seeded_chains](../../../crates/services/src/cell/content/engine_loader.rs#L255) | live-DB | Cell / Content / Engine Loader | 2026-05-04 | Live-DB sanity: against the seeded `resources.content_*` tables, `build_engine` returns a non-empty engine |  |
 | [load_single_chain_returns_none_for_missing_id](../../../crates/services/src/cell/content/engine_loader.rs#L275) | live-DB | Cell / Content / Engine Loader | 2026-05-04 | `load_single_chain_for_test` returns `Ok(None)` for a chain id that doesn't exist in the seed |  |
+| [build_engine_loads_health_slappack_chain_4001](../../../crates/services/src/cell/content/engine_loader.rs#L274) | live-DB | Cell / Content / Engine Loader | 2026-05-05 | Chain 4001 (Health Slappack TC1 use) loads from the seed with the heal-then-consume action pair. Pins `change_stat HEALTH amount=500` followed by `remove_item 2893 ×1` so a balance change must update both the seed and this guard consciously |  |
 | [fire_player_loaded_with_empty_engine_emits_nothing](../../../crates/services/src/cell/content/event_dispatch.rs#L545) | unit | Cell / Content / Event Dispatch | 2026-05-04 | Empty engine: every fire_* function must complete without panicking, emit no actions, and (for the bool-returning fns) return false |  |
 | [fire_interact_tag_returns_false_when_no_chain_matches](../../../crates/services/src/cell/content/event_dispatch.rs#L563) | unit | Cell / Content / Event Dispatch | 2026-05-04 | `fire_interact_tag` returns false when the engine has no chain matching the InteractTag trigger |  |
 | [fire_interact_template_returns_false_when_no_chain_matches](../../../crates/services/src/cell/content/event_dispatch.rs#L575) | unit | Cell / Content / Event Dispatch | 2026-05-04 | `fire_interact_template` mirrors `fire_interact_tag` for template-keyed interactions |  |
 | [fire_player_loaded_handles_missing_entity_gracefully](../../../crates/services/src/cell/content/event_dispatch.rs#L590) | unit | Cell / Content / Event Dispatch | 2026-05-04 | Missing source entity in the SpaceManager: fire_* must not panic, must complete cleanly, and must not emit messages |  |
-| [remove_item_action_emits_remove_inventory_by_type](../../../crates/services/src/cell/content/executor.rs#L878) | unit | Cell / Content / Executor | 2026-05-02 | Regression for #95: `Action::RemoveItem` must route through the new `RemoveInventoryItemByType` cell→base RPC, not the silently-ignored stub it used to be |  |
+| [change_stat_amount_advances_health_and_emits_on_stat_update](../../../crates/services/src/cell/content/executor.rs#L997) | unit | Cell / Content / Executor | 2026-05-05 | `Action::ChangeStat { amount: +500 }` advances HEALTH.cur by exactly the delta, drains dirty so the next serialize is clean, and emits a single onStatUpdate carrying the new HEALTH value. The canonical heal-on-use shape (Health Slappack TC1) |  |
+| [change_stat_amount_clamps_to_max](../../../crates/services/src/cell/content/executor.rs#L1078) | unit | Cell / Content / Executor | 2026-05-05 | Heal clamps cur to max even when the delta would overshoot. Pins that the executor doesn't bypass `Stat::change`'s clamp by writing cur directly |  |
+| [change_stat_negative_amount_damages_stat](../../../crates/services/src/cell/content/executor.rs#L1114) | unit | Cell / Content / Executor | 2026-05-05 | Negative `amount` subtracts from cur. Same code path serves debuff/poison-style chains; if the executor ever silently clamped negatives this guard fails |  |
+| [change_stat_set_to_max_snaps_current_to_max](../../../crates/services/src/cell/content/executor.rs#L1150) | unit | Cell / Content / Executor | 2026-05-05 | `set_to_max=true` snaps cur to max regardless of the prior value. Keeps the bounds-modifying path exercised alongside the new `amount` path; pairs with the legacy reload-effect chain (`set_to_max=true` on the ammo stat) |  |
+| [change_stat_with_use_ammo_stat_skips_cleanly](../../../crates/services/src/cell/content/executor.rs#L1186) | unit | Cell / Content / Executor | 2026-05-05 | `use_ammo_stat=true` (and the legacy `stat_id=-1` sentinel chain 2011 uses) must skip cleanly without warn-and-no-op. Pin the no-side-effects shape so chain 2011 doesn't spam warnings every time the Reload effect fires; replace this guard with a real assertion when active-ammo-slot resolution lands |  |
+| [remove_item_action_emits_remove_inventory_by_type](../../../crates/services/src/cell/content/executor.rs#L1236) | unit | Cell / Content / Executor | 2026-05-02 | Regression: `Action::RemoveItem` must route through the new `RemoveInventoryItemByType` cell→base RPC, not the silently-ignored stub it used to be |  |
 | [item_container_mapping](../../../crates/services/src/cell/content/mod.rs#L47) | unit | Cell / Content | 2026-03-16 | Asserts equality on `item_container(55, &map)` |  |
 | [populate_mission_context_sets_active_status](../../../crates/services/src/cell/content/mod.rs#L66) | unit | Cell / Content | 2026-03-17 | Populate mission context sets active status |  |
 | [populate_mission_context_sets_completed_status](../../../crates/services/src/cell/content/mod.rs#L103) | unit | Cell / Content | 2026-03-17 | Populate mission context sets completed status |  |

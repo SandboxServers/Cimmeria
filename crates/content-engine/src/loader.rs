@@ -415,12 +415,35 @@ fn convert_action(row: &DbActionRow) -> Option<Action> {
             let max = params.get("max").and_then(|v| v.as_i64()).map(|v| v as i32);
             let use_ammo_stat = params.get("use_ammo_stat").and_then(|v| v.as_bool());
             let set_to_max = params.get("set_to_max").and_then(|v| v.as_bool());
+            // Reject out-of-i32-range `amount` values at this system
+            // boundary rather than silently wrapping via `as i32`. The
+            // delta is applied to the stat with `Stat::change`, so a
+            // wrapped value would heal/damage by a wildly different
+            // amount than the seed author intended. Drop the whole
+            // action on the bad row — better to no-op than to apply
+            // the wrong delta.
+            let amount = match params.get("amount").and_then(|v| v.as_i64()) {
+                None => None,
+                Some(v) => match i32::try_from(v) {
+                    Ok(v) => Some(v),
+                    Err(_) => {
+                        warn!(
+                            chain_id = row.chain_id,
+                            amount = v,
+                            "change_stat.amount is out of i32 range; \
+                             dropping action"
+                        );
+                        return None;
+                    }
+                },
+            };
             Some(Action::ChangeStat {
                 stat_id,
                 min,
                 max,
                 use_ammo_stat,
                 set_to_max,
+                amount,
             })
         }
         "apply_effect" => {
