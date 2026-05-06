@@ -31,11 +31,13 @@ When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/comb
 3. **Reset cell-entity state in place** — HEALTH/FOCUS to max, `clear_all_state_flags` (drops both `state_field` and the per-flag refcount map — a raw `state_field = 0` would leave stale counters), `clear_all_cooldowns`, `update_entity_position` to the spawn point.
 4. **`onStatUpdate`** — push the refreshed HEALTH/FOCUS to the HUD.
 5. **`onStateFieldUpdate(0)`** — clears BSF_Dead / BSF_MovementLock / dead-cursor visuals on the owning client.
-6. **`CellToBaseMsg::ReanchorPlayer { entity_id, space_id, position, rotation }`** — BaseApp [`handle_reanchor_player`](../../crates/services/src/base/world_entry/reanchor_player.rs) emits the gate-travel "enter-world body" to the client: `BASEMSG_SPACE_VIEWPORT_INFO` + `BASEMSG_CREATE_CELL_PLAYER` + `BASEMSG_FORCED_POSITION`. **No `RESET_ENTITIES`, no `CREATE_BASE_PLAYER`, no `onClientMapLoad`.**
+6. **`CellToBaseMsg::ReanchorPlayer { entity_id, space_id, position, rotation }`** — BaseApp [`handle_reanchor_player`](../../crates/services/src/base/world_entry/reanchor_player.rs) emits two packets to the client:
+   - **Burst** — `BASEMSG_CREATE_BASE_PLAYER` + `BASEMSG_SPACE_VIEWPORT_INFO` + `BASEMSG_CREATE_CELL_PLAYER` + `BASEMSG_FORCED_POSITION`. `CREATE_BASE_PLAYER` is the load-bearing piece; it invokes the client's `createBasePlayer` hook (same path as initial login), which destroys the ragdolled pawn actor and instantiates a fresh standing one.
+   - **Property replay** (separate bundle, after the client's creation transaction settles) — `BeingAppearance` + `onEntityTint`, drawn from `ConnectedClientState`'s `cached_appearance_args` / `cached_tint_args` (populated during initial world entry in `map_loaded.rs`). Without this the recreated pawn would render blank.
 
-The win is instance preservation: AoI entities, kismet sequence state, and the level itself are untouched because we never sent `RESET_ENTITIES`. Door states / completed encounters / triggered sequences all survive the respawn.
+   **No `RESET_ENTITIES`, no `onClientMapLoad`, no terrain reload.**
 
-**Known limitation: pawn remains ragdolled.** This packet does not clear the local pawn's ragdoll physics state. The player respawns ragdolled-but-movable (HEALTH/FOCUS full, movement_lock cleared, but the pawn actor's mesh is still in ragdoll mode from the `Entity_Death` kismet). This matches the historical SGW behavior — the Python emulator's `onRevived()` only clears `BSF_Dead` and never sends `Entity_Spawn`. Cosmetic ragdoll exit on the local pawn would require either (a) re-creating the pawn actor via `CREATE_BASE_PLAYER` and replaying all of its properties (essentially the gate-travel flow, which defeats instance preservation) or (b) finding a kismet path that calls `APawn::TermRagdoll` — and the cooked `KIS-abilities_human.Death` package has no such output wired.
+The result: ragdoll cleared, pawn standing with full appearance, while every other client-side entity is untouched. Instance preservation comes from never sending `RESET_ENTITIES` — door states / completed encounters / triggered sequences all survive the respawn.
 
 ### Cross-world flow (`CellToBaseMsg::GateTravel`)
 
@@ -55,7 +57,9 @@ Two earlier approaches both failed:
 
 **Approach 3 — `VIEWPORT_INFO` + `CREATE_CELL_PLAYER` + `FORCED_POSITION` only** (no `CREATE_BASE_PLAYER` prefix): instance preserved (good — kismet untouched) but player still ragdolled (bad). The client's `createCellPlayer` handler treats a re-issue for an existing player id as a space/viewport update, not a pawn recreate. Confirmed via Ghidra: only `createBasePlayer` invokes the player-create callback that destroys/recreates the local pawn actor.
 
-**Current approach — `CREATE_BASE_PLAYER` + `VIEWPORT_INFO` + `CREATE_CELL_PLAYER` + `FORCED_POSITION`** isolates the destruction to just the player's pawn actor. Other client entities and kismet state survive untouched. The `CREATE_BASE_PLAYER` prefix triggers the same pawn-recreate hook used on login and play-character world entry; the trailing three keep the client's space/viewport state consistent.
+**Approach 4 — `CREATE_BASE_PLAYER` prefix without property replay**: pawn was destroyed cleanly (un-ragdolled, good) but the recreated pawn had no properties, leaving the player invisible. The base entity's properties are wiped along with the old pawn; we need to re-emit them after the recreate.
+
+**Current approach — Approach 4 + cached property replay**: send `CREATE_BASE_PLAYER` + `VIEWPORT_INFO` + `CREATE_CELL_PLAYER` + `FORCED_POSITION` as a burst, then in a separate bundle replay `BeingAppearance` and `onEntityTint` from `ConnectedClientState`'s cached world-entry args. The burst destroys/recreates the pawn (un-ragdoll); the replay repopulates its visuals. The replay must be a separate bundle because the client treats `CREATE_CELL_PLAYER` as the start of a creation transaction and drops entity methods sent in the same bundle (see [`map_loaded.rs:74-81`](../../crates/services/src/base/world_entry/map_loaded.rs)). All other client-side entities and kismet state survive untouched.
 
 ## Critical: Ragdoll is Kismet-Controlled
 

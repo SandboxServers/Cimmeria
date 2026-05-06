@@ -64,6 +64,56 @@ fn build_reanchor_burst_body(entity_id: u32, info: &WorldEntryInfo) -> Vec<u8> {
     body
 }
 
+/// Build the encrypted packets a Reanchor sends.
+///
+/// Returns either 1 packet (burst only, when cached appearance/tint is
+/// missing) or 3 packets (burst + BeingAppearance + onEntityTint).
+/// Pure function — no I/O, no shared state — so the count, sequencing,
+/// and ack attachment are unit-testable.
+///
+/// Invariants pinned by tests in this module:
+/// - Acks are attached to the burst packet only; replay packets pass `&[]`.
+/// - Sequence IDs are consecutive: `base_seq`, `base_seq + 1`, `base_seq + 2`.
+/// - Partial cache (only one of appearance/tint cached) is treated as
+///   "no cache" — we never emit a half-replay.
+fn build_reanchor_packets(
+    key: &[u8; 32],
+    base_seq: u32,
+    entity_id: u32,
+    info: &WorldEntryInfo,
+    appearance_args: Option<&[u8]>,
+    tint_args: Option<&[u8]>,
+    acks: &[u32],
+) -> Vec<Vec<u8>> {
+    let burst = build_reanchor_burst_body(entity_id, info);
+    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let burst_plaintext = build_outgoing(flags, &burst, Some(base_seq), acks, None);
+    let mut packets = vec![encrypt_packet(&burst_plaintext, key)];
+
+    // Both must be cached. A partial replay would re-create the pawn with
+    // body geometry but no skin tint (or vice versa), worse than no replay.
+    if let (Some(appearance), Some(tint)) = (appearance_args, tint_args) {
+        packets.push(build_entity_method_packet(
+            key,
+            base_seq + 1,
+            &[],
+            entity_id,
+            method_idx::BEING_APPEARANCE,
+            appearance,
+        ));
+        packets.push(build_entity_method_packet(
+            key,
+            base_seq + 2,
+            &[],
+            entity_id,
+            method_idx::ON_ENTITY_TINT,
+            tint,
+        ));
+    }
+
+    packets
+}
+
 /// Handle a re-anchor request from CellService.
 pub(crate) async fn handle_reanchor_player(
     entity_id: u32,
@@ -107,14 +157,11 @@ pub(crate) async fn handle_reanchor_player(
         world_stargates: Vec::new(),
     };
 
-    let burst = build_reanchor_burst_body(entity_id, &info);
-
-    // Reserve 1 seq for burst + 1 for appearance + 1 for tint (if cached).
-    let replay_count = match (&appearance_args, &tint_args) {
-        (Some(_), Some(_)) => 2,
-        _ => 0,
-    };
-    let total_seqs = 1 + replay_count;
+    // Reserve seq IDs up front so build_reanchor_packets can hand back a
+    // self-contained list. 1 for burst, 2 more for the replay if both
+    // cache slots are populated.
+    let has_replay = appearance_args.is_some() && tint_args.is_some();
+    let total_seqs = if has_replay { 3 } else { 1 };
 
     let acks: Vec<u32> = {
         let mut pending = pending_acks_arc.lock().unwrap();
@@ -122,34 +169,21 @@ pub(crate) async fn handle_reanchor_player(
     };
     let base_seq = next_seq.fetch_add(total_seqs, Ordering::Relaxed);
 
-    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
-    let plaintext = build_outgoing(flags, &burst, Some(base_seq), &acks, None);
-    let pkt = encrypt_packet(&plaintext, &key);
-    socket.send_to(&pkt, addr).await?;
+    let packets = build_reanchor_packets(
+        &key,
+        base_seq,
+        entity_id,
+        &info,
+        appearance_args.as_deref(),
+        tint_args.as_deref(),
+        &acks,
+    );
 
-    // Packet 2: property replay (BeingAppearance + onEntityTint), separate
-    // bundle so the client's creation-transaction window settles first.
-    if let (Some(appearance), Some(tint)) = (appearance_args, tint_args) {
-        let appearance_pkt = build_entity_method_packet(
-            &key,
-            base_seq + 1,
-            &[],
-            entity_id,
-            method_idx::BEING_APPEARANCE,
-            &appearance,
-        );
-        socket.send_to(&appearance_pkt, addr).await?;
+    for pkt in &packets {
+        socket.send_to(pkt, addr).await?;
+    }
 
-        let tint_pkt = build_entity_method_packet(
-            &key,
-            base_seq + 2,
-            &[],
-            entity_id,
-            method_idx::ON_ENTITY_TINT,
-            &tint,
-        );
-        socket.send_to(&tint_pkt, addr).await?;
-
+    if has_replay {
         tracing::info!(
             entity_id, %addr, space_id, ?position,
             "Reanchor: sent CREATE_BASE_PLAYER burst + BeingAppearance + onEntityTint (no RESET_ENTITIES)"
@@ -238,6 +272,167 @@ mod tests {
         assert_eq!(
             body[7], SGWPLAYER_CLASS_ID,
             "class_id in the burst must hard-code SGWPlayer regardless of caller-supplied class"
+        );
+    }
+
+    const TEST_KEY: [u8; 32] = [0x42; 32];
+
+    /// Cached appearance + tint → 3 packets (burst + BeingAppearance + onEntityTint).
+    #[test]
+    fn build_reanchor_packets_emits_three_when_both_cached() {
+        let info = sample_info(0x1234);
+        let appearance = vec![0xAA, 0xBB];
+        let tint = vec![0xCC, 0xDD];
+
+        let pkts = build_reanchor_packets(
+            &TEST_KEY,
+            100,
+            0x1234,
+            &info,
+            Some(&appearance),
+            Some(&tint),
+            &[],
+        );
+
+        assert_eq!(
+            pkts.len(),
+            3,
+            "with cached appearance + tint, must return 3 packets"
+        );
+    }
+
+    /// No cache → 1 packet (burst only). The pawn will render blank, but
+    /// emitting a partial replay would be worse — body without tint or
+    /// vice versa flickers visibly.
+    #[test]
+    fn build_reanchor_packets_emits_one_when_neither_cached() {
+        let info = sample_info(0x1234);
+        let pkts = build_reanchor_packets(&TEST_KEY, 100, 0x1234, &info, None, None, &[]);
+
+        assert_eq!(
+            pkts.len(),
+            1,
+            "without cache, must return only the burst packet"
+        );
+    }
+
+    /// Partial cache → 1 packet. Pinning the "all-or-nothing" rule for
+    /// the replay so a future bug where only one of appearance/tint is
+    /// populated doesn't silently emit a half-replay.
+    #[test]
+    fn build_reanchor_packets_emits_one_when_only_one_side_cached() {
+        let info = sample_info(0x1234);
+        let appearance = vec![0xAA];
+        let tint = vec![0xBB];
+
+        let only_appearance =
+            build_reanchor_packets(&TEST_KEY, 100, 0x1234, &info, Some(&appearance), None, &[]);
+        let only_tint =
+            build_reanchor_packets(&TEST_KEY, 100, 0x1234, &info, None, Some(&tint), &[]);
+
+        assert_eq!(
+            only_appearance.len(),
+            1,
+            "appearance-only cache must not emit appearance packet alone"
+        );
+        assert_eq!(
+            only_tint.len(),
+            1,
+            "tint-only cache must not emit tint packet alone"
+        );
+    }
+
+    /// Acks attach to the burst packet only. Replay packets must use
+    /// empty acks — duplicating acks would re-acknowledge already-acked
+    /// sequence IDs and (depending on the protocol layer) could be
+    /// rejected as malformed by the client.
+    #[test]
+    fn build_reanchor_packets_attaches_acks_to_burst_only() {
+        let info = sample_info(0x1234);
+        let appearance = vec![0xAA];
+        let tint = vec![0xBB];
+
+        let no_acks = build_reanchor_packets(
+            &TEST_KEY,
+            100,
+            0x1234,
+            &info,
+            Some(&appearance),
+            Some(&tint),
+            &[],
+        );
+        let with_acks = build_reanchor_packets(
+            &TEST_KEY,
+            100,
+            0x1234,
+            &info,
+            Some(&appearance),
+            Some(&tint),
+            &[42, 43],
+        );
+
+        assert_ne!(
+            no_acks[0], with_acks[0],
+            "adding acks must change the burst packet"
+        );
+        assert_eq!(
+            no_acks[1], with_acks[1],
+            "BeingAppearance packet must not include acks (was identical with vs without acks)"
+        );
+        assert_eq!(
+            no_acks[2], with_acks[2],
+            "onEntityTint packet must not include acks (was identical with vs without acks)"
+        );
+    }
+
+    /// Sequence IDs are consecutive: base, base+1, base+2. Verified by
+    /// reconstructing what each replay packet would look like with an
+    /// explicit seq ID and asserting equality. This catches any future
+    /// "simplification" that hardcodes the same seq for all packets, or
+    /// that increments by the wrong stride.
+    #[test]
+    fn build_reanchor_packets_uses_consecutive_seqs() {
+        use crate::mercury::{build_entity_method_packet, method_idx};
+
+        let info = sample_info(0x1234);
+        let appearance = vec![0xAA, 0xBB];
+        let tint = vec![0xCC, 0xDD];
+        let base_seq = 500u32;
+
+        let pkts = build_reanchor_packets(
+            &TEST_KEY,
+            base_seq,
+            0x1234,
+            &info,
+            Some(&appearance),
+            Some(&tint),
+            &[],
+        );
+
+        let expected_appearance = build_entity_method_packet(
+            &TEST_KEY,
+            base_seq + 1,
+            &[],
+            0x1234,
+            method_idx::BEING_APPEARANCE,
+            &appearance,
+        );
+        let expected_tint = build_entity_method_packet(
+            &TEST_KEY,
+            base_seq + 2,
+            &[],
+            0x1234,
+            method_idx::ON_ENTITY_TINT,
+            &tint,
+        );
+
+        assert_eq!(
+            pkts[1], expected_appearance,
+            "packet[1] must be BeingAppearance with seq=base_seq+1"
+        );
+        assert_eq!(
+            pkts[2], expected_tint,
+            "packet[2] must be onEntityTint with seq=base_seq+2"
         );
     }
 }

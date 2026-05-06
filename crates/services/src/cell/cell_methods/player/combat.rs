@@ -153,8 +153,9 @@ pub async fn dispatch(
     }
 }
 
-/// In-place respawn: keep the cell entity (and instance) alive, send the
-/// minimal client-side burst that re-creates just the pawn actor.
+/// In-place respawn: keep the cell entity (and instance) alive, send a
+/// targeted client-side burst that re-creates just the pawn actor and
+/// repopulates its visible properties.
 ///
 /// Why in-place: `RESET_ENTITIES` (the gate-travel sledgehammer) tears down
 /// every client-side entity, which fires kismet `OnInit`/`OnSpawn` events
@@ -163,28 +164,36 @@ pub async fn dispatch(
 /// closed again. The server-side instance survives (cell entity preserved),
 /// but the *client-side* kismet state was the visible regression.
 ///
-/// What we send instead: the gate-travel "enter-world body" —
-/// `BASEMSG_SPACE_VIEWPORT_INFO` + `BASEMSG_CREATE_CELL_PLAYER` +
-/// `BASEMSG_FORCED_POSITION` — without `RESET_ENTITIES`. AoI entities,
-/// kismet sequence state, and the level itself are untouched.
+/// What we send instead (handled in [`reanchor_player.rs`](../../../base/world_entry/reanchor_player.rs)):
+/// 1. `BASEMSG_CREATE_BASE_PLAYER` — the load-bearing pawn-recreate
+///    primitive. Invokes the client's `createBasePlayer` callback, which
+///    destroys the ragdolled pawn actor and instantiates a fresh standing
+///    one (same hook used on initial login).
+/// 2. `BASEMSG_SPACE_VIEWPORT_INFO` + `BASEMSG_CREATE_CELL_PLAYER` +
+///    `BASEMSG_FORCED_POSITION` — the gate-travel "enter-world body",
+///    keeps the client's space/viewport tables consistent with the new
+///    pawn and snaps it to spawn.
+/// 3. `BeingAppearance` + `onEntityTint` (separate bundle) — replays the
+///    cached appearance args from initial world entry so the new pawn
+///    isn't blank.
 ///
-/// Known limitation: this does NOT clear the local pawn's ragdoll
-/// state. The player respawns ragdolled-but-movable. Empirically that
-/// matches the original SGW behavior (the Python emulator's `onRevived`
-/// only clears `BSF_Dead`, never sends `Entity_Spawn`). The trade we're
-/// making: instance preservation (door state, encounters, sequences)
-/// over cosmetic ragdoll exit.
+/// AoI entities, kismet sequence state, and the level itself are
+/// untouched because we never send `RESET_ENTITIES`.
 ///
-/// Why not the prior in-place attempts:
+/// Why not the prior in-place attempts (recorded so future-us doesn't
+/// repeat the iteration):
 /// - `onSequence Entity_Spawn` (event 5000): the cooked
 ///   `KIS-abilities_human.Death` package's `SeqEvent_EntitySpawn` node
 ///   has no output wired to `APawn::TermRagdoll` (confirmed via Ghidra),
 ///   so the kismet path is a no-op.
-/// - `CREATE_BASE_PLAYER` (0x05) prefix: tore down the pawn (good — got
-///   rid of the ragdoll) but the recreated pawn had no properties,
-///   leaving the player invisible. Property replay would require
-///   essentially duplicating the world-entry flow, which defeats the
-///   purpose of preserving the instance.
+/// - `CREATE_CELL_PLAYER`-only burst (no `CREATE_BASE_PLAYER` prefix):
+///   instance preserved, but pawn stayed ragdolled. The client's
+///   `createCellPlayer` handler treats a re-issue for an existing
+///   player id as a space/viewport update, not a pawn recreate.
+/// - `CREATE_BASE_PLAYER` prefix without property replay: pawn was
+///   re-created cleanly (un-ragdolled) but had no properties, leaving
+///   the player invisible. Pulling appearance/tint from the cached
+///   world-entry args closed the loop.
 /// - Full `RESET_ENTITIES` reload: clears ragdoll cleanly but resets
 ///   all client kismet (door re-closes, encounters re-fire). Rejected.
 ///
@@ -197,16 +206,18 @@ async fn handle_respawn(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    if space_mgr.get_entity(entity_id).is_none() {
-        tracing::warn!(entity_id, "respawn: entity not found");
-        return;
-    }
+    let space_id = match space_mgr.get_entity(entity_id) {
+        Some(e) => e.space_id.0 as u32,
+        None => {
+            tracing::warn!(entity_id, "respawn: entity not found");
+            return;
+        }
+    };
 
     let (target_world, spawn_pos) = resolve_respawn_target(respawner_id, entity_id, space_mgr);
 
     let current_world = space_mgr.get_entity_world_name(entity_id);
     let same_world = current_world.as_deref() == Some(target_world.as_str());
-    let space_id = space_mgr.get_entity(entity_id).map(|e| e.space_id.0 as u32);
 
     // Close the Defeat Window first.
     let _ = tx
@@ -219,10 +230,12 @@ async fn handle_respawn(
 
     if !same_world {
         // Cross-world: full gate-travel reload (player is leaving the space).
-        if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-            if let Some(player_id) = entity.player_id {
-                super::super::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx).await;
-            }
+        // Entity existence guaranteed by the early-return above.
+        let entity = space_mgr
+            .get_entity_mut(entity_id)
+            .expect("entity existence checked above");
+        if let Some(player_id) = entity.player_id {
+            super::super::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx).await;
         }
         space_mgr.destroy_entity(entity_id);
         tracing::info!(
@@ -242,28 +255,27 @@ async fn handle_respawn(
         return;
     }
 
-    // Same-world: reset cell-entity state in place, then send the in-place
-    // burst plus a `ReanchorPlayer` (CREATE_CELL_PLAYER re-issue) at the end
-    // to actually re-create the pawn actor and clear ragdoll.
-    let stat_update = if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-        if let Some(h) = entity.stats.get_mut(HEALTH) {
-            h.set_current(h.max);
-        }
-        if let Some(f) = entity.stats.get_mut(FOCUS) {
-            f.set_current(f.max);
-        }
-        let stat_update = entity.stats.serialize_dirty();
-        entity.stats.clear_dirty();
+    // Same-world: reset cell-entity state in place, then dispatch
+    // `ReanchorPlayer` to drive the client-side pawn recreate +
+    // appearance replay.
+    let entity = space_mgr
+        .get_entity_mut(entity_id)
+        .expect("entity existence checked above");
+    if let Some(h) = entity.stats.get_mut(HEALTH) {
+        h.set_current(h.max);
+    }
+    if let Some(f) = entity.stats.get_mut(FOCUS) {
+        f.set_current(f.max);
+    }
+    let stat_update = entity.stats.serialize_dirty();
+    entity.stats.clear_dirty();
 
-        // Hard-reset state flags + their refcounts. A raw `state_field = 0`
-        // would clear the bits but leave stale counters, which the next
-        // ref-counted unset would interpret as still-positive.
-        entity.clear_all_state_flags();
-        entity.abilities.clear_all_cooldowns();
-        stat_update
-    } else {
-        Vec::new()
-    };
+    // Hard-reset state flags + their refcounts. A raw `state_field = 0`
+    // would clear the bits but leave stale counters, which the next
+    // ref-counted unset would interpret as still-positive.
+    entity.clear_all_state_flags();
+    entity.abilities.clear_all_cooldowns();
+
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 
     // Push the refreshed HEALTH/FOCUS to the HUD via onStatUpdate.
@@ -289,19 +301,10 @@ async fn handle_respawn(
     )
     .await;
 
-    // Re-anchor: VIEWPORT_INFO + CREATE_CELL_PLAYER + FORCED_POSITION.
-    // CREATE_CELL_PLAYER is the load-bearing piece — it re-creates the
-    // cell-side pawn actor on the client, dropping the ragdoll state.
-    let space_id = match space_id {
-        Some(s) => s,
-        None => {
-            tracing::error!(
-                entity_id,
-                "respawn: entity_id missing space_id after position update — cannot dispatch ReanchorPlayer"
-            );
-            return;
-        }
-    };
+    // Re-anchor: CREATE_BASE_PLAYER + VIEWPORT + CREATE_CELL_PLAYER +
+    // FORCED_POSITION + cached BeingAppearance/onEntityTint replay.
+    // CREATE_BASE_PLAYER is the load-bearing piece — it triggers the
+    // client's pawn-recreate hook, dropping the ragdoll state.
     let _ = tx
         .send(CellToBaseMsg::ReanchorPlayer {
             entity_id,
