@@ -13,8 +13,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 use crate::mercury::{
     build_avatar_update, build_create_entity_base, build_create_entity_cascade,
-    build_entity_invisible, build_entity_leave, build_entity_method_packet, build_reset_entities,
-    method_idx,
+    build_entity_invisible, build_entity_leave, build_entity_method_packet,
 };
 
 use super::super::helpers::send_to_witness;
@@ -335,103 +334,6 @@ pub(crate) async fn handle_cell_message(
                 db_pool,
             )
             .await;
-        }
-        CellToBaseMsg::RespawnReload {
-            entity_id,
-            world_name,
-            spawn_pos,
-        } => {
-            tracing::info!(entity_id, %world_name, ?spawn_pos, "RespawnReload: triggering map reload");
-
-            // 1a. Send RESET_ENTITIES to destroy the ragdolled pawn.
-            // Without this, onClientMapLoad re-uses the existing pawn which
-            // retains its ragdoll physics mode. RESET_ENTITIES forces the client
-            // to destroy all entities so mapLoaded creates them fresh.
-            send_to_witness(
-                socket,
-                connected,
-                entity_to_addr,
-                entity_id,
-                build_reset_entities,
-            )
-            .await;
-
-            // 1b. Send onClientMapLoad to trigger loading screen
-            let mut ml_args = Vec::new();
-            crate::mercury::write_wstring(&mut ml_args, &world_name); // areaName
-            crate::mercury::write_wstring(&mut ml_args, &world_name); // mapPath
-            ml_args.extend_from_slice(&0i32.to_le_bytes()); // WorldID
-            ml_args.extend_from_slice(&spawn_pos[0].to_le_bytes()); // Location X
-            ml_args.extend_from_slice(&spawn_pos[1].to_le_bytes()); // Location Y
-            ml_args.extend_from_slice(&spawn_pos[2].to_le_bytes()); // Location Z
-            ml_args.extend_from_slice(&0.0f32.to_le_bytes()); // Direction X
-            ml_args.extend_from_slice(&0.0f32.to_le_bytes()); // Direction Y
-            ml_args.extend_from_slice(&0.0f32.to_le_bytes()); // Direction Z
-            send_to_witness(
-                socket,
-                connected,
-                entity_to_addr,
-                entity_id,
-                |key, seq, acks| {
-                    build_entity_method_packet(
-                        key,
-                        seq,
-                        acks,
-                        entity_id,
-                        method_idx::ON_CLIENT_MAP_LOAD,
-                        &ml_args,
-                    )
-                },
-            )
-            .await;
-
-            // 2. Set up pending_client_ready so the next onClientReady triggers
-            //    a fresh mapLoaded sequence (stats, appearance, state_field=0).
-            //    This is what actually clears the ragdoll — the full world re-entry.
-            //    We query player_id from the DB via account_id since we don't cache it.
-            let addr = { entity_to_addr.lock().unwrap().get(&entity_id).copied() };
-            if let Some(addr) = addr {
-                let (account_id, cached_player_id, appearance_args, tint_args) = {
-                    let clients = connected.lock().unwrap();
-                    if let Some(c) = clients.get(&addr) {
-                        (
-                            c.account_id,
-                            c.active_player_id,
-                            c.cached_appearance_args.clone().unwrap_or_default(),
-                            c.cached_tint_args.clone().unwrap_or_default(),
-                        )
-                    } else {
-                        (0, None, vec![], vec![])
-                    }
-                };
-                // Fail closed: a missing active_player_id means we cannot
-                // safely identify which character to respawn. The previous
-                // "lowest player_id for account" fallback would silently
-                // respawn a different character on multi-character accounts —
-                // the same bug class hardened in handle_gate_travel.
-                let player_id: i32 = match cached_player_id {
-                    Some(pid) => pid,
-                    None => {
-                        tracing::error!(
-                            entity_id, account_id,
-                            "Respawn: no active_player_id cached — aborting respawn (would risk respawning the wrong character on multi-character accounts)"
-                        );
-                        return;
-                    }
-                };
-
-                let mut clients = connected.lock().unwrap();
-                if let Some(c) = clients.get_mut(&addr) {
-                    c.pending_client_ready = Some(super::super::PendingClientReadyInfo {
-                        entity_id,
-                        player_id,
-                        world_name: world_name.clone(),
-                        appearance_args,
-                        tint_args,
-                    });
-                    tracing::debug!(entity_id, player_id, "Set pending_client_ready for respawn");
-                }
-            }
         }
         CellToBaseMsg::StartMinigame {
             entity_id,

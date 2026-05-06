@@ -19,13 +19,15 @@ When an entity's health reaches zero:
 
 ## Respawn Flow
 
-When the server handles `callForAid` or `respawn`:
+When the server handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat.rs::handle_respawn`](../../crates/services/src/cell/cell_methods/player/combat.rs)):
 
-1. **`onEndAidWait`** (method 99) — closes the Defeat Window (Lua calls `PlayerDefeatWin:hide()`)
-2. **`onStatUpdate`** — restore health/focus to max
-3. **`onSequence` with `Entity_Spawn` (event_id 5000)** — triggers kismet spawn sequence which calls `APawn::TermRagdoll` (UE3 exec at `0x00529780`), ending ragdoll physics
-4. **`onStateFieldUpdate(0)`** — clear all flags (dead, movement lock, combat, etc.)
-5. **Position update** — teleport player to spawn point via `update_entity_position`
+1. **`onStatUpdate`** — restore health/focus to max via `serialize_dirty` after `set_current(max)`.
+2. **`onEndAidWait`** (method 99) — closes the Defeat Window (Lua calls `PlayerDefeatWin:hide()`).
+3. **`onSequence` with `Entity_Spawn` (event_id 5000)** — triggers `SeqEvent_EntitySpawn` kismet which calls `APawn::TermRagdoll` (UE3 exec at `0x00529780`), ending ragdoll physics in-place. Looks up the sequence_id via `space_mgr.sequence_map[(1025, 5000)]` (seed value 2753).
+4. **`onStateFieldUpdate(0)`** — broadcast cleared `state_field` to the player and AoI witnesses so dead/movement-lock/combat flags lift everywhere.
+5. **`TeleportPlayer`** (cell→base RPC) — base sends `BASEMSG_FORCED_POSITION` (0x31) to authoritatively snap the avatar plus `onPlayerTeleport` (method 116) for streaming-load coordination. Same path the ring transporters use; no loading screen, no map reload.
+
+The flow runs entirely in-place. **No `RESET_ENTITIES` + `onClientMapLoad` reload.** A previous version triggered a full world re-entry to clear ragdoll, but the BaseApp handler set `pending_client_ready` without setting `pending_map_loaded`, so the client's `mapLoaded` reply was silently dropped, leaving the camera locked. The Entity_Spawn kismet path eliminates both the reload and the handshake gap (issue #217).
 
 ## Critical: Ragdoll is Kismet-Controlled
 
@@ -78,6 +80,23 @@ Per respawner:
 ### onEndAidWait (method 99)
 No arguments.
 
+### onSequence Entity_Spawn (method 23, on respawn)
+
+The same 26-byte ON_SEQUENCE wire layout that `Entity_Death` uses, with `KismetEventSetSeqID` set to the spawn sequence (seed value 2753 for the Mob event set):
+
+```
+[KismetEventSetSeqID: i32 LE]   // 2753 for player respawn (event_set 1025 + Entity_Spawn 5000)
+[SourceID: i32 LE]              // respawning entity_id
+[TargetID: i32 LE]              // also self
+[PrimaryTarget: u8]             // 1
+[ImpactTime: f32 LE]            // 0.0
+[NameValuePairs count: u32 LE]  // 0
+[ViewType: u8]                  // 0 (KISMET_VIEW_Witness)
+[InstanceId: i32 LE]            // 0
+```
+
+Total: 26 bytes. Mirrors the `Entity_Death` (5001) emit at [`damage_apply/mod.rs:302-322`](../../crates/services/src/cell/abilities/damage_apply/mod.rs).
+
 ## Python Reference
 
-The Python emulator's `SGWBeing.onRevived()` only calls `self.unsetStateFlag(BSF_Dead)`. It never sends `Entity_Spawn` (5000). The Entity_Spawn event ID is defined in `Atrea/enums.py:544` but never used in the Python codebase. **This feature was never completed in the previous emulator.**
+The Python emulator's `SGWBeing.onRevived()` only calls `self.unsetStateFlag(BSF_Dead)`. It never sends `Entity_Spawn` (5000). The Entity_Spawn event ID is defined in `Atrea/enums.py:544` but never used in the Python codebase — Cimmeria's Rust port is the first implementation that drives the kismet sequence, eliminating the ragdoll-stuck-after-respawn class of bugs that motivated the Python emulator's heavy reload-based workaround.

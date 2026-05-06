@@ -3,7 +3,7 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-05-05  
-> **Total tests**: 585  
+> **Total tests**: 586  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
@@ -244,7 +244,8 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [request_active_slot_change_rejects_out_of_range_slot](../../../crates/services/src/cell/cell_methods/inventory/tests.rs#L521) | unit | Cell / Cell Methods / Inventory | 2026-04-30 | CodeRabbit out-of-diff: REQUEST_ACTIVE_SLOT_CHANGE must reject slot_id outside 0..5 before mutating active_bandolier_slot or sending ActiveSlotUpdate |  |
 | [dispatch_returns_false_for_unknown_method](../../../crates/services/src/cell/cell_methods/player/combat.rs#L319) | unit | Cell / Cell Methods / Player | 2026-05-04 | Asserts on `!handled` |  |
 | [use_ability_with_short_args_silently_drops](../../../crates/services/src/cell/cell_methods/player/combat.rs#L334) | unit | Cell / Cell Methods / Player | 2026-05-04 | USE_ABILITY with a too-short payload (< 8 bytes) must return true (handler took the method) but not start any cooldown, not consume any state, and not emit packets — the args are silently ignored |  |
-| [handle_respawn_restores_stats_clears_flags_and_sends_respawn_reload](../../../crates/services/src/cell/cell_methods/player/combat.rs#L360) | unit | Cell / Cell Methods / Player | 2026-05-04 | `handle_respawn` is the load-bearing piece of CALL_FOR_AID |  |
+| [handle_respawn_emits_in_place_respawn_burst](../../../crates/services/src/cell/cell_methods/player/combat.rs#L451) | unit | Cell / Cell Methods / Player | 2026-05-05 | Pins the full in-place respawn burst (onStatUpdate + onEndAidWait + onSequence Entity_Spawn(2753) + onStateFieldUpdate(0) + TeleportPlayer) and the absence of any RespawnReload. Regression guard for the #217 fix that swapped a heavy `RESET_ENTITIES`+`onClientMapLoad` reload (with the `pending_map_loaded`-never-set handshake gap) for the kismet-driven in-place ragdoll exit |  |
+| [handle_respawn_skips_onsequence_when_spawn_seq_missing](../../../crates/services/src/cell/cell_methods/player/combat.rs#L612) | unit | Cell / Cell Methods / Player | 2026-05-05 | Negative-pin: when `sequence_map` lacks the (event_set 1025, Entity_Spawn 5000) entry, respawn must NOT emit a spurious onSequence with a zero/stale seq_id; the lookup-miss branch logs an error and skips while TeleportPlayer still fires |  |
 | [resolve_respawn_position_uses_matching_respawner_id](../../../crates/services/src/cell/cell_methods/player/combat.rs#L460) | unit | Cell / Cell Methods / Player | 2026-05-04 | `resolve_respawn_position` matches a respawner_id to its stored position |  |
 | [resolve_respawn_position_falls_back_to_world_respawner_on_id_miss](../../../crates/services/src/cell/cell_methods/player/combat.rs#L477) | unit | Cell / Cell Methods / Player | 2026-05-04 | `resolve_respawn_position` falls back to the world's first respawner when the requested id isn't found |  |
 | [resolve_respawn_position_returns_castle_default_when_no_respawners](../../../crates/services/src/cell/cell_methods/player/combat.rs#L496) | unit | Cell / Cell Methods / Player | 2026-05-04 | `resolve_respawn_position` returns CASTLE_DEFAULT_POS for Castle_CellBlock when no respawners exist (ship-config fallback) |  |

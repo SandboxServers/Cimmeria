@@ -187,10 +187,16 @@ async fn handle_respawn(
     tracing::info!(entity_id, "Player respawned, state_field=0");
 
     // Push the refreshed health/focus to the client via onEntityStat (method 20)
-    // — without this, mapLoaded after RespawnReload would query the stale DB
-    // values and the player would render with their pre-death stats.
+    // — without this, the post-respawn HUD would render the pre-death stats.
     if !stat_update.is_empty() {
-        crate::cell::abilities::send_entity_method(entity_id, 20, stat_update, tx, space_mgr).await;
+        crate::cell::abilities::send_entity_method(
+            entity_id,
+            crate::mercury::method_idx::ON_STAT_UPDATE,
+            stat_update,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 
     let _ = tx
@@ -201,27 +207,104 @@ async fn handle_respawn(
         })
         .await;
 
+    // Fire the Entity_Spawn (5000) kismet sequence so the client ends ragdoll
+    // physics on its own pawn (UE3 `APawn::TermRagdoll`) without a full map
+    // reload. Mirrors the Entity_Death (5001) emit at
+    // `damage_apply/mod.rs:302-322` — same event_set (1025 = Mob), same
+    // 26-byte ON_SEQUENCE wire layout (sequence_id / source / target /
+    // primary / impact_time / nvp_count / view_type / instance_id).
+    //
+    // Without this, a previous version triggered a heavy
+    // `RESET_ENTITIES + onClientMapLoad` reload to clear the ragdoll, which
+    // had a hole in the handshake: the BaseApp handler set
+    // `pending_client_ready` but not `pending_map_loaded`, so the client's
+    // `mapLoaded` reply was silently dropped and the camera stayed locked.
+    // Eliminating the reload eliminates that whole handshake gap.
+    {
+        const EVENT_ENTITY_SPAWN: i32 = 5000;
+        const PLAYER_EVENT_SET_ID: i32 = 1025; // Mob — also drives Entity_Death
+        if let Some(&spawn_seq_id) = space_mgr
+            .sequence_map
+            .get(&(PLAYER_EVENT_SET_ID, EVENT_ENTITY_SPAWN))
+        {
+            let mut seq_args = Vec::with_capacity(26);
+            seq_args.extend_from_slice(&spawn_seq_id.to_le_bytes()); // KismetEventSetSeqID
+            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // SourceID (respawning entity)
+            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes()); // TargetID (also self)
+            seq_args.push(1); // PrimaryTarget
+            seq_args.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
+            seq_args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count
+            seq_args.push(0); // ViewType (KISMET_VIEW_Witness — matches Entity_Death)
+            seq_args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
+            crate::cell::abilities::send_entity_method(
+                entity_id,
+                crate::mercury::method_idx::ON_SEQUENCE,
+                seq_args,
+                tx,
+                space_mgr,
+            )
+            .await;
+        } else {
+            tracing::error!(
+                entity_id,
+                event_set_id = PLAYER_EVENT_SET_ID,
+                "Entity_Spawn sequence missing from sequence_map — \
+                 client will not exit ragdoll. Seed at event_set 1025 / \
+                 sequence_id 2753 should cover this; check the resources \
+                 dump if respawn appears stuck."
+            );
+        }
+    }
+
+    // Broadcast the cleared state_field to the player and AoI witnesses so
+    // HUD / movement-lock / dead-cursor state lifts on every observer's
+    // client. Matches the use_ability state-flip pattern.
+    crate::cell::abilities::send_entity_method(
+        entity_id,
+        crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+        0u32.to_le_bytes().to_vec(),
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    // Server-side spatial state: write the new position into the entity and
+    // grid, so AoI ticks broadcast `EntityMoved` for witnesses.
     let spawn_pos: [f32; 3] = resolve_respawn_position(respawner_id, entity_id, space_mgr);
-    let world_name = space_mgr
-        .get_entity_world_name(entity_id)
-        .unwrap_or_else(|| "Castle_CellBlock".to_string());
     space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
 
+    // Client-side: hand off to BaseApp, which sends `BASEMSG_FORCED_POSITION`
+    // (0x31) to authoritatively snap the avatar plus `onPlayerTeleport` (116)
+    // for streaming-load coordination. Same path the ring transporters use.
+    let space_id = match space_mgr.get_entity(entity_id).map(|e| e.space_id.0 as u32) {
+        Some(s) => s,
+        None => {
+            tracing::error!(
+                entity_id,
+                "respawn: entity_id missing from entity_space — cannot dispatch TeleportPlayer"
+            );
+            return;
+        }
+    };
     if let Err(e) = tx
-        .send(CellToBaseMsg::RespawnReload {
+        .send(CellToBaseMsg::TeleportPlayer {
             entity_id,
-            world_name: world_name.clone(),
-            spawn_pos,
+            space_id,
+            position: spawn_pos,
         })
         .await
     {
         tracing::error!(
-            entity_id, %world_name, ?spawn_pos, error = %e,
-            "RespawnReload send to base failed -- player will not be teleported to spawn"
+            entity_id, space_id, ?spawn_pos, error = %e,
+            "TeleportPlayer (respawn) send to base failed -- player will not be snapped to spawn"
         );
         return;
     }
-    tracing::info!(entity_id, ?spawn_pos, "Sent RespawnReload to BaseApp");
+    tracing::info!(
+        entity_id,
+        ?spawn_pos,
+        "Respawn dispatched (in-place; no map reload)"
+    );
 }
 
 fn resolve_respawn_position(
@@ -352,14 +435,37 @@ mod tests {
     }
 
     /// `handle_respawn` is the load-bearing piece of CALL_FOR_AID.
-    /// Must restore HEALTH/FOCUS to max, clear all state flags, clear
-    /// ability cooldowns, update entity position to the resolved
-    /// spawn point (Castle default for Castle_CellBlock), and fire
-    /// onEndAidWait + RespawnReload.
+    /// Must restore HEALTH/FOCUS to max, clear all state flags + their
+    /// refcounts, clear ability cooldowns, update entity position to
+    /// the resolved spawn point (Castle default for Castle_CellBlock),
+    /// and fire the in-place respawn burst:
+    ///
+    ///   1. `onStatUpdate` (refreshed health/focus)
+    ///   2. `onEndAidWait` (closes the Defeat Window)
+    ///   3. `onSequence` Entity_Spawn (ends client ragdoll)
+    ///   4. `onStateFieldUpdate(0)` (lifts dead/movement-lock state)
+    ///   5. `TeleportPlayer` (snaps the avatar to spawn)
+    ///
+    /// Crucially, **no** `RespawnReload`: the prior version triggered a
+    /// full map reload to clear ragdoll, which had a handshake gap
+    /// (`pending_map_loaded` never set on the BaseApp side) that left
+    /// the camera locked. The Entity_Spawn kismet hits
+    /// `APawn::TermRagdoll` in-place, no reload needed.
     #[tokio::test]
-    async fn handle_respawn_restores_stats_clears_flags_and_sends_respawn_reload() {
+    async fn handle_respawn_emits_in_place_respawn_burst() {
         use crate::cell::combat::{BSF_DEAD, BSF_MOVEMENT_LOCK};
         let mut mgr = make_mgr_with_player("Castle_CellBlock");
+
+        // Pre-seed the Entity_Spawn sequence the way the production seed
+        // does (event_set 1025 / sequence_id 2753 → Entity_Spawn 5000).
+        // Without this, the kismet lookup short-circuits and the test
+        // can't observe the onSequence emit.
+        const ENTITY_SPAWN: i32 = 5000;
+        const PLAYER_EVENT_SET_ID: i32 = 1025;
+        const SPAWN_SEQ_ID: i32 = 2753;
+        mgr.sequence_map
+            .insert((PLAYER_EVENT_SET_ID, ENTITY_SPAWN), SPAWN_SEQ_ID);
+
         if let Some(e) = mgr.get_entity_mut(1) {
             // Damaged + flagged dead + an ability on cooldown. Use the
             // refcounting set_state_flag helpers so the
@@ -422,34 +528,118 @@ mod tests {
             "respawn must teleport player to Castle default position"
         );
 
-        // Drain rx and check for RespawnReload.
-        let mut saw_respawn_reload = false;
         let mut saw_end_aid_wait = false;
+        let mut saw_entity_spawn = false;
+        let mut saw_state_field_clear = false;
+        let mut saw_teleport = false;
         while let Ok(m) = rx.try_recv() {
             match m {
-                CellToBaseMsg::RespawnReload {
+                CellToBaseMsg::EntityMethodCall {
+                    entity_id: 1,
+                    method_index,
+                    args,
+                } => {
+                    if method_index == crate::mercury::method_idx::ON_END_AID_WAIT {
+                        saw_end_aid_wait = true;
+                    } else if method_index == crate::mercury::method_idx::ON_SEQUENCE {
+                        // ON_SEQUENCE wire layout: 26 bytes total.
+                        // Pin sequence_id at offset 0 so a regression
+                        // that swaps the spawn id (e.g., uses
+                        // Entity_Death 5001's seq_id by mistake) is
+                        // caught here.
+                        assert_eq!(
+                            args.len(),
+                            26,
+                            "ON_SEQUENCE Entity_Spawn payload must be exactly 26 bytes"
+                        );
+                        let seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                        if seq_id == SPAWN_SEQ_ID {
+                            saw_entity_spawn = true;
+                        }
+                    } else if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
+                        // 4 bytes — the cleared u32 state_field.
+                        assert_eq!(args.len(), 4);
+                        let new_state = u32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                        if new_state == 0 {
+                            saw_state_field_clear = true;
+                        }
+                    }
+                }
+                CellToBaseMsg::TeleportPlayer {
                     entity_id,
-                    world_name,
+                    position,
                     ..
                 } => {
                     assert_eq!(entity_id, 1);
-                    assert_eq!(world_name, "Castle_CellBlock");
-                    saw_respawn_reload = true;
-                }
-                CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index,
-                    ..
-                } if entity_id == 1
-                    && method_index == crate::mercury::method_idx::ON_END_AID_WAIT =>
-                {
-                    saw_end_aid_wait = true;
+                    assert_eq!(
+                        position,
+                        [-334.231, 73.472, -228.026],
+                        "TeleportPlayer must carry the resolved spawn position"
+                    );
+                    saw_teleport = true;
                 }
                 _ => {}
             }
         }
         assert!(saw_end_aid_wait, "respawn must emit onEndAidWait");
-        assert!(saw_respawn_reload, "respawn must emit RespawnReload");
+        assert!(
+            saw_entity_spawn,
+            "respawn must emit onSequence Entity_Spawn so the client \
+             ends ragdoll without a map reload — load-bearing for \
+             #217 (no full reload, no pending_map_loaded gap)"
+        );
+        assert!(
+            saw_state_field_clear,
+            "respawn must broadcast onStateFieldUpdate(0) so dead/\
+             movement-lock state lifts on every observer's client"
+        );
+        assert!(
+            saw_teleport,
+            "respawn must emit TeleportPlayer (NOT RespawnReload) — \
+             this is the snap that drives BASEMSG_FORCED_POSITION on \
+             the client; RespawnReload is gone"
+        );
+    }
+
+    /// Negative-pin: when the Entity_Spawn sequence is missing from
+    /// `sequence_map` (e.g., a content gap), respawn must NOT emit an
+    /// onSequence with a zero/stale sequence_id — the kismet branch
+    /// short-circuits and logs an error. The other respawn-burst
+    /// messages still fire so the player at least gets stats /
+    /// state-field / teleport (ragdoll just persists until the next
+    /// map transition). Pin so a regression that emits a spurious
+    /// onSequence on the missing-seed path doesn't ship.
+    #[tokio::test]
+    async fn handle_respawn_skips_onsequence_when_spawn_seq_missing() {
+        let mut mgr = make_mgr_with_player("Castle_CellBlock");
+        // Intentionally do NOT seed sequence_map.
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_respawn(1, -1, &tx, &mut mgr).await;
+
+        let mut saw_onsequence = false;
+        let mut saw_teleport = false;
+        while let Ok(m) = rx.try_recv() {
+            match m {
+                CellToBaseMsg::EntityMethodCall { method_index, .. }
+                    if method_index == crate::mercury::method_idx::ON_SEQUENCE =>
+                {
+                    saw_onsequence = true;
+                }
+                CellToBaseMsg::TeleportPlayer { .. } => saw_teleport = true,
+                _ => {}
+            }
+        }
+        assert!(
+            !saw_onsequence,
+            "missing Entity_Spawn seed must NOT emit a spurious \
+             onSequence — the lookup-miss branch logs an error and \
+             skips, leaving ragdoll for the next world transition"
+        );
+        assert!(
+            saw_teleport,
+            "TeleportPlayer must still fire — the snap and stat \
+             refresh are independent of the kismet sequence"
+        );
     }
 
     /// `resolve_respawn_position` matches a respawner_id to its
