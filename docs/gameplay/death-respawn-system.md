@@ -29,6 +29,14 @@ When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/comb
 
 The `RESET_ENTITIES` step destroys the ragdolled pawn outright. The pawn re-created by mapLoaded starts fresh — no kismet `TermRagdoll` call needed because the dead pawn no longer exists.
 
+### Same-world reload nuance
+
+Respawning back into the world the player just died in is a **same-world** reload. The client doesn't send `mapLoaded` in that case because the terrain is already cached, so it jumps straight from `CREATE_BASE_PLAYER + onClientMapLoad` to `onClientReady` — leaving `pending_map_loaded = Some` and `pending_client_ready = None`. Without intervention the on-ready handler bails and the pawn never gets placed (symptom: blank world after the loading screen).
+
+[`handle_on_client_ready`](../../crates/services/src/base/world_entry_appearance.rs) detects this case at the top: if `pending_map_loaded` is still set when `onClientReady` arrives, it fast-forwards by running `handle_map_loaded` synchronously to send VIEWPORT + CELL + FORCED_POSITION + entity-data. After that the normal finalization (`pending_client_ready` → ConnectEntity + InitPlayerState + BeingAppearance resend) proceeds on the same call.
+
+Cross-world gate-travel always sees `mapLoaded` arrive normally; the fast-forward only triggers for same-world reloads (respawn into current world).
+
 ## Why a reload (not the in-place kismet path)
 
 A previous attempt drove ragdoll exit in place via `onSequence Entity_Spawn` (5000), expecting the client kismet to call `APawn::TermRagdoll` on the local pawn. Empirically that didn't work — the player stayed face-down on the floor after the position snap. Ghidra inspection of `SGW.exe` confirmed why:

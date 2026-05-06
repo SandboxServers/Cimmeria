@@ -59,12 +59,47 @@ pub(crate) fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
 /// 3-5 times via createCacheStamp replays; this second send mimics that.
 pub(crate) async fn handle_on_client_ready(
     addr: SocketAddr,
+    key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     socket: &Arc<UdpSocket>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<sqlx::PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Same-world reload (gate-travel-style respawn into the world the client
+    // already has loaded): the client doesn't send `mapLoaded` because the
+    // terrain is already cached, so it jumps straight from receiving
+    // `CREATE_BASE_PLAYER + onClientMapLoad` to sending `onClientReady`.
+    // That leaves `pending_map_loaded = Some(...)` and `pending_client_ready
+    // = None`, so the normal path below would bail at "no pending
+    // world-entry finalization" and the player would render as nothing —
+    // pawn never placed in the world. Fast-forward by running
+    // `handle_map_loaded` ourselves; it sends VIEWPORT + CELL +
+    // FORCED_POSITION + entity-data and sets `pending_client_ready` so
+    // we can finalize on this same call.
+    let map_loaded_pending = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        clients
+            .get(&addr)
+            .is_some_and(|c| c.pending_map_loaded.is_some())
+    };
+    if map_loaded_pending {
+        tracing::info!(
+            %addr,
+            "onClientReady arrived without mapLoaded — same-world reload, fast-forwarding through handle_map_loaded"
+        );
+        super::world_entry::handle_map_loaded(
+            socket,
+            addr,
+            key,
+            connected,
+            cell_tx,
+            entity_to_addr,
+            db_pool,
+        )
+        .await?;
+    }
+
     let pending = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients
