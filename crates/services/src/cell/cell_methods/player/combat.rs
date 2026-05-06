@@ -186,8 +186,9 @@ async fn handle_respawn(
 
     tracing::info!(entity_id, "Player respawned, state_field=0");
 
-    // Push the refreshed health/focus to the client via onEntityStat (method 20)
-    // — without this, the post-respawn HUD would render the pre-death stats.
+    // Push the refreshed health/focus to the client via onStatUpdate
+    // (method 20) — without this, the post-respawn HUD would render the
+    // pre-death stats.
     if !stat_update.is_empty() {
         crate::cell::abilities::send_entity_method(
             entity_id,
@@ -256,9 +257,16 @@ async fn handle_respawn(
         }
     }
 
-    // Broadcast the cleared state_field to the player and AoI witnesses so
-    // HUD / movement-lock / dead-cursor state lifts on every observer's
-    // client. Matches the use_ability state-flip pattern.
+    // Send the cleared state_field to the respawning player's own client
+    // so the HUD/movement-lock/dead-cursor state lifts. `send_entity_method`
+    // routes player-targeted methods to the owner only — the matching
+    // pattern at use_ability:404-410 has the same shape. Witnesses don't
+    // get this state-flip directly; they observe the respawn through the
+    // AoI broadcast of public stats (HEALTH back to max) and the
+    // EntityMoved that follows update_entity_position. The cross-witness
+    // broadcast for player death/respawn state-field flips is a known
+    // preexisting gap (player Entity_Death + onStateFieldUpdate emit on
+    // the same player-only routing) — tracked separately.
     crate::cell::abilities::send_entity_method(
         entity_id,
         crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
@@ -528,6 +536,22 @@ mod tests {
             "respawn must teleport player to Castle default position"
         );
 
+        // Build the byte-exact Entity_Spawn ON_SEQUENCE payload the
+        // production code should emit. Reconstructing it here (rather
+        // than slicing args field-by-field) means a regression that
+        // perturbs ANY byte — view_type, instance_id, primary-target
+        // flag, etc. — fails the test instead of silently shipping.
+        let mut expected_spawn_payload = Vec::with_capacity(26);
+        expected_spawn_payload.extend_from_slice(&SPAWN_SEQ_ID.to_le_bytes()); // KismetEventSetSeqID
+        expected_spawn_payload.extend_from_slice(&1i32.to_le_bytes()); // SourceID = entity_id
+        expected_spawn_payload.extend_from_slice(&1i32.to_le_bytes()); // TargetID = entity_id (self)
+        expected_spawn_payload.push(1); // PrimaryTarget
+        expected_spawn_payload.extend_from_slice(&0.0f32.to_le_bytes()); // ImpactTime
+        expected_spawn_payload.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count
+        expected_spawn_payload.push(0); // ViewType (KISMET_VIEW_Witness)
+        expected_spawn_payload.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
+
+        let mut saw_stat_update = false;
         let mut saw_end_aid_wait = false;
         let mut saw_entity_spawn = false;
         let mut saw_state_field_clear = false;
@@ -539,23 +563,28 @@ mod tests {
                     method_index,
                     args,
                 } => {
-                    if method_index == crate::mercury::method_idx::ON_END_AID_WAIT {
+                    if method_index == crate::mercury::method_idx::ON_STAT_UPDATE {
+                        // serialize_dirty always emits a 4-byte u32
+                        // count prefix; non-empty body means at least
+                        // one stat was actually written. The HUD
+                        // refresh is the practical reason this exists.
+                        assert!(
+                            args.len() > 4,
+                            "respawn must emit onStatUpdate with the \
+                             refreshed HEALTH/FOCUS in the payload, \
+                             not an empty count-prefix-only body"
+                        );
+                        saw_stat_update = true;
+                    } else if method_index == crate::mercury::method_idx::ON_END_AID_WAIT {
                         saw_end_aid_wait = true;
                     } else if method_index == crate::mercury::method_idx::ON_SEQUENCE {
-                        // ON_SEQUENCE wire layout: 26 bytes total.
-                        // Pin sequence_id at offset 0 so a regression
-                        // that swaps the spawn id (e.g., uses
-                        // Entity_Death 5001's seq_id by mistake) is
-                        // caught here.
                         assert_eq!(
-                            args.len(),
-                            26,
-                            "ON_SEQUENCE Entity_Spawn payload must be exactly 26 bytes"
+                            args, expected_spawn_payload,
+                            "Entity_Spawn ON_SEQUENCE payload must stay \
+                             byte-exact — every field is load-bearing \
+                             for the client kismet handler"
                         );
-                        let seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                        if seq_id == SPAWN_SEQ_ID {
-                            saw_entity_spawn = true;
-                        }
+                        saw_entity_spawn = true;
                     } else if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
                         // 4 bytes — the cleared u32 state_field.
                         assert_eq!(args.len(), 4);
@@ -581,12 +610,20 @@ mod tests {
                 _ => {}
             }
         }
+        assert!(
+            saw_stat_update,
+            "respawn must emit onStatUpdate so the post-respawn HUD \
+             reflects the restored HEALTH/FOCUS instead of the \
+             pre-death values"
+        );
         assert!(saw_end_aid_wait, "respawn must emit onEndAidWait");
         assert!(
             saw_entity_spawn,
             "respawn must emit onSequence Entity_Spawn so the client \
-             ends ragdoll without a map reload — load-bearing for \
-             #217 (no full reload, no pending_map_loaded gap)"
+             ends ragdoll without a map reload — load-bearing: a \
+             regression that drops this would force a full reload \
+             back into the BaseApp respawn handshake (the path with \
+             the pending_map_loaded gap)"
         );
         assert!(
             saw_state_field_clear,
