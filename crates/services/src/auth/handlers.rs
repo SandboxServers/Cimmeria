@@ -545,4 +545,25 @@ mod tests {
         assert!(xml.contains(r#"Ticket="BBBB""#));
         assert!(xml.contains(r#"Port="32832""#));
     }
+
+    #[test]
+    fn parse_malformed_login_request_returns_error() {
+        // Missing required attributes.
+        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
+        let req = parse_login_request(body);
+        assert!(req.is_err(), "missing SKU/AccountName/Password must fail");
+
+        // Empty password that doesn't match SHA-1 length.
+        let body2 = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="test" Password="short" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
+        let req2 = parse_login_request(body2).unwrap();
+        assert_eq!(req2.password, "short");
+        // The handler later validates length (40) and hex chars.
+    }
+
+    #[test]
+    fn parse_server_selection_malformed_returns_error() {
+        let body = r#"<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
+        let sel = parse_server_selection(body);
+        assert!(sel.is_err(), "missing ServerSelection attribute must fail");
+    }
 }
