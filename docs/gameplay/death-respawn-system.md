@@ -19,32 +19,43 @@ When an entity's health reaches zero:
 
 ## Respawn Flow
 
-When the server handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat.rs::handle_respawn`](../../crates/services/src/cell/cell_methods/player/combat.rs)):
+When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat.rs::handle_respawn`](../../crates/services/src/cell/cell_methods/player/combat.rs)) it hands off to the **gate-travel reload path** — the same pipeline stargates use. Step by step:
 
-1. **`onStatUpdate`** — restore health/focus to max via `serialize_dirty` after `set_current(max)`.
-2. **`onEndAidWait`** (method 99) — closes the Defeat Window (Lua calls `PlayerDefeatWin:hide()`).
-3. **`onStateFieldUpdate(0)`** — sends the cleared `state_field` to the respawning player's own client so HUD/movement-lock/dead-cursor lift. Routes through `send_entity_method`, which targets the owning client only for player entities (NPC entity-method calls fan out to witnesses; player entity-method calls do not). Witnesses observe the respawn through the AoI broadcast of public stats (HEALTH back to max) and the EntityMoved that follows the position update — there's no direct cross-witness broadcast of the state-field flip on either death or respawn today.
-4. **`onSequence` with `Entity_Spawn` (event_id 5000)** — triggers `SeqEvent_EntitySpawn` kismet which calls `APawn::TermRagdoll` (UE3 exec at `0x00529780`), ending ragdoll physics in-place. Looks up the sequence_id via `space_mgr.sequence_map[(1025, 5000)]` (seed value 2753). **Must arrive at the client AFTER the state-field clear**: the kismet handler refuses to TermRagdoll if the actor is still in dead state, so reversing steps 3 and 4 leaves the player on the ground after teleport. Death does the symmetric thing (set state_field, then emit Entity_Death).
-5. **`TeleportPlayer`** (cell→base RPC) — base sends `BASEMSG_FORCED_POSITION` (0x31) to authoritatively snap the avatar plus `onPlayerTeleport` (method 116) for streaming-load coordination. Same path the ring transporters use; no loading screen, no map reload. Goes last so TermRagdoll runs on the pre-snap pose and the position snaps cleanly afterwards.
+1. **Resolve target** — `resolve_respawn_target(respawner_id, entity_id, space_mgr)` returns `(world, [x, y, z])`. Priority: explicit respawner_id → first respawner registered for the player's current world → Castle default for `Castle_CellBlock`/unknown → in-place at the player's current position for any other world (avoids silently snapping the player cross-world if a content gap leaves a world without a respawner).
+2. **`onEndAidWait`** (method 99) — close the Defeat Window before kicking off the loading screen, otherwise the panel renders on top of the loading screen for one tick.
+3. **Bandolier-ammo flush** — drain `bandolier_ammo_dirty` into `BandolierAmmoUpdate` so per-slot ammo persists across the destroy/recreate. Mirrors `handle_dial_gate`.
+4. **`SpaceManager::destroy_entity`** — tear down the cell entity. The reload re-creates it via `BaseToCellMsg::CreateEntity`; `InitPlayerState` repopulates `player_id` / abilities / bandolier / missions on the fresh entity; mapLoaded re-seeds stats from archetype defaults.
+5. **`CellToBaseMsg::GateTravel`** — hand off to BaseApp ([`base/world_entry/gate_travel/mod.rs`](../../crates/services/src/base/world_entry/gate_travel/mod.rs)). Base sends `BaseToCellMsg::CreateEntity` to recreate the cell entity at the spawn point, persists the destination world+position to `sgw_player`, sends `RESET_ENTITIES` to the client, and sets `pending_world_entry`. The client's next `ENABLE_ENTITIES` then drives the standard create-player + enter-world + mapLoaded sequence.
 
-The flow runs entirely in-place. **No `RESET_ENTITIES` + `onClientMapLoad` reload.** A previous version triggered a full world re-entry to clear ragdoll, but the BaseApp handler set `pending_client_ready` without setting `pending_map_loaded`, so the client's `mapLoaded` reply was silently dropped, leaving the camera locked. The Entity_Spawn kismet path eliminates both the reload and the handshake gap.
+The `RESET_ENTITIES` step destroys the ragdolled pawn outright. The pawn re-created by mapLoaded starts fresh — no kismet `TermRagdoll` call needed because the dead pawn no longer exists.
+
+## Why a reload (not the in-place kismet path)
+
+A previous attempt drove ragdoll exit in place via `onSequence Entity_Spawn` (5000), expecting the client kismet to call `APawn::TermRagdoll` on the local pawn. Empirically that didn't work — the player stayed face-down on the floor after the position snap. Ghidra inspection of `SGW.exe` confirmed why:
+
+- `SeqEvent_EntitySpawn` is a registered UClass (`USeqEvent_EntitySpawn` RTTI at `01dc5b68`, registered by `FUN_006b18f0`), and `Event_NetIn_onSequence` correctly routes through `SequenceManager` (callback class RTTI at `01e21d20`). So the **wire dispatch path is real**.
+- But sequences 2753 (Entity_Spawn) and 2140 (Entity_Death) both point to the **same cooked kismet package** `KIS-abilities_human.Death`. The package name + the Python emulator's documented "Entity_Spawn was never completed" note + two empirical attempts at an in-place burst (different orderings, same ragdoll-stuck symptom) are consistent with the package's `SeqEvent_EntitySpawn` node having no output wired to `TermRagdoll`. The cooked `.upk` is not server-modifiable.
+
+The reload sidesteps the kismet wiring entirely. It also avoids the `pending_map_loaded` handshake gap that broke an even earlier reload-style respawn handler — the gate-travel path uses `pending_world_entry` + `ENABLE_ENTITIES`, not the `pending_client_ready`/`pending_map_loaded` pair, so there's no handshake field that has to be set on both sides.
+
+A previous version of this doc described the in-place flow as the working implementation. That was wrong — keep this section in mind if you're tempted to re-introduce an `onSequence Entity_Spawn` shortcut.
 
 ## Critical: Ragdoll is Kismet-Controlled
 
 The client's ragdoll state is **entirely controlled by kismet sequences**, NOT by the state field:
 
 - `BSF_Dead` in `onStateFieldUpdate` → updates movement speed, fires UI events, does NOT control ragdoll
-- `Entity_Death` (5001) via `onSequence` → triggers `SeqEvent_EntityDeath` kismet → calls `InitRagdoll`
-- `Entity_Spawn` (5000) via `onSequence` → triggers `SeqEvent_EntitySpawn` kismet → calls `TermRagdoll`
+- `Entity_Death` (5001) via `onSequence` → triggers `SeqEvent_EntityDeath` kismet → calls `InitRagdoll` (this DOES work; the death package wires it)
+- `Entity_Spawn` (5000) via `onSequence` → would trigger `SeqEvent_EntitySpawn` kismet → would call `TermRagdoll`, but the cooked package's spawn-event output is not wired
 
-Without `Entity_Spawn`, clearing `BSF_Dead` leaves the player ragdolled.
+The respawn path can't rely on Entity_Spawn for ragdoll exit; the only reliable way to stop the local pawn from ragdolling is to destroy it (RESET_ENTITIES) and re-create it.
 
 ## Kismet Events (from Ghidra)
 
 | Event ID | Name | Ghidra Address | Kismet Class | Effect |
 |----------|------|---------------|--------------|--------|
-| 5000 | Entity_Spawn | 0x0186b646 | SeqEvent_EntitySpawn | End ragdoll, stand up |
-| 5001 | Entity_Death | 0x0186b59e | SeqEvent_EntityDeath | Start ragdoll |
+| 5000 | Entity_Spawn | 0x0186b646 | SeqEvent_EntitySpawn | (intended: end ragdoll) — not wired in shipped `KIS-abilities_human.Death` |
+| 5001 | Entity_Death | 0x0186b59e | SeqEvent_EntityDeath | Start ragdoll (works; wired in the death kismet) |
 | 5002 | Entity_Despawn | — | SeqEvent_EntityDespawn | Remove entity |
 | 5005 | Entity_CombatStateChanged | 0x019cb986 | SeqEvent_CombatStateChanged | Animation state transition |
 
@@ -57,14 +68,16 @@ Event set 1025 (Mob event set, used for players and NPCs):
 | 2753 | 5000 | Entity_Spawn | KIS-abilities_human.Death |
 | 2140 | 5001 | Entity_Death | KIS-abilities_human.Death |
 
-Both use the same kismet package which contains init/term ragdoll nodes.
+Both rows reference the same cooked package. Only the death-side wiring is functional in the shipped client.
 
 ## State Field Flags (EStateField)
 
 | Bit | Value | Name | Death Role |
 |-----|-------|------|------------|
-| 0 | 1 | BSF_Dead | Set on death, cleared on respawn |
-| 6 | 64 | BSF_MovementLock | Set on death to prevent WASD/jump |
+| 0 | 1 | BSF_Dead | Set on death; cleared by mapLoaded after the respawn reload |
+| 6 | 64 | BSF_MovementLock | Set on death; cleared by mapLoaded |
+
+The post-reload `mapLoaded` packet emits `onStateFieldUpdate(0)` as part of its standard init burst, so the cell doesn't need to issue a separate state-field clear during respawn.
 
 ## Wire Format
 
@@ -78,25 +91,23 @@ Per respawner:
 ```
 
 ### onEndAidWait (method 99)
-No arguments.
+No arguments. Sent by the cell at the start of respawn so the Defeat Window closes before the loading screen renders.
 
-### onSequence Entity_Spawn (method 23, on respawn)
+### CellToBaseMsg::GateTravel (cell→base, internal RPC)
 
-The same 26-byte ON_SEQUENCE wire layout that `Entity_Death` uses, with `KismetEventSetSeqID` set to the spawn sequence (seed value 2753 for the Mob event set):
+Not on the client wire; this is the inter-service handoff that triggers the reload. See [`crates/services/src/cell/messages/cell_to_base.rs`](../../crates/services/src/cell/messages/cell_to_base.rs) for the variant.
 
-```text
-[KismetEventSetSeqID: i32 LE]   // 2753 for player respawn (event_set 1025 + Entity_Spawn 5000)
-[SourceID: i32 LE]              // respawning entity_id
-[TargetID: i32 LE]              // also self
-[PrimaryTarget: u8]             // 1
-[ImpactTime: f32 LE]            // 0.0
-[NameValuePairs count: u32 LE]  // 0
-[ViewType: u8]                  // 0 (KISMET_VIEW_Witness)
-[InstanceId: i32 LE]            // 0
+```
+GateTravel {
+    entity_id: u32,
+    target_world_name: String,   // resolved respawner world
+    position: [f32; 3],          // resolved spawn point
+    rotation: [f32; 3],          // [0, 0, 0] for respawn (gate-travel uses [0, 0, yaw])
+}
 ```
 
-Total: 26 bytes. Mirrors the `Entity_Death` (5001) emit at [`damage_apply/mod.rs:302-322`](../../crates/services/src/cell/abilities/damage_apply/mod.rs).
+BaseApp handles this in [`base/world_entry/gate_travel/mod.rs::handle_gate_travel`](../../crates/services/src/base/world_entry/gate_travel/mod.rs) — same code path stargates use.
 
 ## Python Reference
 
-The Python emulator's `SGWBeing.onRevived()` only calls `self.unsetStateFlag(BSF_Dead)`. It never sends `Entity_Spawn` (5000). The Entity_Spawn event ID is defined in `Atrea/enums.py:544` but never used in the Python codebase — Cimmeria's Rust port is the first implementation that drives the kismet sequence, eliminating the ragdoll-stuck-after-respawn class of bugs that motivated the Python emulator's heavy reload-based workaround.
+The Python emulator's `SGWBeing.onRevived()` only calls `self.unsetStateFlag(BSF_Dead)` and never sends `Entity_Spawn` (5000). The Entity_Spawn event ID is defined in `Atrea/enums.py:544` but never emitted in the Python codebase — and the inline note in that file says the kismet handler "was never completed." Cimmeria's reload-based respawn matches the empirical client behavior the Python emulator's note hints at.
