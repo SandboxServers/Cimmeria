@@ -256,6 +256,30 @@ pub enum CellToBaseMsg {
         amount: i32,
     },
 
+    /// Same-world player reload (respawn). The cell entity stays alive — its
+    /// instance, NPCs, and kismet state survive — but the BaseApp tears down
+    /// the client-side pawn (`RESET_ENTITIES`) and replays the world-entry
+    /// packet sequence so the ragdolled local pawn is destroyed and replaced
+    /// with a fresh, alive one.
+    ///
+    /// Distinct from `GateTravel`: gate-travel destroys+recreates the cell
+    /// entity (which for instanced worlds destroys the entire instance), so
+    /// using gate-travel for respawn would reset every kismet sequence (door
+    /// states, completed encounters) — unacceptable for "I died, I'm back."
+    /// Respawn is a *client-side* reload only.
+    ///
+    /// `space_id` is the cell's authoritative space — the BaseApp uses it
+    /// directly in `WorldEntryInfo` instead of round-tripping a fresh
+    /// `BaseToCellMsg::CreateEntity` for an entity that already exists.
+    /// `position` is where the BaseApp should snap the player on the way
+    /// back in (resolved respawner spawn point).
+    RespawnReload {
+        entity_id: u32,
+        space_id: u32,
+        world_name: String,
+        position: [f32; 3],
+    },
+
     /// Authoritative same-world teleport. The cell has already updated its
     /// spatial state via `update_entity_position`; the base must now push the
     /// new position to the player's own client. Engine-level snap, no loading

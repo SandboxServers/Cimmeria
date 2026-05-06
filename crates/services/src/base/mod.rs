@@ -128,6 +128,14 @@ pub(crate) struct ConnectedClientState {
     /// of falling back to "lowest player_id for the account" — which is
     /// wrong on multi-character accounts.
     pub active_player_id: Option<i32>,
+    /// Marks the in-flight reload as a same-world respawn (cell entity stays
+    /// alive, instance NOT torn down) rather than a gate-travel-style fresh
+    /// world entry. Set by `handle_respawn_reload` when the cell asks for a
+    /// client-only teardown/replay; consumed by `handle_on_client_ready` to
+    /// skip the `BaseToCellMsg::ConnectEntity` + `InitPlayerState` round-trip
+    /// (the cell entity is already connected and initialised — re-issuing
+    /// would re-load missions from DB and risk stomping in-flight state).
+    pub pending_respawn_reload: bool,
 }
 
 #[cfg(test)]

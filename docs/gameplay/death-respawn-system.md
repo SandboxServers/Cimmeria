@@ -19,23 +19,32 @@ When an entity's health reaches zero:
 
 ## Respawn Flow
 
-When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat.rs::handle_respawn`](../../crates/services/src/cell/cell_methods/player/combat.rs)) it hands off to the **gate-travel reload path** — the same pipeline stargates use. Step by step:
+When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat.rs::handle_respawn`](../../crates/services/src/cell/cell_methods/player/combat.rs)) the path forks on whether the resolved respawn point is in the same world as where the player died:
 
-1. **Resolve target** — `resolve_respawn_target(respawner_id, entity_id, space_mgr)` returns `(world, [x, y, z])`. Priority: explicit respawner_id → first respawner registered for the player's current world → Castle default for `Castle_CellBlock`/unknown → in-place at the player's current position for any other world (avoids silently snapping the player cross-world if a content gap leaves a world without a respawner).
-2. **`onEndAidWait`** (method 99) — close the Defeat Window before kicking off the loading screen, otherwise the panel renders on top of the loading screen for one tick.
-3. **Bandolier-ammo flush** — drain `bandolier_ammo_dirty` into `BandolierAmmoUpdate` so per-slot ammo persists across the destroy/recreate. Mirrors `handle_dial_gate`.
-4. **`SpaceManager::destroy_entity`** — tear down the cell entity. The reload re-creates it via `BaseToCellMsg::CreateEntity`; `InitPlayerState` repopulates `player_id` / abilities / bandolier / missions on the fresh entity; mapLoaded re-seeds stats from archetype defaults.
-5. **`CellToBaseMsg::GateTravel`** — hand off to BaseApp ([`base/world_entry/gate_travel/mod.rs`](../../crates/services/src/base/world_entry/gate_travel/mod.rs)). Base sends `BaseToCellMsg::CreateEntity` to recreate the cell entity at the spawn point, persists the destination world+position to `sgw_player`, sends `RESET_ENTITIES` to the client, and sets `pending_world_entry`. The client's next `ENABLE_ENTITIES` then drives the standard create-player + enter-world + mapLoaded sequence.
+- **Same-world respawn (the common case)**: keep the cell entity (and its instance) alive, reset its server-side state in place, and drive a *client-only* `RESET_ENTITIES` + world-entry replay via `CellToBaseMsg::RespawnReload`. **The instance — NPCs, kismet sequences (door states, completed encounters), regions — survives.** Dying in the middle of an active mission room then respawning brings you back to the same room mid-state, not a freshly spawned copy.
+- **Cross-world respawn**: fall through to the gate-travel pipeline. The player is leaving the space anyway (different world entirely), so destroying+recreating the cell entity is correct.
+
+### Same-world flow (`CellToBaseMsg::RespawnReload`)
+
+1. **Resolve target** — `resolve_respawn_target(respawner_id, entity_id, space_mgr)` returns `(world, [x, y, z])`. Priority: explicit respawner_id → first respawner registered for the player's current world → Castle default for `Castle_CellBlock`/unknown → in-place at the player's current position for any other world.
+2. **`onEndAidWait`** (method 99) — close the Defeat Window before the loading screen renders.
+3. **Reset entity state in place** — HEALTH/FOCUS to max, `clear_all_state_flags` (drops both `state_field` and the per-flag refcount map — a raw `state_field = 0` would leave stale counters), `clear_all_cooldowns`, `update_entity_position` to the spawn point.
+4. **Flush bandolier ammo** — drain `bandolier_ammo_dirty` to DB so the post-reload `query_player_load_data` sees latest values.
+5. **`CellToBaseMsg::RespawnReload { entity_id, space_id, world_name, position }`** — `space_id` is the entity's existing space (no `BaseToCellMsg::CreateEntity` round-trip — would create a fresh space and orphan the old instance).
+6. BaseApp [`handle_respawn_reload`](../../crates/services/src/base/world_entry/respawn_reload.rs):
+   - Persists the spawn point to `sgw_player` (relog returns to spawn, not corpse).
+   - Sends `RESET_ENTITIES` so the client destroys all client-side entities (including the ragdolled pawn).
+   - Sets `pending_world_entry` (with the existing space_id), `pending_player_load_data`, and **`pending_respawn_reload = true`**.
+7. Client → server: `ENABLE_ENTITIES` → BaseApp sends `CREATE_BASE_PLAYER + onClientMapLoad`.
+8. Same-world means the client skips `mapLoaded` (terrain unchanged). [`handle_on_client_ready`](../../crates/services/src/base/world_entry_appearance.rs) fast-forwards through `handle_map_loaded` when `pending_map_loaded` is still set, which sends `VIEWPORT + CELL + FORCED_POSITION + entity data` and stages `pending_client_ready`.
+9. The on-ready finalization continues on the same call — but **skips `BaseToCellMsg::ConnectEntity` and `InitPlayerState`** because `pending_respawn_reload` is set: the cell entity is already initialised, re-running InitPlayerState would re-load missions from DB (potentially regressing in-flight state).
+10. BeingAppearance + onEntityTint resent (visuals only). Player is back on their feet.
 
 The `RESET_ENTITIES` step destroys the ragdolled pawn outright. The pawn re-created by mapLoaded starts fresh — no kismet `TermRagdoll` call needed because the dead pawn no longer exists.
 
-### Same-world reload nuance
+### Cross-world flow (`CellToBaseMsg::GateTravel`)
 
-Respawning back into the world the player just died in is a **same-world** reload. The client doesn't send `mapLoaded` in that case because the terrain is already cached, so it jumps straight from `CREATE_BASE_PLAYER + onClientMapLoad` to `onClientReady` — leaving `pending_map_loaded = Some` and `pending_client_ready = None`. Without intervention the on-ready handler bails and the pawn never gets placed (symptom: blank world after the loading screen).
-
-[`handle_on_client_ready`](../../crates/services/src/base/world_entry_appearance.rs) detects this case at the top: if `pending_map_loaded` is still set when `onClientReady` arrives, it fast-forwards by running `handle_map_loaded` synchronously to send VIEWPORT + CELL + FORCED_POSITION + entity-data. After that the normal finalization (`pending_client_ready` → ConnectEntity + InitPlayerState + BeingAppearance resend) proceeds on the same call.
-
-Cross-world gate-travel always sees `mapLoaded` arrive normally; the fast-forward only triggers for same-world reloads (respawn into current world).
+Identical to stargate travel: flush bandolier, `space_mgr.destroy_entity`, send `GateTravel`. BaseApp creates a new cell entity in the destination world, sends RESET_ENTITIES, and replays the full world-entry flow including `ConnectEntity` + `InitPlayerState`. The instance teardown is unavoidable (the player is leaving the space).
 
 ## Why a reload (not the in-place kismet path)
 

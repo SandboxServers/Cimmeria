@@ -1,7 +1,7 @@
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_content_engine::chain::ChainEngine;
-use cimmeria_entity::stats::HEALTH;
+use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
 
 use super::constants::*;
@@ -153,23 +153,30 @@ pub async fn dispatch(
     }
 }
 
-/// Hand off to the gate-travel reload path so the client tears down the
-/// ragdolled pawn and re-enters the world fresh.
+/// Reset the cell entity in place and trigger a *client-side-only* reload.
 ///
-/// Why a reload (vs an in-place flow): the in-place path needs the cooked
+/// Why a reload at all: the in-place ON_SEQUENCE path needs the cooked
 /// kismet package to wire `SeqEvent_EntitySpawn → APawn::TermRagdoll`, and
 /// the shipped client's `KIS-abilities_human.Death` package was authored
 /// only for the death animation — the spawn event has no output connected
-/// to TermRagdoll. (Python emulator notes "Entity_Spawn was never completed",
-/// and two attempts at an in-place burst both left the player ragdolled
-/// after teleport.) The cooked `.upk` is not modifiable from the server.
+/// to TermRagdoll. The cooked `.upk` is not modifiable from the server, so
+/// the only reliable way to stop the local pawn ragdolling is to destroy it
+/// (RESET_ENTITIES) and re-create it via the world-entry packet sequence.
 ///
-/// The reload sidesteps the kismet wiring entirely: `RESET_ENTITIES`
-/// destroys the ragdolled pawn, and the follow-up world-entry sequence
-/// re-creates a fresh pawn with default state. Same path stargates use,
-/// and it properly handshakes via `pending_world_entry` / `ENABLE_ENTITIES`
-/// (no `pending_map_loaded` gap — that gap was the bug class in the
-/// previously-deleted `RespawnReload` handler).
+/// Why NOT gate-travel: gate-travel destroys+recreates the cell entity. For
+/// instanced worlds (Castle_CellBlock, SGC_W1, mission instances) destroying
+/// the lone player wipes the entire space — NPCs, kismet sequences (door
+/// states, completed encounters), regions. Respawning would then plop the
+/// player back into a fresh-spawned instance: doors closed, mobs respawned,
+/// progress reset. Acceptable for "I died and want a do-over from a save
+/// point", not for "I died inside an active mission room."
+///
+/// What we do instead: keep the cell entity (and thus its instance) alive,
+/// reset its server-side state in place, and have the BaseApp drive a
+/// client-only `RESET_ENTITIES` + world-entry replay. The new
+/// `CellToBaseMsg::RespawnReload` carries enough state for the BaseApp to
+/// stage `pending_world_entry` against the existing space_id without any
+/// `BaseToCellMsg::CreateEntity` round-trip.
 async fn handle_respawn(
     entity_id: u32,
     respawner_id: i32,
@@ -183,9 +190,17 @@ async fn handle_respawn(
 
     let (target_world, spawn_pos) = resolve_respawn_target(respawner_id, entity_id, space_mgr);
 
+    // Resolve space_id: use the entity's current space if the world matches
+    // (typical case — respawner is in the world the player died in). If the
+    // respawner picks a different world, fall through to GateTravel since
+    // we'd need to actually move the entity across spaces.
+    let current_world = space_mgr.get_entity_world_name(entity_id);
+    let same_world = current_world.as_deref() == Some(target_world.as_str());
+    let space_id = space_mgr.get_entity(entity_id).map(|e| e.space_id.0 as u32);
+
     // Close the Defeat Window before kicking off the reload — otherwise the
     // loading screen renders on top of the still-open "Player Defeated"
-    // panel and the panel persists into the post-respawn frame for one tick.
+    // panel for one tick.
     let _ = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -194,38 +209,98 @@ async fn handle_respawn(
         })
         .await;
 
-    // Flush pending bandolier ammo before we destroy the cell entity —
-    // anything still in `bandolier_ammo_dirty` is silently lost across the
-    // re-create. Mirrors `handle_dial_gate`'s flush.
+    if !same_world {
+        // Cross-world respawn: defer to gate-travel (different space, different
+        // instance). Flush bandolier ammo, destroy cell entity, send GateTravel.
+        // The instance teardown is unavoidable here — the player is leaving the
+        // space anyway.
+        if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+            if let Some(player_id) = entity.player_id {
+                super::super::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx).await;
+            }
+        }
+        space_mgr.destroy_entity(entity_id);
+        tracing::info!(
+            entity_id,
+            from = ?current_world,
+            to = %target_world,
+            "Respawn: cross-world reload via GateTravel"
+        );
+        let _ = tx
+            .send(CellToBaseMsg::GateTravel {
+                entity_id,
+                target_world_name: target_world,
+                position: spawn_pos,
+                rotation: [0.0; 3],
+            })
+            .await;
+        return;
+    }
+
+    // Same-world respawn: keep the cell entity and instance alive. Reset
+    // server-side state in place so the post-reload mapLoaded sequence
+    // observes a clean entity (HEALTH/FOCUS to max, no dead/movement-lock
+    // flags, no carried-over cooldowns), and snap the entity to the spawn
+    // point so the post-reload VIEWPORT/CELL/FORCED_POSITION packet built
+    // from `entry_info.pos` lands on the right tile.
+    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+        if let Some(h) = entity.stats.get_mut(HEALTH) {
+            h.set_current(h.max);
+        }
+        if let Some(f) = entity.stats.get_mut(FOCUS) {
+            f.set_current(f.max);
+        }
+        // serialize_dirty isn't needed — the post-reload mapLoaded body
+        // sends a full stat dump from archetype defaults; the local edits
+        // here are for the cell's own bookkeeping (next combat tick).
+        entity.stats.clear_dirty();
+
+        // Hard-reset state flags + their refcounts. Raw `state_field = 0`
+        // would clear the bits but leave stale counters that the next
+        // ref-counted unset would interpret as still-positive.
+        entity.clear_all_state_flags();
+        entity.abilities.clear_all_cooldowns();
+    }
+    space_mgr.update_entity_position(entity_id, spawn_pos, [0, 0, 0], [0.0; 3]);
+
+    // Flush pending bandolier ammo to DB before the reload. The reload
+    // doesn't tear down the entity, but it DOES re-fetch some state from
+    // the DB on the BaseApp side (player_load_data); flushing first
+    // guarantees those fetches see the latest values.
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         if let Some(player_id) = entity.player_id {
             super::super::inventory::flush_dirty_bandolier_ammo(entity, player_id, tx).await;
         }
     }
 
-    // Tear down the cell entity. The reload path re-creates it via
-    // `BaseToCellMsg::CreateEntity`, and the world-entry sequence that
-    // follows sends `InitPlayerState` to repopulate player_id / abilities /
-    // bandolier / missions on the fresh entity. Stats (HEALTH/FOCUS) come
-    // from archetype defaults baked into mapLoaded — no separate refresh
-    // needed.
-    space_mgr.destroy_entity(entity_id);
-
-    // Hand off to the BaseApp gate-travel handler. It will:
-    //   1. Send `BaseToCellMsg::CreateEntity` → cell creates fresh entity at
-    //      (target_world, spawn_pos).
-    //   2. Persist destination world+position to `sgw_player`.
-    //   3. Send `RESET_ENTITIES` to the client → destroys all entities
-    //      including the ragdolled pawn (kismet ragdoll dies with the pawn;
-    //      no Entity_Spawn / TermRagdoll dance needed).
-    //   4. Set `pending_world_entry` → the client's next `ENABLE_ENTITIES`
-    //      drives the create-player + enter-world + mapLoaded sequence.
+    // Hand off to the BaseApp respawn-reload handler:
+    //   1. Persist spawn point to `sgw_player` (relog returns to spawn,
+    //      not to corpse).
+    //   2. Send `RESET_ENTITIES` to the client → destroys all client-side
+    //      entities including the ragdolled pawn.
+    //   3. Set `pending_world_entry` (with the existing space_id) +
+    //      `pending_respawn_reload = true` → next ENABLE_ENTITIES drives
+    //      CREATE_BASE_PLAYER + onClientMapLoad. Same-world means the
+    //      client skips mapLoaded (terrain unchanged); the on-ready
+    //      handler fast-forwards through map_loaded, then skips
+    //      ConnectEntity + InitPlayerState because the cell entity is
+    //      already initialised.
+    let space_id = match space_id {
+        Some(s) => s,
+        None => {
+            tracing::error!(
+                entity_id,
+                "respawn: entity_id missing space_id after position update — cannot dispatch RespawnReload"
+            );
+            return;
+        }
+    };
     let _ = tx
-        .send(CellToBaseMsg::GateTravel {
+        .send(CellToBaseMsg::RespawnReload {
             entity_id,
-            target_world_name: target_world,
+            space_id,
+            world_name: target_world,
             position: spawn_pos,
-            rotation: [0.0; 3],
         })
         .await;
 }
@@ -358,71 +433,107 @@ mod tests {
         );
     }
 
-    /// `handle_respawn` is the load-bearing piece of CALL_FOR_AID.
-    /// Hands off to the gate-travel reload path: the cell tears down its
-    /// own entity (so the BaseApp re-creates it cleanly via the standard
-    /// world-entry flow), closes the Defeat Window with `onEndAidWait`,
-    /// and emits a `CellToBaseMsg::GateTravel` carrying the resolved
-    /// respawn world + position.
+    /// `handle_respawn` for SAME-world respawn keeps the cell entity (and
+    /// its instance) alive: resets server-side state in place, snaps to
+    /// the spawn point, then emits `CellToBaseMsg::RespawnReload` so the
+    /// BaseApp drives a *client-only* RESET_ENTITIES + world-entry
+    /// replay. The cell's instance — NPCs, kismet (door states,
+    /// completed encounters), regions — all survive the respawn.
     ///
-    /// Why no in-place burst: the previous version emitted an
-    /// `Entity_Spawn` ON_SEQUENCE expecting the client kismet to call
-    /// `APawn::TermRagdoll` on the local pawn. Empirically that didn't
-    /// work — the cooked `KIS-abilities_human.Death` package's
-    /// `SeqEvent_EntitySpawn` node has no output wired to TermRagdoll
-    /// (matching the Python emulator's "Entity_Spawn was never
-    /// completed" note from Ghidra inspection). The reload destroys the
-    /// pawn outright so kismet wiring is irrelevant.
+    /// Why this matters: gate-travel destroys+recreates the cell entity,
+    /// which for instanced worlds tears down the entire instance. Using
+    /// gate-travel for respawn means dying inside an active mission room
+    /// resets every door / kismet sequence in that room. Same-world
+    /// respawn must NOT do that.
     ///
     /// What the test pins:
-    ///   - `onEndAidWait` fires BEFORE the GateTravel handoff (so the
-    ///     loading screen doesn't render on top of the Defeat Window).
-    ///   - The cell entity is destroyed (the reload re-creates it).
-    ///   - `GateTravel` carries the resolved respawn world + position.
+    ///   - Cell entity SURVIVES (instance preserved).
+    ///   - HEALTH/FOCUS reset to max in place.
+    ///   - State flags (BSF_Dead, BSF_MovementLock) cleared with refcounts.
+    ///   - Cooldowns cleared.
+    ///   - Position snapped to the spawn point.
+    ///   - `onEndAidWait` fires BEFORE the reload handoff.
+    ///   - `RespawnReload` carries entity_id + space_id + world + pos.
+    ///   - No `GateTravel` from the cell (that path destroys the entity).
     ///   - No `onSequence` Entity_Spawn / `onStateFieldUpdate` /
-    ///     `TeleportPlayer` from the cell — those were the in-place
-    ///     primitives, the reload subsumes them.
+    ///     `TeleportPlayer` (the reload subsumes those).
     #[tokio::test]
-    async fn handle_respawn_hands_off_to_gate_travel_reload() {
+    async fn handle_respawn_same_world_keeps_entity_and_emits_respawn_reload() {
         use crate::cell::combat::{BSF_DEAD, BSF_MOVEMENT_LOCK};
         let mut mgr = make_mgr_with_player("Castle_CellBlock");
+        // Capture original space_id so we can prove the entity stayed in it.
+        let original_space_id = mgr.get_entity(1).unwrap().space_id.0 as u32;
 
         if let Some(e) = mgr.get_entity_mut(1) {
-            // Damaged + flagged dead + an ability on cooldown. None of this
-            // server-side state needs to be cleared by handle_respawn
-            // anymore — the entity is destroyed, fresh state comes from
-            // the post-reload InitPlayerState + mapLoaded sequence.
             if let Some(h) = e.stats.get_mut(HEALTH) {
                 h.update(0, 1, 100);
+                h.clear_dirty();
             }
             if let Some(f) = e.stats.get_mut(FOCUS) {
                 f.update(0, 0, 50);
+                f.clear_dirty();
             }
             e.set_state_flag(BSF_DEAD);
             e.set_state_flag(BSF_MOVEMENT_LOCK);
+            assert!(
+                !e.state_flag_counts.is_empty(),
+                "fixture sanity: counters should be populated before respawn"
+            );
             e.abilities
                 .start_ability_cooldown(592, std::time::Duration::from_secs(60));
         }
         let (tx, mut rx) = mpsc::channel(16);
         handle_respawn(1, -1, &tx, &mut mgr).await;
 
-        // Cell entity destroyed (the reload re-creates it via
-        // `BaseToCellMsg::CreateEntity`).
+        // Cell entity SURVIVES (instance + kismet preserved).
+        let entity = mgr.get_entity(1).expect(
+            "same-world respawn must keep the cell entity alive — destroying it would tear down \
+             the instance and reset every kismet sequence (doors, completed encounters), which \
+             is the whole bug this path exists to avoid",
+        );
+        assert_eq!(
+            entity.space_id.0 as u32, original_space_id,
+            "respawn must keep the entity in its original instanced space — a regression that \
+             moved the entity to a fresh space would be a silent instance reset"
+        );
+        assert_eq!(
+            entity.stats.get(HEALTH).unwrap().cur,
+            100,
+            "HEALTH must be restored to max in place"
+        );
+        assert_eq!(
+            entity.stats.get(FOCUS).unwrap().cur,
+            50,
+            "FOCUS must be restored to max in place"
+        );
+        assert_eq!(entity.state_field, 0, "state_field must be cleared");
         assert!(
-            mgr.get_entity(1).is_none(),
-            "respawn must destroy the cell entity so the reload path re-creates it cleanly — \
-             a regression that left the entity around would double up the entity_id and \
-             confuse AoI bookkeeping"
+            entity.state_flag_counts.is_empty(),
+            "respawn must clear the per-flag refcount map too — \
+             a raw state_field=0 would leave stale counters"
+        );
+        assert!(
+            !entity.abilities.is_on_cooldown(592),
+            "respawn must clear ability cooldowns"
+        );
+        // Player started at [42.0, 1.0, 17.0]; Castle_CellBlock has no
+        // respawner registered → Castle default.
+        assert_eq!(
+            [entity.position.x, entity.position.y, entity.position.z],
+            [-334.231, 73.472, -228.026],
+            "respawn must snap entity to spawn point"
         );
 
         // Track which messages fire and in what order.
         let mut end_aid_wait_at: Option<usize> = None;
-        let mut gate_travel_at: Option<usize> = None;
+        let mut respawn_reload_at: Option<usize> = None;
+        let mut saw_gate_travel = false;
         let mut saw_onsequence = false;
         let mut saw_state_field_update = false;
         let mut saw_teleport_player = false;
         let mut captured_world: Option<String> = None;
         let mut captured_pos: Option<[f32; 3]> = None;
+        let mut captured_space_id: Option<u32> = None;
 
         let mut idx: usize = 0;
         while let Ok(m) = rx.try_recv() {
@@ -442,18 +553,21 @@ mod tests {
                         saw_state_field_update = true;
                     }
                 }
-                CellToBaseMsg::GateTravel {
+                CellToBaseMsg::RespawnReload {
                     entity_id: 1,
-                    target_world_name,
+                    space_id,
+                    world_name,
                     position,
-                    rotation,
                 } => {
-                    assert_eq!(rotation, [0.0; 3]);
-                    captured_world = Some(target_world_name);
+                    captured_world = Some(world_name);
                     captured_pos = Some(position);
-                    if gate_travel_at.is_none() {
-                        gate_travel_at = Some(idx);
+                    captured_space_id = Some(space_id);
+                    if respawn_reload_at.is_none() {
+                        respawn_reload_at = Some(idx);
                     }
+                }
+                CellToBaseMsg::GateTravel { .. } => {
+                    saw_gate_travel = true;
                 }
                 CellToBaseMsg::TeleportPlayer { .. } => {
                     saw_teleport_player = true;
@@ -463,9 +577,13 @@ mod tests {
             idx += 1;
         }
 
-        // Negative pins: the in-place primitives must NOT fire — those
-        // were the ragdoll-stuck-after-respawn class of bugs. The reload
-        // subsumes them.
+        // Negative pins.
+        assert!(
+            !saw_gate_travel,
+            "same-world respawn must NOT emit GateTravel — that destroys the cell entity and \
+             tears down the instance, resetting all kismet state. RespawnReload exists to avoid \
+             exactly this."
+        );
         assert!(
             !saw_onsequence,
             "respawn must NOT emit onSequence (Entity_Spawn) — the cooked client kismet has no \
@@ -475,44 +593,105 @@ mod tests {
         assert!(
             !saw_state_field_update,
             "respawn must NOT emit onStateFieldUpdate(0) — the post-reload mapLoaded sequence \
-             includes ON_STATE_FIELD_UPDATE(0) by default; emitting it from the cell ahead of \
-             the reload duplicates the wire and races the destroy/recreate"
+             includes ON_STATE_FIELD_UPDATE(0) by default"
         );
         assert!(
             !saw_teleport_player,
-            "respawn must NOT emit TeleportPlayer — the gate-travel reload provides the position \
-             snap via the standard create-player + mapLoaded flow"
+            "respawn must NOT emit TeleportPlayer — the reload provides the position snap via \
+             the standard create-player + mapLoaded flow"
         );
 
         // Positive pins.
         let end_aid_idx =
             end_aid_wait_at.expect("respawn must emit onEndAidWait to close the Defeat Window");
-        let gate_idx = gate_travel_at.expect(
-            "respawn must emit CellToBaseMsg::GateTravel — this is the reload trigger that \
-             tears down the ragdolled pawn and replays world entry",
+        let reload_idx = respawn_reload_at.expect(
+            "respawn must emit CellToBaseMsg::RespawnReload — this is the reload trigger that \
+             tears down the client-side ragdolled pawn and replays world entry without \
+             destroying the cell entity",
         );
 
-        // Ordering: onEndAidWait BEFORE GateTravel. If GateTravel lands
-        // first the loading screen renders on top of the still-open
-        // "Player Defeated" panel for one tick.
         assert!(
-            end_aid_idx < gate_idx,
-            "onEndAidWait (msg #{end_aid_idx}) must precede GateTravel (msg #{gate_idx}) so the \
-             Defeat Window closes before the loading screen kicks in"
+            end_aid_idx < reload_idx,
+            "onEndAidWait (msg #{end_aid_idx}) must precede RespawnReload (msg #{reload_idx}) so \
+             the Defeat Window closes before the loading screen kicks in"
         );
 
-        // Resolved target: Castle_CellBlock has no respawner registered
-        // in the test fixture, so resolve_respawn_target falls back to
-        // the Castle default position.
         assert_eq!(
             captured_world.as_deref(),
             Some("Castle_CellBlock"),
-            "GateTravel must carry the resolved respawn world"
+            "RespawnReload must carry the resolved respawn world"
         );
         assert_eq!(
             captured_pos,
             Some([-334.231, 73.472, -228.026]),
-            "GateTravel must carry the resolved respawn position (Castle default)"
+            "RespawnReload must carry the resolved respawn position (Castle default)"
+        );
+        assert_eq!(
+            captured_space_id,
+            Some(original_space_id),
+            "RespawnReload must carry the entity's existing space_id — the BaseApp uses it \
+             directly in WorldEntryInfo to skip the BaseToCellMsg::CreateEntity round-trip \
+             (which would otherwise create a fresh space and destroy the old instance)"
+        );
+    }
+
+    /// Cross-world respawn (respawner in a different world from where the
+    /// player died) falls through to the gate-travel path because the
+    /// player is leaving the space anyway. The instance teardown is
+    /// unavoidable in that case — same-world preservation only matters
+    /// when staying in the same world.
+    #[tokio::test]
+    async fn handle_respawn_cross_world_falls_back_to_gate_travel() {
+        let mut mgr = make_mgr_with_player("Agnos_test");
+        // Register a respawner in a DIFFERENT world so the resolved target
+        // doesn't match the entity's current world.
+        mgr.respawners.push(RespawnerDef {
+            respawner_id: 7,
+            world_name: "Castle_CellBlock".to_string(),
+            name: "Castle Hub".to_string(),
+            pos: [10.0, 20.0, 30.0],
+        });
+
+        let (tx, mut rx) = mpsc::channel(16);
+        handle_respawn(1, 7, &tx, &mut mgr).await;
+
+        // Cross-world means destroy the cell entity (gate-travel will
+        // re-create it on the new world).
+        assert!(
+            mgr.get_entity(1).is_none(),
+            "cross-world respawn must destroy the cell entity (gate-travel pattern)"
+        );
+
+        let mut saw_gate_travel = false;
+        let mut saw_respawn_reload = false;
+        let mut captured_world: Option<String> = None;
+        while let Ok(m) = rx.try_recv() {
+            match m {
+                CellToBaseMsg::GateTravel {
+                    target_world_name, ..
+                } => {
+                    saw_gate_travel = true;
+                    captured_world = Some(target_world_name);
+                }
+                CellToBaseMsg::RespawnReload { .. } => {
+                    saw_respawn_reload = true;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(
+            saw_gate_travel,
+            "cross-world respawn must emit GateTravel (the player is leaving the space anyway)"
+        );
+        assert!(
+            !saw_respawn_reload,
+            "cross-world respawn must NOT emit RespawnReload — that's the same-world-only path"
+        );
+        assert_eq!(
+            captured_world.as_deref(),
+            Some("Castle_CellBlock"),
+            "GateTravel must target the respawner's world"
         );
     }
 

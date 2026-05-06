@@ -100,11 +100,16 @@ pub(crate) async fn handle_on_client_ready(
         .await?;
     }
 
-    let pending = {
+    let (pending, is_respawn_reload) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients
-            .get_mut(&addr)
-            .and_then(|c| c.pending_client_ready.take())
+        match clients.get_mut(&addr) {
+            Some(c) => {
+                let pending = c.pending_client_ready.take();
+                let is_respawn_reload = std::mem::replace(&mut c.pending_respawn_reload, false);
+                (pending, is_respawn_reload)
+            }
+            None => (None, false),
+        }
     };
 
     let Some(pending) = pending else {
@@ -119,71 +124,87 @@ pub(crate) async fn handle_on_client_ready(
         entity_id,
         player_id = pending.player_id,
         world = %pending.world_name,
+        is_respawn_reload,
         "SGWPlayer.onClientReady received -- finalizing world entry"
     );
 
-    // Query saved missions from DB before sending InitPlayerState
-    let saved_missions =
-        super::world_entry::methods::query_saved_missions(db_pool, pending.player_id).await;
+    // ConnectEntity + InitPlayerState only run on a fresh world entry (login,
+    // playCharacter, gate-travel) where the cell entity was just created and
+    // needs its player_id / abilities / bandolier / saved-missions populated.
+    // For a respawn reload the cell entity was never destroyed — re-running
+    // these would re-load missions from DB (potentially regressing in-flight
+    // mission state), re-add abilities to the HashSet (idempotent but wasted
+    // work), and re-seed bandolier ammo (which the cell already flushed
+    // pre-reload). Skip the round-trip on respawn.
+    if !is_respawn_reload {
+        // Query saved missions from DB before sending InitPlayerState
+        let saved_missions =
+            super::world_entry::methods::query_saved_missions(db_pool, pending.player_id).await;
 
-    // Query player abilities from DB
-    let abilities: Vec<i32> = if let Some(pool) = db_pool {
-        sqlx::query_scalar("SELECT unnest(abilities) FROM sgw_player WHERE player_id = $1")
-            .bind(pending.player_id)
-            .fetch_all(pool.as_ref())
-            .await
-            .unwrap_or_default()
-    } else {
-        vec![]
-    };
-
-    // Query active bandolier slot and items from DB (Bug #1: don't hardcode empty state).
-    // Distinguish DB error from "no row" so a connection blip doesn't silently default
-    // a real player to empty bandolier state.
-    let (active_bandolier_slot, bandolier_items) = if let Some(pool) = db_pool {
-        let slot: i32 = match sqlx::query_scalar::<_, Option<i32>>(
-            "SELECT bandolier_slot FROM sgw_player WHERE player_id = $1",
-        )
-        .bind(pending.player_id)
-        .fetch_optional(pool.as_ref())
-        .await
-        {
-            Ok(Some(Some(s))) => s,
-            Ok(Some(None)) | Ok(None) => 0,
-            Err(e) => {
-                tracing::error!(
-                    player_id = pending.player_id,
-                    "Bandolier slot read failed; defaulting to 0 but logging error: {e}"
-                );
-                0
-            }
+        // Query player abilities from DB
+        let abilities: Vec<i32> = if let Some(pool) = db_pool {
+            sqlx::query_scalar("SELECT unnest(abilities) FROM sgw_player WHERE player_id = $1")
+                .bind(pending.player_id)
+                .fetch_all(pool.as_ref())
+                .await
+                .unwrap_or_default()
+        } else {
+            vec![]
         };
 
-        let items = super::world_entry::methods::player_load::meta::query_bandolier_items(
-            db_pool,
-            pending.player_id,
-        )
-        .await;
+        // Query active bandolier slot and items from DB (Bug #1: don't hardcode empty state).
+        // Distinguish DB error from "no row" so a connection blip doesn't silently default
+        // a real player to empty bandolier state.
+        let (active_bandolier_slot, bandolier_items) = if let Some(pool) = db_pool {
+            let slot: i32 = match sqlx::query_scalar::<_, Option<i32>>(
+                "SELECT bandolier_slot FROM sgw_player WHERE player_id = $1",
+            )
+            .bind(pending.player_id)
+            .fetch_optional(pool.as_ref())
+            .await
+            {
+                Ok(Some(Some(s))) => s,
+                Ok(Some(None)) | Ok(None) => 0,
+                Err(e) => {
+                    tracing::error!(
+                        player_id = pending.player_id,
+                        "Bandolier slot read failed; defaulting to 0 but logging error: {e}"
+                    );
+                    0
+                }
+            };
 
-        (slot, items)
-    } else {
-        (0, Vec::new())
-    };
-
-    if let Some(ref tx) = cell_tx {
-        let _ = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await;
-
-        let _ = tx
-            .send(BaseToCellMsg::InitPlayerState {
-                entity_id,
-                player_id: pending.player_id,
-                world_name: pending.world_name.clone(),
-                saved_missions,
-                abilities,
-                active_bandolier_slot,
-                bandolier_items,
-            })
+            let items = super::world_entry::methods::player_load::meta::query_bandolier_items(
+                db_pool,
+                pending.player_id,
+            )
             .await;
+
+            (slot, items)
+        } else {
+            (0, Vec::new())
+        };
+
+        if let Some(ref tx) = cell_tx {
+            let _ = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await;
+
+            let _ = tx
+                .send(BaseToCellMsg::InitPlayerState {
+                    entity_id,
+                    player_id: pending.player_id,
+                    world_name: pending.world_name.clone(),
+                    saved_missions,
+                    abilities,
+                    active_bandolier_slot,
+                    bandolier_items,
+                })
+                .await;
+        }
+    } else {
+        tracing::debug!(
+            %addr, entity_id,
+            "Respawn reload: skipping ConnectEntity + InitPlayerState (cell entity already initialised)"
+        );
     }
 
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.

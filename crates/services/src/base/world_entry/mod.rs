@@ -19,6 +19,7 @@ mod enable_entities;
 mod gate_travel;
 mod map_loaded;
 mod play_character;
+mod respawn_reload;
 pub(crate) mod space_registry;
 mod teleport;
 

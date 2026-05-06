@@ -28,6 +28,7 @@ use super::methods::{
     handle_repair_inventory_item, handle_repair_inventory_items, handle_sell_vendor_items,
     handle_use_inventory_item, send_full_inventory_update,
 };
+use super::respawn_reload::handle_respawn_reload;
 use super::space_registry::register_space;
 use super::teleport::handle_teleport_player;
 
@@ -188,6 +189,28 @@ pub(crate) async fn handle_cell_message(
             .await
             {
                 tracing::error!(entity_id, world = %target_world_name, "Gate travel failed: {e}");
+            }
+        }
+        CellToBaseMsg::RespawnReload {
+            entity_id,
+            space_id,
+            world_name,
+            position,
+        } => {
+            if let Err(e) = handle_respawn_reload(
+                entity_id,
+                space_id,
+                &world_name,
+                position,
+                socket,
+                connected,
+                entity_to_addr,
+                cell_tx,
+                db_pool,
+            )
+            .await
+            {
+                tracing::error!(entity_id, world = %world_name, "Respawn reload failed: {e}");
             }
         }
         CellToBaseMsg::MailRequest {

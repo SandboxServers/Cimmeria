@@ -68,6 +68,7 @@ fn make_state() -> ConnectedClientState {
         player_xp: Some(0),
         player_training_points: Some(0),
         active_player_id: Some(7),
+        pending_respawn_reload: false,
     }
 }
 
