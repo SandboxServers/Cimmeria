@@ -28,7 +28,7 @@ use super::methods::{
     handle_repair_inventory_item, handle_repair_inventory_items, handle_sell_vendor_items,
     handle_use_inventory_item, send_full_inventory_update,
 };
-use super::respawn_reload::handle_respawn_reload;
+use super::reanchor_player::handle_reanchor_player;
 use super::space_registry::register_space;
 use super::teleport::handle_teleport_player;
 
@@ -191,26 +191,24 @@ pub(crate) async fn handle_cell_message(
                 tracing::error!(entity_id, world = %target_world_name, "Gate travel failed: {e}");
             }
         }
-        CellToBaseMsg::RespawnReload {
+        CellToBaseMsg::ReanchorPlayer {
             entity_id,
             space_id,
-            world_name,
             position,
+            rotation,
         } => {
-            if let Err(e) = handle_respawn_reload(
+            if let Err(e) = handle_reanchor_player(
                 entity_id,
                 space_id,
-                &world_name,
                 position,
+                rotation,
                 socket,
                 connected,
                 entity_to_addr,
-                cell_tx,
-                db_pool,
             )
             .await
             {
-                tracing::error!(entity_id, world = %world_name, "Respawn reload failed: {e}");
+                tracing::error!(entity_id, "Reanchor player failed: {e}");
             }
         }
         CellToBaseMsg::MailRequest {

@@ -256,28 +256,32 @@ pub enum CellToBaseMsg {
         amount: i32,
     },
 
-    /// Same-world player reload (respawn). The cell entity stays alive — its
-    /// instance, NPCs, and kismet state survive — but the BaseApp tears down
-    /// the client-side pawn (`RESET_ENTITIES`) and replays the world-entry
-    /// packet sequence so the ragdolled local pawn is destroyed and replaced
-    /// with a fresh, alive one.
+    /// Re-anchor the local pawn to a fresh actor without `RESET_ENTITIES`.
     ///
-    /// Distinct from `GateTravel`: gate-travel destroys+recreates the cell
-    /// entity (which for instanced worlds destroys the entire instance), so
-    /// using gate-travel for respawn would reset every kismet sequence (door
-    /// states, completed encounters) — unacceptable for "I died, I'm back."
-    /// Respawn is a *client-side* reload only.
+    /// Sends the gate-travel "enter-world body" triple
+    /// (`BASEMSG_SPACE_VIEWPORT_INFO`, `BASEMSG_CREATE_CELL_PLAYER`,
+    /// `BASEMSG_FORCED_POSITION`) to the client.
+    /// `CREATE_CELL_PLAYER` re-issues the cell-side pawn creation, which the
+    /// client's `ServerConnection::createCellPlayer` handler treats as a
+    /// re-create of the pawn actor: the old actor (which carries the ragdoll
+    /// physics state from the `Entity_Death` kismet) is replaced by a fresh
+    /// standing actor. **No `RESET_ENTITIES` is sent**, so all other
+    /// client-side state — AoI entities, kismet sequence state (door
+    /// open/closed, triggered events), the level itself — survives the
+    /// respawn untouched.
     ///
-    /// `space_id` is the cell's authoritative space — the BaseApp uses it
-    /// directly in `WorldEntryInfo` instead of round-tripping a fresh
-    /// `BaseToCellMsg::CreateEntity` for an entity that already exists.
-    /// `position` is where the BaseApp should snap the player on the way
-    /// back in (resolved respawner spawn point).
-    RespawnReload {
+    /// Used by `handle_respawn`. Cross-world respawn falls back to `GateTravel`
+    /// since the player is leaving the space anyway.
+    ///
+    /// Why it's separate from `TeleportPlayer`: TeleportPlayer sends only
+    /// `BASEMSG_FORCED_POSITION` (a position snap), which doesn't re-create the
+    /// pawn actor and so doesn't clear ragdoll state. ReanchorPlayer is the
+    /// stronger primitive that includes the cell-pawn re-create.
+    ReanchorPlayer {
         entity_id: u32,
         space_id: u32,
-        world_name: String,
         position: [f32; 3],
+        rotation: [f32; 3],
     },
 
     /// Authoritative same-world teleport. The cell has already updated its

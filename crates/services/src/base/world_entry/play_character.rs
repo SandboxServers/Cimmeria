@@ -194,7 +194,6 @@ mod tests {
             player_xp: None,
             player_training_points: None,
             active_player_id: None,
-            pending_respawn_reload: false,
         }
     }
 

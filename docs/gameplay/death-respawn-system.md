@@ -21,41 +21,41 @@ When an entity's health reaches zero:
 
 When the cell handles `callForAid` or `respawn` ([`cell/cell_methods/player/combat.rs::handle_respawn`](../../crates/services/src/cell/cell_methods/player/combat.rs)) the path forks on whether the resolved respawn point is in the same world as where the player died:
 
-- **Same-world respawn (the common case)**: keep the cell entity (and its instance) alive, reset its server-side state in place, and drive a *client-only* `RESET_ENTITIES` + world-entry replay via `CellToBaseMsg::RespawnReload`. **The instance — NPCs, kismet sequences (door states, completed encounters), regions — survives.** Dying in the middle of an active mission room then respawning brings you back to the same room mid-state, not a freshly spawned copy.
-- **Cross-world respawn**: fall through to the gate-travel pipeline. The player is leaving the space anyway (different world entirely), so destroying+recreating the cell entity is correct.
+- **Same-world respawn (the common case)**: keep everything alive — cell entity, instance, AoI entities on the client, kismet state. Send a small in-place burst that re-creates only the local pawn actor on the client. **The instance — NPCs, kismet sequences (door states, completed encounters), regions — survives.** Dying in a room with an opened stasis door means coming back to that same opened door, not a freshly-spawned copy of the room.
+- **Cross-world respawn**: fall through to the gate-travel pipeline. The player is leaving the space anyway (different world entirely), so destroying+recreating the cell entity and tearing down the client view is correct.
 
-### Same-world flow (`CellToBaseMsg::RespawnReload`)
+### Same-world flow (`CellToBaseMsg::ReanchorPlayer`)
 
 1. **Resolve target** — `resolve_respawn_target(respawner_id, entity_id, space_mgr)` returns `(world, [x, y, z])`. Priority: explicit respawner_id → first respawner registered for the player's current world → Castle default for `Castle_CellBlock`/unknown → in-place at the player's current position for any other world.
-2. **`onEndAidWait`** (method 99) — close the Defeat Window before the loading screen renders.
-3. **Reset entity state in place** — HEALTH/FOCUS to max, `clear_all_state_flags` (drops both `state_field` and the per-flag refcount map — a raw `state_field = 0` would leave stale counters), `clear_all_cooldowns`, `update_entity_position` to the spawn point.
-4. **Flush bandolier ammo** — drain `bandolier_ammo_dirty` to DB so the post-reload `query_player_load_data` sees latest values.
-5. **`CellToBaseMsg::RespawnReload { entity_id, space_id, world_name, position }`** — `space_id` is the entity's existing space (no `BaseToCellMsg::CreateEntity` round-trip — would create a fresh space and orphan the old instance).
-6. BaseApp [`handle_respawn_reload`](../../crates/services/src/base/world_entry/respawn_reload.rs):
-   - Persists the spawn point to `sgw_player` (relog returns to spawn, not corpse).
-   - Sends `RESET_ENTITIES` so the client destroys all client-side entities (including the ragdolled pawn).
-   - Sets `pending_world_entry` (with the existing space_id), `pending_player_load_data`, and **`pending_respawn_reload = true`**.
-7. Client → server: `ENABLE_ENTITIES` → BaseApp sends `CREATE_BASE_PLAYER + onClientMapLoad`.
-8. Same-world means the client skips `mapLoaded` (terrain unchanged). [`handle_on_client_ready`](../../crates/services/src/base/world_entry_appearance.rs) fast-forwards through `handle_map_loaded` when `pending_map_loaded` is still set, which sends `VIEWPORT + CELL + FORCED_POSITION + entity data` and stages `pending_client_ready`.
-9. The on-ready finalization continues on the same call — but **skips `BaseToCellMsg::ConnectEntity` and `InitPlayerState`** because `pending_respawn_reload` is set: the cell entity is already initialised, re-running InitPlayerState would re-load missions from DB (potentially regressing in-flight state).
-10. BeingAppearance + onEntityTint resent (visuals only). Player is back on their feet.
+2. **`onEndAidWait`** (method 99) — close the Defeat Window first.
+3. **Reset cell-entity state in place** — HEALTH/FOCUS to max, `clear_all_state_flags` (drops both `state_field` and the per-flag refcount map — a raw `state_field = 0` would leave stale counters), `clear_all_cooldowns`, `update_entity_position` to the spawn point.
+4. **`onStatUpdate`** — push the refreshed HEALTH/FOCUS to the HUD.
+5. **`onStateFieldUpdate(0)`** — clears BSF_Dead / BSF_MovementLock / dead-cursor visuals on the owning client.
+6. **`CellToBaseMsg::ReanchorPlayer { entity_id, space_id, position, rotation }`** — BaseApp [`handle_reanchor_player`](../../crates/services/src/base/world_entry/reanchor_player.rs) emits the gate-travel "enter-world body" to the client: `BASEMSG_SPACE_VIEWPORT_INFO` + `BASEMSG_CREATE_CELL_PLAYER` + `BASEMSG_FORCED_POSITION`. **No `RESET_ENTITIES`, no `CREATE_BASE_PLAYER`, no `onClientMapLoad`.**
 
-The `RESET_ENTITIES` step destroys the ragdolled pawn outright. The pawn re-created by mapLoaded starts fresh — no kismet `TermRagdoll` call needed because the dead pawn no longer exists.
+The win is instance preservation: AoI entities, kismet sequence state, and the level itself are untouched because we never sent `RESET_ENTITIES`. Door states / completed encounters / triggered sequences all survive the respawn.
+
+**Known limitation: pawn remains ragdolled.** This packet does not clear the local pawn's ragdoll physics state. The player respawns ragdolled-but-movable (HEALTH/FOCUS full, movement_lock cleared, but the pawn actor's mesh is still in ragdoll mode from the `Entity_Death` kismet). This matches the historical SGW behavior — the Python emulator's `onRevived()` only clears `BSF_Dead` and never sends `Entity_Spawn`. Cosmetic ragdoll exit on the local pawn would require either (a) re-creating the pawn actor via `CREATE_BASE_PLAYER` and replaying all of its properties (essentially the gate-travel flow, which defeats instance preservation) or (b) finding a kismet path that calls `APawn::TermRagdoll` — and the cooked `KIS-abilities_human.Death` package has no such output wired.
 
 ### Cross-world flow (`CellToBaseMsg::GateTravel`)
 
-Identical to stargate travel: flush bandolier, `space_mgr.destroy_entity`, send `GateTravel`. BaseApp creates a new cell entity in the destination world, sends RESET_ENTITIES, and replays the full world-entry flow including `ConnectEntity` + `InitPlayerState`. The instance teardown is unavoidable (the player is leaving the space).
+Identical to stargate travel: flush bandolier, `space_mgr.destroy_entity`, send `GateTravel`. BaseApp creates a new cell entity in the destination world, sends `RESET_ENTITIES`, and replays the full world-entry flow including `ConnectEntity` + `InitPlayerState`. The instance teardown is unavoidable (the player is leaving the space).
 
-## Why a reload (not the in-place kismet path)
+## Why a re-anchor (not the in-place kismet path, not a full reload)
 
-A previous attempt drove ragdoll exit in place via `onSequence Entity_Spawn` (5000), expecting the client kismet to call `APawn::TermRagdoll` on the local pawn. Empirically that didn't work — the player stayed face-down on the floor after the position snap. Ghidra inspection of `SGW.exe` confirmed why:
+Two earlier approaches both failed:
 
-- `SeqEvent_EntitySpawn` is a registered UClass (`USeqEvent_EntitySpawn` RTTI at `01dc5b68`, registered by `FUN_006b18f0`), and `Event_NetIn_onSequence` correctly routes through `SequenceManager` (callback class RTTI at `01e21d20`). So the **wire dispatch path is real**.
-- But sequences 2753 (Entity_Spawn) and 2140 (Entity_Death) both point to the **same cooked kismet package** `KIS-abilities_human.Death`. The package name + the Python emulator's documented "Entity_Spawn was never completed" note + two empirical attempts at an in-place burst (different orderings, same ragdoll-stuck symptom) are consistent with the package's `SeqEvent_EntitySpawn` node having no output wired to `TermRagdoll`. The cooked `.upk` is not server-modifiable.
+**Approach 1 — `onSequence Entity_Spawn` (5000) kismet** drove ragdoll exit through the client's `SeqEvent_EntitySpawn` kismet, expecting the kismet to call `APawn::TermRagdoll`. Empirically: player stayed face-down on the floor. Ghidra confirmed why:
 
-The reload sidesteps the kismet wiring entirely. It also avoids the `pending_map_loaded` handshake gap that broke an even earlier reload-style respawn handler — the gate-travel path uses `pending_world_entry` + `ENABLE_ENTITIES`, not the `pending_client_ready`/`pending_map_loaded` pair, so there's no handshake field that has to be set on both sides.
+- `SeqEvent_EntitySpawn` is a registered UClass (`USeqEvent_EntitySpawn` RTTI at `01dc5b68`, registered by `FUN_006b18f0`), and `Event_NetIn_onSequence` correctly routes through `SequenceManager` (callback class RTTI at `01e21d20`). Wire dispatch is real.
+- But sequences 2753 (Entity_Spawn) and 2140 (Entity_Death) both point to the **same cooked kismet package** `KIS-abilities_human.Death`. The package name + Python emulator's "Entity_Spawn was never completed" note + two empirical attempts at different orderings of the in-place burst → consistent with the package's `SeqEvent_EntitySpawn` node having no output wired to `TermRagdoll`. Cooked `.upk` is not server-modifiable.
+- Tracing `BSF_Dead` (state-field bit 0): the GameBeing handler at `FUN_00e6e330` updates color/cursor flags but **never calls TermRagdoll**. Ragdoll exit on the local pawn is purely kismet-driven.
 
-A previous version of this doc described the in-place flow as the working implementation. That was wrong — keep this section in mind if you're tempted to re-introduce an `onSequence Entity_Spawn` shortcut.
+**Approach 2 — full `RESET_ENTITIES` + world-entry reload** (gate-travel applied to respawn) succeeded at clearing ragdoll because it destroyed and re-created the local pawn outright. But it also destroyed all *other* client entities — which re-fired kismet `OnInit`/`OnSpawn` on every actor in the level, resetting door states / completed encounters / triggered sequences. Visible regression: dying with the stasis room door open meant coming back to find it closed.
+
+**Approach 3 — `VIEWPORT_INFO` + `CREATE_CELL_PLAYER` + `FORCED_POSITION` only** (no `CREATE_BASE_PLAYER` prefix): instance preserved (good — kismet untouched) but player still ragdolled (bad). The client's `createCellPlayer` handler treats a re-issue for an existing player id as a space/viewport update, not a pawn recreate. Confirmed via Ghidra: only `createBasePlayer` invokes the player-create callback that destroys/recreates the local pawn actor.
+
+**Current approach — `CREATE_BASE_PLAYER` + `VIEWPORT_INFO` + `CREATE_CELL_PLAYER` + `FORCED_POSITION`** isolates the destruction to just the player's pawn actor. Other client entities and kismet state survive untouched. The `CREATE_BASE_PLAYER` prefix triggers the same pawn-recreate hook used on login and play-character world entry; the trailing three keep the client's space/viewport state consistent.
 
 ## Critical: Ragdoll is Kismet-Controlled
 
@@ -65,7 +65,7 @@ The client's ragdoll state is **entirely controlled by kismet sequences**, NOT b
 - `Entity_Death` (5001) via `onSequence` → triggers `SeqEvent_EntityDeath` kismet → calls `InitRagdoll` (this DOES work; the death package wires it)
 - `Entity_Spawn` (5000) via `onSequence` → would trigger `SeqEvent_EntitySpawn` kismet → would call `TermRagdoll`, but the cooked package's spawn-event output is not wired
 
-The respawn path can't rely on Entity_Spawn for ragdoll exit; the only reliable way to stop the local pawn from ragdolling is to destroy it (RESET_ENTITIES) and re-create it.
+The respawn path can't rely on Entity_Spawn for ragdoll exit. The only reliable way to clear it is to destroy and re-create the pawn actor — either selectively via `CREATE_BASE_PLAYER` re-issue (current approach) or globally via `RESET_ENTITIES` (rejected: kismet reset).
 
 ## Kismet Events (from Ghidra)
 
@@ -91,10 +91,8 @@ Both rows reference the same cooked package. Only the death-side wiring is funct
 
 | Bit | Value | Name | Death Role |
 |-----|-------|------|------------|
-| 0 | 1 | BSF_Dead | Set on death; cleared by mapLoaded after the respawn reload |
-| 6 | 64 | BSF_MovementLock | Set on death; cleared by mapLoaded |
-
-The post-reload `mapLoaded` packet emits `onStateFieldUpdate(0)` as part of its standard init burst, so the cell doesn't need to issue a separate state-field clear during respawn.
+| 0 | 1 | BSF_Dead | Set on death; cleared in place by `onStateFieldUpdate(0)` during respawn |
+| 6 | 64 | BSF_MovementLock | Set on death; cleared the same way |
 
 ## Wire Format
 
@@ -108,23 +106,27 @@ Per respawner:
 ```
 
 ### onEndAidWait (method 99)
-No arguments. Sent by the cell at the start of respawn so the Defeat Window closes before the loading screen renders.
+No arguments. Sent by the cell at the start of respawn so the Defeat Window closes before the re-anchor.
 
-### CellToBaseMsg::GateTravel (cell→base, internal RPC)
+### CellToBaseMsg::ReanchorPlayer (cell→base, internal RPC)
 
-Not on the client wire; this is the inter-service handoff that triggers the reload. See [`crates/services/src/cell/messages/cell_to_base.rs`](../../crates/services/src/cell/messages/cell_to_base.rs) for the variant.
+Not on the client wire; this is the inter-service handoff. See [`crates/services/src/cell/messages/cell_to_base.rs`](../../crates/services/src/cell/messages/cell_to_base.rs) for the variant.
 
 ```
-GateTravel {
+ReanchorPlayer {
     entity_id: u32,
-    target_world_name: String,   // resolved respawner world
-    position: [f32; 3],          // resolved spawn point
-    rotation: [f32; 3],          // [0, 0, 0] for respawn (gate-travel uses [0, 0, yaw])
+    space_id: u32,    // entity's existing space — NOT a fresh space_id
+    position: [f32; 3],
+    rotation: [f32; 3],
 }
 ```
 
-BaseApp handles this in [`base/world_entry/gate_travel/mod.rs::handle_gate_travel`](../../crates/services/src/base/world_entry/gate_travel/mod.rs) — same code path stargates use.
+BaseApp handles this in [`base/world_entry/reanchor_player.rs::handle_reanchor_player`](../../crates/services/src/base/world_entry/reanchor_player.rs). Emits a `CREATE_BASE_PLAYER` (same wire layout as `phases::build_create_player` minus the `onClientMapLoad`) followed by `build_enter_world_body`, as a single standalone packet. No `RESET_ENTITIES`, no `onClientMapLoad`, no pending-state plumbing.
+
+### CellToBaseMsg::GateTravel (cell→base, cross-world only)
+
+Used for cross-world respawn (respawner in a different world). Same path stargates use; full instance teardown on both sides. See [`base/world_entry/gate_travel/mod.rs`](../../crates/services/src/base/world_entry/gate_travel/mod.rs).
 
 ## Python Reference
 
-The Python emulator's `SGWBeing.onRevived()` only calls `self.unsetStateFlag(BSF_Dead)` and never sends `Entity_Spawn` (5000). The Entity_Spawn event ID is defined in `Atrea/enums.py:544` but never emitted in the Python codebase — and the inline note in that file says the kismet handler "was never completed." Cimmeria's reload-based respawn matches the empirical client behavior the Python emulator's note hints at.
+The Python emulator's `SGWBeing.onRevived()` only calls `self.unsetStateFlag(BSF_Dead)` and never sends `Entity_Spawn` (5000). The Entity_Spawn event ID is defined in `Atrea/enums.py:544` but never emitted in the Python codebase — and the inline note in that file says the kismet handler "was never completed." Cimmeria's `CREATE_BASE_PLAYER`-based re-anchor sidesteps the kismet path entirely by re-running the same pawn-create hook the client uses on login, and avoids the kismet-reset side-effect that a `RESET_ENTITIES`-based reload would produce.
