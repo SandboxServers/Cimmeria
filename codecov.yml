@@ -13,7 +13,7 @@ coverage:
         # async tests can shift counters by a fraction of a percent run to
         # run, and a strict zero-tolerance gate would just teach reviewers
         # to ignore the check.
-        target: auto
+        target: 75%
         threshold: 1%
         informational: true
     patch:
@@ -52,41 +52,97 @@ ignore:
   - "**/build.rs"
   - "**/tests/**"      # test code itself
   - "**/*_tests.rs"
+  # Binary entry points where assertion-style tests are not idiomatic.
+  - "crates/server/src/main.rs"
+  - "crates/supervisor/src/main.rs"
+  - "crates/upk-objects/src/bin/**"
+  - "crates/upk/src/bin/**"
+  # Deferred per issue #205 (fixture cost exceeds value-per-line)
+  - "crates/services/src/base/connect_loop.rs"
+  - "crates/services/src/base/cooked_data.rs"
+  - "crates/services/src/base/dispatch.rs"
+  - "crates/services/src/minigame/server.rs"
 
 # Components let the PR comment break coverage out by subsystem. Mirrors
 # the crate dependency graph in README.md so reviewers can see "the
 # mercury delta is +2.1%, the services delta is -0.4%" at a glance.
 component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+        threshold: 1%
+        informational: true
   individual_components:
     - component_id: mercury
       name: mercury
       paths:
         - "crates/mercury/**"
+      statuses:
+        - type: project
+          target: 92%
+          informational: true
     - component_id: services
       name: services
       paths:
         - "crates/services/**"
+      statuses:
+        - type: project
+          target: 62%
+          informational: true
     - component_id: content-engine
       name: content-engine
       paths:
         - "crates/content-engine/**"
+      statuses:
+        - type: project
+          target: 82%
+          informational: true
     - component_id: entity
       name: entity
       paths:
         - "crates/entity/**"
+      statuses:
+        - type: project
+          target: 88%
+          informational: true
     - component_id: game
       name: game
       paths:
         - "crates/game/**"
+      statuses:
+        - type: project
+          target: 80%
+          informational: true
     - component_id: defs
       name: defs
       paths:
         - "crates/defs/**"
+      statuses:
+        - type: project
+          target: 84%
+          informational: true
     - component_id: common
       name: common
       paths:
         - "crates/common/**"
+      statuses:
+        - type: project
+          target: 98%
+          informational: true
     - component_id: commands
       name: commands
       paths:
         - "crates/commands/**"
+      statuses:
+        - type: project
+          target: 92%
+          informational: true
+    - component_id: admin-api
+      name: admin-api
+      paths:
+        - "crates/admin-api/**"
+      statuses:
+        - type: project
+          target: 50%
+          informational: true
