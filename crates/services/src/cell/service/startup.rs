@@ -276,3 +276,26 @@ impl CellService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// CellService::default() must produce a non-running service with no
+    /// loop handle. This is the minimal surface we can exercise without
+    /// real XML files / DB pools — larger startup tests are deferred to
+    /// the integration harness (issue #205 deferred bucket: startup.rs).
+    #[test]
+    fn default_service_is_not_running() {
+        let svc = CellService::default();
+        assert!(!svc.is_running, "fresh CellService must not be running");
+        assert!(
+            svc.cell_loop_handle.is_none(),
+            "no loop handle before start()"
+        );
+        assert!(
+            svc.shutdown_signal.is_none(),
+            "no shutdown signal before start()"
+        );
+    }
+}

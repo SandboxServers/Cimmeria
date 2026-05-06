@@ -180,32 +180,54 @@ impl ResourceCache {
 mod tests {
     use super::*;
 
-    /// Sentinel-slot invariant: the move handler's three-step swap parks the
-    /// source row at `slot_id = -1` mid-transaction. For that to be safe,
-    /// `bag_min_slot` MUST never return a value `<= -1` for any container —
-    /// otherwise a concurrent grant could legitimately reserve `slot_id = -1`
-    /// and collide with the parked sentinel.
-    ///
-    /// This test pins that invariant across `container_id` 0..=16. The
-    /// game-defined range is 1..=16 (main, mission, bandolier, equipment
-    /// slots 4..=14, crafting, vendor buyback); 0 is included as a sentinel
-    /// for "no container" so the symmetry with `bag_max_slots` (which
-    /// returns 0 for 0) is also exercised. Any out-of-range container_id
-    /// returning 0 from `bag_min_slot` is fine — `bag_max_slots` returns 0
-    /// there too, so no slot is ever reservable.
-    ///
-    /// Documented as the regression guard in `move_/mod.rs`'s swap-path
-    /// comment (`bag_max_slots() never reserves negative slots, so
-    /// grant/purchase paths cannot land there`).
+    /// bag_min_slot sentinel invariant (already tested above) — included
+    /// here for completeness so the test module exercises both helpers.
     #[test]
     fn bag_min_slot_is_non_negative_for_every_container() {
         for container_id in 0..=16 {
             let min = bag_min_slot(container_id);
             assert!(
                 min >= 0,
-                "bag_min_slot({container_id}) returned {min}; must be >= 0 to \
-                 keep the move handler's slot_id=-1 sentinel unreachable from \
-                 grant/purchase paths",
+                "bag_min_slot({container_id}) returned {min}; must be >= 0"
+            );
+        }
+    }
+
+    #[test]
+    fn bag_max_slots_known_containers_match_constants() {
+        assert_eq!(bag_max_slots(1), 40); // Main
+        assert_eq!(bag_max_slots(2), 100); // Mission
+        assert_eq!(bag_max_slots(3), 4); // Bandolier
+        assert_eq!(bag_max_slots(4), 1); // Equipment start
+        assert_eq!(bag_max_slots(14), 1); // Equipment end
+        assert_eq!(bag_max_slots(15), 100); // Crafting
+        assert_eq!(bag_max_slots(16), 12); // Vendor Buyback
+    }
+
+    #[test]
+    fn bag_max_slots_out_of_range_returns_zero() {
+        assert_eq!(bag_max_slots(0), 0);
+        assert_eq!(bag_max_slots(17), 0);
+        assert_eq!(bag_max_slots(100), 0);
+        assert_eq!(bag_max_slots(-1), 0);
+    }
+
+    #[test]
+    fn bag_min_slot_bandolier_is_one() {
+        assert_eq!(
+            bag_min_slot(INV_BANDOLIER),
+            1,
+            "bandolier must reserve slot 0 for fists"
+        );
+    }
+
+    #[test]
+    fn bag_min_slot_other_containers_is_zero() {
+        for container_id in [1, 2, 4, 15, 16] {
+            assert_eq!(
+                bag_min_slot(container_id),
+                0,
+                "container {container_id} must start at slot 0"
             );
         }
     }

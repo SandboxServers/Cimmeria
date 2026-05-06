@@ -202,3 +202,59 @@ pub async fn query_world_stargates(db_pool: &Option<Arc<PgPool>>, world_name: &s
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn query_world_entry_no_db_allocates_entity_and_returns_default() {
+        let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
+        let entry = query_world_entry(&None, 1, 1, &mgr, &None).await;
+        assert_ne!(
+            entry.player_entity_id, NO_ENTITY_ID,
+            "no-DB mode must allocate a real entity id"
+        );
+        assert_eq!(entry.world_name, "CombatSim");
+        assert_eq!(entry.space_id, DEFAULT_SPACE_ID);
+        assert_eq!(entry.pos, [0.0; 3]);
+        assert_eq!(entry.class_id, SGWPLAYER_CLASS_ID);
+    }
+
+    #[tokio::test]
+    async fn query_world_entry_no_db_with_cell_tx_round_trips_create_entity() {
+        let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
+        let (cell_tx, mut cell_rx) = mpsc::channel(4);
+
+        let handle =
+            tokio::spawn(async move { query_world_entry(&None, 1, 1, &mgr, &Some(cell_tx)).await });
+
+        // Drive the CreateEntity round-trip so the oneshot doesn't hang.
+        if let Some(msg) = cell_rx.recv().await {
+            if let BaseToCellMsg::CreateEntity { reply_tx, .. } = msg {
+                let _ = reply_tx.send(DEFAULT_SPACE_ID);
+            }
+        }
+
+        let entry = handle.await.unwrap();
+        assert_ne!(entry.player_entity_id, NO_ENTITY_ID);
+        assert_eq!(entry.world_name, "CombatSim");
+    }
+
+    #[tokio::test]
+    async fn query_world_stargates_no_db_returns_empty() {
+        let result = query_world_stargates(&None, "CombatSim").await;
+        assert!(
+            result.is_empty(),
+            "no-DB mode must return empty stargate list"
+        );
+    }
+
+    #[test]
+    fn no_entity_id_sentinel_is_zero() {
+        assert_eq!(
+            NO_ENTITY_ID, 0,
+            "sentinel must remain 0 for downstream guards"
+        );
+    }
+}
