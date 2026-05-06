@@ -208,19 +208,47 @@ async fn handle_respawn(
         })
         .await;
 
-    // Fire the Entity_Spawn (5000) kismet sequence so the client ends ragdoll
-    // physics on its own pawn (UE3 `APawn::TermRagdoll`) without a full map
-    // reload. Mirrors the Entity_Death (5001) emit at
-    // `damage_apply/mod.rs:302-322` — same event_set (1025 = Mob), same
-    // 26-byte ON_SEQUENCE wire layout (sequence_id / source / target /
-    // primary / impact_time / nvp_count / view_type / instance_id).
+    // Clear the state_field (BSF_Dead, BSF_MovementLock, etc.) BEFORE
+    // firing the spawn kismet. Death does it in this order — set
+    // state_field, then send Entity_Death — and the client's
+    // SeqEvent_EntitySpawn handler refuses to TermRagdoll if the actor
+    // is still in dead state. Reverse the order and the kismet runs on
+    // a still-dead pawn and silently no-ops, leaving the player on the
+    // ground after the teleport (the symptom that motivated this
+    // ordering pin).
+    //
+    // `send_entity_method` routes player-targeted methods to the owner
+    // only — the matching pattern at use_ability:404-410 has the same
+    // shape. Witnesses observe the respawn through the AoI broadcast of
+    // public stats (HEALTH back to max) and the EntityMoved that
+    // follows update_entity_position. The cross-witness broadcast for
+    // player death/respawn state-field flips is a known preexisting gap
+    // (player Entity_Death + onStateFieldUpdate emit on the same
+    // player-only routing) — tracked separately.
+    crate::cell::abilities::send_entity_method(
+        entity_id,
+        crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+        0u32.to_le_bytes().to_vec(),
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    // NOW fire the Entity_Spawn (5000) kismet sequence — the client
+    // ends ragdoll physics on its own pawn (UE3 `APawn::TermRagdoll`)
+    // without a full map reload. Mirrors the Entity_Death (5001) emit
+    // at `damage_apply/mod.rs:302-322` — same event_set (1025 = Mob),
+    // same 26-byte ON_SEQUENCE wire layout (sequence_id / source /
+    // target / primary / impact_time / nvp_count / view_type /
+    // instance_id).
     //
     // Without this, a previous version triggered a heavy
-    // `RESET_ENTITIES + onClientMapLoad` reload to clear the ragdoll, which
-    // had a hole in the handshake: the BaseApp handler set
-    // `pending_client_ready` but not `pending_map_loaded`, so the client's
-    // `mapLoaded` reply was silently dropped and the camera stayed locked.
-    // Eliminating the reload eliminates that whole handshake gap.
+    // `RESET_ENTITIES + onClientMapLoad` reload to clear the ragdoll,
+    // which had a hole in the handshake: the BaseApp handler set
+    // `pending_client_ready` but not `pending_map_loaded`, so the
+    // client's `mapLoaded` reply was silently dropped and the camera
+    // stayed locked. Eliminating the reload eliminates that whole
+    // handshake gap.
     {
         const EVENT_ENTITY_SPAWN: i32 = 5000;
         const PLAYER_EVENT_SET_ID: i32 = 1025; // Mob — also drives Entity_Death
@@ -256,25 +284,6 @@ async fn handle_respawn(
             );
         }
     }
-
-    // Send the cleared state_field to the respawning player's own client
-    // so the HUD/movement-lock/dead-cursor state lifts. `send_entity_method`
-    // routes player-targeted methods to the owner only — the matching
-    // pattern at use_ability:404-410 has the same shape. Witnesses don't
-    // get this state-flip directly; they observe the respawn through the
-    // AoI broadcast of public stats (HEALTH back to max) and the
-    // EntityMoved that follows update_entity_position. The cross-witness
-    // broadcast for player death/respawn state-field flips is a known
-    // preexisting gap (player Entity_Death + onStateFieldUpdate emit on
-    // the same player-only routing) — tracked separately.
-    crate::cell::abilities::send_entity_method(
-        entity_id,
-        crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-        0u32.to_le_bytes().to_vec(),
-        tx,
-        space_mgr,
-    )
-    .await;
 
     // Server-side spatial state: write the new position into the entity and
     // grid, so AoI ticks broadcast `EntityMoved` for witnesses.
@@ -551,11 +560,19 @@ mod tests {
         expected_spawn_payload.push(0); // ViewType (KISMET_VIEW_Witness)
         expected_spawn_payload.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
 
+        // Track index-of-first-occurrence for the four wire signals
+        // that have a load-bearing ordering: state_field-clear MUST
+        // arrive at the client before Entity_Spawn ON_SEQUENCE, or
+        // the kismet handler runs SeqEvent_EntitySpawn on a still-dead
+        // pawn and refuses to TermRagdoll — the symptom is "character
+        // teleports back to spawn but stays on the ground".
+        let mut state_field_clear_at: Option<usize> = None;
+        let mut entity_spawn_at: Option<usize> = None;
+        let mut teleport_at: Option<usize> = None;
+
         let mut saw_stat_update = false;
         let mut saw_end_aid_wait = false;
-        let mut saw_entity_spawn = false;
-        let mut saw_state_field_clear = false;
-        let mut saw_teleport = false;
+        let mut idx: usize = 0;
         while let Ok(m) = rx.try_recv() {
             match m {
                 CellToBaseMsg::EntityMethodCall {
@@ -584,13 +601,15 @@ mod tests {
                              byte-exact — every field is load-bearing \
                              for the client kismet handler"
                         );
-                        saw_entity_spawn = true;
+                        if entity_spawn_at.is_none() {
+                            entity_spawn_at = Some(idx);
+                        }
                     } else if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
                         // 4 bytes — the cleared u32 state_field.
                         assert_eq!(args.len(), 4);
                         let new_state = u32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                        if new_state == 0 {
-                            saw_state_field_clear = true;
+                        if new_state == 0 && state_field_clear_at.is_none() {
+                            state_field_clear_at = Some(idx);
                         }
                     }
                 }
@@ -605,11 +624,17 @@ mod tests {
                         [-334.231, 73.472, -228.026],
                         "TeleportPlayer must carry the resolved spawn position"
                     );
-                    saw_teleport = true;
+                    if teleport_at.is_none() {
+                        teleport_at = Some(idx);
+                    }
                 }
                 _ => {}
             }
+            idx += 1;
         }
+        let saw_state_field_clear = state_field_clear_at.is_some();
+        let saw_entity_spawn = entity_spawn_at.is_some();
+        let saw_teleport = teleport_at.is_some();
         assert!(
             saw_stat_update,
             "respawn must emit onStatUpdate so the post-respawn HUD \
@@ -635,6 +660,29 @@ mod tests {
             "respawn must emit TeleportPlayer (NOT RespawnReload) — \
              this is the snap that drives BASEMSG_FORCED_POSITION on \
              the client; RespawnReload is gone"
+        );
+
+        // Load-bearing ordering: state_field-clear MUST precede
+        // Entity_Spawn ON_SEQUENCE. The client's SeqEvent_EntitySpawn
+        // handler refuses to TermRagdoll if the actor is still in dead
+        // state, so reversing this order leaves the player on the
+        // ground after teleport (the symptom that motivated this pin).
+        // Death does the symmetric thing — set state_field BEFORE
+        // emitting Entity_Death.
+        let state_idx = state_field_clear_at.expect("state_field clear must have fired");
+        let spawn_idx = entity_spawn_at.expect("Entity_Spawn must have fired");
+        let teleport_idx = teleport_at.expect("TeleportPlayer must have fired");
+        assert!(
+            state_idx < spawn_idx,
+            "onStateFieldUpdate(0) (msg #{state_idx}) must precede \
+             onSequence Entity_Spawn (msg #{spawn_idx}) — kismet \
+             checks dead state and refuses TermRagdoll otherwise"
+        );
+        assert!(
+            spawn_idx < teleport_idx,
+            "onSequence Entity_Spawn (msg #{spawn_idx}) must precede \
+             TeleportPlayer (msg #{teleport_idx}) — TermRagdoll runs \
+             on the pre-snap pose, then the position snaps cleanly"
         );
     }
 
