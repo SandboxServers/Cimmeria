@@ -3,7 +3,7 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-05-05  
-> **Total tests**: 575  
+> **Total tests**: 579  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
@@ -334,6 +334,10 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [chain_3026_fires_dialog_5365_when_mission_1562_is_not_active](../../../crates/services/src/cell/content/chain_replay_tests.rs#L32) | live-DB | Cell / Content | 2026-05-03 | Chain 3026 (`db/resources/Content/Seed/sgc_w1_chains.sql`): `dialog_choice('5365')` accepts mission 1562, gated by `mission_status(1562) = 'not_active'` |  |
 | [chain_3026_does_not_fire_when_mission_1562_is_active](../../../crates/services/src/cell/content/chain_replay_tests.rs#L84) | live-DB | Cell / Content | 2026-05-03 | Test 2: with `mission_1562_status = 'active'`, the chain's `mission_status` condition fails and the engine does NOT resolve any actions for chain 3026 |  |
 | [chain_3026_does_not_fire_when_mission_1562_is_completed](../../../crates/services/src/cell/content/chain_replay_tests.rs#L128) | live-DB | Cell / Content | 2026-05-03 | Test 3: `mission_1562_status = 'completed'` also blocks chain 3026 |  |
+| [chain_1011_routes_non_jaffa_to_human_dialog_set](../../../crates/services/src/cell/content/chain_replay_tests.rs#L466) | live-DB | Cell / Content | 2026-05-05 | Chain 1011 (Mission 638 / Region2 entry / non-Jaffa) must add the Human dialog_set_map 2794 (→ dialog 2300, "Free Prisoner 329") to slot 17. Regression guard for the issue #216 ID swap that gave Tau'ri players the Jaffa "My symbiote will cure me" dialog |  |
+| [chain_1012_routes_jaffa_to_jaffa_dialog_set](../../../crates/services/src/cell/content/chain_replay_tests.rs#L482) | live-DB | Cell / Content | 2026-05-05 | Chain 1012 (Mission 638 / Region2 entry / Jaffa) must add the Jaffa dialog_set_map 5866 (→ dialog 5021, the symbiote dialog) to slot 17. Mirror of chain 1011's guard on the Jaffa side |  |
+| [chain_1011_does_not_match_jaffa_archetype](../../../crates/services/src/cell/content/chain_replay_tests.rs#L497) | live-DB | Cell / Content | 2026-05-05 | Negative pin: chain 1011 must NOT resolve when the player is Jaffa. Without the archetype condition both chains would fire and the prisoner would offer both dialog sets |  |
+| [chain_1012_does_not_match_non_jaffa_archetype](../../../crates/services/src/cell/content/chain_replay_tests.rs#L506) | live-DB | Cell / Content | 2026-05-05 | Negative pin: chain 1012 must NOT resolve when the player is non-Jaffa. Mirror of `chain_1011_does_not_match_jaffa_archetype` |  |
 | [build_engine_with_none_returns_empty_engine](../../../crates/services/src/cell/content/engine_loader.rs#L245) | unit | Cell / Content / Engine Loader | 2026-05-04 | `build_engine(None)` returns an empty engine — the codepath the server takes when started without a DB pool |  |
 | [build_engine_with_db_pool_loads_seeded_chains](../../../crates/services/src/cell/content/engine_loader.rs#L255) | live-DB | Cell / Content / Engine Loader | 2026-05-04 | Live-DB sanity: against the seeded `resources.content_*` tables, `build_engine` returns a non-empty engine |  |
 | [load_single_chain_returns_none_for_missing_id](../../../crates/services/src/cell/content/engine_loader.rs#L275) | live-DB | Cell / Content / Engine Loader | 2026-05-04 | `load_single_chain_for_test` returns `Ok(None)` for a chain id that doesn't exist in the seed |  |
