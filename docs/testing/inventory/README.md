@@ -71,4 +71,4 @@ See [review-report.md](review-report.md) for audit findings — that file is own
 
 ## Keeping this inventory current
 
-See [maintenance.md](maintenance.md) — when you add or remove a test, you also update the relevant per-crate file and the totals on this page in the same PR. CI does not yet drift-check the inventory; reviewers do.
+See [maintenance.md](maintenance.md) — a PR that adds or removes **≥5% of the workspace test count** (~55 tests at the current 1071 baseline) updates the relevant per-crate file and the totals on this page in the same PR. Smaller drifts get folded in by periodic sweep updates rather than blocking per-PR review. CI does not yet drift-check the inventory; reviewers do.
