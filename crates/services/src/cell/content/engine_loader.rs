@@ -233,6 +233,106 @@ pub(super) async fn load_single_chain_for_test(
     )
 }
 
+/// Test helper: load every in-memory `Chain` expansion produced by the
+/// chain id. The loader materializes one `Chain` per `content_triggers`
+/// row, so chains with multi-trigger OR semantics (e.g., chain 1103
+/// firing on any of `Barracks_Guard1/2/3` deaths) need all expansions
+/// registered for the engine to match correctly. `load_single_chain_for_test`
+/// only returns the first expansion, which would silently mask drift in
+/// the 2nd+ trigger rows.
+#[cfg(test)]
+pub(super) async fn load_chain_expansions_for_test(
+    pool: &PgPool,
+    chain_id: i32,
+) -> Result<Vec<Chain>, sqlx::Error> {
+    use sqlx::Row;
+
+    let chain_rows: Vec<DbChainRow> = sqlx::query(
+        "SELECT chain_id, description, scope_type, scope_id, enabled, priority \
+         FROM resources.content_chains WHERE chain_id = $1",
+    )
+    .bind(chain_id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| DbChainRow {
+        chain_id: r.get("chain_id"),
+        description: r.get("description"),
+        scope_type: r.get("scope_type"),
+        scope_id: r.get("scope_id"),
+        enabled: r.get("enabled"),
+        priority: r.get("priority"),
+    })
+    .collect();
+
+    if chain_rows.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let trigger_rows: Vec<DbTriggerRow> = sqlx::query(
+        "SELECT chain_id, event_type, event_key, scope, once, sort_order \
+         FROM resources.content_triggers WHERE chain_id = $1 ORDER BY sort_order",
+    )
+    .bind(chain_id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| DbTriggerRow {
+        chain_id: r.get("chain_id"),
+        event_type: r.get("event_type"),
+        event_key: r.get("event_key"),
+        scope: r.get("scope"),
+        once: r.get("once"),
+        sort_order: r.get("sort_order"),
+    })
+    .collect();
+
+    let condition_rows: Vec<DbConditionRow> = sqlx::query(
+        "SELECT chain_id, condition_type, target_id, target_key, operator, value, sort_order \
+         FROM resources.content_conditions WHERE chain_id = $1 ORDER BY sort_order",
+    )
+    .bind(chain_id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| DbConditionRow {
+        chain_id: r.get("chain_id"),
+        condition_type: r.get("condition_type"),
+        target_id: r.get("target_id"),
+        target_key: r.get("target_key"),
+        operator: r.get("operator"),
+        value: r.get("value"),
+        sort_order: r.get("sort_order"),
+    })
+    .collect();
+
+    let action_rows: Vec<DbActionRow> = sqlx::query(
+        "SELECT chain_id, action_type, target_id, target_key, params, delay_ms, sort_order \
+         FROM resources.content_actions WHERE chain_id = $1 ORDER BY sort_order",
+    )
+    .bind(chain_id)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|r| DbActionRow {
+        chain_id: r.get("chain_id"),
+        action_type: r.get("action_type"),
+        target_id: r.get("target_id"),
+        target_key: r.get("target_key"),
+        params: r.get("params"),
+        delay_ms: r.get("delay_ms"),
+        sort_order: r.get("sort_order"),
+    })
+    .collect();
+
+    Ok(build_chains_from_rows(
+        chain_rows,
+        trigger_rows,
+        condition_rows,
+        action_rows,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -107,6 +107,7 @@ Defined at [triggers.rs:20-98](../../crates/content-engine/src/triggers.rs#L20-L
 | `OnEffectInit / PulseBegin / PulseEnd / Removed` | Effect lifecycle hooks (unit variants) |
 | `OnMissionCompleted { mission_id }` | Mission marked complete |
 | `OnDialogSetOpen { dialog_set_name }` | Dialog set opened |
+| `OnMissionAccepted { mission_id }` | Mission just accepted or advanced (fired from the executor's combined `Action::AcceptMission \| Action::AdvanceMission` branch after the cell-side state commit; used by chains that highlight quest objects on mission start — e.g. chain 1097 for Aftermath) |
 
 Within a single chain's bucket, `Trigger::matches` ([triggers.rs:178](../../crates/content-engine/src/triggers.rs#L178)) decides whether the event matches the chain's specific trigger variant + filter. Bucketing is by **`TriggerType` discriminant** — see §6.
 

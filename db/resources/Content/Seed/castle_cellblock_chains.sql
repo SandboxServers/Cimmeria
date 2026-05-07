@@ -1096,3 +1096,196 @@ VALUES
   (1094, 'complete_mission', 686, NULL, '{}', 0, 0),
   (1094, 'accept_mission',   687, NULL, '{}', 0, 1),
   (1094, 'reset_counter', NULL, 'hallway05_kills', '{}', 0, 2);
+
+-- ============================================================
+-- MISSION 687 — Aftermath
+--
+-- Final mission of the Castle_Cellblock escape. Two steps:
+--   2354 — "Search the crate for any useful items."
+--          Right-click `Cellblock_WoodenCrate` → archetype-gated reward
+--          (Tau'ri stealth set + knife / Jaffa armor + serpent staff)
+--          → advance to step 2355.
+--   2355 — "Eliminate the guards in the barracks."
+--          Three NID Guards tagged `Barracks_Guard1/2/3` (re-tagged from
+--          previously-untagged spawn_ids 25/26/36, see
+--          db/resources/Worlds/Seed/spawnlist.sql).
+--          Counter `barracks_kills` reaches the `target - 1 = 2`
+--          threshold on the third kill → complete 687.
+--
+-- Reference: python/cell/missions/Castle_CellBlock/Aftermath.py covers
+-- step 2354 only; step 2355 has no python source (the original game
+-- shipped that step uncompleted). The barracks-kill completion is
+-- therefore a new design call — three guards already spawn in the room
+-- behind the wall from the crate, so we re-tag rather than insert new
+-- spawns.
+-- ============================================================
+
+-- Chain 1097: mission 687 accepted → highlight Cellblock_WoodenCrate
+-- as a quest world object so the right-click cursor renders the
+-- attention-pulse. Mirrors how chain 1053 highlights Preparation_SMG1A
+-- on mission 641 accept. The matching `mission_accepted` trigger fires
+-- from `crates/services/src/cell/content/executor.rs::Action::AcceptMission`
+-- right after the mission state is committed (engine extension landed
+-- alongside this chain).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1097, '687 - Mission accepted: highlight wooden crate', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1097, 'mission_accepted', '687', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1097, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
+        '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);
+
+-- Chain 1098: search crate (Tau'ri / non-Jaffa) → display dialog 3942,
+-- grant 5-piece Covert Stealth set + Combat Knife to backpack, advance
+-- to step 2355, clear crate highlight. Items go to container 1
+-- (backpack) per Aftermath.py — the original `inventory.addItem(1, ...)`
+-- path. Player learns to equip themselves rather than auto-equipping;
+-- earlier items in the cellblock arc were auto-handled.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1098, '687 - Search crate (non-Jaffa): grant stealth set', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1098, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1098, 'step_status', 687, '2354', 'eq', 'active', 0),
+  (1098, 'archetype',   NULL, NULL, 'neq', '8', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1098, 'display_dialog', 3942, NULL,   '{}',                         0, 0),
+  (1098, 'add_item',       3347, NULL,   '{"qty": 1, "container": 1}', 0, 1),  -- Covert Stealth Helmet
+  (1098, 'add_item',       3359, NULL,   '{"qty": 1, "container": 1}', 0, 2),  -- Covert Stealth Vest
+  (1098, 'add_item',       3372, NULL,   '{"qty": 1, "container": 1}', 0, 3),  -- Covert Stealth Pants
+  (1098, 'add_item',       3387, NULL,   '{"qty": 1, "container": 1}', 0, 4),  -- Covert Stealth Gloves
+  (1098, 'add_item',       3401, NULL,   '{"qty": 1, "container": 1}', 0, 5),  -- Covert Stealth Boots
+  (1098, 'add_item',       3325, NULL,   '{"qty": 1, "container": 1}', 0, 6),  -- Combat Knife
+  (1098, 'advance_step',   687,  '2355', '{}',                         0, 7),
+  (1098, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 8);
+
+-- Chain 1099: search crate (Jaffa) → display dialog 3943, grant
+-- Armored Prison Jacket + Serpent Staff to backpack, advance step,
+-- clear crate highlight. Same container-1 reasoning as 1098.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1099, '687 - Search crate (Jaffa): grant prison jacket + serpent staff', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1099, 'interact_tag', 'Cellblock_WoodenCrate', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1099, 'step_status', 687, '2354', 'eq', 'active', 0),
+  (1099, 'archetype',   NULL, NULL, 'eq',  '8', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1099, 'display_dialog', 3943, NULL,   '{}',                         0, 0),
+  (1099, 'add_item',       3482, NULL,   '{"qty": 1, "container": 1}', 0, 1),  -- Armored Prison Jacket
+  (1099, 'add_item',       2797, NULL,   '{"qty": 1, "container": 1}', 0, 2),  -- Serpent Staff
+  (1099, 'advance_step',   687,  '2355', '{}',                         0, 3),
+  (1099, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
+   '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 4);
+
+-- ── Mission 687 step 2355 — Eliminate barracks guards (3 guards) ──
+--
+-- Same shape as chain 1085-1087 (Mess Hall, 2 guards): one increment
+-- chain per guard at priority 1, one completion chain at priority 0
+-- with the multi-trigger OR shape. Step gating is on 2355 specifically
+-- so a guard kill while step 2354 is active doesn't bleed counter
+-- progress into the next step. Three guards → target_value 3, gte 2
+-- (target - 1) per the resolve/execute ordering note at chain 1087.
+
+-- Chain 1100: kill Barracks_Guard1 → increment barracks_kills
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1100, '687 - Kill Barracks_Guard1: increment barracks_kills', 'mission', 687, true, 1);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1100, 'entity_dead_tag', 'Barracks_Guard1', 'space', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1100, 'mission_status', 687, NULL,   'eq', 'active', 0),
+  (1100, 'step_status',    687, '2355', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1100, 'increment_counter', NULL, 'barracks_kills', '{"amount": 1}', 0, 0);
+
+INSERT INTO content_counters (chain_id, counter_name, target_value, reset_on)
+VALUES (1100, 'barracks_kills', 3, 'mission_complete');
+
+-- Chain 1101: kill Barracks_Guard2 → increment barracks_kills
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1101, '687 - Kill Barracks_Guard2: increment barracks_kills', 'mission', 687, true, 1);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1101, 'entity_dead_tag', 'Barracks_Guard2', 'space', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1101, 'mission_status', 687, NULL,   'eq', 'active', 0),
+  (1101, 'step_status',    687, '2355', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1101, 'increment_counter', NULL, 'barracks_kills', '{"amount": 1}', 0, 0);
+
+-- Chain 1102: kill Barracks_Guard3 → increment barracks_kills
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1102, '687 - Kill Barracks_Guard3: increment barracks_kills', 'mission', 687, true, 1);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1102, 'entity_dead_tag', 'Barracks_Guard3', 'space', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1102, 'mission_status', 687, NULL,   'eq', 'active', 0),
+  (1102, 'step_status',    687, '2355', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1102, 'increment_counter', NULL, 'barracks_kills', '{"amount": 1}', 0, 0);
+
+-- Chain 1103: barracks_kills threshold reached on third kill → complete 687.
+-- Three trigger rows OR together (one per guard tag) so any of the
+-- three deaths can be the trigger. Counter `gte 2` (target - 1)
+-- because chain conditions evaluate against the PRE-increment counter
+-- value — see chain 1087 for the full ordering note.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1103, '687 - Kill counter reached: complete 687', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES
+  (1103, 'entity_dead_tag', 'Barracks_Guard1', 'space', false, 0),
+  (1103, 'entity_dead_tag', 'Barracks_Guard2', 'space', false, 1),
+  (1103, 'entity_dead_tag', 'Barracks_Guard3', 'space', false, 2);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1103, 'mission_status', 687, NULL,   'eq',  'active', 0),
+  (1103, 'step_status',    687, '2355', 'eq',  'active', 1),
+  (1103, 'counter',        NULL, 'barracks_kills', 'gte', '2', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1103, 'complete_mission', 687, NULL, '{}', 0, 0),
+  (1103, 'reset_counter',    NULL, 'barracks_kills', '{}', 0, 1);
+
+-- Chain 1104: player_loaded + step 2354 active → restore crate highlight
+-- on login. interaction_type flags don't persist across server
+-- restarts, so a player who logs out mid-Aftermath at step 2354 would
+-- otherwise log back in to an unhighlighted crate. Mirrors chains
+-- 1062/1064/1065 (SMG1A / ColMarsh / Terminal restore patterns).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1104, '687 - Restore crate highlight on login (step 2354)', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1104, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1104, 'step_status', 687, '2354', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1104, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
+        '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);

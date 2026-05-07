@@ -86,6 +86,17 @@ pub(super) async fn execute_actions(
                             "MissionUpdate (accept) send to base failed -- mission progress not persisted"
                         );
                     }
+                    // Fire the follow-up `mission_accepted` event so chains
+                    // tied to mission start can run their setup work
+                    // (e.g., chain 1097 highlighting Cellblock_WoodenCrate
+                    // for mission 687). The in-process entity mutation is
+                    // already committed even if MissionUpdate failed to
+                    // persist, so the chain's view of mission state is
+                    // valid regardless.
+                    super::event_dispatch::fire_mission_accepted(
+                        entity_id, player_id, mission_id, engine, tx, space_mgr,
+                    )
+                    .await;
                 } else {
                     tracing::warn!(
                         mission_id,

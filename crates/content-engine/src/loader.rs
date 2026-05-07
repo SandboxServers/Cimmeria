@@ -234,6 +234,9 @@ fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "dialog_set_open" => Some(Trigger::OnDialogSetOpen {
             dialog_set_name: key?.to_string(),
         }),
+        "mission_accepted" => Some(Trigger::OnMissionAccepted {
+            mission_id: key?.parse().ok()?,
+        }),
         _ => None,
     }
 }
@@ -845,6 +848,46 @@ mod tests {
                 other
             ),
         }
+    }
+
+    /// `event_type = "mission_accepted"` with the mission id in `event_key`
+    /// must round-trip into a `Trigger::OnMissionAccepted`. This is the
+    /// load-bearing path for chains like Aftermath chain 1097 that need
+    /// to react to mission start without piggybacking on whichever chain
+    /// did the accepting.
+    #[test]
+    fn mission_accepted_event_type_loads_as_on_mission_accepted_trigger() {
+        use crate::triggers::Trigger;
+
+        let row = DbTriggerRow {
+            chain_id: 1097,
+            event_type: "mission_accepted".to_string(),
+            event_key: Some("687".to_string()),
+            scope: "player".to_string(),
+            once: false,
+            sort_order: 0,
+        };
+
+        match convert_trigger(&row) {
+            Some(Trigger::OnMissionAccepted { mission_id }) => assert_eq!(mission_id, 687),
+            other => panic!("expected OnMissionAccepted(687), got {:?}", other),
+        }
+    }
+
+    /// `mission_accepted` without an `event_key` cannot resolve a target
+    /// mission — must drop to None so the loader skips the row rather
+    /// than firing on every accept event.
+    #[test]
+    fn mission_accepted_without_key_returns_none() {
+        let row = DbTriggerRow {
+            chain_id: 1097,
+            event_type: "mission_accepted".to_string(),
+            event_key: None,
+            scope: "player".to_string(),
+            once: false,
+            sort_order: 0,
+        };
+        assert!(convert_trigger(&row).is_none());
     }
 
     #[test]
