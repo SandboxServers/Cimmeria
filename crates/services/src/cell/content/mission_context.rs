@@ -9,6 +9,37 @@ use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED, MISSION_NOT_ACTIVE};
 
+/// Populate per-stat current/max into the context as `stat_<id>_cur` and
+/// `stat_<id>_max` numeric params. Read by `Condition::StatBelowMax` to
+/// gate consumable chains against full-stat fizzles.
+///
+/// Currently only invoked from the `OnItemUse` dispatch site
+/// (consumable-use is the only chain class that needs stat state for
+/// gating). Generalize to other dispatch sites if/when more conditions
+/// learn to read stat values.
+pub(super) fn populate_stats_context(entity: &CellEntity, ctx: &mut ExecutionContext) {
+    for (stat_id, stat) in entity.stats.iter() {
+        ctx.set_param(format!("stat_{}_cur", stat_id), serde_json::json!(stat.cur));
+        ctx.set_param(format!("stat_{}_max", stat_id), serde_json::json!(stat.max));
+    }
+}
+
+/// Populate per-entity counter values into the context as `counter_<name>`
+/// numeric params. Read by `Condition::Counter` (the loader maps DB
+/// rows with `condition_type='counter'` and `target_key=<name>` onto
+/// this).
+///
+/// Called from `populate_mission_context` so every mission-aware
+/// dispatcher (notably `fire_entity_death`) sees up-to-date counter
+/// values when evaluating completion chains. Mutated by
+/// `Action::IncrementCounter` and `Action::ResetCounter` in the
+/// executor.
+pub(super) fn populate_counters_context(entity: &CellEntity, ctx: &mut ExecutionContext) {
+    for (name, value) in &entity.counters {
+        ctx.set_param(format!("counter_{}", name), serde_json::json!(*value));
+    }
+}
+
 /// Populate mission status and step status context params from entity state.
 ///
 /// Step status semantics (chain conditions read these via `step_status`):
@@ -23,6 +54,12 @@ use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED, MISSION_NOT_A
 ///   it" should compare against `completed` rather than relying on
 ///   `not_active`.
 pub(super) fn populate_mission_context(entity: &CellEntity, ctx: &mut ExecutionContext) {
+    // Counters travel alongside missions — completion chains for
+    // multi-step kill sequences read counter values to know when to
+    // fire. Populate them here so every mission-aware dispatcher gets
+    // them without each having to remember a separate call.
+    populate_counters_context(entity, ctx);
+
     for mission in entity.missions.all_missions() {
         let status_str = match mission.status {
             MISSION_NOT_ACTIVE => "not_active",
@@ -179,6 +216,82 @@ mod tests {
         assert!(
             !ctx.params.contains_key("mission_641_step_3563_status"),
             "unreached steps must not be populated",
+        );
+    }
+
+    /// `populate_counters_context` writes one `counter_<name>` numeric
+    /// param per entry in `entity.counters`. `Condition::Counter` reads
+    /// these to gate completion chains for kill-counter missions like
+    /// the Mess Hall (counter `messhall_kills`) and Hallway05 (counter
+    /// `hallway05_kills`).
+    #[test]
+    fn populate_counters_context_writes_counter_keys() {
+        let mut entity = CellEntity::new(EntityId(1), SpaceId(100), Vector3::zero());
+        entity.counters.insert("messhall_kills".to_string(), 1);
+        entity.counters.insert("hallway05_kills".to_string(), 0);
+
+        let mut ctx = ExecutionContext::new();
+        populate_counters_context(&entity, &mut ctx);
+
+        assert_eq!(
+            ctx.params
+                .get("counter_messhall_kills")
+                .and_then(|v| v.as_i64()),
+            Some(1),
+            "non-zero counter must populate as its current value",
+        );
+        assert_eq!(
+            ctx.params
+                .get("counter_hallway05_kills")
+                .and_then(|v| v.as_i64()),
+            Some(0),
+            "zero-valued counter must populate explicitly (not be elided) — \
+             a `Counter::Eq 0` condition would otherwise see the missing-key \
+             default and could miss the genuinely-zero case",
+        );
+    }
+
+    /// Empty `entity.counters` must not pollute the context — chains
+    /// that don't use counters should see a clean slate.
+    #[test]
+    fn populate_counters_context_empty_when_no_counters() {
+        let entity = CellEntity::new(EntityId(1), SpaceId(100), Vector3::zero());
+        let mut ctx = ExecutionContext::new();
+        populate_counters_context(&entity, &mut ctx);
+        assert!(
+            ctx.params.is_empty(),
+            "no counters → no params written; got {:?}",
+            ctx.params
+        );
+    }
+
+    /// `populate_stats_context` mirrors mission population but for
+    /// `entity.stats`. `Condition::StatBelowMax` reads `stat_<id>_cur`
+    /// and `stat_<id>_max` to gate consumable chains.
+    #[test]
+    fn populate_stats_context_writes_cur_and_max_for_each_stat() {
+        use cimmeria_entity::stats::{Stat, HEALTH};
+
+        let mut entity = CellEntity::new(EntityId(1), SpaceId(100), Vector3::zero());
+        // StatList is initialized with all default stats; overwrite HEALTH
+        // so we have known values to assert against.
+        if let Some(s) = entity.stats.get_mut(HEALTH) {
+            *s = Stat::new(0, 250, 1000, 0, 250, 1000);
+        }
+
+        let mut ctx = ExecutionContext::new();
+        populate_stats_context(&entity, &mut ctx);
+
+        let cur_key = format!("stat_{}_cur", HEALTH);
+        let max_key = format!("stat_{}_max", HEALTH);
+        assert_eq!(
+            ctx.params.get(&cur_key).and_then(|v| v.as_i64()),
+            Some(250),
+            "stat cur must populate verbatim — `Condition::StatBelowMax` reads it",
+        );
+        assert_eq!(
+            ctx.params.get(&max_key).and_then(|v| v.as_i64()),
+            Some(1000),
         );
     }
 }

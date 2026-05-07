@@ -78,7 +78,7 @@ INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled
 VALUES (5002, 'Castle_CellBlock → Event_GenericRegion (node 116)', 'space', 8, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (5002, 'enter_region', 'Castle_CellBlock.Region8', 'player', true, 0);
+VALUES (5002, 'enter_region', 'Castle_Cellblock.Region8', 'player', true, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -90,7 +90,7 @@ INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled
 VALUES (5003, 'Castle_CellBlock → Event_GenericRegion (node 116)', 'space', 8, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-VALUES (5003, 'enter_region', 'Castle_CellBlock.Region8', 'player', true, 0);
+VALUES (5003, 'enter_region', 'Castle_Cellblock.Region8', 'player', true, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES

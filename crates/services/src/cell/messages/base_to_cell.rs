@@ -121,13 +121,24 @@ pub enum BaseToCellMsg {
         quantity: i32,
     },
 
-    /// Inventory item was consumed atomically by base (in response to
-    /// `CellToBaseMsg::UseInventoryItem`). The cell should fire the
-    /// `OnItemUse` content event with `type_id` (item design id). Only sent
-    /// after the consumption tx commits — if the player didn't own that
-    /// instance or the tx failed, this message is not emitted.
+    /// Inventory item was used by the player (in response to
+    /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).
+    /// The cell fires the `OnItemUse` content event with `type_id` (item
+    /// design id) so chains conditioned on `item_use::<type_id>` can run.
+    ///
+    /// `instance_id` is the inventory row id the client clicked — passed
+    /// through so the chain context can record which exact instance
+    /// initiated the use. `Action::RemoveItem` reads this to remove
+    /// THAT specific stack rather than the player's first-by-type
+    /// instance, which is the difference between "consume the slappack
+    /// you clicked" and "consume the leftmost slappack in the bag."
+    ///
+    /// Note: base does NOT consume the item before sending this — chains
+    /// decide via `Action::RemoveItem`. The historical comment about
+    /// "consumption tx" pre-dated the chain-decides-consumption design.
     ItemUsed {
         entity_id: u32,
+        instance_id: i32,
         type_id: i32,
         target_id: i32,
     },

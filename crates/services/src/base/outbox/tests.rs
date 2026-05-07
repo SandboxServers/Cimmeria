@@ -10,6 +10,7 @@ use super::*;
 #[test]
 fn payload_serializes_with_kind_tag() {
     let p = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: 42,
         target_id: 17,
     };
@@ -25,6 +26,7 @@ fn payload_serializes_with_kind_tag() {
 #[test]
 fn payload_roundtrips_through_json() {
     let p = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: -7,
         target_id: 0,
     };
@@ -40,6 +42,7 @@ fn event_type_string_is_stable() {
     // to make that breakage loud at refactor time.
     assert_eq!(
         CellOutboxPayload::ItemUsed {
+            instance_id: 0,
             type_id: 0,
             target_id: 0
         }
@@ -55,6 +58,7 @@ fn row_to_message_builds_item_used() {
         entity_id: 1234,
         event_type: "item_used".to_string(),
         payload: sqlx::types::Json(CellOutboxPayload::ItemUsed {
+            instance_id: 0,
             type_id: 19,
             target_id: 5,
         }),
@@ -64,6 +68,7 @@ fn row_to_message_builds_item_used() {
     match msg {
         BaseToCellMsg::ItemUsed {
             entity_id,
+            instance_id: _,
             type_id,
             target_id,
         } => {
@@ -85,6 +90,7 @@ fn row_to_message_returns_none_for_unknown_event_type() {
         entity_id: 1,
         event_type: "future_event_v2".to_string(),
         payload: sqlx::types::Json(CellOutboxPayload::ItemUsed {
+            instance_id: 0,
             type_id: 0,
             target_id: 0,
         }),
@@ -106,6 +112,7 @@ fn persistence_contract_strings_are_stable_for_all_variants() {
     let cases: &[(CellOutboxPayload, &str)] = &[
         (
             CellOutboxPayload::ItemUsed {
+                instance_id: 0,
                 type_id: 0,
                 target_id: 0,
             },
@@ -236,6 +243,7 @@ fn row_to_message_returns_none_on_event_type_payload_mismatch() {
         entity_id: 1,
         event_type: "inventory_item_granted".to_string(),
         payload: sqlx::types::Json(CellOutboxPayload::ItemUsed {
+            instance_id: 0,
             type_id: 0,
             target_id: 0,
         }),
@@ -309,6 +317,7 @@ async fn enqueue_in_tx_writes_row_atomic_with_caller_commit() {
     cleanup(&pool, entity_id).await;
 
     let payload = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: 19,
         target_id: 0,
     };
@@ -355,6 +364,7 @@ async fn enqueue_then_drain_round_trips_message_and_marks_delivered() {
     cleanup(&pool, entity_id).await;
 
     let payload = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: 42,
         target_id: 7,
     };
@@ -374,6 +384,7 @@ async fn enqueue_then_drain_round_trips_message_and_marks_delivered() {
     match msg {
         BaseToCellMsg::ItemUsed {
             entity_id: e,
+            instance_id: _,
             type_id,
             target_id,
         } => {
@@ -413,10 +424,12 @@ async fn drain_stops_at_first_send_failure_and_records_attempt() {
     cleanup(&pool, entity_id).await;
 
     let payload_a = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: 1,
         target_id: 0,
     };
     let payload_b = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: 2,
         target_id: 0,
     };
@@ -472,6 +485,7 @@ fn drain_item_used_for(rx: &mut mpsc::Receiver<BaseToCellMsg>, entity_id: u32) -
     while let Ok(msg) = rx.try_recv() {
         if let BaseToCellMsg::ItemUsed {
             entity_id: e,
+            instance_id: _,
             type_id,
             target_id,
         } = msg
@@ -501,6 +515,7 @@ async fn injected_send_failure_replays_on_next_drain_with_payload_intact() {
     purge_undelivered_backlog(&pool).await;
 
     let payload = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: 4242,
         target_id: 1337,
     };
@@ -584,6 +599,7 @@ async fn try_dispatch_now_failure_leaves_row_for_drainer_replay() {
     purge_undelivered_backlog(&pool).await;
 
     let payload = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: 99,
         target_id: 11,
     };
@@ -659,6 +675,7 @@ async fn poison_row_does_not_block_following_rows_in_same_batch() {
     // Legitimate row enqueued *after* the poison row, so global id order
     // puts the poison row first in the batch.
     let good_payload = CellOutboxPayload::ItemUsed {
+        instance_id: 0,
         type_id: 7,
         target_id: 3,
     };

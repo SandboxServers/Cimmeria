@@ -80,6 +80,18 @@ pub enum Condition {
         operator: ComparisonOp,
         value: i32,
     },
+
+    /// True iff the source entity's stat is below its current max
+    /// (i.e., the stat has headroom to grow). Used to gate consumable
+    /// chains so e.g. Health Slappacks fizzle silently rather than
+    /// burning a stack when the player is already at full HP.
+    ///
+    /// Reads `stat_<id>_cur` and `stat_<id>_max` from the context;
+    /// callers must populate these via `populate_stats_context` before
+    /// resolving. Returns `false` (treat as "no headroom, don't fire")
+    /// if either param is missing — fail-closed so a wiring mistake
+    /// can't accidentally make consumables free-to-spam at full stat.
+    StatBelowMax { stat_id: i32 },
 }
 
 /// Faction relationship levels.
@@ -239,6 +251,20 @@ impl Condition {
                 let key = format!("counter_{}", counter_name);
                 let actual = ctx.params.get(&key).and_then(|v| v.as_i64()).unwrap_or(0);
                 compare_i64(actual, *value as i64, operator)
+            }
+            Condition::StatBelowMax { stat_id } => {
+                let cur_key = format!("stat_{}_cur", stat_id);
+                let max_key = format!("stat_{}_max", stat_id);
+                let cur = ctx.params.get(&cur_key).and_then(|v| v.as_i64());
+                let max = ctx.params.get(&max_key).and_then(|v| v.as_i64());
+                match (cur, max) {
+                    (Some(c), Some(m)) => c < m,
+                    // Fail-closed: missing context means we don't know the
+                    // stat state, so treat as "no headroom" rather than
+                    // firing the chain blindly. A missing populator call
+                    // would otherwise let consumables burn at full stat.
+                    _ => false,
+                }
             }
         }
     }
@@ -431,5 +457,52 @@ mod tests {
 
         ctx.set_param("counter_hallway01_kills".to_string(), serde_json::json!(2));
         assert!(!condition.evaluate(&ctx));
+    }
+
+    /// `Condition::StatBelowMax` — pin the headroom semantics that gate
+    /// consumable chains. Slappack chain 4001 (`stat_below_max stat_id 7`)
+    /// relies on three branches: cur < max → fire (heal lands), cur == max
+    /// → no-op (chain doesn't fire, stack preserved), and missing populator
+    /// → fail-closed (treat as "no headroom" so a wiring mistake doesn't
+    /// silently make consumables free at full stat).
+    #[test]
+    fn stat_below_max_fires_when_cur_below_max() {
+        let condition = Condition::StatBelowMax { stat_id: 7 };
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param("stat_7_cur".to_string(), serde_json::json!(50));
+        ctx.set_param("stat_7_max".to_string(), serde_json::json!(100));
+        assert!(condition.evaluate(&ctx));
+    }
+
+    #[test]
+    fn stat_below_max_blocks_when_cur_equals_max() {
+        let condition = Condition::StatBelowMax { stat_id: 7 };
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param("stat_7_cur".to_string(), serde_json::json!(100));
+        ctx.set_param("stat_7_max".to_string(), serde_json::json!(100));
+        assert!(
+            !condition.evaluate(&ctx),
+            "at full stat the chain must NOT fire — burning a slappack at \
+             full HP is the bug class this gates against",
+        );
+    }
+
+    #[test]
+    fn stat_below_max_fails_closed_on_missing_params() {
+        let condition = Condition::StatBelowMax { stat_id: 7 };
+
+        // Empty context — both keys missing.
+        assert!(
+            !condition.evaluate(&ExecutionContext::new()),
+            "missing populator must fail closed; otherwise a wiring mistake \
+             that drops `populate_stats_context` makes consumables free at \
+             full stat",
+        );
+
+        // Half-populated context — only `cur` set, `max` missing. Same
+        // fail-closed branch.
+        let mut partial = ExecutionContext::new();
+        partial.set_param("stat_7_cur".to_string(), serde_json::json!(50));
+        assert!(!condition.evaluate(&partial));
     }
 }

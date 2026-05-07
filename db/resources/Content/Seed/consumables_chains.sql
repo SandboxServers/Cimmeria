@@ -19,14 +19,31 @@ SET search_path = resources, pg_catalog;
 -- Item 2893 — Health Slappack TC1 (+500 HP)
 -- ============================================================
 
--- Chain 4001: useItem(2893) → +500 HP, consume 1 slappack.
+-- Chain 4001: useItem(2893) when HP < max → +500 HP, consume 1 slappack.
+--
+-- The `stat_below_max` condition gates the chain on actual HP headroom:
+-- using a slappack at full HP fizzles silently rather than burning the
+-- stack. Stat values are populated into the chain context by
+-- `populate_stats_context` (called from `fire_item_use`); the condition
+-- reads `stat_7_cur` and `stat_7_max` and fires only when cur < max.
+--
+-- A user-facing "already at full health" message is intentionally not
+-- emitted here — `Action::SystemMessage` is currently a stub (correct
+-- client wire format unknown; see executor.rs::SystemMessage). Until
+-- that's wired up, the failure mode is "click does nothing, stack is
+-- preserved" which is correct-but-quiet.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (4001, 'Health Slappack TC1: +500 HP + consume', 'global', NULL, true, 0);
+VALUES (4001, 'Health Slappack TC1: +500 HP + consume (HP < max)', 'global', NULL, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (4001, 'item_use', '2893', 'player', false, 0);
 
--- No conditions: the slappack is usable any time.
+-- `operator` and `value` are unused by `stat_below_max` (the condition is
+-- structural: cur < max). Pass the column-default 'eq' for operator and
+-- NULL for value so the loader's required-not-null operator parse
+-- succeeds and the matcher branch ignores both.
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (4001, 'stat_below_max', 7, NULL, 'eq', NULL, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES

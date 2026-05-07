@@ -32,7 +32,12 @@ pub(super) async fn execute_actions(
     space_mgr: &mut SpaceManager,
     engine: &cimmeria_content_engine::chain::ChainEngine,
 ) {
-    for (chain_id, action) in resolved.actions {
+    // Destructure so the inner loop can move `actions` while later
+    // action branches still read trigger-time `params`. `Action::RemoveItem`
+    // looks up `instance_id` here to consume the exact stack the
+    // player clicked on `useItem`.
+    let ResolvedActions { actions, params } = resolved;
+    for (chain_id, action) in actions {
         match action {
             Action::AcceptMission { mission_id } | Action::AdvanceMission { mission_id } => {
                 tracing::info!(
@@ -397,28 +402,62 @@ pub(super) async fn execute_actions(
                 }
             }
             Action::RemoveItem { item_id, count } => {
-                // Chains carry the item's design id (type_id), not an
-                // inventory instance id. Route through the cell→base
-                // RemoveInventoryItemByType RPC, which resolves the
-                // player's first matching instance and applies the same
-                // wire-update sequence as a normal remove.
-                tracing::info!(
-                    entity_id,
-                    player_id,
-                    type_id = item_id,
-                    count,
-                    chain_id,
-                    "Content: RemoveItem → RemoveInventoryItemByType"
-                );
-                if let Err(e) = tx
-                    .send(CellToBaseMsg::RemoveInventoryItemByType {
-                        entity_id,
-                        player_id,
-                        type_id: item_id,
-                        count,
-                    })
-                    .await
-                {
+                // Prefer the originating inventory `instance_id` if the
+                // chain context carries one (set by `fire_item_use` —
+                // the OnItemUse dispatch path). This is the difference
+                // between "consume the slappack the player clicked" and
+                // "consume the leftmost slappack of that type": when a
+                // player has two stacks of the same item and clicks the
+                // second one, the first stack must NOT be silently
+                // consumed instead.
+                //
+                // For chains fired by other paths (mission events,
+                // ambernol vial consumption via `enter_region`, etc.)
+                // there's no instance_id in context, so we fall back to
+                // the by-type resolution that picks the player's first
+                // matching instance. Both paths converge on the same
+                // wire-update sequence on the base side.
+                let instance_id = params
+                    .get("instance_id")
+                    .and_then(|v| v.as_i64())
+                    .map(|v| v as i32)
+                    .filter(|&v| v != 0);
+
+                let send_result =
+                    match instance_id {
+                        Some(instance) => {
+                            tracing::info!(
+                            entity_id, player_id, instance, type_id = item_id, count, chain_id,
+                            "Content: RemoveItem → RemoveInventoryItem (by instance from context)"
+                        );
+                            tx.send(CellToBaseMsg::RemoveInventoryItem {
+                                entity_id,
+                                player_id,
+                                item_id: instance,
+                                quantity: count,
+                            })
+                            .await
+                        }
+                        None => {
+                            tracing::info!(
+                                entity_id,
+                                player_id,
+                                type_id = item_id,
+                                count,
+                                chain_id,
+                                "Content: RemoveItem → RemoveInventoryItemByType"
+                            );
+                            tx.send(CellToBaseMsg::RemoveInventoryItemByType {
+                                entity_id,
+                                player_id,
+                                type_id: item_id,
+                                count,
+                            })
+                            .await
+                        }
+                    };
+
+                if let Err(e) = send_result {
                     // Saturated/closed channel — the consume silently
                     // skips otherwise. Surface it loudly so missions
                     // that depend on the removal (e.g., FindAmbernol
@@ -689,10 +728,42 @@ pub(super) async fn execute_actions(
                 counter_name,
                 amount,
             } => {
-                tracing::debug!(entity_id, %counter_name, amount, chain_id, "Content: increment counter");
+                // Counter values live on the cell entity and are read by
+                // `Condition::Counter` via `populate_mission_context`
+                // writing `counter_<name>` into the chain context.
+                //
+                // Resolve/execute ordering gotcha: chains are resolved
+                // (conditions evaluated against ctx) before any actions
+                // run, so a sibling completion chain on the same
+                // trigger event reads the PRE-increment counter value.
+                // For "kill N targets to complete" the completion
+                // condition must be `counter >= N - 1` so it fires on
+                // the kill that brings the counter to N. Documented at
+                // each call site that uses this pattern (e.g.,
+                // castle_cellblock_chains.sql chain 1087 / 1094).
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    let entry = entity.counters.entry(counter_name.clone()).or_insert(0);
+                    *entry = entry.saturating_add(amount);
+                    tracing::debug!(
+                        entity_id, player_id, %counter_name, amount,
+                        new_value = *entry, chain_id,
+                        "Content: incremented counter"
+                    );
+                } else {
+                    tracing::warn!(
+                        entity_id, %counter_name, chain_id,
+                        "Content: increment_counter source entity missing — counter not updated"
+                    );
+                }
             }
             Action::ResetCounter { counter_name } => {
-                tracing::debug!(entity_id, %counter_name, chain_id, "Content: reset counter");
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    let removed = entity.counters.remove(&counter_name);
+                    tracing::debug!(
+                        entity_id, player_id, %counter_name, ?removed, chain_id,
+                        "Content: reset counter"
+                    );
+                }
             }
             Action::CompleteObjective {
                 mission_id,
@@ -1005,6 +1076,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
         let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
             actions: vec![(
                 4001,
                 Action::ChangeStat {
@@ -1086,6 +1158,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
         let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
             actions: vec![(
                 4001,
                 Action::ChangeStat {
@@ -1122,6 +1195,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
         let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
             actions: vec![(
                 4001,
                 Action::ChangeStat {
@@ -1158,6 +1232,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
         let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
             actions: vec![(
                 4001,
                 Action::ChangeStat {
@@ -1194,6 +1269,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
         let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
             actions: vec![
                 (
                     2011,
@@ -1246,6 +1322,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
         let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
             actions: vec![(
                 1034,
                 Action::RemoveItem {
@@ -1272,5 +1349,114 @@ mod tests {
             }
             other => panic!("expected RemoveInventoryItemByType, got {:?}", other),
         }
+    }
+
+    /// `Action::IncrementCounter` mutates `entity.counters`. Previously
+    /// a stub that only logged; now load-bearing for kill-counter
+    /// missions like Mess Hall (counter `messhall_kills`) and Hallway05
+    /// (`hallway05_kills`). Pin the new-key initialization path:
+    /// missing entry → 0, then add `amount`.
+    #[tokio::test]
+    async fn increment_counter_initializes_and_adds_amount() {
+        let mut mgr = make_space_mgr();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+        let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
+            actions: vec![(
+                1085,
+                Action::IncrementCounter {
+                    counter_name: "messhall_kills".to_string(),
+                    amount: 1,
+                },
+            )],
+        };
+        execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+        let entity = mgr.get_entity(1).expect("entity must still exist");
+        assert_eq!(
+            entity.counters.get("messhall_kills"),
+            Some(&1),
+            "new counter must initialize at 0 and add `amount` (1)",
+        );
+    }
+
+    /// `Action::IncrementCounter` on an existing counter adds to the
+    /// stored value rather than overwriting. The Mess Hall mission
+    /// design depends on this: each guard kill increments the same
+    /// counter; the second kill must read the first's stored value
+    /// for the completion chain's `gte (target - 1)` condition to
+    /// fire on the right kill.
+    #[tokio::test]
+    async fn increment_counter_adds_to_existing_value() {
+        let mut mgr = make_space_mgr();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.get_entity_mut(1)
+            .unwrap()
+            .counters
+            .insert("messhall_kills".to_string(), 1);
+
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+        let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
+            actions: vec![(
+                1086,
+                Action::IncrementCounter {
+                    counter_name: "messhall_kills".to_string(),
+                    amount: 1,
+                },
+            )],
+        };
+        execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+        assert_eq!(
+            mgr.get_entity(1).unwrap().counters.get("messhall_kills"),
+            Some(&2),
+            "second increment must add to the stored value, not overwrite",
+        );
+    }
+
+    /// `Action::ResetCounter` removes the entry entirely. Subsequent
+    /// `Condition::Counter` reads see the missing-key default of 0.
+    /// Used by the Mess Hall completion chain (1087) so a re-accept
+    /// of mission 681 (e.g., the same player respawning into a fresh
+    /// instance) starts the counter clean.
+    #[tokio::test]
+    async fn reset_counter_clears_entry() {
+        let mut mgr = make_space_mgr();
+        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.get_entity_mut(1)
+            .unwrap()
+            .counters
+            .insert("messhall_kills".to_string(), 2);
+
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+        let resolved = ResolvedActions {
+            params: std::collections::HashMap::new(),
+            actions: vec![(
+                1087,
+                Action::ResetCounter {
+                    counter_name: "messhall_kills".to_string(),
+                },
+            )],
+        };
+        execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+        assert!(
+            !mgr.get_entity(1)
+                .unwrap()
+                .counters
+                .contains_key("messhall_kills"),
+            "reset must remove the entry — leaving a 0 entry would surface \
+             via populate_counters_context as `counter_messhall_kills = 0` \
+             rather than the missing-key default, masking a re-acceptance",
+        );
     }
 }

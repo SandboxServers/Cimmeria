@@ -422,7 +422,11 @@ pub async fn handle_use_inventory_item(
         "UseInventoryItem: firing ItemUsed (no consumption — chain decides)"
     );
 
-    let payload = CellOutboxPayload::ItemUsed { type_id, target_id };
+    let payload = CellOutboxPayload::ItemUsed {
+        instance_id: item_id,
+        type_id,
+        target_id,
+    };
     let outbox_id = match outbox::enqueue(pool.as_ref(), entity_id, &payload).await {
         Ok(id) => id,
         Err(e) => {

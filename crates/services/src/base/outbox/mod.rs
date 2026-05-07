@@ -59,6 +59,21 @@ const EVENT_TYPE_INVENTORY_ITEM_REMOVED: &str = "inventory_item_removed";
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CellOutboxPayload {
     ItemUsed {
+        /// Inventory row id the player clicked. Carried through so the
+        /// `OnItemUse` chain context records exactly which stack
+        /// initiated the use, letting `Action::RemoveItem` consume that
+        /// instance instead of the player's first-by-type.
+        ///
+        /// `#[serde(default)]` so undelivered rows enqueued by older
+        /// code (before this field existed) deserialize cleanly with
+        /// `instance_id = 0`. The cell-side executor falls back to
+        /// `RemoveInventoryItemByType` when the value is 0, so old
+        /// rows reach the drainer with the same behavior they had
+        /// when written. Without this attribute the drainer hard-fails
+        /// on legacy rows with `ColumnDecode("missing field
+        /// 'instance_id'")` and the outbox stalls.
+        #[serde(default)]
+        instance_id: i32,
         type_id: i32,
         target_id: i32,
     },
@@ -180,13 +195,19 @@ async fn record_failure(pool: &PgPool, id: i64, error: &str) {
 fn row_to_message(row: &OutboxRow) -> Option<BaseToCellMsg> {
     let entity_id = row.entity_id as u32;
     match (row.event_type.as_str(), &*row.payload) {
-        (EVENT_TYPE_ITEM_USED, CellOutboxPayload::ItemUsed { type_id, target_id }) => {
-            Some(BaseToCellMsg::ItemUsed {
-                entity_id,
-                type_id: *type_id,
-                target_id: *target_id,
-            })
-        }
+        (
+            EVENT_TYPE_ITEM_USED,
+            CellOutboxPayload::ItemUsed {
+                instance_id,
+                type_id,
+                target_id,
+            },
+        ) => Some(BaseToCellMsg::ItemUsed {
+            entity_id,
+            instance_id: *instance_id,
+            type_id: *type_id,
+            target_id: *target_id,
+        }),
         (
             EVENT_TYPE_INVENTORY_ITEM_GRANTED,
             CellOutboxPayload::InventoryItemGranted {
@@ -229,8 +250,13 @@ pub async fn try_dispatch_now(
     payload: CellOutboxPayload,
 ) {
     let msg = match payload {
-        CellOutboxPayload::ItemUsed { type_id, target_id } => BaseToCellMsg::ItemUsed {
+        CellOutboxPayload::ItemUsed {
+            instance_id,
+            type_id,
+            target_id,
+        } => BaseToCellMsg::ItemUsed {
             entity_id,
+            instance_id,
             type_id,
             target_id,
         },

@@ -225,8 +225,16 @@ impl ChainEngine {
 ///
 /// Each entry pairs a chain ID with the action to execute, preserving the
 /// ordering (highest-priority chain first, actions in declaration order).
+///
+/// `params` carries forward the resolution-time `ExecutionContext.params`
+/// so action executors can read trigger-time state without holding the
+/// original context. This is how `Action::RemoveItem` looks up
+/// `instance_id` set by `fire_item_use` to consume the exact stack the
+/// player clicked instead of the player's first-by-type instance.
+#[derive(Default)]
 pub struct ResolvedActions {
     pub actions: Vec<(i64, Action)>,
+    pub params: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl ChainEngine {
@@ -237,9 +245,7 @@ impl ChainEngine {
     /// has access to game state (SpaceManager, channels, etc.) that the engine
     /// itself doesn't know about.
     pub fn resolve_event(&self, event: &TriggerEvent, ctx: &ExecutionContext) -> ResolvedActions {
-        let mut resolved = ResolvedActions {
-            actions: Vec::new(),
-        };
+        let mut resolved = ResolvedActions::default();
 
         let chains = match self.chains_by_trigger.get(&event.trigger_type) {
             Some(chains) => chains,
@@ -261,6 +267,15 @@ impl ChainEngine {
             for action in &chain.actions {
                 resolved.actions.push((chain.id, action.clone()));
             }
+        }
+
+        // Defer the params clone until at least one chain matched.
+        // `resolve_event` runs on every gameplay tick that produces an
+        // event (entity death, region cross, item use, …), most of
+        // which return zero actions; cloning the populated context
+        // unconditionally wasted bytes on every miss.
+        if !resolved.actions.is_empty() {
+            resolved.params = ctx.params.clone();
         }
 
         resolved
