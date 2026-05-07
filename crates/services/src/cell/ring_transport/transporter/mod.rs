@@ -1,15 +1,11 @@
-//! Ring transporter state machine + manager.
+//! Ring transporter state machine.
 //!
 //! Direct port of `python/cell/RingTransporter.py`. Each [`RingTransporter`]
 //! owns one ring pad's runtime state: who's currently standing on it, what
 //! state the FSM is in, and any pending timer deadlines.
 //!
-//! File-size note: the FSM, `Effect` enum, and `RingTransporterManager` shim
-//! live together because the only natural seam (manager out + Effect out)
-//! produces an ~50-line shim alongside a ~600-line FSM file — uneven enough
-//! that we keep them together per the CLAUDE.md "skip the split if the only
-//! seams produce uneven files" rule. Production code is ~510 lines (over the
-//! 500 soft cap, under the 700 hard cap).
+//! The cross-region registry shim ([`RingTransporterManager`]) and the test
+//! suite live in sibling modules so the FSM body itself stays readable.
 //!
 //! Timing is tick-driven (100ms cadence) — see
 //! [`super::runtime::run_tick_with_engine`]. The Python original used
@@ -37,6 +33,13 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use super::regions::RingRegion;
+
+mod manager;
+
+#[cfg(test)]
+mod tests;
+
+pub use manager::{RawDeadline, RingTransporterManager};
 
 /// Hide-everyone delay after warmup begins (Python: 3.5s).
 pub const HIDE_DELAY: Duration = Duration::from_millis(3_500);
@@ -504,266 +507,9 @@ impl RingTransporter {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DeadlineKind {
+pub(super) enum DeadlineKind {
     Hide,
     Warmup,
     RemoteWarmup,
     Cooldown,
-}
-
-/// Process-wide registry of ring transporters (one entry per region_id).
-///
-/// All worlds' transporters live in the same map because cross-world rings
-/// need to find each other by region_id.
-#[derive(Debug, Default)]
-pub struct RingTransporterManager {
-    pub regions: HashMap<i32, RingTransporter>,
-}
-
-impl RingTransporterManager {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Build one transporter per region in the supplied table. Idempotent —
-    /// re-init clears any in-flight FSM state (use only at startup).
-    pub fn load(&mut self, ring_regions: &HashMap<i32, RingRegion>) {
-        self.regions.clear();
-        for (id, region) in ring_regions {
-            self.regions
-                .insert(*id, RingTransporter::from_region(region));
-        }
-    }
-
-    pub fn get(&self, region_id: i32) -> Option<&RingTransporter> {
-        self.regions.get(&region_id)
-    }
-
-    pub fn get_mut(&mut self, region_id: i32) -> Option<&mut RingTransporter> {
-        self.regions.get_mut(&region_id)
-    }
-
-    /// Return all region_ids that have an elapsed deadline at `now`. Used by
-    /// the tick to drive timers forward.
-    pub fn ready_regions(&self, now: Instant) -> Vec<(i32, RawDeadline)> {
-        self.regions
-            .iter()
-            .filter_map(|(id, r)| r.elapsed_deadline(now).map(|dk| (*id, RawDeadline(dk))))
-            .collect()
-    }
-}
-
-/// Opaque deadline-kind handle returned by `ready_regions`. Wrapping it
-/// keeps `DeadlineKind` private while still letting the tick code dispatch.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RawDeadline(DeadlineKind);
-
-impl RawDeadline {
-    pub(crate) fn is_hide(self) -> bool {
-        self.0 == DeadlineKind::Hide
-    }
-    pub(crate) fn is_warmup(self) -> bool {
-        self.0 == DeadlineKind::Warmup
-    }
-    pub(crate) fn is_remote_warmup(self) -> bool {
-        self.0 == DeadlineKind::RemoteWarmup
-    }
-    pub(crate) fn is_cooldown(self) -> bool {
-        self.0 == DeadlineKind::Cooldown
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn make_region(id: i32, world: &str, dests: Vec<i32>) -> RingRegion {
-        RingRegion {
-            region_id: id,
-            world_id: 12,
-            world_name: world.to_string(),
-            x: 1.0,
-            y: 2.0,
-            z: 3.0,
-            tag: format!("Ring{id}"),
-            height: 1.7,
-            radius: 3.5,
-            event_set_id: 100,
-            display_name_id: 7508,
-            destination_ids: dests,
-            point_set_id: 200,
-        }
-    }
-
-    #[test]
-    fn fsm_starts_idle() {
-        let r = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
-        assert_eq!(r.state, State::Idle);
-        assert!(r.players.is_empty());
-    }
-
-    #[test]
-    fn validate_destination_rejects_self_busy_unknown() {
-        let mut r = RingTransporter::from_region(&make_region(1, "Castle", vec![2, 3]));
-        assert_eq!(
-            r.validate_destination(99),
-            Err("destination not in region's destination list")
-        );
-        assert_eq!(
-            r.validate_destination(1),
-            Err("destination not in region's destination list")
-        );
-        // Self-as-dest is filtered at load time, so it'd hit the "not in list" branch first.
-        // Force a self-list entry to test the source==dest guard.
-        r.destination_ids.push(1);
-        assert_eq!(
-            r.validate_destination(1),
-            Err("source and destination cannot be the same")
-        );
-
-        r.state = State::SendWait;
-        assert_eq!(r.validate_destination(2), Err("source ring is busy"));
-    }
-
-    #[test]
-    fn idle_to_send_wait_via_enter_send_wait() {
-        let mut r = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
-        r.enter_send_wait(2);
-        assert_eq!(r.state, State::SendWait);
-        assert_eq!(r.remote_region_id, Some(2));
-    }
-
-    #[test]
-    fn remote_wait_idle_to_recv_wait() {
-        let mut r = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
-        r.remote_wait(1);
-        assert_eq!(r.state, State::RecvWait);
-        assert_eq!(r.remote_region_id, Some(1));
-    }
-
-    #[test]
-    fn full_cycle_source_side() {
-        let mut src = RingTransporter::from_region(&make_region(1, "Castle", vec![2]));
-        src.enter_send_wait(2);
-
-        // Player walks onto the pad
-        src.region_triggered(true, 100);
-        assert!(src.should_auto_start());
-
-        let now = Instant::now();
-        let effs = src.start_sending(now);
-        assert_eq!(src.state, State::SendWarmup);
-        // Should produce: PlaySequence (1) + OnTeleportOut + LockMovement = 3 for one player.
-        assert!(matches!(effs[0], Effect::PlaySequence { .. }));
-        assert!(matches!(
-            effs[1],
-            Effect::OnTeleportOut {
-                region_id: 1,
-                destination_id: 2,
-                ..
-            }
-        ));
-        assert!(matches!(effs[2], Effect::LockMovement { entity_id: 100 }));
-        assert_eq!(effs.len(), 3);
-
-        // Hide timer
-        let hide_now = now + HIDE_DELAY;
-        let effs = src.hide_timer_expired();
-        assert_eq!(effs.len(), 1);
-        assert!(matches!(effs[0], Effect::HidePlayer { entity_id: 100 }));
-        assert_eq!(src.state, State::SendWarmup);
-        let _ = hide_now;
-
-        // Warmup timer → teleport. The source's job ends here: it goes back
-        // to `Idle` and clears its transient state — without this the
-        // source rejects the next trip as "source ring is busy".
-        let effs = src.warmup_timer_expired([10.0, 20.0, 30.0], "Castle");
-        assert_eq!(src.state, State::Idle);
-        assert_eq!(src.remote_region_id, None);
-        assert!(src.send_players.is_empty());
-        assert_eq!(effs.len(), 1);
-        match &effs[0] {
-            Effect::TeleportPlayer {
-                entity_id,
-                position,
-                world_name,
-                destination_region_id,
-            } => {
-                assert_eq!(*entity_id, 100);
-                assert_eq!(*position, [10.0, 20.0, 30.0]);
-                assert_eq!(world_name, "Castle");
-                assert_eq!(*destination_region_id, 2);
-            }
-            _ => panic!("expected TeleportPlayer"),
-        }
-
-        // Invariant: after a full source-side cycle, the next
-        // validate_destination must succeed. The source must reset to Idle
-        // (rather than staying in RemoteLoadWait) so it doesn't reject the
-        // next trip as busy.
-        assert_eq!(src.validate_destination(2), Ok(()));
-    }
-
-    #[test]
-    fn full_cycle_destination_side() {
-        let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
-        dst.remote_wait(1);
-        dst.remote_send();
-        assert_eq!(dst.state, State::RecvWarmup);
-        dst.remote_count_update(2);
-        dst.remote_transport();
-        assert_eq!(dst.state, State::RemoteLoadWait);
-        // 1 of 2 loaded → not yet ready.
-        assert!(!dst.player_loaded(100));
-        // 2 of 2 → ready.
-        assert!(dst.player_loaded(101));
-    }
-
-    #[test]
-    fn destination_full_cycle_to_idle() {
-        let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
-        dst.remote_wait(1);
-        dst.remote_send();
-        dst.remote_count_update(1);
-        dst.remote_transport();
-
-        assert!(dst.player_loaded(100));
-
-        let now = Instant::now();
-        let effs = dst.all_players_loaded(now);
-        assert_eq!(dst.state, State::RemoteWarmup);
-        assert_eq!(effs.len(), 1); // PlaySequence(TeleportIn) for first player
-
-        let effs = dst.remote_warmup_timer_expired(now + REMOTE_WARMUP_DELAY);
-        assert_eq!(dst.state, State::Cooldown);
-        assert_eq!(effs.len(), 1);
-        assert!(matches!(effs[0], Effect::ShowPlayer { entity_id: 100 }));
-
-        let effs = dst.cooldown_timer_expired();
-        assert_eq!(dst.state, State::Idle);
-        assert_eq!(effs.len(), 2); // unlock + fire teleport_in
-        assert!(matches!(effs[0], Effect::UnlockMovement { entity_id: 100 }));
-        assert!(matches!(
-            effs[1],
-            Effect::FireTeleportIn {
-                entity_id: 100,
-                region_id: 2
-            }
-        ));
-        assert!(dst.players_loaded.is_empty());
-        assert!(dst.remote_region_id.is_none());
-    }
-
-    #[test]
-    fn destination_with_no_loaded_players_skips_sequence() {
-        let mut dst = RingTransporter::from_region(&make_region(2, "Castle", vec![1]));
-        dst.remote_wait(1);
-        dst.remote_send();
-        dst.remote_count_update(0);
-        dst.remote_transport();
-
-        let effs = dst.all_players_loaded(Instant::now());
-        assert!(effs.is_empty());
-        assert_eq!(dst.state, State::RemoteWarmup);
-    }
 }
