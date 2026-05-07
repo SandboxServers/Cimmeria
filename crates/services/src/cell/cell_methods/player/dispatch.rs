@@ -48,6 +48,7 @@ pub async fn dispatch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::make_space_manager_with_player;
 
     /// Pin the SGWPlayer cell-method constant values. The dispatch routing in
     /// `dispatch` above uses `..=` ranges over these constants — if a future
@@ -85,15 +86,7 @@ mod tests {
     /// 88..=90) returns false, and so does the outer dispatch.
     #[tokio::test]
     async fn pet_methods_route_to_social_not_world() {
-        let mut mgr = SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Spaces><Space WorldName="Agnos" /></Spaces>"#;
-        mgr.parse_spaces_xml(spaces_xml).unwrap();
-        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
-            .unwrap();
+        let mut mgr = make_space_manager_with_player(1);
 
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();
@@ -116,15 +109,7 @@ mod tests {
     /// as `dispatch` returning false for one of these.
     #[tokio::test]
     async fn each_outer_range_routes_to_a_handler() {
-        let mut mgr = SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Spaces><Space WorldName="Agnos" /></Spaces>"#;
-        mgr.parse_spaces_xml(spaces_xml).unwrap();
-        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
-            .unwrap();
+        let mut mgr = make_space_manager_with_player(1);
 
         let (tx, _rx) = mpsc::channel(64);
         let engine = ChainEngine::new();
@@ -151,15 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn out_of_range_methods_return_false() {
-        let mut mgr = SpaceManager::new(1);
-        let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
-        let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
-<Spaces><Space WorldName="Agnos" /></Spaces>"#;
-        mgr.parse_spaces_xml(spaces_xml).unwrap();
-        mgr.create_startup_spaces(cell_spaces_xml).unwrap();
-        mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
-            .unwrap();
+        let mut mgr = make_space_manager_with_player(1);
 
         let (tx, _rx) = mpsc::channel(8);
         let engine = ChainEngine::new();

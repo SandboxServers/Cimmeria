@@ -77,3 +77,33 @@ macro_rules! require_db_or_skip {
 }
 
 pub(crate) use require_db_or_skip;
+
+// ── SpaceManager test fixtures ────────────────────────────────────────
+
+use crate::cell::space_manager::SpaceManager;
+
+/// Standard test space setup: SpaceManager with a single Agnos space.
+///
+/// The same ~5-line block was duplicated across dispatch, interaction,
+/// and vendor test modules. Extracted here so every cell test shares
+/// the same default world geometry.
+pub(crate) fn make_space_manager() -> SpaceManager {
+    let mut mgr = SpaceManager::new(1);
+    let spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" Instanced="false" MinX="-2400" MaxX="2200" MinY="-3200" MaxY="2800" /></Spaces>"#;
+    let cell_spaces_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Spaces><Space WorldName="Agnos" /></Spaces>"#;
+    mgr.parse_spaces_xml(spaces_xml).unwrap();
+    mgr.create_startup_spaces(cell_spaces_xml).unwrap();
+    mgr
+}
+
+/// Same as [`make_space_manager`], but also creates a player entity at
+/// the origin so tests that need an avatar don't repeat the entity
+/// creation boilerplate.
+pub(crate) fn make_space_manager_with_player(entity_id: u32) -> SpaceManager {
+    let mut mgr = make_space_manager();
+    mgr.create_entity(entity_id, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr
+}
