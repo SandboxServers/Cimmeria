@@ -78,7 +78,7 @@ macro_rules! require_db_or_skip {
 
 pub(crate) use require_db_or_skip;
 
-// ── SpaceManager test fixtures (issue #149) ───────────────────────────
+// ── SpaceManager test fixtures ────────────────────────────────────────
 
 use crate::cell::space_manager::SpaceManager;
 
