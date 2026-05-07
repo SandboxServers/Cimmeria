@@ -864,7 +864,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1084, 'accept_mission', 687, NULL, '{}', 0, 0);
 
 -- ─────────────────────────────────────────────────────────────────────
--- Chains 1085-1099: kill-counter chains for missions 681-686.
+-- Chains 1085-1094: kill-counter chains for missions 681-686.
 --
 -- Each Hallway/MessHall mission has TWO chains: one increment chain
 -- (fires on each guard kill, bumps the counter) and one completion

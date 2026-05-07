@@ -218,4 +218,80 @@ mod tests {
             "unreached steps must not be populated",
         );
     }
+
+    /// `populate_counters_context` writes one `counter_<name>` numeric
+    /// param per entry in `entity.counters`. `Condition::Counter` reads
+    /// these to gate completion chains for kill-counter missions like
+    /// the Mess Hall (counter `messhall_kills`) and Hallway05 (counter
+    /// `hallway05_kills`).
+    #[test]
+    fn populate_counters_context_writes_counter_keys() {
+        let mut entity = CellEntity::new(EntityId(1), SpaceId(100), Vector3::zero());
+        entity.counters.insert("messhall_kills".to_string(), 1);
+        entity.counters.insert("hallway05_kills".to_string(), 0);
+
+        let mut ctx = ExecutionContext::new();
+        populate_counters_context(&entity, &mut ctx);
+
+        assert_eq!(
+            ctx.params
+                .get("counter_messhall_kills")
+                .and_then(|v| v.as_i64()),
+            Some(1),
+            "non-zero counter must populate as its current value",
+        );
+        assert_eq!(
+            ctx.params
+                .get("counter_hallway05_kills")
+                .and_then(|v| v.as_i64()),
+            Some(0),
+            "zero-valued counter must populate explicitly (not be elided) — \
+             a `Counter::Eq 0` condition would otherwise see the missing-key \
+             default and could miss the genuinely-zero case",
+        );
+    }
+
+    /// Empty `entity.counters` must not pollute the context — chains
+    /// that don't use counters should see a clean slate.
+    #[test]
+    fn populate_counters_context_empty_when_no_counters() {
+        let entity = CellEntity::new(EntityId(1), SpaceId(100), Vector3::zero());
+        let mut ctx = ExecutionContext::new();
+        populate_counters_context(&entity, &mut ctx);
+        assert!(
+            ctx.params.is_empty(),
+            "no counters → no params written; got {:?}",
+            ctx.params
+        );
+    }
+
+    /// `populate_stats_context` mirrors mission population but for
+    /// `entity.stats`. `Condition::StatBelowMax` reads `stat_<id>_cur`
+    /// and `stat_<id>_max` to gate consumable chains.
+    #[test]
+    fn populate_stats_context_writes_cur_and_max_for_each_stat() {
+        use cimmeria_entity::stats::{Stat, HEALTH};
+
+        let mut entity = CellEntity::new(EntityId(1), SpaceId(100), Vector3::zero());
+        // StatList is initialized with all default stats; overwrite HEALTH
+        // so we have known values to assert against.
+        if let Some(s) = entity.stats.get_mut(HEALTH) {
+            *s = Stat::new(0, 250, 1000, 0, 250, 1000);
+        }
+
+        let mut ctx = ExecutionContext::new();
+        populate_stats_context(&entity, &mut ctx);
+
+        let cur_key = format!("stat_{}_cur", HEALTH);
+        let max_key = format!("stat_{}_max", HEALTH);
+        assert_eq!(
+            ctx.params.get(&cur_key).and_then(|v| v.as_i64()),
+            Some(250),
+            "stat cur must populate verbatim — `Condition::StatBelowMax` reads it",
+        );
+        assert_eq!(
+            ctx.params.get(&max_key).and_then(|v| v.as_i64()),
+            Some(1000),
+        );
+    }
 }

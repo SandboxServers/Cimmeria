@@ -277,8 +277,12 @@ pub struct CellEntity {
     /// read by `Condition::Counter` (populated into the chain context as
     /// `counter_<name>` by `populate_mission_context`). Used to track
     /// kill counts and similar progression state — e.g., the Mess Hall
-    /// completion chain reads `counter_messhall_kills >= 2` to know
-    /// when both `MessHall_Guard1` and `MessHall_Guard2` are dead.
+    /// (target_value 2) completion chain reads
+    /// `counter_messhall_kills >= 1` to fire on the kill that brings
+    /// the counter to 2 alongside the increment chain. The `target - 1`
+    /// threshold is load-bearing because chain conditions evaluate
+    /// before sibling actions execute (see
+    /// `executor.rs::IncrementCounter` for the full ordering note).
     ///
     /// Not persisted: counters are mission-scoped and intended to be
     /// transient. The chain that reaches the threshold also explicitly
