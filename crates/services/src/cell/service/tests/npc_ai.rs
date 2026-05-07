@@ -219,19 +219,29 @@ async fn npc_ai_leashing_snaps_to_spawn_restores_health_and_idles() {
 }
 
 /// Fighting NPC with three live threats must pick the highest-threat
-/// target for attack. The existing dead-target test only seeds two
-/// threats and the dead one is removed, so the survivor is selected by
+/// target for attack. The dead-target sibling test only seeds two
+/// threats and the dead one is pruned, so the survivor is selected by
 /// default — it never exercises the `max_by` branch. This test pins
-/// that the top threat is chosen even when it is NOT the first inserted.
+/// that the top threat is chosen by varying the geometry: only the
+/// top-threat target (101) is in NPC_ATTACK_RANGE; 100 and 102 are
+/// past 30. With pre-seeded `nav_path`, the in-range attack branch
+/// clears it, and the out-of-range pathing branch leaves it set. So:
+/// max_by correct → 101 picked → in range → nav_path empty.
+/// max_by flipped → 100 or 102 picked → out of range → nav_path stays.
 #[tokio::test]
 async fn npc_ai_fight_picks_top_threat_among_multiple_live_targets() {
+    use cimmeria_common::Vector3;
+
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
 
-    // Three live targets at different positions (all in range + LOS).
+    // Position so only the top-threat target is in NPC_ATTACK_RANGE (30):
+    //   100 (threat 2.0)  → distance 40 (out of range, within LEASH=50)
+    //   102 (threat 5.0)  → distance 35 (out of range, within LEASH=50)
+    //   101 (threat 10.0) → distance 10 (in range)
     for &(eid, pos) in &[
-        (100, [5.0, 0.0, 0.0]),
+        (100, [40.0, 0.0, 0.0]),
         (101, [10.0, 0.0, 0.0]),
-        (102, [15.0, 0.0, 0.0]),
+        (102, [-35.0, 0.0, 0.0]),
     ] {
         mgr.create_entity(eid, "Castle", pos, [0.0; 3]).unwrap();
         if let Some(p) = mgr.get_entity_mut(eid) {
@@ -249,6 +259,11 @@ async fn npc_ai_fight_picks_top_threat_among_multiple_live_targets() {
         npc.threat_list.insert(100, 2.0);
         npc.threat_list.insert(102, 5.0);
         npc.threat_list.insert(101, 10.0);
+        // Pre-seed nav_path so the assertion can distinguish:
+        //  - in-range branch explicitly calls `nav_path.clear()`
+        //  - out-of-range pathing branch leaves it set if find_path
+        //    returns None (no navmesh in the test fixture).
+        npc.nav_path.push_back(Vector3::new(99.0, 0.0, 99.0));
     }
 
     let (tx, _rx) = mpsc::channel(8);
@@ -259,22 +274,20 @@ async fn npc_ai_fight_picks_top_threat_among_multiple_live_targets() {
         matches!(npc.ai_state, AiState::Fighting),
         "NPC must stay Fighting with live threats"
     );
-    // The top threat (101) is in range and has LOS — the NPC should have
-    // either attacked it (nav_path cleared) or started pathing toward it.
-    // We assert it did NOT pick a lower-threat target by checking that
-    // the highest-threat entity is the one that triggered the in-range branch.
-    // Since all three are in range, the attack branch fires and nav_path clears.
     assert!(
         npc.nav_path.is_empty(),
-        "in-range top threat must trigger attack branch (nav_path cleared)"
+        "max_by must select the in-range top-threat target (101); reverting \
+         to min_by picks an out-of-range target and leaves the pre-seeded \
+         nav_path in place"
     );
 }
 
-/// NaN threat values must not panic — `partial_cmp` returns None for NaN
-/// and the current code falls back to `Ordering::Equal`. Pin that branch
-/// so a future refactor that unwraps without a fallback cannot land.
+/// Single-target NaN: `max_by` over a 1-element iterator never compares,
+/// so this only proves the iterator path doesn't panic on a NaN entry.
+/// The actual `partial_cmp(NaN, _).unwrap_or(Equal)` fallback is pinned
+/// by the multi-target sibling below.
 #[tokio::test]
-async fn npc_ai_fight_nan_threat_does_not_panic() {
+async fn npc_ai_fight_single_nan_target_does_not_panic() {
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
 
     mgr.create_entity(100, "Castle", [5.0, 0.0, 0.0], [0.0; 3])
@@ -288,21 +301,53 @@ async fn npc_ai_fight_nan_threat_does_not_panic() {
     }
 
     if let Some(npc) = mgr.get_entity_mut(200) {
-        // NaN threat — partial_cmp returns None.
         npc.threat_list.insert(100, f32::NAN);
     }
 
     let (tx, _rx) = mpsc::channel(8);
-    // The tick must not panic.
     crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
 
-    // Dead-target prune removes NaN target? NaN != NaN, but the health check
-    // is independent. The target is alive (health=100), so it stays in the
-    // list. AI remains Fighting because there's still a target.
     let npc = mgr.get_entity(200).unwrap();
     assert!(
         matches!(npc.ai_state, AiState::Fighting),
-        "NPC with NaN-threat target must not panic and stays Fighting"
+        "single NaN-threat target must not panic and stays Fighting"
+    );
+}
+
+/// Multi-target NaN: with NaN AND a finite threat in the list, `max_by`
+/// actually invokes `partial_cmp(NaN, finite)` which returns `None`.
+/// The fallback `unwrap_or(Ordering::Equal)` keeps the iterator going.
+/// A refactor that swapped the unwrap_or for `unwrap()` would panic on
+/// this comparison and fail the test.
+#[tokio::test]
+async fn npc_ai_fight_nan_in_threat_list_with_other_targets_does_not_panic() {
+    let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+
+    for &(eid, pos) in &[(100, [5.0, 0.0, 0.0]), (101, [10.0, 0.0, 0.0])] {
+        mgr.create_entity(eid, "Castle", pos, [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(eid) {
+            p.is_player = true;
+            if let Some(h) = p.stats.get_mut(HEALTH) {
+                h.update(0, 100, 100);
+                h.clear_dirty();
+            }
+        }
+    }
+
+    if let Some(npc) = mgr.get_entity_mut(200) {
+        // Mixed: one NaN, one finite. max_by must invoke partial_cmp on
+        // the NaN; the unwrap_or(Equal) fallback prevents the panic.
+        npc.threat_list.insert(100, f32::NAN);
+        npc.threat_list.insert(101, 5.0);
+    }
+
+    let (tx, _rx) = mpsc::channel(8);
+    crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(200).unwrap();
+    assert!(
+        matches!(npc.ai_state, AiState::Fighting),
+        "NaN-vs-finite comparison must fall through Equal without panicking"
     );
 }
 
