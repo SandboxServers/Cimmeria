@@ -67,6 +67,9 @@ ignore:
 # the crate dependency graph in README.md so reviewers can see "the
 # mercury delta is +2.1%, the services delta is -0.4%" at a glance.
 component_management:
+  # Fallback for components listed under `paths:` below without an explicit
+  # `statuses:` override. Every component currently overrides, so this only
+  # kicks in for future additions.
   default_rules:
     statuses:
       - type: project
@@ -138,11 +141,15 @@ component_management:
         - type: project
           target: 92%
           informational: true
+    # admin-api currently has no tests — keep `target: auto` so the per-PR
+    # comment doesn't shout "0% (target 50%)" on every PR. Ratchet to 50%
+    # once the tier-1 admin-api tests land.
     - component_id: admin-api
       name: admin-api
       paths:
         - "crates/admin-api/**"
       statuses:
         - type: project
-          target: 50%
+          target: auto
+          threshold: 1%
           informational: true
