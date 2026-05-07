@@ -750,6 +750,103 @@ mod tests {
         }
     }
 
+    /// Multiple `content_triggers` rows for the same chain id MUST
+    /// materialize one in-memory `Chain` per trigger (OR-semantics).
+    /// Pre-fix the loader silently dropped the 2nd+ rows, which
+    /// broke completion chains that needed to fire on either of two
+    /// guard tags (Mess Hall, Hallway05). Conditions and actions are
+    /// shared across the expanded chains.
+    #[test]
+    fn build_chains_from_rows_expands_multi_trigger_chain() {
+        use crate::triggers::Trigger;
+
+        let chain_rows = vec![DbChainRow {
+            chain_id: 1087,
+            description: Some("681 - Kill counter reached: complete 681, accept 682".to_string()),
+            scope_type: "mission".to_string(),
+            scope_id: Some(681),
+            enabled: true,
+            priority: 0,
+        }];
+        let trigger_rows = vec![
+            DbTriggerRow {
+                chain_id: 1087,
+                event_type: "entity_dead_tag".to_string(),
+                event_key: Some("MessHall_Guard1".to_string()),
+                scope: "space".to_string(),
+                once: false,
+                sort_order: 0,
+            },
+            DbTriggerRow {
+                chain_id: 1087,
+                event_type: "entity_dead_tag".to_string(),
+                event_key: Some("MessHall_Guard2".to_string()),
+                scope: "space".to_string(),
+                once: false,
+                sort_order: 1,
+            },
+        ];
+        let condition_rows = vec![DbConditionRow {
+            chain_id: 1087,
+            condition_type: "mission_status".to_string(),
+            target_id: Some(681),
+            target_key: None,
+            operator: "eq".to_string(),
+            value: Some("active".to_string()),
+            sort_order: 0,
+        }];
+        let action_rows = vec![DbActionRow {
+            chain_id: 1087,
+            action_type: "complete_mission".to_string(),
+            target_id: Some(681),
+            target_key: None,
+            params: serde_json::json!({}),
+            delay_ms: 0,
+            sort_order: 0,
+        }];
+
+        let chains = build_chains_from_rows(chain_rows, trigger_rows, condition_rows, action_rows);
+
+        // Two trigger rows → two chains, both at the same chain_id.
+        assert_eq!(
+            chains.len(),
+            2,
+            "two content_triggers rows must produce two in-memory chains"
+        );
+        assert!(chains.iter().all(|c| c.id == 1087));
+
+        // Conditions and actions are cloned across all expanded chains —
+        // they share the same gating + side-effects regardless of which
+        // trigger fired. A drift between the two would be a content
+        // authoring footgun, so this assertion is part of the contract.
+        for chain in &chains {
+            assert_eq!(chain.conditions.len(), 1);
+            assert_eq!(chain.actions.len(), 1);
+        }
+
+        // Distinct triggers on the two expansions, in declared sort_order.
+        let triggers: Vec<&Trigger> = chains.iter().map(|c| &c.trigger).collect();
+        match (triggers[0], triggers[1]) {
+            (
+                Trigger::OnEntityDeath {
+                    entity_tag: Some(a),
+                    ..
+                },
+                Trigger::OnEntityDeath {
+                    entity_tag: Some(b),
+                    ..
+                },
+            ) => {
+                assert_eq!(a, "MessHall_Guard1");
+                assert_eq!(b, "MessHall_Guard2");
+            }
+            other => panic!(
+                "expected two OnEntityDeath triggers with distinct tags, got {:?}",
+                other
+            ),
+        }
+    }
+
     #[test]
     fn triggerless_chain_gets_custom_event() {
         let chain_rows = vec![DbChainRow {

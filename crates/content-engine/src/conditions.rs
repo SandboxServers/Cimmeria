@@ -458,4 +458,51 @@ mod tests {
         ctx.set_param("counter_hallway01_kills".to_string(), serde_json::json!(2));
         assert!(!condition.evaluate(&ctx));
     }
+
+    /// `Condition::StatBelowMax` — pin the headroom semantics that gate
+    /// consumable chains. Slappack chain 4001 (`stat_below_max stat_id 7`)
+    /// relies on three branches: cur < max → fire (heal lands), cur == max
+    /// → no-op (chain doesn't fire, stack preserved), and missing populator
+    /// → fail-closed (treat as "no headroom" so a wiring mistake doesn't
+    /// silently make consumables free at full stat).
+    #[test]
+    fn stat_below_max_fires_when_cur_below_max() {
+        let condition = Condition::StatBelowMax { stat_id: 7 };
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param("stat_7_cur".to_string(), serde_json::json!(50));
+        ctx.set_param("stat_7_max".to_string(), serde_json::json!(100));
+        assert!(condition.evaluate(&ctx));
+    }
+
+    #[test]
+    fn stat_below_max_blocks_when_cur_equals_max() {
+        let condition = Condition::StatBelowMax { stat_id: 7 };
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param("stat_7_cur".to_string(), serde_json::json!(100));
+        ctx.set_param("stat_7_max".to_string(), serde_json::json!(100));
+        assert!(
+            !condition.evaluate(&ctx),
+            "at full stat the chain must NOT fire — burning a slappack at \
+             full HP is the bug class this gates against",
+        );
+    }
+
+    #[test]
+    fn stat_below_max_fails_closed_on_missing_params() {
+        let condition = Condition::StatBelowMax { stat_id: 7 };
+
+        // Empty context — both keys missing.
+        assert!(
+            !condition.evaluate(&ExecutionContext::new()),
+            "missing populator must fail closed; otherwise a wiring mistake \
+             that drops `populate_stats_context` makes consumables free at \
+             full stat",
+        );
+
+        // Half-populated context — only `cur` set, `max` missing. Same
+        // fail-closed branch.
+        let mut partial = ExecutionContext::new();
+        partial.set_param("stat_7_cur".to_string(), serde_json::json!(50));
+        assert!(!condition.evaluate(&partial));
+    }
 }

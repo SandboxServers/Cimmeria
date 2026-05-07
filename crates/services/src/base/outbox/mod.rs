@@ -63,6 +63,16 @@ pub enum CellOutboxPayload {
         /// `OnItemUse` chain context records exactly which stack
         /// initiated the use, letting `Action::RemoveItem` consume that
         /// instance instead of the player's first-by-type.
+        ///
+        /// `#[serde(default)]` so undelivered rows enqueued by older
+        /// code (before this field existed) deserialize cleanly with
+        /// `instance_id = 0`. The cell-side executor falls back to
+        /// `RemoveInventoryItemByType` when the value is 0, so old
+        /// rows reach the drainer with the same behavior they had
+        /// when written. Without this attribute the drainer hard-fails
+        /// on legacy rows with `ColumnDecode("missing field
+        /// 'instance_id'")` and the outbox stalls.
+        #[serde(default)]
         instance_id: i32,
         type_id: i32,
         target_id: i32,

@@ -289,11 +289,23 @@ mod tests {
         // Fire `OnItemUse(2893)` — relationship-based lookup. The
         // trigger filters on `item_id` so only chains keyed on item
         // 2893 will match, regardless of which chain id they live at.
+        //
+        // The slappack chain (4001) gates on `Condition::StatBelowMax`
+        // so the player can't burn a stack at full HP. That condition
+        // reads `stat_<id>_cur` / `stat_<id>_max` from the chain
+        // context — populated by `populate_stats_context` at the live
+        // dispatch site. This synthetic test fires `resolve_event`
+        // directly without the populator, so we have to seed the
+        // headroom-positive params by hand. Without these, the
+        // condition fail-closes (cur < max unknown → false) and
+        // 0 actions resolve.
         let mut ctx = ExecutionContext::new();
         ctx.set_param(
             "item_id".to_string(),
             serde_json::json!(HEALTH_SLAPPACK_ITEM_ID),
         );
+        ctx.set_param("stat_7_cur".to_string(), serde_json::json!(100));
+        ctx.set_param("stat_7_max".to_string(), serde_json::json!(1000));
         let event = TriggerEvent {
             trigger_type: TriggerType::ItemUse,
             source_entity: None,

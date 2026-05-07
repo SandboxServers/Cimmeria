@@ -215,11 +215,11 @@ VALUES (1020, 'display_dialog', 5020, NULL, '{}', 0, 0);
 -- Chain 1021: dialog choice 2300 (Human) while step 2116 active → show follow-up dialog 2299
 -- Per the dialog-id mapping at the top of this file (Mission 638 section),
 -- 2299 is the *Human* "Agree to escape" follow-up (5020 is the Jaffa one).
--- Fix for #216-class regression: the topic dialog routing was corrected
--- in the original PR, but the post-Livewire follow-up was missed and
--- still routed Human players through the Jaffa "my symbiote will cure
--- me" dialog. Chain-replay test in mission_638_post_livewire_human group
--- pins this so it doesn't drift again.
+-- The earlier archetype-routing fix corrected the *topic* dialog mapping
+-- but missed this post-Livewire follow-up, which still routed Human
+-- players through the Jaffa "my symbiote will cure me" dialog. Chain-
+-- replay test in the mission_638_post_livewire_human group pins this
+-- so it doesn't drift again.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1021, '638 - Post-minigame (Human): show escape dialog', 'mission', 638, true, 0);
 
@@ -904,8 +904,13 @@ VALUES (1084, 'accept_mission', 687, NULL, '{}', 0, 0);
 -- ── Mission 681 — Mess Hall Controller (2 guards) ──
 
 -- Chain 1085: kill MessHall_Guard1 → increment messhall_kills
+-- Priority 1 (vs completion chain 1087 at priority 0) so the increment
+-- runs before the completion's `reset_counter` action on the same
+-- entity_dead event. Equal priority would leave ordering undefined and
+-- the reset could land first, then the increment re-introduces a
+-- non-zero counter that bleeds into the next mission acceptance.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1085, '681 - Kill MessHall_Guard1: increment messhall_kills', 'mission', 681, true, 0);
+VALUES (1085, '681 - Kill MessHall_Guard1: increment messhall_kills', 'mission', 681, true, 1);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1085, 'entity_dead_tag', 'MessHall_Guard1', 'space', false, 0);
@@ -920,8 +925,9 @@ INSERT INTO content_counters (chain_id, counter_name, target_value, reset_on)
 VALUES (1085, 'messhall_kills', 2, 'mission_complete');
 
 -- Chain 1086: kill MessHall_Guard2 → increment messhall_kills (same counter)
+-- Priority 1 — same ordering rationale as chain 1085.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1086, '681 - Kill MessHall_Guard2: increment messhall_kills', 'mission', 681, true, 0);
+VALUES (1086, '681 - Kill MessHall_Guard2: increment messhall_kills', 'mission', 681, true, 1);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1086, 'entity_dead_tag', 'MessHall_Guard2', 'space', false, 0);
@@ -1038,8 +1044,10 @@ VALUES
 -- ── Mission 686 — Hallway05 Controller (2 guards) ──
 
 -- Chain 1092: kill Hallway05_Guard1 → increment hallway05_kills
+-- Priority 1 (vs completion chain 1094 at priority 0) — see chain 1085's
+-- ordering note for the rationale.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1092, '686 - Kill Hallway05_Guard1: increment hallway05_kills', 'mission', 686, true, 0);
+VALUES (1092, '686 - Kill Hallway05_Guard1: increment hallway05_kills', 'mission', 686, true, 1);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1092, 'entity_dead_tag', 'Hallway05_Guard1', 'space', false, 0);
@@ -1054,8 +1062,9 @@ INSERT INTO content_counters (chain_id, counter_name, target_value, reset_on)
 VALUES (1092, 'hallway05_kills', 2, 'mission_complete');
 
 -- Chain 1093: kill Hallway05_Guard2 → increment hallway05_kills
+-- Priority 1 — same ordering rationale as chain 1092.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1093, '686 - Kill Hallway05_Guard2: increment hallway05_kills', 'mission', 686, true, 0);
+VALUES (1093, '686 - Kill Hallway05_Guard2: increment hallway05_kills', 'mission', 686, true, 1);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1093, 'entity_dead_tag', 'Hallway05_Guard2', 'space', false, 0);

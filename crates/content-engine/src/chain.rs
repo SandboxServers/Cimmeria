@@ -245,10 +245,7 @@ impl ChainEngine {
     /// has access to game state (SpaceManager, channels, etc.) that the engine
     /// itself doesn't know about.
     pub fn resolve_event(&self, event: &TriggerEvent, ctx: &ExecutionContext) -> ResolvedActions {
-        let mut resolved = ResolvedActions {
-            actions: Vec::new(),
-            params: ctx.params.clone(),
-        };
+        let mut resolved = ResolvedActions::default();
 
         let chains = match self.chains_by_trigger.get(&event.trigger_type) {
             Some(chains) => chains,
@@ -270,6 +267,15 @@ impl ChainEngine {
             for action in &chain.actions {
                 resolved.actions.push((chain.id, action.clone()));
             }
+        }
+
+        // Defer the params clone until at least one chain matched.
+        // `resolve_event` runs on every gameplay tick that produces an
+        // event (entity death, region cross, item use, …), most of
+        // which return zero actions; cloning the populated context
+        // unconditionally wasted bytes on every miss.
+        if !resolved.actions.is_empty() {
+            resolved.params = ctx.params.clone();
         }
 
         resolved
