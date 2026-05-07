@@ -48,6 +48,14 @@ const ON_PLAYER_COMMUNICATION: u16 = 28;
 /// For spatial channels (say, emote, yell), broadcasts to all witnesses
 /// of the sender's entity. Each witness receives `onPlayerCommunication`.
 ///
+/// Messages prefixed with `.` on spatial channels are dispatched as
+/// admin commands via [`super::admin_commands::dispatch`] (mirrors
+/// `python/cell/SGWPlayer.py:1836`'s `Command.exec` path) and are NOT
+/// broadcast to nearby players. Note: `/`-prefixed text never reaches
+/// the server — the game client has its own slash-command parser that
+/// rejects unknown leading-`/` text with "invalid command" before
+/// `sendPlayerCommunication` fires.
+///
 /// Reference: `python/cell/SGWPlayer.py:processPlayerCommunication()`
 /// - say/emote/yell: broadcast to witnesses
 /// - Client does NOT echo say (channel 0) — server must send it back
@@ -59,8 +67,21 @@ pub async fn handle_chat_message(
     channel: u8,
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) {
+    // Intercept `.command` admin chat on spatial channels before the
+    // broadcast path. Returns `true` when consumed (don't broadcast).
+    // Other channels fall through to the channel-not-handled branch
+    // and never reach the dispatch path; admin commands are scoped to
+    // spatial chat to match the python reference.
+    if matches!(channel, CHAN_SAY | CHAN_EMOTE | CHAN_YELL) {
+        if let Some(body) = text.strip_prefix('.') {
+            if super::admin_commands::dispatch(entity_id, body, tx, space_mgr).await {
+                return;
+            }
+        }
+    }
+
     match channel {
         CHAN_SAY | CHAN_EMOTE | CHAN_YELL => {
             broadcast_to_witnesses(
@@ -242,10 +263,10 @@ mod tests {
 
     #[tokio::test]
     async fn broadcast_to_nonexistent_entity_is_noop() {
-        let mgr = super::super::space_manager::SpaceManager::new(1);
+        let mut mgr = super::super::space_manager::SpaceManager::new(1);
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
 
-        handle_chat_message(999, "Bob", 0, CHAN_SAY, "Hello", &tx, &mgr).await;
+        handle_chat_message(999, "Bob", 0, CHAN_SAY, "Hello", &tx, &mut mgr).await;
 
         // No messages should be sent
         assert!(rx.try_recv().is_err());
@@ -274,7 +295,7 @@ mod tests {
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(32);
 
-        handle_chat_message(1, "Alice", 0, CHAN_SAY, "Hello world", &tx, &mgr).await;
+        handle_chat_message(1, "Alice", 0, CHAN_SAY, "Hello world", &tx, &mut mgr).await;
 
         // Should get 2 messages: one for witness (entity 2) + one for sender (entity 1)
         let mut msgs = Vec::new();
@@ -323,7 +344,7 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
 
         // Tell channel should not be handled by CellService
-        handle_chat_message(1, "Bob", 0, CHAN_TELL, "Hi", &tx, &mgr).await;
+        handle_chat_message(1, "Bob", 0, CHAN_TELL, "Hi", &tx, &mut mgr).await;
         assert!(rx.try_recv().is_err());
     }
 }

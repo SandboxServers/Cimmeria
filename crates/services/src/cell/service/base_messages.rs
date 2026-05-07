@@ -136,6 +136,10 @@ pub(super) async fn handle_base_message(
             channel,
             text,
         } => {
+            // `&mut space_mgr` because admin `.commands` (e.g.,
+            // `.world Castle`) destroy the cell-side entity before
+            // dispatching GateTravel. See chat::handle_chat_message
+            // and admin_commands::dispatch.
             chat::handle_chat_message(
                 entity_id,
                 &speaker_name,

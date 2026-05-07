@@ -5,6 +5,7 @@
 //! world into spatial cells and simulates entity interactions within them.
 
 pub mod abilities;
+pub mod admin_commands;
 pub mod cell_methods;
 pub mod chat;
 pub mod client_methods;
