@@ -1,13 +1,15 @@
 # Mission System
 
-> **Last updated**: 2026-03-01
-> **Status**: ~40% implemented
+> **Last updated**: 2026-05-07
+> **Status**: ~40% implemented; mission lifecycle in production runs through the [content engine](../content/content-engine.md).
 
 ## Overview
 
-Missions (quests) are the primary PvE progression mechanism. Each mission contains a linear sequence of steps, and each step contains one or more objectives. Objectives can be hidden or optional. Missions support acceptance, advancement, completion, failure, abandonment, repeating, and sharing. Dynamic Python scripts can be attached to missions for custom behavior.
+Missions (quests) are the primary PvE progression mechanism. Each mission contains a linear sequence of steps, and each step contains one or more objectives. Objectives can be hidden or optional. Missions support acceptance, advancement, completion, failure, abandonment, repeating, and sharing.
 
-The `MissionManager` and `MissionInstance` classes in `python/cell/MissionManager.py` implement mission lifecycle logic. Mission definitions are loaded from `db/resources.sql` via `DefMgr`.
+In the **legacy SGW server**, dynamic Python scripts (`python/cell/MissionManager.py`, plus per-mission `.py` files in `python/cell/missions/`) implemented mission lifecycle logic. That layer is reference-only in Cimmeria — see [docs/architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md) for the design rationale on replacing it.
+
+In the **Cimmeria emulator**, mission lifecycle runs through the data-driven content engine. Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs](../../crates/entity/src/missions.rs)); accept/advance/complete are mutated by chain actions executed in [crates/services/src/cell/content/executor.rs](../../crates/services/src/cell/content/executor.rs). The lifecycle table — which triggers fire at which stage, which conditions gate progression, which actions persist — is in [docs/content/content-engine.md](../content/content-engine.md) §9. Mission definitions are loaded from `db/resources.sql`; chain rows that drive mission progression live in `resources.content_*` tables.
 
 ## Implementation Status
 

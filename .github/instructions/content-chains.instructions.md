@@ -69,7 +69,10 @@ Stay inside the allocated range to keep the file searchable by mission.
 
 ## Linked references
 
+- `docs/content/content-engine.md` — **runtime reference**: architecture, vocabulary, schema, lifecycle, observability, performance.
+- `docs/content/extending-the-engine.md` — how-to guide for adding a new trigger / condition / action variant.
+- `docs/content/proposed-extensions.md` — justified roadmap of engine extensions still to come.
 - `docs/content/interaction-flags.md` — full per-bit cookbook with worked patterns.
 - `docs/content/mission-chains.md` — every chain catalogued.
-- `docs/architecture/data-driven-content-engine.md` — how chains/triggers/conditions/actions fit together.
+- `docs/architecture/data-driven-content-engine.md` — original design doc (historical; superseded by the runtime reference above for what's actually shipping).
 - `python/cell/spaces/Castle_CellBlock.py` — original level script (source of truth for what the auto-converter *should* have produced).

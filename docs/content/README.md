@@ -64,6 +64,8 @@ Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 M
 
 ## Document Index
 
+### Content data audit
+
 | Document | Lines | Description |
 |----------|-------|-------------|
 | [content-inventory.md](content-inventory.md) | ~1,040 | Statistical inventory of all content types with completeness metrics and cross-reference counts |
@@ -74,6 +76,16 @@ Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 M
 | [reconstruction-map.md](reconstruction-map.md) | ~715 | What can be rebuilt from existing data vs holes vs never-built, with priority recommendations |
 | [external-data-analysis.md](external-data-analysis.md) | ~480 | Analysis of 11 community-assembled spreadsheets (missions, dialogue, progression, locations, spawns, archetypes) cross-referenced against server DB |
 | [interaction-flags.md](interaction-flags.md) | ~180 | `EInteractionNotificationType` bitmask reference: when to use which bit when wiring a chain's `set_interaction_type` action |
+
+### Content engine (the runtime)
+
+| Document | Description |
+|----------|-------------|
+| [content-engine.md](content-engine.md) | **REFERENCE** — cradle-to-grave reference for the data-driven runtime. Architecture, vocabulary, schema, lifecycle, observability, performance. |
+| [extending-the-engine.md](extending-the-engine.md) | **HOW-TO** — step-by-step guide to adding a new trigger, condition, or action variant, with the `ChangeStat` walkthrough. |
+| [proposed-extensions.md](proposed-extensions.md) | **ROADMAP** — justified extensions tied to recent direction or shipped content. Tier 1: wire what's defined. Tier 2: small additions. Tier 3: larger shape changes. |
+| [serverEd-comparison.md](serverEd-comparison.md) | **EXPLANATION** — gap analysis vs. the legacy SGW visual-graph editor. What to resurrect, what to let die. |
+| [../architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md) | **HISTORICAL** — original design doc. Read for the *why*. |
 
 ## How to Read These Documents
 

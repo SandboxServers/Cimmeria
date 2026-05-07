@@ -1,7 +1,15 @@
-# Data-Driven Content Engine
+# Data-Driven Content Engine — original design doc
 
-> **Last updated**: 2026-03-02
+> **Last updated**: 2026-03-02 (banner added 2026-05-07)
+> **Status**: **HISTORICAL DESIGN DOC.** This is the original design proposal from before the engine shipped. The implementation landed in Rust (not Python as proposed below) under [crates/content-engine/](../../crates/content-engine/) and [crates/services/src/cell/content/](../../crates/services/src/cell/content/). Read this for the *why* — what content the engine was designed to drive and why a data-driven approach was chosen. For *what's actually running today*, see [docs/content/content-engine.md](../content/content-engine.md).
 > **Sources**: All 20 mission scripts, 5 effect scripts, 10 space scripts, `db/resources.sql` schema, `python/common/Event.py`, `python/cell/AbilityManager.py`, `python/cell/SGWMob.py`, `python/cell/Lootable.py`
+
+> **Where the design changed in implementation:**
+> - The runtime is Rust (`cimmeria-content-engine` + `cell/content` bridge), not Python in the legacy server.
+> - Counter state is in-memory only on `CellEntity` rather than persisted (the persistence story is in [docs/content/proposed-extensions.md](../content/proposed-extensions.md)).
+> - The schema in §"Database Schema" below shipped largely as designed; `content_counters` exists but is editor-metadata-only, not runtime state.
+> - Several actions in §"Action Type Reference" below are defined but **not yet wired** in the executor (`apply_effect`, `remove_effect`, `start_timer`, `cancel_timer`, `roll_loot_table`, `spawn_entity`, `grant_xp`). See [docs/content/content-engine.md](../content/content-engine.md) §10 for the live status.
+> - The Castle_CellBlock and SGC_W1 chains shipped; the broader migration plan in §"Migration Path" below remains the roadmap.
 
 ---
 

@@ -47,9 +47,9 @@ The emulator is **playable today**: players can log in, enter the world, interac
 
 ---
 
-### `content/` -- Game Content Data Audit
+### `content/` -- Content Data Audit + Content Engine
 
-Content-level audit of all game data: zone completeness, mission chains, cross-references, orphaned content, and reconstruction potential. 7 documents covering 1,040 missions, 6,059 items, 3,216 effects, 153 NPCs, and 24 zones.
+Content-level audit of all game data plus the cradle-to-grave reference for the data-driven content engine that drives missions, dialogs, region triggers, and consumables at runtime.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -61,6 +61,11 @@ Content-level audit of all game data: zone completeness, mission chains, cross-r
 | [archetype-content-map.md](content/archetype-content-map.md) | Per-archetype content availability (2 implemented, 6 placeholder) | Complete |
 | [reconstruction-map.md](content/reconstruction-map.md) | What can be rebuilt vs holes vs never-built, priority recommendations | Complete |
 | [external-data-analysis.md](content/external-data-analysis.md) | Analysis of 11 external dev team spreadsheets and text files | Complete |
+| [interaction-flags.md](content/interaction-flags.md) | `EInteractionNotificationType` bitmask reference for `set_interaction_type` actions | Complete |
+| [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, vocabulary, schema, lifecycle, observability, performance | Complete |
+| [extending-the-engine.md](content/extending-the-engine.md) | **HOW-TO** — add a new trigger / condition / action variant | Complete |
+| [proposed-extensions.md](content/proposed-extensions.md) | **ROADMAP** — justified engine extensions tied to recent direction or shipped content | Complete |
+| [serverEd-comparison.md](content/serverEd-comparison.md) | Gap analysis vs. the legacy SGW visual-graph editor | Complete |
 
 See also: [gap-analysis.md](gap-analysis.md), [game-data.md](game-data.md)
 
