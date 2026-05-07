@@ -147,21 +147,30 @@ pub(crate) async fn handle_enable_entities(
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use std::io::ErrorKind;
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
     use tokio::net::UdpSocket;
 
+    fn assert_no_udp_packet(receiver: &UdpSocket) {
+        let mut buf = [0u8; 2048];
+        let err = receiver
+            .try_recv_from(&mut buf)
+            .expect_err("early return must not send UDP");
+        assert_eq!(err.kind(), ErrorKind::WouldBlock);
+    }
+
     #[tokio::test]
     async fn enable_entities_returns_ok_when_addr_not_in_connected_map() {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
-        let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = receiver.local_addr().unwrap();
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new(HashMap::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
         let key = [0u8; 32];
 
-        // No connected client at addr — must return Ok(()) without panic.
         let result = handle_enable_entities(
             &socket,
             addr,
@@ -169,20 +178,23 @@ mod tests {
             1,
             &connected,
             &None,
-            &Arc::new(Mutex::new(EntityManager::new())),
+            &entity_manager,
             &None,
-            &Arc::new(Mutex::new(HashMap::new())),
+            &entity_to_addr,
         )
         .await;
         assert!(result.is_ok());
+        assert!(connected.lock().unwrap().is_empty());
+        assert_eq!(entity_manager.lock().unwrap().entity_count(), 0);
+        assert!(entity_to_addr.lock().unwrap().is_empty());
+        assert_no_udp_packet(&receiver);
     }
 
     #[tokio::test]
     async fn enable_entities_returns_ok_when_char_list_already_sent() {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
-        let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = receiver.local_addr().unwrap();
         let mut client = ConnectedClientState::default();
         client.char_list_sent = true;
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
@@ -191,6 +203,8 @@ mod tests {
                 m.insert(addr, client);
                 m
             }));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
         let key = [0u8; 32];
 
         let result = handle_enable_entities(
@@ -200,14 +214,21 @@ mod tests {
             1,
             &connected,
             &None,
-            &Arc::new(Mutex::new(EntityManager::new())),
+            &entity_manager,
             &None,
-            &Arc::new(Mutex::new(HashMap::new())),
+            &entity_to_addr,
         )
         .await;
         assert!(
             result.is_ok(),
             "must short-circuit when char_list_sent is true"
         );
+        let clients = connected.lock().unwrap();
+        assert_eq!(clients.len(), 1);
+        assert!(clients.get(&addr).unwrap().char_list_sent);
+        drop(clients);
+        assert_eq!(entity_manager.lock().unwrap().entity_count(), 0);
+        assert!(entity_to_addr.lock().unwrap().is_empty());
+        assert_no_udp_packet(&receiver);
     }
 }

@@ -458,7 +458,7 @@ mod tests {
     use cimmeria_entity::cell_entity::BandolierItem;
 
     #[tokio::test]
-    async fn destroy_entity_flushes_dirty_bandolier_before_destroy() {
+    async fn destroy_entity_flushes_dirty_bandolier_and_destroys_entity() {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -494,7 +494,7 @@ mod tests {
         )
         .await;
 
-        // A BandolierAmmoUpdate must be sent before the entity is destroyed.
+        // A BandolierAmmoUpdate must be sent while handling destroy.
         let mut got_flush = false;
         while let Ok(msg) = rx.try_recv() {
             if let CellToBaseMsg::BandolierAmmoUpdate { player_id, .. } = msg {
@@ -543,6 +543,7 @@ mod tests {
         assert_eq!(entity.position.x, 10.0);
         assert_eq!(entity.position.y, 20.0);
         assert_eq!(entity.position.z, 30.0);
+        assert_eq!(entity.velocity, [1.0, 2.0, 3.0]);
     }
 
     #[tokio::test]

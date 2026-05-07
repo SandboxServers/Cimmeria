@@ -284,7 +284,7 @@ mod tests {
     /// CellService::default() must produce a non-running service with no
     /// loop handle. This is the minimal surface we can exercise without
     /// real XML files / DB pools — larger startup tests are deferred to
-    /// the integration harness (issue #205 deferred bucket: startup.rs).
+    /// the integration harness.
     #[test]
     fn default_service_is_not_running() {
         let svc = CellService::default();

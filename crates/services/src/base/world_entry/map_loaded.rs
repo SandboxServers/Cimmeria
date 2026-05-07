@@ -241,9 +241,10 @@ mod tests {
             &None,
         )
         .await;
+        let err = result.expect_err("must fail when pending_map_loaded is missing");
         assert!(
-            result.is_err(),
-            "must fail when pending_map_loaded is missing"
+            err.to_string().contains("no pending world entry"),
+            "unexpected error: {err}"
         );
     }
 }

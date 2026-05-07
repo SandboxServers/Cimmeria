@@ -179,9 +179,29 @@ impl ResourceCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_entity::inventory::{
+        INV_ARTIFACT1, INV_ARTIFACT2, INV_BACK, INV_BANDOLIER, INV_BUYBACK, INV_CHEST,
+        INV_CRAFTING, INV_FACE, INV_FEET, INV_HANDS, INV_HEAD, INV_LEGS, INV_MAIN, INV_MISSION,
+        INV_NECK, INV_WAIST,
+    };
 
-    /// bag_min_slot sentinel invariant (already tested above) — included
-    /// here for completeness so the test module exercises both helpers.
+    /// Sentinel-slot invariant: the move handler's three-step swap parks the
+    /// source row at `slot_id = -1` mid-transaction. For that to be safe,
+    /// `bag_min_slot` MUST never return a value `<= -1` for any container —
+    /// otherwise a concurrent grant could legitimately reserve `slot_id = -1`
+    /// and collide with the parked sentinel.
+    ///
+    /// This test pins that invariant across `container_id` 0..=16. The
+    /// game-defined range is 1..=16 (main, mission, bandolier, equipment
+    /// slots 4..=14, crafting, vendor buyback); 0 is included as a sentinel
+    /// for "no container" so the symmetry with `bag_max_slots` (which
+    /// returns 0 for 0) is also exercised. Any out-of-range container_id
+    /// returning 0 from `bag_min_slot` is fine — `bag_max_slots` returns 0
+    /// there too, so no slot is ever reservable.
+    ///
+    /// Documented as the regression guard in `move_/mod.rs`'s swap-path
+    /// comment (`bag_max_slots() never reserves negative slots, so
+    /// grant/purchase paths cannot land there`).
     #[test]
     fn bag_min_slot_is_non_negative_for_every_container() {
         for container_id in 0..=16 {
@@ -195,13 +215,26 @@ mod tests {
 
     #[test]
     fn bag_max_slots_known_containers_match_constants() {
-        assert_eq!(bag_max_slots(1), 40); // Main
-        assert_eq!(bag_max_slots(2), 100); // Mission
-        assert_eq!(bag_max_slots(3), 4); // Bandolier
-        assert_eq!(bag_max_slots(4), 1); // Equipment start
-        assert_eq!(bag_max_slots(14), 1); // Equipment end
-        assert_eq!(bag_max_slots(15), 100); // Crafting
-        assert_eq!(bag_max_slots(16), 12); // Vendor Buyback
+        assert_eq!(bag_max_slots(INV_MAIN), 40);
+        assert_eq!(bag_max_slots(INV_MISSION), 100);
+        assert_eq!(bag_max_slots(INV_BANDOLIER), 4);
+        for container_id in [
+            INV_HEAD,
+            INV_FACE,
+            INV_NECK,
+            INV_CHEST,
+            INV_HANDS,
+            INV_WAIST,
+            INV_BACK,
+            INV_LEGS,
+            INV_FEET,
+            INV_ARTIFACT1,
+            INV_ARTIFACT2,
+        ] {
+            assert_eq!(bag_max_slots(container_id), 1);
+        }
+        assert_eq!(bag_max_slots(INV_CRAFTING), 100);
+        assert_eq!(bag_max_slots(INV_BUYBACK), 12);
     }
 
     #[test]
@@ -213,11 +246,11 @@ mod tests {
     }
 
     #[test]
-    fn bag_min_slot_bandolier_is_one() {
+    fn bag_min_slot_bandolier_is_zero() {
         assert_eq!(
             bag_min_slot(INV_BANDOLIER),
-            1,
-            "bandolier must reserve slot 0 for fists"
+            0,
+            "bandolier slots are zero-based weapon slots"
         );
     }
 

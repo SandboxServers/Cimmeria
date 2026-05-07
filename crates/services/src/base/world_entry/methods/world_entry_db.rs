@@ -206,6 +206,8 @@ pub async fn query_world_stargates(db_pool: &Option<Arc<PgPool>>, world_name: &s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+    use tokio::time::timeout;
 
     #[tokio::test]
     async fn query_world_entry_no_db_allocates_entity_and_returns_default() {
@@ -226,17 +228,26 @@ mod tests {
         let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
         let (cell_tx, mut cell_rx) = mpsc::channel(4);
 
-        let handle =
-            tokio::spawn(async move { query_world_entry(&None, 1, 1, &mgr, &Some(cell_tx)).await });
+        let handle = tokio::spawn(async move {
+            let cell_tx = Some(cell_tx);
+            query_world_entry(&None, 1, 1, &mgr, &cell_tx).await
+        });
 
         // Drive the CreateEntity round-trip so the oneshot doesn't hang.
-        if let Some(msg) = cell_rx.recv().await {
-            if let BaseToCellMsg::CreateEntity { reply_tx, .. } = msg {
-                let _ = reply_tx.send(DEFAULT_SPACE_ID);
-            }
+        let msg = timeout(Duration::from_secs(2), cell_rx.recv())
+            .await
+            .expect("CreateEntity receive must not hang")
+            .expect("CreateEntity message expected");
+        if let BaseToCellMsg::CreateEntity { reply_tx, .. } = msg {
+            let _ = reply_tx.send(DEFAULT_SPACE_ID);
+        } else {
+            panic!("expected CreateEntity message");
         }
 
-        let entry = handle.await.unwrap();
+        let entry = timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("query_world_entry task must not hang")
+            .unwrap();
         assert_ne!(entry.player_entity_id, NO_ENTITY_ID);
         assert_eq!(entry.world_name, "CombatSim");
     }
@@ -247,14 +258,6 @@ mod tests {
         assert!(
             result.is_empty(),
             "no-DB mode must return empty stargate list"
-        );
-    }
-
-    #[test]
-    fn no_entity_id_sentinel_is_zero() {
-        assert_eq!(
-            NO_ENTITY_ID, 0,
-            "sentinel must remain 0 for downstream guards"
         );
     }
 }

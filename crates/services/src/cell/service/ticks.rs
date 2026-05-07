@@ -415,7 +415,6 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
 mod tests {
     use super::*;
     use crate::cell::space_manager::SpaceManager;
-    use cimmeria_entity::cell_entity::BandolierItem;
 
     #[tokio::test]
     async fn aoi_tick_on_empty_space_manager_produces_no_messages() {
@@ -450,16 +449,10 @@ mod tests {
         npc_movement_tick(&mut mgr);
 
         let npc = mgr.get_entity(200).unwrap();
-        assert!(
-            npc.position.x > 0.0,
-            "NPC must move toward the waypoint; got x={}",
-            npc.position.x
-        );
-        assert!(
-            npc.nav_path.len() <= 1,
-            "waypoint should be consumed once reached; remaining={}",
-            npc.nav_path.len()
-        );
+        assert_eq!(npc.position.x, 5.0);
+        assert_eq!(npc.position.y, 0.0);
+        assert_eq!(npc.position.z, 0.0);
+        assert_eq!(npc.nav_path.len(), 1);
     }
 
     #[test]

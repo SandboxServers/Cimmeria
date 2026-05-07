@@ -148,21 +148,28 @@ pub(super) async fn handle_teleport_player(
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use std::io::ErrorKind;
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
     use tokio::net::UdpSocket;
 
+    fn assert_no_udp_packet(receiver: &UdpSocket) {
+        let mut buf = [0u8; 2048];
+        let err = receiver
+            .try_recv_from(&mut buf)
+            .expect_err("early return must not send UDP");
+        assert_eq!(err.kind(), ErrorKind::WouldBlock);
+    }
+
     #[tokio::test]
     async fn teleport_early_returns_when_entity_not_in_addr_map() {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
-        // entity_id 999 is not in the map — must early-return without panic.
         handle_teleport_player(
             999,
             65536,
@@ -173,20 +180,21 @@ mod tests {
             &None,
         )
         .await;
+        assert!(entity_to_addr.lock().unwrap().is_empty());
+        assert!(connected.lock().unwrap().is_empty());
+        assert_no_udp_packet(&receiver);
     }
 
     #[tokio::test]
     async fn teleport_early_returns_when_client_state_missing() {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
-        let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let fake_addr = receiver.local_addr().unwrap();
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> = Arc::new(Mutex::new({
             let mut m = HashMap::new();
             m.insert(1, fake_addr);
             m
         }));
-        // connected map is empty — client state not found for fake_addr.
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
@@ -200,5 +208,8 @@ mod tests {
             &None,
         )
         .await;
+        assert_eq!(entity_to_addr.lock().unwrap().get(&1), Some(&fake_addr));
+        assert!(connected.lock().unwrap().is_empty());
+        assert_no_udp_packet(&receiver);
     }
 }
