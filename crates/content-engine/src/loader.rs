@@ -852,9 +852,9 @@ mod tests {
 
     /// `event_type = "mission_accepted"` with the mission id in `event_key`
     /// must round-trip into a `Trigger::OnMissionAccepted`. This is the
-    /// load-bearing path for chains like Aftermath (#236) chain 1097 that
-    /// need to react to mission start without piggybacking on whichever
-    /// chain did the accepting.
+    /// load-bearing path for chains like Aftermath chain 1097 that need
+    /// to react to mission start without piggybacking on whichever chain
+    /// did the accepting.
     #[test]
     fn mission_accepted_event_type_loads_as_on_mission_accepted_trigger() {
         use crate::triggers::Trigger;

@@ -508,7 +508,7 @@ async fn chain_1012_does_not_match_non_jaffa_archetype() {
     assert_region_enter_does_not_resolve(1012, ARCHETYPE_SOLDIER).await;
 }
 
-// ── Mission 687 — Aftermath (issue #236) ────────────────────────────────
+// ── Mission 687 — Aftermath ─────────────────────────────────────────────
 
 /// Chain 1097: when mission 687 is accepted (Region6 entry triggers
 /// chain 1084, which calls accept_mission, which now fires the new

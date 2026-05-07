@@ -1098,7 +1098,7 @@ VALUES
   (1094, 'reset_counter', NULL, 'hallway05_kills', '{}', 0, 2);
 
 -- ============================================================
--- MISSION 687 — Aftermath (issue #236)
+-- MISSION 687 — Aftermath
 --
 -- Final mission of the Castle_Cellblock escape. Two steps:
 --   2354 — "Search the crate for any useful items."
@@ -1114,9 +1114,10 @@ VALUES
 --
 -- Reference: python/cell/missions/Castle_CellBlock/Aftermath.py covers
 -- step 2354 only; step 2355 has no python source (the original game
--- shipped that step uncompleted). Phase B/C of issue #236 is therefore
--- a new design call — three guards already spawn in the room behind
--- the wall from the crate, so we re-tag rather than insert new spawns.
+-- shipped that step uncompleted). The barracks-kill completion is
+-- therefore a new design call — three guards already spawn in the room
+-- behind the wall from the crate, so we re-tag rather than insert new
+-- spawns.
 -- ============================================================
 
 -- Chain 1097: mission 687 accepted → highlight Cellblock_WoodenCrate

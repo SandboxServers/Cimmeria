@@ -487,11 +487,19 @@ pub async fn fire_teleport_in(
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
-/// Fire `mission_accepted` immediately after a mission has been accepted
-/// and its state propagated. Called from the executor's `Action::AcceptMission`
-/// branch so chains tied to mission start (e.g., highlighting quest objects
-/// like the Cellblock_WoodenCrate for mission 687) run without coupling to
+/// Fire `mission_accepted` immediately after the cell-side mission state
+/// has been committed for the calling entity. Called from the executor's
+/// combined `Action::AcceptMission | Action::AdvanceMission` branch so
+/// chains tied to mission start (e.g., highlighting quest objects like
+/// the Cellblock_WoodenCrate for mission 687) run without coupling to
 /// the chain that triggered the accept.
+///
+/// Fires after the in-process `accept_mission` helper updates the
+/// CellEntity's mission table — i.e., chain conditions reading
+/// `mission_<id>_status` see the post-accept state. The persistence
+/// path (the `MissionUpdate` send to base) is best-effort; this event
+/// fires whether or not that send succeeded, since the cell's view of
+/// mission state is the authoritative source for chain evaluation.
 ///
 /// The return type is an explicit `Pin<Box<dyn Future ...>>` rather than an
 /// `async fn` because this fires from inside `executor::execute_actions`
