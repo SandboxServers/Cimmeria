@@ -35,6 +35,8 @@ const ITEM_COST_DESIGN_ID: i32 = 5192;
 const ITEM_COST_PREREQ_DESIGN_ID: i32 = 55;
 
 async fn cleanup(pool: &PgPool, entity_id: i32, account_id: i32, player_id: i32) {
+    // Delete the outbox rows the test enqueues so a shared live DB
+    // doesn't accumulate stale entries from successful runs.
     let _ = sqlx::query("DELETE FROM cell_event_outbox WHERE entity_id = $1")
         .bind(entity_id)
         .execute(pool)
@@ -176,11 +178,11 @@ async fn pure_cash_purchase_debits_balance_and_grants_inventory_row() {
     // the exact delta rather than just "lower than before".
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0A01);
+    let (socket, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_purchase_vendor_items(
-        0x7000_0A01,
+        entity_id as u32,
         player_id,
         99,
         SEEDED_BUY_VENDOR_TEMPLATE_ID,
@@ -230,11 +232,11 @@ async fn item_prereq_purchase_consumes_prereq_and_skips_cash_update() {
     let prereq_item =
         insert_item(&pool, player_id, ITEM_COST_PREREQ_DESIGN_ID, INV_MAIN, 5, 3).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0A11);
+    let (socket, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_purchase_vendor_items(
-        0x7000_0A11,
+        entity_id as u32,
         player_id,
         99,
         SEEDED_BUY_VENDOR_TEMPLATE_ID,
@@ -287,11 +289,11 @@ async fn purchase_rejected_when_player_cannot_afford() {
     // Less than PURE_CASH_PRICE — purchase must fail.
     insert_account_and_player(&pool, account_id, player_id, PURE_CASH_PRICE - 1).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0A21);
+    let (socket, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_purchase_vendor_items(
-        0x7000_0A21,
+        entity_id as u32,
         player_id,
         99,
         SEEDED_BUY_VENDOR_TEMPLATE_ID,
@@ -318,6 +320,53 @@ async fn purchase_rejected_when_player_cannot_afford() {
     cleanup(&pool, entity_id, account_id, player_id).await;
 }
 
+/// Regression guard for the cleanup helper itself. The pre-fix WHERE
+/// clause was `entity_id < 0`, which matched zero rows because the
+/// test sentinels are positive — so successful runs leaked outbox
+/// rows into the shared live DB. Insert one outbox row at the test
+/// sentinel, run cleanup, assert the row is gone. Reverting cleanup
+/// to `entity_id < 0` leaves count == 1 and fails this guard.
+#[tokio::test]
+async fn cleanup_deletes_outbox_rows_for_test_entity() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 400;
+    let player_id = TEST_BASE + 401;
+    let entity_id: i32 = 0x7000_0A41;
+    cleanup(&pool, entity_id, account_id, player_id).await;
+
+    sqlx::query(
+        "INSERT INTO cell_event_outbox (entity_id, event_type, payload) \
+         VALUES ($1, 'TestEvent', '{}'::jsonb)",
+    )
+    .bind(entity_id)
+    .execute(&pool)
+    .await
+    .expect("seed outbox row");
+
+    let pre: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cell_event_outbox WHERE entity_id = $1")
+            .bind(entity_id)
+            .fetch_one(&pool)
+            .await
+            .expect("pre-cleanup count");
+    assert_eq!(pre, 1, "fixture must have inserted one outbox row");
+
+    cleanup(&pool, entity_id, account_id, player_id).await;
+
+    let post: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM cell_event_outbox WHERE entity_id = $1")
+            .bind(entity_id)
+            .fetch_one(&pool)
+            .await
+            .expect("post-cleanup count");
+    assert_eq!(
+        post, 0,
+        "cleanup must delete outbox rows for the test sentinel; \
+         reverting the WHERE clause to `entity_id < 0` would leave the \
+         row in place and fail this guard",
+    );
+}
+
 /// A store_index outside the buy list (here: 99, well past the 3 seeded
 /// rows) is rejected before any state mutates. Asserts via the
 /// no-DB-changes invariant: balance unchanged, no INV_MAIN rows of any
@@ -331,11 +380,11 @@ async fn purchase_rejected_for_index_not_in_buy_list() {
     cleanup(&pool, entity_id, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0A31);
+    let (socket, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_purchase_vendor_items(
-        0x7000_0A31,
+        entity_id as u32,
         player_id,
         99,
         SEEDED_BUY_VENDOR_TEMPLATE_ID,
