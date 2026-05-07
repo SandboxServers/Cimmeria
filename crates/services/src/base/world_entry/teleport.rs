@@ -143,3 +143,73 @@ pub(super) async fn handle_teleport_player(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::io::ErrorKind;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+    use tokio::net::UdpSocket;
+
+    fn assert_no_udp_packet(receiver: &UdpSocket) {
+        let mut buf = [0u8; 2048];
+        let err = receiver
+            .try_recv_from(&mut buf)
+            .expect_err("early return must not send UDP");
+        assert_eq!(err.kind(), ErrorKind::WouldBlock);
+    }
+
+    #[tokio::test]
+    async fn teleport_early_returns_when_entity_not_in_addr_map() {
+        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        handle_teleport_player(
+            999,
+            65536,
+            [10.0, 20.0, 30.0],
+            &socket,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+        assert!(entity_to_addr.lock().unwrap().is_empty());
+        assert!(connected.lock().unwrap().is_empty());
+        assert_no_udp_packet(&receiver);
+    }
+
+    #[tokio::test]
+    async fn teleport_early_returns_when_client_state_missing() {
+        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let fake_addr = receiver.local_addr().unwrap();
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> = Arc::new(Mutex::new({
+            let mut m = HashMap::new();
+            m.insert(1, fake_addr);
+            m
+        }));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        handle_teleport_player(
+            1,
+            65536,
+            [10.0, 20.0, 30.0],
+            &socket,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+        assert_eq!(entity_to_addr.lock().unwrap().get(&1), Some(&fake_addr));
+        assert!(connected.lock().unwrap().is_empty());
+        assert_no_udp_packet(&receiver);
+    }
+}

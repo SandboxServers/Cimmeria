@@ -410,3 +410,104 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cell::space_manager::SpaceManager;
+
+    #[tokio::test]
+    async fn aoi_tick_on_empty_space_manager_produces_no_messages() {
+        let mut mgr = SpaceManager::new(1);
+        let (tx, mut rx) = mpsc::channel(8);
+        run_aoi_tick(&tx, &mut mgr).await;
+        assert!(
+            rx.try_recv().is_err(),
+            "empty space manager must produce zero AoI events"
+        );
+    }
+
+    #[test]
+    fn npc_movement_tick_advances_along_nav_path() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(200, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(200) {
+            npc.is_player = false;
+            npc.class_id = 0x04;
+            npc.move_speed = 5.0;
+            npc.nav_path
+                .push_back(cimmeria_common::Vector3::new(10.0, 0.0, 0.0));
+        }
+
+        npc_movement_tick(&mut mgr);
+
+        let npc = mgr.get_entity(200).unwrap();
+        assert_eq!(npc.position.x, 5.0);
+        assert_eq!(npc.position.y, 0.0);
+        assert_eq!(npc.position.z, 0.0);
+        assert_eq!(npc.nav_path.len(), 1);
+    }
+
+    #[test]
+    fn npc_movement_tick_does_not_panic_on_empty_path() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(200, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(200) {
+            npc.is_player = false;
+            npc.class_id = 0x04;
+            npc.nav_path.clear();
+        }
+        // Must not panic.
+        npc_movement_tick(&mut mgr);
+        let npc = mgr.get_entity(200).unwrap();
+        assert_eq!(npc.position.x, 0.0, "stationary NPC must not move");
+    }
+
+    #[tokio::test]
+    async fn reload_completion_tick_skips_entity_with_empty_slot() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            // Slot 0 was removed mid-reload: reload_slot_id points to missing item.
+            e.reload_slot_id = Some(0);
+            e.reload_complete_at =
+                Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(8);
+        reload_completion_tick(&tx, &mut mgr).await;
+
+        // No messages should be sent because the slot is empty.
+        assert!(
+            rx.try_recv().is_err(),
+            "empty slot must produce zero wire messages"
+        );
+        let entity = mgr.get_entity(1).unwrap();
+        assert!(
+            entity.reload_complete_at.is_none(),
+            "deadline must be cleared even when slot is empty"
+        );
+    }
+}

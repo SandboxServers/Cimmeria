@@ -179,6 +179,11 @@ impl ResourceCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cimmeria_entity::inventory::{
+        INV_ARTIFACT1, INV_ARTIFACT2, INV_BACK, INV_BANDOLIER, INV_BUYBACK, INV_CHEST,
+        INV_CRAFTING, INV_FACE, INV_FEET, INV_HANDS, INV_HEAD, INV_LEGS, INV_MAIN, INV_MISSION,
+        INV_NECK, INV_WAIST,
+    };
 
     /// Sentinel-slot invariant: the move handler's three-step swap parks the
     /// source row at `slot_id = -1` mid-transaction. For that to be safe,
@@ -203,9 +208,59 @@ mod tests {
             let min = bag_min_slot(container_id);
             assert!(
                 min >= 0,
-                "bag_min_slot({container_id}) returned {min}; must be >= 0 to \
-                 keep the move handler's slot_id=-1 sentinel unreachable from \
-                 grant/purchase paths",
+                "bag_min_slot({container_id}) returned {min}; must be >= 0"
+            );
+        }
+    }
+
+    #[test]
+    fn bag_max_slots_known_containers_match_constants() {
+        assert_eq!(bag_max_slots(INV_MAIN), 40);
+        assert_eq!(bag_max_slots(INV_MISSION), 100);
+        assert_eq!(bag_max_slots(INV_BANDOLIER), 4);
+        for container_id in [
+            INV_HEAD,
+            INV_FACE,
+            INV_NECK,
+            INV_CHEST,
+            INV_HANDS,
+            INV_WAIST,
+            INV_BACK,
+            INV_LEGS,
+            INV_FEET,
+            INV_ARTIFACT1,
+            INV_ARTIFACT2,
+        ] {
+            assert_eq!(bag_max_slots(container_id), 1);
+        }
+        assert_eq!(bag_max_slots(INV_CRAFTING), 100);
+        assert_eq!(bag_max_slots(INV_BUYBACK), 12);
+    }
+
+    #[test]
+    fn bag_max_slots_out_of_range_returns_zero() {
+        assert_eq!(bag_max_slots(0), 0);
+        assert_eq!(bag_max_slots(17), 0);
+        assert_eq!(bag_max_slots(100), 0);
+        assert_eq!(bag_max_slots(-1), 0);
+    }
+
+    #[test]
+    fn bag_min_slot_bandolier_is_zero() {
+        assert_eq!(
+            bag_min_slot(INV_BANDOLIER),
+            0,
+            "bandolier slots are zero-based weapon slots"
+        );
+    }
+
+    #[test]
+    fn bag_min_slot_other_containers_is_zero() {
+        for container_id in [1, 2, 4, 15, 16] {
+            assert_eq!(
+                bag_min_slot(container_id),
+                0,
+                "container {container_id} must start at slot 0"
             );
         }
     }

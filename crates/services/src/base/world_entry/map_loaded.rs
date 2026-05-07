@@ -207,3 +207,47 @@ pub(crate) async fn handle_map_loaded(
     tracing::info!(%addr, "World entry complete -- waiting for SGWPlayer.onClientReady");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+    use tokio::net::UdpSocket;
+
+    #[tokio::test]
+    async fn map_loaded_errors_when_no_pending_entry() {
+        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
+        std_sock.set_nonblocking(true).unwrap();
+        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new({
+                let mut m = HashMap::new();
+                m.insert(
+                    addr,
+                    crate::test_support::test_default_connected_client_state(),
+                );
+                m
+            }));
+        let key = [0u8; 32];
+
+        // Client has no pending_map_loaded — must return an error.
+        let result = handle_map_loaded(
+            &socket,
+            addr,
+            key,
+            &connected,
+            &None,
+            &Arc::new(Mutex::new(HashMap::new())),
+            &None,
+        )
+        .await;
+        let err = result.expect_err("must fail when pending_map_loaded is missing");
+        assert!(
+            err.to_string().contains("no pending world entry"),
+            "unexpected error: {err}"
+        );
+    }
+}

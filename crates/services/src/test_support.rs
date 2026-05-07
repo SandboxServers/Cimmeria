@@ -107,3 +107,53 @@ pub(crate) fn make_space_manager_with_player(entity_id: u32) -> SpaceManager {
         .unwrap();
     mgr
 }
+
+// ── ConnectedClientState fixture ──────────────────────────────────────
+//
+// `ConnectedClientState` is built up across the Phase 3 handshake
+// (login.rs) and there is no production constructor for "an empty one"
+// — every field has to be threaded through. Several unit tests just
+// want a structurally-valid placeholder so they can populate the one
+// or two fields the test actually cares about. Centralise that here.
+
+use crate::base::ConnectedClientState;
+use cimmeria_mercury::encryption::MercuryEncryption;
+use std::sync::atomic::{AtomicBool, AtomicU32};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+/// Build a `ConnectedClientState` with all fields zeroed/None and
+/// fresh `Arc`s — a structurally-valid placeholder for tests that
+/// only mutate a couple of fields. Not for production paths.
+pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
+    let key = [0u8; 32];
+    ConnectedClientState {
+        enc: MercuryEncryption::from_session_key(key),
+        key,
+        account_id: 0,
+        access_level: 0,
+        char_list_sent: false,
+        world_entry_sent: false,
+        pending_player_entity_id: None,
+        player_entity_id: None,
+        next_seq: Arc::new(AtomicU32::new(0)),
+        pending_acks: Arc::new(Mutex::new(Vec::new())),
+        last_recv: Arc::new(Mutex::new(Instant::now())),
+        account_entity_id: 0,
+        next_data_id: 0,
+        pending_world_entry: None,
+        pending_player_load_data: None,
+        pending_map_loaded: None,
+        pending_client_ready: None,
+        cached_appearance_args: None,
+        cached_tint_args: None,
+        cancelled: Arc::new(AtomicBool::new(false)),
+        player_name: None,
+        player_level: None,
+        player_archetype: None,
+        world_name: None,
+        player_xp: None,
+        player_training_points: None,
+        active_player_id: None,
+    }
+}
