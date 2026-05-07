@@ -225,7 +225,10 @@ mod tests {
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new({
                 let mut m = HashMap::new();
-                m.insert(addr, ConnectedClientState::default());
+                m.insert(
+                    addr,
+                    crate::test_support::test_default_connected_client_state(),
+                );
                 m
             }));
         let key = [0u8; 32];

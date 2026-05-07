@@ -195,7 +195,7 @@ mod tests {
         let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
         let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let addr = receiver.local_addr().unwrap();
-        let mut client = ConnectedClientState::default();
+        let mut client = crate::test_support::test_default_connected_client_state();
         client.char_list_sent = true;
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new({

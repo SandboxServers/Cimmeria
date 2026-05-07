@@ -823,7 +823,10 @@ mod tests {
                 assert_eq!(result_code, 2);
                 assert_eq!(on_victory_chains, vec![100, 200]);
             }
-            other => panic!("unexpected forwarded message: {other:?}"),
+            // BaseToCellMsg deliberately omits Debug (oneshot::Sender),
+            // so we can't print the variant — name the expected one
+            // and let test output point at this line.
+            _ => panic!("expected BaseToCellMsg::MinigameResult"),
         }
     }
 
