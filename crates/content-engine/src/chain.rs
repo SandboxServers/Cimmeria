@@ -225,8 +225,16 @@ impl ChainEngine {
 ///
 /// Each entry pairs a chain ID with the action to execute, preserving the
 /// ordering (highest-priority chain first, actions in declaration order).
+///
+/// `params` carries forward the resolution-time `ExecutionContext.params`
+/// so action executors can read trigger-time state without holding the
+/// original context. This is how `Action::RemoveItem` looks up
+/// `instance_id` set by `fire_item_use` to consume the exact stack the
+/// player clicked instead of the player's first-by-type instance.
+#[derive(Default)]
 pub struct ResolvedActions {
     pub actions: Vec<(i64, Action)>,
+    pub params: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl ChainEngine {
@@ -239,6 +247,7 @@ impl ChainEngine {
     pub fn resolve_event(&self, event: &TriggerEvent, ctx: &ExecutionContext) -> ResolvedActions {
         let mut resolved = ResolvedActions {
             actions: Vec::new(),
+            params: ctx.params.clone(),
         };
 
         let chains = match self.chains_by_trigger.get(&event.trigger_type) {

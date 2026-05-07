@@ -9,6 +9,37 @@ use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED, MISSION_NOT_ACTIVE};
 
+/// Populate per-stat current/max into the context as `stat_<id>_cur` and
+/// `stat_<id>_max` numeric params. Read by `Condition::StatBelowMax` to
+/// gate consumable chains against full-stat fizzles.
+///
+/// Currently only invoked from the `OnItemUse` dispatch site
+/// (consumable-use is the only chain class that needs stat state for
+/// gating). Generalize to other dispatch sites if/when more conditions
+/// learn to read stat values.
+pub(super) fn populate_stats_context(entity: &CellEntity, ctx: &mut ExecutionContext) {
+    for (stat_id, stat) in entity.stats.iter() {
+        ctx.set_param(format!("stat_{}_cur", stat_id), serde_json::json!(stat.cur));
+        ctx.set_param(format!("stat_{}_max", stat_id), serde_json::json!(stat.max));
+    }
+}
+
+/// Populate per-entity counter values into the context as `counter_<name>`
+/// numeric params. Read by `Condition::Counter` (the loader maps DB
+/// rows with `condition_type='counter'` and `target_key=<name>` onto
+/// this).
+///
+/// Called from `populate_mission_context` so every mission-aware
+/// dispatcher (notably `fire_entity_death`) sees up-to-date counter
+/// values when evaluating completion chains. Mutated by
+/// `Action::IncrementCounter` and `Action::ResetCounter` in the
+/// executor.
+pub(super) fn populate_counters_context(entity: &CellEntity, ctx: &mut ExecutionContext) {
+    for (name, value) in &entity.counters {
+        ctx.set_param(format!("counter_{}", name), serde_json::json!(*value));
+    }
+}
+
 /// Populate mission status and step status context params from entity state.
 ///
 /// Step status semantics (chain conditions read these via `step_status`):
@@ -23,6 +54,12 @@ use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED, MISSION_NOT_A
 ///   it" should compare against `completed` rather than relying on
 ///   `not_active`.
 pub(super) fn populate_mission_context(entity: &CellEntity, ctx: &mut ExecutionContext) {
+    // Counters travel alongside missions — completion chains for
+    // multi-step kill sequences read counter values to know when to
+    // fire. Populate them here so every mission-aware dispatcher gets
+    // them without each having to remember a separate call.
+    populate_counters_context(entity, ctx);
+
     for mission in entity.missions.all_missions() {
         let status_str = match mission.status {
             MISSION_NOT_ACTIVE => "not_active",

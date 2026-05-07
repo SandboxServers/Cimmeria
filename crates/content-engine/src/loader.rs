@@ -105,26 +105,7 @@ pub fn build_chains_from_rows(
             .description
             .unwrap_or_else(|| format!("chain_{}", chain_id));
 
-        // Build trigger — take the first trigger row (chains have 0 or 1 triggers)
-        let mut trigger_list = triggers_by_chain.remove(&chain_id).unwrap_or_default();
-        trigger_list.sort_by_key(|t| t.sort_order);
-        let trigger = if let Some(t_row) = trigger_list.into_iter().next() {
-            match convert_trigger(&t_row) {
-                Some(t) => t,
-                None => {
-                    warn!(chain_id, event_type = %t_row.event_type, "Unknown trigger event_type, skipping chain");
-                    continue;
-                }
-            }
-        } else {
-            // Triggerless chain (invoked by on_victory_chains or TriggerChain)
-            // Use a CustomEvent that never naturally fires
-            Trigger::OnCustomEvent {
-                event_name: format!("__direct_invoke_{}", chain_id),
-            }
-        };
-
-        // Build conditions
+        // Build conditions (shared across all triggers for this chain).
         let mut cond_list = conditions_by_chain.remove(&chain_id).unwrap_or_default();
         cond_list.sort_by_key(|c| c.sort_order);
         let conditions: Vec<Condition> = cond_list.iter().filter_map(|c_row| {
@@ -135,7 +116,7 @@ pub fn build_chains_from_rows(
             result
         }).collect();
 
-        // Build actions
+        // Build actions (shared across all triggers for this chain).
         let mut act_list = actions_by_chain.remove(&chain_id).unwrap_or_default();
         act_list.sort_by_key(|a| a.sort_order);
         let actions: Vec<Action> = act_list.iter().filter_map(|a_row| {
@@ -146,15 +127,63 @@ pub fn build_chains_from_rows(
             result
         }).collect();
 
-        chains.push(Chain {
-            id: chain_id as i64,
-            name,
-            enabled: row.enabled,
-            trigger,
-            conditions,
-            actions,
-            priority: row.priority,
-        });
+        // Triggers — chains can declare multiple `content_triggers` rows
+        // for OR-semantics (e.g., "fire on either MessHall_Guard1 OR
+        // MessHall_Guard2 death"). Materialize one in-memory `Chain`
+        // per trigger row, all sharing the same conditions and actions.
+        // The runtime resolver doesn't need to know about the
+        // multi-trigger origin — it sees N independent chains keyed by
+        // each trigger's `TriggerType`. Same chain ID is reused so
+        // chain-replay tests and logs identify them as one logical
+        // chain.
+        //
+        // A chain with zero trigger rows is treated as triggerless
+        // (invoked directly via `on_victory_chains` or `TriggerChain`)
+        // and gets a single never-firing `OnCustomEvent` so it's
+        // present in the engine but inert without explicit invocation.
+        let mut trigger_list = triggers_by_chain.remove(&chain_id).unwrap_or_default();
+        trigger_list.sort_by_key(|t| t.sort_order);
+
+        let triggers: Vec<Trigger> = if trigger_list.is_empty() {
+            vec![Trigger::OnCustomEvent {
+                event_name: format!("__direct_invoke_{}", chain_id),
+            }]
+        } else {
+            trigger_list
+                .iter()
+                .filter_map(|t_row| {
+                    let result = convert_trigger(t_row);
+                    if result.is_none() {
+                        warn!(
+                            chain_id,
+                            event_type = %t_row.event_type,
+                            "Unknown trigger event_type, skipping this trigger row"
+                        );
+                    }
+                    result
+                })
+                .collect()
+        };
+
+        if triggers.is_empty() {
+            warn!(
+                chain_id,
+                "All trigger rows failed to convert — skipping chain"
+            );
+            continue;
+        }
+
+        for trigger in triggers {
+            chains.push(Chain {
+                id: chain_id as i64,
+                name: name.clone(),
+                enabled: row.enabled,
+                trigger,
+                conditions: conditions.clone(),
+                actions: actions.clone(),
+                priority: row.priority,
+            });
+        }
     }
 
     chains
@@ -259,6 +288,14 @@ fn convert_condition(row: &DbConditionRow) -> Option<Condition> {
                 operator: op,
                 value,
             })
+        }
+        "stat_below_max" => {
+            // target_id carries the stat id (no operator/value/key — the
+            // condition is structural: cur < max). Extra columns are
+            // ignored so chain authors don't accidentally encode an
+            // operator that the evaluator can't honor.
+            let stat_id = row.target_id?;
+            Some(Condition::StatBelowMax { stat_id })
         }
         _ => None,
     }

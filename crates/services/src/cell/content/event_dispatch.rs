@@ -17,7 +17,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::executor;
-use super::mission_context::populate_mission_context;
+use super::mission_context::{populate_mission_context, populate_stats_context};
 
 /// Fire the `PlayerLoaded` event for a player entering a world.
 pub async fn fire_player_loaded(
@@ -383,9 +383,17 @@ pub async fn fire_dialog_choice(
 }
 
 /// Fire `OnItemUse` event when a player uses an inventory item.
+///
+/// `item_id` is the item design id (type_id) — drives chain matching on
+/// `item_use::<type_id>`. `instance_id` is the inventory row id the
+/// player clicked — set into the context so `Action::RemoveItem` can
+/// consume that exact stack instead of the player's first-by-type
+/// instance (which is wrong when the player has multiple stacks of the
+/// same item and clicks anything other than the first one).
 pub async fn fire_item_use(
     entity_id: u32,
     player_id: i32,
+    instance_id: i32,
     item_id: i32,
     engine: &ChainEngine,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -393,9 +401,14 @@ pub async fn fire_item_use(
 ) {
     let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
     ctx.set_param("item_id".to_string(), serde_json::json!(item_id));
+    ctx.set_param("instance_id".to_string(), serde_json::json!(instance_id));
 
     if let Some(entity) = space_mgr.get_entity(entity_id) {
         populate_mission_context(entity, &mut ctx);
+        // Stats are needed by `Condition::StatBelowMax` so chains like
+        // the Health Slappack (4001) can fizzle silently at full HP
+        // instead of burning the stack.
+        populate_stats_context(entity, &mut ctx);
         if let Some(archetype_id) = entity.archetype_id {
             ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
         }
@@ -504,6 +517,7 @@ pub async fn fire_chain_by_id(
     );
     let resolved = cimmeria_content_engine::chain::ResolvedActions {
         actions: actions.into_iter().map(|a| (chain_id, a)).collect(),
+        ..Default::default()
     };
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }

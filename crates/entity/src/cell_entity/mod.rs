@@ -271,6 +271,19 @@ pub struct CellEntity {
     /// stages B/C/D read/clear this on reload completion, slot swap, ammo
     /// change, and logout.
     pub bandolier_ammo_dirty: HashSet<i32>,
+
+    /// Per-entity content-engine counter values, keyed by counter name.
+    /// Mutated by `Action::IncrementCounter` / `Action::ResetCounter` and
+    /// read by `Condition::Counter` (populated into the chain context as
+    /// `counter_<name>` by `populate_mission_context`). Used to track
+    /// kill counts and similar progression state — e.g., the Mess Hall
+    /// completion chain reads `counter_messhall_kills >= 2` to know
+    /// when both `MessHall_Guard1` and `MessHall_Guard2` are dead.
+    ///
+    /// Not persisted: counters are mission-scoped and intended to be
+    /// transient. The chain that reaches the threshold also explicitly
+    /// resets the counter via `Action::ResetCounter`.
+    pub counters: HashMap<String, i32>,
 }
 
 /// An item in a dead NPC's loot list, ready for display to players.
@@ -375,6 +388,7 @@ impl CellEntity {
             bandolier_ammo_dirty: HashSet::new(),
             ring_source_id: None,
             destination_ring_id: None,
+            counters: HashMap::new(),
         }
     }
 

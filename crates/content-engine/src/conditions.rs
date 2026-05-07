@@ -80,6 +80,18 @@ pub enum Condition {
         operator: ComparisonOp,
         value: i32,
     },
+
+    /// True iff the source entity's stat is below its current max
+    /// (i.e., the stat has headroom to grow). Used to gate consumable
+    /// chains so e.g. Health Slappacks fizzle silently rather than
+    /// burning a stack when the player is already at full HP.
+    ///
+    /// Reads `stat_<id>_cur` and `stat_<id>_max` from the context;
+    /// callers must populate these via `populate_stats_context` before
+    /// resolving. Returns `false` (treat as "no headroom, don't fire")
+    /// if either param is missing — fail-closed so a wiring mistake
+    /// can't accidentally make consumables free-to-spam at full stat.
+    StatBelowMax { stat_id: i32 },
 }
 
 /// Faction relationship levels.
@@ -239,6 +251,20 @@ impl Condition {
                 let key = format!("counter_{}", counter_name);
                 let actual = ctx.params.get(&key).and_then(|v| v.as_i64()).unwrap_or(0);
                 compare_i64(actual, *value as i64, operator)
+            }
+            Condition::StatBelowMax { stat_id } => {
+                let cur_key = format!("stat_{}_cur", stat_id);
+                let max_key = format!("stat_{}_max", stat_id);
+                let cur = ctx.params.get(&cur_key).and_then(|v| v.as_i64());
+                let max = ctx.params.get(&max_key).and_then(|v| v.as_i64());
+                match (cur, max) {
+                    (Some(c), Some(m)) => c < m,
+                    // Fail-closed: missing context means we don't know the
+                    // stat state, so treat as "no headroom" rather than
+                    // firing the chain blindly. A missing populator call
+                    // would otherwise let consumables burn at full stat.
+                    _ => false,
+                }
             }
         }
     }
