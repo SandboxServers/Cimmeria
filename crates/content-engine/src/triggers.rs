@@ -95,6 +95,13 @@ pub enum Trigger {
 
     /// Fires when a dialog set is opened for a player.
     OnDialogSetOpen { dialog_set_name: String },
+
+    /// Fires immediately after a mission has been accepted, after the
+    /// mission/step/objective state has been updated. Used by chains that
+    /// need to perform setup work tied to mission start (e.g., highlighting
+    /// quest objects, granting starter items) without coupling that work
+    /// to the chain that did the accepting.
+    OnMissionAccepted { mission_id: i32 },
 }
 
 /// Runtime event payload passed to the chain engine when a game event occurs.
@@ -141,6 +148,7 @@ pub enum TriggerType {
     EffectRemoved,
     MissionCompleted,
     DialogSetOpen,
+    MissionAccepted,
 }
 
 impl Trigger {
@@ -171,6 +179,7 @@ impl Trigger {
             Trigger::OnEffectRemoved => TriggerType::EffectRemoved,
             Trigger::OnMissionCompleted { .. } => TriggerType::MissionCompleted,
             Trigger::OnDialogSetOpen { .. } => TriggerType::DialogSetOpen,
+            Trigger::OnMissionAccepted { .. } => TriggerType::MissionAccepted,
         }
     }
 
@@ -300,6 +309,9 @@ impl Trigger {
                 .get("dialog_set_name")
                 .and_then(|v| v.as_str())
                 .is_some_and(|actual| actual == dialog_set_name),
+            Trigger::OnMissionAccepted { mission_id } => {
+                event.params.get("mission_id").and_then(|v| v.as_i64()) == Some(*mission_id as i64)
+            }
         }
     }
 }
@@ -507,5 +519,25 @@ mod tests {
             vec![("mission_id", serde_json::json!(1559))],
         );
         assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn mission_accepted_matches_correct_mission_id() {
+        let trigger = Trigger::OnMissionAccepted { mission_id: 687 };
+        let event = make_event(
+            TriggerType::MissionAccepted,
+            vec![("mission_id", serde_json::json!(687))],
+        );
+        assert!(trigger.matches(&event));
+    }
+
+    #[test]
+    fn mission_accepted_rejects_wrong_mission_id() {
+        let trigger = Trigger::OnMissionAccepted { mission_id: 687 };
+        let event = make_event(
+            TriggerType::MissionAccepted,
+            vec![("mission_id", serde_json::json!(641))],
+        );
+        assert!(!trigger.matches(&event));
     }
 }

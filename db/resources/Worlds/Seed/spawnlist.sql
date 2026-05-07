@@ -8,13 +8,13 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (27, -49.6899986, 24.6700001, -127.110001, 3.1414969, 12, 24, NULL, NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (26, -131.479996, 24.6700001, -116.969994, 0, 12, 24, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (26, -131.479996, 24.6700001, -116.969994, 0, 12, 24, 'Barracks_Guard2', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (29, -96.25, 34.5909996, -91.5899963, 2.09426737, 12, 24, 'MessHall_Guard1', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (36, -136.384995, 24.6709976, -135.671005, 0, 12, 24, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (36, -136.384995, 24.6709976, -135.671005, 0, 12, 24, 'Barracks_Guard3', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (25, -118.409996, 24.6700001, -118.349998, 1.57079637, 12, 24, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (25, -118.409996, 24.6700001, -118.349998, 1.57079637, 12, 24, 'Barracks_Guard1', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (78, 39.5439987, -51.9140015, -129.919998, 3.13986993, 18, 65, 'Omega_Site_Modi', NULL);
 

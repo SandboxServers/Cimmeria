@@ -487,6 +487,71 @@ pub async fn fire_teleport_in(
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
+/// Fire `mission_accepted` immediately after a mission has been accepted
+/// and its state propagated. Called from the executor's `Action::AcceptMission`
+/// branch so chains tied to mission start (e.g., highlighting quest objects
+/// like the Cellblock_WoodenCrate for mission 687) run without coupling to
+/// the chain that triggered the accept.
+///
+/// The return type is an explicit `Pin<Box<dyn Future ...>>` rather than an
+/// `async fn` because this fires from inside `executor::execute_actions`
+/// (which itself awaits this via the `AcceptMission` branch). An `async fn`
+/// would compute its future size from the called future, and since
+/// `execute_actions` calls back into here, the type would be infinitely
+/// sized at compile time. Boxing breaks the cycle.
+///
+/// A `mission_accepted` chain that itself calls `accept_mission` for a
+/// different mission will re-fire this dispatcher — intentional, so chained
+/// accepts work without each one being wired by hand. Bounded in practice
+/// because chain authors don't write self-accepting cycles; if that turns
+/// out to be optimistic, guard with a depth counter here.
+pub(super) fn fire_mission_accepted<'a>(
+    entity_id: u32,
+    player_id: i32,
+    mission_id: i32,
+    engine: &'a ChainEngine,
+    tx: &'a mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &'a mut SpaceManager,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        let mut ctx =
+            ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
+        ctx.set_param("mission_id".to_string(), serde_json::json!(mission_id));
+
+        if let Some(entity) = space_mgr.get_entity(entity_id) {
+            populate_mission_context(entity, &mut ctx);
+            if let Some(archetype_id) = entity.archetype_id {
+                ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+            }
+        }
+
+        let event = TriggerEvent {
+            trigger_type: TriggerType::MissionAccepted,
+            source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+            target_entity: None,
+            params: ctx.params.clone(),
+        };
+
+        let resolved = engine.resolve_event(&event, &ctx);
+        if !resolved.actions.is_empty() {
+            tracing::info!(
+                entity_id,
+                player_id,
+                mission_id,
+                actions = resolved.actions.len(),
+                "fire_mission_accepted: matched"
+            );
+            executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
+        } else {
+            tracing::debug!(
+                entity_id,
+                mission_id,
+                "fire_mission_accepted: no chains matched"
+            );
+        }
+    })
+}
+
 /// Fire a content chain directly by ID, bypassing trigger matching.
 ///
 /// Used for minigame victory callbacks — the chain has no trigger row,
