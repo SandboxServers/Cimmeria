@@ -430,5 +430,18 @@ mod delete_character_tests {
             result.is_ok(),
             "no-DB mode must short-circuit without error"
         );
+
+        // Short-circuit must be silent. A regression that returned Ok
+        // after sending an error packet on the wire would still pass
+        // the is_ok() assertion above; pin the no-output invariant too.
+        let mut buf = [0u8; 64];
+        let recv = socket.try_recv_from(&mut buf);
+        assert!(
+            matches!(
+                recv,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock,
+            ),
+            "no-DB short-circuit must not send any UDP packet, got {recv:?}",
+        );
     }
 }
