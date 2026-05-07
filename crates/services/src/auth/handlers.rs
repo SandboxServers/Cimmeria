@@ -545,4 +545,43 @@ mod tests {
         assert!(xml.contains(r#"Ticket="BBBB""#));
         assert!(xml.contains(r#"Port="32832""#));
     }
+
+    /// Pin the parser's narrow contract: when the SGWLoginRequest element
+    /// is present but required attributes (SKU/AccountName/Password) are
+    /// missing, the parse succeeds with default (empty) fields. The
+    /// handler validates above the parser; a refactor that pushed
+    /// validation down here would silently break that layering.
+    #[test]
+    fn parse_login_request_does_not_validate_missing_attributes() {
+        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
+        let req = parse_login_request(body).expect("element present must parse Ok");
+        assert_eq!(req.sku, "", "missing SKU must surface as empty, not error");
+        assert_eq!(req.account_name, "");
+        assert_eq!(req.password, "");
+    }
+
+    /// Same narrow-contract pin, but for password length: a password the
+    /// handler will reject (not 40 hex chars) parses through unchanged.
+    /// Validation lives in the handler — this guard keeps it there.
+    #[test]
+    fn parse_login_request_does_not_validate_password_length() {
+        let body = r#"<sgwLogin:SGWLoginRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" SKU="SGW_BETA" AccountName="test" Password="short" ProtocolDigest="58AFA196AD3AC4F65CADD99BFF23B799" />"#;
+        let req = parse_login_request(body).expect("well-formed element must parse Ok");
+        assert_eq!(
+            req.password, "short",
+            "parser must hand the raw password through; length check is the handler's job",
+        );
+    }
+
+    /// Unlike parse_login_request, parse_server_selection requires the
+    /// ServerSelection attribute — the function returns early on the
+    /// first ServerSelection it sees, otherwise falls through to Err.
+    /// A refactor that loosened this would let the auth flow accept a
+    /// server-selection message with no shard id.
+    #[test]
+    fn parse_server_selection_missing_attribute_returns_error() {
+        let body = r#"<sgwLogin:SGWSelectServerRequest xmlns:sgwLogin="http://www.stargateworlds.com/xml/sgwlogin" />"#;
+        let sel = parse_server_selection(body);
+        assert!(sel.is_err(), "missing ServerSelection attribute must fail");
+    }
 }
