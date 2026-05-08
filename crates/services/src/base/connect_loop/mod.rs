@@ -33,7 +33,6 @@ mod encrypted;
 pub(crate) use encrypted::handle_encrypted_datagram;
 
 /// Main receive loop -- one per running `BaseService`.
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_connect_loop(
     socket: Arc<UdpSocket>,
     pending_logins: Arc<Mutex<HashMap<String, crate::auth::PendingLogin>>>,
@@ -83,7 +82,6 @@ pub(crate) async fn run_connect_loop(
 }
 
 /// Dispatch a single incoming UDP datagram.
-#[allow(clippy::too_many_arguments)]
 async fn handle_datagram(
     socket: &Arc<UdpSocket>,
     addr: SocketAddr,

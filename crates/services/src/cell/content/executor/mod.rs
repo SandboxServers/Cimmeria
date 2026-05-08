@@ -109,7 +109,7 @@ pub(super) async fn execute_actions(
                 let _ = tx
                     .send(CellToBaseMsg::EntityMethodCall {
                         entity_id,
-                        method_index: 1, // onSequence (SGWSpawnableEntity)
+                        method_index: crate::mercury::method_idx::ON_SEQUENCE,
                         args,
                     })
                     .await;
@@ -313,7 +313,7 @@ pub(super) async fn execute_actions(
                 let _ = tx
                     .send(CellToBaseMsg::EntityMethodCall {
                         entity_id,
-                        method_index: 70, // onActiveSlotUpdate (method_idx::ON_ACTIVE_SLOT_UPDATE)
+                        method_index: crate::mercury::method_idx::ON_ACTIVE_SLOT_UPDATE,
                         args,
                     })
                     .await;

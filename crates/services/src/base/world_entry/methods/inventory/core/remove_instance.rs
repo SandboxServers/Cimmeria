@@ -17,7 +17,6 @@ use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 
 /// Remove an inventory item from player inventory and sync client.
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_remove_inventory_item(
     entity_id: u32,
     player_id: i32,

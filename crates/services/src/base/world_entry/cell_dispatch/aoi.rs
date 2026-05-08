@@ -20,7 +20,6 @@ use super::super::super::ConnectedClientState;
 /// `CellToBaseMsg::EnteredAoI` — entity entered a witness's range.
 /// Emits CREATE_ENTITY + UPDATE_AVATAR (phase 1, BaseApp immediate) followed
 /// by the createOnClient() property cascade (phase 2, CellApp round-trip).
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn entered_aoi(
     witness_id: u32,
     entity_id: u32,
@@ -94,7 +93,6 @@ pub(super) async fn left_aoi(
 
 /// `CellToBaseMsg::EntityMoved` — per-tick position relay for a ghost
 /// entity already in the witness's AoI.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn entity_moved(
     witness_id: u32,
     entity_id: u32,

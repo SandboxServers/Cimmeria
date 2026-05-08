@@ -15,7 +15,6 @@ use super::super::methods::inventory::update_bandolier_ammo;
 /// selection, then re-query the appearance so the BEING_APPEARANCE broadcast
 /// swaps the visible weapon on the model. Skips the appearance refresh if
 /// the UPDATE didn't land (DB row missing or write failure).
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn active_slot_update(
     entity_id: u32,
     player_id: i32,

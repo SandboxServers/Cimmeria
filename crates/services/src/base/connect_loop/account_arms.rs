@@ -29,7 +29,6 @@ use super::super::ConnectedClientState;
 /// Dispatch a base-method message in the `0xC2..=0xC7` range. Branches on
 /// whether the connection is in-world (player entity present) or still at
 /// character select.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn dispatch_base_method(
     id: u8,
     payload: &[u8],

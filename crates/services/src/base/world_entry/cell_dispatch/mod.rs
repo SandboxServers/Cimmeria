@@ -42,7 +42,6 @@ mod minigame;
 mod tests;
 
 /// Handle a message from CellService -- dispatches AoI packets to witness clients.
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_cell_message(
     msg: CellToBaseMsg,
     socket: &Arc<UdpSocket>,

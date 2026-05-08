@@ -37,7 +37,6 @@ fn weapon_stats(
 /// `Action::GrantItem` — add an item to the player's inventory; for weapons
 /// (container 3) also seeds the bandolier slot and clears the ammo stat so
 /// the client renders an empty mag until the player reloads.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn grant(
     item_id: i32,
     count: i32,
@@ -118,7 +117,14 @@ pub(super) async fn grant(
 
     if let Some(payload) = ammo_stat_payload {
         if !payload.is_empty() {
-            crate::cell::abilities::send_entity_method(entity_id, 20, payload, tx, space_mgr).await;
+            crate::cell::abilities::send_entity_method(
+                entity_id,
+                crate::mercury::method_idx::ON_STAT_UPDATE,
+                payload,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
     }
 }

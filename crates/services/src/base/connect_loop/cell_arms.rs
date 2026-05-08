@@ -23,7 +23,6 @@ use super::super::ConnectedClientState;
 /// [`ControlFlow::Break`] to signal the encrypted dispatcher to `continue`
 /// the bundle scan (used when the message arrived before `mapLoaded` and
 /// must be ignored).
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn dispatch_cell_method(
     id: u8,
     payload: &[u8],

@@ -11,7 +11,6 @@ use crate::cell::space_manager::SpaceManager;
 /// `onStatUpdate`. The legacy `stat_id = -1` sentinel and the explicit
 /// `use_ammo_stat = Some(true)` form both skip cleanly — the active-ammo-slot
 /// resolution path is not yet implemented.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn change_stat(
     stat_id: i32,
     min: Option<i32>,

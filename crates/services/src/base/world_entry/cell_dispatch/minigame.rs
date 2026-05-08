@@ -18,7 +18,6 @@ use super::super::super::ConnectedClientState;
 /// `CellToBaseMsg::StartMinigame` — register a session ticket and push
 /// `onStartMinigame(URL)` to the player so the client launches the minigame
 /// browser/iframe pointing at the in-process minigame service.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn start_minigame(
     entity_id: u32,
     player_id: i32,

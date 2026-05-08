@@ -28,7 +28,6 @@ use super::super::ConnectedClientState;
 use super::{account_arms, cell_arms, read_constant_payload, read_word_length_payload};
 
 /// Handle an encrypted datagram from a known connected client.
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_encrypted_datagram(
     socket: &Arc<UdpSocket>,
     addr: SocketAddr,

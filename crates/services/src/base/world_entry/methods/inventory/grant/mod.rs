@@ -61,7 +61,6 @@ pub async fn item_allows_container(pool: &Arc<PgPool>, type_id: i32, container_i
 }
 
 /// Persist an item grant to inventory and sync client appearance.
-#[allow(clippy::too_many_arguments)]
 pub async fn handle_grant_item(
     entity_id: u32,
     player_id: i32,
