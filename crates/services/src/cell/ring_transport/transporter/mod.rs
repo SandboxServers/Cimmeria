@@ -507,7 +507,7 @@ impl RingTransporter {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum DeadlineKind {
+enum DeadlineKind {
     Hide,
     Warmup,
     RemoteWarmup,
