@@ -219,7 +219,7 @@ reviews:
         - Property synchronization flags
 
     # Game content and logic
-    - path: python/**
+    - path: deprecated/python/**
       instructions: |
         Focus on:
         - Python 3.4.1 compatibility (no f-strings, type hints, async)

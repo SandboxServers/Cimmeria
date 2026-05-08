@@ -1,6 +1,5 @@
 //! Per-game setup — difficulty parameter table, wire generation, and
-//! full-game-state serialization. Mirrors the construction half of
-//! `python/base/minigame/Livewire.py`.
+//! full-game-state serialization for the Livewire minigame.
 
 use std::collections::HashMap;
 

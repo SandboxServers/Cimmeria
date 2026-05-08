@@ -1,9 +1,8 @@
 //! Livewire minigame — wire cutting puzzle.
 //!
-//! Port of `python/base/minigame/Livewire.py` (594 lines).
-//! Players must cut all goal wires before the timer runs out.
-//! Cutting obstacle wires accelerates the countdown; moving wires
-//! provide score/time bonuses.
+//! Players must cut all goal wires before the timer runs out. Cutting
+//! obstacle wires accelerates the countdown; moving wires provide
+//! score/time bonuses.
 //!
 //! The game-state construction (difficulty parameter table, wire
 //! generation, full-state serialization) lives in [`setup`] so this

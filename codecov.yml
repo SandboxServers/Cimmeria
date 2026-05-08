@@ -43,8 +43,7 @@ ignore:
   - "crates/cimmeria-content-editor/**"
   - "crates/cimmeria-scene-editor/**"
   - "crates/launcher/**"
-  - "src/**"           # legacy C++ reference
-  - "python/**"        # legacy Python reference
+  - "deprecated/**"    # legacy C++/Python reference + retired artifacts
   - "tools/**"         # editor tools + smoke SQL scripts
   - "bootstrap/**"
   - "ghidra/**"

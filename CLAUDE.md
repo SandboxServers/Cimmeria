@@ -1,21 +1,16 @@
 # Cimmeria — Stargate Worlds Emulator
 
-A server emulator for Stargate Worlds. Active development is in Rust (`crates/`); the C++ code in `src/` and Python scripts in `python/` are reference implementations — read them for behavior, implement in Rust.
+A server emulator for Stargate Worlds. Active development is in Rust (`crates/`).
 
-For human-readable project overview, see [README.md](README.md). For the dependency migration roadmap and migration-specialist agent definitions, see [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).
+For human-readable project overview, see [README.md](README.md).
 
 ## Repo invariants (non-obvious)
 
-- `external/` and `bin64/`/`lib64/` are **not in git** — populated by `setup.ps1`. A fresh checkout looks broken until setup runs.
-- `db/deprecated/` contains old monolithic SQL files. **Do not load them.** Active schemas: `db/database.sql`, `db/sgw/`, `db/resources/`.
-- `config/*.config` files contain test credentials. Real environments use `*.local` overrides (gitignored). Most-edited: `db_connection_string` in `BaseService.config`.
-- Python console (port 8989) is password-gated; password lives in `AuthenticationService.config`.
-- Legacy C++ uses **OpenSSL 0.9.8i** with active CVEs — never expose this server to the internet.
+- `external/` is **not in git** — populated by `setup.ps1`. A fresh checkout looks broken until setup runs.
+- Active schemas: `db/database.sql`, `db/sgw/`, `db/resources/`.
 - Frontend convention: every meaningful frontend change requires a REPL-style logic UAT in addition to tests/builds — see [AGENTS.md](AGENTS.md).
 
 ## Build rules
-
-### Rust (active)
 
 Always target **Windows** — the server runs on Windows alongside the game client.
 
@@ -59,10 +54,6 @@ cargo check --workspace \
 # Kill stale builds
 pkill -f "cargo|rustc"
 ```
-
-### C++ (legacy)
-
-Solution: `W-NG.sln` (VS2026, MSVC v145). Bootstrap via `setup.ps1` (wraps the `CimmeriaBootstrap` PowerShell module — see [bootstrap/CimmeriaBootstrap/README.md](bootstrap/CimmeriaBootstrap/README.md) for individual functions).
 
 ## Pre-PR checklist
 
@@ -139,6 +130,3 @@ Files should "do what it says on the tin" — a reader (human or LLM) should pre
 - **Naming.** Avoid `helpers.rs`, `utils.rs`, `misc.rs`, `extra.rs` — they hide content. Use `cooldowns.rs`, `damage_resolution.rs`, `witness_list.rs`.
 - **Module style.** The repo uses `foo/mod.rs` (not the modern `foo.rs` + `foo/` style). Stay consistent.
 
-## Migration status (one-line)
-
-PostgreSQL 9.2 → 17.9 ✅ and MSVC v120 → v145 ✅ done. OpenSSL 0.9.8i → 3.x is the next critical migration (active CVEs). Full roadmap and per-migration agent definitions: [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).

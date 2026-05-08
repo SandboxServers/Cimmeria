@@ -1,12 +1,10 @@
 # Cimmeria — GitHub Copilot Instructions
 
-Cimmeria is a server emulator for the cancelled MMO **Stargate Worlds**. Active development is in **Rust** under `crates/`. The C++ in `src/` and Python in `python/` are reference implementations of the original BigWorld server — read them for behaviour, implement in Rust.
+Cimmeria is a server emulator for the cancelled MMO **Stargate Worlds**. Active development is in **Rust** under `crates/`.
 
 ## Safety rules (review blockers)
 
-- **Never expose this server to the public internet** — legacy code uses OpenSSL 0.9.8i with active CVEs.
-- `db/deprecated/` is reference only. Active schemas live in `db/database.sql`, `db/sgw/`, `db/resources/`.
-- `config/*.config` is test creds; real envs use gitignored `*.local` overrides.
+- Active schemas live in `db/database.sql`, `db/sgw/`, `db/resources/`.
 
 ## Content-chain review checklist (`db/resources/Content/Seed/*.sql`)
 

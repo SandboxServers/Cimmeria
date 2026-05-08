@@ -33,23 +33,7 @@ The Rust workspace currently carries **878 `#[test]` / `#[tokio::test]` cases** 
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
-## Why Rust
-
-The original C++ server was built against a 2013-era dependency stack: Boost 1.55, Python 3.4, OpenSSL 0.9.8i (multiple known CVEs), SOCI 3.2 — all end-of-life, all tightly coupled. Upgrading any single dependency triggers cascading breaks across the others. The build requires Visual Studio on Windows with precompiled headers and a specific MSVC toolset. The Python 3.4 embedding layer (via Boost.Python) is especially fragile — no type hints, no f-strings, no async, and Boost.Python itself hasn't tracked CPython's embedding API changes. (PostgreSQL has since been upgraded to 17.9; the rest remain pending — see [docs/architecture/migration-roadmap.md](docs/architecture/migration-roadmap.md).)
-
-Rather than fight through 10 phases of dependency upgrades to modernize a codebase that would still be C++11 at the end, we're rewriting the server in Rust:
-
-- **Single toolchain** — `cargo build` on any platform, no dependency bootstrapping
-- **Memory safety** — no use-after-free, no buffer overflows, no manual memory management
-- **Modern async** — Tokio for networking instead of Boost.Asio callback chains
-- **Protocol parity** — the Mercury protocol crate already handles encryption, packet framing, and reliable delivery
-- **Cross-platform** — Linux, Windows, macOS from the same source
-
-The C++ and Python code remains as the **reference implementation** — it's the ground truth for how the original server behaved, and we match its wire behavior exactly. But active development happens in Rust.
-
 ## Quick Start
-
-### Rust Server
 
 ```bash
 cargo run -p cimmeria-server
@@ -58,14 +42,6 @@ cargo run -p cimmeria-server
 Handles login, Mercury protocol, character select, and world entry. Connect the game client to `localhost`.
 
 **Test account:** `test` / `test`
-
-### C++ Server (legacy)
-
-```powershell
-pwsh setup.ps1
-```
-
-Full pipeline: download dependencies → build → database → launch. Requires Windows 10/11, PowerShell 7+, Visual Studio with C++ tools. See [bootstrap/CimmeriaBootstrap/README.md](bootstrap/CimmeriaBootstrap/README.md) for options.
 
 ## Architecture
 
@@ -92,7 +68,6 @@ Full pipeline: download dependencies → build → database → launch. Requires
 - **BaseApp** — Persistent entity state, player data, character management
 - **CellApp** — Spatial simulation, world cells, movement, Area of Interest
 - **NavBuilder** — Offline navigation mesh generation (Recast/Detour)
-- **ServerEd** — Qt-based server administration editor
 
 ## Crate Dependency Graph
 
@@ -147,32 +122,18 @@ Cimmeria/
 │   ├── services/           Auth, Base, Cell service implementations
 │   ├── admin-api/          REST administration API
 │   └── server/             Binary entry point (cargo run -p cimmeria-server)
-├── src/                    C++ server (legacy reference implementation)
-│   ├── authentication/     AuthenticationServer source
-│   ├── baseapp/            BaseApp source
-│   ├── cellapp/            CellApp source
-│   ├── common/             Shared utilities
-│   ├── mercury/            Mercury protocol implementation
-│   ├── nav_builder/        NavBuilder source
-│   └── ...                 (entity/, log/, openssl/, util/, xml/)
-├── python/                 Entity scripts and game logic (164 files)
 ├── entities/               XML entity definitions and type registry
-├── config/                 XML service configuration
-├── data/                   Cooked game data (.pak) and scripts
+├── data/                   Cooked game data (.pak) and navmeshes
 ├── db/                     PostgreSQL schemas
 │   ├── database.sql        Database and role setup
 │   ├── sgw/                Game schema (accounts, characters, items)
-│   ├── resources/          Resource data (abilities, effects, archetypes — 18 game systems)
-│   └── deprecated/         Old monolithic schema files (reference only)
+│   └── resources/          Resource data (abilities, effects, archetypes — 18 game systems)
 ├── docs/                   152 documents
 ├── tools/                  Editor tools, RE utilities, and live-DB smoke SQL scripts (vendor_store_smoke.sql, inventory_move_smoke.sql, progression_smoke.sql)
-├── bootstrap/              C++ dependency automation
-└── W-NG.sln                Visual Studio solution (C++ legacy build)
+└── deprecated/             Retired C++/Python/MSVC sources kept for reference
 ```
 
 ## Tech Stack
-
-### Rust Server (active)
 
 | Crate | Purpose |
 |---|---|
@@ -185,29 +146,9 @@ Cimmeria/
 | `sqlx` | PostgreSQL async driver |
 | `quick-xml` | SOAP/XML parsing |
 
-### C++ Server (legacy reference)
-
-| Component | Version | Notes |
-|---|---|---|
-| MSVC Toolset | v145 (VS2026) | C++11 codebase |
-| Boost | 1.55.0 | Asio, Python, Thread, DateTime |
-| Python | 3.4.1 | Embedded via Boost.Python |
-| PostgreSQL | 17.9 | Via SOCI 3.2.1 (server upgraded; SOCI pending) |
-| OpenSSL | 0.9.8i | Known CVEs — do not expose to internet |
-
-## Configuration
-
-Config files live in `config/` (XML format). Defaults work for local development.
-
-- `AuthenticationService.config` — Auth server ports, encryption
-- `BaseService.config` — Database connection, shard settings
-- `CellAppService.config` — World cell parameters, AoI distances
-
-The Rust server reads these same configs. Environment variables override XML values.
-
 ## Database
 
-PostgreSQL schemas are in `db/`:
+PostgreSQL 17.9 schemas in `db/`:
 - `db/database.sql` — Database and role setup (port 5433, role `w-testing`)
 - `db/sgw/` — Game schema (accounts, characters, items, missions)
 - `db/resources/` — Resource data (abilities, effects, loot, archetypes)
