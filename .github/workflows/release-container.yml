@@ -151,16 +151,21 @@ jobs:
           vuln-type: os,library
           trivyignores: .trivyignore
 
-      - name: push (with provenance + SBOM, after scan)
+      # Push only the dated tag at this point. `latest-prerelease` is
+       # promoted AFTER the smoke test passes, so a smoke failure can't
+       # leave the rolling pointer aimed at a broken image. The dated
+       # tag is immutable and the version step's manifest-inspect loop
+       # naturally bumps past any orphan, so leaving a failed dated
+       # tag in place is fine — `latest-prerelease` is the only
+       # consumer-facing pointer we have to protect.
+      - name: push dated tag (with provenance + SBOM, after scan)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: docker/Dockerfile
           push: true
-          # GHCR tags: dated tag (immutable) + rolling pre-release pointer.
           tags: |
             ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
-            ${{ steps.img.outputs.image }}:latest-prerelease
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -216,6 +221,19 @@ jobs:
               echo "::error::smoke test never saw postgres + auth listener within 120s"
               exit 1
           fi
+
+      # Smoke passed — only NOW move the rolling pointer. `docker pull`
+       # in the smoke step already loaded the image into the runner's
+       # daemon, so this is just a local retag + push (no rebuild, no
+       # network round-trip for layers).
+      - name: promote latest-prerelease
+        env:
+          IMAGE: ${{ steps.img.outputs.image }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          docker tag "${IMAGE}:${VERSION}" "${IMAGE}:latest-prerelease"
+          docker push "${IMAGE}:latest-prerelease"
 
       - name: create GitHub pre-release
         env:
