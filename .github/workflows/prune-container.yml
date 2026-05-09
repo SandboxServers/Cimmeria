@@ -17,8 +17,7 @@ on:
     - cron: '0 6 * * 0'   # Sundays at 06:00 UTC
   workflow_dispatch:
 
-permissions:
-  packages: write
+permissions: {}
 
 concurrency:
   group: prune-container
@@ -28,9 +27,12 @@ jobs:
   prune:
     name: prune dated GHCR tags
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    timeout-minutes: 10
     steps:
       - name: prune dated tags (keep last 14, ignore rolling/semver pointers)
-        uses: actions/delete-package-versions@v5
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5
         with:
           package-name: cimmeria-server
           package-type: container
@@ -42,7 +44,7 @@ jobs:
       - name: prune untagged manifests left behind by the dated-tag pass
         # Buildx leaves orphaned manifests when tags get deleted. A second
         # pass with `delete-only-untagged-versions: true` cleans those up.
-        uses: actions/delete-package-versions@v5
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5
         with:
           package-name: cimmeria-server
           package-type: container

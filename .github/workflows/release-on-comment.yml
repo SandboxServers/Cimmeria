@@ -24,17 +24,8 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  # `gh pr comment` and the reactions API
-  # (POST /repos/.../issues/comments/{id}/reactions) both go through
-  # the issues-comments surface — top-level PR comments are stored as
-  # issue comments. `pull-requests: write` only covers line-level
-  # review comments, so without `issues: write` the acknowledgement
-  # comment + 👀/🚀/👎 reactions would 403 at first real use.
-  issues: write
-  pull-requests: write
-  actions: write         # dispatch release-container.yml
-  contents: read
+# Top-level: deny everything. Each job opts in.
+permissions: {}
 
 # Per-PR concurrency: a second `/release` comment on the same PR while
 # the first is still validating waits in line. Avoids accidental
@@ -55,6 +46,21 @@ jobs:
       github.event.issue.pull_request != null
       && startsWith(github.event.comment.body, '/release')
     runs-on: ubuntu-latest
+    permissions:
+      # `gh pr comment` and the reactions API
+      # (POST /repos/.../issues/comments/{id}/reactions) both go through
+      # the issues-comments surface — top-level PR comments are stored
+      # as issue comments. `pull-requests: write` only covers line-level
+      # review comments, so without `issues: write` the acknowledgement
+      # comment + 👀/🚀/👎 reactions would 403 at first real use.
+      issues: write
+      pull-requests: write
+      actions: write    # dispatch release-container.yml
+      contents: read
+    # All steps are quick API calls — 10 min is generous and prevents
+    # an external dependency (gh CLI / GitHub API) from hanging an
+    # idle runner indefinitely.
+    timeout-minutes: 10
     # `gh` CLI does not auto-pick up GITHUB_REPOSITORY — it expects
     # GH_REPO (or `--repo`) to know which repo to act on. We don't
     # `actions/checkout`, so there's no git remote to fall back to;
@@ -80,33 +86,43 @@ jobs:
             echo "matched=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Every step from here on routes user-controlled / context values
+       # (comment.id, comment.user.login, issue.number, repository) through
+       # `env:` and references them as $VAR in shell. Avoids inline
+       # `${{ ... }}` interpolation in run blocks — the canonical
+       # script-injection mitigation per GitHub's secure-use guide.
       - name: 👀 acknowledge receipt
         if: steps.cmd.outputs.matched == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           gh api -X POST \
-            "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
             -f content=eyes >/dev/null
 
       - name: validate commenter has write access
         if: steps.cmd.outputs.matched == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
           ACTOR: ${{ github.event.comment.user.login }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          PR: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
           # collaborator-permission API returns admin / maintain / write /
           # triage / read / none. Anything below `write` is rejected.
-          PERM=$(gh api "repos/${{ github.repository }}/collaborators/${ACTOR}/permission" --jq '.permission')
+          PERM=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq '.permission')
           echo "actor=${ACTOR} permission=${PERM}"
           case "$PERM" in
             admin|maintain|write) echo "ok" ;;
             *)
               gh api -X POST \
-                "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+                "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
                 -f content=-1 >/dev/null
-              gh pr comment ${{ github.event.issue.number }} \
+              gh pr comment "$PR" \
                 --body "@${ACTOR} \`/release\` requires repo write permission. (You have \`${PERM}\`.)"
               exit 1
               ;;
@@ -116,13 +132,15 @@ jobs:
         if: steps.cmd.outputs.matched == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
           PR: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-          MERGED=$(gh api "repos/${{ github.repository }}/pulls/${PR}" --jq '.merged')
+          MERGED=$(gh api "repos/${REPO}/pulls/${PR}" --jq '.merged')
           if [ "$MERGED" != "true" ]; then
             gh api -X POST \
-              "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+              "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
               -f content=-1 >/dev/null
             gh pr comment "$PR" \
               --body "Can't \`/release\` from an open PR. Merge first, then comment \`/release\` again — the release workflow always builds from \`main\` HEAD, so it needs the merge to be in main."
@@ -133,18 +151,24 @@ jobs:
         if: steps.cmd.outputs.matched == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
         run: |
           gh workflow run release-container.yml \
             --ref main \
-            -f triggering_pr=${{ github.event.issue.number }}
+            -f "triggering_pr=${PR}"
 
       - name: 🚀 acknowledge dispatch
         if: steps.cmd.outputs.matched == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          PR: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          SERVER_URL: ${{ github.server_url }}
         run: |
           gh api -X POST \
-            "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
             -f content=rocket >/dev/null
-          gh pr comment ${{ github.event.issue.number }} \
-            --body "🚀 Release dispatched by @${{ github.event.comment.user.login }}. Watch [release-container runs](${{ github.server_url }}/${{ github.repository }}/actions/workflows/release-container.yml)."
+          gh pr comment "$PR" \
+            --body "🚀 Release dispatched by @${ACTOR}. Watch [release-container runs](${SERVER_URL}/${REPO}/actions/workflows/release-container.yml)."

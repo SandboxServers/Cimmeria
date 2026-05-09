@@ -30,9 +30,8 @@ on:
         required: false
         type: string
 
-permissions:
-  contents: write   # create GitHub releases
-  packages: write   # push to ghcr.io
+# Top-level: deny everything. Each job opts into the minimum it needs.
+permissions: {}
 
 # Serialise builds rather than cancelling them — a release that started
 # building must finish, even if a follow-up commit lands. (`test.yml`
@@ -45,6 +44,15 @@ jobs:
   build-and-publish:
     name: build, push, release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release create
+      packages: write   # push to ghcr.io
+      attestations: write   # buildx provenance + SBOM attestations
+      id-token: write       # OIDC token for keyless provenance signing
+    # Cold release ~20 min for the Rust compile + DB bake + push +
+    # smoke. 45 lets a single transient registry blip retry without
+    # killing the run.
+    timeout-minutes: 45
     steps:
       # Refuse to publish from anywhere other than main. workflow_dispatch
       # accepts an arbitrary `--ref`, so without this guard a typo'd
@@ -58,11 +66,17 @@ jobs:
           echo "::error::release-container must be dispatched from main; got ${{ github.ref }}"
           exit 1
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          # No subsequent step pushes via git — we publish via docker
+          # push (using GHCR creds set by docker/login-action) and via
+          # `gh release create` (using GITHUB_TOKEN env). Drop the git
+          # token from the on-disk config to shrink the secret surface.
+          persist-credentials: false
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -112,7 +126,7 @@ jobs:
       # build hits the buildx cache and effectively just attaches
       # attestations + pushes — no recompile.
       - name: build (load locally for scan)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: docker/Dockerfile
@@ -127,7 +141,7 @@ jobs:
           sbom: false
 
       - name: scan with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
           format: table
@@ -138,7 +152,7 @@ jobs:
           trivyignores: .trivyignore
 
       - name: push (with provenance + SBOM, after scan)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: docker/Dockerfile

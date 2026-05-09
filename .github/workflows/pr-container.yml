@@ -32,8 +32,9 @@ on:
       - '.github/workflows/release-container.yml'
   workflow_dispatch:
 
-permissions:
-  contents: read
+# Top-level: deny everything. Each job opts into the minimum it needs.
+# This is the gold-standard least-privilege posture per Well-Architected.
+permissions: {}
 
 # Cancel superseded runs on the same PR — saves runner minutes when a
 # PR gets force-pushed during review. (Releases must NOT cancel; PRs
@@ -46,13 +47,24 @@ jobs:
   build-and-smoke:
     name: build + smoke-test (no push)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read   # actions/checkout
+    # Hard ceiling on runner minutes. Cold cache + full Rust build is
+    # ~15 min; warm PRs are 5 min. 30 catches a runaway / hung step
+    # without wrecking legitimate cold builds.
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          # Default leaves the GH token in `.git/config`, where any
+          # subsequent step (or compromised dep) can read it. We don't
+          # push from this workflow, so drop the token after checkout.
+          persist-credentials: false
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: build (load locally, do not push)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: docker/Dockerfile
@@ -71,7 +83,7 @@ jobs:
       # Dependabot covers most of those over time. `.trivyignore` (if
       # present) lets the team accept individual CVEs explicitly.
       - name: scan with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: cimmeria-server:pr-${{ github.event.pull_request.number || 'dispatch' }}
           format: table

@@ -1,14 +1,15 @@
-# Dependabot config — keeps Dockerfile base image digests current.
+# Dependabot config — keeps both SHA-pinned dependencies and the
+# Cargo workspace current.
 #
-# Why this exists: docker/Dockerfile pins postgres + rust base images
-# by SHA digest (`@sha256:...`) for supply-chain integrity. Without an
-# automated bumper, those pins go stale and we'd ship known-CVE bases
-# forever. Dependabot watches the FROM lines and opens a PR each week
-# when upstream rebuilds.
-#
-# Cargo / GitHub Actions ecosystems are intentionally NOT watched here
-# — adding them would change the project's overall update cadence
-# (separate decision, separate PR).
+# - docker: docker/Dockerfile pins postgres + rust base images by
+#   SHA digest (`@sha256:...`). Without an automated bumper those pins
+#   go stale and we'd ship known-CVE bases.
+# - github-actions: workflows pin third-party actions by commit SHA
+#   (e.g. `actions/checkout@93cb6efe…`). Same reasoning.
+# - cargo: workspace dependency updates. Patch + minor are grouped
+#   into a single weekly PR to avoid review fatigue from dozens of
+#   tiny bumps; major bumps come as individual PRs because they
+#   need real review.
 
 version: 2
 updates:
@@ -24,3 +25,42 @@ updates:
     labels:
       - dependencies
       - docker
+
+  # All SHA-pinned `uses:` references in .github/workflows/*.yml.
+  # Dependabot resolves new release SHAs and opens PRs with both the
+  # SHA bump and the trailing `# v<x>` comment refreshed.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - dependencies
+      - github-actions
+
+  # Rust workspace deps. Patch + minor updates are grouped into a
+  # single weekly rollup PR — at workspace scale they'd otherwise
+  # flood the PR list and review attention. Major bumps are NOT
+  # grouped because they typically warrant individual review for
+  # API / behavior changes.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - dependencies
+      - rust
+    groups:
+      cargo-patch-and-minor:
+        update-types:
+          - patch
+          - minor
