@@ -57,7 +57,7 @@ pkill -f "cargo|rustc"
 
 ## Pre-PR checklist
 
-CI (`.github/workflows/test.yml`) gates five checks on every PR — run all five locally before pushing or the pipeline will fail and you'll round-trip:
+CI (`.github/workflows/test.yml`) gates five checks on every PR — run all five locally before pushing or the pipeline will fail and you'll round-trip. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
 
 ```bash
 cargo fmt --all -- --check
@@ -68,20 +68,25 @@ cargo clippy --workspace \
 cargo build --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher --all-targets
-cargo test --workspace \
+cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher
+# Doctests aren't run by nextest — only cimmeria-commands has runnable
+# doctests today, so this is a one-crate sanity check:
+cargo test --doc -p cimmeria-commands
 
 # Live-DB tests — start the bundled Postgres first, then:
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo test -p cimmeria-services --lib -- --test-threads=1
+  cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
 ```
+
+`cargo test -p <crate>` still works for quick crate-level iteration. Use nextest for anything you'd be uploading to CI.
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
 - **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site.
 - **build fails** → typically a stale path or unused-symbol cleanup needed; check matches `cargo check`.
 - **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
-- **test-live-db fails** → CI runs `cargo test -p cimmeria-services --lib -- --test-threads=1` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. `--test-threads=1` is required: some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
+- **test-live-db fails** → CI runs `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = num-test-threads`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
 
 ## Required testing for every PR
 
@@ -92,7 +97,7 @@ The non-negotiables:
 - **Pick the right type.** If you change a `WHERE` clause or `rows_affected` invariant, you need a live-DB regression guard, not a unit test. If you change a serializer, you need a byte-exact wire-format test. The picker table is in TESTING.md.
 - **Reproduce the bug shape.** A regression guard must fail when the fix is reverted; if it doesn't, it's a happy-path test, not a guard. PR reviewers will check.
 - **One feature can need multiple tests.** Vendor stack changes typically need unit + wire-format + live-DB + smoke. Don't skip a layer because "the next layer up will catch it" — that's the bug shape TESTING.md exists to prevent.
-- **Live-DB tests use `require_db_or_skip!`** and run with `--test-threads=1`. Sentinels fit in `i32`. Cleanup deletes by exact sentinel, not by range. See `crates/services/src/test_support.rs`.
+- **Live-DB tests use `require_db_or_skip!`** and run serialised. Under nextest the `ci-live-db` profile pins this with `threads-required = num-test-threads`; with `cargo test`, pass `-- --test-threads=1`. Sentinels fit in `i32`. Cleanup deletes by exact sentinel, not by range. See `crates/services/src/test_support.rs`.
 
 ## Required documentation for every PR
 
