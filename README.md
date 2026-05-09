@@ -180,6 +180,7 @@ Test account: **test** / **test** (SHA1 hashed).
 - [Connection Flow](docs/connection-flow.md) — End-to-end login and world entry
 - [Project Status](docs/project-status.md) — What works and what's left
 - [Gap Analysis](docs/gap-analysis.md) — Per-feature completion tracking
+- [Container Distribution](docs/operations/container.md) — `docker run` the published GHCR image, env reference, release model
 - [Testing Guide](TESTING.md) — Test types, when to use which, common gotchas
 - [Integration Test Infra](docs/architecture/integration-test-infra.md) — Live-DB test setup and rationale
 

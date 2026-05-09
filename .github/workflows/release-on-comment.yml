@@ -48,6 +48,13 @@ jobs:
       github.event.issue.pull_request != null
       && startsWith(github.event.comment.body, '/release')
     runs-on: ubuntu-latest
+    # `gh` CLI does not auto-pick up GITHUB_REPOSITORY — it expects
+    # GH_REPO (or `--repo`) to know which repo to act on. We don't
+    # `actions/checkout`, so there's no git remote to fall back to;
+    # without this, `gh pr comment` and `gh workflow run` fail with
+    # "no repository specified".
+    env:
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: validate command shape
         id: cmd

@@ -210,14 +210,23 @@ RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d \
 COPY docker/entrypoint.sh /usr/local/bin/cimmeria-entrypoint
 RUN chmod +x /usr/local/bin/cimmeria-entrypoint
 
-# Defaults — every var is overridable at `docker run` time. See the
-# server's documentation for the full reference. BASE_EXTERNAL must be
-# overridden for non-localhost play.
+# Internal env — baked into pgdata at build time. Do NOT override at
+# `docker run` time: pgdata was initdb'd as $POSTGRES_USER owning
+# $POSTGRES_DB with $POSTGRES_PASSWORD, and changing any of these on
+# a running container won't re-initialise the DB — it will just
+# desync the s6 wait loop / healthcheck (which read these vars to
+# call pg_isready) from the actual cluster contents. Reset by
+# removing the named volume, not by overriding env.
 ENV PGDATA=/var/lib/postgresql/data \
     POSTGRES_USER=w-testing \
     POSTGRES_PASSWORD=w-testing \
-    POSTGRES_DB=sgw \
-    AUTH_HOST=0.0.0.0 \
+    POSTGRES_DB=sgw
+
+# User-overridable env. Defaults match a localhost / single-host run;
+# BASE_EXTERNAL must be overridden for any client that isn't on the
+# same machine as the container. See docs/operations/container.md for
+# the full reference.
+ENV AUTH_HOST=0.0.0.0 \
     AUTH_PORT=13001 \
     LOGON_PORT=8081 \
     BASE_HOST=0.0.0.0 \

@@ -46,6 +46,18 @@ jobs:
     name: build, push, release
     runs-on: ubuntu-latest
     steps:
+      # Refuse to publish from anywhere other than main. workflow_dispatch
+      # accepts an arbitrary `--ref`, so without this guard a typo'd
+      # `gh workflow run --ref my-feature-branch` (or a malicious one)
+      # would push that branch's code to GHCR and tag it as a release,
+      # contradicting the documented contract that releases always come
+      # from main HEAD.
+      - name: reject non-main dispatches
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::release-container must be dispatched from main; got ${{ github.ref }}"
+          exit 1
+
       - uses: actions/checkout@v5
 
       - uses: docker/setup-buildx-action@v3
