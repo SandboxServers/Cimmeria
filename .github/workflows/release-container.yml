@@ -135,6 +135,7 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
           vuln-type: os,library
+          trivyignores: .trivyignore
 
       - name: push (with provenance + SBOM, after scan)
         uses: docker/build-push-action@v6

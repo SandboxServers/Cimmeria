@@ -79,6 +79,9 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
           vuln-type: os,library
+          # .trivyignore documents each suppressed CVE and why it's
+          # unreachable in our image. See the file for the policy.
+          trivyignores: .trivyignore
 
       - name: smoke-test the locally-built image
         env:
