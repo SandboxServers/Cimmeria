@@ -49,23 +49,62 @@ VALUES (1002, 'mission_status', 622, NULL, 'eq', 'completed', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1002, 'play_sequence', 10000, NULL, '{}', 0, 0);
 
--- Chain 1003: player opens dialog 3995 (body loot) while 622 active → complete mission
+-- Chain 1003: player opens dialog 3995 (body loot) while step 2113 is
+-- active → grant pistol to backpack + letter to mission inventory, advance
+-- to step 80622 ("Equip the pistol"). The kismet sequence (10000) that
+-- opens the stasis-room door and mission completion are deferred to
+-- chain 1004, which fires when the player manually equips the pistol.
+-- Routing the pistol through a manual equip exercises the bandolier
+-- ammo / appearance / fire-animation paths that auto-equip-to-container-3
+-- was bypassing (issues 211/212).
+--
+-- Step 80622 is a Cimmeria-introduced step. The client picks up the
+-- matching `<Steps StepID="80622">` row from a server-side override of
+-- mission 622's `_622` entry in `CookedDataMissions.pak`, shipped to the
+-- client via the per-key `InvalidKeys` channel of `onVersionInfo`. Without
+-- the PAK override the client UI would silently skip the unknown step
+-- and render either nothing or the next client-known step.
+--
+-- Re-loot guard: the gate `step_status 622 2113 = active` flips false the
+-- moment we advance past 2113, so a second dialog open won't re-fire the
+-- chain. Same shape as chain 1031 (Ambernol vial pickup).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1003, '622 - Dialog 3995 (loot body): complete mission', 'mission', 622, true, 0);
+VALUES (1003, '622 - Dialog 3995 (loot body): grant items + advance to equip step', 'mission', 622, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1003, 'dialog_open', '3995', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (1003, 'mission_status', 622, NULL, 'eq', 'active', 0);
+VALUES (1003, 'step_status', 622, '2113', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1003, 'set_interaction_type', NULL, 'ArmYourself_FrostBody', '{"op": "~", "mask": 4194304}', 0, 0),
-  (1003, 'add_item',  55,   NULL, '{"container": 3, "qty": 1}', 0, 1),
-  (1003, 'add_item',  3730, NULL, '{"container": 0, "qty": 1}', 0, 2),
-  (1003, 'play_sequence', 10000, NULL, '{}', 0, 3),
-  (1003, 'complete_mission', 622, NULL, '{}', 0, 4);
+  -- Pistol → backpack (container 1) instead of bandolier (container 3) so
+  -- the player must equip it themselves. Letter (3730) keeps its container 0
+  -- mission-inventory placement.
+  (1003, 'add_item',     55,   NULL,    '{"container": 1, "qty": 1}', 0, 1),
+  (1003, 'add_item',     3730, NULL,    '{"container": 0, "qty": 1}', 0, 2),
+  (1003, 'advance_step', 622,  '80622', '{}',                          0, 3);
+
+-- Chain 1004: player equips the pistol (item 55) while step 80622 is
+-- active → play kismet sequence 10000 (opens the stasis-room door — the
+-- only way out of the room) and complete mission 622. Gate on step 80622
+-- blocks an early-equip path: the chain only fires once the body has
+-- already been looted (chain 1003 is what advances us to step 80622).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1004, '622 - Equip pistol: open stasis door, complete mission', 'mission', 622, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1004, 'item_equipped', '55', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1004, 'step_status', 622, '80622', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1004, 'play_sequence',    10000, NULL, '{}', 0, 0),
+  (1004, 'complete_mission', 622,   NULL, '{}', 0, 1);
 
 -- ============================================================
 -- MISSION 638 — Speak to Prisoner 329
@@ -520,9 +559,23 @@ VALUES
   (1054, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
    '{"op": "~", "mask": 8388608}', 0, 2);
 
--- Chain 1055: interact SMG1A while step 2121 active → give weapon, advance to step 3563
+-- Chain 1055: interact SMG1A while step 2121 active → grant P90 to
+-- backpack, advance to step 80641 ("Equip the P90"), clear locker
+-- highlight. Step 80641 is a Cimmeria-introduced step; the matching
+-- `<Steps StepID="80641">` row is shipped to the client via the
+-- mission_overrides patch on `_641` in `CookedDataMissions.pak` + the
+-- per-key `InvalidKeys` channel of `onVersionInfo`. The advance to
+-- step 3563 ("Speak to Col. Marsh") is deferred to chain 1066, which
+-- fires when the player manually equips the P90. Marsh stays
+-- non-talkable across the pickup→equip window because chains 1051/1052
+-- gate on `mission_status = not_active` (mission already accepted) and
+-- chains 1056/1057 gate on step 3563 (we're still on 80641).
+--
+-- Re-pickup guard: the gate `step_status 641 2121 = active` flips false
+-- the moment we advance to 80641, blocking duplicate-grant on a second
+-- interact.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1055, '641 - Pick up SMG1A: give weapon, advance step', 'mission', 641, true, 0);
+VALUES (1055, '641 - Pick up SMG1A: grant P90 to backpack, advance to equip step', 'mission', 641, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1055, 'interact_tag', 'Preparation_SMG1A', 'player', false, 0);
@@ -532,19 +585,38 @@ VALUES (1055, 'step_status', 641, '2121', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1055, 'add_item',    21, NULL, '{"container": 3, "qty": 1}', 0, 0),
-  (1055, 'advance_step', 641, '3563', '{}', 0, 1),
+  -- P90 → backpack (container 1) instead of bandolier (container 3).
+  (1055, 'add_item',     21,  NULL,    '{"container": 1, "qty": 1}', 0, 0),
+  (1055, 'advance_step', 641, '80641', '{}',                          0, 1),
   -- Clear the quest-item highlight on the locker the moment the P90 is
   -- grabbed. Mirrors how chain 1042 toggles HackTheRings_Switch off the
   -- minigame icon as soon as the gating action completes.
   (1055, 'set_interaction_type', NULL, 'Preparation_SMG1A',
-   '{"op": "~", "mask": 1073741824}', 0, 2),
-  -- Re-set ColMarsh's mission-available marker so the player has a
-  -- visual cue to return to him for step 3563 ("Speak to Col. Marsh").
-  -- Cleared again by chain 1058/1059 once the briefing completes;
-  -- restored on login by chain 1064 if the player logs out at 3563.
-  (1055, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
-   '{"op": "|", "mask": 8388608}', 0, 3);
+   '{"op": "~", "mask": 1073741824}', 0, 2);
+
+-- Chain 1066: player equips the P90 (item 21) while step 80641 is active
+-- → advance to step 3563 ("Speak to Col. Marsh") and re-set Marsh's
+-- mission-available marker. This is the gate that keeps Marsh
+-- non-talkable between P90 pickup and equip: chains 1056/1057 fire only
+-- on step 3563.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1066, '641 - Equip P90: advance to talk-to-Marsh step', 'mission', 641, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1066, 'item_equipped', '21', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1066, 'step_status', 641, '80641', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (1066, 'advance_step', 641, '3563', '{}', 0, 0),
+  -- Set ColMarsh's mission-available marker so the player has a visual cue
+  -- to return to him. Cleared again by chain 1058/1059 once the briefing
+  -- completes; restored on login by chain 1064 if the player logs out at
+  -- 3563.
+  (1066, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
+   '{"op": "|", "mask": 8388608}', 0, 1);
 
 -- Chain 1062: player_loaded + step 2121 active → restore P90 locker highlight on login.
 --   Same restart-resilience pattern as chains 1045/1046 for HackTheRings_Switch:

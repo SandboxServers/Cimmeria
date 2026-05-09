@@ -75,6 +75,11 @@ pub enum Trigger {
     /// Fires when a player uses an inventory item.
     OnItemUse { item_id: i32 },
 
+    /// Fires when a player equips an inventory item — i.e., moves a stack
+    /// into the bandolier (`container_id = 3`) from any other container.
+    /// `item_id` is the design / `type_id`, not the inventory instance id.
+    OnItemEquipped { item_id: Option<i32> },
+
     /// Fires when a player arrives via teleporter at a destination region.
     OnTeleportIn { region_id: i32 },
 
@@ -141,6 +146,7 @@ pub enum TriggerType {
     InteractTag,
     InteractTemplate,
     ItemUse,
+    ItemEquipped,
     TeleportIn,
     EffectInit,
     EffectPulseBegin,
@@ -172,6 +178,7 @@ impl Trigger {
             Trigger::OnInteractTag { .. } => TriggerType::InteractTag,
             Trigger::OnInteractTemplate { .. } => TriggerType::InteractTemplate,
             Trigger::OnItemUse { .. } => TriggerType::ItemUse,
+            Trigger::OnItemEquipped { .. } => TriggerType::ItemEquipped,
             Trigger::OnTeleportIn { .. } => TriggerType::TeleportIn,
             Trigger::OnEffectInit => TriggerType::EffectInit,
             Trigger::OnEffectPulseBegin => TriggerType::EffectPulseBegin,
@@ -293,6 +300,12 @@ impl Trigger {
             Trigger::OnItemUse { item_id } => {
                 event.params.get("item_id").and_then(|v| v.as_i64()) == Some(*item_id as i64)
             }
+            Trigger::OnItemEquipped { item_id } => match item_id {
+                Some(expected) => {
+                    event.params.get("item_id").and_then(|v| v.as_i64()) == Some(*expected as i64)
+                }
+                None => true,
+            },
             Trigger::OnTeleportIn { region_id } => {
                 event.params.get("region_id").and_then(|v| v.as_i64()) == Some(*region_id as i64)
             }
@@ -539,5 +552,31 @@ mod tests {
             vec![("mission_id", serde_json::json!(641))],
         );
         assert!(!trigger.matches(&event));
+    }
+
+    #[test]
+    fn item_equipped_filters_by_item_id() {
+        let trigger = Trigger::OnItemEquipped { item_id: Some(55) };
+        let pistol_event = make_event(
+            TriggerType::ItemEquipped,
+            vec![("item_id", serde_json::json!(55))],
+        );
+        assert!(trigger.matches(&pistol_event));
+
+        let p90_event = make_event(
+            TriggerType::ItemEquipped,
+            vec![("item_id", serde_json::json!(21))],
+        );
+        assert!(!trigger.matches(&p90_event));
+    }
+
+    #[test]
+    fn item_equipped_wildcard_matches_any() {
+        let trigger = Trigger::OnItemEquipped { item_id: None };
+        let event = make_event(
+            TriggerType::ItemEquipped,
+            vec![("item_id", serde_json::json!(123))],
+        );
+        assert!(trigger.matches(&event));
     }
 }

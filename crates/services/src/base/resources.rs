@@ -61,10 +61,23 @@ pub(crate) struct CategoryData {
 
 /// All cooked game data, loaded from `data/cache/*.pak` at startup.
 ///
-/// Maps category_id -> { elementId -> raw XML bytes }.
+/// Maps `category_id -> { elementId -> raw XML bytes }`.
+///
+/// Cimmeria-side overrides (see [`super::mission_overrides`]) are applied
+/// in-memory after the PAK load so the client picks up the modifications
+/// via the existing cooked-data wire path — no on-disk PAK edit, no
+/// client-artifact distribution. The set of overridden element IDs per
+/// category is tracked so [`super::cooked_data::handle_version_info_request`]
+/// can emit `invalidate_all = false` + per-key `InvalidKeys`, scoping the
+/// client-side cache invalidation to just the patched entries.
 #[derive(Clone)]
 pub(crate) struct ResourceCache {
     categories: Arc<HashMap<u32, CategoryData>>,
+    /// `category_id -> sorted list of element IDs that were overridden`.
+    /// Empty for categories with no overrides. Sorted so the on-wire
+    /// `InvalidKeys` ARRAY<u32> ordering is deterministic across runs
+    /// (a chain-replay-style guard for the client cache fingerprint).
+    overridden_elements: Arc<HashMap<u32, Vec<u32>>>,
 }
 
 /// Category ID -> PAK filename mapping (from `resource.cpp`).
@@ -91,8 +104,12 @@ pub(crate) const CATEGORY_PAKS: &[(u32, &str)] = &[
     (20, "CookedInteractions.pak"),
 ];
 
+/// Category id for `CookedDataMissions.pak` (see [`CATEGORY_PAKS`]).
+const CATEGORY_MISSIONS: u32 = 3;
+
 impl ResourceCache {
-    /// Load all PAK files from the given directory.
+    /// Load all PAK files from the given directory and apply Cimmeria
+    /// overrides (mission XML for new "Equip the …" steps).
     pub fn load_all(data_dir: &str) -> Result<Self, String> {
         let mut categories = HashMap::new();
 
@@ -125,9 +142,97 @@ impl ResourceCache {
             "Resource cache loaded"
         );
 
+        let overridden_elements = Self::apply_mission_overrides(&mut categories);
+
         Ok(Self {
             categories: Arc::new(categories),
+            overridden_elements: Arc::new(overridden_elements),
         })
+    }
+
+    /// Mutate the freshly-loaded `CookedDataMissions` category to include
+    /// Cimmeria's added mission steps, bumping the category metadata so
+    /// the client's version check sees a fresh value and triggers the
+    /// per-key invalidation handshake.
+    ///
+    /// Returns the overridden-elements map keyed by category id. An entry
+    /// with an empty vec is omitted; absence of a category means
+    /// `handle_version_info_request` falls through to the legacy
+    /// "echo or invalidate-all" path for that category.
+    fn apply_mission_overrides(
+        categories: &mut HashMap<u32, CategoryData>,
+    ) -> HashMap<u32, Vec<u32>> {
+        use super::mission_overrides::{apply_override, MISSION_OVERRIDES};
+
+        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
+
+        let Some(missions) = categories.get_mut(&CATEGORY_MISSIONS) else {
+            tracing::warn!(
+                category = CATEGORY_MISSIONS,
+                "CookedDataMissions not loaded; skipping mission overrides"
+            );
+            return overridden;
+        };
+
+        let mut applied: Vec<u32> = Vec::with_capacity(MISSION_OVERRIDES.len());
+        for ov in MISSION_OVERRIDES {
+            let Some(original) = missions.elements.get(&ov.mission_id) else {
+                tracing::warn!(
+                    mission_id = ov.mission_id,
+                    "mission override skipped: entry not present in PAK",
+                );
+                continue;
+            };
+            match apply_override(original, ov) {
+                Some(patched) => {
+                    missions.elements.insert(ov.mission_id, patched);
+                    applied.push(ov.mission_id);
+                    tracing::info!(
+                        mission_id = ov.mission_id,
+                        "Applied Cimmeria mission override",
+                    );
+                }
+                None => {
+                    tracing::warn!(
+                        mission_id = ov.mission_id,
+                        "mission override skipped: XML shape did not match — keeping unpatched entry",
+                    );
+                }
+            }
+        }
+
+        if !applied.is_empty() {
+            // Bump metadata by a content-derived offset so the client's
+            // `versionInfoRequest` sees a mismatch (triggering invalidation
+            // + refetch) but two server starts with the same override
+            // content produce the same bump — otherwise every reconnect
+            // re-invalidates the same entries even when nothing changed.
+            //
+            // The hash mixes both the mission id and the injected XML so
+            // an edit to either surfaces as a fresh bump and a retry of
+            // the per-key handshake.
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            for ov in MISSION_OVERRIDES {
+                ov.mission_id.hash(&mut hasher);
+                ov.injected_steps_xml.hash(&mut hasher);
+            }
+            // Take 16 bits and OR in 1 so the bump is never zero (which
+            // would leave metadata unchanged and the client never refetches).
+            let bump = ((hasher.finish() as u32) & 0xFFFF) | 0x1;
+            missions.metadata = missions.metadata.wrapping_add(bump);
+            applied.sort_unstable();
+            tracing::info!(
+                category = CATEGORY_MISSIONS,
+                count = applied.len(),
+                bump,
+                bumped_metadata = missions.metadata,
+                "Cimmeria mission overrides applied; metadata bumped",
+            );
+            overridden.insert(CATEGORY_MISSIONS, applied);
+        }
+
+        overridden
     }
 
     /// Load a single PAK file (ZIP archive) into a CategoryData.
@@ -173,6 +278,19 @@ impl ResourceCache {
     /// Get XML data for a given category + element.
     pub fn get(&self, category_id: u32, element_id: u32) -> Option<&Vec<u8>> {
         self.categories.get(&category_id)?.elements.get(&element_id)
+    }
+
+    /// Element IDs that Cimmeria overrides for the given category, sorted
+    /// ascending. Returns an empty slice for categories that are unmodified
+    /// (so the version-info handler can fall back to "echo current
+    /// version, no invalidation needed" when the client's already in
+    /// sync). Wrapped in a function so call sites don't need to reach
+    /// into the field directly.
+    pub fn overridden_elements(&self, category_id: u32) -> &[u32] {
+        self.overridden_elements
+            .get(&category_id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 }
 

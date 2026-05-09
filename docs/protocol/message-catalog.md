@@ -339,6 +339,55 @@ Messages sent FROM the server TO the client. These correspond to `ClientMethods`
 
 ---
 
+## Cooked-Data Resource Cache (BASEMSG)
+
+The cooked-data wire path is its own little protocol on top of Mercury. Three messages co-operate to keep the client's runtime cache (`Cache.en-US/`) in sync with whatever PAK content the server is serving — including any in-memory mission overrides applied at server startup. See [../architecture/mission-pak-overrides.md](../architecture/mission-pak-overrides.md) for the override mechanism.
+
+### `versionInfoRequest` (NetOut, BASEMSG 0xC0)
+
+The client sends one of these per resource category whenever it wants to confirm its cache is current.
+
+```text
+[categoryId: u32][version: u32]
+```
+
+`version` is the `MetaData` value from the client's local copy of the category. The server compares against the `MetaData` it loaded from disk (`crates/services/src/base/cooked_data.rs:21-71`).
+
+Implemented; see `handle_version_info_request`.
+
+### `onVersionInfo` (NetIn, BASEMSG 0x80)
+
+The server's reply. Three response shapes — the third one is what enables per-mission patching.
+
+Wire format (encoder at `crates/services/src/mercury/protocol/resources.rs:80-113`):
+
+```text
+[accountEntityId: u32]
+[categoryId:      u32]
+[version:         u32]   — server's authoritative MetaData
+[requiredUpdates: u32]   — count of resourceFragment packets the server is about to push
+[invalidateAll:   u8]    — 1 = drop entire category; 0 = scoped invalidation
+[invalidKeys:     ARRAY<u32>]  — { count: u32, ids: [u32; count] }
+```
+
+Three reply shapes:
+
+| Server state | `invalidateAll` | `invalidKeys` | `requiredUpdates` | Client behaviour |
+|---|---|---|---|---|
+| No category data, or client version matches | `0` | `[]` | `0` | Keep local cache; no further traffic |
+| Versions differ, no scoped overrides | `1` | `[]` | `0` | Drop entire category; lazy-fetch via `elementDataRequest` |
+| Versions differ, server has scoped overrides | `0` | `[id, …]` | `N = invalidKeys.len()` | Drop only the named entries; **wait** for `N` `resourceFragment` pushes (does NOT issue `elementDataRequest`) |
+
+Verified by Ghidra decomp of `ServerConnection::onVersionInfo` (`FUN_00449460`): `InvalidKeys` is parsed as a `PropertyList<long>` and per-key invalidation runs through the cache element's destructor.
+
+### `resourceFragment` (NetIn, BASEMSG 0x36)
+
+How the server ships XML payloads for a single category-element pair. Already documented in [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md); the format itself didn't change. What changed is **when** the server emits it: in addition to the lazy `elementDataRequest` reply path, the server now proactively pushes one `resourceFragment` per `InvalidKeys` entry immediately after `onVersionInfo`, in the same order the keys appear in the array (`crates/services/src/base/cooked_data.rs:107-120, 133-199`).
+
+The client uses `requiredUpdates` from `onVersionInfo` to know how many fragment streams to expect before the cache is considered fresh.
+
+---
+
 ## Implementation Coverage Summary
 
 | Category | NetOut Impl | NetOut Total | NetIn Impl | NetIn Total | Overall |

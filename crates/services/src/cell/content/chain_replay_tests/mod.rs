@@ -18,6 +18,7 @@
 //! near the seed it touches.
 
 mod mission_1562;
+mod mission_622;
 mod mission_638;
 mod mission_639;
 mod mission_641;

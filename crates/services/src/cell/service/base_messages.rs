@@ -376,16 +376,37 @@ pub(super) async fn handle_base_message(
             }
         }
 
-        // Bandolier state is re-synced via SyncBandolierItems; these handlers are
-        // logging-only — base owns the inventory mutation, cell only learns about it.
+        // Bandolier state is re-synced via SyncBandolierItems; this handler also
+        // fires the `OnItemEquipped` content event when an item lands in the
+        // bandolier from a non-bandolier container, so quest chains keyed on
+        // `item_equipped::<type_id>` can advance (mission 622 pistol, mission
+        // 641 P90).
         BaseToCellMsg::InventoryItemMoveApplied {
             entity_id,
             item_id,
+            type_id,
             source_container_id,
             target_container_id,
             swapped_item_id,
         } => {
-            tracing::debug!(entity_id, item_id, source = source_container_id, target = target_container_id, swapped_item_id = ?swapped_item_id, "Item moved in inventory");
+            tracing::debug!(entity_id, item_id, type_id, source = source_container_id, target = target_container_id, swapped_item_id = ?swapped_item_id, "Item moved in inventory");
+
+            const INV_BANDOLIER: i32 = 3;
+            if target_container_id == INV_BANDOLIER && source_container_id != INV_BANDOLIER {
+                let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+                    Some(pid) => pid,
+                    None => {
+                        tracing::warn!(
+                            entity_id,
+                            type_id,
+                            "InventoryItemMoveApplied: entity has no player_id — equip event dropped"
+                        );
+                        return;
+                    }
+                };
+                content::fire_item_equipped(entity_id, player_id, type_id, engine, tx, space_mgr)
+                    .await;
+            }
         }
 
         BaseToCellMsg::InventoryItemRemoved {

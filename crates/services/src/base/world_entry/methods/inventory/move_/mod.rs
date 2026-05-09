@@ -516,6 +516,7 @@ pub async fn handle_move_inventory_item(
             .send(BaseToCellMsg::InventoryItemMoveApplied {
                 entity_id,
                 item_id,
+                type_id: source.type_id,
                 source_container_id: source.container_id,
                 target_container_id,
                 swapped_item_id: occupied.map(|(id, _)| id),

@@ -21,7 +21,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
 | Documentation files | 152 |
-| Rust tests (`#[test]` / `#[tokio::test]`) | 1071 across 166 files |
+| Rust tests (`#[test]` / `#[tokio::test]`) | 1088 across 167 files |
 | Live-DB regression guards | 110 |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
@@ -62,6 +62,7 @@ Content-level audit of all game data plus the cradle-to-grave reference for the 
 | [reconstruction-map.md](content/reconstruction-map.md) | What can be rebuilt vs holes vs never-built, priority recommendations | Complete |
 | [external-data-analysis.md](content/external-data-analysis.md) | Analysis of 11 external dev team spreadsheets and text files | Complete |
 | [interaction-flags.md](content/interaction-flags.md) | `EInteractionNotificationType` bitmask reference for `set_interaction_type` actions | Complete |
+| [equip-from-inventory-pattern.md](content/equip-from-inventory-pattern.md) | **EXPLANATION** — chain shape for granting weapons via a manual equip step instead of force-equipping into the bandolier (mission 622 / 641 worked examples) | Complete |
 | [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, vocabulary, schema, lifecycle, observability, performance | Complete |
 | [extending-the-engine.md](content/extending-the-engine.md) | **HOW-TO** — add a new trigger / condition / action variant | Complete |
 | [proposed-extensions.md](content/proposed-extensions.md) | **ROADMAP** — justified engine extensions tied to recent direction or shipped content | Complete |
@@ -155,6 +156,7 @@ How the Cimmeria emulator itself is structured. 10 documents.
 | [scaling-analysis.md](architecture/scaling-analysis.md) | Scaling strategy: current single-instance reality, BigWorld vs Cimmeria comparison, 5-tier scaling roadmap, capacity estimates | Complete |
 | [tech-stack-replacement.md](architecture/tech-stack-replacement.md) | Tech stack replacement analysis: 5 options (incremental upgrade through full C# rewrite), codebase audit, protocol feasibility, phased recommendation | Complete |
 | [data-driven-content-engine.md](architecture/data-driven-content-engine.md) | Data-driven content engine: replace per-script Python with DB-driven trigger/condition/action chains, full schema, worked examples, runtime implementation, migration path | Complete |
+| [mission-pak-overrides.md](architecture/mission-pak-overrides.md) | How Cimmeria injects new mission steps without reshipping `CookedDataMissions.pak`: `MissionOverride` patcher, `InvalidKeys` handshake, content-derived metadata bump, XML-index gotcha, operator runbook | Complete |
 | [tauri-rewrite.md](architecture/tauri-rewrite.md) | Tauri desktop app rewrite analysis: replacing Qt ServerEd with a modern Rust+TypeScript stack | Complete |
 | [migration-roadmap.md](architecture/migration-roadmap.md) | Dependency migration roadmap (PostgreSQL ✅, MSVC ✅, OpenSSL pending) and per-migration agent definitions | Complete |
 | [state-flag-conventions.md](architecture/state-flag-conventions.md) | Reference for state-flag write conventions: refcounted vs raw, who can clear, auth flow | Complete |

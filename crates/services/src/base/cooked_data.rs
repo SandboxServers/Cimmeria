@@ -34,49 +34,166 @@ pub(crate) async fn handle_version_info_request(
     let category_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
     let client_version = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
-    // Match the C++ Python server behaviour (Account.py:322-352, Def.py:293-319):
+    // Three-way response shape, extended from the original C++ behaviour
+    // (Account.py:322-352, Def.py:293-319) to add per-key invalidation:
     //
-    // - If server has no data for this category, echo the client version
-    //   with invalidateAll=false so the client keeps its local cache.
-    // - If versions match, send invalidateAll=false (client is up to date).
-    // - If versions differ, send invalidateAll=true so the client reloads
-    //   from its bundled PAK files.
+    // 1. Server has no data for this category → echo the client's version,
+    //    invalidate_all=false, no keys (client keeps its local cache).
+    // 2. Versions match → invalidate_all=false, no keys (client is up to date).
+    // 3. Versions differ AND Cimmeria has scoped overrides for this category
+    //    → invalidate_all=false, InvalidKeys=<overridden ids>. The client
+    //    drops only those entries and refetches them via elementDataRequest.
+    //    This is the new path that lets us ship single-mission XML patches
+    //    without nuking the client's whole CookedDataMissions cache.
+    // 4. Versions differ AND no scoped overrides → invalidate_all=true
+    //    (legacy fallback for whole-PAK swaps, e.g. switching QA→Server build).
     //
-    // requiredUpdates=0 because we don't proactively push resource fragments
-    // for most categories (category 7 is not in the C++ categoryMaps either).
-    // The client will send individual elementDataRequests if it needs
-    // server-sourced data beyond the PAK.
-    let (version, invalidate_all) = match resource_cache {
+    // requiredUpdates=0 because we don't proactively push resource fragments;
+    // the client will issue elementDataRequest for whatever it needs.
+    let (version, invalidate_all, invalid_keys): (u32, bool, Vec<u32>) = match resource_cache {
         Some(cache) => match cache.category(category_id) {
             Some(cat) => {
                 let server_version = cat.metadata;
-                // C++ logic: invalidateAll only when versions differ
-                let invalidate = client_version != server_version;
-                (server_version, invalidate)
+                if client_version == server_version {
+                    (server_version, false, Vec::new())
+                } else {
+                    let overrides = cache.overridden_elements(category_id);
+                    if !overrides.is_empty() {
+                        (server_version, false, overrides.to_vec())
+                    } else {
+                        (server_version, true, Vec::new())
+                    }
+                }
             }
-            None => (client_version, false),
+            None => (client_version, false, Vec::new()),
         },
-        None => (client_version, false),
+        None => (client_version, false, Vec::new()),
     };
 
     tracing::info!(
         %addr, category_id, client_version, version, invalidate_all,
+        invalid_key_count = invalid_keys.len(),
+        invalid_keys = ?invalid_keys,
         "Responding to versionInfoRequest"
     );
 
     let active_eid = get_active_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+    // RequiredUpdates tells the client how many resourceFragment packets
+    // are about to land — set to the InvalidKeys count when we're shipping
+    // overrides so the client doesn't try to lazy-fetch via elementDataRequest
+    // (which the runtime cache doesn't actually issue — it just drops the
+    // local entry on InvalidKeys and waits for our push). Without this,
+    // the client's `Cache.en-US/CookedDataMissions.pak` is left with the
+    // entries removed but never replaced — symptom: missions stop being
+    // granted on subsequent logins because the catalog row is gone.
+    let required_updates = invalid_keys.len() as u32;
     let pkt = build_version_info(
         &key,
         seq,
         &acks,
         category_id,
         version,
-        0,
+        required_updates,
         invalidate_all,
+        &invalid_keys,
         active_eid,
     );
     socket.send_to(&pkt, addr).await?;
+
+    // Push the patched XML proactively for each overridden element. The
+    // version-info reply already named these in InvalidKeys; the client
+    // drops them locally and expects N follow-up resourceFragment pushes.
+    if !invalid_keys.is_empty() {
+        if let Some(cache) = resource_cache {
+            push_overridden_elements(
+                socket,
+                addr,
+                key,
+                category_id,
+                &invalid_keys,
+                cache.as_ref(),
+                connected,
+            )
+            .await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Send `BASEMSG_RESOURCE_FRAGMENT` packets for the named overridden elements,
+/// in the order they appear in `element_ids`.
+///
+/// Mirrors the chunking + frag-flag logic of `handle_element_data_request`,
+/// but iterates a fixed list so we can ship just the overridden subset
+/// without the client having to ask. Used by the InvalidKeys handshake to
+/// keep the client's writable runtime cache (`Cache.en-US/`) consistent
+/// with the server's in-memory overrides.
+async fn push_overridden_elements(
+    socket: &Arc<UdpSocket>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    category_id: u32,
+    element_ids: &[u32],
+    cache: &ResourceCache,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    const MAX_CHUNK: usize = 1000;
+
+    for &element_id in element_ids {
+        let xml_data = match cache.get(category_id, element_id) {
+            Some(data) => data,
+            None => {
+                tracing::warn!(
+                    %addr, category_id, element_id,
+                    "push_overridden_elements: element missing from cache, skipping",
+                );
+                continue;
+            }
+        };
+
+        let data_id = {
+            let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+            if let Some(c) = clients.get_mut(&addr) {
+                let id = c.next_data_id;
+                c.next_data_id = c.next_data_id.wrapping_add(1);
+                id
+            } else {
+                return Ok(());
+            }
+        };
+
+        let chunks: Vec<&[u8]> = xml_data.chunks(MAX_CHUNK).collect();
+        let total_chunks = chunks.len();
+
+        tracing::info!(
+            %addr, category_id, element_id,
+            bytes = xml_data.len(),
+            total_chunks,
+            data_id,
+            "Pushing overridden element fragments"
+        );
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            let frag_flags = match (i == 0, i == total_chunks - 1) {
+                (true, true) => FRAG_FIRST_AND_LAST,
+                (true, false) => FRAG_FIRST,
+                (false, true) => FRAG_LAST,
+                (false, false) => FRAG_MIDDLE,
+            };
+            let (mt, cat, elem) = if i == 0 {
+                (Some(0u8), Some(category_id), Some(element_id))
+            } else {
+                (None, None, None)
+            };
+            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
+            let pkt = build_resource_fragment(
+                &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
+            );
+            socket.send_to(&pkt, addr).await?;
+        }
+    }
 
     Ok(())
 }
@@ -190,6 +307,21 @@ pub(crate) async fn handle_element_data_request(
             return Ok(());
         }
     };
+
+    // Promote the log to INFO when we're shipping a Cimmeria-overridden
+    // element — operationally the load-bearing question is "did the
+    // patched mission XML actually go out to this client", and that
+    // answer is too important to bury at debug level on a noisy DB.
+    let is_override = cache
+        .overridden_elements(category_id)
+        .contains(&element_id);
+    if is_override {
+        tracing::info!(
+            %addr, category_id, element_id,
+            bytes = xml_data.len(),
+            "Shipping overridden element to client"
+        );
+    }
 
     // Allocate a data_id for this transfer
     let data_id = {

@@ -2,14 +2,14 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-05-07  
-> **Total tests**: 597  
+> **Last updated**: 2026-05-09  
+> **Total tests**: 613  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
-Auth, Base, and Cell service implementations — the bulk of server logic. Houses Mercury protocol dispatch, world entry, combat, missions, vendor handlers, minigames, and the live-DB regression-guard suite.
+Auth, Base, and Cell service implementations — the bulk of server logic. Houses Mercury protocol dispatch, world entry, combat, missions, vendor handlers, minigames, the mission-PAK-overrides patcher, and the live-DB regression-guard suite.
 
-## Base service (193)
+## Base service (198)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -74,6 +74,11 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [bag_max_slots_out_of_range_returns_zero](../../../crates/services/src/base/resources.rs#L241) | unit | Base / Resources | 2026-05-07 | Unknown or sentinel container IDs are not reservable and return zero slots |  |
 | [bag_min_slot_bandolier_is_zero](../../../crates/services/src/base/resources.rs#L249) | unit | Base / Resources | 2026-05-07 | Bandolier lower bound is the zero-based weapon slot start used by this game |  |
 | [bag_min_slot_other_containers_is_zero](../../../crates/services/src/base/resources.rs#L258) | unit | Base / Resources | 2026-05-07 | Main, mission, equipment, crafting, and buyback containers start at slot zero |  |
+| [override_inserts_immediately_after_named_step](../../../crates/services/src/base/mission_overrides.rs#L170) | unit | Base / Mission Overrides | 2026-05-09 | `apply_override` inserts the new `<Steps>` block immediately after the closing `</Steps>` of `insert_after_step_id`, never past the closing `</COOKED_MISSION>` |  |
+| [override_641_lands_between_2121_and_3563](../../../crates/services/src/base/mission_overrides.rs#L194) | unit | Base / Mission Overrides | 2026-05-09 | XML-index pin: the new step 80641 must sit between existing 2121 and 3563 so its index = 1 (one past 2121), not 3 — otherwise the client's sequential-progression guard snaps the displayed step forward and skips the new step |  |
+| [override_returns_none_on_malformed_xml](../../../crates/services/src/base/mission_overrides.rs#L228) | unit | Base / Mission Overrides | 2026-05-09 | `apply_override` refuses (returns `None`) when the input XML lacks the targeted `StepID="N"` instead of guessing — caller logs and keeps the original bytes |  |
+| [override_641_targets_p90](../../../crates/services/src/base/mission_overrides.rs#L236) | unit | Base / Mission Overrides | 2026-05-09 | The 641 override entry references step 80641 and mentions "Equip the P90" in its display text |  |
+| [objective_display_text_is_blank_to_avoid_double_render](../../../crates/services/src/base/mission_overrides.rs#L258) | unit | Base / Mission Overrides | 2026-05-09 | Every override's objective `<DisplayLogText>` must be a single space — putting the real text on both step and objective produces a visibly duplicated line in the live mission log |  |
 | [vendor_store_smoke_passes_against_seed_data](../../../crates/services/src/base/smoke_tests.rs#L60) | live-DB | Base | 2026-05-03 | End-to-end smoke for the vendor stack: opens a temporary account+player, runs a sell → buyback → grant → purchase sequence against the seeded vendors, and asserts every intermediate state matches expectations | smell: no_assert_or_question_mark |
 | [inventory_move_smoke_passes_against_seed_data](../../../crates/services/src/base/smoke_tests.rs#L90) | live-DB | Base | 2026-05-03 | End-to-end smoke for `handle_move_inventory_item`'s SQL primitives: opens a temporary player with a stack and a single in INV_MAIN, then chains split → simple-move → three-step swap and asserts inventory state after each stage | smell: no_assert_or_question_mark |
 | [progression_smoke_passes_against_seed_data](../../../crates/services/src/base/smoke_tests.rs#L116) | live-DB | Base | 2026-05-03 | End-to-end smoke for the multi-character isolation guarantees of `handle_grant_cash` and `handle_grant_xp` | smell: no_assert_or_question_mark |
@@ -207,7 +212,7 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [build_tint_args_clamps_oob_skin_color_id_to_zero](../../../crates/services/src/base/world_entry_appearance.rs#L352) | unit | Base / World Entry Appearance | 2026-05-04 | Out-of-range skin_color_id falls back to SKIN_TINTS[0] |  |
 | [build_tint_args_negative_id_falls_back](../../../crates/services/src/base/world_entry_appearance.rs#L362) | unit | Base / World Entry Appearance | 2026-05-04 | Negative skin_color_id casts to a huge usize and falls into the fallback branch |  |
 
-## Cell service (295)
+## Cell service (305)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -348,6 +353,16 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [chain_3026_fires_dialog_5365_when_mission_1562_is_not_active](../../../crates/services/src/cell/content/chain_replay_tests.rs#L32) | live-DB | Cell / Content | 2026-05-03 | Chain 3026 (`db/resources/Content/Seed/sgc_w1_chains.sql`): `dialog_choice('5365')` accepts mission 1562, gated by `mission_status(1562) = 'not_active'` |  |
 | [chain_3026_does_not_fire_when_mission_1562_is_active](../../../crates/services/src/cell/content/chain_replay_tests.rs#L84) | live-DB | Cell / Content | 2026-05-03 | Test 2: with `mission_1562_status = 'active'`, the chain's `mission_status` condition fails and the engine does NOT resolve any actions for chain 3026 |  |
 | [chain_3026_does_not_fire_when_mission_1562_is_completed](../../../crates/services/src/cell/content/chain_replay_tests.rs#L128) | live-DB | Cell / Content | 2026-05-03 | Test 3: `mission_1562_status = 'completed'` also blocks chain 3026 |  |
+| [chain_1003_grants_pistol_to_backpack_and_advances_to_equip_step](../../../crates/services/src/cell/content/chain_replay_tests/mission_622.rs#L28) | chain-replay | Cell / Content / Mission 622 | 2026-05-09 | Chain 1003 (`db/resources/Content/Seed/castle_cellblock_chains.sql:50-88`): `dialog_open('3995')` while step 2113 is active grants pistol (item 55) to backpack + Frost's letter to mission inventory + advances to step 80622 |  |
+| [chain_1003_does_not_fire_after_step_2113_advances](../../../crates/services/src/cell/content/chain_replay_tests/mission_622.rs#L123) | chain-replay | Cell / Content / Mission 622 | 2026-05-09 | Chain 1003 must not re-fire once step 2113 has advanced — gates strictly on `step_status(622, 2113) = 'active'` |  |
+| [chain_1004_fires_on_pistol_equip_at_step_80622](../../../crates/services/src/cell/content/chain_replay_tests/mission_622.rs#L171) | chain-replay | Cell / Content / Mission 622 | 2026-05-09 | Chain 1004: `item_equipped('55')` while step 80622 is active plays kismet sequence 10000 (open stasis door) and completes mission 622 |  |
+| [chain_1004_does_not_fire_without_step_80622_active](../../../crates/services/src/cell/content/chain_replay_tests/mission_622.rs#L223) | chain-replay | Cell / Content / Mission 622 | 2026-05-09 | Chain 1004 must not fire without the equip step active — guards against early pistol equips before chain 1003 has advanced the mission |  |
+| [chain_1051_fires_when_mission_641_not_accepted](../../../crates/services/src/cell/content/chain_replay_tests/mission_641.rs#L21) | chain-replay | Cell / Content / Mission 641 | 2026-05-09 | Chain 1051 acceptance gate: triggers only when mission 641 is not yet active |  |
+| [chain_1051_does_not_fire_when_mission_641_active](../../../crates/services/src/cell/content/chain_replay_tests/mission_641.rs#L82) | chain-replay | Cell / Content / Mission 641 | 2026-05-09 | Chain 1051 acceptance is idempotent — does not re-fire while 641 is already active |  |
+| [chain_1055_grants_p90_to_backpack_and_advances_to_equip_step](../../../crates/services/src/cell/content/chain_replay_tests/mission_641.rs#L143) | chain-replay | Cell / Content / Mission 641 | 2026-05-09 | Chain 1055: `interact_tag('Preparation_SMG1A')` while step 2121 is active grants P90 (item 21) to backpack + clears locker highlight + advances to step 80641 |  |
+| [chain_1055_does_not_re_fire_after_step_2121_advances](../../../crates/services/src/cell/content/chain_replay_tests/mission_641.rs#L212) | chain-replay | Cell / Content / Mission 641 | 2026-05-09 | Chain 1055 must not re-fire after step 2121 has advanced — strict step-gating prevents double grants |  |
+| [chain_1066_advances_to_marsh_step_and_sets_marker_on_equip](../../../crates/services/src/cell/content/chain_replay_tests/mission_641.rs#L258) | chain-replay | Cell / Content / Mission 641 | 2026-05-09 | Chain 1066: `item_equipped('21')` while step 80641 is active advances to step 3563 (talk to Marsh) and re-sets Marsh's mission-available marker |  |
+| [chain_1066_does_not_fire_without_step_80641_active](../../../crates/services/src/cell/content/chain_replay_tests/mission_641.rs#L319) | chain-replay | Cell / Content / Mission 641 | 2026-05-09 | Chain 1066 must not fire without the equip step active — guards against early P90 equips |  |
 | [build_engine_with_none_returns_empty_engine](../../../crates/services/src/cell/content/engine_loader.rs#L245) | unit | Cell / Content / Engine Loader | 2026-05-04 | `build_engine(None)` returns an empty engine — the codepath the server takes when started without a DB pool |  |
 | [build_engine_with_db_pool_loads_seeded_chains](../../../crates/services/src/cell/content/engine_loader.rs#L255) | live-DB | Cell / Content / Engine Loader | 2026-05-04 | Live-DB sanity: against the seeded `resources.content_*` tables, `build_engine` returns a non-empty engine |  |
 | [load_single_chain_returns_none_for_missing_id](../../../crates/services/src/cell/content/engine_loader.rs#L275) | live-DB | Cell / Content / Engine Loader | 2026-05-04 | `load_single_chain_for_test` returns `Ok(None)` for a chain id that doesn't exist in the seed |  |
@@ -508,7 +523,7 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [load_stargates_resolves_world_join](../../../crates/services/src/cell/spawner/tests.rs#L333) | live-DB | Cell / Spawner | 2026-05-04 | Asserts on `!map.is_empty()` |  |
 | [load_regions_applies_single_point_cylinder_workaround](../../../crates/services/src/cell/spawner/tests.rs#L348) | live-DB | Cell / Spawner | 2026-05-04 | Load regions applies single point cylinder workaround |  |
 
-## Mercury transport glue (55)
+## Mercury transport glue (56)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -540,6 +555,7 @@ Auth, Base, and Cell service implementations — the bulk of server logic. House
 | [char_create_failed_produces_output](../../../crates/services/src/mercury/protocol/tests.rs#L130) | wire-format | Mercury / Protocol | 2026-04-30 | Asserts on `!out.is_empty()` |  |
 | [resource_fragment_produces_output](../../../crates/services/src/mercury/protocol/tests.rs#L136) | wire-format | Mercury / Protocol | 2026-04-30 | Resource fragment produces output |  |
 | [version_info_produces_output](../../../crates/services/src/mercury/protocol/tests.rs#L154) | wire-format | Mercury / Protocol | 2026-04-30 | Asserts on `!out.is_empty()` |  |
+| [version_info_per_key_invalidation_round_trips_through_encoder](../../../crates/services/src/mercury/protocol/tests.rs#L160) | wire-format | Mercury / Protocol | 2026-05-09 | Pins the `build_version_info` call shape: `invalid_keys` is an `&[u32]` argument and the empty vs populated calls produce different output sizes — catches a future signature change that drops the slice or makes it optional without surfacing as a compile error at all call sites |  |
 | [read_wstring_roundtrip](../../../crates/services/src/mercury/protocol/tests.rs#L160) | wire-format | Mercury / Protocol | 2026-04-30 | Asserts equality on `s` |  |
 | [read_wstring_empty](../../../crates/services/src/mercury/protocol/tests.rs#L171) | wire-format | Mercury / Protocol | 2026-04-30 | Asserts equality on `s` |  |
 | [resource_fragment_uses_u16_length_prefix](../../../crates/services/src/mercury/protocol/tests.rs#L182) | wire-format | Mercury / Protocol | 2026-04-30 | Resource fragment uses u16 length prefix |  |

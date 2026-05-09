@@ -152,8 +152,22 @@ fn resource_fragment_produces_output() {
 
 #[test]
 fn version_info_produces_output() {
-    let out = build_version_info(&TEST_KEY, 5, &[], 7, 1, 23, true, 1);
+    let out = build_version_info(&TEST_KEY, 5, &[], 7, 1, 23, true, &[], 1);
     assert!(!out.is_empty());
+}
+
+#[test]
+fn version_info_per_key_invalidation_round_trips_through_encoder() {
+    // Pin the call shape: invalid_keys is an `&[u32]` argument and the
+    // empty-vs-populated calls produce different output sizes. Catches
+    // a future signature change that drops the slice or makes it optional
+    // without surfacing as a compile error at all call sites.
+    let no_keys = build_version_info(&TEST_KEY, 5, &[], 3, 99, 0, false, &[], 1);
+    let two_keys = build_version_info(&TEST_KEY, 5, &[], 3, 99, 0, false, &[622u32, 641u32], 1);
+    assert!(
+        two_keys.len() > no_keys.len(),
+        "per-key payload must be wider"
+    );
 }
 
 #[test]

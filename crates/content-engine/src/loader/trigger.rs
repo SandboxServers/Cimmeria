@@ -36,6 +36,9 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "item_use" => Some(Trigger::OnItemUse {
             item_id: key?.parse().ok()?,
         }),
+        "item_equipped" => Some(Trigger::OnItemEquipped {
+            item_id: key.and_then(|s| s.parse().ok()),
+        }),
         "teleport_in" => Some(Trigger::OnTeleportIn {
             region_id: key?.parse().ok()?,
         }),

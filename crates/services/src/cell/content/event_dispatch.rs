@@ -437,6 +437,49 @@ pub async fn fire_item_use(
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
+/// Fire `OnItemEquipped` when an item lands in the bandolier (`container_id = 3`)
+/// from another container. Drives chains keyed on `item_equipped::<type_id>` —
+/// e.g., the mission 622 / 641 "equip the weapon you just picked up" steps.
+pub async fn fire_item_equipped(
+    entity_id: u32,
+    player_id: i32,
+    type_id: i32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
+    ctx.set_param("item_id".to_string(), serde_json::json!(type_id));
+
+    if let Some(entity) = space_mgr.get_entity(entity_id) {
+        populate_mission_context(entity, &mut ctx);
+        if let Some(archetype_id) = entity.archetype_id {
+            ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+        }
+    }
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::ItemEquipped,
+        source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    if !resolved.actions.is_empty() {
+        tracing::info!(
+            entity_id,
+            player_id,
+            type_id,
+            actions = resolved.actions.len(),
+            "fire_item_equipped: matched"
+        );
+    } else {
+        tracing::debug!(entity_id, type_id, "fire_item_equipped: no chains matched");
+    }
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
+}
+
 /// Fire the `teleport_in` event when a player arrives via a ring transporter.
 ///
 /// Chain 1044 (`teleport_in` event_key=`2`) hooks this to complete mission 640

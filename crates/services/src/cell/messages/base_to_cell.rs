@@ -97,9 +97,13 @@ pub enum BaseToCellMsg {
     ///
     /// CellApp uses the source/target transition to fire item equip/unequip
     /// event abilities only after the move is known to have persisted.
+    /// `item_id` is the inventory instance row id (per `sgw_inventory.item_id`);
+    /// `type_id` is the item design id, needed by content chains keyed on
+    /// `item_equipped::<type_id>`.
     InventoryItemMoveApplied {
         entity_id: u32,
         item_id: i32,
+        type_id: i32,
         source_container_id: i32,
         target_container_id: i32,
         swapped_item_id: Option<i32>,

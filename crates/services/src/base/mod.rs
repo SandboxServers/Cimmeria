@@ -24,6 +24,7 @@ pub(crate) mod cooked_data;
 pub(crate) mod dispatch;
 pub(crate) mod helpers;
 pub(crate) mod login;
+pub(crate) mod mission_overrides;
 pub(crate) mod outbox;
 pub(crate) mod resources;
 mod service;
