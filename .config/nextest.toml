@@ -1,0 +1,35 @@
+# cargo-nextest configuration. Two CI profiles mirror the two test
+# jobs in .github/workflows/test.yml:
+#
+#   * `ci`         — workspace pass without DATABASE_URL; the live-DB
+#                    tests self-skip via require_db_or_skip!. Parallel.
+#   * `ci-live-db` — services-only pass against a live Postgres. Must
+#                    be serialised because some live-DB tests share
+#                    sentinel id ranges in the resources.* tables and
+#                    collide under parallel execution against a single
+#                    shared DB. That's a fixture-design constraint, not
+#                    a bug in the handlers.
+#
+# JUnit XML is emitted under target/nextest/<profile>/junit.xml and
+# uploaded to Codecov Test Analytics by the workflow.
+
+[profile.ci]
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"
+report-name = "cimmeria"
+
+[profile.ci-live-db]
+fail-fast = false
+
+[profile.ci-live-db.junit]
+path = "junit.xml"
+report-name = "cimmeria-live-db"
+
+# Replaces the `cargo test -- --test-threads=1` flag we used before
+# nextest. Each test claims every available test thread, so nextest
+# runs them strictly one-at-a-time even on a multi-core runner.
+[[profile.ci-live-db.overrides]]
+filter = "all()"
+threads-required = "num-test-threads"

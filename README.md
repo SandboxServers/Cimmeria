@@ -29,7 +29,7 @@ See [docs/project-status.md](docs/project-status.md) for the detailed breakdown.
 
 ## Tests & CI
 
-The Rust workspace currently carries **878 `#[test]` / `#[tokio::test]` cases** across **136 files**, of which **84 are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo test` (workspace, no DB), and `cargo test -p cimmeria-services --lib -- --test-threads=1` against a `postgres:17.9` service container loaded from `db/database.sql`.
+The Rust workspace currently carries **878 `#[test]` / `#[tokio::test]` cases** across **136 files**, of which **84 are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and `cargo nextest run -p cimmeria-services --lib` against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 

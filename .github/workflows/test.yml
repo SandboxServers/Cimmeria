@@ -98,19 +98,30 @@ jobs:
       - name: cargo build
         run: cargo build --workspace ${{ env.WORKSPACE_EXCLUDES }} --all-targets
 
-  # cargo test (no DB). Live-DB tests in cimmeria-services use
+  # cargo nextest (no DB). Live-DB tests in cimmeria-services use
   # test_support::require_db_or_skip! and self-skip when DATABASE_URL is
   # unset, so this job covers the unit + non-DB integration tests across
   # the whole workspace (mercury, content-engine, services unit tests, etc.).
   # The live-DB suite runs in the dedicated `test-live-db` job below.
+  #
+  # nextest emits JUnit XML at target/nextest/ci/junit.xml (configured in
+  # .config/nextest.toml); the upload step feeds it to Codecov Test
+  # Analytics for per-test history and flake detection.
+  #
+  # nextest cannot run doctests (upstream limitation: nextest-rs/nextest#16),
+  # so they run separately via `cargo test --doc` after the main pass. Only
+  # cimmeria-commands has runnable doctests today; the rest of the workspace
+  # uses ```text / ```ignore fences that don't compile.
   test:
-    name: cargo test (workspace, no DB)
+    name: cargo nextest (workspace, no DB)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: install clang + mold
         run: sudo apt-get update && sudo apt-get install -y clang mold
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -123,21 +134,37 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test
-      - name: cargo test
-        run: cargo test --workspace ${{ env.WORKSPACE_EXCLUDES }}
+      - name: cargo nextest run
+        run: cargo nextest run --profile=ci --workspace ${{ env.WORKSPACE_EXCLUDES }}
+      - name: cargo test --doc (cimmeria-commands)
+        run: cargo test --doc -p cimmeria-commands
+      - name: upload test results to Codecov
+        # `!cancelled()` runs this step on both success and failure (but not
+        # on cancellation), so failing tests still get their JUnit uploaded
+        # for Test Analytics annotations on the PR.
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: target/nextest/ci/junit.xml
+          report_type: test_results
+          flags: workspace
+          fail_ci_if_error: false
 
-  # cargo test against a live Postgres. Schema is loaded from
+  # cargo nextest against a live Postgres. Schema is loaded from
   # db/database.sql (which `\ir`-includes everything in db/sgw and
   # db/resources, including seed data). The live-DB regression guards
   # we've written for vendor / inventory / progression / mail / missions
   # actually fire in this job — the prior `test` job's
   # require_db_or_skip! short-circuits without DATABASE_URL.
   #
-  # --test-threads=1 because some live-DB tests share sentinel id ranges
-  # and collide under parallel execution against a single shared DB.
-  # That's a fixture-design constraint, not a bug in the handlers.
+  # The `ci-live-db` profile in .config/nextest.toml serialises every
+  # test (threads-required = "num-test-threads"). Some live-DB tests share
+  # sentinel id ranges in resources.* and collide under parallel
+  # execution against a single shared DB; that's a fixture-design
+  # constraint, not a bug in the handlers.
   test-live-db:
-    name: cargo test -p cimmeria-services (live DB)
+    name: cargo nextest -p cimmeria-services (live DB)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -161,6 +188,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: install clang + mold + psql
         run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -178,9 +207,17 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: test-live-db
-      - name: cargo test (live DB)
-        run: |
-          cargo test -p cimmeria-services --lib -- --test-threads=1
+      - name: cargo nextest run (live DB)
+        run: cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+      - name: upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: target/nextest/ci-live-db/junit.xml
+          report_type: test_results
+          flags: live-db
+          fail_ci_if_error: false
 
   # Coverage report. Same matrix as the test + test-live-db jobs combined,
   # instrumented under cargo-llvm-cov. Two passes share counter data via
@@ -188,6 +225,12 @@ jobs:
   # coverage, the second pass runs `-p cimmeria-services --lib` against a
   # live Postgres so the require_db_or_skip! guards actually count.
   # `cargo llvm-cov report` then merges them into one HTML/cobertura/summary.
+  #
+  # Both passes drive nextest under llvm-cov so a single test execution
+  # produces both coverage counter data and the (unused here — the
+  # `test`/`test-live-db` jobs own JUnit upload) per-test JUnit. Keeping
+  # JUnit upload off this job avoids double-counting in Codecov Test
+  # Analytics.
   #
   # Non-blocking: continue-on-error so a coverage-tool flake doesn't gate
   # merges. The artifact + summary log are advisory — the PR-gating signal
@@ -238,19 +281,23 @@ jobs:
           shared-key: coverage
       - name: install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
       - name: clean stale counter data
         run: cargo llvm-cov clean --workspace
       - name: workspace pass (no DB)
         # DATABASE_URL is set on the job, but we deliberately unset it here so
         # the live-DB tests skip in this pass — they're owned by the second
-        # pass below, which runs with --test-threads=1.
+        # pass below, which serialises via the ci-live-db nextest profile.
         env:
           DATABASE_URL: ""
         run: |
-          cargo llvm-cov --workspace ${{ env.WORKSPACE_EXCLUDES }} --no-report
+          cargo llvm-cov --no-report nextest \
+            --profile=ci --workspace ${{ env.WORKSPACE_EXCLUDES }}
       - name: services live-DB pass
         run: |
-          cargo llvm-cov -p cimmeria-services --lib --no-report -- --test-threads=1
+          cargo llvm-cov --no-report nextest \
+            --profile=ci-live-db -p cimmeria-services --lib
       - name: render reports
         run: |
           mkdir -p target/coverage

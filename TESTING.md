@@ -5,7 +5,7 @@
 > **Companion docs**: [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) (live-DB infra rationale and local setup), [CLAUDE.md](CLAUDE.md) (pre-PR checklist), [.github/copilot-instructions.md](.github/copilot-instructions.md) (review checklist).
 > **See also**: [docs/testing/inventory/README.md](docs/testing/inventory/README.md) — catalogue of every test in the workspace (the "what tests exist" reference; this file is the "how to write a test" playbook).
 
-The Rust workspace currently has **1071 `#[test]` / `#[tokio::test]` cases across 166 files**: 110 are live-DB regression guards (`require_db_or_skip!`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~55 tests at the current 1071 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo test` (workspace, no DB), and `cargo test -p cimmeria-services --lib -- --test-threads=1` against a live `postgres:17.9` service container.
+The Rust workspace currently has **1071 `#[test]` / `#[tokio::test]` cases across 166 files**: 110 are live-DB regression guards (`require_db_or_skip!`) and 3 are end-to-end PL/pgSQL smoke scripts. Per-test catalogue lives at [docs/testing/inventory/](docs/testing/inventory/) — PRs that add or remove ≥5% of the workspace test count (~55 tests at the current 1071 baseline) update it in the same PR; smaller drifts get folded in by periodic sweeps. CI gates every PR on five jobs — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run --profile=ci` (workspace, no DB), and `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a live `postgres:17.9` service container. nextest emits JUnit XML which is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 This guide is the playbook for writing tests that survive review and catch real regressions. **Read it before opening a PR that adds tests.**
 
@@ -60,7 +60,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 **Patterns to follow:**
 - Pick a **positive `0x7000_xxxx` sentinel base** for the module's test ids (e.g., `const TEST_BASE: i32 = 0x7000_0400;` for missions, `0x7000_1000` for character-list, `0x7000_0800` for vendor sell). Each module reserves its own slot in this range; the existing modules document neighbours in a doc-comment so the next contributor can step past them. See `crates/services/src/base/character.rs:281` and `crates/services/src/base/world_entry/methods/missions.rs:146-148` for the canonical comment shape.
 - The base must fit in `i32` because the `entity_id`/`account_id`/`player_id` columns are `INTEGER`. `0x7000_xxxx` does (it's well below `i32::MAX`); a `u32` like `0xDEAD_0000` wraps to a negative when bound `as i32` and lands in another module's territory — don't reach for high-bit constants.
-- Run with `--test-threads=1`. Even within the partitioned-range scheme, some guards share rows in `resources.*` and collide under parallel execution. CI enforces this; local repro must match.
+- Run serialised. Under nextest the `ci-live-db` profile in `.config/nextest.toml` pins `threads-required = "num-test-threads"`, which makes each test claim every available thread; under raw `cargo test`, pass `-- --test-threads=1`. Even within the partitioned-range scheme, some guards share rows in `resources.*` and collide under parallel execution. CI enforces this; local repro must match.
 - Cleanup must `DELETE WHERE <id> = $sentinel` (or `IN (...)` over the exact ids the test inserted), not a range predicate like `WHERE entity_id < 0` or `WHERE account_id BETWEEN base AND base+0xFF`. Range deletes can reach into a sibling module's slot if the partitioning ever drifts.
 - For shared rows (resources.items inserts), use `ON CONFLICT DO NOTHING` so test B's insert doesn't conflict with test A's leftover, and **don't `DELETE` shared rows in cleanup** — let them leak for the next run.
 - **Reproduce the bug shape.** A `handle_grant_cash` regression guard must seed two characters on the same account, grant to one, and assert the other's balance is unchanged. That's the shape the bug took (PR #143). A test that just grants and asserts the credit went through is a happy-path test, not a regression guard.
@@ -179,7 +179,7 @@ This section is mined from review comments since the test push began. Each item 
 - **Two `join!`ed handler futures often serialize by accident.** Use a barrier-coordinated start or a small loop so a no-lock regression actually fails (PR #145).
 - **Wrap each `JoinHandle::await` in `tokio::time::timeout(...)`.** A deadlock regression should fail the test, not wedge the suite (PR #150).
 - **Capture and assert each spawned task's `Result`.** Dropping it lets an `Err` that left the DB in a satisfying state become a false positive (PR #150).
-- **Run live-DB tests with `--test-threads=1`.** Sentinel ranges are shared and parallel runs collide (PRs #153, #164). CI enforces this in the `test-live-db` job.
+- **Run live-DB tests serialised.** Sentinel ranges are shared and parallel runs collide. The `ci-live-db` nextest profile pins `threads-required = "num-test-threads"`; with `cargo test`, pass `-- --test-threads=1`. CI enforces this in the `test-live-db` job.
 
 ### Regression-guard shape
 
@@ -220,10 +220,15 @@ This section is mined from review comments since the test push began. Each item 
 ### Locally (no DB — covers ~794 tests)
 
 ```bash
-cargo test --workspace \
+cargo nextest run --profile=ci --workspace \
   --exclude cimmeria-app --exclude cimmeria-content-editor \
   --exclude cimmeria-scene-editor --exclude sgw-launcher
+# nextest can't run doctests; cimmeria-commands is the only crate
+# with runnable ones today.
+cargo test --doc -p cimmeria-commands
 ```
+
+`cargo test --workspace ...` still works for quick sanity checks if you don't have nextest installed, but CI uses nextest and that's what the JUnit upload to Codecov Test Analytics expects.
 
 ### Locally (live DB — adds the 84 `require_db_or_skip!` guards + 3 smokes)
 
@@ -231,14 +236,14 @@ Start the bundled Postgres on port 5433 (via `setup.ps1`'s bootstrap), then:
 
 ```bash
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
-  cargo test -p cimmeria-services --lib -- --test-threads=1
+  cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
 ```
 
-Without `DATABASE_URL`, those 84 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready.
+The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 84 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready.
 
 ### CI (every PR)
 
-`.github/workflows/test.yml` runs five jobs: `fmt`, `clippy`, `build`, `test` (workspace, no DB), `test-live-db` (postgres:17.9 service container). All must pass before merge.
+`.github/workflows/test.yml` runs five jobs: `fmt`, `clippy`, `build`, `test` (workspace, no DB, nextest), `test-live-db` (postgres:17.9 service container, nextest). All must pass before merge. Nextest's JUnit XML output from the `test` and `test-live-db` jobs is uploaded to Codecov Test Analytics, which surfaces per-test history, flaky-test detection, and PR comments naming the failed tests.
 
 ---
 
@@ -256,7 +261,7 @@ Before opening a PR that adds tests:
 - [ ] No PR/issue numbers in source comments.
 - [ ] Setup helper reused, not cloned.
 - [ ] Reverting the fix makes the test fail (regression-guard test).
-- [ ] Test runs locally with `--test-threads=1` against a live DB if applicable.
+- [ ] Test runs locally serialised against a live DB if applicable (`cargo nextest run --profile=ci-live-db ...`, or `cargo test ... -- --test-threads=1`).
 
 ---
 
