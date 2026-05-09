@@ -2,7 +2,17 @@
 
 Self-contained Docker image: server binary + cooked game data + pre-loaded Postgres + s6-overlay supervisor, in one published artifact. The goal is `docker run` and you have a working Cimmeria server — no Rust toolchain, no MSVC, no PowerShell bootstrap, no `.sql` files to load.
 
-Built and published by [`.github/workflows/release-container.yml`](../../.github/workflows/release-container.yml) on every push to `main` that changes code or runtime data; doc-only changes do not trigger a build.
+## Release model
+
+Releases are **explicit**. Pushing to `main` does not publish a container — many PRs land for routine work that isn't release-worthy. To cut a release, you trigger [`.github/workflows/release-container.yml`](../../.github/workflows/release-container.yml) one of three ways:
+
+1. **Comment `/release` on a merged PR.** [`release-on-comment.yml`](../../.github/workflows/release-on-comment.yml) validates the commenter has repo write permission, confirms the PR is merged, and dispatches the release workflow. The PR you comment on is just the cut-point marker — the build always uses `main` HEAD, so this captures every PR that's been merged up to that point. Reactions on your comment indicate progress: 👀 received, 🚀 dispatched, 👎 rejected.
+2. **Manual UI dispatch.** Open the [release-container workflow](../../actions/workflows/release-container.yml), click "Run workflow", pick `main`. Useful when you decided post-merge that something is ship-worthy and don't want to leave a comment trail.
+3. **CLI dispatch.** `gh workflow run release-container.yml --ref main`.
+
+Every PR still gets a build smoke-tested by [`pr-container.yml`](../../.github/workflows/pr-container.yml) — the gate is on *publishing*, not on *catching breakage*.
+
+PR-level breakage is caught pre-merge regardless of release intent.
 
 ## Pull
 

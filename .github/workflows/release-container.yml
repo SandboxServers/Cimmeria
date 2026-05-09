@@ -1,9 +1,18 @@
 name: release-container
 
 # Build and publish a self-contained Cimmeria server container image
-# (server + cooked data + pre-loaded Postgres) on every shippable change
-# to main. Doc-only changes do not trigger a build — see the path
-# filter below.
+# (server + cooked data + pre-loaded Postgres). Releases are gated —
+# this workflow does NOT run on push to main. Trigger paths:
+#
+#   1. Comment `/release` on a merged PR — release-on-comment.yml
+#      validates the commenter and dispatches this workflow.
+#   2. Run manually from the Actions UI ("Run workflow" button) or
+#      `gh workflow run release-container.yml --ref main`.
+#
+# In both cases this workflow builds whatever is at `main` HEAD, not
+# the SHA of any specific PR. The optional `triggering_pr` input is
+# audit metadata only — it links the produced release back to the PR
+# whose `/release` comment kicked off the build.
 #
 # The image is published to two places:
 #   1. ghcr.io/<owner>/cimmeria-server:<YYYY-MM-DD.N> (canonical home)
@@ -14,20 +23,12 @@ name: release-container
 # `release-container` concurrency group.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'crates/**'
-      - 'entities/defs/**'   # compile-time codegen — affects the binary
-      - 'data/cache/**'      # PAKs — required at runtime
-      - 'data/spaces/**'     # navmeshes — optional but ship for AI/LoS
-      - 'db/**'              # schema + seeds (baked into pgdata)
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.cargo/**'          # linker + rustflags — selects clang + mold
-      - 'docker/**'
-      - '.github/workflows/release-container.yml'
   workflow_dispatch:
+    inputs:
+      triggering_pr:
+        description: 'Optional PR number that prompted this release (audit-only)'
+        required: false
+        type: string
 
 permissions:
   contents: write   # create GitHub releases
@@ -163,6 +164,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           GITHUB_SHA: ${{ github.sha }}
+          TRIGGERING_PR: ${{ inputs.triggering_pr }}
         run: |
           set -euo pipefail
           chmod +x docker/release-notes.sh

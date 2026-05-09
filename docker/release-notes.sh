@@ -14,13 +14,16 @@ OWNER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
 IMAGE="ghcr.io/${OWNER}/cimmeria-server"
 SHA="${GITHUB_SHA:-}"
 SHORT_SHA="${SHA:0:7}"
+# Optional audit pointer: which PR's `/release` comment kicked this off.
+# Empty for manual `gh workflow run` / Actions-UI dispatches.
+TRIGGERING_PR="${TRIGGERING_PR:-}"
 
 cat <<EOF
 ## Cimmeria server \`${VERSION}\`
 
 Self-contained pre-release container. Bundles \`cimmeria-server\`, cooked game
 data, navmeshes, and a pre-loaded Postgres 17 with schema + seeds.
-Built from commit \`${SHORT_SHA}\`.
+Built from commit \`${SHORT_SHA}\`$([ -n "$TRIGGERING_PR" ] && echo ", dispatched via PR #${TRIGGERING_PR}").
 
 ### Pull
 

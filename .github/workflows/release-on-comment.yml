@@ -1,0 +1,136 @@
+name: release-on-comment
+
+# ChatOps trigger for release-container.yml. A maintainer comments
+# `/release` on a merged PR and this workflow validates the comment
+# and dispatches the release workflow.
+#
+# `release-container.yml` always builds whatever is at `main` HEAD —
+# the PR being commented on is just the cut-point marker, not the
+# specific commit being released. That fits the "merge a batch of PRs,
+# then decide it's worth shipping" workflow.
+#
+# Manual `gh workflow run release-container.yml --ref main` and the
+# Actions-UI "Run workflow" button still work — this is an additional
+# trigger, not a replacement.
+#
+# Security: `issue_comment` workflows always run from the *base*
+# branch's workflow definition, so a fork PR can't introduce a
+# malicious release-on-comment.yml. We additionally gate on the
+# commenter having `admin` / `maintain` / `write` permission on the
+# repo, since `issue_comment` is otherwise open to any GitHub user
+# who can comment.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write   # post the acknowledgement comment + reactions
+  actions: write         # dispatch release-container.yml
+  contents: read
+
+# Per-PR concurrency: a second `/release` comment on the same PR while
+# the first is still validating waits in line. Avoids accidental
+# double-dispatch when someone double-clicks "Comment".
+concurrency:
+  group: release-comment-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: validate + dispatch release-container
+    # Cheap pre-filter so we don't spin a runner on every PR comment.
+    # GitHub Actions expression syntax has no regex, so we accept
+    # anything that starts with `/release` here and refine to a strict
+    # `^/release(\s|$)` match in the validate-command-shape step
+    # below — that excludes `/releasenotes`, `/release-thing`, etc.
+    if: |
+      github.event.issue.pull_request != null
+      && startsWith(github.event.comment.body, '/release')
+    runs-on: ubuntu-latest
+    steps:
+      - name: validate command shape
+        id: cmd
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          # Match `/release` as a complete first token. The Actions if
+          # filter already screened out most comments; this step is the
+          # strict version (no /releasenotes false-positive).
+          FIRST_LINE=$(printf '%s' "$BODY" | head -n1)
+          if printf '%s' "$FIRST_LINE" | grep -Eq '^/release([[:space:]]|$)'; then
+            echo "matched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Comment starts with '/release' but isn't an exact /release command — skipping."
+            echo "matched=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 👀 acknowledge receipt
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X POST \
+            "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=eyes >/dev/null
+
+      - name: validate commenter has write access
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.event.comment.user.login }}
+        run: |
+          set -euo pipefail
+          # collaborator-permission API returns admin / maintain / write /
+          # triage / read / none. Anything below `write` is rejected.
+          PERM=$(gh api "repos/${{ github.repository }}/collaborators/${ACTOR}/permission" --jq '.permission')
+          echo "actor=${ACTOR} permission=${PERM}"
+          case "$PERM" in
+            admin|maintain|write) echo "ok" ;;
+            *)
+              gh api -X POST \
+                "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+                -f content=-1 >/dev/null
+              gh pr comment ${{ github.event.issue.number }} \
+                --body "@${ACTOR} \`/release\` requires repo write permission. (You have \`${PERM}\`.)"
+              exit 1
+              ;;
+          esac
+
+      - name: ensure PR is merged
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          MERGED=$(gh api "repos/${{ github.repository }}/pulls/${PR}" --jq '.merged')
+          if [ "$MERGED" != "true" ]; then
+            gh api -X POST \
+              "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+              -f content=-1 >/dev/null
+            gh pr comment "$PR" \
+              --body "Can't \`/release\` from an open PR. Merge first, then comment \`/release\` again — the release workflow always builds from \`main\` HEAD, so it needs the merge to be in main."
+            exit 1
+          fi
+
+      - name: dispatch release-container.yml
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run release-container.yml \
+            --ref main \
+            -f triggering_pr=${{ github.event.issue.number }}
+
+      - name: 🚀 acknowledge dispatch
+        if: steps.cmd.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X POST \
+            "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=rocket >/dev/null
+          gh pr comment ${{ github.event.issue.number }} \
+            --body "🚀 Release dispatched by @${{ github.event.comment.user.login }}. Watch [release-container runs](${{ github.server_url }}/${{ github.repository }}/actions/workflows/release-container.yml)."

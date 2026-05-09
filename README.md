@@ -45,7 +45,7 @@ Handles login, Mercury protocol, character select, and world entry. Connect the 
 
 ### Run from a pre-built container (no Rust toolchain required)
 
-Each push to `main` that touches code or data publishes a self-contained pre-release image to GHCR with the server, cooked game data, and a pre-loaded Postgres bundled in. Versioned `YYYY-MM-DD.N` (UTC).
+A self-contained pre-release image with the server, cooked game data, and a pre-loaded Postgres is published to GHCR on demand — comment `/release` on a merged PR (or run the workflow manually) and the build at `main` HEAD ships. Versioned `YYYY-MM-DD.N` (UTC). See [docs/operations/container.md](docs/operations/container.md) for the release model.
 
 ```bash
 docker run -d --name cimmeria \
