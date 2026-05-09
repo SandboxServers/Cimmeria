@@ -93,10 +93,14 @@ RUN set -eux; \
                --locale=C.UTF-8 --encoding=UTF8 -D $PGDATA && \
         rm -f /tmp/pwfile"; \
     su postgres -s /bin/bash -c "pg_ctl -D $PGDATA -o '-c listen_addresses=' -w start"; \
-    su postgres -s /bin/bash -c "psql -v ON_ERROR_STOP=1 \
+    # All psql calls must pass -U $POSTGRES_USER. initdb created exactly one
+    # superuser ($POSTGRES_USER, not "postgres"); without -U, psql defaults
+    # to the OS user (postgres) and the connection fails with
+    # `role "postgres" does not exist` since no such Postgres role was created.
+    su postgres -s /bin/bash -c "psql -U \"$POSTGRES_USER\" -d postgres -v ON_ERROR_STOP=1 \
         -c \"CREATE DATABASE $POSTGRES_DB OWNER \\\"$POSTGRES_USER\\\";\""; \
     su postgres -s /bin/bash -c "cd /tmp/db && \
-        psql -d $POSTGRES_DB -v ON_ERROR_STOP=1 -f /tmp/db/database.sql"; \
+        psql -U \"$POSTGRES_USER\" -d $POSTGRES_DB -v ON_ERROR_STOP=1 -f /tmp/db/database.sql"; \
     su postgres -s /bin/bash -c "pg_ctl -D $PGDATA -m fast -w stop"; \
     rm -rf /tmp/db
 

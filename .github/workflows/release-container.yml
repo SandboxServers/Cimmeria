@@ -24,6 +24,7 @@ on:
       - 'db/**'              # schema + seeds (baked into pgdata)
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - '.cargo/**'          # linker + rustflags — selects clang + mold
       - 'docker/**'
       - '.github/workflows/release-container.yml'
   workflow_dispatch:
