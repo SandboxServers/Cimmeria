@@ -1,0 +1,93 @@
+name: pr-container
+
+# Build the release container on every PR that touches files going into
+# the image, and smoke-test the result locally — without pushing to
+# GHCR. Catches Docker / db-init / s6 / boot regressions before merge,
+# which otherwise only surface when `release-container.yml` runs on
+# push to main and main is already broken.
+#
+# Path filter matches release-container.yml exactly, so a PR triggers
+# this iff a push of the same diff would have triggered a release.
+#
+# Cache: reuses the same `type=gha` cache scope as the release
+# workflow. The release stage uses `cargo build -p cimmeria-server
+# --release`; this workflow uses the same Dockerfile, so the buildx
+# layers (deps compiled, recast hydrated, db-init pgdata) are shared.
+# Cold first PR after a dep change is ~10-15 min; warm PRs are a few
+# minutes.
+
+on:
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'entities/defs/**'
+      - 'data/cache/**'
+      - 'data/spaces/**'
+      - 'db/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.cargo/**'
+      - 'docker/**'
+      - '.github/workflows/pr-container.yml'
+      - '.github/workflows/release-container.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same PR — saves runner minutes when a
+# PR gets force-pushed during review. (Releases must NOT cancel; PRs
+# should.)
+concurrency:
+  group: pr-container-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-smoke:
+    name: build + smoke-test (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: build (load locally, do not push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: cimmeria-server:pr-${{ github.event.pull_request.number || 'dispatch' }}
+          # Share the cache scope with release-container.yml so warm
+          # builds skip the Rust compile entirely.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: smoke-test the locally-built image
+        env:
+          IMAGE: cimmeria-server:pr-${{ github.event.pull_request.number || 'dispatch' }}
+        run: |
+          set -euo pipefail
+          docker run --rm -d --name smoke \
+            -p 13001:13001 \
+            -p 32832:32832/udp \
+            -p 50000:50000/udp \
+            -p 8443:8443 \
+            "$IMAGE"
+          # ~120 s budget for cold pgdata boot + s6 service init + auth
+          # listener bind.
+          for i in $(seq 1 60); do
+            if docker exec smoke pg_isready -h 127.0.0.1 -U w-testing -d sgw >/dev/null 2>&1 \
+               && timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/13001" 2>/dev/null; then
+              echo "smoke ok at iteration $i"
+              docker logs smoke || true
+              docker stop smoke
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::smoke test never saw postgres + auth listener within 120s"
+          docker logs smoke || true
+          docker stop smoke || true
+          exit 1
