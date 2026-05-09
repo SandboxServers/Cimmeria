@@ -71,7 +71,7 @@ jobs:
       # Dependabot covers most of those over time. `.trivyignore` (if
       # present) lets the team accept individual CVEs explicitly.
       - name: scan with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: cimmeria-server:pr-${{ github.event.pull_request.number || 'dispatch' }}
           format: table
