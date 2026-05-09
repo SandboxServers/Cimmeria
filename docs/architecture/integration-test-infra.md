@@ -157,7 +157,7 @@ sentinel `entity_id`.
   introducing testcontainers as a dependency).
 - If parallel-test contention becomes a real problem (today the
   integration suite is small enough that serialising via the
-  `ci-live-db` nextest profile, or `cargo test --test-threads=1`,
+  `ci-live-db` nextest profile, or `cargo test ... -- --test-threads=1`,
   on the integration target is acceptable), revisit `sqlx::test`'s
   per-test-DB mode.
 

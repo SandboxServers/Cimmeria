@@ -139,12 +139,17 @@ jobs:
       - name: cargo test --doc (cimmeria-commands)
         run: cargo test --doc -p cimmeria-commands
       - name: upload test results to Codecov
+        # `!cancelled()` runs this step on both success and failure (but not
+        # on cancellation), so failing tests still get their JUnit uploaded
+        # for Test Analytics annotations on the PR.
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: target/nextest/ci/junit.xml
+          report_type: test_results
           flags: workspace
+          fail_ci_if_error: false
 
   # cargo nextest against a live Postgres. Schema is loaded from
   # db/database.sql (which `\ir`-includes everything in db/sgw and
@@ -154,7 +159,7 @@ jobs:
   # require_db_or_skip! short-circuits without DATABASE_URL.
   #
   # The `ci-live-db` profile in .config/nextest.toml serialises every
-  # test (threads-required = num-test-threads). Some live-DB tests share
+  # test (threads-required = "num-test-threads"). Some live-DB tests share
   # sentinel id ranges in resources.* and collide under parallel
   # execution against a single shared DB; that's a fixture-design
   # constraint, not a bug in the handlers.
@@ -206,11 +211,13 @@ jobs:
         run: cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
       - name: upload test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: target/nextest/ci-live-db/junit.xml
+          report_type: test_results
           flags: live-db
+          fail_ci_if_error: false
 
   # Coverage report. Same matrix as the test + test-live-db jobs combined,
   # instrumented under cargo-llvm-cov. Two passes share counter data via

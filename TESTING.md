@@ -60,7 +60,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 **Patterns to follow:**
 - Pick a **positive `0x7000_xxxx` sentinel base** for the module's test ids (e.g., `const TEST_BASE: i32 = 0x7000_0400;` for missions, `0x7000_1000` for character-list, `0x7000_0800` for vendor sell). Each module reserves its own slot in this range; the existing modules document neighbours in a doc-comment so the next contributor can step past them. See `crates/services/src/base/character.rs:281` and `crates/services/src/base/world_entry/methods/missions.rs:146-148` for the canonical comment shape.
 - The base must fit in `i32` because the `entity_id`/`account_id`/`player_id` columns are `INTEGER`. `0x7000_xxxx` does (it's well below `i32::MAX`); a `u32` like `0xDEAD_0000` wraps to a negative when bound `as i32` and lands in another module's territory — don't reach for high-bit constants.
-- Run serialised. Under nextest the `ci-live-db` profile in `.config/nextest.toml` pins `threads-required = num-test-threads`, which makes each test claim every available thread; under raw `cargo test`, pass `-- --test-threads=1`. Even within the partitioned-range scheme, some guards share rows in `resources.*` and collide under parallel execution. CI enforces this; local repro must match.
+- Run serialised. Under nextest the `ci-live-db` profile in `.config/nextest.toml` pins `threads-required = "num-test-threads"`, which makes each test claim every available thread; under raw `cargo test`, pass `-- --test-threads=1`. Even within the partitioned-range scheme, some guards share rows in `resources.*` and collide under parallel execution. CI enforces this; local repro must match.
 - Cleanup must `DELETE WHERE <id> = $sentinel` (or `IN (...)` over the exact ids the test inserted), not a range predicate like `WHERE entity_id < 0` or `WHERE account_id BETWEEN base AND base+0xFF`. Range deletes can reach into a sibling module's slot if the partitioning ever drifts.
 - For shared rows (resources.items inserts), use `ON CONFLICT DO NOTHING` so test B's insert doesn't conflict with test A's leftover, and **don't `DELETE` shared rows in cleanup** — let them leak for the next run.
 - **Reproduce the bug shape.** A `handle_grant_cash` regression guard must seed two characters on the same account, grant to one, and assert the other's balance is unchanged. That's the shape the bug took (PR #143). A test that just grants and asserts the credit went through is a happy-path test, not a regression guard.
@@ -179,7 +179,7 @@ This section is mined from review comments since the test push began. Each item 
 - **Two `join!`ed handler futures often serialize by accident.** Use a barrier-coordinated start or a small loop so a no-lock regression actually fails (PR #145).
 - **Wrap each `JoinHandle::await` in `tokio::time::timeout(...)`.** A deadlock regression should fail the test, not wedge the suite (PR #150).
 - **Capture and assert each spawned task's `Result`.** Dropping it lets an `Err` that left the DB in a satisfying state become a false positive (PR #150).
-- **Run live-DB tests serialised.** Sentinel ranges are shared and parallel runs collide. The `ci-live-db` nextest profile pins `threads-required = num-test-threads`; with `cargo test`, pass `-- --test-threads=1`. CI enforces this in the `test-live-db` job.
+- **Run live-DB tests serialised.** Sentinel ranges are shared and parallel runs collide. The `ci-live-db` nextest profile pins `threads-required = "num-test-threads"`; with `cargo test`, pass `-- --test-threads=1`. CI enforces this in the `test-live-db` job.
 
 ### Regression-guard shape
 
@@ -239,7 +239,7 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
 ```
 
-The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = num-test-threads`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 84 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready.
+The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) — equivalent to the old `cargo test ... -- --test-threads=1`. Without `DATABASE_URL`, those 84 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready.
 
 ### CI (every PR)
 

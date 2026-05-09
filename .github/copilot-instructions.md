@@ -39,7 +39,7 @@ A PR that changes runtime behaviour must add or update a test. **Read [TESTING.m
 - Tighten assertions: composite keys, exact final positions, `== 1` not `>= 1`, exact byte strings for serializers.
 - Don't hard-code seed ids — re-fetch baselines or assert by relationship (`slot.cur_ammo_type == slot.default_ammo_type`).
 - Sentinel ids fit in `i32`; cleanup deletes by exact sentinel, not by range.
-- Live-DB tests use `require_db_or_skip!` and run serialised — `cargo nextest run --profile=ci-live-db` (the profile in `.config/nextest.toml` pins `threads-required = num-test-threads`), or `cargo test ... -- --test-threads=1` if you're not on nextest.
+- Live-DB tests use `require_db_or_skip!` and run serialised — `cargo nextest run --profile=ci-live-db` (the profile in `.config/nextest.toml` pins `threads-required = "num-test-threads"`), or `cargo test ... -- --test-threads=1` if you're not on nextest.
 - Test names match the assertion. If the assertion changes, rename.
 - No PR or issue numbers in source comments — provenance lives in the PR body.
 - Update [docs/testing/inventory/<crate>.md](../docs/testing/inventory/) **only when a single PR adds or removes ≥5% of the workspace test count** (~55 tests against the current 1071 baseline). Smaller drifts get folded in by periodic sweep updates — don't block review on per-PR inventory churn for a handful of tests in a 1071-test repo.
