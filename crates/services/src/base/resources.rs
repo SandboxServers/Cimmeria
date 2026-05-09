@@ -184,7 +184,7 @@ impl ResourceCache {
     fn apply_mission_overrides(
         categories: &mut HashMap<u32, CategoryData>,
     ) -> HashMap<u32, Vec<u32>> {
-        use super::mission_overrides::{apply_override, MISSION_OVERRIDES};
+        use super::mission_overrides::{apply_override, MissionOverride, MISSION_OVERRIDES};
 
         let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
 
@@ -224,7 +224,24 @@ impl ResourceCache {
         }
 
         if !applied.is_empty() {
-            let bump = compute_metadata_bump(MISSION_OVERRIDES);
+            // Hash only the overrides that *actually applied*, not the
+            // full `MISSION_OVERRIDES` registry. If a target mission's
+            // entry is missing from the PAK or its XML shape doesn't
+            // match, that override skips silently — the cache state
+            // for that mission is unchanged. Mixing the skipped
+            // override's content into the bump would advance the
+            // metadata as if it had applied, and the client would
+            // re-fetch entries that didn't actually change.
+            let applied_overrides: Vec<MissionOverride> = MISSION_OVERRIDES
+                .iter()
+                .filter(|ov| applied.contains(&ov.mission_id))
+                .map(|ov| MissionOverride {
+                    mission_id: ov.mission_id,
+                    insert_after_step_id: ov.insert_after_step_id,
+                    injected_steps_xml: ov.injected_steps_xml,
+                })
+                .collect();
+            let bump = compute_metadata_bump(&applied_overrides);
             missions.metadata = missions.metadata.wrapping_add(bump);
             applied.sort_unstable();
             tracing::info!(
@@ -619,6 +636,43 @@ mod tests {
         assert!(
             !ids.contains(&641),
             "mission 641 must be skipped when entry is absent",
+        );
+    }
+
+    /// The metadata bump must reflect what *actually applied*, not the
+    /// full `MISSION_OVERRIDES` registry. A deployment where a target
+    /// mission entry is missing (and that override therefore skips)
+    /// must produce a different bump than one where every override
+    /// applies — otherwise the version stamp the client sees is out
+    /// of sync with the InvalidKeys list it actually receives.
+    #[test]
+    fn apply_mission_overrides_bump_reflects_only_applied_subset() {
+        // Full apply: both 622 and 641 present.
+        let full_meta = {
+            let mut c = HashMap::new();
+            c.insert(
+                CATEGORY_MISSIONS,
+                missions_category_with(&[(622, vec![2113]), (641, vec![2121, 3563, 3564])], 7538),
+            );
+            ResourceCache::apply_mission_overrides(&mut c);
+            c.get(&CATEGORY_MISSIONS).unwrap().metadata
+        };
+        // Partial apply: only 622 present; 641's override skips.
+        let partial_meta = {
+            let mut c = HashMap::new();
+            c.insert(
+                CATEGORY_MISSIONS,
+                missions_category_with(&[(622, vec![2113])], 7538),
+            );
+            ResourceCache::apply_mission_overrides(&mut c);
+            c.get(&CATEGORY_MISSIONS).unwrap().metadata
+        };
+
+        assert_ne!(
+            full_meta, partial_meta,
+            "metadata bump must differ when override application differs — \
+             a partial-apply deployment must not produce the same bump as \
+             a full-apply",
         );
     }
 

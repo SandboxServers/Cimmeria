@@ -81,8 +81,11 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1003, 'set_interaction_type', NULL, 'ArmYourself_FrostBody', '{"op": "~", "mask": 4194304}', 0, 0),
   -- Pistol → backpack (container 1) instead of bandolier (container 3) so
-  -- the player must equip it themselves. Letter (3730) keeps its container 0
-  -- mission-inventory placement.
+  -- the player must equip it themselves. Letter (3730) uses `container: 0`
+  -- which the executor's `GrantItem` handler treats as a sentinel for
+  -- "look up the item's default container from `resources.items.container_sets`"
+  -- (see `crates/services/src/cell/content/executor/inventory.rs`). For
+  -- item 3730 that resolves to mission inventory.
   (1003, 'add_item',     55,   NULL,    '{"container": 1, "qty": 1}', 0, 1),
   (1003, 'add_item',     3730, NULL,    '{"container": 0, "qty": 1}', 0, 2),
   (1003, 'advance_step', 622,  '80622', '{}',                          0, 3);

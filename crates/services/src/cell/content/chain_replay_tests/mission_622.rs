@@ -55,7 +55,12 @@ async fn chain_1003_grants_pistol_to_backpack_and_advances_to_equip_step() {
         chain.actions,
     );
 
-    // Letter (3730) → container 0 (mission inventory), exactly once.
+    // Letter (3730) → `container_id = Some(0)`, exactly once. The
+    // executor (`GrantItem`) treats `container_id <= 0` as a sentinel
+    // for "look up the item's default container from
+    // resources.items.container_sets"; for item 3730 that resolves to
+    // mission inventory at runtime. The chain row carries the literal
+    // `0` from the SQL seed, so the test asserts on `Some(0)`.
     let letter_to_mission = chain
         .actions
         .iter()
@@ -72,7 +77,9 @@ async fn chain_1003_grants_pistol_to_backpack_and_advances_to_equip_step() {
         .count();
     assert_eq!(
         letter_to_mission, 1,
-        "chain 1003 must grant Frost's letter (3730) to container 0; got {} matches",
+        "chain 1003 must grant Frost's letter (3730) with `container_id: \
+         Some(0)` (executor-resolves to mission inventory via item_defs); \
+         got {} matches",
         letter_to_mission,
     );
 
