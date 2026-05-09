@@ -18,6 +18,7 @@ fn make_region(id: i32, world: &str, dests: Vec<i32>) -> RingRegion {
         display_name_id: 7508,
         destination_ids: dests,
         point_set_id: 200,
+        required_mission_id: None,
     }
 }
 

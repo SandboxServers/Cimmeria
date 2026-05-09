@@ -148,6 +148,7 @@ pub(crate) async fn handle_login(
                 player_xp: None,
                 player_training_points: None,
                 active_player_id: None,
+                pending_destination_ring_id: None,
             },
         );
         arcs

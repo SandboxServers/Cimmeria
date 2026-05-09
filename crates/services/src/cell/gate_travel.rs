@@ -96,6 +96,7 @@ pub async fn handle_dial_gate(
             target_world_name: gate.world_name.clone(),
             position: [gate.x, gate.y, gate.z],
             rotation: [0.0, 0.0, gate.yaw],
+            destination_ring_id: None,
         })
         .await;
 }

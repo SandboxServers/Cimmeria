@@ -295,6 +295,26 @@ pub(super) async fn handle_base_message(
                 .await;
         }
 
+        BaseToCellMsg::AdvanceRingDestination {
+            entity_id,
+            region_id,
+        } => {
+            // Cross-world ring transport: the destination ring has been
+            // sitting in `RemoteLoadWait` since the source ring's
+            // `Effect::TeleportCrossWorld` fired. Now that the player has
+            // finished loading on this world (base-side `onClientReady`
+            // ack), advance the destination FSM by recording the load —
+            // `mark_player_loaded` (called inside
+            // `handle_remote_player_loaded`) triggers the same
+            // all-players-loaded / remote-warmup / cooldown chain the
+            // same-world path runs synchronously after
+            // `Effect::TeleportPlayer`.
+            super::super::ring_transport::handle_remote_player_loaded(
+                region_id, entity_id, tx, space_mgr, engine,
+            )
+            .await;
+        }
+
         BaseToCellMsg::ReloadContentEngine => {}
 
         BaseToCellMsg::MinigameResult {

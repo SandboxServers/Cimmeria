@@ -6,7 +6,7 @@
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (28, -95.8899994, 34.5909996, -98.8079987, 2.09426737, 12, 24, 'MessHall_Guard2', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (27, -49.6899986, 24.6700001, -127.110001, 3.1414969, 12, 24, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (27, -49.6899986, 24.6700001, -127.110001, 3.1414969, 12, 24, 'Cellblock_ArmoryGuard1', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (26, -131.479996, 24.6700001, -116.969994, 0, 12, 24, 'Barracks_Guard2', NULL);
 
@@ -44,7 +44,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (10, -220.257004, 66.7440033, -121.375, 4.71238899, 12, 4, 'ArmYourself_PrisonerRetrievalUnit', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (79, -54.8799973, 26.0799999, -163.839996, 1.04607904, 12, 3, 'Cellblock_FakeRingSwitch', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (79, -54.8799973, 26.0799999, -163.839996, 1.04607904, 12, 3, 'Cellblock_ArmoryRingSwitch', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (17, -193.919998, 56.3199997, -152.160004, 1.10139823, 12, 3, 'Preparation_RingSwitch', NULL);
 

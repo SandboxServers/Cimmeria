@@ -142,12 +142,14 @@ pub(crate) async fn handle_cell_message(
             target_world_name,
             position,
             rotation,
+            destination_ring_id,
         } => {
             if let Err(e) = handle_gate_travel(
                 entity_id,
                 &target_world_name,
                 position,
                 rotation,
+                destination_ring_id,
                 socket,
                 connected,
                 entity_to_addr,

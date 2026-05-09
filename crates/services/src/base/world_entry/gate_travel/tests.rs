@@ -68,6 +68,7 @@ fn make_state() -> ConnectedClientState {
         player_xp: Some(0),
         player_training_points: Some(0),
         active_player_id: Some(7),
+        pending_destination_ring_id: None,
     }
 }
 
@@ -138,7 +139,16 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
             target_world_name,
             position,
             rotation,
-        } => (entity_id, target_world_name, position, rotation),
+            destination_ring_id,
+        } => {
+            // Stargate dial-travel must NOT carry a ring id — that field is
+            // reserved for `Effect::TeleportCrossWorld`.
+            assert_eq!(
+                destination_ring_id, None,
+                "stargate dial-gate must leave destination_ring_id=None",
+            );
+            (entity_id, target_world_name, position, rotation)
+        }
         other => panic!("expected GateTravel, got {other:?}"),
     };
     assert_eq!(captured.0, ENTITY_ID, "entity_id round-trips");
@@ -169,6 +179,7 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
         &captured.1,
         captured.2,
         captured.3,
+        None, // stargate dial-travel has no cross-world ring carry-through
         &socket,
         &connected,
         &entity_to_addr,
@@ -243,6 +254,7 @@ async fn gate_travel_without_active_player_id_aborts_before_persist() {
         "Castle",
         [10.0, 20.0, 30.0],
         [0.0; 3],
+        None,
         &socket,
         &connected,
         &entity_to_addr,
@@ -349,6 +361,7 @@ async fn gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing() {
         "Castle", // destination world that doesn't match either seeded row
         [999.0, 999.0, 999.0],
         [0.0; 3],
+        None,
         &socket,
         &connected,
         &entity_to_addr,
@@ -402,6 +415,7 @@ async fn gate_travel_with_unknown_entity_id_returns_err() {
         "Castle",
         [0.0; 3],
         [0.0; 3],
+        None,
         &socket,
         &connected,
         &entity_to_addr,
@@ -436,6 +450,7 @@ async fn gate_travel_with_torn_down_connected_state_returns_err() {
         "Castle",
         [0.0; 3],
         [0.0; 3],
+        None,
         &socket,
         &connected,
         &entity_to_addr,

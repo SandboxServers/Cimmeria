@@ -11,7 +11,9 @@ use tokio::sync::mpsc;
 
 use cimmeria_content_engine::chain::ChainEngine;
 
-use super::dispatch::{dispatch_effect, dispatch_effects, try_advance_after_load};
+use super::dispatch::{
+    dispatch_effect, dispatch_effects, mark_player_loaded, try_advance_after_load,
+};
 use super::regions::RingRegion;
 use super::transporter::{Effect, State};
 use crate::cell::messages::CellToBaseMsg;
@@ -170,13 +172,38 @@ pub async fn handle_interact(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    if space_mgr.ring_transporters.get(region_id).is_none() {
-        tracing::warn!(
-            region_id,
-            entity_id,
-            "TriggerTransporter: no transporter loaded for region"
-        );
-        return;
+    let required_mission_id = match space_mgr.ring_transporters.get(region_id) {
+        Some(t) => t.required_mission_id,
+        None => {
+            tracing::warn!(
+                region_id,
+                entity_id,
+                "TriggerTransporter: no transporter loaded for region"
+            );
+            return;
+        }
+    };
+
+    // Mission gate (`ring_transport_regions.required_mission_id`): a no-op for
+    // historical rings (NULL → None). Set per-row when a mission must be
+    // completed before the destination list opens — chain-level gates are
+    // belt-and-suspenders; this is the cell-runtime backstop. We treat
+    // "player unknown" the same as "mission not completed" so a missing
+    // entity can't bypass the gate.
+    if let Some(mission_id) = required_mission_id {
+        let completed = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.missions.get_mission(mission_id))
+            .is_some_and(|m| m.status == cimmeria_entity::missions::MISSION_COMPLETED);
+        if !completed {
+            tracing::info!(
+                region_id,
+                entity_id,
+                mission_id,
+                "TriggerTransporter: mission gate not satisfied — destination list suppressed"
+            );
+            return;
+        }
     }
 
     if let Some(player) = space_mgr.get_entity_mut(entity_id) {
@@ -200,7 +227,12 @@ pub async fn handle_select_destination(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    let src_world = match space_mgr.ring_transporters.get(source_region_id) {
+    // Cross-world is permitted: the FSM produces `Effect::TeleportCrossWorld`
+    // which the dispatcher routes through the GateTravel pipeline. Source
+    // ring still resets to Idle in `warmup_timer_expired`; destination
+    // advances out of `RemoteLoadWait` only after the player loads on the
+    // destination world via `BaseToCellMsg::InitPlayerState`.
+    let src_required_mission_id = match space_mgr.ring_transporters.get(source_region_id) {
         Some(src) => {
             if let Err(e) = src.validate_destination(destination_region_id) {
                 tracing::warn!(
@@ -209,7 +241,7 @@ pub async fn handle_select_destination(
                 );
                 return;
             }
-            src.world_name.clone()
+            src.required_mission_id
         }
         None => {
             tracing::warn!(
@@ -219,23 +251,30 @@ pub async fn handle_select_destination(
             return;
         }
     };
-    let dst_world = match space_mgr.ring_transporters.get(destination_region_id) {
-        Some(dst) => dst.world_name.clone(),
-        None => {
-            tracing::warn!(
+    if let Some(mission_id) = src_required_mission_id {
+        let completed = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.missions.get_mission(mission_id))
+            .is_some_and(|m| m.status == cimmeria_entity::missions::MISSION_COMPLETED);
+        if !completed {
+            tracing::info!(
+                source_region_id,
                 destination_region_id,
-                "selectDestination: destination transporter not loaded"
+                entity_id,
+                mission_id,
+                "selectDestination: mission gate not satisfied — rejecting"
             );
             return;
         }
-    };
-    // Reject before any state transitions — running the FSM half-way for a
-    // teleport we can't fulfill leaves both rings stuck mid-cycle.
-    if src_world != dst_world {
+    }
+    if space_mgr
+        .ring_transporters
+        .get(destination_region_id)
+        .is_none()
+    {
         tracing::warn!(
-            source_region_id, destination_region_id, entity_id,
-            %src_world, %dst_world,
-            "selectDestination: cross-world ring travel not yet supported"
+            destination_region_id,
+            "selectDestination: destination transporter not loaded"
         );
         return;
     }
@@ -289,6 +328,26 @@ pub async fn handle_select_destination(
         )
         .await;
     }
+}
+
+/// Cross-world ring-transport deferred-load hook.
+///
+/// Called from `BaseToCellMsg::AdvanceRingDestination` after the player
+/// finishes loading on the destination world. Same-world rings advance
+/// the destination FSM synchronously inside `Effect::TeleportPlayer` —
+/// cross-world has to wait for the world re-entry round-trip, so the
+/// destination ring sits in `RemoteLoadWait` until this fires. Once
+/// the player is recorded as loaded, `try_advance_after_load` (already
+/// called by `mark_player_loaded`) walks the FSM through `RemoteWarmup
+/// → Cooldown → Idle` exactly like the same-world path.
+pub async fn handle_remote_player_loaded(
+    region_id: i32,
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
+) {
+    mark_player_loaded(region_id, entity_id, tx, space_mgr, engine).await;
 }
 
 /// Hook called from the existing region-trigger path when a player crosses a

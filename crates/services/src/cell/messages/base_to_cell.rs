@@ -147,6 +147,14 @@ pub enum BaseToCellMsg {
         target_id: i32,
     },
 
+    /// Cross-world ring transport: signal the destination cell that a
+    /// player has finished loading on the new world and the destination
+    /// ring's FSM should advance out of `RemoteLoadWait`. Sent by base's
+    /// `handle_client_ready` after a `GateTravel` whose
+    /// `destination_ring_id` field was `Some(_)` — i.e. only for
+    /// `Effect::TeleportCrossWorld` flows, not stargate dial.
+    AdvanceRingDestination { entity_id: u32, region_id: i32 },
+
     /// Reload the content engine from the database (triggered by admin API / Content Editor).
     ReloadContentEngine,
 

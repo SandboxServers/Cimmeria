@@ -135,6 +135,18 @@ pub(crate) async fn handle_on_client_ready(
         (0, Vec::new())
     };
 
+    // Cross-world ring transport carry-through: take the pending ring id
+    // BEFORE we drop the connected lock so a concurrent disconnect can't
+    // strand it. Set in `gate_travel::handle_gate_travel` only when
+    // `Effect::TeleportCrossWorld` produced this hop — stargate dial
+    // travel leaves it None.
+    let advance_ring_destination_id: Option<i32> = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        clients
+            .get_mut(&addr)
+            .and_then(|c| c.pending_destination_ring_id.take())
+    };
+
     if let Some(ref tx) = cell_tx {
         let _ = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await;
 
@@ -149,6 +161,20 @@ pub(crate) async fn handle_on_client_ready(
                 bandolier_items,
             })
             .await;
+
+        if let Some(region_id) = advance_ring_destination_id {
+            // Wake the destination ring's FSM. Sent AFTER InitPlayerState
+            // so the cell-side handler runs against the fully-initialised
+            // entity (player_id, missions, etc.) — `mark_player_loaded`
+            // doesn't need that state directly, but downstream chain
+            // events fired by the unlock cascade do.
+            let _ = tx
+                .send(BaseToCellMsg::AdvanceRingDestination {
+                    entity_id,
+                    region_id,
+                })
+                .await;
+        }
     }
 
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.

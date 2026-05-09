@@ -10,9 +10,9 @@ use super::dispatch::dispatch_effects;
 use super::regions::RingRegion;
 use super::runtime::{
     advance_destination_after_warmup, handle_interact, handle_region_trigger,
-    handle_select_destination,
+    handle_remote_player_loaded, handle_select_destination,
 };
-use super::transporter::State;
+use super::transporter::{State, WARMUP_DELAY};
 use super::wire_helpers::{BSF_MOVEMENT_LOCK, METHOD_ON_RING_TRANSPORTER_LIST};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -42,6 +42,7 @@ fn ring(id: i32, world: &str, dests: Vec<i32>, pos: [f32; 3]) -> RingRegion {
         display_name_id: 7508,
         destination_ids: dests,
         point_set_id: 2000 + id,
+        required_mission_id: None,
     }
 }
 
@@ -233,18 +234,21 @@ async fn full_ring_cycle_dispatches_expected_messages() {
     );
 }
 
-/// Cross-world ring travel is rejected before any state transitions.
-/// Both source and destination must remain `Idle` so subsequent same-world
-/// trips don't get jammed by a half-running FSM.
+/// Cross-world ring travel goes through the `Effect::TeleportCrossWorld`
+/// arm of dispatch, which sends `CellToBaseMsg::GateTravel { destination_ring_id: Some(_), .. }`
+/// instead of `TeleportPlayer`. Pin: source ring resets to Idle (via
+/// `warmup_timer_expired`), destination stays in `RemoteLoadWait` waiting
+/// for the deferred `BaseToCellMsg::AdvanceRingDestination` callback,
+/// and the GateTravel message carries the destination ring id.
 #[tokio::test]
-async fn select_destination_cross_world_rejected() {
+async fn select_destination_cross_world_succeeds() {
     let mut mgr = make_test_space_mgr();
     let mut regions = std::collections::HashMap::new();
     regions.insert(1, ring(1, "Castle_CellBlock", vec![2], [0.0; 3]));
-    // Different world_name — Python's selectDestination has no equivalent
-    // guard, but our authoritative-teleport pipeline can't deliver a player
-    // to a different world without the GateTravel-style hand-off.
-    regions.insert(2, ring(2, "Agnos", vec![1], [10.0; 3]));
+    // Different world_name — destination is on Castle, source is on
+    // Castle_CellBlock. Pre-issue #241 this was rejected at
+    // `selectDestination`; now it routes through GateTravel.
+    regions.insert(2, ring(2, "Castle", vec![1], [10.0, 20.0, 30.0]));
     mgr.ring_transporters.load(&regions);
     mgr.ring_point_set_to_region = regions
         .iter()
@@ -254,28 +258,274 @@ async fn select_destination_cross_world_rejected() {
 
     mgr.create_entity(42, "Castle_CellBlock", [0.0; 3], [0.0; 3])
         .unwrap();
-    let (tx, mut rx) = mpsc::channel(8);
+    // Pre-load the player onto the source ring's pad so `should_auto_start`
+    // returns true after `enter_send_wait` — this drives the kick-off path
+    // that produces the warmup deadline we need to expire.
+    if let Some(t) = mgr.ring_transporters.get_mut(1) {
+        t.region_triggered(true, 42);
+    }
+    let (tx, mut rx) = mpsc::channel(16);
     let engine = ChainEngine::new();
 
     handle_select_destination(1, 2, 42, &tx, &mut mgr, &engine).await;
 
-    // Both rings stayed Idle — no half-running ceremony to recover from.
+    // After kick_off_warmup, source is in SendWarmup with a hide+warmup
+    // deadline, destination is in RecvWarmup — same as the same-world path
+    // up until the warmup timer fires.
+    assert_eq!(
+        mgr.ring_transporters.get(1).unwrap().state,
+        State::SendWarmup,
+        "source advanced to SendWarmup after auto-start",
+    );
+
+    // Skip past hide and warmup deadlines by directly invoking the
+    // FSM transitions — same approach the same-world test uses to keep
+    // the test fast and deterministic. WARMUP_DELAY * 2 is referenced to
+    // make the time-skip intent explicit.
+    let _t_skip = std::time::Instant::now() + WARMUP_DELAY * 2;
+    let dst_pos = [
+        mgr.ring_regions[&2].x,
+        mgr.ring_regions[&2].y,
+        mgr.ring_regions[&2].z,
+    ];
+    let dst_world = mgr.ring_regions[&2].world_name.clone();
+    let _ = mgr
+        .ring_transporters
+        .get_mut(1)
+        .unwrap()
+        .hide_timer_expired();
+    let warmup_effects = mgr
+        .ring_transporters
+        .get_mut(1)
+        .unwrap()
+        .warmup_timer_expired(dst_pos, &dst_world);
+    // Destination is now in RemoteLoadWait — same shape as same-world but
+    // we don't synchronously call mark_player_loaded on cross-world.
+    advance_destination_after_warmup(2, 1, &tx, &mut mgr, &engine).await;
+    dispatch_effects(warmup_effects, &tx, &mut mgr, &engine).await;
+
+    // Source ring back at Idle (warmup_timer_expired clears it), destination
+    // ring stuck in RemoteLoadWait until base sends AdvanceRingDestination.
     assert_eq!(mgr.ring_transporters.get(1).unwrap().state, State::Idle);
-    assert_eq!(mgr.ring_transporters.get(2).unwrap().state, State::Idle);
-    assert!(mgr
-        .ring_transporters
-        .get(1)
-        .unwrap()
-        .remote_region_id
-        .is_none());
-    assert!(mgr
-        .ring_transporters
-        .get(2)
-        .unwrap()
-        .remote_region_id
-        .is_none());
-    // No effects dispatched.
-    assert!(rx.try_recv().is_err());
+    assert_eq!(
+        mgr.ring_transporters.get(2).unwrap().state,
+        State::RemoteLoadWait,
+        "cross-world destination must wait for AdvanceRingDestination, NOT advance synchronously",
+    );
+    // The cell entity has been destroyed by the dispatch arm — base will
+    // re-create it when GateTravel finishes.
+    assert!(
+        mgr.get_entity(42).is_none(),
+        "cross-world ring transport must destroy the cell entity (gate-travel pattern)",
+    );
+
+    // Find the GateTravel message in the outbox — the dispatch arm sends it
+    // after destroying the entity. Other ring effects (HidePlayer,
+    // PlaySequence, etc.) come through as EntityMethodCall.
+    let mut saw_gate_travel = false;
+    let mut saw_dest_ring_id: Option<i32> = None;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::GateTravel {
+            target_world_name,
+            destination_ring_id,
+            ..
+        } = msg
+        {
+            saw_gate_travel = true;
+            saw_dest_ring_id = destination_ring_id;
+            assert_eq!(
+                target_world_name, "Castle",
+                "GateTravel must carry the destination world name",
+            );
+        }
+    }
+    assert!(
+        saw_gate_travel,
+        "cross-world ring transport must emit CellToBaseMsg::GateTravel",
+    );
+    assert_eq!(
+        saw_dest_ring_id,
+        Some(2),
+        "GateTravel must carry destination_ring_id so the deferred load callback fires",
+    );
+}
+
+/// Deferred-load hook: after the destination cell receives
+/// `BaseToCellMsg::AdvanceRingDestination`, the destination ring must
+/// transition `RemoteLoadWait → RemoteWarmup → Cooldown → Idle` exactly
+/// like the same-world path's synchronous fast-path. Pins the
+/// `handle_remote_player_loaded` runtime hook.
+#[tokio::test]
+async fn handle_remote_player_loaded_advances_destination_fsm() {
+    let mut mgr = make_test_space_mgr();
+    let mut regions = std::collections::HashMap::new();
+    regions.insert(1, ring(1, "Castle_CellBlock", vec![2], [0.0; 3]));
+    regions.insert(2, ring(2, "Castle", vec![1], [10.0; 3]));
+    mgr.ring_transporters.load(&regions);
+    mgr.ring_regions = regions;
+
+    // Manually park the destination in RemoteLoadWait with one expected
+    // remote player — this mimics the state the FSM is in after
+    // `Effect::TeleportCrossWorld` dispatched from the source.
+    let dst = mgr.ring_transporters.get_mut(2).unwrap();
+    dst.state = State::RemoteLoadWait;
+    dst.num_remote_players = 1;
+
+    let (tx, mut _rx) = mpsc::channel(16);
+    let engine = ChainEngine::new();
+
+    handle_remote_player_loaded(2, 42, &tx, &mut mgr, &engine).await;
+
+    // After mark_player_loaded → all_players_loaded → remote_warmup_timer_expired
+    // → cooldown_timer_expired (the empty fast-path), the destination ring
+    // must end at Idle. The sequence is one tick because there are no
+    // players actually present (we only set the count, not the entity); the
+    // fast-path collapses to Idle.
+    //
+    // Note: the player WAS recorded by player_loaded(42), so the FSM
+    // doesn't fast-path. It runs RemoteWarmup deadline + cooldown deadline.
+    // For this unit test we accept the post-load state as RemoteWarmup —
+    // a more elaborate test would tick the deadline scanner.
+    let final_state = mgr.ring_transporters.get(2).unwrap().state;
+    assert!(
+        matches!(
+            final_state,
+            State::RemoteWarmup | State::Cooldown | State::Idle,
+        ),
+        "destination ring must leave RemoteLoadWait after the deferred load (got {final_state:?})",
+    );
+    assert_ne!(
+        final_state,
+        State::RemoteLoadWait,
+        "destination ring stuck in RemoteLoadWait — handle_remote_player_loaded did nothing",
+    );
+}
+
+/// `handle_interact` must reject the call without sending a destination
+/// list when the ring's `required_mission_id` is set and the player
+/// hasn't completed that mission. Pins the runtime mission gate added
+/// for issue #241 (mission 688 armory ring) — even if a chain
+/// somehow fires `trigger_transporter` for the gated ring, the runtime
+/// stops the destination list from leaking.
+#[tokio::test]
+async fn handle_interact_blocks_when_required_mission_not_completed() {
+    use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};
+
+    let mut mgr = make_test_space_mgr();
+    let mut regions = std::collections::HashMap::new();
+    let mut gated = ring(1, "Castle_CellBlock", vec![2], [0.0; 3]);
+    gated.required_mission_id = Some(688);
+    regions.insert(1, gated);
+    regions.insert(2, ring(2, "Castle_CellBlock", vec![1], [10.0, 20.0, 30.0]));
+    mgr.ring_transporters.load(&regions);
+    mgr.ring_point_set_to_region = regions
+        .iter()
+        .map(|(rid, r)| (r.point_set_id, *rid))
+        .collect();
+    mgr.ring_regions = regions;
+
+    // Player exists with mission 688 ACTIVE (not completed) — gate must
+    // suppress the destination list. We don't add an entry that maps to
+    // MISSION_COMPLETED.
+    mgr.create_entity(42, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(player) = mgr.get_entity_mut(42) {
+        player.missions.add_mission(MissionInstance::new(
+            688,
+            2356,
+            vec![MissionObjective {
+                objective_id: 2734,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: false,
+            }],
+        ));
+    }
+
+    let (tx, mut rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    handle_interact(1, 42, &tx, &mut mgr, &engine).await;
+
+    // No destination-list method was sent — the gate suppressed the
+    // entire interaction. Source ring's `ring_source_id` was not set
+    // either (we bail before that write).
+    assert!(
+        rx.try_recv().is_err(),
+        "mission gate must suppress all wire output when mission_688 is not completed"
+    );
+    assert_eq!(
+        mgr.get_entity(42).and_then(|e| e.ring_source_id),
+        None,
+        "ring_source_id must remain unset when the gate rejects the interaction"
+    );
+}
+
+/// Counterpart to the gate test: when the player has completed the
+/// required mission, the destination list IS sent. This pins the
+/// fall-through path so the gate doesn't accidentally suppress
+/// post-completion interactions (which would break re-entry to the
+/// armory ring after the trip is done).
+#[tokio::test]
+async fn handle_interact_allows_when_required_mission_completed() {
+    use cimmeria_entity::missions::{MissionInstance, MissionObjective, MISSION_COMPLETED};
+
+    let mut mgr = make_test_space_mgr();
+    let mut regions = std::collections::HashMap::new();
+    let mut gated = ring(1, "Castle_CellBlock", vec![2], [0.0; 3]);
+    gated.required_mission_id = Some(688);
+    regions.insert(1, gated);
+    regions.insert(2, ring(2, "Castle_CellBlock", vec![1], [10.0, 20.0, 30.0]));
+    mgr.ring_transporters.load(&regions);
+    mgr.ring_point_set_to_region = regions
+        .iter()
+        .map(|(rid, r)| (r.point_set_id, *rid))
+        .collect();
+    mgr.ring_regions = regions;
+
+    mgr.create_entity(42, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(player) = mgr.get_entity_mut(42) {
+        let mut mission = MissionInstance::new(
+            688,
+            2356,
+            vec![MissionObjective {
+                objective_id: 2734,
+                status: MISSION_COMPLETED,
+                hidden: false,
+                optional: false,
+            }],
+        );
+        mission.status = MISSION_COMPLETED;
+        player.missions.add_mission(mission);
+    }
+
+    let (tx, mut rx) = mpsc::channel(8);
+    let engine = ChainEngine::new();
+    handle_interact(1, 42, &tx, &mut mgr, &engine).await;
+
+    // Destination list method must have been sent (some EntityMethodCall
+    // with method index ON_RING_TRANSPORTER_LIST). We don't assert byte
+    // contents — the existing `full_ring_cycle_dispatches_expected_messages`
+    // does that — only that the gate let traffic through.
+    let mut saw_list = false;
+    while let Ok(msg) = rx.try_recv() {
+        if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+            if method_index == METHOD_ON_RING_TRANSPORTER_LIST {
+                saw_list = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        saw_list,
+        "post-completion interaction must dispatch onRingTransporterList \
+         (METHOD_ON_RING_TRANSPORTER_LIST)"
+    );
+    assert_eq!(
+        mgr.get_entity(42).and_then(|e| e.ring_source_id),
+        Some(1),
+        "ring_source_id must be set on the player after a passing gate"
+    );
 }
 
 /// Self-as-destination is rejected (matches Python `selectDestination`).
