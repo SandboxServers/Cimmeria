@@ -1,0 +1,51 @@
+# Hard guarantee that nothing outside the runtime input surface ever
+# leaks into the image, no matter what's in the developer's worktree.
+#
+# The Dockerfile's COPY commands already select specific paths, so this
+# is defence-in-depth + it shrinks the build context that buildx ships
+# to the daemon (faster builds on tiny diffs).
+
+# Build artefacts
+target/
+**/target/
+
+# Hydrated at build time inside the builder stage; the host copy (if any)
+# is irrelevant to the image and may be the wrong version.
+external/
+
+# Dev tooling and authoring tools — see CLAUDE.md "what goes in the image".
+deprecated/
+docs/
+ghidra/
+fuzz/
+frontend/
+bootstrap/
+projects/
+src/
+python/
+logs/
+data/scripts/
+data/spaces/cooked/
+audit_dup_chains.py
+db.bat
+setup.ps1
+patch-client.ps1
+build.sh
+
+# IDE + VCS
+.git/
+.github/
+!.github/workflows/release-container.yml
+!.github/workflows/prune-container.yml
+.vscode/
+.idea/
+*.swp
+
+# Built launcher exe at the repo root (rebuilt every PR by setup.ps1).
+sgw-launcher.exe
+*.dll
+*.pdb
+
+# Markdown — release notes are generated, the worktree's are docs.
+*.md
+!docker/**/*.md

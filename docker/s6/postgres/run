@@ -1,0 +1,9 @@
+#!/command/with-contenv sh
+# Foreground-postgres run script. s6 supervises this PID directly, so any
+# postgres crash is observed and reported via the per-service finish
+# script (we don't have one for postgres on purpose — postgres restarts
+# cleanly on its own; only the cimmeria-server death should bring the
+# container down).
+exec s6-setuidgid postgres \
+    postgres -D "${PGDATA:-/var/lib/postgresql/data}" \
+             -c listen_addresses=127.0.0.1

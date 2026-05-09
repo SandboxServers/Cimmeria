@@ -1,0 +1,12 @@
+#!/command/with-contenv sh
+# Wait for postgres to accept connections before launching the server.
+# Without this the server's startup DB pool fails on a tight race during
+# the first ~1-2 seconds after `docker run`.
+until pg_isready -h 127.0.0.1 -U "${POSTGRES_USER:-w-testing}" -d "${POSTGRES_DB:-sgw}" >/dev/null 2>&1; do
+    sleep 0.5
+done
+
+# The server resolves its data/* paths relative to CWD, so we must `cd`
+# into /opt/cimmeria where data/cache/*.pak and data/spaces/*.nav live.
+cd /opt/cimmeria
+exec /opt/cimmeria/bin/cimmeria-server

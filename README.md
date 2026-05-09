@@ -43,6 +43,21 @@ Handles login, Mercury protocol, character select, and world entry. Connect the 
 
 **Test account:** `test` / `test`
 
+### Run from a pre-built container (no Rust toolchain required)
+
+Each push to `main` that touches code or data publishes a self-contained pre-release image to GHCR with the server, cooked game data, and a pre-loaded Postgres bundled in. Versioned `YYYY-MM-DD.N` (UTC).
+
+```bash
+docker run -d --name cimmeria \
+  -p 13001:13001 -p 32832:32832/udp -p 50000:50000/udp \
+  -p 8081:8081 -p 8443:8443 -p 8989:8989 \
+  -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
+  -v cimmeria-data:/var/lib/postgresql/data \
+  ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
+```
+
+`BASE_EXTERNAL` defaults to `127.0.0.1` and must be overridden for any client not on the host. See [docs/operations/container.md](docs/operations/container.md) for the full env reference, volume layout, and reset workflow.
+
 ## Architecture
 
 ```

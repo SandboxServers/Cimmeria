@@ -1,0 +1,50 @@
+name: prune-container
+
+# Retention policy for the GHCR container package:
+#   - Keep the last 14 dated pre-release tags (`vYYYY-MM-DD.N` /
+#     image tag `YYYY-MM-DD.N`).
+#   - Always keep the rolling pointers (`latest`, `latest-prerelease`)
+#     and any future stable semver tags (`v1.2.3`).
+#
+# Why a separate workflow rather than a step on release-container.yml:
+#   - Pruning shouldn't be on the critical path of a release — if it
+#     errors, the release still goes out.
+#   - A schedule means it runs even on quiet weeks, and you can fire it
+#     manually after a one-off mass push via workflow_dispatch.
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'   # Sundays at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+concurrency:
+  group: prune-container
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: prune dated GHCR tags
+    runs-on: ubuntu-latest
+    steps:
+      - name: prune dated tags (keep last 14, ignore rolling/semver pointers)
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: cimmeria-server
+          package-type: container
+          min-versions-to-keep: 14
+          # Tags we never delete: rolling pointers, stable promotions,
+          # and any explicit semver tag.
+          ignore-versions: '^(latest|latest-prerelease|stable|v?\d+\.\d+\.\d+)$'
+
+      - name: prune untagged manifests left behind by the dated-tag pass
+        # Buildx leaves orphaned manifests when tags get deleted. A second
+        # pass with `delete-only-untagged-versions: true` cleans those up.
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: cimmeria-server
+          package-type: container
+          min-versions-to-keep: 0
+          delete-only-untagged-versions: true

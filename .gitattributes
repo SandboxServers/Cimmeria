@@ -2,3 +2,8 @@
 # cross-platform conflicts between WSL (LF) and Windows (CRLF).
 Cargo.lock text eol=lf
 frontend/package-lock.json text eol=lf
+
+# Container build artefacts must stay LF — Linux interprets the shebang
+# byte-for-byte and `\r` in the interpreter line is a hard syntax error.
+docker/** text eol=lf
+.github/workflows/*.yml text eol=lf
