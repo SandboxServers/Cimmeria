@@ -5352,9 +5352,9 @@ dependencies = [
 
 [[package]]
 name = "texture2ddecoder"
-version = "0.0.5"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54f0e5ca5dceb9b44d0f376de51782277c25fb42ffe1dad08d847f3a156d26d9"
+checksum = "427ae8ec7f2f0fdd3146b77cfa44bea880caf066f7e55398a8467afe2645c832"
 dependencies = [
  "paste",
 ]
