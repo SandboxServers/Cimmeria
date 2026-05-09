@@ -6,7 +6,11 @@
 set -euo pipefail
 
 VERSION="${1:?usage: $0 <YYYY-MM-DD.N>}"
+# GHCR namespaces are lowercase only — the runtime owner (e.g.
+# `SandboxServers`) needs to be folded before substitution or the
+# rendered `docker pull` command will fail with "name unknown".
 OWNER="${GITHUB_REPOSITORY_OWNER:-sandboxservers}"
+OWNER=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
 IMAGE="ghcr.io/${OWNER}/cimmeria-server"
 SHA="${GITHUB_SHA:-}"
 SHORT_SHA="${SHA:0:7}"
@@ -68,7 +72,7 @@ docker run ...   # same flags as above
 
 ### What's inside
 
-- \`cimmeria-server\` (Linux x86_64, statically built against the workspace at \`${SHORT_SHA}\`)
+- \`cimmeria-server\` (Linux x86_64, glibc, built against the workspace at \`${SHORT_SHA}\`)
 - \`data/cache/*.pak\` — cooked game data
 - \`data/spaces/*.nav\` — navmeshes (combat AI / line-of-sight)
 - Postgres 17.9 + pgdata pre-loaded from \`db/database.sql\`

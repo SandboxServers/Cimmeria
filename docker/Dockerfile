@@ -51,7 +51,13 @@ RUN mkdir -p external \
 # Workspace skeleton. Cargo needs every member's manifest present even
 # when we only build `-p cimmeria-server`, so the tauri/tools members
 # come along for the manifest parse but are never compiled.
+#
+# .cargo/config.toml carries the `[target.x86_64-unknown-linux-gnu]`
+# clang + `-fuse-ld=mold` linker config; without it the apt-installed
+# clang and mold above are unused and the build falls back to gcc + ld,
+# diverging from CI's behaviour and the workspace's tuning notes.
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
 COPY crates ./crates
 COPY entities ./entities
 COPY src-tauri ./src-tauri
