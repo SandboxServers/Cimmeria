@@ -103,14 +103,46 @@ jobs:
           echo "date=${DATE}"          >> "$GITHUB_OUTPUT"
           echo "created=${CREATED}"    >> "$GITHUB_OUTPUT"
 
-      - name: build and push
+      # Two-pass build: load-for-scan, then push-with-attestations.
+      # Why both: buildx's `load: true` (Docker daemon export) is
+      # incompatible with `provenance: true` (the docker exporter
+      # doesn't carry attestations). Pushing first then scanning
+      # would briefly publish a vulnerable image; scanning first
+      # means a CRITICAL CVE blocks publish entirely. The second
+      # build hits the buildx cache and effectively just attaches
+      # attestations + pushes — no recompile.
+      - name: build (load locally for scan)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # No `provenance` / `sbom` here — incompatible with `load: true`.
+          # Attestations are added on the push pass below.
+          provenance: false
+          sbom: false
+
+      - name: scan with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
+          format: table
+          exit-code: '1'
+          severity: CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: push (with provenance + SBOM, after scan)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
           push: true
           # GHCR tags: dated tag (immutable) + rolling pre-release pointer.
-          # `latest` is reserved for the future stable promotion workflow.
           tags: |
             ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
             ${{ steps.img.outputs.image }}:latest-prerelease
@@ -119,10 +151,9 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.ver.outputs.version }}
             org.opencontainers.image.created=${{ steps.ver.outputs.created }}
-          # GitHub Actions cache exporter — keeps buildx layers warm
-          # across runs without needing an external registry cache.
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Don't `cache-to` here — the load-for-scan pass already populated
+          # the cache and another mode=max write is wasted bandwidth.
           provenance: true
           sbom: true
 

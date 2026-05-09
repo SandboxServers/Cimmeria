@@ -9,8 +9,15 @@
 # The runtime image carries zero .sql files and zero Rust source — the
 # DB is identity-baked at build time and the runtime never re-runs psql.
 
-ARG POSTGRES_IMAGE=postgres:17.9-bookworm
-ARG RUST_IMAGE=rust:1-bookworm
+# Base images pinned by digest, not just tag. Tags are mutable on
+# Docker Hub (a compromised account or registry could repoint
+# postgres:17.9-bookworm at a malicious image), so the digest is the
+# only true integrity guarantee. Dependabot watches these via
+# .github/dependabot.yml and opens PRs when upstream rebuilds — without
+# that automation, digest-pinning would mean shipping known-CVE base
+# images forever.
+ARG POSTGRES_IMAGE=postgres:17.9-bookworm@sha256:47f917f7409eacd22fc5dfb1dee634e1b55cf0c01d1a7eb701be2227a03e0641
+ARG RUST_IMAGE=rust:1-bookworm@sha256:503651ea31e66ecb74623beabde781059a5978df1595a9e8ed03974d5fec1bf0
 ARG RECAST_VERSION=1.6.0
 # SHA256 of github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip.
 # Verified at build time; bumping RECAST_VERSION requires bumping this too
