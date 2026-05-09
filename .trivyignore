@@ -1,0 +1,24 @@
+# Trivy CVE allowlist for the Cimmeria container image.
+#
+# Rule: every entry MUST cite (a) why the CVE is unreachable in OUR
+# image, and (b) the trigger that would let us drop the entry. If you
+# can't write both, don't suppress — fix the underlying issue.
+#
+# Trivy reads this file via the `trivyignores` input on
+# aquasecurity/trivy-action in pr-container.yml and release-container.yml.
+
+# CVE-2025-68121 — Go crypto/tls cert-validation flaw in the `gosu`
+# binary baked into postgres:17.9-bookworm at /usr/local/bin/gosu.
+#
+# Why unreachable: the upstream postgres image uses gosu in its
+# docker-entrypoint.sh to drop from root to the `postgres` user. We
+# replace that entrypoint entirely (`ENTRYPOINT ["/usr/local/bin/
+# cimmeria-entrypoint"]` in docker/Dockerfile) and use s6-overlay's
+# `s6-setuidgid` for privilege drops in docker/s6/. gosu is shipped
+# in the layer but never executed at runtime — its TLS code path is
+# not reached.
+#
+# When to drop: when postgres:17.x-bookworm rebuilds against a Go
+# stdlib >=1.24.13 / 1.25.7. Dependabot watches this via
+# .github/dependabot.yml; the next digest bump should clear it.
+CVE-2025-68121

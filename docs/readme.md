@@ -35,6 +35,7 @@ The emulator is **playable today**: players can log in, enter the world, interac
 | [How SGW Works](how-sgw-works.md) | Technology overview -- BigWorld, CME, and how the pieces fit together |
 | [Client Tools](client-tools.md) | Launcher, editor mode, debug tools available in the client |
 | [Building the Server](building.md) | How to build and run the Cimmeria server emulator |
+| [Container Distribution](operations/container.md) | `docker run` the published `ghcr.io/sandboxservers/cimmeria-server` image — env reference, volume layout, reset workflow |
 | [Testing Guide](../TESTING.md) | Test types, picker for which to use when, gotchas mined from PR reviews |
 | [Test Inventory](testing/inventory/README.md) | Catalogue of every test in the workspace, one file per crate, with kind / system / first-commit date / what-it-tests |
 | [Game Systems](game-systems.md) | Survey of every game feature: combat, abilities, stargates, missions, crafting |

@@ -43,6 +43,21 @@ Handles login, Mercury protocol, character select, and world entry. Connect the 
 
 **Test account:** `test` / `test`
 
+### Run from a pre-built container (no Rust toolchain required)
+
+A self-contained pre-release image with the server, cooked game data, and a pre-loaded Postgres is published to GHCR on demand — comment `/release` on a merged PR (or run the workflow manually) and the build at `main` HEAD ships. Versioned `YYYY-MM-DD.N` (UTC). See [docs/operations/container.md](docs/operations/container.md) for the release model.
+
+```bash
+docker run -d --name cimmeria \
+  -p 13001:13001 -p 32832:32832/udp -p 50000:50000/udp \
+  -p 8081:8081 -p 8443:8443 \
+  -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
+  -v cimmeria-data:/var/lib/postgresql/data \
+  ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
+```
+
+`BASE_EXTERNAL` defaults to `127.0.0.1` and must be overridden for any client not on the host. See [docs/operations/container.md](docs/operations/container.md) for the full env reference, volume layout, and reset workflow.
+
 ## Architecture
 
 ```
@@ -165,6 +180,7 @@ Test account: **test** / **test** (SHA1 hashed).
 - [Connection Flow](docs/connection-flow.md) — End-to-end login and world entry
 - [Project Status](docs/project-status.md) — What works and what's left
 - [Gap Analysis](docs/gap-analysis.md) — Per-feature completion tracking
+- [Container Distribution](docs/operations/container.md) — `docker run` the published GHCR image, env reference, release model
 - [Testing Guide](TESTING.md) — Test types, when to use which, common gotchas
 - [Integration Test Infra](docs/architecture/integration-test-infra.md) — Live-DB test setup and rationale
 

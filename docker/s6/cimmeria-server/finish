@@ -1,0 +1,6 @@
+#!/command/execlineb -S0
+# If the server exits for any reason, tell s6 to bring the supervision
+# tree down so the container exits and the orchestrator (Docker,
+# compose, Kubernetes) restarts it cleanly. Postgres without the server
+# is a useless zombie.
+s6-svscanctl -t /run/service

@@ -1,0 +1,29 @@
+#!/command/with-contenv sh
+# Wait for postgres to accept connections before launching the server.
+# Without this the server's startup DB pool fails on a tight race during
+# the first ~1-2 seconds after `docker run`.
+#
+# Bounded wait: if postgres never comes up (corrupt pgdata, permission
+# issue, etc.) we exit non-zero. The `finish` script will then tear the
+# whole supervision tree down so the container exits and the
+# orchestrator (Docker, compose, Kubernetes) can surface the failure
+# and restart cleanly. Without a deadline this would block forever and
+# leave a healthy-looking but useless container.
+TIMEOUT_S="${POSTGRES_WAIT_TIMEOUT:-120}"
+deadline=$(( $(date +%s) + TIMEOUT_S ))
+while ! pg_isready -h 127.0.0.1 -U "${POSTGRES_USER:-w-testing}" -d "${POSTGRES_DB:-sgw}" >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        echo "[cimmeria-server] postgres did not become ready within ${TIMEOUT_S}s — exiting" >&2
+        exit 1
+    fi
+    sleep 0.5
+done
+
+# The server resolves its data/* paths relative to CWD, so we must `cd`
+# into /opt/cimmeria where data/cache/*.pak and data/spaces/*.nav live.
+cd /opt/cimmeria
+# Drop privileges. Postgres runs as the `postgres` system user; the
+# server runs as the dedicated `cimmeria` user (UID/GID 1001) created
+# in the runtime stage of the Dockerfile. There's no reason for an
+# internet-facing process to keep root, even inside a container.
+exec s6-setuidgid cimmeria /opt/cimmeria/bin/cimmeria-server

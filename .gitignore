@@ -185,7 +185,10 @@ docs/design/*
 
 data/cache/
 cimmeria-content-editor.exe
-cimmeria-server
+# Anchored to repo root: targets the Linux binary copied here by the
+# build instructions in CLAUDE.md, not directories named "cimmeria-server"
+# elsewhere in the tree (e.g. docker/s6/cimmeria-server/).
+/cimmeria-server
 
 pak/*
 config/BaseService.config
