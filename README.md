@@ -50,7 +50,7 @@ Each push to `main` that touches code or data publishes a self-contained pre-rel
 ```bash
 docker run -d --name cimmeria \
   -p 13001:13001 -p 32832:32832/udp -p 50000:50000/udp \
-  -p 8081:8081 -p 8443:8443 -p 8989:8989 \
+  -p 8081:8081 -p 8443:8443 \
   -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
   -v cimmeria-data:/var/lib/postgresql/data \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease

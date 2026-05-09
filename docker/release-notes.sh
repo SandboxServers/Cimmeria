@@ -33,7 +33,6 @@ docker run -d --name cimmeria \\
   -p 50000:50000/udp \\
   -p 8081:8081 \\
   -p 8443:8443 \\
-  -p 8989:8989 \\
   -e BASE_EXTERNAL=<your-public-or-LAN-ip> \\
   -v cimmeria-data:/var/lib/postgresql/data \\
   ${IMAGE}:${VERSION}
@@ -63,7 +62,7 @@ docker run ...   # same flags as above
 | \`BASE_PORT\` | \`32832\` | BaseApp UDP |
 | \`CELL_PORT\` | \`50000\` | CellApp UDP |
 | \`ADMIN_PORT\` | \`8443\` | Admin REST API |
-| \`DB_URL\` | \`postgres://w-testing:w-testing@127.0.0.1:5432/sgw\` | Bundled Postgres |
+| \`DB_URL\` | \`host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw\` | Libpq-style (NOT a URL DSN — see operations docs) |
 | \`DEVELOPER_MODE\` | \`true\` | Relaxed auth + multi-login |
 | \`RUST_LOG\` | \`info\` | tracing-subscriber filter |
 

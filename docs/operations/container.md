@@ -25,7 +25,6 @@ docker run -d --name cimmeria \
   -p 50000:50000/udp \
   -p 8081:8081 \
   -p 8443:8443 \
-  -p 8989:8989 \
   -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
   -v cimmeria-data:/var/lib/postgresql/data \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
@@ -38,7 +37,8 @@ docker run -d --name cimmeria \
 | 50000 | UDP | CellApp |
 | 8081  | TCP | Auth HTTP (SOAP login) |
 | 8443  | TCP | Admin REST API |
-| 8989  | TCP | Python console (legacy) |
+
+> The legacy C++ BaseApp had a Python console on port 8989; the Rust server does not implement it, so the container does not expose it.
 
 ## Environment
 
@@ -54,9 +54,11 @@ Every variable that [`crates/server/src/main.rs`](../../crates/server/src/main.r
 | `BASE_PORT` | `32832` | |
 | `CELL_PORT` | `50000` | |
 | `ADMIN_PORT` | `8443` | |
-| `DB_URL` | `postgres://w-testing:w-testing@127.0.0.1:5432/sgw` | Bundled Postgres |
+| `DB_URL` | `host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw` | Libpq-style — see note below |
 | `DEVELOPER_MODE` | `true` | Relaxed auth + multi-login |
 | `RUST_LOG` | `info` | tracing-subscriber filter |
+
+> `DB_URL` must be in libpq key-value form, not URL DSN form. `crates/services/src/orchestrator_postgres.rs::ensure_postgresql_running` parses `host=` / `port=` tokens to decide whether to auto-start the bundled Postgres. A URL like `postgres://...` would silently fall back to `localhost:5433` and emit warnings, even though sqlx itself accepts either form.
 
 ## Volume / persistence
 

@@ -40,7 +40,8 @@ WORKDIR /build
 # Hydrate external/recast — cimmeria-entity's build.rs compiles the
 # Detour sources directly. Pin matches the version in test.yml so the
 # image's binary is byte-comparable to CI builds.
-RUN curl -sL --retry 3 -o /tmp/recast.zip \
+RUN mkdir -p external \
+    && curl -sL --retry 3 -o /tmp/recast.zip \
         "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip" \
     && unzip -q /tmp/recast.zip -d /tmp/recast_extract \
     && mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast \
@@ -172,12 +173,19 @@ ENV PGDATA=/var/lib/postgresql/data \
     BASE_PORT=32832 \
     CELL_PORT=50000 \
     ADMIN_PORT=8443 \
-    DB_URL=postgres://w-testing:w-testing@127.0.0.1:5432/sgw \
+    # Libpq-style on purpose — orchestrator_postgres::ensure_postgresql_running
+    # parses host= and port= tokens, not URL DSNs. A URL form would make the
+    # auto-start probe default to localhost:5433 and emit spurious warnings
+    # in the container even though sqlx itself accepts either form.
+    DB_URL="host=127.0.0.1 port=5432 user=w-testing password=w-testing dbname=sgw" \
     DEVELOPER_MODE=true \
     RUST_LOG=info \
     S6_KEEP_ENV=1
 
-EXPOSE 13001 32832/udp 50000/udp 8081 8443 8989
+# Ports actually bound by the Rust server. The legacy Python console
+# (port 8989 in the original C++ BaseApp) is not implemented in Rust,
+# so we don't EXPOSE it.
+EXPOSE 13001 32832/udp 50000/udp 8081 8443
 
 VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
 
