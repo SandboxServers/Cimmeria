@@ -36,9 +36,17 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
         "item_use" => Some(Trigger::OnItemUse {
             item_id: key?.parse().ok()?,
         }),
-        "item_equipped" => Some(Trigger::OnItemEquipped {
-            item_id: key.and_then(|s| s.parse().ok()),
-        }),
+        // `item_equipped` accepts a wildcard (`event_key = NULL`) that matches
+        // any equipped item, OR a specific design id (`event_key = "55"`).
+        // A non-empty `event_key` that fails to parse must reject the chain
+        // entirely — silently collapsing `Some("bad")` into `None` would turn
+        // a typo'd integer into a wildcard that fires for every equip.
+        "item_equipped" => match key {
+            None => Some(Trigger::OnItemEquipped { item_id: None }),
+            Some(s) => Some(Trigger::OnItemEquipped {
+                item_id: Some(s.parse().ok()?),
+            }),
+        },
         "teleport_in" => Some(Trigger::OnTeleportIn {
             region_id: key?.parse().ok()?,
         }),

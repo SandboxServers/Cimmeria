@@ -72,11 +72,15 @@ pub fn build_resource_fragment(
 /// `invalidate_all = true` makes the client drop and re-request the entire
 /// category. `invalidate_all = false` + a non-empty `invalid_keys` slice
 /// scopes the invalidation to just those element IDs — the client drops
-/// only those entries from its local cache and sends `elementDataRequest`
-/// for each, leaving the rest of its local PAK untouched. The client side
-/// of this branch lives in `ServerConnection::onVersionInfo` and was
-/// confirmed to parse `InvalidKeys` as a `PropertyList<long>` and per-key
-/// invalidate via the cache element's destructor.
+/// only those entries from its local cache and waits for the server to
+/// push replacements; it does NOT issue `elementDataRequest` for the
+/// invalidated keys. The caller is responsible for sending one
+/// `resourceFragment` chain per invalidated key after this packet, with
+/// `required_updates` set to `invalid_keys.len()` so the client knows how
+/// many fragments to expect. The client side of this branch lives in
+/// `ServerConnection::onVersionInfo` and was confirmed to parse
+/// `InvalidKeys` as a `PropertyList<long>` and per-key invalidate via the
+/// cache element's destructor.
 pub fn build_version_info(
     key: &[u8; 32],
     seq_id: u32,

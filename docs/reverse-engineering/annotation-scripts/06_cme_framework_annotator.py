@@ -27,7 +27,6 @@ containing functions, and renames them with descriptive CME class/method names.
 """
 
 from ghidra.program.model.symbol import SourceType
-from ghidra.program.model.data import StringDataType
 import re
 
 def is_default_name(func):
@@ -165,8 +164,8 @@ def main():
     # Walk all defined data, filter for string-typed entries.
     # `DefinedDataIterator.definedStrings(program)` was removed/renamed in
     # Ghidra 12.0.4 — the Listing-level scan + dt-name filter that
-    # scripts 03/05 use is the API-stable replacement.
-    listing = currentProgram.getListing()
+    # scripts 03/05 use is the API-stable replacement. `listing` was
+    # already obtained at the top of `main()` (line 140); reuse it.
     data_iter = listing.getDefinedData(True)
     count = 0
     while data_iter.hasNext():

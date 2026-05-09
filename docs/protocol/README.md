@@ -1,6 +1,6 @@
 # Protocol Documentation
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-05-09
 
 Wire formats, Mercury messaging, and client-server protocol documentation.
 

@@ -42,14 +42,13 @@ pub(crate) async fn handle_version_info_request(
     // 2. Versions match → invalidate_all=false, no keys (client is up to date).
     // 3. Versions differ AND Cimmeria has scoped overrides for this category
     //    → invalidate_all=false, InvalidKeys=<overridden ids>. The client
-    //    drops only those entries and refetches them via elementDataRequest.
-    //    This is the new path that lets us ship single-mission XML patches
-    //    without nuking the client's whole CookedDataMissions cache.
+    //    drops only those entries from its runtime cache and waits for the
+    //    server to push the replacements — it does NOT issue
+    //    elementDataRequest for InvalidKeys. The proactive push happens in
+    //    push_overridden_elements right after the onVersionInfo reply, with
+    //    RequiredUpdates set to the InvalidKeys count.
     // 4. Versions differ AND no scoped overrides → invalidate_all=true
     //    (legacy fallback for whole-PAK swaps, e.g. switching QA→Server build).
-    //
-    // requiredUpdates=0 because we don't proactively push resource fragments;
-    // the client will issue elementDataRequest for whatever it needs.
     let (version, invalidate_all, invalid_keys): (u32, bool, Vec<u32>) = match resource_cache {
         Some(cache) => match cache.category(category_id) {
             Some(cat) => {
@@ -312,9 +311,7 @@ pub(crate) async fn handle_element_data_request(
     // element — operationally the load-bearing question is "did the
     // patched mission XML actually go out to this client", and that
     // answer is too important to bury at debug level on a noisy DB.
-    let is_override = cache
-        .overridden_elements(category_id)
-        .contains(&element_id);
+    let is_override = cache.overridden_elements(category_id).contains(&element_id);
     if is_override {
         tracing::info!(
             %addr, category_id, element_id,

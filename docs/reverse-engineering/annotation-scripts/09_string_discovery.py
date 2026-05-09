@@ -187,8 +187,8 @@ def main():
 
     # `DefinedDataIterator.definedStrings(program)` was removed/renamed in
     # Ghidra 12.0.4 — same Listing-level scan + dt-name filter that
-    # scripts 03/05 use is the API-stable replacement.
-    listing = currentProgram.getListing()
+    # scripts 03/05 use is the API-stable replacement. `listing` was
+    # already obtained at the top of `main()` (line 155); reuse it.
     data_iter = listing.getDefinedData(True)
 
     while data_iter.hasNext():

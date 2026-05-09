@@ -237,6 +237,65 @@ fn mission_accepted_without_key_returns_none() {
     assert!(convert_trigger(&row).is_none());
 }
 
+/// `item_equipped` accepts NULL `event_key` as a wildcard — the chain
+/// should match any equipped item.
+#[test]
+fn item_equipped_null_key_loads_as_wildcard() {
+    use crate::triggers::Trigger;
+    let row = DbTriggerRow {
+        chain_id: 9000,
+        event_type: "item_equipped".to_string(),
+        event_key: None,
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    };
+    match convert_trigger(&row) {
+        Some(Trigger::OnItemEquipped { item_id: None }) => {}
+        other => panic!("expected OnItemEquipped(wildcard), got {:?}", other),
+    }
+}
+
+/// A specific integer key must round-trip as a typed filter.
+#[test]
+fn item_equipped_numeric_key_loads_as_typed_filter() {
+    use crate::triggers::Trigger;
+    let row = DbTriggerRow {
+        chain_id: 1004,
+        event_type: "item_equipped".to_string(),
+        event_key: Some("55".to_string()),
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    };
+    match convert_trigger(&row) {
+        Some(Trigger::OnItemEquipped { item_id: Some(55) }) => {}
+        other => panic!("expected OnItemEquipped(55), got {:?}", other),
+    }
+}
+
+/// A non-empty `event_key` that fails to parse as i32 must drop the
+/// chain entirely. Silently collapsing `Some("bad")` into `None` would
+/// turn a typo'd integer into a wildcard that fires for every equip
+/// event — visible bug shape: an unrelated equip would advance an
+/// unrelated mission.
+#[test]
+fn item_equipped_malformed_key_returns_none_not_wildcard() {
+    let row = DbTriggerRow {
+        chain_id: 9001,
+        event_type: "item_equipped".to_string(),
+        event_key: Some("not_a_number".to_string()),
+        scope: "player".to_string(),
+        once: false,
+        sort_order: 0,
+    };
+    assert!(
+        convert_trigger(&row).is_none(),
+        "malformed item_equipped event_key must reject the chain, not silently \
+         load as a wildcard match",
+    );
+}
+
 #[test]
 fn triggerless_chain_gets_custom_event() {
     let chain_rows = vec![DbChainRow {

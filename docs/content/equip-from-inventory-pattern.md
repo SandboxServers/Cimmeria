@@ -95,7 +95,7 @@ Use it whenever:
 Don't use it for:
 
 - Quest items that never get equipped (letters, keys, Ambernol vials). Grant those directly to mission inventory (`container_id = 2`) — there's no equip path to break.
-- Pre-equipped starter gear at character creation. That path goes through `bag_fill_order` (`crates/services/src/base/resources.rs:9-25`) and is its own thing.
+- Pre-equipped starter gear at character creation. That path goes through the `BAG_FILL_ORDER` constant in [`crates/services/src/base/resources.rs`](../../crates/services/src/base/resources.rs) and is its own thing.
 
 ## Cross-links
 

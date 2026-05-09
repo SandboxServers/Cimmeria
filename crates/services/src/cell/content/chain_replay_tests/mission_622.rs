@@ -6,12 +6,12 @@
 //!
 //! The bug shape this guards: previously the pistol was added directly to
 //! the bandolier (container 3) and the mission auto-completed, which
-//! bypassed the bandolier ammo / appearance / fire-animation paths and
-//! caused issues #211 and #212. Step 80622 is a Cimmeria-introduced step
-//! whose matching `<Steps>` row is shipped to the client via a mission_
-//! overrides patch on `_622` in `CookedDataMissions.pak`; the per-key
-//! `InvalidKeys` channel in `onVersionInfo` makes that override visible
-//! to the UI without re-shipping the whole PAK.
+//! bypassed the bandolier ammo / appearance / fire-animation paths. Step
+//! 80622 is a Cimmeria-introduced step whose matching `<Steps>` row is
+//! shipped to the client via a `mission_overrides` patch on `_622` in
+//! `CookedDataMissions.pak`; the per-key `InvalidKeys` channel in
+//! `onVersionInfo` makes that override visible to the UI without
+//! re-shipping the whole PAK.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::ChainEngine;
@@ -51,7 +51,7 @@ async fn chain_1003_grants_pistol_to_backpack_and_advances_to_equip_step() {
         pistol_to_backpack, 1,
         "chain 1003 must grant pistol (item 55) to container 1 (backpack) \
          exactly once — auto-equipping to container 3 (bandolier) bypasses \
-         the bandolier ammo path and was the cause of #211/#212. Actions: {:?}",
+         the bandolier ammo path. Actions: {:?}",
         chain.actions,
     );
 

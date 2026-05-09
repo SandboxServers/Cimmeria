@@ -9,20 +9,25 @@
 //!
 //! Rather than ship a modified PAK file (which would mean every player
 //! redownloads the artifact), we patch entries in-memory at server startup
-//! and use the protocol's existing per-key invalidation channel — the
+//! and use the protocol's existing per-key invalidation channel: the
 //! `onVersionInfo` packet carries an `InvalidKeys` ARRAY<u32>, which the
 //! client (`ServerConnection::onVersionInfo`) reads and uses to drop only
-//! the named entries from its local cache. The client then issues
-//! `elementDataRequest` for each invalidated key and receives the patched
-//! XML from the server's [`ResourceCache`].
+//! the named entries from its local cache. The client does **not** then
+//! send `elementDataRequest` for the invalidated keys — it waits for the
+//! server to push them. Our `handle_version_info_request` does that push
+//! immediately after the `onVersionInfo` reply, with `RequiredUpdates`
+//! set to the InvalidKeys count so the client knows how many fragments
+//! to expect.
 //!
 //! This module's job: produce the patched XML bytes for missions that
 //! Cimmeria adds steps to. The byte layout follows the QA-build conventions
 //! documented in [`docs/engine/cooked-data-pak-format.md`] — same
 //! `<COOKED_MISSION>` root, same `<Steps>`/`<Objectives>` children, same
-//! attribute style. The new `<Steps>` block goes immediately before the
-//! closing `</COOKED_MISSION>` tag so existing entries' byte ranges stay
-//! intact for any downstream tooling that diffs by offset.
+//! attribute style. The new `<Steps>` block goes immediately after the
+//! closing `</Steps>` of the named anchor step (see `insert_after_step_id`
+//! on `MissionOverride`), since the client uses XML declaration order as
+//! the step index and a step appended past every other `</Steps>` reads
+//! as a multi-step skip on advance.
 
 /// One mission's override: which mission to patch, what `<Steps>` XML to
 /// inject, and which existing step the new block should sit *after* in the

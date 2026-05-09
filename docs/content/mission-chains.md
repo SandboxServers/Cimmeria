@@ -1,6 +1,6 @@
 # Mission Chains: Complete Inventory
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-05-09
 > **Scope**: All 1,040 missions in the Stargate Worlds server emulator
 > **Sources**: `db/resources.sql` (1,040 mission INSERTs), `python/cell/missions/` (20 script files), `python/cell/spaces/` (11 space scripts), `python/cell/MissionManager.py`
 

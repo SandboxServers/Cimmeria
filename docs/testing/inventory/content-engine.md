@@ -3,13 +3,13 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-05-05  
-> **Total tests**: 66  
+> **Total tests**: 64  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
 Data-driven content runtime: trigger/condition/action chains for missions, dialogs, sequences, and interactions. Replaces the per-script Python in the legacy server.
 
-## All tests (66)
+## All tests (64)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -74,7 +74,5 @@ Data-driven content runtime: trigger/condition/action chains for missions, dialo
 | [entity_death_by_tag](../../../crates/content-engine/src/triggers.rs#L483) | unit | Triggers | 2026-03-07 | Asserts on `trigger.matches(&event)` |  |
 | [effect_init_matches](../../../crates/content-engine/src/triggers.rs#L496) | unit | Triggers | 2026-03-07 | Asserts on `trigger.matches(&event)` |  |
 | [mission_completed_matches](../../../crates/content-engine/src/triggers.rs#L503) | unit | Triggers | 2026-03-07 | Asserts on `trigger.matches(&event)` |  |
-| [item_equipped_filters_by_item_id](../../../crates/content-engine/src/triggers.rs#L558) | unit | Triggers | 2026-05-09 | `OnItemEquipped { item_id: Some(55) }` matches only when the runtime event's `item_id` equals 55 — anchors the filter for chains keyed on a specific weapon (e.g., chain 1004 / pistol, chain 1066 / P90) |  |
-| [item_equipped_wildcard_matches_any](../../../crates/content-engine/src/triggers.rs#L574) | unit | Triggers | 2026-05-09 | `OnItemEquipped { item_id: None }` matches any equip event regardless of item — the wildcard escape hatch for item-agnostic chains |  |
 | [every_interact_tag_chain_has_set_interaction_type](../../../crates/content-engine/tests/interact_tag_linter.rs#L159) | integration | Tests / Interact Tag Linter | 2026-05-02 | Asserts on `seed_dir.exists()` |  |
 | [scan_chains_picks_up_basic_pattern](../../../crates/content-engine/tests/interact_tag_linter.rs#L212) | integration | Tests / Interact Tag Linter | 2026-05-02 | Asserts on `triggers.contains_key(&9999)` |  |

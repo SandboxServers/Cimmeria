@@ -2,8 +2,8 @@
 
 > **Type**: reference  
 > **Audience**: engineers  
-> **Last updated**: 2026-05-09  
-> **Total tests catalogued**: 1137  
+> **Last updated**: 2026-05-07  
+> **Total tests catalogued**: 1119  
 > **Companion docs**: [TESTING.md](../../../TESTING.md) (the playbook for *how to write* tests), [maintenance.md](maintenance.md), [review-report.md](review-report.md) (audit findings — owned by the testing-validation-engineer agent)
 
 Catalogue of every test in the workspace. The playbook for *how to write* tests is [TESTING.md](../../../TESTING.md); this directory is the reference complement — what tests already exist, where they live, and what each one asserts.
@@ -14,11 +14,11 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 
 | Crate | Tests | File |
 |---|---:|---|
-| `services` | 613 | [services.md](services.md) |
+| `services` | 597 | [services.md](services.md) |
 | `entity` | 151 | [entity.md](entity.md) |
 | `mercury` | 97 | [mercury.md](mercury.md) |
 | `game` | 70 | [game.md](game.md) |
-| `content-engine` | 66 | [content-engine.md](content-engine.md) |
+| `content-engine` | 64 | [content-engine.md](content-engine.md) |
 | `common` | 31 | [common.md](common.md) |
 | `commands` | 29 | [commands.md](commands.md) |
 | `launcher` | 22 | [launcher.md](launcher.md) |
@@ -28,16 +28,16 @@ Catalogue of every test in the workspace. The playbook for *how to write* tests 
 | `tauri-app` | 6 | [tauri-app.md](tauri-app.md) |
 | `defs` | 5 | [defs.md](defs.md) |
 | `server` | 2 | [server.md](server.md) |
-| **Total** | **1137** | |
+| **Total** | **1119** | |
 
 ### By kind
 
 | Kind | Tests |
 |---|---:|
-| unit | 954 |
-| wire-format | 47 |
+| unit | 947 |
+| wire-format | 46 |
 | live-DB | 108 |
-| chain-replay | 16 |
+| chain-replay | 6 |
 | smoke | 6 |
 | proptest | 4 |
 | integration | 2 |

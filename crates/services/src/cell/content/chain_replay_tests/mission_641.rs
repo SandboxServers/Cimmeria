@@ -136,9 +136,9 @@ async fn chain_1051_does_not_fire_when_mission_641_active() {
 /// that's deferred to chain 1066 after equip.
 ///
 /// Bug shape: auto-equipping to container 3 bypassed the bandolier ammo
-/// path (issues #211/#212). Step 80641 is a Cimmeria-introduced step
-/// shipped to the client via mission_overrides patch on `_641` in
-/// `CookedDataMissions.pak` and the per-key `InvalidKeys` channel.
+/// path. Step 80641 is a Cimmeria-introduced step shipped to the client
+/// via mission_overrides patch on `_641` in `CookedDataMissions.pak`
+/// and the per-key `InvalidKeys` channel.
 #[tokio::test]
 async fn chain_1055_grants_p90_to_backpack_and_advances_to_equip_step() {
     use cimmeria_content_engine::actions::Action;

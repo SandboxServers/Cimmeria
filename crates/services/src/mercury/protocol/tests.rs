@@ -3,7 +3,8 @@
 //! entity-method encoding boundaries.
 
 use super::super::{
-    write_wstring, BASEMSG_LOGGED_OFF, BASEMSG_RESOURCE_FRAGMENT, FRAG_FIRST_AND_LAST,
+    write_wstring, BASEMSG_LOGGED_OFF, BASEMSG_ON_VERSION_INFO, BASEMSG_RESOURCE_FRAGMENT,
+    FRAG_FIRST_AND_LAST,
 };
 use super::*;
 use cimmeria_mercury::encryption::MercuryEncryption;
@@ -156,18 +157,110 @@ fn version_info_produces_output() {
     assert!(!out.is_empty());
 }
 
+/// Decrypt + parse the onVersionInfo body and assert each field's bytes.
+/// Catches an encoder change that flips field order, drops the
+/// `InvalidKeys` count prefix, reorders/zeroes keys, or rewrites the
+/// `invalidate_all` byte — none of which a packet-size-only test sees.
 #[test]
-fn version_info_per_key_invalidation_round_trips_through_encoder() {
-    // Pin the call shape: invalid_keys is an `&[u32]` argument and the
-    // empty-vs-populated calls produce different output sizes. Catches
-    // a future signature change that drops the slice or makes it optional
-    // without surfacing as a compile error at all call sites.
-    let no_keys = build_version_info(&TEST_KEY, 5, &[], 3, 99, 0, false, &[], 1);
-    let two_keys = build_version_info(&TEST_KEY, 5, &[], 3, 99, 0, false, &[622u32, 641u32], 1);
-    assert!(
-        two_keys.len() > no_keys.len(),
-        "per-key payload must be wider"
+fn version_info_invalid_keys_payload_layout_is_byte_exact() {
+    let invalid_keys: [u32; 3] = [622, 641, 80622];
+    let category_id = 3u32;
+    let version = 33304u32;
+    let required_updates = invalid_keys.len() as u32;
+    let account_eid = 0xDEADBEEFu32;
+
+    let out = build_version_info(
+        &TEST_KEY,
+        5,
+        &[],
+        category_id,
+        version,
+        required_updates,
+        false,
+        &invalid_keys,
+        account_eid,
     );
+
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let plaintext = enc.decrypt(&out).expect("decrypt failed");
+
+    // Plaintext shape: [flags:u8][msg_id:u8][len:u16][payload...][footers...]
+    assert_eq!(plaintext[0], REPLY_FLAGS, "outer reply flags");
+    assert_eq!(
+        plaintext[1], BASEMSG_ON_VERSION_INFO,
+        "msg_id must be BASEMSG_ON_VERSION_INFO (0x80)",
+    );
+    let word_len = u16::from_le_bytes([plaintext[2], plaintext[3]]) as usize;
+
+    // Payload layout (per build_version_info):
+    //   account_entity_id u32 | category_id u32 | version u32 |
+    //   required_updates u32 | invalidate_all u8 |
+    //   invalid_keys ARRAY<u32> { count u32, entries... }
+    let p = &plaintext[4..4 + word_len];
+    let expected_payload_len = 4 + 4 + 4 + 4 + 1 + 4 + invalid_keys.len() * 4;
+    assert_eq!(
+        word_len, expected_payload_len,
+        "u16 length prefix must match payload size",
+    );
+
+    assert_eq!(
+        u32::from_le_bytes(p[0..4].try_into().unwrap()),
+        account_eid,
+        "account_entity_id LE u32",
+    );
+    assert_eq!(
+        u32::from_le_bytes(p[4..8].try_into().unwrap()),
+        category_id,
+        "category_id LE u32",
+    );
+    assert_eq!(
+        u32::from_le_bytes(p[8..12].try_into().unwrap()),
+        version,
+        "version LE u32",
+    );
+    assert_eq!(
+        u32::from_le_bytes(p[12..16].try_into().unwrap()),
+        required_updates,
+        "required_updates LE u32",
+    );
+    assert_eq!(p[16], 0, "invalidate_all byte must be 0 (false)");
+    assert_eq!(
+        u32::from_le_bytes(p[17..21].try_into().unwrap()),
+        invalid_keys.len() as u32,
+        "InvalidKeys ARRAY count must equal slice length",
+    );
+    // Keys appear in slice order (deterministic; pinned so a future
+    // .sort() or .iter().rev() doesn't slip in unnoticed).
+    for (i, &expected) in invalid_keys.iter().enumerate() {
+        let off = 21 + i * 4;
+        assert_eq!(
+            u32::from_le_bytes(p[off..off + 4].try_into().unwrap()),
+            expected,
+            "InvalidKeys[{i}] must equal {expected}",
+        );
+    }
+}
+
+/// `invalidate_all = true` + empty `invalid_keys` writes a 0-count
+/// trailing array — the legacy whole-cache nuke path. Pin that the byte
+/// after the flag is the count word, not stray data.
+#[test]
+fn version_info_invalidate_all_writes_zero_count_array() {
+    let out = build_version_info(&TEST_KEY, 5, &[], 7, 1, 23, true, &[], 1);
+    let enc = MercuryEncryption::from_session_key(TEST_KEY);
+    let plaintext = enc.decrypt(&out).expect("decrypt failed");
+
+    assert_eq!(plaintext[1], BASEMSG_ON_VERSION_INFO);
+    let word_len = u16::from_le_bytes([plaintext[2], plaintext[3]]) as usize;
+    let p = &plaintext[4..4 + word_len];
+
+    assert_eq!(p[16], 1, "invalidate_all byte must be 1 (true)");
+    assert_eq!(
+        u32::from_le_bytes(p[17..21].try_into().unwrap()),
+        0,
+        "InvalidKeys array count must be 0 when slice is empty",
+    );
+    assert_eq!(word_len, 21, "no per-key bytes after the count");
 }
 
 #[test]

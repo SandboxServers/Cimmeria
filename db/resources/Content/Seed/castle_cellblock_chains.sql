@@ -56,7 +56,7 @@ VALUES (1002, 'play_sequence', 10000, NULL, '{}', 0, 0);
 -- chain 1004, which fires when the player manually equips the pistol.
 -- Routing the pistol through a manual equip exercises the bandolier
 -- ammo / appearance / fire-animation paths that auto-equip-to-container-3
--- was bypassing (issues 211/212).
+-- was bypassing.
 --
 -- Step 80622 is a Cimmeria-introduced step. The client picks up the
 -- matching `<Steps StepID="80622">` row from a server-side override of

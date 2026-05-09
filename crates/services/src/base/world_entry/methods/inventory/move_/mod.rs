@@ -130,6 +130,14 @@ pub async fn handle_move_inventory_item(
         return;
     }
 
+    // The id we report on `InventoryItemMoveApplied`. Defaults to the source
+    // row's id (still valid for full moves and swaps, where the same row's
+    // container/slot is updated in place). The split branch overwrites this
+    // with the freshly INSERTed row's id, since for a split the conceptually
+    // "moved" instance is the new row in the target slot, not the decremented
+    // source stack.
+    let mut applied_item_id = item_id;
+
     // Read source row inside the tx with FOR UPDATE so concurrent moves observe
     // a consistent snapshot. Without this, the swap path could lose updates.
     let source = match sqlx::query_as::<_, InventoryInstanceRow>(
@@ -282,10 +290,15 @@ pub async fn handle_move_inventory_item(
             return;
         }
 
-        let insert = sqlx::query(
+        // RETURNING the new row's id so `applied_item_id` can describe the
+        // freshly-created instance rather than the source stack we just
+        // decremented — that's what `InventoryItemMoveApplied` consumers
+        // expect when they read "this is the moved item."
+        let inserted: Result<Option<(i32,)>, _> = sqlx::query_as(
             "INSERT INTO sgw_inventory \
              (character_id, type_id, stack_size, slot_id, container_id, bound, durability, charges) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+             RETURNING item_id",
         )
         .bind(player_id)
         .bind(source.type_id)
@@ -295,11 +308,12 @@ pub async fn handle_move_inventory_item(
         .bind(source.bound)
         .bind(source.durability)
         .bind(source.charges)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await;
 
-        match insert {
-            Ok(r) if r.rows_affected() == 1 => {
+        match inserted {
+            Ok(Some((new_id,))) => {
+                applied_item_id = new_id;
                 if let Err(e) = tx.commit().await {
                     tracing::error!(
                         player_id,
@@ -309,12 +323,12 @@ pub async fn handle_move_inventory_item(
                     return;
                 }
             }
-            Ok(_) => {
+            Ok(None) => {
                 let _ = tx.rollback().await;
                 tracing::warn!(
                     player_id,
                     item_id,
-                    "MoveInventoryItem: split insert affected 0 rows"
+                    "MoveInventoryItem: split insert returned no row"
                 );
                 return;
             }
@@ -515,7 +529,7 @@ pub async fn handle_move_inventory_item(
         let _ = cell_tx
             .send(BaseToCellMsg::InventoryItemMoveApplied {
                 entity_id,
-                item_id,
+                item_id: applied_item_id,
                 type_id: source.type_id,
                 source_container_id: source.container_id,
                 target_container_id,
