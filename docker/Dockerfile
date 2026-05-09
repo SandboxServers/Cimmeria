@@ -153,6 +153,13 @@ COPY --from=db-init --chown=postgres:postgres /var/lib/postgresql/data \
                                               /var/lib/postgresql/data
 COPY --from=db-init --chown=postgres:postgres /var/lib/postgresql/data \
                                               /var/lib/postgresql/initial-data
+# Postgres refuses to start unless the data directory is 0700 or 0750
+# (`FATAL: data directory ... has invalid permissions`). Cross-stage
+# COPY preserves ownership via --chown but not directory mode — initdb
+# originally produced 0700, but the COPY result lands at the runtime
+# stage's default. Re-assert 0700 here so the image is good out of the
+# box; the entrypoint also re-asserts at boot to cover bind-mount cases.
+RUN chmod 700 /var/lib/postgresql/data /var/lib/postgresql/initial-data
 
 # s6-rc service definitions.
 COPY docker/s6/postgres          /etc/s6-overlay/s6-rc.d/postgres

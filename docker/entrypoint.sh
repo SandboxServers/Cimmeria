@@ -22,8 +22,14 @@ if [ ! -s "${PGDATA}/PG_VERSION" ]; then
     fi
     cp -a "${FALLBACK}/." "${PGDATA}/"
     chown -R postgres:postgres "${PGDATA}"
-    chmod 700 "${PGDATA}"
 fi
+
+# Always re-assert pgdata mode = 0700. Postgres refuses to start
+# otherwise (it requires 0700 or 0750), and the directory mode can
+# drift on us — bind-mounted host directories arrive with the host's
+# umask, named volumes inherit the mountpoint's mode, and Docker's
+# cross-stage COPY doesn't always preserve directory mode.
+chmod 700 "${PGDATA}"
 
 # Hand control to s6-overlay v3, which brings up postgres and the
 # server in dependency order and reaps zombies.
