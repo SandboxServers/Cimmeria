@@ -116,31 +116,47 @@ jobs:
       - name: smoke-test the published image
         env:
           IMAGE: ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
+        # Note: NOT using `--rm`. If the container exits early `--rm`
+        # would remove it before we could pull logs.
         run: |
-          set -euo pipefail
+          set -uo pipefail
           docker pull "$IMAGE"
-          docker run --rm -d --name smoke \
+          docker run -d --name smoke \
             -p 13001:13001 \
             -p 32832:32832/udp \
             -p 50000:50000/udp \
             -p 8443:8443 \
             "$IMAGE"
-          # Postgres + auth listener + TCP probe — ~60 s for cold pgdata
-          # boot + service init.
+          # Postgres + auth listener + TCP probe — ~120 s budget for
+          # cold pgdata boot + s6 service init.
+          ok=0
           for i in $(seq 1 60); do
             if docker exec smoke pg_isready -h 127.0.0.1 -U w-testing -d sgw >/dev/null 2>&1 \
                && timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/13001" 2>/dev/null; then
               echo "smoke ok at iteration $i"
-              docker logs smoke || true
-              docker stop smoke
-              exit 0
+              ok=1
+              break
+            fi
+            if [ "$(docker inspect -f '{{.State.Status}}' smoke 2>/dev/null)" = "exited" ]; then
+              echo "::error::container exited before becoming ready"
+              break
             fi
             sleep 2
           done
-          echo "::error::smoke test never saw postgres + auth listener within 120s"
+
+          echo "::group::container state"
+          docker inspect -f 'Status: {{.State.Status}}  ExitCode: {{.State.ExitCode}}  Error: {{.State.Error}}' smoke || true
+          echo "::endgroup::"
+          echo "::group::container logs"
           docker logs smoke || true
-          docker stop smoke || true
-          exit 1
+          echo "::endgroup::"
+
+          docker rm -f smoke >/dev/null 2>&1 || true
+
+          if [ "$ok" -ne 1 ]; then
+              echo "::error::smoke test never saw postgres + auth listener within 120s"
+              exit 1
+          fi
 
       - name: create GitHub pre-release
         env:
