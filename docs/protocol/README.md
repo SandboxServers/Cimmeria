@@ -1,6 +1,6 @@
 # Protocol Documentation
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-05-09
 
 Wire formats, Mercury messaging, and client-server protocol documentation.
 
@@ -8,11 +8,13 @@ Wire formats, Mercury messaging, and client-server protocol documentation.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [message-catalog.md](message-catalog.md) | All 420 Event_NetOut/NetIn with handler addresses | HUB - initial |
+| [message-catalog.md](message-catalog.md) | All 420 Event_NetOut/NetIn with handler addresses; cooked-data wire path (`versionInfoRequest`, `onVersionInfo` with `InvalidKeys`, `resourceFragment`) | HUB - initial |
 | [mercury-wire-format.md](mercury-wire-format.md) | Mercury packet structure, reliability, channels | Stub |
 | [entity-property-sync.md](entity-property-sync.md) | Property flag-based synchronization protocol | Stub |
 | [login-handshake.md](login-handshake.md) | Auth flow: challenge, shard key, server select | Stub |
 | [position-updates.md](position-updates.md) | Entity movement and volatile property updates | Stub |
+
+See also: [../architecture/mission-pak-overrides.md](../architecture/mission-pak-overrides.md) — the cooked-data wire path is what powers Cimmeria's per-mission PAK overrides.
 
 ## Key References
 

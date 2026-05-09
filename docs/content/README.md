@@ -83,9 +83,11 @@ Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 M
 |----------|-------------|
 | [content-engine.md](content-engine.md) | **REFERENCE** — cradle-to-grave reference for the data-driven runtime. Architecture, vocabulary, schema, lifecycle, observability, performance. |
 | [extending-the-engine.md](extending-the-engine.md) | **HOW-TO** — step-by-step guide to adding a new trigger, condition, or action variant, with the `ChangeStat` walkthrough. |
+| [equip-from-inventory-pattern.md](equip-from-inventory-pattern.md) | **EXPLANATION** — when a quest grants a weapon, route it through a manual equip step instead of force-equipping into the bandolier. Mission 622 / 641 worked examples. |
 | [proposed-extensions.md](proposed-extensions.md) | **ROADMAP** — justified extensions tied to recent direction or shipped content. Tier 1: wire what's defined. Tier 2: small additions. Tier 3: larger shape changes. |
 | [serverEd-comparison.md](serverEd-comparison.md) | **EXPLANATION** — gap analysis vs. the legacy SGW visual-graph editor. What to resurrect, what to let die. |
 | [../architecture/data-driven-content-engine.md](../architecture/data-driven-content-engine.md) | **HISTORICAL** — original design doc. Read for the *why*. |
+| [../architecture/mission-pak-overrides.md](../architecture/mission-pak-overrides.md) | **EXPLANATION** — how new client-visible mission steps reach the client UI without reshipping `CookedDataMissions.pak`. |
 
 ## How to Read These Documents
 

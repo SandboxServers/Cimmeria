@@ -68,7 +68,19 @@ pub fn build_resource_fragment(
 /// Build and encrypt `onVersionInfo` (0x80) for a ClientCache method call.
 ///
 /// Tells the client about the current version of a resource category.
-/// If `invalidate_all` is true, the client will re-request all elements.
+///
+/// `invalidate_all = true` makes the client drop and re-request the entire
+/// category. `invalidate_all = false` + a non-empty `invalid_keys` slice
+/// scopes the invalidation to just those element IDs — the client drops
+/// only those entries from its local cache and waits for the server to
+/// push replacements; it does NOT issue `elementDataRequest` for the
+/// invalidated keys. The caller is responsible for sending one
+/// `resourceFragment` chain per invalidated key after this packet, with
+/// `required_updates` set to `invalid_keys.len()` so the client knows how
+/// many fragments to expect. The client side of this branch lives in
+/// `ServerConnection::onVersionInfo` and was confirmed to parse
+/// `InvalidKeys` as a `PropertyList<long>` and per-key invalidate via the
+/// cache element's destructor.
 pub fn build_version_info(
     key: &[u8; 32],
     seq_id: u32,
@@ -77,18 +89,22 @@ pub fn build_version_info(
     version: u32,
     required_updates: u32,
     invalidate_all: bool,
+    invalid_keys: &[u32],
     account_entity_id: u32,
 ) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
-    let mut payload = Vec::with_capacity(32);
+    let mut payload = Vec::with_capacity(32 + invalid_keys.len() * 4);
     payload.extend_from_slice(&account_entity_id.to_le_bytes());
     payload.extend_from_slice(&category_id.to_le_bytes());
     payload.extend_from_slice(&version.to_le_bytes());
     payload.extend_from_slice(&required_updates.to_le_bytes());
     payload.push(if invalidate_all { 1 } else { 0 });
-    // invalidKeys = empty ARRAY<u32>
-    payload.extend_from_slice(&0u32.to_le_bytes()); // count = 0
+    // invalidKeys = ARRAY<u32> { count, entries... }
+    payload.extend_from_slice(&(invalid_keys.len() as u32).to_le_bytes());
+    for &k in invalid_keys {
+        payload.extend_from_slice(&k.to_le_bytes());
+    }
 
     let mut body = Vec::with_capacity(4 + payload.len());
     body.push(BASEMSG_ON_VERSION_INFO);

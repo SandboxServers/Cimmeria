@@ -27,8 +27,6 @@ containing functions, and renames them with descriptive CME class/method names.
 """
 
 from ghidra.program.model.symbol import SourceType
-from ghidra.program.model.data import StringDataType
-from ghidra.program.util import DefinedDataIterator
 import re
 
 def is_default_name(func):
@@ -163,8 +161,12 @@ def main():
 
     string_refs = []  # list of (string_value, string_address)
 
-    # Use DefinedDataIterator to walk all defined strings
-    data_iter = DefinedDataIterator.definedStrings(currentProgram)
+    # Walk all defined data, filter for string-typed entries.
+    # `DefinedDataIterator.definedStrings(program)` was removed/renamed in
+    # Ghidra 12.0.4 — the Listing-level scan + dt-name filter that
+    # scripts 03/05 use is the API-stable replacement. `listing` was
+    # already obtained at the top of `main()` (line 140); reuse it.
+    data_iter = listing.getDefinedData(True)
     count = 0
     while data_iter.hasNext():
         if monitor.isCancelled():
@@ -172,6 +174,12 @@ def main():
             return
 
         data = data_iter.next()
+        dt = data.getDataType()
+        if dt is None:
+            continue
+        dt_name = dt.getName().lower()
+        if "string" not in dt_name and "unicode" not in dt_name:
+            continue
         count += 1
         if count % 5000 == 0:
             monitor.setMessage("Pass 1: Scanned %d strings..." % count)
@@ -396,8 +404,9 @@ def main():
         "DataModel", "ConfigManager", "ResourceManager",
     ]
 
-    # Search for each keyword in defined strings
-    data_iter2 = DefinedDataIterator.definedStrings(currentProgram)
+    # Search for each keyword in defined strings (Listing-level scan +
+    # dt-name filter — same pattern as Pass 1).
+    data_iter2 = listing.getDefinedData(True)
     keyword_hits = []  # (keyword, string_val, addr)
 
     count2 = 0
@@ -407,6 +416,12 @@ def main():
             return
 
         data = data_iter2.next()
+        dt = data.getDataType()
+        if dt is None:
+            continue
+        dt_name = dt.getName().lower()
+        if "string" not in dt_name and "unicode" not in dt_name:
+            continue
         count2 += 1
         if count2 % 5000 == 0:
             monitor.setMessage("Pass 3: Scanned %d strings..." % count2)

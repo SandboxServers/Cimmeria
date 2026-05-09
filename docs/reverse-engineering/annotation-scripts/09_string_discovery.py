@@ -29,7 +29,6 @@ index suffixes. Adds plate comments with the full original string for context.
 """
 
 from ghidra.program.model.symbol import SourceType
-from ghidra.program.util import DefinedDataIterator
 
 import re
 
@@ -186,7 +185,11 @@ def main():
 
     qualifying_strings = []  # (class_name, method_name, full_match, original_string, string_addr)
 
-    data_iter = DefinedDataIterator.definedStrings(currentProgram)
+    # `DefinedDataIterator.definedStrings(program)` was removed/renamed in
+    # Ghidra 12.0.4 — same Listing-level scan + dt-name filter that
+    # scripts 03/05 use is the API-stable replacement. `listing` was
+    # already obtained at the top of `main()` (line 155); reuse it.
+    data_iter = listing.getDefinedData(True)
 
     while data_iter.hasNext():
         if monitor.isCancelled():
@@ -194,6 +197,12 @@ def main():
             return
 
         data = data_iter.next()
+        dt = data.getDataType()
+        if dt is None:
+            continue
+        dt_name = dt.getName().lower()
+        if "string" not in dt_name and "unicode" not in dt_name:
+            continue
         total_strings_scanned += 1
 
         if total_strings_scanned % 5000 == 0:

@@ -5672,6 +5672,13 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2113, 622, false, 1, false, 'Search the nearby corpses to locate a weapon.', 0);
 
+-- Cimmeria-introduced step. The matching client-side row is injected into
+-- `_622` inside `CookedDataMissions.pak` at server startup by
+-- [`crates/services/src/base/mission_overrides.rs`] and shipped to the
+-- client via the per-key `InvalidKeys` channel of `onVersionInfo`.
+-- Display text + step/objective ids must agree with the override XML.
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (80622, 622, false, 1, false, 'Equip the pistol from your inventory.', 1);
+
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2148, 623, false, 2, true, 'Return to Beta Site and speak with Mimir near the Stargate.', 0);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2153, 624, false, 1, true, 'Restart the Radio Repeaters in the Perimeter One checkpoints.', 0);
@@ -5808,9 +5815,14 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2121, 641, false, 1, false, 'Prepare yourself for the escape.', 0);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (3563, 641, false, 1, false, 'Speak to Col. Marsh.', 1);
+-- Cimmeria-introduced step. The matching client-side row is injected into
+-- `_641` inside `CookedDataMissions.pak` at server startup by
+-- [`crates/services/src/base/mission_overrides.rs`].
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (80641, 641, false, 1, false, 'Equip the P90 from your inventory.', 1);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (3564, 641, false, 1, false, 'Use the Terminal to open the remaining Stasis Pods.', 2);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (3563, 641, false, 1, false, 'Speak to Col. Marsh.', 2);
+
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (3564, 641, false, 1, false, 'Use the Terminal to open the remaining Stasis Pods.', 3);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2126, 642, false, 1, false, 'Prepare yourself for the escape.', 0);
 

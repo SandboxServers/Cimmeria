@@ -437,6 +437,49 @@ pub async fn fire_item_use(
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
+/// Fire `OnItemEquipped` when an item lands in the bandolier (`container_id = 3`)
+/// from another container. Drives chains keyed on `item_equipped::<type_id>` —
+/// e.g., the mission 622 / 641 "equip the weapon you just picked up" steps.
+pub async fn fire_item_equipped(
+    entity_id: u32,
+    player_id: i32,
+    type_id: i32,
+    engine: &ChainEngine,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let mut ctx = ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
+    ctx.set_param("item_id".to_string(), serde_json::json!(type_id));
+
+    if let Some(entity) = space_mgr.get_entity(entity_id) {
+        populate_mission_context(entity, &mut ctx);
+        if let Some(archetype_id) = entity.archetype_id {
+            ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+        }
+    }
+
+    let event = TriggerEvent {
+        trigger_type: TriggerType::ItemEquipped,
+        source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+
+    let resolved = engine.resolve_event(&event, &ctx);
+    if !resolved.actions.is_empty() {
+        tracing::info!(
+            entity_id,
+            player_id,
+            type_id,
+            actions = resolved.actions.len(),
+            "fire_item_equipped: matched"
+        );
+    } else {
+        tracing::debug!(entity_id, type_id, "fire_item_equipped: no chains matched");
+    }
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
+}
+
 /// Fire the `teleport_in` event when a player arrives via a ring transporter.
 ///
 /// Chain 1044 (`teleport_in` event_key=`2`) hooks this to complete mission 640
@@ -683,5 +726,134 @@ mod tests {
 
         fire_player_loaded(1, 100, "Castle", &engine, &tx, &mut mgr).await;
         assert!(rx.try_recv().is_err());
+    }
+
+    /// `fire_item_equipped` with no chains registered must complete cleanly
+    /// and emit nothing — the bandolier-arrival path runs through this on
+    /// every successful manual move into container 3, even when no quest
+    /// is gating on the equip event.
+    #[tokio::test]
+    async fn fire_item_equipped_with_empty_engine_emits_nothing() {
+        let mut mgr = make_mgr_with_player_and_npc();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        fire_item_equipped(1, 100, 55, &engine, &tx, &mut mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "no chain registered for item_equipped(55) → no wire output",
+        );
+    }
+
+    /// `fire_item_equipped` resolves a registered `OnItemEquipped`
+    /// chain that filters on the matching item id and routes the
+    /// resolved actions through the executor. We use `IncrementCounter`
+    /// as the observable side-effect (entity.counters is the same map
+    /// the executor unit tests pin on; load-bearing path for kill-
+    /// counter missions and equip-counter quests alike).
+    #[tokio::test]
+    async fn fire_item_equipped_runs_chain_with_matching_item_id() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9001,
+            name: "test: equip pistol → bump counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnItemEquipped { item_id: Some(55) },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_pistol_equipped".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        fire_item_equipped(1, 100, 55, &engine, &tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert_eq!(
+            entity.counters.get("test_pistol_equipped"),
+            Some(&1),
+            "matched chain must execute IncrementCounter on the entity",
+        );
+    }
+
+    /// Wildcard `OnItemEquipped { item_id: None }` matches any equipped
+    /// type. Pin so a future loader change that auto-collapses
+    /// wildcards into typed filters surfaces here.
+    #[tokio::test]
+    async fn fire_item_equipped_wildcard_chain_matches_any_item() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9002,
+            name: "test: any equip → bump counter".to_string(),
+            enabled: true,
+            trigger: Trigger::OnItemEquipped { item_id: None },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_any_equip".to_string(),
+                amount: 5,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        fire_item_equipped(1, 100, 9999, &engine, &tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert_eq!(
+            entity.counters.get("test_any_equip"),
+            Some(&5),
+            "wildcard equip chain must match item_id=9999",
+        );
+    }
+
+    /// A typed-filter chain on `OnItemEquipped { item_id: Some(55) }`
+    /// must NOT fire on a different equipped type. Inverse of the
+    /// matching test — guards against the "typo'd integer collapses to
+    /// wildcard" bug shape CodeRabbit caught in the loader.
+    #[tokio::test]
+    async fn fire_item_equipped_typed_chain_does_not_fire_on_other_items() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = make_mgr_with_player_and_npc();
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9003,
+            name: "test: pistol-only".to_string(),
+            enabled: true,
+            trigger: Trigger::OnItemEquipped { item_id: Some(55) },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_pistol_only".to_string(),
+                amount: 100,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        // Fire with a different type id.
+        fire_item_equipped(1, 100, 21, &engine, &tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert!(
+            !entity.counters.contains_key("test_pistol_only"),
+            "pistol-only chain must reject equip(21); counter must remain unset, \
+             got {:?}",
+            entity.counters,
+        );
     }
 }

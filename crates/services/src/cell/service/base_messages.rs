@@ -376,16 +376,37 @@ pub(super) async fn handle_base_message(
             }
         }
 
-        // Bandolier state is re-synced via SyncBandolierItems; these handlers are
-        // logging-only — base owns the inventory mutation, cell only learns about it.
+        // Bandolier state is re-synced via SyncBandolierItems; this handler also
+        // fires the `OnItemEquipped` content event when an item lands in the
+        // bandolier from a non-bandolier container, so quest chains keyed on
+        // `item_equipped::<type_id>` can advance (mission 622 pistol, mission
+        // 641 P90).
         BaseToCellMsg::InventoryItemMoveApplied {
             entity_id,
             item_id,
+            type_id,
             source_container_id,
             target_container_id,
             swapped_item_id,
         } => {
-            tracing::debug!(entity_id, item_id, source = source_container_id, target = target_container_id, swapped_item_id = ?swapped_item_id, "Item moved in inventory");
+            tracing::debug!(entity_id, item_id, type_id, source = source_container_id, target = target_container_id, swapped_item_id = ?swapped_item_id, "Item moved in inventory");
+
+            const INV_BANDOLIER: i32 = 3;
+            if target_container_id == INV_BANDOLIER && source_container_id != INV_BANDOLIER {
+                let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+                    Some(pid) => pid,
+                    None => {
+                        tracing::warn!(
+                            entity_id,
+                            type_id,
+                            "InventoryItemMoveApplied: entity has no player_id — equip event dropped"
+                        );
+                        return;
+                    }
+                };
+                content::fire_item_equipped(entity_id, player_id, type_id, engine, tx, space_mgr)
+                    .await;
+            }
         }
 
         BaseToCellMsg::InventoryItemRemoved {
@@ -556,6 +577,192 @@ mod tests {
         assert_eq!(entity.position.y, 20.0);
         assert_eq!(entity.position.z, 30.0);
         assert_eq!(entity.velocity, [1.0, 2.0, 3.0]);
+    }
+
+    /// `InventoryItemMoveApplied` with target=bandolier (3) and source≠3
+    /// fires the `OnItemEquipped` content event. Pin the dispatch path
+    /// end-to-end by registering a chain that reacts with
+    /// `IncrementCounter` and asserting the entity's counter moved.
+    #[tokio::test]
+    async fn item_move_applied_into_bandolier_fires_equip_event() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = SpaceManager::new(1);
+        mgr.parse_spaces_xml(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+        }
+
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9100,
+            name: "test: bandolier-equip → bump".to_string(),
+            enabled: true,
+            trigger: Trigger::OnItemEquipped { item_id: Some(55) },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_bandolier_equip".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        handle_base_message(
+            BaseToCellMsg::InventoryItemMoveApplied {
+                entity_id: 1,
+                item_id: 0xABCD,
+                type_id: 55,
+                source_container_id: 1, // backpack
+                target_container_id: 3, // bandolier
+                swapped_item_id: None,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let entity = mgr.get_entity(1).expect("entity must still exist");
+        assert_eq!(
+            entity.counters.get("test_bandolier_equip"),
+            Some(&1),
+            "move into bandolier (target=3, source≠3) must fire OnItemEquipped",
+        );
+    }
+
+    /// A move WITHIN the bandolier (source=3, target=3 — the player
+    /// reordering their bandolier slots) must NOT fire `OnItemEquipped`.
+    /// Without this guard, every drag between bandolier slots would
+    /// re-fire equip chains and re-grant whatever they grant.
+    #[tokio::test]
+    async fn item_move_within_bandolier_does_not_fire_equip_event() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = SpaceManager::new(1);
+        mgr.parse_spaces_xml(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+        }
+
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9101,
+            name: "test: any equip → bump".to_string(),
+            enabled: true,
+            trigger: Trigger::OnItemEquipped { item_id: None },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_within_bandolier".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        handle_base_message(
+            BaseToCellMsg::InventoryItemMoveApplied {
+                entity_id: 1,
+                item_id: 0xABCD,
+                type_id: 55,
+                source_container_id: 3, // bandolier → bandolier
+                target_container_id: 3,
+                swapped_item_id: None,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let entity = mgr.get_entity(1).expect("entity must still exist");
+        assert!(
+            !entity.counters.contains_key("test_within_bandolier"),
+            "bandolier-internal move must not fire OnItemEquipped; got {:?}",
+            entity.counters,
+        );
+    }
+
+    /// A move OUT of the bandolier (source=3, target=1) must not fire
+    /// `OnItemEquipped` either — that's an unequip, not an equip.
+    #[tokio::test]
+    async fn item_move_out_of_bandolier_does_not_fire_equip_event() {
+        use cimmeria_content_engine::actions::Action;
+        use cimmeria_content_engine::chain::Chain;
+        use cimmeria_content_engine::triggers::Trigger;
+
+        let mut mgr = SpaceManager::new(1);
+        mgr.parse_spaces_xml(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+        }
+
+        let mut engine = ChainEngine::new();
+        engine.register_chain(Chain {
+            id: 9102,
+            name: "test: any equip → bump".to_string(),
+            enabled: true,
+            trigger: Trigger::OnItemEquipped { item_id: None },
+            conditions: vec![],
+            actions: vec![Action::IncrementCounter {
+                counter_name: "test_unequip_path".to_string(),
+                amount: 1,
+            }],
+            priority: 0,
+        });
+
+        let (tx, _rx) = mpsc::channel(16);
+        handle_base_message(
+            BaseToCellMsg::InventoryItemMoveApplied {
+                entity_id: 1,
+                item_id: 0xABCD,
+                type_id: 55,
+                source_container_id: 3, // bandolier → backpack
+                target_container_id: 1,
+                swapped_item_id: None,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let entity = mgr.get_entity(1).expect("entity must still exist");
+        assert!(
+            !entity.counters.contains_key("test_unequip_path"),
+            "unequip (source=3, target=1) must not fire OnItemEquipped",
+        );
     }
 
     #[tokio::test]

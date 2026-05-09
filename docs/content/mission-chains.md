@@ -1,6 +1,6 @@
 # Mission Chains: Complete Inventory
 
-> **Last updated**: 2026-03-01
+> **Last updated**: 2026-05-09
 > **Scope**: All 1,040 missions in the Stargate Worlds server emulator
 > **Sources**: `db/resources.sql` (1,040 mission INSERTs), `python/cell/missions/` (20 script files), `python/cell/spaces/` (11 space scripts), `python/cell/MissionManager.py`
 
@@ -130,6 +130,17 @@ These 5 missions run in parallel with the main chain after the Mess Hall. All ar
 **Dialog IDs**: 3995 (trigger), 2982 (displayed by space script)
 
 **Sequences**: 10000
+
+**Live data-driven shape (chains 1003 + 1004)** [CONFIRMED]
+
+The Cimmeria runtime no longer force-equips the pistol; it routes the grant through the player's manual equip path to keep the bandolier ammo / fire-animation state consistent. See [docs/content/equip-from-inventory-pattern.md](equip-from-inventory-pattern.md) for the rationale and [docs/architecture/mission-pak-overrides.md](../architecture/mission-pak-overrides.md) for how the new step reaches the client UI.
+
+| Chain | Trigger | Condition | Actions |
+|---|---|---|---|
+| 1003 | `dialog_open('3995')` (Frost body) | `step_status(622, 2113) = 'active'` | Grant pistol (item 55) → backpack (container 1); grant Frost's letter (item 3730) → mission inventory; `advance_step(622, 80622)` |
+| 1004 | `item_equipped('55')` | `step_status(622, 80622) = 'active'` | `play_sequence(10000)` (open stasis door); `complete_mission(622)` |
+
+Step 80622 ("Equip the pistol from your inventory.") is **not** in the canonical PAK. It's added by `MissionOverride { mission_id: 622, insert_after_step_id: 2113 }` in `crates/services/src/base/mission_overrides.rs:74-90`, served to the client via the `versionInfoRequest` / `onVersionInfo` (`InvalidKeys`) / `resourceFragment` handshake. Server-side seed rows live in `db/resources/Missions/Seed/mission_steps.sql` (step 80622) and `mission_objectives.sql` (objective 90622). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql:50-105`. Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_622.rs` (4 chain-replay tests).
 
 **Link to next**: Mission 622 does NOT explicitly call `missions.accept(638)`. The link is handled by the space script -- when the player enters `Castle_Cellblock.Region2`, mission 638 is accepted if not already active. [CONFIRMED -- `Castle_CellBlock.py` line 338-348]
 
@@ -377,6 +388,17 @@ self.n154_var_Player.missions.accept(641)
 **Dialog IDs**: 5023 (Jaffa), 3999 (Human), 3998 (completion)
 
 **Minigames**: Livewire (terminal hack)
+
+**Live data-driven shape (chains 1055 + 1066)** [CONFIRMED]
+
+Same equip-from-inventory shape as mission 622, but the equip step is an **intermediary** rather than the terminal completion: after equipping the P90 the chain advances to step 3563 ("Speak to Col. Marsh") and the existing flow takes over. The XML insertion point is load-bearing — see [the XML-index gotcha](../architecture/mission-pak-overrides.md#the-xml-index-gotcha) for what happens if the new step lands at the tail of the XML stream.
+
+| Chain | Trigger | Condition | Actions |
+|---|---|---|---|
+| 1055 | `interact_tag('Preparation_SMG1A')` | `step_status(641, 2121) = 'active'` | Grant P90 (item 21) → backpack (container 1); clear locker highlight; `advance_step(641, 80641)` |
+| 1066 | `item_equipped('21')` | `step_status(641, 80641) = 'active'` | `advance_step(641, 3563)` (talk to Marsh); re-set Marsh's mission-available marker |
+
+Step 80641 ("Equip the P90 from your inventory.") is added by `MissionOverride { mission_id: 641, insert_after_step_id: 2121 }` in `crates/services/src/base/mission_overrides.rs:91-109`. Server-side seed rows: `mission_steps.sql` (step 80641, with index reordering for the existing 3563/3564 to keep XML order in sync) and `mission_objectives.sql` (objective 90641). Chain seed: `db/resources/Content/Seed/castle_cellblock_chains.sql:560-615`. Regression tests: `crates/services/src/cell/content/chain_replay_tests/mission_641.rs` (4 chain-replay tests covering 1055 / 1066, plus chain 1051 acceptance).
 
 **Link to next**: Explicitly calls `missions.complete(641)` and `missions.accept(680)` on Livewire victory. [CONFIRMED]
 

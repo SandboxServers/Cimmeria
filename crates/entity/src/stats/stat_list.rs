@@ -330,7 +330,17 @@ impl StatList {
     }
 
     fn serialize_entries(&self, entries: impl Iterator<Item = (i32, i32, i32, i32)>) -> Vec<u8> {
-        let entries: Vec<_> = entries.collect();
+        // Sort by stat_id so the wire output is reproducible across
+        // processes. The underlying `stats` storage is `HashMap<i32, _>`,
+        // which has per-process random iteration order, and earlier
+        // wire-format tests that byte-window-search through the
+        // serialized payload were silently flaky across nextest runs
+        // (each test in its own process → different RandomState seed →
+        // different stat order → different byte windows). The wire
+        // protocol allows any order, but determinism is cheap (n=80
+        // stats) and avoids that whole class of test flake.
+        let mut entries: Vec<_> = entries.collect();
+        entries.sort_by_key(|(id, _, _, _)| *id);
         let mut buf = Vec::with_capacity(4 + entries.len() * 16);
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (id, min, cur, max) in entries {

@@ -6258,6 +6258,14 @@ INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (2452, 2113, false, 1, false, false, false, ' ');
 
+-- Cimmeria-introduced objective for step 80622 (equip pistol). The matching
+-- client-side row is in the mission_overrides XML for mission 622.
+-- display_log_text is a single space to match the original game pattern —
+-- the player-visible string is the step's display text; the objective row
+-- is the in-step "checkbox" line and is intentionally blank. See
+-- objectives 3238/2452 on step 2113 for the canonical shape.
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (90622, 80622, false, 1, false, false, false, ' ');
+
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (2486, 2148, false, 2, true, false, false, ' ');
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (2491, 2153, false, 1, true, false, false, 'Operate the Repeater on Platform 1A');
@@ -6428,6 +6436,11 @@ INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4116, 2121, false, 1, false, true, true, ' ');
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (2464, 2121, false, 1, false, false, false, 'Investigate the contents of the Secure Locker.');
+
+-- Cimmeria-introduced objective for step 80641 (equip P90). The matching
+-- client-side row is in the mission_overrides XML for mission 641.
+-- display_log_text is a single space — see objective 90622 above for why.
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (90641, 80641, false, 1, false, false, false, ' ');
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4117, 3563, false, 1, false, false, false, ' ');
 
