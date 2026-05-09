@@ -22,4 +22,8 @@ done
 # The server resolves its data/* paths relative to CWD, so we must `cd`
 # into /opt/cimmeria where data/cache/*.pak and data/spaces/*.nav live.
 cd /opt/cimmeria
-exec /opt/cimmeria/bin/cimmeria-server
+# Drop privileges. Postgres runs as the `postgres` system user; the
+# server runs as the dedicated `cimmeria` user (UID/GID 1001) created
+# in the runtime stage of the Dockerfile. There's no reason for an
+# internet-facing process to keep root, even inside a container.
+exec s6-setuidgid cimmeria /opt/cimmeria/bin/cimmeria-server

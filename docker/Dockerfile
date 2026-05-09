@@ -12,12 +12,23 @@
 ARG POSTGRES_IMAGE=postgres:17.9-bookworm
 ARG RUST_IMAGE=rust:1-bookworm
 ARG RECAST_VERSION=1.6.0
+# SHA256 of github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip.
+# Verified at build time; bumping RECAST_VERSION requires bumping this too
+# (the build will fail loudly with a checksum mismatch if you forget).
+ARG RECAST_SHA256=8b50c62177249554b226514b307e6c529934a62b3926822777bf6abb8906a155
 ARG S6_OVERLAY_VERSION=3.2.0.2
+# SHA256s from the upstream `*.sha256` release assets. Same bump-together
+# discipline as RECAST_SHA256 above. amd64 + arm64 are both checked so a
+# future multi-arch build doesn't silently skip verification on one side.
+ARG S6_OVERLAY_NOARCH_SHA256=6dbcde158a3e78b9bb141d7bcb5ccb421e563523babbe2c64470e76f4fd02dae
+ARG S6_OVERLAY_AMD64_SHA256=59289456ab1761e277bd456a95e737c06b03ede99158beb24f12b165a904f478
+ARG S6_OVERLAY_ARM64_SHA256=8b22a2eaca4bf0b27a43d36e65c89d2701738f628d1abd0cea5569619f66f785
 
 # ─── Stage 1: builder ────────────────────────────────────────────
 FROM ${RUST_IMAGE} AS builder
 
 ARG RECAST_VERSION
+ARG RECAST_SHA256
 
 # Native deps the workspace needs at link/build time:
 #   clang        — used by cc-rs when compiling Detour C++ sources.
@@ -43,6 +54,7 @@ WORKDIR /build
 RUN mkdir -p external \
     && curl -sL --retry 3 -o /tmp/recast.zip \
         "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip" \
+    && echo "${RECAST_SHA256}  /tmp/recast.zip" | sha256sum -c - \
     && unzip -q /tmp/recast.zip -d /tmp/recast_extract \
     && mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast \
     && rm -rf /tmp/recast.zip /tmp/recast_extract \
@@ -109,6 +121,9 @@ RUN set -eux; \
 FROM ${POSTGRES_IMAGE} AS runtime
 
 ARG S6_OVERLAY_VERSION
+ARG S6_OVERLAY_NOARCH_SHA256
+ARG S6_OVERLAY_AMD64_SHA256
+ARG S6_OVERLAY_ARM64_SHA256
 
 LABEL org.opencontainers.image.title="cimmeria-server" \
       org.opencontainers.image.description="Self-contained Cimmeria (Stargate Worlds emulator) server with bundled Postgres + game data." \
@@ -125,26 +140,46 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install s6-overlay v3 — handles signals, zombie reaping, and the
-# longrun service definitions under /etc/s6-overlay/s6-rc.d.
+# longrun service definitions under /etc/s6-overlay/s6-rc.d. Each
+# tarball is downloaded to disk, sha256-verified against the pinned
+# digest, and only then extracted; the previous `curl | tar` pipe had
+# no integrity check.
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-        amd64) s6_arch=x86_64 ;; \
-        arm64) s6_arch=aarch64 ;; \
+        amd64) s6_arch=x86_64; arch_sha="${S6_OVERLAY_AMD64_SHA256}" ;; \
+        arm64) s6_arch=aarch64; arch_sha="${S6_OVERLAY_ARM64_SHA256}" ;; \
         *) echo "Unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
     curl -sL --retry 3 \
-        "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
-        | tar -C / -Jxpf -; \
+        -o /tmp/s6-noarch.tar.xz \
+        "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz"; \
+    echo "${S6_OVERLAY_NOARCH_SHA256}  /tmp/s6-noarch.tar.xz" | sha256sum -c -; \
+    tar -C / -Jxpf /tmp/s6-noarch.tar.xz; \
     curl -sL --retry 3 \
-        "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${s6_arch}.tar.xz" \
-        | tar -C / -Jxpf -
+        -o /tmp/s6-arch.tar.xz \
+        "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${s6_arch}.tar.xz"; \
+    echo "${arch_sha}  /tmp/s6-arch.tar.xz" | sha256sum -c -; \
+    tar -C / -Jxpf /tmp/s6-arch.tar.xz; \
+    rm -f /tmp/s6-noarch.tar.xz /tmp/s6-arch.tar.xz
+
+# Dedicated unprivileged user the server runs as. Postgres has its own
+# `postgres` user from the base image; the server should not share it
+# (different blast radius, different writable surface). Fixed UID/GID
+# so volume permissions are predictable across image rebuilds.
+RUN groupadd --system --gid 1001 cimmeria \
+ && useradd --system --uid 1001 --gid 1001 \
+            --home-dir /opt/cimmeria --shell /usr/sbin/nologin cimmeria
 
 # Layout: binary, cooked data, baked pgdata + fallback copy.
 RUN mkdir -p /opt/cimmeria/bin /opt/cimmeria/data /var/log/cimmeria
-COPY --from=builder /tmp/cimmeria-server /opt/cimmeria/bin/cimmeria-server
-COPY data/cache  /opt/cimmeria/data/cache
-COPY data/spaces /opt/cimmeria/data/spaces
+COPY --from=builder --chown=cimmeria:cimmeria /tmp/cimmeria-server /opt/cimmeria/bin/cimmeria-server
+COPY --chown=cimmeria:cimmeria data/cache  /opt/cimmeria/data/cache
+COPY --chown=cimmeria:cimmeria data/spaces /opt/cimmeria/data/spaces
+# The server creates `logs/` relative to its CWD (/opt/cimmeria) at
+# startup; /var/log/cimmeria is reserved for future file-logging when
+# we wire it up. Both need to be writable as the cimmeria user.
+RUN chown -R cimmeria:cimmeria /opt/cimmeria /var/log/cimmeria
 
 # Pre-loaded pgdata in the canonical location, plus an immutable fallback
 # that entrypoint.sh restores into bind-mounted empty volumes (Docker
