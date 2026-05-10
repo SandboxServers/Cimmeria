@@ -112,6 +112,27 @@ pub const MISSION_OVERRIDES: &[MissionOverride] = &[
              </Objectives>\
              </Steps>",
     },
+    MissionOverride {
+        mission_id: 688,
+        // Insert immediately after step 2356 ("Secure the Castle's main
+        // armory for Op-CORE."). Splits mission 688 into two phases so
+        // chain 1107 can advance from 2356 → 80688 on terminal-use
+        // (rather than completing obj 2734 directly, which would trip
+        // the cell::missions::complete_objective auto-complete and end
+        // the mission before chain 1109 ever fires on the ring switch).
+        // Step 2356 has only one required objective (2734); without a
+        // second step, the mission has nowhere to go after that
+        // objective is marked complete.
+        insert_after_step_id: 2356,
+        injected_steps_xml:
+            "<Steps StepEnabled=\"false\" StepID=\"80688\" AwardXP=\"false\" Difficulty=\"1\">\
+             <StepDisplayLogText>Use the ring transport to escape.</StepDisplayLogText>\
+             <Objectives IsOptional=\"false\" ObjectiveID=\"90688\" AwardXP=\"false\" \
+             IsHidden=\"false\" IsEnabled=\"false\" Difficulty=\"1\">\
+             <DisplayLogText> </DisplayLogText>\
+             </Objectives>\
+             </Steps>",
+    },
 ];
 
 /// In-place patch of `<StepDisplayLogText>` on an already-shipped step in

@@ -1395,31 +1395,40 @@ VALUES (1104, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
 -- ============================================================
 -- MISSION 688 — Secure the Armory
 --
--- Sequential follow-up to 687 (Aftermath). One step (2356) with two
--- objectives:
---   2734 (required) — "Use the terminal to open the armory doors."
---                     Right-click `Cellblock_TerminalX` (spawn 34, the
---                     dedicated armory terminal — distinct from the
---                     Preparation_Terminal used in mission 641).
---   4647 (optional) — "Eliminate the NID guards." Single guard tagged
---                     `Cellblock_ArmoryGuard1` (spawn 27, re-tagged from
---                     previously-untagged in this PR; only y=24-floor
---                     untagged NID Guard left after Aftermath consumed
---                     spawns 25/26/36 for `Barracks_Guard1/2/3`).
---                     Counter `armory_kills` is cosmetic — the obj is
---                     `is_optional=true`, so the kill doesn't gate
---                     anything; we still increment so the chain replay
---                     pins the dispatch path for content authors.
+-- Sequential follow-up to 687 (Aftermath). Two steps:
+--   2356 (canonical) — "Secure the Castle's main armory for Op-CORE."
+--                      Pre-terminal: chain 1106 highlights
+--                      `Cellblock_TerminalX` (spawn 34, the dedicated
+--                      armory terminal — distinct from the
+--                      Preparation_Terminal used in mission 641). Has
+--                      one required objective (2734 "Use the terminal
+--                      to open the armory doors") and one optional
+--                      (4647 "Eliminate the NID guards"). On terminal
+--                      interact, chain 1107 advances to step 80688.
+--   80688 (Cimmeria) — "Use the ring transport to escape." Inserted via
+--                      MissionOverride (mirrors PR #250's pattern for
+--                      missions 622/641). Without this second step,
+--                      chain 1107's `complete_objective 688/2734` would
+--                      auto-complete the mission via
+--                      `cell::missions::complete_objective`'s
+--                      all-required-done check (only one required obj),
+--                      which kills chain 1109's step gate before the
+--                      player can use the ring switch.
+--
+-- The optional objective (4647) is paired with `Cellblock_ArmoryGuard1`
+-- (spawn 27, re-tagged from previously-untagged; only y=24-floor
+-- untagged NID Guard left after Aftermath consumed spawns 25/26/36 for
+-- `Barracks_Guard1/2/3`). Counter `armory_kills` is cosmetic — the
+-- objective is `is_optional=true` so the kill doesn't gate progression.
 --
 -- The mission climax is interacting with `Cellblock_ArmoryRingSwitch`
 -- (spawn 79, re-tagged from `Cellblock_FakeRingSwitch`). Chain 1109
 -- both completes the mission and triggers the new region 33 ring
--- transport, which currently rejects on cross-world (issue #241
--- Phase A is the follow-up that fills the `TeleportCrossWorld` arm).
--- The runtime mission gate on `ring_transport_regions.required_mission_id=688`
--- (region 33) is belt-and-suspenders for direct method-call paths;
--- the chain gate (chains 1109's `objective_status` condition) is the
--- primary check on the happy path.
+-- transport. The runtime mission gate on
+-- `ring_transport_regions.required_mission_id=688` (region 33) is
+-- belt-and-suspenders for direct method-call paths; the chain gate
+-- (chain 1109's `step_status 688/80688` condition) is the primary
+-- check on the happy path.
 --
 -- Chain ID range: 1105-1111.
 -- ============================================================
@@ -1451,26 +1460,25 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1106, 'set_interaction_type', NULL, 'Cellblock_TerminalX',
         '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);
 
--- Chain 1107: interact with terminal while step 2356 active and obj 2734
--- still active → complete obj 2734, clear terminal highlight, and
--- highlight `Cellblock_ArmoryRingSwitch`. The ring's mission gate
--- (`required_mission_id=688`) still blocks direct interaction until
--- mission 688 completes — the highlight is just a hint that the next
--- objective is to use the ring.
+-- Chain 1107: interact with terminal while step 2356 active → advance
+-- to step 80688, clear terminal highlight, and highlight
+-- `Cellblock_ArmoryRingSwitch`. `advance_step` internally completes
+-- step 2356's active objectives (including obj 2734) without going
+-- through the public `complete_objective` helper, so the
+-- all-required-done auto-complete check isn't triggered and mission
+-- 688 stays MISSION_ACTIVE until chain 1109 fires.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1107, '688 - Interact armory terminal: complete obj 2734, highlight ring', 'mission', 688, true, 0);
+VALUES (1107, '688 - Interact armory terminal: advance to step 80688, swap highlights', 'mission', 688, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1107, 'interact_tag', 'Cellblock_TerminalX', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES
-  (1107, 'step_status',      688, '2356', 'eq', 'active', 0),
-  (1107, 'objective_status', 688, '2734', 'eq', 'active', 1);
+VALUES (1107, 'step_status', 688, '2356', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1107, 'complete_objective',   688,  '2734', '{}', 0, 0),
+  (1107, 'advance_step',         688,  '80688', '{}', 0, 0),
   (1107, 'set_interaction_type', NULL, 'Cellblock_TerminalX',
    '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 1),
   (1107, 'set_interaction_type', NULL, 'Cellblock_ArmoryRingSwitch',
@@ -1498,31 +1506,23 @@ VALUES (1108, 'increment_counter', NULL, 'armory_kills', '{"amount": 1}', 0, 0);
 INSERT INTO content_counters (chain_id, counter_name, target_value, reset_on)
 VALUES (1108, 'armory_kills', 1, 'mission_complete');
 
--- Chain 1109: interact with ring switch while step 2356 active and
--- obj 2734 already complete → complete mission 688, clear ring
--- highlight, then `trigger_transporter` for region 33. Action ordering
--- matters: `complete_mission` (sort_order 0) flips
--- `MissionInstance::status` to MISSION_COMPLETED in memory before
--- `trigger_transporter` (sort_order 2) calls `handle_interact`, which
--- reads the runtime mission gate (`required_mission_id=688`) and now
--- sees `completed`. Without that ordering the runtime would suppress
--- the destination list on the very interaction that completes the
--- mission.
---
--- Cross-world transport (Cellblock → Castle) is rejected at the
--- runtime level until issue #241 Phase A lands; mission 688 still
--- marks complete on this chain so progression isn't blocked by the
--- pending transport work.
+-- Chain 1109: interact with ring switch while step 80688 active →
+-- complete mission 688, clear ring highlight, then
+-- `trigger_transporter` for region 33. Action ordering matters:
+-- `complete_mission` (sort_order 0) flips `MissionInstance::status` to
+-- MISSION_COMPLETED in memory before `trigger_transporter`
+-- (sort_order 2) calls `handle_interact`, which reads the runtime
+-- mission gate (`required_mission_id=688`) and now sees `completed`.
+-- Without that ordering the runtime would suppress the destination
+-- list on the very interaction that completes the mission.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1109, '688 - Interact armory ring (obj 2734 done): complete mission, trigger transporter', 'mission', 688, true, 0);
+VALUES (1109, '688 - Interact armory ring (step 80688): complete mission, trigger transporter', 'mission', 688, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1109, 'interact_tag', 'Cellblock_ArmoryRingSwitch', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES
-  (1109, 'step_status',      688, '2356', 'eq', 'active',    0),
-  (1109, 'objective_status', 688, '2734', 'eq', 'completed', 1);
+VALUES (1109, 'step_status', 688, '80688', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -1531,38 +1531,34 @@ VALUES
    '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 1),
   (1109, 'trigger_transporter', NULL, NULL, '{"regionId": 33}', 0, 2);
 
--- Chain 1110: player_loaded Castle_CellBlock + step 2356 active +
--- obj 2734 still active → restore terminal highlight on login.
--- interaction_type flags don't persist across server restarts (same
--- restart-resilience pattern as chains 1045/1046/1062/1064/1065/1104).
+-- Chain 1110: player_loaded Castle_CellBlock + step 2356 active →
+-- restore terminal highlight on login. interaction_type flags don't
+-- persist across server restarts (same restart-resilience pattern as
+-- chains 1045/1046/1062/1064/1065/1104).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1110, '688 - Restore terminal highlight on login (obj 2734 active)', 'mission', 688, true, 0);
+VALUES (1110, '688 - Restore terminal highlight on login (step 2356 active)', 'mission', 688, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1110, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES
-  (1110, 'step_status',      688, '2356', 'eq', 'active', 0),
-  (1110, 'objective_status', 688, '2734', 'eq', 'active', 1);
+VALUES (1110, 'step_status', 688, '2356', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1110, 'set_interaction_type', NULL, 'Cellblock_TerminalX',
         '{"op": "|", "mask": "INT_MissionWorldObject"}', 0, 0);
 
--- Chain 1111: player_loaded Castle_CellBlock + step 2356 active +
--- obj 2734 already complete → restore ring switch highlight on login.
--- Same restart-resilience rationale as chain 1110.
+-- Chain 1111: player_loaded Castle_CellBlock + step 80688 active →
+-- restore ring switch highlight on login. Same restart-resilience
+-- rationale as chain 1110.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1111, '688 - Restore ring switch highlight on login (obj 2734 done)', 'mission', 688, true, 0);
+VALUES (1111, '688 - Restore ring switch highlight on login (step 80688 active)', 'mission', 688, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1111, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES
-  (1111, 'step_status',      688, '2356', 'eq', 'active',    0),
-  (1111, 'objective_status', 688, '2734', 'eq', 'completed', 1);
+VALUES (1111, 'step_status', 688, '80688', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1111, 'set_interaction_type', NULL, 'Cellblock_ArmoryRingSwitch',

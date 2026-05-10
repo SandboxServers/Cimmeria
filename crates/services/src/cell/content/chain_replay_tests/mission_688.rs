@@ -112,13 +112,14 @@ async fn chain_1106_highlights_armory_terminal_on_688_accept() {
 }
 
 /// Chain 1107: interacting with the armory terminal while step 2356 is
-/// active and obj 2734 is still active must complete obj 2734, clear the
-/// terminal highlight, and highlight the ring switch. The
-/// `objective_status` condition relies on the `mission_688_obj_2734_status`
-/// context population added in `populate_mission_context` — without that
-/// fix this chain would never fire.
+/// active must advance the mission to step 80688, clear the terminal
+/// highlight, and highlight the ring switch. Using `advance_step`
+/// instead of `complete_objective` is load-bearing: completing 2734
+/// directly would trip `cell::missions::complete_objective`'s
+/// all-required-done auto-complete (only one required obj on step 2356)
+/// and end the mission before chain 1109 ever fires on the ring switch.
 #[tokio::test]
-async fn chain_1107_completes_obj_2734_and_swaps_highlights() {
+async fn chain_1107_advances_to_step_80688_and_swaps_highlights() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1107)
         .await
@@ -137,10 +138,6 @@ async fn chain_1107_completes_obj_2734_and_swaps_highlights() {
         "mission_688_step_2356_status".to_string(),
         serde_json::json!("active"),
     );
-    ctx.set_param(
-        "mission_688_obj_2734_status".to_string(),
-        serde_json::json!("active"),
-    );
 
     let event = TriggerEvent {
         trigger_type: TriggerType::InteractTag,
@@ -156,21 +153,22 @@ async fn chain_1107_completes_obj_2734_and_swaps_highlights() {
         .filter_map(|(id, a)| if *id == 1107 { Some(a) } else { None })
         .collect();
 
-    let completed_obj = chain_actions
+    let advanced = chain_actions
         .iter()
         .filter(|a| {
             matches!(
                 a,
-                Action::CompleteObjective {
+                Action::AdvanceStep {
                     mission_id: 688,
-                    objective_id: 2734
+                    step_id: 80688
                 }
             )
         })
         .count();
     assert_eq!(
-        completed_obj, 1,
-        "chain 1107 must resolve CompleteObjective(688, 2734); got {completed_obj}",
+        advanced, 1,
+        "chain 1107 must resolve AdvanceStep(688, 80688) — using advance_step \
+         instead of complete_objective avoids the auto-complete trap; got {advanced}",
     );
 
     let cleared_terminal = chain_actions
@@ -204,12 +202,12 @@ async fn chain_1107_completes_obj_2734_and_swaps_highlights() {
     );
 }
 
-/// Chain 1107 negative: the same interact_tag firing AFTER obj 2734 is
-/// already complete must NOT re-complete the objective (would double-fire
-/// the onObjectiveUpdate wire call). Pins the `objective_status eq active`
-/// gate.
+/// Chain 1107 negative: the same interact_tag firing AFTER step 2356
+/// has already advanced (i.e. on step 80688) must NOT re-fire. Pins
+/// the `step_status 2356 eq active` gate so a player who runs back to
+/// the terminal post-advance doesn't double-fire the highlight swap.
 #[tokio::test]
-async fn chain_1107_does_not_refire_when_obj_2734_already_completed() {
+async fn chain_1107_does_not_refire_when_already_on_step_80688() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1107)
         .await
@@ -224,14 +222,14 @@ async fn chain_1107_does_not_refire_when_obj_2734_already_completed() {
         "entity_tag".to_string(),
         serde_json::json!("Cellblock_TerminalX"),
     );
+    // Mission has advanced past step 2356 — the gate must reject.
     ctx.set_param(
         "mission_688_step_2356_status".to_string(),
-        serde_json::json!("active"),
-    );
-    // obj already completed
-    ctx.set_param(
-        "mission_688_obj_2734_status".to_string(),
         serde_json::json!("completed"),
+    );
+    ctx.set_param(
+        "mission_688_step_80688_status".to_string(),
+        serde_json::json!("active"),
     );
 
     let event = TriggerEvent {
@@ -305,7 +303,7 @@ async fn chain_1108_increments_armory_kills_on_guard_death() {
 }
 
 /// Chain 1109 — the load-bearing chain of mission 688. Interacting
-/// with the ring switch while obj 2734 is complete must:
+/// with the ring switch while step 80688 is active must:
 ///   1. complete mission 688 (sort_order 0)
 ///   2. clear the ring highlight (sort_order 1)
 ///   3. trigger transporter region 33 (sort_order 2)
@@ -333,12 +331,8 @@ async fn chain_1109_completes_688_and_triggers_transporter() {
         serde_json::json!("Cellblock_ArmoryRingSwitch"),
     );
     ctx.set_param(
-        "mission_688_step_2356_status".to_string(),
+        "mission_688_step_80688_status".to_string(),
         serde_json::json!("active"),
-    );
-    ctx.set_param(
-        "mission_688_obj_2734_status".to_string(),
-        serde_json::json!("completed"),
     );
 
     let event = TriggerEvent {
@@ -390,13 +384,13 @@ async fn chain_1109_completes_688_and_triggers_transporter() {
 }
 
 /// Chain 1109 negative: ring interaction must NOT complete mission 688
-/// while obj 2734 is still active. Without the `objective_status`
-/// gate (and the population that backs it) a player could skip the
-/// terminal step entirely. Both gates — chain-level (here) and
-/// runtime-level (`required_mission_id=688` in the cell runtime) —
-/// must hold for the design intent to be met.
+/// while step 2356 is still active (terminal not yet used). The
+/// step-status gate enforces order — the player can't skip the terminal
+/// step by going straight to the ring. Both gates (chain-level here +
+/// runtime `required_mission_id=688` in `handle_interact`) must hold
+/// for the design intent to be met.
 #[tokio::test]
-async fn chain_1109_does_not_complete_when_obj_2734_active() {
+async fn chain_1109_does_not_complete_when_still_on_step_2356() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1109)
         .await
@@ -411,13 +405,10 @@ async fn chain_1109_does_not_complete_when_obj_2734_active() {
         "entity_tag".to_string(),
         serde_json::json!("Cellblock_ArmoryRingSwitch"),
     );
+    // Mission still on step 2356 — terminal not yet used; step 80688
+    // hasn't been reached.
     ctx.set_param(
         "mission_688_step_2356_status".to_string(),
-        serde_json::json!("active"),
-    );
-    // obj still active — terminal not yet used.
-    ctx.set_param(
-        "mission_688_obj_2734_status".to_string(),
         serde_json::json!("active"),
     );
 
@@ -436,17 +427,17 @@ async fn chain_1109_does_not_complete_when_obj_2734_active() {
         .count();
     assert_eq!(
         n, 0,
-        "chain 1109 must NOT match when obj 2734 still active; got {n} actions",
+        "chain 1109 must NOT match when still on step 2356; got {n} actions",
     );
 }
 
 /// Chains 1110/1111 — login restoration. Re-applying the highlight on
 /// `player_loaded Castle_CellBlock` is required because
 /// `interaction_type` flags don't persist across server restarts.
-/// These two chains pick which entity to highlight based on whether
-/// obj 2734 has been completed yet.
+/// These two chains pick which entity to highlight based on which
+/// step is currently active (2356 = terminal pending; 80688 = ring pending).
 #[tokio::test]
-async fn chain_1110_restores_terminal_highlight_when_obj_2734_active() {
+async fn chain_1110_restores_terminal_highlight_when_step_2356_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1110)
         .await
@@ -463,10 +454,6 @@ async fn chain_1110_restores_terminal_highlight_when_obj_2734_active() {
     );
     ctx.set_param(
         "mission_688_step_2356_status".to_string(),
-        serde_json::json!("active"),
-    );
-    ctx.set_param(
-        "mission_688_obj_2734_status".to_string(),
         serde_json::json!("active"),
     );
 
@@ -497,7 +484,7 @@ async fn chain_1110_restores_terminal_highlight_when_obj_2734_active() {
 }
 
 #[tokio::test]
-async fn chain_1111_restores_ring_highlight_when_obj_2734_completed() {
+async fn chain_1111_restores_ring_highlight_when_step_80688_active() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1111)
         .await
@@ -513,12 +500,8 @@ async fn chain_1111_restores_ring_highlight_when_obj_2734_completed() {
         serde_json::json!("Castle_CellBlock"),
     );
     ctx.set_param(
-        "mission_688_step_2356_status".to_string(),
+        "mission_688_step_80688_status".to_string(),
         serde_json::json!("active"),
-    );
-    ctx.set_param(
-        "mission_688_obj_2734_status".to_string(),
-        serde_json::json!("completed"),
     );
 
     let event = TriggerEvent {

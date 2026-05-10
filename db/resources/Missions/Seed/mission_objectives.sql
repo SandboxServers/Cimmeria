@@ -6566,6 +6566,12 @@ INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4647, 2356, false, 1, false, false, true, 'Eliminate the NID guards.');
 
+-- Cimmeria-introduced objective for step 80688 (mirrors 90622/90641 pattern).
+-- DisplayLogText is a single space — the original game's mission XML uses the
+-- step's StepDisplayLogText for the visible objective string and leaves the
+-- per-objective DisplayLogText blank to avoid double-rendering.
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (90688, 80688, false, 1, false, false, false, ' ');
+
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (2763, 2390, false, 2, false, false, false, 'Go to meeting area');
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (2764, 2391, false, 2, false, false, false, 'Talk to survivor');
