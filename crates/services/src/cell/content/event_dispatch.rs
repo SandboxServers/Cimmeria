@@ -603,6 +603,66 @@ pub(super) fn fire_mission_accepted<'a>(
     })
 }
 
+/// Fire `OnMissionCompleted` event after `Action::CompleteMission` flips
+/// the in-process `MissionInstance` to MISSION_COMPLETED. Lets chains
+/// gate on a mission completing without having to re-derive completion
+/// from `mission_<id>_status == 'completed'` on every event the player
+/// generates.
+///
+/// Mirrors `fire_mission_accepted` exactly (same boxing rationale —
+/// chain authors can chain a complete → accept-next which re-enters this
+/// dispatcher). Without this, the `MissionCompleted` trigger type
+/// registered in the engine never produces real runtime events; tests
+/// against a synthesized event still pass but the runtime path is dead
+/// — exactly the bug that left chain 1105 (688 auto-accept on 687
+/// complete) silent in the live build despite passing chain-replay tests.
+pub(super) fn fire_mission_completed<'a>(
+    entity_id: u32,
+    player_id: i32,
+    mission_id: i32,
+    engine: &'a ChainEngine,
+    tx: &'a mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &'a mut SpaceManager,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        let mut ctx =
+            ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
+        ctx.set_param("mission_id".to_string(), serde_json::json!(mission_id));
+
+        if let Some(entity) = space_mgr.get_entity(entity_id) {
+            populate_mission_context(entity, &mut ctx);
+            if let Some(archetype_id) = entity.archetype_id {
+                ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
+            }
+        }
+
+        let event = TriggerEvent {
+            trigger_type: TriggerType::MissionCompleted,
+            source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
+            target_entity: None,
+            params: ctx.params.clone(),
+        };
+
+        let resolved = engine.resolve_event(&event, &ctx);
+        if !resolved.actions.is_empty() {
+            tracing::info!(
+                entity_id,
+                player_id,
+                mission_id,
+                actions = resolved.actions.len(),
+                "fire_mission_completed: matched"
+            );
+            executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
+        } else {
+            tracing::debug!(
+                entity_id,
+                mission_id,
+                "fire_mission_completed: no chains matched"
+            );
+        }
+    })
+}
+
 /// Fire a content chain directly by ID, bypassing trigger matching.
 ///
 /// Used for minigame victory callbacks — the chain has no trigger row,

@@ -65,7 +65,10 @@ pub(super) async fn execute_actions(
                 .await;
             }
             Action::CompleteMission { mission_id } => {
-                mission::complete(mission_id, entity_id, player_id, chain_id, tx, space_mgr).await;
+                mission::complete(
+                    mission_id, entity_id, player_id, chain_id, tx, space_mgr, engine,
+                )
+                .await;
             }
             Action::GrantItem {
                 item_id,

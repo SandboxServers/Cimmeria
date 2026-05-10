@@ -99,7 +99,11 @@ pub(super) async fn accept_or_advance(
     }
 }
 
-/// `Action::CompleteMission` — mark the mission complete and persist.
+/// `Action::CompleteMission` — mark the mission complete and persist,
+/// then fire the `mission_completed` follow-up event so chains hooked
+/// on completion (e.g., chain 1105's auto-accept of 688 when 687
+/// completes) actually run. Mirrors `accept_or_advance`'s firing of
+/// `fire_mission_accepted`.
 pub(super) async fn complete(
     mission_id: i32,
     entity_id: u32,
@@ -107,6 +111,7 @@ pub(super) async fn complete(
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     tracing::info!(
         entity_id,
@@ -137,6 +142,15 @@ pub(super) async fn complete(
             "MissionUpdate (complete) send to base failed -- mission completion not persisted"
         );
     }
+    // The in-process MissionInstance is already MISSION_COMPLETED (the
+    // direct helper above did that); fire the chain-engine event so any
+    // `mission_completed` triggers see the post-completion state. Even
+    // if the MissionUpdate persist failed, the cell's view is the
+    // authoritative source for chain conditions.
+    crate::cell::content::event_dispatch::fire_mission_completed(
+        entity_id, player_id, mission_id, engine, tx, space_mgr,
+    )
+    .await;
 }
 
 /// `Action::AdvanceStep` — move a mission to a new step and persist.
