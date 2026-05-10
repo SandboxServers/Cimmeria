@@ -78,12 +78,6 @@ pub(crate) async fn handle_on_client_ready(
     // setup. After this synth call, `pending_client_ready` will be
     // populated by `handle_map_loaded` and the rest of this function
     // proceeds normally.
-    //
-    // QA reproducer: mission 688 cross-world ring (Castle_CellBlock →
-    // Castle) stalled with the player frozen mid-ring on entry to
-    // Castle because `pending_client_ready` was never set, so
-    // `BaseToCellMsg::AdvanceRingDestination` was never sent, and the
-    // destination ring's FSM never advanced out of `RemoteLoadWait`.
     let pending_map_loaded_present = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients
@@ -108,6 +102,32 @@ pub(crate) async fn handle_on_client_ready(
         .await
         {
             tracing::error!(%addr, error = %e, "Synth mapLoaded failed during cross-world onClientReady");
+            // The synth `handle_map_loaded` consumed `pending_map_loaded`
+            // before failing, so a retry would no longer enter this
+            // branch and `pending_client_ready` will never be populated
+            // by the normal map_loaded path. If we just returned here,
+            // `pending_destination_ring_id` would be stranded on the
+            // client state forever (disconnect cleanup doesn't clear it
+            // either), and the destination ring's FSM would sit in
+            // `RemoteLoadWait` indefinitely.
+            //
+            // Drop the pending ring id so state is consistent. The
+            // destination ring still won't receive an
+            // `AdvanceRingDestination` (no entity_id is reachable on
+            // the dropped session anyway), but at least the
+            // per-client state isn't lying about an in-flight transfer
+            // that's never going to land.
+            if let Ok(mut clients) = connected.lock() {
+                if let Some(c) = clients.get_mut(&addr) {
+                    if c.pending_destination_ring_id.take().is_some() {
+                        tracing::warn!(
+                            %addr,
+                            "Cleared stranded pending_destination_ring_id after \
+                             synth mapLoaded failure"
+                        );
+                    }
+                }
+            }
             return Ok(());
         }
     }

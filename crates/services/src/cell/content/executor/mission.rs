@@ -119,6 +119,18 @@ pub(super) async fn complete(
         chain_id,
         "Content: completing mission"
     );
+    // Snapshot the prior status BEFORE `complete_mission_direct` flips
+    // it. We only fire the `mission_completed` follow-up event on a
+    // real active→completed transition — re-running this action against
+    // an already-completed (or missing) mission must be a wire/no-op,
+    // not a re-fire of every chain gated on `mission_completed`.
+    use cimmeria_entity::missions::MISSION_COMPLETED;
+    let prior_status = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.missions.get_mission(mission_id))
+        .map(|m| m.status);
+    let was_completed_already = prior_status == Some(MISSION_COMPLETED);
+
     crate::cell::missions::complete_mission_direct(entity_id, mission_id, tx, space_mgr).await;
     // Read repeats AFTER complete_mission_direct so we capture
     // the post-bump value (`MissionInstance::complete` increments).
@@ -142,15 +154,23 @@ pub(super) async fn complete(
             "MissionUpdate (complete) send to base failed -- mission completion not persisted"
         );
     }
-    // The in-process MissionInstance is already MISSION_COMPLETED (the
-    // direct helper above did that); fire the chain-engine event so any
-    // `mission_completed` triggers see the post-completion state. Even
-    // if the MissionUpdate persist failed, the cell's view is the
-    // authoritative source for chain conditions.
-    crate::cell::content::event_dispatch::fire_mission_completed(
-        entity_id, player_id, mission_id, engine, tx, space_mgr,
-    )
-    .await;
+    // Fire the `mission_completed` chain-engine event only when a real
+    // transition happened. `prior_status == None` (mission not tracked)
+    // also short-circuits — `complete_mission_direct` is a no-op there
+    // and there's nothing to signal downstream.
+    if !was_completed_already && prior_status.is_some() {
+        crate::cell::content::event_dispatch::fire_mission_completed(
+            entity_id, player_id, mission_id, engine, tx, space_mgr,
+        )
+        .await;
+    } else {
+        tracing::debug!(
+            entity_id,
+            mission_id,
+            ?prior_status,
+            "Content: complete called on non-active mission — skipping mission_completed event"
+        );
+    }
 }
 
 /// `Action::AdvanceStep` — move a mission to a new step and persist.

@@ -19,6 +19,9 @@ use crate::cell::space_manager::SpaceManager;
 use super::executor;
 use super::mission_context::{populate_mission_context, populate_stats_context};
 
+mod mission;
+pub(super) use mission::{fire_mission_accepted, fire_mission_completed};
+
 /// Fire the `PlayerLoaded` event for a player entering a world.
 pub async fn fire_player_loaded(
     entity_id: u32,
@@ -530,138 +533,13 @@ pub async fn fire_teleport_in(
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
-/// Fire `mission_accepted` immediately after the cell-side mission state
-/// has been committed for the calling entity. Called from the executor's
-/// combined `Action::AcceptMission | Action::AdvanceMission` branch so
-/// chains tied to mission start (e.g., highlighting quest objects like
-/// the Cellblock_WoodenCrate for mission 687) run without coupling to
-/// the chain that triggered the accept.
-///
-/// Fires after the in-process `accept_mission` helper updates the
-/// CellEntity's mission table — i.e., chain conditions reading
-/// `mission_<id>_status` see the post-accept state. The persistence
-/// path (the `MissionUpdate` send to base) is best-effort; this event
-/// fires whether or not that send succeeded, since the cell's view of
-/// mission state is the authoritative source for chain evaluation.
-///
-/// The return type is an explicit `Pin<Box<dyn Future ...>>` rather than an
-/// `async fn` because this fires from inside `executor::execute_actions`
-/// (which itself awaits this via the `AcceptMission` branch). An `async fn`
-/// would compute its future size from the called future, and since
-/// `execute_actions` calls back into here, the type would be infinitely
-/// sized at compile time. Boxing breaks the cycle.
-///
-/// A `mission_accepted` chain that itself calls `accept_mission` for a
-/// different mission will re-fire this dispatcher — intentional, so chained
-/// accepts work without each one being wired by hand. Bounded in practice
-/// because chain authors don't write self-accepting cycles; if that turns
-/// out to be optimistic, guard with a depth counter here.
-pub(super) fn fire_mission_accepted<'a>(
-    entity_id: u32,
-    player_id: i32,
-    mission_id: i32,
-    engine: &'a ChainEngine,
-    tx: &'a mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &'a mut SpaceManager,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
-    Box::pin(async move {
-        let mut ctx =
-            ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
-        ctx.set_param("mission_id".to_string(), serde_json::json!(mission_id));
+// ── mission lifecycle dispatchers ──────────────────────────────────────
+// `fire_mission_accepted` and `fire_mission_completed` live in the
+// `mission` submodule and are re-exported above. Split out to keep
+// this file under the file-organization line cap; both have the same
+// boxed-future shape because the executor calls back into here.
 
-        if let Some(entity) = space_mgr.get_entity(entity_id) {
-            populate_mission_context(entity, &mut ctx);
-            if let Some(archetype_id) = entity.archetype_id {
-                ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
-            }
-        }
-
-        let event = TriggerEvent {
-            trigger_type: TriggerType::MissionAccepted,
-            source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
-            target_entity: None,
-            params: ctx.params.clone(),
-        };
-
-        let resolved = engine.resolve_event(&event, &ctx);
-        if !resolved.actions.is_empty() {
-            tracing::info!(
-                entity_id,
-                player_id,
-                mission_id,
-                actions = resolved.actions.len(),
-                "fire_mission_accepted: matched"
-            );
-            executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
-        } else {
-            tracing::debug!(
-                entity_id,
-                mission_id,
-                "fire_mission_accepted: no chains matched"
-            );
-        }
-    })
-}
-
-/// Fire `OnMissionCompleted` event after `Action::CompleteMission` flips
-/// the in-process `MissionInstance` to MISSION_COMPLETED. Lets chains
-/// gate on a mission completing without having to re-derive completion
-/// from `mission_<id>_status == 'completed'` on every event the player
-/// generates.
-///
-/// Mirrors `fire_mission_accepted` exactly (same boxing rationale —
-/// chain authors can chain a complete → accept-next which re-enters this
-/// dispatcher). Without this, the `MissionCompleted` trigger type
-/// registered in the engine never produces real runtime events; tests
-/// against a synthesized event still pass but the runtime path is dead
-/// — exactly the bug that left chain 1105 (688 auto-accept on 687
-/// complete) silent in the live build despite passing chain-replay tests.
-pub(super) fn fire_mission_completed<'a>(
-    entity_id: u32,
-    player_id: i32,
-    mission_id: i32,
-    engine: &'a ChainEngine,
-    tx: &'a mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &'a mut SpaceManager,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
-    Box::pin(async move {
-        let mut ctx =
-            ExecutionContext::new().with_source(cimmeria_common::EntityId(entity_id as i32));
-        ctx.set_param("mission_id".to_string(), serde_json::json!(mission_id));
-
-        if let Some(entity) = space_mgr.get_entity(entity_id) {
-            populate_mission_context(entity, &mut ctx);
-            if let Some(archetype_id) = entity.archetype_id {
-                ctx.set_param("archetype".to_string(), serde_json::json!(archetype_id));
-            }
-        }
-
-        let event = TriggerEvent {
-            trigger_type: TriggerType::MissionCompleted,
-            source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
-            target_entity: None,
-            params: ctx.params.clone(),
-        };
-
-        let resolved = engine.resolve_event(&event, &ctx);
-        if !resolved.actions.is_empty() {
-            tracing::info!(
-                entity_id,
-                player_id,
-                mission_id,
-                actions = resolved.actions.len(),
-                "fire_mission_completed: matched"
-            );
-            executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
-        } else {
-            tracing::debug!(
-                entity_id,
-                mission_id,
-                "fire_mission_completed: no chains matched"
-            );
-        }
-    })
-}
+// (legacy comment block — see `mission` submodule for the moved fns)
 
 /// Fire a content chain directly by ID, bypassing trigger matching.
 ///

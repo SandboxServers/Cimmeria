@@ -120,7 +120,7 @@ pub async fn load_ring_regions(pool: &PgPool) -> Result<HashMap<i32, RingRegion>
 #[cfg(test)]
 mod live_db_tests {
     //! Live-DB regression guards on the seeded `ring_transport_regions`
-    //! rows added for mission 688 (issue #241). The chain replay tests
+    //! rows used by the cross-world armory ring. The chain replay tests
     //! pin the chains; these tests pin the runtime-loaded ring metadata
     //! they depend on. Drift in either direction (column type change,
     //! seed row removal, sequence value drift) surfaces here near the
@@ -133,8 +133,8 @@ mod live_db_tests {
     /// `ring_transport_regions` row with `required_mission_id = Some(688)`,
     /// `world_name = "Castle_CellBlock"`, and destination 34 in the list.
     /// A regression here would either remove the gate (NULL column) or
-    /// re-point the destination, in either case breaking issue #241's
-    /// design intent.
+    /// re-point the destination, both of which would let a player ring
+    /// out of the armory before completing the gating mission.
     #[tokio::test]
     async fn region_33_loads_with_mission_gate_and_destination_34() {
         let pool = require_db_or_skip!();
@@ -213,15 +213,15 @@ mod live_db_tests {
         }
     }
 
-    /// The chain replay tests for mission 688 reference spawn tags
+    /// The chain replay tests reference spawn tags
     /// (`Cellblock_TerminalX`, `Cellblock_ArmoryRingSwitch`,
     /// `Cellblock_ArmoryGuard1`) by name — but those tests inject the
     /// tag into the chain context directly and don't read from the
     /// `spawnlist` seed. This test pins the seed-side mapping so a
     /// rename or accidental NULL would surface even if the chains
-    /// themselves are correct. spawn_id 27 was previously untagged,
-    /// 79 was `Cellblock_FakeRingSwitch`; both were re-tagged for
-    /// mission 688 (the only spawn changes the issue makes).
+    /// themselves are correct. spawn_id 27 was previously untagged
+    /// and 79 was `Cellblock_FakeRingSwitch`; both were re-tagged
+    /// when the armory mission was wired up.
     #[tokio::test]
     async fn mission_688_spawn_retags_are_present() {
         use sqlx::Row;

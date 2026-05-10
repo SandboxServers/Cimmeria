@@ -163,6 +163,18 @@ pub(super) async fn advance_destination_after_warmup(
     try_advance_after_load(dst_id, tx, space_mgr, engine).await;
 }
 
+/// Returns true when the player has completed the gating mission (or
+/// when the entity is unknown — fail-closed default the call sites
+/// rely on). Shared between `handle_interact` and
+/// `handle_select_destination` so both paths stay in lockstep if the
+/// gate semantics ever expand (e.g., step-level gating).
+fn mission_gate_satisfied(space_mgr: &SpaceManager, entity_id: u32, mission_id: i32) -> bool {
+    space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.missions.get_mission(mission_id))
+        .is_some_and(|m| m.status == cimmeria_entity::missions::MISSION_COMPLETED)
+}
+
 /// `interact()` entry point — called by the `TriggerTransporter` action
 /// executor. Sets `ringSourceId` on the player and sends the destination list.
 pub async fn handle_interact(
@@ -191,11 +203,7 @@ pub async fn handle_interact(
     // "player unknown" the same as "mission not completed" so a missing
     // entity can't bypass the gate.
     if let Some(mission_id) = required_mission_id {
-        let completed = space_mgr
-            .get_entity(entity_id)
-            .and_then(|e| e.missions.get_mission(mission_id))
-            .is_some_and(|m| m.status == cimmeria_entity::missions::MISSION_COMPLETED);
-        if !completed {
+        if !mission_gate_satisfied(space_mgr, entity_id, mission_id) {
             tracing::info!(
                 region_id,
                 entity_id,
@@ -230,8 +238,9 @@ pub async fn handle_select_destination(
     // Cross-world is permitted: the FSM produces `Effect::TeleportCrossWorld`
     // which the dispatcher routes through the GateTravel pipeline. Source
     // ring still resets to Idle in `warmup_timer_expired`; destination
-    // advances out of `RemoteLoadWait` only after the player loads on the
-    // destination world via `BaseToCellMsg::InitPlayerState`.
+    // advances out of `RemoteLoadWait` only after the base sends
+    // `BaseToCellMsg::AdvanceRingDestination` once the player finishes
+    // loading on the destination world.
     let src_required_mission_id = match space_mgr.ring_transporters.get(source_region_id) {
         Some(src) => {
             if let Err(e) = src.validate_destination(destination_region_id) {
@@ -252,11 +261,7 @@ pub async fn handle_select_destination(
         }
     };
     if let Some(mission_id) = src_required_mission_id {
-        let completed = space_mgr
-            .get_entity(entity_id)
-            .and_then(|e| e.missions.get_mission(mission_id))
-            .is_some_and(|m| m.status == cimmeria_entity::missions::MISSION_COMPLETED);
-        if !completed {
+        if !mission_gate_satisfied(space_mgr, entity_id, mission_id) {
             tracing::info!(
                 source_region_id,
                 destination_region_id,

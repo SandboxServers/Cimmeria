@@ -12,7 +12,7 @@ use super::runtime::{
     advance_destination_after_warmup, handle_interact, handle_region_trigger,
     handle_remote_player_loaded, handle_select_destination,
 };
-use super::transporter::{State, WARMUP_DELAY};
+use super::transporter::State;
 use super::wire_helpers::{BSF_MOVEMENT_LOCK, METHOD_ON_RING_TRANSPORTER_LIST};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -246,8 +246,8 @@ async fn select_destination_cross_world_succeeds() {
     let mut regions = std::collections::HashMap::new();
     regions.insert(1, ring(1, "Castle_CellBlock", vec![2], [0.0; 3]));
     // Different world_name — destination is on Castle, source is on
-    // Castle_CellBlock. Pre-issue #241 this was rejected at
-    // `selectDestination`; now it routes through GateTravel.
+    // Castle_CellBlock. Cross-world selections route through
+    // GateTravel instead of being rejected at `selectDestination`.
     regions.insert(2, ring(2, "Castle", vec![1], [10.0, 20.0, 30.0]));
     mgr.ring_transporters.load(&regions);
     mgr.ring_point_set_to_region = regions
@@ -280,9 +280,7 @@ async fn select_destination_cross_world_succeeds() {
 
     // Skip past hide and warmup deadlines by directly invoking the
     // FSM transitions — same approach the same-world test uses to keep
-    // the test fast and deterministic. WARMUP_DELAY * 2 is referenced to
-    // make the time-skip intent explicit.
-    let _t_skip = std::time::Instant::now() + WARMUP_DELAY * 2;
+    // the test fast and deterministic.
     let dst_pos = [
         mgr.ring_regions[&2].x,
         mgr.ring_regions[&2].y,
@@ -403,10 +401,9 @@ async fn handle_remote_player_loaded_advances_destination_fsm() {
 
 /// `handle_interact` must reject the call without sending a destination
 /// list when the ring's `required_mission_id` is set and the player
-/// hasn't completed that mission. Pins the runtime mission gate added
-/// for issue #241 (mission 688 armory ring) — even if a chain
-/// somehow fires `trigger_transporter` for the gated ring, the runtime
-/// stops the destination list from leaking.
+/// hasn't completed that mission. Pins the runtime mission gate — even
+/// if a chain somehow fires `trigger_transporter` for the gated ring,
+/// the runtime stops the destination list from leaking.
 #[tokio::test]
 async fn handle_interact_blocks_when_required_mission_not_completed() {
     use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};

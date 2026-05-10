@@ -1406,9 +1406,9 @@ VALUES (1104, 'set_interaction_type', NULL, 'Cellblock_WoodenCrate',
 --                      (4647 "Eliminate the NID guards"). On terminal
 --                      interact, chain 1107 advances to step 80688.
 --   80688 (Cimmeria) — "Use the ring transport to escape." Inserted via
---                      MissionOverride (mirrors PR #250's pattern for
---                      missions 622/641). Without this second step,
---                      chain 1107's `complete_objective 688/2734` would
+--                      MissionOverride (mirrors the equip-from-inventory
+--                      pattern used for missions 622/641). Without this
+--                      second step, chain 1107's `complete_objective 688/2734` would
 --                      auto-complete the mission via
 --                      `cell::missions::complete_objective`'s
 --                      all-required-done check (only one required obj),
