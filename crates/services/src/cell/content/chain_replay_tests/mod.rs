@@ -23,3 +23,4 @@ mod mission_638;
 mod mission_639;
 mod mission_641;
 mod mission_687;
+mod mission_688;

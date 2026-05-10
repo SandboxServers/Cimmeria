@@ -8914,7 +8914,7 @@ INSERT INTO texts (moniker_id, flags, language, moniker_name, text) VALUES (1397
 
 INSERT INTO texts (moniker_id, flags, language, moniker_name, text) VALUES (13970, 0, 1033, 'DS6_Ms_F03_Agnos_OPC_18InterFactionalRelations', 'Deliver the Shield Tech to Copplemann');
 
-INSERT INTO texts (moniker_id, flags, language, moniker_name, text) VALUES (13971, 0, 1033, 'DS3_ms_A00_Cellblock_opc_03Ambernol', 'Use the Ambernol in your mission inventory (press ''i'') to cure yourself of Stasis Sickness.');
+INSERT INTO texts (moniker_id, flags, language, moniker_name, text) VALUES (13971, 0, 1033, 'DS3_ms_A00_Cellblock_opc_03Ambernol', 'Use the Ambernol in your mission inventory (press ''b'' to open inventory, then select Mission Inventory) to cure yourself of Stasis Sickness.');
 
 INSERT INTO texts (moniker_id, flags, language, moniker_name, text) VALUES (13972, 0, 1033, 'DS0_ms_A00_Cellblock_opc_06EscapeTheCellblock', 'Find a way out of the Castle!');
 

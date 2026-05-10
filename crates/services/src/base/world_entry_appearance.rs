@@ -14,6 +14,7 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
 
 use super::helpers::send_to_witness;
+use super::world_entry::handle_map_loaded;
 use super::ConnectedClientState;
 
 // ── Appearance data builders ────────────────────────────────────────────────
@@ -59,12 +60,78 @@ pub(crate) fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
 /// 3-5 times via createCacheStamp replays; this second send mimics that.
 pub(crate) async fn handle_on_client_ready(
     addr: SocketAddr,
+    key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     socket: &Arc<UdpSocket>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<sqlx::PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Cross-world transition fallback: the SGW client sends `mapLoaded`
+    // (cell method 0x99) on initial logins and same-instance respawns,
+    // but skips it on cross-world transitions via `gate_travel`
+    // (RESET_ENTITIES → ENABLE_ENTITIES → CREATE_BASE_PLAYER + onClientMapLoad).
+    // The client jumps straight to `onClientReady` instead. If the
+    // transition is mid-flight (`pending_map_loaded` still set, meaning
+    // the `mapLoaded` cell-method handler never ran), drive the
+    // enter-world bundle from here so the destination world finishes
+    // setup. After this synth call, `pending_client_ready` will be
+    // populated by `handle_map_loaded` and the rest of this function
+    // proceeds normally.
+    let pending_map_loaded_present = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        clients
+            .get(&addr)
+            .is_some_and(|c| c.pending_map_loaded.is_some())
+    };
+    if pending_map_loaded_present {
+        tracing::info!(
+            %addr,
+            "onClientReady arrived with pending_map_loaded still set — \
+             synthesising mapLoaded for cross-world transition"
+        );
+        if let Err(e) = handle_map_loaded(
+            socket,
+            addr,
+            key,
+            connected,
+            cell_tx,
+            entity_to_addr,
+            db_pool,
+        )
+        .await
+        {
+            tracing::error!(%addr, error = %e, "Synth mapLoaded failed during cross-world onClientReady");
+            // The synth `handle_map_loaded` consumed `pending_map_loaded`
+            // before failing, so a retry would no longer enter this
+            // branch and `pending_client_ready` will never be populated
+            // by the normal map_loaded path. If we just returned here,
+            // `pending_destination_ring_id` would be stranded on the
+            // client state forever (disconnect cleanup doesn't clear it
+            // either), and the destination ring's FSM would sit in
+            // `RemoteLoadWait` indefinitely.
+            //
+            // Drop the pending ring id so state is consistent. The
+            // destination ring still won't receive an
+            // `AdvanceRingDestination` (no entity_id is reachable on
+            // the dropped session anyway), but at least the
+            // per-client state isn't lying about an in-flight transfer
+            // that's never going to land.
+            if let Ok(mut clients) = connected.lock() {
+                if let Some(c) = clients.get_mut(&addr) {
+                    if c.pending_destination_ring_id.take().is_some() {
+                        tracing::warn!(
+                            %addr,
+                            "Cleared stranded pending_destination_ring_id after \
+                             synth mapLoaded failure"
+                        );
+                    }
+                }
+            }
+            return Ok(());
+        }
+    }
+
     let pending = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients
@@ -135,6 +202,18 @@ pub(crate) async fn handle_on_client_ready(
         (0, Vec::new())
     };
 
+    // Cross-world ring transport carry-through: take the pending ring id
+    // BEFORE we drop the connected lock so a concurrent disconnect can't
+    // strand it. Set in `gate_travel::handle_gate_travel` only when
+    // `Effect::TeleportCrossWorld` produced this hop — stargate dial
+    // travel leaves it None.
+    let advance_ring_destination_id: Option<i32> = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        clients
+            .get_mut(&addr)
+            .and_then(|c| c.pending_destination_ring_id.take())
+    };
+
     if let Some(ref tx) = cell_tx {
         let _ = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await;
 
@@ -149,6 +228,20 @@ pub(crate) async fn handle_on_client_ready(
                 bandolier_items,
             })
             .await;
+
+        if let Some(region_id) = advance_ring_destination_id {
+            // Wake the destination ring's FSM. Sent AFTER InitPlayerState
+            // so the cell-side handler runs against the fully-initialised
+            // entity (player_id, missions, etc.) — `mark_player_loaded`
+            // doesn't need that state directly, but downstream chain
+            // events fired by the unlock cascade do.
+            let _ = tx
+                .send(BaseToCellMsg::AdvanceRingDestination {
+                    entity_id,
+                    region_id,
+                })
+                .await;
+        }
     }
 
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.

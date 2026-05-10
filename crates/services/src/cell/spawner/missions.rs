@@ -15,6 +15,13 @@ use sqlx::PgPool;
 pub struct MissionDefEntry {
     pub step_id: i32,
     pub objectives: Vec<MissionObjectiveDef>,
+    /// `resources.missions.is_hidden` — when true, the mission stays out of
+    /// the player's mission log. Propagated to the per-player
+    /// `MissionInstance.is_hidden` at accept time so the manager's
+    /// `active_missions()` filter (which gates `onMissionUpdate` resends)
+    /// honors it. Without this, hidden sub-missions like the
+    /// Hallway0N Controllers (mission 682-686) leak into the player's UI.
+    pub is_hidden: bool,
 }
 
 /// A single objective within a mission step.
@@ -35,11 +42,13 @@ pub async fn load_mission_defs(
 ) -> Result<std::collections::HashMap<i32, MissionDefEntry>, sqlx::Error> {
     use sqlx::Row;
 
-    // Get the first step per mission (lowest index)
+    // Get the first step per mission (lowest index) plus the mission-level
+    // `is_hidden` flag, joined in one query.
     let step_rows = sqlx::query(
-        "SELECT DISTINCT ON (mission_id) mission_id, step_id \
-         FROM resources.mission_steps \
-         ORDER BY mission_id, index ASC",
+        "SELECT DISTINCT ON (s.mission_id) s.mission_id, s.step_id, m.is_hidden \
+         FROM resources.mission_steps s \
+         JOIN resources.missions m ON m.mission_id = s.mission_id \
+         ORDER BY s.mission_id, s.index ASC",
     )
     .fetch_all(pool)
     .await?;
@@ -48,11 +57,13 @@ pub async fn load_mission_defs(
     for r in &step_rows {
         let mission_id: i32 = r.get("mission_id");
         let step_id: i32 = r.get("step_id");
+        let is_hidden: bool = r.get("is_hidden");
         map.insert(
             mission_id,
             MissionDefEntry {
                 step_id,
                 objectives: Vec::new(),
+                is_hidden,
             },
         );
     }

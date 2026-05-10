@@ -66,6 +66,7 @@ mod tests {
             display_name_id: name_id,
             destination_ids: vec![],
             point_set_id: 0,
+            required_mission_id: None,
         }
     }
 

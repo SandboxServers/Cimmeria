@@ -109,6 +109,7 @@ pub(super) async fn handle_respawn(
                 target_world_name: target_world,
                 position: spawn_pos,
                 rotation: [0.0; 3],
+                destination_ring_id: None,
             })
             .await;
         return;

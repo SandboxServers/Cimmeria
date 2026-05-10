@@ -39,6 +39,7 @@ pub(crate) async fn handle_gate_travel(
     target_world_name: &str,
     position: [f32; 3],
     rotation: [f32; 3],
+    destination_ring_id: Option<i32>,
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -205,6 +206,12 @@ pub(crate) async fn handle_gate_travel(
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
             c.pending_client_ready = None;
+            // Carry the cross-world ring transport id forward — consumed in
+            // `world_entry_appearance::handle_client_ready` once the
+            // destination world signals `onClientReady`. Stays None for
+            // stargate-driven gate travel (the `Effect::TeleportCrossWorld`
+            // dispatcher is the only producer).
+            c.pending_destination_ring_id = destination_ring_id;
             // world_entry_sent stays true -- we don't reset it, since
             // handle_enable_entities checks pending_player_entity_id
         }

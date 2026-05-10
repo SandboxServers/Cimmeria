@@ -295,6 +295,26 @@ pub(super) async fn handle_base_message(
                 .await;
         }
 
+        BaseToCellMsg::AdvanceRingDestination {
+            entity_id,
+            region_id,
+        } => {
+            // Cross-world ring transport: the destination ring has been
+            // sitting in `RemoteLoadWait` since the source ring's
+            // `Effect::TeleportCrossWorld` fired. Now that the player has
+            // finished loading on this world (base-side `onClientReady`
+            // ack), advance the destination FSM by recording the load —
+            // `mark_player_loaded` (called inside
+            // `handle_remote_player_loaded`) triggers the same
+            // all-players-loaded / remote-warmup / cooldown chain the
+            // same-world path runs synchronously after
+            // `Effect::TeleportPlayer`.
+            super::super::ring_transport::handle_remote_player_loaded(
+                region_id, entity_id, tx, space_mgr, engine,
+            )
+            .await;
+        }
+
         BaseToCellMsg::ReloadContentEngine => {}
 
         BaseToCellMsg::MinigameResult {
@@ -808,6 +828,59 @@ mod tests {
         assert!(
             entity.bandolier_items.contains_key(&2),
             "bandolier_items must contain the new slot"
+        );
+    }
+
+    /// `BaseToCellMsg::AdvanceRingDestination` is the cross-world ring
+    /// transport's deferred-load callback. After the source ring's
+    /// `Effect::TeleportCrossWorld` fires, the destination ring's FSM
+    /// sits in `RemoteLoadWait` until base sends this message back
+    /// (after the destination world's `onClientReady`). The handler
+    /// must forward to `ring_transport::handle_remote_player_loaded`
+    /// without crashing when the destination ring isn't loaded — the
+    /// integration-shaped fail-soft path that lets a ring not pre-loaded
+    /// in this cell instance be a quiet no-op rather than a panic.
+    #[tokio::test]
+    async fn advance_ring_destination_forwards_without_panic_when_ring_absent() {
+        let mut mgr = SpaceManager::new(1);
+        mgr.parse_spaces_xml(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        // Player is on Castle but no ring transporter region 34 is
+        // loaded — handle_remote_player_loaded must short-circuit
+        // gracefully rather than panic on the missing region lookup.
+        mgr.create_entity(2, "Castle", [466.365, 70.397, 991.466], [0.0; 3])
+            .unwrap();
+
+        let (tx, _rx) = mpsc::channel(8);
+        let engine = ChainEngine::new();
+
+        handle_base_message(
+            BaseToCellMsg::AdvanceRingDestination {
+                entity_id: 2,
+                region_id: 34,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        // The entity must still exist — AdvanceRingDestination doesn't
+        // tear anything down on its own; it just records a load on the
+        // destination ring's FSM (which is a no-op when the ring isn't
+        // loaded). Pinning post-state-equality guards against a future
+        // refactor that accidentally couples the dispatcher to entity
+        // teardown.
+        assert!(
+            mgr.get_entity(2).is_some(),
+            "AdvanceRingDestination must not destroy the recipient entity"
         );
     }
 }

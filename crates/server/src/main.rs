@@ -317,7 +317,7 @@ fn days_to_ymd(days: u64) -> (u64, u64, u64) {
 /// - **`logs/content.log`**: content chain triggers, conditions, actions at `trace`.
 /// - **`logs/missions.log`**: mission accept/complete/abandon, objectives at `trace`.
 /// - **`logs/interactions.log`**: dialogs, vendors, trainers, loot, chat, mail at `trace`.
-/// - **`logs/spawner.log`**: NPC spawning, stargate travel at `trace`.
+/// - **`logs/spawner.log`**: NPC spawning, stargate travel, ring transport at `trace`.
 /// - **`logs/dispatch.log`**: method routing (cell + base method dispatch) at `trace`.
 /// - **WebSocket broadcast**: `debug` for admin panel streaming.
 /// - **Cosmos DB** (optional): `debug` minus per-packet noise.
@@ -452,7 +452,8 @@ fn init_logging(
         "spawner.log",
         "off,\
          cimmeria_services::cell::spawner=trace,\
-         cimmeria_services::cell::gate_travel=trace"
+         cimmeria_services::cell::gate_travel=trace,\
+         cimmeria_services::cell::ring_transport=trace"
     ));
 
     layers.push(log_layer!(

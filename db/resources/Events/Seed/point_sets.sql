@@ -124,11 +124,18 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2077, 'MenfaDark_Ring_ffff0003PS', 'AreaSet', 77, 2.5, 1.70000005, 'Cylinder', 1);
 
+-- Mission 688 ring sender (world 12 / Castle_CellBlock) trigger volume.
+-- Same dimensions as the existing Cellblock rings (2045/2047/2048).
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2080, 'Castle_Cellblock.ArmoryRingSwitch', 'AreaSet', 12, 3.52999997, 1.76999998, 'Cylinder', 1);
+
+-- Mission 688 ring receiver (world 8 / Castle) trigger volume.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2081, 'Castle.ArmoryRingDropZone', 'AreaSet', 8, 3.52999997, 1.76999998, 'Cylinder', 1);
+
 --
 -- TOC entry 3330 (class 0 OID 0)
 -- Dependencies: 240
 -- Name: point_sets_set_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('point_sets_set_id_seq', 2079, true);
+SELECT pg_catalog.setval('point_sets_set_id_seq', 2081, true);
 

@@ -15,7 +15,8 @@ CREATE TABLE ring_transport_regions (
     event_set_id integer NOT NULL,
     display_name_id integer NOT NULL,
     destination_region_ids integer[] DEFAULT '{}'::integer[] NOT NULL,
-    point_set_id integer NOT NULL
+    point_set_id integer NOT NULL,
+    required_mission_id integer
 );
 
 --

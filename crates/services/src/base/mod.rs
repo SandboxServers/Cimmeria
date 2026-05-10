@@ -129,6 +129,15 @@ pub(crate) struct ConnectedClientState {
     /// of falling back to "lowest player_id for the account" — which is
     /// wrong on multi-character accounts.
     pub active_player_id: Option<i32>,
+    /// Cross-world ring transport carry-through. Set in
+    /// `handle_gate_travel` when the cell `Effect::TeleportCrossWorld`
+    /// passes a ring id; consumed in
+    /// `world_entry_appearance::handle_client_ready` once the destination
+    /// world's `onClientReady` arrives, then forwarded to the cell as a
+    /// `BaseToCellMsg::AdvanceRingDestination` so the destination ring's
+    /// FSM can leave `RemoteLoadWait`. Stays `None` for stargate dial
+    /// gate-travel.
+    pub pending_destination_ring_id: Option<i32>,
 }
 
 #[cfg(test)]

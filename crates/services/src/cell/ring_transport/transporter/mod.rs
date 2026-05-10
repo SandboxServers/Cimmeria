@@ -167,6 +167,11 @@ pub struct RingTransporter {
     pub destination_ids: Vec<i32>,
     pub event_set_id: i32,
     pub point_set_id: i32,
+    /// Mirrors `RingRegion.required_mission_id` — when set, runtime gates
+    /// reject `interact()` and `selectDestination()` unless the player has
+    /// completed this mission. Loaded once from `ring_transport_regions`
+    /// and immutable thereafter.
+    pub required_mission_id: Option<i32>,
 
     pub state: State,
     /// Players currently standing on this ring pad (entity_id → unit).
@@ -193,6 +198,7 @@ impl RingTransporter {
             destination_ids: region.destination_ids.clone(),
             event_set_id: region.event_set_id,
             point_set_id: region.point_set_id,
+            required_mission_id: region.required_mission_id,
             state: State::Idle,
             players: HashMap::new(),
             send_players: Vec::new(),

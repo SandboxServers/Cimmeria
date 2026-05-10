@@ -7,7 +7,9 @@
 
 use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_entity::cell_entity::CellEntity;
-use cimmeria_entity::missions::{MISSION_ACTIVE, MISSION_COMPLETED, MISSION_NOT_ACTIVE};
+use cimmeria_entity::missions::{
+    MISSION_ACTIVE, MISSION_COMPLETED, MISSION_NOT_ACTIVE, STATUS_COMPLETED,
+};
 
 /// Populate per-stat current/max into the context as `stat_<id>_cur` and
 /// `stat_<id>_max` numeric params. Read by `Condition::StatBelowMax` to
@@ -91,6 +93,47 @@ pub(super) fn populate_mission_context(entity: &CellEntity, ctx: &mut ExecutionC
             ctx.set_param(
                 format!("mission_{}_step_{}_status", mission.mission_id, step_id),
                 serde_json::json!("active"),
+            );
+        }
+
+        // Per-objective status. `Condition::ObjectiveStatus` reads
+        // `mission_{m}_obj_{o}_status`; without this loop the evaluator's
+        // `unwrap_or("not_active")` fallback masked completed objectives,
+        // so chains gated on `objective_status eq completed` could never
+        // fire and chains gated on `neq completed` always fired (latent
+        // bug surfaced by mission 688 chains 1109/1111).
+        for obj in &mission.active_objectives {
+            let status_str = if obj.status == STATUS_COMPLETED {
+                "completed"
+            } else {
+                "active"
+            };
+            ctx.set_param(
+                format!(
+                    "mission_{}_obj_{}_status",
+                    mission.mission_id, obj.objective_id
+                ),
+                serde_json::json!(status_str),
+            );
+        }
+        // Objectives that were completed before the current step (e.g.
+        // multi-step missions where prior steps' objectives stay
+        // tracked) live in `completed_objectives` only. Mark them
+        // `completed` if they aren't already in `active_objectives`
+        // (active_objectives is the source of truth for the current
+        // step's objectives, so don't overwrite a present entry).
+        let active_ids: std::collections::HashSet<i32> = mission
+            .active_objectives
+            .iter()
+            .map(|o| o.objective_id)
+            .collect();
+        for completed_id in &mission.completed_objectives {
+            if active_ids.contains(completed_id) {
+                continue;
+            }
+            ctx.set_param(
+                format!("mission_{}_obj_{}_status", mission.mission_id, completed_id),
+                serde_json::json!("completed"),
             );
         }
     }
@@ -216,6 +259,90 @@ mod tests {
         assert!(
             !ctx.params.contains_key("mission_641_step_3563_status"),
             "unreached steps must not be populated",
+        );
+    }
+
+    /// Per-objective status population is what `Condition::ObjectiveStatus`
+    /// (`mission_{m}_obj_{o}_status`) reads. Without this loop the
+    /// evaluator's `unwrap_or("not_active")` fallback would mask
+    /// completed objectives, breaking gates of the form
+    /// `objective_status eq completed` (chain 1109's primary check).
+    #[test]
+    fn populates_per_objective_status_active_and_completed() {
+        let mut mission = MissionInstance::new(
+            688,
+            2356,
+            vec![
+                MissionObjective {
+                    objective_id: 2734,
+                    status: STATUS_ACTIVE,
+                    hidden: false,
+                    optional: false,
+                },
+                MissionObjective {
+                    objective_id: 4647,
+                    status: STATUS_ACTIVE,
+                    hidden: false,
+                    optional: true,
+                },
+            ],
+        );
+        // Simulate completing the required objective (terminal interact).
+        mission.complete_objective(2734);
+
+        let entity = make_entity_with_mission(mission);
+        let mut ctx = ExecutionContext::new();
+        populate_mission_context(&entity, &mut ctx);
+
+        assert_eq!(
+            ctx.params
+                .get("mission_688_obj_2734_status")
+                .and_then(|v| v.as_str()),
+            Some("completed"),
+            "completed objective must populate as `completed` so chain 1109's \
+             `objective_status 688 2734 eq completed` gate matches",
+        );
+        assert_eq!(
+            ctx.params
+                .get("mission_688_obj_4647_status")
+                .and_then(|v| v.as_str()),
+            Some("active"),
+            "still-active optional objective must populate as `active`",
+        );
+    }
+
+    /// Objectives in `completed_objectives` that are no longer in
+    /// `active_objectives` (e.g. a previous step's objectives carried
+    /// forward) must still surface as `completed` — otherwise chains
+    /// that gate on a prior step's objective would lose state once the
+    /// step advanced.
+    #[test]
+    fn populates_completed_only_objectives_carried_across_steps() {
+        let mut mission = MissionInstance::new(
+            641,
+            2121,
+            vec![MissionObjective {
+                objective_id: 999,
+                status: STATUS_ACTIVE,
+                hidden: false,
+                optional: false,
+            }],
+        );
+        // A different objective from a prior step is in the
+        // completed-only list.
+        mission.completed_objectives.push(2734);
+
+        let entity = make_entity_with_mission(mission);
+        let mut ctx = ExecutionContext::new();
+        populate_mission_context(&entity, &mut ctx);
+
+        assert_eq!(
+            ctx.params
+                .get("mission_641_obj_2734_status")
+                .and_then(|v| v.as_str()),
+            Some("completed"),
+            "objective in completed_objectives but not in active_objectives \
+             must still populate as `completed`",
         );
     }
 

@@ -5807,7 +5807,7 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2144, 639, false, 1, false, 'Defend yourself from the drone!', 2);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2343, 639, false, 1, false, 'Use the Ambernol in your mission inventory (press ''i'') to cure yourself of Stasis Sickness.', 3);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2343, 639, false, 1, false, 'Use the Ambernol in your mission inventory (press ''b'' to open inventory, then select Mission Inventory) to cure yourself of Stasis Sickness.', 3);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2120, 640, false, 1, false, 'Hack the Ring Transport controls.', 0);
 
@@ -5929,6 +5929,14 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2355, 687, false, 1, false, 'Eliminate the guards in the barracks.', 1);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2356, 688, false, 1, false, 'Secure the Castle''s main armory for Op-CORE.', 0);
+
+-- Cimmeria-introduced step (mirrors 80622/80641 pattern). Splits mission 688
+-- into two phases: step 2356 covers terminal-use, step 80688 covers ring-use.
+-- Without a second step, completing obj 2734 in chain 1107 would auto-complete
+-- the mission (cell::missions::complete_objective auto-completes when all
+-- required objectives are done) and leave the player with no way to use the
+-- ring switch (chain 1109's step gate would already be inactive).
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (80688, 688, false, 1, false, 'Use the ring transport to escape.', 1);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2390, 700, true, 2, false, 'Meet with Garshaw', 0);
 

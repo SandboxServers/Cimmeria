@@ -53,8 +53,16 @@ pub(super) async fn dispatch_base_method(
     if in_world {
         match id {
             sgw_player_base::ON_CLIENT_READY => {
-                handle_on_client_ready(addr, connected, cell_tx, socket, entity_to_addr, db_pool)
-                    .await?;
+                handle_on_client_ready(
+                    addr,
+                    key,
+                    connected,
+                    cell_tx,
+                    socket,
+                    entity_to_addr,
+                    db_pool,
+                )
+                .await?;
             }
             _ => {
                 // SGWPlayer base method dispatch

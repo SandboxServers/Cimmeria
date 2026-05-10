@@ -116,14 +116,49 @@ async fn dispatch_effect_inner(
             world_name,
             destination_region_id,
         } => {
-            // Cross-world is rejected up-front in `handle_select_destination`,
-            // so the FSM should never produce this effect. Surface as error
-            // (not panic) to keep the cell loop running if we ever regress.
-            tracing::error!(
-                entity_id, ?position, %world_name, destination_region_id,
-                "ring transport: TeleportCrossWorld effect dispatched — \
-                 should have been rejected at selectDestination"
-            );
+            // Cross-world ring transport — re-uses the gate-travel pipeline
+            // (RESET_ENTITIES → ENABLE_ENTITIES → world entry replay) so the
+            // client tears down its old-world entity view and re-loads on
+            // the destination world cleanly. The destination ring's FSM
+            // stays parked in `RemoteLoadWait` until base sends back
+            // `BaseToCellMsg::AdvanceRingDestination` after `onClientReady`
+            // — that's the deferred `mark_player_loaded` hook the issue's
+            // Phase A design calls for.
+            //
+            // Order matters: flush bandolier ammo → destroy on this cell →
+            // send GateTravel. The base side waits on the same client
+            // socket so cell→base ordering is preserved naturally.
+            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                if let Some(player_id) = entity.player_id {
+                    crate::cell::cell_methods::inventory::flush_dirty_bandolier_ammo(
+                        entity, player_id, tx,
+                    )
+                    .await;
+                }
+            }
+            space_mgr.destroy_entity(entity_id);
+
+            if let Err(e) = tx
+                .send(CellToBaseMsg::GateTravel {
+                    entity_id,
+                    target_world_name: world_name.clone(),
+                    position,
+                    rotation: [0.0, 0.0, 0.0],
+                    destination_ring_id: Some(destination_region_id),
+                })
+                .await
+            {
+                // The destination ring is already in RemoteLoadWait at this
+                // point. A failed send means base never tears down the
+                // client view and the destination FSM will sit until a
+                // future ring tick stalls. Log loudly; the player has to
+                // relog to recover. No retry: the channel is gone.
+                tracing::error!(
+                    entity_id, %world_name, destination_region_id,
+                    error = %e,
+                    "TeleportCrossWorld: cell→base GateTravel send failed"
+                );
+            }
         }
         Effect::FireTeleportIn {
             entity_id,

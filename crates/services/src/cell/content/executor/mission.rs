@@ -99,7 +99,11 @@ pub(super) async fn accept_or_advance(
     }
 }
 
-/// `Action::CompleteMission` — mark the mission complete and persist.
+/// `Action::CompleteMission` — mark the mission complete and persist,
+/// then fire the `mission_completed` follow-up event so chains hooked
+/// on completion (e.g., chain 1105's auto-accept of 688 when 687
+/// completes) actually run. Mirrors `accept_or_advance`'s firing of
+/// `fire_mission_accepted`.
 pub(super) async fn complete(
     mission_id: i32,
     entity_id: u32,
@@ -107,6 +111,7 @@ pub(super) async fn complete(
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
 ) {
     tracing::info!(
         entity_id,
@@ -114,6 +119,21 @@ pub(super) async fn complete(
         chain_id,
         "Content: completing mission"
     );
+    // Snapshot the prior status BEFORE `complete_mission_direct` flips
+    // it. We only fire the `mission_completed` follow-up event on a
+    // real active→completed transition — running this action against
+    // an already-completed mission must be a wire/no-op, and running
+    // it against a FAILED mission must not fire either (a failure
+    // being "completed" via this action would otherwise re-fire
+    // completion-driven chains like the auto-accept of the next
+    // mission, which never legitimately follows a failure).
+    use cimmeria_entity::missions::MISSION_ACTIVE;
+    let prior_status = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.missions.get_mission(mission_id))
+        .map(|m| m.status);
+    let transitioned_from_active = prior_status == Some(MISSION_ACTIVE);
+
     crate::cell::missions::complete_mission_direct(entity_id, mission_id, tx, space_mgr).await;
     // Read repeats AFTER complete_mission_direct so we capture
     // the post-bump value (`MissionInstance::complete` increments).
@@ -135,6 +155,26 @@ pub(super) async fn complete(
         tracing::error!(
             entity_id, player_id, mission_id, chain_id, error = %e,
             "MissionUpdate (complete) send to base failed -- mission completion not persisted"
+        );
+    }
+    // Fire the `mission_completed` chain-engine event only when the
+    // mission was MISSION_ACTIVE before this call — that's the only
+    // legitimate transition into MISSION_COMPLETED. Already-completed,
+    // failed, or untracked missions all skip the event; otherwise a
+    // chain like 1105 (`mission_completed 687 → accept_mission 688`)
+    // could re-fire on retries or fire spuriously when a failure is
+    // converted to a completion.
+    if transitioned_from_active {
+        crate::cell::content::event_dispatch::fire_mission_completed(
+            entity_id, player_id, mission_id, engine, tx, space_mgr,
+        )
+        .await;
+    } else {
+        tracing::debug!(
+            entity_id,
+            mission_id,
+            ?prior_status,
+            "Content: complete called on non-active mission — skipping mission_completed event"
         );
     }
 }
