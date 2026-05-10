@@ -2,6 +2,8 @@
 
 Self-contained Docker image: server binary + cooked game data + pre-loaded Postgres + s6-overlay supervisor, in one published artifact. The goal is `docker run` and you have a working Cimmeria server — no Rust toolchain, no MSVC, no PowerShell bootstrap, no `.sql` files to load.
 
+> Looking to deploy this to a colo / single-host box with auto-update on every new release? See [Colo Auto-Update Deployment](colo-deploy.md) and the sample compose at [`docker/compose.colo.yml`](../../docker/compose.colo.yml).
+
 ## Release model
 
 Releases are **explicit**. Pushing to `main` does not publish a container — many PRs land for routine work that isn't release-worthy. To cut a release, you trigger [`.github/workflows/release-container.yml`](../../.github/workflows/release-container.yml) one of three ways:
