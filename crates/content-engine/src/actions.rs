@@ -45,6 +45,20 @@ pub enum Action {
     /// Teleport the source entity to a position in a target space.
     Teleport { space_id: i32, position: [f32; 3] },
 
+    /// Cross-world teleport: tear down the player's cell entity on this
+    /// world and re-create on `world_name` at `position` via the
+    /// `CellToBaseMsg::GateTravel` pipeline (same flow used by stargate
+    /// dial). `destination_ring_id` is `None` so base does not send
+    /// `BaseToCellMsg::AdvanceRingDestination` — there's no destination
+    /// ring FSM to advance. Use this for chain-driven cross-world hops
+    /// where a ring ceremony is unnecessary or unavailable (e.g., the
+    /// mission 688 armory exit, where the Castle map has no ring
+    /// transporter prefab actor in its kismet).
+    CrossWorldTeleport {
+        world_name: String,
+        position: [f32; 3],
+    },
+
     /// Spawn a new entity from a template at the given position.
     SpawnEntity {
         template_id: i32,

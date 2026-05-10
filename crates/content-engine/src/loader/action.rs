@@ -132,6 +132,18 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
             let region_id = params.get("regionId").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             Some(Action::TriggerTransporter { region_id })
         }
+        "cross_world_teleport" => {
+            // target_key carries the destination world name (e.g., "Castle").
+            // params carries x/y/z floats for the spawn position.
+            let world_name = row.target_key.as_deref()?.to_string();
+            let x = params.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            let y = params.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            let z = params.get("z").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            Some(Action::CrossWorldTeleport {
+                world_name,
+                position: [x, y, z],
+            })
+        }
         "system_message" => Some(Action::SystemMessage {
             message_id: row.target_id?,
         }),

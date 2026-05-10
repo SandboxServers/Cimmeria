@@ -1507,16 +1507,23 @@ INSERT INTO content_counters (chain_id, counter_name, target_value, reset_on)
 VALUES (1108, 'armory_kills', 1, 'mission_complete');
 
 -- Chain 1109: interact with ring switch while step 80688 active →
--- complete mission 688, clear ring highlight, then
--- `trigger_transporter` for region 33. Action ordering matters:
--- `complete_mission` (sort_order 0) flips `MissionInstance::status` to
--- MISSION_COMPLETED in memory before `trigger_transporter`
--- (sort_order 2) calls `handle_interact`, which reads the runtime
--- mission gate (`required_mission_id=688`) and now sees `completed`.
--- Without that ordering the runtime would suppress the destination
--- list on the very interaction that completes the mission.
+-- complete mission 688, clear ring highlight, then cross-world
+-- teleport directly to Castle's arrival platform.
+--
+-- We use `cross_world_teleport` instead of `trigger_transporter`
+-- because the ring-transport ceremony has nothing to animate on this
+-- route: the canonical `GLB-RingTransporterBase` kismet prefab actor
+-- doesn't exist on either side at the right location. The Cellblock-
+-- side platform (spawn 79) is set-decorated geometry without a wired
+-- prefab; the Castle-side platform is also set-decorated only. Routing
+-- through the ring FSM would either play no animation or play an
+-- existing ring's animation at the wrong world position. Skipping the
+-- ceremony entirely is cleaner — player right-clicks the switch,
+-- mission completes, world transition happens, player arrives on the
+-- Castle platform with no ring sequence. (Documented in the prerelease
+-- known-issues list.)
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1109, '688 - Interact armory ring (step 80688): complete mission, trigger transporter', 'mission', 688, true, 0);
+VALUES (1109, '688 - Interact armory ring (step 80688): complete mission, cross-world teleport to Castle', 'mission', 688, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1109, 'interact_tag', 'Cellblock_ArmoryRingSwitch', 'player', false, 0);
@@ -1529,7 +1536,11 @@ VALUES
   (1109, 'complete_mission', 688, NULL, '{}', 0, 0),
   (1109, 'set_interaction_type', NULL, 'Cellblock_ArmoryRingSwitch',
    '{"op": "~", "mask": "INT_MissionWorldObject"}', 0, 1),
-  (1109, 'trigger_transporter', NULL, NULL, '{"regionId": 33}', 0, 2);
+  -- Coords pinned in-game to the visible Castle ring platform
+  -- (Castle-00090004 map debug HUD readout). target_key carries the
+  -- world name; params carries the spawn x/y/z.
+  (1109, 'cross_world_teleport', NULL, 'Castle',
+   '{"x": 466.365, "y": 70.397, "z": 991.466}', 0, 2);
 
 -- Chain 1110: player_loaded Castle_CellBlock + step 2356 active →
 -- restore terminal highlight on login. interaction_type flags don't

@@ -306,16 +306,15 @@ async fn chain_1108_increments_armory_kills_on_guard_death() {
 /// with the ring switch while step 80688 is active must:
 ///   1. complete mission 688 (sort_order 0)
 ///   2. clear the ring highlight (sort_order 1)
-///   3. trigger transporter region 33 (sort_order 2)
+///   3. cross-world teleport to Castle (sort_order 2)
 ///
-/// Order matters at execute-time: `complete_mission` flips the in-memory
-/// `MissionInstance::status` to MISSION_COMPLETED before
-/// `trigger_transporter` calls `handle_interact`, which then sees the
-/// runtime `required_mission_id=688` gate satisfied. This test pins
-/// the action set; the executor-level ordering is enforced by sort_order
-/// and exercised by `ring_transport::tests`.
+/// Uses `CrossWorldTeleport` instead of `TriggerTransporter` because
+/// neither end of this ring has a `GLB-RingTransporterBase` kismet
+/// prefab actor wired up — running the ring FSM would play no
+/// animation or animate the wrong actor at the wrong location. See
+/// chain 1109's seed comment.
 #[tokio::test]
-async fn chain_1109_completes_688_and_triggers_transporter() {
+async fn chain_1109_completes_688_and_cross_world_teleports() {
     let pool = require_db_or_skip!();
     let chain = load_single_chain_for_test(&pool, 1109)
         .await
@@ -358,13 +357,22 @@ async fn chain_1109_completes_688_and_triggers_transporter() {
         "chain 1109 must resolve CompleteMission(688); got {completes}",
     );
 
-    let triggers = chain_actions
+    let teleports = chain_actions
         .iter()
-        .filter(|a| matches!(a, Action::TriggerTransporter { region_id: 33 }))
+        .filter(|a| {
+            matches!(
+                a,
+                Action::CrossWorldTeleport { world_name, position }
+                    if world_name == "Castle"
+                        && (position[0] - 466.365).abs() < 0.01
+                        && (position[1] - 70.397).abs() < 0.01
+                        && (position[2] - 991.466).abs() < 0.01
+            )
+        })
         .count();
     assert_eq!(
-        triggers, 1,
-        "chain 1109 must resolve TriggerTransporter(33); got {triggers}",
+        teleports, 1,
+        "chain 1109 must resolve CrossWorldTeleport(Castle, ~(466.365, 70.397, 991.466)); got {teleports}",
     );
 
     let cleared = chain_actions

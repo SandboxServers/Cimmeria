@@ -210,6 +210,15 @@ pub(super) async fn execute_actions(
             Action::Teleport { space_id, position } => {
                 transport::teleport(space_id, position, entity_id, chain_id, tx, space_mgr).await;
             }
+            Action::CrossWorldTeleport {
+                world_name,
+                position,
+            } => {
+                transport::cross_world_teleport(
+                    world_name, position, entity_id, chain_id, tx, space_mgr,
+                )
+                .await;
+            }
             Action::SystemMessage { message_id } => {
                 // TODO: Wire format for system messages is unknown. The previous
                 // implementation incorrectly used onPlayerCommunication (method 28)
