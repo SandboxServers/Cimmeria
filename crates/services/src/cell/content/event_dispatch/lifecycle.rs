@@ -47,28 +47,16 @@ pub async fn fire_player_loaded(
     };
 
     let resolved = engine.resolve_event(&event, &ctx);
-    if resolved.actions.is_empty() {
-        tracing::info!(entity_id, player_id, %world_name, "fire_player_loaded: no chains matched");
-    } else {
-        for (chain_id, action) in &resolved.actions {
-            tracing::info!(entity_id, player_id, %world_name, chain_id, action = ?action, "fire_player_loaded: matched action");
-        }
-    }
-    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
-
-    // Diagnostic: confirm mission 622 state after chain execution
-    if let Some(entity) = space_mgr.get_entity(entity_id) {
-        let m622_active = entity
-            .missions
-            .get_mission(622)
-            .is_some_and(|m| m.status == 1);
+    if !resolved.actions.is_empty() {
         tracing::info!(
             entity_id, player_id, %world_name,
-            mission_622_active = m622_active,
-            total_missions = entity.missions.count(),
-            "fire_player_loaded: post-execute state"
+            actions = resolved.actions.len(),
+            "fire_player_loaded: matched"
         );
+    } else {
+        tracing::debug!(entity_id, %world_name, "fire_player_loaded: no chains matched");
     }
+    executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
 /// Fire the `EntityDeath` event when an NPC is killed.

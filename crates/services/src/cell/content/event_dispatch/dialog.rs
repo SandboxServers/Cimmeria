@@ -30,19 +30,6 @@ pub async fn fire_dialog_open(
         populate_mission_context(entity, &mut ctx);
     }
 
-    // Diagnostic: show mission 622 state and chain count before resolution
-    let mission_status = ctx
-        .params
-        .get("mission_622_status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("<not set>");
-    tracing::info!(
-        entity_id, player_id, dialog_id,
-        mission_622_status = %mission_status,
-        dialog_open_chains = engine.chains_for_trigger(&TriggerType::DialogOpen),
-        "fire_dialog_open: resolving"
-    );
-
     let event = TriggerEvent {
         trigger_type: TriggerType::DialogOpen,
         source_entity: Some(cimmeria_common::EntityId(entity_id as i32)),
@@ -51,14 +38,17 @@ pub async fn fire_dialog_open(
     };
 
     let resolved = engine.resolve_event(&event, &ctx);
-
-    tracing::info!(
-        entity_id,
-        dialog_id,
-        matched_actions = resolved.actions.len(),
-        "fire_dialog_open: resolved"
-    );
-
+    if !resolved.actions.is_empty() {
+        tracing::info!(
+            entity_id,
+            player_id,
+            dialog_id,
+            actions = resolved.actions.len(),
+            "fire_dialog_open: matched"
+        );
+    } else {
+        tracing::debug!(entity_id, dialog_id, "fire_dialog_open: no chains matched");
+    }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
 
