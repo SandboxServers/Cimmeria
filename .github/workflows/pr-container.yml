@@ -21,6 +21,8 @@ on:
     paths:
       - 'crates/**'
       - 'entities/defs/**'
+      - 'entities/spaces.xml'
+      - 'entities/cell_spaces.xml'
       - 'data/cache/**'
       - 'data/spaces/**'
       - 'db/**'

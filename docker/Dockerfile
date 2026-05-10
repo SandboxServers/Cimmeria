@@ -183,6 +183,13 @@ RUN mkdir -p /opt/cimmeria/bin /opt/cimmeria/data /var/log/cimmeria
 COPY --from=builder --chown=cimmeria:cimmeria /tmp/cimmeria-server /opt/cimmeria/bin/cimmeria-server
 COPY --chown=cimmeria:cimmeria data/cache  /opt/cimmeria/data/cache
 COPY --chown=cimmeria:cimmeria data/spaces /opt/cimmeria/data/spaces
+# CellService reads these two XMLs at startup (entities_dir defaults to
+# "entities" relative to CWD; see crates/services/src/cell/service/mod.rs).
+# Everything else under entities/ — entities.xml, custom_*.xml, defs/ — is
+# build-time-only input for crates/defs/build/ and is already baked into
+# the binary, so it doesn't ship in the runtime image.
+COPY --chown=cimmeria:cimmeria entities/spaces.xml      /opt/cimmeria/entities/spaces.xml
+COPY --chown=cimmeria:cimmeria entities/cell_spaces.xml /opt/cimmeria/entities/cell_spaces.xml
 # The server creates `logs/` relative to its CWD (/opt/cimmeria) at
 # startup; /var/log/cimmeria is reserved for future file-logging when
 # we wire it up. Both need to be writable as the cimmeria user.
