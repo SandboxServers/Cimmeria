@@ -185,8 +185,25 @@ pub async fn accept_mission(
         .missions
         .get_mission(mission_id)
         .map_or(0, |m| m.repeats);
+    // Propagate the mission def's `is_hidden` into the instance. Without
+    // this, hidden sub-missions (e.g. mission 682-686 Hallway0N Controllers,
+    // is_hidden=true in the seed) appear in the player's mission log because
+    // `MissionInstance::new` defaults `is_hidden=false` and `active_missions()`
+    // filters on the per-instance flag. Cellblock-only missions affected;
+    // visible-by-design missions (681 Mess Hall, 687 Aftermath, etc.) are
+    // is_hidden=false in the seed so this is a no-op for them.
+    let is_hidden = space_mgr
+        .mission_defs
+        .get(&mission_id)
+        .is_some_and(|m| m.is_hidden);
+    // get_entity_mut again because mission_defs lookup borrowed &space_mgr.
+    let entity = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e,
+        None => return,
+    };
     let mut mission = MissionInstance::new(mission_id, step_id, objectives.clone());
     mission.repeats = prior_repeats;
+    mission.is_hidden = is_hidden;
     entity.missions.add_mission(mission);
 
     tracing::info!(

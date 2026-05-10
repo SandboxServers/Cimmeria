@@ -5807,7 +5807,7 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2144, 639, false, 1, false, 'Defend yourself from the drone!', 2);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2343, 639, false, 1, false, 'Use the Ambernol in your mission inventory (press ''i'') to cure yourself of Stasis Sickness.', 3);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2343, 639, false, 1, false, 'Use the Ambernol in your mission inventory (press ''b'' to open inventory, then select Mission Inventory) to cure yourself of Stasis Sickness.', 3);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2120, 640, false, 1, false, 'Hack the Ring Transport controls.', 0);
 

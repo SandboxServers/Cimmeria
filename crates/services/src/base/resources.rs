@@ -118,13 +118,21 @@ const CATEGORY_MISSIONS: u32 = 3;
 /// The result is OR'd with 1 so the low bit is always set — guards
 /// against the rare hash that lands on `0`, which would leave the
 /// metadata unchanged and the client stuck on stale entries.
-fn compute_metadata_bump(overrides: &[super::mission_overrides::MissionOverride]) -> u32 {
+fn compute_metadata_bump(
+    overrides: &[super::mission_overrides::MissionOverride],
+    text_overrides: &[super::mission_overrides::StepTextOverride],
+) -> u32 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     for ov in overrides {
         ov.mission_id.hash(&mut hasher);
         ov.insert_after_step_id.hash(&mut hasher);
         ov.injected_steps_xml.hash(&mut hasher);
+    }
+    for ov in text_overrides {
+        ov.mission_id.hash(&mut hasher);
+        ov.step_id.hash(&mut hasher);
+        ov.new_step_display_log_text.hash(&mut hasher);
     }
     ((hasher.finish() as u32) & 0xFFFF) | 0x1
 }
@@ -184,7 +192,9 @@ impl ResourceCache {
     fn apply_mission_overrides(
         categories: &mut HashMap<u32, CategoryData>,
     ) -> HashMap<u32, Vec<u32>> {
-        use super::mission_overrides::{apply_override, MISSION_OVERRIDES};
+        use super::mission_overrides::{
+            apply_override, apply_step_text_override, MISSION_OVERRIDES, STEP_TEXT_OVERRIDES,
+        };
 
         let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
 
@@ -196,7 +206,8 @@ impl ResourceCache {
             return overridden;
         };
 
-        let mut applied: Vec<u32> = Vec::with_capacity(MISSION_OVERRIDES.len());
+        let mut applied: Vec<u32> =
+            Vec::with_capacity(MISSION_OVERRIDES.len() + STEP_TEXT_OVERRIDES.len());
         for ov in MISSION_OVERRIDES {
             let Some(original) = missions.elements.get(&ov.mission_id) else {
                 tracing::warn!(
@@ -223,8 +234,43 @@ impl ResourceCache {
             }
         }
 
+        // Step-text overrides patch existing `<StepDisplayLogText>` content
+        // in-place. Run after MISSION_OVERRIDES so a patched mission XML
+        // (with new injected steps) can have one of its existing step
+        // captions corrected in the same pass.
+        for ov in STEP_TEXT_OVERRIDES {
+            let Some(original) = missions.elements.get(&ov.mission_id) else {
+                tracing::warn!(
+                    mission_id = ov.mission_id,
+                    step_id = ov.step_id,
+                    "step text override skipped: mission entry not present in PAK",
+                );
+                continue;
+            };
+            match apply_step_text_override(original, ov) {
+                Some(patched) => {
+                    missions.elements.insert(ov.mission_id, patched);
+                    if !applied.contains(&ov.mission_id) {
+                        applied.push(ov.mission_id);
+                    }
+                    tracing::info!(
+                        mission_id = ov.mission_id,
+                        step_id = ov.step_id,
+                        "Applied Cimmeria step text override",
+                    );
+                }
+                None => {
+                    tracing::warn!(
+                        mission_id = ov.mission_id,
+                        step_id = ov.step_id,
+                        "step text override skipped: XML shape did not match — keeping unpatched entry",
+                    );
+                }
+            }
+        }
+
         if !applied.is_empty() {
-            let bump = compute_metadata_bump(MISSION_OVERRIDES);
+            let bump = compute_metadata_bump(MISSION_OVERRIDES, STEP_TEXT_OVERRIDES);
             missions.metadata = missions.metadata.wrapping_add(bump);
             applied.sort_unstable();
             tracing::info!(
@@ -411,8 +457,8 @@ mod tests {
             ov(641, 2121, "<Steps>y</Steps>"),
         ];
         assert_eq!(
-            compute_metadata_bump(&overrides),
-            compute_metadata_bump(&overrides),
+            compute_metadata_bump(&overrides, &[]),
+            compute_metadata_bump(&overrides, &[]),
             "same overrides must hash to the same bump on every call",
         );
     }
@@ -421,10 +467,10 @@ mod tests {
     fn compute_metadata_bump_low_bit_is_always_set() {
         // Even an empty-overrides bump must be non-zero so a future caller
         // that hits this path doesn't leave metadata unchanged.
-        let bump_empty = compute_metadata_bump(&[]);
+        let bump_empty = compute_metadata_bump(&[], &[]);
         assert_eq!(bump_empty & 0x1, 0x1, "low bit must be set");
 
-        let bump_one = compute_metadata_bump(&[ov(1, 2, "x")]);
+        let bump_one = compute_metadata_bump(&[ov(1, 2, "x")], &[]);
         assert_eq!(bump_one & 0x1, 0x1, "low bit must be set");
     }
 
@@ -433,8 +479,8 @@ mod tests {
         let a = [ov(622, 2113, "<Steps>aaa</Steps>")];
         let b = [ov(622, 2113, "<Steps>bbb</Steps>")];
         assert_ne!(
-            compute_metadata_bump(&a),
-            compute_metadata_bump(&b),
+            compute_metadata_bump(&a, &[]),
+            compute_metadata_bump(&b, &[]),
             "edits to injected XML must produce a different bump so the \
              client refetches the patched entry",
         );
@@ -451,8 +497,8 @@ mod tests {
         let a = [ov(622, 2113, "<Steps>x</Steps>")];
         let b = [ov(622, 9999, "<Steps>x</Steps>")];
         assert_ne!(
-            compute_metadata_bump(&a),
-            compute_metadata_bump(&b),
+            compute_metadata_bump(&a, &[]),
+            compute_metadata_bump(&b, &[]),
             "insert_after_step_id must participate in the hash",
         );
     }
@@ -461,7 +507,34 @@ mod tests {
     fn compute_metadata_bump_changes_when_mission_id_changes() {
         let a = [ov(622, 2113, "<Steps>x</Steps>")];
         let b = [ov(641, 2113, "<Steps>x</Steps>")];
-        assert_ne!(compute_metadata_bump(&a), compute_metadata_bump(&b));
+        assert_ne!(
+            compute_metadata_bump(&a, &[]),
+            compute_metadata_bump(&b, &[])
+        );
+    }
+
+    /// A change to a step-text override's `new_step_display_log_text` must
+    /// produce a different bump too — otherwise a client cached against
+    /// the previous text would never see the corrected version.
+    #[test]
+    fn compute_metadata_bump_changes_when_step_text_override_changes() {
+        use super::super::mission_overrides::StepTextOverride;
+        let a = [StepTextOverride {
+            mission_id: 639,
+            step_id: 2343,
+            new_step_display_log_text: "press 'a'",
+        }];
+        let b = [StepTextOverride {
+            mission_id: 639,
+            step_id: 2343,
+            new_step_display_log_text: "press 'b'",
+        }];
+        assert_ne!(
+            compute_metadata_bump(&[], &a),
+            compute_metadata_bump(&[], &b),
+            "edits to step-text override caption must change the bump so \
+             the client refetches the patched mission entry",
+        );
     }
 
     // ── apply_mission_overrides on hand-built CategoryData ───────────

@@ -114,6 +114,43 @@ pub const MISSION_OVERRIDES: &[MissionOverride] = &[
     },
 ];
 
+/// In-place patch of `<StepDisplayLogText>` on an already-shipped step in
+/// the canonical PAK. Used to fix wrong player-visible text on existing
+/// steps without inserting new ones.
+///
+/// Distinct from [`MissionOverride`] because the existing `<Steps>` block
+/// is preserved (StepID, ObjectiveID, IsHidden flags untouched) — only
+/// the inner display text changes. Inserting a new step would shift XML
+/// indexes and break the client's sequential-progression guard the same
+/// way an appended `<Steps>` does for new-step inserts.
+pub struct StepTextOverride {
+    pub mission_id: u32,
+    pub step_id: u32,
+    pub new_step_display_log_text: &'static str,
+}
+
+/// Step-text overrides applied alongside [`MISSION_OVERRIDES`] at PAK
+/// load. Each one rewrites the inner text of an existing `<Steps
+/// StepID="N">` `<StepDisplayLogText>` element.
+pub const STEP_TEXT_OVERRIDES: &[StepTextOverride] = &[
+    // Mission 639 step 2343: the canonical PAK ships
+    //   "press 'i' to open inventory"
+    // but the live SGW client uses 'b' to open inventory; the player must
+    // then select Mission Inventory from the tabs. QA pass 2026-05-09
+    // surfaced the misdirection — players can't progress past the stasis-
+    // sickness step without the right key. Server-side parallel text in
+    // `db/resources/Missions/Seed/mission_steps.sql:5810` and
+    // `db/resources/Texts/Seed/texts.sql` moniker 13971 are kept in sync
+    // so server-side log/debug strings match what the client renders.
+    StepTextOverride {
+        mission_id: 639,
+        step_id: 2343,
+        new_step_display_log_text: "Use the Ambernol in your mission inventory (press 'b' to open \
+             inventory, then select Mission Inventory) to cure yourself of \
+             Stasis Sickness.",
+    },
+];
+
 /// Apply a single mission override to a chunk of XML bytes from the PAK.
 ///
 /// Inserts the new `<Steps>` block immediately after the closing
@@ -145,6 +182,45 @@ pub fn apply_override(original: &[u8], ov: &MissionOverride) -> Option<Vec<u8>> 
     out.extend_from_slice(&original[..insert_idx]);
     out.extend_from_slice(ov.injected_steps_xml.as_bytes());
     out.extend_from_slice(&original[insert_idx..]);
+    Some(out)
+}
+
+/// Apply a single [`StepTextOverride`] to a chunk of XML bytes from the PAK.
+///
+/// Locates `<Steps ... StepID="<step_id>" ...>` then the first
+/// `<StepDisplayLogText>` inside it, and replaces the inner text. The
+/// surrounding `<Steps>` attributes (StepEnabled, AwardXP, Difficulty) and
+/// any `<Objectives>` children are preserved verbatim — only the visible
+/// step caption changes.
+///
+/// Returns `Some(patched)` on success, `None` if the input shape didn't
+/// match. As with `apply_override`, the caller logs and keeps the
+/// original bytes unmodified rather than risk shipping corrupted XML.
+pub fn apply_step_text_override(original: &[u8], ov: &StepTextOverride) -> Option<Vec<u8>> {
+    const OPEN: &str = "<StepDisplayLogText>";
+    const CLOSE: &str = "</StepDisplayLogText>";
+
+    let xml = std::str::from_utf8(original).ok()?;
+
+    // Anchor on the StepID attribute (canonical attribute order puts
+    // StepEnabled first; scanning by substring keeps us insensitive to
+    // attribute reordering).
+    let step_needle = format!("StepID=\"{}\"", ov.step_id);
+    let step_attr_idx = xml.find(&step_needle)?;
+
+    // The first <StepDisplayLogText> after the StepID attribute is the
+    // one belonging to this step's <Steps> block (children don't nest;
+    // see `apply_override`).
+    let after_step = &xml[step_attr_idx..];
+    let open_at = after_step.find(OPEN)?;
+    let inner_start = step_attr_idx + open_at + OPEN.len();
+    let close_offset = after_step[open_at + OPEN.len()..].find(CLOSE)?;
+    let inner_end = step_attr_idx + open_at + OPEN.len() + close_offset;
+
+    let mut out = Vec::with_capacity(original.len() + ov.new_step_display_log_text.len());
+    out.extend_from_slice(&original[..inner_start]);
+    out.extend_from_slice(ov.new_step_display_log_text.as_bytes());
+    out.extend_from_slice(&original[inner_end..]);
     Some(out)
 }
 
@@ -272,5 +348,82 @@ mod tests {
                 ov.injected_steps_xml,
             );
         }
+    }
+
+    /// 639-shape sample for the in-place text replacement path. The wrong
+    /// "press 'i'" caption mirrors what the canonical PAK ships for step 2343.
+    const SAMPLE_639_AMBERNOL: &[u8] = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+        <COOKED_MISSION MissionID=\"639\">\
+        <Steps StepEnabled=\"false\" StepID=\"2117\" AwardXP=\"false\" Difficulty=\"1\">\
+        <StepDisplayLogText>Look</StepDisplayLogText></Steps>\
+        <Steps StepEnabled=\"false\" StepID=\"2343\" AwardXP=\"false\" Difficulty=\"1\">\
+        <StepDisplayLogText>Use the Ambernol in your mission inventory \
+(press 'i') to cure yourself of Stasis Sickness.</StepDisplayLogText></Steps>\
+        </COOKED_MISSION>";
+
+    /// Step text override rewrites only the matched step's caption and
+    /// preserves surrounding XML. This is the load-bearing test for the
+    /// Ambernol "press 'i' → press 'b'" fix.
+    #[test]
+    fn step_text_override_rewrites_caption_and_preserves_other_steps() {
+        let ov = STEP_TEXT_OVERRIDES
+            .iter()
+            .find(|o| o.mission_id == 639 && o.step_id == 2343)
+            .expect("639/2343 step text override must be registered");
+
+        let patched = apply_step_text_override(SAMPLE_639_AMBERNOL, ov)
+            .expect("step text override must apply against canonical XML shape");
+        let s = std::str::from_utf8(&patched).expect("output is utf-8");
+
+        assert!(
+            !s.contains("press 'i'"),
+            "patched XML must no longer contain the wrong 'press 'i'' caption: {s}"
+        );
+        assert!(
+            s.contains("press 'b'"),
+            "patched XML must contain the corrected 'press 'b'' caption: {s}"
+        );
+        assert!(
+            s.contains("StepID=\"2117\"")
+                && s.contains("<StepDisplayLogText>Look</StepDisplayLogText>"),
+            "step 2117 caption must be untouched: {s}"
+        );
+        assert!(
+            s.contains("StepID=\"2343\""),
+            "step 2343 attributes must remain intact: {s}"
+        );
+    }
+
+    /// Bad shape (no matching StepID) → returns None. Same defensive
+    /// posture as `apply_override` — refusing to guess prevents a
+    /// corrupted PAK shipment from a malformed override.
+    #[test]
+    fn step_text_override_returns_none_on_missing_step() {
+        let bad = b"<COOKED_MISSION MissionID=\"639\"></COOKED_MISSION>";
+        let ov = StepTextOverride {
+            mission_id: 639,
+            step_id: 9999,
+            new_step_display_log_text: "won't apply",
+        };
+        assert!(apply_step_text_override(bad, &ov).is_none());
+    }
+
+    /// The Ambernol fix entry must be present and reference the correct
+    /// step. Pins the override registration so a future refactor of
+    /// `STEP_TEXT_OVERRIDES` doesn't silently drop it.
+    #[test]
+    fn ambernol_step_text_override_is_registered() {
+        let ov = STEP_TEXT_OVERRIDES
+            .iter()
+            .find(|o| o.mission_id == 639 && o.step_id == 2343)
+            .expect("639/2343 (Ambernol) step text override must be registered");
+        assert!(
+            ov.new_step_display_log_text.contains("press 'b'"),
+            "Ambernol override must instruct the player to press 'b'",
+        );
+        assert!(
+            !ov.new_step_display_log_text.contains("press 'i'"),
+            "Ambernol override must not still reference the wrong 'i' key",
+        );
     }
 }

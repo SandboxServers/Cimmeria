@@ -406,7 +406,11 @@ VALUES (1041, 'step_status', 640, '2120', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1041, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1042]}', 0, 0);
 
--- Chain 1042: Livewire victory → advance step to 2215, swap switch icon Livewire → RingNetwork
+-- Chain 1042: Livewire victory → advance step to 2215, swap switch icon
+-- Livewire → RingNetwork, and add the quest-highlight ring (the same cue
+-- the player saw on the Ambernol vial) so it's obvious the next thing to
+-- do is right-click the ring switch. Highlight cleared by chain 1043
+-- when they actually use it; restored on login by chain 1046.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1042, '640 - Livewire victory: advance to 2215', 'mission', 640, true, 0);
 
@@ -416,7 +420,10 @@ VALUES
   (1042, 'set_interaction_type', NULL, 'HackTheRings_Switch',
    '{"op": "~", "mask": 256}', 0, 1),
   (1042, 'set_interaction_type', NULL, 'HackTheRings_Switch',
-   '{"op": "|", "mask": 32}', 0, 2);
+   '{"op": "|", "mask": 32}', 0, 2),
+  -- Quest-highlight ring (INT_MissionWorldObject = 2^30 = 1073741824).
+  (1042, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+   '{"op": "|", "mask": 1073741824}', 0, 3);
 
 -- Chain 1043: interact with ring switch while step 2215 active → trigger transporter (regionId=1)
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -429,7 +436,12 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (1043, 'step_status', 640, '2215', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1043, 'trigger_transporter', NULL, NULL, '{"regionId": 1}', 0, 0);
+VALUES
+  (1043, 'trigger_transporter', NULL, NULL, '{"regionId": 1}', 0, 0),
+  -- Clear the quest highlight set by chain 1042 — the player has
+  -- engaged with the ring, no need to keep the marker.
+  (1043, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+   '{"op": "~", "mask": 1073741824}', 0, 1);
 
 -- Chain 1045: player_loaded + step 2120 active → restore Livewire bit on the switch.
 --   Needed because interaction_type flags are NOT persisted on the entity across server restarts.
@@ -447,7 +459,10 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1045, 'set_interaction_type', NULL, 'HackTheRings_Switch',
         '{"op": "|", "mask": 256}', 0, 0);
 
--- Chain 1046: player_loaded + step 2215 active → restore RingNetwork bit on the switch.
+-- Chain 1046: player_loaded + step 2215 active → restore both the
+-- RingNetwork icon AND the quest highlight on the switch. Same
+-- restart-resilience rationale as 1045 — the highlight set by chain
+-- 1042 doesn't persist across server restarts.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1046, '640 - Restore RingNetwork bit on login (step 2215)', 'mission', 640, true, 0);
 
@@ -458,8 +473,11 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (1046, 'step_status', 640, '2215', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1046, 'set_interaction_type', NULL, 'HackTheRings_Switch',
-        '{"op": "|", "mask": 32}', 0, 0);
+VALUES
+  (1046, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+   '{"op": "|", "mask": 32}', 0, 0),
+  (1046, 'set_interaction_type', NULL, 'HackTheRings_Switch',
+   '{"op": "|", "mask": 1073741824}', 0, 1);
 
 -- Chain 1044: teleport_in regionId=2 while 640 active → complete 640, show ColMarsh indicator
 --   BUG FIX: this correctly sets the 'Preparation_ColMarsh' tag (no trailing 'r')
@@ -677,11 +695,14 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES (1064, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
         '{"op": "|", "mask": 8388608}', 0, 0);
 
--- Chain 1065: player_loaded + step 3564 active → restore Terminal quest
--- highlight (originally set by chain 1058/1059 on dialog accept). Mirrors
--- chains 1062/1064 for SMG1A and ColMarsh respectively.
+-- Chain 1065: player_loaded + step 3564 active → restore Terminal's
+-- INT_MinigameLivewire (256) marker (originally set by chain 1058/1059
+-- on dialog accept). Mirrors chains 1062/1064 for SMG1A and ColMarsh
+-- respectively. The mask matches what the runtime chains set, not the
+-- broader INT_MissionWorldObject — the Terminal needs the wrench/minigame
+-- cursor, not the round quest-object pulse. See chain 1058's comment.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (1065, '641 - Restore Terminal quest highlight on login (step 3564)', 'mission', 641, true, 0);
+VALUES (1065, '641 - Restore Terminal Livewire marker on login (step 3564)', 'mission', 641, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (1065, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
@@ -691,7 +712,7 @@ VALUES (1065, 'step_status', 641, '3564', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1065, 'set_interaction_type', NULL, 'Preparation_Terminal',
-        '{"op": "|", "mask": 1073741824}', 0, 0);
+        '{"op": "|", "mask": 256}', 0, 0);
 
 -- Chain 1056: interact template 'Col Marsh (pet)' while step 3563 active + non-sci → dialog 3999
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -737,11 +758,15 @@ VALUES
   -- Briefing's done, clear ColMarsh's "talk to me" marker.
   (1058, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
    '{"op": "~", "mask": 8388608}', 0, 1),
-  -- Highlight the Terminal so the player has the same visual cue we
-  -- already give for the P90 locker / Ambernol vial. Cleared by chain
-  -- 1060 when they interact with it; restored on login by chain 1065.
+  -- Mark the Terminal as a Livewire minigame entry point. The quest
+  -- highlight ring (INT_MissionWorldObject = 1073741824) is the wrong
+  -- cue here — the Terminal isn't an inert quest object, it's the
+  -- minigame trigger; the player needs to know to right-click it to
+  -- start the hack. INT_MinigameLivewire (256) renders the wrench cursor
+  -- the rest of the cellblock arc uses for HackTheRings_Switch.
+  -- Cleared by chain 1060 when they engage; restored on login by chain 1065.
   (1058, 'set_interaction_type', NULL, 'Preparation_Terminal',
-   '{"op": "|", "mask": 1073741824}', 0, 2);
+   '{"op": "|", "mask": 256}', 0, 2);
 
 -- Chain 1059: dialog choice 5023 (sci briefed) → advance step 3564.
 -- Same marker churn as 1058; see that chain for the rationale.
@@ -756,8 +781,9 @@ VALUES
   (1059, 'advance_step', 641, '3564', '{}', 0, 0),
   (1059, 'set_interaction_type', NULL, 'Preparation_ColMarsh',
    '{"op": "~", "mask": 8388608}', 0, 1),
+  -- INT_MinigameLivewire (256) — see chain 1058's comment for rationale.
   (1059, 'set_interaction_type', NULL, 'Preparation_Terminal',
-   '{"op": "|", "mask": 1073741824}', 0, 2);
+   '{"op": "|", "mask": 256}', 0, 2);
 
 -- Chain 1060: interact terminal while step 3564 active → Livewire
 --   on_victory_chains: 1061
@@ -773,10 +799,12 @@ VALUES (1060, 'step_status', 641, '3564', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0),
-  -- Clear the Terminal quest marker the moment the minigame starts;
-  -- player has reached and engaged with it, no need to keep highlighting it.
+  -- Clear the Terminal's INT_MinigameLivewire (256) marker the moment the
+  -- minigame starts; player has engaged with it, no need to keep the cue
+  -- once they're in the minigame. Same shape as chain 1042 clearing the
+  -- Livewire icon off HackTheRings_Switch on victory.
   (1060, 'set_interaction_type', NULL, 'Preparation_Terminal',
-   '{"op": "~", "mask": 1073741824}', 0, 1);
+   '{"op": "~", "mask": 256}', 0, 1);
 
 -- Chain 1061: Livewire victory → display final dialog, complete 641, accept 680
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
