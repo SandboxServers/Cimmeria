@@ -29,8 +29,11 @@ pub struct RingRegion {
     /// `point_sets.set_id` for the trigger volume around this pad.
     pub point_set_id: i32,
     /// When set, `handle_interact` and `handle_select_destination` reject
-    /// the player unless `mission_<id>_status` is `completed`. NULL (None)
-    /// means "no gating" — the historical default for all rings.
+    /// the player unless their MissionManager has a `MissionInstance` for
+    /// this id whose `status == MISSION_COMPLETED`. The check is performed
+    /// by `mission_gate_satisfied` in `runtime.rs` (fail-closed: missing
+    /// entity or missing mission record both reject). NULL (None) means
+    /// "no gating" — the historical default for all rings.
     pub required_mission_id: Option<i32>,
 }
 

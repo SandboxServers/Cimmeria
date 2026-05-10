@@ -464,7 +464,9 @@ async fn handle_interact_blocks_when_required_mission_not_completed() {
 /// armory ring after the trip is done).
 #[tokio::test]
 async fn handle_interact_allows_when_required_mission_completed() {
-    use cimmeria_entity::missions::{MissionInstance, MissionObjective, MISSION_COMPLETED};
+    use cimmeria_entity::missions::{
+        MissionInstance, MissionObjective, MISSION_COMPLETED, STATUS_COMPLETED,
+    };
 
     let mut mgr = make_test_space_mgr();
     let mut regions = std::collections::HashMap::new();
@@ -487,7 +489,12 @@ async fn handle_interact_allows_when_required_mission_completed() {
             2356,
             vec![MissionObjective {
                 objective_id: 2734,
-                status: MISSION_COMPLETED,
+                // `MissionObjective.status` uses STATUS_* constants (the
+                // objective-level status set), distinct from the mission-
+                // level MISSION_* set below. The gate currently inspects
+                // `MissionInstance.status` only, but seeding the wrong
+                // constant family makes the fixture semantically misleading.
+                status: STATUS_COMPLETED,
                 hidden: false,
                 optional: false,
             }],

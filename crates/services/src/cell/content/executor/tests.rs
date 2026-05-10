@@ -586,13 +586,16 @@ async fn complete_mission_action_against_failed_mission_does_not_fire_completion
     );
 }
 
-/// CrossWorldTeleport against an unknown entity_id must be a quiet
-/// no-op — no GateTravel, no panic. Important because the action runs
-/// inside `execute_actions` which iterates a resolved chain action
-/// list; a malformed chain or a desync between the resolved entity_id
-/// and the cell's actual entity table must not crash the cell loop.
+/// CrossWorldTeleport against an unknown local entity_id still
+/// dispatches `GateTravel` — base may hold a connection record for the
+/// player at this address that the cell hasn't synced yet, and the
+/// ring's `Effect::TeleportCrossWorld` arm uses the same shape. The
+/// load-bearing invariant is "no panic": the action runs inside
+/// `execute_actions` iterating a resolved chain action list, and a
+/// malformed chain or a desync between the resolved entity_id and
+/// the cell's entity table must not crash the cell loop.
 #[tokio::test]
-async fn cross_world_teleport_action_with_unknown_entity_is_silent_no_op() {
+async fn cross_world_teleport_action_with_unknown_entity_dispatches_gate_travel() {
     use crate::cell::messages::CellToBaseMsg;
 
     let mut mgr = make_space_mgr();

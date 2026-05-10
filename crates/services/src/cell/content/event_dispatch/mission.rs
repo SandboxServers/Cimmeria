@@ -185,31 +185,38 @@ mod tests {
     /// firing this dispatcher. A `mission_completed N` chain must
     /// execute its actions when `fire_mission_completed(.., N, ..)`
     /// runs against an engine that has the chain registered.
+    ///
+    /// Detection shape: the chain's action is `IncrementCounter`, which
+    /// mutates `entity.counters` directly — observable without needing
+    /// `mission_defs` populated (which the lighter test SpaceManager
+    /// fixture deliberately omits). Replacing the dispatcher body with
+    /// `Box::pin(async {})` would leave the counter unset and fail
+    /// the assertion below — so the test is a real regression guard,
+    /// not a "didn't panic" smoke check.
     #[tokio::test]
     async fn fire_mission_completed_runs_matched_chain_actions() {
         let mut mgr = make_test_space_mgr();
         make_player(&mut mgr);
 
-        // Chain: mission_completed 687 → accept_mission 688. Same shape
-        // as production chain 1105 (the 687 → 688 auto-progression).
         let mut engine = ChainEngine::new();
         engine.register_chain(make_chain(
             1105,
             Trigger::OnMissionCompleted { mission_id: 687 },
-            vec![Action::AcceptMission { mission_id: 688 }],
+            vec![Action::IncrementCounter {
+                counter_name: "completion_chain_fired".to_string(),
+                amount: 1,
+            }],
         ));
 
         let (tx, _rx) = mpsc::channel(64);
         fire_mission_completed(1, 42, 687, &engine, &tx, &mut mgr).await;
 
-        // The accept executor would have written mission 688 into the
-        // entity's missions table — but it gates on
-        // `space_mgr.mission_defs.get(&688)` and our test SpaceManager
-        // has no mission_defs loaded, so the action logs a warn and
-        // bails. The fact that we got HERE without panicking and that
-        // the trigger matched is what this test pins; richer coverage
-        // (full mission acceptance round-trip) belongs in the live-DB
-        // chain-replay tests where mission_defs is populated.
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert_eq!(
+            entity.counters.get("completion_chain_fired"),
+            Some(&1),
+            "matched OnMissionCompleted chain must execute its actions",
+        );
     }
 
     /// Negative: when no chain matches the mission_id, the dispatcher
@@ -242,32 +249,36 @@ mod tests {
     /// existed before this PR but had no unit test; the same boxed-future
     /// shape applies and the same null-guard / context-population invariants
     /// hold. Co-locate the test with the dispatcher that owns the behaviour.
+    ///
+    /// Same detection shape as the completed-counterpart above:
+    /// `IncrementCounter` against the player's counters map gives an
+    /// observable side-effect without depending on tagged entities
+    /// being loaded in the fixture (the production `mission_accepted`
+    /// chain uses `SetInteractionType`, but that no-ops silently when
+    /// the tag isn't in the space — useless for regression-guarding).
     #[tokio::test]
     async fn fire_mission_accepted_runs_matched_chain_actions() {
         let mut mgr = make_test_space_mgr();
         make_player(&mut mgr);
 
-        // Chain 1097 (production): mission_accepted 687 → highlight crate.
         let mut engine = ChainEngine::new();
         engine.register_chain(make_chain(
             1097,
             Trigger::OnMissionAccepted { mission_id: 687 },
-            vec![Action::SetInteractionType {
-                entity_tag: "Cellblock_WoodenCrate".to_string(),
-                operation: "|".to_string(),
-                mask: 1073741824,
+            vec![Action::IncrementCounter {
+                counter_name: "accept_chain_fired".to_string(),
+                amount: 1,
             }],
         ));
 
-        let (tx, mut rx) = mpsc::channel(64);
+        let (tx, _rx) = mpsc::channel(64);
         fire_mission_accepted(1, 42, 687, &engine, &tx, &mut mgr).await;
 
-        // SetInteractionType writes to the cell entity's
-        // `interaction_type_flags` field directly, no wire send when the
-        // tagged entity isn't in the space (Cellblock_WoodenCrate is a
-        // template tag, not loaded in this minimal test fixture). What
-        // pins the behaviour: no panic, no stuck future. A future "rich"
-        // assertion would seed a tagged entity and assert the flag flip.
-        let _ = rx.try_recv(); // drain whatever may have been queued
+        let entity = mgr.get_entity(1).expect("player must still exist");
+        assert_eq!(
+            entity.counters.get("accept_chain_fired"),
+            Some(&1),
+            "matched OnMissionAccepted chain must execute its actions",
+        );
     }
 }
