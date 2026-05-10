@@ -220,6 +220,7 @@ pub fn apply_override(original: &[u8], ov: &MissionOverride) -> Option<Vec<u8>> 
 pub fn apply_step_text_override(original: &[u8], ov: &StepTextOverride) -> Option<Vec<u8>> {
     const OPEN: &str = "<StepDisplayLogText>";
     const CLOSE: &str = "</StepDisplayLogText>";
+    const STEPS_CLOSE: &str = "</Steps>";
 
     let xml = std::str::from_utf8(original).ok()?;
 
@@ -229,13 +230,32 @@ pub fn apply_step_text_override(original: &[u8], ov: &StepTextOverride) -> Optio
     let step_needle = format!("StepID=\"{}\"", ov.step_id);
     let step_attr_idx = xml.find(&step_needle)?;
 
-    // The first <StepDisplayLogText> after the StepID attribute is the
-    // one belonging to this step's <Steps> block (children don't nest;
-    // see `apply_override`).
+    // Bound the search to THIS step's `<Steps>` block. If the matched
+    // step is missing a `<StepDisplayLogText>` (XML drift, stripped
+    // child element, etc.), an unbounded scan would patch the NEXT
+    // step's caption instead of failing. Find the closing `</Steps>`
+    // for the matched StepID first; only accept a `<StepDisplayLogText>`
+    // located before that boundary.
     let after_step = &xml[step_attr_idx..];
+    let steps_close_offset = after_step.find(STEPS_CLOSE)?;
     let open_at = after_step.find(OPEN)?;
+    if open_at >= steps_close_offset {
+        // The matched step doesn't contain a StepDisplayLogText — the
+        // next OPEN is in a sibling step. Refuse rather than patch the
+        // wrong step. Return None so the caller logs and keeps the
+        // original bytes unmodified (same defensive shape as the
+        // upper-level `apply_override`).
+        return None;
+    }
     let inner_start = step_attr_idx + open_at + OPEN.len();
     let close_offset = after_step[open_at + OPEN.len()..].find(CLOSE)?;
+    // Same boundary check on the closing tag — guards against a
+    // `<StepDisplayLogText>` that opens inside our step but has its
+    // closing tag rewritten or stripped, which would otherwise
+    // consume bytes from a sibling step.
+    if open_at + OPEN.len() + close_offset >= steps_close_offset {
+        return None;
+    }
     let inner_end = step_attr_idx + open_at + OPEN.len() + close_offset;
 
     let mut out = Vec::with_capacity(original.len() + ov.new_step_display_log_text.len());
@@ -427,6 +447,35 @@ mod tests {
             new_step_display_log_text: "won't apply",
         };
         assert!(apply_step_text_override(bad, &ov).is_none());
+    }
+
+    /// The matched `<Steps>` block doesn't have a `<StepDisplayLogText>`,
+    /// but the *next* sibling step does. `apply_step_text_override` must
+    /// refuse rather than reach across the `</Steps>` boundary and patch
+    /// the next step's caption — that would silently corrupt unrelated
+    /// mission UI text. Pins the bounded-scan defensive posture.
+    #[test]
+    fn step_text_override_returns_none_when_matched_step_has_no_caption() {
+        // Step 5000 is the matched StepID; it has no <StepDisplayLogText>.
+        // Step 5001 (sibling) does — an unbounded scan would patch it.
+        let xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+            <COOKED_MISSION MissionID=\"999\">\
+            <Steps StepEnabled=\"false\" StepID=\"5000\" AwardXP=\"false\" Difficulty=\"1\">\
+            <Objectives ObjectiveID=\"1\"><DisplayLogText> </DisplayLogText></Objectives>\
+            </Steps>\
+            <Steps StepEnabled=\"false\" StepID=\"5001\" AwardXP=\"false\" Difficulty=\"1\">\
+            <StepDisplayLogText>Sibling caption</StepDisplayLogText></Steps>\
+            </COOKED_MISSION>";
+        let ov = StepTextOverride {
+            mission_id: 999,
+            step_id: 5000,
+            new_step_display_log_text: "should not apply",
+        };
+        assert!(
+            apply_step_text_override(xml, &ov).is_none(),
+            "matched step has no <StepDisplayLogText>; the override must not \
+             cross the </Steps> boundary into the next step",
+        );
     }
 
     /// The Ambernol fix entry must be present and reference the correct

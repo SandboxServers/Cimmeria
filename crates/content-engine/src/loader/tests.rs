@@ -476,6 +476,94 @@ fn convert_counter_condition() {
     }
 }
 
+/// `cross_world_teleport` with valid x/y/z floats round-trips into
+/// `Action::CrossWorldTeleport` carrying the world name and position
+/// verbatim. Pins the canonical happy-path shape.
+#[test]
+fn convert_cross_world_teleport_action() {
+    let row = DbActionRow {
+        chain_id: 1109,
+        action_type: "cross_world_teleport".to_string(),
+        target_id: None,
+        target_key: Some("Castle".to_string()),
+        params: serde_json::json!({"x": 466.365, "y": 70.397, "z": 991.466}),
+        delay_ms: 0,
+        sort_order: 0,
+    };
+    match convert_action(&row).unwrap() {
+        Action::CrossWorldTeleport {
+            world_name,
+            position,
+        } => {
+            assert_eq!(world_name, "Castle");
+            assert!((position[0] - 466.365).abs() < 0.001);
+            assert!((position[1] - 70.397).abs() < 0.001);
+            assert!((position[2] - 991.466).abs() < 0.001);
+        }
+        other => panic!("Expected CrossWorldTeleport, got {:?}", other),
+    }
+}
+
+/// Missing x/y/z params on a `cross_world_teleport` row must drop the
+/// action entirely (returns None). Silent fallback to (0,0,0) would
+/// teleport the player inside-the-floor or out of map bounds — a worse
+/// failure mode than dropping the action and logging at the loader.
+#[test]
+fn convert_cross_world_teleport_missing_coords_returns_none() {
+    let row = DbActionRow {
+        chain_id: 1109,
+        action_type: "cross_world_teleport".to_string(),
+        target_id: None,
+        target_key: Some("Castle".to_string()),
+        params: serde_json::json!({"x": 466.365, "z": 991.466}), // y missing
+        delay_ms: 0,
+        sort_order: 0,
+    };
+    assert!(
+        convert_action(&row).is_none(),
+        "missing y coord must reject the row, not fall back to 0.0",
+    );
+}
+
+/// Non-finite coords (NaN / Infinity) must drop the action. A NaN cast
+/// via `as f32` produces NaN and the BigWorld client's position handling
+/// against a NaN destination is undefined — better to fail closed at the
+/// loader.
+#[test]
+fn convert_cross_world_teleport_non_finite_coords_returns_none() {
+    let row = DbActionRow {
+        chain_id: 1109,
+        action_type: "cross_world_teleport".to_string(),
+        target_id: None,
+        target_key: Some("Castle".to_string()),
+        params: serde_json::json!({"x": "NaN", "y": 70.397, "z": 991.466}),
+        delay_ms: 0,
+        sort_order: 0,
+    };
+    // serde_json's "NaN" as a string won't deserialize as f64 — covers
+    // the wrong-type rejection path. The is_finite check inside
+    // convert_action covers the explicit f64::NAN / f64::INFINITY case
+    // when the value is numerically constructible.
+    assert!(convert_action(&row).is_none());
+}
+
+/// Missing `target_key` (the world name) on a `cross_world_teleport`
+/// row must drop the action. Without a target world there's nowhere
+/// to teleport to.
+#[test]
+fn convert_cross_world_teleport_missing_world_returns_none() {
+    let row = DbActionRow {
+        chain_id: 1109,
+        action_type: "cross_world_teleport".to_string(),
+        target_id: None,
+        target_key: None,
+        params: serde_json::json!({"x": 1.0, "y": 2.0, "z": 3.0}),
+        delay_ms: 0,
+        sort_order: 0,
+    };
+    assert!(convert_action(&row).is_none());
+}
+
 /// `parse_step_status` accepts each of the three valid step states.
 /// `completed` is the recently-added third leaf (matches the `completed_steps`
 /// list populated in `services::cell::content::mission_context`); without

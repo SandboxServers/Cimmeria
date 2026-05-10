@@ -135,10 +135,36 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         "cross_world_teleport" => {
             // target_key carries the destination world name (e.g., "Castle").
             // params carries x/y/z floats for the spawn position.
+            //
+            // Reject malformed seed rows at this system boundary rather than
+            // silently teleporting to the world origin. Missing or non-finite
+            // coords on a chain action would land the player at (0, 0, 0)
+            // which is almost always inside-the-floor or out of map bounds —
+            // a worse failure mode than dropping the action and logging.
+            // Mirrors the defensive shape `change_stat` uses for `amount`.
             let world_name = row.target_key.as_deref()?.to_string();
-            let x = params.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let y = params.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-            let z = params.get("z").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+            let parse_coord = |key: &str| -> Option<f32> {
+                let v = params.get(key)?.as_f64()?;
+                let f = v as f32;
+                if f.is_finite() {
+                    Some(f)
+                } else {
+                    None
+                }
+            };
+            let (x, y, z) = match (parse_coord("x"), parse_coord("y"), parse_coord("z")) {
+                (Some(x), Some(y), Some(z)) => (x, y, z),
+                _ => {
+                    warn!(
+                        chain_id = row.chain_id,
+                        %world_name,
+                        ?params,
+                        "cross_world_teleport: missing or non-finite x/y/z; \
+                         dropping action to avoid teleport to (0,0,0)"
+                    );
+                    return None;
+                }
+            };
             Some(Action::CrossWorldTeleport {
                 world_name,
                 position: [x, y, z],

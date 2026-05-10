@@ -163,9 +163,11 @@ pub(super) async fn advance_destination_after_warmup(
     try_advance_after_load(dst_id, tx, space_mgr, engine).await;
 }
 
-/// Returns true when the player has completed the gating mission (or
-/// when the entity is unknown — fail-closed default the call sites
-/// rely on). Shared between `handle_interact` and
+/// Returns true only when the player has completed the gating mission.
+/// Fail-closed: an unknown entity OR an entity that hasn't accepted the
+/// mission BOTH return false (the `is_some_and` short-circuits to false
+/// on `None`). The call sites depend on this — a missing entity must
+/// not bypass the gate. Shared between `handle_interact` and
 /// `handle_select_destination` so both paths stay in lockstep if the
 /// gate semantics ever expand (e.g., step-level gating).
 fn mission_gate_satisfied(space_mgr: &SpaceManager, entity_id: u32, mission_id: i32) -> bool {

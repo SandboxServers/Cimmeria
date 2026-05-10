@@ -514,6 +514,78 @@ async fn cross_world_teleport_action_emits_gate_travel_with_no_ring_id() {
     );
 }
 
+/// `Action::CompleteMission` against a mission already in MISSION_FAILED
+/// must NOT fire `OnMissionCompleted` chains. The executor's gate looks
+/// at the prior status — only a real active→completed transition fires
+/// the dispatcher. Without this guard, "failing" a mission then later
+/// "completing" it (e.g., from a manual seed action or chain authoring
+/// mistake) would re-fire downstream chains like 1105's auto-accept of
+/// the next mission, producing a spurious mission grant the player
+/// didn't earn.
+///
+/// Detection shape: register a `OnMissionCompleted` chain whose only
+/// action is `IncrementCounter`. The counter mutation is observable on
+/// the entity without needing to wire up the full base-side mission
+/// dispatch. The gate's positive (ACTIVE→COMPLETED fires) path is
+/// already covered by `fire_mission_completed_runs_matched_chain_actions`
+/// in event_dispatch::mission::tests.
+#[tokio::test]
+async fn complete_mission_action_against_failed_mission_does_not_fire_completion_event() {
+    use cimmeria_content_engine::chain::Chain;
+    use cimmeria_content_engine::triggers::Trigger;
+    use cimmeria_entity::missions::{MissionInstance, MISSION_FAILED};
+
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        // Seed mission 687 in MISSION_FAILED state. Pre-fix the gate
+        // read prior_status.is_some() and would treat this as
+        // "transitioned" since it's not None.
+        let mut m = MissionInstance::new(687, 2113, vec![]);
+        m.fail();
+        assert_eq!(m.status, MISSION_FAILED);
+        e.missions.add_mission(m);
+    }
+    mgr.connect_entity(1);
+
+    // Chain: mission_completed 687 → increment_counter (detectable
+    // mutation on the entity we control). Same trigger shape as
+    // production chain 1105's 687→688 auto-accept.
+    let mut engine = ChainEngine::new();
+    engine.register_chain(Chain {
+        id: 1105,
+        name: "test_complete_chain".to_string(),
+        enabled: true,
+        trigger: Trigger::OnMissionCompleted { mission_id: 687 },
+        conditions: Vec::new(),
+        actions: vec![Action::IncrementCounter {
+            counter_name: "completion_fired".to_string(),
+            amount: 1,
+        }],
+        priority: 0,
+    });
+
+    let (tx, _rx) = mpsc::channel(64);
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(9000, Action::CompleteMission { mission_id: 687 })],
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    // The counter must NOT have been touched — fire_mission_completed
+    // should have been skipped because the prior status was MISSION_FAILED,
+    // not MISSION_ACTIVE.
+    let entity = mgr.get_entity(1).expect("entity must still exist");
+    assert!(
+        !entity.counters.contains_key("completion_fired"),
+        "fire_mission_completed must NOT fire on FAILED→COMPLETED \
+         transition; counter was incremented, meaning chain 1105 \
+         spuriously ran",
+    );
+}
+
 /// CrossWorldTeleport against an unknown entity_id must be a quiet
 /// no-op — no GateTravel, no panic. Important because the action runs
 /// inside `execute_actions` which iterates a resolved chain action
