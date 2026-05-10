@@ -253,7 +253,7 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 -- SendWait forever.
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2080, 2395, -54.8799973, 26.0799999, -163.839996, 0, 0, 0);
 
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2081, 2396, 358, 70.27, 950, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (2081, 2396, 466.365, 70.397, 991.466, 0, 0, 0);
 
 SELECT pg_catalog.setval('point_set_points_point_id_seq', 2396, true);
 

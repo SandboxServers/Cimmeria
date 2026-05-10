@@ -71,11 +71,17 @@ INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, r
 --   event_set is needed because the ring choreography is identical.
 INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (33, 12, -54.8799973, 26.0799999, -163.839996, 'Cellblock_ArmoryRingSwitch', 1.76999998, 3.52999997, 10000, 7508, '{34}', 2080, 688);
 
--- Region 34: Castle-side receiver near `Castle_Coppleman`. Coords are an
---   in-floor approximation — refine in-game once cross-world ring transport
---   (issue #241 Phase A) lands. No `required_mission_id` because the
---   destination ring is reached via teleport, never directly interacted with.
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (34, 8, 358, 70.27, 950, 'Castle_ArmoryRingDropZone', 1.76999998, 3.52999997, 10000, 7508, '{}', 2081, NULL);
+-- Region 34: Castle-side receiver — the visible ring platform in
+--   Castle's lower corridor. Coords pinned in-game from the live client
+--   debug HUD (Castle-00090004 map, player standing on the pad). The
+--   ring is **inbound-only** — `destination_region_ids='{}'` means a
+--   right-click produces an empty destination list, so the player
+--   can't accidentally try to ring back to Cellblock from here. No
+--   `required_mission_id` because the destination ring is reached via
+--   teleport, never directly interacted with. The arrival animation is
+--   driven by the destination FSM's RemoteWarmup → Cooldown phase
+--   (Region_Teleport_In kismet sequence keyed on event_set_id=10000).
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (34, 8, 466.365, 70.397, 991.466, 'Castle_ArmoryRingDropZone', 1.76999998, 3.52999997, 10000, 7508, '{}', 2081, NULL);
 
 --
 -- TOC entry 3331 (class 0 OID 0)
