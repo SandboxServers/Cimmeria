@@ -14,6 +14,7 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
 
 use super::helpers::send_to_witness;
+use super::world_entry::handle_map_loaded;
 use super::ConnectedClientState;
 
 // ── Appearance data builders ────────────────────────────────────────────────
@@ -59,12 +60,58 @@ pub(crate) fn build_tint_args(skin_color_id: i32) -> Vec<u8> {
 /// 3-5 times via createCacheStamp replays; this second send mimics that.
 pub(crate) async fn handle_on_client_ready(
     addr: SocketAddr,
+    key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     socket: &Arc<UdpSocket>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<sqlx::PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Cross-world transition fallback: the SGW client sends `mapLoaded`
+    // (cell method 0x99) on initial logins and same-instance respawns,
+    // but skips it on cross-world transitions via `gate_travel`
+    // (RESET_ENTITIES → ENABLE_ENTITIES → CREATE_BASE_PLAYER + onClientMapLoad).
+    // The client jumps straight to `onClientReady` instead. If the
+    // transition is mid-flight (`pending_map_loaded` still set, meaning
+    // the `mapLoaded` cell-method handler never ran), drive the
+    // enter-world bundle from here so the destination world finishes
+    // setup. After this synth call, `pending_client_ready` will be
+    // populated by `handle_map_loaded` and the rest of this function
+    // proceeds normally.
+    //
+    // QA reproducer: mission 688 cross-world ring (Castle_CellBlock →
+    // Castle) stalled with the player frozen mid-ring on entry to
+    // Castle because `pending_client_ready` was never set, so
+    // `BaseToCellMsg::AdvanceRingDestination` was never sent, and the
+    // destination ring's FSM never advanced out of `RemoteLoadWait`.
+    let pending_map_loaded_present = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        clients
+            .get(&addr)
+            .is_some_and(|c| c.pending_map_loaded.is_some())
+    };
+    if pending_map_loaded_present {
+        tracing::info!(
+            %addr,
+            "onClientReady arrived with pending_map_loaded still set — \
+             synthesising mapLoaded for cross-world transition"
+        );
+        if let Err(e) = handle_map_loaded(
+            socket,
+            addr,
+            key,
+            connected,
+            cell_tx,
+            entity_to_addr,
+            db_pool,
+        )
+        .await
+        {
+            tracing::error!(%addr, error = %e, "Synth mapLoaded failed during cross-world onClientReady");
+            return Ok(());
+        }
+    }
+
     let pending = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients
