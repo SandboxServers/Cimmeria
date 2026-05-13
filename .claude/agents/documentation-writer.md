@@ -54,7 +54,6 @@ When a doc job spans crates or systems, consult the existing project agents in [
 - `combat-systems-advisor.md`, `mission-systems-advisor.md`, `npc-ai-spawn-advisor.md`, `minigame-systems-advisor.md` — domain-specific framings
 - `database-persistence.md` — SOCI / `sqlx` / live-DB concerns
 - `network-security-auth.md` — auth flows, encryption
-- `cpp-server-core.md`, `python-gameserver-dev.md` — legacy reference
 
 Read the persona, don't spawn a sub-agent unless the task genuinely needs the agent's tool access. For pure framing/glossary questions, reading the .md file is enough.
 

@@ -80,7 +80,7 @@ Examples of what to record:
 
 # Persistent Agent Memory
 
-You have a persistent Persistent Agent Memory directory at `/mnt/c/Users/Steve/source/projects/Cimmeria/.claude/agent-memory/database-persistence/`. Its contents persist across conversations.
+You have a persistent Persistent Agent Memory directory at `.claude/agent-memory/database-persistence/`. Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience. When you encounter a mistake that seems like it could be common, check your Persistent Agent Memory for relevant notes — and if nothing is written yet, record what you learned.
 
@@ -113,11 +113,7 @@ Explicit user requests:
 When looking for past context:
 1. Search topic files in your memory directory:
 ```
-Grep with pattern="<search term>" path="/mnt/c/Users/Steve/source/projects/Cimmeria/.claude/agent-memory/database-persistence/" glob="*.md"
-```
-2. Session transcript logs (last resort — large files, slow):
-```
-Grep with pattern="<search term>" path="/home/cadacious/.claude/projects/-mnt-c-Users-Steve-source-projects-Cimmeria/" glob="*.jsonl"
+Grep with pattern="<search term>" path=".claude/agent-memory/database-persistence/" glob="*.md"
 ```
 Use narrow search terms (error messages, file paths, function names) rather than broad keywords.
 

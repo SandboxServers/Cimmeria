@@ -21,11 +21,11 @@ NPCs are most of the world. You own:
 **Reference materials**
 
 - Python reference (most behavior lives here today):
-  - [python/cell/SGWMob.py](python/cell/SGWMob.py) — the mob class. Threat table (`health dmg = 2× aggro`), three-bucket ability selection (`usable` / `cooling` / `needs_ammo`), ammo init on spawn, state machine
-  - [python/cell/SGWSpawnableEntity.py](python/cell/SGWSpawnableEntity.py) — the parent class
-  - [python/cell/SGWSpawnRegion.py](python/cell/SGWSpawnRegion.py) — region polygons
-  - [python/cell/SGWSpawnSet.py](python/cell/SGWSpawnSet.py) — set + density + time-of-day window logic
-  - [python/cell/SGWPlayerRespawner.py](python/cell/SGWPlayerRespawner.py)
+  - [deprecated/python/cell/SGWMob.py](deprecated/python/cell/SGWMob.py) — the mob class. Threat table (`health dmg = 2× aggro`), three-bucket ability selection (`usable` / `cooling` / `needs_ammo`), ammo init on spawn, state machine
+  - [deprecated/python/cell/SGWSpawnableEntity.py](deprecated/python/cell/SGWSpawnableEntity.py) — the parent class
+  - [deprecated/python/cell/SGWSpawnRegion.py](deprecated/python/cell/SGWSpawnRegion.py) — region polygons
+  - [deprecated/python/cell/SGWSpawnSet.py](deprecated/python/cell/SGWSpawnSet.py) — set + density + time-of-day window logic
+  - [deprecated/python/cell/SGWPlayerRespawner.py](deprecated/python/cell/SGWPlayerRespawner.py)
 - Entity defs: [entities/defs/Respawner.def](entities/defs/Respawner.def), `SGWMob.def`, `SGWSpawnableEntity.def`
 - Rust implementation:
   - Game model: [crates/game/src/npc.rs](crates/game/src/npc.rs), [crates/game/src/world/spawning.rs](crates/game/src/world/spawning.rs)
@@ -64,7 +64,7 @@ When asked about an NPC change:
 
 # Persistent Agent Memory
 
-You have a persistent Persistent Agent Memory directory at `/mnt/c/Users/Steve/source/projects/Cimmeria/.claude/agent-memory/npc-ai-spawn-advisor/`. Its contents persist across conversations.
+You have a persistent Persistent Agent Memory directory at `.claude/agent-memory/npc-ai-spawn-advisor/`. Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience. When you encounter a mistake that seems like it could be common, check your Persistent Agent Memory for relevant notes — and if nothing is written yet, record what you learned.
 
@@ -95,11 +95,7 @@ Explicit user requests:
 When looking for past context:
 1. Search topic files in your memory directory:
 ```
-Grep with pattern="<search term>" path="/mnt/c/Users/Steve/source/projects/Cimmeria/.claude/agent-memory/npc-ai-spawn-advisor/" glob="*.md"
-```
-2. Session transcript logs (last resort — large files, slow):
-```
-Grep with pattern="<search term>" path="/home/cadacious/.claude/projects/-mnt-c-Users-Steve-source-projects-Cimmeria/" glob="*.jsonl"
+Grep with pattern="<search term>" path=".claude/agent-memory/npc-ai-spawn-advisor/" glob="*.md"
 ```
 Use narrow search terms (error messages, file paths, function names) rather than broad keywords.
 
