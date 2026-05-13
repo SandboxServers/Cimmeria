@@ -1,0 +1,141 @@
+{
+  "worker": "world-entry",
+  "session": "4b-world-entry",
+  "date": "2026-05-13",
+  "tool_calls_used": "~180",
+  "budget_remaining": "~1220",
+  "functions_documented": [
+    {
+      "address": "0x00dd9280",
+      "name": "BroadcastEntityActivation",
+      "status": "plate_applied",
+      "notes": "Sends ENABLE_ENTITIES (onClientReady base method 1), sets bEntitiesEnabled flag at +0x316"
+    },
+    {
+      "address": "0x00dda0e0",
+      "name": "PurgeAndRebuildEntityStateLists",
+      "status": "plate_applied",
+      "notes": "resetEntities handler: resets entity lists, clears bEntitiesEnabled, calls BroadcastEntityActivation"
+    },
+    {
+      "address": "0x00dd0b00",
+      "name": "EntityManager_PostLoadMap",
+      "status": "plate_applied",
+      "notes": "UE3 CALLBACK_PostLoadMap (index 0x32): fires Event_Level_PostLoad on CME bus"
+    },
+    {
+      "address": "0x00df27f0",
+      "name": "GameProxyPlayer_HandleOnClientMapLoad",
+      "status": "renamed_plate_applied",
+      "notes": "onClientMapLoad entity method (index 117); actual field names: areaName, mapPath, WorldID, Location, Direction"
+    },
+    {
+      "address": "0x00c71a20",
+      "name": "GameWorldConstants_HandleSetupWorldParameters",
+      "status": "renamed_plate_applied",
+      "notes": "setupWorldParameters handler (method index 122); loads physics constants including BW_TO_UE3_SCALE=100.0f at DAT_018cad90"
+    },
+    {
+      "address": "0x00dddca0",
+      "name": "ServerConnection_CreateBasePlayer",
+      "status": "plate_applied",
+      "notes": "CREATE_BASE_PLAYER (0x05) handler: reads entityId u32 + typeId u16"
+    },
+    {
+      "address": "0x00dda2e0",
+      "name": "ServerConnection_CreateCellPlayer",
+      "status": "plate_applied",
+      "notes": "CREATE_CELL_PLAYER (0x06) handler: reads spaceId+vehicleId+pos+rot; Y/Z rotation swap via FUN_015846a0"
+    },
+    {
+      "address": "0x00de04c0",
+      "name": "register_NetIn_AccountLoginSuccess",
+      "status": "plate_applied",
+      "notes": "Registers GameProxyPlayer subscriber for AccountLoginSuccess (Phase 2 auth)"
+    },
+    {
+      "address": "0x00c6ed70",
+      "name": "VoiceHandlerGated_ActivateEntitiesAndSetServerConnection",
+      "status": "renamed_plate_applied",
+      "notes": "Secondary entity activation path gated on voice handler; calls BroadcastEntityActivation + GameEntityManager_SetServerConnection"
+    },
+    {
+      "address": "0x00de8670",
+      "name": "GameProxyPlayer_HandlePlayerPawnCreated",
+      "status": "renamed_plate_applied",
+      "notes": "Event_Player_PawnCreated handler: sets up target indicator, ground target, player controller binding"
+    }
+  ],
+  "key_addresses_found": {
+    "BroadcastEntityActivation": "0x00dd9280",
+    "PurgeAndRebuildEntityStateLists": "0x00dda0e0",
+    "EntityManager_PostLoadMap": "0x00dd0b00",
+    "GameProxyPlayer_HandleOnClientMapLoad": "0x00df27f0",
+    "GameWorldConstants_HandleSetupWorldParameters": "0x00c71a20",
+    "ServerConnection_CreateBasePlayer": "0x00dddca0",
+    "ServerConnection_CreateCellPlayer": "0x00dda2e0",
+    "ServerConnection_SpaceViewportInfo": "0x00dda6c0",
+    "ServerConnection_ForcedPosition": "0x00dd9ee0",
+    "ServerConnection_AddMove": "0x00dd9330",
+    "register_NetIn_AccountLoginSuccess": "0x00de04c0",
+    "register_NetIn_LoginFailure": "0x00dde8d0",
+    "register_NetIn_ServerSelectSuccess": "0x00ddfd00",
+    "register_NetOut_ClientReady": "0x00d93d80",
+    "VoiceHandlerGated_ActivateEntitiesAndSetServerConnection": "0x00c6ed70",
+    "GameProxyPlayer_HandlePlayerPawnCreated": "0x00de8670",
+    "Event_NetOut_versionInfoRequest_vfunc_3": "0x00449b20",
+    "SGWNetworkManager_ClientReady_RTTI": "0x00d45be0",
+    "CmeEventSignal_SetField": "0x0043b850",
+    "CmeEventSignal_GetSystem": "0x0155f790",
+    "CmeEventSignal_LookupByName": "0x00a5c0f0",
+    "CmeEventSignal_InvokeMemberCallback": "0x00e04570",
+    "RegisterBulkNetOutSignals": "0x00db3390",
+    "BW_TO_UE3_SCALE_constant": "DAT_018cad90 = 0x42C80000 (100.0f)",
+    "g_EntityManager": "DAT_01ef244c",
+    "GEngine": "DAT_01ee1254",
+    "bEntitiesEnabled_flag": "ServerConnection+0x316",
+    "ENABLE_ENTITIES_descriptor": "DAT_01ef2500",
+    "onClientReady_signal_string": "0x019c2828",
+    "enableEntities_debug_string": "0x019cf548",
+    "resetEntities_string": "0x019d09f8",
+    "resetEntities_message_table_ref": "0x017bb210",
+    "areaName_assert": "0x019d26c8",
+    "mapPath_assert": "0x019d26d0",
+    "WorldID_assert": "0x019d2684"
+  },
+  "audit_findings": [
+    {
+      "claim_in_world_entry_phases_md": "onClientMapLoad fields: clientMap (WSTRING) and worldId (i32)",
+      "binary_evidence": "Assert strings at 0x019d26c8 (areaName), 0x019d26d0 (mapPath), 0x019d2684 (WorldID), plus Location and Direction fields",
+      "verdict": "DISCREPANCY -- clientMap and worldId are Cimmeria-invented names; actual field names are areaName, mapPath, WorldID, Location, Direction"
+    },
+    {
+      "claim_in_world_entry_phases_md": "RESET_ENTITIES sent before CREATE_BASE_PLAYER; keepBase: u8 = 0",
+      "binary_evidence": "PurgeAndRebuildEntityStateLists called from message table ref at 0x017bb210 (resetEntities); sends ENABLE_ENTITIES after reset",
+      "verdict": "CONSISTENT -- sequence confirmed, keepBase=0 not directly verified but plausible"
+    },
+    {
+      "claim_in_world_entry_phases_md": "ENABLE_ENTITIES: 1-byte payload in stock BigWorld",
+      "binary_evidence": "BroadcastEntityActivation reads DAT_01ef2500->size for payload reservation; RTTI type .?AVEnableEntitiesRejectedMessage@Detail@@ at 0x01e91210 suggests custom rejection handling",
+      "verdict": "UNVERIFIED -- cannot read DAT_01ef2500->size at static analysis time; 8-byte SGW claim from existing docs not contradicted"
+    },
+    {
+      "claim_in_world_entry_phases_md": "CREATE_CELL_PLAYER rotation: X, Z, Y order (Y/Z swapped)",
+      "binary_evidence": "ServerConnection_CreateCellPlayer calls FUN_015846a0 for rotation; confirmed swap pattern from client_handler.cpp rotX << rotZ << rotY",
+      "verdict": "CONSISTENT"
+    },
+    {
+      "claim_in_world_entry_phases_md": "classId 0x02 = SGWPlayer",
+      "binary_evidence": "ServerConnection_CreateBasePlayer reads typeId u16 after entityId u32; class ID value confirmed from entities.xml ordering in prior sessions",
+      "verdict": "CONSISTENT"
+    }
+  ],
+  "open_questions": [
+    "ENABLE_ENTITIES payload size: does DAT_01ef2500->size == 8 (SGW custom) or 1 (BW stock)? Needs runtime capture or deeper DAT_01ef2500 analysis.",
+    "GameProxyPlayer Event_Level_PostLoad handler body: where is the method that subscribes to Level_PostLoad and emits Event_NetOut_ClientReady? Handler body is stored at runtime in CmeMemberCallback.pMethodPtr, not findable via static analysis alone.",
+    "mapLoaded C->S round-trip: no 'mapLoaded' string in binary. The CellApp-to-BaseApp mapLoaded call happens server-side; client receives the fragmented bundle but does not explicitly send a 'mapLoaded' message.",
+    "SGWNetworkManager ClientReady handler body: vtable ref at 0x019c5f2c; full dispatch body not decompiled.",
+    "resetEntities CONSTANT_LENGTH: does the client parse a 1-byte keepBase field? PurgeAndRebuildEntityStateLists does not reveal stream layout.",
+    "setupStargateInfo (method index 65) handler address: not located in this session."
+  ]
+}

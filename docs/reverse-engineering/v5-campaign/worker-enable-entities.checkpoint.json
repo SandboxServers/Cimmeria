@@ -1,0 +1,65 @@
+{
+  "worker_id": "enable-entities",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope": "Reconcile ENABLE_ENTITIES payload size contradiction between bigworld-engine-advisor memory (8 bytes SGW) and W-misc-gaps Session 5 (1 byte).",
+  "verdict": "8 bytes — SGW-custom uint64 dummy. Binary is definitive. W-misc-gaps was wrong.",
+  "evidence": {
+    "primary_binary": {
+      "address": "0x017bade9",
+      "instruction": "PUSH 0x8",
+      "role": "Size argument to InterfaceElement constructor for the enableEntities descriptor",
+      "constructor": "0x015785c0",
+      "descriptor_stored_at": "DAT_01ef2500",
+      "store_instruction": "0x017bae02: MOV [0x01ef2500], EAX",
+      "string_at_0x019d092c": "enableEntities"
+    },
+    "calibration": {
+      "resetEntities_init": "0x017bb200-0x017bb225",
+      "resetEntities_size_push": "0x017bb20c: PUSH 0x1",
+      "resetEntities_known_size": "1 byte (keepBase u8)",
+      "conclusion": "Same push position in identical constructor call pattern; PUSH 0x1 = 1 byte for resetEntities, PUSH 0x8 = 8 bytes for enableEntities"
+    },
+    "cpp_source": {
+      "file": "deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp",
+      "line": 83,
+      "content": "{Message::CONSTANT_LENGTH, 8, \"ENABLE_ENTITIES\", true}",
+      "field_comment": "uint64 Dummy"
+    },
+    "stock_bw": {
+      "file": "external/BigWorld-2.0.1/src/lib/connection/baseapp_ext_interface.hpp",
+      "content": "MF_BEGIN_BLOCKABLE_PROXY_MSG( enableEntities ) uint8 dummy; END_STRUCT_MESSAGE();",
+      "size": "1 byte"
+    }
+  },
+  "w_misc_gaps_error": {
+    "what_they_reported": "Address 0x017bae02 as 'MOV DWORD PTR [struct], 1'; concluded size = 1",
+    "actual_instruction_at_017bae02": "MOV [0x01ef2500], EAX  (stores descriptor pointer, not a size value)",
+    "misidentified_instruction": "0x017badf7: MOV DWORD PTR [EAX], 0x1 writes a reliability flag into the stack-allocated arg struct — not the message size",
+    "root_cause": "W-misc-gaps retrieved only the cross-reference target instruction without the surrounding disassembly context; the size push (0x017bade9: PUSH 0x8) was three instructions earlier and not visible"
+  },
+  "documents_updated": [
+    {
+      "path": "docs/reverse-engineering/findings/world-entry-pipeline.md",
+      "changes": [
+        "Phase 5 ENABLE_ENTITIES section: replaced 'UNVERIFIED CLAIM' with 'CONFIRMED (W-enable-entities)' paragraph citing binary evidence",
+        "Open Questions Q1: corrected W-misc-gaps wrong CLOSED entry to reflect 8-byte answer",
+        "Address map: corrected DAT_01ef2500 comment and 0x017bae02 note; added 0x017bade9 size-push entry",
+        "Appended 'ENABLE_ENTITIES Payload Reconciliation' section with full evidence table"
+      ]
+    },
+    {
+      "path": "docs/protocol/world-entry-phases.md",
+      "changes": [
+        "Phase 5a: added ENABLE_ENTITIES client-send wire format block (CONSTANT_LENGTH=8, uint64 dummy)",
+        "Added SGW-vs-stock-BW note with binary address citation"
+      ]
+    }
+  ],
+  "bigworld_engine_advisor_memory": {
+    "claim": "ENABLE_ENTITIES payload: SGW = 8 bytes (uint64 dummy); stock BW = 1 byte (uint8 dummy)",
+    "verdict": "CORRECT — no change needed"
+  },
+  "status": "complete"
+}

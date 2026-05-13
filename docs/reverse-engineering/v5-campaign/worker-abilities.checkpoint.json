@@ -1,0 +1,240 @@
+{
+  "worker_id": "abilities",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T12:00:00Z",
+  "scope_predicate": "Ability resolution pipeline: button press → AcquireTarget → useAbility emit → onEffectResults → animation play → cooldown lock. Functions spanning AbilitySet, CombatQueue, CooldownManager, EffectSet, GameBeing timer handlers, MissionSet timer handler, ground-targeting activator, and Lua ability/effect info accessors.",
+  "total_in_scope": 25,
+  "functions": [
+    {
+      "address": "00aa2910",
+      "name_at_start": "FUN_00aa2910",
+      "name_at_end": "FUN_00aa2910",
+      "status": "skipped_too_small",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "trimmed",
+      "skipped_reason": "Lua wrapper thunk — single call to AbilitySet_InvokeAbility; body ≤8 lines; error string at 0x01940b70: '#ferror in function useAbility'.",
+      "tool_calls_used": 1,
+      "notes": "Entry point from Lua useAbility() → this thunk → AbilitySet_InvokeAbility. Documented in findings only."
+    },
+    {
+      "address": "00adb670",
+      "name_at_start": "FUN_00adb670",
+      "name_at_end": "AbilityType_GetLuaAbilityInfo",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 10,
+      "notes": "effective_score=40. Lua runtime layout offsets: +0x50=warmUp, +0x54=coolDown, +0x60=icon, +0x94=TCM, +0x98=flags. Inline comments added for all 6 struct accesses. Residual: magic_numbers=15, struct_accesses_unresolved=6 — structural limit of Lua binding pattern. Accepted after 2 passes."
+    },
+    {
+      "address": "00aec290",
+      "name_at_start": "FUN_00aec290",
+      "name_at_end": "EffectType_GetLuaEffectInfo",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 48,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 9,
+      "notes": "Lua getEffectInfo handler. plate_issues=0. Channeled bool from FUN_00d2d0e0. TotalTime at EffectType+0x0c. TimeRemaining computed live via FUN_00e085e0. 1-based slot index (function subtracts 1)."
+    },
+    {
+      "address": "00c8c820",
+      "name_at_start": "FUN_00c8c820",
+      "name_at_end": "SGWTextCommandMgr_HandleConfirmEffect",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 56,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 8,
+      "notes": "cancelEffect/acceptEffect channeled ability cancel mechanism. Fields: 'aEffectId' (int) + 'aAccepted' (bool: Response==1). plate_issues=0."
+    },
+    {
+      "address": "00d18a30",
+      "name_at_start": "FUN_00d18a30",
+      "name_at_end": "MissionSet_HandleOnTimerUpdate",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 54,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 9,
+      "notes": "Timer types 9(\\t)=reset, 10(\\n)=progress (walks this+0x58), 11(\\v)=completion (walks this+0x64). Final: FUN_00d16dd0(this, uVar2). Strings at 0x019ba868='Type', 0x019ba870='ID'. plate_issues=0."
+    },
+    {
+      "address": "00d29d40",
+      "name_at_start": "FUN_00d29d40",
+      "name_at_end": "AbilityInfo_GetAERadius",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 87,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 7,
+      "notes": "effective_score=87. Wrapper class — 8 lines. Asserts TCM_AERadius==2 at +0x94; returns float from +0xa0. Assert string confirmed."
+    },
+    {
+      "address": "00d2a000",
+      "name_at_start": "FUN_00d2a000",
+      "name_at_end": "AbilitySet_GetSlotByIndex",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 56,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 8,
+      "notes": "Zero-based slot lookup in AbilitySet ability array. Returns null if out of range. Called by AbilitySet_EmitUseAbilityOrGroundTarget before reading targetType."
+    },
+    {
+      "address": "00d2ae40",
+      "name_at_start": "FUN_00d2ae40",
+      "name_at_end": "AbilitySet_EmitUseAbilityOrGroundTarget",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 33,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 10,
+      "notes": "effective_score=33, max_achievable=81. Branch on pAbilityData+0x48 (targetType==3 → ground-target reticle; else → Pattern B NetworkEvent for Event_NetOut_UseAbility). Score accepted — 50+ undefined vars structural limit."
+    },
+    {
+      "address": "00dea330",
+      "name_at_start": "FUN_00dea330",
+      "name_at_end": "AbilitySet_ActivateGroundTargetReticle",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 58,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 9,
+      "notes": "plate_issues=0. Asserts TargetGround==3 at +0x48, TCM==2 or returns. Called from EmitUseAbilityOrGroundTarget ground branch."
+    },
+    {
+      "address": "00e02380",
+      "name_at_start": "FUN_00e02380",
+      "name_at_end": "GameBeing_HandleOnTimerUpdate_Reload",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 48,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 11,
+      "notes": "Type 12('\\f')→Event_UI_EntityReload via FUN_00e063b0; type 13('\\r')→Event_UI_EntityReloadDeployment via FUN_00e064b0. Remaining=BigWorldTimeComplete-FUN_00c6e220(). Plate applied."
+    },
+    {
+      "address": "00e09160",
+      "name_at_start": "FUN_00e09160",
+      "name_at_end": "EffectSet_HandleOnTimerUpdate",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 41,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 7,
+      "notes": "Timer type 5 only. Reads SecondaryId+BigWorldTimeComplete+TotalTime. Updates active-effect duration window. 44 undefined vars — structural limit."
+    },
+    {
+      "address": "00ea6af0",
+      "name_at_start": "FUN_00ea6af0",
+      "name_at_end": "CooldownManager_HandleOnTimerUpdate",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 41,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 8,
+      "notes": "effective_score=41, max_achievable=78. Timer types 0-3=cooldown/warmup. Gate: SourceID != entityId → return. FUN_00ea62b0 fires Event_UI_AbilityCooldown (subscriber at 0x01e0c458). 50 undefined vars — structural limit."
+    },
+    {
+      "address": "00eb1630",
+      "name_at_start": "FUN_00eb1630",
+      "name_at_end": "CombatQueue_HandleOnEffectResults",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 52,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 12,
+      "notes": "Source: Src\\CombatQueue.cpp lines 0x2b-0x54. Wire: 21+7*N bytes. QR ResultCodes 0-8 documented. Visibility filter active in non-debug mode."
+    },
+    {
+      "address": "015d51c0",
+      "name_at_start": "FUN_015d51c0",
+      "name_at_end": "AbilityType_DeserializePak",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 39,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 10,
+      "notes": "effective_score=39. PAK stream reader pattern — 40 magic numbers (offset constants like 0x34, 0x38), 20 struct_accesses_unresolved. Inline comments + plate document all field offsets. Accepted as structural ceiling for this pattern."
+    }
+  ],
+  "pending_structs": [
+    {
+      "requested_by": "00d2ae40",
+      "struct_name": "AbilitySlot",
+      "observed_offsets": [
+        "+0x48 size 4 (targetType / ETargetType enum)",
+        "+0x12 size 4 (targetType in packed event format)"
+      ],
+      "evidence": "AbilitySet_EmitUseAbilityOrGroundTarget branches on param_1[0x12]==3 (TargetGround). AbilityInfo_GetAERadius asserts +0x94==2 (TCM_AERadius), reads float from +0xa0."
+    },
+    {
+      "requested_by": "00ea6af0",
+      "struct_name": "CooldownEntry",
+      "observed_offsets": [
+        "+0x00 size 4 (abilityId / int)",
+        "+0x04 size 4 (startTime / float)",
+        "+0x08 size 4 (endTime / float)"
+      ],
+      "evidence": "CooldownManager_HandleOnTimerUpdate calls FUN_00ea6120 (resolve time range) and FUN_00ea62b0 (update state). FUN_00ea6120 walks a sorted list comparing floats — consistent with [abilityId, startTime, endTime] layout."
+    },
+    {
+      "requested_by": "00eb1630",
+      "struct_name": "ClientEffectResult",
+      "observed_offsets": [
+        "+0x00 size 1 (StatID / byte)",
+        "+0x04 size 4 (Delta / float)",
+        "+0x08 size 1 (DamageCode / byte)",
+        "+0x09 size 1 (StatResultCode / byte)"
+      ],
+      "evidence": "CombatQueue_HandleOnEffectResults reads 7-byte per-entry records from ClientEffectResultList field."
+    }
+  ],
+  "pending_globals": [
+    {
+      "requested_by": "00ea6af0",
+      "address": "01e0c458",
+      "proposed_name": "g_AbilityCooldown_UISubscriber",
+      "evidence": "CooldownManager_HandleOnTimerUpdate calls FUN_00ea62b0 which emits Event_UI_AbilityCooldown; subscriber pointer observed at 0x01e0c458 in xref trace."
+    }
+  ],
+  "stats": {
+    "complete": 13,
+    "skipped_already_done": 0,
+    "skipped_too_small": 1,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 11,
+    "total_tool_calls": 156
+  },
+  "resume_from_address": "COMPLETE",
+  "output_documents": [
+    "docs/reverse-engineering/findings/ability-resolution-pipeline.md",
+    "docs/reverse-engineering/address-map.md (Ability Resolution section appended)",
+    "docs/reverse-engineering/findings/README.md (index updated)"
+  ],
+  "open_questions": [
+    "5th Event_NetIn_TimerUpdate subscriber — timer types 4,6,7,8 unhandled",
+    "AbilitySet_InvokeAbility address not pinned (called from 0x00aa2910 thunk)",
+    "GameProxyPlayer_HandleOnTimerUpdate candidate for 5th subscriber",
+    "Ground-target coordinate capture between ActivateGroundTargetReticle and final emit not traced to byte level",
+    "EffectType runtime struct offsets (+0x18 isChanneled etc.) cross-reference against 0x015ceeb0 runtime layout needed"
+  ]
+}

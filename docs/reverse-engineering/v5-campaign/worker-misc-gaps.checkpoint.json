@@ -1,0 +1,141 @@
+{
+  "worker_id": "misc-gaps",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Three targeted RE gaps: (1) holster animation trigger / entity+0x3D0 writer, (2) unknown timer types 4/6/7/8, (3) five outstanding world-entry open questions.",
+  "gaps": [
+    {
+      "gap_id": "gap-1-holster-anim",
+      "title": "Holster animation trigger / entity+0x3D0 writer",
+      "status": "partial",
+      "findings_doc": "findings/animation-system.md and findings/state-flag-broadcast.md",
+      "summary": "Resolved the object disambiguation: animController+0x3D0 (2-byte key, written by GameBeing_BuildCombatAnimKey at 0x00e79fc0) is DIFFERENT from GameEntity+0x3D0/1/2 (3-byte posture struct read by SGWAnim nodes). The 3-byte struct layout: [+0x3D0]=weapon-category byte, [+0x3D1]=substate byte (bit0=partial variant), [+0x3D2]=posture enum (1=crouch,2=stand,3=partial,5=swim,6=jetpack,7=ragdoll,8=dead). SGW completely replaced UE3's UAnimNodeBlendByPosture mechanism (actor+0x1E4 bit3) with entity+0x3D2. The WRITER of entity+0x3D0/1/2 was NOT found — it is not in the CME event handler paths searched (~40 tool calls). Candidates not yet checked: UE3 pawn physics tick, server property sync, weapon equip/unequip deeper paths.",
+      "open_items": [
+        "Find the function that writes entity+0x3D0, entity+0x3D1, entity+0x3D2 on GameEntity.",
+        "Confirm whether holster animation is driven by entity+0x3D0 write or by BSF_Holster state broadcast."
+      ],
+      "addresses_found": {
+        "0x00e79fc0": "GameBeing_BuildCombatAnimKey — writes animController+0x3D0/+0x3D1 (2-byte combat key, NOT GameEntity struct)",
+        "0x00e7b4c0": "GameBeing_UpdateCombatStanceWeaponSet — reads animController+0x3D0, walks anim table",
+        "0x00e968d0": "SGWAnimTransitionByStance_Tick — reads entity+0x3D0 3-char stance code from entity at animNode+0x128",
+        "0x00e92350": "SGWAnimBlendByPosture_TickAnim — reads entity+0x3D2 posture enum + entity+0x3D1 substate",
+        "0x00e92570": "SGWAnimBlendByWeapon_OnChildGroupChange — sets entity ptr at this+0xF0",
+        "0x00686610": "UAnimNodeBlendByPosture__vfunc_72 — UE3 base reads actor+0x1E4 bit3 (SGW REPLACED this)",
+        "0x00dff3f0": "FUN_00dff3f0 — BSF_Crouching check: returns 1 if bit2 (mask 0x04) set in bStateField"
+      }
+    },
+    {
+      "gap_id": "gap-2-timer-types",
+      "title": "Unknown timer types 4, 6, 7, 8",
+      "status": "resolved",
+      "findings_doc": "findings/ability-resolution-pipeline.md",
+      "summary": "Resolved. There are 8 Event_NetIn_TimerUpdate subscribers (not 5 as documented). Four previously unknown subscribers identified with their handlers and type dispatches. Types 4/7/8 handled by CooldownManager (no type-gating branch — all pass SourceID filter). Type 6 = DialogController (interaction timer). Additionally found: type 14 = GameProxyPlayer/SGWBeing BigWorld time-complete; type 16 = Crafting job timer; type 1 also handled by GameEntityManager for entity arrival/spawn. CooldownManager confirmed to have NO type-based early return — it processes all types that pass SourceID gate.",
+      "timer_type_map": {
+        "0": "CooldownManager — warmup start",
+        "1": "CooldownManager — cooldown start; ALSO GameEntityManager entity arrival (FUN_00c68110)",
+        "2": "CooldownManager — warmup end",
+        "3": "CooldownManager — cooldown end",
+        "4": "CooldownManager — pass-through (no explicit branch, SourceID-gated)",
+        "5": "EffectSet — active effect duration (FUN_00e09160)",
+        "6": "DialogController — NPC interaction timer (FUN_00d26380)",
+        "7": "CooldownManager — pass-through (no explicit branch, SourceID-gated)",
+        "8": "CooldownManager — pass-through (no explicit branch, SourceID-gated)",
+        "9": "MissionSet — timer start/reset (FUN_00d18a30)",
+        "10": "MissionSet — mission progress timer",
+        "11": "MissionSet — mission completion timer",
+        "12": "GameBeing — weapon reload (FUN_00e02380)",
+        "13": "GameBeing — deployment reload",
+        "14": "GameProxyPlayer/SGWBeing — BigWorld time-complete (SGWBeing_onBigWorldTimeComplete 0x00dec9e0)",
+        "16": "SGW::Crafting — crafting job timer (FUN_00e47800)"
+      },
+      "addresses_found": {
+        "0x00dec9e0": "SGWBeing_onBigWorldTimeComplete — GameProxyPlayer handler for type 14; reads BigWorldTimeComplete double + SourceID uint",
+        "0x00d26380": "FUN_00d26380 — DialogController handler for type 6; reads SecondaryId + BigWorldTimeComplete; emits Event_UI_InteractionTimer",
+        "0x00d26ee0": "FUN_00d26ee0 — MemberCallback<DialogController, Event_NetIn_TimerUpdate> ctor",
+        "0x00d26850": "FUN_00d26850 — DialogController constructor; registers timer handler at FUN_00d26380",
+        "0x00e47800": "FUN_00e47800 — SGW::Crafting handler for type 16; reads SourceID + TotalTime + BigWorldTimeComplete",
+        "0x00e45c70": "FUN_00e45c70 — MemberCallback<SGW::Crafting, Event_NetIn_TimerUpdate> ctor",
+        "0x00e49850": "FUN_00e49850 — SGW::Crafting constructor; registers timer handler at FUN_00e47800",
+        "0x00c68110": "FUN_00c68110 — GameEntityManager handler for type 1; reads SourceID + ID + BigWorldTimeComplete; entity arrival/AoI",
+        "0x00c6aaa0": "FUN_00c6aaa0 — MemberCallback<GameEntityManager, Event_NetIn_TimerUpdate> ctor (3 params, 0x10 bytes)",
+        "0x00c69120": "FUN_00c69120 — GameEntityManager constructor; registers timer handler at FUN_00c68110",
+        "0x00dfb2a0": "FUN_00dfb2a0 — GameProxyPlayer TimerUpdate MemberCallback subscribe wrapper",
+        "0x00df3ab0": "SGWBeing_RegisterCallbacks — registers SGWBeing_onBigWorldTimeComplete for Event_NetIn_TimerUpdate",
+        "0x00df3cc0": "SGWMob_RegisterCallbacks — same as SGWBeing_RegisterCallbacks but for SGWMob",
+        "0x019bb3a0": "vtable: MemberCallback<DialogController, Event_NetIn_TimerUpdate>",
+        "0x019db3ac": "vtable: MemberCallback<SGW::Crafting, Event_NetIn_TimerUpdate>",
+        "0x019aad4c": "vtable: MemberCallback<GameEntityManager, Event_NetIn_TimerUpdate>"
+      }
+    },
+    {
+      "gap_id": "gap-3-world-entry",
+      "title": "W-world-entry 5 outstanding questions",
+      "status": "partial",
+      "findings_doc": "findings/world-entry-pipeline.md",
+      "questions_resolved": [
+        {
+          "q": "Q1 ENABLE_ENTITIES payload size",
+          "answer": "1 byte (stock BW keepBase u8). DAT_01ef2500 initialized at 0x017bae02 with MOV DWORD PTR [struct], 1. The 8-byte SGW-custom claim in world-entry-phases.md is incorrect."
+        },
+        {
+          "q": "Q2 GameProxyPlayer Event_Level_PostLoad handler body",
+          "answer": "Handler at 0x00de8660 (wrapper) -> FUN_00de8430 (body). Body: assigns UE3 PlayerController from DAT_01ee1254+0x2D0/+0x40 to param_1+0xC, sets *(pController+0x5A)=2 (input mode), copies transform data (+0xDC/+0xE4/+0xE8/+0xF0) to vehicle/entity if linked."
+        },
+        {
+          "q": "Q3 Event_World_Loaded emitter",
+          "answer": "FUN_005541a0 (0x005541a0). Called from FUN_007100d0 (0x007100d0) which reads global WorldInfo* at DAT_01ee2684. Fires after ALL sub-levels ready (no pending-stream bits) AND all entity +0x164 fields are 0. Called from UE3 streaming completion callback (no static callers visible)."
+        },
+        {
+          "q": "Q4 SGWNetworkManager ClientReady handler send body",
+          "answer": "Handler at SGWNetworkManager_EventHandler_ClientReady_invoke (0x00d43dc0): reads pMethodDesc from this+4, pArgData from this+8, calls EnsureEntityRpcRegistryAllocated() then RouteOutgoingEntityRpc(param_2, pMethodDesc, pArgData). This is the actual Mercury wire-send for enableEntities."
+        }
+      ],
+      "questions_remaining": [
+        {
+          "q": "Q5 resetEntities CONSTANT_LENGTH",
+          "status": "still open — not investigated this session"
+        },
+        {
+          "q": "Q6 setupStargateInfo handler (method index 65)",
+          "status": "still open — string 'setupStargateInfo' not in binary. DBGateInfo (CookedData RTTI at 0x004288e0) may be data carrier. Requires tracing Extended method dispatch table."
+        }
+      ],
+      "addresses_found": {
+        "0x00de8660": "GameProxyPlayer_HandleEvent_Level_PostLoad — primary PostLoad handler (wrapper)",
+        "0x00de8430": "FUN_00de8430 — PostLoad body: PlayerController assignment + transform copy",
+        "0x00de9e60": "LAB_00de9e60 — alternate PostLoad handler (account-disconnect path)",
+        "0x00def710": "FUN_00def710 — account disconnect fn; conditionally subscribes PostLoad",
+        "0x00df4270": "FUN_00df4270 — main GameProxyPlayer callback registration fn (35 registrations)",
+        "0x005541a0": "FUN_005541a0 — Event_World_Loaded emitter; checks all-levels-ready condition",
+        "0x007100d0": "FUN_007100d0 — Event_World_Loaded trigger thunk (reads DAT_01ee2684)",
+        "0x00d43dc0": "SGWNetworkManager_EventHandler_ClientReady_invoke — ClientReady wire-send",
+        "0x00d57030": "FUN_00d57030 — SGWNetworkManager::EventHandler<ClientReady> ctor",
+        "0x00d45b70": "FUN_00d45b70 — MemberCallback<ClientReady> ctor",
+        "0x00d4d540": "FUN_00d4d540 — MemberCallback<ClientReady> subscribe wrapper",
+        "0x017bae02": "static init site — writes 1 to ENABLE_ENTITIES descriptor size field",
+        "DAT_01ee2b6c": "world-loaded guard flag",
+        "DAT_01ee2684": "global WorldInfo* pointer",
+        "DAT_01eb082c": "editor/replay mode flag"
+      }
+    }
+  ],
+  "ghidra_functions_created": [
+    {
+      "address": "0x00de8660",
+      "name": "GameProxyPlayer_HandleEvent_Level_PostLoad",
+      "body_size": 8
+    },
+    {
+      "address": "0x00d43dc0",
+      "name": "SGWNetworkManager_EventHandler_ClientReady_invoke",
+      "body_size": 33
+    }
+  ],
+  "notes": [
+    "CooldownManager_HandleOnTimerUpdate confirmed to have NO type-based early return — the 'types 0-3 only' statement in the prior doc was a misreading. It processes ALL types that pass SourceID gate.",
+    "The GameEntityManager MemberCallback ctor is 4-param (not 3) and allocates 0x10 bytes (not 0x0C). This is the only Event_NetIn_TimerUpdate subscriber with this variant.",
+    "Event_World_Loaded trigger thunk (0x007100d0) has no static callers — invoked via UE3 engine callback table. Cannot trace further without runtime analysis.",
+    "ENABLE_ENTITIES 8-byte claim in docs/protocol/world-entry-phases.md is incorrect and should be corrected to 1 byte."
+  ]
+}

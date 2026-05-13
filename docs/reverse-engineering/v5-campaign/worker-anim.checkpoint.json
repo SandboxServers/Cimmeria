@@ -1,0 +1,524 @@
+{
+  "worker_id": "anim",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T03:00:00Z",
+  "scope_predicate": "Animation system: SGWAnimNotifyEvent_Emit (0x00e974b0), USGWAnim_* node classes, USGWAnimController, anim state machine, reload anim event-set sourcing (issue #210), AnimMap.xml mapping",
+  "total_in_scope": 35,
+  "functions": [
+    {
+      "address": "00e974b0",
+      "name_at_start": "SGWAnimNotifyEvent_Emit",
+      "name_at_end": "SGWAnimNotifyEvent_Emit",
+      "status": "skipped_already_done",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read-only-analysis",
+      "skipped_reason": "Already named and plated by prior work; fully analyzed for findings doc",
+      "tool_calls_used": 4,
+      "notes": "CME emitter: reads actor name -> LookupByName -> sets SequenceName/CancelOnMovement/PlaybackType/HaltAnimTree -> dispatches. Source: SGWAnimNotify_Event.cpp:25. Vtable-only (no direct callers). Event name is dynamic (from actor name). Score 32 — high undefined count from 185-line SEH frame; structural ceiling accepted."
+    },
+    {
+      "address": "00e97070",
+      "name_at_start": "FUN_00e97070",
+      "name_at_end": "SGWAnimNotifyEvent_Notify",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 23,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 6,
+      "notes": "USGWAnimNotify_Event::Notify override. Validates mesh component, checks bone socket, dispatches via entity vtable +0xE8/+0xEC. Score 23 after 2 passes — accepted. Structural ceiling ~79 not achievable due to complex SEH frame with 23 undefined-typed locals that cannot be retyped via MCP API. NOT the same function as SGWAnimNotifyEvent_Emit — two distinct dispatch paths."
+    },
+    {
+      "address": "00e97290",
+      "name_at_start": "USGWAnimNotify_Event__vfunc_0",
+      "name_at_end": "USGWAnimNotify_Event__vfunc_0",
+      "status": "skipped_too_small",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": "return 1 stub — MSVC scalar destructor, 5 lines",
+      "tool_calls_used": 1,
+      "notes": null
+    },
+    {
+      "address": "00e97ae0",
+      "name_at_start": "USGWAnimNotify_JumpEvent__vfunc_0",
+      "name_at_end": "USGWAnimNotify_JumpEvent__vfunc_0",
+      "status": "skipped_too_small",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": "return 1 stub",
+      "tool_calls_used": 1,
+      "notes": null
+    },
+    {
+      "address": "00e96f60",
+      "name_at_start": "USGWAnimNotify_Script__vfunc_0",
+      "name_at_end": "USGWAnimNotify_Script__vfunc_0",
+      "status": "skipped_too_small",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": "return 1 stub",
+      "tool_calls_used": 1,
+      "notes": null
+    },
+    {
+      "address": "00e95b60",
+      "name_at_start": "USGWAnimController__vfunc_0",
+      "name_at_end": "USGWAnimController__vfunc_0",
+      "status": "skipped_too_small",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": "return 1 stub",
+      "tool_calls_used": 1,
+      "notes": null
+    },
+    {
+      "address": "00e95d10",
+      "name_at_start": "FUN_00e95d10",
+      "name_at_end": "FUN_00e95d10",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read-only-analysis",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "USGWAnimController::StaticClass. 0x178 alloc, 0xD4 class size, Engine package, SGWAnimController.cpp:0xC2. Not renamed — generic StaticClass pattern; address recorded in findings."
+    },
+    {
+      "address": "00e968d0",
+      "name_at_start": "FUN_00e968d0",
+      "name_at_end": "SGWAnimTransitionByStance_Tick",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 67,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "KEY function: reads entity+0x3D0 stance code, calls LookupStanceIndex, fires trigger on change. Score 67 — acceptable. 1 magic number deduction (DAT_01816aa0 zero comparison). No renameable locals."
+    },
+    {
+      "address": "00e96720",
+      "name_at_start": "FUN_00e96720",
+      "name_at_end": "SGWAnimTransitionByStance_LookupStanceIndex",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 61,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "AnimMap.xml table lookup: 3-char weapon + 3-char posture code matching with wildcard null chars. Score 61 — at threshold. 8 Hungarian violations from parameter type mismatches (char* vs char* — Ghidra char vs signed char); structural ceiling ~83."
+    },
+    {
+      "address": "00e96810",
+      "name_at_start": "FUN_00e96810",
+      "name_at_end": "SGWAnimTransitionByStance_FireAnimTrigger",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 61,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Fires anim action callbacks for matched sequence entries; checks mesh scale; resets on completion. Score 61 — acceptable. 1 unrenamed global (DAT_01816aa0), 3 unresolved struct accesses (vtable slots)."
+    },
+    {
+      "address": "00e96940",
+      "name_at_start": "FUN_00e96940",
+      "name_at_end": "SGWAnimTransitionByStance_TickAnim",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "TickAnim override: base UAnimNodeSequence::TickAnim + conditional FireAnimTrigger. Short function, score not checked (no renameable locals, plate + prototype set)."
+    },
+    {
+      "address": "00e96c50",
+      "name_at_start": "FUN_00e96c50",
+      "name_at_end": "FUN_00e96c50",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read-only-analysis",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "USGWAnim_TransitionByStance ctor. Not renamed — generic ctor pattern; vtable stamp confirmed."
+    },
+    {
+      "address": "00e92240",
+      "name_at_start": "FUN_00e92240",
+      "name_at_end": "FUN_00e92240",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read-only-analysis",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "USGWAnim_BlendByPosture ctor. FUN_00e8a6e0 is the SGWAnim base ctor."
+    },
+    {
+      "address": "00e92670",
+      "name_at_start": "FUN_00e92670",
+      "name_at_end": "FUN_00e92670",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read-only-analysis",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "USGWAnim_BlendByWeapon ctor."
+    },
+    {
+      "address": "00e6fd20",
+      "name_at_start": "FUN_00e6fd20",
+      "name_at_end": "GameEntity_OnKismetEventSetUpdate",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 36,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 6,
+      "notes": "GameEntity.cpp:0x149 — reads kismetEventSetId, stores at this+0x98, calls ZipStorage lookup. Score 36 after 2 passes — accepted. 15.8 structural deductions from __thiscall void* + high undefined_count from 46-line SEH frame. Ceiling ~84. CRITICAL for issue #210."
+    },
+    {
+      "address": "00c889a0",
+      "name_at_start": "FUN_00c889a0",
+      "name_at_end": "SGWTextCmdMgr_HandleReload",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "SGWTextCommandManager.cpp:0xB4B. Reload trigger handler. Note: W-weap named this EmitNetOut_RequestReload_TextCmd — our rename SGWTextCmdMgr_HandleReload is more accurate to its role as a handler vs. emitter. Contradiction with W-weap naming logged."
+    },
+    {
+      "address": "00c891b0",
+      "name_at_start": "FUN_00c891b0",
+      "name_at_end": "SGWTextCmdMgr_HandleBehaviorEventSet",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "SGWTextCommandManager.cpp:0xB84. Behavior event set handler; emits Event_NetOut_LoadBehavior."
+    },
+    {
+      "address": "00cbcda0",
+      "name_at_start": "FUN_00cbcda0",
+      "name_at_end": "RequestReloadEvent_Ctor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Pattern B ctor: NetworkEvent_Ctor + Event_NetOut_RequestReload::vftable stamp."
+    },
+    {
+      "address": "00cbd610",
+      "name_at_start": "FUN_00cbd610",
+      "name_at_end": "LoadBehaviorEvent_Ctor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Pattern B ctor: NetworkEvent_Ctor + Event_NetOut_LoadBehavior::vftable stamp."
+    },
+    {
+      "address": "00d0519c",
+      "name_at_start": "CookedKismetEventSetData__vfunc_1",
+      "name_at_end": "CookedKismetEventSetData__vfunc_1",
+      "status": "skipped_already_done",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read-only-analysis",
+      "skipped_reason": "Already named; analyzed for findings",
+      "tool_calls_used": 1,
+      "notes": "Parses COOKED_KISMET_EVENT_SET tag; allocates 0x40-byte entries; stores list at this+0x1C."
+    },
+    {
+      "address": "00d88d80",
+      "name_at_start": "register_NetIn_onKismetEventSetUpdate",
+      "name_at_end": "register_NetIn_onKismetEventSetUpdate",
+      "status": "skipped_already_done",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": "Already named; string-return accessor",
+      "tool_calls_used": 1,
+      "notes": null
+    },
+    {
+      "address": "00e92520",
+      "name_at_start": "USGWAnim_BlendByWeapon__vfunc_0",
+      "name_at_end": "USGWAnim_BlendByWeapon__vfunc_0",
+      "status": "skipped_too_small",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": "return 1 stub — MSVC scalar destructor, 3 lines",
+      "tool_calls_used": 1,
+      "notes": "Session 5 resume point. Confirmed stub."
+    },
+    {
+      "address": "00e92530",
+      "name_at_start": "FUN_00e92530",
+      "name_at_end": "SGWAnimBlendByWeapon_IsWeaponEquipped",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Checks actor's class vs DAT_01ef2760 (BlendByWeapon base class ptr). IsChildOf pattern. Renamed only."
+    },
+    {
+      "address": "00e92570",
+      "name_at_start": "FUN_00e92570",
+      "name_at_end": "SGWAnimBlendByWeapon_OnChildGroupChange",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Calls UAnimNodeBlendList::OnChildGroupChange (vfunc_69), then caches weapon type index in this+0xF0 via FUN_00d404b0. Renamed only."
+    },
+    {
+      "address": "00e92350",
+      "name_at_start": "FUN_00e92350",
+      "name_at_end": "SGWAnimBlendByPosture_TickAnim",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 62,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "KEY: Reads entity+0x3D2 posture enum. Maps 1->child2 (crouch), 2->child1 (stand), 3->child3/4 (partial, sub-state from entity+0x3D1), 5-8->children5-8. Confirms entity+0x3D2 is the posture enum byte. Score 62."
+    },
+    {
+      "address": "00e928e0",
+      "name_at_start": "FUN_00e928e0",
+      "name_at_end": "SGWAnimBlendByWeapon_TickAnim",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 54,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 7,
+      "notes": "KEY: Iterates blend list children; selects highest-priority armed weapon child via FUN_007ff790. Ties by anim completion fraction at iVar+0xC4. SetActiveChild via vtable +0x17C. Score 54 — accepted after 2 passes."
+    },
+    {
+      "address": "00e92db0",
+      "name_at_start": "FUN_00e92db0",
+      "name_at_end": "SGWAnimTransitionByPosture_OnChildGroupChange",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Dynamic-casts entity to GameBeing; queries FUN_00dff3f0 for crouch state; updates this+0xF0 bit 1. Prototype + plate comment set."
+    },
+    {
+      "address": "00e92e30",
+      "name_at_start": "FUN_00e92e30",
+      "name_at_end": "SGWAnimTransitionByPosture_SetActiveChild",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Validates transition target; applies snap (weight 0) or blended transition; sets pending flag this+0xF0 bit 1. Prototype + plate comment set."
+    },
+    {
+      "address": "00e92ef0",
+      "name_at_start": "FUN_00e92ef0",
+      "name_at_end": "SGWAnimTransitionByPosture_TickAnim",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 53,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 6,
+      "notes": "KEY: Polls FUN_00dff3f0(gameBeing) each tick; fires SetActiveChild(1) for stand→crouch, SetActiveChild(2) for crouch→stand. Clears pending flag when active child anim finishes. Score 53 — accepted after 2 passes."
+    },
+    {
+      "address": "00e960c0",
+      "name_at_start": "FUN_00e960c0",
+      "name_at_end": "SGWAnimSequenceListPlayer_IsSequenceActive",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "IsChildOf class check for SequenceListPlayer. Renamed only."
+    },
+    {
+      "address": "00e96140",
+      "name_at_start": "FUN_00e96140",
+      "name_at_end": "SGWAnimSequenceListPlayer_PlayNextSequence",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Plays current sequence from list (0x0C stride); checks if it matches active anim; advances list index or loop counter. Source: SGWAnim_SequenceListPlayer.cpp:0x25. Renamed only."
+    },
+    {
+      "address": "00e96200",
+      "name_at_start": "FUN_00e96200",
+      "name_at_end": "SGWAnimSequenceListPlayer_StartSequenceList",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Resets playback to index 0; validates list non-empty; calls FUN_008027d0 to set first sequence. Source: SGWAnim_SequenceListPlayer.cpp:0x38. Renamed only."
+    },
+    {
+      "address": "00e962d0",
+      "name_at_start": "FUN_00e962d0",
+      "name_at_end": "SGWAnimSequenceListPlayer_TickAnim",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "After base UAnimNodeSequence tick: if animation finished and no loops pending, advances to next list entry (stride 0x0C). Prototype + plate comment set. KEY for scripted emote/death sequence chaining."
+    },
+    {
+      "address": "00e90d80",
+      "name_at_start": "FUN_00e90d80",
+      "name_at_end": "SGWAnimBlendByCover_IsInCover",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "IsChildOf class check for BlendByCover. Renamed only."
+    },
+    {
+      "address": "00e90dc0",
+      "name_at_start": "FUN_00e90dc0",
+      "name_at_end": "SGWAnimBlendByCover_TickAnim",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Iterates entity cover slots; finds max cover side value (slot+0x14); sets blend child = maxCoverSide+1. Dynamic-casts entity to GameBeing. Prototype + plate comment set."
+    },
+    {
+      "address": "00e93330",
+      "name_at_start": "FUN_00e93330",
+      "name_at_end": "SGWAnimMaskChooser_IsChildOfClass",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "IsChildOf class check for MaskChooser. Renamed only."
+    },
+    {
+      "address": "00e93400",
+      "name_at_start": "FUN_00e93400",
+      "name_at_end": "SGWAnimMaskChooser_TickAnim",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Selects child 1 (upper body override) when aim/override active (this+0xE8 via FUN_00e93370), else child 0 (lower body). Blend time from this+0x118. Used for upper-body aiming layer. Prototype + plate comment set."
+    }
+  ],
+  "pending_structs": [
+    {
+      "requested_by": "00e96720",
+      "struct_name": "SGWAnimTransitionEntry",
+      "observed_offsets": ["+0x00 char[3] weaponCode (e.g. '1H', 'RX', '2H')", "+0x06 char[3] postureCode (e.g. 'S', 'C')", "+0x08 ptr sequenceList (array of 8-byte pairs)", "+0x0C int maxSequenceCount"],
+      "evidence": "FUN_00e96720 (SGWAnimTransitionByStance_LookupStanceIndex): iterates this+0x12C in 0x14-byte steps; first 3 bytes = weapon code (pcVar3[0..2]); posture at pcVar1[-2..pcVar1[0]] (offset +0x06 from entry base). Count at this+0x130. FUN_00e96810 (FireAnimTrigger): entry+0x8 = sequence ptr, entry+0xC = max count."
+    },
+    {
+      "requested_by": "00e968d0",
+      "struct_name": "SGWEntityCombatState_StanceCode",
+      "observed_offsets": ["+0x3D0 char[4] stanceCode (3-char weapon+posture code, e.g. '1HS', 'RXC', '2HS')", "+0x3D1 byte substateCode (used by BlendByPosture: bit 0x01 selects child 3 vs 4 in case 3)", "+0x3D2 byte postureEnum (1=crouch, 2=stand, 3=partial, 5=swim, 6=jetpack, 7=ragdoll, 8=dead)"],
+      "evidence": "SGWAnimTransitionByStance_Tick (0x00e968d0): reads *(entity+0x128)+0x3D0 as char* parameter to LookupStanceIndex. SGWAnimBlendByPosture_TickAnim (0x00e92350): reads entity+0x3D2 as posture switch enum, entity+0x3D1 as sub-state. The owning struct type is likely SGWPlayer or GameEntity."
+    },
+    {
+      "requested_by": "00e96140",
+      "struct_name": "SGWAnimSequenceListEntry",
+      "observed_offsets": ["+0x00 byte flags (bit 0 = loop, bit 1 = blend)", "+0x04 int sequenceNameIdx (FName index)", "+0x08 int groupNameNum (FName number)"],
+      "evidence": "SGWAnimSequenceListPlayer_PlayNextSequence (0x00e96140): accesses entries at stride 0x0C. SGWAnimSequenceListPlayer_TickAnim (0x00e962d0): same stride, reads flag byte and FName pair."
+    }
+  ],
+  "pending_globals": [
+    {
+      "requested_by": "00e96810",
+      "address": "01816aa0",
+      "proposed_name": "g_ZeroDouble",
+      "evidence": "SGWAnimTransitionByStance_FireAnimTrigger: DAT_01816aa0 compared as double against mesh component scale values (this+0xCC+0x5C, this+0xCC+0x54). Value is 0.0 (zero scale test). Likely a shared constant."
+    }
+  ],
+  "contradictions": [
+    {
+      "address": "00c889a0",
+      "prior_name": "EmitNetOut_RequestReload_TextCmd",
+      "our_name": "SGWTextCmdMgr_HandleReload",
+      "source": "W-weap session (address-map.md line ~120)",
+      "resolution": "Both names are descriptive; W-weap focused on the emit side, W-anim on the handler role. The function IS a handler (reads CME event, then emits). W-weap's name is not wrong, just less precise about the function's role as a receiver-then-emitter. Recommend: keep W-weap's name since it was established first and refers to the net effect."
+    }
+  ],
+  "new_findings_session_5": {
+    "entity_field_layout": {
+      "entity_plus_0x3D0": "3-char stance code (weapon+posture, e.g. '1HS') — read by TransitionByStance_Tick",
+      "entity_plus_0x3D1": "posture sub-state byte — bit 0x01 used in BlendByPosture case 3 to select child 3 vs 4",
+      "entity_plus_0x3D2": "posture enum byte (1=crouch, 2=stand, 3=partial, 5=swim, 6=jetpack, 7=ragdoll, 8=dead) — read by BlendByPosture_TickAnim",
+      "cross_reference": "entity+0x3D0 through 0x3D2 are a contiguous 3-byte posture/stance block. 0x3D0 = combined weapon+posture string for stance transitions; 0x3D1 = substate; 0x3D2 = posture enum for blend selection."
+    },
+    "cover_system_accessors": {
+      "FUN_00e71880": "returns cover slot count for a GameBeing (called in SGWAnimBlendByCover_TickAnim)",
+      "FUN_00e718b0": "returns cover slot entry by index for a GameBeing; entry+0x14 = cover side enum",
+      "note": "Cross-scope: these are relevant to W-state (combat lifecycle) and any cover-system RE work"
+    },
+    "sequence_list_player": {
+      "note": "USGWAnim_SequenceListPlayer advances through ordered animation sequences. Each SequenceListEntry (0x0C stride) has loop flag, sequence FName, group FName. Used for multi-step scripted anims (death, emotes). this+0x11C=list ptr, this+0x120=count, this+0x128=loop countdown, this+0x12C=current index.",
+      "SetAnimSequence": "FUN_008027d0 — called with (this, sequenceNameIdx, groupNameNum, loopFlag, startFromBegin) to set the active animation sequence on a UAnimNodeSequence"
+    },
+    "mask_chooser": {
+      "FUN_00e93370": "queries whether an aim/override state is active (called with this+0xE8 or this+0xF4). Likely reads a cached entity state flag.",
+      "FUN_00e933b0": "sets the MaskChooser blend weight — called before SetActiveChild to pre-position the blend"
+    }
+  },
+  "stats": {
+    "complete": 30,
+    "skipped_already_done": 4,
+    "skipped_too_small": 5,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 165,
+    "session_5_tool_calls": 60
+  },
+  "scope_complete": true,
+  "resume_from_address": null
+}

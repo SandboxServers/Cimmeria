@@ -1,0 +1,359 @@
+{
+  "worker_id": "0-flush",
+  "campaign_version": "v5",
+  "session": "5",
+  "created_at": "2026-05-13T12:00:00Z",
+  "last_updated_at": "2026-05-13T12:00:00Z",
+  "scope_predicate": "W0 flush: create all pending_structs + pending_globals from Session 4/4b named-worker checkpoints; re-score in-progress functions",
+
+  "structs_created": [
+    {
+      "name": "SGWAnimSequenceListEntry",
+      "size_bytes": 12,
+      "source_worker": "worker-anim",
+      "source_address": "00e96140",
+      "status": "created",
+      "fields": ["+0x0 byte flags", "+0x4 int sequenceNameIdx", "+0x8 int groupNameNum"]
+    },
+    {
+      "name": "SGWAnimTransitionEntry",
+      "size_bytes": 20,
+      "source_worker": "worker-anim",
+      "source_address": "00e96720",
+      "status": "created",
+      "fields": ["+0x0 char[3] weaponCode", "+0x6 char[3] postureCode", "+0xC void* pSequenceList", "+0x10 int maxSequenceCount"],
+      "note": "Stride 0x14 per LookupStanceIndex iteration; initial attempt failed due to overlapping fields — recreated with correct 6-byte padding between weaponCode and postureCode"
+    },
+    {
+      "name": "SGWEntityCombatState_StanceCode",
+      "size_bytes": 3,
+      "source_worker": "worker-anim",
+      "source_address": "00e968d0",
+      "status": "created",
+      "fields": ["+0x0 char[3] weaponPlusPostureCode (overlapping field)", "+0x1 byte postureSubState", "+0x2 byte postureEnum"],
+      "note": "3-byte overlay for entity+0x3D0..0x3D2 block; deleted initial 5-byte version and recreated correctly"
+    },
+    {
+      "name": "VisualChoiceEntry",
+      "size_bytes": 36,
+      "source_worker": "worker-character-creation",
+      "source_address": "00d328f0",
+      "status": "created",
+      "fields": ["+0x0 uint ChoiceId", "+0x4 byte[32] pad (remainder of 0x24 stride)"]
+    },
+    {
+      "name": "VisualGroupEntry",
+      "size_bytes": 52,
+      "source_worker": "worker-character-creation",
+      "source_address": "00d328f0",
+      "status": "created",
+      "fields": ["+0x0 uint VisGroupId", "+0x20 uint selectedChoiceIndex", "+0x28 void* pChoicesBegin", "+0x2C void* pChoicesEnd"],
+      "note": "Stride 0xD uint32s = 52 bytes; initial create omitted final 4 bytes, added via add_struct_field"
+    },
+    {
+      "name": "CoverNodePrefabData",
+      "size_bytes": 24,
+      "source_worker": "worker-cover",
+      "source_address": "00904d80",
+      "status": "created",
+      "fields": ["+0x0 float posX", "+0x4 float posY", "+0x8 float posZ", "+0xC float orientation", "+0x10 byte coverHeight", "+0x11 byte quality", "+0x12 byte width"]
+    },
+    {
+      "name": "CoverInfo",
+      "size_bytes": 20,
+      "source_worker": "worker-cover",
+      "source_address": "00e71c30",
+      "status": "created",
+      "fields": ["+0x0 void* vftable", "+0x4 void* pEventSubscriptionList", "+0x10 void* pSpatialTreeHandle"]
+    },
+    {
+      "name": "AbilitySlot",
+      "size_bytes": 160,
+      "source_worker": "worker-abilities",
+      "source_address": "00d2ae40",
+      "status": "created",
+      "fields": ["+0x48 int targetType", "+0x94 int TCM", "+0xA0 float AERadius"],
+      "note": "Partial layout — only observed offsets populated; remaining fields are padding"
+    },
+    {
+      "name": "CooldownEntry",
+      "size_bytes": 12,
+      "source_worker": "worker-abilities",
+      "source_address": "00ea6af0",
+      "status": "created",
+      "fields": ["+0x0 int abilityId", "+0x4 float startTime", "+0x8 float endTime"]
+    },
+    {
+      "name": "ClientEffectResult",
+      "size_bytes": 10,
+      "source_worker": "worker-abilities",
+      "source_address": "00eb1630",
+      "status": "created",
+      "fields": ["+0x0 byte StatID", "+0x4 float Delta", "+0x8 byte DamageCode", "+0x9 byte StatResultCode"]
+    },
+    {
+      "name": "CharacterInfo",
+      "size_bytes": 192,
+      "source_worker": "worker-character-creation",
+      "source_address": "00e74060",
+      "status": "created",
+      "fields": ["+0x0 uint playerId", "+0x4 byte[28] name (std::wstring SSO)", "+0x20 byte[28] extraName", "+0x3C byte alignment", "+0x3D byte level", "+0x3E byte gender", "+0x3F byte archetype", "+0x40 byte[28] worldLocation", "+0x5C byte title", "+0x60 uint playerType", "+0x64 byte playable", "+0x68 byte[28] bodySet", "+0x84 byte[12] components", "+0x90 float[4] primaryTint", "+0xA0 float[4] secondaryTint", "+0xB0 float[4] skinTint"]
+    },
+    {
+      "name": "MissionSet",
+      "size_bytes": 172,
+      "source_worker": "worker-mission-state",
+      "status": "created",
+      "fields": ["+0x58 void* stepList", "+0x64 void* missionList", "+0x70 void* taskList", "+0x7C void* timerState", "+0x9C-0xA8 int[4] missionLoadState"]
+    },
+    {
+      "name": "MissionEntry",
+      "size_bytes": 356,
+      "source_worker": "worker-mission-state",
+      "status": "created",
+      "fields": ["+0x60 int missionGiverName", "+0x64 int status", "+0x100 byte status2"],
+      "note": "OQ-2 unresolved: +0x64 vs +0x100 may be two distinct structs seen through decompiler"
+    },
+    {
+      "name": "StepEntry",
+      "size_bytes": 61,
+      "source_worker": "worker-mission-state",
+      "status": "created",
+      "fields": ["+0x3C byte status"]
+    },
+    {
+      "name": "ObjectiveEntry",
+      "size_bytes": 53,
+      "source_worker": "worker-mission-state",
+      "status": "created",
+      "fields": ["+0x30 byte status", "+0x34 byte optionalFlag"],
+      "note": "OQ-3 unresolved: hidden flag write offset not confirmed"
+    },
+    {
+      "name": "TaskEntry",
+      "size_bytes": 8,
+      "source_worker": "worker-mission-state",
+      "status": "created",
+      "fields": ["+0x2 byte status", "+0x4 int count"]
+    },
+    {
+      "name": "GameBeingAnimController",
+      "size_bytes": 1100,
+      "source_worker": "worker-state",
+      "source_address": "00e7b4c0",
+      "status": "created",
+      "fields": ["+0x34C void* pPrimarySkeletalMeshActor", "+0x3C0 void* pAnimSetTable", "+0x3D0 char combatKeyByte0", "+0x3D1 char combatKeyByte1", "+0x3D2 char thirdKeyByte", "+0x430 void* pAuxActorHashOrLookup", "+0x444 void* pAuxActorArrayData", "+0x448 int auxActorCount"]
+    },
+    {
+      "name": "SGWPawnActor",
+      "size_bytes": 952,
+      "source_worker": "worker-state",
+      "source_address": "00dff880",
+      "status": "created",
+      "fields": ["+0xDC float posX", "+0xE0 float posY", "+0xE4 float posZ", "+0x1E4 uint locomotionFlags", "+0x25C float MaxSpeed", "+0x26C float MaxAcceleration", "+0x270 float JumpZ", "+0x2F8 void* pAnimSetSlot", "+0x2FC uint animSetCounter", "+0x380 uint actorFlags", "+0x3AC void* pSecondaryTargetActor", "+0x3B0 void* pCurrentTargetActor", "+0x3B4 int deadInvalidFlag"]
+    }
+  ],
+
+  "globals_applied": [
+    {
+      "address": "01816aa0",
+      "name": "g_ZeroDouble",
+      "source_worker": "worker-anim",
+      "method": "rename_or_label",
+      "status": "applied"
+    },
+    {
+      "address": "01e0c458",
+      "name": "g_AbilityCooldown_UISubscriber",
+      "source_worker": "worker-abilities",
+      "method": "rename_or_label",
+      "status": "applied"
+    },
+    {
+      "address": "00c71790",
+      "name": "GameBeing_GetMovementSpeedTable",
+      "source_worker": "worker-state",
+      "method": "rename_function_by_address",
+      "status": "applied",
+      "note": "Naming convention advisory warnings only (not PascalCase, contains underscores) — rename succeeded"
+    },
+    {
+      "address": "019ACEF4",
+      "name": "g_szMinigameInstanceField2Name",
+      "source_worker": "worker-1 (session 1, CAMPAIGN_STATUS.md)",
+      "method": "rename_or_label",
+      "status": "re-applied (idempotent — already in globals-applied.json)"
+    },
+    {
+      "address": "019ACEE8",
+      "name": "g_szMinigameInstanceField1AltName",
+      "source_worker": "worker-1 (session 1, CAMPAIGN_STATUS.md)",
+      "method": "rename_or_label",
+      "status": "re-applied (idempotent)"
+    },
+    {
+      "address": "019ACF38",
+      "name": "g_szMinigameInstanceField3Name",
+      "source_worker": "worker-1 (session 1, CAMPAIGN_STATUS.md)",
+      "method": "rename_or_label",
+      "status": "re-applied (idempotent)"
+    }
+  ],
+
+  "skipped_structs": [
+    {
+      "name": "StdStringMSVC",
+      "reason": "Already existed in Ghidra — created in a prior W0 session. Confirmed by create_struct returning 'Structure with name already exists'."
+    }
+  ],
+
+  "rescore_pass": [
+    {
+      "address": "00d163e0",
+      "name": "MissionSet_FireUiEvent",
+      "score_before": 54.9,
+      "score_after": 61.7,
+      "delta": "+6.8",
+      "crossed_60": true,
+      "action": "set_local_variable_type pMissionSet -> MissionSet*",
+      "notes": "Only mission-state function to cross 60 threshold this pass"
+    },
+    {
+      "address": "00d16800",
+      "name": "MissionSet_FindMissionById",
+      "score_before": 44.4,
+      "score_after": 51.2,
+      "delta": "+6.8",
+      "crossed_60": false,
+      "action": "set_local_variable_type pMissionSet -> MissionSet*",
+      "notes": "Max achievable 88.9 — residual gap from 5 undefined locals + plate issues"
+    },
+    {
+      "address": "00d16dd0",
+      "name": "MissionSet_PropagateMissionUpdate",
+      "score_before": 41.1,
+      "score_after": 47.9,
+      "delta": "+6.8",
+      "crossed_60": false,
+      "action": "set_local_variable_type pMissionSet -> MissionSet*",
+      "notes": "12 undefined locals remain; full V5 pass needed"
+    },
+    {
+      "address": "00d18cf0",
+      "name": "MissionSet_HandleOnStepUpdate",
+      "score_before": 23.0,
+      "score_after": 27.4,
+      "delta": "+4.4",
+      "crossed_60": false,
+      "action": "set_local_variable_type pMissionSet -> MissionSet*",
+      "notes": "49 undefined locals remain dominant cost; StepEntry struct now available for deeper typing"
+    },
+    {
+      "address": "00d18fd0",
+      "name": "MissionSet_HandleOnObjectiveUpdate",
+      "score_before": 23.0,
+      "score_after": 27.3,
+      "delta": "+4.3",
+      "crossed_60": false,
+      "action": "set_local_variable_type pMissionSet -> MissionSet*",
+      "notes": "57 undefined locals; ObjectiveEntry struct now available"
+    },
+    {
+      "address": "00d194b0",
+      "name": "MissionSet_HandleOnTaskUpdate",
+      "score_before": 33.1,
+      "score_after": 37.4,
+      "delta": "+4.3",
+      "crossed_60": false,
+      "action": "set_local_variable_type pMissionSet -> MissionSet*",
+      "notes": "44 undefined locals; TaskEntry struct now available"
+    },
+    {
+      "address": "00d1a270",
+      "name": "MissionSet_HandleOnMissionUpdate",
+      "score_before": 33.1,
+      "score_after": 37.4,
+      "delta": "+4.3",
+      "crossed_60": false,
+      "action": "set_local_variable_type pMissionSet -> MissionSet*",
+      "notes": "43 undefined locals; MissionEntry struct now available"
+    },
+    {
+      "address": "00d1a500",
+      "name": "MissionSet_HandleMissionRewards",
+      "score_before": 33.1,
+      "score_after": 37.4,
+      "delta": "+4.3",
+      "crossed_60": false,
+      "action": "set_local_variable_type pMissionSet -> MissionSet*",
+      "notes": "83 undefined locals + 67 magic numbers; largest mission-state function"
+    },
+    {
+      "address": "00e7b4c0",
+      "name": "GameBeing_UpdateCombatStanceWeaponSet",
+      "score_before": 42.0,
+      "score_after": 47.2,
+      "delta": "+5.2",
+      "crossed_60": false,
+      "action": "set_local_variable_type pThis -> GameBeingAnimController*",
+      "notes": "6 unresolved struct accesses remain — GameBeingAnimController layout partially resolves these"
+    },
+    {
+      "address": "00dfff70",
+      "name": "GameBeing_UpdateMovementSpeed",
+      "score_before": 22.0,
+      "score_after": 22.4,
+      "delta": "+0.4",
+      "crossed_60": false,
+      "action": "GameBeing_GetMovementSpeedTable renamed (global); no local typing applied — all locals register-only",
+      "notes": "11 unresolved struct accesses remain; SGWPawnActor struct now defined for future typing pass"
+    },
+    {
+      "address": "00e74060",
+      "name": "GameAccount_HandleNetIn_CharacterList",
+      "score_before": 32.0,
+      "score_after": 31.9,
+      "delta": "-0.1",
+      "crossed_60": false,
+      "action": "set_local_variable_type local_180 -> CharacterInfo (stack-allocated struct)",
+      "notes": "Score essentially unchanged — 87 undefined locals dominate; CharacterInfo struct now available for manual typing of individual fields"
+    },
+    {
+      "address": "00e01c90",
+      "name": "GameBeing_OnStateFieldUpdate",
+      "score_before": 34.0,
+      "score_after": 32.2,
+      "delta": "-1.8",
+      "crossed_60": false,
+      "action": "read-only rescore — no typing applied (no renameable locals)",
+      "notes": "Score drift is within normal re-decompilation variance. Structural ceiling 78; 34 undefined locals + 17 magic numbers."
+    }
+  ],
+
+  "analysis": {
+    "structs_created_count": 18,
+    "globals_applied_count": 6,
+    "functions_rescored": 11,
+    "functions_crossed_60_threshold": 1,
+    "functions_that_crossed_60": ["MissionSet_FireUiEvent (54.9 -> 61.7)"],
+    "dominant_remaining_deduction": "undefined_count (SEH stack frame locals — 40-87 per function) — requires full V5 decompile+audit pass per function, not solvable by struct creation alone",
+    "structs_ready_for_deeper_typing": [
+      "MissionEntry — available for local typing in HandleOnMissionUpdate, HandleMissionRewards",
+      "StepEntry — available for local typing in HandleOnStepUpdate",
+      "ObjectiveEntry — available for local typing in HandleOnObjectiveUpdate",
+      "TaskEntry — available for local typing in HandleOnTaskUpdate",
+      "SGWPawnActor — available for GameBeing_IsTargetInMeleeRange, GameBeing_UpdateMovementSpeed",
+      "GameBeingAnimController — available for GameBeing_UpdateCombatStanceWeaponSet",
+      "CharacterInfo — available for GameAccount_HandleNetIn_CharacterList"
+    ]
+  },
+
+  "stats": {
+    "total_tool_calls": 65,
+    "structs_created": 18,
+    "globals_applied": 6,
+    "functions_rescored": 11,
+    "create_errors_recovered": 2,
+    "note": "Two create_struct calls failed and were corrected: SGWAnimTransitionEntry (overlapping fields) and SGWEntityCombatState_StanceCode (wrong size 5 -> 3)"
+  }
+}

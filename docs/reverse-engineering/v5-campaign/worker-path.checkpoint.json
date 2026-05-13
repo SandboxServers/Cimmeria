@@ -1,0 +1,107 @@
+{
+  "worker": "W-path",
+  "session": 4,
+  "updated": "2026-05-13T00:00:00Z",
+  "phase": "complete",
+  "scope": "NPC movement and pathfinding — client receive path, aiState FSM, leash-back, interpolation",
+
+  "functions_v5_documented": [
+    { "address": "0x00deaaf0", "name": "SGWBeing_onPositionUpdate",      "final_score": 26.2,  "max_achievable": 80.0,  "notes": "Path actor allocator; plate comment rewritten to standard Algorithm/Parameters/Returns format." },
+    { "address": "0x00dec040", "name": "SGWBeing_PathDestroy",           "final_score": 30.5,  "max_achievable": 90.5,  "notes": "wcsicmp-based actor destruction; ceiling limited by MSVC SEH + thiscall structural deductions." },
+    { "address": "0x00dec6d0", "name": "SGWBeing_onSquadList",           "final_score": 41.4,  "max_achievable": 93.3,  "notes": "0x28-byte SGWSquadPath builder; typed/renamed: uVar1/2, local_40/44/24/28/4c/65/4 + pFollowerEntry/pSquadListEntry to void*." },
+    { "address": "0x00dec9e0", "name": "SGWBeing_onBigWorldTimeComplete","final_score": 42.2,  "max_achievable": 95.3,  "notes": "BigWorld time-sync callback; checks type byte 0x0E; publishes delta-time float." },
+    { "address": "0x00dedf30", "name": "SGWBeing_TickUpdate",            "final_score": 23.7,  "max_achievable": 81.9,  "notes": "Per-frame FPS stats + periodic PerfStats CME emit; plate comment rewritten to standard format." },
+    { "address": "0x00def320", "name": "SGWBeing_ApplyTargetChange",     "final_score": 31.0,  "max_achievable": 88.9,  "notes": "Target acquisition; renamed newTargetEntityId->dwNewTargetEntityId; typed auStack_28->byte[28], this_01->void*; plate comment param names aligned." },
+    { "address": "0x00df08c0", "name": "SGWBeing_onTargetIDReceive",     "final_score": 50.4,  "max_achievable": 88.9,  "notes": "Best score of session; typed local_28->byte[4], local_24->uint[4], local_c/4->uint; renamed 5 locals." },
+    { "address": "0x00df3550", "name": "SGWBeing_RegionUpdate",          "final_score": 11.1,  "max_achievable": 78.0,  "notes": "Region/space-change callback; score ceiling at 78 due to structural deductions; no further gains available without struct creation." },
+    { "address": "0x00df3ab0", "name": "SGWBeing_RegisterCallbacks",     "final_score": 48.6,  "max_achievable": 90.6,  "notes": "Registers ~20 CME callbacks for Being; 16-step algorithm documented." },
+    { "address": "0x00df3cc0", "name": "SGWMob_RegisterCallbacks",       "final_score": 48.6,  "max_achievable": 90.6,  "notes": "Identical callback set to SGWBeing; tail-calls FUN_00e2d920 vs FUN_00e2d8d0." }
+  ],
+
+  "functions_pending_v5": [
+    { "address": "0x00deb660", "name": "MovementTypeSwitch", "notes": "610-instruction FSM dispatch; decompile times out; documented via assembly context + plate comment only; jump table at 0x00dec018." },
+    { "address": "0x00e688c0", "name": "EntityVisibilityManager", "notes": "Distance-cull / LOD for entities; not attempted this session." },
+    { "address": "0x00e69690", "name": "EntityInterpolatorUpdate", "notes": "Physics interpolator dispatch (entity+0x1d0); not attempted this session." },
+    { "address": "0x00dd19e0", "name": "GameEntityManager_UpdateControlledEntityTransform", "notes": "Player-controlled entity transform push; not attempted this session." }
+  ],
+
+  "scoring_ceiling_analysis": {
+    "summary": "No function reached >=60 completeness score. Structural ceiling prevents it for all 10 functions.",
+    "root_causes": [
+      "MSVC SEH frame variables (local_4, pvStack_c, puStack_8, puStack_48) — not renameable/typeable via API (-7.5 to -15 pts per function in undefined_variables_structural).",
+      "__thiscall ECX implicit this pointer — cannot be retyped via API; adds hungarian_violations_structural and type_quality_structural deductions.",
+      "this_00 ECX reprojection alias — same constraint as this pointer.",
+      "28-byte MSVC std::string inline stack buffers — would need create_struct() (W0 domain only).",
+      "Raw offset dereferences (+0x3c, +0xfc) — would need struct definitions (W0 domain only).",
+      "unaff_ESI / unaff_EBX register-only variables — not renameable.",
+      "Remaining unnamed local_* and uVar* generics after re-decompilation — Ghidra SSA variable proliferation after type changes creates new undefined locals."
+    ],
+    "best_achievable_without_struct_creation": "~50 for thin wrappers (onTargetIDReceive); ~42-49 for medium workers (RegisterCallbacks, onBigWorldTimeComplete, onSquadList); ~23-31 for complex workers (ApplyTargetChange, PathDestroy, TickUpdate, onPositionUpdate); ~11 for heavily-optimized workers (RegionUpdate)."
+  },
+
+  "key_findings": {
+    "no_dedicated_move_emitters": "No EmitNetOut_*Move* or EmitNetOut_*Goto* functions exist. Movement uses BigWorld's avatarUpdate wire protocol (msg 0x10-0x2F / 0x30-0x31), not CME emitters.",
+    "aistate_fsm": {
+      "states": ["0=CoverAdvance","1=CombatAdvance","2=Leash","3=Patrol","4=Follow","5=Wander","6=Avoid"],
+      "jump_table": "0x00dec018",
+      "handler_base": "0x00deb660",
+      "too_large_to_decompile": true
+    },
+    "coordinate_conversion": {
+      "scale": "BW_TO_UE3_SCALE=100.0f @ 0x018cad90 (also referenced as DAT_0181418c in onPositionUpdate)",
+      "axis_swap": "UE3_X=BW_Z*100, UE3_Y=BW_X*100, UE3_Z=BW_Y*100",
+      "pos_sentinel": "FLT_MAX/infinity @ DAT_019d1a44 = 'use current component'"
+    },
+    "interpolation": {
+      "direct_path": "param_8!=0 in ApplyTransform (0x00e68a30) -> direct actor field write",
+      "vehicle_path": "entity+0xe4!=0 -> vehicle interpolator via vtable slot (+0x10c)",
+      "physics_path": "entity+0x1d0 physics interpolator object -> FUN_00e69690 -> FUN_0049ffb0 + dispatch (+0xe8)"
+    },
+    "onPositionUpdate_creates_actors": "0x00deaaf0 allocates NEW UE3 actors for path waypoint visualization, not just position updates",
+    "PathDestroy_uses_wcsicmp": "0x00dec040 destroys path actors by wide-string name match (wcsicmp loop)",
+    "sgwbeing_sgwmob_identical_callbacks": "0x00df3ab0 and 0x00df3cc0 register identical callback sets; differ only in FUN_00dfa*/dfb* wrapper selection and tail-call target (FUN_00e2d8d0 vs FUN_00e2d920)",
+    "leash_gap": {
+      "description": "Server npc_ai_leash() snaps NPC to spawn instantly and does NOT send movementType=2 (Leash) CME event or waypath. Client never sees the leash animation.",
+      "rust_file": "crates/services/src/cell/service/npc_ai.rs",
+      "function": "npc_ai_leash()"
+    },
+    "combat_advance_gap": {
+      "description": "Server npc_movement_tick() sends AoI EntityMoved (position only) but not onRemoteEntityMove with movementType=1 (CombatAdvance) + computed waypath. Client gets no AI movement type hint.",
+      "rust_file": "crates/services/src/cell/service/ticks.rs",
+      "function": "npc_movement_tick()"
+    },
+    "perfstats_telemetry": "SGWBeing_TickUpdate (0x00dedf30) is the source of periodic client->server PerfStats CME events containing fpsAvg/Min/Max, bpsIn/Out, lagAvg/Min/Max, resends, AppearanceJobs. Server currently no-ops these.",
+    "sgwsquadpath_struct": "SGWBeing_onSquadList (0x00dec6d0) allocates a 0x28-byte object (SGWSquadPath); fields: +0x10c position handle, +0x1c follower count, +0x20 follower list tail. Pending W0 struct creation.",
+    "target_event_wire": "SGWBeing_ApplyTargetChange (0x00def320) emits a 12-byte NetworkEvent containing 'aTargetID' (uint). GameBeing+0xfc = current target entity ID field. Vtable +0x3c (slot 0xf) = entity validity check."
+  },
+
+  "scorer_lessons_learned": [
+    "Multi-line parameter descriptions (continuation line indented) cause 'Parameter count mismatch' — each parameter must be on a single line in the Parameters section.",
+    "Renaming a parameter (e.g., newTargetEntityId -> dwNewTargetEntityId) causes 'Undocumented parameter' if the plate comment still uses the old name — always update plate comment after parameter renames.",
+    "set_local_variable_type with type='pointer' leaves type as 'undefined *'; use 'void *' instead.",
+    "After set_local_variable_type, Ghidra re-decompiles and SSA variable names shift — call get_function_variables (or note error messages) to discover the current available variable set before the next rename_variables call.",
+    "Plate comment section headers must be exactly: Algorithm, Parameters, Returns, Side Effects, Magic Numbers — non-standard headers (CONTRACT, BEHAVIOR, KEY NOTE) are not recognized by the scorer."
+  ],
+
+  "addresses_added_to_address_map": [
+    "0x00deaaf0", "0x00dec018", "0x00dec040", "0x00dec6d0", "0x00dec9e0",
+    "0x00deb660", "0x00dedf30", "0x00def320", "0x00df08c0", "0x00df3550",
+    "0x00df3ab0", "0x00df3cc0", "0x00e68a30", "0x00e688c0", "0x00e69690",
+    "0x00dd1650", "0x00dd19e0", "0x019d1a44"
+  ],
+
+  "open_questions": [
+    "Does onRemoteEntityMove carry the full waypath array or just the next waypoint?",
+    "What wire payload does movementType=2 (Leash) carry to the client?",
+    "Do path visualization actors in onPositionUpdate correspond 1:1 with server nav_path waypoints?",
+    "How does the cover system (W-cover) intersect with CombatAdvance / CoverAdvance aiState transitions?",
+    "Does EntityInterpolatorUpdate (0x00e69690) interpolate over multiple ticks or single-step?",
+    "What is the full SGWSquadPath (0x28-byte) struct layout? Partially recovered: +0x10c=position handle, +0x1c=follower count, +0x20=follower list tail."
+  ],
+
+  "output_files_written": [
+    "docs/reverse-engineering/findings/npc-movement-pathfinding.md",
+    "docs/reverse-engineering/address-map.md (NPC Movement / Pathfinding section appended)",
+    "docs/reverse-engineering/v5-campaign/worker-path.checkpoint.json (this file)"
+  ]
+}

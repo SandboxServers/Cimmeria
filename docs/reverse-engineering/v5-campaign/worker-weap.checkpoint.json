@@ -1,0 +1,87 @@
+{
+  "worker_id": "weap",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Weapon / ammo pipeline — issue #168 (AmmoTypeId propId), issue #210 (reload animation), wire-format documentation",
+  "total_in_scope": 0,
+  "functions": [
+    {
+      "address": "00c889a0",
+      "name_at_start": "FUN_00c889a0",
+      "name_at_end": "FUN_00c889a0",
+      "status": "skipped_too_small",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read_only",
+      "skipped_reason": "Evidence gathering only — not in V5 annotation scope for this session",
+      "tool_calls_used": 2,
+      "notes": "SGWTextCommandManager handler for Event_NetOut_RequestReload. Reads 'reloadType' from event, constructs 12-byte NetworkEvent via FUN_00cbcda0, sets 'aReloadType' field, emits via FUN_00caf850. Source: SGWTextCommandManager.cpp line 0xB4B."
+    },
+    {
+      "address": "00e078a0",
+      "name_at_start": "FUN_00e078a0",
+      "name_at_end": "FUN_00e078a0",
+      "status": "skipped_too_small",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read_only",
+      "skipped_reason": "Evidence gathering only",
+      "tool_calls_used": 2,
+      "notes": "Direct (non-TextCommand) emit function for Event_NetOut_RequestReload. Called from FUN_00ad7880 which does a dynamic_cast to GamePlayer before emitting. Pattern B emitter (12-byte scalable_malloc, vtable from FUN_00cbcda0). The caller FUN_00ad7880 gates on the local player being a GamePlayer instance (RTTI cast guard)."
+    },
+    {
+      "address": "00c8a5c0",
+      "name_at_start": "FUN_00c8a5c0",
+      "name_at_end": "FUN_00c8a5c0",
+      "status": "skipped_too_small",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": "read_only",
+      "skipped_reason": "Evidence gathering only",
+      "tool_calls_used": 2,
+      "notes": "SGWTextCommandManager handler for requestAmmoChange. Reads 'ammoType' from event (asserts via FUN_00486000), then creates NetworkEvent via FUN_00cbe390, sets 'ItemId' and 'AmmoType' fields via CmeEventSignal_SetFieldHelper, emits via FUN_00cb0550."
+    },
+    {
+      "address": "00cbce00",
+      "name_at_start": "register_NetOut_RequestReload",
+      "name_at_end": "register_NetOut_RequestReload",
+      "status": "skipped_already_done",
+      "score_before": 80,
+      "score_after": 80,
+      "workflow": "trimmed",
+      "skipped_reason": "Already named by annotation script. Returns string 'Event_NetOut_RequestReload'. Pure stub.",
+      "tool_calls_used": 1,
+      "notes": "Signal registration stub. Data xref from RegisterBulkNetOutSignals (0x00db882c)."
+    }
+  ],
+  "pending_structs": [],
+  "pending_globals": [],
+  "stats": {
+    "complete": 0,
+    "skipped_already_done": 1,
+    "skipped_too_small": 3,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 42
+  },
+  "resume_from_address": null,
+  "issue_168_finding": {
+    "bug": "handle_reload in crates/services/src/cell/cell_methods/player/world.rs line 292 sends 7i32 as the onEntityProperty propId",
+    "expected_propId": 3,
+    "actual_propId_sent": 7,
+    "propId_3_means": "GENERICPROPERTY_AmmoTypeId",
+    "propId_7_means": "GENERICPROPERTY_AccessLevel",
+    "evidence": "entities/defs/enumerations.xml line 1725: GENERICPROPERTY_AmmoTypeId = 3; line 1729: GENERICPROPERTY_AccessLevel = 7",
+    "fix_applied": "world.rs now uses build_entity_property_args(GENERICPROPERTY_AMMO_TYPE_ID, ammo_type) from inventory::constants",
+    "regression_test": "handle_reload_sends_ammo_type_id_prop_id_3_not_access_level_7 in world.rs tests module",
+    "constants_visibility_change": "GENERICPROPERTY_AMMO_TYPE_ID and build_entity_property_args in inventory/constants.rs changed from pub(super) to pub(crate)"
+  },
+  "issue_210_finding": {
+    "description": "Reload animation sources from wrong event_set_id",
+    "status": "documented_in_world_rs_comment",
+    "binary_evidence": "FUN_00e078a0 and FUN_00c889a0 both call FUN_00cbcda0 (RequestReload NetworkEvent ctor) then emit. The reload ability (id 596) has event_set_id=NULL in db seed, so the ON_SEQUENCE branch in handle_reload never fires in production. The correct path per SGWBeing.py:863-874 sources from player's archetype-keyed item event_set via getItemSequence(Item_Reload) / event id 4002.",
+    "cross_link": "TODO(#210) comment at world.rs line 250-261 documents the migration shape"
+  }
+}

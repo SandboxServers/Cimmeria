@@ -1,8 +1,8 @@
 # Reverse Engineering Progress Tracker
 
-> **Last updated**: 2026-03-01
-> **Current phase**: Phase 5 — BigWorld Engine Subsystems (COMPLETE)
-> **Next phase**: None — all planned RE phases complete
+> **Last updated**: 2026-05-12
+> **Current phase**: Phase 6 — V5 Function Documentation Campaign (IN PROGRESS)
+> **Next phase**: None planned after Phase 6 completes
 > **Branch**: `feature/reverse-engineering-docs`
 
 ---
@@ -308,6 +308,16 @@ SGWEntity (base)
 
 ---
 
+## Phase 6 — V5 Function Documentation Campaign — IN PROGRESS
+
+**Goal**: Apply the V5 Function Documentation Workflow (canonical name, prototype, typed locals, plate comment, instruction comments, completeness score ≥ 60) to every server-relevant function in `SGW.exe`. Multi-worker partitioned campaign coordinated through `docs/reverse-engineering/v5-campaign/`.
+
+**Status**: session 1 complete, session 2 pending; ~770 of ~1,730 server-relevant functions V5-documented.
+
+See [`docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md`](v5-campaign/CAMPAIGN_STATUS.md) for the live aggregator and [`docs/reverse-engineering/v5-campaign/WORKER_BRIEF.md`](v5-campaign/WORKER_BRIEF.md) for the shared brief.
+
+---
+
 ## Session Log
 
 ### Session 1 — 2026-03-01
@@ -436,3 +446,38 @@ SGWEntity (base)
 - BW BackupHash uses formula `(id * prime >> 8) % virtualSize` with random primes near `0x9e3779__`
 - BW ghost message buffering handles cross-CellApp message ordering with subsequence tracking
 - BW watcher system is conditionally compiled (ENABLE_WATCHERS) — can be stripped from production builds
+
+### Session 2 — 2026-05-12 — V5 Documentation Campaign session 1
+
+**Phase 6 — V5 Function Documentation Campaign session 1 — PARTIAL:**
+- Five workers (W0–W4) ran the V5 workflow in parallel against partitioned scopes of `SGW.exe`
+- ~770 unique functions V5-documented across ~5,707 Ghidra MCP tool calls in ~5 hours wall-clock
+- Three workers scope-complete (W1, W2, W3); two partial (W0, W4) — session-2 follow-ups queued
+- Live aggregator: [`docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md`](v5-campaign/CAMPAIGN_STATUS.md)
+- Per-worker checkpoints under `docs/reverse-engineering/v5-campaign/worker-{0,1,2,3,4}.checkpoint.json`
+
+**Worker results:**
+- **W0 — partial (243 / 580 enumerated, ~1,050 tool calls).** Rediscovered the `register_NetOut_*` predicate mismatch but enumerated globally and processed in address order, putting it inside W1/W2 scopes (Minigame, Org, Mail, Trade, BM, contactList, Craft). Mercury/UBWNet/NetOut combat untouched. Surfaced the ContactList cyclic-name-misassignment bug and two undocumented client→server telemetry pushes (`SystemOptions`, `PerfStats`).
+- **W1 — scope-complete but mis-classified (58 / 58, 112 tool calls).** Applied trimmed V5 to all 58 in-scope functions. Per W2 + W3, 57 of those are MSVC scalar destructors that need full V5 (trimmed plate is wrong for destructors). Surfaced `EmitNetOut_DebugMinigameInstance` (`0x00c79120`) — the only non-stub in scope — and the canonical CME emit pipeline at 4 callee addresses (`Get system → Lookup by name → SetField × N → vtable dispatch`).
+- **W2 — scope-complete (176 / 176, 620 tool calls).** Critical brief correction: `TypedEmitInfo__vfunc_0` is the MSVC scalar destructor, NOT a name-string accessor — trimmed V5 doesn't apply. Identified 4 new address-map clusters (NetOut CallbackImpl RTTI accessors, NetIn store / inventory / LootDisplay CallbackImpl clusters). Found architectural anomalies: Black Market + GiveInventory lack the `CallbackImpl__vfunc_2` pattern (possibly direct function pointers).
+- **W3 — scope-complete (204 + 4 already-compliant / 208, ~1,950 tool calls).** Confirmed W2's destructor finding across 187 NetIn TypedEmitInfo + 17 NetOut TypedEmitInfo + 17 CallbackImpl functions. Established the ~78 structural score ceiling (unfixable `void* this` deduction).
+- **W4 — partial (234 / ~802, ~1,975 tool calls).** Hit harness turn boundary at `0x00de1c00`. Proposed a 3-way split for session 2 (W4-A continue 00de* sweep, W4-B EntityDescription parse chain, W4-C GameEntity/EntityManager/ABigWorldEntity name clusters).
+
+**Architectural discoveries:**
+- **CME EventSignal emit pipeline** (5 new addresses, see `address-map.md`). `EmitNetOut_DebugMinigameInstance` is the canonical exemplar: get the system singleton, look up the signal by name, populate fields, vtable-dispatch the signal.
+- **`TypedEmitInfo__vfunc_0` is the MSVC scalar destructor** (`~TypedEmitInfo()`). Calls per-event cleanup, then conditionally `scalable_free(pThis)` if `bDeallocate & 1`. Structural score ceiling ~78 due to `void* this` non-retypability.
+- **`CallbackImpl__vfunc_2` is the RTTI type-name accessor.** Returns the compile-time `TypeDescriptor` pointer — NOT a name string. Confirmed across 17 CallbackImpl functions.
+- See [`docs/reverse-engineering/findings/cme-event-signal.md`](findings/cme-event-signal.md) for the consolidated finding.
+
+**Coordination scars (lessons for session 2):**
+- W0's address-order enumeration overlapped W1's and W2's scopes. Per-call atomic transactions in the plugin prevented corruption, but the redundant work cost ~1,050 tool calls. Workers must filter the global enumeration to their assigned subset before processing.
+- W1's trimmed-V5 application to destructors produced superficially-passing scores but missing the destructor pattern in the plate. WORKER_BRIEF.md is corrected for session 2 (see [`v5-campaign/WORKER_BRIEF.md`](v5-campaign/WORKER_BRIEF.md)).
+
+**ContactList cyclic name misassignment — fixed:** Four adjacent functions at `0x00e5f990`–`0x00e5f9f0` had their pre-session-1 labels cyclically shifted by one slot relative to their RTTI-canonical names. Documented in [`findings/contact-list-wire-formats.md`](findings/contact-list-wire-formats.md). Recommend a session-2 sweep comparing RTTI to script-assigned labels in every contiguous TypedEmitInfo block.
+
+**Session 2 outstanding scope: ~960 functions**
+- W0 primary: ~334 (Mercury_*, UBWNet*, BW_client*, NetOut combat/ability/stats/effects)
+- W1 rescore: ~57 (full V5 destructor plates on the trimmed batch)
+- W4-A: ~70 (continue 00de* sweep from `0x00de1c00`)
+- W4-B: ~400 (EntityDescription parse chain `0x01590000 → 0x01598fff`)
+- W4-C: ~110 (GameEntity / EntityManager / ABigWorldEntity name clusters)

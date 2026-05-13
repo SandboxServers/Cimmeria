@@ -1,0 +1,507 @@
+{
+  "worker_id": "mercury-deep",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T06:00:00Z",
+  "scope_predicate": "Address range [0x01576000, 0x0158efff] — BigWorld Mercury networking layer completion",
+  "scope_note": "SCOPE COMPLETE. All FUN_* functions in range enumerated, decompiled, renamed, and annotated. Batch 1 (90 functions, 0x01576830-0x01586010) + Batch 2 (55 functions, 0x01586140-0x0158d310). 22 already-named skipped. ~8 stubs too small skipped.",
+  "total_in_scope_estimate": 230,
+  "functions_processed_so_far": 145,
+  "scope_complete": true,
+  "batch_1": {
+    "address_range": "0x01576830 - 0x01586010",
+    "status": "complete — renamed + plate comments applied",
+    "entry_count": 90
+  },
+  "batch_2": {
+    "address_range": "0x01586140 - 0x0158d310",
+    "status": "complete — renamed + plate comments applied",
+    "entries": [
+      {
+        "address": "0x01586140",
+        "name": "SignalMessage__writeWithName",
+        "class": "SignalMessage",
+        "notes": "Calls writeHeader + writes byte at +0xc + ServerConnection_WriteBundleString for name. __thiscall."
+      },
+      {
+        "address": "0x01586180",
+        "name": "ProcessMessage__writeComponentsVarLen",
+        "class": "ProcessMessage",
+        "notes": "Writes component vector with variable-length ID encoding (0xff prefix for IDs > 0xfe). __thiscall."
+      },
+      {
+        "address": "0x015862f0",
+        "name": "ByteRange__memmoveToNewDst",
+        "class": "ByteRange",
+        "notes": "memmove_s([p1,p2) -> p3), returns new end pointer."
+      },
+      {
+        "address": "0x01586320",
+        "name": "ListenerMessage__initStrings",
+        "class": "ListenerMessage",
+        "notes": "Constructs 2 SSO strings at offsets +4 and +0x20."
+      },
+      {
+        "address": "0x01586410",
+        "name": "ListenerMessage__ctor",
+        "class": "ListenerMessage",
+        "notes": "Calls ProcessMessage ctor, stamps ListenerMessage::vftable, inits 2 strings, sets type=4. __thiscall."
+      },
+      {
+        "address": "0x01586480",
+        "name": "ListenerMessage__ctorThunk",
+        "class": "ListenerMessage",
+        "notes": "Thunk/alias for ListenerMessage__ctor."
+      },
+      {
+        "address": "0x015864b0",
+        "name": "ListenerMessage__dtor",
+        "class": "ListenerMessage",
+        "notes": "Frees 2 SSO strings, restores MachineGuardMessage::vftable. __thiscall."
+      },
+      {
+        "address": "0x01586560",
+        "name": "ListenerMessage__dtorThunk",
+        "class": "ListenerMessage",
+        "notes": "Thunk/alias for ListenerMessage__dtor."
+      },
+      {
+        "address": "0x01586590",
+        "name": "CreateMessage__ctor",
+        "class": "CreateMessage",
+        "notes": "Stamps CreateMessage::vftable, inits 2 SSO strings (src/dst), sets type=5. __thiscall."
+      },
+      {
+        "address": "0x01586630",
+        "name": "CreateMessage__dtor",
+        "class": "CreateMessage",
+        "notes": "Frees 2 SSO strings, restores base vtable. __thiscall."
+      },
+      {
+        "address": "0x01586710",
+        "name": "SignalMessage__ctor",
+        "class": "SignalMessage",
+        "notes": "Calls ProcessMessage::ctor, stamps SignalMessage::vftable, sets type=6. __thiscall."
+      },
+      {
+        "address": "0x015867c0",
+        "name": "ErrorMessage__ctor",
+        "class": "ErrorMessage",
+        "notes": "Stamps base vtable, type=0xb, stamps ErrorMessage::vftable, severity=5, init string. __thiscall."
+      },
+      {
+        "address": "0x01586850",
+        "name": "ErrorMessage__dtor",
+        "class": "ErrorMessage",
+        "notes": "Frees message SSO string, restores base vtable. __thiscall."
+      },
+      {
+        "address": "0x015868d0",
+        "name": "ChannelStats__clear",
+        "class": "ChannelStats",
+        "notes": "Zeroes 0x2d-byte stats block. __thiscall."
+      },
+      {
+        "address": "0x01586960",
+        "name": "ByteVec__insertN",
+        "class": "ByteVec",
+        "notes": "std::vector<byte> insert N at position; reallocs if needed. Used by TagsMessage."
+      },
+      {
+        "address": "0x01586b40",
+        "name": "ByteVec__insertNThunk",
+        "class": "ByteVec",
+        "notes": "Thunk for ByteVec__insertN."
+      },
+      {
+        "address": "0x01586b80",
+        "name": "ProcessMessage__ComponentEntry__copyConstruct",
+        "class": "ProcessMessage::ComponentEntry",
+        "notes": "Copy-constructs a 0x20-byte component entry."
+      },
+      {
+        "address": "0x01586c20",
+        "name": "ListenerMessage__read",
+        "class": "ListenerMessage",
+        "notes": "Deserializes header + 11 fields from BinaryIStream. __thiscall."
+      },
+      {
+        "address": "0x01586cf0",
+        "name": "CreateMessage__read",
+        "class": "CreateMessage",
+        "notes": "Calls ListenerMessage::read + reads 2 extra bytes (launchId, recover). __thiscall."
+      },
+      {
+        "address": "0x01586e40",
+        "name": "UserMessage__writeFullPayload",
+        "class": "UserMessage",
+        "notes": "writeHeader + 5 strings + tags/component array. __thiscall."
+      },
+      {
+        "address": "0x01586f40",
+        "name": "ErrorMessage__read",
+        "class": "ErrorMessage",
+        "notes": "Reads header + severity + source + message string + integer code. __thiscall."
+      },
+      {
+        "address": "0x01587060",
+        "name": "ByteVec__resize",
+        "class": "ByteVec",
+        "notes": "Resize with extend (zeros) or shrink. Used by TagsMessage tag buffer."
+      },
+      {
+        "address": "0x015870f0",
+        "name": "ByteVec__resizeThunk",
+        "class": "ByteVec",
+        "notes": "Thunk for ByteVec__resize."
+      },
+      {
+        "address": "0x01587110",
+        "name": "ComponentType__getNameForType",
+        "class": "ComponentType",
+        "notes": "Returns SERVER_COMPONENT(0)/WATCHER_NUB(1)/UNKNOWN. Static once-flag guard."
+      },
+      {
+        "address": "0x01587270",
+        "name": "ComponentType__getNameForTypeThunk",
+        "class": "ComponentType",
+        "notes": "Thunk for ComponentType__getNameForType."
+      },
+      {
+        "address": "0x015872f0",
+        "name": "ProcessMessage__ComponentEntry__copyIfNotNull",
+        "class": "ProcessMessage::ComponentEntry",
+        "notes": "Null-guard wrapper around copyConstruct."
+      },
+      {
+        "address": "0x01587390",
+        "name": "ProcessMessage__ComponentVec__copyRangeReverse",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Backward copy of 0x20-byte interface entries."
+      },
+      {
+        "address": "0x01587430",
+        "name": "ProcessMessage__ComponentVec__copyRangeWithSEH",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Forward copy of 0x20-byte interface entries with SEH."
+      },
+      {
+        "address": "0x015874c0",
+        "name": "ProcessMessage__ComponentVec__copyRangeForward",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Forward copy of 0x3c-byte component entries."
+      },
+      {
+        "address": "0x01587560",
+        "name": "ProcessMessage__ComponentVec__copyRangeForwardSEH",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "SEH-wrapped forward copy of 0x3c-byte component entries."
+      },
+      {
+        "address": "0x015875f0",
+        "name": "ChannelInternal__unackedList__clear",
+        "class": "ChannelInternal",
+        "notes": "Iterates UnAcked packet list freeing all entries. __thiscall."
+      },
+      {
+        "address": "0x015876a0",
+        "name": "ChannelInternal__unackedList__clearThunk",
+        "class": "ChannelInternal",
+        "notes": "Thunk for ChannelInternal__unackedList__clear."
+      },
+      {
+        "address": "0x01587730",
+        "name": "ChannelInternal__unackedList__clearThunk2",
+        "class": "ChannelInternal",
+        "notes": "Second thunk for ChannelInternal__unackedList__clear."
+      },
+      {
+        "address": "0x015877a0",
+        "name": "ProcessMessage__ComponentVec__fillRange",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Fills [begin,end) with *p3 at 0x20-byte stride."
+      },
+      {
+        "address": "0x015878e0",
+        "name": "ProcessMessage__ComponentVec__uninitCopyN",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Copies N * 0x3c-byte entries to uninitialized buffer with SEH."
+      },
+      {
+        "address": "0x01587970",
+        "name": "ProcessMessage__ComponentVec__fillRange2",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Fills [begin,end) with *p3 at 0x3c-byte stride."
+      },
+      {
+        "address": "0x015879c0",
+        "name": "ProcessMessage__ComponentVec__copyRangeReverseWithReturn",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Backward copy of 0x3c-byte entries, returns dest end."
+      },
+      {
+        "address": "0x01587a60",
+        "name": "ProcessMessage__ComponentVec__copyRangeWithReturn",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Forward copy of 0x3c-byte entries, returns dest end."
+      },
+      {
+        "address": "0x01587b20",
+        "name": "ProcessMessage__ComponentVec__dtor",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Iterates 0x3c-byte entries calling each destructor."
+      },
+      {
+        "address": "0x01587c00",
+        "name": "ProcessMessage__ComponentVec__resize",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Resize 0x3c-byte component vector."
+      },
+      {
+        "address": "0x01587d30",
+        "name": "WholeMachineMessage__ctor2",
+        "class": "WholeMachineMessage",
+        "notes": "Full init — type=1, zeroes interface vector + component vector. __thiscall."
+      },
+      {
+        "address": "0x01587de0",
+        "name": "WholeMachineMessage__dtor",
+        "class": "WholeMachineMessage",
+        "notes": "Destroys interface sub-vector, frees hostname string, restores vtable. __thiscall."
+      },
+      {
+        "address": "0x01587ef0",
+        "name": "TagsMessage__ctor",
+        "class": "TagsMessage",
+        "notes": "Stamps vftable, type=7, zeroes ByteVec. __thiscall."
+      },
+      {
+        "address": "0x01588530",
+        "name": "MachineGuardMessage__deserialize",
+        "class": "MachineGuardMessage",
+        "notes": "Master deserializer — switch on type byte 1-0xb/0xc/0x40, allocates correct subtype, calls read() vslot."
+      },
+      {
+        "address": "0x01588870",
+        "name": "ProcessMessage__InterfaceVec__reserve",
+        "class": "ProcessMessage::InterfaceVec",
+        "notes": "Reserves capacity for 0x3c-byte component structs."
+      },
+      {
+        "address": "0x015889b0",
+        "name": "ProcessMessage__ComponentVec__insertN",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Inserts N 0x3c-byte entries at position; reallocates with growth factor."
+      },
+      {
+        "address": "0x01588cb0",
+        "name": "ProcessMessage__InterfaceVec__resize",
+        "class": "ProcessMessage::InterfaceVec",
+        "notes": "Resizes 0x20-byte interface vector."
+      },
+      {
+        "address": "0x01588da0",
+        "name": "ProcessMessage__ComponentVec__insertOne",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Inserts one 0x3c-byte entry at position via insertN."
+      },
+      {
+        "address": "0x01588e60",
+        "name": "ProcessMessage__InterfaceVec__resizeDefault",
+        "class": "ProcessMessage::InterfaceVec",
+        "notes": "Resize 0x20-byte interface vector with default-init new entries."
+      },
+      {
+        "address": "0x01588ec0",
+        "name": "MachineGuard__sendRawPacket",
+        "class": "MachineGuard",
+        "notes": "socket()+bind+sendto UDP. Returns bool."
+      },
+      {
+        "address": "0x015891e0",
+        "name": "ProcessMessage__ComponentVec__pushBack",
+        "class": "ProcessMessage::ComponentVec",
+        "notes": "Appends one 0x3c-byte component entry via insertOne."
+      },
+      {
+        "address": "0x01589840",
+        "name": "MGMPacket__readAndInit",
+        "class": "MGMPacket",
+        "notes": "Clears all fields then calls MGMPacket::read."
+      },
+      {
+        "address": "0x01589f80",
+        "name": "MachineGuard__createSocketAndSend",
+        "class": "MachineGuard",
+        "notes": "socket()+bindInRange+Mercury_MachineGuard_sendAndRecv. Returns 0/0xfffffffd/0xfffffffe."
+      },
+      {
+        "address": "0x0158a1d0",
+        "name": "CME__CountedBase__stampBaseVtable",
+        "class": "CME::CountedBase",
+        "notes": "One-liner stamps base counted-object vtable pointer."
+      },
+      {
+        "address": "0x0158a340",
+        "name": "Packet__dtor",
+        "class": "Packet",
+        "notes": "Stamps Packet::vftable, atomic decrement global packet count, decRef on inner packet."
+      },
+      {
+        "address": "0x0158a3f0",
+        "name": "Packet__chain__stampSendTime",
+        "class": "Packet",
+        "notes": "Walks Packet::next chain, stamps rdtsc at +0x18..+0x1f on each."
+      },
+      {
+        "address": "0x0158a4f0",
+        "name": "Packet__chain__stampRecvTime",
+        "class": "Packet",
+        "notes": "Walks Packet::next chain, stamps rdtsc at +0x20..+0x27 on each."
+      },
+      {
+        "address": "0x0158a5f0",
+        "name": "Packet__chain__minSendTime",
+        "class": "Packet",
+        "notes": "Returns minimum sendTime (rdtsc) across chain."
+      },
+      {
+        "address": "0x0158a720",
+        "name": "Packet__chain__maxSendTime",
+        "class": "Packet",
+        "notes": "Returns maximum sendTime (rdtsc) across chain."
+      },
+      {
+        "address": "0x0158a850",
+        "name": "ChannelInternal__getNextChannelInternal",
+        "class": "ChannelInternal",
+        "notes": "Atomically reads +8, incRefs, returns next ptr. Safe list traversal."
+      },
+      {
+        "address": "0x0158a8e0",
+        "name": "ChannelInternal__countChain",
+        "class": "ChannelInternal",
+        "notes": "Walks chain via getNextChannelInternal, returns count."
+      },
+      {
+        "address": "0x0158ab40",
+        "name": "ChannelInternal__advanceReadPointer",
+        "class": "ChannelInternal",
+        "notes": "Advances packet read cursor; walks to next ChannelInternal when packet exhausted."
+      },
+      {
+        "address": "0x0158b2d0",
+        "name": "UnAckedHandler__buildAndSendAckBundle",
+        "class": "UnAckedHandler",
+        "notes": "Builds ACK bundle from 32-bit ack mask, sends via Nub."
+      },
+      {
+        "address": "0x0158b960",
+        "name": "ChannelInternal__getUnAckedHandlerOffset",
+        "class": "ChannelInternal",
+        "notes": "Returns param_1 + 0x114 (UnAckedHandler embedded offset)."
+      },
+      {
+        "address": "0x0158b9d0",
+        "name": "ChannelInternal__getAndResetStats",
+        "class": "ChannelInternal",
+        "notes": "Reads rdtsc latency from +0x17c/+0x178/+0x7c, resets accumulators."
+      },
+      {
+        "address": "0x0158bbc0",
+        "name": "UnAckedHandler__sendAckBundle2",
+        "class": "UnAckedHandler",
+        "notes": "Creates empty bundle, sets reliable flag, calls Mercury_Bundle_Finalise + Mercury_Nub_Send."
+      },
+      {
+        "address": "0x0158bd40",
+        "name": "ChannelInternal__recordLatency",
+        "class": "ChannelInternal",
+        "notes": "Records latency sample into +0x3c..+0x7c via TBB store8; maintains min/max rdtsc at +0x178/+0x17c."
+      },
+      {
+        "address": "0x0158be30",
+        "name": "ChannelInternal__processIncomingPacketEntry",
+        "class": "ChannelInternal",
+        "notes": "Dispatches packet to Nub::dispatchPacketWithFilter; stamps rdtsc at +0x58/+0x5c."
+      },
+      {
+        "address": "0x0158bed0",
+        "name": "ChannelInternal__checkAndSendNubException",
+        "class": "ChannelInternal",
+        "notes": "rdtsc timeout vs +0x164/+0x160 -> throws NubException; checks +0x16c (send-alive) -> sendAckBundle2."
+      },
+      {
+        "address": "0x0158c100",
+        "name": "ChannelInternalPtr__decRef",
+        "class": "ChannelInternalPtr",
+        "notes": "Atomic decRef; when zero calls destructor chain."
+      },
+      {
+        "address": "0x0158c230",
+        "name": "ChannelInternalPtr__assign",
+        "class": "ChannelInternalPtr",
+        "notes": "incRef new + copy byte flag + decRef old. Atomic smart-ptr assign."
+      },
+      {
+        "address": "0x0158c7b0",
+        "name": "ChannelInternal__ctor",
+        "class": "ChannelInternal",
+        "notes": "Full ~0x180-byte init: TimerExpiryHandler::vftable then ChannelInternal::vftable; initializes hash table +0x40/+0x44, stats, timers, bundle +0x9c, address strings +0x80/+0x13c, UnAckedHandler +0x114, timeouts +0x160..+0x174."
+      },
+      {
+        "address": "0x0158d190",
+        "name": "ChannelInternal__dtor",
+        "class": "ChannelInternal",
+        "notes": "Entry: stamps vftable, calls resetLocalPart, calls cleanup1."
+      },
+      {
+        "address": "0x0158d267",
+        "name": "ChannelInternal__dtor_cleanup1",
+        "class": "ChannelInternal",
+        "notes": "Calls Mercury_Channel_cleanup('\\0'), calls cleanup2."
+      },
+      {
+        "address": "0x0158d310",
+        "name": "ChannelInternal__dtor_cleanup2",
+        "class": "ChannelInternal",
+        "notes": "Frees name string, bundle vector, filter, bundle, entity listener map; restores TimerExpiryHandler::vftable."
+      }
+    ]
+  },
+  "already_named_skipped": [
+    "0x01576f90 (Channel__send)",
+    "0x01577960 (Channel__ctor)",
+    "0x01580620 (Nub__initConnectionMap)",
+    "0x01580840 (Nub__processFilteredPacket_inner)",
+    "0x01580ad4 (Nub__processFilteredPacket)",
+    "0x01581ab0 (Nub__processPendingEvents)",
+    "0x01582160 (Nub__send)",
+    "0x01583440 (Nub__addListeningSocket)",
+    "0x01583680 (Connection__send)",
+    "0x01583a90 (Nub__writeConnection)",
+    "0x015841d0 (Nub__Nub)",
+    "0x0157a* (Bundle functions)",
+    "0x0157b* - 0x0157e* (Nub processing chain)",
+    "0x0158b980 (UnAckedHandler__sendIfReady)",
+    "0x0158c420 (UnAckedHandler__checkResendTimers)",
+    "0x0158cba0 (UnAckedHandler__queueAckForPacket)",
+    "0x0158c5d0 (UnAckedHandler__resetLocalPart)",
+    "0x01589290 (MGMPacket__read)",
+    "0x01585260 (MGMPacket__write)",
+    "0x0158d050 (ChannelInternal__resetRemotePart)",
+    "0x015867a0 (SignalMessage__vfunc_0 — dtor slot, prior session)",
+    "0x01588000 (UserMessage__ctor, prior session)",
+    "0x01588120 (UserMessage__dtor, prior session)",
+    "0x015882c0 (ProcessMessage__InterfaceVec__insertN, prior session)"
+  ],
+  "stats": {
+    "batch_1_functions": 90,
+    "batch_2_functions": 55,
+    "total_identified_and_named": 145,
+    "skipped_too_small": 8,
+    "skipped_already_named": 24,
+    "remaining_estimate": 0,
+    "scope_complete": true
+  }
+}

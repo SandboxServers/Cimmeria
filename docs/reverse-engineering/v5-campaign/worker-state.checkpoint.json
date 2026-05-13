@@ -1,0 +1,192 @@
+{
+  "worker_id": "state",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "State-flag (BSF_*) broadcast lifecycle — FUN_00e01c90 (GameBeing onStateFieldUpdate handler) and all directly called per-bit side-effect functions; issues #219/#232/#249",
+  "total_in_scope": 9,
+  "functions": [
+    {
+      "address": "00e01c90",
+      "name_at_start": "FUN_00e01c90",
+      "name_at_end": "GameBeing_OnStateFieldUpdate",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 34,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 8,
+      "notes": "Score 34, structural ceiling 78. Residual fixable deductions: 17 undocumented magic numbers (SEH frame constants + string refs), 36 undefined variables (MSVC SEH locals not renameable), 1 unrenamed global. Accepted after 2 passes per brief. CRITICAL FINDING: BSF_Holster (bit 8, mask 0x100) is NOT dispatched in this function — all TEST instructions use BL (low byte), bit 8 requires TEST EBX,0x100 which is absent. Prior session notes were wrong. The holster animation mechanism is separate and not yet identified."
+    },
+    {
+      "address": "00e7b4c0",
+      "name_at_start": "FUN_00e7b4c0",
+      "name_at_end": "GameBeing_UpdateCombatStanceWeaponSet",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 42,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Score 42, structural ceiling 79. Called for BSF_InCombat (bit 3) changes. NOT called for BSF_Holster (bit 8). Selects weapon animation set using 2-char archetype key built from BSF_InCombat + melee-range distance check. Pending struct: animation controller object with fields +0x34c (primary actor), +0x3c0 (anim set table ptr), +0x3d0-0x3d1 (archetype key bytes), +0x444/0x448 (aux actor list). 6 unresolved struct accesses flagged — W0 struct creation needed."
+    },
+    {
+      "address": "00e79fc0",
+      "name_at_start": "FUN_00e79fc0",
+      "name_at_end": "GameBeing_BuildCombatAnimKey",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 69,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Score 69, above 60 threshold. Builds 2-byte key at this+0x3d0/0x3d1 from BSF_InCombat and melee-range predicates. Calls GameBeing_IsInCombat (00dff430) and GameBeing_IsTargetInMeleeRange (00dff880)."
+    },
+    {
+      "address": "00dff430",
+      "name_at_start": "FUN_00dff430",
+      "name_at_end": "GameBeing_IsInCombat",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 77,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Score 77. Small predicate (5 lines). Tests pGameBeing+0x158 & 0x08 = BSF_InCombat bit. Returns 1 if set."
+    },
+    {
+      "address": "00dff880",
+      "name_at_start": "FUN_00dff880",
+      "name_at_end": "GameBeing_IsTargetInMeleeRange",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 69,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Score 69. Computes 3D distance from actor to target, compares against melee range (pGameBeing+0x150). Actor offsets +0x3b0/0x3ac (target ptrs), +0xdc/e0/e4 (position). 7 unresolved struct accesses — W0 struct creation needed for pawn actor layout."
+    },
+    {
+      "address": "00dfff70",
+      "name_at_start": "FUN_00dfff70",
+      "name_at_end": "GameBeing_UpdateMovementSpeed",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 22,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Score 22, max achievable 100 (no structural ceiling). Residual fixable deductions: 8 magic numbers (speed table offsets inside FUN_00c71790 return value), 3 unrenamed globals (W0 job: DAT_ speed constants), 11 unresolved struct accesses (pawn actor layout), 9 undefined variables. Accepted after 2 passes. Reads bStateField bits 0x80 (BSF_Walking), 0x04 (BSF_Crouching), 0x40 (BSF_MovementLock). FUN_00c71790 is a speed constant table singleton — pending rename (W0 global job)."
+    },
+    {
+      "address": "00e05fb0",
+      "name_at_start": "FUN_00e05fb0",
+      "name_at_end": "GameBeing_EmitAutoCycleStateChanged",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 34,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Score 34, structural ceiling ~80. Pattern B CME emitter for BSF_AutoCycling (bit 1) transition. 8 magic numbers (CME alloc/dispatch constants), 18 undefined variables (MSVC SEH), 1 unrenamed label. Accepted after 2 passes."
+    },
+    {
+      "address": "00e060b0",
+      "name_at_start": "FUN_00e060b0",
+      "name_at_end": "GameBeing_EmitStealthStateChanged",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 37,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Score 37, structural ceiling ~83. Pattern B CME emitter for BSF_InStealth (bit 5) transition. Same pattern as EmitAutoCycleStateChanged. Accepted after 2 passes."
+    },
+    {
+      "address": "00e05db0",
+      "name_at_start": "FUN_00e05db0",
+      "name_at_end": "GameBeing_EmitStateFieldChanged",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 37,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Score 37, structural ceiling ~81. Pattern B CME emitter fired unconditionally at end of GameBeing_OnStateFieldUpdate. 16-byte event data: {entity_id, old_state, new_state, delta}. Fires Event_Entity_StateFieldChanged. Subscribers: GameProxyPlayer, USGWTargetIndicator. Accepted after 2 passes."
+    },
+    {
+      "address": "00e6e330",
+      "name_at_start": "FUN_00e6e330",
+      "name_at_end": "GameBeing_OnDeadStateChanged",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 39,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Score 39, structural ceiling ~77 (115 code lines, heavy MSVC SEH). Called for BSF_Dead (bit 0) transitions. Handles interaction-type toggle (alive/dead), pawn actor update, ragdoll/loot interaction setup via FUN_00dff610 and FUN_00e791d0. 23 magic numbers (struct offsets), 18 undefined variables — all structural. Accepted after 2 passes."
+    }
+  ],
+  "pending_structs": [
+    {
+      "requested_by": "00e7b4c0",
+      "struct_name": "GameBeingAnimController",
+      "observed_offsets": ["+0x34c ptr (primary skeletal mesh actor)", "+0x3c0 ptr (anim set table)", "+0x3d0 char (combat key byte 0)", "+0x3d1 char (melee key byte 1)", "+0x3d2 char (third key byte, always 0 in practice)", "+0x444 ptr (aux actor array data)", "+0x448 int (aux actor count)", "+0x430 (aux actor hash or lookup struct)"],
+      "evidence": "GameBeing_UpdateCombatStanceWeaponSet (00e7b4c0) reads these offsets on ECX. +0x34c holds the primary actor; +0x3c0 is the animation set table with entries at +0x54 (data ptr) and +0x58 (count). Each entry is 8 bytes: 3-char key + padding + 4-byte anim set ptr."
+    },
+    {
+      "requested_by": "00dff880",
+      "struct_name": "SGWPawnActor",
+      "observed_offsets": ["+0x3b0 ptr (current target actor)", "+0x3ac ptr (secondary target actor)", "+0x3b4 int (dead/invalid flag)", "+0xdc float (position.x)", "+0xe0 float (position.y)", "+0xe4 float (position.z)", "+0x380 uint (actor flags, bit 0x40000 = suppress anim update)", "+0x25c float (MaxSpeed)", "+0x26c float (MaxAcceleration)", "+0x270 float (JumpZ)", "+0x1e4 uint (locomotion flags, bit 0x200 = jump enabled)", "+0x2f8 ptr (animation set slot)", "+0x2fc uint (animation set counter)"],
+      "evidence": "GameBeing_IsTargetInMeleeRange (00dff880) reads +0x3b0/0x3ac/0x3b4/0xdc/0xe0/0xe4. GameBeing_UpdateMovementSpeed (00dfff70) writes +0x25c/0x26c/0x270/0x1e4. GameBeing_UpdateCombatStanceWeaponSet (00e7b4c0) reads +0x380/0x2fc/0x2f8."
+    }
+  ],
+  "pending_globals": [
+    {
+      "requested_by": "00dfff70",
+      "address": "unknown",
+      "proposed_name": "g_pMovementSpeedTable",
+      "evidence": "FUN_00c71790 (pending rename: GameBeing_GetMovementSpeedTable) returns a singleton pointer to a speed constant table. Accessed via call in GameBeing_UpdateMovementSpeed. Offsets into the table: +0x04 (run speed), +0x0c (NPC run), +0x10 (walk), +0x18 (NPC walk), +0x1c (crouch-run), +0x24 (NPC crouch-run), +0x28 (crouch-walk), +0x30 (NPC crouch-walk), +0x40 (jump height), +0x44 (turn rate)."
+    },
+    {
+      "requested_by": "00dfff70",
+      "address": "unknown",
+      "proposed_name": "GameBeing_GetMovementSpeedTable",
+      "evidence": "FUN_00c71790 called by GameBeing_UpdateMovementSpeed to get the speed constant table singleton. Currently named FUN_00c71790 — pending rename to GameBeing_GetMovementSpeedTable."
+    }
+  ],
+  "stats": {
+    "complete": 9,
+    "skipped_already_done": 0,
+    "skipped_too_small": 0,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 52
+  },
+  "resume_from_address": "00e6e331",
+  "findings_produced": [
+    "docs/reverse-engineering/findings/state-flag-broadcast.md"
+  ],
+  "contradictions_with_findings": [
+    {
+      "finding_doc": "prior session notes (pre-compaction)",
+      "contradiction": "Pre-compaction notes stated BSF_Holster (bit 8) routes to FUN_00e7b4c0 in FUN_00e01c90. Assembly analysis of 00e01c90 shows all TEST instructions use BL (low byte only). Bit 8 (mask 0x100) is in the second byte and is NOT tested. No TEST EBX,0x100 instruction exists in the function. BSF_Holster changes update the cached state at this+0x158 but trigger no per-bit side effect in this handler.",
+      "severity": "HIGH",
+      "resolution": "state-flag-broadcast.md section 6 corrected. The holster animation mechanism is separate and not yet identified."
+    }
+  ],
+  "new_addresses_for_address_map": [
+    {"address": "00e01c90", "name": "GameBeing_OnStateFieldUpdate", "note": "CME subscriber for Event_NetIn_onStateFieldUpdate; XOR-delta dispatch on bStateField bits 0-7 (BSF_Holster bit 8 NOT handled here)"},
+    {"address": "00e7b4c0", "name": "GameBeing_UpdateCombatStanceWeaponSet", "note": "Called for BSF_InCombat (bit 3) changes; builds 2-char archetype key, selects weapon animation set from table"},
+    {"address": "00e79fc0", "name": "GameBeing_BuildCombatAnimKey", "note": "Builds 2-byte combat anim key from BSF_InCombat + melee-range predicates"},
+    {"address": "00dff430", "name": "GameBeing_IsInCombat", "note": "Predicate: tests pGameBeing+0x158 & 0x08 (BSF_InCombat)"},
+    {"address": "00dff880", "name": "GameBeing_IsTargetInMeleeRange", "note": "Predicate: 3D distance from pawn to current target vs melee range (pGameBeing+0x150)"},
+    {"address": "00dfff70", "name": "GameBeing_UpdateMovementSpeed", "note": "Updates pawn MaxSpeed/locomotion flags from BSF_Walking(0x80)|BSF_Crouching(0x04)|BSF_MovementLock(0x40)"},
+    {"address": "00e05fb0", "name": "GameBeing_EmitAutoCycleStateChanged", "note": "Pattern B CME emitter for BSF_AutoCycling (bit 1) transition"},
+    {"address": "00e060b0", "name": "GameBeing_EmitStealthStateChanged", "note": "Pattern B CME emitter for BSF_InStealth (bit 5) transition"},
+    {"address": "00e05db0", "name": "GameBeing_EmitStateFieldChanged", "note": "Unconditional CME emitter at end of OnStateFieldUpdate; fires Event_Entity_StateFieldChanged with {entity_id, old, new, delta}"},
+    {"address": "00e6e330", "name": "GameBeing_OnDeadStateChanged", "note": "Handles BSF_Dead (bit 0) client-side: interaction type toggle (alive/dead), pawn actor update via FUN_00dff610 + FUN_00e791d0"},
+    {"address": "00c71790", "name": "GameBeing_GetMovementSpeedTable (pending)", "note": "Returns singleton speed constant table; offsets +0x04=run, +0x10=walk, +0x1c=crouch-run, +0x28=crouch-walk. Pending W0 rename."}
+  ]
+}

@@ -1,0 +1,120 @@
+{
+  "session": "W-combat Session 5",
+  "date": "2026-05-13",
+  "subsystems": {
+    "gap1_threat_aggro": {
+      "status": "COMPLETE",
+      "confidence": "HIGH",
+      "key_finding": "Threat is a client-side display list. No accrual/decay formulas in binary. Server sends ordered entity ID array via onThreatenedMobsUpdate. Two distinct threat sets on GamePlayer: primary at +0x16c (bulk update), secondary at +0x178 (per-entity delta).",
+      "anchors": [
+        "0x00d8d480 register_NetIn_onThreatenedMobsUpdate",
+        "0x00e07250 bulk-list handler (reads aEntityList array)",
+        "0x00e07570 per-entity add/remove handler (reads EntityId + HasThreat)",
+        "0x00e071c0 threat list clear/reset",
+        "0x00c6bd20 sorted-set insert",
+        "0x00e083a0 sorted-set remove",
+        "0x00e07ab0 list iterator/broadcaster"
+      ],
+      "wire_format": "onThreatenedMobsUpdate: [4B count][4B*N entityIds]",
+      "open_questions": [
+        "Accrual formula is entirely server-side",
+        "Purpose distinction between two threat sets (+0x16c vs +0x178)",
+        "Max-target cap: controlled server-side by truncating array length"
+      ],
+      "doc_updated": "docs/reverse-engineering/findings/combat-wire-formats.md"
+    },
+    "gap2_effect_stacking_dr": {
+      "status": "COMPLETE",
+      "confidence": "HIGH (client mechanics) / CONFIRMED ABSENT (DR formulas)",
+      "key_finding": "All DR/immunity logic is server-side. Client tracks active effects via EffectSet with no stack cap. Same SecondaryId = refresh; different SecondaryId = new stack. CC immunity and DR result communicated via StatResultCode byte in ClientEffectResult (0=None, 1=Immune, 2=Absorb, 3=Mortal). BSF_Holster (bit 8) NOT processed by onStateFieldUpdate handler — separate mechanism.",
+      "anchors": [
+        "0x00e09160 EffectSet_HandleOnTimerUpdate (timer type 5)",
+        "0x00d2d740 active-effect instance struct constructor",
+        "0x00e0a620 effect lookup-or-insert (SecondaryId key)",
+        "0x00e0a3b0 effect insert path (no cap check)",
+        "0x00e0a810 effect-removed CME emitter (CategoryId=9)",
+        "0x00e01c90 GameBeing_OnStateFieldUpdate (CC state bits)",
+        "0x00c6e220 BigWorld server clock",
+        "0x015fbd50 active-effect vector push_back"
+      ],
+      "active_effect_struct_offsets": {
+        "+0x00": "SecondaryId (int32)",
+        "+0x04": "RefCount (int32)",
+        "+0x08": "SourceID (int32)",
+        "+0x0C": "TotalTime (float)",
+        "+0x10": "BigWorldTimeComplete (float)",
+        "+0x14": "UserData (wstring key-value)"
+      },
+      "state_field_bits": {
+        "0x01": "BSF_Dead",
+        "0x02": "BSF_AutoCycling",
+        "0x04": "BSF_Crouching",
+        "0x08": "BSF_InCombat",
+        "0x10": "BSF_PlayingMinigame",
+        "0x20": "BSF_InStealth",
+        "0x40": "movement lock",
+        "0x80": "BSF_Walking",
+        "0x100": "BSF_Holster (NOT processed here)"
+      },
+      "open_questions": [
+        "DR categories/ratios: server-only",
+        "Stack cap: server-controlled",
+        "EffectSet+0x38 interval-tree structure not fully reversed",
+        "CategoryId=9 in removal emit — unclear if same namespace as result codes"
+      ],
+      "doc_updated": "docs/reverse-engineering/findings/effect-execution-model.md"
+    },
+    "gap3_damage_pipeline": {
+      "status": "COMPLETE",
+      "confidence": "HIGH",
+      "key_finding": "Damage pipeline fully client-side confirmed as pass-through. Server sends pre-computed Delta (float). CombatQueue extracts fields, filters by local player/target visibility, builds 0x14-byte per-entry structs, drains via ring buffer. QR result code table is 20 entries (not 5 as previously documented). Kismet event IDs extended: cast lifecycle at 1000-1003, entity lifecycle at 5000-5004. Codes 0-1 (ABILITY_INTERRUPT/FAILED) carry no stat deltas.",
+      "anchors": [
+        "0x00eb1630 CombatQueue_HandleOnEffectResults",
+        "0x00eb0ef0 combat entry struct ctor",
+        "0x00eb0f70 per-stat entry initializer",
+        "0x00eb14d0 ring buffer drain loop",
+        "0x00eb11a0 ability cache gate",
+        "0x00eb1230 combat text event emitter",
+        "0x00be32d0 Kismet console command parser (full event ID table)",
+        "0x01e6ce00 QR result code string table (20 entries)"
+      ],
+      "result_code_corrections": {
+        "prior_doc_claimed": "Codes 0-4 were ABILITY_INTERRUPT through EFFECT_HIT_NORMAL",
+        "corrected": "Codes 0-1 are lifecycle (INTERRUPT/FAILED), codes 2-3 are effect lifecycle (INIT/REMOVED), codes 4-8 are hit results (NORMAL/CRIT/DOUBLE_CRIT/GLANCING/MISS)",
+        "new_codes_added": "9=PULSE_BEGIN, 10=PULSE_END, 11=ENTITY_SPAWN, 12=ENTITY_DEATH, 13=ENTITY_ALERT, 14=ENTITY_MAKEDEAD, 15-28=DESIGNER_N, 29+=STARGATE_N"
+      },
+      "kismet_ids_extended": {
+        "1000_1003": "Begin/Interrupt/End/Failed (cast lifecycle)",
+        "2000_2008": "Init/Removed/HitNormal/HitCrit/HitDoubleCrit/HitGlancing/HitMiss/PulseBegin/PulseEnd",
+        "5000_5004": "Spawn/Death/(gap)/Alert/MakeDead",
+        "5999_plus_N": "Designer_N (N=1..14)",
+        "0x17D3_plus_N": "Stargate_N"
+      },
+      "combat_entry_struct": {
+        "size": "0x14 bytes",
+        "+0x00": "SourceID (int32)",
+        "+0x04": "TargetID (int32)",
+        "+0x08": "AbilityID (int32)",
+        "+0x0C": "ResultCode (uint8 stored as uint32)",
+        "+0x10": "EffectResultList (shared_ptr)"
+      },
+      "per_stat_entry_struct": {
+        "size": "0x14 bytes",
+        "+0x00": "StatID (int32, widened from int8)",
+        "+0x04": "DamageCode (int32, widened from int8)",
+        "+0x08": "StatResultCode (int32, widened from int8)",
+        "+0x0C": "Delta (float)",
+        "+0x10": "RefCount (uint32)"
+      },
+      "open_questions": [
+        "FUN_00ae6b50 ability cache: entries silently dropped if ability not yet loaded",
+        "ENTITY_ALERT code 13 vs original table index 11 — need server-side verification",
+        "Stargate_N upper bound not confirmed (no range check seen for Stargate branch)"
+      ],
+      "doc_updated": "docs/reverse-engineering/findings/combat-damage-analysis.md"
+    }
+  },
+  "address_map_updated": "docs/reverse-engineering/address-map.md",
+  "total_functions_decompiled": 37,
+  "fabrication_check": "All addresses from live MCP calls to SGW.exe in Ghidra"
+}

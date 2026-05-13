@@ -782,6 +782,127 @@ The Phase 2 plan assumed the `Event_NetOut_*` / `Event_NetIn_*` functions were n
 
 Functions like `register_NetOut_UseAbility` at `0x00cb7d90` simply return the string `"Event_NetOut_UseAbility"` — they register a named signal, not a network handler. The `SGWNetworkManager` subscribes to these signals and routes them through the universal dispatcher.
 
+---
+
+## Session 5 Deep-Dive — Threat/Aggro Table Mechanics
+
+> **Date**: 2026-05-13
+> **Source**: SGW.exe Ghidra decompilation — `GamePlayer.cpp`, `Src\CombatQueue.cpp`
+> **Confidence**: HIGH — decompiled handlers with assert source strings
+
+### Finding: Threat Is a Client-Side Display List, Not a Damage Formula
+
+The client does NOT compute threat accrual, decay, or priority order. The server sends a pre-computed
+ordered list of entity IDs (or individual add/remove deltas) and the client stores them verbatim. All
+threat math (accrual per damage, decay rate, max-target limits) is server-side only — the binary
+provides no evidence of any formula.
+
+### Wire Format: `onThreatenedMobsUpdate` (Server → Client)
+
+Registered at: `register_NetIn_onThreatenedMobsUpdate` (`0x00d8d480`) — returns string
+`"Event_NetIn_onThreatenedMobsUpdate"`.
+
+Subscriber: `GamePlayer` via `GetRTTI_Callback_NetIn_onThreatenedMobsUpdate__VGamePlayer`
+(`0x00e07da0`).
+
+The event carries an **`"aEntityList"`** array field (confirmed by assert string at `.\\Src\\GamePlayer.cpp:0x69`):
+
+```
+aEvent->getChildList("aEntityList", entityList)
+```
+
+**Wire format** (from `.def` file — `onThreatenedMobsUpdate` in `SGWCombatant.def`):
+
+| Offset | Size | Type | Field | Description |
+|--------|------|------|-------|-------------|
+| 0 | 4 | uint32 | Count | Number of threatening entities |
+| 4 | 4*N | int32[] | EntityIds | Ordered list of entity IDs |
+
+**Total**: 4 + 4*N bytes
+
+### Client Handler: `FUN_00e07250` (`Src\GamePlayer.cpp:0x69`)
+
+The bulk-update handler — replaces the entire threatened-mobs list atomically:
+
+```c
+// Reads "aEntityList" (ARRAY<INT32>) from event
+// For each entityId in list:
+//   FUN_00c6bd20(this+0x16c, result, &entityId)   // inserts entity into sorted set at this+0x16c
+//   LookupEntityListenerEntry(...)                  // resolves entity pointer
+//   GameBeing_OnDeadStateChanged(entity, true, ...)  // marks entity as "live" in awareness
+```
+
+Key data: `GamePlayer::threatenedMobsList` is at `this+0x16c` (red-black tree / sorted set). The
+`FUN_00c6bd20` at `0x00c6bd20` is a sorted-set insert that walks the tree by entity ID key.
+
+### Individual Add/Remove: `FUN_00e07570` (`Src\GamePlayer.cpp:0x91-0x92`)
+
+A separate per-entity threat update that reads two fields:
+
+| Field | Type | Assert string |
+|-------|------|---------------|
+| `"EntityId"` | int32 | `GamePlayer.cpp:0x79` / `GamePlayer.cpp:0x91` |
+| `"HasThreat"` | uint8 (bool) | `GamePlayer.cpp:0x92` |
+
+Logic:
+```c
+if (hasThreat == 0):
+    FUN_00e083a0(this+0x178, &entityId)   // REMOVE from secondary threat set
+else:
+    FUN_00c6bd20(this+0x178, result, &entityId)  // ADD to secondary threat set
+```
+
+Note: there are **two threat-related sets** on `GamePlayer`:
+- `this+0x16c` — primary threatened-mobs list (set by bulk `aEntityList` update)
+- `this+0x178` — secondary per-entity threat flag set (set by `HasThreat` delta events)
+
+The `FUN_00e07ab0` at `0x00e07ab0` iterates the list at `this+0x170`/`this+0x174` calling a callback
+for each entity (the "threatened list changed" broadcast).
+
+### Clear / Reset Path: `FUN_00e071c0` (`GamePlayer.cpp`)
+
+Swaps the threat list container at `this+0x170`/`0x174` with an empty one and iterates the old list
+calling `LAB_00e06fb0` (a per-entity cleanup callback). This is the threat-reset path (e.g., zone
+change, death, entering a duel).
+
+### LOS Commands (Debug/GM)
+
+Two outgoing LOS-related signals are registered:
+
+| Signal | Address | Args | Purpose |
+|--------|---------|------|---------|
+| `Event_NetOut_TestLOS` | `0x00d9bba0` (register) | `INT32 fromEntityId, INT32 toEntityId` | GM: server raycasts and reports LOS result in chat |
+| `Event_NetOut_ToggleCombatLOS` | `0x00d9be40` (register) | `UINT8 enabled` | GM: toggle whether combat requires LOS |
+
+Confirmed from RTTI comments in MemberCallback vfunc_3 stubs at `0x00d4b460` and `0x00d4b4e0`.
+
+Both are triggered via slash commands (`/TestLOS`, `/ToggleCombatLOS`) through
+`SGWTextCommandMgr` at `0x00c96820` / `0x00c96810`.
+
+### Key Addresses
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x00d8d480` | `register_NetIn_onThreatenedMobsUpdate` | Returns event name string |
+| `0x00e07da0` | `GetRTTI_Callback_NetIn_onThreatenedMobsUpdate__VGamePlayer` | RTTI subscriber accessor |
+| `0x00e07250` | Bulk threatened-mobs list handler | Reads `"aEntityList"` array; `GamePlayer.cpp:0x69` |
+| `0x00e07570` | Per-entity threat add/remove handler | Reads `"EntityId"` + `"HasThreat"`; `GamePlayer.cpp:0x91-92` |
+| `0x00e071c0` | Threat list clear/reset | Swaps threat container; fires per-entity cleanup |
+| `0x00c6bd20` | Sorted-set insert (threat list) | Red-black tree insert keyed on entity ID |
+| `0x00e083a0` | Sorted-set remove (threat list) | Removes entity from `this+0x178` secondary set |
+| `0x00e07ab0` | Threat list iterator/broadcaster | Walks list calling callback per entity |
+| `0x00dd0de0` | `LookupEntityListenerEntry` | Resolves entity ID → `GameEntityBase*` pointer |
+| `0x00e6e330` | `GameBeing_OnDeadStateChanged` | Called after threat-list entity lookup |
+
+### Open Questions
+
+1. **Threat accrual formula**: Completely absent from client. Must be derived from server-side Python or gameplay data files.
+2. **Two threat sets purpose**: The distinction between `this+0x16c` (bulk list) and `this+0x178` (delta list) is unclear — they may track "currently threatening" vs "historically threatened" or "cell-visible" vs "total aggro list".
+3. **Max-target rule**: No evidence of a hard cap in the client. The server controls list length by truncating the `aEntityList` array before sending.
+4. **Decay broadcasting**: No evidence of a client-side decay timer. Decay is server-authoritative; client receives the updated list periodically.
+
+---
+
 ## Related Documents
 
 - [Entity Property Sync Protocol](../../protocol/entity-property-sync.md) — Property sync details

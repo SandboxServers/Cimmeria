@@ -1,0 +1,12 @@
+2026-05-13T00:00:00Z
+Phase A verified complete by W0 session-2 resume (2026-05-13):
+  StdStringMSVC (24 bytes) - exists, correct shape
+  EntityDescription (116 bytes) - exists
+  DataDescription (64 bytes) - exists
+  MethodDescription (56 bytes) - exists
+  CmeEventSignalSubject (12 bytes) - exists
+  g_pUBWNetDriverClass @ 01ee2bb8 - exists
+  g_pUBWConnectionClass @ 01ee2bbc - exists
+  g_szMinigameInstanceField2Name @ 019acef4 - exists
+  g_szMinigameInstanceField1AltName @ 019acee8 - exists
+  g_szMinigameInstanceField3Name @ 019acf38 - exists

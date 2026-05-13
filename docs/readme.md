@@ -269,6 +269,7 @@ Annotation scripts, function naming progress, and per-system RE findings.
 | [trade-wire-formats.md](reverse-engineering/findings/trade-wire-formats.md) | 5 | Trade initiate, offer, accept/cancel | HIGH |
 | [duel-wire-formats.md](reverse-engineering/findings/duel-wire-formats.md) | 3 | Duel request, accept, resolution | HIGH |
 | [pet-wire-formats.md](reverse-engineering/findings/pet-wire-formats.md) | 2 | Pet summon, commands | HIGH |
+| [cme-event-signal.md](reverse-engineering/findings/cme-event-signal.md) | — | CME EventSignal emit pipeline + `TypedEmitInfo`/`CallbackImpl` class anatomy (V5 campaign session 1) | HIGH |
 
 ---
 

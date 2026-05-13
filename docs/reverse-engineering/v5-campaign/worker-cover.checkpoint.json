@@ -1,0 +1,179 @@
+{
+  "worker_id": "cover",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Cover system RE — SGWCoverSet entity type, ACoverLink/CoverGroup/CoverSlotMarker UE3 classes, CoverInfo client object, SGWCoverNodeComponent, cover weight events, CoverSpace spatial tree",
+  "total_in_scope": 0,
+  "functions": [
+    {
+      "address": "00e73280",
+      "name_at_start": "CoverInfo__vfunc_0",
+      "name_at_end": "CoverInfo__vfunc_0",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "MSVC scalar destructor for CoverInfo. Calls FUN_00e71c30 (CoverInfo dtor body), conditionally scalable_free."
+    },
+    {
+      "address": "00e71c30",
+      "name_at_start": "FUN_00e71c30",
+      "name_at_end": "CoverInfo_Dtor",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "CoverInfo destructor. Unsubscribes from FCallbackEventDevice slots 0x30 (Entity_ProxyPlayerCellCreated) and 0x2f (Entity_Destroyed). Unsubscribes 3 MemberCallbacks: Entity_ProxyPlayerCellCreated, Entity_Destroyed, Player_EntityControl. Cleans up spatialTree list at param_1+4 via FUN_00e72a50."
+    },
+    {
+      "address": "00e71710",
+      "name_at_start": "FUN_00e71710",
+      "name_at_end": "CoverInfo_UpdateCover",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Core cover update. Checks if GameBeing has moved beyond threshold vs cached position. If moved: queries CoverSpace spatial tree (FUN_01608820 / FUN_0160c3b0 / FUN_01609760), builds sorted cover candidate list via FUN_00eada20, dispatches result. Called from Lua updateCover() via FUN_00aebd30 which resolves the player-controlled GameBeing."
+    },
+    {
+      "address": "00aebd30",
+      "name_at_start": "FUN_00aebd30",
+      "name_at_end": "CoverInfo_LuaUpdateCoverImpl",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "Lua-facing updateCover() implementation. Gets entity manager, finds current player entity, RTTI-casts to GameBeing, calls CoverInfo_UpdateCover."
+    },
+    {
+      "address": "00aa0d10",
+      "name_at_start": "FUN_00aa0d10",
+      "name_at_end": "Lua_updateCover",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "Lua C binding for 'updateCover'. Reads 2 args from Lua stack, calls CoverInfo_LuaUpdateCoverImpl, pushes bool result."
+    },
+    {
+      "address": "00c87430",
+      "name_at_start": "FUN_00c87430",
+      "name_at_end": "SGWTextCommandMgr_OnChangeCoverWeight",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "SlashCmd handler for /changecoverweight. Source: SGWTextCommandManager.cpp lines 0xb15-0xb1a. Reads 6 floats: distance, defCover, offCover, move, crossPath, cover. Constructs Event_NetOut_ChangeCoverWeight (0x0C bytes via FUN_00cbca40 = NetworkEvent_Ctor). Sets fields: aDistanceWeight, aDefCoverWeight, aOffCoverWeight, aMoveWeight, aCrossPathWeight, aCoverWeight. Dispatches via CME."
+    },
+    {
+      "address": "00c87d00",
+      "name_at_start": "FUN_00c87d00",
+      "name_at_end": "SGWTextCommandMgr_OnChangeCoverStanceWeight",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "SlashCmd handler for /changecoverstanceweight. Source: SGWTextCommandManager.cpp lines 0xb32-0xb38. Reads 7 fields: stance (wstring), distance, defCover, offCover, move, crossPath, cover. Constructs Event_NetOut_ChangeCoverStanceWeight (0x0C bytes). Sets: aStanceName, aDistanceWeight, aDefCoverWeight, aOffCoverWeight, aMoveWeight, aCrossPathWeight, aCoverWeight."
+    },
+    {
+      "address": "010556a0",
+      "name_at_start": "FUN_010556a0",
+      "name_at_end": "CoverNodeXmlLoader",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "Parses SGWCoverSet XML (key strings: 'SGWCoverSet', 'entity', 'coverSet', 'coverNodes', 'coverNode'). Per node reads: transform (position %f %f %f, orient %f %f %f), coverheight, coverquality, coverwidth, orientation (converted: float*DAT_018f41c0*DAT_01816ac8). Switch on coverHeight byte 0-3 maps to float constants at DAT_018f41d4/d0/cc/c8. Called during chunk loading."
+    },
+    {
+      "address": "00904d80",
+      "name_at_start": "FUN_00904d80",
+      "name_at_end": "USGWCoverNodeComponent_SpawnCoverNode",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "Spawns UE3 actor for a cover node prefab. Validates index in CoverNodePrefabs array. Source: SGWCoverNodeComponent.cpp lines 0xbb/0xbc. Loads 'SGW_Cover.CoverNode' static mesh. Sets actor fields: position (UE3 units from BW, offset +0x240/244/248), orientation (angle * DAT_0181998c * _DAT_018199e0), coverHeight enum at +0x2d5, quality at +0x1b4. CoverHeight switch at byte offset +0x2d5: 4 cases (0=lowest, 3=highest)."
+    },
+    {
+      "address": "00704be0",
+      "name_at_start": "ACoverLink__vfunc_183",
+      "name_at_end": "ACoverLink__vfunc_183",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "ACoverLink::GetSlotActions (UE3 nav mesh slot enumeration). Iterates slots at this+0x28c (count at +0x290), stride 0x9c. Per slot: checks FireLinks (+0x70/0x7c arrays stride 0x1c), DefinedPaths (+0x20/+0x24 arrays stride 0x38), FireLinks2 (+0x84/0x88 stride 0x1c). Builds pointer array for caller."
+    },
+    {
+      "address": "006ff840",
+      "name_at_start": "ACoverLink__vfunc_73",
+      "name_at_end": "ACoverLink_GetSlotViewPoint",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "Returns view point for a cover slot. Reads position from this+0xdc/+0xe0/+0xe4. If actor has PawnOwner (param_2+0x1b0), adds pawn's cover adjustment vector via vtable +0x380."
+    },
+    {
+      "address": "00700800",
+      "name_at_start": "ACoverLink__vfunc_205",
+      "name_at_end": "ACoverLink_HasFireLinkTo",
+      "status": "complete",
+      "score_before": null,
+      "score_after": null,
+      "workflow": "read-only-archaeology",
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "IsValidClaim / HasFireLinkTo. Slot = param_1*0x9c + this+0x28c. Iterates DefinedPaths (count at +0x24, array at +0x20, stride 0x38). Matches on [+0x10]==param_2[0] AND [+0x24]==param_2[1]. Returns whether path count > 0."
+    }
+  ],
+  "pending_structs": [
+    {
+      "requested_by": "cover-worker",
+      "struct_name": "CoverInfo",
+      "observed_offsets": ["+0x04 = CME::EventSignal subscription list (FCallbackEventDevice slots 0x2f/0x30)", "+0x10 = CoverSpace spatial tree handle (queried via FUN_00e72ab0)"],
+      "evidence": "CoverInfo_Dtor at 0x00e71c30 unsubscribes slots 0x2f and 0x2f from g_pFCallbackEventDevice. CoverInfo_UpdateCover at 0x00e71710 accesses this+0x10 as spatial tree reference."
+    },
+    {
+      "requested_by": "cover-worker",
+      "struct_name": "CoverNodePrefabData",
+      "observed_offsets": ["+0x00 = position.x (float)", "+0x04 = position.y (float)", "+0x08 = position.z (float)", "+0x0c = orientation (float, radians)", "+0x10 = coverHeight (u8, 0-3)", "+0x14 = quality (u8)", "+0x15 = width (u8)"],
+      "evidence": "USGWCoverNodeComponent_SpawnCoverNode at 0x00904d80 reads these offsets. Array element stride = 0x18 bytes (confirmed by iStack_c4 += 0x18 loop increment)."
+    }
+  ],
+  "pending_globals": [],
+  "stats": {
+    "complete": 12,
+    "skipped_already_done": 0,
+    "skipped_too_small": 0,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 48
+  },
+  "resume_from_address": null
+}

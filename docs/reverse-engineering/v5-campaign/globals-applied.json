@@ -1,0 +1,188 @@
+{
+  "session": 3,
+  "worker": "W-cleanup",
+  "applied_at": "2026-05-13",
+  "source_checkpoints": [
+    "worker-0.checkpoint.json",
+    "worker-1.checkpoint.json",
+    "worker-4a.checkpoint.json",
+    "worker-4b2.checkpoint.json",
+    "worker-4c.checkpoint.json",
+    "worker-emit-a.checkpoint.json",
+    "worker-emit-b.checkpoint.json"
+  ],
+  "globals": [
+    {
+      "address": "0x01ee2bb8",
+      "name": "g_pUBWNetDriverClass",
+      "source": "worker-0 pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ee2bbc",
+      "name": "g_pUBWConnectionClass",
+      "source": "worker-0 pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x019ACEF4",
+      "name": "g_szMinigameInstanceField2Name",
+      "source": "worker-1 pending_globals (W1 session 1 finding)",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x019ACEE8",
+      "name": "g_szMinigameInstanceField1AltName",
+      "source": "worker-1 pending_globals (W1 session 1 finding)",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x019ACF38",
+      "name": "g_szMinigameInstanceField3Name",
+      "source": "worker-1 pending_globals (W1 session 1 finding)",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ee6588",
+      "name": "g_pPrimaryRenderSystem",
+      "source": "worker-4a pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ee65b0",
+      "name": "g_pSecondaryRenderSystem",
+      "source": "worker-4a pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01f126b0",
+      "name": "g_bDataTypeRegistryInit",
+      "source": "worker-4b2 pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01f126b4",
+      "name": "g_pMetaDataTypeRegistry",
+      "source": "worker-4b2 pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01f126ac",
+      "name": "g_pDataTypeMapRoot",
+      "source": "worker-4b2 pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01f126b8",
+      "name": "g_mapDataTypeRegistry",
+      "source": "worker-4b2 pending_globals",
+      "status": "applied",
+      "method": "rename_or_label",
+      "note": "No defined data at address — label created instead"
+    },
+    {
+      "address": "0x01f126bc",
+      "name": "g_mapDataTypeRegistryEnd",
+      "source": "worker-4b2 pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ef2224",
+      "name": "g_bEntityRpcDebug",
+      "source": "worker-4c pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ef2448",
+      "name": "g_pLogSink",
+      "source": "worker-4c pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ea577c",
+      "name": "g_pFCallbackEventDevice",
+      "source": "worker-4c pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ea576c",
+      "name": "g_pGEngine",
+      "source": "worker-4c pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x018fbe80",
+      "name": "g_szAnimNotifyField1Name",
+      "source": "worker-emit-b pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x018fbe94",
+      "name": "g_szInputSignalField2Name",
+      "source": "worker-emit-b pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x019eab14",
+      "name": "g_szRegionIdFieldName",
+      "source": "worker-emit-b pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x019eab30",
+      "name": "g_szRegionIdFieldName2",
+      "source": "worker-emit-b pending_globals",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ee2e30",
+      "name": "g_pUSkeletalMeshComponentClass",
+      "source": "worker-4c pending_globals (ABigWorldEntity_AttachComponent)",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01ee2e90",
+      "name": "g_pUStaticMeshComponentClass",
+      "source": "worker-4c pending_globals (ABigWorldEntity_AttachComponent)",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x019d1a44",
+      "name": "g_flPositionSentinel",
+      "source": "worker-4c pending_globals (EntityManager_OnEntityMoveWithError)",
+      "status": "applied",
+      "method": "rename_data"
+    },
+    {
+      "address": "0x01801cf8",
+      "name": "g_pDefaultEntityIdFallback",
+      "source": "worker-4c pending_globals (EntityManager_OnEntityMoveWithError)",
+      "status": "applied",
+      "method": "rename_or_label"
+    }
+  ],
+  "total_applied": 24,
+  "total_skipped": 0,
+  "notes": "All 24 globals from Session 1-2-3 worker checkpoints applied. One entry (0x01f126b8) used rename_or_label because rename_data reported no defined data at that address. All others used rename_data successfully."
+}

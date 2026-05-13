@@ -27,6 +27,14 @@ This directory contains per-system reverse engineering findings with evidence.
 | `position-movement-wire-formats.md` | 5 | forcedPosition, detailedPosition, 32 avatarUpdate variants, velocity/direction compression | HIGH |
 | `space-viewport-wire-formats.md` | 5 | Space, viewport, entity lifecycle, resource delivery, position updates | HIGH |
 | `system-protocol-wire-formats.md` | 5 | Connection protocol handlers, decompilation evidence, message dispatch | HIGH |
+| `cme-event-signal.md` | 6 | CME EventSignal emit pipeline (5 callees), `TypedEmitInfo`/`CallbackImpl` class anatomy, RTTI accessor clusters | HIGH |
+| `state-flag-broadcast.md` | 7 | BSF_* flag master table (9 flags), `FUN_00e01c90` XOR-delta dispatch, witness-broadcast bugs for issues #219/#232/#249 | HIGH |
+| `respawn-lifecycle.md` | 7 | Full death + respawn lifecycle — BSF_Dead, Defeat Window wire format, callForAid/GiveRespawner NetOut, respawner selection, same-world vs cross-world execution; issues #232/#233 | HIGH |
+| `ability-resolution-pipeline.md` | V5 | Ability activation (button press → useAbility emit), TCM/TargetGround enum values, onEffectResults QR codes, 5 timer handlers (types 0-13), channeled ability cancel via ConfirmEffect, CooldownManager UI bridge | HIGH |
+| `mission-state-machine.md` | V5 | MissionSet client-side state machine — onMissionUpdate/onStepUpdate/onObjectiveUpdate/onTaskUpdate handlers, timer routing, reward delivery, sharing flow, UI token table, MissionSet/MissionEntry/StepEntry/ObjectiveEntry/TaskEntry field layouts | HIGH |
+| `world-entry-pipeline.md` | 4b | Full connect-to-in-world pipeline — 8 phases, CREATE_BASE_PLAYER/CELL_PLAYER wire formats, onClientMapLoad field-name audit, RESET_ENTITIES/ENABLE_ENTITIES exchange, mapLoaded bundle contents, CME signal bus inventory | HIGH |
+| `architectural-anomalies.md` | V5 (W-anom) | Three CME EventSignal anomalies resolved: BM emitters use Pattern B (not unknown mechanism); GiveInventory NetOut has no client subscriber (server-only signal); SGWHomeless is `class_SGWHomeless`, an in-editor developer tool class | HIGH |
+| `cooked-data-pipeline.md` | V5 (W-cooked) | 21 ServerSource categories (1–21) with binary-confirmed PAK filenames; LibCategory/ServerSource struct layout; 5 CME events per category; onVersionInfo/onCookedDataError handler logic; ZipStorageBase open+MetaData-write path; contradiction with existing pipeline doc category table | HIGH |
 
 ## Finding Format
 

@@ -1,0 +1,411 @@
+{
+  "worker_id": "entity-desc-a",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Address range [0x01580000, 0x01590000) — EntityDescription parse chain low half (below W4-B1's [0x01590000, 0x01593fff])",
+  "scope_note": "The range [0x01580000, 0x0158dfff] is the BigWorld Mercury networking layer (Nub, Channel, Endpoint, Packet, MachineGuard subsystems). NOT EntityDescription. EntityDescription-chain functions in scope are confined to [0x0158e000, 0x0158ea60]. Total 17 functions processed.",
+  "total_in_scope": 17,
+  "functions": [
+    {
+      "address": "0158e060",
+      "name_at_start": "FUN_0158e060",
+      "name_at_end": "DataDescriptionParseVec_GetSize",
+      "status": "complete",
+      "score_before": 27.8,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Returns (end-begin)/0x110. Fields at this+4 (begin) and this+8 (end). Parse-time DataDescription form. Cf. 0x0158e180 which uses +0x10/+0x14."
+    },
+    {
+      "address": "0158e080",
+      "name_at_start": "FUN_0158e080",
+      "name_at_end": "MethodDescriptionVec_GetSize",
+      "status": "complete",
+      "score_before": 27.8,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Returns (end-begin)/0x50. Fields at this+4 (begin) and this+8 (end). MethodDescription vector size."
+    },
+    {
+      "address": "0158e0a0",
+      "name_at_start": "FUN_0158e0a0",
+      "name_at_end": "DataDescriptionParseVec_AllocN",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "scalable_malloc(n * 0x110) with overflow guard (0xffffffff/n < 0x110 aborts). Throws bad_alloc on null return."
+    },
+    {
+      "address": "0158e110",
+      "name_at_start": "FUN_0158e110",
+      "name_at_end": "MethodDescriptionVec_AllocN",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "scalable_malloc(n * 0x50) with overflow guard (0xffffffff/n < 0x50 aborts). Throws bad_alloc on null return."
+    },
+    {
+      "address": "0158e180",
+      "name_at_start": "FUN_0158e180",
+      "name_at_end": "DataDescriptionParseVec_GetSizeAlt",
+      "status": "complete",
+      "score_before": 24.7,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Returns (end-begin)/0x110. Fields at this+0x10 (begin) and this+0x14 (end). Alternate offset variant used by DataDescriptionParseVec_ForEachFindMax and DataDescriptionParseVec_GetAt."
+    },
+    {
+      "address": "0158e1a0",
+      "name_at_start": "FUN_0158e1a0",
+      "name_at_end": "DataDescriptionParseVec_GetAt",
+      "status": "complete",
+      "score_before": 17.2,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "__thiscall. Bounds-checked: begin at this+0x10, end at this+0x14. Returns begin + idx*0x110. Calls _invalid_parameter_noinfo on OOB."
+    },
+    {
+      "address": "0158e1e0",
+      "name_at_start": "FUN_0158e1e0",
+      "name_at_end": "MethodDescription_CopyCtorSEH",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "SEH-wrapped MethodDescription_CopyCtor. Skips if dst==null. Called by MethodDescriptionVec_UninitCopyN (0x01591250)."
+    },
+    {
+      "address": "0158e230",
+      "name_at_start": "FUN_0158e230",
+      "name_at_end": "DataDescription_PartialInitSEH",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "SEH-wrapped DataDescription_PartialInit (runtime 0x40-byte form). Skips if dst==null. Called by DataDescriptionVec_UninitCopyN (0x015912e0) and DataDescriptionVec_UninitCopyRange (0x0158e500)."
+    },
+    {
+      "address": "0158e280",
+      "name_at_start": "FUN_0158e280",
+      "name_at_end": "MethodDescriptionVec_CopyRangeToOffset",
+      "status": "complete",
+      "score_before": 1.8,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Copies MethodDescription range (0x50 each) to destination-from-source offset. Loop: CopyAssign(src+offset, src); src+=0x50. Returns past-end of destination."
+    },
+    {
+      "address": "0158e310",
+      "name_at_start": "FUN_0158e310",
+      "name_at_end": "DataDescriptionParseVec_ForEachFindMax",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Iterates parse-time DataDescriptionVec (fields +0x10/+0x14), calls functor per index, tracks running max. Complex decompilation — Ghidra emits _FRawStaticIndexBuffer calls from EH unwinding. Confidence: MEDIUM on exact semantics."
+    },
+    {
+      "address": "0158e460",
+      "name_at_start": "FUN_0158e460",
+      "name_at_end": "MethodDescriptionVec_ReserveN",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "__thiscall. Zeros begin/end/cap at this+4/+8/+0xc. Calls MethodDescriptionVec_AllocN (0x0158e110). Cap = begin + N*0x50. Max guard: 0x3333333 elements."
+    },
+    {
+      "address": "0158e4b0",
+      "name_at_start": "FUN_0158e4b0",
+      "name_at_end": "DataDescriptionVec_ReserveN",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "__thiscall. Zeros begin/end/cap at this+4/+8/+0xc. Calls FUN_00c54440 (generic alloc helper). Cap = begin + N*0x40 (runtime 0x40-byte form). Max guard: 0x3ffffff elements."
+    },
+    {
+      "address": "0158e500",
+      "name_at_start": "FUN_0158e500",
+      "name_at_end": "DataDescriptionVec_UninitCopyRange",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Iterates [param_1, param_2) by 0x40-byte steps, calling DataDescription_PartialInitSEH(dst, src). SEH frame. Returns param_3 advanced by count*0x40."
+    },
+    {
+      "address": "0158e590",
+      "name_at_start": "FUN_0158e590",
+      "name_at_end": "MethodDescriptionVec_CopyRangeToOffsetThunk",
+      "status": "complete",
+      "score_before": 21.6,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "One-liner thunk: calls MethodDescriptionVec_CopyRangeToOffset (0x0158e280) with same args."
+    },
+    {
+      "address": "0158e5c0",
+      "name_at_start": "FUN_0158e5c0",
+      "name_at_end": "MethodDescriptionVec_UninitCopyRange",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Iterates [param_1, param_2) by 0x50-byte steps, calling MethodDescription_CopyCtorSEH(dst, src). SEH frame. Returns param_3 advanced by count*0x50."
+    },
+    {
+      "address": "0158e650",
+      "name_at_start": "FUN_0158e650",
+      "name_at_end": "EntityDescriptionMap_LowerBound",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "MSVC xtree lower_bound on std::map<uint32,uint16> (EntityDescription method ID map). Sentinel: node+0x15 != 0 (RB color byte). Key: node+0x3c (uint32). Called from EntityDescriptionMap_InsertOrFind (0x0158e840) and FUN_00569140."
+    },
+    {
+      "address": "0158e710",
+      "name_at_start": "FUN_0158e710",
+      "name_at_end": "EntityDescription_FindMethodIdByName",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "KEY FUNCTION: Looks up encoded method ID by name key (ushort). Returns *(uint16*)(node+0x10) on match, 0xffff if not found. Called from ProcessEntityMethodEmission (0x00c6f8f0) and RouteOutgoingEntityRpc (0x00c6fc40). Direct link to wire encoding of method calls."
+    },
+    {
+      "address": "0158e780",
+      "name_at_start": "FUN_0158e780",
+      "name_at_end": "EntityDescription_FindAndWritePropertyByName",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Scans parse-time DataDescriptionVec (this+0x10/+0x14, 0x110 each) for name match. Compares StdStringMSVC at element+0x24 (len at +0x34, cap at +0x38) against element+0x40 (len at +0x50, cap at +0x54) using std::char_traits::compare. On match: calls EntityDescription_WriteClientData (0x01590fc0). Called from FUN_00c66cf0."
+    },
+    {
+      "address": "0158e840",
+      "name_at_start": "FUN_0158e840",
+      "name_at_end": "EntityDescriptionMap_InsertOrFind",
+      "status": "complete",
+      "score_before": 0.0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "MSVC xtree insert-or-find. Uses EntityDescriptionMap_LowerBound (0x0158e650), AdvanceListenerMapIterator, FUN_00e096b0, FUN_00d1b450, and FUN_00e6c6c0 (tree insert). Returns iterator to inserted/found node."
+    },
+    {
+      "address": "0158ea00",
+      "name_at_start": "FUN_0158ea00",
+      "name_at_end": "MethodDescriptionVec_UninitCopyRangeThunk",
+      "status": "complete",
+      "score_before": 5.8,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "5-arg thunk: delegates (param_2, param_4, param_5) to MethodDescriptionVec_UninitCopyRange (0x0158e5c0). Drops params 1 and 3."
+    },
+    {
+      "address": "0158ea30",
+      "name_at_start": "FUN_0158ea30",
+      "name_at_end": "DataDescriptionVec_UninitCopyRangeThunk",
+      "status": "complete",
+      "score_before": 5.8,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "5-arg thunk: delegates (param_2, param_4, param_5) to DataDescriptionVec_UninitCopyRange (0x0158e500). Drops params 1 and 3."
+    },
+    {
+      "address": "0158ea60",
+      "name_at_start": "FUN_0158ea60",
+      "name_at_end": "DataDescriptionVec_UninitCopyRangeThunk2",
+      "status": "complete",
+      "score_before": 20.5,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "3-arg thunk: delegates (param_1, param_2, param_3) directly to DataDescriptionVec_UninitCopyRange (0x0158e500). No param remapping."
+    }
+  ],
+  "mercury_layer_note": "Functions in [0x01580000, 0x0158dfff] are the BigWorld Mercury networking subsystem: Nub (ProcessPacket, ProcessFilteredPacket, ProcessPendingEvents, Send, addListeningSocket, writeConnection), Channel (cleanup, destructLocalPart/RemotePart, ChannelInternal), Endpoint (findIndicatedInterface), Packet, InterfaceElement (compressLength, expandLength), MachineGuard (sendAndRecv), and various message types (QueryInterface, Reset, MachineAnnounce, Pid, Listener, Create, Signal, Error, Tags, User, WholeMachine, Client, ClientException, ClientNet, ClientIncoming, ClientChannelReg). These are NOT EntityDescription parse chain functions. Mercury subsystem analysis is out of scope for this EntityDescription worker — recommend a dedicated Mercury worker.",
+  "pending_structs": [],
+  "pending_globals": [],
+  "contradictions": [
+    {
+      "address": "0158e780",
+      "description": "EntityDescription_FindAndWritePropertyByName compares two StdStringMSVC fields within the same 0x110-byte DataDescription element: element+0x24 against element+0x40. This suggests the parse-time DataDescription stores TWO name fields — likely a short name and a full/qualified name. The comparison finds elements where both names match the search key. This contradicts a simple single-name model. The DataDescription +0x04 StdStringMSVC from DataDescription_Constructor may be the client name and +0x24 the full name."
+    },
+    {
+      "address": "0158e710",
+      "description": "EntityDescription_FindMethodIdByName takes a ushort key parameter but calls FUN_00437890 to do the actual map find. The parameter appears to be a hash or encoded key, not a raw string pointer. This is distinct from EntityDescription name-based lookup — the uint16 encoding matches the multi-byte method ID scheme from MethodDescription_ComputeIdBase (0x01590bb0). Confidence: MEDIUM — caller context needed."
+    }
+  ],
+  "new_addresses": [
+    {
+      "address": "0158e060",
+      "proposed_name": "DataDescriptionParseVec_GetSize",
+      "justification": "Returns (end-begin)/0x110 size of parse-time DataDescription vector."
+    },
+    {
+      "address": "0158e080",
+      "proposed_name": "MethodDescriptionVec_GetSize",
+      "justification": "Returns (end-begin)/0x50 size of MethodDescription vector."
+    },
+    {
+      "address": "0158e0a0",
+      "proposed_name": "DataDescriptionParseVec_AllocN",
+      "justification": "scalable_malloc(n*0x110) with overflow guard."
+    },
+    {
+      "address": "0158e110",
+      "proposed_name": "MethodDescriptionVec_AllocN",
+      "justification": "scalable_malloc(n*0x50) with overflow guard."
+    },
+    {
+      "address": "0158e180",
+      "proposed_name": "DataDescriptionParseVec_GetSizeAlt",
+      "justification": "Size variant using +0x10/+0x14 vector offsets."
+    },
+    {
+      "address": "0158e1a0",
+      "proposed_name": "DataDescriptionParseVec_GetAt",
+      "justification": "Bounds-checked element access at idx*0x110+begin."
+    },
+    {
+      "address": "0158e1e0",
+      "proposed_name": "MethodDescription_CopyCtorSEH",
+      "justification": "SEH-guarded copy-constructor wrapper."
+    },
+    {
+      "address": "0158e230",
+      "proposed_name": "DataDescription_PartialInitSEH",
+      "justification": "SEH-guarded DataDescription_PartialInit wrapper."
+    },
+    {
+      "address": "0158e280",
+      "proposed_name": "MethodDescriptionVec_CopyRangeToOffset",
+      "justification": "Copy range to self+offset using CopyAssign."
+    },
+    {
+      "address": "0158e310",
+      "proposed_name": "DataDescriptionParseVec_ForEachFindMax",
+      "justification": "Functor-per-element iterator tracking max return value."
+    },
+    {
+      "address": "0158e460",
+      "proposed_name": "MethodDescriptionVec_ReserveN",
+      "justification": "Initialize MethodDescription sub-vector with N capacity."
+    },
+    {
+      "address": "0158e4b0",
+      "proposed_name": "DataDescriptionVec_ReserveN",
+      "justification": "Initialize runtime DataDescription sub-vector with N capacity (0x40 bytes each)."
+    },
+    {
+      "address": "0158e500",
+      "proposed_name": "DataDescriptionVec_UninitCopyRange",
+      "justification": "SEH-wrapped uninitialized copy range for 0x40-byte DataDescriptions."
+    },
+    {
+      "address": "0158e590",
+      "proposed_name": "MethodDescriptionVec_CopyRangeToOffsetThunk",
+      "justification": "Thunk for MethodDescriptionVec_CopyRangeToOffset."
+    },
+    {
+      "address": "0158e5c0",
+      "proposed_name": "MethodDescriptionVec_UninitCopyRange",
+      "justification": "SEH-wrapped uninitialized copy range for 0x50-byte MethodDescriptions."
+    },
+    {
+      "address": "0158e650",
+      "proposed_name": "EntityDescriptionMap_LowerBound",
+      "justification": "MSVC xtree lower_bound for EntityDescription method ID map."
+    },
+    {
+      "address": "0158e710",
+      "proposed_name": "EntityDescription_FindMethodIdByName",
+      "justification": "Returns encoded method ID (uint16) for named method. Called from wire-format RPC dispatcher."
+    },
+    {
+      "address": "0158e780",
+      "proposed_name": "EntityDescription_FindAndWritePropertyByName",
+      "justification": "Name-match scan of parse-time DataDescriptions, writes matched property to stream."
+    },
+    {
+      "address": "0158e840",
+      "proposed_name": "EntityDescriptionMap_InsertOrFind",
+      "justification": "MSVC xtree insert-or-find for EntityDescription method ID map."
+    },
+    {
+      "address": "0158ea00",
+      "proposed_name": "MethodDescriptionVec_UninitCopyRangeThunk",
+      "justification": "5-arg thunk for MethodDescriptionVec_UninitCopyRange."
+    },
+    {
+      "address": "0158ea30",
+      "proposed_name": "DataDescriptionVec_UninitCopyRangeThunk",
+      "justification": "5-arg thunk for DataDescriptionVec_UninitCopyRange."
+    },
+    {
+      "address": "0158ea60",
+      "proposed_name": "DataDescriptionVec_UninitCopyRangeThunk2",
+      "justification": "3-arg direct thunk for DataDescriptionVec_UninitCopyRange."
+    }
+  ],
+  "stats": {
+    "complete": 17,
+    "skipped_already_done": 0,
+    "skipped_out_of_scope_mercury": 233,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 62
+  },
+  "resume_from_address": null,
+  "notes": "Scope [0x01580000, 0x0158dfff] is the BigWorld Mercury networking layer — NOT EntityDescription parse chain. EntityDescription-chain functions in this range are [0x0158e000, 0x0158ea60], 17 total. Mercury networking analysis requires a dedicated Mercury worker. Key new finding: EntityDescription_FindMethodIdByName (0x0158e710) is called directly from RouteOutgoingEntityRpc (0x00c6fc40) — this is the missing link between entity method dispatch and the EntityDescription method-ID encoding scheme. The method ID returned is a uint16 stored at RB-tree node+0x10."
+}

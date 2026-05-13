@@ -1,0 +1,113 @@
+{
+  "worker_id": "content-mech",
+  "campaign_version": "v5",
+  "session": 5,
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Crafting state machine, Stargate DHD state machine, Loot generation pipeline — client-side mechanics from SGW.exe CME EventSignal subscriber graph + emitter functions",
+  "subsystems": {
+    "crafting_state_machine": {
+      "status": "complete",
+      "output_doc": "docs/reverse-engineering/findings/crafting-state-machine.md",
+      "functions_analyzed": [
+        "register_NetOut_Craft @ 0x00e4a910",
+        "register_NetOut_Alloy @ 0x00e4aac0",
+        "register_NetOut_Research @ 0x00e4ac70",
+        "register_NetOut_ReverseEngineer @ 0x00e4ae20",
+        "register_NetOut_SpendAppliedSciencePoint @ 0x00e4afd0",
+        "register_NetOut_RespecCraft @ 0x00aea3d0",
+        "register_NetOut_SetTechSkill @ 0x00d96f70",
+        "register_NetIn_onUpdateDiscipline @ 0x00d831a0",
+        "register_NetIn_onUpdateCraftingOptions @ 0x00d83980",
+        "register_NetIn_onUpdateKnownCrafts @ 0x00d836e0",
+        "register_NetIn_onCraftingRespecPrompt @ 0x00d7fd00",
+        "SGWNetworkManager_VEvent_NetOut_Craft___EventHandler__vfunc_0 @ 0x00d683b0",
+        "SGWNetworkManager_VEvent_NetOut_RespecCraft___EventHandler__vfunc_0 @ 0x00d68450",
+        "CME_EventSignal_ZV6_PAX_AEXPAVEvent_NetIn_onUpdateCraftingOptions...MemberCallback__vfunc_3 @ 0x00e45960",
+        "CME_EventSignal_ZV6_PAX_AEXPAVEvent_NetIn_onUpdateRacialParadigmLevel...MemberCallback__vfunc_3 @ 0x00e45a60",
+        "CME_EventSignal_ZV6_PAX_AEXPAVEvent_NetIn_onUpdateDiscipline...MemberCallback__vfunc_3 @ 0x00e45ae0",
+        "CME_EventSignal_ZV6_PAX_AEXPBVEvent_NetIn_TimerUpdate...VCrafting...MemberCallback__vfunc_3 @ 0x00e45ce0"
+      ],
+      "contradictions_with_existing_docs": [
+        "crafting-wire-formats.md missing Event_NetIn_onUpdateRacialParadigmLevel — new event confirmed by RTTI at 0x00e45a60",
+        "crafting-wire-formats.md does not mention Cache_ElementReady<SGW::Blueprint> subscription by VCrafting (0x00e45be0)",
+        "crafting-wire-formats.md does not mention TimerUpdate subscription by VCrafting (0x00e45ce0) for induction countdown"
+      ],
+      "new_addresses_for_address_map": [
+        "0x00e45a60 — VCrafting × onUpdateRacialParadigmLevel (new undocumented event)"
+      ]
+    },
+    "stargate_dhd_state_machine": {
+      "status": "complete",
+      "output_doc": "docs/reverse-engineering/findings/stargate-dhd-state-machine.md",
+      "functions_analyzed": [
+        "EmitNetOut_onDialGate @ 0x00e2e120 — full decompile; sets TargetAddressId + SourceAddressId",
+        "EmitNetOut_SetRingTransporterDestination @ 0x00aeab70 — full decompile; sets aRegionId + aDestinationId",
+        "EventNetOut_SetRingTransporterDestination_Ctor @ 0x00ae9d70 — full decompile",
+        "SlashCmd_EmitSetRingTransporterDestination @ 0x00c8a830 — full decompile; source SGWTextCommandManager.cpp L0xC35-C36",
+        "register_NetIn_StargateTriggerFailed @ 0x00d88060 — new event, not in gate-travel-wire-formats.md",
+        "register_NetIn_setupStargateInfo @ 0x00d87340",
+        "register_NetIn_updateStargateAddress @ 0x00d875e0",
+        "register_NetIn_onDisplayDHD @ 0x00d7a3c0",
+        "register_NetIn_onDHDReply @ 0x00d82c60",
+        "register_NetIn_onRingTransporterList @ 0x00d89020",
+        "CME_EventSignal_ZV5...StargateTriggerFailed...VGateTravel...MemberCallback__vfunc_3 @ 0x00e2ff90",
+        "CME_EventSignal_ZV5...onDHDReply...VCommunicator...MemberCallback__vfunc_3 @ 0x00cf5440",
+        "CME_EventSignal_ZV5...onRingTransporterList...VGameProxyPlayer...MemberCallback__vfunc_3 @ 0x00df7900",
+        "USeqEvent_Stargate__vfunc_92 @ 0x006a0a40 — Kismet gate trigger"
+      ],
+      "contradictions_with_existing_docs": [
+        "gate-travel-wire-formats.md does not mention Event_NetIn_StargateTriggerFailed — confirmed present (RTTI + stub at 0x00d88060)",
+        "gate-travel-wire-formats.md classifies onDHDReply without subscriber class; confirmed it is VCommunicator (not GateTravel)",
+        "gate-travel-wire-formats.md does not document World_StargateEvent or World_DialStargateAddress as VGateTravel subscriptions",
+        "gate-travel-wire-formats.md does not document Cache_ElementReady<DBGateInfo> subscription by VGateTravel",
+        "Confirmed: onDialGate TargetAddressId/SourceAddressId are INT32 resolved IDs, not raw 6-glyph arrays — consistent with .def"
+      ],
+      "new_addresses_for_address_map": [
+        "0x00d88060 — register_NetIn_StargateTriggerFailed (new undocumented event)",
+        "0x00e2e120 — EmitNetOut_onDialGate (key emitter with 6-glyph resolution logic)",
+        "0x00d2d8f0 — glyph accessor (reads one UINT8 glyph by index from address struct)"
+      ]
+    },
+    "loot_generation": {
+      "status": "complete",
+      "output_doc": "docs/reverse-engineering/findings/loot-generation.md",
+      "functions_analyzed": [
+        "register_NetOut_LootItem @ 0x00d935a0",
+        "register_NetOut_SquadSetLootMode @ 0x00d96790",
+        "register_NetIn_LootDisplay @ 0x00d804f0",
+        "register_NetIn_onSquadLootType @ 0x00d8cc90",
+        "CME_EventSignal_VEvent_NetOut_LootItem___TypedEmitInfo__vfunc_0 @ 0x00d93680 — plate: lootItem(Index: INT32)",
+        "CME_EventSignal_VEvent_NetIn_LootDisplay___TypedEmitInfo__vfunc_0 @ 0x00d805d0 — plate: entityId UINT32 + ARRAY InvItem",
+        "SGWNetworkManager_VEvent_NetOut_LootItem___EventHandler__vfunc_0 @ 0x00d67b70",
+        "SGWNetworkManager_VEvent_NetOut_SquadSetLootMode___EventHandler__vfunc_0 @ 0x00d67f90",
+        "CME_EventSignal_ZV5...LootDisplay...VLootables...MemberCallback__vfunc_3 @ 0x00e248f0 — RTTI class_Lootables",
+        "CME_EventSignal_ZU5...DBInvItem...VLootables...MemberCallback__vfunc_3 @ 0x00e24970 — item DB cache warm",
+        "CME_EventSignal_ZV5...onSquadLootType...VSquad...MemberCallback__vfunc_3 @ 0x00e5e870 — RTTI class_Squad",
+        "SGWScriptedWindow_X_UEvent_UI_LootDisplay___GameEventHandler__vfunc_0 @ 0x00ce3730"
+      ],
+      "contradictions_with_existing_docs": [
+        "right-click-routing-on-corpse.md does not cover downstream VLootables pipeline — now documented here",
+        "No distinct need/greed/pass roll NetOut event found — open question for follow-up"
+      ],
+      "new_addresses_for_address_map": [
+        "0x00e24970 — VLootables × Cache_ElementReady<DBInvItem> (item DB cache warm before loot window)"
+      ]
+    }
+  },
+  "open_questions": [
+    "crafting: onUpdateRacialParadigmLevel wire fields unknown — needs emitter/constructor decompile",
+    "stargate: StargateTriggerFailed wire fields unknown — server-side event, no emitter in client binary",
+    "stargate: gate address struct full layout — size and all fields beyond the 6-glyph UINT8 array",
+    "stargate: pending address vector (this+0x28/0x2c) semantics vs active vector (this+0x18/0x1c)",
+    "loot: need/greed/pass roll mechanics — no NetOut vote event found; may be server-autonomous",
+    "loot: DBInvItem cache miss behavior — does loot window block on cache or render with placeholders"
+  ],
+  "pending_structs": [],
+  "pending_globals": [],
+  "stats": {
+    "total_functions_decompiled": 72,
+    "subsystems_complete": 3,
+    "total_tool_calls_estimated": 85
+  }
+}

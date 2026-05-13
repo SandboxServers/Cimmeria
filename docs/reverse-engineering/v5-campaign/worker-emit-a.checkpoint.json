@@ -1,0 +1,79 @@
+{
+  "worker_id": "emit-a",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T01:30:00Z",
+  "scope_predicate": "FUN_* functions in [0x00400000, 0x00b00000) that are EmitNetOut_* CME event emitters (canonical GetSystem+LookupByName+SetField pattern OR vtable-based Event_NetOut_*::vftable pattern)",
+  "total_in_scope": 4,
+  "functions": [
+    {
+      "address": "00aea880",
+      "name_at_start": "FUN_00aea880",
+      "name_at_end": "EmitNetOut_callForAid",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 71,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 12,
+      "notes": "Pattern B emitter (vtable-based Event_NetOut_callForAid::vftable constructor, not canonical GetSystem+LookupByName). Constructor: EventNetOut_callForAid_Ctor at 0x00ae9590. Field: respawnerID (int*). Remaining deductions structural: generic int* type quality requires W0 struct creation; LAB_016d9b23 is EH table label not worth renaming."
+    },
+    {
+      "address": "00aeab70",
+      "name_at_start": "FUN_00aeab70",
+      "name_at_end": "EmitNetOut_SetRingTransporterDestination",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 67,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 12,
+      "notes": "Pattern B emitter (vtable-based Event_NetOut_SetRingTransporterDestination::vftable constructor). Constructor: EventNetOut_SetRingTransporterDestination_Ctor at 0x00ae9d70. Fields: aRegionId (int*), aDestinationId (int*). Mission 688 ring transporter destination setter. Wire format: aRegionId first, aDestinationId second."
+    },
+    {
+      "address": "00ae9590",
+      "name_at_start": "FUN_00ae9590",
+      "name_at_end": "EventNetOut_callForAid_Ctor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 66,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 8,
+      "notes": "Signal object constructor for Event_NetOut_callForAid. 12-line function: calls FUN_004412e0 (NetworkEvent base ctor), stamps NetworkEvent::vftable then Event_NetOut_callForAid::vftable. Pending callee: FUN_004412e0 should be named NetworkEvent_Ctor."
+    },
+    {
+      "address": "00ae9d70",
+      "name_at_start": "FUN_00ae9d70",
+      "name_at_end": "EventNetOut_SetRingTransporterDestination_Ctor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 66,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 8,
+      "notes": "Signal object constructor for Event_NetOut_SetRingTransporterDestination. Same 3-step pattern as callForAid_Ctor. Pending callee: FUN_004412e0 (NetworkEvent base ctor — same callee as callForAid_Ctor)."
+    }
+  ],
+  "pending_structs": [],
+  "pending_globals": [],
+  "pending_callees": [
+    {
+      "address": "004412e0",
+      "proposed_name": "NetworkEvent_Ctor",
+      "evidence": "Called by both EventNetOut_callForAid_Ctor (0x00ae9590) and EventNetOut_SetRingTransporterDestination_Ctor (0x00ae9d70) as the first call before vtable stamping. Role: base NetworkEvent constructor."
+    }
+  ],
+  "stats": {
+    "complete": 4,
+    "skipped_already_done": 0,
+    "skipped_too_small": 0,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 65
+  },
+  "resume_from_address": "scope_complete",
+  "reconnaissance_notes": "Exhaustive xref scan of CmeEventSignal_SetField (0x0043b850), CmeEventSignal_LookupByName (0x00a5c0f0), CmeEventSignal_GetSystem (0x0155f790) confirms only 2 primary EmitNetOut_* functions in [0x00400000, 0x00b00000): FUN_00aea880 (callForAid) and FUN_00aeab70 (SetRingTransporterDestination). Both use Pattern B: vtable-based Event_NetOut_*::vftable constructor + CmeEventSignal_SetField. Two companion constructors found and documented: FUN_00ae9590 and FUN_00ae9d70. Functions FUN_005c75d0 (huge action dispatcher, Event_Action_*/Event_SlashCmd_*/Event_Editor_*/Event_Option_* events), FUN_0056f4d0 (SGWUIManager ctor), FUN_00578f20/00579040/00579ae0 (property-change emitters with dynamic signal names, field='name'/'value'), FUN_00956620 (keybinding emitter), FUN_00a4cfd0 (slash-command dispatcher) all call GetSystem/LookupByName but are NOT EmitNetOut_* functions. Majority of EmitNetOut_* population is in upper half [0x00b00000+).",
+  "architectural_finding": "TWO CME EMIT PATTERNS CONFIRMED: (A) Canonical: GetSystem(0x0155f790) + LookupByName(0x00a5c0f0) + SetField(0x0043b850) + vtable dispatch -- used by EmitNetOut_DebugMinigameInstance (0x00c79120, upper half). (B) Vtable-typed: FUN_004412e0 (NetworkEvent base ctor) + vtable stamp to Event_NetOut_*::vftable + SetField(0x0043b850) + vtable dispatch at +0x8 -- used by callForAid (0x00aea880) and SetRingTransporterDestination (0x00aeab70) in lower half. Pattern B does not call GetSystem or LookupByName at emit time -- the event type is baked into the vtable at construction. This is an important distinction for the bible documentation."
+}

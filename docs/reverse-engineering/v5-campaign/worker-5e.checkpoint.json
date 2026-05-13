@@ -1,0 +1,54 @@
+{
+  "worker_id": "5e",
+  "campaign_version": "v5",
+  "session": 2,
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T10:30:00Z",
+  "scope_predicate": "MemberCallback functions in address range [0x00dfa820, 0x01570a10] inclusive — W5-E shard (last quintile)",
+  "total_in_scope": 189,
+  "resume_from_address": null,
+  "functions_complete": true,
+  "stats": {
+    "complete": 186,
+    "skipped_already_done": 2,
+    "skipped_too_small": 0,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 320
+  },
+  "function_summary": {
+    "rtti_vfunc_3_stubs": 182,
+    "rtti_vfunc_1_stubs": 2,
+    "shared_invoke_dispatch_vfunc_5": 1,
+    "msvc_scalar_destructor_vfunc_0": 1,
+    "skipped_already_done": 2,
+    "score_75_to_95_pattern": "RTTI accessor stubs: score 75 before plate, score 95 after plate. All TypeDescriptor* return, 5 lines, no branches, no scalable_free.",
+    "score_73_to_78_vfunc_5": "Shared invoke dispatch at 00e04570. xref_count=12. Score ceiling 78 due to void* ECX structural limit.",
+    "score_35_to_60_vfunc_0": "MSVC scalar destructor at 00e53f00. xref_count=1162 (shared destructor). Score floor 60 due to SEH undefined4 storage slots structural limitation."
+  },
+  "notable_addresses": [
+    {"address": "00e04570", "role": "Shared MemberCallback invoke dispatch (vfunc_5)", "xref_count": 12, "notes": "Dispatches to per-subscriber handler via ECX vtable. Score 78."},
+    {"address": "00e53f00", "role": "Shared MemberCallback MSVC scalar destructor (vfunc_0)", "xref_count": 1162, "notes": "Named: DestroyMemberCallback_EventTriggerContinuation_VCompositingProcess. Score 60 (SEH floor)."},
+    {"address": "00ebc790", "role": "VCompositingProcess EventTriggerContinuation vfunc_1 stub", "xref_count": 1, "notes": "TypeDescriptor* constant 0x1E6E0A4. Paired with 00ebc7a0 (vfunc_3) and destructor 00e53f00."},
+    {"address": "00e86f40", "role": "VASGWController_Player Player_Jump vfunc_1 stub", "xref_count": 1, "notes": "TypeDescriptor* constant 0x1E6B2B8. Paired with 00e86f50 (vfunc_3)."}
+  ],
+  "subscriber_clusters_covered": [
+    "VInventory", "VLootables", "VTrade", "VMinimap", "VGateTravel",
+    "VMinigameInfo", "VActionSet", "VScriptMapLayerCollection", "VMapRenderer",
+    "SGW::VCrafting", "VOrganization", "VWorldMap", "VBlackMarket", "VBMItemView",
+    "VSquad", "SGW::VSocial", "VMapManager", "VGameEntityBase", "VPortraitManager",
+    "VGameEntity", "VCoverInfo", "VGameAccount", "VUSGWFloatingInfoComponent",
+    "VASGWCamera_Player", "VASGWController_Player", "VUSGWTargetIndicator",
+    "VGameAppearanceManager", "VCooldownManager", "VSGWMeshCompositor",
+    "VSGWMaterialCompositor", "VRegionManager", "VCombatQueue", "VMailMessage",
+    "VCompositingProcess", "VComponentAppearanceProxy", "VAppearanceLoader",
+    "VAppearanceCache", "VWxGameMapEditor", "VMapChunkManager",
+    "VWxMapLayerViewport", "VMapTextureCache"
+  ],
+  "pending_structs": [],
+  "pending_globals": [],
+  "pending_callees": [],
+  "contradictions_with_findings_docs": [],
+  "notes": "W5-E COMPLETE. All 189 in-scope MemberCallback functions documented. Dominant pattern: RTTI vfunc_3 accessor stubs (TypeDescriptor* return, 5 lines, score 75->95). Two vfunc_1 stubs found with 3-line bodies and TypeDescriptor* magic constants (0x1E6B2B8 at 00e86f40, 0x1E6E0A4 at 00ebc790). One shared destructor vfunc_0 at 00e53f00 (xref_count=1162, score 60 floor due to SEH). One shared invoke dispatch vfunc_5 at 00e04570 (xref_count=12, score 78). No contradictions with existing findings docs. No new pending structs or globals."
+}

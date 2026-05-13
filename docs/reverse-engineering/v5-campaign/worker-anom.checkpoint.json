@@ -1,0 +1,70 @@
+{
+  "worker_id": "anom",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Three architectural anomalies in SGW.exe CME EventSignal subsystem: BM callback mechanism, GiveInventory anomaly, VSGWHomeless purpose",
+  "total_in_scope": 3,
+  "anomalies": [
+    {
+      "id": "anomaly-1-bm-callback",
+      "status": "resolved",
+      "resolution": "BM emitters use Pattern B (cme-event-signal.md). Not a third mechanism. scalable_malloc(0xC) + typed ctor + SetField x N + vtable slot 2 dispatch via thunk_FUN_0054c900 singleton. All 4 emitters confirmed: 0x00e59970, 0x00e59c70, 0x00e59da0, 0x00e59f70.",
+      "key_addresses": {
+        "EmitNetOut_BMCreateAuction": "0x00e59970",
+        "EmitNetOut_BMCancelAuction": "0x00e59c70",
+        "EmitNetOut_BMPlaceBid": "0x00e59da0",
+        "EmitNetOut_BMSearch": "0x00e59f70",
+        "BMCreateAuction_ctor": "0x00e5c1a0",
+        "BMCancelAuction_ctor": "0x00e5c440",
+        "BMPlaceBid_ctor": "0x00e5c6e0",
+        "BMSearch_ctor": "0x00e5c980",
+        "CME_singleton_accessor": "0x0054c900",
+        "CME_singleton_init": "0x0054c870",
+        "CME_System_Ctor": "0x00a37710"
+      },
+      "tool_calls_used": 14
+    },
+    {
+      "id": "anomaly-2-giveinventory",
+      "status": "resolved",
+      "resolution": "Event_NetOut_GiveInventory is a server-only GM tool signal. TypedEmitInfo exists (0x00d97830) but no client-side subscriber was ever registered — no CallbackImpl. The actual GiveInventory player path is Event_SlashCmd_GiveInventory which has full CallbackImpl (0x00c964d0) and SGWTextCommandMgr binding (0x00c9a2a0). register_NetOut_GiveInventory (0x00d97750) has zero callers — only a DATA xref at 0x019cad68 (vtable entry).",
+      "key_addresses": {
+        "register_NetOut_GiveInventory": "0x00d97750",
+        "TypedEmitInfo_destructor": "0x00d97830",
+        "SlashCmd_CallbackImpl_vfunc_2": "0x00c964d0",
+        "MemberCallbackRtti_SlashCmd_GiveInventory__SGWTextCommandMgr": "0x00c9a2a0"
+      },
+      "tool_calls_used": 6
+    },
+    {
+      "id": "anomaly-3-vsgwhomeless",
+      "status": "resolved",
+      "resolution": "VSGWHomeless is the SGWHomeless class — a single-instance in-editor developer tool manager. RTTI confirms class name 'class_SGWHomeless'. Not a catch-all; it is a specific subsystem for editor-mode event handling. Registers 22 Editor_* subscriptions via FUN_00d3efb0. Ends by calling FUN_0057b800('editor') to register as the editor mode. Some handlers open ShellExecuteW URLs (dev placeholders). Singleton at DAT_01ef2380, init-once at DAT_01ef23f8. W5-C checkpoint addresses 0x00d3daXX were mid-function addresses inside SGWPIEScriptManager helpers — not SGWHomeless function entry points.",
+      "key_addresses": {
+        "g_SGWHomeless_singleton": "DAT_01ef2380",
+        "g_SGWHomeless_initFlag": "DAT_01ef23f8",
+        "SGWHomeless_GetInstance": "0x00d3d440",
+        "SGWHomeless_RegisterSubscriptions": "0x00d3efb0",
+        "SGWHomeless_Handle_Editor_Close": "0x00d3e060",
+        "SGWHomeless_Handle_Editor_ViewWireframe": "0x00d3ed10",
+        "SGWHomeless_Handle_Editor_ShadowStats": "0x00d3ee60",
+        "RTTI_accessor_cluster_start": "0x00d40740",
+        "RTTI_accessor_cluster_end": "0x00d415c0",
+        "MemberCallback_SGWHomeless_Editor_Close_ctor": "0x00d40ad0",
+        "CmeEventSignal_Subscribe_impl": "0x00a37790"
+      },
+      "tool_calls_used": 18
+    }
+  ],
+  "stats": {
+    "anomalies_resolved": 3,
+    "anomalies_pending": 0,
+    "total_tool_calls": 38
+  },
+  "open_questions": [
+    "Option_* subscriptions for SGWHomeless (ChatFontSize, UIScale, GamepadEnabled, etc.) not located — must be in a second registration function not yet found. Low priority (client-only).",
+    "DAT_019bc634 — unresolved string label used by FUN_00d3eba0 SGWHomeless handler. Low priority.",
+    "FUN_0057b800 / FUN_0057d070 — CME mode registration calls at end of FUN_00d3efb0. Contract not yet documented."
+  ]
+}

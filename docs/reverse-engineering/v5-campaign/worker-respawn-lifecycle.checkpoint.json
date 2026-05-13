@@ -1,0 +1,171 @@
+{
+  "worker_id": "respawn-lifecycle",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Death + respawn lifecycle — HP->0 through onBeginAidWait, Defeat Window, callForAid NetOut, GiveRespawner NetOut, respawner selection, entity teleport and state reset; issues #232/#233",
+  "total_in_scope": 12,
+  "functions": [
+    {
+      "address": "00e6e330",
+      "name": "GameBeing_OnDeadStateChanged",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 39,
+      "max_achievable": 77,
+      "notes": "BSF_Dead handler — toggles interaction type, fires Event_Entity_InteractionUpdate. Score ceiling limited by __thiscall void* structural deductions."
+    },
+    {
+      "address": "00dff610",
+      "name": "GameBeing_GetInteractionConfig",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 61,
+      "max_achievable": 83,
+      "notes": "Returns 4-slot interaction descriptor array. If pThis+0x158 bit0 (BSF_Dead) is set, fills all slots with loot descriptor. Else switches on entity class tag at pThis+0x13c."
+    },
+    {
+      "address": "00e791d0",
+      "name": "GameBeing_ApplyDeadInteraction",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 52,
+      "max_achievable": 85,
+      "notes": "Applies death-state color tint to CharacterName widget. UI-layer only, does not modify simulation state."
+    },
+    {
+      "address": "00cc2eb0",
+      "name": "SGWScriptedWindow_ParseBeginAidWaitEvent",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 28,
+      "max_achievable": 78,
+      "notes": "Parses onBeginAidWait event: reads TimeToAid + respawners array (respawnerID + respawnerName per entry), pushes to Lua, fires callback. Score ceiling from 51 undefined locals — structurally unfixable complex function."
+    },
+    {
+      "address": "00cea4a0",
+      "name": "SGWScriptedWindow_OnBeginAidWait_Dispatch",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 47,
+      "max_achievable": 90,
+      "notes": "Thin dispatch thunk — reads pThis+0x8/0xc/0x10, calls SGWScriptedWindow_ParseBeginAidWaitEvent."
+    },
+    {
+      "address": "00aa1c00",
+      "name": "Lua_callForAid",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 53,
+      "max_achievable": 93,
+      "notes": "Lua C binding. Validates 2 args, reads respawnerID, calls EmitNetOut_callForAid. Full wire path: PlayerDefeat.lua -> callForAid -> Lua_callForAid -> EmitNetOut_callForAid -> RouteOutgoingEntityRpc -> cell method 67 (CALL_FOR_AID)."
+    },
+    {
+      "address": "00aea880",
+      "name": "EmitNetOut_callForAid",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 72,
+      "max_achievable": 89,
+      "notes": "Pattern-B NetOut emitter. scalable_malloc(0xc) + EventNetOut_callForAid_Ctor + SetField(respawnerID) + CmeEventSignal dispatch. Documented in prior session."
+    },
+    {
+      "address": "00c81430",
+      "name": "EmitNetOut_GiveRespawner",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 49,
+      "max_achievable": 89,
+      "notes": "Pattern-B NetOut emitter. Reads RespawnerMobId from entity data, allocates Event_NetOut_GiveRespawner (0xc bytes), sets aRespawnerMobID field, dispatches via FUN_00cace50."
+    },
+    {
+      "address": "00cb7ee0",
+      "name": "EventNetOut_GiveRespawner_Ctor",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": 55,
+      "max_achievable": 95,
+      "notes": "Pattern-B Ctor. 12-byte event object. NetworkEvent_Ctor -> NetworkEvent::vftable -> Event_NetOut_GiveRespawner::vftable (double-overwrite MSVC pattern). vtable at 0x019B37E0."
+    },
+    {
+      "address": "00c6fc40",
+      "name": "RouteOutgoingEntityRpc",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": null,
+      "max_achievable": null,
+      "notes": "Documented in prior sessions (W-world-entry / address-map). Routes outgoing entity method calls. Cell methods: bits 0-1 of pArgData+0x1c = 0. Base methods: bits = 2."
+    },
+    {
+      "address": "00e68570",
+      "name": "GameBeing_RightClickGatePredicate",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": null,
+      "max_achievable": null,
+      "notes": "Documented in prior session (W-right-click-routing). Gate predicate: reads pThis+0x158 bit0 (BSF_Dead) to allow corpse looting."
+    },
+    {
+      "address": "00e01c90",
+      "name": "GameBeing_OnStateFieldUpdate",
+      "status": "complete",
+      "rename_applied": true,
+      "prototype_set": true,
+      "plate_comment": true,
+      "completeness_score": null,
+      "max_achievable": null,
+      "notes": "Documented in W-state session. XOR-delta dispatch: computes changed bits, routes each set bit to per-flag handler. BSF_Dead dispatched here."
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "OQ-1",
+      "question": "No SGWPlayerRespawner RTTI found in client binary — is this a server-only entity type, or does it use a different string name?",
+      "evidence": "String search for 'SGWPlayerRespawner' and 'SGWRespawner' returned no results.",
+      "status": "open"
+    },
+    {
+      "id": "OQ-2",
+      "question": "Issue #233 — per-player respawner unlock gating. No binary evidence of a per-player unlock set found. Current impl uses global Vec<RespawnerDef> filtered by world_name only.",
+      "evidence": "No RTTI, no function, no string for per-player unlock logic in client binary. Design decision required server-side.",
+      "status": "open — requires server-side design decision"
+    },
+    {
+      "id": "OQ-3",
+      "question": "Entity class tag at pThis+0x13c: what are the exact values for each entity class? 1-4 observed in switch, but names unconfirmed.",
+      "evidence": "Decompiled switch in GameBeing_GetInteractionConfig 0x00dff610 shows cases 1/2/3/4. RTTI names not yet correlated.",
+      "status": "open"
+    }
+  ],
+  "key_findings": [
+    "Corpse model: NO separate corpse entity spawned. BSF_Dead (bit 0, pThis+0x158) flip on existing entity. Ragdoll via kismet Entity_Death sequence (5001) — client-side actor physics change.",
+    "onBeginAidWait wire format confirmed: [INT32 TimeToAid][UINT32 count]([INT32 respawnerID][WSTRING respawnerName] * count). String names 'TimeToAid'/'respawners'/'respawnerID'/'respawnerName' at 0x019B4670/7C/88/94.",
+    "Client respawn trigger: Lua PlayerDefeat.lua callForAid -> Lua_callForAid (0x00aa1c00) -> EmitNetOut_callForAid (0x00aea880) -> Event_NetOut_callForAid CME signal -> RouteOutgoingEntityRpc (0x00c6fc40) -> cell method 67 (CALL_FOR_AID).",
+    "Auto-respawn (method 70 RESPAWN) triggered by client timer expiry — no separate function, same handle_respawn() code path with respawner_id=-1.",
+    "GiveRespawner flow: server emits Event_NetOut_GiveRespawner via EmitNetOut_GiveRespawner (0x00c81430). Carries single field 'aRespawnerMobID' (entity id of the granted respawner).",
+    "Same-world respawn: CellToBaseMsg::ReanchorPlayer. No RESET_ENTITIES. Stats reset, state flags cleared, position updated, CREATE_BASE_PLAYER + VIEWPORT + CREATE_CELL_PLAYER + FORCED_POSITION + appearance replay.",
+    "Cross-world respawn: CellToBaseMsg::GateTravel — full instance teardown unavoidable."
+  ]
+}

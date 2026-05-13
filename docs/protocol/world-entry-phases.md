@@ -22,7 +22,18 @@ RESET_ENTITIES (0x04) — CONSTANT_LENGTH = 1
   [keepBase: u8 = 0]
 ```
 
-This tells the client to tear down all existing entity state (from a previous session or character). The client processes this, then sends `onClientReady` (msg_id `0x01`) to signal it's ready for the new entity.
+This tells the client to tear down all existing entity state (from a previous session or character). The client processes this, then automatically sends `ENABLE_ENTITIES` (wire method `enableEntities`, base method index 1) to signal readiness.
+
+**Client sends** (immediately after processing RESET_ENTITIES, from `BroadcastEntityActivation` @ `0x00dd9280`):
+```
+ENABLE_ENTITIES — CONSTANT_LENGTH = 8   (SGW customization; stock BigWorld = 1 byte)
+  [dummy: u64 LE = 0]   — padding; ignored by server
+```
+
+> **Note — SGW vs stock BigWorld**: Stock BigWorld sends `uint8 dummy` (1 byte). SGW extends
+> this to `uint64 dummy` (8 bytes). Confirmed by binary (`PUSH 0x8` at `0x017bade9` in the
+> InterfaceElement constructor call for the `enableEntities` descriptor) and by the SGW C++
+> message table at `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp:83`.
 
 **Server stores**: Pending world entry data (player ID, position, world name) for use in Phase 5b.
 

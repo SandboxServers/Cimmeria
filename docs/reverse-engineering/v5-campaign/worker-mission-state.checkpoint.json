@@ -1,0 +1,212 @@
+{
+  "worker": "W-mission-state",
+  "session": "4b",
+  "date": "2026-05-13",
+  "scope": "Mission system client-side state machine — MissionSet handlers and infrastructure",
+  "findings_doc": "docs/reverse-engineering/findings/mission-state-machine.md",
+  "address_map_updated": true,
+
+  "stats": {
+    "functions_renamed": 13,
+    "functions_prototyped": 13,
+    "plates_set": 13,
+    "completeness_checks_run": 8,
+    "score_above_60": 0,
+    "score_55_to_60": 1,
+    "score_below_55": 7,
+    "accepted_below_60": 8,
+    "reason_below_60": "All fixable deductions blocked on struct definitions (MissionEntry, StepEntry, ObjectiveEntry, TaskEntry, MissionSet) which are W0 scope. Max achievable 77-89 once structs defined."
+  },
+
+  "functions": [
+    {
+      "address": "0x00d163e0",
+      "name": "MissionSet_FireUiEvent",
+      "status": "completed",
+      "effective_score": 54.9,
+      "notes": "Token-indexed UI toast dispatch. Score 54.9 — closest to 60. Residual gap is SEH/RTTI magic numbers, not domain constants. Accepted after 1 pass."
+    },
+    {
+      "address": "0x00d16800",
+      "name": "MissionSet_FindMissionById",
+      "status": "completed",
+      "effective_score": 44.4,
+      "notes": "Mission lookup by INT32 ID. Score 44.4 — undefined locals + struct access unresolved. Accepted after 1 pass."
+    },
+    {
+      "address": "0x00d16dd0",
+      "name": "MissionSet_PropagateMissionUpdate",
+      "status": "completed",
+      "effective_score": 41.1,
+      "notes": "State cascade function. Score 41.1 — 4 magic numbers, undefined locals. Accepted after 1 pass."
+    },
+    {
+      "address": "0x00d17c10",
+      "name": "MissionSet_ActivateMission",
+      "status": "completed",
+      "effective_score": null,
+      "notes": "Not completeness-checked (budget). Name, prototype, plate applied. Role: first-step activation on mission accept."
+    },
+    {
+      "address": "0x00d18a30",
+      "name": "MissionSet_HandleTimerUpdate",
+      "status": "completed",
+      "effective_score": null,
+      "notes": "Timer type routing (0x09/0x0A/0x0B). Name, prototype, plate applied."
+    },
+    {
+      "address": "0x00d18cf0",
+      "name": "MissionSet_HandleOnStepUpdate",
+      "status": "completed",
+      "effective_score": 23.0,
+      "notes": "Step update handler. Score 23.0 — 49 undefined locals, 14 magic numbers. All fixable deductions blocked on StepEntry struct. Accepted after 1 pass."
+    },
+    {
+      "address": "0x00d18fd0",
+      "name": "MissionSet_HandleOnObjectiveUpdate",
+      "status": "completed",
+      "effective_score": 23.0,
+      "notes": "Objective update handler. Score 23.0 — 56 undefined locals, 26 magic numbers, 4 labels unrenamed. All fixable deductions blocked on ObjectiveEntry struct. Accepted after 1 pass."
+    },
+    {
+      "address": "0x00d194b0",
+      "name": "MissionSet_HandleOnTaskUpdate",
+      "status": "completed",
+      "effective_score": 33.1,
+      "notes": "Task update handler. Score 33.1 — 44 undefined locals. Accepted after 1 pass."
+    },
+    {
+      "address": "0x00d19870",
+      "name": "MissionSet_HandleMissionSharedOffer",
+      "status": "completed",
+      "effective_score": null,
+      "notes": "Shared mission offer display handler. Name, prototype, plate applied."
+    },
+    {
+      "address": "0x00d19a40",
+      "name": "MissionSet_HandleMissionOffer",
+      "status": "completed",
+      "effective_score": null,
+      "notes": "Mission offer handler (sharing target side). Name, prototype, plate applied."
+    },
+    {
+      "address": "0x00d1a270",
+      "name": "MissionSet_HandleOnMissionUpdate",
+      "status": "completed",
+      "effective_score": 33.1,
+      "notes": "Main mission update handler. Score 33.1 — 42 undefined locals, 13 magic numbers. Accepted after 1 pass."
+    },
+    {
+      "address": "0x00d1a500",
+      "name": "MissionSet_HandleMissionRewards",
+      "status": "completed",
+      "effective_score": 33.1,
+      "notes": "Reward delivery handler. Score 33.1 — 83 undefined locals, 67 magic numbers. Accepted after 1 pass."
+    },
+    {
+      "address": "0x00d1e030",
+      "name": "MissionSet_AllocateMissionEntry",
+      "status": "completed",
+      "effective_score": null,
+      "notes": "New MissionEntry allocation. Name, prototype, plate applied."
+    },
+    {
+      "address": "0x00d9fc00",
+      "name": "MissionSet_onMissionUpdate_Subscriber",
+      "status": "skipped_already_named",
+      "effective_score": null,
+      "notes": "Named in previous session (session 4b pre-summary). Factory wrapper: allocates 0xC-byte NetworkEvent, calls Event_NetIn_onMissionUpdate ctor."
+    },
+    {
+      "address": "0x00daa680",
+      "name": "MissionSet_SubscribeOnMissionUpdate",
+      "status": "completed",
+      "effective_score": null,
+      "notes": "Startup registration for onMissionUpdate. Name, prototype, plate applied."
+    }
+  ],
+
+  "pending_structs": [
+    {
+      "name": "MissionSet",
+      "reason": "W0 scope. Confirmed fields: +0x58 stepList, +0x64 missionList, +0x70 taskList, +0x7C timerState, +0x9C-0xA8 missionLoadState[4]."
+    },
+    {
+      "name": "MissionEntry",
+      "reason": "W0 scope. Confirmed fields: +0x60 missionGiverName (INT32), +0x64 status (INT8/INT32), +0x100 status2 (INT8 — may be mirror or distinct struct)."
+    },
+    {
+      "name": "StepEntry",
+      "reason": "W0 scope. Confirmed fields: +0x3C status (INT8)."
+    },
+    {
+      "name": "ObjectiveEntry",
+      "reason": "W0 scope. Confirmed fields: +0x30 status (INT8), +0x34 optionalFlag (INT8). Hidden flag write offset not recovered."
+    },
+    {
+      "name": "TaskEntry",
+      "reason": "W0 scope. Scalar array layout — confirmed: [2]=status (INT8), [3]=count (INT32). Stride not recovered."
+    }
+  ],
+
+  "pending_globals": [],
+
+  "open_questions": [
+    {
+      "id": "OQ-1",
+      "description": "Repeatable mission reset confirmation: what does MissionSet_ActivateMission (0xd17c10) do with pre-existing child entries? Needs decompile.",
+      "priority": "high"
+    },
+    {
+      "id": "OQ-2",
+      "description": "MissionEntry +0x64 vs +0x100 status fields: two offsets receive same Status byte in HandleOnMissionUpdate. May be two distinct structs overlapping in decompiler view.",
+      "priority": "medium"
+    },
+    {
+      "id": "OQ-3",
+      "description": "Hidden flag write offset in ObjectiveEntry: Hidden byte read from wire but no confirmed struct offset found.",
+      "priority": "medium"
+    },
+    {
+      "id": "OQ-4",
+      "description": "FUN_00d205c0 role: triggered in HandleOnMissionUpdate when local_50 > 0. Likely mission data/PAK loading. Needs decompile.",
+      "priority": "medium"
+    },
+    {
+      "id": "OQ-5",
+      "description": "ChosenRewards outbound path: SGWNetworkManager handler for Event_NetOut_ChosenRewards not traced. Client emit path undocumented.",
+      "priority": "low"
+    },
+    {
+      "id": "OQ-6",
+      "description": "BigWorldTimeComplete bool semantics in timer handler: timer expiry signal vs progress update?",
+      "priority": "low"
+    },
+    {
+      "id": "OQ-7",
+      "description": "FUN_00c6d1c0 role: called with (this+0x7C, duration, BigWorldTimeComplete) in timer handler. Timer UI object or server-time-sync?",
+      "priority": "low"
+    },
+    {
+      "id": "OQ-8",
+      "description": "Count INT32 vs INT8 wire mismatch: onTaskUpdate handler reads Count as INT32 (via 0xe3cba0) but alias.xml defines MissionTaskStatus.count as INT8. Verify Cimmeria serializer encoding.",
+      "priority": "high"
+    }
+  ],
+
+  "key_findings": {
+    "architecture": "MissionSet singleton holds all client-side mission state. Server is authoritative; client is pure display layer. No client-authoritative mission logic in SGW.exe.",
+    "status_values": "Status 0=removed/failed, 1=active/accepted, 2=complete (2 inferred from token pattern, not explicitly confirmed in decompile).",
+    "task_primitives_not_in_binary": "KillCount, CollectItem, VisitRegion, TalkToNpc, UseObject, Timer strings NOT in SGW.exe. Server-side PAK data only. Client tracks Count+Status numerically.",
+    "ui_tokens": {
+      "0x138F": "Mission Removed/Failed",
+      "0x1390": "Step Activated",
+      "0x1391": "Objective Unlocked",
+      "0x1392": "Objective Removed",
+      "0x1393": "Mission Accepted"
+    },
+    "propagation_engine": "MissionSet_PropagateMissionUpdate (0xd16dd0) is the cascade engine — called after every state change to walk task->objective->step->mission hierarchy.",
+    "registration": "All subscriptions installed at startup by RegisterBulkNetOutSignals (0xdb3390). Per-event wrapper: MissionSet_SubscribeOnMissionUpdate (0xdaa680).",
+    "count_int32_vs_int8": "POTENTIAL WIRE MISMATCH: onTaskUpdate reads Count as INT32 but alias.xml says INT8. Verify Cimmeria."
+  }
+}

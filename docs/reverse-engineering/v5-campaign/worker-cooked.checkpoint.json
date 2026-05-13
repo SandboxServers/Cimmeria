@@ -1,0 +1,117 @@
+{
+  "worker": "W-cooked",
+  "session": 5,
+  "date": "2026-05-13",
+  "analyst": "Game Archaeology Specialist",
+  "status": "COMPLETE",
+
+  "summary": "Verified and documented the cooked data pipeline client-side architecture. Found 21 ServerSource categories (IDs 1-21, not 0-22 as in existing docs). Applied V5 documentation to 25 functions. Identified contradictions with existing docs/engine/cooked-data-pipeline.md. Wrote findings doc.",
+
+  "tasks_completed": [
+    "Traced PAK file open + ZipStorage decompression path (ZipStorageBase_OpenArchive @ 0x00479340)",
+    "Documented all 21 resource categories with binary-confirmed integer IDs and PAK filenames",
+    "Documented char_creation special case: category 7 = CookedCharCreation.pak",
+    "Documented version-negotiation: versionInfoRequest -> onVersionInfo -> cache check -> MetaData write -> elementDataRequest",
+    "Documented Event_Cache_ElementReady/Error chain via ServerSource event subscriptions",
+    "Applied V5 documentation to 25 cooked-data functions in Ghidra (renamed + plated + prototype where applicable)",
+    "Documented 5-event-per-category CME subscription pattern (Net_Connected, Net_Disconnected, onVersionInfo, Net_ProxyData, onCookedDataError)",
+    "Updated docs/reverse-engineering/findings/cooked-data-pipeline.md (NEW file)",
+    "Updated docs/reverse-engineering/findings/README.md index",
+    "Updated docs/reverse-engineering/address-map.md with 26 new addresses",
+    "Identified contradiction: existing pipeline doc has categories 0-22; binary has 1-21"
+  ],
+
+  "tasks_not_completed": [
+    "Did not modify docs/engine/cooked-data-pipeline.md or docs/engine/cooked-data-pak-format.md (WORKER_BRIEF scope restriction — only docs/reverse-engineering/ allowed)",
+    "Did not decompile FUN_0157ce00 (CacheLibrary body ctor)",
+    "Did not decompile FUN_0047a690 (InvalidateAll cache flush)",
+    "Did not decompile LAB_0043dad0 (Event_Net_ProxyData fragment reassembly handler)",
+    "Did not decompile FUN_0043a9d0 (cache-miss check in ServerSource_RequestElement)"
+  ],
+
+  "ghidra_annotations": {
+    "functions_renamed": 25,
+    "functions_plated": 20,
+    "functions_prototyped": 2,
+    "functions": [
+      { "address": "0x00420074", "name": "CookedData_RegisterAllLibCategories", "plated": true },
+      { "address": "0x004786c0", "name": "LibCategoryBase_Ctor", "plated": true, "prototype": "void LibCategoryBase_Ctor(void *this, unsigned int category_id) __thiscall" },
+      { "address": "0x004786f0", "name": "CacheLibrary_GetSingleton", "plated": true, "prototype": "void * CacheLibrary_GetSingleton(void) __cdecl" },
+      { "address": "0x00478840", "name": "CacheLibrary_Ctor", "plated": true },
+      { "address": "0x00437650", "name": "CacheLibrary_RegisterCategory", "plated": true },
+      { "address": "0x0044c800", "name": "LibCategory_ServerSource_Ctor_cat1_KismetSeqEvent", "plated": true },
+      { "address": "0x004267f0", "name": "CME_MemberCallback_Ctor_ServerSource_NetConnected", "plated": true },
+      { "address": "0x004268f0", "name": "CME_MemberCallback_Ctor_ServerSource_NetDisconnected", "plated": false },
+      { "address": "0x00426970", "name": "CME_MemberCallback_Ctor_ServerSource_onVersionInfo", "plated": false },
+      { "address": "0x004269f0", "name": "CME_MemberCallback_Ctor_ServerSource_NetProxyData", "plated": false },
+      { "address": "0x00426a70", "name": "CME_MemberCallback_Ctor_ServerSource_onCookedDataError", "plated": false },
+      { "address": "0x0042a7b0", "name": "CME_Subscribe_ServerSource_NetConnected", "plated": false },
+      { "address": "0x0042a840", "name": "CME_Subscribe_ServerSource_NetDisconnected", "plated": false },
+      { "address": "0x0042a8d0", "name": "CME_Subscribe_ServerSource_onVersionInfo", "plated": false },
+      { "address": "0x0042a960", "name": "CME_Subscribe_ServerSource_NetProxyData", "plated": false },
+      { "address": "0x0042a9f0", "name": "CME_Subscribe_ServerSource_onCookedDataError", "plated": false },
+      { "address": "0x00a37790", "name": "CME_EventSignal_Subscribe", "plated": true },
+      { "address": "0x00441630", "name": "ServerSource_onVersionInfo_Handler_cat6", "plated": true },
+      { "address": "0x00441aa0", "name": "ServerSource_onCookedDataError_Handler_cat6", "plated": true },
+      { "address": "0x00479340", "name": "ZipStorageBase_OpenArchive", "plated": true },
+      { "address": "0x00479930", "name": "ZipStorageBase_WriteStreamToFile", "plated": false },
+      { "address": "0x00479e10", "name": "ZipStorageBase_WriteMetaDataVersion", "plated": true },
+      { "address": "0x00479e90", "name": "ServerSource_SetVersion", "plated": true },
+      { "address": "0x0043bdb0", "name": "ServerSource_RequestElement", "plated": true },
+      { "address": "0x013a1620", "name": "CZipStorage_Dtor", "plated": true }
+    ]
+  },
+
+  "key_findings": {
+    "category_count_correction": {
+      "existing_doc_claim": "22 categories (0-22)",
+      "binary_confirmed": "21 categories (1-21). Category 0 does not exist on client.",
+      "source": "CookedData_RegisterAllLibCategories @ 0x00420074 — decompiled 2026-05-13"
+    },
+    "category_21_correction": {
+      "existing_doc_claim": "category 21 = pet_command, category 22 = behavior_event",
+      "binary_confirmed": "category 21 = BehaviorEventData / CookedBehaviorEvents.pak",
+      "note": "Server resource.cpp table is off at the high end; binary is authoritative"
+    },
+    "five_events_per_category": {
+      "events": ["Event_Net_Connected", "Event_Net_Disconnected", "Event_NetIn_onVersionInfo", "Event_Net_ProxyData", "Event_NetIn_onCookedDataError"],
+      "pattern": "Each LibCategory ctor calls 5 CME_Subscribe_ServerSource_* wrappers"
+    },
+    "version_negotiation": {
+      "flow": "onVersionInfo → store version at this+0x24 → write to PAK MetaData → iterate pending requests → fire elementDataRequest per entry",
+      "invalidate_all": "bool field; if true flushes cache linked list at this+0x2C via FUN_0047a690",
+      "invalid_keys": "ARRAY<long> field; if InvalidateAll=false, per-key invalidation via FUN_0043b550"
+    },
+    "covernodes_local_pak": {
+      "type": "ClientSource (not ServerSource)",
+      "no_category_id": true,
+      "note": "Loaded locally, not requested from server"
+    }
+  },
+
+  "globals_found": [
+    { "address": "0x01ea56d8", "name": "g_pCacheLibrary", "type": "void*", "notes": "CacheLibrary singleton (12 bytes)" },
+    { "address": "0x01ea56dc", "name": "g_CacheLibraryInitialized", "type": "byte", "notes": "Init/shutdown state" }
+  ],
+
+  "open_questions": [
+    "FUN_0157ce00 — CacheLibrary body constructor (internal map initialization)",
+    "FUN_0047a690 — InvalidateAll cache flush handler (clears linked list at ServerSource+0x2C)",
+    "LAB_0043dad0 — Event_Net_ProxyData handler (fragment reassembly); address is a label not a function — needs decompile",
+    "FUN_0043a9d0 — cache-miss check called by ServerSource_RequestElement",
+    "FUN_004349b0 — CME emit wrapper for Event_Cache_ElementError",
+    "Server resource.cpp category 0 vs client 1-based indexing — needs server-side audit",
+    "Category 21 client=BehaviorEventData vs server=pet_command numbering mismatch — needs server audit"
+  ],
+
+  "files_modified": [
+    "docs/reverse-engineering/findings/cooked-data-pipeline.md (CREATED)",
+    "docs/reverse-engineering/findings/README.md (updated index)",
+    "docs/reverse-engineering/address-map.md (appended cooked-data section)"
+  ],
+
+  "files_not_modified_scope_restriction": [
+    "docs/engine/cooked-data-pipeline.md",
+    "docs/engine/cooked-data-pak-format.md"
+  ]
+}

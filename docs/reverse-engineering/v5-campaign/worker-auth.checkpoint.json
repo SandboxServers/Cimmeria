@@ -1,0 +1,52 @@
+{
+  "session": "W-auth",
+  "phase": "Complete",
+  "date": "2026-05-13",
+  "findings": {
+    "packet_encrypter_ctor": "0x01603a70",
+    "packet_encrypter_vtable": "0x01b27374",
+    "packet_encrypter_encrypt_vfunc1": "0x01603b80",
+    "packet_encrypter_decrypt_vfunc2": "0x01603fa0",
+    "packet_encrypter_destructor": "0x01604ac0",
+    "packet_filter_base_init": "0x016043a0",
+    "session_key_deserialization": "0x015eb940",
+    "server_select_success_handler": "0x00ddfd00",
+    "aes_cbc_enc_init": "0x0040e030",
+    "aes_cbc_dec_init": "0x0040d0b0",
+    "hmac_md5_init": "0x01604d00",
+    "cbc_enc_mode_init": "0x0040d000",
+    "cbc_dec_mode_init": "0x0040d0b0",
+    "stream_transformation_filter_ctor": "0x004089b0",
+    "hash_filter_ctor": "0x00414720",
+    "iv_buffer_ctor": "0x00a587f0",
+    "crypto_library": "CryptoPP (Crypto++)",
+    "aes_impl": "CryptoPP::BlockCipherFinal<0, Rijndael::Enc>",
+    "cbc_enc_impl": "CryptoPP::CipherModeFinalTemplate_ExternalCipher<CBC_Encryption>",
+    "cbc_dec_impl": "CryptoPP::CipherModeFinalTemplate_ExternalCipher<CBC_Decryption>",
+    "hmac_impl": "CryptoPP::HMAC<CryptoPP::Weak1::MD5>",
+    "key_derivation": "direct — raw 32-byte session key, no KDF",
+    "aes_key_bytes": 32,
+    "hmac_key_bytes": 32,
+    "hmac_key_source": "same buffer as AES key (this+8)",
+    "iv_bytes": 16,
+    "iv_source": "zero-initialized at this+0x18",
+    "iv_reuse": "yes — same zero IV per-packet (stateless reset each packet)",
+    "padding": "PKCS7 via CryptoPP::StreamTransformationFilter with PKCS_PADDING (param_3=4)",
+    "wire_order": "encrypt-then-MAC: [ciphertext][16-byte HMAC-MD5 tag]",
+    "session_key_format": "64-char hex string in SOAP XML decoded to 32 raw bytes by gSOAP xsd:hexBinary handler",
+    "encryption_activation": "in register_NetIn_ServerSelectSuccess (0x00ddfd00) after SOAP ServerSelect response parsed"
+  },
+  "divergences_from_docs": {
+    "crypto_library": "Existing docs say 'OpenSSL'. Binary uses CryptoPP (Crypto++) not OpenSSL for AES and HMAC.",
+    "iv_reuse": "Confirmed per-packet zero IV reuse (no IV incremented between packets)."
+  },
+  "confirmed_matches": {
+    "algorithm": "AES-256-CBC + HMAC-MD5",
+    "key_length": "256-bit (32 bytes)",
+    "hmac_tag_length": "16 bytes",
+    "wire_layout": "[ciphertext][hmac_tag]",
+    "padding": "PKCS7",
+    "hmac_key_equals_aes_key": true,
+    "zero_iv": true
+  }
+}

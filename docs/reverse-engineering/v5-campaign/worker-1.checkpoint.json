@@ -1,0 +1,139 @@
+{
+  "worker_id": 1,
+  "campaign_version": "v5",
+  "created_at": "2026-05-12T18:00:00Z",
+  "last_updated_at": "2026-05-12T19:45:00Z",
+  "scope_predicate": "CME EventSignal NetOut handlers for mission/crafting/gate/minigame (Cluster A) and NetIn handlers for combat/stats (Cluster B), named register_NetOut_<Event> and register_NetIn_<Event> in Ghidra",
+  "total_in_scope": 58,
+  "scope_discovery_note": "Worker brief estimated ~340 functions with prefix CME_EventSignal_VEvent_NetOut_* but that naming convention does not exist in the live Ghidra DB. Annotation script 04 named functions register_NetOut_<Event> and register_NetIn_<Event>. Total functions matching W1 scope criteria: 48 Cluster A stubs + 1 Cluster A worker + 11 Cluster B stubs = 60 (2 were already-done or duplicate). Actual distinct processed: 58.",
+  "functions": [
+    {"address": "00ae9dd0", "name_at_start": "register_NetOut_SetRingTransporterDestination", "name_at_end": "register_NetOut_SetRingTransporterDestination", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub, 3 lines, plate comment expanded"},
+    {"address": "00aea3d0", "name_at_start": "register_NetOut_RespecCraft", "name_at_end": "register_NetOut_RespecCraft", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub, 3 lines"},
+    {"address": "00c79120", "name_at_start": "register_NetOut_debugMinigameInstance", "name_at_end": "EmitNetOut_DebugMinigameInstance", "status": "complete", "score_before": 23, "score_after": 57, "workflow": "full", "skipped_reason": null, "tool_calls_used": 18, "notes": "MISCLASSIFIED BY SCRIPT 04: not a name-registration stub. This is the CME EventSignal EMIT function that fires Event_NetOut_debugMinigameInstance with pEventData fields. 154 lines, full V5 applied. Residual fixable deductions: 43 — accepted after 2 passes. Remaining issues: undefined4[4] SSO string buffers need StdString struct (W0 pending_structs), 14 magic numbers at std::string internals, 1 unrenamed LAB label at 0x016F5B10 (EH landing pad). CONTRADICTION with findings docs: this is not a TypedEmitInfo accessor — it is a full event emit function with field extraction. Max achievable score 78 (structural limit from register variables)."},
+    {"address": "00cb29f0", "name_at_start": "register_NetOut_ShareMission", "name_at_end": "register_NetOut_ShareMission", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb2ba0", "name_at_start": "register_NetOut_ShareMissionResponse", "name_at_end": "register_NetOut_ShareMissionResponse", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb2d50", "name_at_start": "register_NetOut_MissionAbandon", "name_at_end": "register_NetOut_MissionAbandon", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub. Note: AbandonMission at 00d1f920 is a second registration for the same logical operation."},
+    {"address": "00cb3da0", "name_at_start": "register_NetOut_debugStartMinigame", "name_at_end": "register_NetOut_debugStartMinigame", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb3f50", "name_at_start": "register_NetOut_debugSpectateMinigame", "name_at_end": "register_NetOut_debugSpectateMinigame", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb41f0", "name_at_start": "register_NetOut_debugJoinMinigame", "name_at_end": "register_NetOut_debugJoinMinigame", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb4490", "name_at_start": "register_NetOut_MinigameComplete", "name_at_end": "register_NetOut_MinigameComplete", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb4640", "name_at_start": "register_NetOut_GiveMinigameContact", "name_at_end": "register_NetOut_GiveMinigameContact", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb47f0", "name_at_start": "register_NetOut_RemoveMinigameContact", "name_at_end": "register_NetOut_RemoveMinigameContact", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb5810", "name_at_start": "register_NetOut_MissionAssign", "name_at_end": "register_NetOut_MissionAssign", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb59c0", "name_at_start": "register_NetOut_MissionClear", "name_at_end": "register_NetOut_MissionClear", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb5b70", "name_at_start": "register_NetOut_MissionClearActive", "name_at_end": "register_NetOut_MissionClearActive", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb5e10", "name_at_start": "register_NetOut_MissionClearHistory", "name_at_end": "register_NetOut_MissionClearHistory", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb60b0", "name_at_start": "register_NetOut_MissionList", "name_at_end": "register_NetOut_MissionList", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb6350", "name_at_start": "register_NetOut_MissionListFull", "name_at_end": "register_NetOut_MissionListFull", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb65f0", "name_at_start": "register_NetOut_MissionDetails", "name_at_end": "register_NetOut_MissionDetails", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb67a0", "name_at_start": "register_NetOut_MissionAdvance", "name_at_end": "register_NetOut_MissionAdvance", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb6950", "name_at_start": "register_NetOut_MissionReset", "name_at_end": "register_NetOut_MissionReset", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb6b00", "name_at_start": "register_NetOut_MissionComplete", "name_at_end": "register_NetOut_MissionComplete", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cb6cb0", "name_at_start": "register_NetOut_MissionSetAvailable", "name_at_end": "register_NetOut_MissionSetAvailable", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cbc3e0", "name_at_start": "register_NetOut_GiveStargateAddress", "name_at_end": "register_NetOut_GiveStargateAddress", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00cbc590", "name_at_start": "register_NetOut_RemoveStargateAddress", "name_at_end": "register_NetOut_RemoveStargateAddress", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d1f920", "name_at_start": "register_NetOut_AbandonMission", "name_at_end": "register_NetOut_AbandonMission", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub. Duplicate of MissionAbandon (00cb2d50) for same logical operation."},
+    {"address": "00d1fad0", "name_at_start": "register_NetOut_ChosenRewards", "name_at_end": "register_NetOut_ChosenRewards", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d8fe80", "name_at_start": "register_NetOut_DHD", "name_at_end": "register_NetOut_DHD", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d90e40", "name_at_start": "register_NetOut_debugMinigameInstance", "name_at_end": "register_NetOut_debugMinigameInstance", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub (duplicate registration site). Actual emit logic is at 00c79120 (EmitNetOut_DebugMinigameInstance)."},
+    {"address": "00d910e0", "name_at_start": "register_NetOut_StartMinigame", "name_at_end": "register_NetOut_StartMinigame", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d91380", "name_at_start": "register_NetOut_EndMinigame", "name_at_end": "register_NetOut_EndMinigame", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d91620", "name_at_start": "register_NetOut_RegisterToMinigameHelp", "name_at_end": "register_NetOut_RegisterToMinigameHelp", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d918c0", "name_at_start": "register_NetOut_UpdateRegisterToMinigameHelp", "name_at_end": "register_NetOut_UpdateRegisterToMinigameHelp", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d91b60", "name_at_start": "register_NetOut_RequestSpectateList", "name_at_end": "register_NetOut_RequestSpectateList", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d91e00", "name_at_start": "register_NetOut_SpectateMinigame", "name_at_end": "register_NetOut_SpectateMinigame", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d920a0", "name_at_start": "register_NetOut_MinigameStartCancel", "name_at_end": "register_NetOut_MinigameStartCancel", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d92340", "name_at_start": "register_NetOut_MinigameCallRequest", "name_at_end": "register_NetOut_MinigameCallRequest", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub. Base method (header methodID|0xC0), not cell method."},
+    {"address": "00d925e0", "name_at_start": "register_NetOut_MinigameCallAbort", "name_at_end": "register_NetOut_MinigameCallAbort", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d92880", "name_at_start": "register_NetOut_MinigameCallAccept", "name_at_end": "register_NetOut_MinigameCallAccept", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d92b20", "name_at_start": "register_NetOut_MinigameCallDecline", "name_at_end": "register_NetOut_MinigameCallDecline", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d92dc0", "name_at_start": "register_NetOut_MinigameContactRequest", "name_at_end": "register_NetOut_MinigameContactRequest", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d93060", "name_at_start": "register_NetOut_onDialGate", "name_at_end": "register_NetOut_onDialGate", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d96f70", "name_at_start": "register_NetOut_SetTechSkill", "name_at_end": "register_NetOut_SetTechSkill", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00e4a910", "name_at_start": "register_NetOut_Craft", "name_at_end": "register_NetOut_Craft", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00e4aac0", "name_at_start": "register_NetOut_Alloy", "name_at_end": "register_NetOut_Alloy", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00e4ac70", "name_at_start": "register_NetOut_Research", "name_at_end": "register_NetOut_Research", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00e4ae20", "name_at_start": "register_NetOut_ReverseEngineer", "name_at_end": "register_NetOut_ReverseEngineer", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00e4afd0", "name_at_start": "register_NetOut_SpendAppliedSciencePoint", "name_at_end": "register_NetOut_SpendAppliedSciencePoint", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d771e0", "name_at_start": "register_NetIn_onEffectResults", "name_at_end": "register_NetIn_onEffectResults", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d77480", "name_at_start": "register_NetIn_KnownAbilitiesUpdate", "name_at_end": "register_NetIn_KnownAbilitiesUpdate", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d7f520", "name_at_start": "register_NetIn_TimerUpdate", "name_at_end": "register_NetIn_TimerUpdate", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d80250", "name_at_start": "register_NetIn_AbilityTreeInfo", "name_at_end": "register_NetIn_AbilityTreeInfo", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d821e0", "name_at_start": "register_NetIn_onLOSResult", "name_at_end": "register_NetIn_onLOSResult", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d860e0", "name_at_start": "register_NetIn_onMeleeRangeUpdate", "name_at_end": "register_NetIn_onMeleeRangeUpdate", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d86620", "name_at_start": "register_NetIn_onStatUpdate", "name_at_end": "register_NetIn_onStatUpdate", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d868c0", "name_at_start": "register_NetIn_onStatBaseUpdate", "name_at_end": "register_NetIn_onStatBaseUpdate", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d86b60", "name_at_start": "register_NetIn_onAlignmentUpdate", "name_at_end": "register_NetIn_onAlignmentUpdate", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"},
+    {"address": "00d8d480", "name_at_start": "register_NetIn_onThreatenedMobsUpdate", "name_at_end": "register_NetIn_onThreatenedMobsUpdate", "status": "complete", "score_before": 75, "score_after": 100, "workflow": "trimmed", "skipped_reason": null, "tool_calls_used": 1, "notes": "stub"}
+  ],
+  "pending_structs": [
+    {
+      "requested_by": "00c79120",
+      "struct_name": "StdStringMSVC",
+      "observed_offsets": ["+0x0 buf (undefined4[4] SBO inline storage)", "+0x10 capacity (uint)", "+0x14 length (uint)"],
+      "evidence": "EmitNetOut_DebugMinigameInstance uses MSVC std::string SSO pattern: cap<=0xF uses inline buf, >0xF uses scalable_malloc. Pattern seen at local_28, local_44 (names after local_24[4], local_40[4] which are SBO buffers). Same pattern likely in all other emit functions."
+    }
+  ],
+  "pending_globals": [
+    {
+      "requested_by": "00c79120",
+      "address": "0x019ACEF4",
+      "proposed_name": "g_szMinigameInstanceField2Name",
+      "evidence": "EmitNetOut_DebugMinigameInstance reads char* at 0x019ACEF4 as the second field name to extract from pEventData. Not 'instanceId', not 'techcomp'. Likely 'mapId' or 'gameId' based on minigame context."
+    },
+    {
+      "requested_by": "00c79120",
+      "address": "0x019ACEE8",
+      "proposed_name": "g_szMinigameInstanceField1AltName",
+      "evidence": "Referenced at 00c79176; secondary field name global adjacent to 0x019ACEF4."
+    },
+    {
+      "requested_by": "00c79120",
+      "address": "0x019ACF38",
+      "proposed_name": "g_szMinigameInstanceField3Name",
+      "evidence": "Referenced at emitter; third string key for FUN_0043b850 call."
+    }
+  ],
+  "stats": {
+    "complete": 58,
+    "skipped_already_done": 0,
+    "skipped_too_small": 0,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 112
+  },
+  "resume_from_address": "scope_complete",
+  "rescore_session_2": {
+    "session": "2026-05-13",
+    "worker": "W1-S2",
+    "scope": "57 functions in functions[] where workflow==trimmed AND name_at_end starts with register_NetOut_ or register_NetIn_",
+    "summary": "47 register_NetOut_* stubs upgraded from score 85 (plate_issues:3) to score 100 (plate_issues:0). 10 register_NetIn_* stubs were already at score 100 from session 1 -- no action required. 1 function (00c79120 EmitNetOut_DebugMinigameInstance) excluded -- workflow==full, not trimmed.",
+    "plate_format_fix": "Session-1 NetOut plates used indented Algorithm: sub-sections and a spurious [IMPLICIT ECX] parameter claim on void functions. Corrected to the unindented Algorithm/Parameters/Returns section format used by NetIn plates (which scored 100). The corrected format eliminates all plate_issues.",
+    "stubs_rescored_to_100": [
+      "00ae9dd0", "00aea3d0", "00cb29f0", "00cb2ba0", "00cb2d50", "00cb3da0",
+      "00cb3f50", "00cb41f0", "00cb4490", "00cb4640", "00cb47f0", "00cb5810",
+      "00cb59c0", "00cb5b70", "00cb5e10", "00cb60b0", "00cb6350", "00cb65f0",
+      "00cb67a0", "00cb6950", "00cb6b00", "00cb6cb0", "00cbc3e0", "00cbc590",
+      "00d1f920", "00d1fad0", "00d8fe80", "00d90e40", "00d910e0", "00d91380",
+      "00d91620", "00d918c0", "00d91b60", "00d91e00", "00d920a0", "00d92340",
+      "00d925e0", "00d92880", "00d92b20", "00d92dc0", "00d93060", "00d96f70",
+      "00e4a910", "00e4aac0", "00e4ac70", "00e4ae20", "00e4afd0"
+    ],
+    "stubs_already_100_no_action": [
+      "00d771e0", "00d77480", "00d7f520", "00d80250", "00d821e0",
+      "00d860e0", "00d86620", "00d868c0", "00d86b60", "00d8d480"
+    ],
+    "full_v5_excluded": ["00c79120"],
+    "escalations": [],
+    "score_delta": "85 -> 100 for 47 NetOut stubs",
+    "total_tool_calls_session_2": 78,
+    "stats": {
+      "rescored": 47,
+      "already_complete": 10,
+      "excluded_full_v5": 1,
+      "escalations": 0,
+      "connection_errors_recovered": 1
+    }
+  }
+}

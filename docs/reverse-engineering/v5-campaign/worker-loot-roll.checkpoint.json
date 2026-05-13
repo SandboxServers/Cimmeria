@@ -1,0 +1,92 @@
+{
+  "worker_id": "loot-roll",
+  "campaign_version": "v5",
+  "session": "5b",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Find need/greed/pass roll NetOut wire event in SGW.exe client binary",
+  "verdict": "CONFIRMED ABSENT",
+  "confidence": "HIGH — four independent evidence sources",
+  "evidence_summary": {
+    "string_exhaustion": {
+      "searches_run": [
+        "LootRoll", "NeedRoll", "GreedRoll", "PassRoll",
+        "lootRoll", "lootVote", "RollLoot", "greed",
+        "onLootRoll", "lootDecision", "LootVote", "RollResult",
+        "ItemRoll", "lootWinner", "NetOut.*Roll", "Need.*Greed"
+      ],
+      "result": "Zero matches for all roll/need/greed terminology"
+    },
+    "binary_handler": {
+      "function": "FUN_00e5d650",
+      "address": "0x00e5d650",
+      "event": "onSquadLootType handler (VSquad subscriber)",
+      "string_refs": [
+        "0x019dd870 — 'The squad's loot mode has been set to round robin.'",
+        "0x019dd8d8 — 'The squad's loot mode has been set to free for all.'",
+        "0x019dd940 — 'The squad's loot mode has been set to an unknown mode.'"
+      ],
+      "branches": "0=RoundRobin, 1=FFA, else=unknown — no need/greed branch"
+    },
+    "canonical_enum": {
+      "source": "entities/defs/enumerations.xml",
+      "enum_name": "EGroupLootType",
+      "type": "UINT8",
+      "values": {
+        "GROUP_LOOT_RoundRobin": 0,
+        "GROUP_LOOT_FreeForAll": 1
+      },
+      "note": "Closed enum — exactly two entries, no third value"
+    },
+    "def_survey": {
+      "files_checked": [
+        "entities/defs/SGWPlayer.def",
+        "entities/defs/interfaces/Lootable.def",
+        "entities/defs/interfaces/OrganizationMember.def",
+        "entities/defs/SGWMob.def",
+        "entities/defs/enumerations.xml"
+      ],
+      "exposed_client_loot_methods": [
+        "lootItem(Index: INT32)  -- SGWPlayer.def <Exposed/>",
+        "squadSetLootMode(aLootMode: INT32)  -- OrganizationMember.def <Exposed/>"
+      ],
+      "roll_vote_methods": "none"
+    }
+  },
+  "wire_format_corrections": {
+    "onSquadLootType": {
+      "source": "OrganizationMember.def",
+      "fields": [
+        {"name": "aOrganizationId", "type": "INT32", "bytes": 4},
+        {"name": "aLootType", "type": "INT32", "bytes": 4}
+      ],
+      "total_bytes": 8,
+      "enum": "EGroupLootType: 0=RoundRobin, 1=FFA"
+    },
+    "onSquadLootModeUpdate": {
+      "source": "OrganizationMember.def",
+      "status": "NOT SHIPPED — no NetIn stub in SGW.exe string table",
+      "fields": [
+        {"name": "aOrganizationId", "type": "INT32", "bytes": 4},
+        {"name": "aLootMode", "type": "INT32", "bytes": 4}
+      ],
+      "note": "Defined in .def but not registered in client binary — do not implement client handler"
+    }
+  },
+  "output_doc": "docs/reverse-engineering/findings/loot-generation.md",
+  "functions_analyzed": [
+    "FUN_00e5d650 — onSquadLootType handler (decompiled — loot mode branch confirmed)",
+    "register_NetOut_LootItem @ 0x00d935a0 (decompiled — stub only)",
+    "CME_EventSignal_VEvent_NetOut_LootItem___TypedEmitInfo__vfunc_0 @ 0x00d93680 (decompiled)"
+  ],
+  "open_questions": [
+    "DBInvItem cache miss behavior when LootDisplay arrives before item data is loaded",
+    "Loot container entity persistence after LootDisplay is sent"
+  ],
+  "stats": {
+    "tool_calls_used": "~55",
+    "searches_run": 30,
+    "functions_decompiled": 3,
+    "verdict_confidence": "HIGH"
+  }
+}

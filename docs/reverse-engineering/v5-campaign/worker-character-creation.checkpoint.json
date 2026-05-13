@@ -1,0 +1,309 @@
+{
+  "worker_id": "character-creation",
+  "campaign_version": "v5",
+  "session": "4b",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:00:00Z",
+  "scope_predicate": "Full character-creation pipeline: EmitNetOut_CreateCharacter through playCharacter world-entry handoff",
+  "total_in_scope": 20,
+  "functions": [
+    {
+      "address": "00d328f0",
+      "name_at_start": "FUN_00d328f0",
+      "name_at_end": "BuildVisualChoiceList",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 8,
+      "notes": "Iterates VisualGroup vector (stride 0xD uint32s = 0x34 bytes). Each group[8]=selectedIndex. VisualChoice elem=0x24 bytes. Outputs VisGroupId+ChoiceId pairs. Magic 0x38E38E39 = div-by-0x24 reciprocal."
+    },
+    {
+      "address": "00d37010",
+      "name_at_start": "FUN_00d37010",
+      "name_at_end": "Event_NetOut_CreateCharacter_Ctor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 65,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Pattern B 12-byte ctor. Double vtable stamp confirmed."
+    },
+    {
+      "address": "00d32ce0",
+      "name_at_start": "EmitNetOut_CreateCharacter",
+      "name_at_end": "EmitNetOut_CreateCharacter",
+      "status": "complete",
+      "score_before": 80,
+      "score_after": 80,
+      "workflow": "skipped_already_done",
+      "skipped_reason": "already_named_plated",
+      "tool_calls_used": 1,
+      "notes": "Already documented from W-emit-B session 3. Fields: CharName (global param_1_019bbc58), ExtraName, CharDefId, SkinTintColorID (this+0x40), VisualChoiceList. Calls BuildVisualChoiceList (0x00d328f0). Dispatch via FUN_00d355f0. Reset via CreateCharacter_PostEmitReset."
+    },
+    {
+      "address": "00d32370",
+      "name_at_start": "FUN_00d32370",
+      "name_at_end": "CreateCharacter_PostEmitReset",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 45,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Post-emit cleanup: iterates pending subscriber list, dispatches each to Account GameEntity, resets circular list sentinel. Calls FUN_00e758d0(GameAccount, accessLevel) unconditionally at end."
+    },
+    {
+      "address": "00d39160",
+      "name_at_start": "FUN_00d39160",
+      "name_at_end": "AppearanceChain_LookupRaceNode",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "BST lookup by integer key in a race-keyed tree. Returns pointer to node+4 (payload). Inserts new node if not found (calls FUN_00d38fa0)."
+    },
+    {
+      "address": "00d388d0",
+      "name_at_start": "FUN_00d388d0",
+      "name_at_end": "AppearanceChain_LookupArchetypeNode",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Same BST lookup pattern for archetype-keyed tree. Structurally identical to LookupRaceNode."
+    },
+    {
+      "address": "00d37f70",
+      "name_at_start": "FUN_00d37f70",
+      "name_at_end": "AppearanceChain_LookupVisualGroupNode",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "BST lookup for VisualGroup-keyed tree. Larger node struct (0x71 offset sentinel vs 0x1D). Calls FUN_00d37550/FUN_00d371c0 for init."
+    },
+    {
+      "address": "00d34d30",
+      "name_at_start": "FUN_00d34d30",
+      "name_at_end": "VisualChoiceVector_GetAt",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 60,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Array-of-structs element accessor. Stride=0x24. Returns begin + index*0x24. Throws std::out_of_range via FUN_011741d0 if OOB."
+    },
+    {
+      "address": "00e74060",
+      "name_at_start": "FUN_00e74060",
+      "name_at_end": "GameAccount_HandleNetIn_CharacterList",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 32,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 10,
+      "notes": "Large function (514 lines). CharacterInfo struct is 0xC0 bytes. Fields: playerId@+0, name@+4, extraName@+20, alignment@+3C, level@+3D, gender@+3E, archetype@+3F, title@+5C, playerType@+60, worldLocation@+40, playable@+64. Composite key name+'-'+extraName for dedup. Score limited by 101 magic numbers."
+    },
+    {
+      "address": "00e74f50",
+      "name_at_start": "FUN_00e74f50",
+      "name_at_end": "GameAccount_HandleNetIn_CharacterVisuals",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 6,
+      "notes": "Reads PlayerId, BodySet, Components[], primaryTint, secondaryTint, skinTint. Tint format 0xRRGGBB00 shifted >>8 then alpha=0xFF. Stores RGBA structs at CharacterInfo+0x90/+0xA0/+0xB0."
+    },
+    {
+      "address": "00e755b0",
+      "name_at_start": "FUN_00e755b0",
+      "name_at_end": "GameAccount_EmitNetOut_PlayCharacter",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 50,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Wire: single INT32 'PlayerId'. Checks playable flag (CharacterInfo+0x64) before emitting. Post-dispatch calls FUN_00cf32f0, FUN_0057d070."
+    },
+    {
+      "address": "00e756e0",
+      "name_at_start": "FUN_00e756e0",
+      "name_at_end": "GameAccount_EmitNetOut_DeleteCharacter",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 50,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Wire: single INT32 'PlayerId'. No playable-flag check (deletion always allowed). Dispatch via FUN_00e76fc0."
+    },
+    {
+      "address": "00d9ab80",
+      "name_at_start": "FUN_00d9ab80",
+      "name_at_end": "Event_NetOut_PlayCharacter_Ctor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 65,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Pattern B 12-byte ctor. Stamps Event_NetOut_PlayCharacter::vftable."
+    },
+    {
+      "address": "00d9a3a0",
+      "name_at_start": "FUN_00d9a3a0",
+      "name_at_end": "Event_NetOut_DeleteCharacter_Ctor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 65,
+      "workflow": "trimmed",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Pattern B 12-byte ctor. Stamps Event_NetOut_DeleteCharacter::vftable."
+    },
+    {
+      "address": "00e6f8b0",
+      "name_at_start": "FUN_00e6f8b0",
+      "name_at_end": "GameEntity_ApplySkinTintColors",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 55,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Source: GameEntity.cpp lines 0x194-0x196. Field names: primaryColorId / secondaryColorId / skinColorId (NOT SkinTintColorID). Tint packing 0xRRGGBB00. FUN_004f6f20 = RGB unpack."
+    },
+    {
+      "address": "015d4660",
+      "name_at_start": "FUN_015d4660",
+      "name_at_end": "FUN_015d4660",
+      "status": "in_progress",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": null,
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "EntityDef serializer for VisualGroup type: fields VisGroupId, optionally VisType (wstring), Choices[] sub-list. Called during .def parsing."
+    },
+    {
+      "address": "015ce700",
+      "name_at_start": "FUN_015ce700",
+      "name_at_end": "FUN_015ce700",
+      "status": "in_progress",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": null,
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "EntityDef serializer for VisualChoice type: fields ChoiceId, optionally Component (wstring), ItemId. Called during .def parsing."
+    },
+    {
+      "address": "015d4570",
+      "name_at_start": "FUN_015d4570",
+      "name_at_end": "FUN_015d4570",
+      "status": "in_progress",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": null,
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "EntityDef serializer for CharacterDefinition type: CharDefId, AlignmentId, ArchetypeId, GenderId, BodySet, VisualGroups[]. KEY finding: CharacterInfo wire format confirmed from this function."
+    },
+    {
+      "address": "00d55bd0",
+      "name_at_start": "FUN_00d55bd0",
+      "name_at_end": "FUN_00d55bd0",
+      "status": "in_progress",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": null,
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "SGWNetworkManager EventHandler wrapper for CreateCharacter: stamps EventHandler vtable, calls FUN_00d55b60 which builds MemberCallback and calls FUN_00a374a0 (signal tree insert/dispatch)."
+    },
+    {
+      "address": "00d55f90",
+      "name_at_start": "FUN_00d55f90",
+      "name_at_end": "FUN_00d55f90",
+      "status": "in_progress",
+      "score_before": 0,
+      "score_after": 0,
+      "workflow": null,
+      "skipped_reason": null,
+      "tool_calls_used": 1,
+      "notes": "Same pattern for PlayCharacter EventHandler wrapper."
+    }
+  ],
+  "pending_structs": [
+    {
+      "requested_by": "00e74060",
+      "struct_name": "CharacterInfo",
+      "observed_offsets": [
+        "+0x0  uint32   playerId",
+        "+0x4  wstring  name (std::wstring, 12-byte SSO)",
+        "+0x20 wstring  extraName",
+        "+0x3C byte     alignment",
+        "+0x3D byte     level",
+        "+0x3E byte     gender",
+        "+0x3F byte     archetype",
+        "+0x5C byte     title",
+        "+0x60 uint32   playerType",
+        "+0x40 wstring  worldLocation",
+        "+0x64 byte     playable",
+        "+0x68 wstring  bodySet",
+        "+0x84 vector   components (wstring[])",
+        "+0x90 float[4] primaryTint (RGBA)",
+        "+0xA0 float[4] secondaryTint (RGBA)",
+        "+0xB0 float[4] skinTint (RGBA)"
+      ],
+      "total_size": "0xC0 bytes",
+      "evidence": "GameAccount_HandleNetIn_CharacterList (0x00e74060) allocates scalable_malloc(0xC0) and fills each field via sequential FUN_0093d9c0/FUN_00c6cfd0/FUN_00438b50 calls with named keys"
+    },
+    {
+      "requested_by": "00d328f0",
+      "struct_name": "VisualGroupEntry",
+      "observed_offsets": [
+        "+0x0  uint32  VisGroupId (group[0])",
+        "+0x20 uint32  selectedChoiceIndex (group[8], index into choices array)",
+        "+0x28 ptr     choicesBegin (group[10])",
+        "+0x2C ptr     choicesEnd   (group[11])"
+      ],
+      "total_size": "0x34 bytes (0xD uint32s per stride puVar4 += 0xD)",
+      "evidence": "BuildVisualChoiceList (0x00d328f0): group[8]=selectedIndex; choices = (end-begin)/0x24; stride = +0xD per iteration"
+    },
+    {
+      "requested_by": "00d328f0",
+      "struct_name": "VisualChoiceEntry",
+      "observed_offsets": [
+        "+0x0 uint32 ChoiceId"
+      ],
+      "total_size": "0x24 bytes",
+      "evidence": "VisualChoiceVector_GetAt (0x00d34d30): stride=0x24; BuildVisualChoiceList reads choice[0] as ChoiceId"
+    }
+  ],
+  "pending_globals": [],
+  "stats": {
+    "complete": 15,
+    "skipped_already_done": 1,
+    "skipped_too_small": 0,
+    "in_progress": 5,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 62
+  },
+  "resume_from_address": "015ce700"
+}

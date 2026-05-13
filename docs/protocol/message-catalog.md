@@ -270,14 +270,16 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 
 ### Contact Lists
 
+Wire formats: see [`../reverse-engineering/findings/contact-list-wire-formats.md`](../reverse-engineering/findings/contact-list-wire-formats.md). Note that the RTTI-canonical names use camelCase (`contactList*`); V5 Documentation Campaign session 1 surfaced a cyclic-shift name-misassignment bug at `0x00e5f990`–`0x00e5f9f0` documented in the findings doc.
+
 | Event Name | String Addr | Handler Addr | .def Method | Impl |
 |------------|-------------|--------------|-------------|------|
 | `Event_NetOut_contactListCreate` | — | TBD | ContactListManager.contactListCreate | NO |
 | `Event_NetOut_contactListDelete` | — | TBD | ContactListManager.contactListDelete | NO |
-| `Event_NetOut_contactListRename` | — | TBD | ContactListManager.contactListRename | NO |
-| `Event_NetOut_contactListAddMembers` | — | TBD | ContactListManager.contactListAddMembers | NO |
-| `Event_NetOut_contactListRemoveMembers` | — | TBD | ContactListManager.contactListRemoveMembers | NO |
-| `Event_NetOut_contactListFlagsUpdate` | — | TBD | ContactListManager.contactListFlagsUpdate | NO |
+| `Event_NetOut_contactListRename` | — | `0x00e5f990` | ContactListManager.contactListRename | NO |
+| `Event_NetOut_contactListFlagsUpdate` | — | `0x00e5f9b0` | ContactListManager.contactListFlagsUpdate | NO |
+| `Event_NetOut_contactListAddMembers` | — | `0x00e5f9d0` | ContactListManager.contactListAddMembers | NO |
+| `Event_NetOut_contactListRemoveMembers` | — | `0x00e5f9f0` | ContactListManager.contactListRemoveMembers | NO |
 
 ### Abilities & Training
 
@@ -299,6 +301,15 @@ Messages sent FROM the client TO the server. These correspond to `CellMethods` a
 | `Event_NetOut_onSpaceQueuedResponse` | 0195f9f4 | TBD | (internal) | NO |
 | `Event_NetOut_onStrikeTeamResponse` | 019be0d8 | TBD | (internal) | NO |
 | `Event_NetOut_Petition` | 019b9bac | TBD | SGWEntity.logPetition | NO |
+
+### Client Telemetry (session-1 discovered)
+
+Client-to-server telemetry pushes surfaced by V5 Documentation Campaign session 1 (2026-05-12). Not in any prior protocol doc; wire formats not yet decompiled. Cimmeria should handle gracefully — no-op or log.
+
+| Event Name | String Addr | Handler Addr | .def Method | Impl | Wire Format | RE Status |
+|------------|-------------|--------------|-------------|------|-------------|-----------|
+| `SystemOptions` | — | `0x00d9cc40` | (telemetry) | NO | not yet decompiled | session-1 discovered |
+| `PerfStats` | — | `0x00d9cee0` | (telemetry) | NO | not yet decompiled | session-1 discovered |
 
 ---
 

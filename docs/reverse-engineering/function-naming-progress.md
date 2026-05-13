@@ -36,7 +36,7 @@ Functions named through manual Ghidra analysis (decompilation, cross-referencing
 
 | Date | System | Functions Named | Notes |
 |------|--------|-----------------|-------|
-| — | — | — | No manual analysis sessions yet |
+| 2026-05-12 | V5 Docs Campaign session 1 | ~770 | Five workers (W0–W4) partitioned across CME EventSignal NetOut/NetIn handlers, TypedEmitInfo destructors, CallbackImpl RTTI accessors, BigWorld property-type/EntityDescription parse chain. ~5,707 tool calls. Surfaced canonical CME emit pipeline + corrected `TypedEmitInfo__vfunc_0` mis-classification (it is the MSVC scalar destructor, not a name accessor). Live aggregator: [`v5-campaign/CAMPAIGN_STATUS.md`](v5-campaign/CAMPAIGN_STATUS.md). Session 2 (~960 functions across W0-primary, W1-rescore, W4-A/B/C) pending. |
 
 ## Progress Summary
 

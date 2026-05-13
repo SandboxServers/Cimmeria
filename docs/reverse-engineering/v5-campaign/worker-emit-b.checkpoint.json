@@ -1,0 +1,288 @@
+{
+  "worker_id": "emit-b",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T00:30:00Z",
+  "scope_predicate": "EmitNetOut_* discovery in address range [0x00b00000, 0x01600000): find FUN_* functions that call CmeEventSignal_GetSystem (0x0155f790), CmeEventSignal_LookupByName (0x00a5c0f0), or CmeEventSignal_SetField (0x0043b850), identify the event name from vtable RTTI or field names, rename EmitNetOut_<EventName>, apply full V5 plate+prototype.",
+  "total_in_scope": 13,
+  "functions": [
+    {
+      "address": "00e59970",
+      "name_at_start": "FUN_00e59970",
+      "name_at_end": "EmitNetOut_BMCreateAuction",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "BM CreateAuction emitter. Fields: itemInstanceId, startingPrice, buyoutPrice, auctionLength. Constructor at 0x00e5c1a0. Guard: validates itemInstanceId against entity inventory. Score ~40; residual deductions from MSVC SSO string temporaries (undefined4 arrays for SSO buffer) — structural, unfixable without StdStringMSVC struct (W0 domain)."
+    },
+    {
+      "address": "00e59c70",
+      "name_at_start": "FUN_00e59c70",
+      "name_at_end": "EmitNetOut_BMCancelAuction",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 42,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "BM CancelAuction emitter. Single field: sequenceId. Constructor at 0x00e5c440. Smallest BM emitter — no guard, unconditional emit."
+    },
+    {
+      "address": "00e59da0",
+      "name_at_start": "FUN_00e59da0",
+      "name_at_end": "EmitNetOut_BMPlaceBid",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "BM PlaceBid emitter. Fields: sequenceId, bidAmount. Constructor at 0x00e5c6e0. Guard: bidAmount <= entity.maxBid at +0x60. Silent skip on over-bid."
+    },
+    {
+      "address": "00e59f70",
+      "name_at_start": "FUN_00e59f70",
+      "name_at_end": "EmitNetOut_BMSearch",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 51,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "BM Search emitter. 11 fields: sortId, clientKey, sequenceId, bForward, sellerName, bidderName, itemName, minTC, maxTC, quality, filterFlags. Constructor at 0x00e5c980. Search parameter struct layout documented in plate."
+    },
+    {
+      "address": "00e61cc0",
+      "name_at_start": "FUN_00e61cc0",
+      "name_at_end": "EmitNetOut_contactListAddMembers",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 38,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "ContactList AddMembers emitter. Vtable: Event_NetOut_contactListAddMembers. Fields: aListId, aPlayerNames (list). Dispatch via FUN_00e62660. Builds name list from param_2 vector before alloc."
+    },
+    {
+      "address": "00e61f90",
+      "name_at_start": "FUN_00e61f90",
+      "name_at_end": "EmitNetOut_contactListRemoveMembers",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 38,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "ContactList RemoveMembers emitter. Vtable: Event_NetOut_contactListRemoveMembers. Structurally identical to AddMembers — same fields, different vtable and dispatch target (FUN_00e62760)."
+    },
+    {
+      "address": "00e2e120",
+      "name_at_start": "FUN_00e2e120",
+      "name_at_end": "EmitNetOut_onDialGate",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 35,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Stargate dial emitter. Vtable: Event_NetOut_onDialGate. Fields: TargetAddressId, SourceAddressId. Two-pass address search (active then pending). Dispatch via FUN_00e30f20. Score lower due to complex loop structure with many undefined4 temporaries."
+    },
+    {
+      "address": "00eaf310",
+      "name_at_start": "FUN_00eaf310",
+      "name_at_end": "EmitNetOut_TriggerClientHintedGenericRegion",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 35,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Generic region trigger emitter. Vtable: Event_NetOut_TriggerClientHintedGenericRegion. Fields: RegionId (from global param_1_019eab14/param_1_019eab30), bEntering (bool). __fastcall convention. Emits enter/exit events per region boundary crossing. BW_TO_UE3_SCALE coordinate conversion present."
+    },
+    {
+      "address": "00d249c0",
+      "name_at_start": "FUN_00d249c0",
+      "name_at_end": "EmitNetOut_DialogButtonChoice",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 36,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Dialog button choice emitter. Vtable: Event_NetOut_DialogButtonChoice. Fields: DialogId, ButtonId. Complex lookup loop over two dialog-entry arrays. On first array match: also updates ability-slot UI (slots 0x11/0x12 via FUN_00c67bd0)."
+    },
+    {
+      "address": "00e28600",
+      "name_at_start": "FUN_00e28600",
+      "name_at_end": "EmitNetOut_TradeProposal",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 38,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Trade proposal emitter. Constructor via FUN_00e29cd0. Fields: version, lockState, slotId/instanceId (loop over 6 slots), items, LocalProposal, EntityId. Version guard at entry (skips on version <= 0). Dispatch via FUN_00e297c0."
+    },
+    {
+      "address": "00d32ce0",
+      "name_at_start": "FUN_00d32ce0",
+      "name_at_end": "EmitNetOut_CreateCharacter",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 38,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Character creation emitter. Constructor via FUN_00d37010. Fields: CharName (from global), ExtraName, CharDefId, SkinTintColorID (this+0x40), VisualChoiceList (VisGroupId+ChoiceId pairs). VisualChoiceList built by FUN_00d328f0 helper. Calls FUN_00d32370(this) post-dispatch (reset state). Note: FUN_00d328f0 is a helper building VisualChoiceList items — NOT a standalone emitter."
+    },
+    {
+      "address": "00e974b0",
+      "name_at_start": "FUN_00e974b0",
+      "name_at_end": "SGWAnimNotifyEvent_Emit",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 38,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Animation notify event emitter from SGWAnimNotify_Event.cpp. NOT a register_NetOut_* function — event name is dynamically resolved from actor FName. Fields: SequenceName, CancelOnMovement, PlaybackType, HaltAnimTree. Uses GetSystem+LookupByName (dynamic lookup, not static). Assert at SGWAnimNotify_Event.cpp:25."
+    },
+    {
+      "address": "00c79120",
+      "name_at_start": "EmitNetOut_DebugMinigameInstance",
+      "name_at_end": "EmitNetOut_DebugMinigameInstance",
+      "status": "skipped_already_done",
+      "score_before": 57,
+      "score_after": 57,
+      "workflow": "skipped",
+      "skipped_reason": "Already named by W1 session 1. Score 57 noted but W-emit-B brief says skip-check at score 57 — not re-processed per instructions to not re-rename.",
+      "tool_calls_used": 1,
+      "notes": "Canonical EmitNetOut exemplar from W1 session 1. 154-line function. Already has plate."
+    }
+  ],
+  "pending_structs": [],
+  "pending_globals": [
+    {
+      "requested_by": "00e974b0",
+      "address": "018fbe80",
+      "proposed_name": "g_szAnimNotifyField1Name",
+      "evidence": "Passed to CmeEventSignal_SetField as field name key in SGWAnimNotifyEvent_Emit — value unknown without further inspection"
+    },
+    {
+      "requested_by": "00956620",
+      "address": "018fbe94",
+      "proposed_name": "g_szInputSignalField2Name",
+      "evidence": "Used as SetField key in FUN_00956620 (key input signal emitter helper)"
+    },
+    {
+      "requested_by": "00eaf310",
+      "address": "019eab14",
+      "proposed_name": "g_szRegionIdFieldName",
+      "evidence": "Passed to FUN_00cb1f00 (SetField wrapper) as field name in EmitNetOut_TriggerClientHintedGenericRegion enter path"
+    },
+    {
+      "requested_by": "00eaf310",
+      "address": "019eab30",
+      "proposed_name": "g_szRegionIdFieldName2",
+      "evidence": "Passed to FUN_00cb1f00 as field name in EmitNetOut_TriggerClientHintedGenericRegion exit path"
+    }
+  ],
+  "contradictions": [
+    {
+      "address": "00db3390",
+      "function_name": "register_NetOut_onStrikeTeamResponse",
+      "contradiction": "This function is annotated by script 04 as if it is a single-event registration stub, but it is actually a BULK registration function that registers ~40+ Event_NetOut_* signals via the GetSystem + LookupByName pattern. Annotation script 04 named it after the first signal (onStrikeTeamResponse) but its body registers GotoXYZ, ReloadOrganizations, ReloadInventory, Users, SetHideGM, Summon, PrintStats, RequestActiveSlotChange, MobData, debugStartMinigame, debugMinigameInstance, debugSpectateMinigame, debugJoinMinigame, MinigameComplete, GiveMinigameContact, RemoveMinigameContact, StartMinigame, EndMinigame, RegisterToMinigameHelp, UpdateRegisterToMinigameHelp, RequestSpectateList, SpectateMinigame, MinigameStartCancel, MinigameCallRequest, MinigameCallAbort, MinigameCallAccept, MinigameCallDecline, MinigameContactRequest, onDialGate, TriggerClientHintedGenericRegion, LootItem, ListAbilities, SetCrouched, ClientReady, UseItem, MoveItem, RemoveItem + more. Spans 0x00db3390 to ~0x00db6045+. Should be renamed RegisterBulkNetOutSignals or similar."
+    },
+    {
+      "address": "00cb1f00",
+      "function_name": "FUN_00cb1f00",
+      "contradiction": "Calls CmeEventSignal_SetField but is a WRAPPER/HELPER for SetField (calls FUN_004410d0 to get handle, then SetField, then cleanup). NOT a standalone emitter. Should be named CmeEventSignal_SetFieldHelper or similar. Currently unnamed."
+    },
+    {
+      "address": "00955fc0",
+      "function_name": "FUN_00955fc0",
+      "contradiction": "Calls GetSystem but NOT LookupByName — instead calls FUN_00a5c150 (likely CmeEventSignal_Subscribe). This is a CME signal subscription/registration handler, not an emitter. Callers at 0x00956047 are below scope fence."
+    }
+  ],
+  "address_map_candidates": [
+    {
+      "address": "00e5c1a0",
+      "proposed_name": "Event_NetOut_BMCreateAuction_ctor",
+      "evidence": "Called as constructor in EmitNetOut_BMCreateAuction (0x00e59970). Returns 0x0C-byte object."
+    },
+    {
+      "address": "00e5c440",
+      "proposed_name": "Event_NetOut_BMCancelAuction_ctor",
+      "evidence": "Called as constructor in EmitNetOut_BMCancelAuction (0x00e59c70)."
+    },
+    {
+      "address": "00e5c6e0",
+      "proposed_name": "Event_NetOut_BMPlaceBid_ctor",
+      "evidence": "Called as constructor in EmitNetOut_BMPlaceBid (0x00e59da0)."
+    },
+    {
+      "address": "00e5c980",
+      "proposed_name": "Event_NetOut_BMSearch_ctor",
+      "evidence": "Called as constructor in EmitNetOut_BMSearch (0x00e59f70)."
+    },
+    {
+      "address": "00e62660",
+      "proposed_name": "CmeEventSignal_EmitContactListAddMembers",
+      "evidence": "Dispatch target in EmitNetOut_contactListAddMembers (0x00e61cc0). Paired with FUN_00e62760 for remove."
+    },
+    {
+      "address": "00e62760",
+      "proposed_name": "CmeEventSignal_EmitContactListRemoveMembers",
+      "evidence": "Dispatch target in EmitNetOut_contactListRemoveMembers (0x00e61f90)."
+    },
+    {
+      "address": "00e297c0",
+      "proposed_name": "CmeEventSignal_EmitTradeProposal",
+      "evidence": "Dispatch target in EmitNetOut_TradeProposal (0x00e28600)."
+    },
+    {
+      "address": "00e30f20",
+      "proposed_name": "CmeEventSignal_EmitDialGate",
+      "evidence": "Dispatch target in EmitNetOut_onDialGate (0x00e2e120)."
+    },
+    {
+      "address": "00d355f0",
+      "proposed_name": "CmeEventSignal_EmitCreateCharacter",
+      "evidence": "Dispatch target in EmitNetOut_CreateCharacter (0x00d32ce0)."
+    },
+    {
+      "address": "00cb1f00",
+      "proposed_name": "CmeEventSignal_SetFieldHelper",
+      "evidence": "Wrapper: calls FUN_004410d0 (get CME handle) + CmeEventSignal_SetField + cleanup. Called by EmitNetOut_CreateCharacter and EmitNetOut_TriggerClientHintedGenericRegion."
+    },
+    {
+      "address": "00a5c150",
+      "proposed_name": "CmeEventSignal_Subscribe",
+      "evidence": "Called by FUN_00955fc0 after GetSystem — pattern matches subscription (not lookup-by-name). Different from CmeEventSignal_LookupByName at 0x00a5c0f0."
+    },
+    {
+      "address": "00d37010",
+      "proposed_name": "Event_NetOut_CreateCharacter_ctor",
+      "evidence": "Called as constructor in EmitNetOut_CreateCharacter (0x00d32ce0)."
+    },
+    {
+      "address": "00d328f0",
+      "proposed_name": "BuildVisualChoiceList",
+      "evidence": "Helper called by EmitNetOut_CreateCharacter to build VisGroupId+ChoiceId list from appearance chain. Takes vector of visual choices, iterates them. NOT a standalone emitter."
+    }
+  ],
+  "stats": {
+    "complete": 12,
+    "skipped_already_done": 1,
+    "skipped_too_small": 0,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 85
+  },
+  "resume_from_address": "scope_complete",
+  "notes": "Discovery methodology: xrefs to CmeEventSignal_GetSystem (0x0155f790), LookupByName (0x00a5c0f0), and SetField (0x0043b850) filtered to [0x00b00000, 0x01600000) scope. Total emitters found in scope: 12 new names + 1 pre-named. The register_NetOut_onStrikeTeamResponse bulk-registration function (0x00db3390) is a major naming contradiction worth a consolidator sweep. FUN_00a5c150 at 0x00a5c150 is likely CmeEventSignal_Subscribe (distinct from LookupByName at 0x00a5c0f0 by one byte offset — verify)."
+}

@@ -1,0 +1,26 @@
+{
+  "session": "W-faction",
+  "date": "2026-05-13",
+  "status": "complete",
+  "output_files": [
+    "docs/reverse-engineering/findings/faction-alignment-system.md",
+    "docs/reverse-engineering/address-map.md (Faction / Alignment section appended)"
+  ],
+  "key_findings": {
+    "faction_field_offset": "GameBeing+0x134 (mFaction INT8)",
+    "alignment_field_offset": "GameBeing+0x135 (mAlignment INT8)",
+    "hostile_sentinel": "faction == 10 (EFaction::FACTION_Burtonol by enum position)",
+    "player_default_faction_on_login": 3,
+    "onFactionUpdate_handler": "0x00e02280 (GameBeing.cpp:0x3f6)",
+    "onAlignmentUpdate_handler": "0x00e02180 (GameBeing.cpp:0x3ef)",
+    "wire_format": "1 byte INT8 for both messages",
+    "client_method_indices": {"onAlignmentUpdate": 24, "onFactionUpdate": 25}
+  },
+  "open_questions": [
+    "GiveFaction / SetFaction argument lists not in .def file",
+    "Nameplate color function not traced",
+    "Disguise-faction combat interaction not confirmed",
+    "Player login faction=3 hardcode origin not confirmed in Python source",
+    "Content-engine FactionCheck FactionRelation enum not documented"
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "worker_id": "rename",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T01:00:00Z",
+  "scope_predicate": "All OnEvent_<Event>__<Subscriber> functions in SGW.exe (prefix swap to MemberCallbackRtti_); plus 20 mangled MemberCallback template functions at 0x00d46ce0-0x00d47660",
+  "total_in_scope": 489,
+  "note": "All renames succeeded with advisory warnings only (NamingConventions.java is non-blocking). 0 rejections. Verification search for OnEvent_ returned 0 results confirming scope is fully covered.",
+  "renames_applied": [
+    {"address": "00d46ce0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_RepairItem__SGWNetworkManager"},
+    {"address": "00d46d60", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_RequestActiveSlotChange__SGWNetworkManager"},
+    {"address": "00d46de0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_Interact__SGWNetworkManager"},
+    {"address": "00d46e60", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_InitialResponse__SGWNetworkManager"},
+    {"address": "00d46ee0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_DialogButtonChoice__SGWNetworkManager"},
+    {"address": "00d46f60", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_PurchaseItems__SGWNetworkManager"},
+    {"address": "00d46fe0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_SellItems__SGWNetworkManager"},
+    {"address": "00d47060", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_BuybackItems__SGWNetworkManager"},
+    {"address": "00d470e0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_RepairItems__SGWNetworkManager"},
+    {"address": "00d47160", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_RechargeItems__SGWNetworkManager"},
+    {"address": "00d471e0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_TrainAbility__SGWNetworkManager"},
+    {"address": "00d47260", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_RequestMailHeaders__SGWNetworkManager"},
+    {"address": "00d472e0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_SendMailMessage__SGWNetworkManager"},
+    {"address": "00d47360", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_RequestMailBody__SGWNetworkManager"},
+    {"address": "00d473e0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_ArchiveMailMessage__SGWNetworkManager"},
+    {"address": "00d47460", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_DeleteMailMessage__SGWNetworkManager"},
+    {"address": "00d474e0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_ReturnMailMessage__SGWNetworkManager"},
+    {"address": "00d47560", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_TakeCashFromMailMessage__SGWNetworkManager"},
+    {"address": "00d475e0", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_TakeItemFromMailMessage__SGWNetworkManager"},
+    {"address": "00d47660", "old_name": "CME_EventSignal_ZV6_...MemberCallback__vfunc_3", "new_name": "MemberCallbackRtti_NetOut_PayCODForMailMessage__SGWNetworkManager"},
+    {"note": "... 469 OnEvent_* renames across sessions 2-3. First: 00426860 OnEvent_Net_Connected__Detail_CookedKismetEventSetData. Last session-3 batch: 00ccb1a0 OnEvent_UI_onRingTransporterList__SGWScriptedWindow. All succeeded."}
+  ],
+  "rejected": [],
+  "verification": {
+    "final_search_OnEvent_": "0 results — confirmed by live mcp__ghidra__search_functions call returning 'No functions matching OnEvent_'",
+    "timestamp": "2026-05-13T01:00:00Z"
+  },
+  "stats": {
+    "renamed": 489,
+    "rejected": 0,
+    "total": 489
+  },
+  "resume_from_address": null,
+  "status": "COMPLETE"
+}

@@ -1,0 +1,148 @@
+{
+  "worker": "W-inventory-state",
+  "session": "4b",
+  "date": "2026-05-13",
+  "status": "complete",
+  "phase": "deliverables-written",
+
+  "deliverables": {
+    "findings_doc": "docs/reverse-engineering/findings/inventory-state-machine.md",
+    "address_map_section": "docs/reverse-engineering/address-map.md :: ## Inventory State",
+    "checkpoint": "docs/reverse-engineering/v5-campaign/worker-inventory-state.checkpoint.json"
+  },
+
+  "v5_annotations_pending": [
+    {
+      "address": "0x00e1e340",
+      "rename_to": "EmitNetOut_MoveItem",
+      "owner": "W0",
+      "note": "Pattern A emitter; 4 fields: ItemId, TargetBag, TargetSlot, Quantity"
+    },
+    {
+      "address": "0x00e1ef70",
+      "rename_to": "EmitNetOut_RequestActiveSlotChange",
+      "owner": "W0",
+      "note": "Pattern A emitter; 2 fields: BagId (hardcoded 3), SlotId"
+    },
+    {
+      "address": "0x00e1f420",
+      "rename_to": "Inventory_EquipByName",
+      "owner": "W0",
+      "note": "Client model equip-by-name; calls EmitNetOut_MoveItem"
+    },
+    {
+      "address": "0x00e1f480",
+      "rename_to": "Inventory_UnequipByName",
+      "owner": "W0",
+      "note": "Client model unequip-by-name; calls EmitNetOut_MoveItem targeting INV_MAIN"
+    },
+    {
+      "address": "0x00e1f6b0",
+      "rename_to": "Inventory_HandleOnContainerInfo",
+      "owner": "W0",
+      "note": "Reads Bags[] BagInfo + Items[] InvItem FIXED_DICT; called on world entry"
+    },
+    {
+      "address": "0x00e1fb20",
+      "rename_to": "Inventory_HandleOnActiveSlotUpdate",
+      "owner": "W0",
+      "note": "Reads BagId + SlotId; updates active bandolier slot in client model"
+    },
+    {
+      "address": "0x00e1fd30",
+      "rename_to": "Inventory_HandleOnUpdateItem",
+      "owner": "W0",
+      "note": "Complex S->C handler (~600 lines); reads ItemUpdates[] FIXED_DICT; creates/updates item objects"
+    },
+    {
+      "address": "0x00e1da00",
+      "rename_to": "Inventory_HandleOnRemoveItem",
+      "owner": "W0",
+      "note": "Removes item from client model by itemId"
+    },
+    {
+      "address": "0x00e1db80",
+      "rename_to": "Inventory_HandleOnRefreshItem",
+      "owner": "W0",
+      "note": "Marks item stale or triggers re-fetch; exact semantics unconfirmed"
+    },
+    {
+      "address": "0x00e1dcc0",
+      "rename_to": "Inventory_HandleOnClearOrgVaultInventory",
+      "owner": "W0",
+      "note": "Clears org vault (team/command bank containers); trigger conditions unknown"
+    },
+    {
+      "address": "0x00e20da0",
+      "rename_to": "Inventory_Init",
+      "owner": "W0",
+      "note": "Initializer: registers all 14 CME event signal subscriptions for inventory class"
+    },
+    {
+      "address": "0x00c8d0f0",
+      "rename_to": "SGWTextCommandMgr_Ctor",
+      "owner": "W0",
+      "note": "Constructor: registers ~130 slash command handlers"
+    },
+    {
+      "address": "0x00c96db0",
+      "rename_to": "MemberCallback_EquipItem_SGWTextCmdMgr_Ctor",
+      "owner": "W0",
+      "note": "MemberCallback ctor for /equipitem subscriber; vtable 0x019b174c"
+    },
+    {
+      "address": "0x00c73da0",
+      "rename_to": "SGWTextCmdMgr_HandleEquipItem",
+      "owner": "W0",
+      "note": "Reads ItemName wide string, calls Inventory_EquipByName"
+    },
+    {
+      "address": "0x00c73ee0",
+      "rename_to": "SGWTextCmdMgr_HandleUnequipItem",
+      "owner": "W0",
+      "note": "Reads ItemName wide string, calls Inventory_UnequipByName"
+    },
+    {
+      "address": "0x00c74d20",
+      "rename_to": "SGWTextCmdMgr_HandleActivateBandolierSlot",
+      "owner": "W0",
+      "note": "Reads SlotNum, calls EmitNetOut_RequestActiveSlotChange(BagId=3, SlotNum)"
+    }
+  ],
+
+  "key_findings": {
+    "no_separate_equip_message": "Confirmed by exhaustive search. Event_NetOut_EquipItem and Event_NetOut_UnequipItem do not exist. All equip/unequip is moveItem (method 38).",
+    "container_id_range": "1-20; containers 4-14 are equipment slots; 3 = bandolier (4 slots); 1 = main bag (40 slots); 2 = mission bag (100 slots)",
+    "bandolier_wire_indexing": "Wire slot IDs are 1-indexed (C->S and S->C); server converts with saturating_sub(1) to 0-indexed; confirmed by Bag.py:369 comment in weapon-ammo-pipeline.md and FUN_00c74d20 calling EmitNetOut_RequestActiveSlotChange with raw SlotNum",
+    "equip_path": "Slash cmd FUN_00c73da0 -> FUN_00e1f420 (EquipByName) -> FUN_00e1e340 (EmitNetOut_MoveItem) -> CmeEventSignal_Emit_Subscribe -> universal RPC dispatcher 0x00c6fc40",
+    "bandolier_slot_change_path": "Slash cmd FUN_00c74d20 -> FUN_00e1ef70 (EmitNetOut_RequestActiveSlotChange directly, BagId=3 hardcoded)",
+    "inventory_class_subscriptions": "14 CME event signal subscriptions registered in FUN_00e20da0 (Inventory_Init); evidence via MemberCallback ctor chain: 0x00e21ce0 -> 0x00e224e0 -> 0x00e20da0",
+    "rtti_cluster": "0x00e219b0-0x00e21a10 = NetIn inventory CallbackImpl vfunc_2 cluster (onContainerInfo through onCashChanged)"
+  },
+
+  "open_questions": [
+    "onRefreshItem exact semantics (re-request vs UI-only redraw)",
+    "onClearOrgVaultInventory trigger conditions",
+    "7 unidentified Inventory_Init subscriptions beyond the 7 confirmed handlers",
+    "Bank/auction container slot counts (INV_BANK=17, INV_AUCTION=18, INV_TEAM_BANK=19, INV_COMMAND_BANK=20)",
+    "Drag-and-drop UI equip call site (not the slash command path; should be a different caller of EmitNetOut_MoveItem)"
+  ],
+
+  "rust_issues": [
+    {
+      "issue": "#240",
+      "description": "Right-click equip-with-swap puts swapped-out item into inconsistent slot",
+      "root_cause": "Binary confirms both items must be resolved in a single transaction. The swap logic is server-side in crates/services/src/base/world_entry/methods/inventory/move_/mod.rs. The occupant-swap path may not correctly handle the case where the source was an equipment slot (swap should go to INV_MAIN, not back to the equipment source slot).",
+      "recommended_fix": "Audit occupant swap logic: if src_container is an equipment slot (4-14), the displaced occupant should go to INV_MAIN (container 1), not back to src_container."
+    }
+  ],
+
+  "invariants_respected": {
+    "no_rust_modification": true,
+    "no_ghidra_scripts": true,
+    "no_annotation_scripts": true,
+    "no_dat_rename_performed": true,
+    "w0_struct_ops_logged_to_checkpoint": true,
+    "plate_format_no_spurious_ecx": true
+  }
+}

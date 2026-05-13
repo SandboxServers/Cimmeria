@@ -1,0 +1,594 @@
+{
+  "worker_id": "4b1",
+  "campaign_version": "v5",
+  "created_at": "2026-05-13T00:00:00Z",
+  "last_updated_at": "2026-05-13T08:00:00Z",
+  "scope_predicate": "Functions in address range [0x01590000, 0x01593fff] inclusive — EntityDescription parse chain low half",
+  "total_in_scope": 49,
+  "functions": [
+    {
+      "address": "01590040",
+      "name_at_start": "DataDescriptionVec_MoveRange",
+      "name_at_end": "DataDescriptionVec_MoveRange",
+      "status": "complete",
+      "score_before": 67,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Already named by prior worker. Improved plate with DataDescription element size 0x110 note and struct offset citations."
+    },
+    {
+      "address": "01590070",
+      "name_at_start": "DataDescriptionVec_CopyRange",
+      "name_at_end": "DataDescriptionVec_CopyRange",
+      "status": "complete",
+      "score_before": 74,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Already named. Improved plate."
+    },
+    {
+      "address": "015900a0",
+      "name_at_start": "DataDescriptionVec_Insert",
+      "name_at_end": "DataDescriptionVec_Insert",
+      "status": "complete",
+      "score_before": 37,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 2,
+      "notes": "Already named. Complex MSVC SEH vector insert. Accepted score 37 — structural ceiling from SEH frame magic numbers and void* this."
+    },
+    {
+      "address": "01590390",
+      "name_at_start": "FUN_01590390",
+      "name_at_end": "DataDescriptionVec_Resize",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 29,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 6,
+      "notes": "std::vector<DataDescription> resize. Score 29 accepted — MSVC SEH frame generates irreducible magic numbers. Element size 0x110."
+    },
+    {
+      "address": "015904b0",
+      "name_at_start": "FUN_015904b0",
+      "name_at_end": "DataDescriptionVec_ConstructWithSize",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Wrapper calling FUN_01591fb0 (initializer) then DataDescriptionVec_Resize."
+    },
+    {
+      "address": "01590520",
+      "name_at_start": "FUN_01590520",
+      "name_at_end": "EntityDescription_ReadFromStream",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 26,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 6,
+      "notes": "Master entity schema loader from BigWorld DataSection stream. 277 lines, SEH frame. Score 26 accepted — structural ceiling 77.5 with 58 magic numbers from SEH table. Key findings: entity count from vtable[1], DataDescription slots 0x110 bytes, client property limit 0x3d=61, method limit 0x3e=62. EntityDescription+0x1c=name-index map, +0x1e=client-prop-index. Plate already present from prior work; added variable renames."
+    },
+    {
+      "address": "01590bb0",
+      "name_at_start": "FUN_01590bb0",
+      "name_at_end": "MethodDescription_ComputeIdBase",
+      "status": "complete",
+      "score_before": 17,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "BigWorld method ID base computation. Formula: 0x3e - (nExposedCount + 0xc0) / 0xff."
+    },
+    {
+      "address": "01590c00",
+      "name_at_start": "FUN_01590c00",
+      "name_at_end": "MethodDescriptionVec_AtBounded",
+      "status": "complete",
+      "score_before": 22,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Safe indexed accessor for MethodDescription vector (0x50 bytes/element). begin at this+0x10, end at this+0x14."
+    },
+    {
+      "address": "01590c40",
+      "name_at_start": "FUN_01590c40",
+      "name_at_end": "MethodArgVec_IteratorAdvance",
+      "status": "complete",
+      "score_before": 27,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Fastcall iterator advance for MethodArg vector (element 0x28 bytes). Advances current pos +0x28 after bounds check."
+    },
+    {
+      "address": "01590c70",
+      "name_at_start": "FUN_01590c70",
+      "name_at_end": "EntityDescription_GetClientPropertyCount",
+      "status": "complete",
+      "score_before": 24,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Returns count of client-visible properties: (ptr74 - ptr70) / 4. Pointer array at EntityDescription+0x70/0x74."
+    },
+    {
+      "address": "01590c90",
+      "name_at_start": "FUN_01590c90",
+      "name_at_end": "EntityDescription_GetBaseMethodCount",
+      "status": "complete",
+      "score_before": 24,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Returns count of BaseMethods: (ptr_f4 - ptr_f0) / 0x50. Vector at EntityDescription+0xf0/0xf4."
+    },
+    {
+      "address": "01590cc0",
+      "name_at_start": "FUN_01590cc0",
+      "name_at_end": "MethodDescriptionVec_GetAt",
+      "status": "complete",
+      "score_before": 18,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Safe indexed accessor for MethodDescription vector at this+0x10/0x14. Returns begin + idx*0x50 or 0."
+    },
+    {
+      "address": "01590d30",
+      "name_at_start": "FUN_01590d30",
+      "name_at_end": "MethodDescriptionVec_MoveBackward",
+      "status": "complete",
+      "score_before": 9,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Backward-moves MethodDescription range (0x50 bytes each) for overlap-safe insert. Calls MethodDescription_CopyAssign."
+    },
+    {
+      "address": "01590d80",
+      "name_at_start": "FUN_01590d80",
+      "name_at_end": "EntityDescription_GetClientPropertyByIndex",
+      "status": "complete",
+      "score_before": 19,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 6,
+      "notes": "Maps client property index through pointer array at +0x70/+0x74 to DataDescription at +0x60/+0x64 (element 0x40)."
+    },
+    {
+      "address": "01590df0",
+      "name_at_start": "FUN_01590df0",
+      "name_at_end": "EntityDescription_AssignClientMethodIds",
+      "status": "complete",
+      "score_before": 3,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Assigns BigWorld multi-byte client method IDs to MethodDescriptions. Exposed array at +0x20/+0x24."
+    },
+    {
+      "address": "01590ee0",
+      "name_at_start": "FUN_01590ee0",
+      "name_at_end": "EntityDescription_DecodeClientMethodId",
+      "status": "complete",
+      "score_before": 16,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Decodes BigWorld multi-byte client method ID from MethodDesc+0x44/+0x48. Inverse of AssignClientMethodIds."
+    },
+    {
+      "address": "01590f30",
+      "name_at_start": "FUN_01590f30",
+      "name_at_end": "EntityDescription_GetExposedClientMethodByIndex",
+      "status": "complete",
+      "score_before": 22,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Maps exposed method index through +0x20/+0x24 array to MethodDescription at +0x0c vector."
+    },
+    {
+      "address": "01590f90",
+      "name_at_start": "FUN_01590f90",
+      "name_at_end": "MethodDescriptionVec_FillRange",
+      "status": "complete",
+      "score_before": 25,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "STL fill helper: copy-assigns pTemplate to each 0x50-byte slot in [pBegin, pEnd)."
+    },
+    {
+      "address": "01590fc0",
+      "name_at_start": "FUN_01590fc0",
+      "name_at_end": "EntityDescription_WriteClientData",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 9,
+      "notes": "IMPORTANT: Serializes client-visible entity schema to stream. Writes: htonl(1)x2, entity name, client properties (flags&0x06), BaseMethods, Exposed CellMethods, Exposed ClientMethods. CONTRADICTION: calls MethodDescription_Destructor (0x015942f0) with stream as 2nd arg — name may be wrong, this may be WriteToStream not destructor."
+    },
+    {
+      "address": "01591220",
+      "name_at_start": "FUN_01591220",
+      "name_at_end": "MethodDescriptionVec_MoveBackwardThunk",
+      "status": "complete",
+      "score_before": 25,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Compiler-generated thunk wrapping MethodDescriptionVec_MoveBackward."
+    },
+    {
+      "address": "01591250",
+      "name_at_start": "FUN_01591250",
+      "name_at_end": "MethodDescriptionVec_UninitCopyN",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Uninitialized copy-construct of N MethodDescription objects (0x50 bytes each) via FUN_0158e1e0."
+    },
+    {
+      "address": "015912e0",
+      "name_at_start": "FUN_015912e0",
+      "name_at_end": "DataDescriptionVec_UninitCopyN",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "Uninitialized copy-construct of N DataDescription objects (0x40-byte RUNTIME form, not 0x110 parse-time form) via FUN_0158e230."
+    },
+    {
+      "address": "01591420",
+      "name_at_start": "FUN_01591420",
+      "name_at_end": "MethodDescriptionMap_FindByName",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 35,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 8,
+      "notes": "std::map<StdStringMSVC,int> find-by-name returning MethodDescription* via index. Score 35 accepted — ECX void* and undefined locals deduct heavily."
+    },
+    {
+      "address": "01591550",
+      "name_at_start": "FUN_01591550",
+      "name_at_end": "MethodDescriptionVec_InsertN",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 34,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "std::vector<MethodDescription>::insert(position, count, template). SEH frame. Element size 0x50. Score 34 accepted."
+    },
+    {
+      "address": "01591820",
+      "name_at_start": "FUN_01591820",
+      "name_at_end": "DataDescriptionVec_InitStringSearch",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 39,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "StdStringMSVC factory — constructs from char*/len, performs substring search. Returns pThis. Used to build search keys for DataDescription name lookup."
+    },
+    {
+      "address": "01591920",
+      "name_at_start": "FUN_01591920",
+      "name_at_end": "MethodDescriptionVec_Insert",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "Single-element insert for MethodDescription vector. Delegates to MethodDescriptionVec_InsertN. Returns iterator pair in pIterOut. Element size 0x50."
+    },
+    {
+      "address": "015919e0",
+      "name_at_start": "FUN_015919e0",
+      "name_at_end": "DataDescriptionVec_FillRange",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "STL fill for runtime DataDescription vector (0x40 bytes/element). Iterates [pBegin, pEnd) calling copy-assign from pTemplate."
+    },
+    {
+      "address": "01591a10",
+      "name_at_start": "FUN_01591a10",
+      "name_at_end": "MethodDescriptionVec_PushBack",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "push_back for MethodDescription vector (0x50 bytes). Fast path if capacity; delegates to MethodDescriptionVec_Insert on overflow."
+    },
+    {
+      "address": "01591ac0",
+      "name_at_start": "FUN_01591ac0",
+      "name_at_end": "DataDescriptionVec_MoveBackward",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Overlap-safe backward shift of DataDescription elements (0x40 bytes) for insert gap creation. Returns new destination begin."
+    },
+    {
+      "address": "01591b00",
+      "name_at_start": "FUN_01591b00",
+      "name_at_end": "DataDescription_Destructor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Destructor for parse-time DataDescription (0x110-byte form). Destroys 3 StdStringMSVC (+0x04, +0x24, +0x40), pointer array at +0x70/+0x74/+0x78, and 4 sub-structs at +0x7c, +0x88, +0xb4, +0xe0. SEH frame. NOTE: resolves prior contradiction — this IS a destructor (scalable_free on +0x70 pointer, string heap free at cap>0xf)."
+    },
+    {
+      "address": "01591c50",
+      "name_at_start": "FUN_01591c50",
+      "name_at_end": "DataDescriptionVec_InsertN",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "std::vector<DataDescription>::insert(position, count, template). Runtime 0x40-byte form. Two paths: grow (realloc+copy) and in-place (shift+fill). SEH frame."
+    },
+    {
+      "address": "01591ec0",
+      "name_at_start": "FUN_01591ec0",
+      "name_at_end": "MethodDescriptionVec_DefaultInit",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Initializes a MethodDescription sub-vector container: StdStringMSVC at +0 and 6 dwords at +0x10..+0x28 zeroed. Used by DataDescription_Constructor to init the three method-arg vec slots."
+    },
+    {
+      "address": "01591f20",
+      "name_at_start": "FUN_01591f20",
+      "name_at_end": "DataDescriptionVec_Insert",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Single-element insert for runtime DataDescription vector (0x40 bytes). Delegates to DataDescriptionVec_InsertN."
+    },
+    {
+      "address": "01591fb0",
+      "name_at_start": "FUN_01591fb0",
+      "name_at_end": "DataDescription_Constructor",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Constructor for parse-time DataDescription (0x110-byte form). Initializes: 3 StdStringMSVC (+0x04, +0x24, +0x40), sentinels +0x1c/+0x1e=0xffff, 3 flag bytes at +0x58/+0x59/+0x5a=1, pointer array +0x70/+0x74/+0x78=0, 4 sub-structs at +0x7c/+0x88/+0xb4/+0xe0, trailing +0x10c=0."
+    },
+    {
+      "address": "015920d0",
+      "name_at_start": "FUN_015920d0",
+      "name_at_end": "EntityDescription_ParseMethodsSection",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Parses a BigWorld methods XML section (ClientMethods/CellMethods/BaseMethods) into a MethodDescription vector. Sets EXPOSED flag (0x04) if bIsClientSection. Maps to exposed array at +0x20/+0x24. Calls EntityDescription_AssignClientMethodIds if client section. SEH frame."
+    },
+    {
+      "address": "01592410",
+      "name_at_start": "FUN_01592410",
+      "name_at_end": "DataDescriptionVec_PushBack",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "push_back for runtime DataDescription vector (0x40 bytes). Fast path if capacity; delegates to DataDescriptionVec_Insert on overflow."
+    },
+    {
+      "address": "015924a0",
+      "name_at_start": "FUN_015924a0",
+      "name_at_end": "EntityDescription_ParseProperties",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 33,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 4,
+      "notes": "KEY FUNCTION: Parses Properties section from BigWorld .def DataSection. Contains SGW-specific property names: publicReservationData, publicMissionData, completedMissions, aggressionOverrides, effectMonikers. Validates propagation rules against type set ARRAY/TUPLE/PYTHON/FIXED_DICT/CLASS/USER_TYPE. Client-visible = flags&0x06. EDITOR_ONLY properties parsed but not inserted. Score 33 accepted — 573 decompiled lines, structural ceiling 80."
+    },
+    {
+      "address": "01593420",
+      "name_at_start": "FUN_01593420",
+      "name_at_end": "EntityDescription_ParseClientMethods",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Thin wrapper: extracts 'ClientMethods' child DataSection, delegates to EntityDescription_ParseMethodsSection targeting this+0xe0 (ClientMethods vector)."
+    },
+    {
+      "address": "015934c0",
+      "name_at_start": "FUN_015934c0",
+      "name_at_end": "EntityDescription_ParseCellMethods",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Thin wrapper: extracts 'CellMethods' child DataSection, delegates to EntityDescription_ParseMethodsSection targeting this+0x88 (CellMethods vector)."
+    },
+    {
+      "address": "01593560",
+      "name_at_start": "FUN_01593560",
+      "name_at_end": "EntityDescription_ParseBaseMethods",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Thin wrapper: extracts 'BaseMethods' child DataSection, delegates to EntityDescription_ParseMethodsSection targeting this+0xb4 (BaseMethods vector)."
+    },
+    {
+      "address": "01593600",
+      "name_at_start": "FUN_01593600",
+      "name_at_end": "EntityDescription_ParseDef",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Parse orchestrator: dispatches Implements -> Properties -> ClientMethods -> CellMethods -> BaseMethods IN THAT ORDER. Confirms parse order from entity-property-sync.md. Returns 0 on any failure."
+    },
+    {
+      "address": "01593930",
+      "name_at_start": "FUN_01593930",
+      "name_at_end": "EntityDescription_ParseImplements",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": null,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 3,
+      "notes": "Parses 'Implements' section: for each interface name, loads 'entities/defs/interfaces/<name>.def' and recursively calls EntityDescription_ParseDef. Interface .def files are in entities/defs/interfaces/ subdirectory."
+    },
+    {
+      "address": "01593cd0",
+      "name_at_start": "FUN_01593cd0",
+      "name_at_end": "EntityDescription_Parse",
+      "status": "complete",
+      "score_before": 0,
+      "score_after": 40,
+      "workflow": "full",
+      "skipped_reason": null,
+      "tool_calls_used": 5,
+      "notes": "TOP-LEVEL ENTRY: Opens 'entities/defs/<name>.def', resolves Parent chain recursively, reads ClientName->+0x3c, ServerOnly->+0x5a, sets +0x58/+0x59=1, calls EntityDescription_ParseDef. EntityDescription field map confirmed: +0x20=entity name, +0x3c=client name, +0x50=explicit-client-name flag, +0x58/+0x59/+0x5a=parse flags."
+    }
+  ],
+  "pending_structs": [],
+  "pending_globals": [],
+  "contradictions": [
+    {
+      "address": "01590fc0",
+      "description": "EntityDescription_WriteClientData calls MethodDescription_Destructor (0x015942f0) with a stream pointer as second argument. The function at 0x015942f0 is named 'Destructor' but appears to accept a stream and write method data to it. This name may be wrong — it could be MethodDescription_WriteToStream. W0 should investigate 0x015942f0 xrefs."
+    },
+    {
+      "address": "01590fc0",
+      "description": "Two DataDescription layouts confirmed: 0x40 bytes (runtime, stored in EntityDescription property arrays after parse) and 0x110 bytes (parse-time form in DataDescriptionVec_Insert/Resize). The 0x40 form is used in EntityDescription_WriteClientData and GetClientPropertyByIndex."
+    },
+    {
+      "address": "01591b00",
+      "description": "RESOLVED: DataDescription_Destructor (0x01591b00) IS a destructor — confirmed by scalable_free on +0x70 pointer when non-null, and string heap free pattern (if capacity > 0xf, free ptr at +0x04). The function at 0x015942f0 used in EntityDescription_WriteClientData (0x01590fc0) is a DIFFERENT function — that one takes a stream as its second arg and is NOT a destructor. The name MethodDescription_Destructor at 0x015942f0 is likely wrong and should be renamed MethodDescription_WriteToStream."
+    }
+  ],
+  "new_addresses": [
+    {
+      "address": "01590fc0",
+      "proposed_name": "EntityDescription_WriteClientData",
+      "justification": "Serializes client-visible entity schema (properties + methods) to a data stream. Important for client-server synchronization protocol."
+    },
+    {
+      "address": "01590df0",
+      "proposed_name": "EntityDescription_AssignClientMethodIds",
+      "justification": "Implements BigWorld multi-byte method ID encoding for client methods."
+    },
+    {
+      "address": "015924a0",
+      "proposed_name": "EntityDescription_ParseProperties",
+      "justification": "Property parse loop with SGW-specific field names. Anchor function confirmed from address-map.md."
+    },
+    {
+      "address": "01593600",
+      "proposed_name": "EntityDescription_ParseDef",
+      "justification": "Orchestrates Implements->Properties->ClientMethods->CellMethods->BaseMethods parse order. Central dispatch."
+    },
+    {
+      "address": "01593cd0",
+      "proposed_name": "EntityDescription_Parse",
+      "justification": "Top-level .def file parser: opens entities/defs/<name>.def, resolves Parent chain, reads ClientName/ServerOnly."
+    },
+    {
+      "address": "01593930",
+      "proposed_name": "EntityDescription_ParseImplements",
+      "justification": "Loads interface .def files from entities/defs/interfaces/<name>.def and merges into EntityDescription."
+    },
+    {
+      "address": "01591fb0",
+      "proposed_name": "DataDescription_Constructor",
+      "justification": "Parse-time DataDescription ctor (0x110-byte form). Initializes 3 strings, sentinel indices 0xffff, 4 sub-structs."
+    },
+    {
+      "address": "01591b00",
+      "proposed_name": "DataDescription_Destructor",
+      "justification": "Parse-time DataDescription dtor (0x110-byte form). Destroys 3 strings, pointer array, 4 sub-structs via SEH frame."
+    }
+  ],
+  "stats": {
+    "complete": 49,
+    "skipped_already_done": 0,
+    "skipped_too_small": 0,
+    "in_progress": 0,
+    "error": 0,
+    "not_started": 0,
+    "total_tool_calls": 198
+  },
+  "resume_from_address": null
+}

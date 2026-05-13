@@ -518,6 +518,230 @@ The client filters NaN values in entity position updates, replacing each NaN com
 
 ---
 
+## 9. Vector Helper Infrastructure (W-entity-desc-A findings, 2026-05-13)
+
+The EntityDescription parse chain relies on a cluster of vector and map helpers in `[0x0158e060, 0x0158ea60]`. These were recovered in Session 5 W-entity-desc-A and are listed below for cross-reference. All addresses confirmed via Ghidra decompilation.
+
+### DataDescriptionParseVec Helpers (parse-time 0x110-byte form)
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x0158e060` | `DataDescriptionParseVec_GetSize` | `(end-begin)/0x110`; fields at `this+4`/`+8` |
+| `0x0158e0a0` | `DataDescriptionParseVec_AllocN` | `scalable_malloc(n*0x110)` with overflow guard |
+| `0x0158e180` | `DataDescriptionParseVec_GetSizeAlt` | Same formula; fields at `this+0x10`/`+0x14` |
+| `0x0158e1a0` | `DataDescriptionParseVec_GetAt` | Bounds-checked `begin + idx*0x110` |
+| `0x0158e310` | `DataDescriptionParseVec_ForEachFindMax` | Functor-per-element, tracks max return value |
+
+### MethodDescriptionVec Helpers (0x50-byte form)
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x0158e080` | `MethodDescriptionVec_GetSize` | `(end-begin)/0x50`; fields at `this+4`/`+8` |
+| `0x0158e110` | `MethodDescriptionVec_AllocN` | `scalable_malloc(n*0x50)` with overflow guard |
+| `0x0158e460` | `MethodDescriptionVec_ReserveN` | Init sub-vector with N capacity; max 0x3333333 |
+| `0x0158e280` | `MethodDescriptionVec_CopyRangeToOffset` | Copy range to `src+offset` using CopyAssign |
+| `0x0158e590` | `MethodDescriptionVec_CopyRangeToOffsetThunk` | One-liner thunk for above |
+
+### DataDescriptionVec Helpers (runtime 0x40-byte form)
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x0158e4b0` | `DataDescriptionVec_ReserveN` | Init sub-vector with N capacity (0x40 each); max 0x3ffffff |
+
+### SEH Copy-Construct Wrappers
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x0158e1e0` | `MethodDescription_CopyCtorSEH` | Guards `MethodDescription_CopyCtor`; skips if dst==null |
+| `0x0158e230` | `DataDescription_PartialInitSEH` | Guards `DataDescription_PartialInit` (0x40-byte form); skips if dst==null |
+| `0x0158e500` | `DataDescriptionVec_UninitCopyRange` | SEH-wrapped range copy, 0x40-byte stride |
+| `0x0158e5c0` | `MethodDescriptionVec_UninitCopyRange` | SEH-wrapped range copy, 0x50-byte stride |
+| `0x0158ea00` | `MethodDescriptionVec_UninitCopyRangeThunk` | 5-arg thunk (drops params 1, 3) |
+| `0x0158ea30` | `DataDescriptionVec_UninitCopyRangeThunk` | 5-arg thunk (drops params 1, 3) |
+| `0x0158ea60` | `DataDescriptionVec_UninitCopyRangeThunk2` | 3-arg direct thunk |
+
+### EntityDescription Method ID Map (std::map<uint32, uint16>)
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x0158e650` | `EntityDescriptionMap_LowerBound` | MSVC xtree lower_bound; sentinel at node+0x15 |
+| `0x0158e840` | `EntityDescriptionMap_InsertOrFind` | MSVC xtree insert-or-find |
+| `0x0158e710` | `EntityDescription_FindMethodIdByName` | **KEY**: returns `uint16` at node+0x10; 0xffff if not found |
+| `0x0158e780` | `EntityDescription_FindAndWritePropertyByName` | Name-scans parse-time DataDescVec, calls `EntityDescription_WriteClientData` on match |
+
+### Critical Finding: Method ID Lookup is Directly Wired to RPC Dispatch
+
+`EntityDescription_FindMethodIdByName` (`0x0158e710`) is called from:
+- `ProcessEntityMethodEmission` (`0x00c6f8f0`)
+- `RouteOutgoingEntityRpc` (`0x00c6fc40`) — the universal RPC dispatcher
+
+This confirms the method ID encoding in the wire format maps directly through the EntityDescription method ID map. The `uint16` stored at RB-tree node+0x10 is the encoded wire method ID. Return value 0xffff is the "not found" sentinel (same as BigW `0xffff` exposed-method sentinel from `MethodDescriptionVec_AtBounded`).
+
+### Open Question: DataDescription Dual Name Fields
+
+`EntityDescription_FindAndWritePropertyByName` (`0x0158e780`) compares two StdStringMSVC fields within the same 0x110-byte parse-time DataDescription:
+- Field 1: element+0x24 (length at +0x34, capacity at +0x38)
+- Field 2: element+0x40 (length at +0x50, capacity at +0x54)
+
+Both are compared against the search name. This implies the parse-time DataDescription stores two distinct name strings. Based on `DataDescription_Constructor` (`0x01591fb0`) which initializes three StdStringMSVC at +0x04, +0x24, and +0x40, the likely layout is:
+
+| Offset | Field |
+|--------|-------|
+| +0x04 | Internal/server name (StdStringMSVC) |
+| +0x24 | Client-visible name (StdStringMSVC) |
+| +0x40 | Alias or qualified name (StdStringMSVC) |
+
+This is **hypothesis pending verification** — a cross-reference to `DataDescription_parse_2` (`0x015974a0`) and the BigWorld 2.0.1 `DataDescription` source would confirm which field is set from which XML element.
+
+---
+
+---
+
+## 10. DataType Two-Registry System (W-entity-desc-B findings, 2026-05-13)
+
+The BigWorld entity description parser uses two separate `std::map<string, DataType*>` registries with distinct roles. Both reside in the SGW.exe `.data` segment; neither is documented in the BW 2.0.1 public source.
+
+### Registry Addresses
+
+| Symbol | Address | Populated By | Queried By |
+|--------|---------|-------------|------------|
+| `g_mapDataTypeRegistry` | `DAT_01f126b8` | `DataType_RegisterBuiltins` (`0x01596c40`) | `DataType_BuildFromSection` (`0x01597150`) |
+| `g_pMetaDataTypeRegistry` | `DAT_01f126b4` | `DataType_Register` (`0x01597ce0`) | `DataType_LookupByName` (`0x01595f00`) |
+
+### Primary Registry: g_mapDataTypeRegistry
+
+`DataType_RegisterBuiltins` (`0x01596c40`) reads `entities/defs/alias.xml`. For each XML child element it:
+1. Calls `DataType_BuildFromSection` recursively to instantiate the DataType.
+2. Inserts the element's tag name → `DataType*` into `g_mapDataTypeRegistry` via `StdMap_DataType_EmplaceOrFind` (MSVC xtree insert).
+
+**Role**: This is the BUILD path. When parsing a `.def` file and encountering a `<Type>` tag, `DataType_BuildFromSection` looks up the tag string here to find the matching factory.
+
+### Secondary Registry: g_pMetaDataTypeRegistry
+
+`DataType_Register` (`0x01597ce0`) is called by all 17 `SimpleMetaDataType<T>::Constructor` functions during static initialization. It:
+1. Lazy-allocates `g_pMetaDataTypeRegistry` via `scalable_malloc(0xc)` + `FUN_00460320` (map constructor).
+2. Calls `vtable[1](this)` on the MetaDataType to get its name string.
+3. Duplicate-checks via `FUN_0158ea90` (std::map::find).
+4. Logs `"MetaDataType::addType: %s has already been registered."` on duplicate.
+5. Inserts name → `SimpleMetaDataType<T>*` via `FUN_00476590` (std::map::operator[]).
+
+**Role**: This is the LOOKUP path. `DataType_LookupByName` (`0x01595f00`) reads `g_pMetaDataTypeRegistry` to find a DataType instance by its C++ type name.
+
+### Key Distinction: Different Key Spaces
+
+The two registries can have **different keys for the same underlying C++ type**. `alias.xml` creates aliases like `"INT8" → IntegerDataType<signed_char>`, while the MetaDataType registry stores `"INT8"` (the string returned by the SimpleMetaDataType's `getName()` vtable slot). In practice for the primitive types both maps use the same name strings, but the architecture permits divergence (e.g., if alias.xml uses `"INTEGER"` while the MetaDataType was registered as `"INT32"`).
+
+### W4-B2 Ambiguity Resolution
+
+W4-B2 documented both `g_pMetaDataTypeRegistry` and `g_mapDataTypeRegistryLookup` as separate globals, both at `DAT_01f126b4`. This was an error: there is only ONE object at that address. `DataType_Register` populates it; `DataType_LookupByName` reads it. The correct canonical name is `g_pMetaDataTypeRegistry`.
+
+### DataType Subclass Hierarchy
+
+17 concrete DataType subclasses are registered, each with a 4-function group (DtorBody, Constructor, GetTypeName_WriteStream, New):
+
+| Type | Constructor | MD5 Type Encoding |
+|------|-------------|-------------------|
+| `IntegerDataType<unsigned char>` (UInt8) | `0x01599150` | 1 (1-byte uint) |
+| `IntegerDataType<char>` (Int8) | `0x015995f0` | 1 (1-byte signed) |
+| `IntegerDataType<unsigned short>` (UInt16) | `0x01599340` | 2 (2-byte uint) |
+| `IntegerDataType<short>` (Int16) | `0x015997d0` | 2 (2-byte signed) |
+| `IntegerDataType<long>` (Int32) | `0x015999b0` | 4 (4-byte int) |
+| `LongIntegerDataType<unsigned long>` (UInt32) | `0x01599b90` | 4 (4-byte uint) |
+| `LongIntegerDataType<__int64>` (Int64) | `0x01599d90` | 8 (8-byte signed) |
+| `LongIntegerDataType<unsigned __int64>` (UInt64) | `0x01599f70` | 8 (8-byte uint) |
+| `FloatDataType` | `0x0159a220` | `"Float"` (6 bytes literal) |
+| `StringDataType` | `0x0159a3f0` | (inherits string path) |
+| `WideStringDataType` | `0x0159a5e0` | (inherits wide path) |
+| `PythonDataType` | `0x0159a790` | `"Python"` (7 bytes literal) |
+| `VectorDataType<Vector2>` | `0x0159aa00` | `"Vector"` + 4-byte '2' marker |
+| `VectorDataType<Vector3>` | `0x0159acf0` | `"Vector"` + 4-byte '3' marker |
+| `VectorDataType<Vector4>` | `0x0159af80` | `"Vector"` + 4-byte '4' marker |
+| `BlobDataType` | `0x0159b300` | `"Blob"` (5-byte literal at DAT_01b1ba80) |
+| `MailBoxDataType` | `0x0159b510` | `"MailBox"` (8 bytes literal) |
+
+SimpleMetaDataType<T> constructors: `0x0159db10`–`0x0159e510` (17 functions, sequential, each calls `DataType_Register`).
+
+---
+
+## 11. MD5 Type Signature Hashing (W-entity-desc-B findings, 2026-05-13)
+
+The BigWorld entity description system uses MD5 to compute a type signature for each DataType. This signature is used for protocol versioning — the server and client must agree on the hash of each entity's property/method type layout.
+
+### MD5 Infrastructure (confirmed via Ghidra decompilation)
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x015a3d70` | `MD5_Init` | Sets bit_count=0, digest=[0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476] |
+| `0x015a3da0` | `MD5_Update` | Thin wrapper → `MD5_Update_Block` |
+| `0x015a3c00` | `MD5_Update_Block` | Core block processor; partial-block handling at byte-aligned offsets |
+| `0x015a3cd0` | `MD5_Finalize` | Appends padding + 8-byte length, writes 16-byte digest |
+| `0x015a3dc0` | `MD5_Finalize_Wrapper` | Thin wrapper → `MD5_Finalize` |
+| `0x015a3de0` | `MD5_DigestToHexString` | 16-byte digest → 32-char uppercase hex; uses `"0123456789ABCDEF"` table at `DAT_01b1bd40` |
+
+### Type Encoding into MD5 Stream
+
+Each `DataType::GetTypeName_WriteStream` method feeds binary type data into the MD5 stream:
+
+- **Integer types**: Write a 5-byte prefix + 1 byte for the type size (1=byte, 2=short, 4=int, 8=int64)
+- **Float**: Writes literal string `"Float"` (6 bytes)
+- **Python**: Writes literal string `"Python"` (7 bytes)
+- **Vector2/3/4**: Writes `"Vector"` (7 bytes) + a 4-byte marker at DAT_01b1b990/b9e8/ba30
+- **Blob**: Writes 5-byte literal at DAT_01b1ba80
+- **MailBox**: Writes literal string `"MailBox"` (8 bytes)
+
+The resulting MD5 hash is a compact protocol version fingerprint for the entity's type schema. Mismatch between client and server would indicate a schema divergence.
+
+---
+
+## 12. CME Property System (W-entity-desc-B findings, 2026-05-13)
+
+The `CME::Detail::PropertyNode::Property<T>` hierarchy provides a secondary typed property container separate from the BigWorld stream-based protocol. This is used internally for the SGW CME (Custom Map Entity?) layer.
+
+### TypeList Coverage
+
+The `CME::BasicPropertyList<TypeList<14 types>>` covers: `uint8`, `int8`, `uint16`, `int16`, `uint32`, `int32`, `uint64`, `int64`, `float`, `wstring`, `Vector2`, `Vector3`, `Vector4`, `NullType` (terminator).
+
+### Key Functions
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x0159ba30` | `CMEProperty_UInt16_New` | `scalable_malloc(0x0c)`, calls UInt16 ctor with value |
+| `0x0159bad0` | `CMEProperty_UInt64_New` | `scalable_malloc(0x10)` |
+| `0x0159bb70` | `CMEProperty_Vector2_New` | `scalable_malloc(0x10)`, stores 8 bytes (2 floats) |
+| `0x0159bc10` | `CMEProperty_Vector4_New` | `scalable_malloc(0x18)`, stores 16 bytes (4 floats) |
+| `0x0159bcd0` | `CMEPropertyList_StreamToTree` | Iterates CME property list; writes each entry to property tree via vtable[7] |
+| `0x0159bd70` | `CMEPropertyList_PrintToStream` | Prints `[val1, val2, ...]` format to wchar_t stream |
+| `0x015a27f0` | `CMEBasicPropertyList_StreamToTree` | Full TypeList dispatch; calls `CMEPropertyList_StreamToTree` |
+| `0x015a2880` | `CMEBasicPropertyList_PrintToStream` | Calls `CMEPropertyList_PrintToStream` |
+
+### CME Property Object Sizes
+
+| Type | Size | Layout |
+|------|------|--------|
+| `Property<uint8>` | 0x0c | `[vftable][+4=padding][+8=value_byte]` |
+| `Property<uint16>` | 0x0c | `[vftable][+4=pad][+8=value_u16]` |
+| `Property<uint64>` | 0x10 | `[vftable][+4=pad][+8..0xc=value_u64]` |
+| `Property<Vector2>` | 0x10 | `[vftable][+4=pad][+8..0xc=x,y floats]` |
+| `Property<Vector4>` | 0x18 | `[vftable][+4=pad][+8..0x14=xyzw floats]` |
+
+The `CMEPropertyTree_Set*` functions at `015a0210` (UInt16), `015a0320` (UInt64), `015a0430` (Vector2), `015a0540` (Vector4) wrap these allocators with property-tree insert/update via `FUN_00438990` + `FUN_0043b710`.
+
+---
+
+## 13. Sub-Slot Client Method Encoding — Final Confirmation (W-entity-desc-B, 2026-05-13)
+
+**Status: CONFIRMED** from W4-B1 evidence. No new binary evidence found in the `[0x01599000, 0x015c0000)` range changes this conclusion.
+
+From W4-B1 (`worker-4b1.checkpoint.json`):
+
+- `EntityDescription_AssignClientMethodIds` at `0x01590df0`: Iterates client methods. When `methodCount >= 0x3e` (62), switches to sub-slot encoding.
+- `EntityDescription_DecodeClientMethodId` at `0x01590ee0`: Decodes multi-byte method IDs for methods at index 62+.
+- Threshold `0x3e = 62` matches the BigWorld 2.0.1 `entity_method_descriptions.cpp::checkExposedForSubSlots()` boundary exactly.
+
+**SGWPlayer has 157 client methods total** (sum across all parsed entities in its hierarchy). Sub-slot encoding applies to all methods at index 62 and above. This is handled transparently by the W4-B1 functions and does not require changes to the higher-level serialization logic documented in this file.
+
+---
+
 ## Related Documents
 
 - [Combat Wire Formats](combat-wire-formats.md) — Method call serialization
