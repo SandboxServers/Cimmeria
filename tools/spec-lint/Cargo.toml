@@ -1,0 +1,14 @@
+[package]
+name = "cimmeria-spec-lint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Warn-only lint for the Cimmeria Bible (docs/spec/) — validates Rust symbol references and the no-line-numbers rule"
+
+[[bin]]
+name = "spec-lint"
+path = "src/main.rs"
+
+[dependencies]
+walkdir = "2"
+regex = "1"

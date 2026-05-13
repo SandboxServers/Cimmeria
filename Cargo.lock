@@ -666,6 +666,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-spec-lint"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "walkdir",
+]
+
+[[package]]
 name = "cimmeria-supervisor"
 version = "0.1.0"
 dependencies = [

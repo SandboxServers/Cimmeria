@@ -1,0 +1,64 @@
+name: spec-lint
+
+# Warn-only: validates Rust symbol references inside docs/spec/ chapters
+# against the actual workspace. Emits ::warning:: annotations that surface
+# in PR diffs but never fails the build. Phase 2 hardens this to blocking.
+#
+# Companion docs:
+#   - docs/spec/conventions.md § "Evidence-ref grammar"
+#   - docs/spec/conventions.md § "The no-line-numbers rule for sections 4 and 5"
+#   - tools/spec-lint/src/main.rs (the binary)
+#   - issue #264 (bible umbrella)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "docs/spec/**"
+      - "crates/**"
+      - "tools/spec-lint/**"
+      - ".github/workflows/spec-lint.yml"
+
+# Per-PR concurrency: a force-push during review cancels the prior run.
+concurrency:
+  group: spec-lint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Top-level: deny everything. The job opts in.
+permissions: {}
+
+jobs:
+  lint:
+    name: validate docs/spec/ Rust symbol references
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cache cargo registry + spec-lint target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug/build
+            target/debug/deps
+            target/debug/spec-lint*
+          key: spec-lint-${{ runner.os }}-${{ hashFiles('tools/spec-lint/Cargo.toml', 'Cargo.lock') }}
+          restore-keys: |
+            spec-lint-${{ runner.os }}-
+
+      - name: build spec-lint
+        run: cargo build -p cimmeria-spec-lint --quiet
+
+      # The binary always exits 0 (warn-only). It emits
+      # ::warning file=...,line=...,title=...:: annotations under
+      # GITHUB_ACTIONS, which become inline PR-diff annotations.
+      - name: run spec-lint
+        run: cargo run -p cimmeria-spec-lint --quiet
