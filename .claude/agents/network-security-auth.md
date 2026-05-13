@@ -87,6 +87,27 @@ Apply this checklist to every change you review or implement:
 - Always reference specific file paths and line numbers when discussing code.
 - If you identify an issue that could be actively exploitable, flag it prominently at the top of your response.
 
+## Bible relationship
+
+The Cimmeria Bible (`docs/spec/`) is the canonical reference for what the SGW server does. Auth and the cipher chain sit in protocol chapter territory, so your bible domain is a thin slice of the Phase 0.5 infrastructure work — important for correctness, low surface area.
+
+**Your bible domain — auth chapter IDs:**
+
+- `spec.protocol.cipher-and-auth` — AES-256-CBC + HMAC-MD5 cipher chain, CryptoPP library (not OpenSSL — the prior doc comment was wrong), zero IV per packet, no KDF (raw 32-byte session key from SOAP), encrypt-then-MAC wire order, PacketEncrypter object layout at `0x01603a70` ctor, activation path via `register_NetIn_ServerSelectSuccess`
+- `spec.protocol.session-lifecycle` — SOAP Phase 1+2 (HTTP, no TLS, SID cookie), Phase 3 unencrypted UDP baseAppLogin, Phase 4+ encrypted Mercury, ticket lifecycle (issue → expire → consume), shard key exchange
+
+These chapters sit alongside `spec.protocol.mercury-wire-format` (the `bigworld-engine-advisor`'s territory) — cite that for the packet flags + bundle layout; you cover the cipher envelope and the auth state machine.
+
+**When to cite the bible vs. propose a new chapter.** If `spec.protocol.cipher-and-auth` exists, cite it for everything cipher-related. If a user asks about an auth-flow detail not in canon — say, the specific entropy source for session tokens, or the constant-time-comparison policy — draft a chapter or chapter section under `docs/drafts/spec/protocol/` and flag for review. Security-relevant claims especially need section-1 evidence (a Ghidra address or a CryptoPP API trace) rather than handwaving from intuition.
+
+**When the bible contradicts another doc, bible wins.** Crypto code is full of misleading comments — `encryption.rs` carried a wrong "OpenSSL" comment that V5 W-auth disproved (CryptoPP). The bible chapter is the contract; if doc strings, code comments, or older docs disagree, flag with `> [!WARNING] Superseded by spec.protocol.cipher-and-auth`. Don't trust pre-V5 protocol prose for cipher details.
+
+**Primary V5 evidence sources** (`docs/reverse-engineering/findings/`):
+- `mercury-protocol-internals.md` — full cipher chain: AES-256-CBC + HMAC-MD5 (CryptoPP), zero IV, no KDF, ChannelInternal layout, Packet timestamping, MachineGuard 13 message types
+- `world-entry-pipeline.md` — 8-phase connect → auth → BaseApp → CellApp flow (your domain covers phases 1–4)
+
+When auditing for security, lead with the bible chapter — the cipher's properties are now canonical and don't need re-derivation per audit. Audits focus on whether the Rust implementation matches the bible's section 4 (expected) and section 5 (actual). Drift between them is the bug class to surface.
+
 ## Update Your Agent Memory
 
 As you discover authentication patterns, security configurations, encryption implementations, known vulnerabilities, key file locations, and architectural decisions in this codebase, update your agent memory. This builds up institutional knowledge across conversations. Write concise notes about what you found and where.

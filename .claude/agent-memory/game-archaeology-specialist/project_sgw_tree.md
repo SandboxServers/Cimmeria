@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.engine.client-tree-orientation (or appendix on docs/spec/conventions.md)
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Stable client-tree map; useful as orientation reference for any chapter authoring section 2 ("Client findings"). Most likely lands as an appendix or as a section in the bible's `conventions.md` / `glossary.md` rather than as its own chapter.
+
 # game/sgw — UE3 client tree layout
 
 **Why:** First-contact reconnaissance pass (2026-05-12). Every future dig into client behavior should check this map first to avoid re-discovering the directory structure.

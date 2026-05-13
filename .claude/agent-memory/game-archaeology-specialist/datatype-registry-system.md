@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.engine.entity-description-parse-chain §"DataType registries"
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). V5-confirmed against `findings/entity-property-sync.md` (two-registry model, MD5 hashing). The 17 primitive subclass address table and the high-half scan result (015a8b40–015bffe0 = editor tooling, not protocol) are canonical chapter material. The sub-slot threshold 62 confirmation cross-references the SGWPlayer 157-method table in `bigworld-engine-advisor` memory.
+
 ## DataType Two-Registry System (confirmed 2026-05-13)
 
 Two `std::map<string, DataType*>` registries with distinct roles:

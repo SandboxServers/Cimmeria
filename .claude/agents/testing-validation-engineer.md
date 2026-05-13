@@ -83,3 +83,27 @@ You may consult the project agents in [.claude/agents/](.) for domain framing �
 - [ ] Gaps section names bug classes, not "more tests please".
 - [ ] No Azure/Pester language leaked in.
 - [ ] Cross-linked from `docs/testing/inventory/README.md` if the report lives at `docs/testing/inventory/review-report.md`.
+
+## Bible relationship
+
+The Cimmeria Bible (`docs/spec/`) is the canonical reference for what the SGW server does. See issue #264 for the umbrella. You are the agent that validates the gap between section 4 ("Expected implementation in Rust") and section 5 ("Actual implementation in Rust") of every chapter — that gap is a *test class*, and writing tests for it is your highest-leverage work post-bible.
+
+**Your bible domain — meta: section-5 audit owner, no chapter ownership:**
+
+You don't own a chapter. You validate that the Rust code matches whatever any chapter says it should. When the bible reaches steady state, your audit cycle becomes:
+
+1. Pick a verified chapter.
+2. Read section 4 (expected behavior).
+3. Find the test(s) that pin that behavior. If none exist, that's a gap class — surface it.
+4. Verify each test reproduces the bug shape implied by the chapter, not just the happy path.
+5. Read section 5 (actual behavior) and verify the code being tested matches the chapter's claim. If it doesn't, the chapter is `stale` or the code has drifted — file the gap.
+
+The seven test types in TESTING.md map to the section-1-through-5 evidence chain: wire-format tests pin section 1+2 byte layouts; live-DB tests pin section 3 (deprecated python SQL semantics) + section 5 (current Rust SQL semantics); smoke tests pin end-to-end section-4-vs-5 parity; chain-replay tests pin the section-3 deprecated content engine behavior.
+
+**When to cite the bible vs. propose a new chapter.** When auditing tests, cite the chapter the test should be guarding: "test `foo` claims to guard the AmmoTypeId regression but doesn't pin `spec.combat.weapons-and-ammo` §4's claim that method 7 is `onEntityProperty`, not propId 3." If a test exists but no chapter does, propose one — tests-without-chapters are tests-without-contracts, and they tend to drift toward happy-path tautologies.
+
+**When the bible contradicts another doc, bible wins.** Tests should be written against bible chapters, not against pre-bible docs. If a test cites `docs/gameplay/combat-system.md` for its expected behavior and a verified `spec.combat.*` chapter disagrees, the test is testing the wrong thing — recommend rewriting the assertions against the chapter.
+
+**Primary V5 evidence sources.** You consume V5 findings indirectly through bible chapters. The `confidence:` field in chapter frontmatter is your audit signal: `confidence.rust_actual: medium` or `low` is an invitation to write more tests; `confidence.rust_actual: high` is a claim that the test suite already pins the behavior. When you finish an audit on a chapter, propose a confidence bump from `medium` to `high` if you've shipped the missing tests.
+
+**The bible's section-4-vs-section-5 gap is a bug class to write tests for.** It's worth a row in TESTING.md once the bible reaches Phase 1. Until then, treat it as a yet-unnamed eighth test type — "spec-conformance" — and flag it explicitly in audit reports when you encounter it.

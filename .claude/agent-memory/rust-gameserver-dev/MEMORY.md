@@ -1,44 +1,21 @@
 # Rust Gameserver Dev Memory
 
-## Project Context
-- Stargate Worlds MMO server emulator (Cimmeria project)
-- Rust rewrite on branch `feature/rust-rewrite`
-- Key files: `crates/services/src/base.rs`, `crates/services/src/mercury_ext.rs`, `crates/services/src/auth.rs`
-- C++ reference: `src/baseapp/mercury/sgw/` (client_handler.cpp, connect_handler.cpp, messages.cpp)
+## Phase −0.5 triage status (2026-05-13)
+
+- [build-environment.md](build-environment.md) — **[PROMOTE → user-local feedback]** — Windows linker workaround for the repo's hardcoded WSL rust-lld path. Not bible-relevant; this is operational guidance specific to this contributor's host setup. Keep in memory as user-feedback; will not promote to `docs/spec/`.
+
+### Inline-content section status
+
+- **Project Context section** — **[DISCARD]** — `feature/rust-rewrite` branch reference is stale (Rust lives on `main`). The file-path list cites `crates/services/src/auth.rs` and `mercury_ext.rs` — both have since become directories. Don't trust this section; re-derive from the current crate layout. The C++ reference path was rewritten to `deprecated/cpp/src/baseapp/mercury/sgw/` in the mechanical pass.
+- **Audit Findings link to audit-findings.md** — **[DISCARD]** — `audit-findings.md` does not exist (broken link). Drop the reference.
+- **Critical Bug (FIXED): RESOURCE_FRAGMENT u32→u16** — **[PROMOTE → spec.protocol.mercury-wire-format §"InterfaceElement length encoding"]** — V5-confirmed against `findings/mercury-protocol-internals.md`. The fix has shipped and the regression test guards it; the bug history is bible-section-4-vs-section-5 material.
+- **Packet Layout Gotcha (build_outgoing)** — **[PROMOTE → spec.protocol.mercury-wire-format §"packet layout"]** — section-5 implementation detail worth recording in the chapter.
+- **Entity Class IDs** — **[PROMOTE → spec.engine.entity-description-parse-chain §"class ID assignment"]** — V5-confirmable from entities.xml; the 8-entry table is canonical.
+- **Account Method Indices** — **[PROMOTE → spec.engine.entity-description-parse-chain §"method index assignment"]** — same chapter as the SGWPlayer 157-method table (in `bigworld-engine-advisor/sgwplayer-method-index-table.md`); Account is a separate entity with its own 8-index inheritance from ClientCache. Worth a row in the chapter's appendix.
+- **Wire Format Notes** — **[PROMOTE → spec.protocol.mercury-wire-format]** — V5-confirmed. The rotation-swap claim should be re-cross-referenced against `bigworld-engine-advisor/protocol-comparison.md`'s flagged-for-verification status before promoting to canon.
+- **C++ Account.py createCharacter Flow** — **[RE-VERIFY]** — the "Rust version is missing most of this" claim is **OUT OF DATE**. Current `crates/services/src/base/character_create.rs` persists alignment, archetype, gender, bodyset, world_id, abilities, components, skin_color_id. Re-snapshot before promoting; the python-side flow description still maps cleanly to `spec.player.character-creation` section 3.
+- **C++ Account.py requestCharacterVisuals Flow** — **[RE-VERIFY]** — the Rust-divergence claim (primaryTint=0, secondaryTint=0, raw skin_color_id index) needs re-verification against current `crates/services/src/base/world_entry_appearance.rs` or wherever character-visuals now lives. V5 `findings/character-creation-pipeline.md` confirms the canonical SkinTintColorID resolution to `0xRRGGBB00` packed uint32 — so the python flow is bible-ready, but the Rust gap claim may have been closed.
 
 ## Build Environment
+
 - See [build-environment.md](build-environment.md) — repo `.cargo/config.toml` hardcodes another user's rust-lld path; need `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS` override.
-
-## Audit Findings (2026-03-04)
-See [audit-findings.md](audit-findings.md) for full details.
-
-### Critical Bug (FIXED)
-- **RESOURCE_FRAGMENT (0x36) was using u32 length prefix instead of u16** — now fixed. Unit test `resource_fragment_uses_u16_length_prefix` guards this.
-
-### Packet Layout Gotcha
-- `build_outgoing` layout: `[flags:u8][body][footers]` — seq_id and acks are FOOTERS appended after the body, NOT between flags and body. Body starts at offset 1 in the plaintext.
-
-### Entity Class IDs (verified from entities.xml + ServerOnly flags)
-- SGWSpawnableEntity=0, SGWBeing=1, SGWPlayer=2, SGWGmPlayer=3, SGWMob=4, SGWPet=5, SGWDuelMarker=6, Account=7
-- SGWBlackMarket is ServerOnly (skipped)
-
-### Account Method Indices (verified from defs.cpp inheritance + Account.def + ClientCache.def)
-- Exposed base methods: ClientCache first (versionInfoRequest=0xC0, elementDataRequest=0xC1), then Account (logOff=0xC2, createCharacter=0xC3, playCharacter=0xC4, deleteCharacter=0xC5, requestCharacterVisuals=0xC6, onClientVersion=0xC7)
-- Client methods: ClientCache first (onVersionInfo=0x80, onCookedDataError=0x81), then Account (onCharacterList=0x82, onCharacterCreateFailed=0x83, onCharacterVisuals=0x84, onCharacterLoadFailed=0x85)
-
-### Wire Format Notes
-- connect_reply: uses DWORD_LENGTH (u32 prefix) because it maps to ServerMessageList[BASEMSG_AUTHENTICATE] = {DWORD_LENGTH, 0, "AUTHENTICATE"}
-- RESOURCE_FRAGMENT: uses WORD_LENGTH (u16 prefix) in ServerMessageList
-- Both createCellPlayer and forcedPosition use swapped rotation: rotX, rotZ, rotY
-
-### C++ Account.py createCharacter Flow
-- Validates charDef, visual choices, name length/uniqueness, skin tint range
-- Stores: alignment, archetype, gender, bodyset, startingWorld, startingX/Y/Z, world_id, components, skin_color_id, abilities, access_level
-- Creates inventory items from visual choices
-- Rust version is missing most of this (only basic fields, pos=0,0,0, no items/abilities/world_id)
-
-### C++ Account.py requestCharacterVisuals Flow
-- Queries sgw_inventory for equipped items
-- Looks up item defs for visualComponent
-- Sends primaryTint=0xFF, secondaryTint=0xFF, skinTint=SKIN_TINTS[skin_color_id]
-- Rust sends primaryTint=0, secondaryTint=0, skinTint=skin_color_id (raw index, not mapped)

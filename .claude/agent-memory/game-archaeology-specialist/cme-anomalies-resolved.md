@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.engine.cme-event-signal §"architectural anomalies" — overlap with docs/reverse-engineering/findings/architectural-anomalies.md (already exists)
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). All three anomalies (BM Pattern B, GiveInventory no-subscribers, SGWHomeless editor class) are V5-confirmed in `findings/architectural-anomalies.md`. Distribute across chapters: BM and GiveInventory go in `spec.engine.cme-event-signal`; SGWHomeless can be a footnote in the engine chapters or in `spec.engine.editor-tooling-residue` if depth warrants.
+
 Resolved 2026-05-13 by live decompile via Ghidra MCP.
 
 **Anomaly 1 — Black Market (BM emitters):**

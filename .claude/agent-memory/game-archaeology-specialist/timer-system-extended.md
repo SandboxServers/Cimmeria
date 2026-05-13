@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.combat.ability-resolution §"timer types" (types 0–4, 7, 8, 12, 13) + cross-chapter timer-type index (types 5 → spec.combat.effects-execution, types 9–11 → spec.missions.lifecycle-and-objectives, type 6 → spec.player.dialog, type 14 → spec.player.bigworld-time, type 16 → spec.crafting.state-machine)
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). V5-confirmed against `findings/ability-resolution-pipeline.md` (timer types 0–13 + 14 + 16). The 8-subscriber map is canonical — supersedes the prior 5-subscriber claim. CooldownManager has no type-gate is a critical chapter-section-5 implementation note.
+
 ## Event_NetIn_TimerUpdate — Complete Subscriber Map
 
 **8 subscribers total** (docs previously said 5). Resolved by W-misc-gaps session, 2026-05-13.

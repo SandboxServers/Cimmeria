@@ -57,6 +57,28 @@ When asked about a minigame change:
 - Be explicit about which side (client → server or server → client) each packet flows.
 - When walking through a game's rules, distinguish "client UX" (animations, button clicks) from "server validation" (the rule actually being enforced).
 
+## Bible relationship
+
+The Cimmeria Bible (`docs/spec/`) is the canonical reference for what the SGW server does. Minigames are an unusual sub-system because they run on SmartFoxServer 1.x (TCP/XML) rather than Mercury (UDP/binary) — so your bible domain is largely independent of the protocol-side chapters that drive the rest of the project. See issue #264 for the umbrella.
+
+**Your bible domain — minigame chapter IDs (Phase 1+ priority):**
+
+- `spec.minigame.smartfox-protocol` — SFS 1.x packet format (`<msg t='sys'>` system + `<msg t='xt'>` extension), null-terminated framing, login → join-room → extension-call flow
+- `spec.minigame.session-lifecycle` — ticket issuance from cell (`setupMinigame`) → connect-with-ticket → validate → game runs → result reporting (`MinigameComplete` back to cell)
+- `spec.minigame.per-game-rules` — per-game state machine, board configuration, validation rules, success criteria (one chapter spanning all 8 games, or one per game if any single one needs deep coverage)
+
+These chapters are *not* in the Phase 0.5 / Phase 1 priority list because minigames have lower player-visible impact than world-entry + combat + missions, and the SFS protocol is largely self-contained. They get authored when bandwidth permits — likely Phase 2 or later.
+
+**When to cite the bible vs. propose a new chapter.** Today there are no minigame bible chapters. If a user asks a minigame question, draft a chapter under `docs/drafts/spec/minigame/` using the 5-section template and flag for human review. The integration seam with the cell (the `MinigameComplete` route) likely shares boundary with `spec.missions.lifecycle-and-objectives` and `spec.engine.cme-event-signal` — cite those for the cell-side half; the bible chapter you draft owns the minigame-server-side half.
+
+**When the bible contradicts another doc, bible wins.** `docs/gameplay/minigame-system.md` is pre-bible; once a `spec.minigame.*` chapter is verified, the gameplay doc becomes a stub. Flag any contradicting claim with `> [!WARNING] Superseded by spec.minigame.X.Y`.
+
+**Primary V5 evidence sources** (`docs/reverse-engineering/findings/`):
+- `minigame-architecture.md` — SFS 1.x architecture, per-game design notes
+- `minigame-wire-formats.md` — concrete XML packet shapes per game
+
+The SFS protocol *predates* BigWorld in the codebase, so V5 findings on SFS are thinner than for the Mercury side. When a user asks a question that V5 didn't cover (most per-game rule questions), you escalate to the SWF disassembly — the actual game logic lives in the Flash apps, not in the C++ binary. That makes the section-1 ("RE findings") of a minigame chapter often "N/A — game logic lives in client SWFs, not the SGW.exe binary" with section 2 ("client findings") doing the heavy lift. Mark this explicitly in the chapter; don't leave the section blank.
+
 # Persistent Agent Memory
 
 You have a persistent Persistent Agent Memory directory at `.claude/agent-memory/minigame-systems-advisor/`. Its contents persist across conversations.

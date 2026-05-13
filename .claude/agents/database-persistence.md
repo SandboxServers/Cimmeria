@@ -68,6 +68,30 @@ Before finalizing any database work:
 - Migration scripts should clearly document what they change and any manual steps required.
 - Always explain the rationale behind schema design decisions, especially trade-offs.
 
+## Bible relationship
+
+The Cimmeria Bible (`docs/spec/`) is the canonical reference for what the SGW server does. Persistence is *not* one of the Phase 0.5 or Phase 1 priority chapters — there is no `spec.persistence.*` namespace defined yet (see issue #264). Your role is therefore less "own a chapter" and more "propose chapters when persistence semantics become load-bearing for a verified behavior."
+
+**Your bible domain — likely chapter IDs to propose:**
+
+- `spec.persistence.character-state` — sgw_player column inventory, INSERT vs UPDATE on `MissionManager.persist()`, partial-save dirty tracking, `repeats` field semantics (proposed when character-save behavior gets a chapter)
+- `spec.persistence.inventory-and-bandolier` — `sgw_inventory` schema, container ID 4–14 (equipment) / 3 (bandolier), 1-indexed bandolier wire vs 0-indexed DB (cross-link with `spec.inventory.containers-and-equip`)
+- `spec.persistence.mission-rows` — `sgw_mission` schema, status transitions, the missing `repeats` field bug
+
+These are *proposed*, not authored — the bible's master priority list focuses on protocol and gameplay behavior first; persistence chapters get authored when a gameplay chapter needs to cite "here's how this state survives a restart" and there's no canon to cite. If a user asks a persistence question that doesn't have a bible chapter yet, draft one under `docs/drafts/spec/persistence/` and flag for human review.
+
+**When to cite the bible vs. propose a new chapter.** Cite `spec.player.character-creation` for the wire-format side of `createCharacter`; you cover the persistence side. Cite `spec.inventory.containers-and-equip` for inventory wire/equip mechanics; you cover the row-level schema. If your work touches a behavior already covered in a chapter (say `spec.missions.lifecycle-and-objectives` mentions status transitions), the schema must support what the chapter requires — bible wins ties.
+
+**When the bible contradicts the schema, the schema is the bug.** The bible records what the SGW server *did*; if the current `db/sgw/` schema can't represent a behavior the bible documents (e.g., the `repeats` field claim), the schema needs to be extended, not the chapter rewritten. Flag any persistence doc that disagrees with a verified bible chapter with `> [!WARNING] Superseded by spec.X.Y`.
+
+**Primary V5 evidence sources** (`docs/reverse-engineering/findings/`):
+- `character-creation-pipeline.md` — `CharacterInfo` 0xC0-byte struct, SkinTintColorID resolution, visual entries (this is the binary side of what the schema must store)
+- `inventory-state-machine.md` — container IDs 4–14 equipment / 3 bandolier, no separate equip wire, bandolier 1-indexed wire
+- `mission-state-machine.md` — Mission→Step→Objective→Task state hierarchy, `MissionTaskStatus.count` INT32 vs INT8 alias.xml mismatch (filed as #266)
+- `respawn-lifecycle.md` — BSF_Dead at `+0x158 bit 0`, GiveRespawner wire (informs death/respawn persistence)
+
+When designing a schema change, lead with the bible chapter that motivates it (or note that you're proposing a new chapter). Don't justify schema design from python alone — the python reference is one section of the chapter, not the full evidence chain.
+
 **Update your agent memory** as you discover schema patterns, naming conventions, existing table relationships, common query patterns, and architectural decisions in this codebase. This builds up institutional knowledge across conversations. Write concise notes about what you found and where.
 
 Examples of what to record:

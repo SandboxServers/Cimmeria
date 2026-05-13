@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.protocol.cipher-and-auth §"PacketEncrypter object layout" + spec.protocol.mercury-wire-format §"cipher envelope"
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Highest-confidence promotion target in this agent's memory. V5-confirmed against `findings/mercury-protocol-internals.md`. The "no KDF, raw 32-byte SOAP key → AES key" + "AES key = HMAC key" + "zero IV every packet" facts are canonical and supersede the prior "OpenSSL" doc comment in `encryption.rs`.
+
 # Mercury Cipher Chain — W-auth Session Findings (2026-05-13)
 
 **Why:** Re-verification after V5 campaign; prior doc-comments said "OpenSSL" but binary uses CryptoPP.

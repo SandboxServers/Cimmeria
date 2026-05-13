@@ -1,5 +1,18 @@
 # Database & Persistence Agent Memory
 
+## Phase −0.5 triage status (2026-05-13)
+
+- [schema-patterns.md](schema-patterns.md) — **[RE-VERIFY]** — schema file paths look current but the python-reference paths need verification and the column inventory may have drifted since the original 2026-03-04 snapshot. No bible chapter target yet (persistence chapters are not Phase 0.5/1 priority).
+
+Inline-content section status:
+
+- **Schema Conventions** section — **[RE-VERIFY]** — looks structurally accurate but should be re-cross-referenced against current `db/sgw/_foreign_keys.sql` before relying on the FK list.
+- **Enum Mappings** section — **[PROMOTE → spec.player.character-creation]** — V5-confirmed against `findings/character-creation-pipeline.md`; alignment/archetype/gender enum values are part of the canonical character-creation contract.
+- **Body Set Format** — **[PROMOTE → spec.player.character-creation]** — same chapter.
+- **Skin Tint RGBA Values** — **[PROMOTE → spec.player.character-creation]** — confirmed: SkinTintColorID resolves to `0xRRGGBB00` packed uint32 per V5 `character-creation-pipeline.md` SkinTintColorID section.
+- **World ID Mapping** — **[RE-VERIFY]** — verify the three world IDs against current `db/resources/Worlds/Seed/worlds.sql`. These look reasonable but the seed file is mutable.
+- **Rust Rewrite DB Status (as of 2026-03-04)** — **[DISCARD on next sweep]** — this is a frozen snapshot from 2026-03-04. Character creation has shipped significant updates since (alignment/archetype/gender/bodyset/world_id/abilities are now persisted, contradicting the "PARTIAL" claim). Don't trust this section without re-reading `crates/services/src/base/character_create.rs`. Replace with a re-snapshot during chapter authoring or delete.
+
 ## Schema Conventions
 - Tables use `snake_case` naming: `sgw_player`, `sgw_inventory`, `account`, `shards`
 - Columns use `snake_case`: `player_id`, `account_id`, `world_location`

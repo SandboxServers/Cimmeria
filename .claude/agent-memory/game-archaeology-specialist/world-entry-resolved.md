@@ -5,6 +5,14 @@ metadata:
   type: project
 ---
 
+> [!WARNING] Confidence: STALE — Q1 contradicted by V5 W-enable-entities finding
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). **Q1 is WRONG.** This file's Q1 says "ENABLE_ENTITIES = 1 byte (stock BigWorld keepBase u8)". V5 W-enable-entities (recorded in `docs/reverse-engineering/findings/world-entry-pipeline.md` §"RESET_ENTITIES + ENABLE_ENTITIES Exchange" / "CONFIRMED (W-enable-entities, 2026-05-13)") confirms **8 bytes** — a SGW-custom `uint64` dummy payload. Disassembly of the static initializer at `0x017bade0–0x017bae07` shows `PUSH 0x8` at `0x017bade9` is the size argument; the `MOV DWORD PTR [EAX], 0x1` at `0x017badf7` that this file misread is a reliability flag, not the size field. Cross-validated against `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp` line 83: `{Message::CONSTANT_LENGTH, 8, "ENABLE_ENTITIES", true}`.
+>
+> Q2 / Q3 / Q4 are still correct as far as we know but should also be re-verified during chapter authoring against any new V5 findings before promoting.
+>
+> PROMOTION TARGET (after Q1 correction): spec.world.world-entry §"RESET_ENTITIES + ENABLE_ENTITIES" + §"Event_Level_PostLoad + Event_World_Loaded + Event_ClientReady handlers"
+
 ## World Entry Pipeline — Resolved Open Questions (W-misc-gaps, 2026-05-13)
 
 ### Q1: ENABLE_ENTITIES payload size
