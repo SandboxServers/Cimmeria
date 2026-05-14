@@ -1,0 +1,105 @@
+# Cimmeria markdown lint config.
+#
+# Warn-only via CI (.github/workflows/markdownlint.yml).
+# Run locally:
+#   tools/lint-md.sh        # macOS / Linux / WSL
+#   tools/lint-md.ps1       # Windows PowerShell
+#
+# Companion docs:
+#   CLAUDE.md § "Markdown lint"
+#   docs/spec/conventions.md (the bible has its own stricter conventions on top)
+#
+# Each disabled / relaxed rule below has a one-line rationale. New project-
+# wide rule changes go through PR review, not local overrides.
+
+config:
+  # Start from markdownlint's default ruleset; only override what we need.
+  default: true
+
+  # MD013 — line length. Markdown line-wrap is a style choice; many existing
+  # docs have long lines (tables, links, narrative paragraphs). Hard-wrapping
+  # for column-width would churn the entire tree.
+  MD013: false
+
+  # MD024 — multiple headings with the same content. Relax to siblings_only
+  # so repeated H2/H3 under different H1 parents is fine (common shape for
+  # "## Why / ## How to apply" repeating across memory files).
+  MD024:
+    siblings_only: true
+
+  # MD033 — inline HTML. We use GitHub admonitions (`> [!NOTE]`), hidden
+  # marker comments (`<!-- spec-touch-nudge -->`), `<details>` blocks, and
+  # `<sub>` for fine-print. These are deliberate.
+  MD033: false
+
+  # MD041 — first line in file should be a top-level heading. Every chapter
+  # and most agent memory files start with YAML frontmatter (`---`), so
+  # MD041 would fire on virtually every file.
+  MD041: false
+
+  # MD036 — emphasis used instead of a heading. We use `**Bold callouts**`
+  # legitimately as inline emphasis in lists and tables, not as section
+  # breaks. Hard to distinguish from real misuse via lint alone.
+  MD036: false
+
+  # MD026 — trailing punctuation in heading. We sometimes legitimately end
+  # an H2/H3 with `?` to frame the section as a question
+  # ("How do I add a new chapter?"). Allow.
+  MD026: false
+
+  # MD060 — table column style. Defaults flag "compact" tables (no spaces
+  # around pipes: `|cell|cell|`) but compact-style tables are valid markdown
+  # and used heavily across the repo. The rule produces ~75% of all findings
+  # in the current tree, drowning real signal. Style-only; no quality cost
+  # to leaving it off.
+  MD060: false
+
+  # MD025 — single H1 per document. Default behavior treats the YAML
+  # frontmatter `title:` field as an H1, then flags the body's H1 as
+  # duplicate. We use frontmatter `title:` + H1 as a deliberate pattern
+  # (humans read the H1, tooling reads the frontmatter). Empty
+  # `front_matter_title` disables the frontmatter-as-title detection so
+  # only true multiple-H1-in-body cases fire.
+  MD025:
+    front_matter_title: ""
+
+# What to lint. markdownlint-cli2 globs are relative to the config file
+# (repo root). Patterns starting with `!` are negative.
+globs:
+  - "**/*.md"
+
+# Skip vendored / legacy / generated trees. Each pattern is one negative
+# glob.
+ignores:
+  # Node module dirs anywhere in the tree.
+  - "node_modules/**"
+  - "**/node_modules/**"
+
+  # Rust build output.
+  - "target/**"
+
+  # Vendored / external dependencies populated by setup.ps1 — not part of
+  # our docs.
+  - "external/**"
+
+  # Legacy fan-made C++/Python server. Useful reference but not authored
+  # by the Cimmeria project; do not lint.
+  - "deprecated/**"
+
+  # Immutable 2009 game client tree. Read-only evidence; do not lint.
+  - "game/**"
+
+  # Cooked content artifacts.
+  - "data/**"
+
+  # Vendored Ghidra install — third-party tooling, not our docs.
+  - "ghidra/**"
+
+# Show progress in CI logs (one line per file batch) — easier to triage
+# slow lint runs.
+noProgress: false
+
+# Default formatter prints a compact one-line-per-violation summary; the
+# `markdownlint-cli2-formatter-pretty` formatter adds inline source context.
+# The DavidAnson/markdownlint-cli2-action workflow handles GitHub Actions
+# annotation formatting separately, so we don't configure that here.

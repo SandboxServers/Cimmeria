@@ -78,9 +78,17 @@ cargo test --doc -p cimmeria-commands
 # Live-DB tests — start the bundled Postgres first, then:
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   cargo nextest run --profile=ci-live-db -p cimmeria-services --lib
+
+# Markdown lint (warn-only — CI surfaces violations as PR annotations but
+# never blocks). Same rules as CodeRabbit's review:
+tools/lint-md.sh                    # macOS / Linux / WSL
+tools/lint-md.ps1                   # Windows PowerShell
+tools/lint-md.sh --fix              # auto-fix what's auto-fixable
 ```
 
 `cargo test -p <crate>` still works for quick crate-level iteration. Use nextest for anything you'd be uploading to CI.
+
+The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/markdownlint-cli2) against [`.markdownlint-cli2.yaml`](.markdownlint-cli2.yaml) at the repo root. CI mirrors local invocation via [`DavidAnson/markdownlint-cli2-action`](.github/workflows/markdownlint.yml). First local run downloads the binary on-demand via `npx`; running `npm install` once pins the version from `package.json` for offline reuse. Phase 2 hardens the lint from warn-only to blocking — until then, fix what's easy and let reviewers nudge the rest.
 
 - **fmt fails** → `cargo fmt --all` and commit the result. The CI job tells you exactly that.
 - **clippy fails** → fix the warning. Project-level thresholds for `too_many_arguments` (14) and `type_complexity` (500) live in `clippy.toml`; bumping those further requires the same kind of justification any other lint suppression would. Don't sprinkle `#[allow(clippy::…)]` per call site.
@@ -110,6 +118,7 @@ The map of "what changed → what to update":
 | The README's listed feature set, status, or structure | [README.md](README.md) |
 | The pre-PR checklist, build commands, or repo invariants | [CLAUDE.md](CLAUDE.md) and [.github/copilot-instructions.md](.github/copilot-instructions.md) |
 | Test conventions, types, or gotchas | [TESTING.md](TESTING.md) (and re-link from README if a new section is added) |
+| Markdown lint rules, exclusions, or the wrapper scripts | [.markdownlint-cli2.yaml](.markdownlint-cli2.yaml), [tools/lint-md.sh](tools/lint-md.sh), [tools/lint-md.ps1](tools/lint-md.ps1), and the workflow at [.github/workflows/markdownlint.yml](.github/workflows/markdownlint.yml) |
 | Add or remove ≥5% of workspace tests in one PR (~55 tests at current 1071 baseline) | [docs/testing/inventory/<crate>.md](docs/testing/inventory/) — and the totals in [docs/testing/inventory/README.md](docs/testing/inventory/README.md). Smaller drifts roll up via periodic sweep updates rather than per-PR churn. |
 | Live-DB infra or local setup | [docs/architecture/integration-test-infra.md](docs/architecture/integration-test-infra.md) |
 | Crate layout, dependency graph, or new crate | [crates/README.md](crates/README.md) and the crate diagram in [README.md](README.md) |

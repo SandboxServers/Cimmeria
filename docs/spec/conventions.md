@@ -168,11 +168,13 @@ Crate names use the published crate name (the `name =` field in `Cargo.toml`), n
 **Why:** Line numbers in Rust source rot on every refactor that moves a function around — and the Rust tree refactors often. A chapter that says "the cooldown check is at `threat.rs:147`" is wrong the day after the next `cargo fmt` adds an import. A chapter that says "the cooldown check is at `ThreatList::can_apply`" stays correct until the *symbol* moves, and if the symbol moves, that is a real semantic change that warrants a chapter revision anyway. The rule converts noise (line drift) into signal (semantic drift).
 
 **Applies to:**
+
 - Body prose in sections 4 and 5.
 - `evidence_refs.rust` entries.
 - Cross-references to other Rust code inside any bible chapter.
 
 **Does not apply to:**
+
 - Sections 1, 2, 3. Ghidra addresses are line numbers and they are stable. Client and deprecated paths are in immutable trees, so line numbers there are valid.
 - Citations of test files when the test is fixed by name (e.g. `cimmeria-services::test_support::cell_combat_threat_tests::leashing_clears_threat` — that is a symbol, not a line).
 - Doc comments inside Rust source. The rule is about chapters pointing at code, not code pointing at chapters.
