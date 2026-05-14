@@ -26,6 +26,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 - [Timer system extended map](timer-system-extended.md) — **[PROMOTE → spec.combat.ability-resolution §"timer types" + cross-chapter timer-type index]** — 8 Event_NetIn_TimerUpdate subscribers (not 5); types 6/14/16 newly found; CooldownManager has no type-gate.
 - [World entry resolved questions](world-entry-resolved.md) — **[RE-VERIFY — Q1 contradicted by V5 W-enable-entities]** — Q2/Q3/Q4 still look correct; Q1 (ENABLE_ENTITIES = 1 byte) is wrong. The V5 W-enable-entities finding confirmed 8 bytes; this memory misread the static initializer disassembly. See `findings/world-entry-pipeline.md` §"CONFIRMED (W-enable-entities, 2026-05-13)" for the correction. Re-verify before promoting.
 
+## Mercury wire-format bible chapter (session 2026-05-14)
+
+- [Mercury wire-format open questions](mercury-wire-format-openqs.md) — **[PROMOTE → spec.protocol.mercury-wire-format §Q1/Q2/Q3/Q4/Q5]** — Q4 (port=20022 not 19510), Q3a (velocity=rotation misnomer), Q1 (width-per-interface not sentinel), Q5 (512-entry hash table + 32-bit ACK bitmap, no fixed slot count), Q2 (+0x170/+0x174 = last-recv rdtsc baseline, medium confidence on write site).
+
 ## Phase −0.5 maintenance notes (2026-05-13)
 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.

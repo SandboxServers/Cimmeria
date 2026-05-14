@@ -51,12 +51,19 @@ evidence_refs:
     - ghidra://SGW.exe@0x00dddca0
     - ghidra://SGW.exe@0x00dddd80
     - ghidra://SGW.exe@0x01590df0
+    - ghidra://SGW.exe@0x015898c0
+    - ghidra://SGW.exe@0x0158994b
+    - ghidra://SGW.exe@0x0158bed0
+    - ghidra://SGW.exe@0x01576bf0
+    - ghidra://SGW.exe@0x0158c170
+    - ghidra://SGW.exe@0x0158b2d0
   client: []
   deprecated: []
   rust: []
 related_chapters:
   - spec.protocol.entity-property-sync
   - spec.protocol.message-catalog
+  - spec.protocol.position-updates
   - spec.engine.universal-rpc-dispatcher
   - spec.world.world-entry
 disputed_by: []
@@ -140,7 +147,7 @@ Source of truth: the flag-mask table at `ghidra://SGW.exe@0x01580840` (`Mercury:
 
 **Indexed-channel routing is not available.** Stock BigWorld's `uint16` flags field carries `FLAG_INDEXED_CHANNEL` in its high byte (`0x0800`, per `external/BigWorld-2.0.1/src/lib/network/packet.hpp`) — used to route a packet to one of many addressable channels on a single endpoint. SGW's 1-byte flags only retains the low-byte flags (`0x01`–`0x80`) and therefore has nowhere to put `FLAG_INDEXED_CHANNEL` — the indexed-channel-routing mechanism is simply absent from SGW's wire format. The SGW baseapp connection topology does not need it: one client owns one Mercury channel; routing happens via `ChannelInternal` lookup, not via a flag bit. Bit 7 in both stock BW and SGW unambiguously means `FLAG_IS_FRAGMENT`; the indexed-channel divergence is the *absent* high-byte flag, not a low-byte bit-7 collision.
 
-**`FLAG_IS_RELIABLE` (bit 4) is the load-bearing flag for the entire reliability layer.** When set, the sender's `ChannelInternal` (the ~0x180-byte inner channel object at `ghidra://SGW.exe@0x0158c7b0`) places the packet into a fixed-size circular send window of in-flight reliable packets and starts a 700ms resend timer; the receiver schedules an ack via `UnAckedHandler::queueAckForPacket` at `ghidra://SGW.exe@0x0158cba0`. When clear, the packet is fire-and-forget — used for position-update spam and unreliable bundle flushes. The exact send-window slot count is not enumerated in the current V5 evidence (the `UnAckedHandler` hash-table region at `ChannelInternal+0x40`/`+0x44` per `mercury-protocol-internals.md` §"Channel Internal Layout" is the structure that backs the window, but the doc does not pin a literal slot count) — see Q5 in §1.16.
+**`FLAG_IS_RELIABLE` (bit 4) is the load-bearing flag for the entire reliability layer.** When set, the sender's `ChannelInternal` (the ~0x180-byte inner channel object at `ghidra://SGW.exe@0x0158c7b0`) tracks the packet's sequence number in its **32-bit outstanding-ack bitmap** (covering up to 32 in-flight reliable packets at once) and starts a 700ms resend timer; the receiver schedules an ack via `UnAckedHandler::queueAckForPacket` at `ghidra://SGW.exe@0x0158cba0`. When clear, the packet is fire-and-forget — used for position-update spam and unreliable bundle flushes. The reliability state machine does not use a fixed-size circular send-slot buffer; the 32-bit bitmap in `UnAckedHandler__buildAndSendAckBundle` at `ghidra://SGW.exe@0x0158b2d0` (`iVar2 = 0, 8, 16, 24; iVar2 < 0x20`) is the upper bound on outstanding sequence numbers.
 
 ### 1.3 Footer
 
@@ -307,15 +314,19 @@ The `InterfaceElement` table is a static array of fixed-size descriptor entries.
 
 **Entity messages override the table.** Any message with `msg_id >= 0x80` is an entity-method or property message and *always* uses `WORD_LENGTH`, regardless of the table's declared length type for that ID. This is enforced in `BundleUnpacker::next` (decode side) and in `Mercury::Bundle::newMessage` at `ghidra://SGW.exe@0x0157ac90` (encode side). The reason: entity messages carry their own variable-size argument list whose total size cannot be known statically.
 
-**Compressed-length encoding for interface elements with extreme size variation.** A separate variable-width scheme exists for the rare case where a message's payload size is usually small (fits in 1 byte) but must occasionally extend to a wider field. The `InterfaceElement::compressLength` family handles the switch:
+**Compressed-length encoding for interface elements with extreme size variation.** A per-interface fixed-width length-prefix scheme exists for the rare case where a message's payload size is usually small (fits in 1 byte) but must occasionally extend to a wider field. The width — 1, 2, 3, or 4 bytes — is a **descriptor field on the `InterfaceElement` itself at struct offset `+0x4`**, set at registration time. The encoder unconditionally writes that many bytes; the decoder unconditionally reads that many bytes. There is no runtime-selected threshold sentinel.
+
+The `InterfaceElement::compressLength` family handles read/write:
 
 | Function | Address | Role |
 |---|---|---|
-| `InterfaceElement::compressLength` | `ghidra://SGW.exe@0x0158acc0` | Decide compressed-length width from value |
-| `InterfaceElement::expandLength` | `ghidra://SGW.exe@0x0158b770` | Read compressed-length field at parse time |
-| `InterfaceElement::compressLength_write` | `ghidra://SGW.exe@0x0158b120` | Write compressed-length field at emit time |
+| `InterfaceElement::compressLength` | `ghidra://SGW.exe@0x0158acc0` | Compute total length including the prefix width |
+| `InterfaceElement::expandLength` | `ghidra://SGW.exe@0x0158b770` | Read length field at parse time — `switch(*(undefined4 *)((int)this + 4))` on cases 1/2/3/4 |
+| `InterfaceElement::compressLength_write` | `ghidra://SGW.exe@0x0158b120` | Write length field at emit time — same `switch(*(undefined4 *)((int)this + 4))` shape with unconditional writes |
 
-**Confidence: medium.** V5 confirms the four width options (1-byte, 2-byte, 3-byte, 4-byte) via `mercury-protocol-internals.md` §"All Mercury Functions" — `InterfaceElement::compressLength_write` is described as "Write length (1/2/3/4 byte)". What V5 does *not* enumerate is the threshold byte values that decide which width to emit for a given length value. The thresholds are the open piece (Q1 in §1.15), not the existence of the four-width scheme. The closest comparable scheme in the same binary is `ProcessMessage::writeComponentsVarLen` at `ghidra://SGW.exe@0x01586180` (the MachineGuard component-ID encoder), which uses a single threshold: IDs `≤ 0xfe` are written as 1 byte; IDs `> 0xfe` are written as `0xff` prefix + 3 bytes. The InterfaceElement scheme *may* be similar, but the bible canonizes evidence not analogy — pin to `medium` until `0x0158b120` is decompiled and the threshold constants are extracted. See open Q1 in §1.15.
+If the value to encode exceeds the natural capacity of the chosen width (`0xFF` for 1 byte, `0xFFFF` for 2 bytes, `0xFFFFFF` for 3 bytes), the overflow is handled by the packet-chain path at `ghidra://SGW.exe@0x0158acc0` (the message gets split across packets in the bundle's packet chain) rather than by widening the prefix on the wire. The width is fixed per-interface, period.
+
+Confidence: high. The Ghidra decompile of `compressLength_write` at `0x0158b120` is `switch(*(undefined4 *)((int)this + 4))` with cases 1, 2, 3, 4 — each case writing exactly that many bytes — and `expandLength` at `0x0158b770` mirrors the same switch shape on the read side. Compare with `ProcessMessage::writeComponentsVarLen` at `ghidra://SGW.exe@0x01586180` (the MachineGuard component-ID encoder) which uses an actual runtime threshold (IDs `≤ 0xfe` write 1 byte, IDs `> 0xfe` write `0xff` prefix + 3 bytes); the InterfaceElement scheme is a different mechanism entirely.
 
 Note that compressed-length encoding is *not* what entity messages use — entity messages always use `WORD_LENGTH` (the fixed 2-byte `u16` prefix). The compressed scheme is for system messages whose maximum-size envelope is large but whose typical-case size is small.
 
@@ -342,7 +353,7 @@ After the header is written, `Bundle::addBlob` at `ghidra://SGW.exe@0x0157a990` 
 - A fragment's own position in the bundle is derived from `sequenceId - firstFragmentId`.
 - The receiver allocates a vector of `(lastFragmentId - firstFragmentId + 1)` slots when the first fragment arrives and fills slots by sequence ID. The bundle is reassembled when every slot is non-null (`BundleUnpacker::isComplete`).
 
-**Send window.** A reliable bundle's fragments each occupy one slot in the channel's fixed-size send window of in-flight reliable packets. A bundle whose fragment count exceeds the window size cannot complete without window stalling. In practice, bundles are tens of packets at most — the largest observed is the world-entry mapLoaded bundle at 27+ interface-element calls, which fits in ~5 packets, well under any plausible window size. The exact slot count is not enumerated in the current V5 evidence (see §1.2's `FLAG_IS_RELIABLE` paragraph and open question Q5 in §1.16); pin the literal count to medium confidence pending direct extraction of the window capacity constant from `ChannelInternal`'s constructor or from `UnAckedHandler::buildAndSendAckBundle` at `0x0158b2d0`.
+**Outstanding-sequence tracking.** A reliable bundle's fragments each consume one bit in the channel's 32-bit outstanding-ack bitmap (see §1.7); the bitmap caps simultaneously-in-flight reliable sequence numbers at 32. In practice, bundles are tens of packets at most — the largest observed is the world-entry mapLoaded bundle at 27+ interface-element calls, which fits in ~5 packets — so the 32-bit ceiling is rarely a practical pressure point. The 512-entry hash table at `ChannelInternal+0x40/+0x44` (allocated by `FUN_0158c170` at `ghidra://SGW.exe@0x0158c170`) is the *received*-sequence dedup table (mask `0x1FF`), not a send-side capacity bound — see §1.7 for the cross-reference.
 
 ### 1.7 Sequence numbers and reliability
 
@@ -357,16 +368,23 @@ Mercury sequence numbers are **28-bit** (`SEQ_SIZE = 0x10000000`). The space is 
 
 `0x10000000` is the null-sentinel: a packet with this sequence ID has no sequence number assigned (used for unreliable bundles that don't go in the send window). Because `0x10000000` is the very next value above the 28-bit `0x0FFFFFFF` mask, no real sequence number can collide with the sentinel.
 
-**Reliability state lives in `ChannelInternal`**, the ~0x180-byte inner channel object constructed at `ghidra://SGW.exe@0x0158c7b0`. The send window is a fixed-size circular buffer; entries are cleared by `processAck` when their sequence ID is acknowledged. The window head slides forward only when its head slot is empty (acked or never used). A receiver's processing of incoming acks runs even when the incoming packet's own sequence ID is outside its receive window — this prevents lost acks from causing unbounded retransmissions.
+**Reliability state lives in `ChannelInternal`**, the ~0x180-byte inner channel object constructed at `ghidra://SGW.exe@0x0158c7b0`. The mechanism is a **32-bit sliding bitmap of outstanding sequence numbers** plus a **512-entry hash table** for received-sequence deduplication. Entries are cleared by `processAck` when their sequence ID is acknowledged; a receiver's processing of incoming acks runs even when the incoming packet's own sequence ID is outside its receive window — this prevents lost acks from causing unbounded retransmissions.
 
-**Resend timing.** `ChannelInternal::checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` runs the timer-driven resend logic. Three rdtsc-based timeout fields live in the channel object:
+The 512-entry hash table is allocated by `FUN_0158c170` at `ghidra://SGW.exe@0x0158c170` via `scalable_malloc(param_1 * 4 + 4)` = 2052 bytes for 512 pointer-sized entries; the mask `param_1 - 1 = 511 = 0x1FF` is stored at `ChannelInternal+0x44`. The hash is `seq_num & 0x1FF`. `Channel__ctor` at `ghidra://SGW.exe@0x01576bf0` hardcodes the table size of `0x200` (512) at construction. The hash table is the *received-sequence dedup* structure; the 32-bit bitmap in `UnAckedHandler` is the *outstanding-send* structure. Earlier drafts of this chapter conflated the two as a single "send window" with a "45-slot" capacity — neither claim is V5-grounded, and both are dropped.
+
+**Resend timing.** `ChannelInternal::checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` runs the timer-driven resend logic. Five rdtsc-based timeout fields live in the channel object:
 
 | Offset | Role |
 |---|---|
 | `+0x160` | Receive timeout threshold (rdtsc units) |
 | `+0x164` | Receive timeout last-check timestamp |
 | `+0x16c` | Send-alive timeout — triggers a keepalive ack bundle if no traffic |
-| `+0x170`, `+0x174` | Additional timer fields (role TBD per `mercury-protocol-internals.md` Session 5b open question 1 — see Q2 in §1.16) |
+| `+0x170` | Low 32 bits of a 64-bit rdtsc baseline timestamp marking the last relevant receive event |
+| `+0x174` | High 32 bits of the same 64-bit rdtsc baseline |
+
+The `+0x170` / `+0x174` pair is the receive-timeout baseline. `checkAndSendNubException` computes the elapsed-since-last-receive value with the textbook 64-bit-subtract-on-32-bit-ints pattern: `(iVar4 - *(int *)(this + 0x174)) - (uint)(uVar2 < *(uint *)(this + 0x170))` — high-half minus high-half, minus the borrow from the low-half compare. That value is compared against the threshold at `+0x164` / `+0x160` to decide whether the channel has gone idle long enough to warrant a keepalive or a teardown.
+
+The constructor at `ghidra://SGW.exe@0x0158c7b0` zeroes both halves (low at `0x0158c9d5`, high at `0x0158c9db`) at channel-init time. The *write* site that stamps the baseline on each incoming packet was not located in the current Ghidra pass; it likely lives upstream of `Nub::dispatchPacketWithFilter` (near `0x015816a0`) in the Nub receive entry. `processIncomingPacketEntry` at `0x0158be30` stamps `+0x58 / +0x5c` (used for the send-alive check), not `+0x170 / +0x174`. Confidence on the field role (low/high halves of a 64-bit rdtsc baseline): high. Confidence on the write-site location: medium — see the open question carry-over in §1.16.
 
 When the send-alive timer expires, `UnAckedHandler::sendAckBundle2` at `ghidra://SGW.exe@0x0158bbc0` builds an empty bundle with the reliable flag set, just to keep the channel alive. This is the Mercury keepalive — not a separate keepalive packet type.
 
@@ -925,7 +943,9 @@ Confidence: high for the wire layout, the length type, and the field set; medium
 
 #### 1.10.6 `forcedPosition` — authoritative position snap (server → client, msg_id `0x31`)
 
-The authoritative "you are here" message. Sent by the server when the client's position must be hard-set (world entry, gate travel, anti-cheat correction, teleport). Carries position, velocity, orientation, and a physics-mode byte. Unlike `avatarUpdate` (the client's position-broadcast) or normal entity-method calls, `forcedPosition` is a system-level wire-format message with a fixed 49-byte payload.
+The authoritative "you are here" message. Sent by the server when the client's position must be hard-set (world entry, gate travel, anti-cheat correction, teleport). Carries position, a previous-position reference vector (not velocity — see the source-doc override below), full-precision rotation, and a physics-mode byte. Unlike normal entity-method calls, `forcedPosition` is a system-level wire-format message with a fixed 49-byte payload.
+
+The full byte-by-byte canonical layout, the previous-position-reference correction, the per-call-site rotation discipline, and the relationship to `addMove` retransmission are canonized in `spec.protocol.position-updates` §1.4. The Mercury chapter retains only the transport-layer envelope (length type, msg_id, bundle considerations) and a divergence summary against stock BigWorld; the per-byte detail lives in the position-updates chapter so the same canon serves both `forcedPosition` and `detailedPosition`.
 
 | Property | Value |
 |---|---|
@@ -934,50 +954,33 @@ The authoritative "you are here" message. Sent by the server when the client's p
 | Payload size | 49 bytes (no length prefix on the wire — fixed) |
 | Handler in client | `ServerConnection_ForcedPosition` at `ghidra://SGW.exe@0x00dd9ee0` |
 
-**Wire layout** per `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)", `position-movement-wire-formats.md` §"forcedPosition (msg_id 0x31, 49 bytes)", and `space-viewport-wire-formats.md` §"FORCED_POSITION (0x31)":
+**Field summary** (per `spec.protocol.position-updates` §1.4.1):
 
 ```text
 [msg_id:    0x31]        1 byte
 [entityId:  u32 LE]      4 bytes
 [spaceId:   u32 LE]      4 bytes
 [vehicleId: u32 LE = 0]  4 bytes
-[posX:      f32 LE]      4 bytes
-[posY:      f32 LE]      4 bytes
-[posZ:      f32 LE]      4 bytes
-[velX:      f32 LE]      4 bytes   — 0 at world entry; non-zero for in-flight corrections
-[velY:      f32 LE]      4 bytes
-[velZ:      f32 LE]      4 bytes
-[rot_a:     f32 LE]      4 bytes   — see rotation note below
-[rot_b:     f32 LE]      4 bytes
-[rot_c:     f32 LE]      4 bytes
-[physics:   u8]          1 byte    — physics/movement mode (NOT a reserved flags byte)
+[posX/Y/Z:    3 × f32 LE] 12 bytes
+[prevPosX/Y/Z: 3 × f32 LE] 12 bytes  — previous-position reference (NOT velocity)
+[rotation slot A/B/C: 3 × f32 LE] 12 bytes  — order depends on call site (see below)
+[physics:   u8]          1 byte    — physics/movement mode (`0x01` at world entry)
 ```
+
+> [!NOTE] **Source-doc override: V5 docs label the 12 bytes at offsets 24-35 as `velocity` — that label is wrong.** Three V5 docs carry the mislabel (`position-movement-wire-formats.md` §"forcedPosition (msg_id 0x31, 49 bytes)", `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)", `space-viewport-wire-formats.md` §"FORCED_POSITION (0x31)"); this chapter and `spec.protocol.position-updates` §1.4.2 both override all three. Game-archaeology Ghidra pass (2026-05-14) on `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` shows the 12-byte block at struct offset `+0x18` is passed as a **pointer** (via `LEA EAX, [ESI+0x18]`) to the internal `PackageAndSendEntityMove` helper as its `pOrientation` argument, which then copies the block verbatim into `pPrevPos` (aliased to `pPosition`). That is the previous-position-snapshot pattern used by BigWorld's client-side delta-compression of the retransmitted move — not a velocity vector. The "zeros at world entry" observation reflects there being no prior position to delta from, not a semantic claim about velocity. See `spec.protocol.position-updates` §1.4.2 for the full Ghidra evidence chain.
 
 **The trailing byte is `physics`, not a generic flags field.** Per `position-movement-wire-formats.md` §"Field Notes" the byte at offset 48 "encodes the current physics mode (walking, flying, swimming, etc.). Stored per-entity in `sentPhysics_[]`." The world-entry C++ emit path (`client_handler.cpp:407-413` per `entity-creation-wire-formats.md`) writes `(uint8_t)0x01` — value `0x01`, not `0x00` — and the handler at `0x00dd9ee0` asserts `sentPhysics_[args.id] == args.physics`. The byte is consumed as per-entity mutable state, not discarded.
 
 > [!NOTE] **Source-doc override.** `docs/reverse-engineering/findings/world-entry-pipeline.md` §"FORCED_POSITION" labels the byte at offset 48 as `flags: u8 = 0`, which is incorrect. The C++ server source extracted in `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" shows the world-entry emit path writes `(uint8_t)0x01`, and the client decompile evidence in `position-movement-wire-formats.md` §"Field Notes" plus the assertion `sentPhysics_[args.id] == args.physics` in the handler at `0x00dd9ee0` confirms the byte is consumed as the per-entity physics-mode field, not as a reserved flags slot. This chapter follows the C++ source and the position-movement-wire-formats doc; the `world-entry-pipeline.md` value is a known transcription error and should be corrected when that doc is next revised.
 
-A second source-doc conflict touches the same message at a different field — the rotation annotation:
-
-> [!NOTE] **Source-doc rotation annotation conflict.** `docs/reverse-engineering/findings/entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" (client decompile rows for offsets 36/40/44) labels the three rotation fields `rotX/rotY/rotZ` and adds the annotation "NOT swapped here (unlike createCellPlayer)". That annotation is misleading. `system-protocol-wire-formats.md` §"FORCED_POSITION (0x31) -- Rotation Order Evidence" confirms that the `ServerConnection_addMove` call in the handler at `0x00dd9ee0` maps `param_1[10]` (wire offset 40) to the `rotZ` argument and `param_1[11]` (wire offset 44) to the `rotY` argument — i.e. the wire *does* carry the Z-component at the byte position the decompile struct labels Y. The chapter's neutral `rot_a/rot_b/rot_c` labels in the wire-layout table above avoid the conflict. The C++ emit-side and the parse-side both agree that the world-entry path's three rotation bytes are written in the order `(rotation.x, rotation.z, rotation.y)`, which is consistent with the `createCellPlayer` convention. The decompile struct's `rotX/rotY/rotZ` field names are decompile-tool placeholders, not protocol-canonical names — the protocol-canonical interpretation is in `system-protocol-wire-formats.md`'s addMove mapping.
-
-**Rotation order is per call site, not a protocol-wide convention.** SGW emits `forcedPosition` from two distinct C++ call sites per `entity-creation-wire-formats.md` §"C++ Server Source":
-
-| Call site | C++ rotation emit | Wire byte order at offsets 36–47 |
-|---|---|---|
-| `client_handler.cpp:407-413` (world-entry path during `createCellPlayer`) | `rotX << rotZ << rotY` | `rotX, rotZ, rotY` (Y/Z swapped) |
-| `client_handler.cpp:566-572` (standalone `forcedPosition` from `ServerConnection::forcedPosition()`) | `rotation.x << rotation.y << rotation.z` | caller's responsibility — V5 comment: "caller's responsibility" |
-
-The client at `0x00dd9ee0` reads the three floats positionally — offset 36 to `param_1[9]`, offset 40 to `param_1[10]`, offset 44 to `param_1[11]` — and the handler shuffles them as `addMove(yaw = param[11], pitch = param[10], roll = param[9])` (per `system-protocol-wire-formats.md` §"FORCED_POSITION (0x31) -- Rotation Order Evidence"). That positional read works correctly *only when the caller writes Y/Z swapped on the wire* — which the world-entry path does and the standalone path does not by default.
-
-The same applies more broadly: rotation order is per call site, not a protocol-wide convention. `createCellPlayer` (§1.10.2) writes `rotX, rotZ, rotY` (Y/Z swapped) at the world-entry path. The `UPDATE_AVATAR` family (msg_id `0x10–0x2F`) encodes rotation as three packed `u8` quanta `yaw, pitch, roll` — a completely different layout (`(u8)(rotation.y / 0.024543693f)` etc., per `position-movement-wire-formats.md`). Each message's rotation byte order belongs to that message's subsection, not to a global rule. Confidence: high for the world-entry path; medium for the standalone-path rotation interpretation pending pcap capture of an in-flight correction.
+**Rotation order is per call site, not a protocol-wide convention.** SGW emits `forcedPosition` from two distinct C++ call sites — the world-entry path (`client_handler.cpp:407-413`) writes `rotX, rotZ, rotY` (Y/Z swapped); the standalone path (`client_handler.cpp:566-572`) writes `rotation.x, rotation.y, rotation.z` in caller-supplied order. The handler at `0x00dd9ee0` reads the three floats positionally and shuffles them as `addMove(yaw = param[11], pitch = param[10], roll = param[9])`; the world-entry path's swap is required for that positional read to produce correct yaw/pitch/roll. The full per-call-site rotation discipline (including the decompile-vs-protocol naming conflict the chapter's earlier draft surfaced) is canonized in `spec.protocol.position-updates` §1.4.3 — Mercury chapter retains only the divergence summary.
 
 **Divergence from stock BigWorld 2.0.1.** Stock BW's `forcedPosition` carries 36 bytes: `entityID (4) + spaceID (4) + vehicleID (4) + Position3D (12) + Direction3D (12) = 36`. SGW expands this to 49 bytes by:
 
-1. Inserting a 12-byte velocity `Vec3` between position and rotation (zero at world entry; non-zero for in-flight position corrections — the wire byte counts are V5-confirmed; the conditions that produce non-zero velocity outside world entry are open Q3 in §1.16).
+1. Inserting a 12-byte **previous-position reference vector** between position and rotation (zero at world entry; equal to the entity's last-known position when re-snapping after movement). See `spec.protocol.position-updates` §1.4.2 for the Ghidra-confirmed semantic.
 2. Appending a 1-byte `physics` field (value `0x01` at world entry; per-entity mutable state at runtime).
 
-Both additions are SGW-specific. The Cimmeria server must emit the full 49-byte payload; emitting the stock 36-byte payload would fail the `CONSTANT_LENGTH = 49` table check in the client's `InterfaceElement` decoder and the packet would be dropped silently. Confidence: high for the 49-byte total and the world-entry wire bytes; medium for the in-flight velocity semantics (Q3 in §1.16).
+Both additions are SGW-specific. The Cimmeria server must emit the full 49-byte payload; emitting the stock 36-byte payload would fail the `CONSTANT_LENGTH = 49` table check in the client's `InterfaceElement` decoder and the packet would be dropped silently. Confidence: high.
 
 #### 1.10.7 `AUTHENTICATE` — Mercury-handshake key delivery (server → client, msg_id `0x00`)
 
@@ -997,97 +1000,32 @@ Confidence: high for the length type and the handler-side decoder; the cipher ke
 
 ### 1.11 Position and movement messages
 
-The position-update plane carries the steady-state per-entity location traffic — three logical message families share the role: the 32 `UPDATE_AVATAR` variants (msg_ids `0x10–0x2F`) for compressed AoI movement broadcasts; `DETAILED_POSITION` (msg_id `0x30`) for full-precision non-controlled entity snaps; and `FORCED_POSITION` (msg_id `0x31`, canon at §1.10.6 because of its world-entry role) for authoritative client-position snaps. This section canonizes the `UPDATE_AVATAR` family at the protocol-level and the `DETAILED_POSITION` byte format; the full per-variant table for the 32 `UPDATE_AVATAR` byte layouts is reserved for the future `spec.protocol.position-updates` chapter.
+The position-update plane carries the steady-state per-entity location traffic — three logical message families share the role: the 32 `UPDATE_AVATAR` variants (msg_ids `0x10–0x2F`) for compressed AoI movement broadcasts; `DETAILED_POSITION` (msg_id `0x30`) for full-precision non-controlled entity snaps; and `FORCED_POSITION` (msg_id `0x31`) for authoritative client-position snaps (described from the Mercury-envelope perspective in §1.10.6 because of its world-entry role).
 
-#### 1.11.1 `UPDATE_AVATAR` variants — AoI movement broadcasts (server → client, msg_ids `0x10–0x2F`)
+> [!NOTE] **Canonical home of the position plane.** Full byte-by-byte wire formats for every position message — all 32 `UPDATE_AVATAR` variants, `detailedPosition`'s 41-byte layout, `forcedPosition`'s 49-byte layout, the previous-position-reference vector at `forcedPosition` offsets 24-35, the `packXYZ` velocity compression, the quantized direction-angle encoding, and the per-call-site rotation discipline — are canonized in `spec.protocol.position-updates`. This chapter covers only the Mercury-layer envelope (msg_id ranges, length types, bundle behavior, divergence vs stock BigWorld). The per-variant byte tables live in the position-updates chapter so the same canon serves `UPDATE_AVATAR`, `detailedPosition`, and `forcedPosition` without duplication.
 
-The compressed AoI position update. Each of the 32 variants encodes a position update for one ghost entity (an entity in the client's Area of Interest, server-authoritative, client-side-rendered). The variant index is a 5-bit field encoded into the `msg_id` byte itself; the 5 bits select which subset of `(idAlias, position, direction)` fields are present on the wire, trading flexibility for byte count.
+#### 1.11.1 `UPDATE_AVATAR` variants — Mercury-envelope summary (server → client, msg_ids `0x10–0x2F`)
+
+The compressed AoI position update. Each of the 32 variants encodes a position update for one ghost entity (server-authoritative, client-side-rendered). The variant index is a 5-bit field encoded into the `msg_id` byte itself; the 5 bits select which subset of `(idAlias, position, direction)` fields are present on the wire, trading flexibility for byte count.
 
 | Property | Value |
 |---|---|
-| Message ID | `0x10 – 0x2F` (32 variants) |
-| Length type | `CONSTANT_LENGTH` (per-variant; 7–25 bytes depending on encoding) |
+| Message ID range | `0x10 – 0x2F` (32 variants) |
+| Length type | `CONSTANT_LENGTH` (per-variant; 7–25 bytes; size registered statically per variant) |
 | Length range | 7 bytes (msg_id `0x2F`: Alias + NoPos + NoDir) — 25 bytes (msg_id `0x10`: NoAlias + FullPos + YawPitchRoll) |
 | Handler in client | One handler per variant, all in the `FUN_00ddb???` and `FUN_00de1???` ranges per `position-movement-wire-formats.md` §"All 32 Variant Handlers" |
 | Trigger (server) | Server-side position update for any AoI ghost entity; emitted at the tick rate while the entity moves |
 | Notable behavior | **Does not work on client-controlled entities** — use `forcedPosition` (§1.10.6) for those |
 
-**Variant encoding.** The 32 variants map a 5-bit index onto a 2×4×4 matrix of encoding choices:
+**Variant taxonomy.** The 32 variants map a 5-bit index onto a 2×4×4 matrix: 2 entity-ID widths (`NoAlias` 4 B, `Alias` 1 B) × 4 position types (`FullPos` / `OnChunk` / `OnGround` / `NoPos`) × 4 direction types (`YawPitchRoll` / `YawPitch` / `Yaw` / `NoDir`). The `msg_id` low 2 bits select direction, bits 2-3 select position type, bit 4 selects alias. Full per-variant byte layouts (offsets, packed-velocity bit layout, quantized-angle encoding, position-type Y-semantics) are canonized in `spec.protocol.position-updates` §1.2.
 
-| Dimension | Options | Wire-byte impact |
-|---|---|---|
-| Entity ID width | `NoAlias` (4-byte u32) or `Alias` (1-byte u8) | Saves 3 bytes when an alias has been assigned via `CREATE_ENTITY` |
-| Position width | `FullPos` (12 B, 3 × f32), `OnChunk` (12 B but Y ignored), `OnGround` (12 B but Y ignored), `NoPos` (0 B) | Saves 12 bytes when omitted |
-| Direction width | `YawPitchRoll` (3 B), `YawPitch` (2 B), `Yaw` (1 B), `NoDir` (0 B) | Saves 0–3 bytes depending on which angles are unchanged |
+**Mercury-envelope considerations.** The message body never carries a length prefix; the variant's size is read from the static `InterfaceElement` descriptor at parse time. The server's `unreliable_movement_update` config flag controls whether `UPDATE_AVATAR` is emitted on the reliable Mercury channel (default) or the unreliable channel — a server-side configuration, not a wire-format property; the bytes are identical either way. Each `UPDATE_AVATAR` message is one interface element in the bundle and shares the bundle with whatever other AoI traffic the tick produced.
 
-The `msg_id` byte itself selects which combination is on the wire. From `position-movement-wire-formats.md` §"All 32 Variant Sizes":
+**Divergence from stock BigWorld 2.0.1.** The 32-variant compression scheme is inherited from stock BW; the trailing `physics` byte (offset varies per variant) is the SGW-specific per-entity movement-mode field rather than stock-BW reserved flags. See `spec.protocol.position-updates` §1.6 for the consolidated position-plane divergence table.
 
-| Range | Alias | Position | Direction variants | Per-variant sizes |
-|---|---|---|---|---|
-| `0x10–0x13` | NoAlias (4 B) | FullPos (12 B) | YPR / YP / Y / None | 25 / 24 / 23 / 22 |
-| `0x14–0x17` | NoAlias (4 B) | OnChunk (12 B) | YPR / YP / Y / None | 25 / 24 / 23 / 22 |
-| `0x18–0x1B` | NoAlias (4 B) | OnGround (12 B) | YPR / YP / Y / None | 25 / 24 / 23 / 22 |
-| `0x1C–0x1F` | NoAlias (4 B) | NoPos (0 B) | YPR / YP / Y / None | 13 / 12 / 11 / 10 |
-| `0x20–0x23` | Alias (1 B) | FullPos (12 B) | YPR / YP / Y / None | 22 / 21 / 20 / 19 |
-| `0x24–0x27` | Alias (1 B) | OnChunk (12 B) | YPR / YP / Y / None | 22 / 21 / 20 / 19 |
-| `0x28–0x2B` | Alias (1 B) | OnGround (12 B) | YPR / YP / Y / None | 22 / 21 / 20 / 19 |
-| `0x2C–0x2F` | Alias (1 B) | NoPos (0 B) | YPR / YP / Y / None | 10 / 9 / 8 / 7 |
+#### 1.11.2 `detailedPosition` — Mercury-envelope summary (server → client, msg_id `0x30`)
 
-The byte count includes the entity-ID/alias field, position (when present), velocity (always 5 bytes), 1-byte flags, and 0–3 direction bytes. The message body never carries a length prefix — each variant is `CONSTANT_LENGTH` and its size is registered statically.
-
-**Canonical variant — `UPDATE_AVATAR_NO_ALIAS_FULL_POS_YAW_PITCH_ROLL` (msg_id `0x10`, 25 bytes).** This is the variant the SGW server emits in most observed traffic; it is also the variant the C++ server source defaults to in `client_handler.cpp:548-556`. The other 31 variants are byte-shorter compressions of the same field set.
-
-```text
-[msg_id:   0x10]              1 byte
-[entityId: u32 LE]            4 bytes  — full entity ID (NoAlias variant)
-[posX:     f32 LE]            4 bytes  — world X position
-[posY:     f32 LE]            4 bytes  — world Y position (vertical)
-[posZ:     f32 LE]            4 bytes  — world Z position
-[velocity: packed 5 bytes]    5 bytes  — packXYZ-compressed velocity; see below
-[flags:    u8]                1 byte   — movement flags (`0x01` typical, stock-BW reserved bits)
-[yaw:      u8]                1 byte   — `(u8)(rotation.y / 0.024543693f)` — 256 steps over 2π rad
-[pitch:    u8]                1 byte   — `(u8)(rotation.x / 0.024543693f)`
-[roll:     u8]                1 byte   — `(u8)(rotation.z / 0.024543693f)`
-```
-
-**Quantized direction angles.** Each direction angle is a `u8` encoding 256 evenly-spaced steps over `2π` radians. The encode constant `0.024543693 = 2π / 256` is anchored at `DAT_01816a84` (medium confidence on the address; high confidence on the value, which is decompile-confirmed in every per-variant handler at `position-movement-wire-formats.md` §"Direction quantization"). To decode: `angle_rad = byte * 0.024543693`. The wire order is `yaw, pitch, roll` but the encoded *source* axes are `rotation.y, rotation.x, rotation.z` respectively — the SGW server source explicitly writes `(rotation.y / k), (rotation.x / k), (rotation.z / k)` per `client_handler.cpp:548-556`.
-
-**Compressed velocity (`packXYZ`).** Velocity is 5 bytes: a packed `u32` plus a tail `u8`. The encoding extracts mantissa bits from each component's IEEE 754 representation, adds a bias of `2.0` to the absolute value (avoiding zero-encoding), and concatenates sign/magnitude fields. The exact bit layout from `position-movement-wire-formats.md` §"Velocity Compression":
-
-```text
-packed1 (u32 LE):
-  bits [31:24]:  Y delta high byte
-  bit  [23]:     X sign (1 = negative)
-  bits [22:12]:  X mantissa (11 bits)
-  bit  [11]:     Z sign (1 = negative)
-  bits [10:0]:   Z mantissa (11 bits)
-
-packed2 (u8):
-  bit  [7]:      Y sign (1 = negative)
-  bits [6:0]:    Y delta low 7 bits
-```
-
-A reimplementation must replicate the bias-then-extract pipeline exactly — emitting raw IEEE 754 bytes will produce a client-side velocity off by ~`2.0` in each axis.
-
-**Position-type semantics.** Even though the three "with position" variants (`FullPos`, `OnChunk`, `OnGround`) all carry 12 wire bytes of position, the per-variant handler differs in how it interprets the Y component:
-
-- `FullPos` handlers (e.g. `FUN_00ddb0c0`): read all three floats as-is (`local_8 = param_1[2]`).
-- `OnChunk` handlers (e.g. `FUN_00ddb220`): discard the wire Y and substitute the sentinel at `DAT_019d1a44` (likely `FLT_MAX`); the client derives Y from the chunk's height map.
-- `OnGround` handlers (e.g. `FUN_00ddb830`): discard the wire Y and substitute the same sentinel; the client derives Y from terrain ray-cast.
-
-The 4 wire bytes at the Y offset are still present in every variant — the difference is purely how the handler consumes them. This means a reimplementation can always emit the same 12 position bytes regardless of variant; the variant choice is the server's signal to the *client* about how to interpret Y, not a wire-format change.
-
-**Direction option ordering.** Within each `(alias, position)` pair, the four direction variants always appear in the order `YPR / YP / Y / NoDir` as the `msg_id` low 2 bits increase. So `0x10` is `NoAlias + FullPos + YPR`, `0x11` is `NoAlias + FullPos + YP`, `0x12` is `NoAlias + FullPos + Y`, `0x13` is `NoAlias + FullPos + NoDir`. This ordering is consistent across all 8 `(alias, position)` rows.
-
-**Unreliable-channel emission.** The server's `unreliable_movement_update` config flag controls whether `UPDATE_AVATAR` is emitted on the reliable Mercury channel (default) or the unreliable channel. In SGW the flag is typically true for AoI position spam to avoid retransmission overhead; this is a server-side configuration, not a wire-format property.
-
-> [!NOTE] **Full per-variant byte-layout table reserved.** The 32 variants share the same field set but differ in byte offsets per variant. A complete per-variant byte-layout table (offsets for each of the 32 `msg_ids`) is out of scope for this chapter — the `UPDATE_AVATAR` family belongs to `spec.protocol.position-updates`, a future chapter dedicated to the position-update plane. The canonical-variant table above + the all-32-variant-sizes table is sufficient for any reimplementation that needs to decode any one variant: subtract the absent-field byte counts from the canonical 25-byte layout in the order `idAlias (3 saved if Alias)`, `position (12 saved if NoPos)`, `direction (3/2/1/0)`.
-
-Confidence: high for the variant taxonomy (the 2×4×4 matrix), the canonical 25-byte layout, the `packXYZ` velocity encoding, and the quantized-angle encoding; high for the position-type sentinel behavior and the unreliable-channel emit option.
-
-#### 1.11.2 `detailedPosition` — full-precision non-controlled entity snap (server → client, msg_id `0x30`)
-
-The full-precision sibling to `forcedPosition`. Carries `entityId`, position, velocity, and rotation as full `f32` values plus a 1-byte physics-mode field — but unlike `forcedPosition`, it does *not* carry `spaceId` or `vehicleId`. The omitted fields are preserved from the entity's current state, which is why this message is used for full-precision position updates that do not change the entity's space or vehicle assignment.
+The full-precision sibling to `forcedPosition`. Carries `entityId`, position, velocity, and rotation as full `f32` values plus a 1-byte physics-mode field. Unlike `forcedPosition`, it does *not* carry `spaceId` or `vehicleId` — the entity's existing space and vehicle bindings are preserved.
 
 | Property | Value |
 |---|---|
@@ -1098,36 +1036,9 @@ The full-precision sibling to `forcedPosition`. Carries `entityId`, position, ve
 | Trigger (server) | Full-precision position update for a non-controlled entity (NPC, vehicle, observer-viewable player) |
 | Notable behavior | **Does not work on client-controlled entities** — use `forcedPosition` (§1.10.6) for those |
 
-**Wire layout** per `position-movement-wire-formats.md` §"detailedPosition (msg_id 0x30, 41 bytes)" and `space-viewport-wire-formats.md` §"DETAILED_POSITION (0x30)":
+**Mercury-envelope considerations.** Full-precision `f32` rotation at offsets 28/32/36 in `roll, pitch, yaw` order — distinct from `forcedPosition`'s call-site-dependent rotation order and distinct from `UPDATE_AVATAR`'s packed `u8` quantized angles. Trailing `physics` byte at offset 40 is the SGW addition; same per-entity field as `forcedPosition`. Full byte layout in `spec.protocol.position-updates` §1.3.
 
-```text
-[msg_id:   0x30]    1 byte
-[entityId: u32 LE]  4 bytes
-[posX:     f32 LE]  4 bytes
-[posY:     f32 LE]  4 bytes  — vertical
-[posZ:     f32 LE]  4 bytes
-[velX:     f32 LE]  4 bytes
-[velY:     f32 LE]  4 bytes
-[velZ:     f32 LE]  4 bytes
-[roll:     f32 LE]  4 bytes  — rotation about Z axis (radians)
-[pitch:    f32 LE]  4 bytes  — rotation about X axis (radians)
-[yaw:      f32 LE]  4 bytes  — rotation about Y axis (radians)
-[physics:  u8]      1 byte   — physics/movement mode (same per-entity field as `forcedPosition`)
-```
-
-**Relationship to `forcedPosition`.** `detailedPosition` is the 41-byte sibling of the 49-byte `forcedPosition` (§1.10.6). The byte count differs by 8 bytes — `forcedPosition` adds `spaceId` (4 B) and `vehicleId` (4 B) immediately after `entityId`, before the position triplet. The motivation is reach: `forcedPosition` can change the entity's space and vehicle binding atomically with the position snap; `detailedPosition` cannot. From the client's perspective, both messages carry the same physics-mode byte at the end and the same `addMove`-style consumption pattern; from the server's perspective, `detailedPosition` is the cheaper of the two for the common case where the entity stays in its current space.
-
-**Rotation order — `roll, pitch, yaw` on the wire.** Unlike `forcedPosition`'s `rotX, rotZ, rotY` order (which the addMove handler shuffles internally), `detailedPosition` writes its rotation triplet in the conventional `roll, pitch, yaw` order — `position-movement-wire-formats.md` §"detailedPosition" labels the three offset rows as `roll (radians)`, `pitch (radians)`, `yaw (radians)`. The rotation field order here matches stock-BW `Direction3D` convention, not SGW's `createCellPlayer`/`forcedPosition` Y/Z swap. A reimplementation must use the message-specific rotation order — there is no protocol-wide convention.
-
-**Handler behavior** per `position-movement-wire-formats.md` §"detailedPosition / Handler Behavior":
-
-1. Resolves the entity via `FUN_00dd9d20` (SVID follow logic — the message is rejected if the entity is client-controlled).
-2. If the position is for the entity we control, stores position in the entity record at offset `+0x10` (12 bytes).
-3. Invokes the callback with full position/velocity/rotation data.
-
-**Divergence from stock BigWorld 2.0.1.** Stock BW's analogous full-precision position message carries the rotation triplet in the same `roll, pitch, yaw` order — no divergence on rotation. The SGW form is byte-compatible with the stock BW shape modulo the trailing physics byte (which is the same SGW addition documented in §1.10.6 for `forcedPosition`).
-
-Confidence: high for the wire layout, length type, rotation order, and "does-not-work-on-client-controlled-entities" constraint; the constraint is V5-confirmed in `position-movement-wire-formats.md` §"detailedPosition" and again at §"forcedPosition" via the symmetric "use forcedPosition for client-controlled entities" callout.
+**Divergence from stock BigWorld 2.0.1.** Stock BW's analogous full-precision position message carries the same `roll, pitch, yaw` rotation order — no divergence on rotation. The SGW form adds the trailing `physics` byte; see `spec.protocol.position-updates` §1.6.
 
 ### 1.12 Nub — endpoint object
 
@@ -1154,12 +1065,14 @@ MachineGuard is a *separate* UDP protocol that SGW uses for machine-level servic
 
 | Property | Value |
 |---|---|
-| Port | `0x4e36` *or* `0x4c36` — **disputed**: V5 docs paired `0x4e36` with decimal `19510`, but `0x4E36 = 20022` and `0x4C36 = 19510`. Pin to medium pending direct read of the Ghidra string-literal constant at the MachineGuard listen-socket bind site (see Q4 in §1.16). |
+| Port | `0x4E36` (decimal **20022**) |
 | Master deserializer | `ghidra://SGW.exe@0x01588530` |
 | Send raw packet | `ghidra://SGW.exe@0x01588ec0` |
 | Message types | At least 8 documented in V5; dispatcher switches on type bytes in the range `0x01–0x0c + 0x40` (see "partial enumeration" note below) |
 
-**Port hex/decimal inconsistency.** `mercury-protocol-internals.md` §"MachineGuard Protocol" carries the pairing `0x4e36 (19510)` and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` echoes the same pair, but these two values do not match: `0x4E36` is `20022` in decimal and `0x4C36` is `19510`. The hex/decimal disagreement originated upstream in the V5 source docs and was propagated forward without flagging. Without a direct read of the Ghidra string-literal constant at the MachineGuard listen-socket bind site, we cannot tell whether the hex (`0x4E36`) is correct and the decimal (`19510`) is wrong, or whether the decimal is correct and the hex should be `0x4C36`. Confidence on the port number is medium pending that direct read; see Q4 in §1.16.
+**Port pinned via the `htons` immediate.** `Mercury_MachineGuard_sendAndRecv` at `ghidra://SGW.exe@0x015898c0` calls `htons(0x4e36)`; the immediate `36 4E 00 00` lives at `ghidra://SGW.exe@0x0158994b`. A full-binary search for the immediate `36 4E 00 00` returns exactly one hit (this address); a search for `36 4C 00 00` (the bytes that would back decimal 19510) returns zero hits anywhere in the binary. The hex `0x4E36` is correct; the decimal is 20022. Confidence: high.
+
+> [!NOTE] **Source-doc override.** `docs/reverse-engineering/findings/mercury-protocol-internals.md` §"MachineGuard Protocol" and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` both pair `0x4E36` with decimal `19510`. That decimal is wrong: `0x4E36 = 20022`. The upstream V5 plate-comment evidently carried the arithmetic error (decimal converted off the wrong nibble in the high byte: `0x4E = 78`, not `0x4C = 76`) and the bad pairing propagated forward. The Ghidra evidence at `ghidra://SGW.exe@0x0158994b` is unambiguous — chapter overrides both upstream docs.
 
 The master deserializer at `0x01588530` switches on a single type byte. **Message types — partial enumeration.** The dispatcher's switch range is `0x01–0x0c` plus `0x40`. Eight slots are documented in V5 (table below); five slots (`0x03`, `0x08`, `0x09`, `0x0a`, `0x0c`) have no named handler in current V5 evidence and may be either unused or pending Ghidra recovery. The "13 message types" claim in `mercury-protocol-internals.md` §"MachineGuard Protocol" reflects the dispatcher's address range, not the count of recovered handlers. This chapter pins the canonized count to "at least 8 documented" and lists the gaps explicitly.
 
@@ -1201,7 +1114,7 @@ Every SGW divergence from stock BigWorld 2.0.1 affecting Mercury wire format, in
 | `enableEntities` payload (§1.9) | 1 byte (`uint8 dummy`) | 8 bytes (`uint64 dummy`) |
 | `createBasePlayer` class field (§1.10.1) | `uint16` (2 bytes) | `uint16` on the wire (same width as stock); server-source style writes it as `(u8 classId)(u8 propCount = 0)` — a code-style difference, not a wire divergence |
 | `createCellPlayer` rotation (§1.10.2) | `roll, pitch, yaw` (`Direction3D` order) | `rotX, rotZ, rotY` (Y/Z swapped) — at this message's wire offsets only; not a protocol-wide convention |
-| `forcedPosition` payload (§1.10.6) | 36 bytes (entityID + spaceID + vehicleID + pos + direction) | 49 bytes (adds velocity `Vec3` + physics `u8`) |
+| `forcedPosition` payload (§1.10.6) | 36 bytes (entityID + spaceID + vehicleID + pos + direction) | 49 bytes (adds previous-position-reference `Vec3` at offsets 24-35 — *not* velocity, see §1.10.6 — and trailing physics `u8` at offset 48) |
 | `forcedPosition` rotation order (§1.10.6) | `roll, pitch, yaw` | Per call site: world-entry path writes `rotX, rotZ, rotY` (Y/Z swapped); standalone `forcedPosition()` writes `rotation.x, rotation.y, rotation.z` (caller's responsibility) |
 | `detailedPosition` rotation order (§1.11.2) | `roll, pitch, yaw` (stock-BW `Direction3D`) | `roll, pitch, yaw` — **no Y/Z swap** for this message, unlike `forcedPosition` and `createCellPlayer`. Rotation order is per-message-site, not protocol-wide |
 | `detailedPosition` payload (§1.11.2) | (stock-BW analog full-precision) | 41 bytes — adds trailing physics-mode `u8` (same SGW addition as `forcedPosition`) |
@@ -1218,7 +1131,7 @@ The divergences cluster in three themes: **security** (Blowfish → AES + HMAC),
 
 ### 1.15 Source-of-truth crosswalk
 
-One row per load-bearing claim, grouped by chapter section. Every claim that grounds wire-format behavior has a row; subordinate observations stay inline. The "Primary V5 source" column is the canonical evidence; the "Secondary cross-check" disambiguates or cross-validates that source. Open questions (Q1–Q5 in §1.16) appear as rows here marked `open` so the crosswalk is self-honest about what is *not* yet anchored.
+One row per load-bearing claim, grouped by chapter section. Every claim that grounds wire-format behavior has a row; subordinate observations stay inline. The "Primary V5 source" column is the canonical evidence; the "Secondary cross-check" disambiguates or cross-validates that source. The five Q1–Q5 questions earlier drafts carried as `open` rows here all closed via the game-archaeology Ghidra pass of 2026-05-14; their resolutions are inline in the relevant section rows below. See §1.16 for the closure summary and the two follow-up sub-questions surfaced during the pass.
 
 **§1.1–§1.3 Transport (packet anatomy, header, footer):**
 
@@ -1253,11 +1166,11 @@ One row per load-bearing claim, grouped by chapter section. Every claim that gro
 |---|---|---|
 | Three length types: `CONSTANT_LENGTH`, `WORD_LENGTH`, `DWORD_LENGTH` | `mercury-protocol-internals.md` §"InterfaceElement" | `space-viewport-wire-formats.md` §"Complete Server Message Table" |
 | Entity messages (`msg_id >= 0x80`) default to `WORD_LENGTH` | `system-protocol-wire-formats.md` §"startEntityMessage / startProxyMessage" | `Bundle::newMessage` at `ghidra://SGW.exe@0x0157ac90` |
-| `compressLength_write` family widths are 1/2/3/4 byte | `mercury-protocol-internals.md` §"All Mercury Functions" ("Write length (1/2/3/4 byte)") | Threshold byte values open (Q1) |
+| `compressLength_write` family widths are 1/2/3/4 byte, **fixed per `InterfaceElement` at descriptor offset `+0x4`** (no runtime thresholds) | game-archaeology Ghidra pass (2026-05-14) on `compressLength_write` at `ghidra://SGW.exe@0x0158b120` — `switch(*(undefined4 *)((int)this + 4))` with unconditional per-case writes | `expandLength` at `ghidra://SGW.exe@0x0158b770` mirrors the same switch shape on the read side |
+| Compressed-length overflow path | game-archaeology Ghidra pass — handled by packet-chain path at `ghidra://SGW.exe@0x0158acc0` (message split across bundle packets), not by widening the wire prefix | `mercury-protocol-internals.md` §"All Mercury Functions" |
 | InterfaceElement static / runtime descriptor sizes (medium confidence) | inherited from `external/BigWorld-2.0.1/src/lib/network/interfaces.hpp` | Not directly enumerated in V5 evidence; chapter previously cited `0x90` / `0x24` |
 | Bundle fragmentation, 64-packet cap | `mercury-protocol-internals.md` §"Implications for Cimmeria" | `external/BigWorld-2.0.1/src/lib/network/packet.hpp` (`Packet::MaxFragmentsPerBundle`) |
 | Bundle entry points (`newMessage`, `startMessage_fixed`, `startMessage_request`) | `mercury-protocol-internals.md` §"All Mercury Functions" | Addresses `0x0157ac90`, `0x0157ad80`, `0x0157adc0` |
-| Compressed-length threshold byte values | open (Q1) | `ghidra://SGW.exe@0x0158b120` (`compressLength_write` decompile pending) |
 
 **§1.7 Sequence numbers + reliability:**
 
@@ -1267,8 +1180,8 @@ One row per load-bearing claim, grouped by chapter section. Every claim that gro
 | Null sequence sentinel `0x10000000` (one past 28-bit mask) | `mercury-protocol-internals.md` §"Protocol Constants" | — |
 | `ChannelInternal` constructor + size (~0x180 bytes) | `mercury-protocol-internals.md` §"All Mercury Functions" | `ghidra://SGW.exe@0x0158c7b0` |
 | Three V5-confirmed timer fields (`+0x160`, `+0x164`, `+0x16c`) | `mercury-protocol-internals.md` §"Session 5b Additions" | `checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` |
-| `+0x170` / `+0x174` timer-shaped fields | open (Q2) | — |
-| Send-window slot count | open (Q5) — previous "45-slot" literal unsourced | — |
+| `+0x170` = low half of a 64-bit rdtsc baseline; `+0x174` = high half — receive-event timestamp read in `checkAndSendNubException` | game-archaeology Ghidra pass (2026-05-14) on `checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` — `(iVar4 - *(int *)(this + 0x174)) - (uint)(uVar2 < *(uint *)(this + 0x170))` subtract-with-borrow pattern | Constructor at `ghidra://SGW.exe@0x0158c7b0` zeroes both halves (low at `0x0158c9d5`, high at `0x0158c9db`); write site upstream of `dispatchPacketWithFilter` not located in current pass |
+| Reliability mechanism: 32-bit outstanding-ack bitmap + 512-entry received-sequence hash table (mask `0x1FF`) | game-archaeology Ghidra pass (2026-05-14): `UnAckedHandler__buildAndSendAckBundle` at `ghidra://SGW.exe@0x0158b2d0` iterates `iVar2 = 0..32` (32-bit bitmap); `Channel__ctor` at `ghidra://SGW.exe@0x01576bf0` hardcodes `0x200` (512); `FUN_0158c170` at `ghidra://SGW.exe@0x0158c170` allocates `param_1 * 4 + 4 = 2052` bytes with mask `param_1 - 1 = 0x1FF` at `+0x44` | replaces the unsourced "45-slot circular send window" claim that earlier drafts carried — no such fixed-slot buffer exists |
 | Resend timer / retry-limit numbers (medium confidence) | inherited from stock-BW defaults | SGW divergence not enumerated in V5 |
 | Mercury keepalive: empty reliable bundle via `UnAckedHandler::sendAckBundle2` | `mercury-protocol-internals.md` §"Session 5b Additions" | `ghidra://SGW.exe@0x0158bbc0`; same function variously named `sendAckBundle` in V5's main inventory |
 
@@ -1316,21 +1229,22 @@ One row per load-bearing claim, grouped by chapter section. Every claim that gro
 | `spaceViewportInfo` open-vs-close driven by `entityId2` value | `space-viewport-wire-formats.md` §"SPACE_VIEWPORT_INFO" viewport operations table | `entity-creation-wire-formats.md` §"4. SPACE_VIEWPORT_INFO" |
 | `spaceViewportInfo` first-field decompile ambiguity (`field0 / entityId`) | chapter §1.10.4 decompile-naming-ambiguity callout | server source uses `entityId`; client decompile labels `field0` |
 | `createEntity` 5-byte payload | `entity-creation-wire-formats.md` §"6. CREATE_ENTITY (0x09)" | `space-viewport-wire-formats.md` §"CREATE_ENTITY (0x09)" |
-| `forcedPosition` 49-byte fixed payload (`CONSTANT_LENGTH = 49`) | `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" | `position-movement-wire-formats.md` §"forcedPosition (msg_id 0x31, 49 bytes)" |
+| `forcedPosition` 49-byte fixed payload (`CONSTANT_LENGTH = 49`) | `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" | `position-movement-wire-formats.md` §"forcedPosition (msg_id 0x31, 49 bytes)"; full byte canon in `spec.protocol.position-updates` §1.4 |
 | `forcedPosition` trailing byte = `physics` field (per-entity mode), value `0x01` at world entry | `position-movement-wire-formats.md` §"forcedPosition" Field Notes | `entity-creation-wire-formats.md` C++ emit `(uint8_t)0x01`; chapter §1.10.6 source-doc-override callout against `world-entry-pipeline.md` line 257 |
-| `forcedPosition` rotation order per call site (world-entry swaps; standalone caller's responsibility) | `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" — two C++ call sites | `system-protocol-wire-formats.md` §"FORCED_POSITION (0x31) -- Rotation Order Evidence" (addMove mapping resolves decompile struct-label conflict) |
-| `forcedPosition` velocity Vec3 semantics outside world entry | open (Q3) | — |
+| `forcedPosition` rotation order per call site (world-entry swaps; standalone caller's responsibility) | `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" — two C++ call sites | `system-protocol-wire-formats.md` §"FORCED_POSITION (0x31) -- Rotation Order Evidence" (addMove mapping resolves decompile struct-label conflict); canonized in `spec.protocol.position-updates` §1.4.3 |
+| `forcedPosition` offset 24-35: previous-position reference vector, **not velocity** | game-archaeology Ghidra pass (2026-05-14) on `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` — `LEA EAX, [ESI+0x18]` pointer-pass to `PackageAndSendEntityMove` as `pOrientation`, copied verbatim into `pPrevPos` (aliased to `pPosition`) | `position-movement-wire-formats.md`, `entity-creation-wire-formats.md`, `space-viewport-wire-formats.md` all carry the legacy "velocity" label — chapter §1.10.6 + `spec.protocol.position-updates` §1.4.2 override all three |
+| Source-doc override — three V5 docs label `forcedPosition` offset 24-35 as "velocity" | chapter §1.10.6 source-doc-override callout | overrides `position-movement-wire-formats.md` §"forcedPosition", `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)", `space-viewport-wire-formats.md` §"FORCED_POSITION (0x31)" |
+| `UPDATE_AVATAR` family, `detailedPosition`, `forcedPosition` byte-level canon | `spec.protocol.position-updates` (this chapter §1.11 + §1.10.6 are Mercury-envelope summaries; full byte tables are in the position-updates chapter) | — |
 | `AUTHENTICATE` (`0x00`) is `DWORD_LENGTH` (the V5-confirmed user) | `system-protocol-wire-formats.md` §"AUTHENTICATE (0x00) -- Server-to-Client Key Exchange" | `space-viewport-wire-formats.md` §"Complete Server Message Table" |
 
 **§1.11 Position / movement messages:**
 
 | Claim | Primary V5 source | Secondary cross-check |
 |---|---|---|
-| `UPDATE_AVATAR` family (`0x10`–`0x2F`) — 32 variants, 2×4×4 matrix taxonomy | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants (0x10 - 0x2F)" and §"All 32 Variant Sizes" | `position-movement-wire-formats.md` §"avatarUpdate Messages (msg_id 0x10-0x2F)" |
-| `UPDATE_AVATAR` packed velocity encoding (5 bytes: u32 + u8) | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants" — `packXYZ` | `position-movement-wire-formats.md` §"avatarUpdate Messages" |
-| `UPDATE_AVATAR` quantized rotation encoding (1 byte each, `(u8)(rad / 0.024543693f)`) | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants" | `position-movement-wire-formats.md` §"avatarUpdate Messages" |
-| `detailedPosition` 41-byte payload, non-controlled-entities only | `position-movement-wire-formats.md` §"detailedPosition (msg_id 0x30, 41 bytes)" | `space-viewport-wire-formats.md` §"DETAILED_POSITION (0x30)" |
-| `detailedPosition` rotation order matches `createCellPlayer` / `forcedPosition` convention (Tait-Bryan swap) | `position-movement-wire-formats.md` §"detailedPosition" | distinct from `UPDATE_AVATAR`'s packed yaw / pitch / roll u8 encoding |
+| `UPDATE_AVATAR` family (`0x10`–`0x2F`) — Mercury envelope, msg_id range, `CONSTANT_LENGTH` per-variant 7-25 bytes, unreliable-channel option | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants (0x10 - 0x2F)" and §"All 32 Variant Sizes" | full byte canon: `spec.protocol.position-updates` §1.2 |
+| `UPDATE_AVATAR` 2×4×4 variant matrix, packed velocity, quantized angles, per-variant byte tables | canonized in `spec.protocol.position-updates` §1.2 | this chapter §1.11.1 retains only Mercury-envelope facts |
+| `detailedPosition` `CONSTANT_LENGTH = 41`, Mercury-envelope summary | `position-movement-wire-formats.md` §"detailedPosition (msg_id 0x30, 41 bytes)" | full byte canon: `spec.protocol.position-updates` §1.3 |
+| `detailedPosition` rotation order = `roll, pitch, yaw` (no Y/Z swap, distinct from `forcedPosition`) | canonized in `spec.protocol.position-updates` §1.3 | `position-movement-wire-formats.md` §"detailedPosition" — distinct from `UPDATE_AVATAR`'s packed `u8` quantized angles |
 
 **§1.12 Nub:**
 
@@ -1344,64 +1258,43 @@ One row per load-bearing claim, grouped by chapter section. Every claim that gro
 
 | Claim | Primary V5 source | Secondary cross-check |
 |---|---|---|
-| MachineGuard port (hex/decimal mismatch — `0x4E36 = 20022` vs documented `19510`) | open (Q4) — pending Ghidra read of the bind-site constant | both `mercury-protocol-internals.md` and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` carry the inherited mismatch |
+| MachineGuard port = `0x4E36` (decimal **20022**) | game-archaeology Ghidra pass (2026-05-14) on `Mercury_MachineGuard_sendAndRecv` at `ghidra://SGW.exe@0x015898c0` — `htons(0x4e36)`; immediate `36 4E 00 00` at `ghidra://SGW.exe@0x0158994b` is the only hit in the binary; `36 4C 00 00` returns zero hits | overrides `mercury-protocol-internals.md` §"MachineGuard Protocol" and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` which both paired `0x4e36` with the wrong decimal `19510` |
+| Source-doc override — both upstream V5 docs paired `0x4E36` with decimal `19510` (arithmetically wrong: `0x4E = 78`, not `0x4C = 76`) | chapter §1.13 source-doc-override callout | overrides `mercury-protocol-internals.md` §"MachineGuard Protocol" and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` |
 | Master deserializer at `0x01588530`; range `[0x01–0x0c, 0x40]` | `mercury-protocol-internals.md` §"MachineGuard Protocol" | — |
 | At least 8 documented message types; 5 slots (`0x03`, `0x08`, `0x09`, `0x0a`, `0x0c`) have no named handler in V5 | `mercury-protocol-internals.md` §"MachineGuard Protocol" | chapter §1.13 partial-enumeration callout |
-| `ProcessMessage::writeComponentsVarLen` single-threshold `0xfe` | `mercury-protocol-internals.md` §"MachineGuard Protocol" | `ghidra://SGW.exe@0x01586180` (closest analog to InterfaceElement's compressed-length scheme — see Q1) |
+| `ProcessMessage::writeComponentsVarLen` single-threshold `0xfe` | `mercury-protocol-internals.md` §"MachineGuard Protocol" | `ghidra://SGW.exe@0x01586180` (distinct mechanism from `InterfaceElement`'s per-descriptor-fixed-width compressed-length scheme — see §1.5) |
 
 ### 1.16 Open questions
 
-Five unresolved questions remain. Each has a state, a path to resolution, and a description of what stays uncertain until it lands. (Earlier drafts of this chapter carried questions about `createBasePlayer` `typeID` width, reply-ID endianness, `RESOURCE_FRAGMENT` byte layout, and `spaceViewportInfo` second-entityId semantics — all four have been resolved by the V5 evidence corpus surfaced during the 2026-05 review pass and folded into Sections 1.8–1.10.)
+The five Q1–Q5 questions earlier drafts carried (compressed-length thresholds, `+0x170/+0x174` roles, `forcedPosition` velocity semantics, MachineGuard port, send-window slot count) all closed via the game-archaeology Ghidra pass of 2026-05-14:
 
-#### Q1 — InterfaceElement compressed-length thresholds (§1.5)
+- **Q1 — InterfaceElement compressed-length thresholds.** Closed: no thresholds. The width is fixed per-`InterfaceElement` at descriptor offset `+0x4`; `compressLength_write` at `ghidra://SGW.exe@0x0158b120` decompiles to `switch(*(undefined4 *)((int)this + 4))` on cases 1/2/3/4 with unconditional writes. Overflow is handled by the packet-chain path at `0x0158acc0`, not by widening the wire prefix. See §1.5.
+- **Q2 — `ChannelInternal +0x170` / `+0x174` roles.** Closed: low/high halves of a 64-bit rdtsc baseline marking the last relevant receive event. `checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` reads them via a subtract-with-borrow pattern; the constructor at `0x0158c7b0` zeroes both halves. See §1.7.
+- **Q3 — `forcedPosition` offset 24-35 semantics.** Closed: previous-position reference vector, **not velocity**. `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` passes the 12-byte block by pointer to `PackageAndSendEntityMove` as `pOrientation` and copies it verbatim into `pPrevPos` (aliased to `pPosition`). V5 docs that label these bytes "velocity" are wrong; chapter overrides three V5 docs. See §1.10.6 and the canonical layout in `spec.protocol.position-updates` §1.4.2.
+- **Q4 — MachineGuard port.** Closed: `0x4E36 = 20022`. `Mercury_MachineGuard_sendAndRecv` at `ghidra://SGW.exe@0x015898c0` calls `htons(0x4e36)`; the immediate at `0x0158994b` is the only matching hit in the binary. Upstream V5 docs pair `0x4E36` with decimal `19510`, which is wrong — chapter overrides. See §1.13.
+- **Q5 — `ChannelInternal` send-window slot count.** Closed: no fixed-slot circular buffer exists. The mechanism is a 32-bit outstanding-ack bitmap (`UnAckedHandler__buildAndSendAckBundle` iterates `iVar2 = 0..32`) plus a 512-entry received-sequence hash table (mask `0x1FF`) at `ChannelInternal+0x44`. The "45-slot" claim earlier drafts carried was unsourced and conceptually wrong. See §1.2, §1.6, §1.7.
 
-**Question:** What are the exact byte threshold values at which `InterfaceElement::compressLength_write` switches between 1-byte, 2-byte, 3-byte, and 4-byte representations?
+Two new sub-questions surfaced during the closure pass. Neither blocks promotion of the chapter; both are documented here for follow-up.
 
-**State:** The three functions (`compressLength`, `expandLength`, `compressLength_write`) are V5-confirmed and addressed at `0x0158acc0`, `0x0158b770`, `0x0158b120`. Their threshold constants are not enumerated in `mercury-protocol-internals.md`. The closest analog is `ProcessMessage::writeComponentsVarLen` at `0x01586180` (single threshold at `0xfe`).
+#### Q1 — `ChannelInternal +0x170 / +0x174` write-site location (§1.7)
 
-**Path to resolution:** Decompile `0x0158b120` and read the compare-and-branch constants.
+**Question:** The receive-timeout baseline timestamp is *read* in `checkAndSendNubException`, but the write site (where the baseline is stamped on each incoming packet) was not located. Where in the Nub receive entry does the 64-bit rdtsc baseline get written?
 
-**Impact if unresolved:** Section 1 cannot fully canonize system-message length encoding for `msg_id` slots that use compressed length. Entity messages are unaffected (they always use `WORD_LENGTH`). Confidence stays `medium` for §1.5.
+**State:** The constructor at `ghidra://SGW.exe@0x0158c7b0` zeroes both halves at channel-init time. The write site is likely upstream of `Nub::dispatchPacketWithFilter` (around `0x015816a0`) in the Nub receive entry. `processIncomingPacketEntry` at `0x0158be30` stamps `+0x58/+0x5c` (the send-alive baseline), not `+0x170/+0x174`. The role finding (low/high halves of a 64-bit rdtsc baseline) stands regardless.
 
-#### Q2 — ChannelInternal `+0x170` / `+0x174` timer fields (§1.7)
+**Path to resolution:** Decompile the receive entry chain starting at `0x015816a0` and look for a write to `*(this + 0x170)` paired with a write to `*(this + 0x174)` adjacent to an rdtsc capture.
 
-**Question:** What are the roles of the timer fields at offsets `+0x170` and `+0x174` of the `ChannelInternal` struct?
+**Impact if unresolved:** Low. The field role is canon; only the *which-function-stamps-it* metadata is missing. A reimplementation that mirrors the receive-timeout check by stamping the baseline at any reasonable receive-entry hook will match the observed behavior; the only practical risk is divergence in the exact "last relevant receive event" definition (e.g. valid-flag-decoded packets only vs all UDP datagrams).
 
-**State:** `mercury-protocol-internals.md` Session 5b open question 1 flagged these as "additional timer fields whose role is TBD." Three other timer fields at `+0x160`, `+0x164`, and `+0x16c` are role-confirmed (recv timeout threshold, recv timeout last-check timestamp, send-alive timeout). Two more fields exist at adjacent offsets but their roles in `ChannelInternal::checkAndSendNubException` at `0x0158bed0` were not chased.
+#### Q2 — Server-side `forcedPosition` emit triggers outside world entry (§1.10.6)
 
-**Path to resolution:** Decompile `checkAndSendNubException` and follow the read sites for `+0x170` and `+0x174`.
+**Question:** Outside world entry, under what conditions does the server emit a `forcedPosition`? Gate travel, anti-cheat snap, teleport, hard-snap on physics resolve — which of these maps to which call site, and which call sites carry a non-zero previous-position reference vs zeros?
 
-**Impact if unresolved:** Section 1's §1.7 reliability-state subsection is canon for the three confirmed timer fields but admits "additional timer fields (role TBD)". A reimplementation that runs without these timer behaviors may diverge from observed Mercury reconnect / keepalive cadence — most likely on long-idle channels.
+**State:** The previous-position-reference correction (Q3 closure above) resolves the *client-side semantic* — the 12 bytes at offsets 24-35 are a delta-encoding snapshot, not velocity. The *server-side emit triggers* remain unconfirmed from the client binary because the relevant decision logic lives in the deprecated server, not the client. The two C++ call sites in `client_handler.cpp` are catalogued (`:407-413` world-entry, `:566-572` standalone) but the standalone path's callers are not enumerated.
 
-#### Q3 — `forcedPosition` velocity `Vec3` semantics outside world entry (§1.10.6)
+**Path to resolution:** Audit every call site of `ServerConnection::forcedPosition()` in `deprecated/cpp/src/baseapp/` and `deprecated/python/`. Catalogue: which gameplay trigger fires which call site, what value the caller passes for the previous-position-reference argument, and which call sites pre-swap rotation.
 
-**Question:** Under what conditions does the server emit a `forcedPosition` with a non-zero velocity `Vec3`? Does the client apply the velocity as a delta-replacement (`entity.velocity = packet.velocity`) or as an additive impulse (`entity.velocity += packet.velocity`)? And does the standalone (non-world-entry) call site at `client_handler.cpp:566-572` emit rotation in `rotation.x, rotation.y, rotation.z` order verbatim, or do its callers pre-swap Y/Z to match what the handler at `0x00dd9ee0` reads positionally?
-
-**State:** §1.10.6 documents that the velocity field is always zero in observed world-entry traffic and that the world-entry call site (`client_handler.cpp:407-413`) writes Y/Z swapped. The standalone call site writes `rotation.x, rotation.y, rotation.z` per the C++ source, but the client handler interprets offsets 36/40/44 positionally — so either the standalone callers are pre-swapping their `rotation` argument (matching the world-entry wire convention) or the V5 evidence's "caller's responsibility" comment hides a wire-format bug in SGW's standalone path. No pcap capture of an in-flight position correction is currently in the V5 record.
-
-**Path to resolution:** (a) Capture a pcap of a gate-travel or anti-cheat snap and compare bytes at offsets 36/40/44 against the entity's known orientation. (b) Cross-reference every call site of the standalone `ServerConnection::forcedPosition()` in `deprecated/cpp/...` and check whether callers pre-swap. (c) Decompile `ServerConnection_addMove` at `0x00dd9330` to confirm the receive-side rotation interpretation matches §1.10.6.
-
-**Impact if unresolved:** Position-snap behavior outside world entry is currently underdocumented. A reimplementation that always emits zero velocity and Y/Z-swapped rotation at *every* `forcedPosition` call site will match observed world-entry behavior but may produce rotation-incorrect snaps if the standalone path on SGW's deprecated server actually emitted the unswapped order to a client that read it positionally as Y/Z-swapped. Confidence on §1.10.6 stays high for world entry, medium for non-world-entry snaps.
-
-#### Q4 — MachineGuard port hex/decimal mismatch (§1.13)
-
-**Question:** What is the actual MachineGuard listen port — `0x4E36` (20022), `0x4C36` (19510), or some third value? Upstream V5 docs pair `0x4e36` with decimal `19510`, but those two values do not match: `0x4E36 = 20022` and `0x4C36 = 19510`.
-
-**State:** `mercury-protocol-internals.md` §"MachineGuard Protocol" carries the pair `0x4e36 (19510)` and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` echoes the same pair, propagating the inconsistency. No direct read of the port constant from the MachineGuard listen-socket bind site is currently in the V5 record. Both interpretations are plausible — the hex could be a transcription typo for `0x4C36`, or the decimal could be a transcription typo for `20022`.
-
-**Path to resolution:** Locate the `bind()` or `setsockopt()` call site for the MachineGuard UDP listener (likely near `0x01588530` or in the MachineGuard initializer chain), read the literal port constant, and reconcile against the SGW deployment scripts under `external/SGW-server-binary/` for any matching port number in the launch configuration.
-
-**Impact if unresolved:** §1.13 cannot pin the MachineGuard port to high confidence. Cimmeria does not need to emulate MachineGuard for client compatibility (it is internal server-machine discovery), so this question is documentation-correctness, not implementation-blocking. Confidence on §1.13's port row stays medium until directly verified.
-
-#### Q5 — `ChannelInternal` send-window slot count (§1.2, §1.6)
-
-**Question:** What is the exact slot count of the `ChannelInternal` reliable-packet send window? Earlier drafts of this chapter named "45 slots" / "45 packets" in two places (§1.2's `FLAG_IS_RELIABLE` paragraph and §1.6's "Send window" paragraph). The literal `45` is not enumerated in the V5 record — `mercury-protocol-internals.md` §"Channel Internal Layout" describes the `UnAckedHandler` hash-table region at `ChannelInternal+0x40/+0x44` as the backing structure for the send window, but does not pin a slot count.
-
-**State:** The send window's *existence* is high confidence (the hash-table region is V5-anchored), but the *capacity* is not. The number 45 may be an inherited-from-stock-BW value, a transcription from an external doc, or a guess that propagated forward. This chapter currently uses the phrase "fixed-size circular buffer" in §1.2 and §1.6 with a medium-confidence flag.
-
-**Path to resolution:** Decompile the `ChannelInternal` constructor at `ghidra://SGW.exe@0x0158c7b0` and look for an allocation site that allocates `N × sizeof(slot)` bytes — the literal `N` is the answer. Cross-check against `UnAckedHandler::buildAndSendAckBundle` at `0x0158b2d0` for a loop bound that matches.
-
-**Impact if unresolved:** Section 1's reliability-state subsection cannot pin the exact size of the in-flight reliable-packet window. A reimplementation will work correctly as long as its window is large enough for normal bundle sizes (the largest observed bundle is the world-entry mapLoaded bundle at ~5 packets) and ≤ the actual stock-BW or SGW capacity. Mismatches only become observable under extreme bundle-size pressure or sustained high-fan-out broadcasts.
+**Impact if unresolved:** Server-side emit policy is currently underdocumented. A reimplementation that always emits zero previous-position-reference and the world-entry rotation order at every `forcedPosition` call site will produce wire bytes the client decodes correctly (because the client's delta-compression is robust to a zero previous-position), so this is documentation-completeness, not implementation-blocking. Confidence on §1.10.6's *wire bytes* stays high; the server-emit-trigger catalogue is a Section 3 (deprecated server) follow-up rather than a Section 1 gap.
 
 ---
 
