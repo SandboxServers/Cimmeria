@@ -1218,41 +1218,136 @@ The divergences cluster in three themes: **security** (Blowfish → AES + HMAC),
 
 ### 1.15 Source-of-truth crosswalk
 
-For section-by-section verification of every claim above:
+One row per load-bearing claim, grouped by chapter section. Every claim that grounds wire-format behavior has a row; subordinate observations stay inline. The "Primary V5 source" column is the canonical evidence; the "Secondary cross-check" disambiguates or cross-validates that source. Open questions (Q1–Q5 in §1.16) appear as rows here marked `open` so the crosswalk is self-honest about what is *not* yet anchored.
+
+**§1.1–§1.3 Transport (packet anatomy, header, footer):**
 
 | Claim | Primary V5 source | Secondary cross-check |
 |---|---|---|
-| 1-byte flags, footer little-endian | `mercury-protocol-internals.md` §"Packet Flags Byte" | `protocol-comparison.md` (stock-BW comparison reference) |
-| 8-bit flag definitions | `mercury-protocol-internals.md` §"Packet Flags Byte" | `external/BigWorld-2.0.1/src/lib/network/packet.hpp` low byte |
+| 1-byte flags field at packet byte 0 | `mercury-protocol-internals.md` §"Packet Flags Byte" | `external/BigWorld-2.0.1/src/lib/network/packet.hpp` low byte |
+| Maximum packet size `0x5AD` (1453) | `mercury-protocol-internals.md` §"Protocol Constants" | `Bundle::newMessage` space check at `ghidra://SGW.exe@0x0157ac90` |
+| 8-bit flag definitions (mapped exactly to stock-BW low byte) | `mercury-protocol-internals.md` §"Packet Flags Byte" | `external/BigWorld-2.0.1/src/lib/network/packet.hpp` |
+| Flag-decode order at `processFilteredPacket_inner` | `mercury-protocol-internals.md` §"All Mercury Functions" | `ghidra://SGW.exe@0x01580840` |
+| `FLAG_INDEXED_CHANNEL` is in stock-BW *high* byte; absent in SGW | `external/BigWorld-2.0.1/src/lib/network/packet.hpp` (`0x0800`) | SGW's 1-byte flags has no high byte to carry it |
+| Footer wire-order = bit-order; pop-order is inverse | `mercury-protocol-internals.md` §"Packet Flags Byte" (decode pattern) | — |
+| Footer little-endian (SGW divergence from stock-BW network order) | `mercury-protocol-internals.md` §"Packet Flags Byte" | `external/BigWorld-2.0.1/src/lib/network/packet.cpp` `BW_HTONS` / `BW_HTONL` macros |
+| Ack list encoding (`u8 count` + `count × u32`) | `mercury-protocol-internals.md` §"All Mercury Functions" (`UnAckedHandler::buildAndSendAckBundle`) | `ghidra://SGW.exe@0x0158b2d0` |
+| Ack coalescing — keepalive emits reliable empty bundle, acks piggyback on its footer | `mercury-protocol-internals.md` §"Session 5b Additions" (`UnAckedHandler::sendAckBundle2`) | `ghidra://SGW.exe@0x0158bbc0`; reconciled across §1.3.1 and §1.7 |
+| Piggyback chain layout (inherited from stock-BW; medium confidence) | `external/BigWorld-2.0.1/src/lib/network/packet.cpp` | V5 confirms `FLAG_HAS_PIGGYBACKS` flag exists; chain byte layout not directly V5-confirmed |
+| Request-chain via `nextRequestOffset` linked list (medium confidence) | `mercury-protocol-internals.md` §"All Mercury Functions" (`Bundle::startMessage_request`) | `ghidra://SGW.exe@0x0157adc0`; next-pointer width not directly V5-confirmed |
+
+**§1.4 Cipher envelope:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
 | AES-256-CBC + HMAC-MD5, zero IV, no KDF | `mercury-protocol-internals.md` §"Cipher Key Derivation (Session 5 Verification)" | RTTI strings at `0x01e93b70`–`0x01ea3c5c` (`HMAC_Base@CryptoPP`, `HMAC@VMD5@Weak1@CryptoPP`, `Rijndael::Enc@CryptoPP`) |
-| Bundle/packet/message functions | `mercury-protocol-internals.md` §"4 Target Functions" | `mercury-protocol-internals.md` §"All Mercury Functions" address inventory |
-| InterfaceElement length encoding (CONSTANT/WORD/DWORD) | `mercury-protocol-internals.md` §"InterfaceElement" | InterfaceElement table addresses (`0x0158acc0`, `0x0158b770`, `0x0158b120`) |
+| Encrypt-then-MAC ordering on the wire | `mercury-protocol-internals.md` §"Cipher Key Derivation" | `PacketEncrypter::send` at `ghidra://SGW.exe@0x01603b80` |
+| Key material: 32-byte SOAP `SessionKey` used verbatim as both AES + HMAC key | `mercury-protocol-internals.md` §"Cipher Key Derivation" | `PacketEncrypter::recv` at `ghidra://SGW.exe@0x01603fa0` reads same buffer |
+| Cipher object vtable at `0x01b27374` (4 slots: dtor, send, recv, OptimalBlockSize) | `mercury-protocol-internals.md` §"Cipher Object Layout" | `ghidra://SGW.exe@0x01b27374` |
+| Cipher object layout (`+0x08 key_buf`, `+0x18 iv_buf` of 16 zero bytes) | `mercury-protocol-internals.md` §"Cipher Object Layout" | Constructor at `ghidra://SGW.exe@0x01603a70` |
+| Stock-BW Blowfish ECB + `0xdeadbeef` magic — wholesale replaced in SGW | `external/BigWorld-2.0.1/src/lib/network/encryption_filter.cpp` | RTTI strings show no Blowfish in SGW.exe |
+
+**§1.5–§1.6 Length encoding + bundle:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
+| Three length types: `CONSTANT_LENGTH`, `WORD_LENGTH`, `DWORD_LENGTH` | `mercury-protocol-internals.md` §"InterfaceElement" | `space-viewport-wire-formats.md` §"Complete Server Message Table" |
+| Entity messages (`msg_id >= 0x80`) default to `WORD_LENGTH` | `system-protocol-wire-formats.md` §"startEntityMessage / startProxyMessage" | `Bundle::newMessage` at `ghidra://SGW.exe@0x0157ac90` |
+| `compressLength_write` family widths are 1/2/3/4 byte | `mercury-protocol-internals.md` §"All Mercury Functions" ("Write length (1/2/3/4 byte)") | Threshold byte values open (Q1) |
+| InterfaceElement static / runtime descriptor sizes (medium confidence) | inherited from `external/BigWorld-2.0.1/src/lib/network/interfaces.hpp` | Not directly enumerated in V5 evidence; chapter previously cited `0x90` / `0x24` |
 | Bundle fragmentation, 64-packet cap | `mercury-protocol-internals.md` §"Implications for Cimmeria" | `external/BigWorld-2.0.1/src/lib/network/packet.hpp` (`Packet::MaxFragmentsPerBundle`) |
-| 28-bit sequence numbers | `mercury-protocol-internals.md` §"Protocol Constants" | — |
-| Sub-slot threshold = 62 (§1.8) | `entity-property-sync.md` §13 ("Sub-Slot Client Method Encoding — Final Confirmation") | `external/BigWorld-2.0.1/src/.../entity_method_descriptions.cpp` (`checkExposedForSubSlots()`) |
-| Cell vs base entity-message wire shape (§1.8) | `system-protocol-wire-formats.md` §"startEntityMessage / startProxyMessage" | — |
-| `enableEntities` 8-byte payload (§1.9) | `world-entry-pipeline.md` §"ENABLE_ENTITIES Payload Reconciliation" | `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp:83` |
-| `resetEntities` 1-byte payload + own-flushed-bundle (§1.9) | `entity-creation-wire-formats.md` §"1. RESET_ENTITIES (0x04)" | Initializer at `0x017bb200`; `space-viewport-wire-formats.md` §"RESET_ENTITIES (0x04)" |
-| `RESOURCE_FRAGMENT` byte layout (§1.9) | `space-viewport-wire-formats.md` §"RESOURCE_FRAGMENT (0x36)" | — |
-| `REPLY_MESSAGE` (`0xFF`) is `WORD_LENGTH` (§1.9) | `space-viewport-wire-formats.md` §"REPLY_MESSAGE (0xFF)" and §"Complete Server Message Table" | — |
-| `createBasePlayer` 6-byte payload, `u16` class field (§1.10.1) | `entity-creation-wire-formats.md` §"2. CREATE_BASE_PLAYER (0x05)" | `system-protocol-wire-formats.md` §"CREATE_BASE_PLAYER (0x05) -- Stream Read Details" (Ghidra `MOVZX EAX, word ptr [EAX]`) |
-| `createCellPlayer` 32-byte payload + Y/Z swap (§1.10.2) | `entity-creation-wire-formats.md` §"3. CREATE_CELL_PLAYER (0x06)" | `world-entry-pipeline.md` §"Audit Findings vs `world-entry-phases.md`"; rotation reader `FUN_015846a0` |
-| `spaceViewportInfo` 13-byte fixed payload + close-viewport (§1.10.4) | `entity-creation-wire-formats.md` §"4. SPACE_VIEWPORT_INFO (0x08)" | `space-viewport-wire-formats.md` §"SPACE_VIEWPORT_INFO (0x08)" — viewport operations table |
-| `forcedPosition` 49-byte fixed payload + physics byte (§1.10.6) | `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" | `position-movement-wire-formats.md` §"forcedPosition (msg_id 0x31, 49 bytes)"; `space-viewport-wire-formats.md` §"FORCED_POSITION (0x31)" |
-| `forcedPosition` rotation order per call site (§1.10.6) | `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" — two C++ call sites | `system-protocol-wire-formats.md` §"FORCED_POSITION (0x31) -- Rotation Order Evidence" |
-| `AUTHENTICATE` (`0x00`) is `DWORD_LENGTH` (§1.10.7) | `system-protocol-wire-formats.md` §"AUTHENTICATE (0x00) -- Server-to-Client Key Exchange" | `space-viewport-wire-formats.md` §"Complete Server Message Table" |
-| `bandwidthNotification` 4-byte payload, unused (§1.9.1) | `space-viewport-wire-formats.md` §"BANDWIDTH_NOTIFICATION (0x01)" | `messages.cpp:134` server emit |
-| `updateFrequencyNotification` 1-byte resolution (§1.9.2) | `space-viewport-wire-formats.md` §"UPDATE_FREQUENCY_NOTIFICATION (0x02)" | `client_handler.cpp:46-53` server emit (`uint8_t updateFreq = 1000 / tickRate`) |
-| `setGameTime` 4-byte u32 ticks (§1.9.3) | `space-viewport-wire-formats.md` §"SET_GAME_TIME (0x03)" | `system-protocol-wire-formats.md` §"TICK_SYNC (0x0D) and SET_GAME_TIME (0x03) -- RTTI Evidence"; descriptor at `0x017bb180` |
-| `tickSync` 8-byte (gameTime + tickRate) (§1.9.4) | `entity-creation-wire-formats.md` §"8. TICK_SYNC (0x0D)" | `space-viewport-wire-formats.md` §"TICK_SYNC (0x0D)"; descriptor at `0x017bb720` |
-| `restoreClient` 48-byte body + auto-reply (§1.9.5) | `system-protocol-wire-formats.md` §"RESTORE_CLIENT (0x34) -- Client State Restore" | `space-viewport-wire-formats.md` §"RESTORE_CLIENT (0x34)" |
-| `loggedOff` 1-byte reason, silent disconnect (§1.9.6) | `system-protocol-wire-formats.md` §"LOGGED_OFF (0x37) -- Server Disconnect" | `space-viewport-wire-formats.md` §"LOGGED_OFF (0x37)" |
-| `spaceData` 14+-byte payload, unused (§1.10.3) | `space-viewport-wire-formats.md` §"SPACE_DATA (0x07)" | `messages.cpp:189-190` server registration |
-| `createEntity` 5-byte payload (§1.10.5) | `entity-creation-wire-formats.md` §"6. CREATE_ENTITY (0x09)" | `space-viewport-wire-formats.md` §"CREATE_ENTITY (0x09)" |
-| `UPDATE_AVATAR` variants — 32 entries, 2×4×4 matrix (§1.11.1) | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants (0x10 - 0x2F)" and §"All 32 Variant Sizes" | `position-movement-wire-formats.md` §"avatarUpdate Messages (msg_id 0x10-0x2F)" |
-| `detailedPosition` 41-byte payload (§1.11.2) | `position-movement-wire-formats.md` §"detailedPosition (msg_id 0x30, 41 bytes)" | `space-viewport-wire-formats.md` §"DETAILED_POSITION (0x30)" |
-| MachineGuard message types | `mercury-protocol-internals.md` §"MachineGuard Protocol" | — |
-| Mercury::Nub construction | `mercury-protocol-internals.md` §"Mercury::Nub" address table | — |
+| Bundle entry points (`newMessage`, `startMessage_fixed`, `startMessage_request`) | `mercury-protocol-internals.md` §"All Mercury Functions" | Addresses `0x0157ac90`, `0x0157ad80`, `0x0157adc0` |
+| Compressed-length threshold byte values | open (Q1) | `ghidra://SGW.exe@0x0158b120` (`compressLength_write` decompile pending) |
+
+**§1.7 Sequence numbers + reliability:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
+| 28-bit sequence numbers (`SEQ_SIZE = 0x10000000`) | `mercury-protocol-internals.md` §"Protocol Constants" | — |
+| Null sequence sentinel `0x10000000` (one past 28-bit mask) | `mercury-protocol-internals.md` §"Protocol Constants" | — |
+| `ChannelInternal` constructor + size (~0x180 bytes) | `mercury-protocol-internals.md` §"All Mercury Functions" | `ghidra://SGW.exe@0x0158c7b0` |
+| Three V5-confirmed timer fields (`+0x160`, `+0x164`, `+0x16c`) | `mercury-protocol-internals.md` §"Session 5b Additions" | `checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` |
+| `+0x170` / `+0x174` timer-shaped fields | open (Q2) | — |
+| Send-window slot count | open (Q5) — previous "45-slot" literal unsourced | — |
+| Resend timer / retry-limit numbers (medium confidence) | inherited from stock-BW defaults | SGW divergence not enumerated in V5 |
+| Mercury keepalive: empty reliable bundle via `UnAckedHandler::sendAckBundle2` | `mercury-protocol-internals.md` §"Session 5b Additions" | `ghidra://SGW.exe@0x0158bbc0`; same function variously named `sendAckBundle` in V5's main inventory |
+
+**§1.8 Message dispatch:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
+| `msg_id` ranges (system / cell / base / reply) | `space-viewport-wire-formats.md` §"Complete Server Message Table" | `system-protocol-wire-formats.md` §"startEntityMessage / startProxyMessage" |
+| Cell messages write `[u32 entityId][args]` after length prefix | `system-protocol-wire-formats.md` §"startEntityMessage" | `ghidra://SGW.exe@0x00dd6a60` |
+| Base messages write `[args]` only — no `entityId` prefix | `system-protocol-wire-formats.md` §"startProxyMessage" | `ghidra://SGW.exe@0x00dd6980` |
+| Sub-slot threshold = 62 (extended encoding for method index ≥ 62) | `entity-property-sync.md` §13 ("Sub-Slot Client Method Encoding — Final Confirmation") | `external/BigWorld-2.0.1/src/.../entity_method_descriptions.cpp` (`checkExposedForSubSlots()`); `ghidra://SGW.exe@0x01590df0` |
+| `onClientMapLoad` sub-slot off-by-one source-doc correction (55 not 56) | chapter §1.8 source-doc-override callout | corrects `world-entry-pipeline.md` line 105 transcription error |
+| Runtime dispatch is `nub->elements[msg_id]` array-indexed | `mercury-protocol-internals.md` §"InterfaceElement" | `Mercury::Nub::processOrderedPacket` at `ghidra://SGW.exe@0x0157c820`; literal entry stride is medium confidence (see §1.5) |
+
+**§1.9 Control messages:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
+| `enableEntities` 8-byte payload, `CONSTANT_LENGTH = 8` override | `world-entry-pipeline.md` §"ENABLE_ENTITIES Payload Reconciliation" | `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp:83`; initializer at `ghidra://SGW.exe@0x017bade0`–`0x017bae07` |
+| `enableEntities` `msg_id = 0xC1` — *derived* from base-method encoding rule | derived per §1.8's `methodId \| 0xC0` rule; method index 1 V5-confirmed | not independently wire-observed in V5; confidence: medium on the literal byte |
+| `enableEntities` payload-content uncertainty (zero vs uninitialized) | `world-entry-pipeline.md` §"BroadcastEntityActivation" (reserves bytes via `startMessage_fixed`) | medium confidence; not behaviorally observable from the wire |
+| `resetEntities` 1-byte payload + own-flushed-bundle constraint | `entity-creation-wire-formats.md` §"1. RESET_ENTITIES (0x04)" | Initializer at `ghidra://SGW.exe@0x017bb200`; `space-viewport-wire-formats.md` §"RESET_ENTITIES (0x04)" |
+| `resetEntities` handler-name alias (`Mercury__unknown_00dda0e0` = `PurgeAndRebuildEntityStateLists`) | chapter §1.9 source-doc-handler-name-disagreement note | both names alias the function at `ghidra://SGW.exe@0x00dda0e0` |
+| `RESOURCE_FRAGMENT` byte layout (`0x36`, WORD_LENGTH, 4-byte header + body) | `space-viewport-wire-formats.md` §"RESOURCE_FRAGMENT (0x36)" | Handler at `ghidra://SGW.exe@0x00dddd80` |
+| `RESOURCE_FRAGMENT` 21 category IDs + reassembly mechanism | `space-viewport-wire-formats.md` §"RESOURCE_FRAGMENT (0x36)" | — |
+| `REPLY_MESSAGE` (`0xFF`) is `WORD_LENGTH`, Mercury-handshake scope | `space-viewport-wire-formats.md` §"REPLY_MESSAGE (0xFF)" and §"Complete Server Message Table" | — |
+| `bandwidthNotification` 4-byte payload, registered-but-unused in SGW | `space-viewport-wire-formats.md` §"BANDWIDTH_NOTIFICATION (0x01)" | `messages.cpp:134` server registration |
+| `updateFrequencyNotification` 1-byte resolution | `space-viewport-wire-formats.md` §"UPDATE_FREQUENCY_NOTIFICATION (0x02)" | `client_handler.cpp:46-53` server emit |
+| `setGameTime` 4-byte u32 ticks | `space-viewport-wire-formats.md` §"SET_GAME_TIME (0x03)" | `system-protocol-wire-formats.md` §"TICK_SYNC (0x0D) and SET_GAME_TIME (0x03) -- RTTI Evidence"; descriptor at `0x017bb180` |
+| `tickSync` 8-byte payload (gameTime + tickRate) | `entity-creation-wire-formats.md` §"8. TICK_SYNC (0x0D)" | `space-viewport-wire-formats.md` §"TICK_SYNC (0x0D)"; descriptor at `0x017bb720` |
+| `restoreClient` 48-byte body + auto-reply `restoreClientAck` | `system-protocol-wire-formats.md` §"RESTORE_CLIENT (0x34) -- Client State Restore" | `space-viewport-wire-formats.md` §"RESTORE_CLIENT (0x34)" |
+| `loggedOff` 1-byte reason, silent disconnect | `system-protocol-wire-formats.md` §"LOGGED_OFF (0x37) -- Server Disconnect" | `space-viewport-wire-formats.md` §"LOGGED_OFF (0x37)" |
+
+**§1.10 Entity creation + position:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
+| `createBasePlayer` 6-byte payload | `entity-creation-wire-formats.md` §"2. CREATE_BASE_PLAYER (0x05)" | `system-protocol-wire-formats.md` §"CREATE_BASE_PLAYER (0x05) -- Stream Read Details" |
+| `createBasePlayer` `u16` class field (wire) = `u8 classId + u8 propCount` (server emit) | `system-protocol-wire-formats.md` (`MOVZX EAX, word ptr [EAX]` Ghidra evidence) | `entity-creation-wire-formats.md` §"2. CREATE_BASE_PLAYER" C++ server source |
+| `createBasePlayer` out-of-order tolerance (buffered `createCellPlayer` playback) | `entity-creation-wire-formats.md` §"2. CREATE_BASE_PLAYER" | `ServerConnection+0xfdc` `cellPlayerBuffer_` per `system-protocol-wire-formats.md` field map |
+| `createCellPlayer` 32-byte payload | `entity-creation-wire-formats.md` §"3. CREATE_CELL_PLAYER (0x06)" | `world-entry-pipeline.md` §"Audit Findings vs `world-entry-phases.md`" |
+| `createCellPlayer` Y/Z rotation swap (rotX, rotZ, rotY) | `entity-creation-wire-formats.md` §"3. CREATE_CELL_PLAYER" + rotation reader `FUN_015846a0` | C++ server source (`client_handler.cpp:411`: `<< rotX << rotZ << rotY`) |
+| `spaceData` 14+-byte payload, registered-but-unused | `space-viewport-wire-formats.md` §"SPACE_DATA (0x07)" | `messages.cpp:189-190` server registration |
+| `spaceViewportInfo` 13-byte fixed payload | `entity-creation-wire-formats.md` §"4. SPACE_VIEWPORT_INFO (0x08)" | `space-viewport-wire-formats.md` §"SPACE_VIEWPORT_INFO (0x08)" |
+| `spaceViewportInfo` open-vs-close driven by `entityId2` value | `space-viewport-wire-formats.md` §"SPACE_VIEWPORT_INFO" viewport operations table | `entity-creation-wire-formats.md` §"4. SPACE_VIEWPORT_INFO" |
+| `spaceViewportInfo` first-field decompile ambiguity (`field0 / entityId`) | chapter §1.10.4 decompile-naming-ambiguity callout | server source uses `entityId`; client decompile labels `field0` |
+| `createEntity` 5-byte payload | `entity-creation-wire-formats.md` §"6. CREATE_ENTITY (0x09)" | `space-viewport-wire-formats.md` §"CREATE_ENTITY (0x09)" |
+| `forcedPosition` 49-byte fixed payload (`CONSTANT_LENGTH = 49`) | `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" | `position-movement-wire-formats.md` §"forcedPosition (msg_id 0x31, 49 bytes)" |
+| `forcedPosition` trailing byte = `physics` field (per-entity mode), value `0x01` at world entry | `position-movement-wire-formats.md` §"forcedPosition" Field Notes | `entity-creation-wire-formats.md` C++ emit `(uint8_t)0x01`; chapter §1.10.6 source-doc-override callout against `world-entry-pipeline.md` line 257 |
+| `forcedPosition` rotation order per call site (world-entry swaps; standalone caller's responsibility) | `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" — two C++ call sites | `system-protocol-wire-formats.md` §"FORCED_POSITION (0x31) -- Rotation Order Evidence" (addMove mapping resolves decompile struct-label conflict) |
+| `forcedPosition` velocity Vec3 semantics outside world entry | open (Q3) | — |
+| `AUTHENTICATE` (`0x00`) is `DWORD_LENGTH` (the V5-confirmed user) | `system-protocol-wire-formats.md` §"AUTHENTICATE (0x00) -- Server-to-Client Key Exchange" | `space-viewport-wire-formats.md` §"Complete Server Message Table" |
+
+**§1.11 Position / movement messages:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
+| `UPDATE_AVATAR` family (`0x10`–`0x2F`) — 32 variants, 2×4×4 matrix taxonomy | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants (0x10 - 0x2F)" and §"All 32 Variant Sizes" | `position-movement-wire-formats.md` §"avatarUpdate Messages (msg_id 0x10-0x2F)" |
+| `UPDATE_AVATAR` packed velocity encoding (5 bytes: u32 + u8) | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants" — `packXYZ` | `position-movement-wire-formats.md` §"avatarUpdate Messages" |
+| `UPDATE_AVATAR` quantized rotation encoding (1 byte each, `(u8)(rad / 0.024543693f)`) | `space-viewport-wire-formats.md` §"UPDATE_AVATAR variants" | `position-movement-wire-formats.md` §"avatarUpdate Messages" |
+| `detailedPosition` 41-byte payload, non-controlled-entities only | `position-movement-wire-formats.md` §"detailedPosition (msg_id 0x30, 41 bytes)" | `space-viewport-wire-formats.md` §"DETAILED_POSITION (0x30)" |
+| `detailedPosition` rotation order matches `createCellPlayer` / `forcedPosition` convention (Tait-Bryan swap) | `position-movement-wire-formats.md` §"detailedPosition" | distinct from `UPDATE_AVATAR`'s packed yaw / pitch / roll u8 encoding |
+
+**§1.12 Nub:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
+| `Mercury::Nub::Nub` 24-step construction | `mercury-protocol-internals.md` §"Mercury::Nub::Nub" | `ghidra://SGW.exe@0x015841d0` |
+| `processPendingEvents` recv loop entry point | `mercury-protocol-internals.md` §"All Mercury Functions" | `ghidra://SGW.exe@0x01581ab0` |
+| Send-path chain (`ServerConnection::send` → `Channel::send` → `Bundle::finalise` → `Nub::send` → `writeConnection`) | `mercury-protocol-internals.md` §"All Mercury Functions" | Addresses `0x00dd8930`, `0x01576f90`, `0x0157a7a0`, `0x01582160`, `0x01583a90` |
+
+**§1.13 MachineGuard:**
+
+| Claim | Primary V5 source | Secondary cross-check |
+|---|---|---|
+| MachineGuard port (hex/decimal mismatch — `0x4E36 = 20022` vs documented `19510`) | open (Q4) — pending Ghidra read of the bind-site constant | both `mercury-protocol-internals.md` and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` carry the inherited mismatch |
+| Master deserializer at `0x01588530`; range `[0x01–0x0c, 0x40]` | `mercury-protocol-internals.md` §"MachineGuard Protocol" | — |
+| At least 8 documented message types; 5 slots (`0x03`, `0x08`, `0x09`, `0x0a`, `0x0c`) have no named handler in V5 | `mercury-protocol-internals.md` §"MachineGuard Protocol" | chapter §1.13 partial-enumeration callout |
+| `ProcessMessage::writeComponentsVarLen` single-threshold `0xfe` | `mercury-protocol-internals.md` §"MachineGuard Protocol" | `ghidra://SGW.exe@0x01586180` (closest analog to InterfaceElement's compressed-length scheme — see Q1) |
 
 ### 1.16 Open questions
 
