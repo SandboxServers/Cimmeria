@@ -106,9 +106,9 @@ The packet flags byte at offset 0 is the *only* field at a fixed position. Every
 
 *Figure 2: the full UDP datagram layout with the conditional footer stack shown — `first_req_offset`, `frag_begin`, `frag_end`, `seq_id`, ack array, and `ackCount` are each appended only when their flag bit is set.*
 
-**Maximum packet size**: `0x5AD` bytes (1453). Stamped at `ghidra://SGW.exe@0x0157ac90` as the per-packet space check in `Mercury::Bundle::newMessage` — a message that does not fit triggers `Bundle::reserve` (`ghidra://SGW.exe@0x0157a5d0`) to allocate a new packet, and the bundle fragments across packets when the bundle's total exceeds 64 packets (`Packet::MaxFragmentsPerBundle`). The constant is V5-anchored via `mercury-protocol-internals.md` §"Protocol Constants" — a derivation of 1453 from Ethernet/IP/UDP/cipher-tag overhead is not in the V5 record; treat the value as the binary's stamped cap, not as a network-layer calculation.
+**Maximum packet size**: `0x5AD` bytes (1453). Stamped as the per-packet space check in `Mercury::Bundle::newMessage`[^bundle-new-message] — a message that does not fit triggers `Bundle::reserve`[^bundle-reserve] to allocate a new packet, and the bundle fragments across packets when the bundle's total exceeds 64 packets (`Packet::MaxFragmentsPerBundle`)[^v5-mercury-internals]. A derivation of 1453 from Ethernet/IP/UDP/cipher-tag overhead is not in the V5 record; treat the value as the binary's stamped cap, not as a network-layer calculation.
 
-(The flags byte is also stored at in-memory offset `+0x54` of the `Mercury::Packet` struct per `mercury-protocol-internals.md` §"Packet Flags Byte". That offset is an artifact of the in-memory struct layout; on the wire the flags byte unconditionally occupies byte offset 0 of the datagram. Do not treat `+0x54` as a wire-format claim.)
+(The flags byte is also stored at in-memory offset `+0x54` of the `Mercury::Packet` struct[^v5-mercury-internals]. That offset is an artifact of the in-memory struct layout; on the wire the flags byte unconditionally occupies byte offset 0 of the datagram. Do not treat `+0x54` as a wire-format claim.)
 
 **Worked example.** A reliable, sequenced, fragmented bundle's first packet — flags byte `0xB8` (`0x80 | 0x20 | 0x10 | 0x08` = `FLAG_IS_FRAGMENT | FLAG_HAS_SEQUENCE_NUMBER | FLAG_IS_RELIABLE | FLAG_ON_CHANNEL`) — has the following on-wire shape. Bytes are shown in **wire order** (low offset → high offset). Pop order is the reverse — see the explicit pop-order callout below:
 
@@ -136,7 +136,7 @@ Pop order is the **inverse** of the wire order because every footer field is rea
 
 A non-fragmented unreliable position-update packet — flags byte `0x28` (`0x20 | 0x08` = `FLAG_HAS_SEQUENCE_NUMBER | FLAG_ON_CHANNEL`) — has only the 4-byte sequence ID in its footer. A purely unreliable broadcast — flags byte `0x00` — has no footer at all; the entire packet is `[0x00][body]`. The flags byte's bits are the contract: setting bit N obligates the sender to append a specific footer field at the end and the receiver to pop that field on parse.
 
-**Divergence from stock BigWorld 2.0.1.** Stock BW uses a `uint16` flags field at the front of the packet (2 bytes, network-byte-order). SGW collapses this to a `uint8` (1 byte). The low byte of stock BW's `uint16` carries flags 0x01–0x80; the high byte carries 0x0100 (`FLAG_HAS_CHECKSUM`), 0x0200 (`FLAG_CREATE_CHANNEL`), and 0x0400 (`FLAG_HAS_CUMULATIVE_ACK`). SGW omits all three: no CRC32 checksum, no create-channel marker, no cumulative-ack mechanism. The full divergence inventory is in §1.13.
+**Divergence from stock BigWorld 2.0.1.** Stock BW uses a `uint16` flags field at the front of the packet (2 bytes, network-byte-order)[^stockbw-packet-hpp]. SGW collapses this to a `uint8` (1 byte)[^v5-mercury-internals]. The low byte of stock BW's `uint16` carries flags 0x01–0x80; the high byte carries 0x0100 (`FLAG_HAS_CHECKSUM`), 0x0200 (`FLAG_CREATE_CHANNEL`), and 0x0400 (`FLAG_HAS_CUMULATIVE_ACK`). SGW omits all three: no CRC32 checksum, no create-channel marker, no cumulative-ack mechanism. The full divergence inventory is in §1.13.
 
 ### 1.2 Header (the packet flags byte)
 
@@ -159,17 +159,17 @@ The flags byte is the gate for the entire packet shape. Eight bits, mapped exact
 | 6 | `0x40` | `FLAG_HAS_REQUESTS` | Bundle contains request/reply messages | Reader uses the popped firstRequestOffset to walk request chain |
 | 7 | `0x80` | `FLAG_IS_FRAGMENT` | Packet is one fragment of a larger bundle | Reader pops two `uint32` fragment IDs (begin, end) from the footer |
 
-Source of truth: the flag-mask table at `ghidra://SGW.exe@0x01580840` (`Mercury::Nub::processFilteredPacket_inner`), which decodes each bit in order to peel the matching footer field off the back of the datagram. Bit 7 (`FLAG_IS_FRAGMENT`) is the largest peel because it consumes 8 bytes (two `uint32` fragment IDs). The decode order in `processFilteredPacket_inner` is the reverse of the bit order, because each peel shortens the buffer that the next peel reads from.
+Source of truth: the flag-mask table in `Mercury::Nub::processFilteredPacket_inner`[^flags-decoder], which decodes each bit in order to peel the matching footer field off the back of the datagram. Bit 7 (`FLAG_IS_FRAGMENT`) is the largest peel because it consumes 8 bytes (two `uint32` fragment IDs). The decode order is the reverse of the bit order, because each peel shortens the buffer that the next peel reads from.
 
-**Two flags are present in stock BW but absent in SGW.** `FLAG_HAS_CHECKSUM` (`0x0100` in stock BW's `uint16`) would compute a CRC32 over the packet contents — SGW drops the field because the HMAC-MD5 tag in the cipher envelope provides packet integrity at a higher layer. `FLAG_HAS_CUMULATIVE_ACK` (`0x0400`) would advertise a "all packets up to sequence N are acknowledged" optimization — SGW omits it because external (client-facing) Mercury channels never need it; cumulative acks in stock BW are an internal-channel feature.
+**Two flags are present in stock BW but absent in SGW.**[^v5-mercury-internals] `FLAG_HAS_CHECKSUM` (`0x0100` in stock BW's `uint16`) would compute a CRC32 over the packet contents — SGW drops the field because the HMAC-MD5 tag in the cipher envelope provides packet integrity at a higher layer. `FLAG_HAS_CUMULATIVE_ACK` (`0x0400`) would advertise a "all packets up to sequence N are acknowledged" optimization — SGW omits it because external (client-facing) Mercury channels never need it; cumulative acks in stock BW are an internal-channel feature.
 
-**Indexed-channel routing is not available.** Stock BigWorld's `uint16` flags field carries `FLAG_INDEXED_CHANNEL` in its high byte (`0x0800`, per `external/BigWorld-2.0.1/src/lib/network/packet.hpp`) — used to route a packet to one of many addressable channels on a single endpoint. SGW's 1-byte flags only retains the low-byte flags (`0x01`–`0x80`) and therefore has nowhere to put `FLAG_INDEXED_CHANNEL` — the indexed-channel-routing mechanism is simply absent from SGW's wire format. The SGW baseapp connection topology does not need it: one client owns one Mercury channel; routing happens via `ChannelInternal` lookup, not via a flag bit. Bit 7 in both stock BW and SGW unambiguously means `FLAG_IS_FRAGMENT`; the indexed-channel divergence is the *absent* high-byte flag, not a low-byte bit-7 collision.
+**Indexed-channel routing is not available.** Stock BigWorld's `uint16` flags field carries `FLAG_INDEXED_CHANNEL` in its high byte (`0x0800`)[^stockbw-packet-hpp] — used to route a packet to one of many addressable channels on a single endpoint. SGW's 1-byte flags only retains the low-byte flags (`0x01`–`0x80`) and therefore has nowhere to put `FLAG_INDEXED_CHANNEL` — the indexed-channel-routing mechanism is simply absent from SGW's wire format. The SGW baseapp connection topology does not need it: one client owns one Mercury channel; routing happens via `ChannelInternal` lookup, not via a flag bit. Bit 7 in both stock BW and SGW unambiguously means `FLAG_IS_FRAGMENT`; the indexed-channel divergence is the *absent* high-byte flag, not a low-byte bit-7 collision.
 
-**`FLAG_IS_RELIABLE` (bit 4) is the load-bearing flag for the entire reliability layer.** When set, the sender's `ChannelInternal` (the ~0x180-byte inner channel object at `ghidra://SGW.exe@0x0158c7b0`) tracks the packet's sequence number in its **32-bit outstanding-ack bitmap** (covering up to 32 in-flight reliable packets at once) and starts a 700ms resend timer; the receiver schedules an ack via `UnAckedHandler::queueAckForPacket` at `ghidra://SGW.exe@0x0158cba0`. When clear, the packet is fire-and-forget — used for position-update spam and unreliable bundle flushes. The reliability state machine does not use a fixed-size circular send-slot buffer; the 32-bit bitmap in `UnAckedHandler__buildAndSendAckBundle` at `ghidra://SGW.exe@0x0158b2d0` (`iVar2 = 0, 8, 16, 24; iVar2 < 0x20`) is the upper bound on outstanding sequence numbers.
+**`FLAG_IS_RELIABLE` (bit 4) is the load-bearing flag for the entire reliability layer.** When set, the sender's `ChannelInternal` (the ~0x180-byte inner channel object)[^channel-internal-ctor] tracks the packet's sequence number in its **32-bit outstanding-ack bitmap** (covering up to 32 in-flight reliable packets at once) and starts a 700ms resend timer; the receiver schedules an ack via `UnAckedHandler::queueAckForPacket`[^queue-ack-for-packet]. When clear, the packet is fire-and-forget — used for position-update spam and unreliable bundle flushes. The reliability state machine does not use a fixed-size circular send-slot buffer; the 32-bit bitmap[^ack-bitmap] is the upper bound on outstanding sequence numbers.
 
 ### 1.3 Footer
 
-The footer is the variable-width trailing region that carries reliability state, sequence ordering, and fragment boundaries. It is *parsed backward* from the end of the datagram — `processFilteredPacket_inner` calls a sequence of `buf.pop()` operations starting from the tail, each one shrinking the buffer that the next field is popped from.
+The footer is the variable-width trailing region that carries reliability state, sequence ordering, and fragment boundaries. It is *parsed backward* from the end of the datagram — `processFilteredPacket_inner`[^flags-decoder] calls a sequence of `buf.pop()` operations starting from the tail, each one shrinking the buffer that the next field is popped from.[^v5-mercury-internals]
 
 **Wire order** (top = closer to message body; bottom = end of datagram). The sender writes these fields in this order — bit 0 first, bit 7 last — so the highest-bit footer field sits at the very end of the datagram:
 
@@ -212,7 +212,7 @@ A sender writes flags byte first, then writes message body, then appends each fo
 
 The reason both flags exist (rather than collapsing to one) is the receiver's walk pattern. Request messages form a *linked list inside the packet body*: each request's payload begins with an offset field that points (as a byte offset relative to the message body start) to the next request in the packet, with a sentinel value as the terminator. The receiver pops `firstRequestOffset` from the footer (gated on bit 0), seeks to that offset, parses the request, reads its inline next-pointer, and repeats until it hits the sentinel.
 
-This lets the receiver process requests in priority order *without* walking the entire message body sequentially — useful when a bundle contains many entity-method calls interleaved with a handful of requests, and the request-handling code path runs separately from the entity-method dispatch path. The linked-list mechanism is stock BigWorld; SGW is presumed to inherit it because `Bundle::startMessage_request` at `ghidra://SGW.exe@0x0157adc0` exists and `FLAG_HAS_FIRST_REQUEST_OFFSET` is consumed at parse time. The exact next-pointer field width and terminator sentinel are not enumerated in `mercury-protocol-internals.md` — confidence on the per-byte chain layout is medium pending direct decompilation of the request-walk code at the receiver side.
+This lets the receiver process requests in priority order *without* walking the entire message body sequentially — useful when a bundle contains many entity-method calls interleaved with a handful of requests, and the request-handling code path runs separately from the entity-method dispatch path. The linked-list mechanism is stock BigWorld[^stockbw-packet-cpp]; SGW is presumed to inherit it because `Bundle::startMessage_request`[^bundle-start-msg-request] exists and `FLAG_HAS_FIRST_REQUEST_OFFSET` is consumed at parse time. The exact next-pointer field width and terminator sentinel are not enumerated in `mercury-protocol-internals.md`[^v5-mercury-internals] — confidence on the per-byte chain layout is medium pending direct decompilation of the request-walk code at the receiver side. [citation needed — V5 confirms the flag and the wrapper exist; the linked-list byte layout is inherited from stock BW without an SGW-side decompile.]
 
 ![Request-chain linked list — firstRequestOffset in the footer + inline next-pointer per request](figures/mercury-20-request-chain-linked-list.svg)
 
@@ -234,13 +234,13 @@ When `FLAG_HAS_ACKS` is set, the ack list at the tail is:
 [ ackCount: u8     ]   ← popped first
 ```
 
-Each `ack[i]` is the sequence ID of a previously received reliable packet. The receiver pops `ackCount` first (1 byte), then pops `ackCount × 4` bytes as the ack array. The sender side mirrors this in `UnAckedHandler::buildAndSendAckBundle` at `ghidra://SGW.exe@0x0158b2d0`: walks a 32-bit ack mask and writes each sequence ID into the bundle.
+Each `ack[i]` is the sequence ID of a previously received reliable packet. The receiver pops `ackCount` first (1 byte), then pops `ackCount × 4` bytes as the ack array. The sender side mirrors this in `UnAckedHandler::buildAndSendAckBundle`[^ack-bitmap]: walks a 32-bit ack mask and writes each sequence ID into the bundle.
 
-**Ack coalescing.** `ackCount` is a `u8`, so a single packet can carry at most 255 acks — a hard ceiling, not a practical one. The send path prefers to *piggyback* acks onto the next outgoing reliable bundle (whatever that bundle's primary purpose is — a game-level entity-method call, a position update, a control message) rather than emit a standalone ack-only packet, which keeps wire overhead minimal. When the send-alive timer at `ChannelInternal+0x16c` expires with pending acks but no game-level traffic to piggyback on, `UnAckedHandler::sendAckBundle2` at `ghidra://SGW.exe@0x0158bbc0` (also referred to as `UnAckedHandler::sendAckBundle` in some V5 sources — `mercury-protocol-internals.md`'s "All Mercury Functions" table omits the `2` suffix while the same doc's Session 5b additions includes it; this chapter uses the suffixed name for disambiguation against any hypothetical sibling) builds an empty bundle with the `FLAG_IS_RELIABLE` flag set — see §1.7 for the keepalive role. Per `mercury-protocol-internals.md` §"Complete Function Inventory (Session 5b Additions)" the function "creates empty bundle, sets reliable flag, sends." The keepalive bundle does not itself need `FLAG_HAS_ACKS` set — its purpose is to force a reliable round-trip so the receiver acks the empty packet — but in practice any queued acks `Bundle::finalise` finds in `UnAckedHandler`'s 32-bit ack mask will piggyback onto the keepalive bundle's footer, which is why a wire capture of a keepalive packet usually shows both `FLAG_IS_RELIABLE` and `FLAG_HAS_ACKS` set together. The 32-bit ack mask in `UnAckedHandler` lets the implementation track up to 32 unsent acks before they must be flushed; in practice, latency keeps the typical queued-ack count well below that and well below the 255-byte wire ceiling.
+**Ack coalescing.** `ackCount` is a `u8`, so a single packet can carry at most 255 acks — a hard ceiling, not a practical one. The send path prefers to *piggyback* acks onto the next outgoing reliable bundle (whatever that bundle's primary purpose is — a game-level entity-method call, a position update, a control message) rather than emit a standalone ack-only packet, which keeps wire overhead minimal. When the send-alive timer at `ChannelInternal+0x16c` expires with pending acks but no game-level traffic to piggyback on, `UnAckedHandler::sendAckBundle2`[^send-ack-bundle2] (also referred to as `UnAckedHandler::sendAckBundle` in some V5 sources — `mercury-protocol-internals.md`'s "All Mercury Functions" table omits the `2` suffix while the same doc's Session 5b additions includes it[^v5-mercury-internals]; this chapter uses the suffixed name for disambiguation against any hypothetical sibling) builds an empty bundle with the `FLAG_IS_RELIABLE` flag set — see §1.7 for the keepalive role. The function "creates empty bundle, sets reliable flag, sends."[^v5-mercury-internals] The keepalive bundle does not itself need `FLAG_HAS_ACKS` set — its purpose is to force a reliable round-trip so the receiver acks the empty packet — but in practice any queued acks `Bundle::finalise` finds in `UnAckedHandler`'s 32-bit ack mask will piggyback onto the keepalive bundle's footer, which is why a wire capture of a keepalive packet usually shows both `FLAG_IS_RELIABLE` and `FLAG_HAS_ACKS` set together. The 32-bit ack mask in `UnAckedHandler` lets the implementation track up to 32 unsent acks before they must be flushed; in practice, latency keeps the typical queued-ack count well below that and well below the 255-byte wire ceiling.
 
 #### 1.3.2 Piggyback chain encoding
 
-Piggybacks are *whole previously-sent packets* embedded in the footer area of a new outgoing packet. Format inherited from stock BigWorld 2.0.1; both ends of the protocol parse the same wire bytes. Confidence: medium — `mercury-protocol-internals.md` confirms `FLAG_HAS_PIGGYBACKS` bit 1 exists and is honored at parse time, but does not enumerate the chain wire bytes; the layout below is the stock-BW reference structure and is presumed inherited because no SGW divergence is named:
+Piggybacks are *whole previously-sent packets* embedded in the footer area of a new outgoing packet. Format inherited from stock BigWorld 2.0.1[^stockbw-packet-cpp]; both ends of the protocol parse the same wire bytes. Confidence: medium — `mercury-protocol-internals.md`[^v5-mercury-internals] confirms `FLAG_HAS_PIGGYBACKS` bit 1 exists and is honored at parse time, but does not enumerate the chain wire bytes; the layout below is the stock-BW reference structure and is presumed inherited because no SGW divergence is named:
 
 ```text
 [ packet[N] data    : packet[N]_len bytes ]
@@ -262,7 +262,7 @@ Confidence: medium for the SGW server side. The Cimmeria Rust implementation exp
 
 #### 1.3.3 Byte order
 
-**Every multi-byte field in the SGW Mercury footer is little-endian.** Sequence IDs, ack sequence IDs, fragment IDs, first-request-offset — all little-endian. This is a direct SGW divergence from stock BigWorld, which writes the footer in network byte order via the `BW_HTONS` / `BW_HTONL` macros at `external/BigWorld-2.0.1/src/lib/network/packet.cpp`.
+**Every multi-byte field in the SGW Mercury footer is little-endian.**[^v5-mercury-internals] Sequence IDs, ack sequence IDs, fragment IDs, first-request-offset — all little-endian. This is a direct SGW divergence from stock BigWorld, which writes the footer in network byte order via the `BW_HTONS` / `BW_HTONL` macros[^stockbw-packet-cpp].
 
 **Divergence:**
 
@@ -285,7 +285,7 @@ This is one of the most consequential SGW divergences for any reimplementation: 
 
 *Figure 9: the encrypted on-wire frame — the **entire plaintext packet** (flags byte + body + footer) is PKCS#7-padded and AES-256-CBC encrypted with a zero IV; the 16-byte HMAC-MD5 tag covers the ciphertext and is appended (encrypt-then-MAC). No part of the Mercury packet survives in cleartext on the wire.*
 
-Every Mercury packet on the external (client-facing) channel is wrapped in AES-256-CBC then HMAC-MD5. The wrapping is a `MessageFilter` layered above the wire format described above: the sender builds the plaintext packet (flags + body + footer) and the cipher envelope is applied as the very last step before `sendto()`.
+Every Mercury packet on the external (client-facing) channel is wrapped in AES-256-CBC then HMAC-MD5.[^v5-mercury-internals][^cryptopp-rtti] The wrapping is a `MessageFilter` layered above the wire format described above: the sender builds the plaintext packet (flags + body + footer) and the cipher envelope is applied as the very last step before `sendto()`.
 
 **Wire order: encrypt-then-MAC.**
 
@@ -294,7 +294,7 @@ Every Mercury packet on the external (client-facing) channel is wrapped in AES-2
 [ HMAC-MD5 tag (always 16 bytes, no truncation)    ]
 ```
 
-The ciphertext is produced by `CryptoPP::StreamTransformationFilter` (`ghidra://SGW.exe@0x004089b0`) over the Mercury plaintext, then passed to `CryptoPP::HashFilter` (`ghidra://SGW.exe@0x00414720`) which appends the HMAC-MD5 tag. The HMAC covers the ciphertext, not the plaintext.
+The ciphertext is produced by `CryptoPP::StreamTransformationFilter`[^cipher-stream-filter] over the Mercury plaintext, then passed to `CryptoPP::HashFilter`[^cipher-hash-filter] which appends the HMAC-MD5 tag. The HMAC covers the ciphertext, not the plaintext.
 
 **Worked example of cipher framing.** A 21-byte Mercury plaintext (e.g. a small `enableEntities` bundle: 1 flags byte + 1 msg_id byte + 8 dummy + 4 sequence ID + 4-byte ack = 18 bytes; padded toward 21 for example purposes) becomes:
 
@@ -312,37 +312,37 @@ A 16-byte plaintext expands to **48 bytes too** (pads to 32 — PKCS#7 always pa
 
 *Figure 10: the cipher framing math — 21-byte plaintext pads to 32 bytes (PKCS#7), AES-256-CBC produces a same-width 32-byte ciphertext, and the 16-byte HMAC-MD5 tag appends to a final 48-byte on-wire frame.*
 
-**Key material — no KDF.** The 32-byte AES key and the 32-byte HMAC key are the *same buffer*. Both `PacketEncrypter::send` at `ghidra://SGW.exe@0x01603b80` and `PacketEncrypter::recv` at `ghidra://SGW.exe@0x01603fa0` read `GetCheckedArrayElement(this+0x08, 0, len)` for both the AES Rijndael key and the HMAC-MD5 key.
+**Key material — no KDF.** The 32-byte AES key and the 32-byte HMAC key are the *same buffer*. Both `PacketEncrypter::send`[^packet-encrypter-send] and `PacketEncrypter::recv`[^packet-encrypter-recv] read `GetCheckedArrayElement(this+0x08, 0, len)` for both the AES Rijndael key and the HMAC-MD5 key.
 
-The key itself comes from the SOAP auth response (`SessionKey` attribute, 64-char hex string) and is decoded by the gSOAP `xsd:hexBinary` dispatcher at `ghidra://SGW.exe@0x015eb940` (case `0x26` of the type dispatcher at `ghidra://SGW.exe@0x015ed300`). The decoded 32 bytes are passed *verbatim* to the `PacketEncrypter` constructor at `ghidra://SGW.exe@0x01603a70` — no PBKDF, no salting, no SHA-style key stretching, no truncation.
+The key itself comes from the SOAP auth response (`SessionKey` attribute, 64-char hex string) and is decoded by the gSOAP `xsd:hexBinary` dispatcher[^gsoap-hex-dispatcher] (case `0x26` of the type dispatcher[^gsoap-type-dispatcher]). The decoded 32 bytes are passed *verbatim* to the `PacketEncrypter` constructor[^packet-encrypter-ctor] — no PBKDF, no salting, no SHA-style key stretching, no truncation.
 
-**IV — literal zero, every packet.** The constructor stores 16 zero bytes at `PacketEncrypter+0x18` via `FUN_00a587f0(this+0x18, 0x10, null)` (null source → zero-filled). The IV buffer is read on every encrypt/decrypt call but is *never mutated*: the same zero IV is reused for every packet on the channel. This is a deliberate 2009 design choice; combined with PKCS#7 padding it produces a deterministic ciphertext for identical plaintexts but matches the wire-format invariant the SGW client expects.
+**IV — literal zero, every packet.** The constructor stores 16 zero bytes at `PacketEncrypter+0x18` via `FUN_00a587f0(this+0x18, 0x10, null)` (null source → zero-filled).[^packet-encrypter-ctor] The IV buffer is read on every encrypt/decrypt call but is *never mutated*: the same zero IV is reused for every packet on the channel. This is a deliberate 2009 design choice; combined with PKCS#7 padding it produces a deterministic ciphertext for identical plaintexts but matches the wire-format invariant the SGW client expects.
 
 ![Encrypt-then-MAC and decrypt-then-verify pipelines for AES-256-CBC + HMAC-MD5](figures/mercury-12-encryption-pipeline.svg)
 
 *Figure 11: the encrypt pipeline (PKCS#7 pad → AES-256-CBC with zero IV → HMAC-MD5 over the ciphertext, appended) and the decrypt pipeline (split tag → HMAC verify → AES decrypt → PKCS#7 unpad).*
 
-**Library: CryptoPP, not OpenSSL.** RTTI strings at `0x01e93b70`–`0x01ea3c5c` stamp `HMAC_Base@CryptoPP`, `HMAC@VMD5@Weak1@CryptoPP`, and friends. The Cimmeria `crates/mercury/src/encryption.rs` doc-comment that mentions "OpenSSL" is incorrect (the runtime uses RustCrypto, not OpenSSL either, but the binary it's emulating uses CryptoPP). The HMAC algorithm is the MD5 variant tagged as `Weak1` in CryptoPP's namespace — a 2009 design choice; modern code would not pair MD5 with HMAC.
+**Library: CryptoPP, not OpenSSL.** RTTI strings[^cryptopp-rtti] stamp `HMAC_Base@CryptoPP`, `HMAC@VMD5@Weak1@CryptoPP`, and friends. The Cimmeria `crates/mercury/src/encryption.rs` doc-comment that mentions "OpenSSL" is incorrect (the runtime uses RustCrypto, not OpenSSL either, but the binary it's emulating uses CryptoPP). The HMAC algorithm is the MD5 variant tagged as `Weak1` in CryptoPP's namespace — a 2009 design choice; modern code would not pair MD5 with HMAC.
 
 **Cipher object layout.**
 
 | Offset | Size | Field | Notes |
 |---|---|---|---|
-| `+0x00` | 4 | vtable | `0x01b27374` |
+| `+0x00` | 4 | vtable | `0x01b27374`[^cipher-vtable] |
 | `+0x04` | 4 | ref_count | `SafeReferenceCount` base |
 | `+0x08` | var | `key_buf` | `std::vector`-like ptr/end/capacity; holds the 32-byte key (AES + HMAC) |
 | `+0x18` | var | `iv_buf` | `std::vector`-like ptr/end/capacity; holds 16 zero bytes (re-read every packet) |
 
-The vtable is stamped at `0x01b27374` with four slots:
+The vtable is stamped[^cipher-vtable] with four slots:
 
 | Slot | Address | Role |
 |---|---|---|
-| 0 | `0x01604ac0` | Destructor |
-| 1 | `0x01603b80` | `send` — encrypt outgoing packet |
-| 2 | `0x01603fa0` | `recv` — decrypt incoming packet |
-| 3 | `0x016039a0` | Returns `0x1f` (31) — likely `OptimalBlockSize` |
+| 0 | `0x01604ac0`[^cipher-vtable-dtor] | Destructor |
+| 1 | `0x01603b80`[^packet-encrypter-send] | `send` — encrypt outgoing packet |
+| 2 | `0x01603fa0`[^packet-encrypter-recv] | `recv` — decrypt incoming packet |
+| 3 | `0x016039a0`[^cipher-vtable-blocksize] | Returns `0x1f` (31) — likely `OptimalBlockSize` |
 
-**Divergence from stock BigWorld 2.0.1.** Stock BW uses Blowfish ECB with XOR chaining, 8-byte blocks, a `0xdeadbeef` magic prefix, and a wastage byte. None of that applies to SGW. The SGW cipher chain is a wholesale replacement, not a parameter tweak. The stock BW encryption code in `external/BigWorld-2.0.1/src/lib/network/encryption_filter.cpp` is irrelevant for SGW emulation.
+**Divergence from stock BigWorld 2.0.1.** Stock BW uses Blowfish ECB with XOR chaining, 8-byte blocks, a `0xdeadbeef` magic prefix, and a wastage byte.[^stockbw-encryption] None of that applies to SGW. The SGW cipher chain is a wholesale replacement, not a parameter tweak. The stock BW encryption code in `external/BigWorld-2.0.1/src/lib/network/encryption_filter.cpp`[^stockbw-encryption] is irrelevant for SGW emulation.
 
 ![Mercury codec — encode / decode pipelines around the cipher envelope and footer parser](figures/mercury-13-codec-encode-decode.svg)
 
@@ -359,28 +359,28 @@ A Mercury bundle is a sequence of *interface element calls*. Each call is one en
 | Format name | Length field width | When |
 |---|---|---|
 | `CONSTANT_LENGTH` | 0 bytes (implicit) | Fixed-size payload known from the message table |
-| `WORD_LENGTH` | 2 bytes (`u16` LE) | Variable-size payload, typical entity-method call (and `REPLY_MESSAGE 0xFF` per `space-viewport-wire-formats.md`) |
+| `WORD_LENGTH` | 2 bytes (`u16` LE) | Variable-size payload, typical entity-method call (and `REPLY_MESSAGE 0xFF`)[^v5-space-viewport] |
 | `DWORD_LENGTH` | 4 bytes (`u32` LE) | Variable-size payload; the only V5-confirmed user is `AUTHENTICATE` (msg_id `0x00`, see §1.10.7) |
 
-The `InterfaceElement` table is a static array of fixed-size descriptor entries. At runtime, the Nub builds a parallel array of smaller runtime entries indexed directly by `msg_id`, populated from the static array. The runtime entries are read by `Mercury::Nub::processOrderedPacket` at `ghidra://SGW.exe@0x0157c820` on every incoming message. **Confidence: medium** on the exact byte sizes of the static descriptor and the runtime form — the chapter previously cited `0x90` (144 bytes) and `0x24` (36 bytes) but neither size is enumerated in the current V5 evidence; the sizes are inherited from stock BigWorld 2.0.1 (`external/BigWorld-2.0.1/src/lib/network/interfaces.hpp`) where they are documented. A direct Ghidra read of the static descriptor allocation site would pin SGW's sizes; until then, treat the numeric values as inherited from stock BW.
+The `InterfaceElement` table is a static array of fixed-size descriptor entries.[^v5-mercury-internals] At runtime, the Nub builds a parallel array of smaller runtime entries indexed directly by `msg_id`, populated from the static array. The runtime entries are read by `Mercury::Nub::processOrderedPacket`[^process-ordered-packet] on every incoming message. **Confidence: medium** on the exact byte sizes of the static descriptor and the runtime form — the chapter previously cited `0x90` (144 bytes) and `0x24` (36 bytes) but neither size is enumerated in the current V5 evidence; the sizes are inherited from stock BigWorld 2.0.1[^stockbw-interfaces] where they are documented. A direct Ghidra read of the static descriptor allocation site would pin SGW's sizes; until then, treat the numeric values as inherited from stock BW. [citation needed — `0x90` and `0x24` are stock-BW-inherited; an SGW-side decompile of the static descriptor allocation site would close this.]
 
 **Static vs runtime layout, side by side.** The static `InterfaceElement` entries carry the full message descriptor — name string, length type, payload-size hint, handler pointer, reliability flag, encryption-required flag, and assorted metadata. At Nub initialization, the static entries are *projected* into a smaller runtime form keyed by `msg_id`: only the runtime-hot fields are kept (`lengthType`, `lengthValue`, `handler*`, `isEntityMessage` flag). The runtime array's index is the `msg_id` byte itself, so a dispatch is a single `nub->elements[msg_id]` load — no name-based lookup, no hash. The 256 `msg_id` slots map: 0x00–0x7F to system-message slots, 0x80–0xFD to entity-method slots (with `0xBD` and `0xFD` reserved as the sub-slot extended-encoding sentinels), and `0xFF` to the reply-message slot. The runtime form's per-entry size is the same inherited-from-stock-BW value flagged above — not independently confirmed for SGW.
 
-**Entity messages override the table.** Any message with `msg_id >= 0x80` is an entity-method or property message and *always* uses `WORD_LENGTH`, regardless of the table's declared length type for that ID. This is enforced in `BundleUnpacker::next` (decode side) and in `Mercury::Bundle::newMessage` at `ghidra://SGW.exe@0x0157ac90` (encode side). The reason: entity messages carry their own variable-size argument list whose total size cannot be known statically.
+**Entity messages override the table.** Any message with `msg_id >= 0x80` is an entity-method or property message and *always* uses `WORD_LENGTH`, regardless of the table's declared length type for that ID. This is enforced in `BundleUnpacker::next` (decode side) and in `Mercury::Bundle::newMessage`[^bundle-new-message] (encode side).[^v5-system-protocol] The reason: entity messages carry their own variable-size argument list whose total size cannot be known statically.
 
 **Compressed-length encoding for interface elements with extreme size variation.** A per-interface fixed-width length-prefix scheme exists for the rare case where a message's payload size is usually small (fits in 1 byte) but must occasionally extend to a wider field. The width — 1, 2, 3, or 4 bytes — is a **descriptor field on the `InterfaceElement` itself at struct offset `+0x4`**, set at registration time. The encoder unconditionally writes that many bytes; the decoder unconditionally reads that many bytes. There is no runtime-selected threshold sentinel.
 
 The `InterfaceElement::compressLength` family handles read/write:
 
-| Function | Address | Role |
-|---|---|---|
-| `InterfaceElement::compressLength` | `ghidra://SGW.exe@0x0158acc0` | Compute total length including the prefix width |
-| `InterfaceElement::expandLength` | `ghidra://SGW.exe@0x0158b770` | Read length field at parse time — `switch(*(undefined4 *)((int)this + 4))` on cases 1/2/3/4 |
-| `InterfaceElement::compressLength_write` | `ghidra://SGW.exe@0x0158b120` | Write length field at emit time — same `switch(*(undefined4 *)((int)this + 4))` shape with unconditional writes |
+| Function | Role |
+|---|---|
+| `InterfaceElement::compressLength`[^compress-length-family] | Compute total length including the prefix width |
+| `InterfaceElement::expandLength`[^compress-length-family] | Read length field at parse time — `switch(*(undefined4 *)((int)this + 4))` on cases 1/2/3/4 |
+| `InterfaceElement::compressLength_write`[^compress-length-family] | Write length field at emit time — same `switch(*(undefined4 *)((int)this + 4))` shape with unconditional writes |
 
-If the value to encode exceeds the natural capacity of the chosen width (`0xFF` for 1 byte, `0xFFFF` for 2 bytes, `0xFFFFFF` for 3 bytes), the overflow is handled by the packet-chain path at `ghidra://SGW.exe@0x0158acc0` (the message gets split across packets in the bundle's packet chain) rather than by widening the prefix on the wire. The width is fixed per-interface, period.
+If the value to encode exceeds the natural capacity of the chosen width (`0xFF` for 1 byte, `0xFFFF` for 2 bytes, `0xFFFFFF` for 3 bytes), the overflow is handled by the packet-chain path[^compress-length-family] (the message gets split across packets in the bundle's packet chain) rather than by widening the prefix on the wire. The width is fixed per-interface, period.
 
-Confidence: high. The Ghidra decompile of `compressLength_write` at `0x0158b120` is `switch(*(undefined4 *)((int)this + 4))` with cases 1, 2, 3, 4 — each case writing exactly that many bytes — and `expandLength` at `0x0158b770` mirrors the same switch shape on the read side. Compare with `ProcessMessage::writeComponentsVarLen` at `ghidra://SGW.exe@0x01586180` (the MachineGuard component-ID encoder) which uses an actual runtime threshold (IDs `≤ 0xfe` write 1 byte, IDs `> 0xfe` write `0xff` prefix + 3 bytes); the InterfaceElement scheme is a different mechanism entirely.
+Confidence: high. The Ghidra decompile of `compressLength_write` is `switch(*(undefined4 *)((int)this + 4))` with cases 1, 2, 3, 4 — each case writing exactly that many bytes — and `expandLength` mirrors the same switch shape on the read side.[^compress-length-family] Compare with `ProcessMessage::writeComponentsVarLen`[^write-components-varlen] (the MachineGuard component-ID encoder) which uses an actual runtime threshold (IDs `≤ 0xfe` write 1 byte, IDs `> 0xfe` write `0xff` prefix + 3 bytes); the InterfaceElement scheme is a different mechanism entirely.
 
 Note that compressed-length encoding is *not* what entity messages use — entity messages always use `WORD_LENGTH` (the fixed 2-byte `u16` prefix). The compressed scheme is for system messages whose maximum-size envelope is large but whose typical-case size is small.
 
@@ -392,17 +392,17 @@ Note that compressed-length encoding is *not* what entity messages use — entit
 
 A *bundle* is the logical unit of reliability and the container for one or more interface-element messages. A bundle can span multiple packets via fragmentation; a packet always belongs to exactly one bundle.
 
-**Bundle construction.** `Mercury::Bundle::Bundle` at `ghidra://SGW.exe@0x0157aa40` constructs an empty bundle. `Mercury::Bundle::clear` at `ghidra://SGW.exe@0x0157a440` resets state and allocates a fresh first packet. Messages are added via three entry points:
+**Bundle construction.** `Mercury::Bundle::Bundle`[^bundle-ctor] constructs an empty bundle. `Mercury::Bundle::clear`[^bundle-clear] resets state and allocates a fresh first packet. Messages are added via three entry points:
 
-| Entry point | Address | Role |
-|---|---|---|
-| `Bundle::newMessage` | `ghidra://SGW.exe@0x0157ac90` | Start new message — writes `msg_id`, computes header size, allocates new packet if needed |
-| `Bundle::startMessage_fixed` | `ghidra://SGW.exe@0x0157ad80` | Fixed-length message wrapper |
-| `Bundle::startMessage_request` | `ghidra://SGW.exe@0x0157adc0` | Request message — reserves space for the reply-ID + next-request-offset linked-list pointers |
+| Entry point | Role |
+|---|---|
+| `Bundle::newMessage`[^bundle-new-message] | Start new message — writes `msg_id`, computes header size, allocates new packet if needed |
+| `Bundle::startMessage_fixed`[^bundle-start-msg-fixed] | Fixed-length message wrapper |
+| `Bundle::startMessage_request`[^bundle-start-msg-request] | Request message — reserves space for the reply-ID + next-request-offset linked-list pointers |
 
-After the header is written, `Bundle::addBlob` at `ghidra://SGW.exe@0x0157a990` copies payload bytes. When the current packet is full, `addBlob` auto-splits across packet boundaries, advancing to the next packet in the bundle's packet chain. The packet chain is the same `Mercury::Packet` linked-list traversed by `Packet::chain__stampSendTime` at `ghidra://SGW.exe@0x0158a3f0`.
+After the header is written, `Bundle::addBlob`[^bundle-add-blob] copies payload bytes. When the current packet is full, `addBlob` auto-splits across packet boundaries, advancing to the next packet in the bundle's packet chain. The packet chain is the same `Mercury::Packet` linked-list traversed by `Packet::chain__stampSendTime`[^packet-chain-stamp-time].
 
-**Finalization.** `Mercury::Bundle::finalise` at `ghidra://SGW.exe@0x0157a7a0` walks the packet chain one final time: each packet's flags byte is updated to reflect what footer fields will be appended (sets `FLAG_HAS_SEQUENCE_NUMBER`, `FLAG_HAS_ACKS` if there are queued acks, `FLAG_IS_FRAGMENT` if the bundle spans more than one packet, etc.), and the footer fields are written in flag-bit order at the end of each packet. After `finalise`, the bundle is ready to be handed to `Mercury::Nub::send` at `ghidra://SGW.exe@0x01582160`.
+**Finalization.** `Mercury::Bundle::finalise`[^bundle-finalise] walks the packet chain one final time: each packet's flags byte is updated to reflect what footer fields will be appended (sets `FLAG_HAS_SEQUENCE_NUMBER`, `FLAG_HAS_ACKS` if there are queued acks, `FLAG_IS_FRAGMENT` if the bundle spans more than one packet, etc.), and the footer fields are written in flag-bit order at the end of each packet. After `finalise`, the bundle is ready to be handed to `Mercury::Nub::send`[^nub-send].
 
 ![Fragment reassembly — sender splits bundle into FRAGMENT_BODY_SIZE-bounded packets, receiver concats by frag_begin key](figures/mercury-11-fragment-reassembly-sequence.svg)
 
@@ -410,12 +410,12 @@ After the header is written, `Bundle::addBlob` at `ghidra://SGW.exe@0x0157a990` 
 
 **Fragmentation invariants.**
 
-- Maximum packets per bundle: **64** (`Packet::MaxFragmentsPerBundle` from stock BW; matches SGW observed behavior).
+- Maximum packets per bundle: **64** (`Packet::MaxFragmentsPerBundle` from stock BW[^stockbw-packet-hpp]; matches SGW observed behavior[^v5-mercury-internals]).
 - Each fragment carries `FLAG_IS_FRAGMENT` (bit 7) in its flags byte and two `uint32` fragment IDs in its footer: `firstFragmentId` (the sequence ID of the first packet in the bundle) and `lastFragmentId` (the sequence ID of the last packet). Both fragment IDs are identical across every fragment in the bundle — they describe the bundle's bounds, not the fragment's index.
 - A fragment's own position in the bundle is derived from `sequenceId - firstFragmentId`.
 - The receiver allocates a vector of `(lastFragmentId - firstFragmentId + 1)` slots when the first fragment arrives and fills slots by sequence ID. The bundle is reassembled when every slot is non-null (`BundleUnpacker::isComplete`).
 
-**Outstanding-sequence tracking.** A reliable bundle's fragments each consume one bit in the channel's 32-bit outstanding-ack bitmap (see §1.7); the bitmap caps simultaneously-in-flight reliable sequence numbers at 32. In practice, bundles are tens of packets at most — the largest observed is the world-entry mapLoaded bundle at 27+ interface-element calls, which fits in ~5 packets — so the 32-bit ceiling is rarely a practical pressure point. The 512-entry hash table at `ChannelInternal+0x40/+0x44` (allocated by `FUN_0158c170` at `ghidra://SGW.exe@0x0158c170`) is the *received*-sequence dedup table (mask `0x1FF`), not a send-side capacity bound — see §1.7 for the cross-reference.
+**Outstanding-sequence tracking.** A reliable bundle's fragments each consume one bit in the channel's 32-bit outstanding-ack bitmap (see §1.7); the bitmap caps simultaneously-in-flight reliable sequence numbers at 32.[^ack-bitmap] In practice, bundles are tens of packets at most — the largest observed is the world-entry mapLoaded bundle at 27+ interface-element calls, which fits in ~5 packets — so the 32-bit ceiling is rarely a practical pressure point. The 512-entry hash table at `ChannelInternal+0x40/+0x44` (allocated by `FUN_0158c170`[^channel-hash-alloc]) is the *received*-sequence dedup table (mask `0x1FF`), not a send-side capacity bound — see §1.7 for the cross-reference.
 
 ### 1.7 Sequence numbers and reliability
 
@@ -437,20 +437,20 @@ The bitmap and FSM compose on a real wire trace — multiple packets in flight, 
 
 *Figure 18: a four-packet trace exercising the reliability stack — seqs 140/141/142 sent, 141 lost in transit, 142 arrives before 141 (gap-fill at receiver), 141's bit stays set until the 700 ms timer fires a retransmit, the dedup hash drops a duplicate retransmit on arrival.*
 
-Mercury sequence numbers are **28-bit** (`SEQ_SIZE = 0x10000000`). The space is 256M sequence IDs before wrap; the wrap is handled by modular arithmetic in the comparison routines. A reliable packet's sequence ID is assigned by `Mercury::Channel::send` at `ghidra://SGW.exe@0x01576f90` from a monotonic per-channel counter.
+Mercury sequence numbers are **28-bit** (`SEQ_SIZE = 0x10000000`).[^v5-mercury-internals] The space is 256M sequence IDs before wrap; the wrap is handled by modular arithmetic in the comparison routines. A reliable packet's sequence ID is assigned by `Mercury::Channel::send`[^channel-send] from a monotonic per-channel counter.
 
-| Constant | Value | Source | Confidence |
-|---|---|---|---|
-| Sequence number mask | `0x0FFFFFFF` | `mercury-protocol-internals.md` §"Protocol Constants" | high |
-| Null sequence number | `0x10000000` | `mercury-protocol-internals.md` §"Protocol Constants" | high |
-| Max retries | 20 | Inherited from stock BigWorld 2.0.1; SGW divergence in this area not enumerated in V5 evidence; pcap verification of actual SGW retry cadence is a future task | medium |
-| Ack timeout | 700 ms | Inherited from stock BigWorld 2.0.1; SGW divergence in this area not enumerated in V5 evidence; pcap verification of actual SGW timeout cadence is a future task | medium |
+| Constant | Value | Confidence |
+|---|---|---|
+| Sequence number mask[^v5-mercury-internals] | `0x0FFFFFFF` | high |
+| Null sequence number[^v5-mercury-internals] | `0x10000000` | high |
+| Max retries[^v5-mercury-internals] | 20 | medium (inherited from stock BigWorld 2.0.1; SGW divergence not enumerated in V5; pcap verification of actual SGW retry cadence is a future task) |
+| Ack timeout[^v5-mercury-internals] | 700 ms | medium (inherited from stock BigWorld 2.0.1; SGW divergence not enumerated in V5; pcap verification of actual SGW timeout cadence is a future task) |
 
 `0x10000000` is the null-sentinel: a packet with this sequence ID has no sequence number assigned (used for unreliable bundles that don't go in the send window). Because `0x10000000` is the very next value above the 28-bit `0x0FFFFFFF` mask, no real sequence number can collide with the sentinel.
 
-**Reliability state lives in `ChannelInternal`**, the ~0x180-byte inner channel object constructed at `ghidra://SGW.exe@0x0158c7b0`. The mechanism is a **32-bit sliding bitmap of outstanding sequence numbers** plus a **512-entry hash table** for received-sequence deduplication. Entries are cleared by `processAck` when their sequence ID is acknowledged; a receiver's processing of incoming acks runs even when the incoming packet's own sequence ID is outside its receive window — this prevents lost acks from causing unbounded retransmissions.
+**Reliability state lives in `ChannelInternal`**, the ~0x180-byte inner channel object constructed at the channel-internal ctor[^channel-internal-ctor]. The mechanism is a **32-bit sliding bitmap of outstanding sequence numbers** plus a **512-entry hash table** for received-sequence deduplication.[^ack-bitmap] Entries are cleared by `processAck` when their sequence ID is acknowledged; a receiver's processing of incoming acks runs even when the incoming packet's own sequence ID is outside its receive window — this prevents lost acks from causing unbounded retransmissions.
 
-The 512-entry hash table is allocated by `FUN_0158c170` at `ghidra://SGW.exe@0x0158c170` via `scalable_malloc(param_1 * 4 + 4)` = 2052 bytes for 512 pointer-sized entries; the mask `param_1 - 1 = 511 = 0x1FF` is stored at `ChannelInternal+0x44`. The hash is `seq_num & 0x1FF`. `Channel__ctor` at `ghidra://SGW.exe@0x01576bf0` hardcodes the table size of `0x200` (512) at construction. The hash table is the *received-sequence dedup* structure; the 32-bit bitmap in `UnAckedHandler` is the *outstanding-send* structure. Earlier drafts of this chapter conflated the two as a single "send window" with a "45-slot" capacity — neither claim is V5-grounded, and both are dropped.
+The 512-entry hash table is allocated[^channel-hash-alloc] via `scalable_malloc(param_1 * 4 + 4)` = 2052 bytes for 512 pointer-sized entries; the mask `param_1 - 1 = 511 = 0x1FF` is stored at `ChannelInternal+0x44`. The hash is `seq_num & 0x1FF`. `Channel__ctor`[^channel-ctor] hardcodes the table size of `0x200` (512) at construction. The hash table is the *received-sequence dedup* structure; the 32-bit bitmap in `UnAckedHandler` is the *outstanding-send* structure. Earlier drafts of this chapter conflated the two as a single "send window" with a "45-slot" capacity — neither claim is V5-grounded, and both are dropped.
 
 ![512-entry receive-sequence dedup hash table indexed by seq_id & 0x1FF](figures/mercury-30-dedup-hash-table.svg)
 
@@ -460,7 +460,7 @@ The 512-entry hash table is allocated by `FUN_0158c170` at `ghidra://SGW.exe@0x0
 
 *Figure 20: the per-channel state machine — the only run-time state that drops a channel is the retransmit-count strict-greater-than-`MAX_RETRIES` check; the inactivity timeout and keepalive timer are observed as soft pressure on that single transition.*
 
-**Resend timing.** `ChannelInternal::checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` runs the timer-driven resend logic. Five rdtsc-based timeout fields live in the channel object:
+**Resend timing.** `ChannelInternal::checkAndSendNubException`[^check-nub-exception] runs the timer-driven resend logic. Five rdtsc-based timeout fields live in the channel object:[^check-nub-exception]
 
 | Offset | Role |
 |---|---|
@@ -470,11 +470,11 @@ The 512-entry hash table is allocated by `FUN_0158c170` at `ghidra://SGW.exe@0x0
 | `+0x170` | Low 32 bits of a 64-bit rdtsc baseline timestamp marking the last relevant receive event |
 | `+0x174` | High 32 bits of the same 64-bit rdtsc baseline |
 
-The `+0x170` / `+0x174` pair is the receive-timeout baseline. `checkAndSendNubException` computes the elapsed-since-last-receive value with the textbook 64-bit-subtract-on-32-bit-ints pattern: `(iVar4 - *(int *)(this + 0x174)) - (uint)(uVar2 < *(uint *)(this + 0x170))` — high-half minus high-half, minus the borrow from the low-half compare. That value is compared against the threshold at `+0x164` / `+0x160` to decide whether the channel has gone idle long enough to warrant a keepalive or a teardown.
+The `+0x170` / `+0x174` pair is the receive-timeout baseline. `checkAndSendNubException`[^check-nub-exception] computes the elapsed-since-last-receive value with the textbook 64-bit-subtract-on-32-bit-ints pattern: `(iVar4 - *(int *)(this + 0x174)) - (uint)(uVar2 < *(uint *)(this + 0x170))` — high-half minus high-half, minus the borrow from the low-half compare. That value is compared against the threshold at `+0x164` / `+0x160` to decide whether the channel has gone idle long enough to warrant a keepalive or a teardown.
 
-The constructor at `ghidra://SGW.exe@0x0158c7b0` zeroes both halves (low at `0x0158c9d5`, high at `0x0158c9db`) at channel-init time. The *write* site that stamps the baseline on each incoming packet was not located in the current Ghidra pass; it likely lives upstream of `Nub::dispatchPacketWithFilter` (near `0x015816a0`) in the Nub receive entry. `processIncomingPacketEntry` at `0x0158be30` stamps `+0x58 / +0x5c` (used for the send-alive check), not `+0x170 / +0x174`. Confidence on the field role (low/high halves of a 64-bit rdtsc baseline): high. Confidence on the write-site location: medium — see the open question carry-over in §1.16.
+The constructor[^channel-internal-ctor] zeroes both halves (low at `0x0158c9d5`, high at `0x0158c9db`) at channel-init time. The *write* site that stamps the baseline on each incoming packet was not located in the current Ghidra pass; it likely lives upstream of `Nub::dispatchPacketWithFilter` (near `0x015816a0`) in the Nub receive entry. [citation needed — "near `0x015816a0`" is a hypothesis; an SGW-side decompile of the receive entry chain starting at that address would close this.] `processIncomingPacketEntry`[^process-incoming-entry] stamps `+0x58 / +0x5c` (used for the send-alive check), not `+0x170 / +0x174`. Confidence on the field role (low/high halves of a 64-bit rdtsc baseline): high. Confidence on the write-site location: medium — see the open question carry-over in §1.16.
 
-When the send-alive timer expires, `UnAckedHandler::sendAckBundle2` at `ghidra://SGW.exe@0x0158bbc0` builds an empty bundle with the reliable flag set, just to keep the channel alive. This is the Mercury keepalive — not a separate keepalive packet type.
+When the send-alive timer expires, `UnAckedHandler::sendAckBundle2`[^send-ack-bundle2] builds an empty bundle with the reliable flag set, just to keep the channel alive. This is the Mercury keepalive — not a separate keepalive packet type.
 
 ![Reliable delivery — send, ack-within-700ms vs timeout-retransmit vs max-retries-disconnect](figures/mercury-10-reliable-delivery-fixed.svg)
 
@@ -486,7 +486,7 @@ When the send-alive timer expires, `UnAckedHandler::sendAckBundle2` at `ghidra:/
 
 *Figure 22: how a one-byte `msg_id` selects its dispatch path — the range check splits system (`0x00–0x7F`), cell (`0x80–0xBD` with `0xBD` as extended sentinel), base (`0xC0–0xFD` with `0xFD` as extended sentinel), and reply (`0xFF`); cell calls carry an explicit entityId on the wire and base calls do not.*
 
-After packet reassembly, each interface element message in the bundle is dispatched by `Mercury::Nub::processOrderedPacket` at `ghidra://SGW.exe@0x0157c820`. The dispatch is a single lookup against the runtime `InterfaceElement` array:
+After packet reassembly, each interface element message in the bundle is dispatched by `Mercury::Nub::processOrderedPacket`[^process-ordered-packet]. The dispatch is a single lookup against the runtime `InterfaceElement` array:
 
 ```text
 InterfaceElement* elem = &nub->elements[msg_id];   // single array index by msg_id byte
@@ -504,16 +504,16 @@ Three classes of message ID exist:
 | `0xC0 – 0xFD` | Base (proxy) entity method calls (and `0xFD` extended) | Always `WORD_LENGTH` | `[msg_id][u16 length][args]` (no entityId — see callout) |
 | `0xFF` | Reply message | `WORD_LENGTH` | `[0xFF][u16 length][reply data]` |
 
-**Cell vs base: only cell methods carry an entity ID on the wire.** Per `system-protocol-wire-formats.md` §"startEntityMessage / startProxyMessage", the client emits these two call shapes from distinct code paths:
+**Cell vs base: only cell methods carry an entity ID on the wire.**[^v5-system-protocol] The client emits these two call shapes from distinct code paths:
 
-- `ServerConnection_startEntityMessage` at `ghidra://SGW.exe@0x00dd6a60` (cell, `msg_id | 0x80`): writes the `msg_id`, then `*(uint32*)channel->reserve(4) = entityId` — the 4-byte entity ID lands on the wire as the first bytes of the message body.
-- `ServerConnection_startProxyMessage` at `ghidra://SGW.exe@0x00dd6980` (base / proxy, `msg_id | 0xC0`): writes the `msg_id`, then **does not write an entity ID**. Base methods implicitly target the player's own base entity — the channel binds 1:1 to that entity, so there is nothing to disambiguate.
+- `ServerConnection_startEntityMessage`[^start-entity-message] (cell, `msg_id | 0x80`): writes the `msg_id`, then `*(uint32*)channel->reserve(4) = entityId` — the 4-byte entity ID lands on the wire as the first bytes of the message body.
+- `ServerConnection_startProxyMessage`[^start-proxy-message] (base / proxy, `msg_id | 0xC0`): writes the `msg_id`, then **does not write an entity ID**. Base methods implicitly target the player's own base entity — the channel binds 1:1 to that entity, so there is nothing to disambiguate.
 
 Cell entities can be many-per-connection (the player, vehicles, NPCs in AoI for client-controlled methods), so cell methods must name their target. Base entities are one-per-connection (the player's own base proxy), so the entity ID is redundant. Getting this wrong silently corrupts the first 4 bytes of any base-method argument list.
 
 Entity messages: the first method's `msg_id` byte encodes the method index directly (`methodId | 0x80` for cell, `methodId | 0xC0` for base). For method indices `≥ 62` (`0x3E`), the encoding switches to *extended*: the `msg_id` byte is the sentinel `0xBD` (cell) or `0xFD` (base), and an extra `u8` carrying `sub_index = methodId - 62` follows the `entityId` field (cell) or the message header (base). Method index 62 is the first index that uses extended encoding (`msg_id = 0xBD` on the wire, `sub_index = 0` in the body). The disambiguation of `msg_id = 0xBD` between "direct method index 61" and "extended sentinel for index ≥ 62" is resolved at compile time by `EntityDescription_AssignClientMethodIds` based on the entity's total method count — if the entity has fewer than 62 methods total, the parser treats `0xBD` as a direct method index; if it has 62 or more, `0xBD` is unconditionally the sentinel and the next byte is `sub_index`.
 
-The threshold = 62 claim is V5-confirmed against `entity-property-sync.md` §13 "Sub-Slot Client Method Encoding — Final Confirmation (W-entity-desc-B)": `EntityDescription_AssignClientMethodIds` at `ghidra://SGW.exe@0x01590df0` switches to sub-slot encoding when `methodCount >= 0x3e` (62). The same threshold appears in BigWorld 2.0.1's `entity_method_descriptions.cpp::checkExposedForSubSlots()`. The full sub-slot mechanism is canonized in `spec.engine.entity-description-parse-chain`; this chapter only canonizes the wire shape.
+The threshold = 62 claim is V5-confirmed[^v5-entity-property-sync]: `EntityDescription_AssignClientMethodIds`[^subslot-threshold] switches to sub-slot encoding when `methodCount >= 0x3e` (62). The same threshold appears in BigWorld 2.0.1's `entity_method_descriptions.cpp::checkExposedForSubSlots()`[^stockbw-method-desc]. The full sub-slot mechanism is canonized in `spec.engine.entity-description-parse-chain`; this chapter only canonizes the wire shape.
 
 **Worked example — direct cell-method dispatch.** A call to `onStatUpdate` (cell method index 20) on entity ID `0xCAFEBABE` with 3 bytes of arguments:
 
@@ -534,7 +534,7 @@ The threshold = 62 claim is V5-confirmed against `entity-property-sync.md` §13 
 [args...]               ← serialized args
 ```
 
-> [!NOTE] **Source-doc override.** `docs/reverse-engineering/findings/world-entry-pipeline.md` §"onClientMapLoad" tabulates `sub_index: u8 = 56` for method index 117 (computing `117 - 61`), which is off-by-one. The threshold is `0x3e = 62`, not 61 — confirmed by `entity-property-sync.md` §13 and by `external/BigWorld-2.0.1/src/.../entity_method_descriptions.cpp::checkExposedForSubSlots()`. The correct sub_index for method 117 is `117 - 62 = 55 = 0x37`, as the worked example above shows. The `world-entry-pipeline.md` value is a known transcription error inherited from an earlier (pre-W-entity-desc-B) draft and should be corrected when that doc is next revised.
+> [!NOTE] **Source-doc override.** `docs/reverse-engineering/findings/world-entry-pipeline.md`[^v5-world-entry] §"onClientMapLoad" tabulates `sub_index: u8 = 56` for method index 117 (computing `117 - 61`), which is off-by-one. The threshold is `0x3e = 62`, not 61 — confirmed by `entity-property-sync.md`[^v5-entity-property-sync] and by `external/BigWorld-2.0.1/src/.../entity_method_descriptions.cpp::checkExposedForSubSlots()`[^stockbw-method-desc]. The correct sub_index for method 117 is `117 - 62 = 55 = 0x37`, as the worked example above shows. The `world-entry-pipeline.md` value is a known transcription error inherited from an earlier (pre-W-entity-desc-B) draft and should be corrected when that doc is next revised.
 
 **Worked example — direct base-method dispatch.** A call to `playCharacter` (base method index 4) with 3 bytes of arguments. Note the absence of an entity ID — base methods target the player's own base proxy implicitly:
 
@@ -550,7 +550,7 @@ The extended encoding costs 1 extra byte per call (the sub_index byte) and is re
 
 *Figure 23: the three dispatch shapes the worked examples above use — cell-direct (`0x80–0xBC`, msg_id + word_len + entityId + args), cell-extended (`0xBD` sentinel + word_len + entityId + sub_index + args), and base-direct (`0xC0–0xFC`, no entityId on the wire).*
 
-**Reply messages** use `msg_id = 0xFF` (`REPLY_MESSAGE_IDENTIFIER`) with `WORD_LENGTH` (2-byte length prefix per `space-viewport-wire-formats.md` §"REPLY_MESSAGE (0xFF)" and §"Complete Server Message Table"). The body is the connection-handshake reply payload — V5 marks this as a Mercury protocol-level message used during the initial connection handshake, not during normal gameplay. Matching of in-game request/reply pairs travels through `Mercury::Nub::handleMessage` at `ghidra://SGW.exe@0x0157bd30`, but the V5 record does not enumerate a separate `replyId` field in the reply body — earlier drafts of this chapter assumed a stock-BW-style `[u32 length][u32 replyId]` shape that is not in the SGW evidence.
+**Reply messages** use `msg_id = 0xFF` (`REPLY_MESSAGE_IDENTIFIER`) with `WORD_LENGTH` (2-byte length prefix)[^v5-space-viewport]. The body is the connection-handshake reply payload — V5 marks this as a Mercury protocol-level message used during the initial connection handshake, not during normal gameplay. Matching of in-game request/reply pairs travels through `Mercury::Nub::handleMessage`[^nub-handle-message], but the V5 record does not enumerate a separate `replyId` field in the reply body — earlier drafts of this chapter assumed a stock-BW-style `[u32 length][u32 replyId]` shape that is not in the SGW evidence.
 
 ### 1.9 Control messages
 
@@ -566,18 +566,18 @@ A small set of system messages drives the connection's lifecycle. Each has a fix
 
 | Property | Value |
 |---|---|
-| Message ID | `0xC1` — *derived* from `1 \| 0xC0` per §1.8's base-method encoding rule. The derivation is convention-consistent (base method index 1 with the `0xC0` high-bit set) but is not independently wire-observed in current V5 evidence. Confidence: medium on the literal byte value; high on the method index (1) and the encoding rule. |
-| Message size | **8 bytes** (`CONSTANT_LENGTH = 8`) |
-| Payload | 8 bytes reserved by `startMessage_fixed`; the client does not appear to explicitly zero the buffer in V5 evidence. The server discards the payload contents (only the message arrival matters), so whether the bytes are zero, uninitialized, or stale bundle-allocator memory is not behaviorally observable from the wire. Confidence: medium on the payload-is-zero claim — earlier drafts named the field `uint64 dummy = 0`, but `world-entry-pipeline.md` only confirms that `BroadcastEntityActivation` calls `startMessage_fixed` and reserves `DAT_01ef2500->size` bytes in the bundle; no V5 evidence shows the client explicitly zeroing the reserved buffer. |
+| Message ID | `0xC1` — *derived* from `1 \| 0xC0` per §1.8's base-method encoding rule. The derivation is convention-consistent (base method index 1 with the `0xC0` high-bit set) but is not independently wire-observed in current V5 evidence. Confidence: medium on the literal byte value; high on the method index (1) and the encoding rule. [citation needed — wire-capture verification would close the literal-byte question.] |
+| Message size | **8 bytes** (`CONSTANT_LENGTH = 8`)[^enable-entities-init] |
+| Payload | 8 bytes reserved by `startMessage_fixed`; the client does not appear to explicitly zero the buffer in V5 evidence. The server discards the payload contents (only the message arrival matters), so whether the bytes are zero, uninitialized, or stale bundle-allocator memory is not behaviorally observable from the wire. Confidence: medium on the payload-is-zero claim — earlier drafts named the field `uint64 dummy = 0`, but `world-entry-pipeline.md`[^v5-world-entry] only confirms that `BroadcastEntityActivation` calls `startMessage_fixed` and reserves `DAT_01ef2500->size` bytes in the bundle; no V5 evidence shows the client explicitly zeroing the reserved buffer. |
 | Descriptor address | `DAT_01ef2500` |
-| Initializer site | `ghidra://SGW.exe@0x017bade0`–`0x017bae07` |
-| Initializer `PUSH` for size | `ghidra://SGW.exe@0x017bade9` (`PUSH 0x8`) |
-| Sender (in client) | `ServerConnection::enableEntities` / `BroadcastEntityActivation` at `ghidra://SGW.exe@0x00dd9280` |
-| Sets flag | `bEntitiesEnabled` at `ServerConnection+0x316` |
+| Initializer site | `ghidra://SGW.exe@0x017bade0`–`0x017bae07`[^enable-entities-init] |
+| Initializer `PUSH` for size | `ghidra://SGW.exe@0x017bade9` (`PUSH 0x8`)[^enable-entities-init] |
+| Sender (in client) | `ServerConnection::enableEntities` / `BroadcastEntityActivation`[^broadcast-entity-activation] |
+| Sets flag | `bEntitiesEnabled` at `ServerConnection+0x316`[^v5-world-entry] |
 
 This is the client→server signal that completes the world-entry handshake — the client tells the server "I've reset my entity state, start streaming entity creates." See `spec.world.world-entry` for the full RESET → ENABLE handshake.
 
-**Divergence:** stock BigWorld 2.0.1's `enableEntities` carries 1 byte (`uint8 dummy`) per `external/BigWorld-2.0.1/src/lib/connection/baseapp_ext_interface.hpp`:
+**Divergence:** stock BigWorld 2.0.1's `enableEntities` carries 1 byte (`uint8 dummy`)[^stockbw-baseapp-ext]:
 
 ```cpp
 MF_BEGIN_BLOCKABLE_PROXY_MSG( enableEntities )
@@ -585,13 +585,13 @@ MF_BEGIN_BLOCKABLE_PROXY_MSG( enableEntities )
 END_STRUCT_MESSAGE();
 ```
 
-SGW's `enableEntities` carries 8 bytes (`uint64 dummy`) per `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp:83`:
+SGW's `enableEntities` carries 8 bytes (`uint64 dummy`)[^cpp-messages]:
 
 ```cpp
 {Message::CONSTANT_LENGTH, 8, "ENABLE_ENTITIES", true},
 ```
 
-**This is the most-contested wire-format claim in the project's RE history.** A pre-V5 finding by W-misc-gaps initially concluded 1 byte by misreading the descriptor initializer (mistaking the `MOV DWORD PTR [EAX], 0x1` at `0x017badf7` — which writes a reliability flag into the stack-allocated argument struct — for the size field). W-enable-entities (2026-05-13) re-examined the disassembly context and confirmed the size field is the `PUSH 0x8` three instructions earlier at `0x017bade9`. The calibration check is to compare against the `resetEntities` initializer at `ghidra://SGW.exe@0x017bb200`–`0x017bb225`, which uses the identical push pattern with `PUSH 0x1` at the same stack position — and `resetEntities` is documented and confirmed as 1-byte `keepBase`. The 8-byte SGW custom size is canon.
+**This is the most-contested wire-format claim in the project's RE history.**[^v5-world-entry] A pre-V5 finding by W-misc-gaps initially concluded 1 byte by misreading the descriptor initializer (mistaking the `MOV DWORD PTR [EAX], 0x1` at `0x017badf7` — which writes a reliability flag into the stack-allocated argument struct — for the size field). W-enable-entities (2026-05-13) re-examined the disassembly context and confirmed the size field is the `PUSH 0x8` three instructions earlier at `0x017bade9`. The calibration check is to compare against the `resetEntities` initializer[^reset-entities-init], which uses the identical push pattern with `PUSH 0x1` at the same stack position — and `resetEntities` is documented and confirmed as 1-byte `keepBase`. The 8-byte SGW custom size is canon.
 
 #### `resetEntities` (system message, server → client)
 
@@ -601,14 +601,14 @@ SGW's `enableEntities` carries 8 bytes (`uint64 dummy`) per `deprecated/cpp/src/
 | Length type | `CONSTANT_LENGTH = 1` |
 | Payload | `uint8 keepBase` |
 | Descriptor table site | `0x017bb210` (registration site) |
-| Initializer | `ghidra://SGW.exe@0x017bb200`–`0x017bb225` |
-| Handler in client | `PurgeAndRebuildEntityStateLists` at `ghidra://SGW.exe@0x00dda0e0` |
+| Initializer | `ghidra://SGW.exe@0x017bb200`–`0x017bb225`[^reset-entities-init] |
+| Handler in client | `PurgeAndRebuildEntityStateLists`[^purge-rebuild-handler] |
 
-The server sends `resetEntities` to clear the client's entity-state lists; the client responds by clearing four linked-list sentinels at offsets `+0xF88`, `+0xF94`, `+0xFA0`, `+0xFB0` of its `ServerConnection` object, then auto-emits `enableEntities` via `BroadcastEntityActivation`. This RESET → ENABLE round-trip is the wire-level boundary between world-entry phase 5 and phase 6 in `spec.world.world-entry`.
+The server sends `resetEntities` to clear the client's entity-state lists; the client responds by clearing four linked-list sentinels at offsets `+0xF88`, `+0xF94`, `+0xFA0`, `+0xFB0` of its `ServerConnection` object, then auto-emits `enableEntities` via `BroadcastEntityActivation`[^broadcast-entity-activation]. This RESET → ENABLE round-trip is the wire-level boundary between world-entry phase 5 and phase 6 in `spec.world.world-entry`.
 
-> [!NOTE] **Source-doc handler-name disagreement.** `docs/reverse-engineering/findings/system-protocol-wire-formats.md` §"RESET_ENTITIES (0x04)" calls the handler at `0x00dda0e0` `Mercury__unknown_00dda0e0` — its raw decompile name. `docs/reverse-engineering/findings/world-entry-pipeline.md` calls the same function `PurgeAndRebuildEntityStateLists`, which is the role-derived name used in this chapter. Both names refer to the same Ghidra function at the same address; this chapter uses the role name because it conveys what the function does, but reviewers reading the system-protocol doc should know `Mercury__unknown_00dda0e0` and `PurgeAndRebuildEntityStateLists` are aliases for the same handler.
+> [!NOTE] **Source-doc handler-name disagreement.** `docs/reverse-engineering/findings/system-protocol-wire-formats.md`[^v5-system-protocol] §"RESET_ENTITIES (0x04)" calls the handler at `0x00dda0e0` `Mercury__unknown_00dda0e0` — its raw decompile name. `docs/reverse-engineering/findings/world-entry-pipeline.md`[^v5-world-entry] calls the same function `PurgeAndRebuildEntityStateLists`, which is the role-derived name used in this chapter. Both names refer to the same Ghidra function at the same address; this chapter uses the role name because it conveys what the function does, but reviewers reading the system-protocol doc should know `Mercury__unknown_00dda0e0` and `PurgeAndRebuildEntityStateLists` are aliases for the same handler.
 
-**Bundle-level constraint.** Per `entity-creation-wire-formats.md` §"1. RESET_ENTITIES (0x04)" and the cited C++ pattern (`bundle.beginMessage(BASEMSG_RESET_ENTITIES, Bundle::FLUSH); bundle << (uint8_t)0;`), `RESET_ENTITIES` must be sent in its own flushed bundle — the server explicitly flushes the current bundle before writing this message and flushes again immediately after, so the packet that carries `RESET_ENTITIES` carries no other messages. This is a wire-visible constraint: a packet containing `RESET_ENTITIES` should always have exactly that one interface element in its body.
+**Bundle-level constraint.**[^v5-entity-creation] The cited C++ pattern (`bundle.beginMessage(BASEMSG_RESET_ENTITIES, Bundle::FLUSH); bundle << (uint8_t)0;`) means `RESET_ENTITIES` must be sent in its own flushed bundle — the server explicitly flushes the current bundle before writing this message and flushes again immediately after, so the packet that carries `RESET_ENTITIES` carries no other messages. This is a wire-visible constraint: a packet containing `RESET_ENTITIES` should always have exactly that one interface element in its body.
 
 #### `RESOURCE_FRAGMENT` (system message, msg_id `0x36`)
 
@@ -622,15 +622,15 @@ The byte layout each fragment carries:
 
 *Figure 26: every `RESOURCE_FRAGMENT` packet carries a 4-byte header (`dataId u16 LE`, `chunkId u8`, `flags u8`) followed by either the 9-byte cooked-data prefix + XML start (first fragment, `INITIAL_FRAGMENT` bit) or a raw XML continuation (subsequent fragments).*
 
-Streams cooked-data resources (PAK fragments) from server to client. Each fragment carries one chunk of a resource that the client reassembles before passing the whole resource to the cooked-data pipeline. Full byte-level layout is canonized in `space-viewport-wire-formats.md` §"RESOURCE_FRAGMENT (0x36)".
+Streams cooked-data resources (PAK fragments) from server to client. Each fragment carries one chunk of a resource that the client reassembles before passing the whole resource to the cooked-data pipeline. Full byte-level layout is canonized in `space-viewport-wire-formats.md` §"RESOURCE_FRAGMENT (0x36)"[^v5-space-viewport].
 
 | Property | Value |
 |---|---|
 | Message ID | `0x36` |
 | Length type | `WORD_LENGTH` (`u16` LE length prefix) |
-| Handler in client | `ServerConnection_resourceFragment` at `ghidra://SGW.exe@0x00dddd80` |
-| Max fragment body | 1000 bytes (`FragmentSize` constant) |
-| Delivery CME event | `Event_Net_ProxyData` (callback ctor at `ghidra://SGW.exe@0x004269f0`) |
+| Handler in client | `ServerConnection_resourceFragment`[^resource-fragment-handler] |
+| Max fragment body | 1000 bytes (`FragmentSize` constant)[^v5-space-viewport] |
+| Delivery CME event | `Event_Net_ProxyData` (callback ctor)[^event-net-proxy-data] |
 
 **Header — present on every fragment** (4 bytes):
 
@@ -640,7 +640,7 @@ Streams cooked-data resources (PAK fragments) from server to client. Each fragme
 [flags:   u8]          1 byte  — bitfield (see below)
 ```
 
-**Flags byte bits** (from `space-viewport-wire-formats.md`):
+**Flags byte bits**:[^v5-space-viewport]
 
 | Bit | Mask | Name | Meaning |
 |---:|---|---|---|
@@ -664,12 +664,12 @@ Streams cooked-data resources (PAK fragments) from server to client. Each fragme
 [xmlBody: bytes]        var    — continuation of XML document
 ```
 
-**Two code paths** in the client handler at `0x00dddd80`:
+**Two code paths** in the client handler[^resource-fragment-handler]:
 
 1. **With `BASE_FLAG` (0x40) set** — fragment reassembly path. The client allocates fragment nodes (each `11 + bodySize` bytes), chains them in receive order per `dataId`, and triggers reassembly when `FINAL_FRAGMENT` arrives. Reassembled bytes are concatenated in reverse order (the linked list builds head-first) and delivered to the resource handler via `this+0x168 vtable[0x38]`.
 2. **Without `BASE_FLAG`** — direct delivery path. Uses semaphore-based synchronization, writes fragment bytes to a `FILE` handle, releases the semaphore on completion.
 
-**Resource category IDs** (`categoryId` field, first-fragment body) — 21 categories enumerated by `space-viewport-wire-formats.md` §"Resource Category IDs":
+**Resource category IDs** (`categoryId` field, first-fragment body) — 21 categories[^v5-space-viewport]:
 
 | ID | Category | ID | Category | ID | Category |
 |---:|---|---:|---|---:|---|
@@ -681,7 +681,7 @@ Streams cooked-data resources (PAK fragments) from server to client. Each fragme
 | 6 | `kismet_event_set` | 13 | `stargate` | 20 | `interaction` |
 | 7 | `char_creation` | 14 | `container` | | |
 
-(ID 0 is reserved.) Confidence: high — V5-confirmed via Ghidra decompilation of the handler at `0x00dddd80` plus the category-ID enumeration in `space-viewport-wire-formats.md`.
+(ID 0 is reserved.) Confidence: high — V5-confirmed via Ghidra decompilation of the handler[^resource-fragment-handler] plus the category-ID enumeration[^v5-space-viewport].
 
 #### Reply messages (`msg_id = 0xFF`)
 
@@ -689,9 +689,9 @@ Streams cooked-data resources (PAK fragments) from server to client. Each fragme
 [0xFF: u8] [length: u16 LE] [reply data: bytes]
 ```
 
-Per `space-viewport-wire-formats.md` §"REPLY_MESSAGE (0xFF)" and the §"Complete Server Message Table" entry, `REPLY_MESSAGE` is `WORD_LENGTH` (2-byte `u16` length prefix), not `DWORD_LENGTH`. The V5 doc characterizes the message as "a Mercury protocol-level message used during the initial connection handshake, not during normal gameplay." No separate `replyId` field is documented inside the reply body for SGW — the request/reply pairing for stock BigWorld's `BW_HTONL`-encoded reply IDs is not surfaced as a distinct field in the V5 evidence.
+`REPLY_MESSAGE` is `WORD_LENGTH` (2-byte `u16` length prefix), not `DWORD_LENGTH`.[^v5-space-viewport] The V5 doc characterizes the message as "a Mercury protocol-level message used during the initial connection handshake, not during normal gameplay." No separate `replyId` field is documented inside the reply body for SGW — the request/reply pairing for stock BigWorld's `BW_HTONL`-encoded reply IDs is not surfaced as a distinct field in the V5 evidence.
 
-The next-request-offset linked-list in the request packet's footer (`FLAG_HAS_FIRST_REQUEST_OFFSET` at bit 0, `firstRequestOffset` field in the footer) lets the receiver walk all request messages in a packet without having to look at message bodies. Matching of those requests with their replies travels through `Mercury::Nub::handleMessage` at `ghidra://SGW.exe@0x0157bd30`; the exact wire shape of in-game (post-handshake) reply bodies — if any are emitted at all in SGW's running protocol — is not enumerated in the current V5 record.
+The next-request-offset linked-list in the request packet's footer (`FLAG_HAS_FIRST_REQUEST_OFFSET` at bit 0, `firstRequestOffset` field in the footer) lets the receiver walk all request messages in a packet without having to look at message bodies. Matching of those requests with their replies travels through `Mercury::Nub::handleMessage`[^nub-handle-message]; the exact wire shape of in-game (post-handshake) reply bodies — if any are emitted at all in SGW's running protocol — is not enumerated in the current V5 record.
 
 #### 1.9.1 `bandwidthNotification` (server → client, msg_id `0x01`)
 
@@ -702,20 +702,20 @@ The advertised maximum bandwidth from server to client. SGW does not consume the
 | Message ID | `0x01` |
 | Length type | `CONSTANT_LENGTH = 4` |
 | Payload size | 4 bytes (no length prefix on the wire — fixed) |
-| Handler in client | `ClientMessageHandler<bandwidthNotificationArgs>` (RTTI at `0x01e52088` per `space-viewport-wire-formats.md` §"BANDWIDTH_NOTIFICATION (0x01)") |
+| Handler in client | `ClientMessageHandler<bandwidthNotificationArgs>` (RTTI at `0x01e52088`)[^v5-space-viewport] |
 | Trigger (server) | During connection setup, before entity-system init |
 | Notable behavior | Not used by SGW — the client has no bandwidth mutator wired up |
 
-**Wire layout** per `space-viewport-wire-formats.md` §"BANDWIDTH_NOTIFICATION (0x01)":
+**Wire layout**:[^v5-space-viewport]
 
 ```text
 [msg_id:    0x01]    1 byte
 [bandwidth: u32 LE]  4 bytes  — max bandwidth in bps (server source: `messages.cpp:134` writes a single u32)
 ```
 
-The server's emit site at `messages.cpp:134` is a single `bundle << (uint32_t)bandwidth;` write. SGW carries the message through the dispatch table for parity with stock BigWorld but the templated handler at RTTI `0x01e52088` has no game-layer side effect — the value is read off the wire and discarded.
+The server's emit site at `messages.cpp:134`[^cpp-messages] is a single `bundle << (uint32_t)bandwidth;` write. SGW carries the message through the dispatch table for parity with stock BigWorld but the templated handler at RTTI `0x01e52088` has no game-layer side effect — the value is read off the wire and discarded.
 
-Confidence: high for the wire layout and length type; high for the "not used by SGW" claim per `space-viewport-wire-formats.md` §"BANDWIDTH_NOTIFICATION (0x01)" which states "Not used by SGW (no bandwidth mutator)".
+Confidence: high for the wire layout and length type; high for the "not used by SGW" claim per `space-viewport-wire-formats.md`[^v5-space-viewport] which states "Not used by SGW (no bandwidth mutator)".
 
 #### 1.9.2 `updateFrequencyNotification` (server → client, msg_id `0x02`)
 
@@ -726,17 +726,17 @@ The server's tick resolution advertised to the client at connection setup. The s
 | Message ID | `0x02` |
 | Length type | `CONSTANT_LENGTH = 1` |
 | Payload size | 1 byte (no length prefix on the wire — fixed) |
-| Handler in client | `ClientMessageHandler<updateFrequencyNotificationArgs>` (RTTI at `0x01e520e0` per `space-viewport-wire-formats.md` §"UPDATE_FREQUENCY_NOTIFICATION (0x02)") |
+| Handler in client | `ClientMessageHandler<updateFrequencyNotificationArgs>` (RTTI at `0x01e520e0`)[^v5-space-viewport] |
 | Trigger (server) | First message after connection setup |
 
-**Wire layout** per `space-viewport-wire-formats.md` §"UPDATE_FREQUENCY_NOTIFICATION (0x02)":
+**Wire layout**:[^v5-space-viewport]
 
 ```text
 [msg_id:     0x02]   1 byte
 [resolution: u8]     1 byte  — ticks per second (typically `1000 / tickRate = 10`)
 ```
 
-The server's emit site at `client_handler.cpp:46-53` computes `uint8_t updateFreq = (1000 / CellManager::instance().tickRate());` and writes the result as a single byte. The client uses this to derive the size of the game-time delta carried by `TICK_SYNC` (§1.9.4) and `SET_GAME_TIME` (§1.9.3).
+The server's emit site at `client_handler.cpp:46-53`[^cpp-client-handler] computes `uint8_t updateFreq = (1000 / CellManager::instance().tickRate());` and writes the result as a single byte. The client uses this to derive the size of the game-time delta carried by `TICK_SYNC` (§1.9.4) and `SET_GAME_TIME` (§1.9.3).
 
 Confidence: high for the wire layout, length type, and tick-rate derivation (templated handler + explicit C++ emit source).
 
@@ -749,20 +749,20 @@ The current game-time tick counter, sent during the connection setup sequence (i
 | Message ID | `0x03` |
 | Length type | `CONSTANT_LENGTH = 4` |
 | Payload size | 4 bytes (no length prefix on the wire — fixed) |
-| Handler in client | `ClientMessageHandler<setGameTimeArgs>` (RTTI at `0x01e52138`; templated message — see `system-protocol-wire-formats.md` §"TICK_SYNC (0x0D) and SET_GAME_TIME (0x03) -- RTTI Evidence") |
-| Descriptor table site | `0x017bb180` (registration site for `setGameTime` per `system-protocol-wire-formats.md` §"Registration Name Strings") |
+| Handler in client | `ClientMessageHandler<setGameTimeArgs>` (RTTI at `0x01e52138`; templated message)[^v5-system-protocol] |
+| Descriptor table site | `0x017bb180` (registration site for `setGameTime`)[^v5-system-protocol] |
 | Trigger (server) | During connection setup, immediately after `TICK_SYNC` |
 
-**Wire layout** per `space-viewport-wire-formats.md` §"SET_GAME_TIME (0x03)":
+**Wire layout**:[^v5-space-viewport]
 
 ```text
 [msg_id:   0x03]      1 byte
 [gameTime: u32 LE]    4 bytes  — current game time in ticks (resolution set by `updateFrequencyNotification`, §1.9.2)
 ```
 
-The server's emit site at `client_handler.cpp:61-63` is a single `bundle << (uint32_t)ticks;` write. Because SGW uses templated `ClientMessageHandler<setGameTimeArgs>` rather than a standalone named handler function, there is no Ghidra anchor for a handler-side decode — the dispatch is inlined and the arg struct is a direct memcpy of the 4 payload bytes.
+The server's emit site at `client_handler.cpp:61-63`[^cpp-client-handler] is a single `bundle << (uint32_t)ticks;` write. Because SGW uses templated `ClientMessageHandler<setGameTimeArgs>` rather than a standalone named handler function, there is no Ghidra anchor for a handler-side decode — the dispatch is inlined and the arg struct is a direct memcpy of the 4 payload bytes.
 
-Confidence: high for the wire layout and length type; high for the "immediately after `TICK_SYNC`" ordering per `space-viewport-wire-formats.md`.
+Confidence: high for the wire layout and length type; high for the "immediately after `TICK_SYNC`" ordering[^v5-space-viewport].
 
 #### 1.9.4 `tickSync` (server → client, msg_id `0x0D`)
 
@@ -773,11 +773,11 @@ Heartbeat sent at the configured tick rate (10 Hz default — every 100ms). Carr
 | Message ID | `0x0D` |
 | Length type | `CONSTANT_LENGTH = 8` |
 | Payload size | 8 bytes (no length prefix on the wire — fixed) |
-| Handler in client | `ClientMessageHandler<tickSyncArgs>` (RTTI at `0x01e52270`; templated — see `system-protocol-wire-formats.md` §"TICK_SYNC (0x0D) and SET_GAME_TIME (0x03) -- RTTI Evidence") |
-| Descriptor table site | `0x017bb720` (registration site for `tickSync` per `system-protocol-wire-formats.md` §"Registration Name Strings") |
+| Handler in client | `ClientMessageHandler<tickSyncArgs>` (RTTI at `0x01e52270`; templated)[^v5-system-protocol] |
+| Descriptor table site | `0x017bb720` (registration site for `tickSync`)[^v5-system-protocol] |
 | Trigger (server) | Every game tick (10 Hz default); also sent on the unreliable channel if `unreliable_tick_sync = true` |
 
-**Wire layout** per `entity-creation-wire-formats.md` §"8. TICK_SYNC (0x0D)" and `space-viewport-wire-formats.md` §"TICK_SYNC (0x0D)":
+**Wire layout**:[^v5-entity-creation][^v5-space-viewport]
 
 ```text
 [msg_id:   0x0D]     1 byte
@@ -785,7 +785,7 @@ Heartbeat sent at the configured tick rate (10 Hz default — every 100ms). Carr
 [tickRate: u32 LE]   4 bytes  — tick interval in milliseconds (typically 100 = 10 Hz)
 ```
 
-The server's emit site at `client_handler.cpp:486-488`:
+The server's emit site at `client_handler.cpp:486-488`[^cpp-client-handler]:
 
 ```cpp
 bundle.beginMessage(BASEMSG_TICK_SYNC);
@@ -799,18 +799,18 @@ Confidence: high for the wire layout, length type, and emit cadence.
 
 #### 1.9.5 `restoreClient` (server → client, msg_id `0x34`)
 
-The server tells the client to restore its local state to a previously known snapshot — entity ID, space, vehicle binding, position, velocity, direction. Used by the deprecated server during BaseApp restart or similar fault-recovery scenarios. Marked "Untested" in `space-viewport-wire-formats.md` §"Complete Server Message Table"; the client decompile is documented but observed traffic does not include this message in normal gameplay.
+The server tells the client to restore its local state to a previously known snapshot — entity ID, space, vehicle binding, position, velocity, direction. Used by the deprecated server during BaseApp restart or similar fault-recovery scenarios. Marked "Untested" in `space-viewport-wire-formats.md`[^v5-space-viewport]; the client decompile is documented but observed traffic does not include this message in normal gameplay.
 
 | Property | Value |
 |---|---|
 | Message ID | `0x34` |
 | Length type | `WORD_LENGTH` (`u16` LE length prefix) |
 | Payload size | Variable; the canonical 48-byte body is documented below |
-| Handler in client | `ServerConnection_restoreClient` at `ghidra://SGW.exe@0x00dd8ae0` |
+| Handler in client | `RehydrateClientFromMessage`[^restore-client-handler] (V5 alias: `ServerConnection_restoreClient`) |
 | Trigger (server) | BaseApp / cell restoration (server-side fault recovery) |
 | Notable behavior | Client auto-emits a `restoreClientAck` reply on receipt |
 
-**Wire layout** per `system-protocol-wire-formats.md` §"RESTORE_CLIENT (0x34) -- Client State Restore" and `space-viewport-wire-formats.md` §"RESTORE_CLIENT (0x34)":
+**Wire layout**:[^v5-system-protocol][^v5-space-viewport]
 
 ```text
 [msg_id:    0x34]       1 byte
@@ -823,9 +823,9 @@ The server tells the client to restore its local state to a previously known sna
 [velocity:  3 × f32 LE] 12 bytes  — velocity Vec3 (X, Y, Z), the remainder of the stream after position
 ```
 
-The handler at `0x00dd8ae0` reads the four scalars and two of the three Vec3s explicitly (`entityId`, `spaceId`, `vehicleId`, direction-block via `stream.read(12)`, position via `FUN_015846a0`), and the trailing `velocity` Vec3 is what the client decompile in `space-viewport-wire-formats.md` lists as the third Vec3 field at offset 36. Note that the V5 evidence for the read order is unambiguous (direction before position), but `space-viewport-wire-formats.md`'s table at §"RESTORE_CLIENT (0x34)" labels the offsets `position, velocity, direction` in their byte order on the wire — both views are consistent: the wire byte order is `entityId, spaceId, vehicleId, direction, position, velocity` even though the C++ reader reads them in a different sequence.
+The handler[^restore-client-handler] reads the four scalars and two of the three Vec3s explicitly (`entityId`, `spaceId`, `vehicleId`, direction-block via `stream.read(12)`, position via `FUN_015846a0`[^rotation-reader]), and the trailing `velocity` Vec3 is what the client decompile[^v5-space-viewport] lists as the third Vec3 field at offset 36. Note that the V5 evidence for the read order is unambiguous (direction before position), but `space-viewport-wire-formats.md`'s table[^v5-space-viewport] labels the offsets `position, velocity, direction` in their byte order on the wire — both views are consistent: the wire byte order is `entityId, spaceId, vehicleId, direction, position, velocity` even though the C++ reader reads them in a different sequence.
 
-**Auto-reply mechanic.** Per `system-protocol-wire-formats.md` §"RESTORE_CLIENT (0x34)" the handler at `0x00dd8ae0` auto-emits a `restoreClientAck` message back to the server before returning:
+**Auto-reply mechanic.**[^v5-system-protocol] The handler[^restore-client-handler] auto-emits a `restoreClientAck` message back to the server before returning:
 
 ```c
 if (*(int*)(this + 0x30c) != 0) {
@@ -836,13 +836,13 @@ if (*(int*)(this + 0x30c) != 0) {
 }
 ```
 
-The ack descriptor at `DAT_01ef250c` carries a fixed 4-byte body whose payload is always `0u32` — the server uses the ack's *arrival* (not its contents) as the signal that the client has accepted the restore. A reimplementation must register the ack-reply path; emitting `RESTORE_CLIENT` to a Rust client that does not auto-reply will not crash the server but will leave the server's restore handshake permanently incomplete.
+The ack descriptor at `DAT_01ef250c`[^restore-client-ack-descriptor] carries a fixed 4-byte body whose payload is always `0u32` — the server uses the ack's *arrival* (not its contents) as the signal that the client has accepted the restore. A reimplementation must register the ack-reply path; emitting `RESTORE_CLIENT` to a Rust client that does not auto-reply will not crash the server but will leave the server's restore handshake permanently incomplete.
 
 ![restoreClient + auto-emitted restoreClientAck reply on the same channel](figures/mercury-33-restoreclient-autoreply.svg)
 
 *Figure 27: the `restoreClient` round-trip — server sends the 48-byte snapshot, the client's handler at `0x00dd8ae0` restores local state, then unconditionally writes a 4-byte `restoreClientAck` (payload `u32 = 0`) back through `Mercury_Channel_2` and flushes; the server uses ack arrival, not its contents, as the completion signal.*
 
-Confidence: high for the wire layout, length type, and auto-reply mechanic; medium for the SGW runtime emit path because the V5 record marks the message "Untested" — the byte format is fully decompiled but observed pcaps of an actual restore scenario are not in the V5 record.
+Confidence: high for the wire layout, length type, and auto-reply mechanic; medium for the SGW runtime emit path because the V5 record marks the message "Untested"[^v5-space-viewport] — the byte format is fully decompiled but observed pcaps of an actual restore scenario are not in the V5 record.
 
 #### 1.9.6 `loggedOff` (server → client, msg_id `0x37`)
 
@@ -853,11 +853,11 @@ The server-initiated forced disconnect. The 1-byte payload carries the reason co
 | Message ID | `0x37` |
 | Length type | `CONSTANT_LENGTH = 1` |
 | Payload size | 1 byte (no length prefix on the wire — fixed) |
-| Handler in client | `ServerConnection_loggedOff` at `ghidra://SGW.exe@0x00dd8c20` |
+| Handler in client | `HandleServerDisconnect`[^logged-off-handler] (V5 alias: `ServerConnection_loggedOff`) |
 | Trigger (server) | Forcible disconnect — admin kick, server shutdown, idle timeout, auth revocation |
-| Notable behavior | Client tears down connection silently — `sendDisconnectMsg = false` in the call to the disconnect handler at `0x00dd8630` |
+| Notable behavior | Client tears down connection silently — `sendDisconnectMsg = false` in the call to the disconnect handler[^disconnect-handler] |
 
-**Wire layout** per `space-viewport-wire-formats.md` §"LOGGED_OFF (0x37)" and `system-protocol-wire-formats.md` §"LOGGED_OFF (0x37)":
+**Wire layout**:[^v5-space-viewport][^v5-system-protocol]
 
 ```text
 [msg_id: 0x37]   1 byte
@@ -874,7 +874,7 @@ void __fastcall ServerConnection_loggedOff(void *param_1)
 }
 ```
 
-The single-byte `reason` is read at `0x00dd8c2f` as `MOVZX EDX, byte ptr [ECX]` (zero-extended for the printf log) and discarded after logging — the client does not branch on the value. The disconnect handler at `0x00dd8630` destroys the connection object at `+0x30c`, frees pending resource requests, and clears the handler pointer at `+0x168`. The `\0` second argument means "do not send a DISCONNECT message back" — a reimplementation does not need to read a courtesy reply on this channel.
+The single-byte `reason` is read at `0x00dd8c2f` as `MOVZX EDX, byte ptr [ECX]` (zero-extended for the printf log)[^logged-off-handler] and discarded after logging — the client does not branch on the value. The disconnect handler[^disconnect-handler] destroys the connection object at `+0x30c`, frees pending resource requests, and clears the handler pointer at `+0x168`. The `\0` second argument means "do not send a DISCONNECT message back" — a reimplementation does not need to read a courtesy reply on this channel.
 
 Confidence: high for the wire layout, length type, and "silent teardown" behavior.
 
@@ -897,10 +897,10 @@ The first entity message the server sends after auth. Creates the player's base-
 | Message ID | `0x05` |
 | Length type | `WORD_LENGTH` |
 | Payload size | 6 bytes (`word_len = 6`) |
-| Handler in client | `ServerConnection_CreateBasePlayer` at `ghidra://SGW.exe@0x00dddca0` |
-| Trigger event (client) | `Event_NetOut_PlayCharacter` (CME string at `0x019bf4f8`) |
+| Handler in client | `ServerConnection_CreateBasePlayer`[^create-base-player-handler] |
+| Trigger event (client) | `Event_NetOut_PlayCharacter` (CME string at `0x019bf4f8`)[^cme-playchar] |
 
-**Wire layout** per `entity-creation-wire-formats.md` §"2. CREATE_BASE_PLAYER (0x05)" and `system-protocol-wire-formats.md` §"CREATE_BASE_PLAYER (0x05) -- Stream Read Details":
+**Wire layout**:[^v5-entity-creation][^v5-system-protocol]
 
 ```text
 [msg_id:    0x05]        1 byte
@@ -909,15 +909,15 @@ The first entity message the server sends after auth. Creates the player's base-
 [classId:   u16 LE]      2 bytes  — entity class index (low byte = classId; high byte = 0 = propCount)
 ```
 
-**`classId` width — settled at u16 from the client's read, with a layered server-source aside.** The client decompilation in `system-protocol-wire-formats.md` is explicit: `PUSH 0x2; MOV ECX, ESI; CALL EAX; MOVZX EAX, word ptr [EAX]` — the handler at `ghidra://SGW.exe@0x00dddca0` reads 2 bytes and zero-extends them as a `u16`. That is the wire contract.
+**`classId` width — settled at u16 from the client's read, with a layered server-source aside.** The client decompilation[^v5-system-protocol] is explicit: `PUSH 0x2; MOV ECX, ESI; CALL EAX; MOVZX EAX, word ptr [EAX]` — the handler[^create-base-player-handler] reads 2 bytes and zero-extends them as a `u16`. That is the wire contract.
 
-The C++ server source visible in `entity-creation-wire-formats.md` §"2. CREATE_BASE_PLAYER" emits the same 2 bytes as `(uint8_t)classDef()->index() << (uint8_t)0` — a `u8 classId` followed by a `u8 propCount`. At world entry `propCount` is always 0, so the high byte of the `u16` the client reads is always 0, and the wire-level `u16` value equals the original `u8 classId`. Both descriptions are simultaneously true at different abstraction layers: the wire field is `u16`, and the server happens to compose it as `(u8 classId)(u8 propCount = 0)`. Earlier drafts of this chapter framed the two as competing interpretations; the V5 evidence resolves them as the same shape viewed from different ends of the pipe.
+The C++ server source visible in `entity-creation-wire-formats.md`[^v5-entity-creation] emits the same 2 bytes as `(uint8_t)classDef()->index() << (uint8_t)0` — a `u8 classId` followed by a `u8 propCount`. At world entry `propCount` is always 0, so the high byte of the `u16` the client reads is always 0, and the wire-level `u16` value equals the original `u8 classId`. Both descriptions are simultaneously true at different abstraction layers: the wire field is `u16`, and the server happens to compose it as `(u8 classId)(u8 propCount = 0)`. Earlier drafts of this chapter framed the two as competing interpretations; the V5 evidence resolves them as the same shape viewed from different ends of the pipe.
 
 Confidence: high.
 
-**Divergence from stock BigWorld 2.0.1.** Stock BW's `createBasePlayer` per `external/BigWorld-2.0.1/src/lib/connection/baseapp_ext_interface.hpp` carries an `EntityID entityID; EntityTypeID type;` pair where `EntityTypeID` is `uint16`. SGW's wire-level layout is identical — a `u32 entityId` followed by a `u16` class field. The divergence is not in the wire bytes but in the server's C++ emit style: SGW's server source writes the `u16` as two adjacent `u8` writes (`classId` then `propCount`) rather than a single `u16` write. The client decodes the same two bytes either way; this is a code-style divergence rather than a wire-format divergence. Roll-up entry in §1.13 reflects this.
+**Divergence from stock BigWorld 2.0.1.** Stock BW's `createBasePlayer`[^stockbw-baseapp-ext] carries an `EntityID entityID; EntityTypeID type;` pair where `EntityTypeID` is `uint16`. SGW's wire-level layout is identical — a `u32 entityId` followed by a `u16` class field. The divergence is not in the wire bytes but in the server's C++ emit style: SGW's server source writes the `u16` as two adjacent `u8` writes (`classId` then `propCount`) rather than a single `u16` write. The client decodes the same two bytes either way; this is a code-style divergence rather than a wire-format divergence. Roll-up entry in §1.13 reflects this.
 
-**Out-of-order arrival is tolerated.** The client's `createBasePlayer` handler at `ghidra://SGW.exe@0x00dddca0` checks `ServerConnection+0xfdc` (the `cellPlayerBuffer_` field, per `system-protocol-wire-formats.md` §"ServerConnection Field Map") for a buffered `createCellPlayer` message. If `createCellPlayer` (msg_id `0x06`, see §1.10.2) arrived earlier in the same Mercury bundle — before the entity that `createCellPlayer` targets had been registered via `createBasePlayer` — the cell-side payload is stashed in `+0xfdc` and replayed once the base entity is registered. The debug string `"ServerConnection::createBasePlayer: Playing buffered createCellPlayer message"` is emitted when the buffered playback fires. This is a wire-format-relevant ordering invariant: a reimplementation that requires strict `createBasePlayer → createCellPlayer` arrival order on the wire is wrong; the protocol is robust to either order within a single bundle, and the client side handles the reorder. SGW's server typically emits the two in the canonical order (base before cell), so the buffering path is exercised mainly under packet loss + retransmission edge cases.
+**Out-of-order arrival is tolerated.** The client's `createBasePlayer` handler[^create-base-player-handler] checks `ServerConnection+0xfdc` (the `cellPlayerBuffer_` field)[^v5-system-protocol] for a buffered `createCellPlayer` message.[^v5-entity-creation] If `createCellPlayer` (msg_id `0x06`, see §1.10.2) arrived earlier in the same Mercury bundle — before the entity that `createCellPlayer` targets had been registered via `createBasePlayer` — the cell-side payload is stashed in `+0xfdc` and replayed once the base entity is registered. The debug string `"ServerConnection::createBasePlayer: Playing buffered createCellPlayer message"` is emitted when the buffered playback fires. This is a wire-format-relevant ordering invariant: a reimplementation that requires strict `createBasePlayer → createCellPlayer` arrival order on the wire is wrong; the protocol is robust to either order within a single bundle, and the client side handles the reorder. SGW's server typically emits the two in the canonical order (base before cell), so the buffering path is exercised mainly under packet loss + retransmission edge cases.
 
 #### 1.10.2 `createCellPlayer` — cell proxy creation (server → client, msg_id `0x06`)
 
@@ -932,10 +932,10 @@ The server sends this after the client emits `enableEntities` (see §1.9). Creat
 | Message ID | `0x06` |
 | Length type | `WORD_LENGTH` |
 | Payload size | 32 bytes (`word_len = 32`) |
-| Handler in client | `ServerConnection_CreateCellPlayer` at `ghidra://SGW.exe@0x00dda2e0` |
-| Rotation reader (internal) | `FUN_015846a0` |
+| Handler in client | `ServerConnection_CreateCellPlayer`[^create-cell-player-handler] |
+| Rotation reader (internal) | `FUN_015846a0`[^rotation-reader] |
 
-**Wire layout** per `world-entry-pipeline.md` §"CREATE_CELL_PLAYER":
+**Wire layout**:[^v5-world-entry]
 
 ```text
 [msg_id:     0x06]        1 byte
@@ -952,9 +952,9 @@ The server sends this after the client emits `enableEntities` (see §1.9). Creat
 
 **Y/Z rotation swap — confirmed.** SGW's rotation triplet is written in the order `rotX, rotZ, rotY` — a deliberate divergence from stock BigWorld's `Direction3D` ordering (`roll, pitch, yaw`). The swap is confirmed three ways:
 
-1. `world-entry-pipeline.md` §"Audit Findings vs `world-entry-phases.md`": "CREATE_CELL_PLAYER rotation: X, Z, Y (Y/Z swapped) — CONFIRMED via `FUN_015846a0` rotation reader."
-2. The internal `FUN_015846a0` rotation reader applies the X-Z-Y ordering at parse time (Ghidra-confirmed).
-3. The legacy `deprecated/cpp/src/baseapp/mercury/sgw/client_handler.cpp` pattern emits `rotX << rotZ << rotY` for this message, mirroring the same ordering at the server side.
+1. `world-entry-pipeline.md` §"Audit Findings vs `world-entry-phases.md`"[^v5-world-entry]: "CREATE_CELL_PLAYER rotation: X, Z, Y (Y/Z swapped) — CONFIRMED via `FUN_015846a0` rotation reader."
+2. The internal `FUN_015846a0` rotation reader[^rotation-reader] applies the X-Z-Y ordering at parse time (Ghidra-confirmed).
+3. The legacy `deprecated/cpp/src/baseapp/mercury/sgw/client_handler.cpp`[^cpp-client-handler] pattern emits `rotX << rotZ << rotY` for this message, mirroring the same ordering at the server side.
 
 Confidence: high.
 
@@ -969,10 +969,10 @@ The server-pushed space metadata channel. Carries a `(spaceId, spaceEntryId, key
 | Message ID | `0x07` |
 | Length type | `WORD_LENGTH` (`u16` LE length prefix) |
 | Payload size | Variable; minimum 14 bytes (header before the value string) |
-| Handler in client | `ServerConnection_spaceData` at `ghidra://SGW.exe@0x00dda540` |
-| Notable behavior | Unused in current SGW builds (per `space-viewport-wire-formats.md` §"SPACE_DATA (0x07)") |
+| Handler in client | `ProcessSpaceDataMessage`[^space-data-handler] (V5 alias: `ServerConnection_spaceData`) |
+| Notable behavior | Unused in current SGW builds[^v5-space-viewport] |
 
-**Wire layout** per `space-viewport-wire-formats.md` §"SPACE_DATA (0x07)":
+**Wire layout**:[^v5-space-viewport]
 
 ```text
 [msg_id:       0x07]      1 byte
@@ -983,7 +983,7 @@ The server-pushed space metadata channel. Carries a `(spaceId, spaceEntryId, key
 [value:        bytes]     var      — remaining payload bytes interpreted as the value string
 ```
 
-The handler at `0x00dda540` reads the four scalars via four `stream.read(...)` calls (`read(4)` for `spaceId`, `read(8)` for `spaceEntryId`, `read(2)` for `key`) and then consumes the remaining bytes as the `value` string. The debug string `"ServerConnection::spaceData: space %d key %d"` is emitted on receipt. The C++ server source in `messages.cpp:189-190` registers the message as `WORD_LENGTH` and documents the field set as `SpaceID, SpaceEntryID, Key, Value`.
+The handler[^space-data-handler] reads the four scalars via four `stream.read(...)` calls (`read(4)` for `spaceId`, `read(8)` for `spaceEntryId`, `read(2)` for `key`) and then consumes the remaining bytes as the `value` string. The debug string `"ServerConnection::spaceData: space %d key %d"` is emitted on receipt. The C++ server source in `messages.cpp:189-190`[^cpp-messages] registers the message as `WORD_LENGTH` and documents the field set as `SpaceID, SpaceEntryID, Key, Value`.
 
 Because SGW's running protocol replaces this message with the `onClientMapLoad` cell-method RPC, a reimplementation does not need to emit `spaceData` to drive any client-visible behavior. Pin to high confidence on the wire layout; high confidence on the "unused" status per the V5 doc; the precise circumstances under which the deprecated server *would* have emitted this message are not enumerated in V5 evidence and remain out of scope for this chapter.
 
@@ -996,9 +996,9 @@ Tells the client which entity (its own player) is bound to which space viewport.
 | Message ID | `0x08` |
 | Length type | `CONSTANT_LENGTH = 13` |
 | Payload size | 13 bytes (no length prefix on the wire — fixed) |
-| Handler in client | `ServerConnection_SpaceViewportInfo` at `ghidra://SGW.exe@0x00dda6c0` |
+| Handler in client | `ProcessSpaceViewportInfo`[^space-viewport-info-handler] (V5 alias: `ServerConnection_SpaceViewportInfo`) |
 
-**Wire layout** per `entity-creation-wire-formats.md` §"4. SPACE_VIEWPORT_INFO (0x08)" and `space-viewport-wire-formats.md` §"SPACE_VIEWPORT_INFO (0x08)":
+**Wire layout**:[^v5-entity-creation][^v5-space-viewport]
 
 ```text
 [msg_id:     0x08]    1 byte
@@ -1008,11 +1008,11 @@ Tells the client which entity (its own player) is bound to which space viewport.
 [viewportId: u8  = 0] 1 byte    — viewport index (always 0 in SGW)
 ```
 
-**Decompile-level naming ambiguity.** The C++ server source in `entity-creation-wire-formats.md` §"SPACE_VIEWPORT_INFO" emits the first u32 as `entityId` (the controlling entity, typically the player). The client decompile of `ServerConnection_SpaceViewportInfo` at `0x00dda6c0` labels this field `field0 (u32) — gate/unknown` and treats it as opaque except for storage at `puVar5+0`. Wire-level byte position and width are unambiguous (`u32 LE` at offset 1); the semantic role is inherited from the server source rather than verified independently from the client side. The chapter uses the server-source label for clarity.
+**Decompile-level naming ambiguity.** The C++ server source[^v5-entity-creation] emits the first u32 as `entityId` (the controlling entity, typically the player). The client decompile of the handler[^space-viewport-info-handler] labels this field `field0 (u32) — gate/unknown` and treats it as opaque except for storage at `puVar5+0`. Wire-level byte position and width are unambiguous (`u32 LE` at offset 1); the semantic role is inherited from the server source rather than verified independently from the client side. The chapter uses the server-source label for clarity.
 
 The two entity-ID fields are stock-BigWorld's *viewport-owner* + *viewport-target* pair: the owner is the entity owning the viewport (typically the local player); the target is the entity the viewport is anchored to (usually the same as the owner, but in stock BW different when one entity observes another — spectator camera, replay viewer, GM-overseen client).
 
-**Open vs close semantics — driven by `entityId2`.** Per `entity-creation-wire-formats.md` §"Viewport Operations" and the corroborating §"Operations" table in `space-viewport-wire-formats.md`:
+**Open vs close semantics — driven by `entityId2`.**[^v5-entity-creation][^v5-space-viewport]
 
 | `entityId2` value | Behavior |
 |---|---|
@@ -1034,10 +1034,10 @@ The wire-level message that announces a non-player entity entering the client's 
 | Message ID | `0x09` |
 | Length type | `WORD_LENGTH` (`u16` LE length prefix) |
 | Payload size | 5 bytes (`word_len = 5`) |
-| Handler in client | Via entity-message dispatch — no standalone Ghidra-anchored handler in `space-viewport-wire-formats.md` |
+| Handler in client | Via entity-message dispatch — no standalone Ghidra-anchored handler[^v5-space-viewport] |
 | Trigger (server) | Entity enters the player's AoI; immediately followed by `UPDATE_AVATAR (0x10)` to deliver initial position |
 
-**Wire layout** per `entity-creation-wire-formats.md` §"6. CREATE_ENTITY (0x09)" and `space-viewport-wire-formats.md` §"CREATE_ENTITY (0x09)":
+**Wire layout**:[^v5-entity-creation][^v5-space-viewport]
 
 ```text
 [msg_id:    0x09]     1 byte
@@ -1051,7 +1051,7 @@ The wire-level message that announces a non-player entity entering the client's 
 [unknown2:  u8 = 0]   1 byte    — always zero in observed traffic
 ```
 
-The C++ server source at `client_handler.cpp:497-499`:
+The C++ server source at `client_handler.cpp:497-499`[^cpp-client-handler]:
 
 ```cpp
 bundle.beginMessage(BASEMSG_CREATE_ENTITY);
@@ -1082,7 +1082,7 @@ The full byte-by-byte canonical layout, the previous-position-reference correcti
 | Message ID | `0x31` |
 | Length type | `CONSTANT_LENGTH = 49` |
 | Payload size | 49 bytes (no length prefix on the wire — fixed) |
-| Handler in client | `ServerConnection_ForcedPosition` at `ghidra://SGW.exe@0x00dd9ee0` |
+| Handler in client | `ProcessForcedEntityPosition`[^forced-pos-handler] (V5 alias: `ServerConnection_ForcedPosition`) |
 
 **Field summary** (per `spec.protocol.position-updates` §1.4.1):
 
@@ -1097,13 +1097,13 @@ The full byte-by-byte canonical layout, the previous-position-reference correcti
 [physics:   u8]          1 byte    — physics/movement mode (`0x01` at world entry)
 ```
 
-> [!NOTE] **Source-doc override: V5 docs label the 12 bytes at offsets 24-35 as `velocity` — that label is wrong.** Three V5 docs carry the mislabel (`position-movement-wire-formats.md` §"forcedPosition (msg_id 0x31, 49 bytes)", `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)", `space-viewport-wire-formats.md` §"FORCED_POSITION (0x31)"); this chapter and `spec.protocol.position-updates` §1.4.2 both override all three. Game-archaeology Ghidra pass (2026-05-14) on `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` shows the 12-byte block at struct offset `+0x18` is passed as a **pointer** (via `LEA EAX, [ESI+0x18]`) to the internal `PackageAndSendEntityMove` helper as its `pOrientation` argument, which then copies the block verbatim into `pPrevPos` (aliased to `pPosition`). That is the previous-position-snapshot pattern used by BigWorld's client-side delta-compression of the retransmitted move — not a velocity vector. The "zeros at world entry" observation reflects there being no prior position to delta from, not a semantic claim about velocity. See `spec.protocol.position-updates` §1.4.2 for the full Ghidra evidence chain.
+> [!NOTE] **Source-doc override: V5 docs label the 12 bytes at offsets 24-35 as `velocity` — that label is wrong.** Three V5 docs carry the mislabel ([^v5-position-movement], [^v5-entity-creation], [^v5-space-viewport]); this chapter and `spec.protocol.position-updates` §1.4.2 both override all three. Game-archaeology Ghidra pass[^game-archaeology-2026-05-14] on `ProcessForcedEntityPosition`[^forced-pos-handler] shows the 12-byte block at struct offset `+0x18` is passed as a **pointer** (via `LEA EAX, [ESI+0x18]`) to the internal `PackageAndSendEntityMove` helper as its `pOrientation` argument, which then copies the block verbatim into `pPrevPos` (aliased to `pPosition`). That is the previous-position-snapshot pattern used by BigWorld's client-side delta-compression of the retransmitted move — not a velocity vector. The "zeros at world entry" observation reflects there being no prior position to delta from, not a semantic claim about velocity. See `spec.protocol.position-updates` §1.4.2 for the full Ghidra evidence chain.
 
-**The trailing byte is `physics`, not a generic flags field.** Per `position-movement-wire-formats.md` §"Field Notes" the byte at offset 48 "encodes the current physics mode (walking, flying, swimming, etc.). Stored per-entity in `sentPhysics_[]`." The world-entry C++ emit path (`client_handler.cpp:407-413` per `entity-creation-wire-formats.md`) writes `(uint8_t)0x01` — value `0x01`, not `0x00` — and the handler at `0x00dd9ee0` asserts `sentPhysics_[args.id] == args.physics`. The byte is consumed as per-entity mutable state, not discarded.
+**The trailing byte is `physics`, not a generic flags field.**[^v5-position-movement] The byte at offset 48 "encodes the current physics mode (walking, flying, swimming, etc.). Stored per-entity in `sentPhysics_[]`." The world-entry C++ emit path (`client_handler.cpp:407-413`)[^cpp-client-handler][^v5-entity-creation] writes `(uint8_t)0x01` — value `0x01`, not `0x00` — and the handler[^forced-pos-handler] asserts `sentPhysics_[args.id] == args.physics`. The byte is consumed as per-entity mutable state, not discarded.
 
-> [!NOTE] **Source-doc override.** `docs/reverse-engineering/findings/world-entry-pipeline.md` §"FORCED_POSITION" labels the byte at offset 48 as `flags: u8 = 0`, which is incorrect. The C++ server source extracted in `entity-creation-wire-formats.md` §"5. FORCED_POSITION (0x31)" shows the world-entry emit path writes `(uint8_t)0x01`, and the client decompile evidence in `position-movement-wire-formats.md` §"Field Notes" plus the assertion `sentPhysics_[args.id] == args.physics` in the handler at `0x00dd9ee0` confirms the byte is consumed as the per-entity physics-mode field, not as a reserved flags slot. This chapter follows the C++ source and the position-movement-wire-formats doc; the `world-entry-pipeline.md` value is a known transcription error and should be corrected when that doc is next revised.
+> [!NOTE] **Source-doc override.** `docs/reverse-engineering/findings/world-entry-pipeline.md`[^v5-world-entry] §"FORCED_POSITION" labels the byte at offset 48 as `flags: u8 = 0`, which is incorrect. The C++ server source extracted in `entity-creation-wire-formats.md`[^v5-entity-creation] shows the world-entry emit path writes `(uint8_t)0x01`, and the client decompile evidence in `position-movement-wire-formats.md`[^v5-position-movement] plus the assertion `sentPhysics_[args.id] == args.physics` in the handler[^forced-pos-handler] confirms the byte is consumed as the per-entity physics-mode field, not as a reserved flags slot. This chapter follows the C++ source and the position-movement-wire-formats doc; the `world-entry-pipeline.md` value is a known transcription error and should be corrected when that doc is next revised.
 
-**Rotation order is per call site, not a protocol-wide convention.** SGW emits `forcedPosition` from two distinct C++ call sites — the world-entry path (`client_handler.cpp:407-413`) writes `rotX, rotZ, rotY` (Y/Z swapped); the standalone path (`client_handler.cpp:566-572`) writes `rotation.x, rotation.y, rotation.z` in caller-supplied order. The handler at `0x00dd9ee0` reads the three floats positionally and shuffles them as `addMove(yaw = param[11], pitch = param[10], roll = param[9])`; the world-entry path's swap is required for that positional read to produce correct yaw/pitch/roll. The full per-call-site rotation discipline (including the decompile-vs-protocol naming conflict the chapter's earlier draft surfaced) is canonized in `spec.protocol.position-updates` §1.4.3 — Mercury chapter retains only the divergence summary.
+**Rotation order is per call site, not a protocol-wide convention.** SGW emits `forcedPosition` from two distinct C++ call sites[^cpp-client-handler] — the world-entry path (`client_handler.cpp:407-413`) writes `rotX, rotZ, rotY` (Y/Z swapped); the standalone path (`client_handler.cpp:566-572`) writes `rotation.x, rotation.y, rotation.z` in caller-supplied order. The handler[^forced-pos-handler] reads the three floats positionally and shuffles them as `addMove(yaw = param[11], pitch = param[10], roll = param[9])`; the world-entry path's swap is required for that positional read to produce correct yaw/pitch/roll. The full per-call-site rotation discipline (including the decompile-vs-protocol naming conflict the chapter's earlier draft surfaced) is canonized in `spec.protocol.position-updates` §1.4.3 — Mercury chapter retains only the divergence summary.
 
 **Divergence from stock BigWorld 2.0.1.** Stock BW's `forcedPosition` carries 36 bytes: `entityID (4) + spaceID (4) + vehicleID (4) + Position3D (12) + Direction3D (12) = 36`. SGW expands this to 49 bytes by:
 
@@ -1120,11 +1120,11 @@ The only V5-confirmed `DWORD_LENGTH` interface element in the running protocol. 
 |---|---|
 | Message ID | `0x00` |
 | Length type | `DWORD_LENGTH` (4-byte `u32` LE length prefix) |
-| Handler in client | `ServerConnection_authenticate` at `ghidra://SGW.exe@0x00dd8510` |
+| Handler in client | `AuthenticateKeyComparison`[^authenticate-handler] (V5 alias: `ServerConnection_authenticate`) |
 | Payload | Packed string — `[1 byte: len or 0xFF][if 0xFF: 3 bytes extended len][len bytes: data]` |
 | Sent | During the initial connection handshake, before any entity-message traffic |
 
-Per `system-protocol-wire-formats.md` §"AUTHENTICATE (0x00) -- Server-to-Client Key Exchange", the handler reads a packed string (the session key) via the utility at `0x00de3770`, compares it against the stored key at `ServerConnection+0x08`, and logs `"ServerConnection::authenticate: Unexpected key! (%s, wanted %s)"` on mismatch. The packed-string reader uses a 1-byte length with `0xFF`-escape to a 3-byte extended length, so the inner string length is variable; the outer `DWORD_LENGTH` is the framing the Mercury decoder applies to find the message boundary.
+The handler[^authenticate-handler] reads a packed string (the session key) via the utility[^packed-string-reader], compares it against the stored key at `ServerConnection+0x08`, and logs `"ServerConnection::authenticate: Unexpected key! (%s, wanted %s)"` on mismatch.[^v5-system-protocol] The packed-string reader uses a 1-byte length with `0xFF`-escape to a 3-byte extended length, so the inner string length is variable; the outer `DWORD_LENGTH` is the framing the Mercury decoder applies to find the message boundary.
 
 Confidence: high for the length type and the handler-side decoder; the cipher key handling and the session-key end-to-end flow are out of scope for this chapter.
 
@@ -1140,10 +1140,10 @@ The compressed AoI position update. Each of the 32 variants encodes a position u
 
 | Property | Value |
 |---|---|
-| Message ID range | `0x10 – 0x2F` (32 variants) |
-| Length type | `CONSTANT_LENGTH` (per-variant; 7–25 bytes; size registered statically per variant) |
+| Message ID range | `0x10 – 0x2F` (32 variants)[^v5-space-viewport] |
+| Length type | `CONSTANT_LENGTH` (per-variant; 7–25 bytes; size registered statically per variant)[^v5-space-viewport] |
 | Length range | 7 bytes (msg_id `0x2F`: Alias + NoPos + NoDir) — 25 bytes (msg_id `0x10`: NoAlias + FullPos + YawPitchRoll) |
-| Handler in client | One handler per variant, all in the `FUN_00ddb???` and `FUN_00de1???` ranges per `position-movement-wire-formats.md` §"All 32 Variant Handlers" |
+| Handler in client | One handler per variant, all in the `FUN_00ddb???` and `FUN_00de1???` ranges[^v5-position-movement] |
 | Trigger (server) | Server-side position update for any AoI ghost entity; emitted at the tick rate while the entity moves |
 | Notable behavior | **Does not work on client-controlled entities** — use `forcedPosition` (§1.10.6) for those |
 
@@ -1162,7 +1162,7 @@ The full-precision sibling to `forcedPosition`. Carries `entityId`, position, ve
 | Message ID | `0x30` |
 | Length type | `CONSTANT_LENGTH = 41` |
 | Payload size | 41 bytes (no length prefix on the wire — fixed) |
-| Handler in client | `FUN_00dd9e00` at `ghidra://SGW.exe@0x00dd9e00` |
+| Handler in client | `HandleEntityCellSpawn`[^detailed-pos-handler] |
 | Trigger (server) | Full-precision position update for a non-controlled entity (NPC, vehicle, observer-viewable player) |
 | Notable behavior | **Does not work on client-controlled entities** — use `forcedPosition` (§1.10.6) for those |
 
@@ -1178,20 +1178,20 @@ The full-precision sibling to `forcedPosition`. Carries `entityId`, position, ve
 
 The *nub* is the Mercury endpoint. Every process has exactly one. The SGW client nub is constructed once at startup; the server nub is constructed once when the BaseApp starts listening. The nub owns the UDP socket, the network thread, the connection map, the listener registrations, and the channel table.
 
-**Constructor.** `Mercury::Nub::Nub` at `ghidra://SGW.exe@0x015841d0` is a 24-step constructor. Highlights from the V5 reconstruction (full step-by-step is in `mercury-protocol-internals.md` §"Mercury::Nub::Nub"):
+**Constructor.** `Mercury::Nub::Nub`[^nub-ctor] is a 24-step constructor. Highlights from the V5 reconstruction[^v5-mercury-internals]:
 
 1. Create a `tbb::concurrent_queue<ClientMessage*>` for the inbound queue.
 2. Create a second `tbb::concurrent_queue` for outbound queue work items.
 3. Spawn the network thread named `"NetworkThread for ExternalNub"`.
-4. Initialize the connection map via `Nub::initConnectionMap` at `ghidra://SGW.exe@0x01580620`.
-5. Create the UDP socket via `Nub::addListeningSocket` at `ghidra://SGW.exe@0x01583440` (socket + bind + register).
+4. Initialize the connection map via `Nub::initConnectionMap`[^nub-init-connmap].
+5. Create the UDP socket via `Nub::addListeningSocket`[^nub-add-listen-socket] (socket + bind + register).
 6. Initialize rdtsc-based timer state.
 7. Stamp vtables for `Mercury::Nub`, `Mercury::BaseNub`, and the `TimerExpiryHandler` base.
-8. ...steps 8–24: see `mercury-protocol-internals.md` for the full inventory.
+8. ...steps 8–24: see `mercury-protocol-internals.md`[^v5-mercury-internals] for the full inventory.
 
-The nub's `processPendingEvents` at `ghidra://SGW.exe@0x01581ab0` is the main recv loop: blocking `recvfrom`, then enqueue each packet onto the inbound `tbb::concurrent_queue`. A second thread drains the queue and runs `processFilteredPacket` → `processFilteredPacket_inner` → `processPacket` → `processOrderedPacket` → handler dispatch.
+The nub's `processPendingEvents`[^nub-process-pending] is the main recv loop: blocking `recvfrom`, then enqueue each packet onto the inbound `tbb::concurrent_queue`. A second thread drains the queue and runs `processFilteredPacket` → `processFilteredPacket_inner`[^flags-decoder] → `processPacket` → `processOrderedPacket`[^process-ordered-packet] → handler dispatch.
 
-**The send path is the inverse.** `ServerConnection::send` at `ghidra://SGW.exe@0x00dd8930` is the game-level entry; it calls `Mercury::Channel::send` at `ghidra://SGW.exe@0x01576f90`, which calls `Bundle::finalise` and `Nub::send` at `ghidra://SGW.exe@0x01582160`, which finally calls `Nub::writeConnection` at `ghidra://SGW.exe@0x01583a90` for the actual `sendto()`. The cipher envelope is applied somewhere between `Bundle::finalise` and `writeConnection` — `PacketEncrypter::send` (vfunc slot 1 of the cipher object) is registered as a packet filter and runs in line.
+**The send path is the inverse.** `ServerConnection::send`[^server-connection-send] is the game-level entry; it calls `Mercury::Channel::send`[^channel-send], which calls `Bundle::finalise`[^bundle-finalise] and `Nub::send`[^nub-send], which finally calls `Nub::writeConnection`[^nub-write-connection] for the actual `sendto()`. The cipher envelope is applied somewhere between `Bundle::finalise` and `writeConnection` — `PacketEncrypter::send`[^packet-encrypter-send] (vfunc slot 1 of the cipher object) is registered as a packet filter and runs in line.
 
 ![Mercury Nub tick-loop — recv queue drain, channel sweep, retransmits, dead-channel cleanup](figures/mercury-04-nub-tick-loop.svg)
 
@@ -1209,16 +1209,16 @@ MachineGuard is a *separate* UDP protocol that SGW uses for machine-level servic
 
 | Property | Value |
 |---|---|
-| Port | `0x4E36` (decimal **20022**) |
-| Master deserializer | `ghidra://SGW.exe@0x01588530` |
-| Send raw packet | `ghidra://SGW.exe@0x01588ec0` |
+| Port | `0x4E36` (decimal **20022**)[^machguard-sendandrecv] |
+| Master deserializer | `MachineGuardMessage__deserialize`[^machguard-master-deserialize] |
+| Send raw packet | `MachineGuard__sendRawPacket`[^machguard-send-raw] |
 | Message types | At least 8 documented in V5; dispatcher switches on type bytes in the range `0x01–0x0c + 0x40` (see "partial enumeration" note below) |
 
-**Port pinned via the `htons` immediate.** `Mercury_MachineGuard_sendAndRecv` at `ghidra://SGW.exe@0x015898c0` calls `htons(0x4e36)`; the immediate `36 4E 00 00` lives at `ghidra://SGW.exe@0x0158994b`. A full-binary search for the immediate `36 4E 00 00` returns exactly one hit (this address); a search for `36 4C 00 00` (the bytes that would back decimal 19510) returns zero hits anywhere in the binary. The hex `0x4E36` is correct; the decimal is 20022. Confidence: high.
+**Port pinned via the `htons` immediate.** `Mercury_MachineGuard_sendAndRecv`[^machguard-sendandrecv] calls `htons(0x4e36)`; the immediate `36 4E 00 00` lives at the cited offset. A full-binary search for the immediate `36 4E 00 00` returns exactly one hit (this address); a search for `36 4C 00 00` (the bytes that would back decimal 19510) returns zero hits anywhere in the binary. The hex `0x4E36` is correct; the decimal is 20022. Confidence: high.
 
-> [!NOTE] **Source-doc override.** `docs/reverse-engineering/findings/mercury-protocol-internals.md` §"MachineGuard Protocol" and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` both pair `0x4E36` with decimal `19510`. That decimal is wrong: `0x4E36 = 20022`. The upstream V5 plate-comment evidently carried the arithmetic error (decimal converted off the wrong nibble in the high byte: `0x4E = 78`, not `0x4C = 76`) and the bad pairing propagated forward. The Ghidra evidence at `ghidra://SGW.exe@0x0158994b` is unambiguous — chapter overrides both upstream docs.
+> [!NOTE] **Source-doc override.** `docs/reverse-engineering/findings/mercury-protocol-internals.md`[^v5-mercury-internals] §"MachineGuard Protocol" and `docs/reverse-engineering/v5-campaign/CAMPAIGN_STATUS.md` both pair `0x4E36` with decimal `19510`. That decimal is wrong: `0x4E36 = 20022`. The upstream V5 plate-comment evidently carried the arithmetic error (decimal converted off the wrong nibble in the high byte: `0x4E = 78`, not `0x4C = 76`) and the bad pairing propagated forward. The Ghidra evidence[^machguard-sendandrecv] is unambiguous — chapter overrides both upstream docs.
 
-The master deserializer at `0x01588530` switches on a single type byte. **Message types — partial enumeration.** The dispatcher's switch range is `0x01–0x0c` plus `0x40`. Eight slots are documented in V5 (table below); five slots (`0x03`, `0x08`, `0x09`, `0x0a`, `0x0c`) have no named handler in current V5 evidence and may be either unused or pending Ghidra recovery. The "13 message types" claim in `mercury-protocol-internals.md` §"MachineGuard Protocol" reflects the dispatcher's address range, not the count of recovered handlers. This chapter pins the canonized count to "at least 8 documented" and lists the gaps explicitly.
+The master deserializer[^machguard-master-deserialize] switches on a single type byte. **Message types — partial enumeration.** The dispatcher's switch range is `0x01–0x0c` plus `0x40`. Eight slots are documented in V5 (table below); five slots (`0x03`, `0x08`, `0x09`, `0x0a`, `0x0c`) have no named handler in current V5 evidence and may be either unused or pending Ghidra recovery.[^v5-mercury-internals] The "13 message types" claim reflects the dispatcher's address range, not the count of recovered handlers. This chapter pins the canonized count to "at least 8 documented" and lists the gaps explicitly.
 
 | Type byte | Class | Constructor |
 |---|---|---|
@@ -1236,7 +1236,7 @@ The master deserializer at `0x01588530` switches on a single type byte. **Messag
 | `0x0c` | `<unknown>` | Not enumerated in V5; switch slot exists but no handler name recovered |
 | `0x40` | `MachinedAnnounceMessage` | (named in earlier session) |
 
-**Variable-length ID encoding in `ProcessMessage`:** component IDs `≤ 0xfe` are written as 1 byte; IDs `> 0xfe` are written as `0xff` prefix + 3 bytes. See `ProcessMessage::writeComponentsVarLen` at `ghidra://SGW.exe@0x01586180`. This is the closest analog to the (un-pinned) `InterfaceElement::compressLength_write` threshold mentioned in §1.5.
+**Variable-length ID encoding in `ProcessMessage`:** component IDs `≤ 0xfe` are written as 1 byte; IDs `> 0xfe` are written as `0xff` prefix + 3 bytes. See `ProcessMessage::writeComponentsVarLen`[^write-components-varlen]. This is the closest analog to the (un-pinned) `InterfaceElement::compressLength_write` threshold mentioned in §1.5.
 
 MachineGuard is mentioned here because the V5 finding doc recovered it alongside Mercury and it shares wire-format vocabulary (variable-length IDs, type-byte dispatch). It does not yet have a bible chapter; the glossary marks it `→ N/A (no chapter yet)`. Cimmeria does not need to emulate MachineGuard for client compatibility — it is internal server-machine discovery.
 
@@ -1251,14 +1251,14 @@ Every SGW divergence from stock BigWorld 2.0.1 affecting Mercury wire format, in
 | Surface | Stock BigWorld 2.0.1 | SGW |
 |---|---|---|
 | Packet flags | `uint16` (2 bytes), network order | `uint8` (1 byte) |
-| Footer byte order | Network (big-endian) via `BW_HTONS` / `BW_HTONL` | Little-endian |
+| Footer byte order | Network (big-endian) via `BW_HTONS` / `BW_HTONL`[^stockbw-packet-cpp] | Little-endian |
 | Encryption | Blowfish ECB + XOR chaining + `0xdeadbeef` magic + wastage byte | AES-256-CBC + HMAC-MD5 |
 | Encryption KDF | (Blowfish key from session setup) | None — 32-byte SOAP `SessionKey` used verbatim as both AES and HMAC key |
 | IV | (Blowfish ECB has no IV) | 16-byte zero IV, reused every packet |
 | Cipher library | (BW-internal Blowfish) | CryptoPP (`HMAC<Weak1::MD5>`, `Rijndael::Enc`, `CBC_Encryption`) |
-| Sub-slot method threshold (§1.8) | 62 in `checkExposedForSubSlots()` | 62 (identical) — no SGW divergence here despite earlier drafts claiming a one-lower threshold |
-| Base (proxy) method wire shape (§1.8) | `[msg_id][u16 len][u32 entityId][args]` per stock BW | `[msg_id][u16 len][args]` — proxy methods do not write an entity ID (`startProxyMessage` at `0x00dd6980`) |
-| `REPLY_MESSAGE (0xFF)` length type (§1.9) | `DWORD_LENGTH` (stock-BW reference) | `WORD_LENGTH` per `space-viewport-wire-formats.md` |
+| Sub-slot method threshold (§1.8) | 62 in `checkExposedForSubSlots()`[^stockbw-method-desc] | 62 (identical) — no SGW divergence here despite earlier drafts claiming a one-lower threshold |
+| Base (proxy) method wire shape (§1.8) | `[msg_id][u16 len][u32 entityId][args]` per stock BW | `[msg_id][u16 len][args]` — proxy methods do not write an entity ID (`startProxyMessage`)[^start-proxy-message] |
+| `REPLY_MESSAGE (0xFF)` length type (§1.9) | `DWORD_LENGTH` (stock-BW reference) | `WORD_LENGTH`[^v5-space-viewport] |
 | `enableEntities` payload (§1.9) | 1 byte (`uint8 dummy`) | 8 bytes (`uint64 dummy`) |
 | `createBasePlayer` class field (§1.10.1) | `uint16` (2 bytes) | `uint16` on the wire (same width as stock); server-source style writes it as `(u8 classId)(u8 propCount = 0)` — a code-style difference, not a wire divergence |
 | `createCellPlayer` rotation (§1.10.2) | `roll, pitch, yaw` (`Direction3D` order) | `rotX, rotZ, rotY` (Y/Z swapped) — at this message's wire offsets only; not a protocol-wide convention |
@@ -1268,7 +1268,7 @@ Every SGW divergence from stock BigWorld 2.0.1 affecting Mercury wire format, in
 | `detailedPosition` payload (§1.11.2) | (stock-BW analog full-precision) | 41 bytes — adds trailing physics-mode `u8` (same SGW addition as `forcedPosition`) |
 | `spaceViewportInfo` size (§1.10.4) | Variable (viewport-owner / viewport-target distinct) | Fixed `CONSTANT_LENGTH = 13`; both entity-ID fields equal during open; `entityId2 = 0` closes the viewport |
 | `AUTHENTICATE` length type (§1.10.7) | (BW-internal Blowfish handshake) | `DWORD_LENGTH`, packed-string body |
-| `RESET_ENTITIES` bundling (§1.9) | Bundled freely | Must be in its own flushed bundle per `entity-creation-wire-formats.md` |
+| `RESET_ENTITIES` bundling (§1.9) | Bundled freely | Must be in its own flushed bundle[^v5-entity-creation] |
 | `bandwidthNotification` / `spaceData` (§1.9.1, §1.10.3) | Active in stock BW | Registered but **unused** in SGW — handlers exist, behavior is no-op |
 | `FLAG_HAS_CHECKSUM` | Available (CRC32 in footer) | Omitted (HMAC-MD5 supersedes) |
 | `FLAG_HAS_CUMULATIVE_ACK` | Available | Omitted |
@@ -1414,13 +1414,13 @@ One row per load-bearing claim, grouped by chapter section. Every claim that gro
 
 ### 1.16 Open questions
 
-The five Q1–Q5 questions earlier drafts carried (compressed-length thresholds, `+0x170/+0x174` roles, `forcedPosition` velocity semantics, MachineGuard port, send-window slot count) all closed via the game-archaeology Ghidra pass of 2026-05-14:
+The five Q1–Q5 questions earlier drafts carried (compressed-length thresholds, `+0x170/+0x174` roles, `forcedPosition` velocity semantics, MachineGuard port, send-window slot count) all closed via the game-archaeology Ghidra pass[^game-archaeology-2026-05-14]:
 
-- **Q1 — InterfaceElement compressed-length thresholds.** Closed: no thresholds. The width is fixed per-`InterfaceElement` at descriptor offset `+0x4`; `compressLength_write` at `ghidra://SGW.exe@0x0158b120` decompiles to `switch(*(undefined4 *)((int)this + 4))` on cases 1/2/3/4 with unconditional writes. Overflow is handled by the packet-chain path at `0x0158acc0`, not by widening the wire prefix. See §1.5.
-- **Q2 — `ChannelInternal +0x170` / `+0x174` roles.** Closed: low/high halves of a 64-bit rdtsc baseline marking the last relevant receive event. `checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` reads them via a subtract-with-borrow pattern; the constructor at `0x0158c7b0` zeroes both halves. See §1.7.
-- **Q3 — `forcedPosition` offset 24-35 semantics.** Closed: previous-position reference vector, **not velocity**. `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` passes the 12-byte block by pointer to `PackageAndSendEntityMove` as `pOrientation` and copies it verbatim into `pPrevPos` (aliased to `pPosition`). V5 docs that label these bytes "velocity" are wrong; chapter overrides three V5 docs. See §1.10.6 and the canonical layout in `spec.protocol.position-updates` §1.4.2.
-- **Q4 — MachineGuard port.** Closed: `0x4E36 = 20022`. `Mercury_MachineGuard_sendAndRecv` at `ghidra://SGW.exe@0x015898c0` calls `htons(0x4e36)`; the immediate at `0x0158994b` is the only matching hit in the binary. Upstream V5 docs pair `0x4E36` with decimal `19510`, which is wrong — chapter overrides. See §1.13.
-- **Q5 — `ChannelInternal` send-window slot count.** Closed: no fixed-slot circular buffer exists. The mechanism is a 32-bit outstanding-ack bitmap (`UnAckedHandler__buildAndSendAckBundle` iterates `iVar2 = 0..32`) plus a 512-entry received-sequence hash table (mask `0x1FF`) at `ChannelInternal+0x44`. The "45-slot" claim earlier drafts carried was unsourced and conceptually wrong. See §1.2, §1.6, §1.7.
+- **Q1 — InterfaceElement compressed-length thresholds.** Closed: no thresholds. The width is fixed per-`InterfaceElement` at descriptor offset `+0x4`; `compressLength_write` decompiles to `switch(*(undefined4 *)((int)this + 4))` on cases 1/2/3/4 with unconditional writes.[^compress-length-family] Overflow is handled by the packet-chain path, not by widening the wire prefix. See §1.5.
+- **Q2 — `ChannelInternal +0x170` / `+0x174` roles.** Closed: low/high halves of a 64-bit rdtsc baseline marking the last relevant receive event. `checkAndSendNubException`[^check-nub-exception] reads them via a subtract-with-borrow pattern; the constructor[^channel-internal-ctor] zeroes both halves. See §1.7.
+- **Q3 — `forcedPosition` offset 24-35 semantics.** Closed: previous-position reference vector, **not velocity**. `ProcessForcedEntityPosition`[^forced-pos-handler] passes the 12-byte block by pointer to `PackageAndSendEntityMove` as `pOrientation` and copies it verbatim into `pPrevPos` (aliased to `pPosition`). V5 docs that label these bytes "velocity" are wrong; chapter overrides three V5 docs. See §1.10.6 and the canonical layout in `spec.protocol.position-updates` §1.4.2.
+- **Q4 — MachineGuard port.** Closed: `0x4E36 = 20022`. `Mercury_MachineGuard_sendAndRecv`[^machguard-sendandrecv] calls `htons(0x4e36)`; the immediate is the only matching hit in the binary. Upstream V5 docs pair `0x4E36` with decimal `19510`, which is wrong — chapter overrides. See §1.13.
+- **Q5 — `ChannelInternal` send-window slot count.** Closed: no fixed-slot circular buffer exists. The mechanism is a 32-bit outstanding-ack bitmap (`UnAckedHandler__buildAndSendAckBundle` iterates `iVar2 = 0..32`)[^ack-bitmap] plus a 512-entry received-sequence hash table (mask `0x1FF`) at `ChannelInternal+0x44`[^channel-hash-alloc]. The "45-slot" claim earlier drafts carried was unsourced and conceptually wrong. See §1.2, §1.6, §1.7.
 
 Two new sub-questions surfaced during the closure pass. Neither blocks promotion of the chapter; both are documented here for follow-up.
 
@@ -1428,7 +1428,7 @@ Two new sub-questions surfaced during the closure pass. Neither blocks promotion
 
 **Question:** The receive-timeout baseline timestamp is *read* in `checkAndSendNubException`, but the write site (where the baseline is stamped on each incoming packet) was not located. Where in the Nub receive entry does the 64-bit rdtsc baseline get written?
 
-**State:** The constructor at `ghidra://SGW.exe@0x0158c7b0` zeroes both halves at channel-init time. The write site is likely upstream of `Nub::dispatchPacketWithFilter` (around `0x015816a0`) in the Nub receive entry. `processIncomingPacketEntry` at `0x0158be30` stamps `+0x58/+0x5c` (the send-alive baseline), not `+0x170/+0x174`. The role finding (low/high halves of a 64-bit rdtsc baseline) stands regardless.
+**State:** The constructor[^channel-internal-ctor] zeroes both halves at channel-init time. The write site is likely upstream of `Nub::dispatchPacketWithFilter` (around `0x015816a0`) in the Nub receive entry. `processIncomingPacketEntry`[^process-incoming-entry] stamps `+0x58/+0x5c` (the send-alive baseline), not `+0x170/+0x174`. The role finding (low/high halves of a 64-bit rdtsc baseline) stands regardless.
 
 **Path to resolution:** Decompile the receive entry chain starting at `0x015816a0` and look for a write to `*(this + 0x170)` paired with a write to `*(this + 0x174)` adjacent to an rdtsc capture.
 
@@ -1438,11 +1438,179 @@ Two new sub-questions surfaced during the closure pass. Neither blocks promotion
 
 **Question:** Outside world entry, under what conditions does the server emit a `forcedPosition`? Gate travel, anti-cheat snap, teleport, hard-snap on physics resolve — which of these maps to which call site, and which call sites carry a non-zero previous-position reference vs zeros?
 
-**State:** The previous-position-reference correction (Q3 closure above) resolves the *client-side semantic* — the 12 bytes at offsets 24-35 are a delta-encoding snapshot, not velocity. The *server-side emit triggers* remain unconfirmed from the client binary because the relevant decision logic lives in the deprecated server, not the client. The two C++ call sites in `client_handler.cpp` are catalogued (`:407-413` world-entry, `:566-572` standalone) but the standalone path's callers are not enumerated.
+**State:** The previous-position-reference correction (Q3 closure above) resolves the *client-side semantic* — the 12 bytes at offsets 24-35 are a delta-encoding snapshot, not velocity. The *server-side emit triggers* remain unconfirmed from the client binary because the relevant decision logic lives in the deprecated server, not the client. The two C++ call sites in `client_handler.cpp`[^cpp-client-handler] are catalogued (`:407-413` world-entry, `:566-572` standalone) but the standalone path's callers are not enumerated.
 
 **Path to resolution:** Audit every call site of `ServerConnection::forcedPosition()` in `deprecated/cpp/src/baseapp/` and `deprecated/python/`. Catalogue: which gameplay trigger fires which call site, what value the caller passes for the previous-position-reference argument, and which call sites pre-swap rotation.
 
 **Impact if unresolved:** Server-side emit policy is currently underdocumented. A reimplementation that always emits zero previous-position-reference and the world-entry rotation order at every `forcedPosition` call site will produce wire bytes the client decodes correctly (because the client's delta-compression is robust to a zero previous-position), so this is documentation-completeness, not implementation-blocking. Confidence on §1.10.6's *wire bytes* stays high; the server-emit-trigger catalogue is a Section 3 (deprecated server) follow-up rather than a Section 1 gap.
+
+## References
+
+[^ack-bitmap]: `UnAckedHandler__buildAndSendAckBundle` at `ghidra://SGW.exe@0x0158b2d0` — 32-bit outstanding-ack bitmap; loop iterates `iVar2 = 0, 8, 16, 24; iVar2 < 0x20`.
+
+[^authenticate-handler]: `AuthenticateKeyComparison` at `ghidra://SGW.exe@0x00dd8510` — client-side `AUTHENTICATE` (msg_id `0x00`) handler; compares packed-string session key against stored key at `ServerConnection+0x08`.
+
+[^broadcast-entity-activation]: `BroadcastEntityActivation` at `ghidra://SGW.exe@0x00dd9280` — client-side `enableEntities` sender; reserves 8 bytes via `startMessage_fixed`.
+
+[^bundle-add-blob]: `Bundle::addBlob` at `ghidra://SGW.exe@0x0157a990` — copies payload bytes into the current packet; auto-splits across packet boundaries when the current packet is full.
+
+[^bundle-clear]: `Mercury::Bundle::clear` at `ghidra://SGW.exe@0x0157a440` — resets bundle state and allocates a fresh first packet.
+
+[^bundle-ctor]: `Mercury::Bundle::Bundle` at `ghidra://SGW.exe@0x0157aa40` — bundle constructor.
+
+[^bundle-finalise]: `Mercury_Bundle_Finalise` at `ghidra://SGW.exe@0x0157a7a0` — walks the packet chain, sets flags bits, and writes footer fields in flag-bit order.
+
+[^bundle-new-message]: `Mercury_Bundle_newMessage` at `ghidra://SGW.exe@0x0157ac90` — per-packet space check (1453-byte max); allocates a new packet when the current one cannot fit the message; enforces `WORD_LENGTH` for entity messages.
+
+[^bundle-reserve]: `Bundle::reserve` at `ghidra://SGW.exe@0x0157a5d0` — allocates a new packet when `newMessage` cannot fit the inbound message.
+
+[^bundle-start-msg-fixed]: `Bundle::startMessage_fixed` at `ghidra://SGW.exe@0x0157ad80` — fixed-length message wrapper.
+
+[^bundle-start-msg-request]: `Bundle::startMessage_request` at `ghidra://SGW.exe@0x0157adc0` — request-message wrapper; reserves space for reply-ID + next-request-offset linked-list pointers.
+
+[^channel-ctor]: `Channel__ctor` at `ghidra://SGW.exe@0x01576bf0` — hardcodes the 512 (`0x200`) entry hash-table size at construction.
+
+[^channel-hash-alloc]: `FUN_0158c170` at `ghidra://SGW.exe@0x0158c170` — allocates `param_1 * 4 + 4 = 2052` bytes for the 512-entry received-sequence dedup table; stores the mask `param_1 - 1 = 0x1FF` at `ChannelInternal+0x44`.
+
+[^channel-internal-ctor]: `ChannelInternal__ctor` at `ghidra://SGW.exe@0x0158c7b0` — ~0x180-byte inner channel-object constructor; zeroes `+0x170` (low at `0x0158c9d5`) and `+0x174` (high at `0x0158c9db`).
+
+[^channel-send]: `Mercury::Channel::send` at `ghidra://SGW.exe@0x01576f90` — assigns reliable packet sequence IDs from a monotonic per-channel counter; entry point in the send chain.
+
+[^check-nub-exception]: `ChannelInternal__checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` — timer-driven resend logic; reads `+0x160 / +0x164 / +0x16c / +0x170 / +0x174` with the subtract-with-borrow pattern `(iVar4 - *(int *)(this + 0x174)) - (uint)(uVar2 < *(uint *)(this + 0x170))`.
+
+[^cipher-hash-filter]: `CryptoPP::HashFilter` at `ghidra://SGW.exe@0x00414720` — appends the HMAC-MD5 tag over the AES ciphertext.
+
+[^cipher-stream-filter]: `CryptoPP::StreamTransformationFilter` at `ghidra://SGW.exe@0x004089b0` — applies AES-256-CBC encryption over the Mercury plaintext.
+
+[^cipher-vtable]: Cipher object vtable at `ghidra://SGW.exe@0x01b27374` — four slots: destructor, send, recv, OptimalBlockSize.
+
+[^cipher-vtable-blocksize]: Vtable slot 3 at `ghidra://SGW.exe@0x016039a0` — returns `0x1f` (31); likely `OptimalBlockSize`.
+
+[^cipher-vtable-dtor]: Vtable slot 0 destructor at `ghidra://SGW.exe@0x01604ac0`.
+
+[^cme-playchar]: CME string `Event_NetOut_PlayCharacter` at `ghidra://SGW.exe@0x019bf4f8`.
+
+[^compress-length-family]: `InterfaceElement::compressLength` family — `Mercury_InterfaceElement_compressLength` at `ghidra://SGW.exe@0x0158acc0` (total-length compute + packet-split overflow path); `Mercury_InterfaceElement_compressLength_2` at `ghidra://SGW.exe@0x0158b120` (write side; `switch(*(undefined4 *)((int)this + 4))` on cases 1/2/3/4 with unconditional writes; Ghidra-named `_2`, role is `compressLength_write`); `Mercury_InterfaceElement_expandLength` at `ghidra://SGW.exe@0x0158b770` (read side; mirrors the same switch shape).
+
+[^cpp-client-handler]: `deprecated/cpp/src/baseapp/mercury/sgw/client_handler.cpp` — legacy server-side emit paths (e.g. `:407-413` for the world-entry `forcedPosition`, `:497-499` for `CREATE_ENTITY`, `:566-572` for the standalone `forcedPosition`, `:46-53` for `updateFrequencyNotification`, `:61-63` for `setGameTime`, `:486-488` for `tickSync`).
+
+[^cpp-messages]: `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp` — legacy server-side message descriptor registration (line 83 = 8-byte `ENABLE_ENTITIES`; line 134 = `bandwidthNotification`; lines 189–190 = `spaceData`).
+
+[^cryptopp-rtti]: RTTI strings at `ghidra://SGW.exe@0x01e93b70`–`ghidra://SGW.exe@0x01ea3c5c` — `HMAC_Base@CryptoPP`, `HMAC@VMD5@Weak1@CryptoPP`, `Rijndael::Enc@CryptoPP`.
+
+[^create-base-player-handler]: `ServerConnection_CreateBasePlayer` at `ghidra://SGW.exe@0x00dddca0` — `createBasePlayer` (msg_id `0x05`) handler; reads `[entityId u32][classId u16]`; buffered-message replay path checks `ServerConnection+0xfdc`.
+
+[^create-cell-player-handler]: `ServerConnection_CreateCellPlayer` at `ghidra://SGW.exe@0x00dda2e0` — `createCellPlayer` (msg_id `0x06`) handler.
+
+[^detailed-pos-handler]: `HandleEntityCellSpawn` at `ghidra://SGW.exe@0x00dd9e00` — `detailedPosition` (msg_id `0x30`) handler. Ghidra name is `HandleEntityCellSpawn`; earlier drafts called this `FUN_00dd9e00`.
+
+[^disconnect-handler]: Disconnect handler at `ghidra://SGW.exe@0x00dd8630` — destroys the connection object at `+0x30c`, frees pending resource requests, clears the handler pointer at `+0x168`. Called with `sendMsg = false` from `loggedOff`.
+
+[^enable-entities-init]: `enableEntities` descriptor initializer at `ghidra://SGW.exe@0x017bade0`–`ghidra://SGW.exe@0x017bae07`; `PUSH 0x8` (the `CONSTANT_LENGTH = 8` argument) at `ghidra://SGW.exe@0x017bade9`.
+
+[^event-net-proxy-data]: `Event_Net_ProxyData` callback constructor at `ghidra://SGW.exe@0x004269f0` — CME event raised on each delivered `RESOURCE_FRAGMENT`.
+
+[^flags-decoder]: `Mercury_Nub_ProcessFilteredPacket` at `ghidra://SGW.exe@0x01580840` — decodes each flag bit in order to peel the matching footer field off the back of the datagram; pop order is the reverse of bit order.
+
+[^forced-pos-handler]: `ProcessForcedEntityPosition` at `ghidra://SGW.exe@0x00dd9ee0` — `forcedPosition` (msg_id `0x31`) handler. The 12-byte block at struct offset `+0x18` is passed as a **pointer** (via `LEA EAX, [ESI+0x18]`) to `PackageAndSendEntityMove` as its `pOrientation` argument, which copies the block verbatim into `pPrevPos` — the previous-position reference, *not* velocity. Handler also asserts `sentPhysics_[args.id] == args.physics` for the trailing physics byte.
+
+[^game-archaeology-2026-05-14]: Game-archaeology Ghidra pass, 2026-05-14 — see chapter §1.16 closure summary; resolved Q1–Q5 plus the `forcedPosition` velocity-vs-previous-position correction and the MachineGuard port arithmetic override.
+
+[^gsoap-hex-dispatcher]: gSOAP `xsd:hexBinary` dispatcher at `ghidra://SGW.exe@0x015eb940` — decodes the 64-char hex session key from the SOAP auth response into the 32-byte buffer used as both AES and HMAC key.
+
+[^gsoap-type-dispatcher]: gSOAP type dispatcher at `ghidra://SGW.exe@0x015ed300`; the `xsd:hexBinary` decoder is case `0x26`.
+
+[^logged-off-handler]: `HandleServerDisconnect` at `ghidra://SGW.exe@0x00dd8c20` — `loggedOff` (msg_id `0x37`) handler; reads the 1-byte reason at `0x00dd8c2f` via `MOVZX EDX, byte ptr [ECX]`, logs it, and calls the disconnect handler with `sendMsg = false`.
+
+[^machguard-master-deserialize]: `MachineGuardMessage__deserialize` at `ghidra://SGW.exe@0x01588530` — MachineGuard master deserializer; switches on a single type byte across the range `0x01–0x0c + 0x40`.
+
+[^machguard-send-raw]: `MachineGuard__sendRawPacket` at `ghidra://SGW.exe@0x01588ec0` — MachineGuard raw-packet send.
+
+[^machguard-sendandrecv]: `Mercury_MachineGuard_sendAndRecv` at `ghidra://SGW.exe@0x015898c0` — calls `htons(0x4e36)`; the immediate `36 4E 00 00` is the only matching hit in the binary and lives at `ghidra://SGW.exe@0x0158994b`. `0x4E36 = 20022` decimal (not `19510` as upstream V5 docs claimed).
+
+[^nub-add-listen-socket]: `Mercury_Nub_addListeningSocket` at `ghidra://SGW.exe@0x01583440` — UDP socket creation, bind, register.
+
+[^nub-ctor]: `Mercury_Nub_Nub` at `ghidra://SGW.exe@0x015841d0` — 24-step Nub constructor.
+
+[^nub-handle-message]: `Mercury_Nub_handleMessage` at `ghidra://SGW.exe@0x0157bd30` — request/reply matching for in-game request/reply pairs.
+
+[^nub-init-connmap]: `Nub::initConnectionMap` at `ghidra://SGW.exe@0x01580620` — initializes the Nub's connection map.
+
+[^nub-process-pending]: `Mercury_Nub_ProcessPendingEvents` at `ghidra://SGW.exe@0x01581ab0` — main recv loop (blocking `recvfrom` + enqueue onto the inbound `tbb::concurrent_queue`).
+
+[^nub-send]: `Mercury_Nub_Send` at `ghidra://SGW.exe@0x01582160` — Nub-level send entry; called by `Bundle::finalise`.
+
+[^nub-write-connection]: `Mercury_Nub_writeConnection` at `ghidra://SGW.exe@0x01583a90` — final `sendto()` step in the send chain.
+
+[^packed-string-reader]: Packed-string read utility at `ghidra://SGW.exe@0x00de3770` — 1-byte length with `0xFF`-escape to 3-byte extended length.
+
+[^packet-chain-stamp-time]: `Packet__chain__stampSendTime` at `ghidra://SGW.exe@0x0158a3f0` — walks the `Mercury::Packet` linked list.
+
+[^packet-encrypter-ctor]: `PacketEncrypter` constructor at `ghidra://SGW.exe@0x01603a70` — stores the 32-byte session key at `+0x08` verbatim (no KDF) and 16 zero bytes at `+0x18` via inline zero-fill.
+
+[^packet-encrypter-recv]: `PacketEncrypter::recv` at `ghidra://SGW.exe@0x01603fa0` — decrypt incoming packet; reads `GetCheckedArrayElement(this+0x08, 0, len)` for both the AES and HMAC keys.
+
+[^packet-encrypter-send]: `PacketEncrypter::send` at `ghidra://SGW.exe@0x01603b80` — encrypt outgoing packet; vtable slot 1.
+
+[^process-incoming-entry]: `ChannelInternal__processIncomingPacketEntry` at `ghidra://SGW.exe@0x0158be30` — stamps `+0x58 / +0x5c` (send-alive baseline), not `+0x170 / +0x174`.
+
+[^process-ordered-packet]: `Mercury_Nub_ProcessOrderedPacket` at `ghidra://SGW.exe@0x0157c820` — dispatches each interface element via `nub->elements[msg_id]` single-array-index lookup.
+
+[^purge-rebuild-handler]: `PurgeAndRebuildEntityStateLists` at `ghidra://SGW.exe@0x00dda0e0` — `resetEntities` (msg_id `0x04`) handler. V5 alias: `Mercury__unknown_00dda0e0` (raw-decompile name) in `system-protocol-wire-formats.md`.
+
+[^queue-ack-for-packet]: `UnAckedHandler::queueAckForPacket` at `ghidra://SGW.exe@0x0158cba0` — schedules an ack for a reliable incoming packet.
+
+[^reset-entities-init]: `resetEntities` descriptor initializer at `ghidra://SGW.exe@0x017bb200`–`ghidra://SGW.exe@0x017bb225`; uses the same push-pattern as `enableEntities` with `PUSH 0x1` at the equivalent stack position (1-byte `keepBase`).
+
+[^resource-fragment-handler]: `HandleResourceFragment` at `ghidra://SGW.exe@0x00dddd80` — `RESOURCE_FRAGMENT` (msg_id `0x36`) handler; reads 4-byte header (`dataId u16 LE`, `chunkId u8`, `flags u8`); BASE_FLAG-set path chains fragment nodes for reassembly, BASE_FLAG-clear path delivers directly to a `FILE` handle.
+
+[^restore-client-ack-descriptor]: `restoreClientAck` message descriptor at `DAT_01ef250c` — fixed 4-byte body, payload always `u32 = 0`.
+
+[^restore-client-handler]: `RehydrateClientFromMessage` at `ghidra://SGW.exe@0x00dd8ae0` — `restoreClient` (msg_id `0x34`) handler; reads `entityId u32`, `spaceId u32`, `vehicleId u32`, direction Vec3 (`stream.read(12)`), position Vec3 (via the rotation/position reader at `FUN_015846a0`), and velocity Vec3 (trailing). Auto-emits `restoreClientAck` if `*(int*)(this + 0x30c) != 0`.
+
+[^rotation-reader]: `FUN_015846a0` — internal rotation / Vec3 reader; applies the X-Z-Y ordering for `createCellPlayer` and reads position Vec3 for `restoreClient`. Confirmed Y/Z swap for `createCellPlayer` at parse side.
+
+[^send-ack-bundle2]: `UnAckedHandler__sendAckBundle2` at `ghidra://SGW.exe@0x0158bbc0` — builds an empty bundle with the `FLAG_IS_RELIABLE` flag set; the Mercury keepalive path. Also referred to as `UnAckedHandler::sendAckBundle` (without the `2` suffix) in some V5 sources.
+
+[^server-connection-send]: `ServerConnection_Send` at `ghidra://SGW.exe@0x00dd8930` — game-level send entry; the head of the send chain (`ServerConnection::send` → `Channel::send` → `Bundle::finalise` → `Nub::send` → `Nub::writeConnection`).
+
+[^space-data-handler]: `ProcessSpaceDataMessage` at `ghidra://SGW.exe@0x00dda540` — `spaceData` (msg_id `0x07`) handler; reads `spaceId u32`, `spaceEntryId` (read as two u32s), `key u16`, then the remaining bytes as the value string.
+
+[^space-viewport-info-handler]: `ProcessSpaceViewportInfo` at `ghidra://SGW.exe@0x00dda6c0` — `spaceViewportInfo` (msg_id `0x08`) handler; client decompile labels first u32 `field0 / gate-unknown` (server-source label is `entityId`).
+
+[^start-entity-message]: `ServerConnection_StartEntityMessage` at `ghidra://SGW.exe@0x00dd6a60` — cell-method emit (msg_id `| 0x80`); writes the `msg_id`, then `*(uint32*)channel->reserve(4) = entityId`.
+
+[^start-proxy-message]: `ServerConnection_StartProxyMessage` at `ghidra://SGW.exe@0x00dd6980` — base/proxy-method emit (msg_id `| 0xC0`); writes the `msg_id`, no entity ID.
+
+[^subslot-threshold]: `EntityDescription_AssignClientMethodIds` at `ghidra://SGW.exe@0x01590df0` — switches to sub-slot encoding when `methodCount >= 0x3e` (62).
+
+[^write-components-varlen]: `ProcessMessage__writeComponentsVarLen` at `ghidra://SGW.exe@0x01586180` — MachineGuard component-ID encoder; IDs `≤ 0xfe` write 1 byte, IDs `> 0xfe` write `0xff` prefix + 3 bytes. Distinct mechanism from `InterfaceElement::compressLength`.
+
+[^stockbw-baseapp-ext]: `external/BigWorld-2.0.1/src/lib/connection/baseapp_ext_interface.hpp` — stock BigWorld 2.0.1 baseapp-extension interface declarations (e.g. `enableEntities` 1-byte `uint8 dummy`, `createBasePlayer` `EntityID + EntityTypeID` pair).
+
+[^stockbw-encryption]: `external/BigWorld-2.0.1/src/lib/network/encryption_filter.cpp` — stock BigWorld 2.0.1 Blowfish ECB + XOR chaining + `0xdeadbeef` magic + wastage byte; wholesale replaced in SGW.
+
+[^stockbw-interfaces]: `external/BigWorld-2.0.1/src/lib/network/interfaces.hpp` — stock BigWorld 2.0.1 `InterfaceElement` static / runtime descriptor sizes (inherited by SGW; not directly confirmed for SGW binary).
+
+[^stockbw-method-desc]: `external/BigWorld-2.0.1/src/.../entity_method_descriptions.cpp` — stock BigWorld 2.0.1 `checkExposedForSubSlots()` confirms the 62-method sub-slot threshold (identical to SGW).
+
+[^stockbw-packet-cpp]: `external/BigWorld-2.0.1/src/lib/network/packet.cpp` — stock BigWorld 2.0.1 packet footer write logic; uses `BW_HTONS` / `BW_HTONL` macros (network byte order). SGW writes the same fields little-endian.
+
+[^stockbw-packet-hpp]: `external/BigWorld-2.0.1/src/lib/network/packet.hpp` — stock BigWorld 2.0.1 packet header definitions; `uint16` flags field (high byte carries `FLAG_HAS_CHECKSUM`, `FLAG_CREATE_CHANNEL`, `FLAG_HAS_CUMULATIVE_ACK`, `FLAG_INDEXED_CHANNEL`); `Packet::MaxFragmentsPerBundle = 64`.
+
+[^v5-entity-creation]: `docs/reverse-engineering/findings/entity-creation-wire-formats.md` — V5 finding doc; canonical byte-level layouts for `RESET_ENTITIES`, `CREATE_BASE_PLAYER`, `CREATE_CELL_PLAYER`, `SPACE_VIEWPORT_INFO`, `FORCED_POSITION`, `CREATE_ENTITY`, `TICK_SYNC` + the C++ server emit patterns from `client_handler.cpp`.
+
+[^v5-entity-property-sync]: `docs/reverse-engineering/findings/entity-property-sync.md` §13 — "Sub-Slot Client Method Encoding — Final Confirmation (W-entity-desc-B)"; confirms the 62-method threshold.
+
+[^v5-mercury-internals]: `docs/reverse-engineering/findings/mercury-protocol-internals.md` — V5 finding doc; canonical source for packet-flags byte, footer parse order, sequence-number constants (`SEQ_SIZE = 0x10000000`), cipher key derivation, Nub construction, MachineGuard protocol.
+
+[^v5-position-movement]: `docs/reverse-engineering/findings/position-movement-wire-formats.md` — V5 finding doc; the 32 `UPDATE_AVATAR` variants, `detailedPosition`, and `forcedPosition` byte tables; the trailing-byte field notes (physics mode).
+
+[^v5-space-viewport]: `docs/reverse-engineering/findings/space-viewport-wire-formats.md` — V5 finding doc; complete server message table, `RESOURCE_FRAGMENT` byte layout + 21 resource category IDs, `REPLY_MESSAGE` length type, `bandwidthNotification` / `updateFrequencyNotification` / `setGameTime` / `tickSync` / `restoreClient` / `loggedOff` / `spaceData` / `spaceViewportInfo` / `createEntity` / `UPDATE_AVATAR` envelope claims.
+
+[^v5-system-protocol]: `docs/reverse-engineering/findings/system-protocol-wire-formats.md` — V5 finding doc; the `startEntityMessage` / `startProxyMessage` cell-vs-base distinction; `AUTHENTICATE`, `CREATE_BASE_PLAYER` stream-read details; `RESTORE_CLIENT` and `LOGGED_OFF` decompile evidence; `TICK_SYNC` / `SET_GAME_TIME` RTTI; `ServerConnection` field map (e.g. `+0xfdc` cellPlayerBuffer_).
+
+[^v5-world-entry]: `docs/reverse-engineering/findings/world-entry-pipeline.md` — V5 finding doc; phase-by-phase world-entry sequence; `ENABLE_ENTITIES` payload reconciliation (W-enable-entities, 2026-05-13); `CREATE_CELL_PLAYER` Y/Z rotation swap audit.
 
 ---
 
