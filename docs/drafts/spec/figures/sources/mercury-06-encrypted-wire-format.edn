@@ -1,0 +1,11 @@
+(defattrs :plain {:font-size 14})
+(defattrs :label {:font-size 12})
+
+(draw-column-headers)
+
+; Encrypted packet: [flags][body+footers] all CBC-encrypted, then HMAC appended
+(draw-box "flags" {:span 1 :fill "#bdd7ee"})
+(draw-box (text "AES-256-CBC ciphertext  (body + footers, PKCS7-padded, IV = 0x00×16)" :label) {:span 15 :fill "#ffeedd" :borders {:all true}})
+(draw-gap "ciphertext continues...")
+(draw-bottom)
+(draw-box (text "HMAC-MD5 authentication tag  (16 bytes, keyed with session_key)" :label) {:span 16 :fill "#ddffdd"})

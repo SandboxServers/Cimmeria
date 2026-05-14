@@ -1,0 +1,25 @@
+stateDiagram-v2
+    [*] --> Connecting : channel created
+
+    Connecting --> Connected : handshake complete\n(first ack received)
+    Connecting --> Disconnected : inactivity timeout\nor retransmit exhausted
+
+    Connected --> Disconnecting : local close initiated\n(Disconnect sent)
+    Connected --> Disconnected : inactivity_timeout\npeer_idle > 300,000ms\nOR retransmit_count > 20
+
+    Disconnecting --> Disconnected : remote ack received\nor inactivity timeout
+
+    Disconnected --> [*]
+
+    note right of Connected
+        Keepalive every 1,000ms
+        ACK timeout: 700ms per reliable msg
+        Max retransmits: 20 (strict >)
+        TX window: 45 slots (VecDeque)
+        RX window: 64 slots (VecDeque)
+        last_sent / last_received tracked separately
+    end note
+
+    note right of Connecting
+        PROTOCOL_VERSION = 391
+    end note

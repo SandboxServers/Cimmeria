@@ -1,0 +1,35 @@
+
+TX Window (cap = 45 slots)   next_tx_seq advances on send; pruned on ack
+
+  sent+acked  |  sent, awaiting ack (in-flight)  |  unsent
+              |                                   |
+ ─────────────┬───────────────────────────────────┬──────────────────
+  ... N-3  N-2 │ N-1 │  N  │ N+1 │ N+2 │ ... N+44 │ N+45 N+46 ...
+ ─────────────┴───┬───┴──┬──┴─────┴─────┴──────────┴──────────────────
+                  │      │
+             700ms ACK   next_tx_seq
+             timeout     (send pointer)
+
+  If ack received: remove TxEntry from VecDeque
+  If timeout > 700ms: retransmit_count++, re-queue for send
+  If retransmit_count > 20: channel → Disconnected
+
+
+RX Window (cap = 64 slots)   expected_rx_seq advances on ordered delivery
+
+  delivered  |   received (may have gaps)   |  not yet received
+             |                              |
+ ────────────┬──────────────────────────────┬─────────────────────
+  ... M-2  M-1 │  M  │ M+1 │ ??? │ M+3 │  ... M+63 │ M+64 M+65 ...
+ ────────────┴──┬──┴─────┴─────┴─────┴──────────┴─────────────────
+                │
+           expected_rx_seq
+           (delivery pointer)
+
+  Seq M+2 shown as ??? = not yet received (gap in delivery)
+  Out-of-order arrivals stored until gap fills
+  Each received seq_id generates an ack piggybacked in next outgoing packet
+
+
+Sequence number arithmetic: wrapping u32 (mod 2^32)
+Fragment key: frag_begin (u32); slot index = seq_id - frag_begin

@@ -1,0 +1,28 @@
+(defattrs :plain {:font-size 14})
+(defattrs :header {:font-size 12 :fill "#5599cc" :font-style "bold"})
+(defattrs :footer {:font-size 11 :fill "#cc9933"})
+
+(draw-column-headers)
+
+; === Packet header ===
+(draw-box "flags" {:span 1 :fill "#bdd7ee" :borders {:all true}})
+(draw-box (text "body  (variable length — 0 to MAX_BODY=1348 bytes)" :plain) {:span 15 :borders {:top true :bottom true :right true :left true}})
+(draw-gap)
+(draw-bottom)
+
+; === Footer stack (innermost → outermost, all appended at tail) ===
+; Row below shows footer layout when all flags are set
+(draw-box (text "first_req_offset [u16 LE]  if ON_CHANNEL" :footer) {:span 2 :fill "#fff4d6"})
+(draw-box (text "frag_begin [u32 LE]  if FRAGMENTED" :footer) {:span 4 :fill "#ffeedd"})
+(draw-box (text "frag_end [u32 LE]  if FRAGMENTED" :footer) {:span 4 :fill "#ffeedd"})
+(draw-box (text "seq_id [u32 LE]  if RELIABLE or FRAGMENTED" :footer) {:span 4 :fill "#ddffdd"})
+(next-row)
+
+(draw-box (text "ack[0] [u32 LE]" :footer) {:span 4 :fill "#ffffdd"})
+(draw-box (text "ack[1] [u32 LE]" :footer) {:span 4 :fill "#ffffdd"})
+(draw-box (text "ack[2] [u32 LE]" :footer) {:span 4 :fill "#ffffdd"})
+(draw-box (text "ack[3] [u32 LE]" :footer) {:span 3 :fill "#ffffdd"})
+(draw-box (text "..." :plain) {:span 1})
+(next-row)
+(draw-box (text "ack[N-1] [u32 LE]  (up to RX_WINDOW=64 acks)" :footer) {:span 15 :fill "#ffffdd"})
+(draw-box (text "K" :plain) {:span 1 :fill "#ffddff"})

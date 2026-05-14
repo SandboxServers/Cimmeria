@@ -1,0 +1,35 @@
+digraph G {
+  rankdir=LR
+  node [shape=plaintext fontname=Helvetica]
+  graph [label="createCellPlayer rotation triplet — SGW swaps Y/Z at the same wire offsets" labelloc=t fontsize=14 fontname=Helvetica]
+
+  layout [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR>
+        <TD BGCOLOR="#f4f4f4"><B>Source</B></TD>
+        <TD BGCOLOR="#f4f4f4">offset +0x00..+0x0F<BR/>(spaceId, vehicleId, posX, posY)</TD>
+        <TD BGCOLOR="#f4f4f4">offset +0x10..+0x13<BR/>posZ (f32)</TD>
+        <TD BGCOLOR="#fff4d6">offset +0x14..+0x17<BR/>4 B rotation slot</TD>
+        <TD BGCOLOR="#fff4d6">offset +0x18..+0x1B<BR/>4 B rotation slot</TD>
+        <TD BGCOLOR="#fff4d6">offset +0x1C..+0x1F<BR/>4 B rotation slot</TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#ffe8d6"><B>Stock BigWorld 2.0.1</B><BR/>Direction3D order</TD>
+        <TD>16 B header + posXY</TD>
+        <TD>posZ (f32)</TD>
+        <TD BGCOLOR="#cce5ff"><B>rotX</B> (roll)</TD>
+        <TD BGCOLOR="#cce5ff"><B>rotY</B> (pitch)</TD>
+        <TD BGCOLOR="#cce5ff"><B>rotZ</B> (yaw)</TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#d6ffd6"><B>SGW</B><BR/>Y/Z swapped</TD>
+        <TD>16 B header + posXY</TD>
+        <TD>posZ (f32)</TD>
+        <TD BGCOLOR="#cce5ff"><B>rotX</B></TD>
+        <TD BGCOLOR="#ffcccc"><B>rotZ</B> ** swapped **</TD>
+        <TD BGCOLOR="#ffcccc"><B>rotY</B> ** swapped **</TD>
+      </TR>
+      <TR><TD COLSPAN="6" BGCOLOR="#fafafa"><FONT POINT-SIZE="10">Confirmed three ways: FUN_015846a0 rotation reader (parse side), client_handler.cpp emits `rotX &lt;&lt; rotZ &lt;&lt; rotY` (server side), world-entry-pipeline.md audit. A reimplementation writing the stock-BW order produces a packet the client mis-orients — see §1.10.2.</FONT></TD></TR>
+    </TABLE>
+  >]
+}

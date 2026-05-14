@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant SND as Sender
+    participant NET as Network (UDP)
+    participant FA as FragmentAssembler
+    participant APP as Application
+
+    Note over SND: build_fragmented_bundle(bundle)<br/>FRAGMENT_BODY_SIZE = 1300 bytes<br/>N = ceil(total / 1300)<br/>frag_begin = first seq_id<br/>frag_end = frag_begin + N - 1
+
+    SND->>NET: frag[0] flags=RELIABLE|FRAGMENTED|HAS_SEQ<br/>seq_id=frag_begin, frag_begin=X, frag_end=X+N-1<br/>body=1300 bytes + acks (only first frag carries acks)
+    NET->>FA: process_parsed(seq_id=X, frag_begin=X, frag_end=X+N-1)
+    Note over FA: key = frag_begin = X<br/>idx = seq_id - frag_begin = 0<br/>total = frag_end - frag_begin + 1 = N<br/>store buf[0] = body
+
+    SND->>NET: frag[1] seq_id=X+1, same frag_begin/frag_end
+    NET->>FA: process_parsed(seq_id=X+1)
+    Note over FA: idx=1, store buf[1]
+
+    SND->>NET: frag[N-1] seq_id=X+N-1
+    NET->>FA: process_parsed(seq_id=X+N-1)
+    Note over FA: idx=N-1, all slots filled<br/>concatenate buf[0..N-1]<br/>remove PendingMessage from HashMap
+
+    FA->>APP: reassembled body (complete bundle)
+
+    Note over FA: Stale cleanup: FRAGMENT_REASSEMBLY_TIMEOUT_MS=30,000ms<br/>cleanup_stale() called each Nub tick()

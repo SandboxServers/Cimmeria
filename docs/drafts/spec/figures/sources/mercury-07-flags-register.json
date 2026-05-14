@@ -1,0 +1,18 @@
+{
+  "reg": [
+    {"name": "HAS_REQ",   "bits": 1, "attr": ["0x01", "HAS_REQUESTS"]},
+    {"name": "PIGGYBACK", "bits": 1, "attr": ["0x02", "PIGGYBACK"]},
+    {"name": "HAS_ACKS",  "bits": 1, "attr": ["0x04", "carries acks"]},
+    {"name": "ON_CHAN",   "bits": 1, "attr": ["0x08", "on channel"]},
+    {"name": "RELIABLE",  "bits": 1, "attr": ["0x10", "reliable"]},
+    {"name": "FRAG",      "bits": 1, "attr": ["0x20", "fragmented"]},
+    {"name": "HAS_SEQ",   "bits": 1, "attr": ["0x40", "has seq_id"]},
+    {"name": "INDEXED",   "bits": 1, "attr": ["0x80", "indexed"]}
+  ],
+  "config": {
+    "hspace": 900,
+    "bits": 8,
+    "lanes": 1,
+    "label": {"right": 10}
+  }
+}
