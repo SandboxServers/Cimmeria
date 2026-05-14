@@ -55,9 +55,14 @@ impl FindingKind {
 
 /// Build a map from crate name (e.g. `cimmeria-services`) to its source root
 /// (e.g. `crates/services/src`). Scans `crates/*/Cargo.toml` and `tools/*/Cargo.toml`.
+///
+/// Section-aware: looks for the `name = "..."` line *inside* the `[package]`
+/// section specifically, not just the first `name = ` line in the file. A
+/// `[[bin]] name = "..."` or `[lib] name = "..."` block that textually
+/// precedes `[package]` would otherwise bind the wrong crate name.
 fn build_crate_map(repo_root: &Path) -> HashMap<String, PathBuf> {
     let mut map = HashMap::new();
-    let name_re = Regex::new(r#"(?m)^name\s*=\s*"([^"]+)""#).expect("static regex");
+    let name_re = Regex::new(r#"^name\s*=\s*"([^"]+)""#).expect("static regex");
 
     for parent in ["crates", "tools"] {
         let parent_dir = repo_root.join(parent);
@@ -70,11 +75,7 @@ fn build_crate_map(repo_root: &Path) -> HashMap<String, PathBuf> {
             let Ok(text) = fs::read_to_string(&manifest) else {
                 continue;
             };
-            // Only match the first `name = "..."` (the [package] block).
-            // Workspace dependency entries that come later in the file
-            // are not relevant — we want the crate's published name.
-            if let Some(caps) = name_re.captures(&text) {
-                let name = caps[1].to_string();
+            if let Some(name) = extract_package_name(&text, &name_re) {
                 let src = crate_dir.join("src");
                 if src.is_dir() {
                     map.insert(name, src);
@@ -86,6 +87,30 @@ fn build_crate_map(repo_root: &Path) -> HashMap<String, PathBuf> {
     map
 }
 
+/// Scan a Cargo.toml's text for the `name = "..."` line under the `[package]`
+/// section. Returns `None` if there is no `[package]` block or no `name =`
+/// line inside it.
+fn extract_package_name(manifest: &str, name_re: &Regex) -> Option<String> {
+    let mut in_package = false;
+    for line in manifest.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix('[') {
+            // New section. Match only `[package]`, not `[package.metadata.*]`
+            // (which is also valid TOML but a sub-table — `name =` there does
+            // not refer to the published crate name).
+            let section = rest.trim_end_matches(']');
+            in_package = section == "package";
+            continue;
+        }
+        if in_package {
+            if let Some(caps) = name_re.captures(trimmed) {
+                return Some(caps[1].to_string());
+            }
+        }
+    }
+    None
+}
+
 // ---- markdown parsing ---------------------------------------------------
 
 struct Chapter {
@@ -94,31 +119,42 @@ struct Chapter {
     body_offset: usize, // line number where `body` starts in the file (1-based)
 }
 
-fn parse_chapter(path: &Path) -> Option<Chapter> {
-    let text = fs::read_to_string(path).ok()?;
+enum ParseChapterError {
+    NoFrontmatter,
+    UnclosedFrontmatter,
+}
+
+fn parse_chapter(path: &Path) -> Result<Chapter, ParseChapterError> {
+    let text = fs::read_to_string(path).map_err(|_| ParseChapterError::NoFrontmatter)?;
     let mut lines = text.lines();
 
     // First non-blank line must be `---`.
-    let first = lines.next()?;
+    let first = lines.next().ok_or(ParseChapterError::NoFrontmatter)?;
     if first.trim() != "---" {
-        return None;
+        return Err(ParseChapterError::NoFrontmatter);
     }
 
     let mut fm = String::new();
     let mut consumed = 1; // the opening `---`
+    let mut closed = false;
     for line in lines.by_ref() {
         consumed += 1;
         if line.trim() == "---" {
+            closed = true;
             break;
         }
         fm.push_str(line);
         fm.push('\n');
     }
 
+    if !closed {
+        return Err(ParseChapterError::UnclosedFrontmatter);
+    }
+
     let body: String = lines.collect::<Vec<_>>().join("\n");
     let body_offset = consumed + 1; // first body line is one past closing `---`
 
-    Some(Chapter {
+    Ok(Chapter {
         frontmatter: fm,
         body,
         body_offset,
@@ -137,38 +173,64 @@ fn chapter_id(fm: &str) -> Option<&str> {
 
 /// Returns the entries under `evidence_refs.rust:` in the frontmatter.
 /// Each entry is `(line_number_in_file, symbol)`.
+///
+/// Tracks the `evidence_refs:` parent explicitly so a future schema with a
+/// nested `rust:` key under some other top-level field (e.g. a hypothetical
+/// `confidence_detail.rust`) doesn't get accidentally scraped as Rust
+/// evidence.
 fn extract_rust_evidence_refs(chapter: &Chapter) -> Vec<(usize, String)> {
     let mut out = Vec::new();
+    let mut evidence_refs_indent: Option<usize> = None;
     let mut in_block = false;
     let mut block_indent: usize = 0;
 
     for (idx, line) in chapter.frontmatter.lines().enumerate() {
         let file_line = idx + 2; // +1 for opening `---`, +1 for 1-based
+        let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
 
-        // Detect `rust:` under any sub-indent.
-        if let Some(stripped) = line.trim_start().strip_prefix("rust:") {
-            // Only enter the block when the suffix is empty or a comment.
-            // `rust: [some-inline-list]` would also be valid YAML but we
-            // don't bother — current convention is block-style.
-            if stripped.trim().is_empty() || stripped.trim_start().starts_with('#') {
-                in_block = true;
-                block_indent = line.len() - line.trim_start().len();
+        // Track the `evidence_refs:` parent. Enter when we see a top-level
+        // `evidence_refs:` key (indent 0); leave when we see another key at
+        // the same or shallower indent.
+        if let Some(after) = trimmed.strip_prefix("evidence_refs:") {
+            if after.trim().is_empty() {
+                evidence_refs_indent = Some(indent);
+                in_block = false;
                 continue;
+            }
+        }
+        if let Some(parent_indent) = evidence_refs_indent {
+            if !trimmed.is_empty()
+                && !trimmed.starts_with('-')
+                && !trimmed.starts_with('#')
+                && indent <= parent_indent
+                && !trimmed.starts_with("evidence_refs:")
+            {
+                evidence_refs_indent = None;
+                in_block = false;
+            }
+        }
+
+        // Detect `rust:` only when we're inside `evidence_refs:`.
+        if evidence_refs_indent.is_some() {
+            if let Some(stripped) = trimmed.strip_prefix("rust:") {
+                if stripped.trim().is_empty() || stripped.trim_start().starts_with('#') {
+                    in_block = true;
+                    block_indent = indent;
+                    continue;
+                }
             }
         }
 
         if in_block {
-            let indent = line.len() - line.trim_start().len();
-            // Continue while the line is more indented than the `rust:` line
-            // and starts with `-`. Anything else closes the block.
-            if line.trim().is_empty() {
+            if trimmed.is_empty() {
                 continue; // blank line inside the list — keep scanning
             }
             if indent <= block_indent {
                 in_block = false;
                 continue;
             }
-            if let Some(item) = line.trim_start().strip_prefix('-') {
+            if let Some(item) = trimmed.strip_prefix('-') {
                 let sym = item.trim().to_string();
                 if !sym.is_empty() {
                     out.push((file_line, sym));
@@ -238,22 +300,26 @@ fn body_ref_regex() -> Regex {
 
 /// Match a frontmatter-style symbol reference like
 /// `cimmeria-services::cell::combat::threat::ThreatList::add`.
+///
+/// Accepts any valid Cargo crate name (Cargo allows `[a-z][a-z0-9_-]*` plus
+/// uppercase in some legacy names, but our workspace convention is
+/// lowercase). Crate-name resolution against the workspace happens later in
+/// `resolve_frontmatter_ref`; the regex is only a shape check.
 fn frontmatter_ref_regex() -> Regex {
-    Regex::new(r"^cimmeria-[a-z0-9_-]+(?:::[A-Za-z_][A-Za-z0-9_]*)+$").expect("static regex")
+    Regex::new(r"^[A-Za-z][A-Za-z0-9_-]*(?:::[A-Za-z_][A-Za-z0-9_]*)+$").expect("static regex")
 }
 
 /// Match a no-line-numbers rule violation: `foo.rs:NN` or `foo.rs:NN-MM` inside
-/// a section-4/5 body. Counts as a violation only when the path is under
+/// a section-4/5 body. Counts as a violation when the path is under
 /// `crates/`, `src/`, or starts with a Rust filename — paths under `game/sgw/`,
 /// `deprecated/`, etc., are out of scope for this rule (they are evidence
 /// paths, not Rust paths, even if they appear inline in section 4/5 prose).
 fn line_number_violation_regex() -> Regex {
-    // Match `<token>.rs:<digits>` where the path token starts with `crates/`
-    // or with a bare filename component followed by `.rs`. The lint is best-
-    // effort; we want to catch obvious violations without false-firing on
-    // evidence citations.
-    Regex::new(r"(?:^|[\s`(\[])((?:crates/|[A-Za-z_])[A-Za-z0-9_./-]*\.rs:\d+(?:-\d+)?)")
-        .expect("static regex")
+    // The pattern has no leading word-boundary char class. The trailing
+    // `.rs:NN` shape is specific enough that bare `crates/foo.rs:42` or
+    // `src/foo/bar.rs:42-50` in any context is treated as a violation —
+    // including table cells with no surrounding space (`|crates/foo.rs:42|`).
+    Regex::new(r"\b((?:crates/|src/)[A-Za-z0-9_./-]*\.rs:\d+(?:-\d+)?)").expect("static regex")
 }
 
 fn resolve_body_ref(
@@ -472,8 +538,21 @@ fn lint_chapter(
     path: &Path,
     findings: &mut Vec<Finding>,
 ) {
-    let Some(chapter) = parse_chapter(path) else {
-        return; // no frontmatter — not a chapter
+    let chapter = match parse_chapter(path) {
+        Ok(c) => c,
+        Err(ParseChapterError::NoFrontmatter) => return, // not a chapter
+        Err(ParseChapterError::UnclosedFrontmatter) => {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                line: 1,
+                kind: FindingKind::MalformedRef,
+                detail: "chapter has an opening `---` but no closing `---` — \
+                    section 4/5 lint is silently skipped for unclosed \
+                    frontmatter; close the YAML block"
+                    .to_string(),
+            });
+            return;
+        }
     };
 
     // Skip meta apparatus (README, conventions, glossary, how-to-{read,write}).
@@ -494,7 +573,7 @@ fn lint_chapter(
                 kind: FindingKind::MalformedRef,
                 detail: format!(
                     "frontmatter `evidence_refs.rust:` entry `{raw}` does not match \
-                    crate-prefixed `cimmeria-<name>::module::path::Symbol` form"
+                    crate-prefixed `<crate-name>::module::path::Symbol` form"
                 ),
             });
             continue;
