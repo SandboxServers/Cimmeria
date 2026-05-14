@@ -48,7 +48,7 @@ metadata:
 - Created by `FUN_00d57030` (0x00d57030).
 - Body: reads `pMethodDesc` from `this+4`, `pArgData` from `this+8`,
   calls `EnsureEntityRpcRegistryAllocated()` + `RouteOutgoingEntityRpc(param_2, pMethodDesc, pArgData)`.
-- `pMethodDesc` = enableEntities method descriptor; `pArgData` = 1-byte keepBase arg.
+- `pMethodDesc` = enableEntities method descriptor; `pArgData` = 8-byte SGW-custom `uint64` dummy payload (`keepBase`), corrected per Q1.
 
 ### Q5/Q6: Still open
 

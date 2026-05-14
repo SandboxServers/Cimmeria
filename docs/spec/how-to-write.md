@@ -252,9 +252,3 @@ The system advisors in `.claude/agents/` exist to be consulted. Each one owns a 
 For Section 1 evidence questions, talk to `bigworld-engine-advisor` (engine) or `game-archaeology-specialist` (gameplay reverse engineering). For Sections 4/5 questions, talk to `rust-gameserver-dev` or the domain advisor.
 
 Read the advisor's persona file first. If the question is framing or glossary, that is enough — no need to spawn a sub-agent. If the question requires running Ghidra or grepping `crates/` at scale, then spawn.
-
----
-
-## The first chapter is high-stakes
-
-The first chapter authored under this template sets the bar for every chapter after it. Per issue [#264](https://github.com/SandboxServers/Cimmeria/issues/264), the project owner has not yet decided whether the first chapter is human-authored (slow, high-quality, becomes the gold reference) or agent-drafted with human edit (fast, imperfect, iterates the template). If you are about to author the first chapter, surface that decision *before* starting — do not just pick one and run.

@@ -11,7 +11,13 @@
 
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+# Move to the repo root (one level up from this script). Bail loudly if the
+# cd fails so we don't accidentally lint whatever the current directory
+# happens to contain.
+cd "$(dirname "$0")/.." || {
+  echo "tools/lint-md.sh: could not cd into repo root from $(dirname "$0")/.." >&2
+  exit 1
+}
 
 # Prefer the project-local node_modules if it's installed; fall back to npx,
 # which fetches markdownlint-cli2 on demand. The version pin in package.json

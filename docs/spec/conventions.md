@@ -58,7 +58,7 @@ supersedes: []
 | `status` | enum | One of `draft`, `verified`, `stale`, `disputed`, `deprecated`. See [status lifecycle](how-to-write.md#status-lifecycle) in `how-to-write.md`. |
 | `last_verified` | ISO date | When the chapter was last walked end-to-end against current Rust and current evidence. Updated on promotion to `verified`. |
 | `verified_by` | string | Handle of the human who signed off, or `automated-agent` if an agent drafted and no human has reviewed. The latter is only valid for `draft`. |
-| `confidence` | object | Five sub-keys, one per section (`re`, `client`, `deprecated`, `rust_expected`, `rust_actual`). Each value is `high`, `medium`, or `low`. A section marked `N/A` still appears here, with value `n/a`. |
+| `confidence` | object | Five sub-keys, one per section (`re`, `client`, `deprecated`, `rust_expected`, `rust_actual`). Each value is one of `high`, `medium`, `low`, or `n/a`. The `n/a` value is required when the corresponding body section is marked `N/A — <reason>`; see [N/A marking](#na-marking). |
 | `evidence_refs` | object | Up to four sub-keys (`re`, `client`, `deprecated`, `rust`). Each is a list. See [evidence-ref grammar](#evidence-ref-grammar) below. |
 
 ### Optional keys

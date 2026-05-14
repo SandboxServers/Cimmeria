@@ -18,6 +18,10 @@ on:
       - "crates/**"
       - "tools/spec-lint/**"
       - ".github/workflows/spec-lint.yml"
+      # Workspace manifest + lock — a dep bump that affects the spec-lint
+      # binary won't otherwise trigger this workflow.
+      - "Cargo.toml"
+      - "Cargo.lock"
 
 # Per-PR concurrency: a force-push during review cancels the prior run.
 concurrency:
