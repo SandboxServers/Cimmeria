@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="1231pt" height="199pt"
+ viewBox="0.00 0.00 1231.00 199.25" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 195.25)">
+<title>G</title>
+<polygon fill="white" stroke="none" points="-4,4 -4,-195.25 1227,-195.25 1227,4 -4,4"/>
+<text text-anchor="middle" x="611.5" y="-173.95" font-family="Helvetica,Sans-Serif" font-size="14.00">forcedPosition (msg_id 0x31) — SGW adds 12 B velocity + 1 B physics = 49 B vs stock 36 B</text>
+<g id="node1" class="node">
+<title>layout</title>
+<polygon fill="#f4f4f4" stroke="none" points="8,-114 8,-162 333,-162 333,-114 8,-114"/>
+<polygon fill="none" stroke="black" points="8,-114 8,-162 333,-162 333,-114 8,-114"/>
+<text text-anchor="start" x="143.5" y="-134.32" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">Source</text>
+<polygon fill="#f4f4f4" stroke="none" points="333,-114 333,-162 601,-162 601,-114 333,-114"/>
+<polygon fill="none" stroke="black" points="333,-114 333,-162 601,-162 601,-114 333,-114"/>
+<text text-anchor="start" x="442.62" y="-141.7" font-family="Helvetica,Sans-Serif" font-size="14.00">header</text>
+<text text-anchor="start" x="388.25" y="-124.45" font-family="Helvetica,Sans-Serif" font-size="14.00">(entity, space, vehicle)</text>
+<polygon fill="#f4f4f4" stroke="none" points="601,-114 601,-162 736,-162 736,-114 601,-114"/>
+<polygon fill="none" stroke="black" points="601,-114 601,-162 736,-162 736,-114 601,-114"/>
+<text text-anchor="start" x="641.12" y="-133.32" font-family="Helvetica,Sans-Serif" font-size="14.00">position</text>
+<polygon fill="#fff4d6" stroke="none" points="736,-114 736,-162 902,-162 902,-114 736,-114"/>
+<polygon fill="none" stroke="black" points="736,-114 736,-162 902,-162 902,-114 736,-114"/>
+<text text-anchor="start" x="792.38" y="-133.32" font-family="Helvetica,Sans-Serif" font-size="14.00">velocity</text>
+<polygon fill="#f4f4f4" stroke="none" points="902,-114 902,-162 1009,-162 1009,-114 902,-114"/>
+<polygon fill="none" stroke="black" points="902,-114 902,-162 1009,-162 1009,-114 902,-114"/>
+<text text-anchor="start" x="928.88" y="-133.32" font-family="Helvetica,Sans-Serif" font-size="14.00">rotation</text>
+<polygon fill="#fff4d6" stroke="none" points="1009,-114 1009,-162 1157,-162 1157,-114 1009,-114"/>
+<polygon fill="none" stroke="black" points="1009,-114 1009,-162 1157,-162 1157,-114 1009,-114"/>
+<text text-anchor="start" x="1056.75" y="-133.32" font-family="Helvetica,Sans-Serif" font-size="14.00">physics</text>
+<polygon fill="#f4f4f4" stroke="none" points="1157,-114 1157,-162 1215,-162 1215,-114 1157,-114"/>
+<polygon fill="none" stroke="black" points="1157,-114 1157,-162 1215,-162 1215,-114 1157,-114"/>
+<text text-anchor="start" x="1167.25" y="-134.32" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">total</text>
+<polygon fill="#ffe8d6" stroke="none" points="8,-72 8,-114 333,-114 333,-72 8,-72"/>
+<polygon fill="none" stroke="black" points="8,-72 8,-114 333,-114 333,-72 8,-72"/>
+<text text-anchor="start" x="111.62" y="-89.33" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">Stock BW 2.0.1</text>
+<polygon fill="none" stroke="black" points="333,-72 333,-114 601,-114 601,-72 333,-72"/>
+<text text-anchor="start" x="404.75" y="-89.33" font-family="Helvetica,Sans-Serif" font-size="14.00">4 + 4 + 4 = </text>
+<text text-anchor="start" x="494.75" y="-89.33" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">12 B</text>
+<polygon fill="none" stroke="black" points="601,-72 601,-114 736,-114 736,-72 601,-72"/>
+<text text-anchor="start" x="631.75" y="-94.7" font-family="Helvetica,Sans-Serif" font-size="14.00">Position3D</text>
+<text text-anchor="start" x="651.25" y="-80.7" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">12 B</text>
+<polygon fill="#ffcccc" stroke="none" points="736,-72 736,-114 902,-114 902,-72 736,-72"/>
+<polygon fill="none" stroke="black" points="736,-72 736,-114 902,-114 902,-72 736,-72"/>
+<text text-anchor="start" x="785.25" y="-89.33" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">(absent)</text>
+<polygon fill="none" stroke="black" points="902,-72 902,-114 1009,-114 1009,-72 902,-72"/>
+<text text-anchor="start" x="915" y="-94.7" font-family="Helvetica,Sans-Serif" font-size="14.00">Direction3D</text>
+<text text-anchor="start" x="938.25" y="-80.7" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">12 B</text>
+<polygon fill="#ffcccc" stroke="none" points="1009,-72 1009,-114 1157,-114 1157,-72 1009,-72"/>
+<polygon fill="none" stroke="black" points="1009,-72 1009,-114 1157,-114 1157,-72 1009,-72"/>
+<text text-anchor="start" x="1049.25" y="-89.33" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">(absent)</text>
+<polygon fill="none" stroke="black" points="1157,-72 1157,-114 1215,-114 1215,-72 1157,-72"/>
+<text text-anchor="start" x="1168.75" y="-89.33" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">36 B</text>
+<polygon fill="#d6ffd6" stroke="none" points="8,-30 8,-72 333,-72 333,-30 8,-30"/>
+<polygon fill="none" stroke="black" points="8,-30 8,-72 333,-72 333,-30 8,-30"/>
+<text text-anchor="start" x="152.12" y="-47.33" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">SGW</text>
+<polygon fill="none" stroke="black" points="333,-30 333,-72 601,-72 601,-30 333,-30"/>
+<text text-anchor="start" x="404.75" y="-47.33" font-family="Helvetica,Sans-Serif" font-size="14.00">4 + 4 + 4 = </text>
+<text text-anchor="start" x="494.75" y="-47.33" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">12 B</text>
+<polygon fill="none" stroke="black" points="601,-30 601,-72 736,-72 736,-30 601,-30"/>
+<text text-anchor="start" x="631.75" y="-52.7" font-family="Helvetica,Sans-Serif" font-size="14.00">Position3D</text>
+<text text-anchor="start" x="651.25" y="-38.7" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">12 B</text>
+<polygon fill="#ccffcc" stroke="none" points="736,-30 736,-72 902,-72 902,-30 736,-30"/>
+<polygon fill="none" stroke="black" points="736,-30 736,-72 902,-72 902,-30 736,-30"/>
+<text text-anchor="start" x="774" y="-52.7" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">Vec3 (12 B)</text>
+<text text-anchor="start" x="754.88" y="-38.7" font-family="Helvetica,Sans-Serif" font-size="14.00">SGW-only addition</text>
+<polygon fill="none" stroke="black" points="902,-30 902,-72 1009,-72 1009,-30 902,-30"/>
+<text text-anchor="start" x="915" y="-52.7" font-family="Helvetica,Sans-Serif" font-size="14.00">Direction3D</text>
+<text text-anchor="start" x="938.25" y="-38.7" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">12 B</text>
+<polygon fill="#ccffcc" stroke="none" points="1009,-30 1009,-72 1157,-72 1157,-30 1009,-30"/>
+<polygon fill="none" stroke="black" points="1009,-30 1009,-72 1157,-72 1157,-30 1009,-30"/>
+<text text-anchor="start" x="1020.75" y="-52.7" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">physics u8 (1 B)</text>
+<text text-anchor="start" x="1018.88" y="-38.7" font-family="Helvetica,Sans-Serif" font-size="14.00">SGW-only addition</text>
+<polygon fill="none" stroke="black" points="1157,-30 1157,-72 1215,-72 1215,-30 1157,-30"/>
+<text text-anchor="start" x="1168.75" y="-47.33" font-family="Helvetica,Sans-Serif" font-weight="bold" font-size="14.00">49 B</text>
+<polygon fill="#fafafa" stroke="none" points="8,-4 8,-30 1215,-30 1215,-4 8,-4"/>
+<polygon fill="none" stroke="black" points="8,-4 8,-30 1215,-30 1215,-4 8,-4"/>
+<text text-anchor="start" x="14.88" y="-13.5" font-family="Helvetica,Sans-Serif" font-size="10.00">CONSTANT_LENGTH = 49 in the SGW client's InterfaceElement table. Emitting the stock 36-byte body fails the table check and the client drops the packet silently — see §1.10.6. Velocity is zero at world entry; physics byte is 0x01 at world entry.</text>
+</g>
+</g>
+</svg>

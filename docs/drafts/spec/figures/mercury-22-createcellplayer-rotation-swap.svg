@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="1331pt" height="199pt"
+ viewBox="0.00 0.00 1331.00 199.25" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 195.25)">
+<title>G</title>
+<polygon fill="white" stroke="none" points="-4,4 -4,-195.25 1327,-195.25 1327,4 -4,4"/>
+<text text-anchor="middle" x="661.5" y="-173.95" font-family="Helvetica,sans-Serif" font-size="14.00">createCellPlayer rotation triplet — SGW swaps Y/Z at the same wire offsets</text>
+<g id="node1" class="node">
+<title>layout</title>
+<polygon fill="#f4f4f4" stroke="none" points="8,-114 8,-162 310,-162 310,-114 8,-114"/>
+<polygon fill="none" stroke="black" points="8,-114 8,-162 310,-162 310,-114 8,-114"/>
+<text text-anchor="start" x="132" y="-134.32" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">Source</text>
+<polygon fill="#f4f4f4" stroke="none" points="310,-114 310,-162 608,-162 608,-114 310,-114"/>
+<polygon fill="none" stroke="black" points="310,-114 310,-162 608,-162 608,-114 310,-114"/>
+<text text-anchor="start" x="385.88" y="-141.7" font-family="Helvetica,sans-Serif" font-size="14.00">offset +0x00..+0x0F</text>
+<text text-anchor="start" x="348.38" y="-124.45" font-family="Helvetica,sans-Serif" font-size="14.00">(spaceId, vehicleId, posX, posY)</text>
+<polygon fill="#f4f4f4" stroke="none" points="608,-114 608,-162 800,-162 800,-114 608,-114"/>
+<polygon fill="none" stroke="black" points="608,-114 608,-162 800,-162 800,-114 608,-114"/>
+<text text-anchor="start" x="630.5" y="-141.7" font-family="Helvetica,sans-Serif" font-size="14.00">offset +0x10..+0x13</text>
+<text text-anchor="start" x="667.62" y="-124.45" font-family="Helvetica,sans-Serif" font-size="14.00">posZ (f32)</text>
+<polygon fill="#fff4d6" stroke="none" points="800,-114 800,-162 977,-162 977,-114 800,-114"/>
+<polygon fill="none" stroke="black" points="800,-114 800,-162 977,-162 977,-114 800,-114"/>
+<text text-anchor="start" x="815" y="-141.7" font-family="Helvetica,sans-Serif" font-size="14.00">offset +0x14..+0x17</text>
+<text text-anchor="start" x="833.38" y="-124.45" font-family="Helvetica,sans-Serif" font-size="14.00">4 B rotation slot</text>
+<polygon fill="#fff4d6" stroke="none" points="977,-114 977,-162 1146,-162 1146,-114 977,-114"/>
+<polygon fill="none" stroke="black" points="977,-114 977,-162 1146,-162 1146,-114 977,-114"/>
+<text text-anchor="start" x="987.62" y="-141.7" font-family="Helvetica,sans-Serif" font-size="14.00">offset +0x18..+0x1B</text>
+<text text-anchor="start" x="1006.38" y="-124.45" font-family="Helvetica,sans-Serif" font-size="14.00">4 B rotation slot</text>
+<polygon fill="#fff4d6" stroke="none" points="1146,-114 1146,-162 1315,-162 1315,-114 1146,-114"/>
+<polygon fill="none" stroke="black" points="1146,-114 1146,-162 1315,-162 1315,-114 1146,-114"/>
+<text text-anchor="start" x="1157" y="-141.7" font-family="Helvetica,sans-Serif" font-size="14.00">offset +0x1C..+0x1F</text>
+<text text-anchor="start" x="1175.38" y="-124.45" font-family="Helvetica,sans-Serif" font-size="14.00">4 B rotation slot</text>
+<polygon fill="#ffe8d6" stroke="none" points="8,-72 8,-114 310,-114 310,-72 8,-72"/>
+<polygon fill="none" stroke="black" points="8,-72 8,-114 310,-114 310,-72 8,-72"/>
+<text text-anchor="start" x="77.62" y="-94.7" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">Stock BigWorld 2.0.1</text>
+<text text-anchor="start" x="97.88" y="-80.7" font-family="Helvetica,sans-Serif" font-size="14.00">Direction3D order</text>
+<polygon fill="none" stroke="black" points="310,-72 310,-114 608,-114 608,-72 310,-72"/>
+<text text-anchor="start" x="384.38" y="-88.33" font-family="Helvetica,sans-Serif" font-size="14.00">16 B header + posXY</text>
+<polygon fill="none" stroke="black" points="608,-72 608,-114 800,-114 800,-72 608,-72"/>
+<text text-anchor="start" x="667.62" y="-88.33" font-family="Helvetica,sans-Serif" font-size="14.00">posZ (f32)</text>
+<polygon fill="#cce5ff" stroke="none" points="800,-72 800,-114 977,-114 977,-72 800,-72"/>
+<polygon fill="none" stroke="black" points="800,-72 800,-114 977,-114 977,-72 800,-72"/>
+<text text-anchor="start" x="853.62" y="-89.33" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">rotX</text>
+<text text-anchor="start" x="887.38" y="-89.33" font-family="Helvetica,sans-Serif" font-size="14.00"> (roll)</text>
+<polygon fill="#cce5ff" stroke="none" points="977,-72 977,-114 1146,-114 1146,-72 977,-72"/>
+<polygon fill="none" stroke="black" points="977,-72 977,-114 1146,-114 1146,-72 977,-72"/>
+<text text-anchor="start" x="1019.88" y="-89.33" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">rotY</text>
+<text text-anchor="start" x="1053.62" y="-89.33" font-family="Helvetica,sans-Serif" font-size="14.00"> (pitch)</text>
+<polygon fill="#cce5ff" stroke="none" points="1146,-72 1146,-114 1315,-114 1315,-72 1146,-72"/>
+<polygon fill="none" stroke="black" points="1146,-72 1146,-114 1315,-114 1315,-72 1146,-72"/>
+<text text-anchor="start" x="1192.25" y="-89.33" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">rotZ</text>
+<text text-anchor="start" x="1226" y="-89.33" font-family="Helvetica,sans-Serif" font-size="14.00"> (yaw)</text>
+<polygon fill="#d6ffd6" stroke="none" points="8,-30 8,-72 310,-72 310,-30 8,-30"/>
+<polygon fill="none" stroke="black" points="8,-30 8,-72 310,-72 310,-30 8,-30"/>
+<text text-anchor="start" x="140.62" y="-52.7" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">SGW</text>
+<text text-anchor="start" x="114.38" y="-38.7" font-family="Helvetica,sans-Serif" font-size="14.00">Y/Z swapped</text>
+<polygon fill="none" stroke="black" points="310,-30 310,-72 608,-72 608,-30 310,-30"/>
+<text text-anchor="start" x="384.38" y="-46.33" font-family="Helvetica,sans-Serif" font-size="14.00">16 B header + posXY</text>
+<polygon fill="none" stroke="black" points="608,-30 608,-72 800,-72 800,-30 608,-30"/>
+<text text-anchor="start" x="667.62" y="-46.33" font-family="Helvetica,sans-Serif" font-size="14.00">posZ (f32)</text>
+<polygon fill="#cce5ff" stroke="none" points="800,-30 800,-72 977,-72 977,-30 800,-30"/>
+<polygon fill="none" stroke="black" points="800,-30 800,-72 977,-72 977,-30 800,-30"/>
+<text text-anchor="start" x="871.62" y="-47.33" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">rotX</text>
+<polygon fill="#ffcccc" stroke="none" points="977,-30 977,-72 1146,-72 1146,-30 977,-30"/>
+<polygon fill="none" stroke="black" points="977,-30 977,-72 1146,-72 1146,-30 977,-30"/>
+<text text-anchor="start" x="993.25" y="-47.33" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">rotZ</text>
+<text text-anchor="start" x="1027" y="-47.33" font-family="Helvetica,sans-Serif" font-size="14.00"> ** swapped **</text>
+<polygon fill="#ffcccc" stroke="none" points="1146,-30 1146,-72 1315,-72 1315,-30 1146,-30"/>
+<polygon fill="none" stroke="black" points="1146,-30 1146,-72 1315,-72 1315,-30 1146,-30"/>
+<text text-anchor="start" x="1162.25" y="-47.33" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">rotY</text>
+<text text-anchor="start" x="1196" y="-47.33" font-family="Helvetica,sans-Serif" font-size="14.00"> ** swapped **</text>
+<polygon fill="#fafafa" stroke="none" points="8,-4 8,-30 1315,-30 1315,-4 8,-4"/>
+<polygon fill="none" stroke="black" points="8,-4 8,-30 1315,-30 1315,-4 8,-4"/>
+<text text-anchor="start" x="15" y="-13.5" font-family="Helvetica,Sans-Serif" font-size="10.00">Confirmed three ways: FUN_015846a0 rotation reader (parse side), client_handler.cpp emits rotX, rotZ, rotY (server side), world-entry-pipeline.md audit. A reimplementation writing the stock-BW order produces a packet the client mis-orients — see §1.10.2.</text>
+</g>
+</g>
+</svg>

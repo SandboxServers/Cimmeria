@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="998pt" height="414pt"
+ viewBox="0.00 0.00 997.75 413.50" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 409.5)">
+<title>mercury_topology</title>
+<polygon fill="white" stroke="none" points="-4,4 -4,-409.5 993.75,-409.5 993.75,4 -4,4"/>
+<text text-anchor="middle" x="494.88" y="-389.15" font-family="Helvetica,Sans-Serif" font-size="13.00">Mercury — Runtime Connection Topology</text>
+<g id="clust1" class="cluster">
+<title>cluster_client</title>
+<polygon fill="#fff4d6" stroke="#cc9933" points="8,-296 8,-373 339.5,-373 339.5,-296 8,-296"/>
+<text text-anchor="middle" x="173.75" y="-356.65" font-family="Helvetica,Sans-Serif" font-size="13.00">Game Client (Windows)</text>
+</g>
+<g id="clust2" class="cluster">
+<title>cluster_cell</title>
+<polygon fill="#e8f4fb" stroke="#5599cc" points="256.12,-188 256.12,-288 830.5,-288 830.5,-188 256.12,-188"/>
+<text text-anchor="middle" x="543.31" y="-271.65" font-family="Helvetica,Sans-Serif" font-size="13.00">Cell Service</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_base</title>
+<polygon fill="#e8f4fb" stroke="#5599cc" points="447.25,-103 447.25,-180 981.75,-180 981.75,-103 447.25,-103"/>
+<text text-anchor="middle" x="714.5" y="-163.65" font-family="Helvetica,Sans-Serif" font-size="13.00">Base Service</text>
+</g>
+<g id="clust4" class="cluster">
+<title>cluster_auth</title>
+<polygon fill="#f0fff0" stroke="#339933" points="650.75,-8 650.75,-95 830.5,-95 830.5,-8 650.75,-8"/>
+<text text-anchor="middle" x="740.62" y="-78.65" font-family="Helvetica,Sans-Serif" font-size="13.00">Auth Service</text>
+</g>
+<g id="node1" class="node">
+<title>client_nub</title>
+<path fill="#ffe599" stroke="black" d="M113.75,-340C113.75,-340 28,-340 28,-340 22,-340 16,-334 16,-328 16,-328 16,-316 16,-316 16,-310 22,-304 28,-304 28,-304 113.75,-304 113.75,-304 119.75,-304 125.75,-310 125.75,-316 125.75,-316 125.75,-328 125.75,-328 125.75,-334 119.75,-340 113.75,-340"/>
+<text text-anchor="middle" x="70.88" y="-325.25" font-family="Helvetica,Sans-Serif" font-size="10.00">Client Mercury Nub</text>
+<text text-anchor="middle" x="70.88" y="-312.5" font-family="Helvetica,Sans-Serif" font-size="10.00">UDP socket</text>
+</g>
+<g id="node2" class="node">
+<title>client_chan</title>
+<polygon fill="#ffffff" stroke="black" points="325.5,-340 263.75,-340 263.75,-304 331.5,-304 331.5,-334 325.5,-340"/>
+<polyline fill="none" stroke="black" points="325.5,-340 325.5,-334"/>
+<polyline fill="none" stroke="black" points="331.5,-334 325.5,-334"/>
+<text text-anchor="middle" x="297.62" y="-325.25" font-family="Helvetica,Sans-Serif" font-size="10.00">Channel</text>
+<text text-anchor="middle" x="297.62" y="-312.5" font-family="Helvetica,Sans-Serif" font-size="10.00">Connected</text>
+</g>
+<g id="edge1" class="edge">
+<path fill="none" stroke="#666666" stroke-dasharray="5,2" d="M125.99,-322C168.86,-322 227.35,-322 263.52,-322"/>
+</g>
+<g id="node3" class="node">
+<title>cell_nub</title>
+<path fill="#bdd7ee" stroke="black" d="M319.12,-244C319.12,-244 276.12,-244 276.12,-244 270.12,-244 264.12,-238 264.12,-232 264.12,-232 264.12,-220 264.12,-220 264.12,-214 270.12,-208 276.12,-208 276.12,-208 319.12,-208 319.12,-208 325.12,-208 331.12,-214 331.12,-220 331.12,-220 331.12,-232 331.12,-232 331.12,-238 325.12,-244 319.12,-244"/>
+<text text-anchor="middle" x="297.62" y="-229.25" font-family="Helvetica,Sans-Serif" font-size="10.00">Nub</text>
+<text text-anchor="middle" x="297.62" y="-216.5" font-family="Helvetica,Sans-Serif" font-size="10.00">UDP :3790</text>
+</g>
+<g id="edge6" class="edge">
+<path fill="none" stroke="#666666" d="M123.62,-299.9C163.62,-282.81 218.25,-259.48 255.34,-243.63"/>
+<polygon fill="#666666" stroke="#666666" points="122.59,-297.29 116.34,-303.01 124.79,-302.44 122.59,-297.29"/>
+<polygon fill="#666666" stroke="#666666" points="256.26,-246.29 262.52,-240.57 254.06,-241.14 256.26,-246.29"/>
+<text text-anchor="middle" x="194.75" y="-304.95" font-family="Times,serif" font-size="9.00">UDP Mercury v391</text>
+<text text-anchor="middle" x="194.75" y="-293.7" font-family="Times,serif" font-size="9.00">reliable + fragmented</text>
+</g>
+<g id="node4" class="node">
+<title>cell_chan</title>
+<polygon fill="#ffffff" stroke="black" points="532,-255.5 450,-255.5 450,-196.5 538,-196.5 538,-249.5 532,-255.5"/>
+<polyline fill="none" stroke="black" points="532,-255.5 532,-249.5"/>
+<polyline fill="none" stroke="black" points="538,-249.5 532,-249.5"/>
+<text text-anchor="middle" x="494" y="-242" font-family="Helvetica,Sans-Serif" font-size="10.00">Channel</text>
+<text text-anchor="middle" x="494" y="-229.25" font-family="Helvetica,Sans-Serif" font-size="10.00">Connected</text>
+<text text-anchor="middle" x="494" y="-216.5" font-family="Helvetica,Sans-Serif" font-size="10.00">tx_window[45]</text>
+<text text-anchor="middle" x="494" y="-203.75" font-family="Helvetica,Sans-Serif" font-size="10.00">rx_window[64]</text>
+</g>
+<g id="edge2" class="edge">
+<path fill="none" stroke="#666666" stroke-dasharray="5,2" d="M331.6,-226C364.09,-226 413.92,-226 449.61,-226"/>
+</g>
+<g id="node6" class="node">
+<title>base_nub</title>
+<path fill="#bdd7ee" stroke="black" d="M520.75,-147C520.75,-147 467.25,-147 467.25,-147 461.25,-147 455.25,-141 455.25,-135 455.25,-135 455.25,-123 455.25,-123 455.25,-117 461.25,-111 467.25,-111 467.25,-111 520.75,-111 520.75,-111 526.75,-111 532.75,-117 532.75,-123 532.75,-123 532.75,-135 532.75,-135 532.75,-141 526.75,-147 520.75,-147"/>
+<text text-anchor="middle" x="494" y="-132.25" font-family="Helvetica,Sans-Serif" font-size="10.00">Nub</text>
+<text text-anchor="middle" x="494" y="-119.5" font-family="Helvetica,Sans-Serif" font-size="10.00">UDP internal</text>
+</g>
+<g id="edge7" class="edge">
+<path fill="none" stroke="#666666" stroke-dasharray="5,2" d="M340.04,-205.33C371.67,-189.55 415.23,-167.81 447.77,-151.57"/>
+<polygon fill="#666666" stroke="#666666" points="338.86,-202.79 332.95,-208.87 341.36,-207.8 338.86,-202.79"/>
+<polygon fill="#666666" stroke="#666666" points="448.95,-154.11 454.86,-148.03 446.45,-149.1 448.95,-154.11"/>
+<text text-anchor="middle" x="390.75" y="-202.7" font-family="Times,serif" font-size="9.00">UDP inter-service</text>
+</g>
+<g id="node5" class="node">
+<title>frag_cell</title>
+<path fill="#ffffdd" stroke="black" d="M810.5,-249.12C810.5,-249.12 670.75,-249.12 670.75,-249.12 664.75,-249.12 658.75,-243.12 658.75,-237.12 658.75,-237.12 658.75,-214.88 658.75,-214.88 658.75,-208.88 664.75,-202.88 670.75,-202.88 670.75,-202.88 810.5,-202.88 810.5,-202.88 816.5,-202.88 822.5,-208.88 822.5,-214.88 822.5,-214.88 822.5,-237.12 822.5,-237.12 822.5,-243.12 816.5,-249.12 810.5,-249.12"/>
+<text text-anchor="middle" x="740.62" y="-235.62" font-family="Helvetica,Sans-Serif" font-size="10.00">FragmentAssembler</text>
+<text text-anchor="middle" x="740.62" y="-222.88" font-family="Helvetica,Sans-Serif" font-size="10.00">FRAGMENT_BODY_SIZE=1300</text>
+<text text-anchor="middle" x="740.62" y="-210.12" font-family="Helvetica,Sans-Serif" font-size="10.00">MAX_FRAGMENTS=64</text>
+</g>
+<g id="edge3" class="edge">
+<path fill="none" stroke="#666666" stroke-dasharray="5,2" d="M538.45,-226C571.68,-226 618.44,-226 658.51,-226"/>
+</g>
+<g id="node7" class="node">
+<title>base_chan</title>
+<polygon fill="#ffffff" stroke="black" points="768.5,-147 706.75,-147 706.75,-111 774.5,-111 774.5,-141 768.5,-147"/>
+<polyline fill="none" stroke="black" points="768.5,-147 768.5,-141"/>
+<polyline fill="none" stroke="black" points="774.5,-141 768.5,-141"/>
+<text text-anchor="middle" x="740.62" y="-132.25" font-family="Helvetica,Sans-Serif" font-size="10.00">Channel</text>
+<text text-anchor="middle" x="740.62" y="-119.5" font-family="Helvetica,Sans-Serif" font-size="10.00">Connected</text>
+</g>
+<g id="edge4" class="edge">
+<path fill="none" stroke="#666666" stroke-dasharray="5,2" d="M533.22,-129C580.79,-129 661.25,-129 706.38,-129"/>
+</g>
+<g id="node9" class="node">
+<title>auth_tcp</title>
+<path fill="#ccffcc" stroke="black" d="M810.5,-62.12C810.5,-62.12 670.75,-62.12 670.75,-62.12 664.75,-62.12 658.75,-56.12 658.75,-50.12 658.75,-50.12 658.75,-27.88 658.75,-27.88 658.75,-21.88 664.75,-15.88 670.75,-15.88 670.75,-15.88 810.5,-15.88 810.5,-15.88 816.5,-15.88 822.5,-21.88 822.5,-27.88 822.5,-27.88 822.5,-50.12 822.5,-50.12 822.5,-56.12 816.5,-62.12 810.5,-62.12"/>
+<text text-anchor="middle" x="740.62" y="-48.62" font-family="Helvetica,Sans-Serif" font-size="10.00">TCP listener</text>
+<text text-anchor="middle" x="740.62" y="-35.88" font-family="Helvetica,Sans-Serif" font-size="10.00">UnifiedFrame</text>
+<text text-anchor="middle" x="740.62" y="-23.12" font-family="Helvetica,Sans-Serif" font-size="10.00">[len:u32][msg_id:u8][payload]</text>
+</g>
+<g id="edge8" class="edge">
+<path fill="none" stroke="#666666" d="M542.02,-111.7C577.35,-98.7 626.39,-80.66 666.77,-65.8"/>
+<polygon fill="#666666" stroke="#666666" points="541.18,-109.02 534.64,-114.41 543.12,-114.28 541.18,-109.02"/>
+<polygon fill="#666666" stroke="#666666" points="667.55,-68.5 674.09,-63.11 665.62,-63.24 667.55,-68.5"/>
+<text text-anchor="middle" x="598.38" y="-107.7" font-family="Times,serif" font-size="9.00">TCP UnifiedFrame</text>
+</g>
+<g id="node8" class="node">
+<title>frag_base</title>
+<path fill="#ffffdd" stroke="black" d="M961.75,-147C961.75,-147 871.5,-147 871.5,-147 865.5,-147 859.5,-141 859.5,-135 859.5,-135 859.5,-123 859.5,-123 859.5,-117 865.5,-111 871.5,-111 871.5,-111 961.75,-111 961.75,-111 967.75,-111 973.75,-117 973.75,-123 973.75,-123 973.75,-135 973.75,-135 973.75,-141 967.75,-147 961.75,-147"/>
+<text text-anchor="middle" x="916.62" y="-125.88" font-family="Helvetica,Sans-Serif" font-size="10.00">FragmentAssembler</text>
+</g>
+<g id="edge5" class="edge">
+<path fill="none" stroke="#666666" stroke-dasharray="5,2" d="M774.76,-129C798.62,-129 831.4,-129 859.33,-129"/>
+</g>
+</g>
+</svg>
