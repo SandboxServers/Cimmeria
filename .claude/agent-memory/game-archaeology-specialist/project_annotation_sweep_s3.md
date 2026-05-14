@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.engine.cme-event-signal §"naming conventions" + docs/reverse-engineering/findings/annotation-script-shift-bugs.md (already exists)
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). The W-rename campaign result (489/489 to `MemberCallbackRtti_*`) is canonical naming convention; the chapter's section 1 must mention this rule explicitly so V5 readers don't confuse RTTI accessors with handlers. Cross-link `findings/annotation-script-shift-bugs.md`.
+
 ## Session-3 annotation sweep (2026-05-13)
 
 Swept three clusters for annotation-script naming bugs in SGW.exe:

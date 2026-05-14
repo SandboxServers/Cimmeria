@@ -4,6 +4,10 @@ description: Complete analysis of BigWorld createCacheStamp / versionInfoRequest
 type: reference
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.engine.cooked-data-pipeline + spec.world.world-entry §"property cache deltas"
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Content describes two separate systems (entity cache stamps + cooked-data versioning) that should land in two different bible chapters. Cross-references V5 `cooked-data-pipeline.md` for the 21-category subscription pattern; the entity-cache-stamp half here adds value the V5 docs don't cover. Keep until both chapters are scaffolded.
+
 ## Entity-Level Cache Stamps (createCacheStamp) -- SEPARATE from Cooked Data Versions
 
 Two completely different systems share similar naming:

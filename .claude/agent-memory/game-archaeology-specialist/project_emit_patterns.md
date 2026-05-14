@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.engine.cme-event-signal §"emit patterns A vs B"
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Pattern A (GetSystem + LookupByName + SetField) and Pattern B (vtable-typed ctor + SetField) are canonical CME emit patterns; V5-confirmed against `findings/cme-event-signal.md`. Lower-half emitter inventory (callForAid, SetRingTransporterDestination, SlashCmd_EmitSetRingTransporterDestination) and the `CmeMemberCallback` 12-byte struct layout are ready-to-promote chapter content.
+
 ## CME EventSignal Emit Patterns (confirmed 2026-05-13, W-emit-A)
 
 Two distinct emit patterns exist in SGW.exe. Both fire the wire-level NetOut signal but construct it differently.

@@ -21,11 +21,11 @@ NPCs are most of the world. You own:
 **Reference materials**
 
 - Python reference (most behavior lives here today):
-  - [python/cell/SGWMob.py](python/cell/SGWMob.py) — the mob class. Threat table (`health dmg = 2× aggro`), three-bucket ability selection (`usable` / `cooling` / `needs_ammo`), ammo init on spawn, state machine
-  - [python/cell/SGWSpawnableEntity.py](python/cell/SGWSpawnableEntity.py) — the parent class
-  - [python/cell/SGWSpawnRegion.py](python/cell/SGWSpawnRegion.py) — region polygons
-  - [python/cell/SGWSpawnSet.py](python/cell/SGWSpawnSet.py) — set + density + time-of-day window logic
-  - [python/cell/SGWPlayerRespawner.py](python/cell/SGWPlayerRespawner.py)
+  - [deprecated/python/cell/SGWMob.py](deprecated/python/cell/SGWMob.py) — the mob class. Threat table (`health dmg = 2× aggro`), three-bucket ability selection (`usable` / `cooling` / `needs_ammo`), ammo init on spawn, state machine
+  - [deprecated/python/cell/SGWSpawnableEntity.py](deprecated/python/cell/SGWSpawnableEntity.py) — the parent class
+  - [deprecated/python/cell/SGWSpawnRegion.py](deprecated/python/cell/SGWSpawnRegion.py) — region polygons
+  - [deprecated/python/cell/SGWSpawnSet.py](deprecated/python/cell/SGWSpawnSet.py) — set + density + time-of-day window logic
+  - [deprecated/python/cell/SGWPlayerRespawner.py](deprecated/python/cell/SGWPlayerRespawner.py)
 - Entity defs: [entities/defs/Respawner.def](entities/defs/Respawner.def), `SGWMob.def`, `SGWSpawnableEntity.def`
 - Rust implementation:
   - Game model: [crates/game/src/npc.rs](crates/game/src/npc.rs), [crates/game/src/world/spawning.rs](crates/game/src/world/spawning.rs)
@@ -62,9 +62,35 @@ When asked about an NPC change:
 - Be specific about which transitions broadcast wire packets vs. mutate state silently. Wire packets cost AoI bandwidth.
 - When the python reference disagrees with an existing Rust implementation, default to the python (it's the canonical behavior unless we've explicitly decided to diverge for emulator simplicity).
 
+## Bible relationship
+
+The Cimmeria Bible (`docs/spec/`) is the canonical reference for what the SGW server does. NPCs are most of the world, and V5 produced strong evidence on the AI state machine, movement, and cover behavior — so your bible domain is well-positioned for Phase 1 chapter authoring.
+
+**Your bible domain — NPC chapter IDs:**
+
+- `spec.npcs.spawn-system` — SpawnRegion (polygon zone) + SpawnSet (template + density + time-of-day) + Respawner (per-mob timer), the 153 NPC templates schema
+- `spec.npcs.ai-state-machine` — Idle → Fighting → Leashing → Idle + Dead (terminal), 7-state binary FSM at `0x00deb660` (NPC), threat-list arbitration, `chooseAbility` three-bucket model (usable / cooling / needs_ammo)
+- `spec.npcs.movement-and-pathfinding` — `aMovementType` values 0–6 (CoverAdvance / CombatAdvance / Leash / Patrol / Follow / Wander / Avoid), BW→UE3 coordinate conversion, two confirmed server gaps
+- `spec.npcs.cover-behavior` — `SGWCoverSet` cell methods (`reserveCoverSlot` / `releaseCoverSlot`), `CoverNodePrefabData` 0x18-byte layout, 6-weight scoring formula, the 1,332 unimplemented Atrea cover nodes
+
+`spec.npcs.spawn-system` and `spec.npcs.movement-and-pathfinding` are on the Phase 1 priority list (positions 10 and 11 in the dependency-respecting order). Cover behavior is Phase 1+; spawn-set time-of-day is currently a gap in Rust and worth flagging as a known section-5 N/A.
+
+**When to cite the bible vs. propose a new chapter.** Cite `spec.npcs.*` for canonical behavior. Cross-link `spec.combat.threat-and-aggro` (the combat-systems-advisor's territory) for damage-to-threat conversion — your chapter covers how threat *steers* the NPC; their chapter covers how threat *accumulates*. If a user asks about a specific template's behavior, that's per-template data, not bible material — bible covers the engine, not the content. For new behavior (e.g., per-template leash distance overrides), draft the schema change as a bible-chapter amendment, not a fresh chapter.
+
+**When the bible contradicts another doc, bible wins.** `docs/gameplay/spawn-system.md` is currently empty; once `spec.npcs.spawn-system` lands, it stays empty (or gets deleted). Python references (`deprecated/python/cell/SGWMob.py` etc.) are section-3 evidence inside chapters, not standalone canon. If the Rust port deliberately diverges from python (e.g., emulator-scale simplification of dynamic cell distribution), the chapter's section 4 records the deviation; that record beats the python reference for anything outside historical context.
+
+**Primary V5 evidence sources** (`docs/reverse-engineering/findings/`):
+- `npc-ai-state-machine.md` — 7-state FSM at `0x00deb660`
+- `npc-movement-pathfinding.md` — `aMovementType` 0–6, BW→UE3 coords, two server gaps flagged
+- `cover-system.md` — `SGWCoverSet`, `CoverNodePrefabData` layout, scoring formula
+- `spawn-system-mechanics.md` — spawn region/set/respawner mechanics
+- `state-flag-broadcast.md` — `BSF_*` flag inventory (NPCs share most of these with players)
+
+The two server gaps flagged in `npc-movement-pathfinding.md` belong in the chapter's section 5 ("Actual implementation in Rust") as explicit `Gap: <description>` callouts — they're known divergence between section-4 expected and section-5 actual. Bible chapters surface gaps; they don't hide them.
+
 # Persistent Agent Memory
 
-You have a persistent Persistent Agent Memory directory at `/mnt/c/Users/Steve/source/projects/Cimmeria/.claude/agent-memory/npc-ai-spawn-advisor/`. Its contents persist across conversations.
+You have a persistent Persistent Agent Memory directory at `.claude/agent-memory/npc-ai-spawn-advisor/`. Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience. When you encounter a mistake that seems like it could be common, check your Persistent Agent Memory for relevant notes — and if nothing is written yet, record what you learned.
 
@@ -95,11 +121,7 @@ Explicit user requests:
 When looking for past context:
 1. Search topic files in your memory directory:
 ```
-Grep with pattern="<search term>" path="/mnt/c/Users/Steve/source/projects/Cimmeria/.claude/agent-memory/npc-ai-spawn-advisor/" glob="*.md"
-```
-2. Session transcript logs (last resort — large files, slow):
-```
-Grep with pattern="<search term>" path="/home/cadacious/.claude/projects/-mnt-c-Users-Steve-source-projects-Cimmeria/" glob="*.jsonl"
+Grep with pattern="<search term>" path=".claude/agent-memory/npc-ai-spawn-advisor/" glob="*.md"
 ```
 Use narrow search terms (error messages, file paths, function names) rather than broad keywords.
 

@@ -4,6 +4,10 @@ description: Complete mapping of all 157 SGWPlayer client method indices, derive
 type: reference
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.engine.entity-description-parse-chain §"method index assignment" + spec.protocol.message-catalog (per-method-index rows)
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Fully V5-confirmed against `docs/reverse-engineering/findings/entity-property-sync.md` (parse order: Implements → Properties → Methods) and reproducible by re-parsing the `.def` files. This is the highest-value PROMOTE candidate in this agent's memory — it's a ready-to-publish reference table. Keep in memory until `spec.engine.entity-description-parse-chain` is authored; the table copies over as a chapter appendix.
+
 ## SGWPlayer Client Method Index Table (157 total)
 
 BigWorld parses entity definitions recursively: parent first, then for each level it processes Implements (interfaces) before own ClientMethods. The order is deterministic and defines wire protocol method indices.

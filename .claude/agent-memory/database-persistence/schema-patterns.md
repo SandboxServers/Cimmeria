@@ -1,5 +1,11 @@
 # Schema Patterns & File Locations
 
+> [!WARNING] Confidence: STALE — verify against current `db/sgw/` and `crates/services/src/base/character_create.rs`
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). The "C++ Python Reference (persistence operations)" section uses paths like `python/base/Account.py` — the mechanical pass should have rewritten these to `deprecated/python/base/Account.py`. Verify before citing. The sgw_player column inventory looks structurally accurate but Cimmeria has shipped multiple schema migrations since this was written; re-read the latest `db/sgw/Players/Tables/sgw_player.sql` before relying on the DEFAULT-vs-NOT-NULL distinctions here.
+>
+> No promotion target yet — persistence chapters are not in the Phase 0.5 / Phase 1 priority list (see issue #264). Keep this memory for now; consider promoting to `spec.persistence.character-state` if/when persistence chapters get authored.
+
 ## Schema Files
 - `db/sgw/Accounts/Tables/account.sql` -- account table (account_id, account_name, password, accesslevel, enabled)
 - `db/sgw/Players/Tables/sgw_player.sql` -- player table (36 columns, many with defaults)
@@ -21,12 +27,15 @@
 - `db/resources/Worlds/Tables/worlds.sql` -- worlds table
 
 ## C++ Python Reference (persistence operations)
-- `python/base/Account.py` -- Character CRUD: createCharacter, deleteCharacter, requestCharacterVisuals, playCharacter, sendCharacterList
-- `python/base/SGWPlayer.py` -- Player load (player_name, access_level), persist stub
-- `python/cell/SGWPlayer.py` -- Cell-side persistence
-- `python/common/Constants.py` -- SKIN_TINTS table, BAG_SIZES
-- `python/common/defs/CharacterCreation.py` -- CharDef loading from resources.char_creation
-- `python/Atrea/enums.py` -- Enum integer values
+
+Paths use the post-tree-reorganization `deprecated/python/` layout (the legacy `python/` tree was moved into `deprecated/` in commit `46df5bc`). The reference is for cross-checking the persistence shape — the deprecated Python is not the runtime.
+
+- `deprecated/python/base/Account.py` -- Character CRUD: createCharacter, deleteCharacter, requestCharacterVisuals, playCharacter, sendCharacterList
+- `deprecated/python/base/SGWPlayer.py` -- Player load (player_name, access_level), persist stub
+- `deprecated/python/cell/SGWPlayer.py` -- Cell-side persistence
+- `deprecated/python/common/Constants.py` -- SKIN_TINTS table, BAG_SIZES
+- `deprecated/python/common/defs/CharacterCreation.py` -- CharDef loading from resources.char_creation
+- `deprecated/python/Atrea/enums.py` -- Enum integer values
 
 ## sgw_player Column Inventory (for INSERT completeness tracking)
 Required columns (no DEFAULT):

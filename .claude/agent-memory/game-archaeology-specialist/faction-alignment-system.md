@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.player.faction-alignment
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). V5-confirmed against `findings/faction-alignment-system.md`. EFaction 34-value enum, hostile sentinel ordinal=10, GameBeing+0x134/+0x135 layout, 1-byte wire format, combat gate logic — all canonical. Cross-link with `spec.combat.threat-and-aggro` for the faction-10 gate test.
+
 ## Faction / Alignment System (recovered 2026-05-13)
 
 ### EFaction enum (DB `resources.EFaction`, 34 values)

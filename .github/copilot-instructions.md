@@ -50,6 +50,8 @@ If a single feature touches several layers (handler logic + serializer + SQL + c
 
 A PR that changes user-visible behaviour, public surface, file layout, build steps, or test policy must update the corresponding doc(s). For non-trivial doc work, prefer the **Documentation Writer** agent over freehand edits — it follows the Diátaxis framework (tutorials / how-to / reference / explanations) and keeps voice consistent with the rest of `docs/`. The mapping of "what changed → what to update" is in [CLAUDE.md](../CLAUDE.md) under "Required documentation for every PR". Index entries in `docs/readme.md` and per-section `README.md` files must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
 
+Run the markdown lint as the doc-side equivalent of `cargo clippy`: `tools/lint-md.sh` (or `.ps1` on Windows). Same ruleset CodeRabbit applies in PR review — local catches every cosmetic finding before the bot has to type it. Warn-only in CI for now; Phase 2 hardens to blocking. Config: [.markdownlint-cli2.yaml](../.markdownlint-cli2.yaml).
+
 ## Where to find more
 
 Full conventions: `CLAUDE.md`. Testing: `TESTING.md`. Architecture: `docs/architecture/`. Content engine: `docs/architecture/data-driven-content-engine.md`. Migration roadmap: `docs/architecture/migration-roadmap.md`. Live-DB infra: `docs/architecture/integration-test-infra.md`.

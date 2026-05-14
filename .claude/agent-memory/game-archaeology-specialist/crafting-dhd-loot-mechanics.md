@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.crafting.state-machine + spec.gate-travel.dhd-and-stargate + spec.combat.loot-generation
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Three-system memo spanning three distinct chapters. V5-confirmed against `findings/crafting-state-machine.md`, `findings/stargate-dhd-state-machine.md`, `findings/loot-generation.md`. When this memory is consumed during chapter authoring, split across the three target chapters; do not promote as a single doc.
+
 ## Crafting (class_SGW::Crafting = VCrafting)
 
 VCrafting is the client-side crafting controller. Key facts:

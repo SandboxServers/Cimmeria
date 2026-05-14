@@ -5,6 +5,10 @@ metadata:
   type: project
 ---
 
+> [!NOTE] PROMOTION TARGET: spec.player.state-fields + spec.combat.combat-lifecycle (BSF_InCombat bit 3)
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Address table and per-bit dispatch breakdown are canonical state-field broadcast evidence. V5-confirmed against `findings/state-flag-broadcast.md`. The BSF_Holster (bit 8) "NOT dispatched in OnStateFieldUpdate" correction is critical and load-bearing — chapter authors need this so they don't assume bit 8 dispatch.
+
 Key addresses recovered and V5-documented in session 4 W-state (2026-05-13):
 
 | Address | Name | Role |

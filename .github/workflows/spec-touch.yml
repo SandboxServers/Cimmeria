@@ -1,0 +1,150 @@
+name: spec-touch
+
+# Warn-only nudge: when a PR diffs Rust paths that have a corresponding
+# bible chapter (or a chapter expected to land soon), post a comment if
+# the PR did not also touch anything under docs/spec/. Never fails the
+# build — Phase 0 hardens to a blocking check later.
+#
+# The path → chapter mapping below is intentionally small. It covers
+# only the V5 paths most likely to land first. New mappings get added
+# as chapters are authored under docs/spec/.
+#
+# Companion docs:
+#   - docs/spec/how-to-write.md § "trigger: verified → stale"
+#   - docs/spec/README.md (master index)
+#   - issue #264 (bible umbrella)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Top-level: deny everything. The job opts in.
+permissions: {}
+
+# Per-PR concurrency: a force-push during review cancels the prior run
+# so we don't double-comment.
+concurrency:
+  group: spec-touch-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  nudge:
+    name: nudge if crates/ touched without docs/spec/
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write   # post the nudge comment
+      contents: read         # read the PR diff
+    # Quick GitHub API + a single REST call — 5 min is more than enough.
+    timeout-minutes: 5
+
+    steps:
+      - name: detect missing spec touch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Path → chapter_id mapping. Each entry is:
+            //   { match: '<path-prefix>', chapter: 'spec.X.Y' }
+            // A PR that touches a file under `match` and does NOT touch
+            // anything under docs/spec/ triggers a nudge naming the chapter.
+            //
+            // Keep this small and curated. The point is to surface signal
+            // when a chapter exists or is imminent; broad mappings will
+            // train reviewers to ignore the nudge.
+            const PATH_MAP = [
+              // Mercury wire format → spec.protocol.mercury-wire-format
+              { match: 'crates/mercury/',                                          chapter: 'spec.protocol.mercury-wire-format' },
+              // Entity property sync + RPC dispatch → spec.protocol.entity-property-sync, spec.engine.universal-rpc-dispatcher
+              { match: 'crates/services/src/mercury/method_idx.rs',                chapter: 'spec.protocol.message-catalog' },
+              // Cell-side combat → spec.combat.*
+              { match: 'crates/services/src/cell/combat/',                         chapter: 'spec.combat.damage-pipeline' },
+              // Inventory state machine → spec.inventory.containers-and-equip
+              { match: 'crates/services/src/cell/cell_methods/inventory/',         chapter: 'spec.inventory.containers-and-equip' },
+              // World entry → spec.world.world-entry
+              { match: 'crates/services/src/cell/cell_methods/player/world.rs',    chapter: 'spec.world.world-entry' },
+              // Mission state machine → spec.missions.lifecycle-and-objectives
+              { match: 'crates/services/src/base/missions/',                       chapter: 'spec.missions.lifecycle-and-objectives' },
+            ];
+
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // Pull the full file list for this PR. The default page size is
+            // 30; we ask for 100 and paginate so big PRs aren't truncated.
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              { owner, repo, pull_number: pr.number, per_page: 100 },
+            );
+            const paths = files.map(f => f.filename);
+
+            const touchedSpec = paths.some(p => p.startsWith('docs/spec/'));
+            if (touchedSpec) {
+              core.info('PR touches docs/spec/ — no nudge needed.');
+              return;
+            }
+
+            // Collect the unique chapters whose paths the PR did touch.
+            const triggered = new Set();
+            for (const entry of PATH_MAP) {
+              if (paths.some(p => p.startsWith(entry.match))) {
+                triggered.add(entry.chapter);
+              }
+            }
+
+            if (triggered.size === 0) {
+              core.info('No mapped paths touched — no nudge needed.');
+              return;
+            }
+
+            const chapters = Array.from(triggered).sort();
+            const chapterLines = chapters.map(c => `- \`${c}\``).join('\n');
+
+            // Idempotency: if we have already left a nudge on this PR, skip.
+            // We mark our comments with a hidden HTML tag.
+            const MARKER = '<!-- spec-touch-nudge -->';
+            const existing = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number: pr.number, per_page: 100 },
+            );
+            const alreadyNudged = existing.some(c =>
+              c.user && c.user.login.endsWith('[bot]') && c.body && c.body.includes(MARKER)
+            );
+            if (alreadyNudged) {
+              core.info('Nudge already posted on this PR — skipping.');
+              return;
+            }
+
+            const body = [
+              MARKER,
+              '## Bible nudge',
+              '',
+              'This PR touches code mapped to one or more bible chapters but does not update anything under `docs/spec/`. This is warn-only — your PR is not blocked.',
+              '',
+              'Chapters covering the touched paths:',
+              chapterLines,
+              '',
+              'If your change is behavioral (not a rename / format / typo fix), consider whether the chapter needs an update. Options:',
+              '',
+              '1. Update the chapter\'s section 5 to reflect the new behavior, refresh `last_verified`, keep `status: verified`.',
+              '2. Flip the chapter\'s `status` to `stale` for someone else to walk later.',
+              '3. If the chapter does not yet exist (`coming soon` in the index), this nudge is informational — file an issue if you want to surface the missing chapter.',
+              '',
+              'See [`docs/spec/how-to-write.md`](https://github.com/SandboxServers/Cimmeria/blob/main/docs/spec/how-to-write.md) for the chapter authoring guide and [`docs/spec/conventions.md`](https://github.com/SandboxServers/Cimmeria/blob/main/docs/spec/conventions.md) for the rules. Phase 2 hardens this check from warn-only to blocking; the warn period is intentional.',
+            ].join('\n');
+
+            // Warn-only intent: if the comment POST fails (e.g. PRs from
+            // forks where the default GITHUB_TOKEN is read-only for
+            // pull-requests:write), log a warning and continue rather than
+            // failing the job.
+            try {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr.number,
+                body,
+              });
+              core.info(`Posted bible nudge for chapters: ${chapters.join(', ')}.`);
+            } catch (err) {
+              const msg = (err && err.message) ? err.message : String(err);
+              core.warning(`spec-touch: unable to post nudge comment (non-blocking): ${msg}`);
+            }

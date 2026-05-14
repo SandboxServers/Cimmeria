@@ -1,5 +1,12 @@
 # Stock BigWorld 2.0.1 vs SGW Protocol Comparison
 
+> [!NOTE] PROMOTION TARGET: spec.protocol.mercury-wire-format §"Divergences from stock BigWorld"
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Most divergences here are V5-confirmed against `docs/reverse-engineering/findings/mercury-protocol-internals.md` and `entity-property-sync.md`. Two items need verification before chapter promotion:
+>
+> - **Direction3D rotation order** (createCellPlayer): this file flags it as needing pcap confirmation. Cross-reference against `world-entry-pipeline.md` and the rotation-swap notes in `bigworld-engine-advisor/MEMORY.md` ("Rotation Order Inconsistency in C++ Reference") before authoring section 4 of the chapter. The MEMORY.md note (rotX, rotZ, rotY swap) is more current; this file lists it as "MEMORY.md says X — needs pcap confirmation" which is now an open Q.
+> - **createCellPlayer first field name** (instanceID vs spaceID): MEMORY.md and V5 both confirm this is `spaceID`. Update wording during chapter authoring.
+
 Full analysis performed 2026-03-04 against engine source in `external/engines/BigWorld-Engine-2.0.1/`.
 
 ## EntityID

@@ -1,0 +1,59 @@
+name: markdownlint
+
+# Warn-only: surfaces markdownlint-cli2 violations as ::warning:: annotations
+# in PR diffs but never fails the build. Mirrors the bible-CI philosophy
+# (.github/workflows/spec-lint.yml, spec-touch.yml) — Phase 2 hardens later.
+#
+# Config lives in `.markdownlint-cli2.yaml` at the repo root. The same config
+# drives `tools/lint-md.sh` / `tools/lint-md.ps1` so local and CI output match.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "**/*.md"
+      - ".markdownlint-cli2.yaml"
+      - "package.json"
+      - "tools/lint-md.sh"
+      - "tools/lint-md.ps1"
+      - ".github/workflows/markdownlint.yml"
+
+# Top-level: deny everything. The job opts in.
+permissions: {}
+
+# Per-PR concurrency: a force-push during review cancels the prior run.
+concurrency:
+  group: markdownlint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: markdownlint-cli2 (warn-only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # DavidAnson/markdownlint-cli2-action bundles markdownlint-cli2 and
+      # emits ::warning:: annotations under GITHUB_ACTIONS. continue-on-error
+      # keeps the workflow warn-only — annotations surface inline, but the
+      # job itself never fails.
+      - name: run markdownlint-cli2
+        id: markdownlint
+        continue-on-error: true
+        uses: DavidAnson/markdownlint-cli2-action@v19
+        with:
+          config: ".markdownlint-cli2.yaml"
+          globs: "**/*.md"
+
+      - name: summary
+        if: always()
+        run: |
+          if [ "${{ steps.markdownlint.outcome }}" = "success" ]; then
+            echo "markdownlint-cli2: clean."
+          else
+            echo "markdownlint-cli2: violations reported (warn-only — see annotations above)."
+          fi

@@ -1,5 +1,9 @@
 # Viewport System Architecture (Client-Side)
 
+> [!NOTE] PROMOTION TARGET: spec.world.world-entry §"viewport association" (or new spec.engine.viewport-system if depth warrants)
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Client-side memory layout (`this+0xf84`, `this+0xf90`, `this+0xf9c`, `this+0xfa8`) and the `svidFollow` traversal algorithm are V5-grade RE evidence not currently covered in the published V5 findings docs — this memory is the canonical source for the avatarUpdate-creates-viewport-association invariant. Keep until the world-entry chapter authoring incorporates it. May warrant its own chapter (`spec.engine.viewport-system`) if length grows during chapter authoring.
+
 ## Data Structures on ServerConnection
 
 - `this+0xf84`: **Viewport table** (`std::map<u8, ViewportEntry>`) - viewportId -> {entityId1, entityId2, spaceRef, isNew}

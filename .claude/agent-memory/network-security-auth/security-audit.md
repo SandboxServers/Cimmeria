@@ -1,5 +1,11 @@
 # Security Audit: C++ vs Rust Auth Behavioral Comparison
 
+> [!WARNING] Confidence: STALE — verify against current `crates/services/src/auth/` and `base.rs`
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Captured 2026-03-04; the auth + base modules have been refactored since (auth is now a `crates/services/src/auth/` directory; mercury extension code was split out of `mercury_ext.rs`). The behavioral observations (no ticket expiration, no duplicate-account detection, non-constant-time password comparison) need to be re-verified against current code before being treated as canonical for `spec.protocol.cipher-and-auth` section 5.
+>
+> The deprecated C++ flow descriptions (logon_queue.cpp, shard_client.cpp, service_main.cpp) are immutable evidence and can promote to section 3 of the chapter as-is. Keep until chapter authoring.
+
 Full audit performed 2026-03-04. See plan file for detailed findings.
 
 ## Credential Validation Flow Comparison

@@ -1,5 +1,9 @@
 # AoI Entity Introduction Protocol
 
+> [!NOTE] PROMOTION TARGET: spec.world.world-entry §"AoI introduction" + spec.engine.entity-description-parse-chain
+>
+> Triaged 2026-05-13 (Phase −0.5 step 4). Content is V5-confirmed against `docs/reverse-engineering/findings/world-entry-pipeline.md` and `entity-property-sync.md`. The createOnClient property cascade (`onVisible(1)` etc.) is canonical AoI introduction behavior. Keep in memory until the bible chapter scaffold is in place (Phase 0); chapter authoring will copy this forward into the chapter's section 1+2+3.
+
 ## Overview
 
 When a ghost (NPC/object) entity enters a player's Area of Interest, the client

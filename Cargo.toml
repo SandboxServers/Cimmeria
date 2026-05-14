@@ -23,6 +23,7 @@ members = [
     "src-tauri",
     "tools/ContentEditor",
     "tools/SceneEditor",
+    "tools/spec-lint",
     "crates/upk",
     "crates/upk-objects",
 ]
