@@ -90,6 +90,12 @@ tools/lint-md.sh --fix              # auto-fix what's auto-fixable
 # regenerated SVG):
 tools/check-figure-sources.sh       # macOS / Linux / WSL
 tools/check-figure-sources.ps1      # Windows PowerShell
+
+# Figure style + format lint (BLOCKING — CI fails on Mermaid init-directive
+# omissions, theme-aware backdrop misses, non-sequential Figure numbering,
+# dangling image refs, generic alt text. Rule catalog inside the script.):
+tools/lint-figure-style.sh          # macOS / Linux / WSL
+tools/lint-figure-style.ps1         # Windows PowerShell
 ```
 
 `cargo test -p <crate>` still works for quick crate-level iteration. Use nextest for anything you'd be uploading to CI.
@@ -102,6 +108,7 @@ The markdown lint runs via [`markdownlint-cli2`](https://github.com/DavidAnson/m
 - **test fails (no DB)** → unit + non-DB integration tests. Live-DB tests in `crates/services` self-skip via `require_db_or_skip!` when `DATABASE_URL` is unset, so this run can be green even with broken DB code.
 - **test-live-db fails** → CI runs `cargo nextest run --profile=ci-live-db -p cimmeria-services --lib` against a fresh `postgres:17.9` service container loaded from `db/database.sql`. The `ci-live-db` profile in `.config/nextest.toml` serialises every test (`threads-required = "num-test-threads"`) because some live-DB tests share sentinel id ranges and would collide under parallel execution against a single shared DB. To repro locally, start the bundled Postgres on `:5433` and run the command in the snippet above.
 - **figure-sources-in-sync fails** → A source DSL under `docs/drafts/spec/figures/sources/` was committed more recently than its rendered SVG one directory up. Re-render the affected diagram (Prixmaviz, or the local renderer per [docs/drafts/spec/figures/sources/README.md](docs/drafts/spec/figures/sources/README.md)) and commit the regenerated SVG alongside the source change. Pairing rule: `sources/<slug>.<ext>` pairs with `<slug>.svg`.
+- **figure-style-lint fails** → A figure source, rendered SVG, or chapter convention violated the style rule catalog inside [tools/lint-figure-style.sh](tools/lint-figure-style.sh). Common causes: Mermaid `flowchart`/`sequenceDiagram` missing the `htmlLabels:false` init directive (rules M1/M2), an SVG missing the cimmeria-bg theme-aware backdrop marker (S1), Graphviz intrinsic `fill="white"` backdrop polygon not stripped (S3), non-sequential `*Figure N:*` captions (C1), generic image alt text (C2), or a dangling image reference (C3). Run the script locally to see the specific rule code and remediation hint.
 
 ## Required testing for every PR
 
