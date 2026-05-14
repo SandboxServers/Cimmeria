@@ -1,0 +1,32 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 16)
+(def row-height 38)
+
+(defattrs :pt {:fill "#bdd7ee"})
+(defattrs :pad {:fill "#ffeedd"})
+(defattrs :ct {:fill "#ddffdd"})
+(defattrs :hmac {:fill "#ffcc99"})
+(defattrs :note {:font-size 11 :fill "#cc9933"})
+
+; Cipher framing — §1.4 worked example, lines 287-297.
+; 21-byte Mercury plaintext → 32-byte padded → 32-byte AES-256-CBC ct → +16-byte HMAC-MD5 → 48 B wire.
+
+(draw-column-headers)
+
+; Row 1: plaintext (21 B)
+(draw-box (text "Mercury plaintext (flags + body + footer) — 21 bytes" :pt) {:span 16 :borders {:all true}})
+
+; Row 2: padded to AES block boundary (32 B = 21 + 11-byte PKCS#7 pad)
+(draw-box (text "plaintext — 21 bytes" :pt) {:span 11 :borders {:all true}})
+(draw-box (text "PKCS#7 pad (11 × 0x0B) — 11 B" :pad) {:span 5 :borders {:all true}})
+
+; Row 3: AES-256-CBC ciphertext — same length as padded plaintext
+(draw-box (text "AES-256-CBC ciphertext over (plaintext+pad) — 32 bytes, same length as padded input" :ct) {:span 16 :borders {:all true}})
+
+; Row 4: on-wire frame = ct + HMAC-MD5 tag (16 B, always)
+(draw-box (text "AES-256-CBC ciphertext — 32 B" :ct) {:span 11 :borders {:all true}})
+(draw-box (text "HMAC-MD5 tag — 16 B (always)" :hmac) {:span 5 :borders {:all true}})
+
+(draw-gap "On-wire frame: 32 B ct + 16 B HMAC = 48 B total. Cipher overhead: 27 bytes (11 pad + 16 HMAC) above the 21 B plaintext.")
+(draw-gap "Minimum overhead: 17 B (1 pad byte + 16 HMAC). Maximum: 32 B (full 16-byte pad block + 16 HMAC). PKCS#7 always pads.")

@@ -130,6 +130,10 @@ POP ORDER on receive (from end of datagram, moving toward byte 0):
 
 Pop order is the **inverse** of the wire order because every footer field is read backward from the end of the datagram — the last field appended is the first field consumed. See §1.3 for the full peel-order rules.
 
+![Annotated wire trace of the 0xB8 reliable-fragmented-bundle worked example](figures/mercury-26-worked-example-fragment-trace.svg)
+
+*Figure 3: the worked example as a byte-anchored layout — `flags = 0xB8` at offset 0, the variable-length message body, then the three footer fields appended in flag-bit order (`sequenceId`, `lastFragmentId`, `firstFragmentId`) so the field written last by `Bundle::finalise` sits at the very end of the datagram.*
+
 A non-fragmented unreliable position-update packet — flags byte `0x28` (`0x20 | 0x08` = `FLAG_HAS_SEQUENCE_NUMBER | FLAG_ON_CHANNEL`) — has only the 4-byte sequence ID in its footer. A purely unreliable broadcast — flags byte `0x00` — has no footer at all; the entire packet is `[0x00][body]`. The flags byte's bits are the contract: setting bit N obligates the sender to append a specific footer field at the end and the receiver to pop that field on parse.
 
 **Divergence from stock BigWorld 2.0.1.** Stock BW uses a `uint16` flags field at the front of the packet (2 bytes, network-byte-order). SGW collapses this to a `uint8` (1 byte). The low byte of stock BW's `uint16` carries flags 0x01–0x80; the high byte carries 0x0100 (`FLAG_HAS_CHECKSUM`), 0x0200 (`FLAG_CREATE_CHANNEL`), and 0x0400 (`FLAG_HAS_CUMULATIVE_ACK`). SGW omits all three: no CRC32 checksum, no create-channel marker, no cumulative-ack mechanism. The full divergence inventory is in §1.13.
@@ -138,7 +142,7 @@ A non-fragmented unreliable position-update packet — flags byte `0x28` (`0x20 
 
 ![Mercury flags byte — bit positions, mask values, and short names for the 8 flag bits](figures/mercury-07-flags-register.svg)
 
-*Figure 3: the 8-bit Mercury flags byte at the front of every packet — each bit controls whether a corresponding footer field is appended at the tail.*
+*Figure 4: the 8-bit Mercury flags byte at the front of every packet — each bit controls whether a corresponding footer field is appended at the tail.*
 
 > **Note:** Diagram bit assignments lag the chapter — to be re-rendered with corrected DSL.
 
@@ -200,6 +204,10 @@ POP ORDER (from end of datagram, peeling toward body):
 
 A sender writes flags byte first, then writes message body, then appends each footer field in flag-bit order. A receiver reads flags byte first, then pops each footer field in reverse flag-bit order — so the field that was *appended last* is popped *first*.
 
+![Footer write-order vs pop-order — same fields, inverse temporal sequence](figures/mercury-27-footer-peel-sequence.svg)
+
+*Figure 5: the write-order / pop-order inversion as a temporal sequence — `Bundle::finalise` writes footer fields innermost first (bit 0 last-appended is bit 7), and `processFilteredPacket_inner` peels them from the datagram tail in reverse, so the field written last is the field popped first.*
+
 **Request-chain walking** (`FLAG_HAS_FIRST_REQUEST_OFFSET` bit 0 + `FLAG_HAS_REQUESTS` bit 6). The two request-related flags work together as a header + index pair, not as orthogonal signals. Bit 6 (`FLAG_HAS_REQUESTS`) is the sender's promise "this packet contains at least one request message"; bit 0 (`FLAG_HAS_FIRST_REQUEST_OFFSET`) is the receiver's index "the first request's body starts at byte N of the message body." In practice the two bits are always set together: a packet with requests must carry the offset to find them, and a packet without requests has no offset to advertise. The Cimmeria reimplementation treats the two as an inseparable pair.
 
 The reason both flags exist (rather than collapsing to one) is the receiver's walk pattern. Request messages form a *linked list inside the packet body*: each request's payload begins with an offset field that points (as a byte offset relative to the message body start) to the next request in the packet, with a sentinel value as the terminator. The receiver pops `firstRequestOffset` from the footer (gated on bit 0), seeks to that offset, parses the request, reads its inline next-pointer, and repeats until it hits the sentinel.
@@ -208,13 +216,13 @@ This lets the receiver process requests in priority order *without* walking the 
 
 ![Request-chain linked list — firstRequestOffset in the footer + inline next-pointer per request](figures/mercury-20-request-chain-linked-list.svg)
 
-*Figure 4: the request-walk pattern — `firstRequestOffset` (popped from the footer) points to the first request's byte position in the message body; each request's body carries an inline next-pointer, terminated by a sentinel.*
+*Figure 6: the request-walk pattern — `firstRequestOffset` (popped from the footer) points to the first request's byte position in the message body; each request's body carries an inline next-pointer, terminated by a sentinel.*
 
 #### 1.3.1 Ack list encoding
 
 ![Ack-list tail encoding — ackCount u8 then ackCount little-endian u32 sequence IDs in reverse-sent order](figures/mercury-25-ack-list-tail-encoding.svg)
 
-*Figure 5: the ack-list footer encoding at the tail of the datagram — the receiver pops `ackCount` (`u8`) first, then `ackCount × 4` bytes of `u32 LE` sequence IDs in reverse-sent order.*
+*Figure 7: the ack-list footer encoding at the tail of the datagram — the receiver pops `ackCount` (`u8`) first, then `ackCount × 4` bytes of `u32 LE` sequence IDs in reverse-sent order.*
 
 When `FLAG_HAS_ACKS` is set, the ack list at the tail is:
 
@@ -246,6 +254,10 @@ Piggybacks are *whole previously-sent packets* embedded in the footer area of a 
 
 The negative-length marker (encoded as `~length` — bitwise NOT of the positive length) indicates the final piggyback in the chain. Each embedded packet has its own flags byte and is processed as if it had been received independently, *except* that its own footer cannot include acks/sequence/fragments — only the body matters. SGW's client emits piggybacks under the `FLAG_HAS_PIGGYBACKS` bit; SGW's server side accepts them.
 
+![Piggyback chain — repeated packet-data plus i16 LE length entries, final length is ~length negative terminator](figures/mercury-28-piggyback-chain.svg)
+
+*Figure 8: the piggyback-chain layout — each entry is a previously sent packet's flags+body followed by an `i16 LE` length; the final entry's length is encoded as `~length` (bitwise NOT, producing a negative `i16`) which the receiver detects as the chain terminator.*
+
 Confidence: medium for the SGW server side. The Cimmeria Rust implementation explicitly rejects piggybacks (`WARN_BAD_PACKET("Piggybacked packets are not supported")` per the existing `docs/protocol/mercury-wire-format.md`), and the SGW client does not appear to send them in observed pcaps. The format is well-documented in stock BW; whether SGW's deprecated C++ server ever generated piggybacks is a separate question for Section 3.
 
 #### 1.3.3 Byte order
@@ -271,7 +283,7 @@ This is one of the most consequential SGW divergences for any reimplementation: 
 
 ![Encrypted-Mercury wire frame — AES-256-CBC ciphertext over the full flags+body+footer plaintext plus appended 16-byte HMAC-MD5 tag](figures/mercury-06-encrypted-wire-format.svg)
 
-*Figure 6: the encrypted on-wire frame — the **entire plaintext packet** (flags byte + body + footer) is PKCS#7-padded and AES-256-CBC encrypted with a zero IV; the 16-byte HMAC-MD5 tag covers the ciphertext and is appended (encrypt-then-MAC). No part of the Mercury packet survives in cleartext on the wire.*
+*Figure 9: the encrypted on-wire frame — the **entire plaintext packet** (flags byte + body + footer) is PKCS#7-padded and AES-256-CBC encrypted with a zero IV; the 16-byte HMAC-MD5 tag covers the ciphertext and is appended (encrypt-then-MAC). No part of the Mercury packet survives in cleartext on the wire.*
 
 Every Mercury packet on the external (client-facing) channel is wrapped in AES-256-CBC then HMAC-MD5. The wrapping is a `MessageFilter` layered above the wire format described above: the sender builds the plaintext packet (flags + body + footer) and the cipher envelope is applied as the very last step before `sendto()`.
 
@@ -296,6 +308,10 @@ on-wire frame:    48 bytes total: [32 B ct][16 B tag]
 
 A 16-byte plaintext expands to **48 bytes too** (pads to 32 — PKCS#7 always pads, never zero-pads, so a 16-byte exact-block input gets a full 16-byte pad block appended). The cipher overhead is therefore a minimum of 17 bytes (1 byte of pad + 16-byte HMAC) and a maximum of 32 bytes (16-byte pad block + 16-byte HMAC) per packet. This is why the on-the-wire effective MTU is ~1456 bytes rather than the bare 1472 left by IP+UDP headers — the cipher envelope reserves room for itself.
 
+![Cipher framing — 21 B plaintext, PKCS#7 pad to 32 B, AES ct same width, +16 B HMAC = 48 B wire](figures/mercury-29-cipher-frame-sizes.svg)
+
+*Figure 10: the cipher framing math — 21-byte plaintext pads to 32 bytes (PKCS#7), AES-256-CBC produces a same-width 32-byte ciphertext, and the 16-byte HMAC-MD5 tag appends to a final 48-byte on-wire frame.*
+
 **Key material — no KDF.** The 32-byte AES key and the 32-byte HMAC key are the *same buffer*. Both `PacketEncrypter::send` at `ghidra://SGW.exe@0x01603b80` and `PacketEncrypter::recv` at `ghidra://SGW.exe@0x01603fa0` read `GetCheckedArrayElement(this+0x08, 0, len)` for both the AES Rijndael key and the HMAC-MD5 key.
 
 The key itself comes from the SOAP auth response (`SessionKey` attribute, 64-char hex string) and is decoded by the gSOAP `xsd:hexBinary` dispatcher at `ghidra://SGW.exe@0x015eb940` (case `0x26` of the type dispatcher at `ghidra://SGW.exe@0x015ed300`). The decoded 32 bytes are passed *verbatim* to the `PacketEncrypter` constructor at `ghidra://SGW.exe@0x01603a70` — no PBKDF, no salting, no SHA-style key stretching, no truncation.
@@ -304,7 +320,7 @@ The key itself comes from the SOAP auth response (`SessionKey` attribute, 64-cha
 
 ![Encrypt-then-MAC and decrypt-then-verify pipelines for AES-256-CBC + HMAC-MD5](figures/mercury-12-encryption-pipeline.svg)
 
-*Figure 7: the encrypt pipeline (PKCS#7 pad → AES-256-CBC with zero IV → HMAC-MD5 over the ciphertext, appended) and the decrypt pipeline (split tag → HMAC verify → AES decrypt → PKCS#7 unpad).*
+*Figure 11: the encrypt pipeline (PKCS#7 pad → AES-256-CBC with zero IV → HMAC-MD5 over the ciphertext, appended) and the decrypt pipeline (split tag → HMAC verify → AES decrypt → PKCS#7 unpad).*
 
 **Library: CryptoPP, not OpenSSL.** RTTI strings at `0x01e93b70`–`0x01ea3c5c` stamp `HMAC_Base@CryptoPP`, `HMAC@VMD5@Weak1@CryptoPP`, and friends. The Cimmeria `crates/mercury/src/encryption.rs` doc-comment that mentions "OpenSSL" is incorrect (the runtime uses RustCrypto, not OpenSSL either, but the binary it's emulating uses CryptoPP). The HMAC algorithm is the MD5 variant tagged as `Weak1` in CryptoPP's namespace — a 2009 design choice; modern code would not pair MD5 with HMAC.
 
@@ -330,13 +346,13 @@ The vtable is stamped at `0x01b27374` with four slots:
 
 ![Mercury codec — encode / decode pipelines around the cipher envelope and footer parser](figures/mercury-13-codec-encode-decode.svg)
 
-*Figure 8: the codec's encode and decode pipelines — encode writes the flags byte, the body, and appends footers innermost-first before optionally handing to the cipher; decode reverses, stripping footers outermost-first.*
+*Figure 12: the codec's encode and decode pipelines — encode writes the flags byte, the body, and appends footers innermost-first before optionally handing to the cipher; decode reverses, stripping footers outermost-first.*
 
 ### 1.5 InterfaceElement length encoding
 
 ![Three length-encoding options — CONSTANT_LENGTH, WORD_LENGTH, DWORD_LENGTH — with V5-confirmed users](figures/mercury-24-interface-element-length-types.svg)
 
-*Figure 9: the three length-framing options the `InterfaceElement` descriptor selects — `CONSTANT_LENGTH` writes nothing on the wire (size lives in the table), `WORD_LENGTH` writes a `u16 LE` prefix, `DWORD_LENGTH` writes a `u32 LE` prefix; entity messages override the table and always use `WORD_LENGTH`.*
+*Figure 13: the three length-framing options the `InterfaceElement` descriptor selects — `CONSTANT_LENGTH` writes nothing on the wire (size lives in the table), `WORD_LENGTH` writes a `u16 LE` prefix, `DWORD_LENGTH` writes a `u32 LE` prefix; entity messages override the table and always use `WORD_LENGTH`.*
 
 A Mercury bundle is a sequence of *interface element calls*. Each call is one entry of the form `[msg_id: u8][length-prefix][payload]`, where the length-prefix encoding is determined by the `InterfaceElement` registered for that `msg_id`. Three length formats exist:
 
@@ -372,7 +388,7 @@ Note that compressed-length encoding is *not* what entity messages use — entit
 
 ![Bundle layout — repeated `[msg_id][payload_len: u16 LE][payload]` entries, no count prefix](figures/mercury-08-bundle-format.svg)
 
-*Figure 10: a Mercury bundle's wire layout — each `BundleMessage` is `[msg_id: u8][length prefix per InterfaceElement table][payload]`. The figure shows the `WORD_LENGTH` shape (`u16 LE`), which covers all entity-method calls and most variable-length system messages; `CONSTANT_LENGTH` messages omit the length prefix entirely (size lives in the table) and `DWORD_LENGTH` uses `u32 LE`. See §1.5 for the per-`InterfaceElement` framing rules. There is no count prefix at the bundle level; the reader walks until the buffer is exhausted.*
+*Figure 14: a Mercury bundle's wire layout — each `BundleMessage` is `[msg_id: u8][length prefix per InterfaceElement table][payload]`. The figure shows the `WORD_LENGTH` shape (`u16 LE`), which covers all entity-method calls and most variable-length system messages; `CONSTANT_LENGTH` messages omit the length prefix entirely (size lives in the table) and `DWORD_LENGTH` uses `u32 LE`. See §1.5 for the per-`InterfaceElement` framing rules. There is no count prefix at the bundle level; the reader walks until the buffer is exhausted.*
 
 A *bundle* is the logical unit of reliability and the container for one or more interface-element messages. A bundle can span multiple packets via fragmentation; a packet always belongs to exactly one bundle.
 
@@ -390,7 +406,7 @@ After the header is written, `Bundle::addBlob` at `ghidra://SGW.exe@0x0157a990` 
 
 ![Fragment reassembly — sender splits bundle into FRAGMENT_BODY_SIZE-bounded packets, receiver concats by frag_begin key](figures/mercury-11-fragment-reassembly-sequence.svg)
 
-*Figure 11: the fragment-reassembly contract — sender stamps every fragment with the same `frag_begin`/`frag_end` (the bundle's first and last sequence IDs); receiver indexes slots by `seq_id − frag_begin` and concatenates when every slot is filled; stale assemblies are swept at 30 s.*
+*Figure 15: the fragment-reassembly contract — sender stamps every fragment with the same `frag_begin`/`frag_end` (the bundle's first and last sequence IDs); receiver indexes slots by `seq_id − frag_begin` and concatenates when every slot is filled; stale assemblies are swept at 30 s.*
 
 **Fragmentation invariants.**
 
@@ -403,9 +419,23 @@ After the header is written, `Bundle::addBlob` at `ghidra://SGW.exe@0x0157a990` 
 
 ### 1.7 Sequence numbers and reliability
 
-![TX / RX sliding windows — outstanding-ack bitmap, dedup hash table, and the gap-fill / ack-piggyback rules](figures/mercury-14-sliding-windows.svg)
+Reliability is the most-modelled mechanism in Mercury; this section uses three coordinated views — the **bitmap** that holds outstanding-ack state, the **state machine** every reliable packet walks, and a **multi-packet sequence trace** that exercises the gap-fill and dedup-hit paths. Read all three together: the bitmap is the data structure, the FSM is the per-packet rule, and the sequence trace is what the wire actually looks like when packets reorder and drop.
 
-*Figure 12: the conceptual TX and RX windows — TX is the outstanding-send bitmap pruned on ack and retransmitted on 700 ms timeout; RX is the received-sequence dedup hash plus the gap-fill behavior that buffers out-of-order arrivals until the delivery pointer catches up.*
+![32-bit outstanding-ack bitmap with seq 142 highlighted at bit 14](figures/mercury-14a-outstanding-ack-bitmap.svg)
+
+*Figure 16: the channel's 32-bit outstanding-ack bitmap (`UnAckedHandler`) — each bit `n` corresponds to a sequence ID where `seq_id & 0x1F == n` and is set while that reliable packet is in-flight; the example shows seq 142 occupying bit 14 (`142 & 0x1F = 14`).*
+
+Per-packet, that bit walks a small FSM as the packet moves from send to ack (or to disconnect):
+
+![Reliability FSM — Unsent → InFlight → AwaitingAck → Acked / Timeout-Retransmit / MaxRetries-Disconnect](figures/mercury-14b-reliability-fsm.svg)
+
+*Figure 17: the per-packet reliability state machine — `Unsent` (bit unset) → `InFlight` (bit set, resend timer armed) → `AwaitingAck` (700 ms elapsed) → either `Acked` (`processAck` clears the bit) or `InFlight` again (retransmit, `retransmit_count++`) or `Disconnected` once `retransmit_count > 20` strict-greater fires.*
+
+The bitmap and FSM compose on a real wire trace — multiple packets in flight, an out-of-order arrival, a retransmit, and a duplicate that hits the receive-side dedup hash:
+
+![Multi-packet sequence trace through outstanding-ack bitmap + 512-entry dedup hash](figures/mercury-14c-reliability-sequence.svg)
+
+*Figure 18: a four-packet trace exercising the reliability stack — seqs 140/141/142 sent, 141 lost in transit, 142 arrives before 141 (gap-fill at receiver), 141's bit stays set until the 700 ms timer fires a retransmit, the dedup hash drops a duplicate retransmit on arrival.*
 
 Mercury sequence numbers are **28-bit** (`SEQ_SIZE = 0x10000000`). The space is 256M sequence IDs before wrap; the wrap is handled by modular arithmetic in the comparison routines. A reliable packet's sequence ID is assigned by `Mercury::Channel::send` at `ghidra://SGW.exe@0x01576f90` from a monotonic per-channel counter.
 
@@ -422,9 +452,13 @@ Mercury sequence numbers are **28-bit** (`SEQ_SIZE = 0x10000000`). The space is 
 
 The 512-entry hash table is allocated by `FUN_0158c170` at `ghidra://SGW.exe@0x0158c170` via `scalable_malloc(param_1 * 4 + 4)` = 2052 bytes for 512 pointer-sized entries; the mask `param_1 - 1 = 511 = 0x1FF` is stored at `ChannelInternal+0x44`. The hash is `seq_num & 0x1FF`. `Channel__ctor` at `ghidra://SGW.exe@0x01576bf0` hardcodes the table size of `0x200` (512) at construction. The hash table is the *received-sequence dedup* structure; the 32-bit bitmap in `UnAckedHandler` is the *outstanding-send* structure. Earlier drafts of this chapter conflated the two as a single "send window" with a "45-slot" capacity — neither claim is V5-grounded, and both are dropped.
 
+![512-entry receive-sequence dedup hash table indexed by seq_id & 0x1FF](figures/mercury-30-dedup-hash-table.svg)
+
+*Figure 19: the receive-side dedup hash — 512 pointer-sized slots indexed by `seq_id & 0x1FF`; on packet arrival the slot is checked, a stored-equal-incoming `seq_id` is a duplicate and is dropped after an ack, else the slot is filled and the packet delivered.*
+
 ![Channel state machine — Idle / Connecting / Connected / Disconnected transitions with retry and timeout edges](figures/mercury-03-channel-state-machine.svg)
 
-*Figure 13: the per-channel state machine — the only run-time state that drops a channel is the retransmit-count strict-greater-than-`MAX_RETRIES` check; the inactivity timeout and keepalive timer are observed as soft pressure on that single transition.*
+*Figure 20: the per-channel state machine — the only run-time state that drops a channel is the retransmit-count strict-greater-than-`MAX_RETRIES` check; the inactivity timeout and keepalive timer are observed as soft pressure on that single transition.*
 
 **Resend timing.** `ChannelInternal::checkAndSendNubException` at `ghidra://SGW.exe@0x0158bed0` runs the timer-driven resend logic. Five rdtsc-based timeout fields live in the channel object:
 
@@ -444,13 +478,13 @@ When the send-alive timer expires, `UnAckedHandler::sendAckBundle2` at `ghidra:/
 
 ![Reliable delivery — send, ack-within-700ms vs timeout-retransmit vs max-retries-disconnect](figures/mercury-10-reliable-delivery-fixed.svg)
 
-*Figure 14: the reliable-delivery contract from a single sender's perspective — a reliable packet sits in the outstanding bitmap until either an ack arrives, the 700 ms timer expires (retransmit, increment retransmit count), or the strict `> 20` retry check fires and the channel transitions to Disconnected.*
+*Figure 21: the reliable-delivery contract from a single sender's perspective — a reliable packet sits in the outstanding bitmap until either an ack arrives, the 700 ms timer expires (retransmit, increment retransmit count), or the strict `> 20` retry check fires and the channel transitions to Disconnected.*
 
 ### 1.8 Message dispatch
 
 ![Message dispatch routing — msg_id ranges to system / cell-direct / cell-extended / base-direct / base-extended / reply](figures/mercury-15-message-dispatch-routing.svg)
 
-*Figure 15: how a one-byte `msg_id` selects its dispatch path — the range check splits system (`0x00–0x7F`), cell (`0x80–0xBD` with `0xBD` as extended sentinel), base (`0xC0–0xFD` with `0xFD` as extended sentinel), and reply (`0xFF`); cell calls carry an explicit entityId on the wire and base calls do not.*
+*Figure 22: how a one-byte `msg_id` selects its dispatch path — the range check splits system (`0x00–0x7F`), cell (`0x80–0xBD` with `0xBD` as extended sentinel), base (`0xC0–0xFD` with `0xFD` as extended sentinel), and reply (`0xFF`); cell calls carry an explicit entityId on the wire and base calls do not.*
 
 After packet reassembly, each interface element message in the bundle is dispatched by `Mercury::Nub::processOrderedPacket` at `ghidra://SGW.exe@0x0157c820`. The dispatch is a single lookup against the runtime `InterfaceElement` array:
 
@@ -512,11 +546,19 @@ The threshold = 62 claim is V5-confirmed against `entity-property-sync.md` §13 
 
 The extended encoding costs 1 extra byte per call (the sub_index byte) and is required for any method whose index is 62 or higher. Roughly 96 of the 157 client methods on `SGWPlayer` use extended encoding because the parsed order pushes most actual gameplay methods past the threshold.
 
+![Three dispatch shapes side by side — cell-direct, cell-extended sentinel 0xBD, base-direct without entityId](figures/mercury-31-dispatch-worked-examples.svg)
+
+*Figure 23: the three dispatch shapes the worked examples above use — cell-direct (`0x80–0xBC`, msg_id + word_len + entityId + args), cell-extended (`0xBD` sentinel + word_len + entityId + sub_index + args), and base-direct (`0xC0–0xFC`, no entityId on the wire).*
+
 **Reply messages** use `msg_id = 0xFF` (`REPLY_MESSAGE_IDENTIFIER`) with `WORD_LENGTH` (2-byte length prefix per `space-viewport-wire-formats.md` §"REPLY_MESSAGE (0xFF)" and §"Complete Server Message Table"). The body is the connection-handshake reply payload — V5 marks this as a Mercury protocol-level message used during the initial connection handshake, not during normal gameplay. Matching of in-game request/reply pairs travels through `Mercury::Nub::handleMessage` at `ghidra://SGW.exe@0x0157bd30`, but the V5 record does not enumerate a separate `replyId` field in the reply body — earlier drafts of this chapter assumed a stock-BW-style `[u32 length][u32 replyId]` shape that is not in the SGW evidence.
 
 ### 1.9 Control messages
 
-A small set of system messages drives the connection's lifecycle. Each has a fixed `InterfaceElement` descriptor registered at static-init time and a binding to a specific server-side handler.
+A small set of system messages drives the connection's lifecycle. Each has a fixed `InterfaceElement` descriptor registered at static-init time and a binding to a specific server-side handler. The most consequential control round-trip is the RESET → ENABLE handshake that gates world entry:
+
+![RESET_ENTITIES then auto-emitted enableEntities round-trip between server and client](figures/mercury-32-reset-enable-handshake.svg)
+
+*Figure 24: the 2-message control handshake — server sends `RESET_ENTITIES` (`0x04`, `keepBase = 0`) in its own flushed bundle; the client's `PurgeAndRebuildEntityStateLists` clears the four list sentinels at `+0xF88 / +0xF94 / +0xFA0 / +0xFB0`, then `BroadcastEntityActivation` auto-emits `enableEntities` (`0xC1`, 8-byte body); the server proceeds with entity streaming.*
 
 #### `enableEntities` (base method index 1, client → server)
 
@@ -572,7 +614,13 @@ The server sends `resetEntities` to clear the client's entity-state lists; the c
 
 ![RESOURCE_FRAGMENT handler dispatch — reassembly path vs direct-to-FILE path, gated by BASE_FLAG](figures/mercury-19-resource-fragment-paths.svg)
 
-*Figure 16: the two RESOURCE_FRAGMENT delivery paths — the BASE_FLAG-set reassembly path (the observed normal-traffic case) chains fragment nodes and concatenates head-first on FINAL_FRAGMENT; the direct path acquires a semaphore and writes body bytes straight into a FILE handle.*
+*Figure 25: the two RESOURCE_FRAGMENT delivery paths — the BASE_FLAG-set reassembly path (the observed normal-traffic case) chains fragment nodes and concatenates head-first on FINAL_FRAGMENT; the direct path acquires a semaphore and writes body bytes straight into a FILE handle.*
+
+The byte layout each fragment carries:
+
+![RESOURCE_FRAGMENT byte layout — 4-byte header then first-vs-subsequent body shape](figures/mercury-34-resource-fragment-bytefield.svg)
+
+*Figure 26: every `RESOURCE_FRAGMENT` packet carries a 4-byte header (`dataId u16 LE`, `chunkId u8`, `flags u8`) followed by either the 9-byte cooked-data prefix + XML start (first fragment, `INITIAL_FRAGMENT` bit) or a raw XML continuation (subsequent fragments).*
 
 Streams cooked-data resources (PAK fragments) from server to client. Each fragment carries one chunk of a resource that the client reassembles before passing the whole resource to the cooked-data pipeline. Full byte-level layout is canonized in `space-viewport-wire-formats.md` §"RESOURCE_FRAGMENT (0x36)".
 
@@ -790,6 +838,10 @@ if (*(int*)(this + 0x30c) != 0) {
 
 The ack descriptor at `DAT_01ef250c` carries a fixed 4-byte body whose payload is always `0u32` — the server uses the ack's *arrival* (not its contents) as the signal that the client has accepted the restore. A reimplementation must register the ack-reply path; emitting `RESTORE_CLIENT` to a Rust client that does not auto-reply will not crash the server but will leave the server's restore handshake permanently incomplete.
 
+![restoreClient + auto-emitted restoreClientAck reply on the same channel](figures/mercury-33-restoreclient-autoreply.svg)
+
+*Figure 27: the `restoreClient` round-trip — server sends the 48-byte snapshot, the client's handler at `0x00dd8ae0` restores local state, then unconditionally writes a 4-byte `restoreClientAck` (payload `u32 = 0`) back through `Mercury_Channel_2` and flushes; the server uses ack arrival, not its contents, as the completion signal.*
+
 Confidence: high for the wire layout, length type, and auto-reply mechanic; medium for the SGW runtime emit path because the V5 record marks the message "Untested" — the byte format is fully decompiled but observed pcaps of an actual restore scenario are not in the V5 record.
 
 #### 1.9.6 `loggedOff` (server → client, msg_id `0x37`)
@@ -830,7 +882,7 @@ Confidence: high for the wire layout, length type, and "silent teardown" behavio
 
 ![World-entry handshake — server→client message sequence from bandwidthNotification through tickSync](figures/mercury-16-world-entry-seq.svg)
 
-*Figure 17: the canonical world-entry conversation — cipher envelope is already active, the PAK stream lands first, then `RESET_ENTITIES` triggers the client's `enableEntities` reply, and the server streams `createBasePlayer` / `createCellPlayer` / `forcedPosition` plus per-entity creates.*
+*Figure 28: the canonical world-entry conversation — cipher envelope is already active, the PAK stream lands first, then `RESET_ENTITIES` triggers the client's `enableEntities` reply, and the server streams `createBasePlayer` / `createCellPlayer` / `forcedPosition` plus per-entity creates.*
 
 A small set of system messages carries the wire-level entity lifecycle: creating the player's base proxy, creating the cell proxy, attaching it to a space viewport, ghost-entity AoI creation, and the authoritative position-snap mechanism. Each has a fixed `InterfaceElement` descriptor and a Ghidra-anchored handler in the SGW client. The full canonical wire-formats live below; the entries in the §1.14 divergence consolidation table reference these subsections. Position/movement messages on the steady-state plane (`UPDATE_AVATAR` variants, `detailedPosition`) are canonized in §1.11.
 
@@ -871,7 +923,7 @@ Confidence: high.
 
 ![createCellPlayer rotation triplet — SGW swaps Y/Z at the same wire offsets as stock BigWorld](figures/mercury-22-createcellplayer-rotation-swap.svg)
 
-*Figure 18: at offsets `+0x14..+0x1F` the wire-slot order is `rotX, rotZ, rotY` — a deliberate divergence from stock BigWorld's `Direction3D` (`roll, pitch, yaw`) ordering, confirmed three ways at the parse side, server-emit side, and pipeline audit.*
+*Figure 29: at offsets `+0x14..+0x1F` the wire-slot order is `rotX, rotZ, rotY` — a deliberate divergence from stock BigWorld's `Direction3D` (`roll, pitch, yaw`) ordering, confirmed three ways at the parse side, server-emit side, and pipeline audit.*
 
 The server sends this after the client emits `enableEntities` (see §1.9). Creates the player's cell-side proxy with its initial position, vehicle binding (always 0 at world entry), and orientation. The client's space viewport is bound to this entity.
 
@@ -1019,7 +1071,7 @@ Confidence: high for the wire layout, the length type, and the field set; medium
 
 ![forcedPosition wire layout — SGW 49-byte body vs stock BigWorld 2.0.1's 36-byte body](figures/mercury-23-forcedposition-sgw-vs-stockbw.svg)
 
-*Figure 19: forcedPosition byte-for-byte comparison — SGW inserts a 12-byte previous-position reference vector and appends a 1-byte physics field; emitting the stock 36-byte body fails the `CONSTANT_LENGTH = 49` table check.*
+*Figure 30: forcedPosition byte-for-byte comparison — SGW inserts a 12-byte previous-position reference vector and appends a 1-byte physics field; emitting the stock 36-byte body fails the `CONSTANT_LENGTH = 49` table check.*
 
 The authoritative "you are here" message. Sent by the server when the client's position must be hard-set (world entry, gate travel, anti-cheat correction, teleport). Carries position, a previous-position reference vector (not velocity — see the source-doc override below), full-precision rotation, and a physics-mode byte. Unlike normal entity-method calls, `forcedPosition` is a system-level wire-format message with a fixed 49-byte payload.
 
@@ -1122,7 +1174,7 @@ The full-precision sibling to `forcedPosition`. Carries `entityId`, position, ve
 
 ![Mercury runtime connection topology — client UDP nub, cell/base service nubs, auth TCP listener](figures/mercury-02-connection-topology.svg)
 
-*Figure 20: how nubs wire together at runtime — the game client and each server service own exactly one Mercury Nub; channels and fragment assemblers are per-peer.*
+*Figure 31: how nubs wire together at runtime — the game client and each server service own exactly one Mercury Nub; channels and fragment assemblers are per-peer.*
 
 The *nub* is the Mercury endpoint. Every process has exactly one. The SGW client nub is constructed once at startup; the server nub is constructed once when the BaseApp starts listening. The nub owns the UDP socket, the network thread, the connection map, the listener registrations, and the channel table.
 
@@ -1143,7 +1195,13 @@ The nub's `processPendingEvents` at `ghidra://SGW.exe@0x01581ab0` is the main re
 
 ![Mercury Nub tick-loop — recv queue drain, channel sweep, retransmits, dead-channel cleanup](figures/mercury-04-nub-tick-loop.svg)
 
-*Figure 21: per-tick work the Nub performs — drains the inbound `tbb::concurrent_queue`, walks channels for retransmits and stale-fragment cleanup, then surfaces dead channels for teardown.*
+*Figure 32: per-tick work the Nub performs — drains the inbound `tbb::concurrent_queue`, walks channels for retransmits and stale-fragment cleanup, then surfaces dead channels for teardown.*
+
+The tick loop drives the resend / cleanup side; the recv-side function-call chain that delivers each packet from `recvfrom()` to its handler is the inverse:
+
+![Mercury Nub recv pipeline — recvfrom → concurrent_queue → processFilteredPacket → processOrderedPacket → handler](figures/mercury-36-nub-recv-pipeline.svg)
+
+*Figure 33: the receive-side function-call pipeline — `processPendingEvents` blocks on `recvfrom`, enqueues onto the `tbb::concurrent_queue`; a second thread drains, runs the cipher filter, peels the footer in `processFilteredPacket_inner`, dispatches the bundle in `processOrderedPacket`, and indexes `nub->elements[msg_id]` to the registered handler.*
 
 ### 1.13 MachineGuard — adjacent machine-discovery protocol
 
@@ -1184,7 +1242,11 @@ MachineGuard is mentioned here because the V5 finding doc recovered it alongside
 
 ### 1.14 Wire-format divergences from stock BigWorld 2.0.1 — consolidated
 
-Every SGW divergence from stock BigWorld 2.0.1 affecting Mercury wire format, in one place:
+Every SGW divergence from stock BigWorld 2.0.1 affecting Mercury wire format, in one place. The packet-shape diff sets up the table:
+
+![Stock BW vs SGW packet shape — uint16 network-order flags + footer above uint8 LE-footer SGW shape](figures/mercury-35-bw-vs-sgw-packet-shape.svg)
+
+*Figure 34: stock BigWorld 2.0.1's 2-byte network-order packet shape stacked above SGW's 1-byte little-endian shape — stock BW's high-byte flags (`FLAG_HAS_CHECKSUM`, `FLAG_CREATE_CHANNEL`, `FLAG_HAS_CUMULATIVE_ACK`, `FLAG_INDEXED_CHANNEL`) are all absent in SGW.*
 
 | Surface | Stock BigWorld 2.0.1 | SGW |
 |---|---|---|

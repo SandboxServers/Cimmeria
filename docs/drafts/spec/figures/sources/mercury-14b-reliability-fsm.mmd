@@ -1,0 +1,30 @@
+stateDiagram-v2
+    [*] --> Unsent : Bundle::finalise stamps seq
+
+    Unsent --> InFlight : Nub::send writes packet\nbit set in 32-bit outstanding-ack bitmap\nresend timer = 700ms
+
+    InFlight --> AwaitingAck : 700ms timer elapses\nUnAckedHandler scans bitmap
+
+    AwaitingAck --> InFlight : retransmit_count < 20\nresend same seq\nretransmit_count++
+
+    AwaitingAck --> Disconnected : retransmit_count > 20\nChannel transitions Disconnected\n(strict-greater check)
+
+    InFlight --> Acked : peer's ack list contains seq\nprocessAck clears bit in bitmap
+
+    Acked --> [*]
+
+    Disconnected --> [*]
+
+    note right of InFlight
+        seq_id occupies bit (seq_id & 0x1F)
+        in ChannelInternal's 32-bit
+        outstanding-ack bitmap
+        (UnAckedHandler at +0x?? offset).
+    end note
+
+    note left of AwaitingAck
+        700ms ACK timeout inherited
+        from stock BigWorld 2.0.1.
+        SGW divergence not enumerated
+        in V5 evidence.
+    end note

@@ -1,0 +1,17 @@
+%%{init: {"sequence": {"htmlLabels": false}}}%%
+sequenceDiagram
+    participant S as Server (BaseApp)
+    participant C as Client
+
+    Note over S,C: Cipher envelope active; PAK stream just finished
+
+    S->>C: RESET_ENTITIES  (msg_id 0x04, CONSTANT_LENGTH=1, payload keepBase=0x00)
+    Note right of S: Sent in its OWN flushed bundle\n— no other interface elements in the packet.
+
+    Note over C: PurgeAndRebuildEntityStateLists at 0x00dda0e0\nclears 4 list sentinels at +0xF88 / +0xF94 / +0xFA0 / +0xFB0
+    Note over C: BroadcastEntityActivation auto-fires
+
+    C->>S: enableEntities  (msg_id 0xC1, CONSTANT_LENGTH=8, 8-byte dummy)
+    Note left of C: Base-method shape — no entityId on wire.\nPayload bytes uninitialized; server ignores content.
+
+    Note over S,C: Handshake complete — server proceeds to\ncreateBasePlayer → createCellPlayer stream.

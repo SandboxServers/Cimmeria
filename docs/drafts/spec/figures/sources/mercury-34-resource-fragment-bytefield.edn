@@ -1,0 +1,35 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 16)
+(def row-height 38)
+
+(defattrs :id {:fill "#bdd7ee" :font-style "bold"})
+(defattrs :hdr {:fill "#ddffdd"})
+(defattrs :first {:fill "#fff4d6"})
+(defattrs :body {:fill "#ffeedd"})
+(defattrs :sub {:fill "#fafafa"})
+
+; RESOURCE_FRAGMENT (msg_id 0x36, WORD_LENGTH) — §1.9 lines 587-617.
+; 4-byte header on every fragment; first-fragment body adds 9 cooked-data prefix bytes.
+
+(draw-column-headers)
+
+; --- Row A: msg_id + length-prefix + 4-byte fragment header ---
+(draw-box (text "0x36" :id) {:span 1 :borders {:all true}})
+(draw-box (text "word_len (u16 LE)" :hdr) {:span 2 :borders {:all true}})
+(draw-box (text "dataId (u16 LE) — per-resource transfer ID" :hdr) {:span 2 :borders {:all true}})
+(draw-box (text "chunkId (u8) — fragment seq #" :hdr) {:span 1 :borders {:all true}})
+(draw-box (text "flags (u8) — INITIAL=0x01 FINAL=0x02 BASE=0x40 ERROR=0x80" :hdr) {:span 1 :borders {:all true}})
+(draw-box (text "  →  fragment body follows  →" :sub) {:span 9 :borders {:all true}})
+(draw-gap "  Every fragment carries the 4-byte header. BASE_FLAG (0x40) is set in all observed normal traffic.")
+
+; --- Row B: FIRST fragment body shape (INITIAL_FRAGMENT bit set) ---
+(draw-box (text "msgType=0x00" :first) {:span 1 :borders {:all true}})
+(draw-box (text "categoryId (u32 LE)" :first) {:span 4 :borders {:all true}})
+(draw-box (text "elementId (u32 LE)" :first) {:span 4 :borders {:all true}})
+(draw-box (text "xmlBody — start of XML document (continues into following fragments)" :body) {:span 7 :borders {:all true}})
+(draw-gap "  FIRST FRAGMENT body — 9-byte cooked-data prefix (msgType=0 MESSAGE_CacheData, categoryId, elementId) then start of XML.")
+
+; --- Row C: SUBSEQUENT fragments — header then continuation bytes ---
+(draw-box (text "xmlBody continuation — body is purely the next XML chunk; no prefix" :body) {:span 16 :borders {:all true}})
+(draw-gap "  SUBSEQUENT FRAGMENTS — body is XML continuation only. FINAL_FRAGMENT (0x02) triggers reassembly via head-first concat.")

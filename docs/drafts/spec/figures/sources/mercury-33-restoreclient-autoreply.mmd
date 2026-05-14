@@ -1,0 +1,17 @@
+%%{init: {"sequence": {"htmlLabels": false}}}%%
+sequenceDiagram
+    participant S as Server (deprecated BaseApp)
+    participant C as Client (ServerConnection)
+
+    Note over S: Fault-recovery trigger — BaseApp restart\nor cell restoration
+
+    S->>C: restoreClient  (msg_id 0x34, WORD_LENGTH, 48-byte body)
+    Note right of S: Body: entityId, spaceId, vehicleId,\ndirection (Vec3 f32), position (Vec3 f32),\nvelocity (Vec3 f32) — all LE.
+
+    Note over C: ServerConnection_restoreClient at 0x00dd8ae0\nreads scalars, direction block, position via FUN_015846a0,\nvelocity remainder; restores local snapshot.
+
+    Note over C: Auto-reply path: if *(this + 0x30c) != 0
+    C->>S: restoreClientAck  (descriptor DAT_01ef250c, 4-byte body)
+    Note left of C: Payload = u32 zero — server uses\nthe ack's ARRIVAL as the signal,\nnot the payload contents.
+
+    Note over S,C: A Rust reimplementation that omits the auto-reply\nleaves the server's restore handshake permanently incomplete.
