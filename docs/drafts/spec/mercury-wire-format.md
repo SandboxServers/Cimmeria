@@ -269,9 +269,9 @@ This is one of the most consequential SGW divergences for any reimplementation: 
 
 ### 1.4 Cipher envelope
 
-![Encrypted-Mercury wire frame — flags-byte plus AES-256-CBC ciphertext plus appended 16-byte HMAC-MD5 tag](figures/mercury-06-encrypted-wire-format.svg)
+![Encrypted-Mercury wire frame — AES-256-CBC ciphertext over the full flags+body+footer plaintext plus appended 16-byte HMAC-MD5 tag](figures/mercury-06-encrypted-wire-format.svg)
 
-*Figure 6: the encrypted on-wire frame — the flags byte stays clear; body + footer are PKCS#7-padded, AES-256-CBC encrypted with a zero IV, and the 16-byte HMAC-MD5 tag is appended (encrypt-then-MAC).*
+*Figure 6: the encrypted on-wire frame — the **entire plaintext packet** (flags byte + body + footer) is PKCS#7-padded and AES-256-CBC encrypted with a zero IV; the 16-byte HMAC-MD5 tag covers the ciphertext and is appended (encrypt-then-MAC). No part of the Mercury packet survives in cleartext on the wire.*
 
 Every Mercury packet on the external (client-facing) channel is wrapped in AES-256-CBC then HMAC-MD5. The wrapping is a `MessageFilter` layered above the wire format described above: the sender builds the plaintext packet (flags + body + footer) and the cipher envelope is applied as the very last step before `sendto()`.
 
@@ -372,7 +372,7 @@ Note that compressed-length encoding is *not* what entity messages use — entit
 
 ![Bundle layout — repeated `[msg_id][payload_len: u16 LE][payload]` entries, no count prefix](figures/mercury-08-bundle-format.svg)
 
-*Figure 10: a Mercury bundle's wire layout — each `BundleMessage` is `[msg_id: u8][payload_len: u16 LE][payload]`; there's no count prefix, the reader walks until the buffer is exhausted.*
+*Figure 10: a Mercury bundle's wire layout — each `BundleMessage` is `[msg_id: u8][length prefix per InterfaceElement table][payload]`. The figure shows the `WORD_LENGTH` shape (`u16 LE`), which covers all entity-method calls and most variable-length system messages; `CONSTANT_LENGTH` messages omit the length prefix entirely (size lives in the table) and `DWORD_LENGTH` uses `u32 LE`. See §1.5 for the per-`InterfaceElement` framing rules. There is no count prefix at the bundle level; the reader walks until the buffer is exhausted.*
 
 A *bundle* is the logical unit of reliability and the container for one or more interface-element messages. A bundle can span multiple packets via fragmentation; a packet always belongs to exactly one bundle.
 

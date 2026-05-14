@@ -99,10 +99,10 @@ Network protocol internals: packet structures, Mercury reliable messaging, entit
 | Document | Description | Status |
 |----------|-------------|--------|
 | [message-catalog.md](protocol/message-catalog.md) | **HUB** -- Complete catalog of all 420 network messages with IDs, directions, and payload structures | Complete |
-| [mercury-wire-format.md](protocol/mercury-wire-format.md) | Mercury packet header, reliable sequencing, AES-256 encryption, ACK/NACK handling | Complete |
+| [mercury-wire-format.md](protocol/mercury-wire-format.md) | Mercury packet header, reliable sequencing, AES-256 encryption, ACK/NACK handling | Complete (legacy summary). Canonical authoritative source is the bible chapter at [`drafts/spec/mercury-wire-format.md`](drafts/spec/mercury-wire-format.md). |
 | [entity-property-sync.md](protocol/entity-property-sync.md) | How entity properties are serialized, delta-compressed, and synchronized client/server | Complete |
 | [login-handshake.md](protocol/login-handshake.md) | HTTP auth, SOAP schemas, session key exchange, baseAppLogin binary format, error recovery | Complete |
-| [position-updates.md](protocol/position-updates.md) | 32 avatarUpdate variants, packed formats, SVID aliasing, client prediction/reconciliation | Complete |
+| [position-updates.md](protocol/position-updates.md) | 32 avatarUpdate variants, packed formats, SVID aliasing, client prediction/reconciliation | Complete (legacy summary). Canonical authoritative source is the bible chapter at [`drafts/spec/position-updates.md`](drafts/spec/position-updates.md). |
 
 See also: [technical/mercury-protocol.md](technical/mercury-protocol.md), [technical/mercury-audit.md](technical/mercury-audit.md), [technical/login-auth-flow.md](technical/login-auth-flow.md), [technical/post-auth-sequence.md](technical/post-auth-sequence.md), [technical/network-messages.md](technical/network-messages.md)
 

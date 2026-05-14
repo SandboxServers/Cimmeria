@@ -15,8 +15,8 @@ stateDiagram-v2
         Keepalive every 1,000ms
         ACK timeout: 700ms per reliable msg
         Max retransmits: 20 (strict >)
-        TX window: 45 slots (VecDeque)
-        RX window: 64 slots (VecDeque)
+        Outstanding-ack bitmap: 32 bits
+        Received-seq dedup hash: 512 entries (mask 0x1FF)
         last_sent / last_received tracked separately
     end note
 

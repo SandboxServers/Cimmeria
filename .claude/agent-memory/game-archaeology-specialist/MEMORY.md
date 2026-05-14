@@ -28,7 +28,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 ## Mercury wire-format bible chapter (session 2026-05-14)
 
-- [Mercury wire-format open questions](mercury-wire-format-openqs.md) — **[PROMOTE → spec.protocol.mercury-wire-format §Q1/Q2/Q3/Q4/Q5]** — Q4 (port=20022 not 19510), Q3a (velocity=rotation misnomer), Q1 (width-per-interface not sentinel), Q5 (512-entry hash table + 32-bit ACK bitmap, no fixed slot count), Q2 (+0x170/+0x174 = last-recv rdtsc baseline, medium confidence on write site).
+- [Mercury wire-format open questions](mercury-wire-format-openqs.md) — **[PROMOTE → spec.protocol.mercury-wire-format §Q1/Q2/Q3/Q4/Q5]** — Q4 (port=20022 not 19510), Q3a (offsets 24-35 are a previous-position reference, not velocity and not rotation — corrected by a second Ghidra pass that traced the pointer-pass into `PackageAndSendEntityMove`'s `pOrientation` → `pPrevPos`), Q1 (width-per-interface not sentinel), Q5 (512-entry hash table + 32-bit ACK bitmap, no fixed slot count), Q2 (+0x170/+0x174 = last-recv rdtsc baseline, medium confidence on write site).
 
 ## Phase −0.5 maintenance notes (2026-05-13)
 

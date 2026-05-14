@@ -63,7 +63,7 @@ Three invariants apply across the whole plane:
 
 - **Constant length, no length prefix.** Every message in this range has a fixed payload size that the client decoder knows from the `InterfaceElement` descriptor.
 - **No spaceId / vehicleId in `UPDATE_AVATAR` or `detailedPosition`.** Only `forcedPosition` carries those fields. The other two preserve the entity's existing space and vehicle binding.
-- **Physics-mode trailing byte.** Every message in this plane ends with a 1-byte physics-mode field — the same per-entity mutable state used as the `sentPhysics_[]` assertion key in the `forcedPosition` handler.
+- **Physics-mode byte is always present, but its placement varies.** Every message in this plane carries a 1-byte physics-mode field — the same per-entity mutable state used as the `sentPhysics_[]` assertion key in the `forcedPosition` handler. For non-direction `UPDATE_AVATAR` variants, `detailedPosition`, and `forcedPosition`, the physics byte is the final byte of the payload. For direction-carrying `UPDATE_AVATAR` variants, it sits *before* the direction bytes (yaw/pitch/roll); the canonical 0x10 layout in §1.2.5 and the per-variant tables show this explicitly.
 
 ### 1.2 `UPDATE_AVATAR` — the 32-variant compressed AoI broadcast
 
@@ -81,7 +81,11 @@ The 32 variants map a 5-bit index onto a 2×4×4 matrix:
 | Position width | `FullPos`, `OnChunk`, `OnGround` (each 12 bytes), or `NoPos` (0 bytes) | Saves 12 bytes when omitted |
 | Direction width | `YawPitchRoll` (3 B), `YawPitch` (2 B), `Yaw` (1 B), `NoDir` (0 B) | Saves 0–3 bytes |
 
-The `msg_id` byte itself selects the combination. The mapping is structural: the low 2 bits select direction, bits 2-3 select position type, bit 4 selects alias vs no-alias.
+The `msg_id` byte itself selects the combination. The mapping is structural — bit 0 is the LSB:
+
+- **bits [1:0]** select direction: `00`=YawPitchRoll, `01`=YawPitch, `10`=Yaw, `11`=NoDir.
+- **bits [3:2]** select position type: `00`=FullPos, `01`=OnChunk, `10`=OnGround, `11`=NoPos.
+- **bits [5:4]** select alias kind: `01`=NoAlias (`0x10`–`0x1F` block), `10`=Alias (`0x20`–`0x2F` block). The other two encodings (`00` and `11`) are unused — only one of bits 4 or 5 is set at a time.
 
 | `msg_id` range | Alias | Position | Direction (YPR / YP / Y / NoDir) | Sizes |
 |---|---|---|---|---|

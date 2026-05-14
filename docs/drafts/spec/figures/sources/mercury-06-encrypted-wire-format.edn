@@ -3,9 +3,9 @@
 
 (draw-column-headers)
 
-; Encrypted packet: [flags][body+footers] all CBC-encrypted, then HMAC appended
-(draw-box "flags" {:span 1 :fill "#bdd7ee"})
-(draw-box (text "AES-256-CBC ciphertext  (body + footers, PKCS7-padded, IV = 0x00×16)" :label) {:span 15 :fill "#ffeedd" :borders {:all true}})
+; Encrypted packet: entire plaintext (flags + body + footers) is CBC-encrypted,
+; then HMAC-MD5 is appended outside the ciphertext.
+(draw-box (text "AES-256-CBC ciphertext  (PKCS#7-padded plaintext: flags + body + footers, IV = 0x00×16)" :label) {:span 16 :fill "#ffeedd" :borders {:all true}})
 (draw-gap "ciphertext continues...")
 (draw-bottom)
-(draw-box (text "HMAC-MD5 authentication tag  (16 bytes, keyed with session_key)" :label) {:span 16 :fill "#ddffdd"})
+(draw-box (text "HMAC-MD5 authentication tag  (16 bytes, keyed with session_key, covers ciphertext only)" :label) {:span 16 :fill "#ddffdd"})

@@ -2,14 +2,14 @@ sequenceDiagram
     participant S as Sender (Nub)
     participant R as Receiver (Nub)
 
-    Note over S: build_outgoing(body, reliable=true)<br/>flags |= RELIABLE | HAS_SEQUENCE<br/>seq_id = next_tx_seq++<br/>push TxEntry to tx_window (cap=45)
+    Note over S: build_outgoing(body, reliable=true)<br/>flags |= RELIABLE | HAS_SEQUENCE<br/>seq_id = next_tx_seq++<br/>set bit in 32-bit outstanding-ack bitmap
 
     S->>R: UDP [flags=0x58, seq_id=N, body]
     Note over S: ACK_TIMEOUT_MS = 700ms timer starts
 
     alt Ack received within 700ms
         R->>S: UDP [flags=HAS_ACKS]<br/>footer: ack_count=1, ack[0]=N
-        Note over S: tick() check_timeouts()<br/>ack N matched - remove TxEntry<br/>from tx_window
+        Note over S: tick() check_timeouts()<br/>ack N matched — clear bit N<br/>in outstanding-ack bitmap
     else Timeout expires
         Note over S: elapsed >= 700ms<br/>retransmit_count++<br/>added to TickActions.retransmits
         S->>R: retransmit [seq_id=N]

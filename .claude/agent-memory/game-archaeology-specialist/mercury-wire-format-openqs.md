@@ -32,9 +32,13 @@ Both fields are initialized to zero in the constructor at `0x0158c9d5`/`0x0158c9
 
 **Q3 — forcedPosition velocity Vec3 + standalone-path rotation semantics**
 
-Q3a — Velocity semantics at the client:
+Q3a — Semantics of the 12-byte field at offsets 24-35 of the client message:
 
-The "velocity Vec3" in the chapter description is a misnomer. Decompile of `ProcessForcedEntityPosition` at `0x00dd9ee0` shows the handler passes message fields at `pMsg+0x24`, `pMsg+0x28`, `pMsg+0x2c` to `PackageAndSendEntityMove` as the `flYaw`, `flPitch`, `flRoll` float parameters (loaded via FLD at `0x00dd9f5a`, `0x00dd9f73`, `0x00dd9f7a`). `PackageAndSendEntityMove` does NOT have a velocity parameter — it takes orientation and position. The 12-byte field the chapter calls "velocity Vec3" is actually the **yaw/pitch/roll rotation** encoded as three floats. There is no velocity application at all — no delta-replacement, no additive impulse. The field is rotation, not velocity.
+**Corrected to previous-position reference (NOT velocity, NOT rotation).** A second Ghidra pass on `ProcessForcedEntityPosition` at `0x00dd9ee0` showed the 12-byte block at struct offset `+0x18` is passed as a **pointer** (via `LEA EAX, [ESI+0x18]`) to the internal `PackageAndSendEntityMove` helper as its `pOrientation` argument, which is then copied verbatim into `pPrevPos` (aliased to `pPosition`). That is the previous-position-snapshot pattern used by BigWorld's client-side delta-compression of the retransmitted move — not a velocity vector and not a yaw/pitch/roll rotation. The "zeros at world entry" observation reflects there being no prior position to delta from, not a semantic claim about velocity.
+
+The first pass's claim that the bytes are `flYaw/flPitch/flRoll` from a positional float-load at `0x00dd9f5a`/`0x00dd9f73`/`0x00dd9f7a` confused the *rotation triplet* at message offsets 36-47 (which is what `PackageAndSendEntityMove` actually loads via FLD) with the *previous-position reference* at offsets 24-35. They are adjacent and both 12 bytes; the reader pointer-passes the first to `pOrientation` and float-loads the second for yaw/pitch/roll.
+
+Three V5 docs that label the field "velocity" (`position-movement-wire-formats.md`, `entity-creation-wire-formats.md`, `space-viewport-wire-formats.md`) are upstream-wrong; the chapter and `spec.protocol.position-updates` §1.4.2 override all three.
 
 Q3b — Server-side emit triggers:
 
@@ -58,4 +62,4 @@ The 512-entry value: `Channel__ctor` at `0x01576bf0` stores `0x200` (512) at `+0
 
 The "45-slot" claim from prior docs was unsourced and incorrect. The actual sequence tracking table has 512 entries; the ACK bitmap covers 32 outstanding sequence numbers at a time.
 
-**How to apply:** Feed these directly into the five open-question blocks in `docs/drafts/spec/mercury-wire-format.md`. Q4 is highest priority — it's an embarrassing arithmetic error. Q3a corrects a semantic misidentification (velocity vs. rotation). Q1 corrects a threshold model misunderstanding. Q5 replaces an unsourced claim.
+**How to apply:** Feed these directly into the five open-question blocks in `docs/drafts/spec/mercury-wire-format.md`. Q4 is highest priority — it's an embarrassing arithmetic error. Q3a corrects a semantic misidentification (the 12 bytes are a previous-position reference, not velocity and not rotation). Q1 corrects a threshold model misunderstanding. Q5 replaces an unsourced claim.

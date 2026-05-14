@@ -40,7 +40,7 @@ Phase 0 (scaffolding — what you are reading) is in place. Phase 0.5 (six infra
 | Phase | Chapters | Status |
 |---|---:|---|
 | 0 — meta layer (this scaffolding) | 4 + template + workflow | In place. |
-| 0.5 — infrastructure prerequisites | 6 | Not yet authored. |
+| 0.5 — infrastructure prerequisites | 6 | First two `spec.protocol` chapters drafted (`mercury-wire-format`, `position-updates`); remaining four queued. |
 | 1 — gameplay | 11 | Not yet authored. |
 | 2+ — triage remaining ~65 prior docs | TBD | Ongoing. |
 

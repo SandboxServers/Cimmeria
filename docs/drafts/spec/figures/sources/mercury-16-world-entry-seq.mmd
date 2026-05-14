@@ -20,7 +20,7 @@ sequenceDiagram
     S->>C: createBasePlayer 0x05 6B u32 entityId + u16 classId
     S->>C: createCellPlayer 0x06 32B spaceId vehicleId pos rotX/Z/Y
     S->>C: spaceViewportInfo 0x08 13B viewport open entityId2=entityId
-    S->>C: forcedPosition 0x31 49B pos vel=0 rot physics=0x01
+    S->>C: forcedPosition 0x31 49B pos prevPos=0 rot physics=0x01
 
     loop AoI entities
         S->>C: createEntity 0x09 5B entityId alias=0xFF classId
