@@ -166,6 +166,18 @@ POP ORDER (from end of datagram, peeling toward body):
 
 A sender writes flags byte first, then writes message body, then appends each footer field in flag-bit order. A receiver reads flags byte first, then pops each footer field in reverse flag-bit order — so the field that was *appended last* is popped *first*.
 
+**Request-chain walking** (`FLAG_HAS_FIRST_REQUEST_OFFSET` bit 0 + `FLAG_HAS_REQUESTS` bit 6). The two request-related flags work together as a header + index pair, not as orthogonal signals. Bit 6 (`FLAG_HAS_REQUESTS`) is the sender's promise "this packet contains at least one request message"; bit 0 (`FLAG_HAS_FIRST_REQUEST_OFFSET`) is the receiver's index "the first request's body starts at byte N of the message body." In practice the two bits are always set together: a packet with requests must carry the offset to find them, and a packet without requests has no offset to advertise. The Cimmeria reimplementation treats the two as an inseparable pair.
+
+The reason both flags exist (rather than collapsing to one) is the receiver's walk pattern. Request messages form a *linked list inside the packet body*: each request's `InterfaceElement` payload begins with a `nextRequestOffset: u16` field that points (as a byte offset relative to the message body start) to the next request in the packet, with `0xFFFF` as the terminator. The receiver:
+
+1. Pops `firstRequestOffset` from the footer (gated on bit 0).
+2. Seeks to `body[firstRequestOffset]` in the message body.
+3. Parses the request message starting at that offset; reads the leading `nextRequestOffset` field of its payload.
+4. If `nextRequestOffset != 0xFFFF`, seeks to `body[nextRequestOffset]` and repeats.
+5. Stops when `nextRequestOffset == 0xFFFF`.
+
+This lets the receiver process requests in priority order *without* walking the entire message body sequentially — useful when a bundle contains many entity-method calls interleaved with a handful of requests, and the request-handling code path runs separately from the entity-method dispatch path. The linked-list mechanism is stock BigWorld; SGW inherits it verbatim. The reply messages (`msg_id = 0xFF`, see §1.9) carry the reply-ID that the original requester registered via `Bundle::startMessage_request` at `ghidra://SGW.exe@0x0157adc0` — the request-chain walk is what finds the request in the first place, the reply-ID matching is what pairs requests with their eventual replies.
+
 #### 1.3.1 Ack list encoding
 
 When `FLAG_HAS_ACKS` is set, the ack list at the tail is:
@@ -179,6 +191,8 @@ When `FLAG_HAS_ACKS` is set, the ack list at the tail is:
 ```
 
 Each `ack[i]` is the sequence ID of a previously received reliable packet. The receiver pops `ackCount` first (1 byte), then pops `ackCount × 4` bytes as the ack array. The sender side mirrors this in `UnAckedHandler::buildAndSendAckBundle` at `ghidra://SGW.exe@0x0158b2d0`: walks a 32-bit ack mask and writes each sequence ID into the bundle.
+
+**Ack coalescing.** `ackCount` is a `u8`, so a single packet can carry at most 255 acks — a hard ceiling, not a practical one. The send path prefers to *piggyback* acks onto the next outgoing reliable bundle (whatever that bundle's primary purpose is — a game-level entity-method call, a position update, a control message) rather than emit a standalone ack-only packet, which keeps wire overhead minimal. When the send-alive timer at `ChannelInternal+0x16c` expires with pending acks but no game-level traffic to piggyback on, `UnAckedHandler::sendAckBundle2` at `ghidra://SGW.exe@0x0158bbc0` builds a standalone bundle with only the `FLAG_HAS_ACKS` flag set (no body) — this is the Mercury keepalive path. The 32-bit ack mask in `UnAckedHandler` lets the implementation track up to 32 unsent acks before they must be flushed; in practice, latency keeps the typical queued-ack count well below that and well below the 255-byte wire ceiling.
 
 #### 1.3.2 Piggyback chain encoding
 
