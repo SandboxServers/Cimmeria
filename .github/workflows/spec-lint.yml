@@ -41,6 +41,14 @@ jobs:
       - name: install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # The project's `.cargo/config.toml` pins `linker = "clang"` and
+      # `rustflags = ["-C", "link-arg=-fuse-ld=mold"]` for the Linux GNU
+      # target. The runner's stock clang doesn't ship with mold so the
+      # build fails with `invalid linker name in argument '-fuse-ld=mold'`
+      # unless we install both. test.yml does the same thing.
+      - name: install clang + mold
+        run: sudo apt-get update && sudo apt-get install -y clang mold
+
       - name: cache cargo registry + spec-lint target
         uses: actions/cache@v4
         with:

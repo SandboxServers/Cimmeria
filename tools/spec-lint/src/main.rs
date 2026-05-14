@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::LazyLock;
 
 use regex::Regex;
 use walkdir::WalkDir;
@@ -116,48 +117,65 @@ fn extract_package_name(manifest: &str, name_re: &Regex) -> Option<String> {
 struct Chapter {
     frontmatter: String,
     body: String,
-    body_offset: usize, // line number where `body` starts in the file (1-based)
+    /// File line number (1-based) of the first frontmatter content line —
+    /// i.e. the line *after* the opening `---`. Used by frontmatter scanners
+    /// to report findings at the file line, not the frontmatter-internal
+    /// line.
+    fm_start_line: usize,
+    /// File line number (1-based) of the first body line — i.e. the line
+    /// *after* the closing `---`. Used by section-4/5 scanners.
+    body_offset: usize,
 }
 
 enum ParseChapterError {
+    /// File doesn't open with `---` — treat as a regular markdown file, not
+    /// a chapter. Caller should silently skip.
     NoFrontmatter,
+    /// File opens with `---` but never closes the YAML block. Caller should
+    /// surface as a MalformedRef finding so the chapter author notices.
     UnclosedFrontmatter,
+    /// I/O error reading the file (missing, permission denied, non-UTF8,
+    /// etc.). Distinct from NoFrontmatter so the caller can surface the
+    /// real failure rather than silently skipping a corrupt chapter.
+    IoError(String),
 }
 
 fn parse_chapter(path: &Path) -> Result<Chapter, ParseChapterError> {
-    let text = fs::read_to_string(path).map_err(|_| ParseChapterError::NoFrontmatter)?;
-    let mut lines = text.lines();
+    let text = fs::read_to_string(path).map_err(|e| ParseChapterError::IoError(e.to_string()))?;
+    let lines: Vec<&str> = text.lines().collect();
 
-    // First non-blank line must be `---`.
-    let first = lines.next().ok_or(ParseChapterError::NoFrontmatter)?;
-    if first.trim() != "---" {
+    // Skip leading blank lines. Defensive against editors that prepend
+    // whitespace; canonical chapters open with `---` on line 1.
+    let mut open_idx = 0;
+    while open_idx < lines.len() && lines[open_idx].trim().is_empty() {
+        open_idx += 1;
+    }
+    if open_idx >= lines.len() || lines[open_idx].trim() != "---" {
         return Err(ParseChapterError::NoFrontmatter);
     }
 
-    let mut fm = String::new();
-    let mut consumed = 1; // the opening `---`
-    let mut closed = false;
-    for line in lines.by_ref() {
-        consumed += 1;
-        if line.trim() == "---" {
-            closed = true;
-            break;
-        }
-        fm.push_str(line);
-        fm.push('\n');
+    // Find the closing `---`. If none, the YAML block is unterminated.
+    let fm_first = open_idx + 1;
+    let mut close_idx = fm_first;
+    while close_idx < lines.len() && lines[close_idx].trim() != "---" {
+        close_idx += 1;
     }
-
-    if !closed {
+    if close_idx >= lines.len() {
         return Err(ParseChapterError::UnclosedFrontmatter);
     }
 
-    let body: String = lines.collect::<Vec<_>>().join("\n");
-    let body_offset = consumed + 1; // first body line is one past closing `---`
+    let frontmatter = lines[fm_first..close_idx].join("\n");
+    let body = if close_idx + 1 < lines.len() {
+        lines[(close_idx + 1)..].join("\n")
+    } else {
+        String::new()
+    };
 
     Ok(Chapter {
-        frontmatter: fm,
+        frontmatter,
         body,
-        body_offset,
+        fm_start_line: fm_first + 1, // 1-based file line
+        body_offset: close_idx + 2,  // 1-based file line of line after closing ---
     })
 }
 
@@ -185,7 +203,7 @@ fn extract_rust_evidence_refs(chapter: &Chapter) -> Vec<(usize, String)> {
     let mut block_indent: usize = 0;
 
     for (idx, line) in chapter.frontmatter.lines().enumerate() {
-        let file_line = idx + 2; // +1 for opening `---`, +1 for 1-based
+        let file_line = chapter.fm_start_line + idx;
         let trimmed = line.trim_start();
         let indent = line.len() - trimmed.len();
 
@@ -488,46 +506,64 @@ fn module_file_candidates(crate_src: &Path, module_path: &[&str]) -> Vec<PathBuf
     candidates
 }
 
+/// Matches any non-method defining occurrence — `fn name`, `struct Name`,
+/// `enum Name`, etc. Capture group 1 is the symbol name. Compiled once for
+/// the whole lint run.
+///
+/// `macro_rules!` is the only keyword containing punctuation; the `!` is
+/// matched literally as part of the alternative.
+static DEFINING_FORM_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\b(?:fn|struct|enum|trait|type|union|const|static|macro_rules!)\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+    )
+    .expect("static regex")
+});
+
+/// Matches any defining occurrence of a *type* (struct / enum / trait / type
+/// alias / union, or `impl Trait for Type` / `impl Type`). Capture group 1 is
+/// the type name. Used to verify a `Type::method` reference's `parent_type`
+/// is grounded in the same file as the method definition.
+///
+/// The `(?:struct|enum|trait|type|union)\s+` branch carries its own `\s+`
+/// (a prior version concatenated without it and matched `structFoo` rather
+/// than `struct Foo`). The `impl(...)\s+(... for ...)?` branch handles both
+/// `impl Foo` and `impl Trait for Foo`; capture 1 picks the trailing type.
+static TYPE_DEFINING_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\b(?:(?:struct|enum|trait|type|union)\s+|impl(?:\s*<[^>]*>)?\s+(?:[A-Za-z0-9_:<>,\s]+\s+for\s+)?)([A-Za-z_][A-Za-z0-9_]*)\b",
+    )
+    .expect("static regex")
+});
+
 /// Best-effort: does the given symbol appear as a definition in this source?
 /// `leaf` is the symbol name; `parent_type` is the type it might be a method
 /// on (when relevant).
+///
+/// Best-effort, not impl-block-scoped. A free `fn add` in a file that also
+/// happens to declare `struct ThreatList` will satisfy `ThreatList::add`
+/// even if the real method lives elsewhere — the lint trades precision for
+/// simplicity. See conventions.md §"The no-line-numbers rule" for why this
+/// looseness is acceptable: the lint is a warning surface, not a proof.
 fn symbol_exists(source: &str, leaf: &str, parent_type: Option<&str>) -> bool {
-    // Defining-form patterns. Order matters only for performance.
-    let patterns = [
-        format!(r"\bfn\s+{}\b", regex::escape(leaf)),
-        format!(r"\bstruct\s+{}\b", regex::escape(leaf)),
-        format!(r"\benum\s+{}\b", regex::escape(leaf)),
-        format!(r"\btrait\s+{}\b", regex::escape(leaf)),
-        format!(r"\btype\s+{}\b", regex::escape(leaf)),
-        format!(r"\bunion\s+{}\b", regex::escape(leaf)),
-        format!(r"\bconst\s+{}\b", regex::escape(leaf)),
-        format!(r"\bstatic\s+{}\b", regex::escape(leaf)),
-        // Macro definitions: `macro_rules! foo`
-        format!(r"\bmacro_rules!\s+{}\b", regex::escape(leaf)),
-    ];
-    for pat in &patterns {
-        if Regex::new(pat).expect("static regex").is_match(source) {
-            // For `fn` leaves with a `parent_type`, also check the type
-            // exists in the same file. If neither the type nor an impl
-            // block for it appears, the ref probably points elsewhere.
-            if let Some(pt) = parent_type {
-                let type_pat = format!(
-                    r"\b(?:struct|enum|trait|type|union|impl(?:\s*<[^>]*>)?\s+(?:[A-Za-z0-9_:<>,\s]+\s+for\s+)?){}\b",
-                    regex::escape(pt)
-                );
-                if !Regex::new(&type_pat)
-                    .expect("static regex")
-                    .is_match(source)
-                {
-                    // Symbol exists but on a type that isn't here — keep
-                    // looking via other candidate files. Treat as not found.
-                    continue;
-                }
-            }
-            return true;
+    // Look for any defining occurrence whose name matches `leaf`.
+    let leaf_defined = DEFINING_FORM_RE
+        .captures_iter(source)
+        .any(|c| c.get(1).map(|m| m.as_str()) == Some(leaf));
+    if !leaf_defined {
+        return false;
+    }
+    // If a parent_type is implied, also check the type exists in this file.
+    // If neither a struct/enum/trait declaration nor an `impl` block for it
+    // appears, the leaf is probably defined elsewhere on a different type.
+    if let Some(pt) = parent_type {
+        let type_defined = TYPE_DEFINING_RE
+            .captures_iter(source)
+            .any(|c| c.get(1).map(|m| m.as_str()) == Some(pt));
+        if !type_defined {
+            return false;
         }
     }
-    false
+    true
 }
 
 // ---- main flow ---------------------------------------------------------
@@ -550,6 +586,18 @@ fn lint_chapter(
                     section 4/5 lint is silently skipped for unclosed \
                     frontmatter; close the YAML block"
                     .to_string(),
+            });
+            return;
+        }
+        Err(ParseChapterError::IoError(msg)) => {
+            findings.push(Finding {
+                file: path.to_path_buf(),
+                line: 1,
+                kind: FindingKind::MalformedRef,
+                detail: format!(
+                    "could not read chapter file ({msg}) — silently skipped \
+                    (UTF-8 / permissions / missing file)"
+                ),
             });
             return;
         }
