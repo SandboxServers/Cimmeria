@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="336" class="svgbob">
-<!-- cimmeria-bg-injected --><rect width="100%" height="100%" fill="white"/>
+<!-- cimmeria-bg-injected --><style>.cimmeria-bg{fill:transparent}@media(prefers-color-scheme:dark){.cimmeria-bg{fill:white}}</style><rect class="cimmeria-bg" width="100%" height="100%"/>
   <style>.svgbob line, .svgbob path, .svgbob circle, .svgbob rect, .svgbob polygon {
   stroke: black;
   stroke-width: 2;
@@ -20,6 +20,7 @@
   stroke: none;
   fill: white;
 }
+.svgbob rect.backdrop { fill: transparent !important; } @media (prefers-color-scheme: dark) { .svgbob rect.backdrop { fill: white !important; } }
 
 .svgbob .broken {
   stroke-dasharray: 8;
