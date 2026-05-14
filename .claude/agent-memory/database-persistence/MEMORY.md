@@ -49,7 +49,10 @@ Inline-content section status:
 - Castle_CellBlock: world_id=12
 - SGC_W1: world_id=58
 
-## Rust Rewrite DB Status (as of 2026-03-04)
+## Rust Rewrite DB Status (as of 2026-03-04) — HISTORICAL / DO NOT CITE
+
+> [!WARNING] **Quarantined snapshot.** Preserved for archeology only. This was a frozen 2026-03-04 status; it is contradicted by current Rust (character creation now persists alignment / archetype / gender / bodyset / world_id / abilities / components / skin_color_id; `auth.rs` is now a directory). **Do not cite this block.** Refer to the authoritative source: `crates/services/src/base/character_create.rs` and the `crates/services/src/auth/` directory.
+
 - Auth credential validation: WORKING (validate_credentials in auth.rs)
 - Character list query: WORKING (query_character_list in base.rs)
 - Character creation INSERT: PARTIAL (missing world_id, components, abilities, access_level, starting positions)

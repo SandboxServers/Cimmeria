@@ -25,7 +25,7 @@ The companion docs you will keep open while writing:
 
 Every chapter answers one question: *"what does X do, and how do we know?"* The answer is structured as five sections, each grounding the next.
 
-```
+```text
 Section 1 — RE findings              ← what the 2009 binary does
         ↓ grounds
 Section 2 — Client findings          ← what the client expects
@@ -147,7 +147,7 @@ Confidence in Section 5 is usually `medium` for any chapter older than three mon
 
 ## Status lifecycle
 
-```
+```text
 draft  ──promote──▶  verified  ──code-changes──▶  stale  ──re-verify──▶  verified
                           │                                                  ▲
                           └──contested──▶  disputed  ──resolve──────────────┘

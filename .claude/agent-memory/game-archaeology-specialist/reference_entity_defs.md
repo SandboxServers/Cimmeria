@@ -5,11 +5,11 @@ metadata:
   type: reference
 ---
 
+# Entity Definitions — Canonical Source
+
 > [!NOTE] PROMOTION TARGET: spec.engine.entity-description-parse-chain §"def file locations" or appendix
 >
 > Triaged 2026-05-13 (Phase −0.5 step 4). Stable reference for where the canonical entity defs live. Promotes as a section or appendix in the entity-description-parse-chain chapter.
-
-# Entity Definitions — Canonical Source
 
 Entity definitions are the BigWorld engine's contract between client and server for every distributed object.
 

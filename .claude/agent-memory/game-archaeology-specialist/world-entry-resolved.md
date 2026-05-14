@@ -16,9 +16,11 @@ metadata:
 ## World Entry Pipeline — Resolved Open Questions (W-misc-gaps, 2026-05-13)
 
 ### Q1: ENABLE_ENTITIES payload size
-**Answer: 1 byte** (stock BigWorld `keepBase` u8).
-- Init site: `0x017bae02` — `MOV DWORD PTR [DAT_01ef2500->size], 1`
-- The 8-byte SGW-custom claim was wrong. Correct `docs/protocol/world-entry-phases.md` if encountered.
+**Answer: 8 bytes** (SGW-custom `uint64` dummy payload).
+- ~~Pre-V5 claim: 1 byte (stock BigWorld `keepBase` u8) — **wrong**.~~
+- Confirmed via V5 W-enable-entities (2026-05-13). Static initializer at `0x017bade0–0x017bae07`: `PUSH 0x8` at `0x017bade9` is the size argument; the `MOV DWORD PTR [EAX], 0x1` at `0x017badf7` is a reliability flag, not the size field. The pre-V5 read of `0x017bae02` misidentified that flag as `size`.
+- Cross-validated against `deprecated/cpp/src/baseapp/mercury/sgw/messages.cpp` line 83: `{Message::CONSTANT_LENGTH, 8, "ENABLE_ENTITIES", true}`.
+- See `docs/reverse-engineering/findings/world-entry-pipeline.md` §"RESET_ENTITIES + ENABLE_ENTITIES Exchange" / "CONFIRMED (W-enable-entities, 2026-05-13)" for the full reconciliation.
 
 ### Q2: GameProxyPlayer Event_Level_PostLoad handler
 **Handler: `GameProxyPlayer_HandleEvent_Level_PostLoad` (0x00de8660)** → wrapper → `FUN_00de8430` (0x00de8430).

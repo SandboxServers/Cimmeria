@@ -132,10 +132,19 @@ jobs:
               'See [`docs/spec/how-to-write.md`](https://github.com/SandboxServers/Cimmeria/blob/main/docs/spec/how-to-write.md) for the chapter authoring guide and [`docs/spec/conventions.md`](https://github.com/SandboxServers/Cimmeria/blob/main/docs/spec/conventions.md) for the rules. Phase 2 hardens this check from warn-only to blocking; the warn period is intentional.',
             ].join('\n');
 
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: pr.number,
-              body,
-            });
-            core.info(`Posted bible nudge for chapters: ${chapters.join(', ')}.`);
+            // Warn-only intent: if the comment POST fails (e.g. PRs from
+            // forks where the default GITHUB_TOKEN is read-only for
+            // pull-requests:write), log a warning and continue rather than
+            // failing the job.
+            try {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pr.number,
+                body,
+              });
+              core.info(`Posted bible nudge for chapters: ${chapters.join(', ')}.`);
+            } catch (err) {
+              const msg = (err && err.message) ? err.message : String(err);
+              core.warning(`spec-touch: unable to post nudge comment (non-blocking): ${msg}`);
+            }

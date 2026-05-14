@@ -49,6 +49,24 @@ The emulator is **playable today**: players can log in, enter the world, interac
 
 ---
 
+### `spec/` -- The Cimmeria Bible (canonical, evidence-backed reference)
+
+The bible is the canonical, evidence-backed reference for what the SGW server does. Each chapter follows a 5-section evidence chain (RE findings → client → deprecated server → expected Rust → actual Rust). When the bible contradicts another doc, the bible wins.
+
+Currently Phase 0 (scaffolding) — the writing apparatus exists; gameplay/infrastructure chapter content is Phase 0.5/1 work, authored per-chapter from the V5 evidence pool under `reverse-engineering/findings/`. See umbrella issue [#264](https://github.com/SandboxServers/Cimmeria/issues/264).
+
+| Document | Description | Status |
+|----------|-------------|--------|
+| [README.md](spec/README.md) | **HUB** -- Master index, system-first navigation, status snapshot of every chapter | Phase 0 |
+| [conventions.md](spec/conventions.md) | Citation grammar, frontmatter schema, the no-line-numbers rule for sections 4 and 5 | Phase 0 |
+| [how-to-read.md](spec/how-to-read.md) | Reader's guide: status tags, confidence tags, challenge protocol | Phase 0 |
+| [how-to-write.md](spec/how-to-write.md) | Author's guide: the 5-section walkthrough, promotion gate (draft → verified → stale → disputed → deprecated) | Phase 0 |
+| [glossary.md](spec/glossary.md) | Bible vocabulary (58 terms covering engine / protocol / state / inventory / combat) | Phase 0 |
+
+See also: [.templates/spec-chapter.md](../.templates/spec-chapter.md) (the 5-section skeleton authors copy from), [`reverse-engineering/findings/`](reverse-engineering/findings/) (the section-1 evidence pool).
+
+---
+
 ### `content/` -- Content Data Audit + Content Engine
 
 Content-level audit of all game data plus the cradle-to-grave reference for the data-driven content engine that drives missions, dialogs, region triggers, and consumables at runtime.
