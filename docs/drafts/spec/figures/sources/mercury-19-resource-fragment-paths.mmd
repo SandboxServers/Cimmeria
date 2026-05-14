@@ -1,3 +1,4 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 flowchart TD
     IN["recv: RESOURCE_FRAGMENT 0x36\n[dataId u16][chunkId u8][flags u8][body]"]
     IN --> CHK{"flags AND 0x40\nBASE_FLAG set?"}

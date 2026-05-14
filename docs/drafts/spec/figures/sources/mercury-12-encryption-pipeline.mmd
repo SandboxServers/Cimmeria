@@ -1,5 +1,6 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 flowchart LR
-    subgraph ENC["ENCRYPT  (MercuryEncryption::encrypt)"]
+    subgraph ENC["ENCRYPT — MercuryEncryption::encrypt"]
         direction TB
         E1["plaintext\n(body + footers)"]
         E2["PKCS7 pad\nto AES block boundary\n(block size = 16 bytes)"]
@@ -13,7 +14,7 @@ flowchart LR
         E4 --> E5
     end
 
-    subgraph DEC["DECRYPT  (MercuryEncryption::decrypt)"]
+    subgraph DEC["DECRYPT — MercuryEncryption::decrypt"]
         direction TB
         D1["input =\n[ciphertext || 16-byte tag]"]
         D2["split: last 16 bytes = tag\nrest = ciphertext"]

@@ -1,11 +1,12 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 flowchart TB
-    subgraph DECODE["MercuryCodec::decode  (incoming UDP bytes)"]
+    subgraph DECODE["MercuryCodec::decode — incoming UDP bytes"]
         direction LR
         RD1["raw UDP bytes"]
         RD2{"encryption\nenabled?"}
-        RD3["MercuryEncryption::decrypt<br/>verify HMAC-MD5 tag<br/>AES-256-CBC decrypt<br/>PKCS7 unpad"]
-        RD4["parse_incoming(bytes)<br/>strip footers outermost-first:<br/>ack_count, acks, seq_id,<br/>frag_end+frag_begin,<br/>first_req_offset"]
-        RD5["ParsedPacket<br/>{ flags, seq_id, ack_list,<br/>frag_begin, frag_end,<br/>first_req_offset, body }"]
+        RD3["MercuryEncryption::decrypt\nverify HMAC-MD5 tag\nAES-256-CBC decrypt\nPKCS7 unpad"]
+        RD4["parse_incoming(bytes)\nstrip footers outermost-first:\nack_count, acks, seq_id,\nfrag_end+frag_begin,\nfirst_req_offset"]
+        RD5["ParsedPacket\n{ flags, seq_id, ack_list,\nfrag_begin, frag_end,\nfirst_req_offset, body }"]
 
         RD1 --> RD2
         RD2 -- yes --> RD3 --> RD4
@@ -13,12 +14,12 @@ flowchart TB
         RD4 --> RD5
     end
 
-    subgraph ENCODE["MercuryCodec::encode  (outgoing Packet)"]
+    subgraph ENCODE["MercuryCodec::encode — outgoing Packet"]
         direction LR
         WR1["Packet { flags, body, acks, seq_id, ... }"]
-        WR2["build_outgoing(packet)<br/>write flags byte<br/>write body<br/>append footers innermost-first:<br/>first_req_offset, frag_begin, frag_end,<br/>seq_id, acks, ack_count"]
+        WR2["build_outgoing(packet)\nwrite flags byte\nwrite body\nappend footers innermost-first:\nfirst_req_offset, frag_begin, frag_end,\nseq_id, acks, ack_count"]
         WR3{"encryption\nenabled?"}
-        WR4["MercuryEncryption::encrypt<br/>PKCS7 pad<br/>AES-256-CBC encrypt<br/>append HMAC-MD5 tag"]
+        WR4["MercuryEncryption::encrypt\nPKCS7 pad\nAES-256-CBC encrypt\nappend HMAC-MD5 tag"]
         WR5["UDP bytes ready to send"]
 
         WR1 --> WR2 --> WR3

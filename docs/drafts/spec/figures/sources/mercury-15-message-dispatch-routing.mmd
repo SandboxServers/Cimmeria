@@ -1,3 +1,4 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
 flowchart TD
     IN["recv: msg_id u8"] --> R{range check}
     R -->|"0x00 - 0x7F"| SYS["System message\nlen: per InterfaceElement table\nCONSTANT / WORD / DWORD\n\nnub.elements[msg_id].handler()"]
