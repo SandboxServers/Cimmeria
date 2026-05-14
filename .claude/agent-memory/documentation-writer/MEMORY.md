@@ -1,0 +1,3 @@
+- [V5 finding-doc inventory for Mercury wire format](reference_v5_mercury_evidence.md) — Which V5 docs hold which wire-format evidence; cite the right one.
+- [Bible Section-1 evidence discipline](feedback_section1_evidence.md) — Section 1 cites RE only; no Cimmeria implementation, no agent memory; mark inferred-from-stock-BW claims medium.
+- [Bible chapter spine voice](feedback_bible_voice.md) — Conversational second person, present, active; no emoji; backtick identifiers; inline Divergence callouts.
