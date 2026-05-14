@@ -36,8 +36,14 @@ function Emit {
 function Find-SourceForSlug {
   param([string]$Slug)
   if (-not (Test-Path $sourcesDir)) { return $null }
+  # Exclude *.md entirely (parity with the bash version's `! -name '*.md'`)
+  # so a stray slug-named markdown file can't be treated as a source DSL.
   Get-ChildItem $sourcesDir -File |
-    Where-Object { $_.BaseName -eq $Slug -and $_.Name -ne 'README.md' -and -not $_.Name.StartsWith('.') } |
+    Where-Object {
+      $_.BaseName -eq $Slug -and
+      $_.Extension -ne '.md' -and
+      -not $_.Name.StartsWith('.')
+    } |
     Select-Object -First 1
 }
 

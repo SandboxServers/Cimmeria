@@ -34,7 +34,12 @@ if [ ! -d "$SOURCES_DIR" ]; then
 fi
 
 # Collect every source file. find excludes README.md and dotfiles by name.
-mapfile -t sources < <(
+# Avoid `mapfile` — it's bash 4+ only, breaks on macOS's stock bash 3.2.
+sources=()
+while IFS= read -r entry; do
+  [ -z "$entry" ] && continue
+  sources+=("$entry")
+done < <(
   find "$SOURCES_DIR" -maxdepth 1 -type f \
     ! -name 'README.md' \
     ! -name '.*' \
