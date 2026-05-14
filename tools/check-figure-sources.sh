@@ -15,6 +15,15 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   exit 2
 fi
 
+# Format a unix timestamp as ISO-ish UTC. Linux uses GNU date `-d @TS`; macOS
+# (BSD date) uses `-r TS`. Fall back to the raw integer if neither works.
+fmt_ts() {
+  local ts="$1"
+  date -u -d "@$ts" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null \
+    || date -u -r "$ts" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null \
+    || echo "$ts"
+}
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SOURCES_DIR="$REPO_ROOT/docs/drafts/spec/figures/sources"
 RENDERS_DIR="$REPO_ROOT/docs/drafts/spec/figures"
@@ -69,9 +78,9 @@ for src in "${sources[@]}"; do
     if [ "$svg_ts" -eq 0 ]; then
       svg_when="never committed"
     else
-      svg_when="$(date -u -d "@$svg_ts" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || echo "$svg_ts")"
+      svg_when="$(fmt_ts "$svg_ts")"
     fi
-    src_when="$(date -u -d "@$src_ts" '+%Y-%m-%d %H:%M:%S UTC' 2>/dev/null || echo "$src_ts")"
+    src_when="$(fmt_ts "$src_ts")"
     echo "OUT OF DATE: $slug"
     echo "  source: $rel_src last modified $src_when"
     echo "  SVG:    $rel_svg last modified $svg_when"
