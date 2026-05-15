@@ -1,0 +1,54 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 16)
+(def row-height 38)
+
+(defattrs :fixed {:fill "#ffcccc"})
+(defattrs :ok    {:fill "#d6ffd6"})
+(defattrs :wide  {:fill "#cce5ff"})
+(defattrs :gone  {:fill "#f4f4f4"})
+(defattrs :pivot {:fill "#ffe599" :font-style "bold"})
+
+; Tolerance bands — §2.5 catalogue of T-category findings.
+; Each row maps one client tolerance onto a span-width band: the wider the
+; coloured run, the more variance the client accepts. The pinned-red span on
+; the left edge of each row is the REQUIRED-violation floor; the green run
+; is the "do whatever" band; the blue run is "send anything in range".
+
+(draw-column-headers {:labels ["violation" "1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" "12" "13" "14" "wider..."]})
+
+; T1 — Tick rate (1..255 uint8). The "violation" cell is value 0.
+(draw-gap "T1  Tick rate — advertised via updateFrequencyNotification (msg 0x02)")
+(draw-box (text "0 = REQUIRED viol" :fixed) {:span 1 :borders {:all true}})
+(draw-box (text "any u8 1..255 — client scales internal timers to the advertised value" :wide) {:span 15 :borders {:all true}})
+
+; T2/T3 — Piggybacked vs standalone acks. Both encodings are equally OK.
+(draw-gap "T2/T3  Ack delivery — piggybacked on next reliable bundle OR standalone FLAG_HAS_ACKS-only packet")
+(draw-box (text "FLAG_HAS_ACKS with 0 acks = REQUIRED viol" :fixed) {:span 4 :borders {:all true}})
+(draw-box (text "piggyback chain" :ok) {:span 6 :borders {:all true}})
+(draw-box (text "OR standalone ack bundle" :ok) {:span 6 :borders {:all true}})
+
+; T4 — Out-of-order createBasePlayer / createCellPlayer in a bundle.
+(draw-gap "T4  Entity-create ordering within a bundle — client buffers an early createCellPlayer")
+(draw-box (text "buffer overflow" :fixed) {:span 1 :borders {:all true}})
+(draw-box (text "createBasePlayer (0x05) first   — canonical order" :ok) {:span 8 :borders {:all true}})
+(draw-box (text "createCellPlayer (0x06) first — client replays after Base lands" :ok) {:span 7 :borders {:all true}})
+
+; T5 — bandwidthNotification value is ignored.
+(draw-gap "T5  bandwidthNotification value — registered descriptor, but SGW never wires the mutator")
+(draw-box (text "omit msg = REQUIRED viol" :fixed) {:span 4 :borders {:all true}})
+(draw-box (text "any value — silently ignored; emit the message, value is no-op" :gone) {:span 12 :borders {:all true}})
+
+; T6 — restoreClient untested in V5 — server may skip.
+(draw-gap "T6  restoreClient — handler present but untested in normal pcap traffic")
+(draw-box (text "restoreClientAck reply missing if Server sent restoreClient = strand" :fixed) {:span 4 :borders {:all true}})
+(draw-box (text "server need not emit restoreClient at all — normal play never observes it" :wide) {:span 12 :borders {:all true}})
+
+; T7 — Ack timing jitter — 700 ms baseline, absorbed by the bitmap.
+(draw-gap "T7  Ack timing jitter — client uses 700 ms baseline but does not strictly measure server resend cadence")
+(draw-box (text "&gt; 700 ms x 20 = disconnect" :fixed) {:span 3 :borders {:all true}})
+(draw-box (text "any cadence under the retry budget — absorbed by the 32-bit ack bitmap" :wide) {:span 13 :borders {:all true}})
+
+(draw-gap "  Red span = a REQUIRED violation per §2.4 (the band beyond which the client drops, disconnects, or stops the session).")
+(draw-gap "  Green/blue span = TOLERATED variance per §2.5 — the server picks anywhere in the band and the client adapts or ignores.")
+(draw-gap "  Bands shown by visual width; numbers above the headers are column indices for layout reference, not field offsets.")

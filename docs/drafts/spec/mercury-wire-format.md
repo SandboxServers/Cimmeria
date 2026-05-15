@@ -1642,7 +1642,9 @@ Mercury lives in `SGW.exe` only. Nothing in the client tree above the binary tou
 
 The practical consequence: a server engineer hunting for "what the client expects" cannot read the INI files and answer the question. The INI files are the wrong table. §2.2 names the right one.
 
-<!-- FIGURE-CANDIDATE: mercury-39-client-surface-map — what in the client tree touches Mercury (game/sgw/Working/ subdirectories vs SGW.exe internals); svgbob or graphviz -->
+![Mercury client surface map — SGW.exe (C++ binary) holds the entire Mercury wire format (Nub, ChannelInternal, PacketEncrypter, InterfaceElement, BWNetDriver, ServerConnection), while the sibling client surfaces (UE3 INI files, UnrealScript packages, AtreaLoader / SGWLogConfig XML, the launcher .bat files) reach only the UE3 game layer or the diagnostic loggers — none of them touch the wire format directly.](figures/mercury-39-client-surface-map.svg)
+
+*Figure 35: where Mercury actually lives in the client tree — the C++-only nature is the load-bearing observation for §2.1, and the dashed edges show every sibling surface fails to reach the wire-format layer.*
 
 ### 2.2 Configuration is a red herring
 
@@ -1676,7 +1678,9 @@ The taxonomy table below catalogues every Mercury-relevant configuration knob an
 | `[IpDrv.TcpNetDriver]` keys | `BaseEngine.ini` | Read but unused for game traffic |
 | `[IpDrv.UdpBeacon]` keys | `BaseEngine.ini` | LAN-beacon only; no Mercury relevance |
 
-<!-- FIGURE-CANDIDATE: mercury-38-config-knob-taxonomy — INI-tunable vs hard-coded vs runtime-negotiated; graphviz three-column -->
+![Mercury configuration taxonomy — three columns side by side: a single INI-tunable entry (`NetInactivityTimeout=15`, and the warning "That is the entire list"), a long column of thirteen hard-coded `SGW.exe` constants (max packet, flags width, sequence space, ack bitmap, dedup table, retries, resend timeout, cipher suite, IV, key size, MachineGuard port, net driver class), and a short runtime-negotiated column (AES session key, tick rate — "Two knobs, total").](figures/mercury-38-config-knob-taxonomy.svg)
+
+*Figure 36: the asymmetry is the point — the INI surface and the runtime-negotiated surface are both nearly empty, while every wire-format knob the server might want to tune is hard-coded into `SGW.exe`.*
 
 ### 2.3 Hard-coded client constants
 
@@ -1700,7 +1704,9 @@ These constants are stamped into `SGW.exe` and the server has no INI-side levera
 
 Two upstream V5 claims (max retries = 20 and resend timeout ~700 ms) are inherited from stock BigWorld 2.0.1 rather than independently confirmed against an SGW byte. They are listed at medium confidence; the server should treat both as upper bounds it has no leverage to negotiate.
 
-<!-- FIGURE-CANDIDATE: mercury-40-tolerance-bands — visualization of the T-category findings (tickrate spread, ack jitter); bytefield or Mermaid -->
+![Mercury client tolerance bands — six rows, one per T-category finding (T1 tick rate, T2/T3 ack delivery, T4 entity-create ordering, T5 bandwidthNotification value, T6 restoreClient, T7 ack timing jitter); each row pins a narrow red REQUIRED-violation span on the left and a wide tolerated span (green or blue) extending to the right, with the visual width of the tolerated span proportional to how much variance the client accepts.](figures/mercury-40-tolerance-bands.svg)
+
+*Figure 37: the six T-category findings visualised as tolerance bands — the wide right-side spans are the levers a reimplementation has, while the narrow red left edges mark where each tolerance flips into a REQUIRED violation.*
 
 ### 2.4 What the server MUST do (REQUIRED)
 
@@ -1746,7 +1752,9 @@ The 12 R-category findings plus the 38 Section 1 footnotes classified REQUIRED f
 
 The "what breaks" column is the *observable* failure mode — the client log string, the disconnect reason, or the visible misrender. None of these failure modes produce a server-side error message; they are silent at the server. The server's only signal is the client-side log line or the disconnect.
 
-<!-- FIGURE-CANDIDATE: mercury-37-client-contract-matrix — REQUIRED/RECOMMENDED/TOLERATED columns × major Mercury features; graphviz HTML-table -->
+![Mercury client contract matrix — a four-column table with fourteen feature rows (packet framing, sequence numbers, reliability, fragmentation, cipher envelope, channels, dispatch table, world-entry messages, position updates, resource delivery, tick rate / bandwidth, optional flows, session liveness, auth / handshake); each row places the REQUIRED invariants in the left column (pink), the RECOMMENDED ones in the middle (cream), and the TOLERATED ones on the right (green), with em-dash entries marking the axes where there is no freedom.](figures/mercury-37-client-contract-matrix.svg)
+
+*Figure 38: the full REQUIRED / RECOMMENDED / TOLERATED contract surface, by feature — the left column is the wire contract a reimplementation must honour, and the right two columns are the dimensions where a reimplementation has discretion.*
 
 ### 2.5 What the server MAY do (TOLERATED)
 
