@@ -20,8 +20,14 @@ Body = plaintext[1..footer_start]
 """
 
 import struct
-import subprocess
 import sys
+
+try:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    _HAVE_CRYPTOGRAPHY = True
+except ImportError:
+    _HAVE_CRYPTOGRAPHY = False
+    import subprocess
 
 # ── Mercury flag constants (from packet.rs / packet.hpp) ──────────────────────
 
@@ -34,40 +40,92 @@ FLAG_FRAGMENTED    = 0x20  # Fragment of larger bundle
 FLAG_HAS_SEQUENCE  = 0x40  # Footer includes seq_id
 FLAG_INDEXED       = 0x80  # Indexed sub-channel (unused)
 
-# Server→Client message IDs
-# Message IDs verified against C++ messages.hpp / messages.cpp
+# Server→Client message IDs — extracted from live binary at SGW.exe global
+# 0x01F72518 (BWNetDriver::ClientInterface InterfaceElementVec) on 2026-05-15.
+# 57 entries covering msg_ids 0x00..0x38. msg_ids 0x39..0x7F are reserved/unused;
+# 0x80..0xFE are dynamically registered EntityMethod slots (all share the generic
+# "entityMessage" wire handler at 0x01ED1CBC).
 SERVER_MSG_NAMES = {
-    0x00: "BASEMSG_LOGIN_REPLY",
-    0x01: "BASEMSG_AUTHENTICATE_REPLY",
-    0x02: "BASEMSG_REPLY_MESSAGE",
-    0x03: "BASEMSG_SET_GAME_TIME",
-    0x04: "BASEMSG_RESET_ENTITIES",
-    0x05: "BASEMSG_CREATE_BASE_PLAYER",
-    0x06: "BASEMSG_CREATE_CELL_PLAYER",
-    0x07: "BASEMSG_SPACE_DATA",
-    0x08: "BASEMSG_SPACE_VIEWPORT_INFO",
-    0x09: "BASEMSG_CREATE_ENTITY",
-    0x0A: "BASEMSG_LOGGED_OFF",
-    0x0B: "BASEMSG_CREATE_CELL_ENTITY",
-    0x0C: "BASEMSG_RESTORE_CLIENT",
-    0x0D: "BASEMSG_TICK_SYNC",
-    0x0E: "BASEMSG_SET_SPACE_VIEWPORT",
-    0x36: "BASEMSG_RESOURCE_FRAGMENT",
-    0x31: "BASEMSG_FORCED_POSITION",
-    0xFF: "BASEMSG_CONNECT_REPLY",
+    0x00: "authenticate",
+    0x01: "bandwidthNotification",
+    0x02: "updateFrequencyNotification",
+    0x03: "setGameTime",
+    0x04: "resetEntities",
+    0x05: "createBasePlayer",
+    0x06: "createCellPlayer",
+    0x07: "spaceData",
+    0x08: "spaceViewportInfo",
+    0x09: "createEntity",
+    0x0A: "updateEntity",
+    0x0B: "entityInvisible",
+    0x0C: "leaveAoI",
+    0x0D: "tickSync",
+    0x0E: "setSpaceViewport",
+    0x0F: "setVehicle",
+    0x10: "avatarUpdateNoAliasFullPosYawPitchRoll",
+    0x11: "avatarUpdateNoAliasFullPosYawPitch",
+    0x12: "avatarUpdateNoAliasFullPosYaw",
+    0x13: "avatarUpdateNoAliasFullPosNoDir",
+    0x14: "avatarUpdateNoAliasOnChunkYawPitchRoll",
+    0x15: "avatarUpdateNoAliasOnChunkYawPitch",
+    0x16: "avatarUpdateNoAliasOnChunkYaw",
+    0x17: "avatarUpdateNoAliasOnChunkNoDir",
+    0x18: "avatarUpdateNoAliasOnGroundYawPitchRoll",
+    0x19: "avatarUpdateNoAliasOnGroundYawPitch",
+    0x1A: "avatarUpdateNoAliasOnGroundYaw",
+    0x1B: "avatarUpdateNoAliasOnGroundNoDir",
+    0x1C: "avatarUpdateNoAliasNoPosYawPitchRoll",
+    0x1D: "avatarUpdateNoAliasNoPosYawPitch",
+    0x1E: "avatarUpdateNoAliasNoPosYaw",
+    0x1F: "avatarUpdateNoAliasNoPosNoDir",
+    0x20: "avatarUpdateAliasFullPosYawPitchRoll",
+    0x21: "avatarUpdateAliasFullPosYawPitch",
+    0x22: "avatarUpdateAliasFullPosYaw",
+    0x23: "avatarUpdateAliasFullPosNoDir",
+    0x24: "avatarUpdateAliasOnChunkYawPitchRoll",
+    0x25: "avatarUpdateAliasOnChunkYawPitch",
+    0x26: "avatarUpdateAliasOnChunkYaw",
+    0x27: "avatarUpdateAliasOnChunkNoDir",
+    0x28: "avatarUpdateAliasOnGroundYawPitchRoll",
+    0x29: "avatarUpdateAliasOnGroundYawPitch",
+    0x2A: "avatarUpdateAliasOnGroundYaw",
+    0x2B: "avatarUpdateAliasOnGroundNoDir",
+    0x2C: "avatarUpdateAliasNoPosYawPitchRoll",
+    0x2D: "avatarUpdateAliasNoPosYawPitch",
+    0x2E: "avatarUpdateAliasNoPosYaw",
+    0x2F: "avatarUpdateAliasNoPosNoDir",
+    0x30: "detailedPosition",
+    0x31: "forcedPosition",
+    0x32: "controlEntity",
+    0x33: "voiceData",
+    0x34: "restoreClient",
+    0x35: "restoreBaseApp",
+    0x36: "resourceFragment",
+    0x37: "loggedOff",
+    0x38: "entityMessage",
+    0xFF: "connectReply",
 }
 
+# Client→Server message IDs — extracted from live binary at SGW.exe global
+# 0x01EF24CC (BaseAppExtInterface InterfaceElementVec) via static initializer
+# at 0x017bac00 on 2026-05-15. Name string table at 0x019D0880.
+# 14 entries covering msg_ids 0x00..0x0D; 0x80..0xFE are dynamically
+# registered EntityMethod slots (mirror of server-side dispatch).
 CLIENT_MSG_NAMES = {
-    0x00: "BASEAPP_LOGIN",
-    0x01: "AUTHENTICATE",
-    0x03: "AVATAR_UPDATE_EXPLICIT",
-    0x06: "SWITCH_INTERFACE",
-    0x07: "REQUEST_ENTITY_UPDATE",
-    0x08: "ENABLE_ENTITIES",
-    0x09: "VIEWPORT_ACK",
-    0x0A: "VEHICLE_ACK",
-    0x0B: "RESTORE_CLIENT_ACK",
-    0x0C: "DISCONNECT",
+    0x00: "baseAppLogin",
+    0x01: "authenticate",
+    0x02: "avatarUpdateImplicit",
+    0x03: "avatarUpdateExplicit",
+    0x04: "avatarUpdateWardImplicit",
+    0x05: "avatarUpdateWardExplicit",
+    0x06: "switchInterface",
+    0x07: "requestEntityUpdate",
+    0x08: "enableEntities",
+    0x09: "setSpaceViewportAck",
+    0x0A: "setVehicleAck",
+    0x0B: "restoreClientAck",
+    0x0C: "disconnectClient",
+    0x0D: "entityMessage",
 }
 
 ENTITY_CLIENT_METHODS = {
@@ -90,39 +148,115 @@ ENTITY_BASE_METHODS = {
     0xC7: "onClientVersion",
 }
 
-# Server→Client message payload formats (from messages.cpp)
-# 'constant' = fixed-length, 'word' = u16 length prefix
+# Server→Client message payload formats — confirmed against the live
+# InterfaceElementVec at 0x01F72518 and against observed packet body sizes
+# in this pcap. 'constant' = fixed-length, 'word' = u16 length prefix.
+#
+# Note: msg_ids 0x0A..0x0C (updateEntity, entityInvisible, leaveAoI) were
+# previously misidentified as LOGGED_OFF/CREATE_CELL_ENTITY/RESTORE_CLIENT
+# (those are at 0x37, n/a, 0x34 respectively). Corrected here.
 SERVER_MSG_FORMAT = {
-    0x03: ('constant', 4),     # SET_GAME_TIME
-    0x04: ('constant', 1),     # RESET_ENTITIES
-    0x05: ('word', None),      # CREATE_BASE_PLAYER
-    0x06: ('word', None),      # CREATE_CELL_PLAYER
-    0x07: ('word', None),      # SPACE_DATA
-    0x08: ('constant', 13),    # SPACE_VIEWPORT_INFO
-    0x09: ('word', None),      # CREATE_ENTITY
-    0x0A: ('constant', 1),     # LOGGED_OFF
-    0x0B: ('word', None),      # CREATE_CELL_ENTITY
-    0x0C: ('word', None),      # RESTORE_CLIENT
-    0x0D: ('constant', 8),     # TICK_SYNC
-    0x0E: ('constant', 1),     # SET_SPACE_VIEWPORT
-    0x31: ('constant', 49),    # FORCED_POSITION
-    0x36: ('word', None),      # RESOURCE_FRAGMENT
-    0xFF: ('word', None),      # CONNECT_REPLY
+    0x00: ('word', None),      # authenticate
+    0x01: ('constant', 4),     # bandwidthNotification
+    0x02: ('constant', 1),     # updateFrequencyNotification
+    0x03: ('constant', 4),     # setGameTime
+    0x04: ('constant', 1),     # resetEntities
+    0x05: ('word', None),      # createBasePlayer (variable per-entity props)
+    0x06: ('word', None),      # createCellPlayer (variable)
+    0x07: ('word', None),      # spaceData
+    0x08: ('constant', 13),    # spaceViewportInfo
+    0x09: ('word', None),      # createEntity (variable)
+    0x0A: ('word', None),      # updateEntity (variable)
+    0x0B: ('constant', 5),     # entityInvisible
+    0x0C: ('word', None),      # leaveAoI
+    0x0D: ('constant', 8),     # tickSync
+    0x0E: ('constant', 1),     # setSpaceViewport
+    0x0F: ('constant', 4),     # setVehicle
+    # avatarUpdate family — 32 variants, BigWorld bit-packed wire format.
+    # Sizes match the +0x04 fixed-length field in the static InterfaceElement
+    # table; differential 1-byte deltas confirm 8-bit quantized YPR angles.
+    0x10: ('constant', 25),    # NoAliasFullPosYawPitchRoll
+    0x11: ('constant', 24),    # NoAliasFullPosYawPitch
+    0x12: ('constant', 23),    # NoAliasFullPosYaw
+    0x13: ('constant', 22),    # NoAliasFullPosNoDir
+    0x14: ('constant', 25),    # NoAliasOnChunkYawPitchRoll
+    0x15: ('constant', 24),    # NoAliasOnChunkYawPitch
+    0x16: ('constant', 23),    # NoAliasOnChunkYaw
+    0x17: ('constant', 22),    # NoAliasOnChunkNoDir
+    0x18: ('constant', 25),    # NoAliasOnGroundYawPitchRoll
+    0x19: ('constant', 24),    # NoAliasOnGroundYawPitch
+    0x1A: ('constant', 23),    # NoAliasOnGroundYaw
+    0x1B: ('constant', 22),    # NoAliasOnGroundNoDir
+    0x1C: ('constant', 13),    # NoAliasNoPosYawPitchRoll
+    0x1D: ('constant', 12),    # NoAliasNoPosYawPitch
+    0x1E: ('constant', 11),    # NoAliasNoPosYaw
+    0x1F: ('constant', 10),    # NoAliasNoPosNoDir
+    0x20: ('constant', 25),    # AliasFullPosYawPitchRoll
+    0x21: ('constant', 24),    # AliasFullPosYawPitch
+    0x22: ('constant', 23),    # AliasFullPosYaw
+    0x23: ('constant', 22),    # AliasFullPosNoDir
+    0x24: ('constant', 25),    # AliasOnChunkYawPitchRoll
+    0x25: ('constant', 24),    # AliasOnChunkYawPitch
+    0x26: ('constant', 23),    # AliasOnChunkYaw
+    0x27: ('constant', 22),    # AliasOnChunkNoDir
+    0x28: ('constant', 25),    # AliasOnGroundYawPitchRoll
+    0x29: ('constant', 24),    # AliasOnGroundYawPitch
+    0x2A: ('constant', 23),    # AliasOnGroundYaw
+    0x2B: ('constant', 22),    # AliasOnGroundNoDir
+    0x2C: ('constant', 13),    # AliasNoPosYawPitchRoll
+    0x2D: ('constant', 12),    # AliasNoPosYawPitch
+    0x2E: ('constant', 11),    # AliasNoPosYaw
+    0x2F: ('constant', 10),    # AliasNoPosNoDir
+    0x30: ('constant', 41),    # detailedPosition
+    0x31: ('constant', 49),    # forcedPosition
+    0x32: ('constant', 5),     # controlEntity
+    0x33: ('word', None),      # voiceData (variable)
+    0x34: ('word', None),      # restoreClient
+    0x35: ('word', None),      # restoreBaseApp
+    0x36: ('word', None),      # resourceFragment (variable)
+    0x37: ('constant', 1),     # loggedOff (1-byte reason code)
+    0x38: ('word', None),      # entityMessage (msg_id 0x80..0xFE share this handler)
+    0xFF: ('word', None),      # connectReply
 }
 
+# Client→Server message formats — sizes from InterfaceElement::add immediate
+# args in static initializer at 0x017bac00. The 'size' field semantics:
+# small values (1..4) typically indicate the byte-width of the length prefix
+# (variable-length framing); larger values are fixed-length payload sizes.
 CLIENT_MSG_FORMAT = {
-    0x01: ('word', None),      # AUTHENTICATE
-    0x03: ('constant', 40),    # AVATAR_UPDATE_EXPLICIT
-    0x06: ('constant', 0),     # SWITCH_INTERFACE
-    0x08: ('constant', 8),     # ENABLE_ENTITIES
-    0x09: ('constant', 8),     # VIEWPORT_ACK
-    0x0A: ('constant', 8),     # VEHICLE_ACK
-    0x0B: ('word', None),      # RESTORE_CLIENT_ACK
-    0x0C: ('constant', 1),     # DISCONNECT
+    0x00: ('word', None),      # baseAppLogin (variable: pre-channel handshake)
+    0x01: ('word', None),      # authenticate (variable: auth token)
+    0x02: ('constant', 36),    # avatarUpdateImplicit
+    0x03: ('constant', 40),    # avatarUpdateExplicit
+    0x04: ('constant', 36),    # avatarUpdateWardImplicit  (assumed same as Implicit)
+    0x05: ('constant', 40),    # avatarUpdateWardExplicit  (assumed same as Explicit)
+    0x06: ('constant', 0),     # switchInterface (parameterless trigger)
+    0x07: ('word', None),      # requestEntityUpdate
+    0x08: ('constant', 8),     # enableEntities (i32 entity_id + flag)
+    0x09: ('constant', 8),     # setSpaceViewportAck
+    0x0A: ('constant', 8),     # setVehicleAck
+    0x0B: ('word', None),      # restoreClientAck
+    0x0C: ('constant', 1),     # disconnectClient (1-byte reason)
+    0x0D: ('word', None),      # entityMessage (entity-method dispatch envelope)
 }
 
+
+_AES_KEY_BYTES = None
+_AES_IV = b"\x00" * 16
 
 def decrypt_aes256_cbc(key_hex, ciphertext):
+    if len(ciphertext) % 16 != 0:
+        return None
+    if _HAVE_CRYPTOGRAPHY:
+        global _AES_KEY_BYTES
+        if _AES_KEY_BYTES is None:
+            _AES_KEY_BYTES = bytes.fromhex(key_hex)
+        try:
+            cipher = Cipher(algorithms.AES(_AES_KEY_BYTES), modes.CBC(_AES_IV))
+            dec = cipher.decryptor()
+            return dec.update(ciphertext) + dec.finalize()
+        except Exception:
+            return None
     iv_hex = "00" * 16
     proc = subprocess.run(
         ["openssl", "enc", "-aes-256-cbc", "-d", "-nopad",
