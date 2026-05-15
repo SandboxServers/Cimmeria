@@ -160,7 +160,7 @@
   <polygon points="352,284 356,272 360,284" class="filled"></polygon>
   <line x1="356" y1="284" x2="356" y2="288" class="solid"></line>
   <text x="378" y="284" >SENTINEL</text>
-  <line x1="468" y1="272" x2="468" y2="292" class="solid"></line>
+  <line x1="468" y1="272" x2="468" y2="288" class="solid"></line>
   <text x="354" y="300" >&#39;</text>
   <text x="170" y="316" >next</text>
   <line x1="200" y1="320" x2="208" y2="320" class="solid"></line>

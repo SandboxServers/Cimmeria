@@ -1,7 +1,7 @@
 stateDiagram-v2
-    [*] --> Unsent : Bundle::finalise stamps seq
+    [*] --> Unsent : Bundle.finalise stamps seq
 
-    Unsent --> InFlight : Nub::send writes packet\nbit set in 32-bit outstanding-ack bitmap\nresend timer = 700ms
+    Unsent --> InFlight : Nub.send writes packet\nbit set in 32-bit outstanding-ack bitmap\nresend timer = 700ms
 
     InFlight --> AwaitingAck : 700ms timer elapses\nUnAckedHandler scans bitmap
 

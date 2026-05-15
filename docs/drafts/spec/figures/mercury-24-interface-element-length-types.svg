@@ -11,6 +11,7 @@
 <title>G</title>
 <polygon class="cimmeria-bg" stroke="none" points="-4,4 -4,-221.25 1202,-221.25 1202,4 -4,4"/>
 <text text-anchor="middle" x="599" y="-199.95" font-family="Helvetica,sans-Serif" font-size="14.00">InterfaceElement length encoding — three framing options (§1.5)</text>
+<!-- layout -->
 <g id="node1" class="node">
 <title>layout</title>
 <polygon fill="#f4f4f4" stroke="none" points="8,-157 8,-188 200,-188 200,-157 8,-157"/>
@@ -77,7 +78,7 @@
 <text text-anchor="start" x="794" y="-40.7" font-family="Helvetica,sans-Serif" font-size="14.00">AUTHENTICATE 0x00 (the only V5&#45;confirmed user)</text>
 <polygon fill="#fafafa" stroke="none" points="8,-4 8,-30 1190,-30 1190,-4 8,-4"/>
 <polygon fill="none" stroke="black" points="8,-4 8,-30 1190,-30 1190,-4 8,-4"/>
-<text text-anchor="start" x="14.75" y="-13.5" font-family="Helvetica,Sans-Serif" font-size="10.00">Entity messages (msg_id ≥ 0x80) always use WORD_LENGTH regardless of table declaration — enforced at both ends. The compressed-length scheme (1/2/3/4 B) is separate and reserved for rare system messages; thresholds are open Q1.</text>
+<text text-anchor="start" x="14.75" y="-13.5" font-family="Helvetica,sans-Serif" font-size="10.00">Entity messages (msg_id ≥ 0x80) always use WORD_LENGTH regardless of table declaration — enforced at both ends. The compressed&#45;length scheme (1/2/3/4 B) is separate and reserved for rare system messages; thresholds are open Q1.</text>
 </g>
 </g>
 </svg>

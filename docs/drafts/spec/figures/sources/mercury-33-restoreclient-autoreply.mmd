@@ -8,7 +8,7 @@ sequenceDiagram
     S->>C: restoreClient  (msg_id 0x34, WORD_LENGTH, 48-byte body)
     Note right of S: Body: entityId, spaceId, vehicleId,\ndirection (Vec3 f32), position (Vec3 f32),\nvelocity (Vec3 f32) — all LE.
 
-    Note over C: ServerConnection_restoreClient at 0x00dd8ae0\nreads scalars, direction block, position via FUN_015846a0,\nvelocity remainder; restores local snapshot.
+    Note over C: ServerConnection_restoreClient at 0x00dd8ae0\nreads scalars, direction block, position via FUN_015846a0,\nvelocity remainder — restores local snapshot.
 
     Note over C: Auto-reply path: if *(this + 0x30c) != 0
     C->>S: restoreClientAck  (descriptor DAT_01ef250c, 4-byte body)
