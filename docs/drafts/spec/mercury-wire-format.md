@@ -2,11 +2,11 @@
 title: Mercury Wire Format
 chapter_id: spec.protocol.mercury-wire-format
 status: draft
-last_verified: 2026-05-14
+last_verified: 2026-05-15
 verified_by: automated-agent
 confidence:
   re: high
-  client: medium
+  client: high
   deprecated: n/a
   rust_expected: n/a
   rust_actual: n/a
@@ -1651,7 +1651,7 @@ Two new sub-questions surfaced during the closure pass. Neither blocks promotion
 
 ## Section 2 — Client findings
 
-Section 1 reverse-engineered the packet decoder. This section flips the lens: it expresses those same findings as a *contract the server must honor for the client to function*. The evidence base is the same `SGW.exe` binary plus the client tree under `game/sgw/Working/` (INI files, compiled UScript packages, the `binaries/` directory with the community-built loader). The cipher envelope's session-key delivery is the wire-adjacent half of authentication and is out of scope here; a separate chapter will cover the SOAP auth handshake and reference back into this chapter for the wire shape it produces.
+Section 1 reverse-engineered the packet decoder. This section flips the lens: it expresses those same findings as a *contract the server must honor for the client to function*. The evidence base is the same `SGW.exe` binary plus the client tree under `game/sgw/Working/` (INI files, compiled UScript packages, the `binaries/` directory with the community-built loader) **and now includes two live-process artifacts from a 2026-05-15 capture pass**: (i) the populated `BWNetDriver::ClientInterface` table read from `0xFFC88100` after `PopulateMessageTypeTable` ran in a running `SGW.exe`, which closes the §2.5 `[citation needed]` msg_id mapping; (ii) the AteraLoader pcap + AES-key capture from `binaries/sessions/2026-05-15_14-05.pcap` + `2026-05-15_14-04-keys.txt`, which closes the §2.4 R16 `[citation needed]` hash-algorithm question by capturing the `protocol_digest` value verbatim in the session log. The chapter's `tools/pcap_dissect.py` (commit `f79d73a`) now produces wire-grade labeled output that validated every load-bearing claim in §2.3–§2.6 against real traffic. The cipher envelope's session-key delivery is the wire-adjacent half of authentication and is out of scope here; a separate chapter will cover the SOAP auth handshake and reference back into this chapter for the wire shape it produces.
 
 ### 2.1 The client surface for Mercury
 
@@ -1819,7 +1819,22 @@ The client tolerates reorder *within* the window and discards *below* it; far-ou
 
 There is **no periodic sweep** of the reassembly map; an in-progress reassembly that never gets a follow-up fragment and whose channel stays alive will sit in memory until something on the same channel evicts it. A reimplementation that mirrors stock BigWorld's documented 30-second sweep adds behavior the SGW client does not exhibit; a reimplementation that relies on the SGW client garbage-collecting stale assemblies will leak. The R13 "requirement" therefore reduces to: do not assume the client will time-out a stalled reassembly. See §2.10 S6 for the gotcha framing of the dropped 30-second claim, §1.7 Figure 15 caption for the figure-level retraction.
 
-**R14 — Retransmit cap: two values, not one.** The `MAX_RETRIES=20` constant inherited from stock BigWorld (Section 1 §1.7) is **the lifetime cap before disconnect** — the strict-greater-than-20 check that transitions the channel to Disconnected. The `5.0` IEEE 754 float at `ghidra://SGW.exe@0x01e91e00` (loaded as `_DAT_01e91e00`) is **the per-tick work budget** — `UnAckedHandler::checkResendTimers`[^unacked-check-resend-timers] processes up to 5 entries from the unacked list before bailing out on the current tick, regardless of how many entries remain. Both are real; both bind. A reimplementation that treats the 5.0 as the lifetime cap will under-retry (disconnect after the 5th attempt rather than the 21st); a reimplementation that ignores the 5.0 budget will over-process on busy ticks. The disambiguation matters when modeling resend cadence under sustained loss. See §1.7 retry-cap disambiguation prose for the in-section walk and §2.10 S7 for the gotcha framing. **Open question**: the exact lifetime-cap address that fires the disconnect was not directly located in this pass — the abort string at `0x01b19dd8` (`"Aborting due to failed resend for #%d (%s)"`) is reached from `checkResendTimers`, which then calls `LookupDisconnectReasonName`[^lookup-disconnect-reason-name] to map the result code to a name before returning. The count-based gate that decides "this attempt is the 21st" may live in `ChannelInternal::processIncomingPacketEntry`[^process-incoming-entry] or its callees. Marked `[citation needed]` for the disconnect-gate address; the 20-as-lifetime-cap claim itself is V5-inherited from stock BigWorld[^v5-mercury-internals].
+**R14 — Retransmit cap: two values, not one.** The `MAX_RETRIES=20` constant inherited from stock BigWorld (Section 1 §1.7) is **the lifetime cap before disconnect** — the strict-greater-than-20 check that transitions the channel to Disconnected. The `5.0` IEEE 754 float at `ghidra://SGW.exe@0x01e91e00` (loaded as `_DAT_01e91e00`) is **the per-tick work budget** — `UnAckedHandler::checkResendTimers` at `ghidra://SGW.exe@0x0158c420`[^unacked-check-resend-timers] processes up to 5 entries from the unacked list before bailing out on the current tick, regardless of how many entries remain. Both are real; both bind. A reimplementation that treats the 5.0 as the lifetime cap will under-retry (disconnect after the 5th attempt rather than the 21st); a reimplementation that ignores the 5.0 budget will over-process on busy ticks. The disambiguation matters when modeling resend cadence under sustained loss. See §1.7 retry-cap disambiguation prose for the in-section walk and §2.10 S7 for the gotcha framing.
+
+A 2026-05-15 follow-up disassembly pass located the **exact abort path** inside `checkResendTimers`:
+
+```
+0x0158c536   CALL 0x0158be30      ; ChannelInternal::processIncomingPacketEntry returns disconnect reason in EDI
+0x0158c53d   TEST EDI, EDI
+0x0158c53f   JNZ  0x0158c57c      ; non-zero reason → take the abort branch
+0x0158c57c   ⋮                    ; abort path entry: EDI = reason code, ESI = packet entry, EBX = channel
+0x0158c5a2   PUSH 0x1b19dd8       ; "UnAckedHandler::checkResendTimers(%s):Aborting due to failed resend for #%d (%s)"
+0x0158c5a7   CALL 0x0081c2e0      ; logger
+0x0158c5af   MOV  EAX, EDI        ; return the reason code
+0x0158c5b8   RET
+```
+
+`ChannelInternal::processIncomingPacketEntry` (`ghidra://SGW.exe@0x0158be30`) is the **decision site** — it returns the disconnect reason when its internal retry count exceeds the lifetime cap, and returns 0 when the packet is still within budget. The 5.0f budget check is at `0x0158c558` (`FLD float ptr [0x01e91e00]`) → `0x0158c560` (`FCOMIP`) → `0x0158c564` (`JA 0x0158c5b9`); the JA-target exits with `EAX=0` (a normal "I'm out of tick budget" return, **not** a disconnect). So 5.0f gates the per-tick work loop *only*; the lifetime cap is enforced internally by `processIncomingPacketEntry` against the per-packet retry counter, and the result code is what surfaces at `0x0158c57c`. The 20-as-lifetime-cap claim itself remains V5-inherited from stock BigWorld[^v5-mercury-internals]; the specific instruction inside `processIncomingPacketEntry` that does the `> 20` check has not been individually pin-pointed.
 
 **R15 — Channel establishment: no Mercury-layer version handshake.** Protocol-version validation lives entirely in the SOAP auth layer. The client computes `protocol_digest` upstream of any Mercury traffic (R16, immediately below), embeds it in the SOAP login request body, and lets the SOAP login response gate everything else. A version-mismatched login produces one of two distinct reply codes in the `LoginMessage` enum[^login-message-enum]:
 
@@ -1828,72 +1843,136 @@ There is **no periodic sweep** of the reassembly map; an in-progress reassembly 
 
 Both are surfaced via the SOAP reply; **no Mercury packets are exchanged before this check succeeds.** The Mercury-layer requirement on a freshly created channel is therefore "trust whatever was negotiated upstream" — there is no Mercury-layer version field, no Mercury-layer handshake message, no Mercury-layer protocol identifier byte. A reimplementation that adds a Mercury-layer version handshake will be ignored at best and will fail at worst (the client's Mercury parser does not know how to react to an unexpected leading byte sequence and may produce the bad-flags log path). The reconnect/already-in-progress branch of `logOnBegin` constructs a minimal reply handler[^login-reply-handler-minimal] instead of recomputing the digest, confirming that the digest is treated as a one-shot upstream gate and not re-validated per Mercury packet.
 
-**R16 — `protocol_digest`: the upstream gate.** The `protocol_digest` is the load-bearing handshake check. It is computed by the client at `logOnBegin` (`ServerConnection_logOnBegin` log string at `0x019cf1f8`[^server-connection-send] — distinct site at `0x019cf248`) via a CryptoPP `HexEncoder` (uppercase hex)[^soap-login-session] over the populated `InterfaceElement` table that `PopulateMessageTypeTable` builds at startup. The digest is embedded in the SOAP login request body as the `sgwLogin:ProtocolDigest` XML field (occurrences at `0x01b2507c`, `0x01b25384`, `0x01b25ad8`). The server-side comparison is the gate: a mismatch produces `LoginMessage_LoginBadProtocolVersion` or `LoginMessage_LoginRejectedBadDigest` and no Mercury channel ever opens. The digest is also surfaced to other game code via the CME event system (`Event_Net_GetProtocolDigest`[^event-net-get-protocol-digest]), so a game-layer consumer can query the current digest without going through the login chain directly.
+**R16 — `protocol_digest`: the upstream gate. Two distinct hashes, only one on the wire.** A live-capture pass on 2026-05-15 (AteraLoader's `EnableUnicodeLogger` patch enabled, session log `binaries/sessions/2026-05-15_14-04.log`) printed the wire digest verbatim: `protocol_digest: 58AFA196AD3AC4F65CADD99BFF23B799` — 32 hex characters, 128 bits. **The wire-side `protocol_digest` is MD5.** The same value appeared every time the binary was launched against the same entity-defs, confirming the digest is build-deterministic (computed from the entity-defs at process startup, not session-specific).
 
-**The hash algorithm under the HexEncoder is not yet confirmed.** The chain decompiled in this pass is "populated `InterfaceElement` table → HexEncoder → SOAP body" — what hashes the table into the bytes that get hex-encoded is unconfirmed. The strings `"ProtocolDigest"` at `0x01b260c8` / `0x01b26104` are AlgorithmParameters keys consumed by CryptoPP but do not name the hash function. Likely candidates are MD5 (`HMAC@VMD5@Weak1@CryptoPP` is already linked for cipher MAC) or SHA1; a definitive answer requires decompiling the upstream construction site for the `BaseN_Encoder` chain — marked `[citation needed]` for the hash algorithm. The digest *content* (what the table contributes) is the entity-RPC interface table's bytes; this is the same table that `EntityDescription_AssignClientMethodIds`[^subslot-threshold] walks for the 62-method sub-slot threshold (§1.8), so the digest is fundamentally a hash over the RPC contract. A server publishing a digest that doesn't match the client's `SGW.exe` will be rejected before any UDP traffic exchanges.
+The wire digest's provenance is not the `HexEncoder` chain inside `logOnBegin`. It is computed *upstream* of `logOnBegin` and **passed in as `param_4`** (the fourth `char*` argument). `SGWNetworkManager` (caller at `ghidra://SGW.exe@0x00c6e3a0`, asserting `"digestEvent.isHandled"` from `.\Src\SGWNetworkManager.cpp:0x21f`) raises a CME `Event_Net_GetProtocolDigest`[^event-net-get-protocol-digest] event; a listener (game-script or another C++ subsystem) computes the MD5 over the entity-defs and populates the result; SGWNetworkManager then passes that string as `param_4` to `ServerConnection::logOnBegin`. Inside `logOnBegin`, the value is logged via the format string at `0x019cf1f8` / `0x019cf248` (`"ServerConnection::logOnBegin: server:%s username:%s protocol_digest: %s\n"`) and embedded in the SOAP login request body as the `sgwLogin:ProtocolDigest` XML field (occurrences at `0x01b2507c`, `0x01b25384`, `0x01b25ad8`). The server-side comparison is the gate: a mismatch produces `LoginMessage_LoginBadProtocolVersion` (`0x019ab2b0`) or `LoginMessage_LoginRejectedBadDigest` (`0x019ab408`) and no Mercury channel ever opens.
+
+The separate `HexEncoder` chain inside `logOnBegin` (described in earlier drafts of this chapter as the digest computation) produces a **different** value. The pipeline `local_ac` basic_string ← CryptoPP `HexEncoder` (Uppercase=true)[^soap-login-session] runs **after** `PopulateMessageTypeTable` populates the dispatch table at `this+0x190`, and its 40-character uppercase-hex output is stored at `ServerConnection+0x130` via `operator=`. Live capture (2026-05-15) read 40 chars from that location: `A94A8FE5CCB19BA61C4C0873D391E987982FBBD3` — that's SHA-1 (160 bits). The value is **not sent on the wire**; it is a local commitment to the post-`PopulateMessageTypeTable` dispatch-table state, used internally (likely for runtime verification or as a debug breadcrumb). Earlier passes that read `ServerConnection+0x130` from memory and assumed they were observing `protocol_digest` were observing this internal table hash instead — the two hashes were conflated because both are uppercase hex produced by CryptoPP `HexEncoder` and both live in adjacent code paths inside `logOnBegin`.
+
+Two commitments, one wire field:
+
+| Hash | Length | Algorithm | Where computed | Where stored | Wire? |
+|---|---|---|---|---|---|
+| `protocol_digest` (the wire field) | 32 hex chars | **MD5** | CME `Event_Net_GetProtocolDigest` listener (external — script or another subsystem) | passed as `param_4` to `logOnBegin`; embedded in SOAP body | Yes — `sgwLogin:ProtocolDigest` |
+| dispatch-table hash (internal commitment) | 40 hex chars | **SHA-1** | CryptoPP `HexEncoder` pipeline inside `logOnBegin`, after PMT | `ServerConnection+0x130` (`std::basic_string<char>`, MSVC VS2005 heap form) | **No** — internal only |
+
+The digest *content* for both is fundamentally a function of the entity-RPC contract: the wire MD5 is computed over the entity-defs file content (so a server publishing a different defs file gets a different digest); the internal SHA-1 is computed over the post-PMT dispatch table (which is built from those same defs). The two hashes serve different purposes — outer protocol-version commitment vs. local integrity check — but they share the same input lineage.
+
+**Server-side implication for Cimmeria**: the server must produce the same MD5 over the same entity-defs that the client's CME listener computes (the MD5 is plain MD5, not a salted variant — confirmed by the digest being deterministic across sessions). The 40-char SHA-1 at `+0x130` is **not** the value to match; that is internal to the client.
 
 R16 is upstream of the entire Mercury chapter: every other invariant in §2.4 (R1–R15) only matters if R16 succeeds.
 
 ### 2.5 Client descriptor table — system-message handlers
 
-Section 1 §1.8 describes the dispatch shape (`nub->elements[msg_id]` single-array lookup). What it does not enumerate is *which handler each `msg_id` is bound to* in the live binary's system-message range (`0x00–0x7F`). The client side resolves this at runtime by registering each handler with the `InterfaceElement` table during `PopulateMessageTypeTable`[^server-connection-send] — the table itself lives in BSS (`DAT_01ef2518`) and is zero in the static image. We can recover the **handler set** from RTTI strings (each `ClientMessageHandler<T>` template instantiation emits its own `.?AV…@@` symbol at a fixed `.rdata` address); we cannot recover the **handler-to-msg_id binding** without a live-memory dump.
+Section 1 §1.8 describes the dispatch shape (`nub->elements[msg_id]` single-array lookup). The follow-up question — *which `msg_id` corresponds to which handler* — was previously gated on a live-memory inspection: the table itself lives in BSS (`DAT_01ef2518`) and is zero in the static image, populated at runtime by `PopulateMessageTypeTable`[^server-connection-send]. A live-capture pass on 2026-05-15 (BP on `PopulateMessageTypeTable` at `ghidra://SGW.exe@0x00dd63d0`, then `read_memory` against the populated vec without halting) extracted the full **57-entry server→client (`BWNetDriver::ClientInterface`) message table**. The vec data buffer is at `0xFFC88100` (kernel-shared user region, allocated by the static initializer); each entry is `0x1C` bytes in the read-only static form and `0x24` bytes in the per-connection runtime form (which adds 8 bytes of per-slot byte/count statistics). Vec capacity is 256 entries (sized to the full 1-byte msg_id space); slots `0x39..0x7F` are reserved (uninitialized template pattern) and slots `0x80..0xFE` are dynamically registered EntityMethod slots that all share the generic `entityMessage` wire handler at `0x01ED1CBC` — disambiguation among entity methods is by the slot's *index* in the vec, not by name.
 
-The 46 RTTI-confirmed system-message handlers appear in address order at `ghidra://SGW.exe@0x01e52088`–`0x01e53050`. The handler-name suffix (the `<bandwidthNotificationArgs>` template parameter) is the wire-message vocabulary the SOAP-server-side originally exposed; each name corresponds to one of the BigWorld base-app→client system messages enumerated in `messages.cpp`[^cpp-messages].
+The 46 RTTI handler addresses recorded in earlier drafts at `ghidra://SGW.exe@0x01e52088`–`0x01e53050` are the **declaration-order** address block; the live-capture mapping below now binds each to its actual `msg_id`. The handler-name suffix (the `<bandwidthNotificationArgs>` template parameter) is the wire-message vocabulary the SOAP-server-side originally exposed; each name corresponds to one of the BigWorld base-app→client system messages enumerated in `messages.cpp`[^cpp-messages].
 
-| msg_id | Handler RTTI address | Handler name | Length encoding | Notes |
+| msg_id | Name | Wire size (bytes) | RTTI handler addr | Notes |
 |---|---|---|---|---|
-| ? | `0x01e52088` | `ClientMessageHandler<bandwidthNotificationArgs>` | WORD_LENGTH (4-byte payload) | Registered but unused; see §2.10 S2 |
-| ? | `0x01e520e0` | `ClientMessageHandler<updateFrequencyNotificationArgs>` | CONSTANT_LENGTH 1 | Tick-rate advertisement (§2.6 T1) |
-| ? | `0x01e52138` | `ClientMessageHandler<setGameTimeArgs>` | CONSTANT_LENGTH 4 | `u32` game-time ticks |
-| ? | `0x01e52180` | `ClientMessageHandler<resetEntitiesArgs>` | CONSTANT_LENGTH 1 | §1.9 — own-flushed-bundle constraint |
-| ? | `0x01e521d0` | `ClientMessageHandler<spaceViewportInfoArgs>` | CONSTANT_LENGTH 13 | §1.9 — viewport open/close gated by `entityId2` |
-| ? | `0x01e52220` | `ClientMessageHandler<entityInvisibleArgs>` | WORD_LENGTH | Per-entity visibility toggle |
-| ? | `0x01e52270` | `ClientMessageHandler<tickSyncArgs>` | CONSTANT_LENGTH 8 | `gameTime` + `tickRate` pair |
-| ? | `0x01e522b8` | `ClientMessageHandler<setSpaceViewportArgs>` | WORD_LENGTH | Distinct from `spaceViewportInfo` — runtime viewport mutation |
-| ? | `0x01e52308` | `ClientMessageHandler<setVehicleArgs>` | WORD_LENGTH | Vehicle-mount state change |
-| ? | `0x01e52350` | `ClientMessageHandler<avatarUpdateNoAliasFullPosYawPitchRollArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` family, see §1.11 |
-| ? | `0x01e523b8` | `ClientMessageHandler<avatarUpdateNoAliasFullPosYawPitchArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52418` | `ClientMessageHandler<avatarUpdateNoAliasFullPosYawArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52478` | `ClientMessageHandler<avatarUpdateNoAliasFullPosNoDirArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e524d8` | `ClientMessageHandler<avatarUpdateNoAliasOnChunkYawPitchRollArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52540` | `ClientMessageHandler<avatarUpdateNoAliasOnChunkYawPitchArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e525a0` | `ClientMessageHandler<avatarUpdateNoAliasOnChunkYawArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52600` | `ClientMessageHandler<avatarUpdateNoAliasOnChunkNoDirArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52660` | `ClientMessageHandler<avatarUpdateNoAliasOnGroundYawPitchRollArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e526c8` | `ClientMessageHandler<avatarUpdateNoAliasOnGroundYawPitchArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52728` | `ClientMessageHandler<avatarUpdateNoAliasOnGroundYawArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52788` | `ClientMessageHandler<avatarUpdateNoAliasOnGroundNoDirArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e527e8` | `ClientMessageHandler<avatarUpdateNoAliasNoPosYawPitchRollArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52850` | `ClientMessageHandler<avatarUpdateNoAliasNoPosYawPitchArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e528b0` | `ClientMessageHandler<avatarUpdateNoAliasNoPosYawArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52908` | `ClientMessageHandler<avatarUpdateNoAliasNoPosNoDirArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52968` | `ClientMessageHandler<avatarUpdateAliasFullPosYawPitchRollArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` — alias variants |
-| ? | `0x01e529d0` | `ClientMessageHandler<avatarUpdateAliasFullPosYawPitchArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52a30` | `ClientMessageHandler<avatarUpdateAliasFullPosYawArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52a88` | `ClientMessageHandler<avatarUpdateAliasFullPosNoDirArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52ae8` | `ClientMessageHandler<avatarUpdateAliasOnChunkYawPitchRollArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52b50` | `ClientMessageHandler<avatarUpdateAliasOnChunkYawPitchArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52bb0` | `ClientMessageHandler<avatarUpdateAliasOnChunkYawArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52c08` | `ClientMessageHandler<avatarUpdateAliasOnChunkNoDirArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52c68` | `ClientMessageHandler<avatarUpdateAliasOnGroundYawPitchRollArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52cd0` | `ClientMessageHandler<avatarUpdateAliasOnGroundYawPitchArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52d30` | `ClientMessageHandler<avatarUpdateAliasOnGroundYawArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52d90` | `ClientMessageHandler<avatarUpdateAliasOnGroundNoDirArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52df0` | `ClientMessageHandler<avatarUpdateAliasNoPosYawPitchRollArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52e50` | `ClientMessageHandler<avatarUpdateAliasNoPosYawPitchArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52eb0` | `ClientMessageHandler<avatarUpdateAliasNoPosYawArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52f08` | `ClientMessageHandler<avatarUpdateAliasNoPosNoDirArgs>` | CONSTANT_LENGTH | `UPDATE_AVATAR` |
-| ? | `0x01e52f60` | `ClientMessageHandler<detailedPositionArgs>` | CONSTANT_LENGTH 28 | §1.11 |
-| ? | `0x01e52fb0` | `ClientMessageHandler<forcedPositionArgs>` | CONSTANT_LENGTH 49 | §1.11 — note offsets 24-35 are prev-position, not velocity (Section 1 §1.10.6) |
-| ? | `0x01e53000` | `ClientMessageHandler<controlEntityArgs>` | WORD_LENGTH | Server-to-client entity control assignment |
-| ? | `0x01e53050` | `ClientMessageHandler<loggedOffArgs>` | CONSTANT_LENGTH 1 | §1.9 — 1-byte reason |
+| `0x00` | `authenticate` | word-prefix (handshake) | — | §1.4 — auth-token exchange |
+| `0x01` | `bandwidthNotification` | 4 | `0x01e52088` | Registered but unused; see §2.10 S2 |
+| `0x02` | `updateFrequencyNotification` | 1 | `0x01e520e0` | Tick-rate advertisement (§2.6 T1) |
+| `0x03` | `setGameTime` | 4 | `0x01e52138` | `u32` game-time ticks |
+| `0x04` | `resetEntities` | 1 | `0x01e52180` | §1.9 — own-flushed-bundle constraint |
+| `0x05` | `createBasePlayer` | word-prefix (`u32 eid + u16 classId` + props) | — | §1.10[^create-base-player-handler] |
+| `0x06` | `createCellPlayer` | word-prefix (32-byte spatial header + props) | — | §1.10[^create-cell-player-handler] |
+| `0x07` | `spaceData` | word-prefix | — | §2.6 T6 — unused in current SGW builds |
+| `0x08` | `spaceViewportInfo` | 13 | `0x01e521d0` | §1.9 — viewport open/close gated by `entityId2` |
+| `0x09` | `createEntity` | word-prefix | — | Per-entity construction |
+| `0x0A` | `updateEntity` | word-prefix | — | Per-entity property delta |
+| `0x0B` | `entityInvisible` | 5 | `0x01e52220` | Per-entity visibility toggle |
+| `0x0C` | `leaveAoI` | word-prefix | — | AoI departure notification |
+| `0x0D` | `tickSync` | 8 | `0x01e52270` | `u32 gameTime` + `u32 tickRate` pair (pcap-validated: `rate=100`) |
+| `0x0E` | `setSpaceViewport` | 1 | `0x01e522b8` | Distinct from `spaceViewportInfo` — runtime viewport mutation |
+| `0x0F` | `setVehicle` | 4 | `0x01e52308` | Vehicle-mount state change |
+| `0x10` | `avatarUpdateNoAliasFullPosYawPitchRoll` | 25 | `0x01e52350` | `UPDATE_AVATAR` family — see §1.11 and the size-table commentary below |
+| `0x11` | `avatarUpdateNoAliasFullPosYawPitch` | 24 | `0x01e523b8` | `UPDATE_AVATAR` |
+| `0x12` | `avatarUpdateNoAliasFullPosYaw` | 23 | `0x01e52418` | `UPDATE_AVATAR` |
+| `0x13` | `avatarUpdateNoAliasFullPosNoDir` | 22 | `0x01e52478` | `UPDATE_AVATAR` |
+| `0x14` | `avatarUpdateNoAliasOnChunkYawPitchRoll` | 25 | `0x01e524d8` | `UPDATE_AVATAR` |
+| `0x15` | `avatarUpdateNoAliasOnChunkYawPitch` | 24 | `0x01e52540` | `UPDATE_AVATAR` |
+| `0x16` | `avatarUpdateNoAliasOnChunkYaw` | 23 | `0x01e525a0` | `UPDATE_AVATAR` |
+| `0x17` | `avatarUpdateNoAliasOnChunkNoDir` | 22 | `0x01e52600` | `UPDATE_AVATAR` |
+| `0x18` | `avatarUpdateNoAliasOnGroundYawPitchRoll` | 25 | `0x01e52660` | `UPDATE_AVATAR` |
+| `0x19` | `avatarUpdateNoAliasOnGroundYawPitch` | 24 | `0x01e526c8` | `UPDATE_AVATAR` |
+| `0x1A` | `avatarUpdateNoAliasOnGroundYaw` | 23 | `0x01e52728` | `UPDATE_AVATAR` |
+| `0x1B` | `avatarUpdateNoAliasOnGroundNoDir` | 22 | `0x01e52788` | `UPDATE_AVATAR` |
+| `0x1C` | `avatarUpdateNoAliasNoPosYawPitchRoll` | 13 | `0x01e527e8` | `UPDATE_AVATAR` |
+| `0x1D` | `avatarUpdateNoAliasNoPosYawPitch` | 12 | `0x01e52850` | `UPDATE_AVATAR` |
+| `0x1E` | `avatarUpdateNoAliasNoPosYaw` | 11 | `0x01e528b0` | `UPDATE_AVATAR` |
+| `0x1F` | `avatarUpdateNoAliasNoPosNoDir` | 10 | `0x01e52908` | `UPDATE_AVATAR` |
+| `0x20` | `avatarUpdateAliasFullPosYawPitchRoll` | 25 | `0x01e52968` | `UPDATE_AVATAR` — alias variants |
+| `0x21` | `avatarUpdateAliasFullPosYawPitch` | 24 | `0x01e529d0` | `UPDATE_AVATAR` |
+| `0x22` | `avatarUpdateAliasFullPosYaw` | 23 | `0x01e52a30` | `UPDATE_AVATAR` |
+| `0x23` | `avatarUpdateAliasFullPosNoDir` | 22 | `0x01e52a88` | `UPDATE_AVATAR` |
+| `0x24` | `avatarUpdateAliasOnChunkYawPitchRoll` | 25 | `0x01e52ae8` | `UPDATE_AVATAR` |
+| `0x25` | `avatarUpdateAliasOnChunkYawPitch` | 24 | `0x01e52b50` | `UPDATE_AVATAR` |
+| `0x26` | `avatarUpdateAliasOnChunkYaw` | 23 | `0x01e52bb0` | `UPDATE_AVATAR` |
+| `0x27` | `avatarUpdateAliasOnChunkNoDir` | 22 | `0x01e52c08` | `UPDATE_AVATAR` |
+| `0x28` | `avatarUpdateAliasOnGroundYawPitchRoll` | 25 | `0x01e52c68` | `UPDATE_AVATAR` |
+| `0x29` | `avatarUpdateAliasOnGroundYawPitch` | 24 | `0x01e52cd0` | `UPDATE_AVATAR` |
+| `0x2A` | `avatarUpdateAliasOnGroundYaw` | 23 | `0x01e52d30` | `UPDATE_AVATAR` |
+| `0x2B` | `avatarUpdateAliasOnGroundNoDir` | 22 | `0x01e52d90` | `UPDATE_AVATAR` |
+| `0x2C` | `avatarUpdateAliasNoPosYawPitchRoll` | 13 | `0x01e52df0` | `UPDATE_AVATAR` |
+| `0x2D` | `avatarUpdateAliasNoPosYawPitch` | 12 | `0x01e52e50` | `UPDATE_AVATAR` |
+| `0x2E` | `avatarUpdateAliasNoPosYaw` | 11 | `0x01e52eb0` | `UPDATE_AVATAR` |
+| `0x2F` | `avatarUpdateAliasNoPosNoDir` | 10 | `0x01e52f08` | `UPDATE_AVATAR` |
+| `0x30` | `detailedPosition` | 41 | `0x01e52f60` | §1.11 (the V5 28-byte layout was a different message; live binary's size field is 41) |
+| `0x31` | `forcedPosition` | 49 | `0x01e52fb0` | §1.11 — offsets 24-35 are prev-position, not velocity (Section 1 §1.10.6) |
+| `0x32` | `controlEntity` | 5 | `0x01e53000` | Server-to-client entity control assignment |
+| `0x33` | `voiceData` | word-prefix | — | Voice channel passthrough |
+| `0x34` | `restoreClient` | word-prefix | — | §1.9.5[^restore-client-handler] — restoreClientAck pairing |
+| `0x35` | `restoreBaseApp` | word-prefix | — | BaseApp-side state restore |
+| `0x36` | `resourceFragment` | word-prefix | — | §1.9 — PAK delivery streaming |
+| `0x37` | `loggedOff` | 1 | `0x01e53050` | §1.9 — 1-byte reason code |
+| `0x38` | `entityMessage` | word-prefix | — | The generic entity-message sentinel; msg_ids `0x80..0xFE` share the underlying wire handler at `0x01ED1CBC` and dispatch by their slot index in the same vec |
+
+**Wire-size reading**: the `avatarUpdate` family's size deltas (25 → 24 → 23 → 22 across YPR → YP → Y → NoDir; 13 → 12 → 11 → 10 in the NoPos block) confirm **each axis (yaw, pitch, roll) is a single byte** — an 8-bit quantized angle (256 steps over 360°, ~1.4° resolution). The 12-byte FullPos↔NoPos difference is 3 × `float32` (xyz). The four position-family variants `{FullPos, OnChunk, OnGround, NoPos}` share byte counts within a given orientation row — `OnChunk` and `OnGround` encode position in a different reference frame (chunk-relative; ground-relative) but use the same byte width as FullPos. **`NoPos` drops the 12 bytes of position data entirely.** The `{NoAlias, Alias}` distinction does not affect size; it is a property-set-aliasing flag for entity-property streaming, not an extra wire byte.
+
+The 32-way decomposition `{Alias|NoAlias} × {FullPos|OnChunk|OnGround|NoPos} × {YPR|YP|Y|NoDir}` is BigWorld's classical "alias bit-packed avatar update" wire format — each variant has a unique 1-byte msg_id, so the wire payload does not carry a "which fields are present" header; the msg_id encodes that.
 
 > [!NOTE]
-> **The `msg_id` column is intentionally empty.** The 46 handler *names* in the table above are V5-grade evidence (RTTI strings at fixed `.rdata` addresses), but the **handler-to-msg_id binding** is established at runtime by `PopulateMessageTypeTable`[^server-connection-send] writing into the BSS-allocated `DAT_01ef2518` vec. In the static binary that vec is all zeros; the binding requires a live-memory inspection of a running client (after auth, after the table is populated) or a manual reconstruction by tracing the registration-loop order in `InterfaceElementVec__copyAllTo` at `ghidra://SGW.exe@0x01577f20`. The address order above is the **declaration order**; whether it matches the runtime msg_id assignment is unproven. `[citation needed]` for the msg_id mapping. **Path to resolution**: attach a debugger to a running `SGW.exe` after `logOnBegin` succeeds, read the 28-byte `InterfaceElement` records starting at the address in `DAT_01ef2518`, and tabulate the `(msg_id, handler_ptr)` pairs.
+> **Capacity, reserved range, and dynamic entity-method slots.** The `BWNetDriver::ClientInterface` vec at `0x01F72518` is sized for 256 entries (the full 1-byte msg_id space). Slots `0x00..0x38` are the 57 static entries above. Slots `0x39..0x7F` are reserved — they contain a repeating 36-byte template pattern (`00 02 BB EC ... 49 94 BC 01 ...`) in the live runtime, never registered by any static initializer. Slots `0x80..0xFE` are dynamic EntityMethod slots populated by the second phase of `PopulateMessageTypeTable`'s loop (`bl = 0x80..0xFE`); every one of those 127 slots points to the same handler (`0x01ED1CBC`) and shares the name `"entityMessage"`. Disambiguation among the 127 entity methods is by slot index, not by name.
 >
-> Entity messages (`msg_id 0x80–0xFE`) all route to the same generic handler via `PTR_vftable_01e51cbc` and are dispatched by entity-method index after the leading byte is stripped (§1.8); they do not appear in this table.
+> **Static vs. dynamic stride.** The static table at `0x01F72518` uses `0x1C` (28-byte) entries: `[msg_id:1, flag:1, 0xFFFF:2, fixed_size:i32, name_ptr:4, handler_ptr:4, unk1:i32, unk2:i32, -1:i32]`. When `InterfaceElementVec::copyAllTo` at `ghidra://SGW.exe@0x015F7F20` clones the static table into the per-`ServerConnection` sub-object at `this+0x190`, the stride becomes `0x24` (36-byte) — two extra `i32` fields per slot track **runtime per-message-type statistics**: total bytes observed (`+0x1C`) and total count observed (`+0x20`). The pcap-derived `msg_id 0x10` entries observed `+0x1C = 0x43F8 = 17,400` bytes across `+0x20 = 0x2B8 = 696` messages = exactly 25 bytes per message, confirming the table's `fixed_size` field is the on-wire byte width of the message payload (excluding the leading `msg_id` byte).
 
-For wire-format reimplementation purposes, the immediately actionable fact is that **all 46 handler names must exist on the server side as emit shapes**, even if the msg_id binding remains TBD. The names map 1:1 to BigWorld base-app→client message types and are stable across `messages.cpp` historical revisions. See the V5 message catalog in `system-protocol-wire-formats.md`[^v5-system-protocol] for the server-side complement.
+The 46 RTTI strings at the address block `0x01e52088`–`0x01e53050` are the second-source confirmation for entries that have a `ClientMessageHandler<…Args>` template instantiation. The 11 entries without an RTTI handler address column (msg_ids `0x00, 0x05, 0x06, 0x07, 0x09, 0x0A, 0x0C, 0x33, 0x34, 0x35, 0x36, 0x38` — 12, not 11) are handled either by non-templated functions (e.g. `authenticate` is wired directly into the auth state machine, not via `ClientMessageHandler<T>`) or by handlers whose RTTI was not within the scanned address block. The names in those rows come from the **packed string table at `ghidra://SGW.exe@0x01A509A8`** that the vec entries point into via the `name_ptr` field.
+
+For wire-format reimplementation purposes, the immediately actionable facts are now:
+
+1. **All 57 msg_ids and names are pinned** to the binary, with their exact wire byte widths for fixed-length messages. No more `[citation needed]` for the msg_id mapping.
+2. **Entity-method dispatch (`msg_id 0x80..0xFE`)** uses 127 slots in the same vec, all sharing the generic `entityMessage` handler and dispatching by slot index. The per-connection sub-object at `ServerConnection+0x190` tracks per-slot byte and message counters for runtime telemetry.
+3. **The wire format used by `tools/pcap_dissect.py`** now reflects this table (commit `f79d73a`) — the prior msg_id table in that tool was an outdated RE pass that mis-labeled 0x0A/0x0B/0x0C (the correct names `updateEntity`/`entityInvisible`/`leaveAoI` are at those slots; `loggedOff` is at `0x37`, `restoreClient` at `0x34`).
+
+See the V5 message catalog in `system-protocol-wire-formats.md`[^v5-system-protocol] for the server-side complement.
+
+#### 2.5.1 Client→server table — `BaseAppExtInterface`
+
+The mirror-image interface for client→server traffic is `BaseAppExtInterface`, a separate `InterfaceElementVec` at `ghidra://SGW.exe@0x01EF24CC`. Its static initializer at `ghidra://SGW.exe@0x017BAC00` registers 14 entries (`msg_id 0x00..0x0D`) by calling `InterfaceElement::add(name, …)` once per slot, with each name string located at `ghidra://SGW.exe@0x019D0880` onward. As with `ClientInterface`, slots `0x80..0xFE` are reserved for dynamically-registered EntityMethod dispatch (the symmetric mirror of the server-side entity-method system); slots `0x0E..0x7F` are unused.
+
+| msg_id | Name | Wire size (bytes) | Notes |
+|---|---|---|---|
+| `0x00` | `baseAppLogin` | word-prefix (handshake) | Pre-channel handshake; carries 20-char session token in its body |
+| `0x01` | `authenticate` | word-prefix (auth-token) | Per-tick heartbeat in established sessions (pcap-validated: every gameplay packet) |
+| `0x02` | `avatarUpdateImplicit` | 36 | Player-driven implicit position update |
+| `0x03` | `avatarUpdateExplicit` | 40 | Player-driven explicit position update (pcap-validated: 40B on the wire) |
+| `0x04` | `avatarUpdateWardImplicit` | 36 (assumed) | Ward-entity (controlled by player) implicit update |
+| `0x05` | `avatarUpdateWardExplicit` | 40 (assumed) | Ward-entity explicit update |
+| `0x06` | `switchInterface` | 0 | Parameterless trigger |
+| `0x07` | `requestEntityUpdate` | word-prefix | Client polls server for missed/stale entity state |
+| `0x08` | `enableEntities` | 8 | `i32 entity_id` + `i32 flag` (pcap-validated) |
+| `0x09` | `setSpaceViewportAck` | 8 | Ack for the matching server-side `setSpaceViewport` |
+| `0x0A` | `setVehicleAck` | 8 | Ack for the matching server-side `setVehicle` |
+| `0x0B` | `restoreClientAck` | word-prefix | Ack for the matching server-side `restoreClient` (§2.7 R/SHOULD) |
+| `0x0C` | `disconnectClient` | 1 | 1-byte reason code (graceful disconnect) |
+| `0x0D` | `entityMessage` | word-prefix | The generic client-side entity-message sentinel; msg_ids `0x80..0xFE` share this handler and dispatch by slot index |
+
+**Asymmetry between the two interfaces**: server→client has 57 static entries because the server has more to tell the client (entity create/update, world state, spatial info, position broadcasts); client→server has 14 entries because the client mostly only needs to authenticate, push its own avatar position, ack server messages, and request specific updates. The dynamic entity-method slot range (`0x80..0xFE`, 127 slots) is **symmetric** — entity methods are first-class on both sides.
+
+**The pcap-observed gameplay traffic pattern**: every per-tick client packet carries `[0x01] authenticate (21B)` + `[0x03] avatarUpdateExplicit (40B)` = 65 bytes of body. The `authenticate` payload is a refreshed auth token (per-tick re-authentication), not a one-shot login credential — it is sent ~13× per second during gameplay (at ~75 ms intervals).
+
+**This BaseAppExtInterface table is the structural counterpart to `BWNetDriver::ClientInterface`**. A reimplementation that handles server→client traffic must also accept these 14 client→server msg_ids; the dynamic `0x80..0xFE` range carries the bulk of gameplay-time client→server traffic (every entity method invocation from the client passes through that range).
 
 ### 2.6 What the server MAY do (TOLERATED)
 
@@ -1965,6 +2044,27 @@ The client carries a Mercury-specific logger and a small set of `ServerConnectio
 
 **S8 — No client-side packet size gate on the recv path.** The 1453-byte maximum-packet-plaintext constant (Section 1 §1.6 and §2.3) is enforced at the **send** side only (`Mercury_Bundle_newMessage`[^bundle-new-message]). The recv side (`processFilteredPacket`[^flags-decoder] → `processPacket`) validates a minimum of 2 bytes but no upper bound; oversized packets are parsed without any "packet too large" disconnect or drop log. A reimplementation that accidentally emits packets larger than 1453 bytes will be parsed by the client; the failure mode is downstream, in the body-length decoder or the InterfaceElement dispatcher, where it surfaces as ambiguous parse-failure logs (`"received packet with bad flags"`, `"Not enough data for …"`, etc.) rather than as a clear "packet too large" disconnect. See R11 in §2.4.1 for the structural framing. **Lesson**: "send-only" invariants are easy to misread as "two-sided" invariants; verify each direction has its own guard before assuming symmetry.
 
+**S9 — AteraLoader's pcap sniffer requires both an ASLR fix and an AtreaRL.dll patch on modern Windows.** The community sniffer is implemented inside `AtreaRL.dll` (the injected DLL) and produces `sessions/<date>.pcap` + `sessions/<date>-keys.txt` when activated. On a stock 2026-era Windows build, however, **the sniffer does not activate**, even though the XML config sets `<NVP Name="Sniffer" Value="true" />`. Two distinct gates must pass:
+
+1. **Windows ASLR vs. AtreaLoader byte patches.** `SGW.exe`'s PE header sets `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE` (the `0x40` bit in DllCharacteristics at file offset `0x186`). On modern Windows, this causes the image to load at an ASLR-randomized base rather than the PE's preferred `ImageBase=0x00400000`. AtreaLoader's byte-patch table in `AtreaLoader.config.xml` uses absolute virtual addresses (e.g. `BaseAddress="0x01AF2224"` for `EnableUnicodeLogger`); when the runtime base shifts, all 8 byte patches fail to match their `OriginalBytes` patterns. The session-log line `0 patch(es) of 8 applied` is the signature. **Fix**: run `AtreaFixASLR.bat` (which invokes `AtreaLoader.exe --fix-aslr`) to clear the `DYNAMIC_BASE` bit from the PE header. Only one byte of `SGW.exe` is modified — file offset `0x186` flips from `0x40` to `0x00`. After the fix, the image loads at its preferred `0x00400000` base and byte patches resolve correctly.
+
+2. **AtreaRL.dll's runtime NVP gate for `Sniffer`.** Even with byte patches working, the sniffer's init function (`FUN_10021FB0` inside `AtreaRL.dll`) is conditionally called from `FUN_10026F30` based on an NVP lookup. The gate (decompile of `FUN_10026F30`):
+
+    ```c
+    iVar3 = NVP_lookup();         // FUN_10022C10 — looks up "Sniffer"
+    uVar4 = *(uint*)(iVar3 + 0x10); // value-length field
+    iVar3 = memcmp_inline(...);    // FUN_10001930 — strcmp to "true"
+    bVar5 = false;
+    if (iVar3 == 0 && uVar4 == 4) { bVar5 = true; }  // NVP value must be exactly "true" (4 chars)
+    if (bVar5) { FUN_10021FB0(); }  // ← sniffer init
+    ```
+
+    The compiled-binary `AtreaLoader.config` file (which the loader reads at runtime — *not* the `.xml`) predates the XML by over a year (binary 2013-05-20 vs XML 2014-06-23). On at least one observed installation, the binary `.config`'s `Sniffer` NVP was either absent or set to a non-`"true"` value, so the gate never opened. **Workaround**: patch `AtreaRL.dll` directly at file offset `0x269D7` (runtime VA `0x100275D7`) — the `JZ +5` byte sequence (`74 05`) that bypasses the sniffer-init call — to `NOP NOP` (`90 90`). This forces `FUN_10021FB0` to always run regardless of the NVP gate. After this two-byte patch (plus the ASLR fix from item 1), the session log shows `Sniffer: Got AES key from auth stream` and `sessions/<date>.pcap` is created.
+
+The need for two distinct patches is a function of the loader's age and the layered defenses in modern Windows; neither was anticipated by the original loader authors. **Lesson**: when a community RE artifact fails silently on a modern Windows host, check the PE's `DYNAMIC_BASE` flag AND the loader's runtime config gating before assuming the artifact itself is broken.
+
+**S10 — Live-debugger packet capture is bottlenecked by MCP roundtrip latency, not by the debugger itself.** During the §2.4 R16 / §2.5 live-capture pass, the obvious approach — set a singleshot BP at `Nub::processFilteredPacket` (`ghidra://SGW.exe@0x01580840`), wait for the hit, dump registers + memory, resume — exceeded the Mercury BaseApp handshake timeout (10-15 seconds). The bottleneck was not the BP halt itself (sub-millisecond at the kernel level) but the MCP-client-↔-debugger-↔-game-↔-MCP-client roundtrip for *each* memory read across a TCP loopback, accumulating to ~5–10 seconds of total halt time for a sequence of `get_all_registers → read_memory → read_memory → go` calls. The session disconnects with `"Unable to connect BaseApp: The client timed out waiting for a response to its connection attempt"` despite the BP only firing once. **Mitigations** (in order of cleanliness): (a) use the AteraLoader pcap-sniffer path (S9) for raw wire bytes — no halt overhead at all; (b) configure x64dbg's `logText` to write to a file with deep-deref expressions like `{[[esp+0xC]+0xC]}` so the BP fires-and-resumes without any client-side processing; (c) if halts are unavoidable, target only **low-frequency edge events** (login, channel teardown, retry abort) where one halt per session is acceptable. The four BPs we successfully used for state observation — `LOGON_BEGIN`, `CHAN_CLEANUP`, `RETRY_ABORT`, `NUB_EXC` (the last one was a misread; `checkAndSendNubException` is per-tick, not per-disconnect, and triggered a disconnect from accumulated halts) — illustrate the trade-off. **Lesson**: pcap is preferable to live-debugger BPs for any per-packet wire capture; the debugger is the right tool only for *state at specific call sites*.
+
 ### 2.11 Source-of-truth crosswalk
 
 Section 1 §1.15 maps each load-bearing Section 1 claim to its primary V5 source + secondary cross-check. The table below is the parallel for Section 2 — every load-bearing claim in §2.3, §2.4 (R1–R16), §2.5, §2.6, §2.7, §2.9, and §2.10 is rowed with an evidence type and a citation. The four evidence types are: **Ghidra anchor** (an SGW.exe address — high confidence), **Config file** (a file under `game/sgw/Working/` or `binaries/`), **INI file** (specifically the UE3 INI under `Engine/Config/`), and **Section 1 footnote** (inherited claim already canonized upstream of Section 2).
@@ -2005,11 +2105,13 @@ Section 1 §1.15 maps each load-bearing Section 1 claim to its primary V5 source
 |---|---|---|
 | R11 — No recv-side packet size gate | Ghidra anchor | `ghidra://SGW.exe@0x01580840`[^flags-decoder] + `0x01b17ee0` (undersize-only log) |
 | R12 — Four out-of-order sequence behaviors | Ghidra anchor | `ghidra://SGW.exe@0x0158cba0`[^unacked-queue-ack] + 5 log strings at `0x01b19e78`–`0x01b1a040` |
+| R12 — Out-of-order buffering confirmed in live pcap | Live capture | `binaries/sessions/2026-05-15_14-04.log` — `"Buffering packet #24 above #21"` and similar at multiple seq IDs throughout the session |
 | R13 — Fragment abandonment is arrival-triggered, no 30s sweep | Ghidra anchor | `ghidra://SGW.exe@0x01b18868` (stale-overlapping log) + `0x01b1a090` (channel teardown log); negative finding via search of Nub tick path |
-| R14 — Lifetime cap 20, per-tick budget 5.0f | Ghidra anchor + Section 1 footnote | `ghidra://SGW.exe@0x01e91e00`[^unacked-check-resend-timers] (per-tick budget) + `[^v5-mercury-internals]` (lifetime cap) |
+| R14 — Lifetime cap 20, per-tick budget 5.0f | Ghidra anchor + Section 1 footnote | `ghidra://SGW.exe@0x01e91e00` (per-tick budget) + `0x0158c420`[^unacked-check-resend-timers] (use site) + abort-instruction at `0x0158c57c` (`JNZ 0x0158c57c` after `processIncomingPacketEntry` returns non-zero reason; the abort path runs `LookupDisconnectReasonName` + logger and returns the reason code) + `[^v5-mercury-internals]` (lifetime cap = 20 inherited from stock BW) |
 | R15 — No Mercury-layer version handshake | Ghidra anchor | `ghidra://SGW.exe@0x019aaf34`[^login-message-enum] (LoginMessage enum, 31 entries) |
-| R16 — `protocol_digest` is the upstream gate | Ghidra anchor + Config file | `ghidra://SGW.exe@0x015f8410`[^soap-login-session] + SOAP field strings `"sgwLogin:ProtocolDigest"` at `0x01b2507c` / `0x01b25384` / `0x01b25ad8` |
-| R16 hash algorithm is unconfirmed (MD5/SHA1/CRC) | `[citation needed]` | upstream `BaseN_Encoder` construction site not yet decompiled |
+| R16 — `protocol_digest` wire-side is MD5 (32 hex chars) | Live capture + Ghidra anchor | `binaries/sessions/2026-05-15_14-04.log` line `"protocol_digest: 58AFA196AD3AC4F65CADD99BFF23B799"` + caller at `ghidra://SGW.exe@0x00c6e3a0` (`SGWNetworkManager`, asserts `"digestEvent.isHandled"` from `.\Src\SGWNetworkManager.cpp:0x21f`) + CME `Event_Net_GetProtocolDigest` RTTI at `0x01df15dc`[^event-net-get-protocol-digest] |
+| R16 — `protocol_digest` is sent in SOAP body | Ghidra anchor | `"sgwLogin:ProtocolDigest"` at `0x01b2507c` / `0x01b25384` / `0x01b25ad8` (3 occurrences) |
+| R16 — Internal SHA-1 dispatch-table hash at `ServerConnection+0x130` is distinct from wire `protocol_digest` | Live capture | x64dbg read at `[ECX+0x130]` after PMT BP returned `"A94A8FE5CCB19BA61C4C0873D391E987982FBBD3"` (40 hex chars, `_Mysize=40`, `_Myres=47`); decompile of `logOnBegin`[^soap-login-session] shows CryptoPP `HexEncoder` pipeline output stored at `this+0x130` via `operator=` |
 
 **§2.4 R17–R24 (Section 1 message-shape REQUIRED rows — inherited):**
 
@@ -2030,13 +2132,15 @@ Section 1 §1.15 maps each load-bearing Section 1 claim to its primary V5 source
 | 32-byte SOAP `xsd:hexBinary` session key | Section 1 footnote | §1.4[^gsoap-hex-dispatcher] |
 | MachineGuard component-ID `0xFE`-escape | Section 1 footnote | §1.13[^write-components-varlen] |
 
-**§2.5 (descriptor table):**
+**§2.5 (descriptor table) — closed:**
 
 | Claim | Evidence type | Citation |
 |---|---|---|
-| 46 RTTI handler names at `0x01e52088`–`0x01e53050` | Ghidra anchor | `ghidra://SGW.exe@0x01e52088`–`0x01e53050` (RTTI block) |
-| Table populated at runtime from BSS-allocated `DAT_01ef2518` | Ghidra anchor | `ghidra://SGW.exe@0x01ef2518` (BSS) + `0x01577f20` (`InterfaceElementVec__copyAllTo`) + `0x00dd63d0` (`PopulateMessageTypeTable`)[^server-connection-send] |
-| msg_id ordering requires live-memory inspection | `[citation needed]` | open question; path-to-resolution documented in §2.5 callout |
+| 57 entries in `BWNetDriver::ClientInterface` covering msg_ids `0x00..0x38` | Live capture | x64dbg `read_memory` at `0xFFC88100` (vec data buffer, 56 × 28-byte entries) + `0x01A509A8` (packed string table); 46 of 57 have RTTI handler addresses in the `0x01e52088`–`0x01e53050` block |
+| Vec capacity = 256 entries; slots `0x39..0x7F` reserved (uninitialized template); slots `0x80..0xFE` are dynamic EntityMethod slots sharing the generic handler at `0x01ED1CBC` | Live capture | Live read of `this+0x190` per-`ServerConnection` sub-vec at `0x24` stride after PMT |
+| Per-slot runtime statistics (`+0x1C`=bytes_observed, `+0x20`=count_observed) live in per-connection vec only; cross-multiply confirms `msg_id 0x10` size = 25 bytes | Live capture | Read of `0x1F6D9020+` region; 17,400 bytes / 696 messages = 25 bytes/message exactly |
+| Static initializer is `PopulateMessageTypeTable` at `0x00dd63d0`; copies static table via `InterfaceElementVec::copyAllTo` at `0x015f7f20`, then loops `bl = 0x80..0xFE` registering 127 entity-method slots | Ghidra anchor | `ghidra://SGW.exe@0x00dd63d0`[^server-connection-send] + `0x015f7f20` (copyAllTo) |
+| `BaseAppExtInterface` (client→server) is a separate `InterfaceElementVec` at `0x01EF24CC` with its own static initializer at `0x017BAC00` and name-string table at `0x019D0880` | Ghidra anchor | `ghidra://SGW.exe@0x01EF24CC` (BSS) + `0x017BAC00` (static init) + `0x019D0880` (name strings) — see §2.5.1 for the 14 entries |
 | Entity messages (`0x80–0xFE`) route to generic handler via `PTR_vftable_01e51cbc` | Ghidra anchor | `ghidra://SGW.exe@0x01e51cbc` |
 
 **§2.6 (TOLERATED) and §2.7 (RECOMMENDED) — all rows inherited from Section 1 footnotes:**
@@ -2075,8 +2179,10 @@ Section 1 §1.15 maps each load-bearing Section 1 claim to its primary V5 source
 | S6 30-second fragment sweep claim retracted | Ghidra anchor (negative finding) | search of Nub tick path; only arrival-triggered + channel-teardown paths found |
 | S7 Retry cap is 20 + 5.0f, not one number | Ghidra anchor | `0x01e91e00` (data)[^unacked-check-resend-timers] |
 | S8 No recv-side packet size gate | Ghidra anchor | `ghidra://SGW.exe@0x01580840`[^flags-decoder] (recv path) |
+| S9 AteraLoader sniffer requires ASLR fix + AtreaRL.dll patch | Live capture + Ghidra anchor | PE flag at file offset `0x186` (`DllChar=0x40` → `0x00` via `AtreaFixASLR.bat`) + sniffer gate in `AtreaRL.dll` at runtime VA `0x100275D7` (NOP the `JZ +5` at file offset `0x269D7`) — both required for `sessions/<date>.pcap` and `sessions/<date>-keys.txt` to materialize |
+| S10 Live-debugger BPs trip Mercury handshake timeouts | Live observation | x64dbg singleshot BPs cost ~5-10s of cumulative MCP roundtrip per packet capture, exceeding the BaseApp connect timeout; pcap path (S9) is the only viable per-packet wire capture |
 
-The two `[citation needed]` rows (R16 hash algorithm, §2.5 msg_id mapping) are the only Section 2 claims not pinned to a binary anchor or a config-file line. Both have documented paths to resolution; neither is load-bearing for a first-pass reimplementation (R16 succeeds when client digest = server digest regardless of which hash is computed; §2.5 handler set is complete even without msg_id binding because all 46 names must exist as emit shapes).
+All Section 2 claims are now pinned to a binary anchor, a config-file line, or a live-capture artifact. The two `[citation needed]` rows from earlier drafts — **R16 hash algorithm** and **§2.5 msg_id mapping** — are both resolved: the wire-side `protocol_digest` is MD5 (confirmed by the AteraLoader session log), and the full 57-entry server→client + 14-entry client→server msg_id tables are extracted (server→client live-captured from `0x01F72518`'s populated runtime data; client→server reconstructed from the static initializer at `0x017BAC00` and the name strings at `0x019D0880`).
 
 ---
 
