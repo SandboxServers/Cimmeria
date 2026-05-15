@@ -1618,11 +1618,196 @@ Two new sub-questions surfaced during the closure pass. Neither blocks promotion
 
 [^v5-world-entry]: `docs/reverse-engineering/findings/world-entry-pipeline.md` — V5 finding doc; phase-by-phase world-entry sequence; `ENABLE_ENTITIES` payload reconciliation (W-enable-entities, 2026-05-13); `CREATE_CELL_PLAYER` Y/Z rotation swap audit.
 
+[^ipdrv-tcp-net-driver-dead]: `game/sgw/Working/Engine/Config/BaseEngine.ini`, section `[IpDrv.TcpNetDriver]` — UE3's default TCP net driver section. Keys (`AckTimeout=1.0`, `ConnectionTimeout=30.0`, `InitialConnectTimeout=200.0`, `KeepAliveTime`, `RelevantTimeout`, `MaxClientRate=15000`, `MaxInternetClientRate=10000`, `NetServerMaxTickRate=30`, `LanServerMaxTickRate=35`, `NetConnectionClassName="IpDrv.TcpipConnection"`, `ConfiguredInternetSpeed=10000`, `ConfiguredLanSpeed=20000`, `MaxChannels=32`) are read by `FUN_005dc280` at startup and registered as UE3 `TcpNetDriver` INI properties. The `TcpNetDriver` class is never instantiated for game traffic because `[Engine.Engine] NetworkDevice=IpDrv.BWNetDriver` replaces it — see `[^bw-net-driver]`. None of these keys describe Mercury behavior; they are dead config for the live binary.
+
+[^bw-net-driver]: `game/sgw/Working/Engine/Config/BaseEngine.ini` line `NetworkDevice=IpDrv.BWNetDriver` selects BigWorld's UDP Mercury driver as the active UE3 net driver class. Binary confirmation: RTTI `.?AVUBWNetDriver@@` at `ghidra://SGW.exe@0x01dae780`, `.?AVUBWConnection@@` at `ghidra://SGW.exe@0x01dae79c`; strings `"BWNetDriver"` at `ghidra://SGW.exe@0x01801436`, `".\\Src\\BWNetDriver.cpp"` at `ghidra://SGW.exe@0x01801450`, `"IpDrv.BWNetDriver"` at `ghidra://SGW.exe@0x018e92bc`; INI-key xref string `"engine-ini:Engine.Engine.NetworkDevice"` at `ghidra://SGW.exe@0x018380a0`. `BWNetDriver` owns the UDP socket, channel table, cipher chain, and packet/bundle serializer; the standard UE3 connection lifecycle does not apply to its traffic.
+
+[^mercury-logger]: `MercuryLogger` at `ghidra://SGW.exe@0x0041C2E0` — Mercury-specific log channel inside `SGW.exe`. The address is documented in `game/sgw/Working/binaries/AtreaLoader.config.xml` as `<Symbol Name="MercuryLogger" Address="0x0041C2E0" Group="Mercury" Patch="false" />`. The community-built AtreaLoader is its sole declared source; the symbol does not appear in the V5 RE findings or in `docs/reverse-engineering/address-map.md`. Companion symbol: `AnsiLogger` at `ghidra://SGW.exe@0x00635210` (BigWorld ANSI log channel, enabled by the same `EnableUnicodeLogger` patch toggle at `0x01AF2224`).
+
+[^atrea-loader-config]: `game/sgw/Working/binaries/AtreaLoader.config.xml` — declarative patch table the community-built AtreaLoader applies to `SGW.exe` at load time. Organized into named patch groups (`EditorMode` toggles `GIsServer`/`GIsEditor`/`GIsClient` flags via byte patches at `0x00018AF0`; `Splash` swaps the splash image; `Mercury` group contains the `EnableUnicodeLogger` patch at `0x01AF2224` and declares the `MercuryLogger` symbol per `[^mercury-logger]`). Also exposes `<NVP Name="Sniffer" Value="true" />` for `.pcap` capture and AES session-key dump to `binaries/sessions/DATE.pcap` and `binaries/sessions/DATE-keys.txt`. Treat as a second-source corroboration of binary addresses, independently derived from the V5 RE campaign.
+
+[^physx-packet-false-positive]: `"packetSizeMultiplier"` at `ghidra://SGW.exe@0x01acdb70` is a PhysX `NxFluidDesc` serializer parameter (`FUN_012487d0`), not a Mercury parameter. The string sits alongside `kernelRadiusMultiplier` and `motionLimitMultiplier` — all three are PhysX fluid-simulation parameters from BigWorld's physics-engine integration. A grep for "packet" in `SGW.exe` strings will hit this; do not cite it as a Mercury wire-format parameter. The Mercury max packet size is the 1453-byte constant in `Mercury_Bundle_newMessage` per `[^bundle-new-message]` and only that.
+
+[^net-inactivity-timeout]: `game/sgw/Working/Engine/Config/GameplayEngine.ini`, section `[Engine.Engine]`: `NetInactivityTimeout=15`. Binary xref: string `"NetInactivityTimeout"` at `ghidra://SGW.exe@0x019abb7c`, read by the UE3 game-layer entity-RPC registry. After 15 seconds without meaningful received traffic the UE3 game layer fires the `REASON_INACTIVITY` disconnect path; the named reason string `"REASON_INACTIVITY"` lives at `ghidra://SGW.exe@0x019d11f0` and is emitted by `LookupDisconnectReasonName` at `ghidra://SGW.exe@0x00de1623`. The 15-second value is not server-tunable; the UE3 game layer reads it from the client's INI. This is a UE3-layer timer, not the Mercury-internal keepalive — Mercury's own keepalive runs on a shorter cadence (§1.7).
+
 ---
 
 ## Section 2 — Client findings
 
-N/A — pending Section 1 review. The client's expectation of the Mercury wire format is implicit in its packet decoder, which lives in the same SGW.exe binary already cited in Section 1. This section will catalogue what the *client-side configuration* (`game/sgw/Working/SGWGame/Config/*.ini`) and any compiled UnrealScript wire-handling code expect at parameters (MTU, ack timeout, retry limits, channel idle timeout). The cipher envelope's session-key delivery is a client-side artifact (Phase 1/2 of world entry; covered in `spec.protocol.cipher-and-auth`), so Section 2 will focus narrowly on the wire-format-relevant client surface — not the auth handshake.
+Section 1 reverse-engineered the packet decoder. This section flips the lens: it expresses those same findings as a *contract the server must honor for the client to function*. The evidence base is the same `SGW.exe` binary plus the client tree under `game/sgw/Working/` (INI files, compiled UScript packages, the `binaries/` directory with the community-built loader). The cipher envelope's session-key delivery is the wire-adjacent half of authentication and is out of scope here; a separate chapter will cover the SOAP auth handshake and reference back into this chapter for the wire shape it produces.
+
+### 2.1 The client surface for Mercury
+
+Mercury lives in `SGW.exe` only. Nothing in the client tree above the binary touches the Mercury wire format directly. The INI files configure UE3 subsystems that sit *above* the BigWorld transport; the compiled UnrealScript packages under `SGWGame/Content/FRScript/` reach the network only via CME events that the C++ `ServerConnection` serializes into Mercury bundles; the `binaries/` directory holds the community-built `AtreaLoader.exe` that hosts `SGW.exe` and a Java/log4j launcher. The Mercury layer itself — `Mercury::Nub`, `ChannelInternal`, `PacketEncrypter`, `InterfaceElement` — is C++ code inside `SGW.exe`, addressed by the Ghidra anchors already enumerated in §1.
+
+The practical consequence: a server engineer hunting for "what the client expects" cannot read the INI files and answer the question. The INI files are the wrong table. §2.2 names the right one.
+
+<!-- FIGURE-CANDIDATE: mercury-39-client-surface-map — what in the client tree touches Mercury (game/sgw/Working/ subdirectories vs SGW.exe internals); svgbob or graphviz -->
+
+### 2.2 Configuration is a red herring
+
+**No INI key in the SGW client directly tunes any Mercury wire-format parameter.** Packet size, flags-byte width, footer endianness, sequence-number space, ack scheme, retry timing, cipher suite — all baked into `SGW.exe`. The Mercury layer is hard-coded.
+
+The trap for a server developer is `BaseEngine.ini`'s `[IpDrv.TcpNetDriver]` section. It looks like Mercury configuration. It uses the right vocabulary (`AckTimeout`, `ConnectionTimeout`, `MaxChannels`, `NetServerMaxTickRate`). The values are read by the binary at startup — `FUN_005dc280` registers `ConnectionTimeout`, `InitialConnectTimeout`, `KeepAliveTime`, `RelevantTimeout`, `MaxClientRate`, `MaxInternetClientRate`, `NetServerMaxTickRate`, and `NetConnectionClassName` as UE3 net-driver INI properties. They are not, however, Mercury values. They register against the UE3 `TcpNetDriver` class — a class that is bypassed wholesale for game traffic.
+
+`BaseEngine.ini`'s `[Engine.Engine] NetworkDevice=IpDrv.BWNetDriver` line is the load-bearing one. It tells UE3 "for game traffic, do not instantiate `TcpNetDriver`; instantiate `BWNetDriver` instead." BigWorld's `BWNetDriver` is the actual Mercury driver — it owns the UDP socket, the channel table, the cipher chain, and the packet/bundle serializer. The standard UE3 connection lifecycle (channel replication, actor relevancy, the `MaxClientRate` throttle) does not apply to game traffic; it applies only to the dead `TcpNetDriver` code path that the live binary never instantiates. The RTTI strings `.?AVUBWNetDriver@@` at `ghidra://SGW.exe@0x01dae780` and `.?AVUBWConnection@@` at `ghidra://SGW.exe@0x01dae79c` are the binary-side confirmation that the BW driver classes are the ones actually instantiated.[^bw-net-driver]
+
+The only INI key with *any* indirect Mercury relevance is `NetInactivityTimeout=15` from `GameplayEngine.ini`'s `[Engine.Engine]` section. It is read by the SGW game layer (not the Mercury layer) and gates the `REASON_INACTIVITY` disconnect path — see §2.4 R10 below.[^net-inactivity-timeout] Everything else in the network-related INI sections is dead config for game traffic.[^ipdrv-tcp-net-driver-dead]
+
+This is the most actionable warning in this chapter. A server developer reading `AckTimeout=1.0` and assuming the Mercury ack timeout is 1 second will produce a server that retransmits at the wrong cadence. The real Mercury ack timeout is roughly 700 ms (§1.7) and lives entirely in `ChannelInternal`'s C++ code.
+
+The taxonomy table below catalogues every Mercury-relevant configuration knob and where its value is actually set:
+
+| Knob | Where the value lives | Tunable? |
+|---|---|---|
+| Max packet size (1453 bytes) | `SGW.exe` constant in `Mercury_Bundle_newMessage` | No |
+| Flags byte width (1 byte) | `SGW.exe` constant in `Mercury_Nub_ProcessFilteredPacket` | No |
+| Footer endianness (LE) | `SGW.exe` codegen choice | No |
+| Sequence-number space (28-bit, sentinel `0x10000000`) | `SGW.exe` constant | No |
+| Outstanding-ack bitmap (32 bits) | `SGW.exe` constant in `UnAckedHandler__buildAndSendAckBundle` | No |
+| Receive-dedup table (512 entries) | `SGW.exe` constant in `Channel__ctor` | No |
+| Max retries (20) | `SGW.exe` constant (inherited from stock BW) | No |
+| Resend timeout (~700 ms) | `SGW.exe` constant (inherited from stock BW) | No |
+| Cipher suite (AES-256-CBC + HMAC-MD5) | `SGW.exe` CryptoPP linkage | No |
+| Cipher session key (32 bytes) | Runtime — SOAP auth response | Negotiated per session |
+| Tick rate (server-advertised) | Runtime — `updateFrequencyNotification` (msg `0x02`) | Server chooses |
+| `NetworkDevice` class registration | `BaseEngine.ini` `[Engine.Engine]` | Yes (would break game traffic) |
+| `NetInactivityTimeout` (15 s, UE3-layer) | `GameplayEngine.ini` `[Engine.Engine]` | Yes (game layer, not Mercury) |
+| `[IpDrv.TcpNetDriver]` keys | `BaseEngine.ini` | Read but unused for game traffic |
+| `[IpDrv.UdpBeacon]` keys | `BaseEngine.ini` | LAN-beacon only; no Mercury relevance |
+
+<!-- FIGURE-CANDIDATE: mercury-38-config-knob-taxonomy — INI-tunable vs hard-coded vs runtime-negotiated; graphviz three-column -->
+
+### 2.3 Hard-coded client constants
+
+These constants are stamped into `SGW.exe` and the server has no INI-side leverage over any of them. Each row links back to the Section 1 evidence that establishes it.
+
+| Constant | Value | Location | Server leverage |
+|---|---|---|---|
+| Max packet plaintext | 1453 bytes (`0x5AD`) | `Mercury_Bundle_newMessage` at `ghidra://SGW.exe@0x0157ac90`[^bundle-new-message] | None |
+| Flags byte width | 1 byte (uint8) | `Mercury_Nub_ProcessFilteredPacket` at `ghidra://SGW.exe@0x01580840`[^flags-decoder] | None |
+| Footer endianness | All fields little-endian | `Mercury_Nub_ProcessFilteredPacket`[^flags-decoder][^v5-mercury-internals] | None |
+| Sequence-number space | 28-bit; sentinel `0x10000000` | Section 1 §1.5[^v5-mercury-internals] | None |
+| Outstanding-ack bitmap | 32 bits (max 32 in-flight reliable packets per channel) | `UnAckedHandler__buildAndSendAckBundle` at `ghidra://SGW.exe@0x0158b2d0`[^ack-bitmap] | None |
+| Receive-dedup table size | 512 entries (`0x200`), mask `0x1FF` | `FUN_0158c170` at `ghidra://SGW.exe@0x0158c170`[^channel-hash-alloc] | None |
+| Max retries | 20 (strict `>`) | Section 1 §1.7[^v5-mercury-internals] (inherited from stock BW 2.0.1) | None |
+| Resend timeout | ~700 ms | Section 1 §1.7[^v5-mercury-internals] (inherited from stock BW 2.0.1) | None |
+| Cipher algorithm | AES-256-CBC + HMAC-MD5 | RTTI `"AES-256-CBC"` at `ghidra://SGW.exe@0x01b29b1c`[^cipher-stream-filter][^cipher-hash-filter] | None — no negotiation |
+| Cipher IV | Literal zero per packet | `PacketEncrypter` ctor[^packet-encrypter-ctor] | None |
+| Cipher key size | 32 bytes (AES-256) | `PacketEncrypter` ctor[^packet-encrypter-ctor] | None — fixed by suite |
+| MachineGuard port | 20022 (`0x4E36`) | `Mercury_MachineGuard_sendAndRecv` at `ghidra://SGW.exe@0x015898c0`[^machguard-sendandrecv] | None |
+| Net driver class | `IpDrv.BWNetDriver` | `BaseEngine.ini` + RTTI `.?AVUBWNetDriver@@`[^bw-net-driver] | Configurable, but changing it breaks game traffic |
+
+Two upstream V5 claims (max retries = 20 and resend timeout ~700 ms) are inherited from stock BigWorld 2.0.1 rather than independently confirmed against an SGW byte. They are listed at medium confidence; the server should treat both as upper bounds it has no leverage to negotiate.
+
+<!-- FIGURE-CANDIDATE: mercury-40-tolerance-bands — visualization of the T-category findings (tickrate spread, ack jitter); bytefield or Mermaid -->
+
+### 2.4 What the server MUST do (REQUIRED)
+
+The 12 R-category findings plus the 38 Section 1 footnotes classified REQUIRED form the wire contract. Violating any of these produces a silent drop, a hard disconnect, or visible misbehavior at the client.
+
+| Invariant | What breaks if violated | Citation |
+|---|---|---|
+| Flags byte at offset 0, exactly 1 byte | Second byte of a `uint16` flags field is misread as the first byte of the message body; packet body parse desynchronizes | §1.2[^flags-decoder] |
+| Footer fields little-endian | Sequence IDs, ack IDs, fragment IDs all decode to nonsense; client logs `"received packet with bad flags"` or drops on sequence-range check | §1.3.3[^v5-mercury-internals] |
+| `FLAG_HAS_ACKS` with 0 acks is forbidden | Client emits `"Packet with FLAG_HAS_ACKS had 0 acks"` warning and drops the packet | §1.3.1[^flags-decoder] |
+| Sequence number required for on-channel reliable packets | Client logs `"Dropping packet due to receiving a packet with null sequence number"` and drops | §1.5[^flags-decoder] |
+| Sequence numbers stay within the 28-bit valid range (not `0x10000000`) | Client logs `"Dropping packet due to receiving a packet with sequence number outside valid range"` and drops | §1.5[^v5-mercury-internals] |
+| Fragmented bundles have well-formed `firstFragmentId` / `lastFragmentId` footers | Client logs `"Mangled fragment footers"` or `"illegal bundle fragment count"` and drops the fragment | §1.3[^flags-decoder] |
+| AES session key must match the one delivered via SOAP auth | `AuthenticateKeyComparison` reports `"Unexpected key!"`; connection torn down | §1.4[^authenticate-handler][^packet-encrypter-send] |
+| HMAC-MD5 tag must verify | Client logs `"encryption error"`; packet dropped before reaching the Mercury parser | §1.4[^packet-encrypter-recv] |
+| Channel must be registered before indexed-channel packets arrive | Client logs `"Client got indexed channel packet with no finder registered"`; hard drop | §1.6[^flags-decoder] |
+| Piggyback chain well-formed if `FLAG_HAS_PIGGYBACKS` is set | Drop strings at `0x01b17f28`, `0x01b17f80`, `0x01b17ff8` fire; packet discarded | §1.3.2[^flags-decoder] |
+| Once-off reliable packets must follow the reliability rules | Client logs `"Dropping illegal once-off-reliable packet"` and drops | §1.5[^flags-decoder] |
+| Server must keep traffic alive within 15 seconds | UE3 game layer fires `REASON_INACTIVITY` disconnect; session ends | §2.2[^net-inactivity-timeout] |
+| `resetEntities` (msg `0x04`) must be sent in its own flushed bundle | Client logs `"Dropped corrupted incoming packet"`; world-reset semantics lost | §1.9[^purge-rebuild-handler][^reset-entities-init] |
+| Outstanding reliable packets capped at 32 per channel | Client's 32-bit ack bitmap saturates; ack accounting silently corrupts | §1.7[^ack-bitmap] |
+| Resend cadence honored within ~700 ms × 20 retries | `checkAndSendNubException` fires; channel disconnects with no further traffic | §1.7[^check-nub-exception] |
+| Per-`InterfaceElement` fixed-width length encoding matches the dispatch table | Length field misread; message body parse goes off the end | §1.5[^compress-length-family] |
+| Message descriptors registered with the wire IDs from `messages.cpp` | Client's single-array dispatch by `msg_id` byte falls through to the wrong handler | §1.9[^cpp-messages][^process-ordered-packet] |
+| `createBasePlayer` (msg `0x05`): 6 bytes — `u32 entityId` + `u16 classId` | Client buffers a mismatched proxy slot; subsequent `createCellPlayer` replay corrupts | §1.10[^create-base-player-handler] |
+| `createCellPlayer` (msg `0x06`): 32 bytes, Y/Z rotation swapped to `rotX, rotZ, rotY` | Client player orientation is wrong by a 90° axis swap | §1.10[^create-cell-player-handler][^rotation-reader] |
+| `enableEntities` (msg `0x03`): exactly 8 bytes (`CONSTANT_LENGTH`, no length prefix) | Argument stream desyncs; subsequent messages parse garbage | §1.9[^enable-entities-init][^broadcast-entity-activation][^bundle-start-msg-fixed] |
+| `resetEntities` (msg `0x04`): 1 byte (`keepBase u8`, `CONSTANT_LENGTH`) | Same — argument stream desyncs | §1.9[^reset-entities-init][^purge-rebuild-handler] |
+| `loggedOff` (msg `0x37`): 1 byte (reason, `CONSTANT_LENGTH`) | Client teardown reads wrong reason; subsequent bytes parsed as next message | §1.9[^logged-off-handler] |
+| `detailedPosition` (msg `0x30`): 28-byte wire layout per §1.11 | Player/avatar position desynchronizes silently | §1.11[^detailed-pos-handler] |
+| `forcedPosition` (msg `0x31`): 49 bytes; offsets 24–35 are the previous-position reference, not velocity | Server-side velocity guesses corrupt the client's prev-position copy; physics-mode byte mismatch trips `sentPhysics_` assert | §1.11[^forced-pos-handler][^v5-position-movement] |
+| `spaceViewportInfo` (msg `0x08`): 13 bytes (`CONSTANT_LENGTH`) | Client camera/spatial-partition setup falls back to defaults; visible misrender | §1.9[^space-viewport-info-handler] |
+| `RESOURCE_FRAGMENT` (msg `0x36`) follows the byte layout in §1.9 | PAK delivery stalls or corrupts; resource categories mismatch | §1.9[^resource-fragment-handler] |
+| Cell-method wire shape: `(msg_id \| 0x80)` + `u16 word_len` + `u32 entityId` + args | Base/cell distinction collapses; argument boundary lost | §1.5[^start-entity-message] |
+| Base-method wire shape: `(msg_id \| 0xC0)` + `u16 word_len` + args (no entityId) | Same — base-method arguments parse against the wrong leading bytes | §1.5[^start-proxy-message] |
+| Method indices ≥ 62 use sub-slot encoding (sentinel `0xBD`/`0xFD` + `sub_index`) | High-index methods dispatch to the wrong handler | §1.5[^subslot-threshold] |
+| Packed-string encoding on `AUTHENTICATE` session-key string: 1-byte length, `0xFF`-escape to 3 bytes | Auth fails before any Mercury traffic begins | §1.4[^packed-string-reader] |
+| Cipher session key delivered via SOAP `xsd:hexBinary` (64 hex chars → 32 bytes) | Key delivery fails; client never decrypts a packet | §1.4[^gsoap-hex-dispatcher][^gsoap-type-dispatcher] |
+| MachineGuard component-ID encoding: `≤ 0xfe` → 1 byte, `> 0xfe` → `0xff` + 3 bytes | MachineGuard interop breaks (server cannot register with the discovery protocol) | §1.13[^write-components-varlen] |
+| `bandwidthNotification` descriptor registered (value ignored) | Client expects the descriptor present in the message table; absence breaks descriptor lookup | §1.9 + §2.9 S2[^cpp-messages] |
+| Single-array dispatch by `msg_id` byte; valid `msg_id` required | Out-of-range `msg_id` dispatches to a stale slot or null pointer | §1.5[^process-ordered-packet] |
+| Bundle footer write order is the wire contract | Receiver pops fields in inverse-bit-order; a sender that reorders fields produces silently wrong parses | §1.3[^bundle-finalise] |
+
+The "what breaks" column is the *observable* failure mode — the client log string, the disconnect reason, or the visible misrender. None of these failure modes produce a server-side error message; they are silent at the server. The server's only signal is the client-side log line or the disconnect.
+
+<!-- FIGURE-CANDIDATE: mercury-37-client-contract-matrix — REQUIRED/RECOMMENDED/TOLERATED columns × major Mercury features; graphviz HTML-table -->
+
+### 2.5 What the server MAY do (TOLERATED)
+
+The 6 T-category findings plus the 3 Section 1 footnotes classified TOLERATED catalogue places where the client adapts to server choice rather than enforcing a fixed value. These are the levers a reimplementation has.
+
+| Tolerance | Range / Notes | Citation |
+|---|---|---|
+| Tick rate | Any `u8` value (1–255 ticks/sec); server advertises via `updateFrequencyNotification` (msg `0x02`) and the client scales internal timers | §1.9.2[^cpp-client-handler] |
+| Piggybacked acks vs standalone ack bundles | Either is fine; server may emit acks piggybacked on the next reliable bundle or as a standalone `FLAG_HAS_ACKS`-only packet | §1.3.1[^send-ack-bundle2] |
+| Out-of-order `createBasePlayer` / `createCellPlayer` within a bundle | Client buffers an early `createCellPlayer` (string `"Playing buffered createCellPlayer message"` at `0x019d0110`) and replays it after `createBasePlayer` lands | §1.10[^create-base-player-handler][^create-cell-player-handler] |
+| `bandwidthNotification` value | Ignored at runtime — SGW never calls `setBandwidthFromServerMutator`. The message must still be emitted (the descriptor is registered) but the value has no behavioral effect | §1.9.1 + §2.9 S2[^cpp-messages] |
+| `restoreClient` exercise | Marked untested in V5; the handler is present and decompiled but not observed in normal pcap traffic. Server need not emit it | §1.9.5[^restore-client-handler] |
+| `spaceData` (msg `0x07`) | Unused in current SGW builds. Server need not emit it | §1.9[^space-data-handler] |
+| Ack timing jitter | Client uses the 700 ms baseline but does not measure server resend cadence strictly; jitter is absorbed by the ack bitmap | §1.7[^ack-bitmap][^check-nub-exception] |
+
+The tolerance is bounded by the REQUIRED row in §2.4. A tick rate of 30 is fine; a tick rate of 0 (no `updateFrequencyNotification` ever sent) leaves the client running on its initialization-time default and is technically a REQUIRED violation rather than a tolerance.
+
+### 2.6 Recommended but not required (RECOMMENDED)
+
+The 7 RECOMMENDED-classified footnotes are best-practice items the server should follow for clean operation. The client copes with deviations, but reimplementation drift here tends to surface later as subtle bugs in less-exercised code paths.
+
+| Recommendation | Why | Citation |
+|---|---|---|
+| Honor `firstRequestOffset` footer field when emitting requests | Client walks the request linked list using this offset; a server that omits requests entirely is fine, but a server that emits requests without the offset breaks request dispatch | §1.3[^bundle-start-msg-request][^request-chain-walk] |
+| Emit `restoreClientAck` if the server uses `restoreClient` | The client registers `restoreClientAck` as an auto-reply expectation; omitting it strands the restore flow | §1.9.5[^restore-client-ack-descriptor] |
+| Follow the deprecated-server emit order for world-entry messages | `client_handler.cpp` patterns establish the canonical ordering; the client is robust to variations but parse-buffer-replay (`createBasePlayer` before `createCellPlayer`) is the only deviation the client explicitly buffers | §1.10[^cpp-client-handler] |
+| Use the Nub request/reply matching mechanism when expecting replies | The client's `Nub::handleMessage` request-table is the supported reply-correlation path; ad-hoc reply schemes work but lose traceability | §1.5[^nub-handle-message] |
+| Implement MachineGuard responses if MachineGuard is used | The client expects to be able to issue MachineGuard discovery requests; a server that ignores them stays discoverable only by direct IP/port configuration | §1.13[^machguard-master-deserialize][^machguard-send-raw] |
+
+### 2.7 UnrealScript Mercury surface
+
+N/A. Mercury is a C++ library; no UnrealScript class touches the Mercury layer directly. The `IpDrv.BWNetDriver` reference in `*.ini` is a class-name registration only — all socket, packet, channel, and reliability code lives in `SGW.exe` per §1. The compiled UnrealScript packages under `SGWGame/Content/FRScript/` (`Core.u`, `Editor.u`, `Engine.u`, `GFxUI.u`, `GFxUIEditor.u`, `IpDrv.u`, `SGWGame.u`, `UnrealEd.u`) communicate with the game server exclusively via CME events that the C++ `ServerConnection` serializes into Mercury bundles; the serialization itself is invisible to UScript.
+
+### 2.8 Client diagnostic surface
+
+The client carries a Mercury-specific logger and a small set of `ServerConnection` log strings that surface protocol-layer events. These are the windows through which a server developer reads the client's view of the wire.
+
+| Diagnostic | Location | What it surfaces |
+|---|---|---|
+| `MercuryLogger` function | `ghidra://SGW.exe@0x0041C2E0`[^mercury-logger] | Mercury-internal log channel; can be enabled by the `EnableUnicodeLogger` patch at `0x01AF2224`[^atrea-loader-config] |
+| `AnsiLogger` function | `ghidra://SGW.exe@0x00635210` | BigWorld ANSI log channel; enabled by the same patch |
+| `ServerConnection::processInput` inter-packet timing log | `ghidra://SGW.exe@0x019cfdb0` (string `"ServerConnection::processInput: There were %d ms between packets\n"`) | INFO-level log of gap between successive received packets — protocol-level delivery hiccups visible from the client log |
+| `ServerConnection::logOnBegin` protocol-digest log | `ghidra://SGW.exe@0x019cf1f8` / `0x019cf248` (string `"ServerConnection::logOnBegin: server:%s username:%s protocol_digest: %s\n"`) | Server address, username, and the protocol digest (an interface-table hash that gates Mercury start) logged at connection setup |
+| `ServerConnection::loggedOff` reason log | `ghidra://SGW.exe@0x019d0768` (string `"ServerConnection::loggedOff: The server has disconnected us. reason = %d\n"`) | Numeric disconnect reason logged on teardown |
+| `REASON_INACTIVITY` symbolic name | `ghidra://SGW.exe@0x019d11f0`[^net-inactivity-timeout] | The named-reason string emitted on the 15-second inactivity timeout (see §2.4 R10) |
+| Packet sniffer + AES key dump (community tooling) | `binaries/AtreaLoader.config.xml` `Sniffer=true` NVP[^atrea-loader-config] | Captures `.pcap` to `binaries/sessions/DATE.pcap` and dumps the AES session key to `binaries/sessions/DATE-keys.txt` — wire-capture verification path for Section 1 claims |
+| SGW launcher log (log4j) | `binaries/SGWLogConfig.xml` → `SGWDebugLog.log` | Java/log4j logger from `AtreaLoader.exe`; orthogonal to the binary's own `MercuryLogger` / `AnsiLogger` paths |
+
+The `MercuryLogger` symbol at `ghidra://SGW.exe@0x0041C2E0` is a previously undocumented anchor — it does not appear in the V5 findings or in `docs/reverse-engineering/address-map.md`. The community-built AtreaLoader's XML config is its sole declared source. The address is added to this chapter's address-map under footnote `[^mercury-logger]`.
+
+### 2.9 Gotchas and surprises
+
+**S1 — AtreaLoader.config.xml is a community-RE binary patcher with an explicit Mercury group.** `game/sgw/Working/binaries/AtreaLoader.config.xml` is not a config file in the usual sense — it is a declarative patch table the AtreaLoader applies to `SGW.exe` at load time. The patch table is organized into named groups: an `EditorMode` group flips `GIsServer`/`GIsEditor`/`GIsClient` global flags via byte patches at `0x00018AF0` (the same binary contains a dormant Unreal Editor build that activates with those flags flipped), a `Splash` group swaps the splash image, and crucially a `Mercury` group with the `EnableUnicodeLogger` patch at `0x01AF2224`. The XML documents the `MercuryLogger` symbol at `0x0041C2E0` and several other binary addresses that the V5 RE campaign did not cover. It is independently derived from a different reverse-engineering pass and should be treated as a second-source corroboration of binary addresses.[^atrea-loader-config]
+
+**S2 — `bandwidthFromServer` is a registered no-op.** The BigWorld base `bandwidthNotification` message (Section 1 §1.9.1) is wired through the descriptor table and parsed at the client, but the SGW game layer never calls `setBandwidthFromServerMutator`. The client logs `"ServerConnection::bandwidthFromServer: Cannot comply since no mutator set with 'setBandwidthFromServerMutator'\n"` at `ghidra://SGW.exe@0x019cff70` and silently discards the value. The message must still be emitted (its descriptor is registered and dispatch validates against the registered table), but tuning a value into it accomplishes nothing.
+
+**S3 — The PhysX `packetSizeMultiplier` string is a false positive for Mercury.** A future RE pass grepping `SGW.exe` strings for "packet" will land on `"packetSizeMultiplier"` at `0x01acdb70`. This string lives in the `NxFluidDesc` serializer (`FUN_012487d0`) alongside `kernelRadiusMultiplier` and `motionLimitMultiplier` — all PhysX fluid-simulation parameters. It has nothing to do with Mercury. Do not cite it as a Mercury wire-format parameter; do not let it bait a "but the client has a configurable packet size after all" conclusion. The Mercury max packet size is the 1453-byte constant in `Mercury_Bundle_newMessage` and only that.[^physx-packet-false-positive]
+
+**S4 — The production launcher chooses the server environment via `-s PRODLIVE` / `-s PRODTEST`.** `game/sgw/Working/Launcher-Production_Live.bat` runs `start .\Launcher.exe -s PRODLIVE`; `Launcher-Production_Test.bat` runs `start .\Launcher.exe -s PRODTEST`. The Mercury connection target (server address and port) is not baked into `SGW.exe` — it is determined by the launcher's environment selection, then logged at connect time via `ServerConnection::logOnBegin` (the `server:%s` field). A reimplementation that hard-codes a single server address will work for one environment only.
+
+**S5 — `protocol_digest` gates whether Mercury traffic begins at all.** The `"ServerConnection::logOnBegin"` log string at `0x019cf1f8` (and a second site at `0x019cf248`) reports `protocol_digest: %s` alongside the server address and username. The `protocol_digest` is a hash of the entity-method interface descriptor table — a contract that both sides have the same RPC definitions. It is NOT a Mercury wire-format field (it lives in the SOAP auth flow), but a mismatch produces a disconnect *before any Mercury packets are exchanged*. A server that publishes the wrong digest will never see its Mercury packets reach the client at all; the failure mode looks like "the server is sending packets and the client is silent" but the actual break happened earlier in the auth flow.
 
 ---
 
