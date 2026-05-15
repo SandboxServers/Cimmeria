@@ -195,12 +195,12 @@ Found and extracted from SGW.exe static at `0x017bac00` (the static initializer 
 
 | msg_id | Name | Wire size hint (from `add()` immediate) |
 |---|---|---|
-| 0x00 | `baseAppLogin` | 1 (word-prefix; pre-channel handshake) |
-| 0x01 | `authenticate` | 2 (word-prefix; auth token) |
-| 0x02 | `avatarUpdateImplicit` | 36 (constant) |
-| 0x03 | `avatarUpdateExplicit` | 40 (constant) |
-| 0x04 | `avatarUpdateWardImplicit` | (likely 36) |
-| 0x05 | `avatarUpdateWardExplicit` | (likely 40) |
+| 0x00 | `baseAppLogin` | 2 (u16 length-prefix → variable body) |
+| 0x01 | `authenticate` | 2 (u16 length-prefix → variable body) |
+| 0x02 | `avatarUpdateImplicit` | 36 (fixed) |
+| 0x03 | `avatarUpdateExplicit` | 40 (fixed) |
+| 0x04 | `avatarUpdateWardImplicit` | **36 (fixed)** — confirmed 2026-05-15 from `PUSH 0x24` immediate at `ghidra://SGW.exe@0x017BACC2` |
+| 0x05 | `avatarUpdateWardExplicit` | **40 (fixed)** — confirmed 2026-05-15 from `PUSH 0x28` immediate at `ghidra://SGW.exe@0x017BACED` |
 | 0x06 | `switchInterface` | 0 (parameterless trigger) |
 | 0x07 | `requestEntityUpdate` | (word-prefix) |
 | 0x08 | `enableEntities` | 8 (entity_id i32 + flags i32) |
@@ -264,7 +264,7 @@ struct InterfaceElement {       // 0x1C bytes
     uint8_t  msg_id;            // +0x00
     uint8_t  flag;              // +0x01 (varies 0x00 / 0x01 — semantics TBD)
     uint16_t pad;               // +0x02 (always 0xFFFF)
-    int32_t  fixed_size;        // +0x04 (payload byte count, signed; -1 = variable)
+    int32_t  fixed_size;        // +0x04 (semantic varies by value, see note below)
     char*    name_ptr;          // +0x08 (into packed string table at 0x01A509A8)
     void*    handler_ptr;       // +0x0C (into handler array at 0x01ED1CC0+8*msg_id)
     int32_t  unk1;              // +0x10 (varies 0..2)
@@ -272,6 +272,19 @@ struct InterfaceElement {       // 0x1C bytes
     int32_t  sentinel;          // +0x18 (always -1 = 0xFFFFFFFF)
 };
 ```
+
+**`fixed_size` field semantics (refined 2026-05-15 via static initializer at `0x017BAC60`)**:
+
+The semantic of the `size` field varies; the discriminator is **either** the adjacent `flag` byte at `+0x01` **or** the value itself depending on its magnitude.
+
+- **Hypothesis (under verification)**: for client→server entries, observed values are:
+  - `size = 0` → parameterless trigger (`switchInterface`, msg_id 0x06)
+  - `size ∈ {1, 2, 4}` → **length-prefix width** in bytes when the message is variable-length (e.g. `baseAppLogin` size=2, `restoreClientAck` size=4)
+  - `size > 4` → **fixed-length payload** in bytes (e.g. `avatarUpdateExplicit` size=40, `enableEntities` size=8)
+- **But**: some server→client entries with `size ∈ {1, 2, 4}` are clearly fixed-length payloads (e.g. `loggedOff` size=1 carries one reason byte; `bandwidthNotification` size=4 carries one i32). The current chapter R-row text marks these as `CONSTANT_LENGTH`.
+- **Resolution**: the `flag` byte at struct offset `+0x01` is the likely discriminator (`flag=1` → variable / prefix-width interpretation; `flag=0` → fixed-length payload). This matches BigWorld's stock `InterfaceElement` two-mode design. **Cross-verification across the 57+14 entries is open**; for the client→server table the prefix-width interpretation is supported by pcap-observed body sizes far exceeding the `size` value (e.g. `authenticate` size=2 with 21-byte observed body).
+
+The pcap dissector preserves both pieces of information by encoding format tuples as `(style, fixed_len_or_None, prefix_width_or_None)` so framing can be driven by either interpretation.
 
 **Complete static msg_id table**:
 

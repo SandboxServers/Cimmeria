@@ -22,12 +22,7 @@ Body = plaintext[1..footer_start]
 import struct
 import sys
 
-try:
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-    _HAVE_CRYPTOGRAPHY = True
-except ImportError:
-    _HAVE_CRYPTOGRAPHY = False
-    import subprocess
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 # ── Mercury flag constants (from packet.rs / packet.hpp) ──────────────────────
 
@@ -148,124 +143,131 @@ ENTITY_BASE_METHODS = {
     0xC7: "onClientVersion",
 }
 
+# Message-format tuple layout:
+#   ('constant', fixed_len, None)         # fixed-length payload, no prefix
+#   ('var',      None,      prefix_width) # variable-length, prefix_width ∈ {1, 2, 4}
+#
+# The `prefix_width` field preserves the discovery from the static initializer at
+# 0x017BAC60 that BigWorld's `InterfaceElement::size` field encodes the length-
+# prefix byte-width (u8/u16/u32) for variable-length entries. All current
+# entries observed on this build use u16 prefixes, but the parser accepts any
+# of the three widths so we can keep the discovered semantics rather than
+# collapsing them to "word".
+
 # Server→Client message payload formats — confirmed against the live
 # InterfaceElementVec at 0x01F72518 and against observed packet body sizes
-# in this pcap. 'constant' = fixed-length, 'word' = u16 length prefix.
+# in this pcap.
 #
 # Note: msg_ids 0x0A..0x0C (updateEntity, entityInvisible, leaveAoI) were
 # previously misidentified as LOGGED_OFF/CREATE_CELL_ENTITY/RESTORE_CLIENT
 # (those are at 0x37, n/a, 0x34 respectively). Corrected here.
 SERVER_MSG_FORMAT = {
-    0x00: ('word', None),      # authenticate
-    0x01: ('constant', 4),     # bandwidthNotification
-    0x02: ('constant', 1),     # updateFrequencyNotification
-    0x03: ('constant', 4),     # setGameTime
-    0x04: ('constant', 1),     # resetEntities
-    0x05: ('word', None),      # createBasePlayer (variable per-entity props)
-    0x06: ('word', None),      # createCellPlayer (variable)
-    0x07: ('word', None),      # spaceData
-    0x08: ('constant', 13),    # spaceViewportInfo
-    0x09: ('word', None),      # createEntity (variable)
-    0x0A: ('word', None),      # updateEntity (variable)
-    0x0B: ('constant', 5),     # entityInvisible
-    0x0C: ('word', None),      # leaveAoI
-    0x0D: ('constant', 8),     # tickSync
-    0x0E: ('constant', 1),     # setSpaceViewport
-    0x0F: ('constant', 4),     # setVehicle
+    0x00: ('var',      None, 2),  # authenticate
+    0x01: ('constant', 4,    None),  # bandwidthNotification
+    0x02: ('constant', 1,    None),  # updateFrequencyNotification
+    0x03: ('constant', 4,    None),  # setGameTime
+    0x04: ('constant', 1,    None),  # resetEntities
+    0x05: ('var',      None, 2),  # createBasePlayer (variable per-entity props)
+    0x06: ('var',      None, 2),  # createCellPlayer (variable)
+    0x07: ('var',      None, 2),  # spaceData
+    0x08: ('constant', 13,   None),  # spaceViewportInfo
+    0x09: ('var',      None, 2),  # createEntity (variable)
+    0x0A: ('var',      None, 2),  # updateEntity (variable)
+    0x0B: ('constant', 5,    None),  # entityInvisible
+    0x0C: ('var',      None, 2),  # leaveAoI
+    0x0D: ('constant', 8,    None),  # tickSync
+    0x0E: ('constant', 1,    None),  # setSpaceViewport
+    0x0F: ('constant', 4,    None),  # setVehicle
     # avatarUpdate family — 32 variants, BigWorld bit-packed wire format.
     # Sizes match the +0x04 fixed-length field in the static InterfaceElement
     # table; differential 1-byte deltas confirm 8-bit quantized YPR angles.
-    0x10: ('constant', 25),    # NoAliasFullPosYawPitchRoll
-    0x11: ('constant', 24),    # NoAliasFullPosYawPitch
-    0x12: ('constant', 23),    # NoAliasFullPosYaw
-    0x13: ('constant', 22),    # NoAliasFullPosNoDir
-    0x14: ('constant', 25),    # NoAliasOnChunkYawPitchRoll
-    0x15: ('constant', 24),    # NoAliasOnChunkYawPitch
-    0x16: ('constant', 23),    # NoAliasOnChunkYaw
-    0x17: ('constant', 22),    # NoAliasOnChunkNoDir
-    0x18: ('constant', 25),    # NoAliasOnGroundYawPitchRoll
-    0x19: ('constant', 24),    # NoAliasOnGroundYawPitch
-    0x1A: ('constant', 23),    # NoAliasOnGroundYaw
-    0x1B: ('constant', 22),    # NoAliasOnGroundNoDir
-    0x1C: ('constant', 13),    # NoAliasNoPosYawPitchRoll
-    0x1D: ('constant', 12),    # NoAliasNoPosYawPitch
-    0x1E: ('constant', 11),    # NoAliasNoPosYaw
-    0x1F: ('constant', 10),    # NoAliasNoPosNoDir
-    0x20: ('constant', 25),    # AliasFullPosYawPitchRoll
-    0x21: ('constant', 24),    # AliasFullPosYawPitch
-    0x22: ('constant', 23),    # AliasFullPosYaw
-    0x23: ('constant', 22),    # AliasFullPosNoDir
-    0x24: ('constant', 25),    # AliasOnChunkYawPitchRoll
-    0x25: ('constant', 24),    # AliasOnChunkYawPitch
-    0x26: ('constant', 23),    # AliasOnChunkYaw
-    0x27: ('constant', 22),    # AliasOnChunkNoDir
-    0x28: ('constant', 25),    # AliasOnGroundYawPitchRoll
-    0x29: ('constant', 24),    # AliasOnGroundYawPitch
-    0x2A: ('constant', 23),    # AliasOnGroundYaw
-    0x2B: ('constant', 22),    # AliasOnGroundNoDir
-    0x2C: ('constant', 13),    # AliasNoPosYawPitchRoll
-    0x2D: ('constant', 12),    # AliasNoPosYawPitch
-    0x2E: ('constant', 11),    # AliasNoPosYaw
-    0x2F: ('constant', 10),    # AliasNoPosNoDir
-    0x30: ('constant', 41),    # detailedPosition
-    0x31: ('constant', 49),    # forcedPosition
-    0x32: ('constant', 5),     # controlEntity
-    0x33: ('word', None),      # voiceData (variable)
-    0x34: ('word', None),      # restoreClient
-    0x35: ('word', None),      # restoreBaseApp
-    0x36: ('word', None),      # resourceFragment (variable)
-    0x37: ('constant', 1),     # loggedOff (1-byte reason code)
-    0x38: ('word', None),      # entityMessage (msg_id 0x80..0xFE share this handler)
-    0xFF: ('word', None),      # connectReply
+    0x10: ('constant', 25,   None),  # NoAliasFullPosYawPitchRoll
+    0x11: ('constant', 24,   None),  # NoAliasFullPosYawPitch
+    0x12: ('constant', 23,   None),  # NoAliasFullPosYaw
+    0x13: ('constant', 22,   None),  # NoAliasFullPosNoDir
+    0x14: ('constant', 25,   None),  # NoAliasOnChunkYawPitchRoll
+    0x15: ('constant', 24,   None),  # NoAliasOnChunkYawPitch
+    0x16: ('constant', 23,   None),  # NoAliasOnChunkYaw
+    0x17: ('constant', 22,   None),  # NoAliasOnChunkNoDir
+    0x18: ('constant', 25,   None),  # NoAliasOnGroundYawPitchRoll
+    0x19: ('constant', 24,   None),  # NoAliasOnGroundYawPitch
+    0x1A: ('constant', 23,   None),  # NoAliasOnGroundYaw
+    0x1B: ('constant', 22,   None),  # NoAliasOnGroundNoDir
+    0x1C: ('constant', 13,   None),  # NoAliasNoPosYawPitchRoll
+    0x1D: ('constant', 12,   None),  # NoAliasNoPosYawPitch
+    0x1E: ('constant', 11,   None),  # NoAliasNoPosYaw
+    0x1F: ('constant', 10,   None),  # NoAliasNoPosNoDir
+    0x20: ('constant', 25,   None),  # AliasFullPosYawPitchRoll
+    0x21: ('constant', 24,   None),  # AliasFullPosYawPitch
+    0x22: ('constant', 23,   None),  # AliasFullPosYaw
+    0x23: ('constant', 22,   None),  # AliasFullPosNoDir
+    0x24: ('constant', 25,   None),  # AliasOnChunkYawPitchRoll
+    0x25: ('constant', 24,   None),  # AliasOnChunkYawPitch
+    0x26: ('constant', 23,   None),  # AliasOnChunkYaw
+    0x27: ('constant', 22,   None),  # AliasOnChunkNoDir
+    0x28: ('constant', 25,   None),  # AliasOnGroundYawPitchRoll
+    0x29: ('constant', 24,   None),  # AliasOnGroundYawPitch
+    0x2A: ('constant', 23,   None),  # AliasOnGroundYaw
+    0x2B: ('constant', 22,   None),  # AliasOnGroundNoDir
+    0x2C: ('constant', 13,   None),  # AliasNoPosYawPitchRoll
+    0x2D: ('constant', 12,   None),  # AliasNoPosYawPitch
+    0x2E: ('constant', 11,   None),  # AliasNoPosYaw
+    0x2F: ('constant', 10,   None),  # AliasNoPosNoDir
+    0x30: ('constant', 41,   None),  # detailedPosition
+    0x31: ('constant', 49,   None),  # forcedPosition
+    0x32: ('constant', 5,    None),  # controlEntity
+    0x33: ('var',      None, 2),  # voiceData (variable)
+    0x34: ('var',      None, 2),  # restoreClient
+    0x35: ('var',      None, 2),  # restoreBaseApp
+    0x36: ('var',      None, 2),  # resourceFragment (variable)
+    0x37: ('constant', 1,    None),  # loggedOff (1-byte reason code)
+    0x38: ('var',      None, 2),  # entityMessage (msg_id 0x80..0xFE share this handler)
+    0xFF: ('var',      None, 2),  # connectReply
 }
 
 # Client→Server message formats — sizes from InterfaceElement::add immediate
-# args in static initializer at 0x017bac00. The 'size' field semantics:
-# small values (1..4) typically indicate the byte-width of the length prefix
-# (variable-length framing); larger values are fixed-length payload sizes.
+# args in static initializer at 0x017bac00. The `size` field is interpreted
+# as a length-prefix width for variable entries (1=u8, 2=u16, 4=u32) and as a
+# fixed payload size for `('constant', N, None)` entries. All client→server
+# variable entries observed on this build use u16 prefixes.
 CLIENT_MSG_FORMAT = {
-    0x00: ('word', None),      # baseAppLogin (variable: pre-channel handshake)
-    0x01: ('word', None),      # authenticate (variable: auth token)
-    0x02: ('constant', 36),    # avatarUpdateImplicit
-    0x03: ('constant', 40),    # avatarUpdateExplicit
-    0x04: ('constant', 36),    # avatarUpdateWardImplicit  (assumed same as Implicit)
-    0x05: ('constant', 40),    # avatarUpdateWardExplicit  (assumed same as Explicit)
-    0x06: ('constant', 0),     # switchInterface (parameterless trigger)
-    0x07: ('word', None),      # requestEntityUpdate
-    0x08: ('constant', 8),     # enableEntities (i32 entity_id + flag)
-    0x09: ('constant', 8),     # setSpaceViewportAck
-    0x0A: ('constant', 8),     # setVehicleAck
-    0x0B: ('word', None),      # restoreClientAck
-    0x0C: ('constant', 1),     # disconnectClient (1-byte reason)
-    0x0D: ('word', None),      # entityMessage (entity-method dispatch envelope)
+    0x00: ('var',      None, 2),  # baseAppLogin (variable: pre-channel handshake)
+    0x01: ('var',      None, 2),  # authenticate (variable: auth token)
+    0x02: ('constant', 36,   None),  # avatarUpdateImplicit
+    0x03: ('constant', 40,   None),  # avatarUpdateExplicit
+    0x04: ('constant', 36,   None),  # avatarUpdateWardImplicit (confirmed via Ghidra 0x017BACC2)
+    0x05: ('constant', 40,   None),  # avatarUpdateWardExplicit (confirmed via Ghidra 0x017BACED)
+    0x06: ('constant', 0,    None),  # switchInterface (parameterless trigger)
+    0x07: ('var',      None, 2),  # requestEntityUpdate
+    0x08: ('constant', 8,    None),  # enableEntities (i32 entity_id + flag)
+    0x09: ('constant', 8,    None),  # setSpaceViewportAck
+    0x0A: ('constant', 8,    None),  # setVehicleAck
+    0x0B: ('var',      None, 4),  # restoreClientAck (size=4 in static table → u32 prefix)
+    0x0C: ('constant', 1,    None),  # disconnectClient (1-byte reason)
+    0x0D: ('var',      None, 2),  # entityMessage (entity-method dispatch envelope)
 }
 
 
-_AES_KEY_BYTES = None
+# Per-key cache so repeat decrypts on the same key_hex don't re-parse hex
+# on every packet. Keyed by the session-key hex string itself, which makes
+# the cache trivially correct even if a future caller rotates keys mid-run.
+_AES_KEY_BYTES_CACHE: dict[str, bytes] = {}
 _AES_IV = b"\x00" * 16
+
 
 def decrypt_aes256_cbc(key_hex, ciphertext):
     if len(ciphertext) % 16 != 0:
         return None
-    if _HAVE_CRYPTOGRAPHY:
-        global _AES_KEY_BYTES
-        if _AES_KEY_BYTES is None:
-            _AES_KEY_BYTES = bytes.fromhex(key_hex)
-        try:
-            cipher = Cipher(algorithms.AES(_AES_KEY_BYTES), modes.CBC(_AES_IV))
-            dec = cipher.decryptor()
-            return dec.update(ciphertext) + dec.finalize()
-        except Exception:
-            return None
-    iv_hex = "00" * 16
-    proc = subprocess.run(
-        ["openssl", "enc", "-aes-256-cbc", "-d", "-nopad",
-         "-K", key_hex, "-iv", iv_hex],
-        input=ciphertext, capture_output=True,
-    )
-    if proc.returncode != 0:
+    key_bytes = _AES_KEY_BYTES_CACHE.get(key_hex)
+    if key_bytes is None:
+        key_bytes = bytes.fromhex(key_hex)
+        _AES_KEY_BYTES_CACHE[key_hex] = key_bytes
+    try:
+        cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(_AES_IV))
+        dec = cipher.decryptor()
+        return dec.update(ciphertext) + dec.finalize()
+    except Exception:
         return None
-    return proc.stdout
 
 
 def strip_pkcs7(data):
@@ -396,6 +398,23 @@ def format_flags(flags):
     return "|".join(parts) if parts else "NONE"
 
 
+_PREFIX_STRUCT = {1: '<B', 2: '<H', 4: '<I'}
+
+
+def _read_var_prefix(body, offset, prefix_width):
+    """Read a length-prefix of `prefix_width` bytes from body[offset:].
+
+    Returns (length, new_offset) or (None, offset) if truncated.
+    """
+    fmt = _PREFIX_STRUCT.get(prefix_width)
+    if fmt is None:
+        raise ValueError(f"Unsupported prefix width: {prefix_width}")
+    if offset + prefix_width > len(body):
+        return None, offset
+    length = struct.unpack(fmt, body[offset:offset + prefix_width])[0]
+    return length, offset + prefix_width
+
+
 def parse_messages(body, is_server):
     """Parse message payloads from a Mercury body."""
     offset = 0
@@ -406,7 +425,7 @@ def parse_messages(body, is_server):
         msg_id = body[offset]
         offset += 1
 
-        # Entity methods (0x80+) always use WORD_LENGTH
+        # Entity methods (0x80+) always use u16 length prefix
         if msg_id >= 0x80:
             if is_server:
                 name = ENTITY_CLIENT_METHODS.get(msg_id)
@@ -414,40 +433,37 @@ def parse_messages(body, is_server):
                 name = ENTITY_BASE_METHODS.get(msg_id)
             if name is None:
                 name = f"entity_method_{msg_id:#04x}"
-            if offset + 2 > len(body):
+            length, offset = _read_var_prefix(body, offset, 2)
+            if length is None:
                 yield (msg_id, name, body[offset:])
                 break
-            word_len = struct.unpack('<H', body[offset:offset+2])[0]
-            offset += 2
-            payload = body[offset:offset+word_len]
-            offset += word_len
+            payload = body[offset:offset + length]
+            offset += length
             yield (msg_id, name, payload)
             continue
 
         name = msg_names.get(msg_id, f"msg_{msg_id:#04x}")
 
         if msg_id in msg_format:
-            fmt, length = msg_format[msg_id]
-            if fmt == 'constant':
-                payload = body[offset:offset+length]
-                offset += length
+            style, fixed_len, prefix_width = msg_format[msg_id]
+            if style == 'constant':
+                payload = body[offset:offset + fixed_len]
+                offset += fixed_len
             else:
-                if offset + 2 > len(body):
+                length, offset = _read_var_prefix(body, offset, prefix_width)
+                if length is None:
                     yield (msg_id, name, body[offset:])
                     break
-                word_len = struct.unpack('<H', body[offset:offset+2])[0]
-                offset += 2
-                payload = body[offset:offset+word_len]
-                offset += word_len
+                payload = body[offset:offset + length]
+                offset += length
         else:
-            # Unknown system message — try WORD_LENGTH
-            if offset + 2 > len(body):
+            # Unknown system message — fall back to u16 length prefix
+            length, offset = _read_var_prefix(body, offset, 2)
+            if length is None:
                 yield (msg_id, name, body[offset:])
                 break
-            word_len = struct.unpack('<H', body[offset:offset+2])[0]
-            offset += 2
-            payload = body[offset:offset+word_len]
-            offset += word_len
+            payload = body[offset:offset + length]
+            offset += length
 
         yield (msg_id, name, payload)
 
