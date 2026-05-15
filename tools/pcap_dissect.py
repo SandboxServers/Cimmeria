@@ -226,25 +226,32 @@ SERVER_MSG_FORMAT = {
 }
 
 # Client→Server message formats — sizes from InterfaceElement::add immediate
-# args in static initializer at 0x017bac00. The `size` field is interpreted
-# as a length-prefix width for variable entries (1=u8, 2=u16, 4=u32) and as a
-# fixed payload size for `('constant', N, None)` entries. All client→server
-# variable entries observed on this build use u16 prefixes.
+# args in static initializer at 0x017bac00, validated 2026-05-15 against live
+# memory at 0xFFE3A080..0xFFE3A207 (the heap-allocated InterfaceElement array
+# pointed to by BaseAppExtInterface's slot pointers at 0x01EF24E0+).
+#
+# Wire-framing discriminator confirmed: the `flag` byte at struct offset +0x01
+# determines whether `size` (at +0x04) is a length-prefix width or a fixed
+# payload length:
+#   flag=1 → variable-length, size ∈ {1, 2, 4} is the prefix width (u8/u16/u32)
+#   flag=0 → fixed-length payload of exactly `size` bytes
+# All four variable client→server entries on this build use u16 prefixes
+# (flag=1, size=2); the rest are fixed-length.
 CLIENT_MSG_FORMAT = {
-    0x00: ('var',      None, 2),  # baseAppLogin (variable: pre-channel handshake)
-    0x01: ('var',      None, 2),  # authenticate (variable: auth token)
-    0x02: ('constant', 36,   None),  # avatarUpdateImplicit
-    0x03: ('constant', 40,   None),  # avatarUpdateExplicit
-    0x04: ('constant', 36,   None),  # avatarUpdateWardImplicit (confirmed via Ghidra 0x017BACC2)
-    0x05: ('constant', 40,   None),  # avatarUpdateWardExplicit (confirmed via Ghidra 0x017BACED)
-    0x06: ('constant', 0,    None),  # switchInterface (parameterless trigger)
-    0x07: ('var',      None, 2),  # requestEntityUpdate
-    0x08: ('constant', 8,    None),  # enableEntities (i32 entity_id + flag)
-    0x09: ('constant', 8,    None),  # setSpaceViewportAck
-    0x0A: ('constant', 8,    None),  # setVehicleAck
-    0x0B: ('var',      None, 4),  # restoreClientAck (size=4 in static table → u32 prefix)
-    0x0C: ('constant', 1,    None),  # disconnectClient (1-byte reason)
-    0x0D: ('var',      None, 2),  # entityMessage (entity-method dispatch envelope)
+    0x00: ('var',      None, 2),  # baseAppLogin (flag=1, size=2 — live-validated)
+    0x01: ('var',      None, 2),  # authenticate (flag=1, size=2 — live-validated)
+    0x02: ('constant', 36,   None),  # avatarUpdateImplicit (flag=0, size=0x24)
+    0x03: ('constant', 40,   None),  # avatarUpdateExplicit (flag=0, size=0x28)
+    0x04: ('constant', 36,   None),  # avatarUpdateWardImplicit (flag=0, size=0x24 — live-validated)
+    0x05: ('constant', 40,   None),  # avatarUpdateWardExplicit (flag=0, size=0x28 — live-validated)
+    0x06: ('constant', 0,    None),  # switchInterface (flag=0, size=0 — parameterless)
+    0x07: ('var',      None, 2),  # requestEntityUpdate (flag=1, size=2 — live-validated)
+    0x08: ('constant', 8,    None),  # enableEntities (flag=0, size=8 — i32 entity_id + i32 flag)
+    0x09: ('constant', 8,    None),  # setSpaceViewportAck (flag=0, size=8)
+    0x0A: ('constant', 8,    None),  # setVehicleAck (flag=0, size=8)
+    0x0B: ('constant', 4,    None),  # restoreClientAck (flag=0, size=4 — fixed 4-byte payload, NOT u32 prefix; likely i32 entity_id)
+    0x0C: ('constant', 1,    None),  # disconnectClient (flag=0, size=1 — reason byte)
+    0x0D: ('var',      None, 2),  # entityMessage (flag=1, size=2 — entity-method dispatch envelope)
 }
 
 

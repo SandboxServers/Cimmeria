@@ -1967,28 +1967,45 @@ See the V5 message catalog in `system-protocol-wire-formats.md`[^v5-system-proto
 
 The mirror-image interface for client→server traffic is `BaseAppExtInterface`, a separate `InterfaceElementVec` at `ghidra://SGW.exe@0x01EF24CC`. Its static initializer at `ghidra://SGW.exe@0x017BAC00` registers 14 entries (`msg_id 0x00..0x0D`) by calling `InterfaceElement::add(name, …)` once per slot, with each name string located at `ghidra://SGW.exe@0x019D0880` onward. As with `ClientInterface`, slots `0x80..0xFE` are reserved for dynamically-registered EntityMethod dispatch (the symmetric mirror of the server-side entity-method system); slots `0x0E..0x7F` are unused.
 
-**All 14 entries below have their `size` field extracted directly from the static initializer's `PUSH <imm>` immediates** — there is no inference; each value comes from the exact instruction at `0x017BAC60..0x017BAF20` that pushes the size arg before the `CALL <add()>`. The size field's semantic varies by value:
+**All 14 entries below have their `msg_id`, `flag`, `size`, and `name_ptr` fields validated against live process memory on 2026-05-15** — the static-initializer `PUSH <imm>` immediates at `0x017BAC60..0x017BAF20` and the corresponding `InterfaceElement` structs allocated at `0xFFE3A080..0xFFE3A207` (14 contiguous 28-byte structs pointed to by the slot array at `0x01EF24E0..0x01EF2517` and walked while the live client was at the login screen) agree byte-for-byte.
 
-- **`size ∈ {1, 2, 4}`** → **length-prefix width** in bytes (u8, u16, u32 respectively). The on-wire message starts with this many bytes of length, followed by a variable body.
-- **`size > 4`** → **fixed-length payload** in bytes. The on-wire message has exactly this many bytes after the msg_id byte. No length prefix.
-- **`size = 0`** → parameterless trigger (no body at all after the msg_id byte).
+The `InterfaceElement` struct (28 bytes) lays out as:
 
-| msg_id | Name | `size` field | Wire framing | Notes |
-|---|---|---|---|---|
-| `0x00` | `baseAppLogin` | 2 | u16 length-prefix + variable body | Pre-channel handshake; observed body carries a 20-char session token + flags + crypto material |
-| `0x01` | `authenticate` | 2 | u16 length-prefix + variable body | Per-tick heartbeat in established sessions; observed body = 21 bytes |
-| `0x02` | `avatarUpdateImplicit` | 36 | Fixed 36-byte payload | Player-driven implicit position update |
-| `0x03` | `avatarUpdateExplicit` | 40 | Fixed 40-byte payload | Player-driven explicit position update (pcap-validated: every gameplay packet, 40B on wire) |
-| `0x04` | `avatarUpdateWardImplicit` | 36 | Fixed 36-byte payload | Ward-entity (player-controlled) implicit update — confirmed from `PUSH 0x24` immediate at `0x017BACC2` in the static initializer |
-| `0x05` | `avatarUpdateWardExplicit` | 40 | Fixed 40-byte payload | Ward-entity explicit update — confirmed from `PUSH 0x28` immediate at `0x017BACED` in the static initializer |
-| `0x06` | `switchInterface` | 0 | No body | Parameterless trigger |
-| `0x07` | `requestEntityUpdate` | 2 | u16 length-prefix + variable body | Client polls server for missed/stale entity state |
-| `0x08` | `enableEntities` | 8 | Fixed 8-byte payload | `i32 entity_id` + `i32 flag` (pcap-validated) |
-| `0x09` | `setSpaceViewportAck` | 8 | Fixed 8-byte payload | Ack for the matching server-side `setSpaceViewport` |
-| `0x0A` | `setVehicleAck` | 8 | Fixed 8-byte payload | Ack for the matching server-side `setVehicle` |
-| `0x0B` | `restoreClientAck` | 4 | u32 length-prefix + variable body | Ack for the matching server-side `restoreClient` (§2.7 R/SHOULD). Note: 4-byte (not 2-byte) prefix — observed in `PUSH 4` immediate. |
-| `0x0C` | `disconnectClient` | 1 | Fixed 1-byte payload | 1-byte reason code (graceful disconnect) |
-| `0x0D` | `entityMessage` | 2 | u16 length-prefix + variable body | The generic client-side entity-message sentinel; msg_ids `0x80..0xFE` share this handler and dispatch by slot index |
+```text
++0x00  uint8   msg_id           // 0x00..0x0D for the 14 static entries
++0x01  uint8   flag             // ★ WIRE-FRAMING DISCRIMINATOR
++0x02  uint16  pad              // 0xFFFF
++0x04  int32   size             // semantic depends on flag (see below)
++0x08  char*   name_ptr         // → 0x019D0880+ name table
++0x0C  void*   handler_ptr      // 0 in static init; filled by later registration
++0x10  int32   _reserved        // 0
++0x14  int32   inited           // 1 after add() returns
++0x18  int32   rate_budget      // 0x4C4B40 (5M) on slot[0]; 0xFFFFFFFF elsewhere
+```
+
+**The `flag` byte at +0x01 is the wire-framing discriminator** (live-validated 2026-05-15):
+
+- **`flag = 1`** → variable-length message. `size` is the **length-prefix width** in bytes (u8 / u16 / u32 — though all four `flag=1` entries on this build use `size=2` → u16 prefix). The on-wire message is `[msg_id byte][size bytes of length][variable body of that length]`.
+- **`flag = 0`** → fixed-length message. `size` is the **exact payload byte count** after the `msg_id` byte. `size=0` means a parameterless trigger (no body at all).
+
+This is BigWorld's classic `InterfaceElement` two-mode encoding. **The `flag` byte — not the `size` value alone — selects the mode**; a `size=4` entry can be either "u32 length prefix" or "fixed 4-byte payload" depending on `flag`, and only inspecting `flag` resolves the ambiguity. On this build, the discriminator is consistent: the four `flag=1` entries (`baseAppLogin`, `authenticate`, `requestEntityUpdate`, `entityMessage`) are all variable-length with u16 prefixes; the other ten are fixed-length.
+
+| msg_id | Name | `flag` | `size` | Wire framing | Notes |
+|---|---|---|---|---|---|
+| `0x00` | `baseAppLogin` | 1 | 2 | u16 length-prefix + variable body | Pre-channel handshake; observed body carries a 20-char session token + flags + crypto material |
+| `0x01` | `authenticate` | 1 | 2 | u16 length-prefix + variable body | Per-tick heartbeat in established sessions; observed body = 21 bytes |
+| `0x02` | `avatarUpdateImplicit` | 0 | 36 | Fixed 36-byte payload | Player-driven implicit position update |
+| `0x03` | `avatarUpdateExplicit` | 0 | 40 | Fixed 40-byte payload | Player-driven explicit position update (pcap-validated: every gameplay packet, 40B on wire) |
+| `0x04` | `avatarUpdateWardImplicit` | 0 | 36 | Fixed 36-byte payload | Ward-entity (player-controlled) implicit update — confirmed from `PUSH 0x24` immediate at `0x017BACC2` and from live struct at `0xFFE3A0F0` |
+| `0x05` | `avatarUpdateWardExplicit` | 0 | 40 | Fixed 40-byte payload | Ward-entity explicit update — confirmed from `PUSH 0x28` immediate at `0x017BACED` and from live struct at `0xFFE3A10C` |
+| `0x06` | `switchInterface` | 0 | 0 | No body | Parameterless trigger |
+| `0x07` | `requestEntityUpdate` | 1 | 2 | u16 length-prefix + variable body | Client polls server for missed/stale entity state |
+| `0x08` | `enableEntities` | 0 | 8 | Fixed 8-byte payload | `i32 entity_id` + `i32 flag` (pcap-validated) |
+| `0x09` | `setSpaceViewportAck` | 0 | 8 | Fixed 8-byte payload | Ack for the matching server-side `setSpaceViewport` |
+| `0x0A` | `setVehicleAck` | 0 | 8 | Fixed 8-byte payload | Ack for the matching server-side `setVehicle` |
+| `0x0B` | `restoreClientAck` | 0 | 4 | Fixed 4-byte payload | Ack for the matching server-side `restoreClient` (§2.7 R/SHOULD). `flag=0`, so the 4 is a fixed payload size (likely the i32 entity_id being acked) — **not** a u32 length prefix. Live-validated at `0xFFE3A1B4`. |
+| `0x0C` | `disconnectClient` | 0 | 1 | Fixed 1-byte payload | 1-byte reason code (graceful disconnect) |
+| `0x0D` | `entityMessage` | 1 | 2 | u16 length-prefix + variable body | The generic client-side entity-message sentinel; msg_ids `0x80..0xFE` share this handler and dispatch by slot index |
 
 **Asymmetry between the two interfaces**: server→client has 57 static entries because the server has more to tell the client (entity create/update, world state, spatial info, position broadcasts); client→server has 14 entries because the client mostly only needs to authenticate, push its own avatar position, ack server messages, and request specific updates. The dynamic entity-method slot range (`0x80..0xFE`, 127 slots) is **symmetric** — entity methods are first-class on both sides.
 

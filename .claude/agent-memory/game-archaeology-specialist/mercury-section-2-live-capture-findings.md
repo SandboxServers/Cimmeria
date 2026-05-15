@@ -262,29 +262,52 @@ Source: `BWNetDriver::ClientInterface` registered at compile time, addressed by 
 ```c
 struct InterfaceElement {       // 0x1C bytes
     uint8_t  msg_id;            // +0x00
-    uint8_t  flag;              // +0x01 (varies 0x00 / 0x01 — semantics TBD)
+    uint8_t  flag;              // +0x01  WIRE-FRAMING DISCRIMINATOR
+                                //         (1 = variable, size is prefix width;
+                                //          0 = fixed, size is exact payload length)
     uint16_t pad;               // +0x02 (always 0xFFFF)
-    int32_t  fixed_size;        // +0x04 (semantic varies by value, see note below)
-    char*    name_ptr;          // +0x08 (into packed string table at 0x01A509A8)
+    int32_t  size;              // +0x04 (semantic gated by `flag` — see callout)
+    char*    name_ptr;          // +0x08 (into packed string table; client→server table at 0x019D0880)
     void*    handler_ptr;       // +0x0C (into handler array at 0x01ED1CC0+8*msg_id)
-    int32_t  unk1;              // +0x10 (varies 0..2)
-    int32_t  unk2;              // +0x14 (typically 1)
-    int32_t  sentinel;          // +0x18 (always -1 = 0xFFFFFFFF)
+    int32_t  _reserved;         // +0x10 (always 0 in client→server live capture)
+    int32_t  inited;            // +0x14 (1 after add() returns)
+    int32_t  rate_budget;       // +0x18 (0x4C4B40 on slot[0], 0xFFFFFFFF elsewhere)
 };
 ```
 
-**`fixed_size` field semantics (refined 2026-05-15 via static initializer at `0x017BAC60`)**:
+**`InterfaceElement` wire-framing discriminator (CONFIRMED 2026-05-15 via live memory read at `0xFFE3A080..0xFFE3A207`)**:
 
-The semantic of the `size` field varies; the discriminator is **either** the adjacent `flag` byte at `+0x01` **or** the value itself depending on its magnitude.
+Live x32dbg read of the 14 heap-allocated `InterfaceElement` structs pointed to by `BaseAppExtInterface` (slot array at `0x01EF24E0+`, slot[0] = `0xFFE3A080`, each struct 28 bytes, 14 structs spaced `0x1C` apart) confirms the prior hypothesis: **the `flag` byte at struct offset `+0x01` is the wire-framing discriminator**, not the `size` value.
 
-- **Hypothesis (under verification)**: for client→server entries, observed values are:
-  - `size = 0` → parameterless trigger (`switchInterface`, msg_id 0x06)
-  - `size ∈ {1, 2, 4}` → **length-prefix width** in bytes when the message is variable-length (e.g. `baseAppLogin` size=2, `restoreClientAck` size=4)
-  - `size > 4` → **fixed-length payload** in bytes (e.g. `avatarUpdateExplicit` size=40, `enableEntities` size=8)
-- **But**: some server→client entries with `size ∈ {1, 2, 4}` are clearly fixed-length payloads (e.g. `loggedOff` size=1 carries one reason byte; `bandwidthNotification` size=4 carries one i32). The current chapter R-row text marks these as `CONSTANT_LENGTH`.
-- **Resolution**: the `flag` byte at struct offset `+0x01` is the likely discriminator (`flag=1` → variable / prefix-width interpretation; `flag=0` → fixed-length payload). This matches BigWorld's stock `InterfaceElement` two-mode design. **Cross-verification across the 57+14 entries is open**; for the client→server table the prefix-width interpretation is supported by pcap-observed body sizes far exceeding the `size` value (e.g. `authenticate` size=2 with 21-byte observed body).
+- **`flag = 1`** → variable-length. `size` (at +0x04) is the length-prefix width (u8 / u16 / u32 — all four `flag=1` entries on this build use `size=2` → u16 prefix). Live entries with `flag=1`: msg_ids `0x00` (`baseAppLogin`), `0x01` (`authenticate`), `0x07` (`requestEntityUpdate`), `0x0D` (`entityMessage`).
+- **`flag = 0`** → fixed-length. `size` is the exact payload byte count. `size=0` means a parameterless trigger (no body). Ten of the 14 client→server entries have `flag=0`.
 
-The pcap dissector preserves both pieces of information by encoding format tuples as `(style, fixed_len_or_None, prefix_width_or_None)` so framing can be driven by either interpretation.
+**Critical correction**: `restoreClientAck` (msg_id `0x0B`) has `flag=0, size=4` — it is a **fixed 4-byte payload** (likely the i32 entity_id being acked), NOT a u32 length prefix. The earlier "size=4 → u32 prefix" interpretation was wrong; the discriminator is `flag`, not `size`. Pre-validation drafts of the chapter §2.5.1 row and `tools/pcap_dissect.py` recorded `restoreClientAck` as a u32-prefix variable-length entry. Both were corrected after the live read; the dissector now encodes it as `('constant', 4, None)`.
+
+Full 14-entry table (live-validated, struct addresses from live memory walk):
+
+| msg_id | Name | `flag` | `size` | Struct addr | Wire framing |
+|---|---|---|---|---|---|
+| `0x00` | baseAppLogin | 1 | 2 | `0xFFE3A080` | u16 prefix + body |
+| `0x01` | authenticate | 1 | 2 | `0xFFE3A09C` | u16 prefix + body |
+| `0x02` | avatarUpdateImplicit | 0 | 36 | `0xFFE3A0B8` | fixed 36B |
+| `0x03` | avatarUpdateExplicit | 0 | 40 | `0xFFE3A0D4` | fixed 40B |
+| `0x04` | avatarUpdateWardImplicit | 0 | 36 | `0xFFE3A0F0` | fixed 36B |
+| `0x05` | avatarUpdateWardExplicit | 0 | 40 | `0xFFE3A10C` | fixed 40B |
+| `0x06` | switchInterface | 0 | 0 | `0xFFE3A128` | no body |
+| `0x07` | requestEntityUpdate | 1 | 2 | `0xFFE3A144` | u16 prefix + body |
+| `0x08` | enableEntities | 0 | 8 | `0xFFE3A160` | fixed 8B |
+| `0x09` | setSpaceViewportAck | 0 | 8 | `0xFFE3A17C` | fixed 8B |
+| `0x0A` | setVehicleAck | 0 | 8 | `0xFFE3A198` | fixed 8B |
+| `0x0B` | restoreClientAck | 0 | 4 | `0xFFE3A1B4` | **fixed 4B** (was wrong in earlier draft) |
+| `0x0C` | disconnectClient | 0 | 1 | `0xFFE3A1D0` | fixed 1B (reason) |
+| `0x0D` | entityMessage | 1 | 2 | `0xFFE3A1EC` | u16 prefix + body |
+
+Slot array null-terminates at `0x01EF2518` (the 15th slot is `0x00000000`). The structs themselves occupy a 392-byte contiguous block (`14 × 28`) starting at `0xFFE3A080` — SGW.exe is `/LARGEADDRESSAWARE`, which explains the high addresses.
+
+**Curiosity**: `slot[0]` (`baseAppLogin`) has `0x4C4B40` (5,000,000) at struct offset `+0x18`, while `slot[1..13]` all have `0xFFFFFFFF` there. The static-init disassembly shows every `add()` call is preceded by `PUSH 0x4C4B40` — so the value is pushed for every entry, but a later code path overwrites the field on slots 1-13. Either a per-slot post-init pass touched slots 1-13 but skipped slot 0, or the +0x18 field is a "rate budget" that only `baseAppLogin` retains because it is the first message sent on a fresh connection and is never re-rate-limited. Not load-bearing for the spec; flagged here for future RE.
+
+The pcap dissector encodes format tuples as `(style, fixed_len_or_None, prefix_width_or_None)` so both interpretations can be expressed; with the live validation, all current entries dispatch on the `flag` byte deterministically.
 
 **Complete static msg_id table**:
 
