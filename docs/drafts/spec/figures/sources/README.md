@@ -30,27 +30,6 @@ CSS, strips graphviz's intrinsic white-fill polygon, and overrides svgbob's
 The injector is idempotent via the `<!-- cimmeria-bg-injected -->` marker, so
 it's safe to run across the whole `../` directory.
 
-## Known issues to fix on next authoring pass
-
-- **mercury-07-flags-register** — bit assignments for bits 5/6/7 do not match the
-  chapter's canonical §1.2 table. Bit 5 should be `FLAG_HAS_SEQUENCE_NUMBER`,
-  bit 6 `FLAG_HAS_REQUESTS`, bit 7 `FLAG_IS_FRAGMENT`. `INDEXED` (`0x80`) does
-  not exist in SGW and should be removed entirely.
-- **mercury-25-ack-list-tail-encoding** — `ackCount` 1-cell span is too narrow
-  for `ackCount : u8` label, which overlaps the adjacent "end of datagram"
-  cell. Widen `ackCount` to 2 cells and reduce one of the neighbors.
-- **mercury-12-encryption-pipeline** — subgraph titles wrap onto two lines and
-  collide with the cluster border. Shorten to single-line, e.g.
-  `"ENCRYPT — MercuryEncryption::encrypt"`. Add Mermaid init directive
-  `%%{init: {"flowchart": {"htmlLabels": false}}}%%` so labels render as
-  native SVG text (foreignObject is dropped by markdown viewers loading SVG
-  via `<img>`).
-- **mercury-13-codec-encode-decode** — same `htmlLabels: false` fix.
-- **mercury-15-message-dispatch-routing** — same `htmlLabels: false` fix
-  (decision diamonds render empty without it).
-- **mercury-19-resource-fragment-paths** — same `htmlLabels: false` fix
-  (diamond `\n` line breaks collapse to spaces without it).
-
 ## Why these files exist
 
 The Prixmaviz remote is the convenient authoring surface but it is not a source
