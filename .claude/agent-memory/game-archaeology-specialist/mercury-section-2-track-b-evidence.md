@@ -283,32 +283,50 @@ Key entries for Mercury chapter:
 
 ---
 
-## Investigation 5 — protocol_digest Computation Chain
+## Investigation 5 — `logOnBegin` digest pipeline (CORRECTED 2026-05-15)
 
-### Finding 5.1 — Full computation pipeline confirmed
+> ⚠️ **CORRECTION**: An earlier version of this investigation asserted that `logOnBegin`'s internal `HexEncoder` pipeline produces the wire `protocol_digest` and stores it at `this+0x130`. **That conflated two distinct hashes.** Investigation 6 (later same session) plus the AteraLoader session log (literal `"protocol_digest: 58AFA196AD3AC4F65CADD99BFF23B799"`) corrected the model:
+>
+> - The **wire `protocol_digest`** is **MD5 (32 chars)**, sourced from the CME `Event_Net_GetProtocolDigest` event listener (raised by `SGWNetworkManager` at `0x00c6e3a0` upstream of `logOnBegin`) and passed as `param_4` to `logOnBegin`. It is embedded in the SOAP body as `sgwLogin:ProtocolDigest`.
+> - The **40-char SHA-1 stored at `this+0x130`** is the **internal dispatch-table commitment**, computed by the CryptoPP `HexEncoder` pipeline INSIDE `logOnBegin` (after `PopulateMessageTypeTable` runs). It is **NOT sent on the wire**.
+>
+> Both hashes are uppercase hex output from CryptoPP, and both code paths live inside `logOnBegin`, which is why earlier passes conflated them. The breakthrough was the AteraLoader log capturing the 32-char wire value verbatim.
+
+### Finding 5.1 — Internal dispatch-table hash pipeline
 
 **Location**: `FUN_00ddf580` (`logOnBegin`) at `0x00ddf580`; `PopulateMessageTypeTable` at `0x00dd63d0`; `ConstructHexEncoder` at `0x00de41a0`
 
-**Evidence chain**:
+**Evidence chain** (produces the **internal** SHA-1 at `this+0x130`, NOT the wire MD5):
+
 1. `logOnBegin` checks `*(int *)(this + 0x30c) == 0` (connection-state gate; must be zero = not yet connected)
-2. Calls `PopulateMessageTypeTable(this, this+400, ...)` — builds InterfaceElement dispatch table in `this+400`
+2. Calls `PopulateMessageTypeTable(this, this+400, ...)` — builds InterfaceElement dispatch table in `this+0x190`
 3. `PopulateMessageTypeTable` calls `InterfaceElementVec__copyAllTo(&DAT_01ef2518, pThis)` then loops `0x80..0xFE` registering entity handlers
 4. Creates `CryptoPP::StringSinkTemplate` to receive hex output (`local_ac`)
-5. Calls `ConstructHexEncoder(local_f4, pThis, 1, 0, ...)` — CryptoPP HexEncoder over the populated table
+5. Calls `ConstructHexEncoder(local_f4, pThis, 1, 0, ...)` — CryptoPP HexEncoder configured with `Uppercase=true`
 6. Executes encoder via vtable `(**(code **)(*piVar3 + 0x2c))()`
-7. Stores result via `std::basic_string::operator=` at `this+0x130` = `protocol_digest` field
-8. Calls `SetupSGWLoginRequestCurlSession` with the digest as a SOAP body parameter
+7. Stores result via `std::basic_string::operator=` at `this+0x130` — **this is the internal `dispatch_table_digest` field**, NOT the wire `protocol_digest`
+8. Calls `SetupSGWLoginRequestCurlSession` — **passes `param_4` (the MD5 wire digest from upstream)**, NOT `this+0x130`, as the SOAP body's `sgwLogin:ProtocolDigest` field
 
 **ConstructHexEncoder details** (`0x00de41a0`): allocates `BaseN_Encoder` (0x3c bytes) + `Grouper` (0x38 bytes), stamps `CryptoPP::HexEncoder::vftable`, sets Uppercase=true.
 
-**Mismatch behavior**: The server validates the digest in the SOAP reply. On mismatch, the server returns `LoginMessage_LoginBadProtocolVersion` or `LoginMessage_LoginRejectedBadDigest`. The client receives this as a SOAP response and surfaces it via the `LoginMessage` enum — no Mercury connection has been established at this point. There is NO Mercury-layer protocol version handshake. The client does not attempt reconnect after a bad-digest SOAP rejection.
+### Finding 5.2 — Wire `protocol_digest` (MD5) provenance
 
-**Second branch** (`*(int *)(this + 0x30c) != 0`): calls `ConstructLoginReplyHandlerMinimal` instead — handles the reconnect / already-in-progress case.
+The wire `protocol_digest` arrives in `logOnBegin` as `param_4` from the caller `SGWNetworkManager` at `ghidra://SGW.exe@0x00c6e3a0`. That caller asserts `"digestEvent.isHandled"` from `.\Src\SGWNetworkManager.cpp:0x21f`, confirming the digest is produced by a CME `Event_Net_GetProtocolDigest` event listener (RTTI at `0x01df15dc`). The listener itself (which performs the MD5 computation over the entity-defs) was not directly decompiled in this pass — see Section 2 §2.4 R16 follow-up for that gap.
 
-**`Event_Net_GetProtocolDigest`** (`0x01df15dc`): The digest is also surfaced via the CME event system, allowing game code to query the current digest value without going through `logOnBegin` directly.
+### Mismatch behavior
 
-**Closes**: Investigation 5 (protocol_digest computation)
-**Suggested-footnote-slug**: `fn-i5-digest-is-soup-only`
+The server validates the digest in the SOAP reply. On mismatch, the server returns `LoginMessage_LoginBadProtocolVersion` (`0x019ab2b0`) or `LoginMessage_LoginRejectedBadDigest` (`0x019ab408`). The client receives this as a SOAP response and surfaces it via the `LoginMessage` enum — no Mercury connection has been established at this point. There is NO Mercury-layer protocol version handshake. The client does not attempt reconnect after a bad-digest SOAP rejection.
+
+### Second branch
+
+`*(int *)(this + 0x30c) != 0`: calls `ConstructLoginReplyHandlerMinimal` instead — handles the reconnect / already-in-progress case.
+
+### `Event_Net_GetProtocolDigest` (`0x01df15dc`)
+
+The CME event used by `SGWNetworkManager` to obtain the wire MD5 digest from a listener. Game-layer code can also query the current digest via the same event without going through `logOnBegin` directly. **The listener that produces the digest** (server-side of the event bus) is the location of the actual MD5 computation; finding it is open work tracked in Section 2 §2.4 R16.
+
+**Closes**: Investigation 5 (corrected, two-hash model)
+**Suggested-footnote-slug**: `fn-i5-two-digest-pipeline`
 
 ---
 

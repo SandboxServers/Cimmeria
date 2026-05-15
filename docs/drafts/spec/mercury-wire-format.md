@@ -2090,18 +2090,18 @@ Section 1 §1.15 maps each load-bearing Section 1 claim to its primary V5 source
 
 **§2.4 R1–R10 (originally enumerated REQUIRED rows):**
 
-| Claim | Evidence type | Citation |
-|---|---|---|
-| Flags byte at offset 0 | Section 1 footnote | §1.2[^flags-decoder] |
-| Footer fields little-endian | Section 1 footnote | §1.3[^v5-mercury-internals] |
-| `FLAG_HAS_ACKS` requires ≥1 ack | Section 1 footnote | §1.3.1[^flags-decoder] |
-| Sequence number required for reliable packets | Section 1 footnote | §1.5[^flags-decoder] |
-| AES session key must match SOAP-delivered key | Section 1 footnote | §1.4[^authenticate-handler] |
-| HMAC-MD5 must verify | Section 1 footnote | §1.4[^packet-encrypter-recv] |
-| Channel must be registered for indexed-channel packets | Section 1 footnote | §1.6[^flags-decoder] |
-| `resetEntities` must be its own bundle | Section 1 footnote | §1.9[^purge-rebuild-handler] |
-| Outstanding reliable packets ≤ 32 per channel | Section 1 footnote | §1.7[^ack-bitmap] |
-| 15-second UE3 inactivity timeout | INI file + Ghidra anchor | `GameplayEngine.ini` + `[^net-inactivity-timeout]` |
+| R-tag | Claim | Evidence type | Citation |
+|---|---|---|---|
+| **R1** | Flags byte at offset 0 | Section 1 footnote | §1.2[^flags-decoder] |
+| **R2** | Footer fields little-endian | Section 1 footnote | §1.3[^v5-mercury-internals] |
+| **R3** | `FLAG_HAS_ACKS` requires ≥1 ack | Section 1 footnote | §1.3.1[^flags-decoder] |
+| **R4** | Sequence number required for reliable packets | Section 1 footnote | §1.5[^flags-decoder] |
+| **R5** | AES session key must match SOAP-delivered key | Section 1 footnote | §1.4[^authenticate-handler] |
+| **R6** | HMAC-MD5 must verify | Section 1 footnote | §1.4[^packet-encrypter-recv] |
+| **R7** | Channel must be registered for indexed-channel packets | Section 1 footnote | §1.6[^flags-decoder] |
+| **R8** | `resetEntities` must be its own bundle | Section 1 footnote | §1.9[^purge-rebuild-handler] |
+| **R9** | Outstanding reliable packets ≤ 32 per channel | Section 1 footnote | §1.7[^ack-bitmap] |
+| **R10** | 15-second UE3 inactivity timeout | INI file + Ghidra anchor | `GameplayEngine.ini` + `[^net-inactivity-timeout]` |
 
 **§2.4 R11–R16 (Track B client-observable behavior):**
 
@@ -2111,7 +2111,7 @@ Section 1 §1.15 maps each load-bearing Section 1 claim to its primary V5 source
 | R12 — Four out-of-order sequence behaviors | Ghidra anchor | `ghidra://SGW.exe@0x0158cba0`[^unacked-queue-ack] + 5 log strings at `0x01b19e78`–`0x01b1a040` |
 | R12 — Out-of-order buffering confirmed in live pcap | Live capture | `binaries/sessions/2026-05-15_14-04.log` — `"Buffering packet #24 above #21"` and similar at multiple seq IDs throughout the session |
 | R13 — Fragment abandonment is arrival-triggered, no 30s sweep | Ghidra anchor | `ghidra://SGW.exe@0x01b18868` (stale-overlapping log) + `0x01b1a090` (channel teardown log); negative finding via search of Nub tick path |
-| R14 — Lifetime cap 20, per-tick budget 5.0f | Ghidra anchor + Section 1 footnote | `ghidra://SGW.exe@0x01e91e00` (per-tick budget) + `0x0158c420`[^unacked-check-resend-timers] (use site) + abort-instruction at `0x0158c57c` (`JNZ 0x0158c57c` after `processIncomingPacketEntry` returns non-zero reason; the abort path runs `LookupDisconnectReasonName` + logger and returns the reason code) + `[^v5-mercury-internals]` (lifetime cap = 20 inherited from stock BW) |
+| R14 — Lifetime cap 20, per-tick budget 5.0f | Ghidra anchor + Section 1 footnote | **Lifetime-cap decision site**: `ghidra://SGW.exe@0x0158be30` (`ChannelInternal::processIncomingPacketEntry` — the `>20` retry-count check returns a non-zero disconnect reason when exhausted). **Abort branch in caller**: `ghidra://SGW.exe@0x0158c57c` (the `JNZ` target inside `UnAckedHandler::checkResendTimers` at `0x0158c420`[^unacked-check-resend-timers] after `processIncomingPacketEntry` returns non-zero; runs `LookupDisconnectReasonName` + logger and returns the reason). **Per-tick work budget (distinct from lifetime cap)**: `ghidra://SGW.exe@0x01e91e00` (the `5.0f` IEEE 754 constant loaded at instructions `0x0158c558` → `0x0158c560` → `0x0158c564`; budget-exceeded jumps to `0x0158c5b9` returning `eax=0` — a normal yield, NOT a disconnect). The 20-as-lifetime-cap value itself is `[^v5-mercury-internals]` (inherited from stock BW 2.0.1). |
 | R15 — No Mercury-layer version handshake | Ghidra anchor | `ghidra://SGW.exe@0x019aaf34`[^login-message-enum] (LoginMessage enum, 31 entries) |
 | R16 — `protocol_digest` wire-side is MD5 (32 hex chars) | Live capture + Ghidra anchor | `binaries/sessions/2026-05-15_14-04.log` line `"protocol_digest: 58AFA196AD3AC4F65CADD99BFF23B799"` + caller at `ghidra://SGW.exe@0x00c6e3a0` (`SGWNetworkManager`, asserts `"digestEvent.isHandled"` from `.\Src\SGWNetworkManager.cpp:0x21f`) + CME `Event_Net_GetProtocolDigest` RTTI at `0x01df15dc`[^event-net-get-protocol-digest] |
 | R16 — `protocol_digest` is sent in SOAP body | Ghidra anchor | `"sgwLogin:ProtocolDigest"` at `0x01b2507c` / `0x01b25384` / `0x01b25ad8` (3 occurrences) |

@@ -367,7 +367,7 @@ Therefore: **server-side entity-defs that produce a matching SHA-1 digest also p
 |---|---|---|---|
 | `+0x000` | `0x01A519D0` | vtable | 3 confirmed virtual methods (`0x00E648F0`, `0x00E583C0`, `0x00E56680`) |
 | `+0x008` | `0xEBD766A0` | hash-table-like ptr | First bucket contains 20-char hex string "BD134C5F9AE86ECC8BA9" — possibly session token / per-cell hash |
-| `+0x130` | basic_string (28B) | **protocol_digest** | SHA-1 hex, captured value above |
+| `+0x130` | basic_string (28B) | **dispatch_table_digest** (internal, NOT the wire `protocol_digest`) | 40-char SHA-1 uppercase hex of the post-PMT dispatch table; computed by the CryptoPP HexEncoder pipeline inside `logOnBegin`, stored via `operator=`, never sent on the wire. The wire `protocol_digest` (MD5, 32 chars) is a separate value supplied by the CME `Event_Net_GetProtocolDigest` event listener and passed as `param_4` to `logOnBegin`. |
 | `+0x190` | sub-object | **dispatch sub-vec** | Holds the 256-slot `InterfaceElementWithStats` array |
 
 A full SC field map (~0x320 bytes) was dumped but not yet annotated; see `0xEEE2C100..0xEEE2C420` snapshot in session transcript for raw bytes.
