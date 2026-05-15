@@ -246,7 +246,7 @@ CLIENT_MSG_FORMAT = {
     0x05: ('constant', 40,   None),  # avatarUpdateWardExplicit (flag=0, size=0x28 — live-validated)
     0x06: ('constant', 0,    None),  # switchInterface (flag=0, size=0 — parameterless)
     0x07: ('var',      None, 2),  # requestEntityUpdate (flag=1, size=2 — live-validated)
-    0x08: ('constant', 8,    None),  # enableEntities (flag=0, size=8 — i32 entity_id + i32 flag)
+    0x08: ('constant', 8,    None),  # enableEntities (flag=0, size=8 — 8 dummy bytes per emitter at 0x00dd928f, NOT i32 entity_id + i32 flag; SGW expansion of BigWorld's 1-byte keepBase, body content undefined)
     0x09: ('constant', 8,    None),  # setSpaceViewportAck (flag=0, size=8)
     0x0A: ('constant', 8,    None),  # setVehicleAck (flag=0, size=8)
     0x0B: ('constant', 4,    None),  # restoreClientAck (flag=0, size=4 — fixed 4-byte payload, NOT u32 prefix; likely i32 entity_id)

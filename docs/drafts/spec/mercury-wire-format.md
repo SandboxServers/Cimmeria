@@ -2076,12 +2076,12 @@ This is BigWorld's classic `InterfaceElement` two-mode encoding. **The `flag` by
 | `0x05` | `avatarUpdateWardExplicit` | 0 | 40 | Fixed 40-byte payload | Ward-entity explicit update — confirmed from `PUSH 0x28` immediate at `0x017BACED` and from live struct at `0xFFE3A10C` |
 | `0x06` | `switchInterface` | 0 | 0 | No body | Parameterless trigger |
 | `0x07` | `requestEntityUpdate` | 1 | 2 | u16 length-prefix + variable body | Client polls server for missed/stale entity state |
-| `0x08` | `enableEntities` | 0 | 8 | Fixed 8-byte payload | `i32 entity_id` + `i32 flag` (pcap-validated) |
+| `0x08` | `enableEntities` | 0 | 8 | Fixed 8-byte payload | **SGW expansion**: 8 dummy bytes (no content written by the emitter). Stock BigWorld uses 1-byte `keepBase`. Body is opaque; the message's presence is the signal. See §2.5.2 for emitter at `0x00dd928f`. |
 | `0x09` | `setSpaceViewportAck` | 0 | 8 | Fixed 8-byte payload | Ack for the matching server-side `setSpaceViewport` |
 | `0x0A` | `setVehicleAck` | 0 | 8 | Fixed 8-byte payload | Ack for the matching server-side `setVehicle` |
-| `0x0B` | `restoreClientAck` | 0 | 4 | Fixed 4-byte payload | Ack for the matching server-side `restoreClient` (§2.7 R/SHOULD). `flag=0`, so the 4 is a fixed payload size (likely the i32 entity_id being acked) — **not** a u32 length prefix. Live-validated at `0xFFE3A1B4`. |
+| `0x0B` | `restoreClientAck` | 0 | 4 | Fixed 4-byte payload | Ack for the matching server-side `restoreClient` (§2.7 R/SHOULD). Live-validated at `0xFFE3A1B4` (`flag=0`, `size=4`). Body is `i32 = 0` (literal constant written by the sole emitter at `0x00dd8bc9`) — **not** an entity_id and **not** a u32 length prefix. See §2.5.2. |
 | `0x0C` | `disconnectClient` | 0 | 1 | Fixed 1-byte payload | 1-byte reason code (graceful disconnect) |
-| `0x0D` | `entityMessage` | 1 | 2 | u16 length-prefix + variable body | The generic client-side entity-message sentinel; msg_ids `0x80..0xFE` share this handler and dispatch by slot index |
+| `0x0D` | `entityMessage` | 1 | 2 | u16 length-prefix + variable body | Envelope only — **the literal byte `0x0D` never appears on the wire**. The two emitters (`startProxyMessage` at `0x00dd69e2` and `startEntityMessage` at `0x00dd6ac2`) morph this slot into a per-method `InterfaceElement` with wire byte `0xC0..0xFE` (base-method) or `0x80..0xBF` (cell-method); see §1.5 and §2.5.2. |
 
 **Asymmetry between the two interfaces**: server→client has 57 static entries because the server has more to tell the client (entity create/update, world state, spatial info, position broadcasts); client→server has 14 entries because the client mostly only needs to authenticate, push its own avatar position, ack server messages, and request specific updates. The dynamic entity-method slot range (`0x80..0xFE`, 127 slots) is **symmetric** — entity methods are first-class on both sides.
 
@@ -2091,32 +2091,174 @@ This is BigWorld's classic `InterfaceElement` two-mode encoding. **The `flag` by
 
 #### 2.5.2 Client→server byte layouts (post-`msg_id`)
 
-This subsection decomposes the bytes *after* the `msg_id` byte for the four client→server messages with concrete evidence — either pcap-captured ground truth or static-analysis of the server-side handler descriptor. The other ten entries' byte layouts are deferred pending direct evidence (handler decompilation on the server side or wider pcap capture of the relevant gameplay moments); they are catalogued at the end of the subsection as "decomposition deferred" so a reimplementation team knows what still needs work and which entries can be implemented from the descriptions below.
+This subsection decomposes the bytes *after* the `msg_id` byte for every client→server entry. Each entry is anchored to a specific emitter function in `SGW.exe` — the function that constructs the wire bytes — at the Ghidra address listed below. Where the emitter writes literal values (`disconnectClient`, `restoreClientAck`, `enableEntities`), the wire content is fully pinned; where the emitter calls a helper that reads from a struct field on the `ServerConnection` object, the *shape* is pinned but per-field semantics are documented to the extent the calling context reveals them.
 
-**`authenticate` (msg `0x01`) — 21-byte body, pcap-captured**. Every per-tick client packet in established sessions carries an `authenticate` message followed by an `avatarUpdateExplicit`. The body decodes as `[u16 length = 19][19 bytes auth token]` — the `length` is the u16 prefix encoded by `flag=1`/`size=2`, and the 19-byte token is a refreshed per-tick re-authentication payload sourced from the same auth material the SOAP login established at session start. The token is rotated each tick (different bytes per packet, captured over a 1-minute pcap window), so a reimplementation that records and replays a single token will be rejected on the next tick. The exact token-derivation algorithm has not been pinned by static analysis in this pass; the constraint is "the server must be able to verify the token belongs to this session" — most plausibly an HMAC or rolling-counter scheme keyed on the SOAP-delivered session key, but the V1 server-side verification path lives outside this chapter's scope. **For a Cimmeria reimplementation**, the server must accept this 21-byte body on every tick, decode the 19-byte token from offset +2, and validate against the session record — silence (no `authenticate` validation) would leave the connection vulnerable to session hijack via packet replay.
+**A note on Ghidra-side naming.** Several of the slot-pointer globals in this region (`DAT_01EF24E0..DAT_01EF2514`) have stale auto-generated symbol names (e.g. `g_pAvatarUpdateInterfaceElement` is attached to `DAT_01EF24FC`, which is actually slot 7 = `requestEntityUpdate`, not avatarUpdate). The live name-table read on 2026-05-15 (`0x019D0880` onward) is authoritative — the names below are taken from there, not from the Ghidra symbol annotations.
 
-**`avatarUpdateExplicit` (msg `0x03`) — 40-byte fixed body**. This message dominates client→server gameplay traffic; it is sent at ~13 Hz (~75 ms interval) during normal play and carries the player's authoritative position update. The full 40-byte decomposition has **not** been pinned to per-field offsets by static analysis in this pass; the parts that *are* confirmed are: (a) the message is `CONSTANT_LENGTH` 40 bytes — no length prefix — confirmed by the live `InterfaceElement` struct at `0xFFE3A0D4` (`flag=0`, `size=0x28`); (b) it carries position (x, y, z floats — 12 bytes) and orientation (yaw, pitch, roll — variable encoding per BigWorld convention) per the BigWorld upstream avatarUpdate convention; (c) the 4-byte delta between `avatarUpdateImplicit` (36) and `avatarUpdateExplicit` (40) is most likely an additional integer field (vehicle_id or alias_id), but the exact field is not pinned here. Pcap-captured bytes for several explicit updates show stable patterns at offsets 0–11 (position floats) and a more variable region at offsets 12–39 (orientation + auxiliary fields). **For a Cimmeria reimplementation**, the server must consume exactly 40 bytes after `msg_id 0x03` and reject any other length — but the field-level interpretation can be deferred until handler-side decomp pins the offsets, because the body is opaque to Mercury itself (it is consumed by the entity-system layer above Mercury, which is the correct place to validate semantic correctness).
+##### `baseAppLogin` (slot 0, msg `0x00`, `flag=1`/`size=2`)
 
-**`enableEntities` (msg `0x08`) — 8-byte fixed body: `i32 entity_id` + `i32 flag`**. Confirmed by static analysis (V5 W-enable-entities finding) and validated against pcap dissector behaviour. The 8-byte body is two little-endian 32-bit integers: the first 4 bytes are the entity_id the server is being asked to enable, and the second 4 bytes are a boolean flag (1 = enable, 0 = disable) packed into an i32 for alignment. `flag=0`/`size=8` on the `InterfaceElement` struct at `0xFFE3A160` confirms the fixed length. **For a Cimmeria reimplementation**, the server must consume exactly 8 bytes after `msg_id 0x08` and treat them as `(i32_le entity_id, i32_le flag)`.
+**Emitter**: `BaseAppLoginHandler::BaseAppLoginHandler` at `ghidra://SGW.exe@0x00de4cc0` (the BigWorld base-app login reply-handler constructor).
 
-**`restoreClientAck` (msg `0x0B`) — 4-byte fixed body, almost certainly `i32 entity_id`**. The previous draft of this chapter erroneously classified this as a u32 length-prefix variable-length entry; the live read at `0xFFE3A1B4` (commit `df6ca44`) showed `flag=0`/`size=4` — fixed 4-byte payload, not a u32 prefix. The most likely interpretation is `i32_le entity_id` (matching `setSpaceViewportAck` and `setVehicleAck` which are 8 bytes = `[i32 entity_id, i32 something]`; `restoreClientAck` drops the second field). **For a Cimmeria reimplementation**, the server must consume exactly 4 bytes after `msg_id 0x0B` and treat them as `i32_le entity_id`. The entity_id identifies which restoration the client is acking; the server uses it to dequeue the corresponding pending restoration record.
+The constructor allocates a fresh heap Bundle, calls `Bundle::startMessage_request` against slot 0's `InterfaceElement`, then writes:
 
-**Decomposition deferred** (10 entries pending direct evidence):
+1. A 4-byte field read from `pServerConn+0x5C` (decompiler labels this as `unaff_retaddr` — a decompiler artifact; the actual field on `ServerConnection` at offset `+0x5C` is a context pointer or session-version int whose semantics are not pinned in this pass).
+2. A bundled string written via `ServerConnection_WriteBundleString(pBundle, pServerConn+0x60)`. `WriteBundleString` is the BigWorld packed-string emitter (1-byte length, `0xFF`-escape to 3-byte length — see §1.4 packed-string convention). The string at `pServerConn+0x60` is the SOAP-delivered session token, which the pcap capture observed as the 20-character session-key string.
 
-| msg_id | Name | What's deferred | Best-guess shape (from BigWorld convention / sibling entries) |
-|---|---|---|---|
-| `0x00` | `baseAppLogin` | Field-level decomposition of the u16-prefixed body | u16 length prefix; body carries a 20-char session token + a flags byte + crypto material; pcap-observed body size varies per session |
-| `0x02` | `avatarUpdateImplicit` | 36-byte field layout | Same shape as `0x03` (`avatarUpdateExplicit`) but missing the 4-byte vehicle_id / alias_id field |
-| `0x04` | `avatarUpdateWardImplicit` | 36-byte field layout | Same as `0x02` but for the ward (player-controlled) entity rather than the player avatar |
-| `0x05` | `avatarUpdateWardExplicit` | 40-byte field layout | Same as `0x03` but for the ward entity |
-| `0x06` | `switchInterface` | N/A (parameterless) | No body — `flag=0`/`size=0` confirms |
-| `0x07` | `requestEntityUpdate` | Field-level decomposition of the u16-prefixed body | u16 length prefix; body likely carries `[i32 entity_id]` or `[i32 entity_id, u32 last_known_revision]` — server uses this to push the missing state |
-| `0x09` | `setSpaceViewportAck` | 8-byte field layout | Most plausibly `[i32 entity_id, i32 viewport_id]` |
-| `0x0A` | `setVehicleAck` | 8-byte field layout | Most plausibly `[i32 entity_id, i32 vehicle_id]` |
-| `0x0C` | `disconnectClient` | Reason-code enumeration | 1 byte; reason code namespace is shared with the server→client `loggedOff` (msg `0x37`) but specific values not enumerated here |
-| `0x0D` | `entityMessage` | Per-entity-method body layout | u16 length prefix; body carries `[u8 method_index][marshalled args per the entity-def]` — the entity-method dispatcher consumes the body, not Mercury itself; see Section 1 §1.5 entity-method wire shape |
+**Wire shape**: `[msg_id=0x00][u16 length-prefix][i32 from +0x5C][packed-string session-token]`. Total body size is variable but typically 21–25 bytes including the length prefix.
 
-Each deferred row is a candidate for follow-up RE: handler-side decomp of the server-side message handler (matching the client→server `BaseAppExtInterface` entry by index) would yield the field offsets. None of the deferrals block a Cimmeria reimplementation that consumes the bytes opaquely and passes them upstream for entity-system processing — Mercury itself only needs the *length* to be right, which the `InterfaceElement` table pins exactly.
+##### `authenticate` (slot 1, msg `0x01`, `flag=1`/`size=2`)
+
+**Emitters**: `ServerConnection::send` at `ghidra://SGW.exe@0x00dd89b9` (per-tick keep-alive emitter; this is the function that fires every ~75 ms during gameplay) and `PushAvatarPositionToBundle` at `ghidra://SGW.exe@0x00dd83c9` (helper that writes the same authenticate message into a caller-provided bundle).
+
+Both emitters do exactly two things after `Bundle::startMessage(slot_1)`:
+
+1. Call `ServerConnection_WriteBundleString(pBundle, pServerConn+4)` — write a packed string from `ServerConnection+0x04`. That field holds the rolling per-tick auth token established by the SOAP login and rotated each tick by the client.
+
+**Wire shape**: `[msg_id=0x01][u16 length-prefix][packed-string auth-token]`. The pcap-observed 21-byte body decomposes as `[u16 = 19][19 bytes packed-string]`.
+
+A reimplementation server **must verify the token belongs to the active session** on every tick (the token rotation is what defeats a replay attack); silence (accepting any token) leaves the connection open to session hijack via packet replay. The token-derivation algorithm (how the client rolls each tick's token from the SOAP-delivered session material) was not pinned by static analysis in this pass; that decomp work falls outside the Mercury chapter and belongs in the auth/SOAP chapter.
+
+##### `avatarUpdateImplicit` (slot 2, msg `0x02`, `flag=0`/`size=36`)
+
+**Emitter (reservation helper)**: `ServerConnection::startMessage_1` at `ghidra://SGW.exe@0x00de2a90`. The function calls `Bundle::startMessage(slot_2)` and reserves 36 bytes in the bundle write buffer; the **caller** fills those 36 bytes. The Mercury-layer contract is "exactly 36 bytes follow `msg_id 0x02`".
+
+**Per-field byte layout**: The 36-byte body carries the player's avatar position, velocity (for prediction), and orientation per the BigWorld `avatarUpdate` convention. **The exact field offsets are not pinned in this chapter** — the callers of `startMessage_1` (the gameplay code paths that emit per-tick avatar updates) are documented separately in [`position-updates.md`](position-updates.md), which is the canonical reference for the avatarUpdate family's per-field bit-packed layouts. The Mercury chapter cites the emitter and the 36-byte length; per-field semantics belong in the position-updates chapter.
+
+##### `avatarUpdateExplicit` (slot 3, msg `0x03`, `flag=0`/`size=40`)
+
+**Emitter (reservation helper)**: `ServerConnection::startMessage_2` at `ghidra://SGW.exe@0x00de2ae0`. Same reservation pattern as slot 2 but reserves 40 bytes. This is the dominant client→server gameplay message — pcap-validated to be sent every ~75 ms during normal play, paired with each tick's `authenticate`.
+
+**Per-field byte layout**: 40 bytes — position + orientation + auxiliary fields per the BigWorld `avatarUpdate` convention. The 4-byte delta over `avatarUpdateImplicit` (36) is an additional auxiliary field (vehicle_id or alias_id is the most plausible interpretation from BigWorld convention; the exact semantic falls in [`position-updates.md`](position-updates.md) scope).
+
+##### `avatarUpdateWardImplicit` (slot 4, msg `0x04`, `flag=0`/`size=36`)
+
+**Emitter (reservation helper)**: `ServerConnection::startMessage_3` at `ghidra://SGW.exe@0x00de2b30`. Identical reservation pattern; 36 bytes for a ward-entity (a non-player entity that the player controls — e.g. an NPC pet whose movement the player is driving). The body shape is the same as `avatarUpdateImplicit` but for a ward entity rather than the player's own avatar. Field-level layout: see [`position-updates.md`](position-updates.md).
+
+##### `avatarUpdateWardExplicit` (slot 5, msg `0x05`, `flag=0`/`size=40`)
+
+**Emitter (reservation helper)**: `ServerConnection::startMessage_4` at `ghidra://SGW.exe@0x00de2b80`. 40 bytes for a ward-entity explicit update. Field-level layout: see [`position-updates.md`](position-updates.md).
+
+##### `switchInterface` (slot 6, msg `0x06`, `flag=0`/`size=0`) — **DEAD CODE: registered but never emitted**
+
+**Emitter**: *none*. The Ghidra cross-reference scan finds **zero read xrefs** to slot 6's pointer at `0x01EF24F8` — only the write at `0x017BADA2` from the static initializer. No code path in `SGW.exe` calls `Bundle::startMessage(slot_6)`.
+
+The entry exists in the `BaseAppExtInterface` table (presumably inherited from the upstream BigWorld baseapp interface definition) but is unused by the live SGW client. A reimplementation server **does not need to handle wire byte `0x06`** because the client never sends it. If a future patch or a different client build activated `switchInterface`, the wire form is `[msg_id=0x06]` followed by zero body bytes (the `size=0` `InterfaceElement` reserves no body).
+
+This is an S-row-shaped finding: dead-on-arrival on this build, but the descriptor exists, so a reimplementation that explicitly rejects msg_id 0x06 would fail closed for any future client that does emit it. The safe contract is "accept zero body bytes after msg_id 0x06; take no action".
+
+##### `requestEntityUpdate` (slot 7, msg `0x07`, `flag=1`/`size=2`)
+
+**Emitter**: `ServerConnection::sendAvatarUpdates` at `ghidra://SGW.exe@0x00dd80d3` — **misnamed by Ghidra's auto-annotation pass** (the function emits `requestEntityUpdate`, not avatarUpdate; the slot's data symbol `g_pAvatarUpdateInterfaceElement` is similarly mis-attached to slot 7's pointer at `0x01EF24FC`).
+
+The function:
+
+1. Calls `Bundle::startMessage(slot_7)` (u16-prefixed message).
+2. Reserves 4 bytes for an initial field (decompiler shows `*puVar2 = unaff_retaddr` — artifact; the field is a count-or-header dword whose semantic is not pinned in this pass).
+3. Iterates a list at `pUpdateList+0x04..pUpdateList+0x08` and writes 4 bytes per entry into the bundle.
+
+**Wire shape (provisional)**: `[msg_id=0x07][u16 length-prefix][u32 header][N × u32 entity_id]` where N is implied by the length prefix. The header dword's semantic (count? flags? both? a u32 last-known-revision base?) is the open question; pinning it requires tracing the caller of `sendAvatarUpdates` to see what `pUpdateList` holds in practice. A reimplementation server can decode the body as "u32 header, then N entity_ids until length is exhausted" — N is recoverable from the length prefix even without the header semantic.
+
+##### `enableEntities` (slot 8, msg `0x08`, `flag=0`/`size=8`) — **SGW expansion: 8 dummy bytes, no content**
+
+**Emitter**: `BroadcastEntityActivation` at `ghidra://SGW.exe@0x00dd928f`. Function comment confirms: stock BigWorld uses a **1-byte `keepBase` u8** payload; SGW expanded the descriptor to 8 bytes (per the live `InterfaceElement` at `0xFFE3A160`'s `size=8`) but **the emitter writes zero bytes to the reserved buffer**. The 8 bytes on the wire are whatever leftover bundle-buffer content happens to be at the write position — undefined, but in practice zeros from a fresh bundle.
+
+The V5 dissector comment claiming `[i32 entity_id, i32 flag]` for this slot is **wrong** — that was an inference from the byte count, not from the emitter. The corrected `tools/pcap_dissect.py` still treats this as 8 fixed bytes (the wire size is right) but the semantic for those 8 bytes is "ignored by the server" — the message's mere presence (msg_id `0x08`) is the signal: "client has finished `enableEntities` boot sequence, server may begin sending entity state".
+
+A reimplementation server must **accept exactly 8 bytes after msg_id 0x08, ignore them, and transition to entity-active state**. Reading the 8 bytes as a meaningful payload (the V5 dissector did this) will produce nonsensical entity_ids and flags.
+
+##### `setSpaceViewportAck` (slot 9, msg `0x09`, `flag=0`/`size=8`)
+
+**Emitter**: `SendEntityIdChangeMessage` at `ghidra://SGW.exe@0x00dd8047`. The function sends this ack when the client's viewport entity changes (e.g. on viewport handoff). It:
+
+1. Calls `Bundle::startMessage(slot_9)`.
+2. Allocates 8 bytes in the bundle.
+3. Writes `(pThis, second_param)` as two u32 fields.
+
+**Wire shape**: `[msg_id=0x09][u32 entity_id_being_acked][u32 second_field]`. The first dword is the entity_id; the second is the parameter passed to the function from its caller (decompiler shows it as `uStack_8` — a coalesced SSA local, with the caller's argument value). Most plausibly the second dword is the viewport_id being acked, matching the symmetric server→client `setSpaceViewport` (msg `0x0E`) and `spaceViewportInfo` (msg `0x08`) which carry an `(entity_id, viewport_id)` pair.
+
+##### `setVehicleAck` (slot 10, msg `0x0A`, `flag=0`/`size=8`)
+
+**Emitter**: `SendTwoDwordEntityMessage` at `ghidra://SGW.exe@0x00dd809b`. Same emitter pattern as `setSpaceViewportAck`: `Bundle::startMessage(slot_10)`, allocate 8 bytes, write `(pThis, nParam1)` as two u32 fields.
+
+**Wire shape**: `[msg_id=0x0A][u32 entity_id_being_acked][u32 second_field]`. Most plausibly the second dword is the vehicle_id being acked, matching the symmetric server→client `setVehicle` (msg `0x0F`) which carries a 4-byte payload (likely the vehicle_id).
+
+##### `restoreClientAck` (slot 11, msg `0x0B`, `flag=0`/`size=4`) — **4 zero bytes**
+
+**Emitter**: `RehydrateClientFromMessage` at `ghidra://SGW.exe@0x00dd8bc9`. The function parses the incoming `restoreClient` message (3 × 4-byte reads), calls the application handler at vtable+0x40, then if the channel is still alive:
+
+1. Calls `Bundle::startMessage(slot_11)`.
+2. Allocates 4 bytes.
+3. Writes **literal `0`** to the buffer.
+4. Calls `ServerConnection::send` to flush.
+
+**Wire shape**: `[msg_id=0x0B][4 zero bytes]`. The 4 bytes are a constant `i32 = 0` in this build's sole emitter. The earlier draft's "almost certainly `i32 entity_id`" guess was wrong; live decomp shows a constant zero, not a runtime-varying entity reference.
+
+A reimplementation server should **accept 4 bytes after msg_id 0x0B and treat the value as a status code** (where 0 = "client successfully restored"). The server-side use of this ack is to dequeue the pending restoration record; the entity_id of the restoration is server-tracked, not client-provided.
+
+##### `disconnectClient` (slot 12, msg `0x0C`, `flag=0`/`size=1`) — **1 zero byte**
+
+**Emitter (via reservation helper)**: `ServerConnection::startMessage_andReserve` at `ghidra://SGW.exe@0x00de2bd0`. The reservation helper allocates 1 byte for slot 12; the caller fills it. The sole caller is `DisconnectServerConnection` at `ghidra://SGW.exe@0x00dd8651`, which writes **literal `0`** to the reserved byte:
+
+```text
+puVar2 = ServerConnection_StartMessage_AndReserve(pBundle);
+*puVar2 = 0;
+```
+
+**Wire shape**: `[msg_id=0x0C][1 zero byte]`. The byte is a constant. Note that `DisconnectServerConnection` takes a `bLoggedOff` parameter that controls *whether* the message is sent at all (`bLoggedOff != 0` → send), but does *not* control the wire byte's value — the wire byte is always `0` regardless of the local `bLoggedOff` state. The local field at `ServerConnection+0x317` (the locally-tracked disconnect reason) does not appear on the wire either.
+
+A reimplementation server should **accept exactly 1 byte after msg_id 0x0C, treat the message's mere presence as "client is disconnecting gracefully", and tear down the channel**. The byte's value is not load-bearing on this build.
+
+##### `entityMessage` (slot 13, msg `0x0D`, `flag=1`/`size=2`) — **envelope only; wire byte is `0x80..0xFE`, not literal `0x0D`**
+
+This is the entity-method dispatch envelope. **The literal byte `0x0D` does not appear on the wire**; instead, the emitter morphs slot 13's `InterfaceElement` into a per-method variant with the wire byte in the `0x80..0xFE` range, then sends via `Bundle::startMessage`. There are two emitters, one per dispatch flavor — these correspond exactly to the §1.5 cell-method / base-method wire shapes documented there.
+
+**Base-method emitter (`ServerConnection::startProxyMessage` at `ghidra://SGW.exe@0x00dd69e2`)**: For BaseApp ("proxy") method invocations:
+
+1. Copies the first 16 bytes of slot 13's `InterfaceElement` into a static buffer at `0x01EF2610` (lazy-init guarded by `DAT_01ef262c` once-flag).
+2. Overwrites the buffer's msg_id byte (offset +0x00) with `(methodId & 0x3F) | 0xC0` — the **base-method wire encoding**, range `0xC0..0xFE` (6-bit method index in the low bits, `0xC0` in the high bits).
+3. Calls `Bundle::startMessage(&morphed_buffer)`.
+
+The body is filled by the caller (the entity-method-args writer); the Mercury envelope is `[msg_id (0xC0..0xFE)][u16 length-prefix][args...]` — no entity_id (base entities are implicit per channel).
+
+**Cell-method emitter (`ServerConnection::startEntityMessage` at `ghidra://SGW.exe@0x00dd6ac2`)**: For CellApp ("entity") method invocations:
+
+1. Copies slot 13's `InterfaceElement` into a static buffer at `0x01EF2630` (lazy-init guarded by `DAT_01ef264c`).
+2. Overwrites the buffer's msg_id byte with `(methodId & 0x7F) | 0x80` — the **cell-method wire encoding**. Per §1.5 the upstream callers populate `methodId` in the 0..63 range only, so the wire byte effectively falls in `0x80..0xBF` (non-overlapping with the base-method range `0xC0..0xFE`).
+3. Calls `Bundle::startMessage(&morphed_buffer)`.
+4. Allocates 4 bytes after the message header and writes the **u32 entity_id**.
+
+The Mercury envelope is `[msg_id (0x80..0xBF)][u16 length-prefix][u32 entity_id][args...]`.
+
+**This precisely matches the §1.5 R-row prose** ("Cell-method wire shape: `(msg_id | 0x80) + u16 word_len + u32 entityId + args`"; "Base-method wire shape: `(msg_id | 0xC0) + u16 word_len + args (no entityId)`"). The §1.5 statement is now backed by the emitter Ghidra addresses above.
+
+**Per-method body decomposition is out of scope for this chapter.** The `[args...]` payload is the entity-method's marshalled argument tuple, with the format defined by the entity-def file for that class. Each entity class defines its own method index → args mapping (a CellApp entity with 100+ methods needs 100+ per-method byte layouts). That work belongs in an entity-RPC chapter (`entity-rpc-dispatch.md`, not yet authored) or in per-class chapters. The Mercury chapter contract stops at the envelope.
+
+##### Summary table
+
+For quick reference — the post-`msg_id` wire byte specification for every client→server message:
+
+| msg_id | Name | Emitter (Ghidra) | Post-`msg_id` body | Reimplementation contract |
+|---|---|---|---|---|
+| `0x00` | baseAppLogin | `0x00de4cc0` | `[u16 len][i32 from +0x5C][packed-string session-token]` | Validate token against pending SOAP-issued tickets |
+| `0x01` | authenticate | `0x00dd89b9` (also `0x00dd83c9`) | `[u16 len][packed-string auth-token]` | Verify token per-tick (rotation defeats replay) |
+| `0x02` | avatarUpdateImplicit | `0x00de2a90` (reservation helper) | 36 bytes — see [position-updates.md](position-updates.md) | Consume 36 bytes; semantic in position-updates chapter |
+| `0x03` | avatarUpdateExplicit | `0x00de2ae0` (reservation helper) | 40 bytes — see [position-updates.md](position-updates.md) | Consume 40 bytes; semantic in position-updates chapter |
+| `0x04` | avatarUpdateWardImplicit | `0x00de2b30` (reservation helper) | 36 bytes — see [position-updates.md](position-updates.md) | Consume 36 bytes; semantic in position-updates chapter |
+| `0x05` | avatarUpdateWardExplicit | `0x00de2b80` (reservation helper) | 40 bytes — see [position-updates.md](position-updates.md) | Consume 40 bytes; semantic in position-updates chapter |
+| `0x06` | switchInterface | *no emitter — dead code* | 0 bytes | Accept and no-op (defensive — current client does not emit) |
+| `0x07` | requestEntityUpdate | `0x00dd80d3` | `[u16 len][u32 header][N × u32 entity_id]` | Push state for each requested entity_id; header semantic open |
+| `0x08` | enableEntities | `0x00dd928f` | 8 bytes (undefined content — emitter writes nothing) | Accept 8 bytes, ignore them, transition to entity-active |
+| `0x09` | setSpaceViewportAck | `0x00dd8047` | `[u32 entity_id][u32 viewport_id (likely)]` | Mark viewport ack received |
+| `0x0A` | setVehicleAck | `0x00dd809b` | `[u32 entity_id][u32 vehicle_id (likely)]` | Mark vehicle ack received |
+| `0x0B` | restoreClientAck | `0x00dd8bc9` | `[i32 = 0]` (literal constant) | Treat as "client restoration complete" status |
+| `0x0C` | disconnectClient | `0x00de2bd0` (filled by `0x00dd8651`) | `[1 byte = 0]` (literal constant) | Treat as graceful client teardown signal |
+| `0x0D` | entityMessage (envelope only) | `0x00dd69e2` (base), `0x00dd6ac2` (cell) | See §1.5 (cell: `[msg_id 0x80..0xBF][u16 len][u32 entity_id][args]`; base: `[msg_id 0xC0..0xFE][u16 len][args]`) | Args decomp = entity-RPC chapter (future) |
+
+Three findings worth flagging as gotchas:
+
+1. **The wire byte for `entityMessage` is never literal `0x0D`** — it is always `0x80..0xFE` per the cell-vs-base encoding. A reimplementation server dispatching on literal `0x0D` will never receive a packet on that branch.
+2. **`enableEntities` (msg `0x08`) carries 8 bytes of undefined content** — the server must accept them, but interpreting them as `[i32 entity_id, i32 flag]` (the V5-era inference) is wrong. The message's presence is the signal; the body is opaque.
+3. **`switchInterface` (msg `0x06`) is dead code on this build** — the descriptor exists for compatibility but no emitter calls it. Reimplementations should accept-and-ignore rather than reject, in case a future client build re-enables the path.
 
 ### 2.6 What the server MAY do (TOLERATED)
 
