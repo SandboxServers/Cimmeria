@@ -6,7 +6,7 @@ last_verified: 2026-05-14
 verified_by: automated-agent
 confidence:
   re: high
-  client: n/a
+  client: medium
   deprecated: n/a
   rust_expected: n/a
   rust_actual: n/a
@@ -1774,15 +1774,15 @@ The tolerance is bounded by the REQUIRED row in §2.4. A tick rate of 30 is fine
 
 ### 2.6 Recommended but not required (RECOMMENDED)
 
-The 7 RECOMMENDED-classified footnotes are best-practice items the server should follow for clean operation. The client copes with deviations, but reimplementation drift here tends to surface later as subtle bugs in less-exercised code paths.
+The 7 RECOMMENDED-classified footnotes are best-practice items the server should follow for clean operation. The client copes with deviations — none of these will provoke a hard disconnect or silent drop — but reimplementation drift here tends to surface later as subtle bugs in less-exercised code paths. Each row below is framed *consequence-first*: if you skip the recommendation, here is exactly what the client does.
 
-| Recommendation | Why | Citation |
+| Recommendation | Consequence of deviation | Citation |
 |---|---|---|
-| Honor `firstRequestOffset` footer field when emitting requests | Client walks the request linked list using this offset; a server that omits requests entirely is fine, but a server that emits requests without the offset breaks request dispatch | §1.3[^bundle-start-msg-request][^request-chain-walk] |
-| Emit `restoreClientAck` if the server uses `restoreClient` | The client registers `restoreClientAck` as an auto-reply expectation; omitting it strands the restore flow | §1.9.5[^restore-client-ack-descriptor] |
-| Follow the deprecated-server emit order for world-entry messages | `client_handler.cpp` patterns establish the canonical ordering; the client is robust to variations but parse-buffer-replay (`createBasePlayer` before `createCellPlayer`) is the only deviation the client explicitly buffers | §1.10[^cpp-client-handler] |
-| Use the Nub request/reply matching mechanism when expecting replies | The client's `Nub::handleMessage` request-table is the supported reply-correlation path; ad-hoc reply schemes work but lose traceability | §1.5[^nub-handle-message] |
-| Implement MachineGuard responses if MachineGuard is used | The client expects to be able to issue MachineGuard discovery requests; a server that ignores them stays discoverable only by direct IP/port configuration | §1.13[^machguard-master-deserialize][^machguard-send-raw] |
+| **SHOULD** emit `firstRequestOffset` in the footer whenever the bundle carries any request message. | If the server emits a request without the offset, the client's request-chain walk reads garbage offsets from the body and produces undefined behavior — typically a silent drop of every request in that bundle, occasionally a crash if the garbage offset points outside the body. Bundles without requests are unaffected. | §1.3[^bundle-start-msg-request][^request-chain-walk] |
+| **SHOULD** emit `restoreClientAck` if the server uses `restoreClient`. | The client registers `restoreClientAck` as an auto-reply expectation. If the server skips it, the restore flow strands — the client believes the snapshot is being applied and never moves to ready state. Disconnect only happens via the 15-second inactivity timeout (R10), so the user-visible symptom is a 15-second hang followed by a generic timeout error. | §1.9.5[^restore-client-ack-descriptor] |
+| **SHOULD** follow the deprecated-server emit order for world-entry messages. | The client is robust to most variations because `client_handler.cpp` established the canonical ordering, and the client's parse-buffer-replay mechanism explicitly handles `createBasePlayer` arriving before `createCellPlayer`. Other reorderings beyond that one buffered case may work but are not in the V5-tested set; deviations surface as transient world-entry glitches that are hard to root-cause. | §1.10[^cpp-client-handler] |
+| **SHOULD** use the Nub request/reply matching mechanism when expecting replies. | The client's `Nub::handleMessage` request-table is the supported reply-correlation path. Ad-hoc reply schemes work — the client doesn't reject them — but lose traceability: the request-table-based path emits structured trace events, ad-hoc replies don't. Server-side debugging of reply-correlation bugs becomes substantially harder. | §1.5[^nub-handle-message] |
+| **SHOULD** implement MachineGuard responses if the server participates in MachineGuard discovery. | The client expects to be able to issue MachineGuard discovery requests and parse the responses. A server that ignores them stays reachable only via direct IP/port configuration; cluster auto-discovery is broken. No client-visible error message — the discovery query just times out. | §1.13[^machguard-master-deserialize][^machguard-send-raw] |
 
 ### 2.7 UnrealScript Mercury surface
 
@@ -1803,7 +1803,10 @@ The client carries a Mercury-specific logger and a small set of `ServerConnectio
 | Packet sniffer + AES key dump (community tooling) | `binaries/AtreaLoader.config.xml` `Sniffer=true` NVP[^atrea-loader-config] | Captures `.pcap` to `binaries/sessions/DATE.pcap` and dumps the AES session key to `binaries/sessions/DATE-keys.txt` — wire-capture verification path for Section 1 claims |
 | SGW launcher log (log4j) | `binaries/SGWLogConfig.xml` → `SGWDebugLog.log` | Java/log4j logger from `AtreaLoader.exe`; orthogonal to the binary's own `MercuryLogger` / `AnsiLogger` paths |
 
-The `MercuryLogger` symbol at `ghidra://SGW.exe@0x0041C2E0` is a previously undocumented anchor — it does not appear in the V5 findings or in `docs/reverse-engineering/address-map.md`. The community-built AtreaLoader's XML config is its sole declared source. The address is added to this chapter's address-map under footnote `[^mercury-logger]`.
+> [!NOTE]
+> **New discovery — `MercuryLogger` at `ghidra://SGW.exe@0x0041C2E0`.**
+>
+> Previously undocumented. Does not appear in the V5 RE findings or in `docs/reverse-engineering/address-map.md`. The community-built AtreaLoader's XML config (`game/sgw/Working/binaries/AtreaLoader.config.xml`) is its sole declared source — see footnote `[^mercury-logger]` for the full declaration and `[^atrea-loader-config]` for the patcher context. The companion `AnsiLogger` symbol at `ghidra://SGW.exe@0x00635210` is enabled by the same `EnableUnicodeLogger` patch toggle at `0x01AF2224`. This anchor is now part of this chapter's address-map and should be promoted into `docs/reverse-engineering/address-map.md` in a future RE-findings sweep.
 
 ### 2.9 Gotchas and surprises
 
