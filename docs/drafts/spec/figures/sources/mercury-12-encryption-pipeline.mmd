@@ -1,0 +1,30 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
+flowchart LR
+    subgraph ENC["ENCRYPT — MercuryEncryption::encrypt"]
+        direction TB
+        E1["plaintext\n(body + footers)"]
+        E2["PKCS7 pad\nto AES block boundary\n(block size = 16 bytes)"]
+        E3["AES-256-CBC encrypt\nkey = session_key 32 bytes\nIV  = 0x00 × 16 bytes"]
+        E4["HMAC-MD5\nkey = session_key\ninput = ciphertext"]
+        E5["output =\n[ciphertext || 16-byte tag]"]
+
+        E1 --> E2 --> E3
+        E3 --> E4
+        E3 --> E5
+        E4 --> E5
+    end
+
+    subgraph DEC["DECRYPT — MercuryEncryption::decrypt"]
+        direction TB
+        D1["input =\n[ciphertext || 16-byte tag]"]
+        D2["split: last 16 bytes = tag\nrest = ciphertext"]
+        D3["HMAC-MD5 verify\nkey = session_key\nmust match tag\n→ reject on mismatch"]
+        D4["AES-256-CBC decrypt\nkey = session_key\nIV  = 0x00 × 16"]
+        D5["PKCS7 unpad"]
+        D6["plaintext\n(body + footers)"]
+
+        D1 --> D2 --> D3 --> D4 --> D5 --> D6
+    end
+
+    style ENC fill:#fff4d6,stroke:#cc9933
+    style DEC fill:#e8f4fb,stroke:#5599cc

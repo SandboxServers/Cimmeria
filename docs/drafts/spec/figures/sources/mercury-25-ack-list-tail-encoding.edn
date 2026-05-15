@@ -1,0 +1,13 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 8)
+(def row-height 38)
+
+(draw-column-headers)
+(draw-gap "(message body + prior footers)")
+(draw-box "ack[N-1] : u32 LE" {:span 4 :fill "#cce5ff"})
+(draw-box "ack[N-2] : u32 LE" {:span 4 :fill "#cce5ff"})
+(draw-gap "... acks in reverse-sent order ...")
+(draw-box "ack[0] : u32 LE" {:span 3 :fill "#cce5ff"})
+(draw-box "ackCount : u8" {:span 2 :fill "#ffcc99"})
+(draw-box "end of datagram --&gt;" {:span 3 :borders {} :fill "#fafafa"})

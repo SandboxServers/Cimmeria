@@ -1,0 +1,42 @@
+name: figure-style-lint
+
+# Blocking check: enforces style/format rules for figure sources, rendered
+# SVGs, and chapter conventions. Companion to figure-sources-in-sync (which
+# enforces source ↔ SVG presence and freshness).
+#
+# Rule catalog lives in tools/lint-figure-style.sh.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "docs/drafts/spec/figures/**"
+      - "docs/drafts/spec/**.md"
+      - "tools/lint-figure-style.sh"
+      - "tools/lint-figure-style.ps1"
+      - ".github/workflows/figure-style.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/drafts/spec/figures/**"
+      - "docs/drafts/spec/**.md"
+
+concurrency:
+  group: figure-style-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  lint:
+    name: figure style + format conventions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: run lint-figure-style
+        run: bash tools/lint-figure-style.sh

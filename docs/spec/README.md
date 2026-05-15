@@ -40,7 +40,7 @@ Phase 0 (scaffolding — what you are reading) is in place. Phase 0.5 (six infra
 | Phase | Chapters | Status |
 |---|---:|---|
 | 0 — meta layer (this scaffolding) | 4 + template + workflow | In place. |
-| 0.5 — infrastructure prerequisites | 6 | Not yet authored. |
+| 0.5 — infrastructure prerequisites | 6 | First two `spec.protocol` chapters drafted (`mercury-wire-format`, `position-updates`); remaining four queued. |
 | 1 — gameplay | 11 | Not yet authored. |
 | 2+ — triage remaining ~65 prior docs | TBD | Ongoing. |
 
@@ -75,7 +75,8 @@ Each row is a `chapter_id`. The link target is the chapter when it exists; other
 
 | chapter | status | source |
 |---|---|---|
-| `spec.protocol.mercury-wire-format` | coming soon (Phase 0.5) | evidence: [`../reverse-engineering/findings/mercury-protocol-internals.md`](../reverse-engineering/findings/mercury-protocol-internals.md) |
+| `spec.protocol.mercury-wire-format` | draft | [`../drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md) |
+| `spec.protocol.position-updates` | draft | [`../drafts/spec/position-updates.md`](../drafts/spec/position-updates.md) |
 | `spec.protocol.entity-property-sync` | coming soon (Phase 0.5) | evidence: [`../reverse-engineering/findings/entity-property-sync.md`](../reverse-engineering/findings/entity-property-sync.md) |
 | `spec.protocol.message-catalog` | coming soon (Phase 0.5) | evidence: [`../protocol/message-catalog.md`](../protocol/message-catalog.md), the 19 V5 wire-format finding docs |
 | `spec.protocol.combat-wire-formats` | coming soon (Phase 1) | evidence: [`../reverse-engineering/findings/combat-wire-formats.md`](../reverse-engineering/findings/combat-wire-formats.md) |

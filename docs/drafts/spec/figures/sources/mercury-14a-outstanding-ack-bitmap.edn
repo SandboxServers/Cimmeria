@@ -1,0 +1,57 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 16)
+(def row-height 38)
+
+(defattrs :hdr {:font-size 11 :fill "#5599cc" :font-style "bold"})
+(defattrs :note {:font-size 11 :fill "#cc9933"})
+(defattrs :set {:fill "#cce5ff"})
+(defattrs :clr {:fill "#fafafa"})
+(defattrs :pivot {:fill "#ffe599" :font-style "bold"})
+
+; ChannelInternal outstanding-ack bitmap — 32 bits = 32 in-flight reliable sequence numbers
+; Source: UnAckedHandler__buildAndSendAckBundle iterates iVar2 = 0..32 at ghidra://SGW.exe@0x0158b2d0
+
+(draw-column-headers {:labels (mapv str (range 16))})
+
+; Row 1: bits 0..15 (high-to-low MSB-first display matches u32 LE wire view)
+; '1' = sequence in flight (awaiting ack); '0' = slot free / acked / never used
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "1 ← seq 142 lives at bit 14 (142 & 0x1F)" :pivot) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+
+(draw-column-headers {:labels (mapv str (range 16 32))})
+
+; Row 2: bits 16..31
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "1" :set) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+(draw-box (text "0" :clr) {:span 1 :borders {:all true}})
+
+(draw-gap "  1 = in-flight reliable seq awaiting ack    0 = slot free or already acked")
+(draw-gap "  bit index = seq_id & 0x1F    capacity = 32 simultaneous in-flight reliable packets")

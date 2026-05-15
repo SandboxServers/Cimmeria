@@ -1,0 +1,33 @@
+%%{init: {"sequence": {"htmlLabels": false}}}%%
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    Note over C,S: Cipher envelope active (AES-256-CBC + HMAC-MD5)
+
+    S->>C: bandwidthNotification 0x01 4B registered no-op
+    S->>C: updateFrequencyNotification 0x02 1B tick rate 10 Hz
+    S->>C: tickSync 0x0D 8B gameTime + tickRate
+    S->>C: setGameTime 0x03 4B snap client clock
+
+    loop PAK resource stream
+        S->>C: RESOURCE_FRAGMENT 0x36 WORD_LENGTH XML chunks
+    end
+
+    S->>C: RESET_ENTITIES 0x04 1B own bundle keepBase=0
+    Note over C: PurgeAndRebuildEntityStateLists
+    C->>S: enableEntities 0xC1 8B auto-emitted CONSTANT_LENGTH=8
+
+    S->>C: createBasePlayer 0x05 6B u32 entityId + u16 classId
+    S->>C: createCellPlayer 0x06 32B spaceId vehicleId pos rotX/Z/Y
+    S->>C: spaceViewportInfo 0x08 13B viewport open entityId2=entityId
+    S->>C: forcedPosition 0x31 49B pos prevPos=0 rot physics=0x01
+
+    loop AoI entities
+        S->>C: createEntity 0x09 5B entityId alias=0xFF classId
+        S->>C: UPDATE_AVATAR 0x10 25B initial position snap
+    end
+
+    loop Heartbeat
+        S->>C: tickSync 0x0D 8B
+    end

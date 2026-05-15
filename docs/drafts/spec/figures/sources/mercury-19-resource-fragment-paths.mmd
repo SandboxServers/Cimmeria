@@ -1,0 +1,25 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
+flowchart TD
+    IN["recv: RESOURCE_FRAGMENT 0x36\n[dataId u16][chunkId u8][flags u8][body]"]
+    IN --> CHK{"flags AND 0x40\nBASE_FLAG set?"}
+
+    CHK -->|"yes — reassembly path\nnormal observed traffic"| ALLOC["Allocate fragment node\n11 + bodySize bytes\nchain by dataId"]
+    CHK -->|"no — direct path"| SEM["Acquire semaphore\nwrite body bytes to FILE handle"]
+
+    ALLOC --> FIN1{"flags AND 0x02\nFINAL_FRAGMENT?"}
+    FIN1 -->|"no"| WAIT1["Store node in chain\nawait next fragment"]
+    FIN1 -->|"yes"| REASM["Reassemble: concat nodes\nreverse order\nlist built head-first"]
+    REASM --> DLVR["Deliver via this+0x168\nvtable slot 0x38"]
+    DLVR --> EVT["Event_Net_ProxyData\ncooked-data pipeline"]
+
+    SEM --> FIN2{"flags AND 0x02\nFINAL_FRAGMENT?"}
+    FIN2 -->|"no"| WAIT2["Partial write to FILE\nawait next fragment"]
+    FIN2 -->|"yes"| RLS["Release semaphore\nFILE transfer complete"]
+
+    style IN fill:#dbeafe,stroke:#3b82f6
+    style ALLOC fill:#dcfce7,stroke:#22c55e
+    style REASM fill:#dcfce7,stroke:#22c55e
+    style DLVR fill:#dcfce7,stroke:#22c55e
+    style EVT fill:#e2e8f0,stroke:#64748b
+    style SEM fill:#fef9c3,stroke:#eab308
+    style RLS fill:#fef9c3,stroke:#eab308

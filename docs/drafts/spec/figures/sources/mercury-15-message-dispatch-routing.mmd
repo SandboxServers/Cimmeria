@@ -1,0 +1,25 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
+flowchart TD
+    IN["recv: msg_id u8"] --> R{range check}
+    R -->|"0x00 - 0x7F"| SYS["System message\nlen: per InterfaceElement table\nCONSTANT / WORD / DWORD\n\nnub.elements[msg_id].handler()"]
+    R -->|"0x80 - 0xBD"| CEL{"msg_id == 0xBD?"}
+    R -->|"0xC0 - 0xFD"| BAS{"msg_id == 0xFD?"}
+    R -->|"0xFF"| RPL["Reply message\nWORD_LENGTH\n[u16 len][data]"]
+    R -->|"0xBE-0xBF, 0xFE\nreserved"| RES["Reserved / invalid msg_id\ndrop + log"]
+    CEL -->|"no — direct\n0x80-0xBC"| CD["Cell — direct\nmethodIdx = msg_id - 0x80\n\n[u16 len][u32 entityId][args]"]
+    CEL -->|"yes — extended sentinel"| CE["Cell — extended\nmethodIdx = sub_index + 62\n\n[u16 len][u32 entityId][u8 sub_index][args]"]
+    BAS -->|"no — direct\n0xC0-0xFC"| BD["Base — direct\nmethodIdx = msg_id - 0xC0\n\n[u16 len][args]\nno entityId — implicit"]
+    BAS -->|"yes — extended sentinel"| BE["Base — extended\nmethodIdx = sub_index + 62\n\n[u16 len][u8 sub_index][args]"]
+    CD --> ENT["resolve entityId\ncell entity dispatch"]
+    CE --> ENT
+    BD --> PRX["player base proxy\nbase entity dispatch"]
+    BE --> PRX
+    style SYS fill:#dbeafe,stroke:#3b82f6
+    style RES fill:#fee2e2,stroke:#dc2626
+    style CD fill:#dcfce7,stroke:#22c55e
+    style CE fill:#dcfce7,stroke:#22c55e
+    style BD fill:#fef9c3,stroke:#eab308
+    style BE fill:#fef9c3,stroke:#eab308
+    style RPL fill:#fce7f3,stroke:#ec4899
+    style ENT fill:#e2e8f0,stroke:#64748b
+    style PRX fill:#e2e8f0,stroke:#64748b

@@ -1,0 +1,28 @@
+%%{init: {"sequence": {"htmlLabels": false}}}%%
+sequenceDiagram
+    participant Send as Bundle::finalise
+    participant Wire as UDP datagram
+    participant Recv as processFilteredPacket_inner
+
+    Note over Send,Wire: WRITE — innermost first (bit 0), outermost last (bit 7)
+
+    Send->>Wire: write flags byte at offset 0
+    Send->>Wire: append message body
+    Send->>Wire: append firstRequestOffset (u16 LE)  if bit 0
+    Send->>Wire: append piggyback chain               if bit 1
+    Send->>Wire: append ack list                      if bit 2
+    Send->>Wire: append sequenceId (u32 LE)           if bit 5
+    Send->>Wire: append lastFragmentId (u32 LE)       if bit 7
+    Send->>Wire: append firstFragmentId (u32 LE)      if bit 7
+    Note right of Wire: firstFragmentId now sits\nat the END of the datagram\n— written LAST.
+
+    Note over Wire,Recv: READ — peel from datagram tail, popping toward body
+
+    Wire->>Recv: read flags byte at offset 0
+    Wire->>Recv: pop firstFragmentId (u32 LE)         if bit 7   ← popped FIRST
+    Wire->>Recv: pop lastFragmentId (u32 LE)          if bit 7
+    Wire->>Recv: pop sequenceId (u32 LE)              if bit 5
+    Wire->>Recv: pop ack list                         if bit 2
+    Wire->>Recv: pop piggyback chain                  if bit 1
+    Wire->>Recv: pop firstRequestOffset (u16 LE)      if bit 0   ← popped LAST
+    Note left of Recv: Pop order = inverse of wire order.\nThe field written LAST\nis the field popped FIRST.

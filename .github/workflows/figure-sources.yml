@@ -1,0 +1,50 @@
+name: figure-sources-in-sync
+
+# Blocking check: every rendered SVG in docs/drafts/spec/figures/ must be at-or-
+# after its source DSL in docs/drafts/spec/figures/sources/. If a source is
+# committed without its re-rendered SVG, this workflow fails the PR.
+#
+# Companion docs:
+#   - tools/check-figure-sources.sh (the implementation)
+#   - tools/check-figure-sources.ps1 (Windows variant — same logic)
+#   - docs/drafts/spec/figures/sources/README.md (renderer commands)
+#   - CLAUDE.md "Pre-PR checklist" and the doc-update map
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "docs/drafts/spec/figures/**"
+      - "tools/check-figure-sources.sh"
+      - "tools/check-figure-sources.ps1"
+      - ".github/workflows/figure-sources.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/drafts/spec/figures/**"
+
+concurrency:
+  group: figure-sources-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  check:
+    name: figures and their source DSLs are in sync
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 3
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git log -1 --format=%ct -- <path>` resolves
+          # each file's last-modifying commit. A shallow clone reports 0
+          # for any file last touched outside the fetched range, which
+          # would produce false negatives.
+          fetch-depth: 0
+
+      - name: run check-figure-sources
+        run: bash tools/check-figure-sources.sh

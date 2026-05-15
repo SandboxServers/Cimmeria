@@ -1,0 +1,30 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 16)
+(def row-height 38)
+
+(defattrs :flags {:fill "#bdd7ee" :font-style "bold"})
+(defattrs :body {:fill "#fff4d6"})
+(defattrs :seq {:fill "#ddffdd"})
+(defattrs :fragL {:fill "#ffeedd"})
+(defattrs :fragF {:fill "#ffeedd"})
+(defattrs :note {:font-size 11 :fill "#cc9933"})
+
+; Worked example from §1.1: a reliable, sequenced, fragmented bundle's first packet.
+; flags byte 0xB8 = FLAG_IS_FRAGMENT | FLAG_HAS_SEQUENCE_NUMBER | FLAG_IS_RELIABLE | FLAG_ON_CHANNEL
+; Wire order: flags, body, then footer fields written innermost → outermost.
+
+(draw-column-headers)
+
+; Row 1: flags + first 15 body bytes
+(draw-box (text "0xB8" :flags) {:span 1 :borders {:all true}})
+(draw-box (text "message body — interface element calls (variable)" :body) {:span 15 :borders {:all true}})
+
+; Row 2: footer fields appended at tail in flag-bit order
+(draw-box (text "sequenceId  (u32 LE)  ← written first by Bundle::finalise" :seq) {:span 4 :borders {:all true}})
+(draw-box (text "lastFragmentId  (u32 LE)" :fragL) {:span 4 :borders {:all true}})
+(draw-box (text "firstFragmentId  (u32 LE)  ← written last; sits at end of datagram" :fragF) {:span 4 :borders {:all true}})
+(draw-gap)
+
+(draw-gap "POP ORDER (right-to-left from datagram end):  1. firstFragmentId   2. lastFragmentId   3. sequenceId")
+(draw-gap "Footer fields are little-endian (SGW divergence — stock BW uses network byte order)")

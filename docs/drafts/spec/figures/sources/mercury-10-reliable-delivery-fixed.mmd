@@ -1,0 +1,22 @@
+%%{init: {"sequence": {"htmlLabels": false}}}%%
+sequenceDiagram
+    participant S as Sender (Nub)
+    participant R as Receiver (Nub)
+
+    Note over S: build_outgoing(body, reliable=true)\nflags |= RELIABLE | HAS_SEQUENCE\nseq_id = next_tx_seq++\nset bit in 32-bit outstanding-ack bitmap
+
+    S->>R: UDP [flags=0x58, seq_id=N, body]
+    Note over S: ACK_TIMEOUT_MS = 700ms timer starts
+
+    alt Ack received within 700ms
+        R->>S: UDP [flags=HAS_ACKS]\nfooter: ack_count=1, ack[0]=N
+        Note over S: tick() check_timeouts()\nack N matched — clear bit N\nin outstanding-ack bitmap
+    else Timeout expires
+        Note over S: elapsed >= 700ms\nretransmit_count++\nadded to TickActions.retransmits
+        S->>R: retransmit [seq_id=N]
+        Note over S: repeats up to MAX_RETRIES=20\nstrict gt check: retransmit_count > 20
+    else Max retries exceeded
+        Note over S: retransmit_count > 20\nChannel state = Disconnected\nadded to dead_channels
+    end
+
+    Note over S,R: Keepalive: KEEPALIVE_INTERVAL_MS=1000ms\nInactivity timeout: 300,000ms

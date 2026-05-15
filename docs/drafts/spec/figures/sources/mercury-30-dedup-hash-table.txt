@@ -1,0 +1,33 @@
+
+  Received-sequence dedup hash table (per ChannelInternal)
+  allocated by FUN_0158c170 at +0x40 / mask 0x1FF at +0x44
+
+
+  incoming seq_id (u32)
+        |
+        |  slot = seq_id & 0x1FF
+        v
+  +--------------------------------------------------------------+
+  |  hash table — 512 entries × 4 bytes = 2048 + 4 header bytes  |
+  +-----+-----+-----+-----+-----+-----+-----+-----+--------------+
+  |  0  |  1  |  2  |  3  |  4  | ... | 141 | 142 | ... |  511   |
+  +-----+-----+-----+-----+-----+-----+--+--+--+--+-----+--------+
+                                          |     |
+                                  +-------+     +-------+
+                                  |                     |
+                                  v                     v
+                            seq 141 stored        seq 142 stored
+                            (recently seen)       (recently seen)
+
+
+  on packet arrival:
+    1. compute slot = seq_id & 0x1FF
+    2. if slot non-empty and stored == seq_id:  DROP (dedup hit)
+    3. else: store seq_id in slot, schedule ack, deliver
+
+  collision handling: overwrite — seq IDs 32M apart collide.
+  capacity guard: bitmap's 32 in-flight cap keeps the live working set
+  far below 512; collisions are rare in practice.
+
+  source: Channel__ctor at ghidra://SGW.exe@0x01576bf0 hardcodes 0x200 (512)
+  alloc:  FUN_0158c170 calls scalable_malloc(0x200 * 4 + 4) = 2052 B

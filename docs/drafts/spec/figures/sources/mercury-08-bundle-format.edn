@@ -1,0 +1,21 @@
+(defattrs :plain {:font-size 14})
+(defattrs :label {:font-size 12})
+
+(draw-column-headers)
+
+; First message
+(draw-box "msg_id" {:span 1 :fill "#bdd7ee"})
+(draw-box (text "payload_len [u16 LE]" :label) {:span 2 :fill "#ddeeff"})
+(draw-box (text "payload  (payload_len bytes)" :label) {:span 13 :fill "#e8f4fb" :borders {:all true}})
+(draw-gap)
+(draw-bottom)
+
+; Second message  
+(draw-box "msg_id" {:span 1 :fill "#bdd7ee"})
+(draw-box (text "payload_len [u16 LE]" :label) {:span 2 :fill "#ddeeff"})
+(draw-box (text "payload  (payload_len bytes)" :label) {:span 13 :fill "#e8f4fb" :borders {:all true}})
+(draw-gap)
+(draw-bottom)
+
+; Note row
+(draw-box (text "...repeated for each BundleMessage; no count prefix; read until buffer exhausted..." :plain) {:span 16 :fill "#f4f4f4"})

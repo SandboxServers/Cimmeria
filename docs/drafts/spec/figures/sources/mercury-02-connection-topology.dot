@@ -1,0 +1,55 @@
+digraph mercury_topology {
+    rankdir=LR
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10]
+    edge [color="#666666" arrowsize=0.8 fontsize=9]
+    label="Mercury — Runtime Connection Topology"
+    labelloc=t
+    fontsize=13
+    fontname="Helvetica"
+
+    subgraph cluster_client {
+        label="Game Client (Windows)"
+        style=filled
+        fillcolor="#fff4d6"
+        color="#cc9933"
+        client_nub [label="Client Mercury Nub\nUDP socket" fillcolor="#ffe599"]
+        client_chan [label="Channel\nConnected" shape=note fillcolor="#ffffff"]
+        client_nub -> client_chan [style=dashed dir=none]
+    }
+
+    subgraph cluster_cell {
+        label="Cell Service"
+        style=filled
+        fillcolor="#e8f4fb"
+        color="#5599cc"
+        cell_nub [label="Nub\nUDP :3790" fillcolor="#bdd7ee"]
+        cell_chan [label="Channel\nConnected\noutstanding-ack bitmap (32)\ndedup hash (512, mask 0x1FF)" shape=note fillcolor="#ffffff"]
+        frag_cell [label="FragmentAssembler\nFRAGMENT_BODY_SIZE=1300\nMAX_FRAGMENTS=64" fillcolor="#ffffdd"]
+        cell_nub -> cell_chan [style=dashed dir=none]
+        cell_chan -> frag_cell [style=dashed dir=none]
+    }
+
+    subgraph cluster_base {
+        label="Base Service"
+        style=filled
+        fillcolor="#e8f4fb"
+        color="#5599cc"
+        base_nub [label="Nub\nUDP internal" fillcolor="#bdd7ee"]
+        base_chan [label="Channel\nConnected" shape=note fillcolor="#ffffff"]
+        frag_base [label="FragmentAssembler" fillcolor="#ffffdd"]
+        base_nub -> base_chan [style=dashed dir=none]
+        base_chan -> frag_base [style=dashed dir=none]
+    }
+
+    subgraph cluster_auth {
+        label="Auth Service"
+        style=filled
+        fillcolor="#f0fff0"
+        color="#339933"
+        auth_tcp [label="TCP listener\nUnifiedFrame\n[len:u32][msg_id:u8][payload]" fillcolor="#ccffcc"]
+    }
+
+    client_nub -> cell_nub [label="UDP Mercury v391\nreliable + fragmented" dir=both]
+    cell_nub -> base_nub [label="UDP inter-service" dir=both style=dashed]
+    base_nub -> auth_tcp [label="TCP UnifiedFrame" dir=both]
+}

@@ -1,0 +1,38 @@
+digraph G {
+  rankdir=LR
+  node [shape=plaintext fontname=Helvetica]
+  graph [label="forcedPosition (msg_id 0x31) — SGW adds 12 B previous-position reference + 1 B physics = 49 B vs stock 36 B" labelloc=t fontsize=14 fontname=Helvetica]
+
+  layout [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR>
+        <TD BGCOLOR="#f4f4f4"><B>Source</B></TD>
+        <TD BGCOLOR="#f4f4f4">header<BR/>(entity, space, vehicle)</TD>
+        <TD BGCOLOR="#f4f4f4">position</TD>
+        <TD BGCOLOR="#fff4d6">prev-position ref</TD>
+        <TD BGCOLOR="#f4f4f4">rotation</TD>
+        <TD BGCOLOR="#fff4d6">physics</TD>
+        <TD BGCOLOR="#f4f4f4"><B>total</B></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#ffe8d6"><B>Stock BW 2.0.1</B></TD>
+        <TD>4 + 4 + 4 = <B>12 B</B></TD>
+        <TD>Position3D<BR/><B>12 B</B></TD>
+        <TD BGCOLOR="#ffcccc"><B>(absent)</B></TD>
+        <TD>Direction3D<BR/><B>12 B</B></TD>
+        <TD BGCOLOR="#ffcccc"><B>(absent)</B></TD>
+        <TD><B>36 B</B></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#d6ffd6"><B>SGW</B></TD>
+        <TD>4 + 4 + 4 = <B>12 B</B></TD>
+        <TD>Position3D<BR/><B>12 B</B></TD>
+        <TD BGCOLOR="#ccffcc"><B>Vec3 (12 B)</B><BR/>SGW-only addition</TD>
+        <TD>Direction3D<BR/><B>12 B</B></TD>
+        <TD BGCOLOR="#ccffcc"><B>physics u8 (1 B)</B><BR/>SGW-only addition</TD>
+        <TD><B>49 B</B></TD>
+      </TR>
+      <TR><TD COLSPAN="7" BGCOLOR="#fafafa"><FONT POINT-SIZE="10">CONSTANT_LENGTH = 49 in the SGW client's InterfaceElement table. Emitting the stock 36-byte body fails the table check and the client drops the packet silently — see §1.10.6. The 12-byte SGW-only field is a previous-position reference passed verbatim into the client's PackageAndSendEntityMove::pOrientation → pPrevPos alias (NOT a velocity vector and NOT a rotation); it is zero at world entry because no prior position exists to delta from. The physics byte is 0x01 at world entry.</FONT></TD></TR>
+    </TABLE>
+  >]
+}

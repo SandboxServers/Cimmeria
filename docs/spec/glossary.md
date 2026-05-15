@@ -90,7 +90,7 @@ Chapter cross-references use `chapter_id`. `→ N/A (no chapter yet)` means the 
 
 **zero IV** — The literal-zero initialization vector used for AES-256-CBC in Mercury. A deliberate choice in 2009; a footgun by modern standards but matched for wire compatibility. → `spec.protocol.mercury-wire-format`.
 
-**MachineGuard** — The SGW machine-level UDP protocol on port `0x4e36` (19510). 13 message types, master deserializer at `ghidra://SGW.exe@0x01588530`. Used for service discovery and cross-host coordination. → N/A (no chapter yet).
+**MachineGuard** — The SGW machine-level UDP protocol on port `0x4e36` (decimal **20022**). At least 8 documented message types (master deserializer at `ghidra://SGW.exe@0x01588530` switches over the range `0x01–0x0c + 0x40`). Used for service discovery and cross-host coordination. Port decimal canonized via `spec.protocol.mercury-wire-format` §1.13 — overrides earlier V5 docs that paired `0x4e36` with the arithmetically-wrong decimal `19510`. → N/A (no chapter yet).
 
 **RESOURCE_FRAGMENT** — A Mercury control message type that carries one fragment of a cooked-data resource being streamed from server to client. Reassembled before passing to the cooked-data pipeline. → N/A (no chapter yet).
 

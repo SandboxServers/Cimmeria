@@ -1,0 +1,36 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 16)
+(def row-height 38)
+
+(defattrs :id {:fill "#bdd7ee" :font-style "bold"})
+(defattrs :len {:fill "#ddffdd"})
+(defattrs :eid {:fill "#ffe599"})
+(defattrs :sub {:fill "#ffcc99" :font-style "bold"})
+(defattrs :args {:fill "#fff4d6"})
+
+; Three side-by-side dispatch shapes from §1.8 worked examples.
+; Each row = 16 cells (1 byte per cell, except labelled spans).
+
+(draw-column-headers)
+
+; --- Row A: cell-direct ---  onStatUpdate (cell method index 20) | 0x80 = 0x94
+(draw-box (text "0x94" :id) {:span 1 :borders {:all true}})
+(draw-box (text "0x07 0x00 (u16 LE = 7)" :len) {:span 2 :borders {:all true}})
+(draw-box (text "0xBE 0xBA 0xFE 0xCA (entityId = 0xCAFEBABE, u32 LE)" :eid) {:span 4 :borders {:all true}})
+(draw-box (text "arg0 arg1 arg2 (3 bytes)" :args) {:span 3 :borders {:all true}})
+(draw-gap "  CELL-DIRECT — msg_id in 0x80..0xBC. word_len = entityId(4) + args(3) = 7.")
+
+; --- Row B: cell-extended sentinel ---  onClientMapLoad (cell method index 117) → 0xBD + sub_index 0x37
+(draw-box (text "0xBD" :id) {:span 1 :borders {:all true}})
+(draw-box (text "len_lo len_hi (u16 LE)" :len) {:span 2 :borders {:all true}})
+(draw-box (text "0xBE 0xBA 0xFE 0xCA (entityId, u32 LE)" :eid) {:span 4 :borders {:all true}})
+(draw-box (text "0x37" :sub) {:span 1 :borders {:all true}})
+(draw-box (text "args...  (variable)" :args) {:span 8 :borders {:all true}})
+(draw-gap "  CELL-EXTENDED — msg_id = 0xBD sentinel. sub_index = methodId − 62 (here 117 − 62 = 0x37). word_len = 4 + 1 + N.")
+
+; --- Row C: base-direct ---  playCharacter (base method index 4) | 0xC0 = 0xC4. No entityId on wire.
+(draw-box (text "0xC4" :id) {:span 1 :borders {:all true}})
+(draw-box (text "0x03 0x00 (u16 LE = 3)" :len) {:span 2 :borders {:all true}})
+(draw-box (text "arg0 arg1 arg2 (3 bytes) — no entityId on wire" :args) {:span 13 :borders {:all true}})
+(draw-gap "  BASE-DIRECT — msg_id in 0xC0..0xFC. word_len = args only; channel-implicit entity.")

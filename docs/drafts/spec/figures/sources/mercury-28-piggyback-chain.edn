@@ -1,0 +1,31 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 16)
+(def row-height 38)
+
+(defattrs :pkt {:fill "#fff4d6"})
+(defattrs :lenP {:fill "#ddffdd"})
+(defattrs :lenN {:fill "#ffcccc" :font-style "bold"})
+(defattrs :note {:font-size 11 :fill "#cc9933"})
+
+; Piggyback chain (FLAG_HAS_PIGGYBACKS, bit 1). Wire order: oldest packet first;
+; each entry's length follows its data. The final entry's length is encoded as
+; ~length (bitwise NOT) — a negative int16 LE that marks end-of-chain.
+; Layout per §1.3.2 lines 237-245.
+
+(draw-column-headers)
+
+; Entry 0 — oldest, length positive
+(draw-box (text "packet[0] data — flags byte + body of a previously sent reliable packet" :pkt) {:span 14 :borders {:all true}})
+(draw-box (text "packet[0] length  : i16 LE, POSITIVE" :lenP) {:span 2 :borders {:all true}})
+
+; Entry 1
+(draw-box (text "packet[1] data — flags byte + body" :pkt) {:span 14 :borders {:all true}})
+(draw-box (text "packet[1] length  : i16 LE, POSITIVE" :lenP) {:span 2 :borders {:all true}})
+
+; Entry N — final, length is ~length (NEGATIVE, marks chain terminator)
+(draw-box (text "packet[N] data — flags byte + body of LAST piggybacked packet" :pkt) {:span 14 :borders {:all true}})
+(draw-box (text "packet[N] length  : i16 LE, ~length (NEGATIVE = terminator)" :lenN) {:span 2 :borders {:all true}})
+
+(draw-gap "Receiver pops the i16 LE length; if NEGATIVE, applies ~ to recover positive length and stops after this entry.")
+(draw-gap "Each embedded packet has its own flags byte and is processed as if received independently — but its own footer carries no acks/seq/fragments.")

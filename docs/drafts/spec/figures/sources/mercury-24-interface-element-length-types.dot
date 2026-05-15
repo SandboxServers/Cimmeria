@@ -1,0 +1,39 @@
+digraph G {
+  rankdir=LR
+  node [shape=plaintext fontname=Helvetica]
+  graph [label="InterfaceElement length encoding — three framing options (§1.5)" labelloc=t fontsize=14 fontname=Helvetica]
+
+  layout [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR>
+        <TD BGCOLOR="#f4f4f4"><B>Length type</B></TD>
+        <TD BGCOLOR="#f4f4f4"><B>msg_id</B></TD>
+        <TD BGCOLOR="#f4f4f4"><B>Length prefix</B></TD>
+        <TD BGCOLOR="#f4f4f4"><B>Payload</B></TD>
+        <TD BGCOLOR="#f4f4f4"><B>V5-confirmed users</B></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#ffe8d6"><B>CONSTANT_LENGTH</B></TD>
+        <TD BGCOLOR="#cce5ff">1 B</TD>
+        <TD BGCOLOR="#ffcccc"><B>(none)</B><BR/>size lives in the table</TD>
+        <TD BGCOLOR="#e8e8e8">N bytes (fixed)</TD>
+        <TD>tickSync (8), setGameTime (4), enableEntities (8),<BR/>forcedPosition (49), spaceViewportInfo (13), ...</TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#d6e8ff"><B>WORD_LENGTH</B></TD>
+        <TD BGCOLOR="#cce5ff">1 B</TD>
+        <TD BGCOLOR="#cce5ff"><B>u16 LE</B> (2 B)</TD>
+        <TD BGCOLOR="#e8e8e8">N bytes (variable; ≤ 65535)</TD>
+        <TD>All entity methods (msg_id ≥ 0x80),<BR/>createBasePlayer, createCellPlayer, REPLY_MESSAGE 0xFF, ...</TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#ffe5d6"><B>DWORD_LENGTH</B></TD>
+        <TD BGCOLOR="#cce5ff">1 B</TD>
+        <TD BGCOLOR="#ffd699"><B>u32 LE</B> (4 B)</TD>
+        <TD BGCOLOR="#e8e8e8">N bytes (variable; effectively unbounded)</TD>
+        <TD>AUTHENTICATE 0x00 (the only V5-confirmed user)</TD>
+      </TR>
+      <TR><TD COLSPAN="5" BGCOLOR="#fafafa"><FONT POINT-SIZE="10">Entity messages (msg_id ≥ 0x80) always use WORD_LENGTH regardless of table declaration — enforced at both ends. The compressed-length scheme (1/2/3/4 B) is separate and reserved for rare system messages; thresholds are open Q1.</FONT></TD></TR>
+    </TABLE>
+  >]
+}

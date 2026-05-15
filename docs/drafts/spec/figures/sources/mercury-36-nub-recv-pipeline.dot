@@ -1,0 +1,28 @@
+digraph mercury_nub_recv_pipeline {
+    rankdir=TB
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10]
+    edge [color="#666666" arrowsize=0.8 fontsize=9]
+    label="Mercury Nub — receive-side function-call pipeline (§1.12)"
+    labelloc=t
+    fontsize=13
+    fontname="Helvetica"
+
+    recvfrom [label="recvfrom()\nblocking UDP read" fillcolor="#ffe599"]
+    pending  [label="processPendingEvents\nghidra://SGW.exe@0x01581ab0" fillcolor="#bdd7ee"]
+    queue    [label="tbb::concurrent_queue\ninbound ClientMessage*" shape=cylinder fillcolor="#fff4d6"]
+    drain    [label="network-thread drain loop\n(second thread)" fillcolor="#bdd7ee"]
+    filtered [label="processFilteredPacket\n(cipher-envelope filter applies here)\nPacketEncrypter::recv → AES decrypt + HMAC verify" fillcolor="#ddffdd"]
+    inner    [label="processFilteredPacket_inner\nghidra://SGW.exe@0x01580840\nflags byte decode + footer peel" fillcolor="#ddffdd"]
+    ordered  [label="processPacket / processOrderedPacket\nghidra://SGW.exe@0x0157c820\nfragment reassembly + dedup hash check" fillcolor="#ffeedd"]
+    dispatch [label="nub->elements[msg_id]\nInterfaceElement dispatch table" fillcolor="#ffcc99"]
+    handler  [label="handler->handleMessage(msg)\ne.g. ServerConnection_resourceFragment\n      ServerConnection_CreateBasePlayer\n      ProcessForcedEntityPosition" fillcolor="#f4cccc"]
+
+    recvfrom -> pending
+    pending  -> queue [label="enqueue per packet"]
+    queue    -> drain [label="dequeue"]
+    drain    -> filtered
+    filtered -> inner
+    inner    -> ordered
+    ordered  -> dispatch [label="msg_id byte"]
+    dispatch -> handler
+}

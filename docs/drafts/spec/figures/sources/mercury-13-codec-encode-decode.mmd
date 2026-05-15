@@ -1,0 +1,31 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
+flowchart TB
+    subgraph DECODE["MercuryCodec::decode — incoming UDP bytes"]
+        direction LR
+        RD1["raw UDP bytes"]
+        RD2{"encryption\nenabled?"}
+        RD3["MercuryEncryption::decrypt\nverify HMAC-MD5 tag\nAES-256-CBC decrypt\nPKCS7 unpad"]
+        RD4["parse_incoming(bytes)\nstrip footers outermost-first:\nack_count, acks, seq_id,\nfrag_end+frag_begin,\nfirst_req_offset"]
+        RD5["ParsedPacket\n{ flags, seq_id, ack_list,\nfrag_begin, frag_end,\nfirst_req_offset, body }"]
+
+        RD1 --> RD2
+        RD2 -- yes --> RD3 --> RD4
+        RD2 -- no --> RD4
+        RD4 --> RD5
+    end
+
+    subgraph ENCODE["MercuryCodec::encode — outgoing Packet"]
+        direction LR
+        WR1["Packet { flags, body, acks, seq_id, ... }"]
+        WR2["build_outgoing(packet)\nwrite flags byte\nwrite body\nappend footers innermost-first:\nfirst_req_offset, frag_begin, frag_end,\nseq_id, acks, ack_count"]
+        WR3{"encryption\nenabled?"}
+        WR4["MercuryEncryption::encrypt\nPKCS7 pad\nAES-256-CBC encrypt\nappend HMAC-MD5 tag"]
+        WR5["UDP bytes ready to send"]
+
+        WR1 --> WR2 --> WR3
+        WR3 -- yes --> WR4 --> WR5
+        WR3 -- no --> WR5
+    end
+
+    style DECODE fill:#e8f4fb,stroke:#5599cc
+    style ENCODE fill:#fff4d6,stroke:#cc9933

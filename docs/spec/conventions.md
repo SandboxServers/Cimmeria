@@ -258,7 +258,7 @@ Citing a PR or issue is fine in the bible — PRs are the canonical record of a 
 
 Each chapter answers a single question: *"what does X do, and how do we know?"* If you find your chapter answering two questions, split it. If you find two chapters answering the same question, merge them and put the older `chapter_id` in `supersedes:`.
 
-Length cap, soft: 800 lines. Length cap, hard: 1200. Past that, the chapter is two chapters wearing a trenchcoat.
+**No length cap on bible chapters.** The repo's general file-org rule (soft 500 / hard 700) is for source code, where reviewability and LLM context window matter. Bible chapters are reference docs — readers want to understand a system without chasing five cross-references. Depth beats brevity. A 1,500-line chapter that fully canonizes a wire format is more useful than three short chapters with overlapping claims. If a chapter answers two questions, that is still a split signal; length alone is not.
 
 ---
 

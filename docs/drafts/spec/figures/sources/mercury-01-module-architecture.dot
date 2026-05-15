@@ -1,0 +1,53 @@
+digraph mercury_modules {
+    rankdir=TB
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10]
+    edge [color="#666666" arrowsize=0.8]
+    label="Mercury Crate — Module Architecture"
+    labelloc=t
+    fontsize=13
+    fontname="Helvetica"
+
+    subgraph cluster_ext {
+        label="External Dependencies"
+        style=dashed
+        color="#cccccc"
+        node [fillcolor="#f0f0f0"]
+        bytes_ext [label="bytes::Bytes"]
+        aes_ext [label="aes / cbc\n(AES-256-CBC)"]
+        hmac_ext [label="hmac-md5"]
+        tokio_ext [label="tokio::UdpSocket"]
+    }
+
+    subgraph cluster_mercury {
+        label="crates/mercury"
+        style=filled
+        fillcolor="#f8fbff"
+        color="#5599cc"
+
+        lib_rs [label="lib.rs\nconsts: PACKET_MAX_SIZE=1472\nOUTSTANDING_ACK_BITS=32\nDEDUP_HASH_ENTRIES=512  (mask 0x1FF)\nACK_TIMEOUT=700ms  MAX_RETRIES=20\nFRAGMENT_BODY_SIZE=1300\nPROTOCOL_VERSION=391" fillcolor="#e8f4fb"]
+        packet_mod [label="packet/\n  mod.rs  parse.rs\n  build.rs  legacy.rs" fillcolor="#ddeeff"]
+        bundle_rs [label="bundle.rs\nBundle / BundleMessage\nwire: [msg_id:u8][len:u16][payload]" fillcolor="#ddeeff"]
+        encryption_rs [label="encryption.rs\nMercuryEncryption\nAES-256-CBC + HMAC-MD5\nencrypt-then-MAC" fillcolor="#ffeedd"]
+        codec_rs [label="codec.rs\nMercuryCodec\nencode / decode pipeline" fillcolor="#ffeedd"]
+        channel_mod [label="channel/\nChannel + ChannelState\noutstanding-ack bitmap (32-bit)\nreceived-seq dedup hash (512)\nfragment_assembler" fillcolor="#ddffdd"]
+        nub_rs [label="nub.rs\nNub { socket, channels }\nTickActions\ntick() 4-step loop" fillcolor="#ddffdd"]
+        unpacker_rs [label="unpacker.rs\nFragmentAssembler\nkey=frag_begin\nMAX_FRAGMENTS=64" fillcolor="#ffffdd"]
+        messages_rs [label="messages.rs\nMsgId enum\n(placeholder values)" fillcolor="#f4f4f4"]
+        unified_rs [label="unified.rs\nUnifiedFrame (TCP)\n[len:u32][msg_id:u8][payload]\nMAX_FRAME_SIZE=65536" fillcolor="#ffddff"]
+    }
+
+    codec_rs -> packet_mod [label="parse_incoming\nbuild_outgoing"]
+    codec_rs -> encryption_rs [label="encrypt / decrypt"]
+    nub_rs -> channel_mod [label="manages N channels"]
+    nub_rs -> unpacker_rs [label="stale sweep"]
+    nub_rs -> packet_mod [label="send / recv"]
+    channel_mod -> packet_mod [label="build reliable pkts"]
+    bundle_rs -> messages_rs [label="MsgId"]
+
+    encryption_rs -> aes_ext
+    encryption_rs -> hmac_ext
+    packet_mod -> bytes_ext
+    bundle_rs -> bytes_ext
+    unified_rs -> bytes_ext
+    nub_rs -> tokio_ext
+}

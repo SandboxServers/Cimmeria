@@ -1,0 +1,27 @@
+(def left-margin 40)
+(def right-margin 30)
+(def boxes-per-row 16)
+(def row-height 38)
+
+(defattrs :bwFlags {:fill "#f4cccc" :font-style "bold"})
+(defattrs :sgwFlags {:fill "#bdd7ee" :font-style "bold"})
+(defattrs :body {:fill "#fff4d6"})
+(defattrs :ftrN {:fill "#f4cccc"})
+(defattrs :ftrL {:fill "#cce5ff"})
+(defattrs :gap {:font-size 11 :fill "#cc9933" :font-style "bold"})
+
+; Stock BW vs SGW packet-shape comparison — §1.14 divergence-summary.
+
+(draw-column-headers)
+
+; --- Row A: Stock BigWorld 2.0.1 ---
+(draw-box (text "Stock BW — uint16 flags, network order" :bwFlags) {:span 2 :borders {:all true}})
+(draw-box (text "message body" :body) {:span 11 :borders {:all true}})
+(draw-box (text "footer (network byte order)" :ftrN) {:span 3 :borders {:all true}})
+(draw-gap "  STOCK BIGWORLD 2.0.1 — 2-byte flags carry low byte (0x01..0x80) AND high byte (FLAG_HAS_CHECKSUM 0x0100, FLAG_CREATE_CHANNEL 0x0200, FLAG_HAS_CUMULATIVE_ACK 0x0400, FLAG_INDEXED_CHANNEL 0x0800). Footer fields little-end-first via BW_HTONS / BW_HTONL.")
+
+; --- Row B: SGW ---
+(draw-box (text "SGW — uint8 flags" :sgwFlags) {:span 1 :borders {:all true}})
+(draw-box (text "message body" :body) {:span 12 :borders {:all true}})
+(draw-box (text "footer (little-endian)" :ftrL) {:span 3 :borders {:all true}})
+(draw-gap "  SGW — 1-byte flags (low byte only). NO checksum / no create-channel / no cumulative-ack / no indexed-channel — all four high-byte flags absent. Footer fields LITTLE-ENDIAN — emit seq 0x12345678 and verify wire bytes 78 56 34 12.")

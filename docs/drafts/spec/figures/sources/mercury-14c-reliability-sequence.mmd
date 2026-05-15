@@ -1,0 +1,42 @@
+%%{init: {"sequence": {"htmlLabels": false}}}%%
+sequenceDiagram
+    participant S as Sender
+    participant N as Network
+    participant R as Receiver
+
+    Note over S: outstanding-ack bitmap = 0x00000000
+    Note over R: dedup hash[512] empty (mask 0x1FF)
+
+    S->>N: seq 140 reliable
+    Note over S: bitmap bit 12 set\nresend timer = 700ms
+    N->>R: seq 140 arrives
+    Note over R: dedup slot (140 & 0x1FF = 140)\nempty → store + schedule ack
+
+    S->>N: seq 141 reliable
+    Note over S: bitmap bit 13 set
+    N--xR: seq 141 LOST in transit
+
+    S->>N: seq 142 reliable
+    Note over S: bitmap bit 14 set
+    N->>R: seq 142 arrives ahead of 141
+    Note over R: gap-fill: store at slot 142\nbuffer until 141 fills
+
+    R->>N: ack list = [142, 140]
+    N->>S: ack list arrives
+    Note over S: processAck clears bits 14 and 12\nbitmap = 0b...0010 (only bit 13 = seq 141)
+
+    Note over S: 700ms elapses for seq 141\nbit 13 still set
+    S->>N: seq 141 RETRANSMIT
+    Note over S: retransmit_count[141] = 1
+    N->>R: seq 141 arrives (late)
+    Note over R: dedup slot 141 empty\nstore + ack + deliver 141-142 in order
+
+    R->>N: ack list = [141]
+    N->>S: ack arrives
+    Note over S: bitmap bit 13 cleared\nbitmap = 0x00000000
+
+    Note over S,R: --- dedup-hit case ---
+    S->>N: seq 141 RETRANSMIT (duplicate)
+    Note over R: dedup slot 141 already filled\nDROP — ack-only response
+    R->>N: ack list = [141]
+    N->>S: redundant ack ignored

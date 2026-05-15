@@ -1,0 +1,25 @@
+%%{init: {"flowchart": {"htmlLabels": false}}}%%
+flowchart TD
+    START(["Nub::tick(now)"])
+
+    START --> PRUNE
+    PRUNE["① Prune dead channels\nremove Disconnected entries\nfrom channels HashMap\n(SocketAddr → Channel)"]
+
+    PRUNE --> STALE
+    STALE["② Sweep stale fragments\nFragmentAssembler::cleanup_stale(now)\nFRAGMENT_REASSEMBLY_TIMEOUT_MS = 30,000ms\npending HashMap keyed by frag_begin"]
+
+    STALE --> TIMEOUT
+    TIMEOUT["③ Collect retransmits\nChannel::check_timeouts(now)\nfor each TxEntry in tx_window:\nif elapsed ≥ ACK_TIMEOUT_MS (700ms)\n→ add to retransmits list"]
+
+    TIMEOUT --> KEEPALIVE
+    KEEPALIVE["④ Schedule keepalives\nChannel::keepalive_due(now)\nif last_sent elapsed ≥\nKEEPALIVE_INTERVAL_MS (1,000ms)\n→ add addr to keepalives list\nNote: caller must touch_sent"]
+
+    KEEPALIVE --> RETURN
+    RETURN(["return TickActions {\n  retransmits: Vec,\n  keepalives: Vec,\n  dead_channels: Vec\n}"])
+
+    style START fill:#e8f4fb,stroke:#5599cc
+    style RETURN fill:#e8f4fb,stroke:#5599cc
+    style PRUNE fill:#fff4d6
+    style STALE fill:#fff4d6
+    style TIMEOUT fill:#ffeedd
+    style KEEPALIVE fill:#ffeedd
