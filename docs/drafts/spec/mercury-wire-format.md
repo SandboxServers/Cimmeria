@@ -1878,6 +1878,82 @@ R16 is upstream of the entire Mercury chapter: every other invariant in §2.4 (R
 
 *Figure 39: the two digests, side by side — the MD5 on the left is the wire commitment a reimplementation server must match; the SHA-1 on the right is internal client state with no server-side obligation. Earlier drafts conflated them because both are uppercase hex produced by CryptoPP and both live in adjacent code paths inside `logOnBegin`.*
 
+#### 2.4.2 Failure-mode index — "the client did X, what R is being violated?"
+
+The R1–R16 tables above are organised by *requirement*. When debugging a reimplementation, the lookup goes the other way: a developer sees a client-side symptom (a log line, a visible misrender, a hard disconnect, silence) and needs to know which R covers that shape of failure. This subsection is the reverse index — symptom on the left, R-row on the right. Every entry below is consequence-first: identify the symptom the player or the network log shows, then trace back to the contract clause it points to.
+
+**Category A — Pre-Mercury rejection (no UDP traffic ever leaves the auth/SOAP layer)**.
+
+| Symptom | Probable R | Distinguishing signal |
+|---|---|---|
+| `protocol_digest` mismatch — login fails before Mercury starts | R16 | SOAP reply carries `LoginMessage_LoginRejectedBadDigest` (`0x019ab408`); no `Nub::registerChannel` log appears |
+| Protocol-version mismatch — login fails before Mercury starts | R15 | SOAP reply carries `LoginMessage_LoginBadProtocolVersion` (`0x019ab2b0`); no `Nub::registerChannel` log appears |
+| Auth-key mismatch — SOAP succeeds but the very first encrypted Mercury packet is rejected | R7 (cipher) | Client logs `"Unexpected key!"` (`AuthenticateKeyComparison`); connection torn down without any application-level messages exchanged |
+
+If no UDP traffic is on the wire at all, the failure is upstream of Mercury (R15 / R16). If UDP packets are exchanged but the very first is dropped, look at cipher (R7) or HMAC (R8) before anything in the dispatch layer.
+
+**Category B — Hard disconnect (channel transitions to Disconnected; all traffic stops)**.
+
+| Symptom | Probable R | Distinguishing signal |
+|---|---|---|
+| Channel disconnects after ~14 seconds of server silence | R10 (NetInactivityTimeout) | UE3 game layer fires `REASON_INACTIVITY` ~15 s after last server packet |
+| Channel disconnects after sustained loss on one reliable message | R14 (lifetime cap = 20 retries) | Log line `"UnAckedHandler::checkResendTimers(%s):Aborting due to failed resend for #%d (%s)"` at `0x01b19dd8`; the `(%s)` reason field carries the per-packet retry-exhausted code from `processIncomingPacketEntry` (`0x0158be30`) |
+| Channel disconnects on a single misformatted packet | R1/R3/R4 (framing) | Bad-flags log path fires first (Category C below), *then* the disconnect arrives — the disconnect itself is downstream of the bad-flags rejection |
+| Channel teardown on indexed-channel packet with no finder | R9 (channel registration) | `"Client got indexed channel packet with no finder registered"`; channel object freed |
+
+Hard disconnects in the Mercury layer always have a preceding log line that names the *immediate* cause. The R-row in the table above is the contract clause; the log line is the proximate trigger. If you see a disconnect with no preceding Mercury log line, the disconnect originated outside Mercury (e.g. UE3 layer R10, or an SOAP-layer teardown).
+
+**Category C — Silent packet drop (packet parsed at recv but discarded; channel survives; usually accompanied by a log line)**.
+
+| Symptom | Probable R | Distinguishing signal |
+|---|---|---|
+| `"received packet with bad flags"` log spam, packets discarded | R1 (flags byte) | Flags byte misparsed at offset 0; the rest of the packet is unrecoverable |
+| `"Packet with FLAG_HAS_ACKS had 0 acks"` log line | R3 (`FLAG_HAS_ACKS` discipline) | Forbidden combination — server sent the flag without an ack count payload |
+| `"Dropping packet due to receiving a packet with null sequence number"` | R4 (sequence required on reliable) | On-channel reliable packet lacks the sequence-number footer |
+| `"Dropping packet due to receiving a packet with sequence number outside valid range"` | R4 (28-bit range) | Sequence ID at the wrap boundary (`0x10000000`); enforced separately from the in-window check |
+| `"Mangled fragment footers"` or `"illegal bundle fragment count"` | R5 (fragment well-formedness) | `firstFragmentId` / `lastFragmentId` corrupt or inconsistent |
+| `"received undersize packet (%d bytes)"` | R1 (minimum 2-byte body) | Recv-side minimum-size check; the only Mercury-layer recv-side size guard (R11 is send-side only) |
+| `"Dropping illegal once-off-reliable packet"` | R-row for once-off reliability | Once-off-reliable packets must follow the reliability rules; this is the rejection log |
+| `"Sequence number #%d is way out of window #%d!"` | R12 (sequence handling) | Far-out-of-window sequence; warning only, *not* a disconnect — Category B requires a different log line |
+| `"Discarding abandoned stale overlapping fragmented bundle from seq %d to %d"` | R13 (fragment lifecycle) | Arrival-triggered eviction of an in-progress reassembly; the only stale-cleanup path that exists |
+
+Silent drops are recoverable — the channel keeps running and the next valid packet is processed. Sustained silent-drop traffic is the failure mode for reimplementation bugs that produce *some* valid packets and *some* invalid ones; the player sees stutters or missing updates rather than a hard disconnect.
+
+**Category D — Subtle desync (packet parses, body interpretation is wrong, subsequent messages parse garbage)**.
+
+| Symptom | Probable R | Distinguishing signal |
+|---|---|---|
+| Argument stream desyncs after a specific message; subsequent messages parse garbage | R for that msg's byte layout (e.g. `enableEntities` = 8 bytes; `resetEntities` = 1 byte; `loggedOff` = 1 byte) | The dispatch table consumes a fixed number of bytes per message based on `flag` / `size`; a wrong byte count cascades into the *next* message |
+| `createBasePlayer` followed by `createCellPlayer` produces orphan entity | R for `createBasePlayer` (6 bytes) and `createCellPlayer` (32 bytes) byte layouts | Mismatched class-id or rotation-axis-swap is silent at parse time but surfaces as wrong-orientation entities |
+| Length-prefix interpretation off by 2 bytes (u16 vs u32) | Per-`InterfaceElement` framing (§2.5.1; `flag=1`/`size=2` for u16-prefix, `flag=0`/`size=N` for fixed-N) | The dissector that conflated u32-prefix and u16-prefix interpretation produced this class of bug; see §2.5.1 `restoreClientAck` correction note |
+
+Subtle desync is the worst failure mode to diagnose because **no log line fires** at the parse error — the parser advances the wrong number of bytes, misinterprets the next message's leading byte as the previous message's body, and the bug surfaces several messages later as either a "bad flags" log (Category C) or simply as wrong gameplay state with no log signal at all.
+
+**Category E — Visible misrender (client doesn't error, just renders wrong)**.
+
+| Symptom | Probable R | Distinguishing signal |
+|---|---|---|
+| Remote player position lags / jelly-walks | T1 (tick rate) or T7 (ack timing jitter) | Tick rate stable but acks come in clusters → T7; tick rate drifting → T1 |
+| Player orientation visibly wrong by a 90° axis swap | R for `createCellPlayer` rotation field order | Y/Z rotation swap (`rotX, rotZ, rotY`); silent at the network layer, visible in the world |
+| Camera or spatial-partition setup falls back to defaults | R for `spaceViewportInfo` (13 bytes) | Wrong byte count parsed; client takes the default-fallback branch instead of the provided viewport |
+| PAK delivery stalls or files come down corrupt | R for `RESOURCE_FRAGMENT` byte layout | Resource categories mismatch; client logs the corruption but does not disconnect |
+| Player visible but frozen / ghost-like after restore | R for `restoreClient` response | Server never responded to a `restoreClient` request; client stays in restoration-wait state |
+| Player position desynchronizes silently with no log line | R for `detailedPosition` (28 bytes per §1.11) | Wrong byte count parsed; client advances to next message but the position state was corrupted |
+
+Visible misrender always implies the wire bytes were structurally valid (no log line fired) but the *semantic* interpretation was wrong. This is the failure mode that distinguishes "reimplementation passes wire-format unit tests" from "reimplementation produces playable gameplay" — wire-format unit tests catch Category C/D bugs, but visible misrender requires per-message byte-layout validation against pcap-captured ground truth.
+
+**Category F — No-op (wire bytes accepted, client takes no action, zero observable effect)**.
+
+| Symptom | Probable R | Distinguishing signal |
+|---|---|---|
+| Server sets `bandwidthNotification` value; nothing observable changes at the client | S2 (no-op) | The descriptor must be registered (else dispatch-table lookup fails — that *would* be Category C), but the value itself is discarded |
+| Server emits the 1453-byte cap; client receives larger packets without complaint | R11 (send-only cap) | The recv path has no upper bound; reimplementations sending >1453B will not trip a client-side check |
+| Server sends correctly-formed `spaceData` (msg `0x07`); nothing visible changes | T-row (`spaceData` unused) | Handler is present and decompiled but the SGW build does not exercise it in normal gameplay |
+
+No-op failures are the safest reimplementation bugs in the sense that the player sees nothing wrong, but they are *latent risks* — if the SGW build ever activates the no-op path (e.g. a future patch enables `setBandwidthFromServerMutator`), the silent reimplementation bug becomes an active one. Section §2.10 catalogues these as gotchas (S2, S3, etc.) rather than as silent bugs.
+
+**Cross-cutting note: when more than one R covers the symptom.** A reimplementation that ships several bugs at once will surface only the *first* one to fire on a given packet. Cipher (R7) and HMAC (R8) reject before flags-parsing; flags-parsing (R1) rejects before sequence-handling (R4/R12); sequence-handling rejects before dispatch-table lookup; dispatch-table lookup rejects before per-message byte-layout parsing. The triage order is: SOAP/auth → cipher → flags → sequence → dispatch → per-message layout. If you see a Category C/D symptom, fix the upstream layers first before debugging the downstream layer they shadow.
+
 ### 2.5 Client descriptor table — system-message handlers
 
 Section 1 §1.8 describes the dispatch shape (`nub->elements[msg_id]` single-array lookup). The follow-up question — *which `msg_id` corresponds to which handler* — was previously gated on a live-memory inspection: the table itself lives in BSS (`DAT_01ef2518`) and is zero in the static image, populated at runtime by `PopulateMessageTypeTable`[^server-connection-send]. A live-capture pass on 2026-05-15 (BP on `PopulateMessageTypeTable` at `ghidra://SGW.exe@0x00dd63d0`, then `read_memory` against the populated vec without halting) extracted the full **57-entry server→client (`BWNetDriver::ClientInterface`) message table**. The vec data buffer is at `0xFFC88100` (kernel-shared user region, allocated by the static initializer); each entry is `0x1C` bytes in the read-only static form and `0x24` bytes in the per-connection runtime form (which adds 8 bytes of per-slot byte/count statistics). Vec capacity is 256 entries (sized to the full 1-byte msg_id space); slots `0x39..0x7F` are reserved (uninitialized template pattern) and slots `0x80..0xFE` are dynamically registered EntityMethod slots that all share the generic `entityMessage` wire handler at `0x01ED1CBC` — disambiguation among entity methods is by the slot's *index* in the vec, not by name.
@@ -2012,6 +2088,35 @@ This is BigWorld's classic `InterfaceElement` two-mode encoding. **The `flag` by
 **The pcap-observed gameplay traffic pattern**: every per-tick client packet carries `[0x01] authenticate (21B)` + `[0x03] avatarUpdateExplicit (40B)` = 65 bytes of body. The `authenticate` payload is a refreshed auth token (per-tick re-authentication), not a one-shot login credential — it is sent ~13× per second during gameplay (at ~75 ms intervals).
 
 **This BaseAppExtInterface table is the structural counterpart to `BWNetDriver::ClientInterface`**. A reimplementation that handles server→client traffic must also accept these 14 client→server msg_ids; the dynamic `0x80..0xFE` range carries the bulk of gameplay-time client→server traffic (every entity method invocation from the client passes through that range).
+
+#### 2.5.2 Client→server byte layouts (post-`msg_id`)
+
+This subsection decomposes the bytes *after* the `msg_id` byte for the four client→server messages with concrete evidence — either pcap-captured ground truth or static-analysis of the server-side handler descriptor. The other ten entries' byte layouts are deferred pending direct evidence (handler decompilation on the server side or wider pcap capture of the relevant gameplay moments); they are catalogued at the end of the subsection as "decomposition deferred" so a reimplementation team knows what still needs work and which entries can be implemented from the descriptions below.
+
+**`authenticate` (msg `0x01`) — 21-byte body, pcap-captured**. Every per-tick client packet in established sessions carries an `authenticate` message followed by an `avatarUpdateExplicit`. The body decodes as `[u16 length = 19][19 bytes auth token]` — the `length` is the u16 prefix encoded by `flag=1`/`size=2`, and the 19-byte token is a refreshed per-tick re-authentication payload sourced from the same auth material the SOAP login established at session start. The token is rotated each tick (different bytes per packet, captured over a 1-minute pcap window), so a reimplementation that records and replays a single token will be rejected on the next tick. The exact token-derivation algorithm has not been pinned by static analysis in this pass; the constraint is "the server must be able to verify the token belongs to this session" — most plausibly an HMAC or rolling-counter scheme keyed on the SOAP-delivered session key, but the V1 server-side verification path lives outside this chapter's scope. **For a Cimmeria reimplementation**, the server must accept this 21-byte body on every tick, decode the 19-byte token from offset +2, and validate against the session record — silence (no `authenticate` validation) would leave the connection vulnerable to session hijack via packet replay.
+
+**`avatarUpdateExplicit` (msg `0x03`) — 40-byte fixed body**. This message dominates client→server gameplay traffic; it is sent at ~13 Hz (~75 ms interval) during normal play and carries the player's authoritative position update. The full 40-byte decomposition has **not** been pinned to per-field offsets by static analysis in this pass; the parts that *are* confirmed are: (a) the message is `CONSTANT_LENGTH` 40 bytes — no length prefix — confirmed by the live `InterfaceElement` struct at `0xFFE3A0D4` (`flag=0`, `size=0x28`); (b) it carries position (x, y, z floats — 12 bytes) and orientation (yaw, pitch, roll — variable encoding per BigWorld convention) per the BigWorld upstream avatarUpdate convention; (c) the 4-byte delta between `avatarUpdateImplicit` (36) and `avatarUpdateExplicit` (40) is most likely an additional integer field (vehicle_id or alias_id), but the exact field is not pinned here. Pcap-captured bytes for several explicit updates show stable patterns at offsets 0–11 (position floats) and a more variable region at offsets 12–39 (orientation + auxiliary fields). **For a Cimmeria reimplementation**, the server must consume exactly 40 bytes after `msg_id 0x03` and reject any other length — but the field-level interpretation can be deferred until handler-side decomp pins the offsets, because the body is opaque to Mercury itself (it is consumed by the entity-system layer above Mercury, which is the correct place to validate semantic correctness).
+
+**`enableEntities` (msg `0x08`) — 8-byte fixed body: `i32 entity_id` + `i32 flag`**. Confirmed by static analysis (V5 W-enable-entities finding) and validated against pcap dissector behaviour. The 8-byte body is two little-endian 32-bit integers: the first 4 bytes are the entity_id the server is being asked to enable, and the second 4 bytes are a boolean flag (1 = enable, 0 = disable) packed into an i32 for alignment. `flag=0`/`size=8` on the `InterfaceElement` struct at `0xFFE3A160` confirms the fixed length. **For a Cimmeria reimplementation**, the server must consume exactly 8 bytes after `msg_id 0x08` and treat them as `(i32_le entity_id, i32_le flag)`.
+
+**`restoreClientAck` (msg `0x0B`) — 4-byte fixed body, almost certainly `i32 entity_id`**. The previous draft of this chapter erroneously classified this as a u32 length-prefix variable-length entry; the live read at `0xFFE3A1B4` (commit `df6ca44`) showed `flag=0`/`size=4` — fixed 4-byte payload, not a u32 prefix. The most likely interpretation is `i32_le entity_id` (matching `setSpaceViewportAck` and `setVehicleAck` which are 8 bytes = `[i32 entity_id, i32 something]`; `restoreClientAck` drops the second field). **For a Cimmeria reimplementation**, the server must consume exactly 4 bytes after `msg_id 0x0B` and treat them as `i32_le entity_id`. The entity_id identifies which restoration the client is acking; the server uses it to dequeue the corresponding pending restoration record.
+
+**Decomposition deferred** (10 entries pending direct evidence):
+
+| msg_id | Name | What's deferred | Best-guess shape (from BigWorld convention / sibling entries) |
+|---|---|---|---|
+| `0x00` | `baseAppLogin` | Field-level decomposition of the u16-prefixed body | u16 length prefix; body carries a 20-char session token + a flags byte + crypto material; pcap-observed body size varies per session |
+| `0x02` | `avatarUpdateImplicit` | 36-byte field layout | Same shape as `0x03` (`avatarUpdateExplicit`) but missing the 4-byte vehicle_id / alias_id field |
+| `0x04` | `avatarUpdateWardImplicit` | 36-byte field layout | Same as `0x02` but for the ward (player-controlled) entity rather than the player avatar |
+| `0x05` | `avatarUpdateWardExplicit` | 40-byte field layout | Same as `0x03` but for the ward entity |
+| `0x06` | `switchInterface` | N/A (parameterless) | No body — `flag=0`/`size=0` confirms |
+| `0x07` | `requestEntityUpdate` | Field-level decomposition of the u16-prefixed body | u16 length prefix; body likely carries `[i32 entity_id]` or `[i32 entity_id, u32 last_known_revision]` — server uses this to push the missing state |
+| `0x09` | `setSpaceViewportAck` | 8-byte field layout | Most plausibly `[i32 entity_id, i32 viewport_id]` |
+| `0x0A` | `setVehicleAck` | 8-byte field layout | Most plausibly `[i32 entity_id, i32 vehicle_id]` |
+| `0x0C` | `disconnectClient` | Reason-code enumeration | 1 byte; reason code namespace is shared with the server→client `loggedOff` (msg `0x37`) but specific values not enumerated here |
+| `0x0D` | `entityMessage` | Per-entity-method body layout | u16 length prefix; body carries `[u8 method_index][marshalled args per the entity-def]` — the entity-method dispatcher consumes the body, not Mercury itself; see Section 1 §1.5 entity-method wire shape |
+
+Each deferred row is a candidate for follow-up RE: handler-side decomp of the server-side message handler (matching the client→server `BaseAppExtInterface` entry by index) would yield the field offsets. None of the deferrals block a Cimmeria reimplementation that consumes the bytes opaquely and passes them upstream for entity-system processing — Mercury itself only needs the *length* to be right, which the `InterfaceElement` table pins exactly.
 
 ### 2.6 What the server MAY do (TOLERATED)
 
