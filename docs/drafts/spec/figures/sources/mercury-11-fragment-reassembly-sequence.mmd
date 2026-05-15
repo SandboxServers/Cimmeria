@@ -21,4 +21,4 @@ sequenceDiagram
 
     FA->>APP: reassembled body (complete bundle)
 
-    Note over FA: Stale cleanup: FRAGMENT_REASSEMBLY_TIMEOUT_MS=30,000ms\ncleanup_stale() called each Nub tick()
+    Note over FA: Stale cleanup is NOT timer-driven in SGW:\n\n(a) Arrival-triggered: a new fragmented bundle whose\n    sequence range overlaps an in-progress reassembly\n    discards the in-progress one\n    (log: "Discarding abandoned stale overlapping\n    fragmented bundle from seq %d to %d" @ 0x01b18868)\n\n(b) Channel-teardown-triggered: Channel destruction\n    forgets the unprocessed packets in the fragment chain\n    (log: "Channel::~Channel(%s): Forgetting %d\n    unprocessed packets in the fragment chain" @ 0x01b1a090)\n\nThere is no periodic sweep. A stalled reassembly on an\nalive channel can sit in memory indefinitely until another\nbundle on the same channel evicts it. See §2.4.1 R13.

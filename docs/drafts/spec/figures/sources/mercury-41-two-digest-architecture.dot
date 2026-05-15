@@ -1,0 +1,63 @@
+digraph G {
+  rankdir=LR
+  node [shape=plaintext fontname=Helvetica]
+  graph [label="Two digests, one wire field — the protocol_digest (MD5, on wire) vs. the internal dispatch-table hash (SHA-1, at +0x130)" labelloc=t fontsize=13 fontname=Helvetica]
+
+  layout [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR>
+        <TD BGCOLOR="#f4f4f4" WIDTH="170"><B>Attribute</B></TD>
+        <TD BGCOLOR="#d6ffd6"><B>protocol_digest</B><BR/><FONT POINT-SIZE="9">wire field — the version commitment server gates on</FONT></TD>
+        <TD BGCOLOR="#fff4d6"><B>dispatch_table_hash</B><BR/><FONT POINT-SIZE="9">internal — never sent on wire</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Algorithm</B></TD>
+        <TD ALIGN="CENTER"><B><FONT COLOR="#006600">MD5</FONT></B><BR/><FONT POINT-SIZE="9">128 bits</FONT></TD>
+        <TD ALIGN="CENTER"><B><FONT COLOR="#996600">SHA-1</FONT></B><BR/><FONT POINT-SIZE="9">160 bits</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Length</B></TD>
+        <TD ALIGN="CENTER"><B>32</B> uppercase hex chars</TD>
+        <TD ALIGN="CENTER"><B>40</B> uppercase hex chars</TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Example value</B></TD>
+        <TD><FONT POINT-SIZE="8" FACE="Consolas">58AFA196AD3AC4F6<BR/>5CADD99BFF23B799</FONT></TD>
+        <TD><FONT POINT-SIZE="8" FACE="Consolas">A94A8FE5CCB19BA6<BR/>1C4C0873D391E987<BR/>982FBBD3</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Computed by</B></TD>
+        <TD><FONT POINT-SIZE="9">CME <B>Event_Net_GetProtocolDigest</B><BR/>listener (Python game-script<BR/>or another C++ subsystem);<BR/>SGWNetworkManager raises<BR/>the event at logOnBegin</FONT></TD>
+        <TD><FONT POINT-SIZE="9">CryptoPP <B>HexEncoder</B> pipeline<BR/>inside <B>logOnBegin</B>, run<BR/>immediately after<BR/>PopulateMessageTypeTable<BR/>populates the dispatch table</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Input bytes</B></TD>
+        <TD><FONT POINT-SIZE="9">Entity-defs file content<BR/>(the contract both sides<BR/>must agree on)</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Post-PMT dispatch-table state<BR/>(this+0x190 sub-object,<BR/>derived from same entity-defs)</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Where stored</B></TD>
+        <TD><FONT POINT-SIZE="9">Passed as <B>param_4</B> to<BR/>ServerConnection::logOnBegin<BR/>(a `char*` arg);<BR/>not retained in client memory<BR/>after curl-session setup</FONT></TD>
+        <TD><FONT POINT-SIZE="9">ServerConnection<B>+0x130</B> as<BR/>std::basic_string&lt;char&gt;<BR/>(MSVC VS2005 heap-form;<BR/>_Mysize=40, _Myres=47)</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Wire transmission</B></TD>
+        <TD BGCOLOR="#d6ffd6"><FONT POINT-SIZE="9">YES — embedded in SOAP<BR/>login body as the<BR/><B>sgwLogin:ProtocolDigest</B><BR/>XML field;<BR/>3 occurrences at<BR/>0x01b2507c / 0x01b25384 /<BR/>0x01b25ad8</FONT></TD>
+        <TD BGCOLOR="#ffcccc"><FONT POINT-SIZE="9">NO — internal only;<BR/>never sent on the wire,<BR/>never read by the server</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Purpose</B></TD>
+        <TD><FONT POINT-SIZE="9">Outer protocol-version<BR/>commitment.<BR/>Mismatch =&gt;<BR/>LoginMessage_LoginBad-<BR/>ProtocolVersion (0x019ab2b0) or<BR/>LoginRejectedBadDigest<BR/>(0x019ab408). No Mercury<BR/>traffic begins.</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Internal commitment to the<BR/>post-PMT dispatch table.<BR/>Likely used for runtime<BR/>verification or as a debug<BR/>breadcrumb.</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Reimplementation<BR/>obligation</B></TD>
+        <TD><FONT POINT-SIZE="9">Server must produce the<BR/>same MD5 over the same<BR/>entity-defs (deterministic;<BR/>not session-salted).<BR/>This is the value to match.</FONT></TD>
+        <TD><FONT POINT-SIZE="9">None. Internal to the<BR/>client; a reimplementation<BR/>server does not interact<BR/>with this hash.</FONT></TD>
+      </TR>
+      <TR>
+        <TD COLSPAN="3" BGCOLOR="#fafafa"><FONT POINT-SIZE="9">Source: §2.4 R16 (live capture 2026-05-15) + Track B mercury-section-2-track-b-evidence Investigation 6 + mercury-section-2-live-capture-findings (Gap B closure). Earlier drafts conflated the two hashes because both are uppercase hex produced by CryptoPP HexEncoder and both live in adjacent code paths inside logOnBegin; the AteraLoader session log's literal `protocol_digest: ...` field at logOnBegin entry is the authoritative evidence that the 32-char MD5 is the on-wire value.</FONT></TD>
+      </TR>
+    </TABLE>
+  >]
+}

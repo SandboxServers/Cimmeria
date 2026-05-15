@@ -96,6 +96,12 @@ digraph G {
         <TD><FONT POINT-SIZE="9">—</FONT></TD>
       </TR>
       <TR>
+        <TD BGCOLOR="#fafafa"><B>Protocol version<BR/>(R16, upstream gate)</B></TD>
+        <TD><FONT POINT-SIZE="9">protocol_digest = MD5 (32 hex chars)<BR/>over entity-defs, computed by CME<BR/>Event_Net_GetProtocolDigest listener;<BR/>sent in SOAP body as<BR/>sgwLogin:ProtocolDigest;<BR/>mismatch = no Mercury channel opens</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Internal SHA-1 hash (40 hex chars)<BR/>at ServerConnection+0x130 from<BR/>CryptoPP HexEncoder pipeline is<BR/>local-only; not on wire</FONT></TD>
+      </TR>
+      <TR>
         <TD COLSPAN="4" BGCOLOR="#fafafa"><FONT POINT-SIZE="10">Source: §2.4 (REQUIRED), §2.5 (TOLERATED), §2.6 (RECOMMENDED). The right-hand columns are where a reimplementation has freedom; the left-hand column is the contract surface. Em-dash entries indicate no freedom on that axis for that feature.</FONT></TD>
       </TR>
     </TABLE>
