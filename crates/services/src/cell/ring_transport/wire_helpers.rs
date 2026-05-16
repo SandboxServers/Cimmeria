@@ -140,7 +140,13 @@ pub(super) async fn send_visible(
                 entity_id,
             }
         };
-        let _ = tx.send(msg).await;
+        if let Err(e) = tx.send(msg).await {
+            tracing::warn!(
+                witness_id,
+                entity_id,
+                "Ring transport visibility send failed: {e}"
+            );
+        }
     }
 }
 

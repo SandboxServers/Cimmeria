@@ -56,14 +56,19 @@ pub(super) async fn handle_base_message(
                         }
                     }
 
-                    let _ = reply_tx.send(space_id);
-                    let _ = tx
+                    if let Err(e) = reply_tx.send(space_id) {
+                        tracing::warn!(entity_id, space_id, "CreateEntity reply failed: {e}");
+                    }
+                    if let Err(e) = tx
                         .send(CellToBaseMsg::EntityCreated {
                             entity_id,
                             space_id,
                             position,
                         })
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(entity_id, space_id, "EntityCreated send failed: {e}");
+                    }
                 }
                 Err(e) => {
                     tracing::error!(entity_id, %world_name, "Failed to create entity: {e}");

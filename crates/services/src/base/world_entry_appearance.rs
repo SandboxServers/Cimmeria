@@ -215,9 +215,11 @@ pub(crate) async fn handle_on_client_ready(
     };
 
     if let Some(ref tx) = cell_tx {
-        let _ = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await;
+        if let Err(e) = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await {
+            tracing::warn!(entity_id, "ConnectEntity send failed: {e}");
+        }
 
-        let _ = tx
+        if let Err(e) = tx
             .send(BaseToCellMsg::InitPlayerState {
                 entity_id,
                 player_id: pending.player_id,
@@ -227,7 +229,14 @@ pub(crate) async fn handle_on_client_ready(
                 active_bandolier_slot,
                 bandolier_items,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                player_id = pending.player_id,
+                "InitPlayerState send failed: {e}"
+            );
+        }
 
         if let Some(region_id) = advance_ring_destination_id {
             // Wake the destination ring's FSM. Sent AFTER InitPlayerState
@@ -235,12 +244,19 @@ pub(crate) async fn handle_on_client_ready(
             // entity (player_id, missions, etc.) — `mark_player_loaded`
             // doesn't need that state directly, but downstream chain
             // events fired by the unlock cascade do.
-            let _ = tx
+            if let Err(e) = tx
                 .send(BaseToCellMsg::AdvanceRingDestination {
                     entity_id,
                     region_id,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    region_id,
+                    "AdvanceRingDestination send failed: {e}"
+                );
+            }
         }
     }
 

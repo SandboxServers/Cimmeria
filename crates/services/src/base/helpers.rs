@@ -103,9 +103,14 @@ pub(crate) fn destroy_client_entities(
 
         // Notify CellService to disconnect and destroy the cell entity
         if let Some(tx) = cell_tx {
-            let _ = tx.try_send(BaseToCellMsg::DisconnectEntity {
+            if let Err(e) = tx.try_send(BaseToCellMsg::DisconnectEntity {
                 entity_id: player_eid,
-            });
+            }) {
+                tracing::warn!(
+                    entity_id = player_eid,
+                    "DisconnectEntity try_send failed: {e}"
+                );
+            }
         }
     }
     tracing::info!(%addr, "Client entities cleaned up");

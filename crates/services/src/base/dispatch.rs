@@ -137,8 +137,12 @@ pub(crate) async fn dispatch_sgw_player_base_method(
             if let Some(entity_id) = entity_id {
                 // Tell CellService to disconnect and destroy the entity
                 if let Some(ref tx) = cell_tx {
-                    let _ = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await;
-                    let _ = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await;
+                    if let Err(e) = tx.send(BaseToCellMsg::DisconnectEntity { entity_id }).await {
+                        tracing::warn!(entity_id, "DisconnectEntity send failed: {e}");
+                    }
+                    if let Err(e) = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await {
+                        tracing::warn!(entity_id, "DestroyEntity send failed: {e}");
+                    }
                 }
 
                 // Remove entity→addr mapping

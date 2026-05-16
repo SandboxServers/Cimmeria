@@ -123,26 +123,42 @@ pub async fn advance_step(
         let mut args = Vec::with_capacity(5);
         args.extend_from_slice(&sid.to_le_bytes());
         args.push(STATUS_COMPLETED as u8);
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: ON_STEP_UPDATE,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                step_id = sid,
+                mission_id,
+                "StepUpdate send failed: {e}"
+            );
+        }
     }
 
     // Send onStepUpdate(new_step_id, ACTIVE)
     let mut args = Vec::with_capacity(5);
     args.extend_from_slice(&new_step_id.to_le_bytes());
     args.push(STATUS_ACTIVE as u8);
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_STEP_UPDATE,
             args,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(
+            entity_id,
+            new_step_id,
+            mission_id,
+            "StepUpdate (new step) send failed: {e}"
+        );
+    }
 
     // Send onObjectiveUpdate for each new objective
     for obj in &new_objectives {
@@ -151,13 +167,21 @@ pub async fn advance_step(
         args.push(STATUS_ACTIVE as u8);
         args.push(if obj.hidden { 1 } else { 0 });
         args.push(if obj.optional { 1 } else { 0 });
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: ON_OBJECTIVE_UPDATE,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(
+                entity_id,
+                objective_id = oid,
+                mission_id,
+                "ObjectiveUpdate send failed: {e}"
+            );
+        }
     }
 }
 
@@ -219,13 +243,20 @@ pub async fn accept_mission(
     args.extend_from_slice(&mission_id.to_le_bytes());
     args.push(STATUS_ACTIVE as u8);
     args.extend_from_slice(&0i32.to_le_bytes());
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_MISSION_UPDATE,
             args,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(
+            entity_id,
+            mission_id,
+            "MissionUpdate (complete) send failed: {e}"
+        );
+    }
 
     // Send onStepUpdate
     let mut args = Vec::with_capacity(5);
