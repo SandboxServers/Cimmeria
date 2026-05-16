@@ -48,8 +48,38 @@ impl MissionReward {
     }
 
     /// Grant this reward to a player entity.
-    pub fn grant_to(&self, _player_entity_id: i32) {
-        todo!("MissionReward::grant_to - apply XP, money, and items to player")
+    ///
+    /// **Note:** This is the game-crate entry point. XP is applied directly to
+    /// the in-memory [`PlayerState`]; money and items require I/O (DB + wire)
+    /// and must be handled by the services layer via [`CellToBaseMsg`].
+    pub fn grant_to(&self, player_entity_id: i32, player_state: &mut crate::player::PlayerState) {
+        if self.xp > 0 {
+            let levels = player_state.grant_xp(self.xp);
+            if !levels.is_empty() {
+                tracing::info!(
+                    player_entity_id,
+                    levels_gained = ?levels,
+                    "MissionReward: player levelled up from XP grant"
+                );
+            }
+        }
+        if self.money != 0 {
+            // Money persistence + wire is services-layer only (GrantCash).
+            tracing::debug!(
+                player_entity_id,
+                money = self.money,
+                "MissionReward: cash grant deferred to services layer"
+            );
+        }
+        if let Some(item_template_id) = self.item_template_id {
+            // Item persistence + wire is services-layer only (GrantItem).
+            tracing::debug!(
+                player_entity_id,
+                item_template_id,
+                count = self.item_count,
+                "MissionReward: item grant deferred to services layer"
+            );
+        }
     }
 }
 

@@ -175,7 +175,7 @@ pub async fn handle_grant_xp(
         "GrantXP processed"
     );
 
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -195,10 +195,13 @@ pub async fn handle_grant_xp(
             )
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 
     for &lvl in &levels_gained {
-        let _ = send_to_witness(
+        if let Err(e) = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -216,14 +219,17 @@ pub async fn handle_grant_xp(
                 )
             },
         )
-        .await;
+        .await
+        {
+            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+        }
 
         let next_threshold = if lvl >= MAX_LEVEL {
             LEVEL_XP[MAX_LEVEL as usize] as i32
         } else {
             LEVEL_XP[lvl as usize] as i32
         };
-        let _ = send_to_witness(
+        if let Err(e) = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -241,11 +247,14 @@ pub async fn handle_grant_xp(
                 )
             },
         )
-        .await;
+        .await
+        {
+            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+        }
     }
 
     if !levels_gained.is_empty() {
-        let _ = send_to_witness(
+        if let Err(e) = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -263,12 +272,15 @@ pub async fn handle_grant_xp(
                 )
             },
         )
-        .await;
+        .await
+        {
+            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+        }
 
         let mut tp_args = Vec::with_capacity(8);
         tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
         tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
-        let _ = send_to_witness(
+        if let Err(e) = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -286,7 +298,10 @@ pub async fn handle_grant_xp(
                 )
             },
         )
-        .await;
+        .await
+        {
+            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+        }
     }
 }
 
@@ -346,7 +361,7 @@ pub async fn handle_grant_cash(
         let total = new_total;
         tracing::info!(entity_id, amount, total, "GrantCash: updated naquadah");
 
-        let _ = send_to_witness(
+        if let Err(e) = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -364,7 +379,10 @@ pub async fn handle_grant_cash(
                 )
             },
         )
-        .await;
+        .await
+        {
+            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+        }
     } else {
         // No-DB-pool mode: we have no authoritative balance to send. Drop the
         // grant entirely rather than emitting onCashChanged with the *delta*

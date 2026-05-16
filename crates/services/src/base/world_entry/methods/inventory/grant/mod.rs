@@ -96,7 +96,9 @@ pub async fn handle_grant_item(
             Ok(Some(slots)) => match slots.into_iter().next() {
                 Some(s) => s,
                 None => {
-                    let _ = db_tx.rollback().await;
+                    if let Err(e) = db_tx.rollback().await {
+                        tracing::error!("DB rollback failed: {e}");
+                    }
                     tracing::warn!(
                         player_id,
                         item_id,
@@ -107,7 +109,9 @@ pub async fn handle_grant_item(
                 }
             },
             Ok(None) => {
-                let _ = db_tx.rollback().await;
+                if let Err(e) = db_tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::warn!(
                     player_id,
                     item_id,
@@ -117,7 +121,9 @@ pub async fn handle_grant_item(
                 return;
             }
             Err(e) => {
-                let _ = db_tx.rollback().await;
+                if let Err(e) = db_tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     player_id,
                     item_id,
@@ -141,7 +147,9 @@ pub async fn handle_grant_item(
         Ok(Some(Some(c))) => c,
         Ok(Some(None)) | Ok(None) => 0,
         Err(e) => {
-            let _ = db_tx.rollback().await;
+            if let Err(e) = db_tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(player_id, item_id, "GrantItem: charges lookup failed: {e}");
             tracing::error!(
                 player_id,
@@ -188,7 +196,9 @@ pub async fn handle_grant_item(
             "Item persisted to inventory"
         ),
         Err(e) => {
-            let _ = db_tx.rollback().await;
+            if let Err(e) = db_tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(player_id, item_id, "Failed to persist item: {e}");
             return;
         }
@@ -238,7 +248,9 @@ pub async fn handle_grant_item(
                 );
             }
             Err(e) => {
-                let _ = db_tx.rollback().await;
+                if let Err(e) = db_tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     player_id,
                     slot_id = next_slot,
@@ -267,7 +279,9 @@ pub async fn handle_grant_item(
             // an inventory mutation we can't durably notify the cell about.
             // The player retries the grant trigger, which is idempotent at
             // the chain level.
-            let _ = db_tx.rollback().await;
+            if let Err(e) = db_tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 player_id,
                 item_id,
@@ -319,7 +333,7 @@ pub async fn handle_grant_item(
             let mut args = Vec::with_capacity(8);
             args.extend_from_slice(&container_id.to_le_bytes());
             args.extend_from_slice(&(next_slot + 1).to_le_bytes());
-            let _ = helpers::send_to_witness(
+            if let Err(e) = helpers::send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -337,7 +351,10 @@ pub async fn handle_grant_item(
                     )
                 },
             )
-            .await;
+            .await
+            {
+                tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+            }
         }
 
         if let Some(tx) = cell_tx {

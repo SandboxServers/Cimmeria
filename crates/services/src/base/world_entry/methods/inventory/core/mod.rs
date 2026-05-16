@@ -123,7 +123,7 @@ pub async fn send_full_inventory_update(
         item.serialize(&mut args);
     }
 
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -134,7 +134,10 @@ pub async fn send_full_inventory_update(
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_UPDATE_ITEM, &args)
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 
     all_items.len()
 }
@@ -159,7 +162,7 @@ pub(super) async fn send_on_remove_item(
     let mut args = Vec::with_capacity(8);
     args.extend_from_slice(&1u32.to_le_bytes()); // ARRAY<INT32> count
     args.extend_from_slice(&item_id.to_le_bytes());
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -170,5 +173,8 @@ pub(super) async fn send_on_remove_item(
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_REMOVE_ITEM, &args)
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 }

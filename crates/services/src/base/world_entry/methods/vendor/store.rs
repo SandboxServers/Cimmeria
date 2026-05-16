@@ -150,7 +150,7 @@ pub async fn send_store_open_to_client(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -161,7 +161,10 @@ pub async fn send_store_open_to_client(
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_STORE_OPEN, &args)
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
     tracing::trace!(entity_id, vendor_entity_id, "Sent onStoreOpen");
 }
 
@@ -178,7 +181,7 @@ pub async fn send_store_update_to_client(
     }
 
     let args = serialize_store_update(updates);
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -196,5 +199,8 @@ pub async fn send_store_update_to_client(
             )
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 }

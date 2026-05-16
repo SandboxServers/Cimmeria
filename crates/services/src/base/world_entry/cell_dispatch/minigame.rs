@@ -66,7 +66,7 @@ pub(super) async fn start_minigame(
                 args.extend_from_slice(&ch.to_le_bytes());
             }
             let method = crate::cell::dispatch::CLIENT_MG_ON_START_MINIGAME;
-            let _ = send_to_witness(
+            if let Err(e) = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -77,7 +77,10 @@ pub(super) async fn start_minigame(
                     build_entity_method_packet(key, seq, acks, entity_id, method, &args)
                 },
             )
-            .await;
+            .await
+            {
+                tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+            }
         } else {
             tracing::warn!(
                 entity_id,
@@ -101,7 +104,7 @@ pub(super) async fn minigame_result(
     tracing::info!(entity_id, result_code, "Minigame result received");
     // Send onEndMinigame to client
     let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -110,15 +113,21 @@ pub(super) async fn minigame_result(
         "METHOD",
         |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method, &[]),
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
     // Forward to CellApp for victory chain processing
     if let Some(cell_tx) = cell_tx {
-        let _ = cell_tx
+        if let Err(e) = cell_tx
             .send(BaseToCellMsg::MinigameResult {
                 entity_id,
                 result_code,
                 on_victory_chains,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "MinigameResult send failed: {e}");
+        }
     }
 }

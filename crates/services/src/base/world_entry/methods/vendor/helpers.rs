@@ -18,7 +18,7 @@ pub async fn send_cash_changed_to_client(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let _ = helpers::send_to_witness(
+    if let Err(e) = helpers::send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -36,7 +36,10 @@ pub async fn send_cash_changed_to_client(
             )
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 }
 
 pub async fn sync_bandolier_after_inventory_change(
@@ -75,7 +78,9 @@ pub async fn sync_bandolier_after_inventory_change(
     {
         Ok(v) => v.unwrap_or(0),
         Err(e) => {
-            let _ = db_tx.rollback().await;
+            if let Err(e) = db_tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 entity_id,
                 player_id,
@@ -90,7 +95,9 @@ pub async fn sync_bandolier_after_inventory_change(
     let bandolier_items = match query_bandolier_items_tx(&mut db_tx, player_id).await {
         Ok(items) => items,
         Err(e) => {
-            let _ = db_tx.rollback().await;
+            if let Err(e) = db_tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 entity_id,
                 player_id,
@@ -111,13 +118,16 @@ pub async fn sync_bandolier_after_inventory_change(
             return;
         }
         if let Some(tx) = cell_tx {
-            let _ = tx
+            if let Err(e) = tx
                 .send(BaseToCellMsg::SyncBandolierItems {
                     entity_id,
                     active_bandolier_slot: old_active,
                     bandolier_items: Vec::new(),
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(entity_id, "SyncBandolierItems send failed: {e}");
+            }
         }
         return;
     }
@@ -138,7 +148,9 @@ pub async fn sync_bandolier_after_inventory_change(
                 .execute(&mut *db_tx)
                 .await
         {
-            let _ = db_tx.rollback().await;
+            if let Err(e) = db_tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 entity_id,
                 player_id,
@@ -166,7 +178,7 @@ pub async fn sync_bandolier_after_inventory_change(
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
         args.extend_from_slice(&(active_slot + 1).to_le_bytes());
-        let _ = helpers::send_to_witness(
+        if let Err(e) = helpers::send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -184,17 +196,23 @@ pub async fn sync_bandolier_after_inventory_change(
                 )
             },
         )
-        .await;
+        .await
+        {
+            tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+        }
     }
 
     if let Some(tx) = cell_tx {
-        let _ = tx
+        if let Err(e) = tx
             .send(BaseToCellMsg::SyncBandolierItems {
                 entity_id,
                 active_bandolier_slot: active_slot,
                 bandolier_items,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "SyncBandolierItems send failed: {e}");
+        }
     }
 
     // Whenever the bandolier composition changes (item moved into/out of

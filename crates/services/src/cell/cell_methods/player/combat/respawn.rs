@@ -87,13 +87,16 @@ pub(super) async fn handle_respawn(
     let same_world = current_world.as_deref() == Some(target_world.as_str());
 
     // Close the Defeat Window first.
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
             args: Vec::new(),
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
 
     if !same_world {
         // Cross-world: full gate-travel reload (player is leaving the space).
@@ -111,7 +114,7 @@ pub(super) async fn handle_respawn(
             to = %target_world,
             "Respawn: cross-world via GateTravel"
         );
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::GateTravel {
                 entity_id,
                 target_world_name: target_world,
@@ -119,7 +122,10 @@ pub(super) async fn handle_respawn(
                 rotation: [0.0; 3],
                 destination_ring_id: None,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "GateTravel send failed: {e}");
+        }
         return;
     }
 
@@ -181,14 +187,17 @@ pub(super) async fn handle_respawn(
     // FORCED_POSITION + cached BeingAppearance/onEntityTint replay.
     // CREATE_BASE_PLAYER is the load-bearing piece — it triggers the
     // client's pawn-recreate hook, dropping the ragdoll state.
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::ReanchorPlayer {
             entity_id,
             space_id,
             position: spawn_pos,
             rotation: [0.0; 3],
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "ReanchorPlayer send failed: {e}");
+    }
 }
 
 /// Resolve `(world, position)` for the respawn target.

@@ -90,7 +90,7 @@ pub async fn handle_dial_gate(
     space_mgr.destroy_entity(entity_id);
 
     // Tell BaseApp to perform the world transition (RESET_ENTITIES + new world entry)
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::GateTravel {
             entity_id,
             target_world_name: gate.world_name.clone(),
@@ -98,7 +98,10 @@ pub async fn handle_dial_gate(
             rotation: [0.0, 0.0, gate.yaw],
             destination_ring_id: None,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "GateTravel send failed: {e}");
+    }
 }
 
 #[cfg(test)]

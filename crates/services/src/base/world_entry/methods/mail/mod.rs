@@ -119,7 +119,7 @@ pub async fn handle_mail_request(
             );
 
             let args = mail::serialize_on_mail_header_info(b_archive, &headers);
-            let _ = send_to_witness(
+            if let Err(e) = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -137,7 +137,10 @@ pub async fn handle_mail_request(
                     )
                 },
             )
-            .await;
+            .await
+            {
+                tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+            }
         }
 
         MailOp::RequestBody { mail_id } => {
@@ -203,7 +206,7 @@ pub async fn handle_mail_request(
                 }
             };
             let args = mail::serialize_on_mail_read(mail_id, &row.message, &player_name);
-            let _ = send_to_witness(
+            if let Err(e) = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -221,7 +224,10 @@ pub async fn handle_mail_request(
                     )
                 },
             )
-            .await;
+            .await
+            {
+                tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+            }
         }
 
         MailOp::Delete { mail_id } => {
@@ -248,7 +254,7 @@ pub async fn handle_mail_request(
             }
 
             let args = mail::serialize_on_mail_header_remove(mail_id);
-            let _ = send_to_witness(
+            if let Err(e) = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -266,7 +272,10 @@ pub async fn handle_mail_request(
                     )
                 },
             )
-            .await;
+            .await
+            {
+                tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+            }
         }
 
         MailOp::Archive { mail_id } => {
@@ -290,7 +299,7 @@ pub async fn handle_mail_request(
             }
 
             let args = mail::serialize_on_mail_header_remove(mail_id);
-            let _ = send_to_witness(
+            if let Err(e) = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -308,7 +317,10 @@ pub async fn handle_mail_request(
                     )
                 },
             )
-            .await;
+            .await
+            {
+                tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+            }
         }
     }
 }

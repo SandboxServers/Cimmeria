@@ -26,13 +26,16 @@ pub async fn dispatch(
                 // so the client knows the target is set and enables auto-attack.
                 let mut reply = Vec::with_capacity(4);
                 reply.extend_from_slice(&target_id.to_le_bytes());
-                let _ = tx
+                if let Err(e) = tx
                     .send(CellToBaseMsg::EntityMethodCall {
                         entity_id,
                         method_index: 16, // onTargetUpdate (SGWBeing interface)
                         args: reply,
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+                }
 
                 // Also notify witnesses so they see who we're targeting
                 let witnesses = space_mgr.get_witnesses_of(entity_id);
@@ -40,14 +43,21 @@ pub async fn dispatch(
                     let mut witness_args = Vec::with_capacity(4);
                     witness_args.extend_from_slice(&target_id.to_le_bytes());
                     for witness_id in witnesses {
-                        let _ = tx
+                        if let Err(e) = tx
                             .send(CellToBaseMsg::WitnessEntityMethod {
                                 witness_id,
                                 entity_id,
                                 method_index: 16,
                                 args: witness_args.clone(),
                             })
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(
+                                entity_id,
+                                witness_id,
+                                "WitnessEntityMethod send failed: {e}"
+                            );
+                        }
                     }
                 }
             }

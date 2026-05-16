@@ -111,7 +111,9 @@ pub async fn handle_purchase_vendor_items(
             match consume_design_quantity(&mut tx, player_id, *design_id, *quantity).await {
                 Ok(true) => {}
                 Ok(false) => {
-                    let _ = tx.rollback().await;
+                    if let Err(e) = tx.rollback().await {
+                        tracing::error!("DB rollback failed: {e}");
+                    }
                     tracing::warn!(
                         entity_id,
                         player_id,
@@ -122,7 +124,9 @@ pub async fn handle_purchase_vendor_items(
                     return;
                 }
                 Err(e) => {
-                    let _ = tx.rollback().await;
+                    if let Err(e) = tx.rollback().await {
+                        tracing::error!("DB rollback failed: {e}");
+                    }
                     tracing::error!(
                         entity_id,
                         player_id,
@@ -144,7 +148,9 @@ pub async fn handle_purchase_vendor_items(
         {
             Ok(balance) => balance,
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     entity_id,
                     player_id,
@@ -155,7 +161,9 @@ pub async fn handle_purchase_vendor_items(
         };
 
     let Some(balance) = balance else {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("DB rollback failed: {e}");
+        }
         tracing::warn!(
             entity_id,
             player_id,
@@ -165,7 +173,9 @@ pub async fn handle_purchase_vendor_items(
     };
 
     if balance < total_cash_cost {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("DB rollback failed: {e}");
+        }
         tracing::warn!(
             entity_id,
             player_id,
@@ -187,12 +197,16 @@ pub async fn handle_purchase_vendor_items(
         {
             Ok(Some(total)) => total,
             Ok(None) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::warn!(entity_id, player_id, "PurchaseVendorItems: player disappeared before cash update");
                 return;
             }
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(entity_id, player_id, "PurchaseVendorItems: cash update failed: {e}");
                 return;
             }
@@ -211,7 +225,9 @@ pub async fn handle_purchase_vendor_items(
     {
         Ok(Some(slots)) => slots.into_iter(),
         Ok(None) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::warn!(
                 entity_id,
                 player_id,
@@ -221,7 +237,9 @@ pub async fn handle_purchase_vendor_items(
             return;
         }
         Err(e) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 entity_id,
                 player_id,
@@ -234,7 +252,9 @@ pub async fn handle_purchase_vendor_items(
     let mut granted: Vec<(i32, i32, i32)> = Vec::with_capacity(lines.len()); // (design_id, slot, quantity)
     for line in &lines {
         let Some(next_slot) = grant_slots.next() else {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::warn!(
                 entity_id,
                 player_id,
@@ -262,7 +282,9 @@ pub async fn handle_purchase_vendor_items(
         match result {
             Ok(r) if r.rows_affected() == 1 => {}
             Ok(_) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::warn!(
                     entity_id,
                     player_id,
@@ -272,7 +294,9 @@ pub async fn handle_purchase_vendor_items(
                 return;
             }
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     entity_id,
                     player_id,
@@ -299,7 +323,9 @@ pub async fn handle_purchase_vendor_items(
         match outbox::enqueue_in_tx(&mut tx, entity_id, &payload).await {
             Ok(id) => outbox_pending.push((id, payload)),
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     entity_id,
                     player_id,

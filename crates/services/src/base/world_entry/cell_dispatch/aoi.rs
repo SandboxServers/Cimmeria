@@ -101,7 +101,7 @@ pub(super) async fn left_aoi(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "AoI: entity left witness range");
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -110,7 +110,15 @@ pub(super) async fn left_aoi(
         "LEAVE",
         |key, seq, acks| build_entity_leave(key, seq, acks, entity_id),
     )
-    .await;
+    .await
+    {
+        tracing::warn!(
+            witness_id,
+            entity_id,
+            action = "LEAVE",
+            "send_to_witness failed: {e}"
+        );
+    }
 }
 
 /// `CellToBaseMsg::EntityMoved` — per-tick position relay for a ghost
@@ -126,7 +134,7 @@ pub(super) async fn entity_moved(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::trace!(witness_id, entity_id, "AoI: entity position update");
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -137,7 +145,15 @@ pub(super) async fn entity_moved(
             build_avatar_update(key, seq, acks, entity_id, position, velocity, direction)
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(
+            witness_id,
+            entity_id,
+            action = "METHOD",
+            "send_to_witness failed: {e}"
+        );
+    }
 }
 
 /// `CellToBaseMsg::EntityMethodCall` — server→client entity method call to
@@ -156,7 +172,7 @@ pub(super) async fn entity_method_call(
         args_len = args.len(),
         "CellService->client entity method call"
     );
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -165,7 +181,10 @@ pub(super) async fn entity_method_call(
         "METHOD",
         |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method_index, &args),
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 }
 
 /// `CellToBaseMsg::WitnessEntityMethod` — broadcast a server-driven entity
@@ -185,7 +204,7 @@ pub(super) async fn witness_entity_method(
         method_index,
         "Broadcast entity method to witness"
     );
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -194,7 +213,15 @@ pub(super) async fn witness_entity_method(
         "METHOD",
         |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method_index, &args),
     )
-    .await;
+    .await
+    {
+        tracing::warn!(
+            witness_id,
+            entity_id,
+            action = "METHOD",
+            "send_to_witness failed: {e}"
+        );
+    }
 }
 
 /// `CellToBaseMsg::EntityInvisible` — temporary visual hide that keeps the
@@ -208,7 +235,7 @@ pub(super) async fn entity_invisible(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -217,5 +244,13 @@ pub(super) async fn entity_invisible(
         "METHOD",
         |key, seq, acks| build_entity_invisible(key, seq, acks, entity_id),
     )
-    .await;
+    .await
+    {
+        tracing::warn!(
+            witness_id,
+            entity_id,
+            action = "METHOD",
+            "send_to_witness failed: {e}"
+        );
+    }
 }

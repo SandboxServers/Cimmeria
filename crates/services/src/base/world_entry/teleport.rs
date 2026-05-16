@@ -68,7 +68,7 @@ pub(super) async fn handle_teleport_player(
     );
 
     // 1. Engine-level snap.
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -77,7 +77,10 @@ pub(super) async fn handle_teleport_player(
         "METHOD",
         |key, seq, acks| build_forced_position(key, seq, acks, entity_id, space_id, position),
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 
     // 2. Streaming-load waiting flag (method 116). Direction is zeroed —
     //    we don't currently rotate the avatar on ring travel.
@@ -86,7 +89,7 @@ pub(super) async fn handle_teleport_player(
         args.extend_from_slice(&c.to_le_bytes());
     }
     args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -104,7 +107,10 @@ pub(super) async fn handle_teleport_player(
             )
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 
     // 3. Persist. Mirrors gate_travel's fail-closed on missing active_player_id.
     if let Some(pool) = db_pool {

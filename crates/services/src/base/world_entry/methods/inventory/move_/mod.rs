@@ -96,7 +96,9 @@ pub async fn handle_move_inventory_item(
         .execute(&mut *tx)
         .await
     {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("DB rollback failed: {e}");
+        }
         tracing::error!(
             player_id,
             item_id,
@@ -120,7 +122,9 @@ pub async fn handle_move_inventory_item(
         .execute(&mut *tx)
         .await
     {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("DB rollback failed: {e}");
+        }
         tracing::error!(
             player_id,
             item_id,
@@ -151,7 +155,9 @@ pub async fn handle_move_inventory_item(
     {
         Ok(Some(row)) => row,
         Ok(None) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::warn!(
                 player_id,
                 item_id,
@@ -160,7 +166,9 @@ pub async fn handle_move_inventory_item(
             return;
         }
         Err(e) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 player_id,
                 item_id,
@@ -171,7 +179,9 @@ pub async fn handle_move_inventory_item(
     };
 
     if quantity > source.stack_size {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("DB rollback failed: {e}");
+        }
         tracing::warn!(
             player_id,
             item_id,
@@ -183,7 +193,9 @@ pub async fn handle_move_inventory_item(
     }
 
     if source.container_id == target_container_id && source.slot_id == target_slot_id {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("DB rollback failed: {e}");
+        }
         return;
     }
 
@@ -198,7 +210,9 @@ pub async fn handle_move_inventory_item(
             .execute(&mut *tx)
             .await
         {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 player_id,
                 item_id,
@@ -210,7 +224,9 @@ pub async fn handle_move_inventory_item(
     }
 
     if !item_allows_container(pool, source.type_id, target_container_id).await {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("DB rollback failed: {e}");
+        }
         tracing::warn!(
             player_id,
             item_id,
@@ -238,7 +254,9 @@ pub async fn handle_move_inventory_item(
     {
         Ok(result) => result,
         Err(e) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(player_id, target_container_id, target_slot_id, "MoveInventoryItem: occupied slot query failed: {e}");
             return;
         }
@@ -246,7 +264,9 @@ pub async fn handle_move_inventory_item(
 
     if quantity < source.stack_size {
         if occupied.is_some() {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::warn!(
                 player_id,
                 item_id,
@@ -270,7 +290,9 @@ pub async fn handle_move_inventory_item(
         let update_rows = match update {
             Ok(r) => r.rows_affected(),
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     player_id,
                     item_id,
@@ -280,7 +302,9 @@ pub async fn handle_move_inventory_item(
             }
         };
         if update_rows != 1 {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::warn!(
                 player_id,
                 item_id,
@@ -324,7 +348,9 @@ pub async fn handle_move_inventory_item(
                 }
             }
             Ok(None) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::warn!(
                     player_id,
                     item_id,
@@ -333,14 +359,18 @@ pub async fn handle_move_inventory_item(
                 return;
             }
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(player_id, item_id, "MoveInventoryItem: split failed: {e}");
                 return;
             }
         }
     } else if let Some((occupied_item_id, occupied_item_type)) = occupied {
         if !item_allows_container(pool, occupied_item_type, source.container_id).await {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::warn!(
                 player_id,
                 item_id,
@@ -381,7 +411,9 @@ pub async fn handle_move_inventory_item(
         match park_source {
             Ok(r) if r.rows_affected() == 1 => {}
             Ok(_) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::warn!(
                     player_id,
                     item_id,
@@ -390,7 +422,9 @@ pub async fn handle_move_inventory_item(
                 return;
             }
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     player_id,
                     item_id,
@@ -414,7 +448,9 @@ pub async fn handle_move_inventory_item(
         let move_occupied_rows = match move_occupied {
             Ok(r) => r.rows_affected(),
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     player_id,
                     item_id,
@@ -424,7 +460,9 @@ pub async fn handle_move_inventory_item(
             }
         };
         if move_occupied_rows != 1 {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::warn!(
                 player_id,
                 item_id,
@@ -457,7 +495,9 @@ pub async fn handle_move_inventory_item(
                 }
             }
             Ok(_) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::warn!(
                     player_id,
                     item_id,
@@ -466,7 +506,9 @@ pub async fn handle_move_inventory_item(
                 return;
             }
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(player_id, item_id, "MoveInventoryItem: swap failed: {e}");
                 return;
             }
@@ -495,12 +537,16 @@ pub async fn handle_move_inventory_item(
                 }
             }
             Ok(_) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::warn!(player_id, item_id, "MoveInventoryItem: no rows updated");
                 return;
             }
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(player_id, item_id, "MoveInventoryItem: update failed: {e}");
                 return;
             }
@@ -526,7 +572,7 @@ pub async fn handle_move_inventory_item(
     );
 
     if let Some(cell_tx) = cell_tx {
-        let _ = cell_tx
+        if let Err(e) = cell_tx
             .send(BaseToCellMsg::InventoryItemMoveApplied {
                 entity_id,
                 item_id: applied_item_id,
@@ -535,7 +581,10 @@ pub async fn handle_move_inventory_item(
                 target_container_id,
                 swapped_item_id: occupied.map(|(id, _)| id),
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "InventoryItemMoveApplied send failed: {e}");
+        }
     }
 
     if source.container_id == 3 || target_container_id == 3 {

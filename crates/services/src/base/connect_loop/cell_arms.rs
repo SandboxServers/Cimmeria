@@ -117,25 +117,31 @@ pub(super) async fn dispatch_cell_method(
             }
 
             if let Some(ref tx) = cell_tx {
-                let _ = tx
+                if let Err(e) = tx
                     .send(BaseToCellMsg::CellMethodCall {
                         entity_id: player_eid,
                         method_index,
                         args,
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(entity_id, "CellMethodCall send failed: {e}");
+                }
             }
         }
     } else {
         let method_index = (id - 0x80) as u16;
         if let Some(ref tx) = cell_tx {
-            let _ = tx
+            if let Err(e) = tx
                 .send(BaseToCellMsg::CellMethodCall {
                     entity_id: player_eid,
                     method_index,
                     args: method_payload.to_vec(),
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(entity_id, "CellMethodCall send failed: {e}");
+            }
         }
     }
 

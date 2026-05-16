@@ -88,7 +88,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
 
             if let Some(player_eid) = player_eid {
                 if let Some(ref tx) = cell_tx {
-                    let _ = tx
+                    if let Err(e) = tx
                         .send(BaseToCellMsg::ChatMessage {
                             entity_id: player_eid,
                             speaker_name: speaker.to_string(),
@@ -96,7 +96,10 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                             channel,
                             text,
                         })
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(entity_id, "ChatMessage send failed: {e}");
+                    }
                 }
             }
         }
@@ -198,7 +201,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
         }
 
         _ => {
-            tracing::trace!(
+            tracing::warn!(
                 %addr,
                 msg_id = format_args!("{:#04x}", msg_id),
                 base_method_index = msg_id.wrapping_sub(0xC0),

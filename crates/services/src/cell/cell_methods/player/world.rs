@@ -214,13 +214,16 @@ async fn handle_reload(
         total_time,
         0.0,
     );
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: being::ON_TIMER_UPDATE,
             args: timer_args,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
 
     {
         use crate::cell::combat::{BSF_HOLSTER, BSF_IN_COMBAT};
@@ -230,13 +233,16 @@ async fn handle_reload(
             e.state_field &= !BSF_HOLSTER;
             if e.state_field != old {
                 let new_state = e.state_field;
-                let _ = tx
+                if let Err(e) = tx
                     .send(CellToBaseMsg::EntityMethodCall {
                         entity_id,
                         method_index: being::ON_STATE_FIELD_UPDATE,
                         args: new_state.to_le_bytes().to_vec(),
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+                }
             }
         }
     }
@@ -272,13 +278,16 @@ async fn handle_reload(
             seq_args.extend_from_slice(&0u32.to_le_bytes());
             seq_args.push(0);
             seq_args.extend_from_slice(&0i32.to_le_bytes());
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::EntityMethodCall {
                     entity_id,
                     method_index: spawnable_entity::ON_SEQUENCE,
                     args: seq_args,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+            }
         } else {
             tracing::debug!(
                 entity_id,
@@ -294,13 +303,16 @@ async fn handle_reload(
         .get_entity(entity_id)
         .map_or(0, |e| e.active_ammo_type());
     args.extend_from_slice(&ammo_type.to_le_bytes());
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: spawnable_entity::ON_ENTITY_PROPERTY,
             args,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
 }
 
 #[cfg(test)]

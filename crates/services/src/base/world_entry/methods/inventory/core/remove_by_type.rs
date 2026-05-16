@@ -96,7 +96,9 @@ pub async fn handle_remove_inventory_item_by_type(
     {
         Ok(opt) => opt,
         Err(e) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 player_id,
                 type_id,
@@ -107,7 +109,9 @@ pub async fn handle_remove_inventory_item_by_type(
     };
 
     let Some(source) = source else {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("DB rollback failed: {e}");
+        }
         tracing::warn!(
             player_id,
             type_id,
@@ -161,7 +165,9 @@ pub async fn handle_remove_inventory_item_by_type(
     match result {
         Ok(r) if r.rows_affected() == 1 => {}
         Ok(r) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::warn!(
                 player_id,
                 type_id,
@@ -172,7 +178,9 @@ pub async fn handle_remove_inventory_item_by_type(
             return;
         }
         Err(e) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("DB rollback failed: {e}");
+            }
             tracing::error!(
                 player_id,
                 type_id,
@@ -190,7 +198,9 @@ pub async fn handle_remove_inventory_item_by_type(
         match outbox::enqueue_in_tx(&mut tx, entity_id, &payload).await {
             Ok(id) => Some((id, payload)),
             Err(e) => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("DB rollback failed: {e}");
+                }
                 tracing::error!(
                     player_id,
                     type_id,

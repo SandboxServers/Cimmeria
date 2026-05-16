@@ -89,7 +89,7 @@ pub async fn refresh_player_appearance(
         }
     }
 
-    let _ = helpers::send_to_witness(
+    if let Err(e) = helpers::send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -107,7 +107,10 @@ pub async fn refresh_player_appearance(
             )
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 }
 
 #[cfg(test)]

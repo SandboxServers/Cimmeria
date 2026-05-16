@@ -69,13 +69,16 @@ pub(super) async fn teleport(
         .get_entity(entity_id)
         .map(|e| e.space_id.0 as u32)
         .unwrap_or(space_id as u32);
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::TeleportPlayer {
             entity_id,
             space_id: cell_space_id,
             position,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "TeleportPlayer send failed: {e}");
+    }
 }
 
 /// `Action::CrossWorldTeleport` — direct cross-world hop bypassing the

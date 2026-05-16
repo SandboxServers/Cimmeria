@@ -45,13 +45,16 @@ pub async fn dispatch(
                 }
                 if e.state_field != old {
                     let new_state = e.state_field;
-                    let _ = tx
+                    if let Err(e) = tx
                         .send(CellToBaseMsg::EntityMethodCall {
                             entity_id,
                             method_index: 19, // onStateFieldUpdate
                             args: new_state.to_le_bytes().to_vec(),
                         })
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+                    }
                     // TODO: also send to witnesses via AoI broadcast
                 }
             }
@@ -77,13 +80,16 @@ pub async fn dispatch(
                 }
                 if e.state_field != old {
                     let new_state = e.state_field;
-                    let _ = tx
+                    if let Err(e) = tx
                         .send(CellToBaseMsg::EntityMethodCall {
                             entity_id,
                             method_index: 19, // onStateFieldUpdate
                             args: new_state.to_le_bytes().to_vec(),
                         })
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+                    }
                     // TODO: also send to witnesses via AoI broadcast
                 }
             }

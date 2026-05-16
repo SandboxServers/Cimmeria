@@ -127,7 +127,7 @@ pub(super) async fn reload_completion_tick(
         // Phase 3: persistence. CellToBaseMsg::BandolierAmmoUpdate is consumed
         // by base's existing handler that writes `sgw_inventory.ammo`.
         if let Some((player_id, slot_id, expected_item_id, current_ammo, cur_ammo_type)) = persist {
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::BandolierAmmoUpdate {
                     player_id,
                     slot_id,
@@ -135,7 +135,10 @@ pub(super) async fn reload_completion_tick(
                     current_ammo,
                     cur_ammo_type,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(player_id, "BandolierAmmoUpdate send failed: {e}");
+            }
         }
 
         // Phase 4: fire the `Ability_End` sequence to signal "weapon ready

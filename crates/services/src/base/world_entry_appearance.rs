@@ -263,7 +263,7 @@ pub(crate) async fn handle_on_client_ready(
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -281,8 +281,11 @@ pub(crate) async fn handle_on_client_ready(
             )
         },
     )
-    .await;
-    let _ = send_to_witness(
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -300,7 +303,10 @@ pub(crate) async fn handle_on_client_ready(
             )
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 
     tracing::info!(%addr, entity_id, "World entry finalized (BeingAppearance resent)");
     Ok(())
@@ -334,7 +340,7 @@ pub(crate) async fn handle_cancel_movie(
         return;
     };
 
-    let _ = send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -352,8 +358,11 @@ pub(crate) async fn handle_cancel_movie(
             )
         },
     )
-    .await;
-    let _ = send_to_witness(
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -371,7 +380,10 @@ pub(crate) async fn handle_cancel_movie(
             )
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(entity_id, action = "METHOD", "send_to_witness failed: {e}");
+    }
 
     tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent after cinematic");
 }

@@ -65,13 +65,16 @@ pub(super) async fn send_play_sequence(
         }
     };
     let args = build_on_sequence_args(seq_id, entity_id);
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_SEQUENCE,
             args,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
 }
 
 pub(super) async fn update_state_flag(
@@ -92,13 +95,16 @@ pub(super) async fn update_state_flag(
         }
         None => return,
     };
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_STATE_FIELD_UPDATE,
             args: new_state.to_le_bytes().to_vec(),
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
 }
 
 /// Broadcasts a visibility change to every witness of the entity (and the
@@ -182,13 +188,16 @@ pub(super) async fn send_destination_list(
         .collect();
 
     let payload = build_on_ring_transporter_list(source, &dests);
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: METHOD_ON_RING_TRANSPORTER_LIST,
             args: payload,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
     tracing::info!(
         entity_id,
         source_region_id,

@@ -119,13 +119,16 @@ pub async fn handle_use_ability(
         err_args.push(0u8); // SystemID
         err_args.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
         err_args.extend_from_slice(&42u16.to_le_bytes()); // ErrorCodeID
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: 121, // ON_ERROR_CODE
                 args: err_args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+        }
         return false;
     }
 

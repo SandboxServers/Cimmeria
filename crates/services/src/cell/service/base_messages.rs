@@ -38,12 +38,15 @@ pub(super) async fn handle_base_message(
                     if is_instanced {
                         // Notify BaseApp about the new instanced space so it can
                         // route entity messages to it
-                        let _ = tx
+                        if let Err(e) = tx
                             .send(CellToBaseMsg::SpaceData {
                                 space_id,
                                 world_name: world_name.clone(),
                             })
-                            .await;
+                            .await
+                        {
+                            tracing::warn!("SpaceData send failed: {e}");
+                        }
 
                         let npc_count = spawner::spawn_instance_npcs_from_records(
                             spawn_records,
@@ -280,13 +283,16 @@ pub(super) async fn handle_base_message(
                         args.extend_from_slice(&p[1].to_le_bytes()); // y
                         args.extend_from_slice(&p[2].to_le_bytes()); // z
                     }
-                    let _ = tx
+                    if let Err(e) = tx
                         .send(CellToBaseMsg::EntityMethodCall {
                             entity_id,
                             method_index: 125, // addClientHintedGenericRegion
                             args,
                         })
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+                    }
                 }
                 if region_count > 0 {
                     tracing::info!(

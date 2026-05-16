@@ -39,13 +39,16 @@ pub async fn resend_missions(
 
     let messages = entity.missions.serialize_resend();
     for (method_index, args) in messages {
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+        }
     }
 }
 
@@ -262,13 +265,16 @@ pub async fn accept_mission(
     let mut args = Vec::with_capacity(5);
     args.extend_from_slice(&step_id.to_le_bytes());
     args.push(STATUS_ACTIVE as u8);
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_STEP_UPDATE,
             args,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
 
     // Send onObjectiveUpdate per objective
     for obj in &objectives {
@@ -277,13 +283,16 @@ pub async fn accept_mission(
         args.push(obj.status as u8);
         args.push(if obj.hidden { 1 } else { 0 });
         args.push(if obj.optional { 1 } else { 0 });
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: ON_OBJECTIVE_UPDATE,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+        }
     }
 }
 
@@ -307,13 +316,16 @@ pub async fn abandon_mission(
         args.extend_from_slice(&mission_id.to_le_bytes());
         args.push(STATUS_COMPLETED as u8);
         args.extend_from_slice(&0i32.to_le_bytes());
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: ON_MISSION_UPDATE,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+        }
     }
 }
 
@@ -347,13 +359,16 @@ pub async fn complete_objective(
     args.push(STATUS_COMPLETED as u8);
     args.push(0); // hidden
     args.push(0); // optional
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_OBJECTIVE_UPDATE,
             args,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
 
     // Check if all objectives are completed → advance mission
     let all_required_complete = mission
@@ -370,13 +385,16 @@ pub async fn complete_objective(
             let mut args = Vec::with_capacity(5);
             args.extend_from_slice(&step_id.to_le_bytes());
             args.push(STATUS_COMPLETED as u8);
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::EntityMethodCall {
                     entity_id,
                     method_index: ON_STEP_UPDATE,
                     args,
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+            }
         }
 
         // Send onMissionUpdate completed
@@ -384,13 +402,16 @@ pub async fn complete_objective(
         args.extend_from_slice(&mission_id.to_le_bytes());
         args.push(MISSION_ACTIVE as u8); // Status sent as "completed" removal
         args.extend_from_slice(&0i32.to_le_bytes());
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: ON_MISSION_UPDATE,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+        }
 
         tracing::info!(entity_id, mission_id, "Mission completed!");
     }
@@ -445,13 +466,16 @@ pub async fn complete_mission_direct(
         args.push(STATUS_COMPLETED as u8);
         args.push(0); // hidden
         args.push(0); // optional
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: ON_OBJECTIVE_UPDATE,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+        }
     }
 
     // Send step completed
@@ -459,13 +483,16 @@ pub async fn complete_mission_direct(
         let mut args = Vec::with_capacity(5);
         args.extend_from_slice(&sid.to_le_bytes());
         args.push(STATUS_COMPLETED as u8);
-        let _ = tx
+        if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index: ON_STEP_UPDATE,
                 args,
             })
-            .await;
+            .await
+        {
+            tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+        }
     }
 
     // Send mission completed
@@ -473,13 +500,26 @@ pub async fn complete_mission_direct(
     args.extend_from_slice(&mission_id.to_le_bytes());
     args.push(STATUS_COMPLETED as u8);
     args.extend_from_slice(&0i32.to_le_bytes());
-    let _ = tx
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: ON_MISSION_UPDATE,
             args,
         })
-        .await;
+        .await
+    {
+        tracing::warn!(entity_id, "EntityMethodCall send failed: {e}");
+    }
+
+    // TODO(#304-follow-up): Wire mission rewards from MissionDefEntry into
+    // MissionInstance at accept time, then send GrantXP / GrantCash / GrantItem
+    // messages here. Rewards are currently stored in game-crate TrackedMission
+    // but not propagated to the cell-side MissionInstance.
+    tracing::debug!(
+        entity_id,
+        mission_id,
+        "Mission completed — rewards not yet wired to cell entity"
+    );
 }
 
 #[cfg(test)]
