@@ -79,6 +79,7 @@ pub(super) async fn add_dialog_set(
     } else {
         tracing::warn!(
             dialog_set_id,
+            slot,
             "dialog_set_maps cache miss for add_dialog_set"
         );
     }
@@ -210,7 +211,11 @@ pub(super) async fn add_dialog(
         send_interaction_update_if_visible(entity_id, slot, &entry, tx, space_mgr, "add_dialog")
             .await;
     } else {
-        tracing::warn!(dialog_set_id, "dialog_set_maps cache miss for add_dialog");
+        tracing::warn!(
+            dialog_set_id,
+            slot,
+            "dialog_set_maps cache miss for add_dialog"
+        );
     }
 }
 

@@ -124,7 +124,8 @@ pub(crate) async fn send_to_witness<F>(
     entity_id: u32,
     action: &str,
     build_packet: F,
-) where
+) -> Result<(), &'static str>
+where
     F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
 {
     // Extract all data from locks in a sync block so no MutexGuard crosses an await.
@@ -140,7 +141,7 @@ pub(crate) async fn send_to_witness<F>(
                     entity_count_in_map,
                     "AoI: no client addr for witness -- skipping"
                 );
-                return;
+                return Err("no_client_addr");
             }
         };
 
@@ -169,8 +170,12 @@ pub(crate) async fn send_to_witness<F>(
         let packet = build_packet(&key, seq, &acks);
         if let Err(e) = socket.send_to(&packet, addr).await {
             tracing::warn!(witness_id, entity_id, action, %addr, "AoI: failed to send packet: {e}");
+            return Err("send_failed");
         }
+    } else {
+        return Err("client_disconnected");
     }
+    Ok(())
 }
 
 #[cfg(test)]

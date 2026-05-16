@@ -175,7 +175,7 @@ pub async fn handle_grant_xp(
         "GrantXP processed"
     );
 
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -198,7 +198,7 @@ pub async fn handle_grant_xp(
     .await;
 
     for &lvl in &levels_gained {
-        send_to_witness(
+        let _ = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -223,7 +223,7 @@ pub async fn handle_grant_xp(
         } else {
             LEVEL_XP[lvl as usize] as i32
         };
-        send_to_witness(
+        let _ = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -245,7 +245,7 @@ pub async fn handle_grant_xp(
     }
 
     if !levels_gained.is_empty() {
-        send_to_witness(
+        let _ = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -268,7 +268,7 @@ pub async fn handle_grant_xp(
         let mut tp_args = Vec::with_capacity(8);
         tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
         tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
-        send_to_witness(
+        let _ = send_to_witness(
             socket,
             connected,
             entity_to_addr,
@@ -346,7 +346,7 @@ pub async fn handle_grant_cash(
         let total = new_total;
         tracing::info!(entity_id, amount, total, "GrantCash: updated naquadah");
 
-        send_to_witness(
+        let _ = send_to_witness(
             socket,
             connected,
             entity_to_addr,

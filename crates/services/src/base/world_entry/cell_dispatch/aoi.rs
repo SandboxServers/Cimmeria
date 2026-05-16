@@ -40,7 +40,7 @@ pub(super) async fn entered_aoi(
         "AoI: entity entered witness range"
     );
     // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate)
-    send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -51,9 +51,17 @@ pub(super) async fn entered_aoi(
             build_create_entity_base(key, seq, acks, entity_id, class_id, position, direction)
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(
+            witness_id,
+            entity_id,
+            phase = "create_base",
+            "AoI create_entity send failed: {e}"
+        );
+    }
     // Packet 2: createOnClient() property cascade (CellApp round-trip)
-    send_to_witness(
+    if let Err(e) = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -72,7 +80,15 @@ pub(super) async fn entered_aoi(
             )
         },
     )
-    .await;
+    .await
+    {
+        tracing::warn!(
+            witness_id,
+            entity_id,
+            phase = "cascade",
+            "AoI create_entity_cascade send failed: {e}"
+        );
+    }
 }
 
 /// `CellToBaseMsg::LeftAoI` — entity left a witness's range.
@@ -85,7 +101,7 @@ pub(super) async fn left_aoi(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "AoI: entity left witness range");
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -110,7 +126,7 @@ pub(super) async fn entity_moved(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::trace!(witness_id, entity_id, "AoI: entity position update");
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -140,7 +156,7 @@ pub(super) async fn entity_method_call(
         args_len = args.len(),
         "CellService->client entity method call"
     );
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -169,7 +185,7 @@ pub(super) async fn witness_entity_method(
         method_index,
         "Broadcast entity method to witness"
     );
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -192,7 +208,7 @@ pub(super) async fn entity_invisible(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,

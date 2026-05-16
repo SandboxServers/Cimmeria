@@ -143,6 +143,11 @@ pub async fn handle_grant_item(
         Err(e) => {
             let _ = db_tx.rollback().await;
             tracing::error!(player_id, item_id, "GrantItem: charges lookup failed: {e}");
+            tracing::error!(
+                player_id,
+                item_id,
+                "GrantItem: grant aborted after rollback"
+            );
             return;
         }
     };
@@ -237,7 +242,8 @@ pub async fn handle_grant_item(
                 tracing::error!(
                     player_id,
                     slot_id = next_slot,
-                    "GrantItem: bandolier_slot UPDATE failed inside tx, aborting grant: {e}"
+                    expected_swap = true,
+                    "GrantItem: bandolier_slot UPDATE failed mid-tx -- rollback: {e}"
                 );
                 return;
             }
@@ -313,7 +319,7 @@ pub async fn handle_grant_item(
             let mut args = Vec::with_capacity(8);
             args.extend_from_slice(&container_id.to_le_bytes());
             args.extend_from_slice(&(next_slot + 1).to_le_bytes());
-            helpers::send_to_witness(
+            let _ = helpers::send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,

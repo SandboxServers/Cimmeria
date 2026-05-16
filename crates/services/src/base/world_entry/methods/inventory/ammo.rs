@@ -36,14 +36,25 @@ pub async fn update_bandolier_ammo(
     .await?;
 
     if res.rows_affected() == 0 {
-        tracing::debug!(
-            character_id,
-            slot_id,
-            expected_item_id,
-            current_ammo,
-            cur_ammo_type,
-            "update_bandolier_ammo: no rows updated (slot empty or item swapped)"
-        );
+        if current_ammo > 0 {
+            tracing::warn!(
+                character_id,
+                slot_id,
+                expected_item_id,
+                current_ammo,
+                cur_ammo_type,
+                "update_bandolier_ammo: rows_affected == 0 but current_ammo > 0 -- TOCTOU hint"
+            );
+        } else {
+            tracing::debug!(
+                character_id,
+                slot_id,
+                expected_item_id,
+                current_ammo,
+                cur_ammo_type,
+                "update_bandolier_ammo: no rows updated (slot empty or item swapped)"
+            );
+        }
     }
     Ok(())
 }

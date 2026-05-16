@@ -66,7 +66,7 @@ pub(super) async fn start_minigame(
                 args.extend_from_slice(&ch.to_le_bytes());
             }
             let method = crate::cell::dispatch::CLIENT_MG_ON_START_MINIGAME;
-            send_to_witness(
+            let _ = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -101,7 +101,7 @@ pub(super) async fn minigame_result(
     tracing::info!(entity_id, result_code, "Minigame result received");
     // Send onEndMinigame to client
     let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,

@@ -289,7 +289,9 @@ pub async fn try_dispatch_now(
                 // failure means the drainer is doing redundant sends.
                 tracing::warn!(
                     outbox_id = id,
-                    "outbox: dispatch succeeded but mark_delivered failed: {e}"
+                    event_type = payload.event_type(),
+                    payload_type = ?std::mem::discriminant(&payload),
+                    "outbox: dispatched but mark_delivered failed -- will retry: {e}"
                 );
             }
         }
@@ -379,7 +381,9 @@ pub(crate) async fn drain_undelivered(
                 if let Err(e) = mark_delivered(pool, id).await {
                     tracing::warn!(
                         outbox_id = id,
-                        "outbox: drainer dispatch succeeded but mark_delivered failed: {e}"
+                        event_type = %row.event_type,
+                        payload_type = ?std::mem::discriminant(&*row.payload),
+                        "outbox: drainer dispatched but mark_delivered failed -- will retry: {e}"
                     );
                 }
                 stats.delivered += 1;

@@ -119,7 +119,7 @@ pub async fn handle_mail_request(
             );
 
             let args = mail::serialize_on_mail_header_info(b_archive, &headers);
-            send_to_witness(
+            let _ = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -203,7 +203,7 @@ pub async fn handle_mail_request(
                 }
             };
             let args = mail::serialize_on_mail_read(mail_id, &row.message, &player_name);
-            send_to_witness(
+            let _ = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -248,7 +248,7 @@ pub async fn handle_mail_request(
             }
 
             let args = mail::serialize_on_mail_header_remove(mail_id);
-            send_to_witness(
+            let _ = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,
@@ -290,7 +290,7 @@ pub async fn handle_mail_request(
             }
 
             let args = mail::serialize_on_mail_header_remove(mail_id);
-            send_to_witness(
+            let _ = send_to_witness(
                 socket,
                 connected,
                 entity_to_addr,

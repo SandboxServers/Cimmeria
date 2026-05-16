@@ -92,8 +92,14 @@ pub(crate) async fn handle_gate_travel(
             match reply_rx.await {
                 Ok(sid) => sid,
                 Err(_) => {
-                    tracing::warn!(world = %target_world_name, "Gate travel: CellService oneshot dropped -- using fallback");
-                    resolve_space_id_fallback(target_world_name)
+                    let fallback = resolve_space_id_fallback(target_world_name);
+                    tracing::warn!(
+                        world = %target_world_name,
+                        fallback_space_id = fallback,
+                        expected_world_name = %target_world_name,
+                        "Gate travel: CellService oneshot dropped -- using fallback"
+                    );
+                    fallback
                 }
             }
         } else {
@@ -123,6 +129,7 @@ pub(crate) async fn handle_gate_travel(
         let pid = match active_pid {
             Some(pid) => pid,
             None => {
+                tracing::warn!(account_id, "gate travel aborted -- no active player id");
                 tracing::error!(
                     %addr, account_id, world = %target_world_name,
                     "GateTravel: no active_player_id cached — refusing to persist destination (would risk wrong-character corruption on multi-character accounts)"
@@ -145,7 +152,14 @@ pub(crate) async fn handle_gate_travel(
 
         match res {
             Ok(r) if r.rows_affected() == 0 => {
-                tracing::warn!(%addr, account_id, world = %target_world_name, "GateTravel: persistence UPDATE matched 0 rows");
+                tracing::error!(
+                    account_id,
+                    world_name = %target_world_name,
+                    from_world = ?space_mgr.get_entity_world_name(entity_id),
+                    rows_affected = 0,
+                    expected = 1,
+                    "GateTravel: persistence UPDATE matched 0 rows -- relog corrupts state"
+                );
             }
             Ok(_) => {}
             Err(e) => {

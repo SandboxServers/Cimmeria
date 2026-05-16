@@ -61,6 +61,12 @@ pub(super) async fn apply_death_transition(
     if !target_is_player {
         let to_broadcast =
             crate::cell::combat::clear_dead_npc_from_all_player_threat(space_mgr, target_eid);
+        if to_broadcast.is_empty() {
+            tracing::debug!(
+                npc_id = target_eid,
+                "no threatened players to clear -- mob died with empty threat table"
+            );
+        }
         for (player_id, new_state) in to_broadcast {
             tracing::debug!(
                 player_id,

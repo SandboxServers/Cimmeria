@@ -43,9 +43,17 @@ impl SpaceManager {
             .ok_or_else(|| format!("Space {space_id} disappeared"))?;
 
         space.space.add_entity(EntityId(entity_id as i32), &pos);
-        space.entities.insert(entity_id, cell_entity);
+        let inserted = space.entities.insert(entity_id, cell_entity).is_none();
         self.entity_space.insert(entity_id, space_id);
 
+        if !inserted {
+            tracing::warn!(
+                entity_id,
+                space_id,
+                ?position,
+                "NPC spawn: entities.insert overwrote existing entry"
+            );
+        }
         tracing::debug!(entity_id, space_id, ?position, "NPC entity spawned");
         Ok(space_id)
     }
@@ -148,8 +156,16 @@ impl SpaceManager {
             .ok_or_else(|| format!("Space {space_id} disappeared"))?;
 
         space.space.add_entity(EntityId(entity_id as i32), &pos);
-        space.entities.insert(entity_id, e);
+        let inserted = space.entities.insert(entity_id, e).is_none();
         self.entity_space.insert(entity_id, space_id);
+
+        if !inserted {
+            tracing::warn!(
+                entity_id,
+                space_id,
+                "NPC spawn from record: entities.insert overwrote existing entry"
+            );
+        }
 
         Ok(space_id)
     }

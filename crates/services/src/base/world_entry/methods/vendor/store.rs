@@ -150,7 +150,7 @@ pub async fn send_store_open_to_client(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -178,7 +178,7 @@ pub async fn send_store_update_to_client(
     }
 
     let args = serialize_store_update(updates);
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,

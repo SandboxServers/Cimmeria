@@ -68,7 +68,7 @@ pub(super) async fn handle_teleport_player(
     );
 
     // 1. Engine-level snap.
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -86,7 +86,7 @@ pub(super) async fn handle_teleport_player(
         args.extend_from_slice(&c.to_le_bytes());
     }
     args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -132,11 +132,15 @@ pub(super) async fn handle_teleport_player(
         .await;
         match res {
             Ok(r) if r.rows_affected() == 0 => {
-                tracing::warn!(
+                tracing::error!(
                     entity_id,
                     pid,
                     account_id,
-                    "TeleportPlayer: persistence UPDATE matched 0 rows"
+                    rows_affected = 0,
+                    expected = 1,
+                    world_name = ?current_world,
+                    space_id,
+                    "TeleportPlayer: persistence UPDATE matched 0 rows -- player snap-back on relog"
                 );
             }
             Ok(_) => {}

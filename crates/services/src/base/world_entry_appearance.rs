@@ -247,7 +247,7 @@ pub(crate) async fn handle_on_client_ready(
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -266,7 +266,7 @@ pub(crate) async fn handle_on_client_ready(
         },
     )
     .await;
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -318,7 +318,7 @@ pub(crate) async fn handle_cancel_movie(
         return;
     };
 
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,
@@ -337,7 +337,7 @@ pub(crate) async fn handle_cancel_movie(
         },
     )
     .await;
-    send_to_witness(
+    let _ = send_to_witness(
         socket,
         connected,
         entity_to_addr,

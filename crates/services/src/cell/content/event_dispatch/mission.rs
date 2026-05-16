@@ -75,9 +75,11 @@ pub(in crate::cell::content) fn fire_mission_accepted<'a>(
             );
             executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
         } else {
-            tracing::debug!(
+            tracing::info!(
                 entity_id,
                 mission_id,
+                event_type = "mission_accepted",
+                matched = false,
                 "fire_mission_accepted: no chains matched"
             );
         }
@@ -133,9 +135,11 @@ pub(in crate::cell::content) fn fire_mission_completed<'a>(
             );
             executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
         } else {
-            tracing::debug!(
+            tracing::info!(
                 entity_id,
                 mission_id,
+                event_type = "mission_completed",
+                matched = false,
                 "fire_mission_completed: no chains matched"
             );
         }
