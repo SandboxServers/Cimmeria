@@ -286,10 +286,10 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:9002".parse().unwrap();
         let ch = nub.get_or_create_channel(addr);
         ch.send_packet(test_packet()).unwrap();
-        // Backdate the entry's last_sent past the ACK_TIMEOUT_MS window
-        // so check_timeouts considers it expired.
-        ch.tx_window[0].last_sent =
-            Instant::now() - Duration::from_millis(consts::ACK_TIMEOUT_MS + 100);
+        // Backdate the entry's last_sent past the current adaptive RTO
+        // so check_timeouts considers it expired (#308 adaptive timeout).
+        let backdate_by = ch.rto().current() + Duration::from_millis(100);
+        ch.tx_window[0].last_sent = Instant::now() - backdate_by;
         // Also backdate last_sent so we can see whether retransmits skip
         // re-flagging keepalive (they should — check_timeouts bumps last_sent).
         ch.last_sent = Instant::now() - Duration::from_millis(consts::KEEPALIVE_INTERVAL_MS + 100);
@@ -319,8 +319,8 @@ mod tests {
         // Pre-set retransmit_count to MAX_RETRIES - 1 and backdate so
         // check_timeouts will bump it to exactly MAX_RETRIES on this tick.
         ch.tx_window[0].retransmit_count = consts::MAX_RETRIES - 1;
-        ch.tx_window[0].last_sent =
-            Instant::now() - Duration::from_millis(consts::ACK_TIMEOUT_MS + 100);
+        let backdate_by = ch.rto().current() + Duration::from_millis(100);
+        ch.tx_window[0].last_sent = Instant::now() - backdate_by;
 
         let actions = nub.tick();
 

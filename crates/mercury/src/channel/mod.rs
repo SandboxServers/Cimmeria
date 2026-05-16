@@ -17,6 +17,8 @@ use crate::unpacker::FragmentAssembler;
 
 pub mod rto;
 
+use rto::{Rto, RtoConfig};
+
 #[cfg(test)]
 mod tests;
 
@@ -114,11 +116,26 @@ pub struct Channel {
     /// channels can legitimately reuse the same low sequence numbers
     /// without colliding in a shared map.
     fragment_assembler: FragmentAssembler,
+
+    /// Adaptive retransmission timeout state (issue #308). Tracks
+    /// smoothed RTT + RTT variance for this peer; consulted by
+    /// `check_timeouts` to decide when an unacked packet should be
+    /// retransmitted, and updated by `process_acks` (clean samples,
+    /// Karn's algorithm) and `check_timeouts` (exponential backoff
+    /// on retransmit).
+    rto: Rto,
 }
 
 impl Channel {
-    /// Create a new channel to `remote_addr` in the `Connecting` state.
+    /// Create a new channel to `remote_addr` in the `Connecting` state,
+    /// seeded with the default [`RtoConfig`].
     pub fn new(remote_addr: SocketAddr) -> Self {
+        Self::with_rto_config(remote_addr, RtoConfig::default())
+    }
+
+    /// Create a new channel with explicit [`RtoConfig`] — primarily for
+    /// tests that need tight RTO bounds to keep test runtimes short.
+    pub fn with_rto_config(remote_addr: SocketAddr, rto_config: RtoConfig) -> Self {
         let now = Instant::now();
         Self {
             state: ChannelState::Connecting,
@@ -130,7 +147,14 @@ impl Channel {
             last_sent: now,
             last_received: now,
             fragment_assembler: FragmentAssembler::new(),
+            rto: Rto::new(rto_config),
         }
+    }
+
+    /// Read-only access to the per-channel RTO state. Diagnostics /
+    /// logging only; the algorithm itself is internal to `Channel`.
+    pub fn rto(&self) -> &Rto {
+        &self.rto
     }
 
     /// Feed a parsed Mercury packet through this channel's fragment
@@ -238,13 +262,16 @@ impl Channel {
 
     /// Process acknowledgement information received from the peer.
     ///
-    /// Removes acknowledged packets from the TX window and resets
-    /// retransmit timers for selectively NACKed packets.
+    /// Removes acknowledged packets from the TX window and feeds RTT
+    /// samples to the per-channel RTO state machine for any **clean**
+    /// rounds (Karn's algorithm — retransmitted packets are excluded
+    /// because the ack is ambiguous about which copy reached the peer).
     pub fn process_acks(&mut self, ack_seq: u32) -> Result<()> {
         // ACK frames are peer-originated → counts as receive-side activity,
         // not send-side. (We aren't putting bytes on the wire; we're
         // observing the peer's response to a prior emit.)
-        self.last_received = Instant::now();
+        let now = Instant::now();
+        self.last_received = now;
 
         // Cumulative ACK: remove all TX entries with sequence <= ack_seq.
         // The tx_window is ordered by sequence (oldest at front), so we can
@@ -255,8 +282,19 @@ impl Channel {
             // a large positive value when front.seq > ack_seq.
             let diff = front.packet.sequence.wrapping_sub(ack_seq);
             if diff == 0 || diff > 0x8000_0000 {
-                // front.packet.sequence <= ack_seq (in modular arithmetic)
-                self.tx_window.pop_front();
+                // front.packet.sequence <= ack_seq (in modular arithmetic).
+                // Drain the entry and — if it was never retransmitted —
+                // feed the round-trip time into the RTO smoother. This
+                // is Karn's algorithm: only un-retransmitted samples are
+                // unambiguous (we know exactly which send the ack matches).
+                let entry = self
+                    .tx_window
+                    .pop_front()
+                    .expect("front was Some inside the while loop");
+                if entry.retransmit_count == 0 {
+                    let rtt = now.duration_since(entry.last_sent);
+                    self.rto.on_sample(rtt);
+                }
             } else {
                 break;
             }
@@ -267,6 +305,20 @@ impl Channel {
 
     /// Check all packets in the TX window for retransmission timeouts.
     ///
+    /// Uses the per-channel adaptive RTO (issue #308) — `self.rto.current()`
+    /// — rather than a fixed `consts::ACK_TIMEOUT_MS`. Each entry whose
+    /// `last_sent` is older than the current RTO is selected for
+    /// retransmission; we increment `retransmit_count`, refresh
+    /// `last_sent`, and call `self.rto.on_retransmit()` to apply Karn's
+    /// exponential backoff to the RTO before the next scan.
+    ///
+    /// `on_retransmit` is called **once per scan**, not per-entry —
+    /// the RTO doubles in response to *the channel timing out*, not in
+    /// response to each individual packet that happens to be past
+    /// deadline at this tick. Doubling per-entry would compound the
+    /// backoff catastrophically if the TX window has multiple packets
+    /// in flight when the link briefly stalls.
+    ///
     /// Returns a list of packets that need to be retransmitted. The caller
     /// is expected to put the returned packets on the wire — so when this
     /// returns a non-empty list we bump `last_sent` too, otherwise a
@@ -275,7 +327,7 @@ impl Channel {
     /// the retransmits.
     pub fn check_timeouts(&mut self) -> Vec<Packet> {
         let now = Instant::now();
-        let timeout = std::time::Duration::from_millis(consts::ACK_TIMEOUT_MS);
+        let timeout = self.rto.current();
         let mut retransmits = Vec::new();
 
         for entry in self.tx_window.iter_mut() {
@@ -288,6 +340,7 @@ impl Channel {
 
         if !retransmits.is_empty() {
             self.last_sent = now;
+            self.rto.on_retransmit();
         }
         retransmits
     }

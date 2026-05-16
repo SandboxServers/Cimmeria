@@ -67,8 +67,10 @@ fn check_retransmits_returns_expired() {
     let mut ch = Channel::new(test_addr());
     ch.send_packet(test_packet()).unwrap();
 
-    // Backdate last_sent by 800ms — well past the 700ms ACK_TIMEOUT_MS.
-    ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(800);
+    // Default RtoConfig initial_srtt=500ms → initial RTO = 1500ms.
+    // Backdate by 1600ms to be safely past the timeout regardless of
+    // future tuning of the default initial_srtt.
+    ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(1600);
 
     let retransmits = ch.check_timeouts();
     assert_eq!(retransmits.len(), 1);
@@ -82,7 +84,7 @@ fn check_retransmits_empty_when_fresh() {
     let mut ch = Channel::new(test_addr());
     ch.send_packet(test_packet()).unwrap();
 
-    // Immediately after send, the packet is well within the 700ms timeout.
+    // Immediately after send, the packet is well within the RTO window.
     let retransmits = ch.check_timeouts();
     assert!(retransmits.is_empty());
     assert_eq!(ch.tx_window[0].retransmit_count, 0);
@@ -251,8 +253,9 @@ fn check_timeouts_bumps_last_sent_when_retransmitting() {
     let mut ch = Channel::new(test_addr());
     ch.send_packet(test_packet()).unwrap();
     // Backdate both: the entry's last_sent so check_timeouts sees it as
-    // expired, AND Channel.last_sent so we can detect whether it moves.
-    let backdate = std::time::Instant::now() - std::time::Duration::from_millis(800);
+    // expired (past the 1500ms default initial RTO), AND Channel.last_sent
+    // so we can detect whether it moves.
+    let backdate = std::time::Instant::now() - std::time::Duration::from_millis(1600);
     ch.tx_window[0].last_sent = backdate;
     ch.last_sent = backdate;
 
@@ -283,6 +286,136 @@ fn check_timeouts_does_not_bump_last_sent_when_no_retransmits() {
     assert_eq!(
         ch.last_sent, baseline,
         "no-op check_timeouts must leave last_sent untouched"
+    );
+}
+
+// ── Adaptive RTO integration (issue #308) ─────────────────────────
+
+use super::rto::RtoConfig;
+
+/// Tight RtoConfig for tests — sub-second RTO bounds keep test runtimes
+/// short without changing the algorithm's behavior.
+fn fast_rto_config() -> RtoConfig {
+    RtoConfig {
+        min: std::time::Duration::from_millis(10),
+        max: std::time::Duration::from_millis(500),
+        initial_srtt: std::time::Duration::from_millis(50),
+    }
+}
+
+/// Clean ack (the packet was never retransmitted) feeds an RTT sample
+/// into the per-channel RTO smoother. After one sample, srtt should
+/// reflect the observed round-trip time.
+#[test]
+fn process_acks_samples_rto_on_clean_round() {
+    let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
+    ch.send_packet(test_packet()).unwrap();
+    // Backdate the entry's last_sent so the ack measures ~80ms RTT.
+    ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(80);
+
+    assert_eq!(ch.rto().srtt(), None, "no samples yet");
+    ch.process_acks(0).unwrap();
+    assert!(ch.tx_window.is_empty(), "ack must drain the entry");
+
+    let srtt = ch.rto().srtt().expect("srtt set after first ack");
+    // Allow a few ms slack for instant-now() drift between the backdate
+    // and the process_acks call.
+    assert!(
+        srtt >= std::time::Duration::from_millis(75)
+            && srtt <= std::time::Duration::from_millis(100),
+        "srtt ~= 80ms, got {srtt:?}",
+    );
+}
+
+/// Karn's algorithm: an ack of a retransmitted packet MUST NOT update
+/// the RTO smoother, because we don't know which copy of the send the
+/// ack corresponds to. Pin so a regression that drops the
+/// `retransmit_count == 0` guard surfaces here.
+#[test]
+fn process_acks_skips_rto_sample_on_retransmitted_packet_karn() {
+    let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
+    ch.send_packet(test_packet()).unwrap();
+    // Simulate that the packet was retransmitted at some point — we don't
+    // care when, only that retransmit_count > 0 by ack time.
+    ch.tx_window[0].retransmit_count = 1;
+    ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(80);
+
+    ch.process_acks(0).unwrap();
+    assert!(ch.tx_window.is_empty(), "ack must still drain the entry");
+    assert_eq!(
+        ch.rto().srtt(),
+        None,
+        "Karn's algorithm: retransmitted-packet samples must be excluded",
+    );
+}
+
+/// `check_timeouts` uses the adaptive RTO, not a fixed constant. With
+/// initial_srtt=50ms → initial RTO=150ms (3 × srtt clamped), a 200ms
+/// backdate fires the timeout; a 50ms backdate does not.
+#[test]
+fn check_timeouts_fires_at_adaptive_rto_not_fixed_constant() {
+    let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
+    ch.send_packet(test_packet()).unwrap();
+    // 50ms ago — under the 150ms initial RTO.
+    ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(50);
+    assert!(
+        ch.check_timeouts().is_empty(),
+        "50ms < 150ms RTO — no retransmit yet"
+    );
+
+    // 200ms ago — past the 150ms initial RTO.
+    ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(200);
+    let retx = ch.check_timeouts();
+    assert_eq!(retx.len(), 1, "200ms > 150ms RTO — retransmit fires");
+}
+
+/// `check_timeouts` calls `rto.on_retransmit` ONCE per scan, not per
+/// retransmitted entry. Doubling the backoff per-entry would compound
+/// catastrophically if the TX window has multiple packets in flight
+/// during a stall — pin this so a refactor moving the `on_retransmit`
+/// into the per-entry loop is caught at test time.
+#[test]
+fn check_timeouts_doubles_rto_once_per_scan_not_per_entry() {
+    let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
+    ch.send_packet(test_packet()).unwrap();
+    ch.send_packet(test_packet()).unwrap();
+    ch.send_packet(test_packet()).unwrap();
+
+    // Backdate ALL three entries past the 150ms initial RTO.
+    let backdate = std::time::Instant::now() - std::time::Duration::from_millis(200);
+    for entry in ch.tx_window.iter_mut() {
+        entry.last_sent = backdate;
+    }
+
+    let rto_before = ch.rto().current();
+    let retx = ch.check_timeouts();
+    assert_eq!(retx.len(), 3, "all three expired");
+
+    let rto_after = ch.rto().current();
+    // Doubled once (per scan), not three times (per entry).
+    assert_eq!(
+        rto_after,
+        rto_before * 2,
+        "RTO must double once per scan, not per retransmitted entry"
+    );
+}
+
+/// A no-op `check_timeouts` (no entries expired) MUST NOT call
+/// `rto.on_retransmit` — the backoff is supposed to fire on actual
+/// retransmits, not on every scan-where-nothing-happened.
+#[test]
+fn check_timeouts_does_not_touch_rto_when_no_retransmits() {
+    let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
+    ch.send_packet(test_packet()).unwrap();
+    // Fresh — well within RTO.
+
+    let rto_before = ch.rto().current();
+    let retx = ch.check_timeouts();
+    assert!(retx.is_empty());
+    assert_eq!(
+        ch.rto().current(),
+        rto_before,
+        "no retransmits means no backoff"
     );
 }
 
