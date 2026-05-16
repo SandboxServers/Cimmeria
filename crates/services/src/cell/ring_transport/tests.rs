@@ -168,6 +168,7 @@ async fn full_ring_cycle_dispatches_expected_messages() {
                 entity_id,
                 space_id,
                 position,
+                prev_pos: _,
             } => {
                 teleport_msg = Some((entity_id, space_id, position));
             }

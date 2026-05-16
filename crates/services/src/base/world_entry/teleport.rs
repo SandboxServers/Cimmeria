@@ -35,6 +35,7 @@ pub(super) async fn handle_teleport_player(
     entity_id: u32,
     space_id: u32,
     position: [f32; 3],
+    prev_pos: [f32; 3],
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -67,13 +68,17 @@ pub(super) async fn handle_teleport_player(
         "TeleportPlayer: snapping avatar"
     );
 
-    // 1. Engine-level snap.
+    // 1. Engine-level snap. `prev_pos` is the entity's last-known position
+    //    before the teleport — see `build_forced_position` and
+    //    `spec.protocol.mercury` §1.10.6 for why this is not zero.
     send_to_witness(
         socket,
         connected,
         entity_to_addr,
         entity_id,
-        |key, seq, acks| build_forced_position(key, seq, acks, entity_id, space_id, position),
+        |key, seq, acks| {
+            build_forced_position(key, seq, acks, entity_id, space_id, position, prev_pos)
+        },
     )
     .await;
 
@@ -174,6 +179,7 @@ mod tests {
             999,
             65536,
             [10.0, 20.0, 30.0],
+            [5.0, 20.0, 30.0],
             &socket,
             &connected,
             &entity_to_addr,
@@ -202,6 +208,7 @@ mod tests {
             1,
             65536,
             [10.0, 20.0, 30.0],
+            [5.0, 20.0, 30.0],
             &socket,
             &connected,
             &entity_to_addr,

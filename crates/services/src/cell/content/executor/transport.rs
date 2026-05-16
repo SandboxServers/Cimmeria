@@ -56,6 +56,15 @@ pub(super) async fn teleport(
             "Content: cross-space chain teleport not implemented — falling back to same-space move"
         );
     }
+    // Capture the entity's prior position *before* the spatial-grid update
+    // overwrites it — this becomes the `forcedPosition` prev-position
+    // reference vector. Falling back to `position` (zero-distance interp) if
+    // the entity is somehow missing keeps the camera-snap bug fixed even on
+    // the unhappy path.
+    let prev_pos = space_mgr
+        .get_entity(entity_id)
+        .map(|e| [e.position.x, e.position.y, e.position.z])
+        .unwrap_or(position);
     // Same-world teleport: keep the spatial grid consistent here,
     // then route through TeleportPlayer for the authoritative
     // FORCED_POSITION snap + persist. The bare 116-only path the
@@ -74,6 +83,7 @@ pub(super) async fn teleport(
             entity_id,
             space_id: cell_space_id,
             position,
+            prev_pos,
         })
         .await;
 }

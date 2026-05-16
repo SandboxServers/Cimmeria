@@ -60,7 +60,10 @@ fn build_reanchor_burst_body(entity_id: u32, info: &WorldEntryInfo) -> Vec<u8> {
     body.extend_from_slice(&entity_id.to_le_bytes());
     body.push(SGWPLAYER_CLASS_ID);
     body.push(0x00); // propertyCount = 0
-    body.extend_from_slice(&build_enter_world_body(info));
+                     // Reanchor passes None for `load`: the appearance/tint replay is sent
+                     // as separate packets after the burst (see `build_reanchor_packets`),
+                     // matching the original wire shape.
+    body.extend_from_slice(&build_enter_world_body(info, None));
     body
 }
 
@@ -253,8 +256,8 @@ mod tests {
         // forced-position flags) flows through Reanchor unchanged.
         assert_eq!(
             &body[9..],
-            build_enter_world_body(&info).as_slice(),
-            "tail must equal build_enter_world_body(info) verbatim — Reanchor and gate-travel must stay in lockstep on space/viewport/position"
+            build_enter_world_body(&info, None).as_slice(),
+            "tail must equal build_enter_world_body(info, None) verbatim — Reanchor and gate-travel must stay in lockstep on space/viewport/position"
         );
     }
 
