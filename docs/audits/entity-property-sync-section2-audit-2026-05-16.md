@@ -2,7 +2,7 @@
 audit_id: entity-property-sync-section2-audit-2026-05-16
 audit_date: 2026-05-16
 auditor: automated (Claude Sonnet 4.6) under direction of @cadacious
-spec_version: docs/drafts/spec/entity-property-sync.md @ commit b5f357d (branch worktree-bible+spec-entity-property-sync)
+spec_version: docs/drafts/spec/entity-property-sync.md @ commit d180b7c (branch worktree-bible+spec-entity-property-sync)
 status: complete
 binary_sha256: 109F307763A5C6C59FF484840739860BDC7163092F0644343D0B2C03E4925783
 scope_files:
