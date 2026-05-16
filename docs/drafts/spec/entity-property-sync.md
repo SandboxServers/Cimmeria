@@ -73,6 +73,32 @@ evidence_refs:
     - ghidra://SGW.exe@0x01561140
     - ghidra://SGW.exe@0x0155f9b0
     - ghidra://SGW.exe@0x01b14d4c
+    # Appendix F.1 — OQ-Y/F3 closure: schema MD5 produced client-side, compared server-side
+    - ghidra://SGW.exe@0x00c66cf0
+    - ghidra://SGW.exe@0x00c69120
+    - ghidra://SGW.exe@0x00c69220
+    - ghidra://SGW.exe@0x00c6a0d0
+    # §1.12 — 17 primitive DataType subclass constructors
+    - ghidra://SGW.exe@0x01599150
+    - ghidra://SGW.exe@0x015995f0
+    - ghidra://SGW.exe@0x01599340
+    - ghidra://SGW.exe@0x015997d0
+    - ghidra://SGW.exe@0x015999b0
+    - ghidra://SGW.exe@0x01599b90
+    - ghidra://SGW.exe@0x01599d90
+    - ghidra://SGW.exe@0x01599f70
+    - ghidra://SGW.exe@0x0159a220
+    - ghidra://SGW.exe@0x0159a3f0
+    - ghidra://SGW.exe@0x0159a5e0
+    - ghidra://SGW.exe@0x0159a790
+    - ghidra://SGW.exe@0x0159aa00
+    - ghidra://SGW.exe@0x0159acf0
+    - ghidra://SGW.exe@0x0159af80
+    - ghidra://SGW.exe@0x0159b300
+    - ghidra://SGW.exe@0x0159b510
+    # §1.12 — SimpleMetaDataType<T> ctor range (17 functions, sequential)
+    - ghidra://SGW.exe@0x0159db10
+    - ghidra://SGW.exe@0x0159e510
   client:
     - game/sgw/Common/res/entities/entities.xml:1-32
     - game/sgw/Common/res/entities/defs/alias.xml
@@ -153,7 +179,7 @@ These three tables are constructed by the entity-description parse chain, which 
 
 ![EntityDescription_Parse recursion tree showing parent chain resolved first, then Implements interfaces in XML order, then own Properties/ClientMethods/CellMethods/BaseMethods sections, with propID and methodID counters accumulating across the tree.](figures/entity-property-sync-01-parse-order-tree.svg)
 
-*Figure 1: parse order — `EntityDescription_Parse` walks `<Parent>` recursively (parent first), then `<Implements>` in XML order, then own sections in the fixed order Properties → ClientMethods → CellMethods → BaseMethods. propID and methodID counters accumulate left-to-right across the tree, so a parent's last ID + 1 is the next contributor's first ID. SGWPlayer's full cascade is detailed in Figure 8.*
+*Figure 1: parse order — `EntityDescription_Parse` walks `<Parent>` recursively (parent first), then `<Implements>` in XML order, then own sections in the fixed order Properties → ClientMethods → CellMethods → BaseMethods. propID and methodID counters accumulate left-to-right across the tree, so a parent's last ID + 1 is the next contributor's first ID. SGWPlayer's full cascade is detailed in Figure 9.*
 
 ---
 
@@ -176,7 +202,7 @@ Each property in the `<Properties>` XML section is parsed into a `DataDescriptio
 
 ![Eight-bit register layout for the property flags byte at DataDescription+0x20, with bit positions, hex values, and .def keywords for each of the eight flag bits; bits 1 and 2 marked unused in SGW.](figures/entity-property-sync-02-property-flag-bits.svg)
 
-*Figure 2: bitmask layout of the 8-bit `DataDescription+0x20` flag byte. Bits 1 (`DATA_OTHER_CLIENT`) and 2 (`DATA_OWN_CLIENT`) exist in the parser's table but never set in SGW — see §2.3 and Figure 7 for the keyword-surface divergence.*
+*Figure 2: bitmask layout of the 8-bit `DataDescription+0x20` flag byte. Bits 1 (`DATA_OTHER_CLIENT`) and 2 (`DATA_OWN_CLIENT`) exist in the parser's table but never set in SGW — see §2.3 and Figure 8 for the keyword-surface divergence.*
 
 Persistence is injected at parse time (`*pOutFlags |= 0x20` when `"Persistent"` child is true); identifier likewise (`|= 0x80` when `"Identifier"` is true). Both are confirmed in the decompile of `DataDescription_ParseFlags`.
 
@@ -251,7 +277,7 @@ For SGWPlayer specifically: methods 0–60 → single-byte wire encoding; method
 
 ![Decision tree for the sub-slot client-method encoder showing the idBase computation, the i < idBase single-byte branch, the i >= idBase two-byte branch, and the SGWPlayer worked example with idBase=61 and the indices 60/61/156 cases.](figures/entity-property-sync-03-subslot-encoding.svg)
 
-*Figure 3: sub-slot encoding decision tree. The threshold `idBase = 0x3E - (nExposed + 0xC0) / 0xFF` is computed per-entity. For SGWPlayer (`nExposed = 157`), `idBase = 61`: indices 0–60 take the single-byte path; indices 61–156 take the two-byte path. The first two-byte method is index 61 (`minigameCallDisplay`); see §2.7 and Figure 8 for the parse-cascade context.*
+*Figure 3: sub-slot encoding decision tree. The threshold `idBase = 0x3E - (nExposed + 0xC0) / 0xFF` is computed per-entity. For SGWPlayer (`nExposed = 157`), `idBase = 61`: indices 0–60 take the single-byte path; indices 61–156 take the two-byte path. The first two-byte method is index 61 (`minigameCallDisplay`); see §2.7 and Figure 9 for the parse-cascade context.*
 
 *Source-doc override (old `entity-property-sync.md` finding doc §13):* The old doc stated that the threshold `0x3e = 62` matches the BigWorld 2.0.1 `checkExposedForSubSlots()` boundary exactly and that sub-slot encoding applies to all methods at index 62 and above. This is only correct for entities with `nExposedCount <= 62`. For SGWPlayer with 157 methods, the threshold is **61**, not 62. The Ghidra decompile at `0x01590df0` makes the formula unambiguous.
 
@@ -310,6 +336,10 @@ Property stream format for `createBasePlayer`: properties filtered by `CLIENT_DA
 
 **Buffering rule**: after reading entityId and typeId, if the `createCellPlayer` message buffer at `ServerConnection+0xfe0` has pending content (`remainingLength() > 0`), the handler immediately calls `ServerConnection_CreateCellPlayer` on the buffered data. Confirmed by the decompile: `if (0 < iVar4) { ... ServerConnection_CreateCellPlayer(..., pStream_00); ... }`.
 
+![Sequence diagram of the world-entry pipeline. After the Mercury cipher envelope is active, the server emits createBasePlayer (msg_id 0x05) carrying the property stream filtered by CLIENT_DATA OR BASE_DATA, followed by createCellPlayer (msg_id 0x06, 32 fixed bytes). A defensive branch shows createCellPlayer buffered when it arrives before createBasePlayer. The client emits enableEntities (msg_id 0x08, 8 bytes of undefined stack content per S6) and the server then streams AoI introductions per §1.9 — createEntity (0x09), enterAoI decrementing entity+0x10, and cached property-delta streams per witness.](figures/entity-property-sync-05-world-entry-sequence.svg)
+
+*Figure 5: world-entry message sequence. `createBasePlayer` (msg_id `0x05`) lands first (or `createCellPlayer` is buffered and replayed after); the property stream rides inside the base-player envelope; the client responds with `enableEntities` (msg_id `0x08`, 8 bytes of undefined stack content per S6); the server then begins streaming AoI introductions per §1.9. The `createCellPlayer` buffering branch is a defensive guard against message-ordering races.*
+
 ---
 
 ### 1.7 `createCellPlayer` wire format
@@ -355,9 +385,9 @@ Rotation is emitted in X, Z, Y order (not X, Y, Z). The swap is applied by `FUN_
 
 **Buffering rule**: if `playerEntityId` (at `ServerConnection+0x16c`) is zero when `createCellPlayer` arrives, the handler buffers the full message into `ServerConnection+0xfe0` (an `FMemoryReader`/buffer object) and asserts `createCellPlayerMsg_.remainingLength() == 0` before storing. Replay happens inside `createBasePlayer` as described in §1.6.
 
-![Side-by-side byte layouts for createBasePlayer (variable WORD-framed, entityId u32, typeId u16, property stream) and createCellPlayer (fixed 32 bytes: spaceId, vehicleId, posX/Y/Z, rotX/Z/Y with the Y/Z swap highlighted), plus the buffering-rule callout.](figures/entity-property-sync-05-createplayer-byte-layouts.svg)
+![Side-by-side byte layouts for createBasePlayer (variable WORD-framed, entityId u32, typeId u16, property stream) and createCellPlayer (fixed 32 bytes: spaceId, vehicleId, posX/Y/Z, rotX/Z/Y with the Y/Z swap highlighted), plus the buffering-rule callout.](figures/entity-property-sync-06-createplayer-byte-layouts.svg)
 
-*Figure 5: wire-byte layouts for `createBasePlayer` (msg_id `0x05`) and `createCellPlayer` (msg_id `0x06`). `createBasePlayer` is WORD-length framed with a variable property stream filtered by `CLIENT_DATA | BASE_DATA`; `createCellPlayer` is a fixed 32 bytes with no property stream, and the rotation triplet is emitted in X, Z, Y order (the SGW Y/Z swap). If `createCellPlayer` arrives before `createBasePlayer`, the handler buffers it into `ServerConnection+0xfe0` and replays it once `playerEntityId` is set.*
+*Figure 6: wire-byte layouts for `createBasePlayer` (msg_id `0x05`) and `createCellPlayer` (msg_id `0x06`). `createBasePlayer` is WORD-length framed with a variable property stream filtered by `CLIENT_DATA | BASE_DATA`; `createCellPlayer` is a fixed 32 bytes with no property stream, and the rotation triplet is emitted in X, Z, Y order (the SGW Y/Z swap). If `createCellPlayer` arrives before `createBasePlayer`, the handler buffers it into `ServerConnection+0xfe0` and replays it once `playerEntityId` is set.*
 
 For the position update wire format that follows (after world entry), see `spec.protocol.position-updates`.
 
@@ -432,11 +462,11 @@ After `EntityManager_EnterWorld` is called, `GameEntityManager_FlushDeferredNoti
 
 The full three-phase cascade (CREATE_ENTITY msg, property-delta stream, Python `onVisible(1)` callback) is a server-driven orchestration that the Cimmeria BaseApp must implement. The client side handles the wire pieces; phase sequencing is a server responsibility.
 
-> [!IMPORTANT] **The 7-method `createOnClient` cascade order is server-determined.** A fresh decompile of `EntityManager_HandleEntityCreate @ ghidra://SGW.exe@0x00dd2270` shows no ordered-dispatch table and no client-side enumeration of "the seven methods in order". The dispatcher calls `EntityManager_CreateEntity`, applies an initial world transform via `FUN_00e68a10`, then calls `GameEntityManager_FlushDeferredNotifications` — each incoming method call is routed independently through `GameEntityManager_DispatchEntityRpc @ ghidra://SGW.exe@0x00dd2b80` in arrival order. The 7-method sequence shown in Figure 6's sidebar reflects the order produced by the Python `createOnClient()` chain on the server (`SGWMob.py` → `SGWBeing.py` → `SGWSpawnableEntity.py`); the client decodes whatever the server sends in whatever order it sends it. A server reimplementation owns the ordering contract; the client will not flag a different order as an error. (Audit B.1 / G3.)
+> [!IMPORTANT] **The 7-method `createOnClient` cascade order is server-determined.** A fresh decompile of `EntityManager_HandleEntityCreate @ ghidra://SGW.exe@0x00dd2270` shows no ordered-dispatch table and no client-side enumeration of "the seven methods in order". The dispatcher calls `EntityManager_CreateEntity`, applies an initial world transform via `FUN_00e68a10`, then calls `GameEntityManager_FlushDeferredNotifications` — each incoming method call is routed independently through `GameEntityManager_DispatchEntityRpc @ ghidra://SGW.exe@0x00dd2b80` in arrival order. The 7-method sequence shown in Figure 7's sidebar reflects the order produced by the Python `createOnClient()` chain on the server (`SGWMob.py` → `SGWBeing.py` → `SGWSpawnableEntity.py`); the client decodes whatever the server sends in whatever order it sends it. A server reimplementation owns the ordering contract; the client will not flag a different order as an error. (Audit B.1 / G3.)
 
-![State diagram for the AoI deferred-enter countdown — AwaitingDescription with enterCount initialized, EnteringAoI decrementing on each enterAoI message, EnteredWorld reached when enterCount hits zero, plus a RemoteManaged branch for entities with CEF_Remote set.](figures/entity-property-sync-06-aoi-deferred-enter.svg)
+![State diagram for the AoI deferred-enter countdown — AwaitingDescription with enterCount initialized, EnteringAoI decrementing on each enterAoI message, EnteredWorld reached when enterCount hits zero, plus a RemoteManaged branch for entities with CEF_Remote set.](figures/entity-property-sync-07-aoi-deferred-enter.svg)
 
-*Figure 6: AoI deferred-enter state machine. The client pre-registers an entity with `enterCount > 0` at `entity+0x10`; each `enterAoI` message decrements the counter; reaching zero fires `EntityManager_EnterWorld` and drains queued notifications. The `CEF_Remote` branch (bit 0 of `entity+0x18`) bypasses the countdown entirely. The 7-method `createOnClient` cascade sidebar (from agent memory `bigworld-engine-advisor/aoi-entity-introduction.md`) is reproduced for SGWMob.*
+*Figure 7: AoI deferred-enter state machine. The client pre-registers an entity with `enterCount > 0` at `entity+0x10`; each `enterAoI` message decrements the counter; reaching zero fires `EntityManager_EnterWorld` and drains queued notifications. The `CEF_Remote` branch (bit 0 of `entity+0x18`) bypasses the countdown entirely. The 7-method `createOnClient` cascade sidebar (from agent memory `bigworld-engine-advisor/aoi-entity-introduction.md`) is reproduced for SGWMob.*
 
 ---
 
@@ -501,7 +531,29 @@ Two separate `std::map<string, DataType*>` registries govern type resolution. Bo
 
 **W4-B2 ambiguity resolved**: both `g_pMetaDataTypeRegistry` and a previously-hypothesized `g_mapDataTypeRegistryLookup` were thought to be at `DAT_01f126b4`. There is only one object at that address. The correct canonical name is `g_pMetaDataTypeRegistry`.
 
-**17 primitive DataType subclasses** registered: `IntegerDataType<unsigned char>` through `MailBoxDataType`. See old RE doc §10 for the full table with constructor addresses `0x01599150`–`0x0159b510`.
+**17 primitive DataType subclasses** are registered. Each subclass has a constructor at the address below; the MD5 "type encoding" column gives the bytes that subclass's `GetTypeName_WriteStream` feeds into the schema-fingerprint stream (§1.13).
+
+| Subclass | Constructor address | MD5 type encoding |
+|---|---|---|
+| `IntegerDataType<unsigned char>` (UInt8) | `ghidra://SGW.exe@0x01599150` | 1 (1-byte uint) |
+| `IntegerDataType<char>` (Int8) | `ghidra://SGW.exe@0x015995f0` | 1 (1-byte signed) |
+| `IntegerDataType<unsigned short>` (UInt16) | `ghidra://SGW.exe@0x01599340` | 2 (2-byte uint) |
+| `IntegerDataType<short>` (Int16) | `ghidra://SGW.exe@0x015997d0` | 2 (2-byte signed) |
+| `IntegerDataType<long>` (Int32) | `ghidra://SGW.exe@0x015999b0` | 4 (4-byte int) |
+| `LongIntegerDataType<unsigned long>` (UInt32) | `ghidra://SGW.exe@0x01599b90` | 4 (4-byte uint) |
+| `LongIntegerDataType<__int64>` (Int64) | `ghidra://SGW.exe@0x01599d90` | 8 (8-byte signed) |
+| `LongIntegerDataType<unsigned __int64>` (UInt64) | `ghidra://SGW.exe@0x01599f70` | 8 (8-byte uint) |
+| `FloatDataType` | `ghidra://SGW.exe@0x0159a220` | `"Float"` (6 bytes literal) |
+| `StringDataType` | `ghidra://SGW.exe@0x0159a3f0` | (inherits string path) |
+| `WideStringDataType` | `ghidra://SGW.exe@0x0159a5e0` | (inherits wide path) |
+| `PythonDataType` | `ghidra://SGW.exe@0x0159a790` | `"Python"` (7 bytes literal) |
+| `VectorDataType<Vector2>` | `ghidra://SGW.exe@0x0159aa00` | `"Vector"` + 4-byte `'2'` marker |
+| `VectorDataType<Vector3>` | `ghidra://SGW.exe@0x0159acf0` | `"Vector"` + 4-byte `'3'` marker |
+| `VectorDataType<Vector4>` | `ghidra://SGW.exe@0x0159af80` | `"Vector"` + 4-byte `'4'` marker |
+| `BlobDataType` | `ghidra://SGW.exe@0x0159b300` | `"Blob"` (5-byte literal at `DAT_01b1ba80`) |
+| `MailBoxDataType` | `ghidra://SGW.exe@0x0159b510` | `"MailBox"` (8 bytes literal) |
+
+These 17 constructors run during static initialization. The `SimpleMetaDataType<T>` constructors at `ghidra://SGW.exe@0x0159db10`–`ghidra://SGW.exe@0x0159e510` (17 functions, sequential, each ending in a tail-call to `DataType_Register @ ghidra://SGW.exe@0x01597ce0`) register each subclass into `g_pMetaDataTypeRegistry` before `main` runs.
 
 ---
 
@@ -586,12 +638,17 @@ Exhaustive byte-pattern search of SGW.exe code (audit Appendix D.3) found zero i
 **OQ-X: CLOSED — inbound dispatch chain located.**
 The dispatch chain for inbound `updateEntity` (msg_id `0x0A`) is fully traced in §1.8: handler `updateEntity_Handler @ 0x00dd62c0` → `FListenHelper::vtable[5]` at `FUN_01561140 @ 0x01561140` → `FUN_01560ad0 @ 0x01560ad0` (BigWorld→UE bridge, 4-byte type-tag switch) → case 1 → `FNetworkPropertyChange__vfunc_0 @ 0x015652d0`. The inbound propID is read at the FArchive layer as a 32-bit integer; there is no client-side BigWorld wire-format propID decoder (and therefore no client-side bounds check on a wire-encoded propID — see F1, which is reframed as "server-encoder concern" not "client-decoder concern"). Audit Appendices D.1–D.2 and E.1–E.3 record the chain.
 
-**OQ-Y (NEW, MEDIUM priority): Schema MD5 fingerprint comparison site.** Linked to F3 in §1.16. Hash production (`MethodDescription_WriteSchemaToStream` + `DataType::GetTypeName_WriteStream` chain) is documented; the **comparison** site against a server-provided value is not located. See F3 for starting points.
+**OQ-Y: RESOLVED — the client is the digest producer, not the comparator.** Closed by audit Appendix F.1. The `MD5_Finalize` chain has one entity-side caller — `GameEntityManager_Event_Net_GetProtocolDigest_InvokeHandler @ ghidra://SGW.exe@0x00c66cf0`, the CME invoke handler for `Event_Net_GetProtocolDigest` (registered via `ghidra://SGW.exe@0x00c69120`; RTTI accessor at `ghidra://SGW.exe@0x00c6a0d0` confirms the event type as `CME_EventSignal_UEvent_Net_GetProtocolDigest___CallbackImpl__vfunc_2`). That handler computes the schema MD5 over each entity's serialized property stream and writes the 16-byte result into the caller-supplied event struct at offsets `+0x31c` and `+0x324`. Mercury then embeds that digest into the `logOnBegin` handshake message (see `spec.protocol.mercury-wire-format` §2.5, `protocol_digest` field). The server is the comparator; on mismatch the server drops the connection at the protocol level, and the client sees a bare disconnect with no schema-specific error UI. There is no client-side mismatch comparison branch — an exhaustive sweep of all `memcmp` callers in entity/ServerConnection territory found no 16-byte digest comparison. See F3 in §1.16 for the failure-mode framing.
 
-**OQ-2: PARTIALLY RESOLVED — DataDescription dual name fields at `element+0x24` and `element+0x40`.**
-Confirmed by [`entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Target 4: both `StdStringMSVC` fields at `+0x24` and `+0x40` exist in the 0x110-byte parse-time DataDescription (initialised by `DataDescription_Constructor @ ghidra://SGW.exe@0x01591fb0` alongside the `+0x04` field). `EntityDescription_FindAndWritePropertyByName @ ghidra://SGW.exe@0x0158e780` compares the two against each other and only calls `EntityDescription_WriteClientData` when they match — i.e., it skips aliased properties (where the two name fields differ) and writes non-aliased ones.
+**OQ-2: RESOLVED — DataDescription has two distinct layouts at the same 0x110-byte size; the runtime form carries the dual name fields.**
+Closed by audit Appendix F.2 + F.2.1. The parse-time and runtime DataDescription layouts share the 0x110-byte size but differ in what `+0x24` means:
 
-What is still open: which field carries the internal XML tag name and which carries the client-visible alias. Resolving requires tracing the write sites that populate the 0x110-byte form from the 0x40-byte parse-time form (`FUN_0158f260` only writes `+0x00..+0x3c` in the small form; the 0x110-byte form's `+0x24` and `+0x40` writes have not been traced in this pass). The audit recorded this remainder as OQ-B in its "new open questions" section.
+- **Parse-time form** (`DataDescription_Constructor @ ghidra://SGW.exe@0x01591fb0`, `DataDescription_ParseFlags @ ghidra://SGW.exe@0x015974a0`): `+0x24` is a `SmartPointer<DataSection>` — the `<Default>` XML child node — not a string. The Ghidra constructor annotation that labelled `+0x24` "type name" is wrong. `FUN_0158f260 @ ghidra://SGW.exe@0x0158f260` is a partial-struct copier for `+0x00..+0x3c` only and does not touch `+0x40`.
+- **Runtime form** (read by `EntityDescription_FindAndWritePropertyByName @ ghidra://SGW.exe@0x0158e780`): `+0x24` and `+0x40` are two `StdStringMSVC` name fields set by a separate initialization path (not `FUN_0158f260`).
+
+The comparison in `EntityDescription_FindAndWritePropertyByName` reads the two runtime-form name fields and compares them against each other — character-by-character via `std::char_traits<char>::compare` using the lengths at `+0x34`/`+0x50`. It is a **name-consistency gate**, not a search-key match: the function only serializes properties whose two name variants agree (the unaliased properties), and skips those whose name variants differ (the aliased ones). This rules out the prior "search a name against a key" reading.
+
+**Sub-question OQ-2-bis (minor, open): which runtime-form name field carries the XML element name vs. the alias.** Resolving this requires tracing the initialization path that populates the runtime form (`FUN_0158f260` is ruled out by F.2.1). It does not block chapter promotion — the consistency-gate behavior is wire-irrelevant.
 
 **OQ-3: RESOLVED — `createCellPlayer` property stream is absent; 32 bytes confirmed.**
 A fresh decompile of `ServerConnection_CreateCellPlayer @ ghidra://SGW.exe@0x00dda2e0` confirms the exact read sequence: 4 bytes `spaceId` + 4 bytes `vehicleId` + 12 bytes position (read as `posXY` via an 8-byte read plus a 4-byte `posZ`) + 12 bytes rotation via `BundlePrimer__read3` (which applies the X/Z/Y swap internally) = **32 bytes total**, with no tail reads before the function transitions to `GetOrAddEntityTableSlot` bookkeeping. The buffered-message path (when `*(this+0x16c) == 0`) writes the message body into a buffer and returns early — no stream reads in that branch either. Audit-confirmed by [`entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Target 5.
@@ -617,7 +674,7 @@ Six numbered **failure modes** — what happens when the wire-format contract is
 
 **F2 — Unknown methodID → silent drop with wide-string log.** An incoming method byte that decodes to a methodID with no registered listener results in a **silent drop** after logging `"No client->server entity description mapping found for entity type %d; message id: %d."` (wide string). Confirmed in `ProcessEntityMethodEmission @ ghidra://SGW.exe@0x00c6f8f0` — the function checks `EntityDescription_FindMethodIdByName` for sentinel `0xFFFF` and falls through without dispatch. The log is only active when `g_bEntityRpcDebug (DAT_01ef2224)` is set. **No crash, no disconnect.** A server that emits a methodID outside the entity's table will see no protocol-level error. (Audit B.5 / G14.)
 
-**F3 — Schema MD5 fingerprint mismatch — comparison site UNVERIFIED.** The site where the client compares a schema MD5 fingerprint against a server-provided value has not been located. Searches for `MD5_Finalize`, `MD5_DigestToHexString`, and the related CryptoPP wrappers returned only the Mercury `protocol_digest` machinery (see `spec.protocol.mercury-wire-format` §2), not entity-schema fingerprint logic. Per the `datatype-registry-system.md` agent-memory note, MD5 hashing occurs during `DataType_Register @ ghidra://SGW.exe@0x01597ce0` for each registered type; whether the assembled digest is then compared against a wire-provided value (and what happens on mismatch) is unknown. Starting points for a future pass: callers of the CryptoPP MD5 functions at `ghidra://SGW.exe@0x01604e80`, and the `EntityDescription_WriteClientData` MD5-feed loop documented in §1.13. (Audit B.6 / G15.)
+**F3 — Schema MD5 fingerprint mismatch — server-side rejection, no client-rendered error.** The schema fingerprint is never compared on the client side. The client is the digest **producer**: `Event_Net_GetProtocolDigest` fires during login; `GameEntityManager_Event_Net_GetProtocolDigest_InvokeHandler @ ghidra://SGW.exe@0x00c66cf0` (the CME invoke handler, registered via `ghidra://SGW.exe@0x00c69120`; RTTI accessor at `ghidra://SGW.exe@0x00c6a0d0` is `CME_EventSignal_UEvent_Net_GetProtocolDigest___CallbackImpl__vfunc_2`) computes the MD5 over each entity's serialized property stream via `EntityDescription_FindAndWritePropertyByName @ ghidra://SGW.exe@0x0158e780` and writes the 16-byte result into the caller-supplied event struct at `+0x31c`/`+0x324`. Mercury embeds the digest into the `logOnBegin` handshake (see `spec.protocol.mercury-wire-format` §2.5, `protocol_digest` field). The **server** is the comparator: on mismatch it drops the connection at the protocol level, and the client sees a bare disconnect with no schema-specific error UI. An exhaustive sweep of `memcmp` callers in entity/ServerConnection territory found no 16-byte digest comparison anywhere on the client side. **Implication for servers**: a wrong schema rejects at login with no diagnostic surface; users see a disconnect, not "schema mismatch". Audit Appendix F.1 closes this question. (Audit B.6 / G15 / F.1.)
 
 **F4 — Unknown typeID in `createBasePlayer` — outer handler does no validation.** `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0` passes the `u16` typeID directly to its entity-creation delegate at `*(this+0x168)` with **no in-handler validation gate** — no range check, no server-only flag test, no rejection path before or after the delegate call. The delegate is a runtime function pointer that statically resolves to nothing in this pass. Failure mode inside the delegate (e.g. typeID has no client-loaded `.def`) is not visible in the outer handler — likely a silent instantiation failure when entity-description lookup misses, but x64dbg confirmation is needed. (Audit B.7 / G16; §2.5 has the same finding from the client-tree side.)
 
@@ -784,9 +841,9 @@ The verified keyword → bit-value mapping (primary keywords only — full 16-en
 | `ALL_CLIENTS` | `0x07` | `DATA_GHOSTED \| DATA_OTHER_CLIENT \| DATA_OWN_CLIENT` | no |
 | `EDITOR_ONLY` | `0x40` | `DATA_EDITOR_ONLY` | no |
 
-![Graph mapping the nine primary keywords from DataDescription_ParseFlagStr (entry 0 CELL_PRIVATE, entry 1 CELL_PUBLIC, entry 2 OTHER_CLIENTS, entry 3 OWN_CLIENT, entry 4 BASE, entry 5 BASE_AND_CLIENT, entry 6 CELL_PUBLIC_AND_OWN, entry 7 ALL_CLIENTS, entry 8 EDITOR_ONLY) to the eight-bit flag space, with CELL_PUBLIC, BASE, and CELL_PRIVATE highlighted as the only three keywords used in SGW .def files and the other six shown greyed out.](figures/entity-property-sync-07-flag-keyword-surface.svg)
+![Graph mapping the nine primary keywords from DataDescription_ParseFlagStr (entry 0 CELL_PRIVATE, entry 1 CELL_PUBLIC, entry 2 OTHER_CLIENTS, entry 3 OWN_CLIENT, entry 4 BASE, entry 5 BASE_AND_CLIENT, entry 6 CELL_PUBLIC_AND_OWN, entry 7 ALL_CLIENTS, entry 8 EDITOR_ONLY) to the eight-bit flag space, with CELL_PUBLIC, BASE, and CELL_PRIVATE highlighted as the only three keywords used in SGW .def files and the other six shown greyed out.](figures/entity-property-sync-08-flag-keyword-surface.svg)
 
-*Figure 7: SGW flag-keyword surface. The 9-row primary keyword table in `DataDescription_ParseFlagStr` lists nine entries (entry 0 = `CELL_PRIVATE`, flag value `0x00`; entry 1 = `CELL_PUBLIC`, `0x01`; through entry 8 = `EDITOR_ONLY`, `0x40`). Only three (`CELL_PRIVATE`, `CELL_PUBLIC`, `BASE`) ever appear in the 37 SGW `.def` files. The greyed-out keywords exist in the parser but are dead surface in the client tree, which is why §1.2's `+0x70/+0x74` filter — looking for bits 1 or 2 — finds nothing to route. `CLIENT_ONLY` is NOT in the parsed-keyword surface.*
+*Figure 8: SGW flag-keyword surface. The 9-row primary keyword table in `DataDescription_ParseFlagStr` lists nine entries (entry 0 = `CELL_PRIVATE`, flag value `0x00`; entry 1 = `CELL_PUBLIC`, `0x01`; through entry 8 = `EDITOR_ONLY`, `0x40`). Only three (`CELL_PRIVATE`, `CELL_PUBLIC`, `BASE`) ever appear in the 37 SGW `.def` files. The greyed-out keywords exist in the parser but are dead surface in the client tree, which is why §1.2's `+0x70/+0x74` filter — looking for bits 1 or 2 — finds nothing to route. `CLIENT_ONLY` is NOT in the parsed-keyword surface.*
 
 Three observations land directly on the wire format:
 
@@ -986,9 +1043,9 @@ idBase = 0x3E - 1            = 61
 
 So for SGWPlayer specifically: client methods 0–60 use single-byte wire encoding; methods 61–156 use two-byte encoding. This is the §1.4 SGWPlayer-specific threshold, derived directly from the client tree's method count. The first method that crosses into two-byte territory is **index 61 = `minigameCallDisplay`**, the 10th `<ClientMethods>` entry (offset 9, zero-based) inside `defs/interfaces/MinigamePlayer.def`, which occupies indices 52–64. Audit-confirmed by [`entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Target 3 via a depth-tracking parse of the full 17-file cascade.
 
-![Horizontal cascade tree of the SGWPlayer parse — SGWEntity (0 methods) to SGWSpawnableEntity (12 methods, indices 0..11) to SGWBeing (15 methods, indices 12..26) to the eleven implemented interfaces (Communicator through ClientCache, indices 27..97) to SGWPlayer.def own (59 methods, indices 98..156), with the sub-slot boundary between indices 60 and 61 highlighted inside the MinigamePlayer range.](figures/entity-property-sync-08-sgwplayer-parse-cascade.svg)
+![Horizontal cascade tree of the SGWPlayer parse — SGWEntity (0 methods) to SGWSpawnableEntity (12 methods, indices 0..11) to SGWBeing (15 methods, indices 12..26) to the eleven implemented interfaces (Communicator through ClientCache, indices 27..97) to SGWPlayer.def own (59 methods, indices 98..156), with the sub-slot boundary between indices 60 and 61 highlighted inside the MinigamePlayer range.](figures/entity-property-sync-09-sgwplayer-parse-cascade.svg)
 
-*Figure 8: SGWPlayer parse cascade producing the 157-entry client-method index. The parent chain (SGWEntity → SGWSpawnableEntity → SGWBeing) contributes indices 0–26; the eleven `<Implements>` interfaces in XML order contribute indices 27–97; SGWPlayer's own `<ClientMethods>` block contributes 98–156. The sub-slot boundary from Figure 3 (idBase = 61) lands inside `MinigamePlayer` (indices 52–64) — index 61 = `minigameCallDisplay` is the first two-byte-encoded method.*
+*Figure 9: SGWPlayer parse cascade producing the 157-entry client-method index. The parent chain (SGWEntity → SGWSpawnableEntity → SGWBeing) contributes indices 0–26; the eleven `<Implements>` interfaces in XML order contribute indices 27–97; SGWPlayer's own `<ClientMethods>` block contributes 98–156. The sub-slot boundary from Figure 3 (idBase = 61) lands inside `MinigamePlayer` (indices 52–64) — index 61 = `minigameCallDisplay` is the first two-byte-encoded method.*
 
 ### 2.8 Interfaces vs entities
 

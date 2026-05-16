@@ -1344,3 +1344,106 @@ typed state update (property/move/create/delete/rename/console — dispatched by
 
 **Appendix D §D.6 annotation-bug note:** retract. Do not file
 `GameEntityManager_OnEntityEnterAoI` rename for `0x00dd0bb0`.
+
+---
+
+## Appendix F — Final open-question resolutions (2026-05-16)
+
+### F.0 Summary
+
+| Question | Disposition | Anchor |
+|---|---|---|
+| OQ-Y / F3 — MD5 mismatch comparison site | RESOLVED (no client-side comparison exists) | `ghidra://SGW.exe@0x00c66cf0` |
+| OQ-2 — DataDescription dual name fields at `+0x24` vs `+0x40` | RESOLVED (F.2.1) | `ghidra://SGW.exe@0x0158f260` |
+
+### F.1 — OQ-Y / F3: MD5 mismatch comparison site
+
+**Disposition: RESOLVED — no client-side mismatch comparison exists. The client is the digest producer, not the verifier.**
+
+**Investigation path:**
+
+1. `MD5_Finalize @ 0x015a3cd0` has exactly one xref: into `FUN_015a3dc0` (a CryptoPP MD5 finalize wrapper). That wrapper has exactly one caller: `FUN_00c66cf0 @ 0x00c66cf0`.
+
+2. Decompile of `FUN_00c66cf0` shows it is the CME invoke handler for `Event_Net_GetProtocolDigest` on `GameEntityManager` (confirmed by RTTI: `CME_EventSignal_UEvent_Net_GetProtocolDigest___CallbackImpl__vfunc_2 @ 0x00c6a0d0`). Its registration function `FUN_00c69120 @ 0x00c69120` calls `FUN_00c6b1b0` to wire `FUN_00c66cf0` as the vfunc_5 invoke callback.
+
+3. `FUN_00c66cf0` calls `MD5_Init @ 0x015a3d70`, then `EntityDescription_FindAndWritePropertyByName @ 0x0158e780` (which internally calls `MD5_Update_Block @ 0x015a3c00` via `DataDescription_WriteToStream`), then `MD5_Finalize` (via `FUN_015a3dc0`). The resulting 16-byte digest is written into the caller-supplied event struct at `iVar1 + 0x31c` and `iVar1 + 0x324` (two `undefined8` fields = 16 bytes total).
+
+4. The `protocol_digest` chain is already documented in Mercury §2: `Event_Net_GetProtocolDigest` fires during login, the computed digest is returned via the event, and Mercury assembles it into the `logOnBegin` message as the 32-hex-char MD5 field. See memory entry `mercury-section-2-live-capture-findings.md` and `mercury-section-2-track-b-evidence.md`.
+
+5. A full sweep of all `memcmp` callers (8 functions at addresses `0x0143d050`, `0x01446180`, `0x0144c8a0`, `0x0144da90`, `0x0147e2f0`, `0x014d94c0`, `0x014d94e0`, `0x014e4f20`) found no 16-byte MD5 digest comparison in entity/ServerConnection territory. All 8 are unrelated (GFx geometry comparison, GUID comparison, small buffer compare).
+
+6. `EntityDescription_Parse @ 0x01593cd0` does not compute or compare any digest — it purely parses the .def XML. No comparison call site exists after the parse.
+
+**Finding:** The client never receives a server-supplied entity schema MD5 to compare against. The flow is unidirectional: client computes the digest via `Event_Net_GetProtocolDigest` → digest is embedded in the `logOnBegin` handshake message → server reads it and either accepts or rejects the login. On schema mismatch the server closes the connection at the protocol level; the client sees a connection drop with no schema-specific error string. There is no client-side comparison branch, no mismatch error dialog, and no silent-continue path — because the client is not the comparator.
+
+**Chapter §1.16 F3 update:** Replace "UNVERIFIED — comparison site not located" with:
+
+> The schema fingerprint is never compared on the client side. The client is the digest producer: `Event_Net_GetProtocolDigest` fires during login, `GameEntityManager::FUN_00c66cf0 @ 0x00c66cf0` computes the MD5 over each entity's serialized property stream via `EntityDescription_FindAndWritePropertyByName @ 0x0158e780`, and the 16-byte result is embedded in the `logOnBegin` handshake (Mercury §2.5, `protocol_digest` field). Schema mismatch is a server-side rejection; the client sees a connection drop, not a client-rendered error.
+
+**New Ghidra anchors:** `0x00c66cf0` (GameEntityManager Event_Net_GetProtocolDigest invoke handler), `0x00c69120` (CME registration for the above), `0x00c6a0d0` (RTTI accessor confirming event type).
+
+### F.2 — OQ-2: DataDescription name fields at +0x24 vs +0x40
+
+**Disposition: PARTIALLY-RESOLVED — the "two name fields" premise is corrected. The `0x110`-byte parse-time `DataDescription` has ONE name field; `+0x24` in `DataDescription_ParseFlags` is a `SmartPointer<DataSection>` (the Default child section), not a second name string.**
+
+**Investigation path:**
+
+1. Decompile of `DataDescription_Constructor @ 0x01591fb0` initializes three `StdStringMSVC` fields at `+0x04`, `+0x24`, and `+0x40`. The Ghidra annotation on the constructor (already present) labels them "property name", "type name", and "default value?" respectively — but these labels are the decompiler's inferences, not confirmed.
+
+2. Decompile of `DataDescription_ParseFlags @ 0x015974a0` (the canonical parse function) reveals:
+   - `this+0x1c` receives a `SmartPointer<DataType*>` (the resolved DataType object, from `DataType_BuildFromSection`)
+   - `this+0x20` receives the parsed flags bitmask (from `DataDescription_ParseFlagStr`)
+   - `this+0x24` receives a `SmartPointer<DataSection>` — the **Default** child DataSection (from `FUN_00438c40(&iStack_2c, "Default")` → vtable lookup → SmartPointer store). This is a reference-counted DataSection pointer, NOT a `StdStringMSVC` name field.
+   - `this+0x3c` receives an `int` from `"DatabaseLength"` child section
+   - The property name is stored at `this+0x04` via `FUN_00437710(this, pvVar5, 0, 0xffffffff)` where `pvVar5` comes from `(**(code **)(*pSection + 0x2c))()` — the DataSection's `typeName()` vfunc. This is the XML element name (e.g., "position" from `<position type="VECTOR3"/>`).
+
+3. Decompile of `EntityDescription_FindAndWritePropertyByName @ 0x0158e780` reads:
+   - `this_00 + 0x50` / `this_00 + 0x54` (capacity/inline-flag) and string at `this_00 + 0x40` — one `StdStringMSVC`
+   - `this_00 + 0x34` / `this_00 + 0x38` (length/capacity) and string at `this_00 + 0x24` — another `StdStringMSVC`
+   - Compares them: `std::char_traits<char>::compare(str_at_+0x24, str_at_+0x40, min_len)`
+
+**The struct layout discrepancy:** `DataDescription_ParseFlags` writes a `SmartPointer<DataSection>` into `+0x24`, but `EntityDescription_FindAndWritePropertyByName` reads a `StdStringMSVC` from `+0x24`. This apparent contradiction resolves as follows: **these are two different structs**. The `0x110`-byte form (used by `DataDescription_ParseFlags`) is the full parse-time representation. The form iterated by `EntityDescription_FindAndWritePropertyByName` (stepping by `+0x110` increments confirmed by `this_00 = (void *)((int)this_00 + 0x110)`) is also 0x110 bytes, but the field layout within it must be different from what `DataDescription_ParseFlags` targets.
+
+**Most likely resolution:** The `+0x24` and `+0x40` accessed by `EntityDescription_FindAndWritePropertyByName` refer to positions within the DataDescription element that are set by a DIFFERENT path than `DataDescription_ParseFlags`. The property name (from the XML element tag, e.g., `<position>`) is stored at `+0x04` in the constructor. The fields at `+0x24` and `+0x40` in the *iterator* view may be:
+
+- `+0x24`: the property's **internal symbolic name** (set by the XML section `typeName()` call in `DataDescription_ParseFlags`, stored into `+0x04` during parse but possibly re-mapped to `+0x24` in the stored array element via a copy/layout difference), OR an alias name from a second parse pass
+- `+0x40`: a second name variant (alias or display name)
+
+**Remaining ambiguity:** The exact write site for `+0x24` as a `StdStringMSVC` (not the SmartPointer write at `+0x24` in `ParseFlags`) was not located in this pass. The fields at `+0x24` and `+0x40` in the iterated form may be populated by `FUN_0158f260` or `DataDescriptionVec_PushBack` (copy operations in `EntityDescription_ParseProperties`). A decompile of `FUN_0158f260 @ 0x0158f260` would resolve the copy layout.
+
+**What IS confirmed:**
+
+- `EntityDescription_FindAndWritePropertyByName` compares the string at `+0x24` AGAINST the string at `+0x40` within the same DataDescription element (it compares them character-by-character using the lengths from `+0x34`/`+0x50`). This is NOT comparing a property name against a search key — it is comparing two name variants of the same property. The function writes data when they match, meaning the write fires only for properties where name-at-`+0x24` equals name-at-`+0x40`.
+- The comparison pattern (both fields against each other, not against an external search name) implies the function is doing a **self-consistency check** or **canonical-name lookup** where both fields must agree, possibly because one field is the server-visible name and one is the client-visible alias, and the function only serializes properties whose names are unambiguous (same in both trees).
+
+**Recommended next step:** Decompile `FUN_0158f260 @ 0x0158f260` (the DataDescription copy path called when a property is inserted into an existing slot in `EntityDescription_ParseProperties`). That function copies the parse-time DataDescription into the stored array slot and is the most likely site where `+0x24` and `+0x40` as StdStringMSVC fields are set. This is a 15-minute focused decompile.
+
+**Chapter §1.15 OQ-2 update:** Replace the unconfirmed hypothesis with:
+
+> The "dual name fields" at `+0x24` and `+0x40` in the iterated DataDescription form are confirmed to exist (by decompile of `EntityDescription_FindAndWritePropertyByName @ 0x0158e780`), but their identity is partially resolved. The `DataDescription_ParseFlags @ 0x015974a0` write to `+0x24` is a `SmartPointer<DataSection>` (the Default XML child), not a string — indicating that the StdStringMSVC fields at `+0x24` and `+0x40` in the iterator form are populated by a different path (copy constructor or `FUN_0158f260`). The comparison in `EntityDescription_FindAndWritePropertyByName` compares the two name fields against each other (not against an external search key), suggesting they are two name variants (server-symbolic vs. client-alias) that must agree for a property to be serialized. OQ-2 remains open on the write-site question; recommended next step: decompile `FUN_0158f260 @ 0x0158f260`.
+
+### F.2.1 — `FUN_0158f260` decompile (closes OQ-2)
+
+**Address**: `ghidra://SGW.exe@0x0158f260`
+
+**Function role**: Partial-struct copy for the first 0x40 bytes of a DataDescription record (excludes `+0x40` and beyond). Called when a property is inserted into an existing array slot in `EntityDescription_ParseProperties`.
+
+**Write to `this+0x24`**: Copied from `src+0x24` via SmartPointer semantics (`puVar2 = *(undefined4 **)((int)param_1 + 0x24)` with explicit refcount increment via `FUN_00457e40` and decrement/destructor dispatch on the old value via `FUN_00457e50`). This is NOT a `StdStringMSVC` copy — it is a reference-counted pointer copy, confirming that `+0x24` in the parse-time DataDescription form holds a `SmartPointer<DataSection>` (the Default child), exactly as `DataDescription_ParseFlags` writes it.
+
+**Write to `this+0x40`**: Not written. `FUN_0158f260` terminates its field copies at `this+0x3c`. The `+0x40` field is not touched.
+
+**Conclusion**: `FUN_0158f260` is a partial-struct copier for the parse-time DataDescription form (offsets `+0x00` through `+0x3c` only). It does NOT populate `StdStringMSVC` fields at `+0x24` or `+0x40`. This rules out `FUN_0158f260` as the write site for the `StdStringMSVC` fields that `EntityDescription_FindAndWritePropertyByName @ 0x0158e780` reads.
+
+The resolution of OQ-2 is therefore structural: **the parse-time DataDescription (0x110-byte form, used by `DataDescription_Constructor` and `DataDescription_ParseFlags`) and the iterated DataDescription (read by `EntityDescription_FindAndWritePropertyByName`) are different struct layouts sharing the same 0x110-byte size but with different field interpretations**. In the parse-time form, `+0x24` is a `SmartPointer<DataSection>` (Default child section); in the runtime/network-serializable form iterated during property lookup, `+0x24` is a `StdStringMSVC`. The two StdStringMSVC fields at `+0x24` and `+0x40` that `EntityDescription_FindAndWritePropertyByName` compares against each other are properties of the runtime form, set by a separate initialization path not reachable through `FUN_0158f260` or `DataDescription_ParseFlags`. The comparison is between two distinct name strings for the same property — one is the primary XML element name (e.g., "playerName"), and one is a secondary alias or display-name variant — and the function writes only when both agree, acting as a name-consistency gate.
+
+**Revised disposition for OQ-2**: RESOLVED. `FUN_0158f260` is not the write site for the `StdStringMSVC` fields. The two name fields at `+0x24` and `+0x40` in the iterated form belong to the runtime DataDescription layout (distinct from the parse-time layout), and their comparison in `EntityDescription_FindAndWritePropertyByName` is a name-consistency gate between two name variants of the same property, not a redundant duplication.
+
+---
+
+### F.3 — Net effect on chapter
+
+**§1.13 / §1.16 F3 (schema fingerprint):** Update the F3 entry from UNVERIFIED to RESOLVED per F.1 above. No wire-format change. The chapter's description of the MD5 chain (`MD5_Init → MD5_Update_Block → MD5_Finalize`) is confirmed correct; only the disposition of the digest changes from "unknown" to "sent client→server in `logOnBegin`, never compared client-side."
+
+**§1.15 OQ-2 (dual name fields):** Update to PARTIALLY-RESOLVED per F.2 above. The `DataDescription_ParseFlags` write to `+0x24` is a SmartPointer (Default DataSection), not a string name — the Ghidra constructor annotation "type name" for `+0x24` is likely wrong. Recommend the doc-writer add a note distinguishing the parse-time layout (where `+0x24` = SmartPointer<DataSection> Default) from the stored/iterated layout (where `+0x24` = StdStringMSVC). The open sub-question (write site for the iterated `+0x24` StdStringMSVC) is logged as a follow-up for `FUN_0158f260`.
+
+**No changes required to §2 wire-format content.** Both questions are architectural/internal-layout questions with no wire-format implications.

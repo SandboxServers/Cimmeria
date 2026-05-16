@@ -1,6 +1,6 @@
 ---
 name: entity-property-sync-oq1
-description: OQ-1 disposition for entity-property-sync chapter — 0x3C/0x3D propID thresholds are server-side only; SGW.exe uses UE3 FArchive uint32_t path, not BigWorld wire encoding
+description: OQ-1 and OQ-2 dispositions for entity-property-sync chapter — OQ-1 closed (architecture mismatch), OQ-2 closed (FUN_0158f260 decompile confirms two distinct DataDescription layout forms)
 metadata:
   type: project
 ---
@@ -43,3 +43,21 @@ metadata:
 **Full findings:** `docs/audits/entity-property-sync-section2-audit-2026-05-16.md` Appendix D (lines 1088–1192).
 
 **How to apply:** When anyone asks about entity property sync, propID encoding, or `updateEntity` semantics, use this to correct the assumption that the client decodes the BigWorld wire propID format. The client's incoming path is UE3-native; only the server-side BigWorld layer uses the 0x3C/0x3D encoding.
+
+---
+
+## OQ-2 CLOSED — two distinct DataDescription layout forms (2026-05-16)
+
+**Verdict:** `FUN_0158f260 @ 0x0158f260` is a partial-struct copier (offsets `+0x00` through `+0x3c` only). It is NOT the write site for `StdStringMSVC` fields at `+0x24` or `+0x40`.
+
+**The write to `this+0x24` in `FUN_0158f260`:** Copies `src+0x24` via SmartPointer semantics (refcount increment/decrement, vtable dispatch). This is a `SmartPointer<DataSection>` copy (the Default child section), not a string copy.
+
+**`this+0x40` is not touched** by `FUN_0158f260` — the function terminates at `+0x3c`.
+
+**Resolution:** The parse-time DataDescription form (0x110-byte, initialized by `DataDescription_Constructor @ 0x01591fb0` and written by `DataDescription_ParseFlags @ 0x015974a0`) and the runtime/iterated form (read by `EntityDescription_FindAndWritePropertyByName @ 0x0158e780`) share the same 0x110-byte size but have different field interpretations at `+0x24`:
+- Parse-time: `+0x24` = `SmartPointer<DataSection>` (Default child XML section)
+- Runtime/iterated: `+0x24` = `StdStringMSVC` (one of two name variants compared by `FindAndWritePropertyByName`)
+
+The comparison in `EntityDescription_FindAndWritePropertyByName` between `+0x24` and `+0x40` is a name-consistency gate between two name variants (XML element name vs. alias), not a redundant duplication. The write site for the runtime `StdStringMSVC` fields is a separate initialization path not involving `FUN_0158f260`.
+
+**Full findings:** `docs/audits/entity-property-sync-section2-audit-2026-05-16.md` Appendix F.2 and F.2.1 (lines 1385–1447).
