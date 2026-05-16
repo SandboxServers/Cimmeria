@@ -1,0 +1,60 @@
+%%{init: {"theme": "base", "flowchart": {"htmlLabels": false}}}%%
+flowchart LR
+    subgraph KEYWORDS["DataDescription_ParseFlagStr — 9 primary keyword entries\n@ ghidra://SGW.exe@0x015959c0  /  table @ 0x01e920e0"]
+        K1["CELL_PUBLIC\n(used in SGW)"]
+        K2["OTHER_CLIENTS\n(unused)"]
+        K3["OWN_CLIENT\n(unused)"]
+        K4["CELL_PUBLIC_AND_OWN\n(unused)"]
+        K5["ALL_CLIENTS\n(unused)"]
+        K6["BASE\n(used in SGW)"]
+        K7["BASE_AND_CLIENT\n(unused)"]
+        K8["CLIENT_ONLY\n(unused)"]
+        K9["EDITOR_ONLY\n(unused)"]
+        K10["CELL_PRIVATE\n(used in SGW —\nsets NO flag bit;\nnot in 9-row table)"]
+    end
+
+    subgraph BITS["8-bit flag space at DataDescription+0x20"]
+        B0["bit 0  0x01\nDATA_GHOSTED"]
+        B1["bit 1  0x02\nDATA_OTHER_CLIENT"]
+        B2["bit 2  0x04\nDATA_OWN_CLIENT"]
+        B3["bit 3  0x08\nDATA_BASE"]
+        B4["bit 4  0x10\nDATA_CLIENT_ONLY"]
+        B6["bit 6  0x40\nDATA_EDITOR_ONLY"]
+    end
+
+    K1 ==> B0
+    K2 ==> B0
+    K2 ==> B1
+    K3 ==> B2
+    K4 ==> B0
+    K4 ==> B2
+    K5 ==> B0
+    K5 ==> B1
+    K5 ==> B2
+    K6 ==> B3
+    K7 ==> B2
+    K7 ==> B3
+    K8 ==> B4
+    K9 ==> B6
+    K10 -.->|sets no bit| BITS
+
+    NOTE["Source: DataDescription_ParseFlagStr is a pure table walk\nwith single direct assignment (*pOutFlags = table_entry[1]).\nNo post-OR step; each keyword resolves to its exact bit value.\nAudit Appendix A confirmed the full 16-entry table\n(9 primary + 7 deprecated aliases)."]
+
+    %% Used vs unused styling
+    style K1 fill:#ddffdd,stroke:#5fb15f,stroke-width:2px
+    style K6 fill:#ddffdd,stroke:#5fb15f,stroke-width:2px
+    style K10 fill:#ddffdd,stroke:#5fb15f,stroke-width:2px,stroke-dasharray:0
+    style K2 fill:#f0f0f0,stroke:#aaa,stroke-dasharray:4 3,color:#666
+    style K3 fill:#f0f0f0,stroke:#aaa,stroke-dasharray:4 3,color:#666
+    style K4 fill:#f0f0f0,stroke:#aaa,stroke-dasharray:4 3,color:#666
+    style K5 fill:#f0f0f0,stroke:#aaa,stroke-dasharray:4 3,color:#666
+    style K7 fill:#f0f0f0,stroke:#aaa,stroke-dasharray:4 3,color:#666
+    style K8 fill:#f0f0f0,stroke:#aaa,stroke-dasharray:4 3,color:#666
+    style K9 fill:#f0f0f0,stroke:#aaa,stroke-dasharray:4 3,color:#666
+    style B0 fill:#cce5ff
+    style B1 fill:#f0f0f0,color:#666
+    style B2 fill:#f0f0f0,color:#666
+    style B3 fill:#cce5ff
+    style B4 fill:#f0f0f0,color:#666
+    style B6 fill:#f0f0f0,color:#666
+    style NOTE fill:#fafafa,stroke:#666

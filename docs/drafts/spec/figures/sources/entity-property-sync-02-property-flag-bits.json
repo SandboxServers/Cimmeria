@@ -1,0 +1,18 @@
+{
+  "reg": [
+    {"name": "DATA_GHOSTED",      "bits": 1, "attr": ["0x01", "CELL_PUBLIC"]},
+    {"name": "DATA_OTHER_CLIENT", "bits": 1, "attr": ["0x02", "OTHER_CLIENTS (unused in SGW)"]},
+    {"name": "DATA_OWN_CLIENT",   "bits": 1, "attr": ["0x04", "OWN_CLIENT (unused in SGW)"]},
+    {"name": "DATA_BASE",         "bits": 1, "attr": ["0x08", "BASE"]},
+    {"name": "DATA_CLIENT_ONLY",  "bits": 1, "attr": ["0x10", "CLIENT_ONLY"]},
+    {"name": "DATA_PERSISTENT",   "bits": 1, "attr": ["0x20", "<Persistent>true</Persistent>"]},
+    {"name": "DATA_EDITOR_ONLY",  "bits": 1, "attr": ["0x40", "EDITOR_ONLY"]},
+    {"name": "DATA_ID",           "bits": 1, "attr": ["0x80", "<Identifier>true</Identifier>"]}
+  ],
+  "config": {
+    "hspace": 1100,
+    "bits": 8,
+    "lanes": 1,
+    "label": {"right": 10}
+  }
+}

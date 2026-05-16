@@ -77,7 +77,7 @@ Each row is a `chapter_id`. The link target is the chapter when it exists; other
 |---|---|---|
 | `spec.protocol.mercury-wire-format` | draft | [`../drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md) |
 | `spec.protocol.position-updates` | draft | [`../drafts/spec/position-updates.md`](../drafts/spec/position-updates.md) |
-| `spec.protocol.entity-property-sync` | coming soon (Phase 0.5) | evidence: [`../reverse-engineering/findings/entity-property-sync.md`](../reverse-engineering/findings/entity-property-sync.md) |
+| `spec.protocol.entity-property-sync` | draft | [`../drafts/spec/entity-property-sync.md`](../drafts/spec/entity-property-sync.md) |
 | `spec.protocol.message-catalog` | coming soon (Phase 0.5) | evidence: [`../protocol/message-catalog.md`](../protocol/message-catalog.md), the 19 V5 wire-format finding docs |
 | `spec.protocol.combat-wire-formats` | coming soon (Phase 1) | evidence: [`../reverse-engineering/findings/combat-wire-formats.md`](../reverse-engineering/findings/combat-wire-formats.md) |
 

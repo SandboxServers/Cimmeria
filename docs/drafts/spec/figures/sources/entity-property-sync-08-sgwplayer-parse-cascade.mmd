@@ -1,0 +1,74 @@
+%%{init: {"theme": "base", "flowchart": {"htmlLabels": false}}}%%
+flowchart LR
+    ROOT(["SGWPlayer.def\nparse — produces 157-entry client-method index"])
+
+    subgraph PARENTS["Parent chain (recursed first)"]
+        SGWENT["SGWEntity\n(ServerOnly — abstract base)\ncontributes 0 client methods"]
+        SGWSPAWN["SGWSpawnableEntity.def\nown ClientMethods (12)\nindices 0..11"]
+        SGWBEING["SGWBeing.def\nImplements: SGWBeing(if), SGWAbilityManager, SGWCombatant\nown ClientMethods (1): BeingAppearance\nindices 12..26 (15 methods total)"]
+    end
+
+    subgraph BEING_IF["SGWBeing branch detail (indices 12..26)"]
+        B_SGWBEING_IF["SGWBeing interface (8)\n12..19"]
+        B_SGWAM["SGWAbilityManager (0)\nno contribution"]
+        B_SGWCOMBAT["SGWCombatant (6)\n20..25"]
+        B_OWN["SGWBeing.def own (1)\n26 — BeingAppearance"]
+    end
+
+    subgraph IFACES["SGWPlayer Implements — 11 interfaces (declaration order)"]
+        I1["Communicator (7)\n27..33"]
+        I2["OrganizationMember (18)\n34..51"]
+        I3["MinigamePlayer (13)\n52..64\n** sub-slot boundary between 60 and 61 **"]
+        I4["GateTravel (4)\n65..68"]
+        I5["SGWInventoryManager (7)\n69..75"]
+        I6["SGWMailManager (4)\n76..79"]
+        I7["Missionary (5)\n80..84"]
+        I8["ContactListManager (5)\n85..89"]
+        I9["SGWBlackMarketManager (6)\n90..95"]
+        I10["ClientCache (2)\n96..97"]
+        I11["SGWPoller (0)\nno contribution"]
+    end
+
+    OWN["SGWPlayer.def own ClientMethods (59)\nindices 98..156"]
+
+    TOTAL["Totals — 12 + 15 + 130 = 157 methods\nindices 0..156\nSub-slot threshold for SGWPlayer:\n  iVar2  = (157 + 0xC0) / 0xFF = 1\n  idBase = 0x3E - 1 = 61\nindices 0..60 → single-byte wire encoding\nindices 61..156 → two-byte wire encoding\nFirst two-byte method: 61 = minigameCallDisplay"]
+
+    ROOT --> SGWENT
+    SGWENT --> SGWSPAWN
+    SGWSPAWN --> SGWBEING
+    SGWBEING --> BEING_IF
+    BEING_IF --> I1
+    I1 --> I2
+    I2 --> I3
+    I3 --> I4
+    I4 --> I5
+    I5 --> I6
+    I6 --> I7
+    I7 --> I8
+    I8 --> I9
+    I9 --> I10
+    I10 --> I11
+    I11 --> OWN
+    OWN --> TOTAL
+
+    style ROOT fill:#e8f4fb,stroke:#5599cc,stroke-width:2px
+    style SGWENT fill:#f0f0f0,color:#666
+    style SGWSPAWN fill:#ddeeff
+    style SGWBEING fill:#ddeeff
+    style B_SGWBEING_IF fill:#fff4d6
+    style B_SGWAM fill:#f0f0f0,color:#666
+    style B_SGWCOMBAT fill:#fff4d6
+    style B_OWN fill:#fff7e6
+    style I1 fill:#ddffdd
+    style I2 fill:#ddffdd
+    style I3 fill:#ffcccc,stroke:#cc3333,stroke-width:2px
+    style I4 fill:#ddffdd
+    style I5 fill:#ddffdd
+    style I6 fill:#ddffdd
+    style I7 fill:#ddffdd
+    style I8 fill:#ddffdd
+    style I9 fill:#ddffdd
+    style I10 fill:#ddffdd
+    style I11 fill:#f0f0f0,color:#666
+    style OWN fill:#ffeedd,stroke:#cc9933
+    style TOTAL fill:#fafafa,stroke:#5599cc
