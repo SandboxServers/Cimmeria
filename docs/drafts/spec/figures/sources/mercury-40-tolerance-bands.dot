@@ -1,0 +1,61 @@
+digraph G {
+  rankdir=LR
+  node [shape=plaintext fontname=Helvetica]
+  graph [label="Mercury client tolerances — §2.5 T-category findings, with the violation boundary on each axis" labelloc=t fontsize=14 fontname=Helvetica]
+
+  layout [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR>
+        <TD BGCOLOR="#f4f4f4" WIDTH="160"><B>Tolerance</B></TD>
+        <TD BGCOLOR="#d6ffd6" WIDTH="280"><B>Acceptable range</B><BR/><FONT POINT-SIZE="9">server picks anywhere in here; client adapts</FONT></TD>
+        <TD BGCOLOR="#ffcccc" WIDTH="220"><B>Outside the band</B><BR/><FONT POINT-SIZE="9">flips into REQUIRED violation</FONT></TD>
+        <TD BGCOLOR="#f4f4f4" WIDTH="100"><B>Citation</B></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Tick rate</B><BR/><FONT POINT-SIZE="9">advertised via updateFrequencyNotification (msg 0x02)</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Any u8 value 1..255; client scales internal timers to the advertised value</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Value 0, or omitting updateFrequencyNotification entirely — client runs on its init-time default</FONT></TD>
+        <TD><FONT POINT-SIZE="9">§1.9.2<BR/>[^cpp-client-handler]</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Ack delivery</B><BR/><FONT POINT-SIZE="9">piggybacked on a reliable bundle OR standalone</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Piggyback chain on the next reliable bundle, or a standalone FLAG_HAS_ACKS-only packet — both equally valid</FONT></TD>
+        <TD><FONT POINT-SIZE="9">FLAG_HAS_ACKS set with 0 acks in the body — client drops the packet</FONT></TD>
+        <TD><FONT POINT-SIZE="9">§1.3.1<BR/>[^send-ack-bundle2]</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Entity-create ordering</B><BR/><FONT POINT-SIZE="9">createBasePlayer vs createCellPlayer in a bundle</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Either order in a single bundle — client buffers an early createCellPlayer ("Playing buffered createCellPlayer message" at 0x019d0110) and replays after createBasePlayer lands</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Omitting createBasePlayer entirely while emitting createCellPlayer — buffered message strands</FONT></TD>
+        <TD><FONT POINT-SIZE="9">§1.10<BR/>[^create-base-player-handler]<BR/>[^create-cell-player-handler]</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>bandwidthNotification value</B><BR/><FONT POINT-SIZE="9">descriptor registered, value ignored at runtime</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Any value — SGW never wires setBandwidthFromServerMutator, so the body is a silent no-op. Emit the message; the value has no behavioral effect</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Omitting the message entirely — descriptor lookup expects it in the message table</FONT></TD>
+        <TD><FONT POINT-SIZE="9">§1.9.1 + §2.9 S2<BR/>[^cpp-messages]</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>restoreClient exercise</B><BR/><FONT POINT-SIZE="9">handler present but never observed in normal pcap</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Server need not emit restoreClient at all — normal gameplay never observes it</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Emitting restoreClient without then accepting restoreClientAck — strands the restore flow</FONT></TD>
+        <TD><FONT POINT-SIZE="9">§1.9.5<BR/>[^restore-client-handler]</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>spaceData (msg 0x07)</B><BR/><FONT POINT-SIZE="9">unused in current SGW builds</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Server need not emit it — handler exists but the message is not part of normal traffic</FONT></TD>
+        <TD><FONT POINT-SIZE="9">N/A — no observable failure mode from omission</FONT></TD>
+        <TD><FONT POINT-SIZE="9">§1.9<BR/>[^space-data-handler]</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Ack timing jitter</B><BR/><FONT POINT-SIZE="9">client uses 700 ms baseline; cadence not measured strictly</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Any cadence under the retry budget — jitter is absorbed by the 32-bit ack bitmap; client does not pin server resend timing</FONT></TD>
+        <TD><FONT POINT-SIZE="9">More than 700 ms × 20 retries without ack — channel disconnects with no further traffic</FONT></TD>
+        <TD><FONT POINT-SIZE="9">§1.7<BR/>[^ack-bitmap]<BR/>[^check-nub-exception]</FONT></TD>
+      </TR>
+      <TR>
+        <TD COLSPAN="4" BGCOLOR="#fafafa"><FONT POINT-SIZE="10">The green column is where a reimplementation has real freedom — these are the levers a server author can pull without the client noticing. The pink column is the cliff: each row's boundary between "tolerated" and "REQUIRED violation" is what §2.4 enforces for that axis. The tolerance always has a floor; nothing in §2.5 is unbounded.</FONT></TD>
+      </TR>
+    </TABLE>
+  >]
+}

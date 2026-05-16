@@ -19,9 +19,12 @@ Mercury footer layout (stripped backward from end of plaintext):
 Body = plaintext[1..footer_start]
 """
 
+from __future__ import annotations
+
 import struct
-import subprocess
 import sys
+
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 # ── Mercury flag constants (from packet.rs / packet.hpp) ──────────────────────
 
@@ -34,40 +37,92 @@ FLAG_FRAGMENTED    = 0x20  # Fragment of larger bundle
 FLAG_HAS_SEQUENCE  = 0x40  # Footer includes seq_id
 FLAG_INDEXED       = 0x80  # Indexed sub-channel (unused)
 
-# Server→Client message IDs
-# Message IDs verified against C++ messages.hpp / messages.cpp
+# Server→Client message IDs — extracted from live binary at SGW.exe global
+# 0x01F72518 (BWNetDriver::ClientInterface InterfaceElementVec) on 2026-05-15.
+# 57 entries covering msg_ids 0x00..0x38. msg_ids 0x39..0x7F are reserved/unused;
+# 0x80..0xFE are dynamically registered EntityMethod slots (all share the generic
+# "entityMessage" wire handler at 0x01ED1CBC).
 SERVER_MSG_NAMES = {
-    0x00: "BASEMSG_LOGIN_REPLY",
-    0x01: "BASEMSG_AUTHENTICATE_REPLY",
-    0x02: "BASEMSG_REPLY_MESSAGE",
-    0x03: "BASEMSG_SET_GAME_TIME",
-    0x04: "BASEMSG_RESET_ENTITIES",
-    0x05: "BASEMSG_CREATE_BASE_PLAYER",
-    0x06: "BASEMSG_CREATE_CELL_PLAYER",
-    0x07: "BASEMSG_SPACE_DATA",
-    0x08: "BASEMSG_SPACE_VIEWPORT_INFO",
-    0x09: "BASEMSG_CREATE_ENTITY",
-    0x0A: "BASEMSG_LOGGED_OFF",
-    0x0B: "BASEMSG_CREATE_CELL_ENTITY",
-    0x0C: "BASEMSG_RESTORE_CLIENT",
-    0x0D: "BASEMSG_TICK_SYNC",
-    0x0E: "BASEMSG_SET_SPACE_VIEWPORT",
-    0x36: "BASEMSG_RESOURCE_FRAGMENT",
-    0x31: "BASEMSG_FORCED_POSITION",
-    0xFF: "BASEMSG_CONNECT_REPLY",
+    0x00: "authenticate",
+    0x01: "bandwidthNotification",
+    0x02: "updateFrequencyNotification",
+    0x03: "setGameTime",
+    0x04: "resetEntities",
+    0x05: "createBasePlayer",
+    0x06: "createCellPlayer",
+    0x07: "spaceData",
+    0x08: "spaceViewportInfo",
+    0x09: "createEntity",
+    0x0A: "updateEntity",
+    0x0B: "entityInvisible",
+    0x0C: "leaveAoI",
+    0x0D: "tickSync",
+    0x0E: "setSpaceViewport",
+    0x0F: "setVehicle",
+    0x10: "avatarUpdateNoAliasFullPosYawPitchRoll",
+    0x11: "avatarUpdateNoAliasFullPosYawPitch",
+    0x12: "avatarUpdateNoAliasFullPosYaw",
+    0x13: "avatarUpdateNoAliasFullPosNoDir",
+    0x14: "avatarUpdateNoAliasOnChunkYawPitchRoll",
+    0x15: "avatarUpdateNoAliasOnChunkYawPitch",
+    0x16: "avatarUpdateNoAliasOnChunkYaw",
+    0x17: "avatarUpdateNoAliasOnChunkNoDir",
+    0x18: "avatarUpdateNoAliasOnGroundYawPitchRoll",
+    0x19: "avatarUpdateNoAliasOnGroundYawPitch",
+    0x1A: "avatarUpdateNoAliasOnGroundYaw",
+    0x1B: "avatarUpdateNoAliasOnGroundNoDir",
+    0x1C: "avatarUpdateNoAliasNoPosYawPitchRoll",
+    0x1D: "avatarUpdateNoAliasNoPosYawPitch",
+    0x1E: "avatarUpdateNoAliasNoPosYaw",
+    0x1F: "avatarUpdateNoAliasNoPosNoDir",
+    0x20: "avatarUpdateAliasFullPosYawPitchRoll",
+    0x21: "avatarUpdateAliasFullPosYawPitch",
+    0x22: "avatarUpdateAliasFullPosYaw",
+    0x23: "avatarUpdateAliasFullPosNoDir",
+    0x24: "avatarUpdateAliasOnChunkYawPitchRoll",
+    0x25: "avatarUpdateAliasOnChunkYawPitch",
+    0x26: "avatarUpdateAliasOnChunkYaw",
+    0x27: "avatarUpdateAliasOnChunkNoDir",
+    0x28: "avatarUpdateAliasOnGroundYawPitchRoll",
+    0x29: "avatarUpdateAliasOnGroundYawPitch",
+    0x2A: "avatarUpdateAliasOnGroundYaw",
+    0x2B: "avatarUpdateAliasOnGroundNoDir",
+    0x2C: "avatarUpdateAliasNoPosYawPitchRoll",
+    0x2D: "avatarUpdateAliasNoPosYawPitch",
+    0x2E: "avatarUpdateAliasNoPosYaw",
+    0x2F: "avatarUpdateAliasNoPosNoDir",
+    0x30: "detailedPosition",
+    0x31: "forcedPosition",
+    0x32: "controlEntity",
+    0x33: "voiceData",
+    0x34: "restoreClient",
+    0x35: "restoreBaseApp",
+    0x36: "resourceFragment",
+    0x37: "loggedOff",
+    0x38: "entityMessage",
+    0xFF: "connectReply",
 }
 
+# Client→Server message IDs — extracted from live binary at SGW.exe global
+# 0x01EF24CC (BaseAppExtInterface InterfaceElementVec) via static initializer
+# at 0x017bac00 on 2026-05-15. Name string table at 0x019D0880.
+# 14 entries covering msg_ids 0x00..0x0D; 0x80..0xFE are dynamically
+# registered EntityMethod slots (mirror of server-side dispatch).
 CLIENT_MSG_NAMES = {
-    0x00: "BASEAPP_LOGIN",
-    0x01: "AUTHENTICATE",
-    0x03: "AVATAR_UPDATE_EXPLICIT",
-    0x06: "SWITCH_INTERFACE",
-    0x07: "REQUEST_ENTITY_UPDATE",
-    0x08: "ENABLE_ENTITIES",
-    0x09: "VIEWPORT_ACK",
-    0x0A: "VEHICLE_ACK",
-    0x0B: "RESTORE_CLIENT_ACK",
-    0x0C: "DISCONNECT",
+    0x00: "baseAppLogin",
+    0x01: "authenticate",
+    0x02: "avatarUpdateImplicit",
+    0x03: "avatarUpdateExplicit",
+    0x04: "avatarUpdateWardImplicit",
+    0x05: "avatarUpdateWardExplicit",
+    0x06: "switchInterface",
+    0x07: "requestEntityUpdate",
+    0x08: "enableEntities",
+    0x09: "setSpaceViewportAck",
+    0x0A: "setVehicleAck",
+    0x0B: "restoreClientAck",
+    0x0C: "disconnectClient",
+    0x0D: "entityMessage",
 }
 
 ENTITY_CLIENT_METHODS = {
@@ -90,48 +145,138 @@ ENTITY_BASE_METHODS = {
     0xC7: "onClientVersion",
 }
 
-# Server→Client message payload formats (from messages.cpp)
-# 'constant' = fixed-length, 'word' = u16 length prefix
+# Message-format tuple layout:
+#   ('constant', fixed_len, None)         # fixed-length payload, no prefix
+#   ('var',      None,      prefix_width) # variable-length, prefix_width ∈ {1, 2, 4}
+#
+# The `prefix_width` field preserves the discovery from the static initializer at
+# 0x017BAC60 that BigWorld's `InterfaceElement::size` field encodes the length-
+# prefix byte-width (u8/u16/u32) for variable-length entries. All current
+# entries observed on this build use u16 prefixes, but the parser accepts any
+# of the three widths so we can keep the discovered semantics rather than
+# collapsing them to "word".
+
+# Server→Client message payload formats — confirmed against the live
+# InterfaceElementVec at 0x01F72518 and against observed packet body sizes
+# in this pcap.
+#
+# Note: msg_ids 0x0A..0x0C (updateEntity, entityInvisible, leaveAoI) were
+# previously misidentified as LOGGED_OFF/CREATE_CELL_ENTITY/RESTORE_CLIENT
+# (those are at 0x37, n/a, 0x34 respectively). Corrected here.
 SERVER_MSG_FORMAT = {
-    0x03: ('constant', 4),     # SET_GAME_TIME
-    0x04: ('constant', 1),     # RESET_ENTITIES
-    0x05: ('word', None),      # CREATE_BASE_PLAYER
-    0x06: ('word', None),      # CREATE_CELL_PLAYER
-    0x07: ('word', None),      # SPACE_DATA
-    0x08: ('constant', 13),    # SPACE_VIEWPORT_INFO
-    0x09: ('word', None),      # CREATE_ENTITY
-    0x0A: ('constant', 1),     # LOGGED_OFF
-    0x0B: ('word', None),      # CREATE_CELL_ENTITY
-    0x0C: ('word', None),      # RESTORE_CLIENT
-    0x0D: ('constant', 8),     # TICK_SYNC
-    0x0E: ('constant', 1),     # SET_SPACE_VIEWPORT
-    0x31: ('constant', 49),    # FORCED_POSITION
-    0x36: ('word', None),      # RESOURCE_FRAGMENT
-    0xFF: ('word', None),      # CONNECT_REPLY
+    0x00: ('var',      None, 2),  # authenticate
+    0x01: ('constant', 4,    None),  # bandwidthNotification
+    0x02: ('constant', 1,    None),  # updateFrequencyNotification
+    0x03: ('constant', 4,    None),  # setGameTime
+    0x04: ('constant', 1,    None),  # resetEntities
+    0x05: ('var',      None, 2),  # createBasePlayer (variable per-entity props)
+    0x06: ('var',      None, 2),  # createCellPlayer (variable)
+    0x07: ('var',      None, 2),  # spaceData
+    0x08: ('constant', 13,   None),  # spaceViewportInfo
+    0x09: ('var',      None, 2),  # createEntity (variable)
+    0x0A: ('var',      None, 2),  # updateEntity (variable)
+    0x0B: ('constant', 5,    None),  # entityInvisible
+    0x0C: ('var',      None, 2),  # leaveAoI
+    0x0D: ('constant', 8,    None),  # tickSync
+    0x0E: ('constant', 1,    None),  # setSpaceViewport
+    0x0F: ('constant', 4,    None),  # setVehicle
+    # avatarUpdate family — 32 variants, BigWorld bit-packed wire format.
+    # Sizes match the +0x04 fixed-length field in the static InterfaceElement
+    # table; differential 1-byte deltas confirm 8-bit quantized YPR angles.
+    0x10: ('constant', 25,   None),  # NoAliasFullPosYawPitchRoll
+    0x11: ('constant', 24,   None),  # NoAliasFullPosYawPitch
+    0x12: ('constant', 23,   None),  # NoAliasFullPosYaw
+    0x13: ('constant', 22,   None),  # NoAliasFullPosNoDir
+    0x14: ('constant', 25,   None),  # NoAliasOnChunkYawPitchRoll
+    0x15: ('constant', 24,   None),  # NoAliasOnChunkYawPitch
+    0x16: ('constant', 23,   None),  # NoAliasOnChunkYaw
+    0x17: ('constant', 22,   None),  # NoAliasOnChunkNoDir
+    0x18: ('constant', 25,   None),  # NoAliasOnGroundYawPitchRoll
+    0x19: ('constant', 24,   None),  # NoAliasOnGroundYawPitch
+    0x1A: ('constant', 23,   None),  # NoAliasOnGroundYaw
+    0x1B: ('constant', 22,   None),  # NoAliasOnGroundNoDir
+    0x1C: ('constant', 13,   None),  # NoAliasNoPosYawPitchRoll
+    0x1D: ('constant', 12,   None),  # NoAliasNoPosYawPitch
+    0x1E: ('constant', 11,   None),  # NoAliasNoPosYaw
+    0x1F: ('constant', 10,   None),  # NoAliasNoPosNoDir
+    0x20: ('constant', 25,   None),  # AliasFullPosYawPitchRoll
+    0x21: ('constant', 24,   None),  # AliasFullPosYawPitch
+    0x22: ('constant', 23,   None),  # AliasFullPosYaw
+    0x23: ('constant', 22,   None),  # AliasFullPosNoDir
+    0x24: ('constant', 25,   None),  # AliasOnChunkYawPitchRoll
+    0x25: ('constant', 24,   None),  # AliasOnChunkYawPitch
+    0x26: ('constant', 23,   None),  # AliasOnChunkYaw
+    0x27: ('constant', 22,   None),  # AliasOnChunkNoDir
+    0x28: ('constant', 25,   None),  # AliasOnGroundYawPitchRoll
+    0x29: ('constant', 24,   None),  # AliasOnGroundYawPitch
+    0x2A: ('constant', 23,   None),  # AliasOnGroundYaw
+    0x2B: ('constant', 22,   None),  # AliasOnGroundNoDir
+    0x2C: ('constant', 13,   None),  # AliasNoPosYawPitchRoll
+    0x2D: ('constant', 12,   None),  # AliasNoPosYawPitch
+    0x2E: ('constant', 11,   None),  # AliasNoPosYaw
+    0x2F: ('constant', 10,   None),  # AliasNoPosNoDir
+    0x30: ('constant', 41,   None),  # detailedPosition
+    0x31: ('constant', 49,   None),  # forcedPosition
+    0x32: ('constant', 5,    None),  # controlEntity
+    0x33: ('var',      None, 2),  # voiceData (variable)
+    0x34: ('var',      None, 2),  # restoreClient
+    0x35: ('var',      None, 2),  # restoreBaseApp
+    0x36: ('var',      None, 2),  # resourceFragment (variable)
+    0x37: ('constant', 1,    None),  # loggedOff (1-byte reason code)
+    0x38: ('var',      None, 2),  # entityMessage (msg_id 0x80..0xFE share this handler)
+    0xFF: ('var',      None, 2),  # connectReply
 }
 
+# Client→Server message formats — sizes from InterfaceElement::add immediate
+# args in static initializer at 0x017bac00, validated 2026-05-15 against live
+# memory at 0xFFE3A080..0xFFE3A207 (the heap-allocated InterfaceElement array
+# pointed to by BaseAppExtInterface's slot pointers at 0x01EF24E0+).
+#
+# Wire-framing discriminator confirmed: the `flag` byte at struct offset +0x01
+# determines whether `size` (at +0x04) is a length-prefix width or a fixed
+# payload length:
+#   flag=1 → variable-length, size ∈ {1, 2, 4} is the prefix width (u8/u16/u32)
+#   flag=0 → fixed-length payload of exactly `size` bytes
+# All four variable client→server entries on this build use u16 prefixes
+# (flag=1, size=2); the rest are fixed-length.
 CLIENT_MSG_FORMAT = {
-    0x01: ('word', None),      # AUTHENTICATE
-    0x03: ('constant', 40),    # AVATAR_UPDATE_EXPLICIT
-    0x06: ('constant', 0),     # SWITCH_INTERFACE
-    0x08: ('constant', 8),     # ENABLE_ENTITIES
-    0x09: ('constant', 8),     # VIEWPORT_ACK
-    0x0A: ('constant', 8),     # VEHICLE_ACK
-    0x0B: ('word', None),      # RESTORE_CLIENT_ACK
-    0x0C: ('constant', 1),     # DISCONNECT
+    0x00: ('var',      None, 2),  # baseAppLogin (flag=1, size=2 — live-validated)
+    0x01: ('var',      None, 2),  # authenticate (flag=1, size=2 — live-validated)
+    0x02: ('constant', 36,   None),  # avatarUpdateImplicit (flag=0, size=0x24)
+    0x03: ('constant', 40,   None),  # avatarUpdateExplicit (flag=0, size=0x28)
+    0x04: ('constant', 36,   None),  # avatarUpdateWardImplicit (flag=0, size=0x24 — live-validated)
+    0x05: ('constant', 40,   None),  # avatarUpdateWardExplicit (flag=0, size=0x28 — live-validated)
+    0x06: ('constant', 0,    None),  # switchInterface (flag=0, size=0 — parameterless)
+    0x07: ('var',      None, 2),  # requestEntityUpdate (flag=1, size=2 — live-validated)
+    0x08: ('constant', 8,    None),  # enableEntities (flag=0, size=8 — 8 dummy bytes per emitter at 0x00dd928f, NOT i32 entity_id + i32 flag; SGW expansion of BigWorld's 1-byte keepBase, body content undefined)
+    0x09: ('constant', 8,    None),  # setSpaceViewportAck (flag=0, size=8)
+    0x0A: ('constant', 8,    None),  # setVehicleAck (flag=0, size=8)
+    0x0B: ('constant', 4,    None),  # restoreClientAck (flag=0, size=4 — fixed 4-byte payload, NOT u32 prefix; likely i32 entity_id)
+    0x0C: ('constant', 1,    None),  # disconnectClient (flag=0, size=1 — reason byte)
+    0x0D: ('var',      None, 2),  # entityMessage (flag=1, size=2 — entity-method dispatch envelope)
 }
+
+
+# Per-key cache so repeat decrypts on the same key_hex don't re-parse hex
+# on every packet. Keyed by the session-key hex string itself, which makes
+# the cache trivially correct even if a future caller rotates keys mid-run.
+_AES_KEY_BYTES_CACHE: dict[str, bytes] = {}
+_AES_IV = b"\x00" * 16
 
 
 def decrypt_aes256_cbc(key_hex, ciphertext):
-    iv_hex = "00" * 16
-    proc = subprocess.run(
-        ["openssl", "enc", "-aes-256-cbc", "-d", "-nopad",
-         "-K", key_hex, "-iv", iv_hex],
-        input=ciphertext, capture_output=True,
-    )
-    if proc.returncode != 0:
+    if len(ciphertext) == 0 or len(ciphertext) % 16 != 0:
         return None
-    return proc.stdout
+    key_bytes = _AES_KEY_BYTES_CACHE.get(key_hex)
+    if key_bytes is None:
+        key_bytes = bytes.fromhex(key_hex)
+        _AES_KEY_BYTES_CACHE[key_hex] = key_bytes
+    try:
+        cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(_AES_IV))
+        dec = cipher.decryptor()
+        return dec.update(ciphertext) + dec.finalize()
+    except Exception:
+        return None
 
 
 def strip_pkcs7(data):
@@ -262,6 +407,37 @@ def format_flags(flags):
     return "|".join(parts) if parts else "NONE"
 
 
+_PREFIX_STRUCT = {1: '<B', 2: '<H', 4: '<I'}
+
+
+def _read_var_prefix(body, offset, prefix_width):
+    """Read a length-prefix of `prefix_width` bytes from body[offset:].
+
+    Returns (length, new_offset) or (None, offset) if truncated.
+    """
+    fmt = _PREFIX_STRUCT.get(prefix_width)
+    if fmt is None:
+        raise ValueError(f"Unsupported prefix width: {prefix_width}")
+    if offset + prefix_width > len(body):
+        return None, offset
+    length = struct.unpack(fmt, body[offset:offset + prefix_width])[0]
+    return length, offset + prefix_width
+
+
+def _take_payload(body, offset, length):
+    """Bounds-checked payload slice. Returns (payload, new_offset) or (None, offset)
+    if the body is truncated (offset + length exceeds len(body)).
+
+    Callers MUST handle the None case explicitly — silently slicing past the end
+    yields a short payload that downstream consumers may treat as fully valid,
+    which is exactly the corruption mode this helper exists to prevent.
+    """
+    end = offset + length
+    if end > len(body):
+        return None, offset
+    return body[offset:end], end
+
+
 def parse_messages(body, is_server):
     """Parse message payloads from a Mercury body."""
     offset = 0
@@ -272,7 +448,7 @@ def parse_messages(body, is_server):
         msg_id = body[offset]
         offset += 1
 
-        # Entity methods (0x80+) always use WORD_LENGTH
+        # Entity methods (0x80+) always use u16 length prefix
         if msg_id >= 0x80:
             if is_server:
                 name = ENTITY_CLIENT_METHODS.get(msg_id)
@@ -280,40 +456,45 @@ def parse_messages(body, is_server):
                 name = ENTITY_BASE_METHODS.get(msg_id)
             if name is None:
                 name = f"entity_method_{msg_id:#04x}"
-            if offset + 2 > len(body):
+            length, offset = _read_var_prefix(body, offset, 2)
+            if length is None:
                 yield (msg_id, name, body[offset:])
                 break
-            word_len = struct.unpack('<H', body[offset:offset+2])[0]
-            offset += 2
-            payload = body[offset:offset+word_len]
-            offset += word_len
+            payload, offset = _take_payload(body, offset, length)
+            if payload is None:
+                yield (msg_id, name + " [TRUNCATED]", body[offset:])
+                break
             yield (msg_id, name, payload)
             continue
 
         name = msg_names.get(msg_id, f"msg_{msg_id:#04x}")
 
         if msg_id in msg_format:
-            fmt, length = msg_format[msg_id]
-            if fmt == 'constant':
-                payload = body[offset:offset+length]
-                offset += length
+            style, fixed_len, prefix_width = msg_format[msg_id]
+            if style == 'constant':
+                payload, offset = _take_payload(body, offset, fixed_len)
+                if payload is None:
+                    yield (msg_id, name + " [TRUNCATED]", body[offset:])
+                    break
             else:
-                if offset + 2 > len(body):
+                length, offset = _read_var_prefix(body, offset, prefix_width)
+                if length is None:
                     yield (msg_id, name, body[offset:])
                     break
-                word_len = struct.unpack('<H', body[offset:offset+2])[0]
-                offset += 2
-                payload = body[offset:offset+word_len]
-                offset += word_len
+                payload, offset = _take_payload(body, offset, length)
+                if payload is None:
+                    yield (msg_id, name + " [TRUNCATED]", body[offset:])
+                    break
         else:
-            # Unknown system message — try WORD_LENGTH
-            if offset + 2 > len(body):
+            # Unknown system message — fall back to u16 length prefix
+            length, offset = _read_var_prefix(body, offset, 2)
+            if length is None:
                 yield (msg_id, name, body[offset:])
                 break
-            word_len = struct.unpack('<H', body[offset:offset+2])[0]
-            offset += 2
-            payload = body[offset:offset+word_len]
-            offset += word_len
+            payload, offset = _take_payload(body, offset, length)
+            if payload is None:
+                yield (msg_id, name + " [TRUNCATED]", body[offset:])
+                break
 
         yield (msg_id, name, payload)
 
@@ -413,10 +594,22 @@ def parse_char_list(payload):
     return "\n".join(lines)
 
 
+def parse_client_enable_entities(payload):
+    """Per chapter §2.5.2: the emitter at SGW.exe@0x00dd928f reserves 8 bytes
+    but writes nothing to them. The body is undefined content (SGW expansion
+    of BigWorld's 1-byte keepBase). Mercury accepts the 8 bytes; the message's
+    presence is the signal, not the body's content."""
+    if len(payload) != 8:
+        return f"  (unexpected size: {len(payload)}B; spec says 8)"
+    return f"  8 bytes opaque (§2.5.2 — content undefined): {hex_dump(payload, 8)}"
+
+
 def describe_payload(msg_id, name, payload, is_server):
     if not is_server:
+        # Client→server msg 0x08 = enableEntities (NOT resetEntities — that's
+        # server→client msg 0x04). The body is opaque per §2.5.2.
         if msg_id == 0x08:
-            return parse_reset_entities(payload) if len(payload) >= 8 else ""
+            return parse_client_enable_entities(payload)
         return ""
     if msg_id == 0x05: return parse_create_base_player(payload)
     if msg_id == 0x06: return parse_cell_player_create(payload)

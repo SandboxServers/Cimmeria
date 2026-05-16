@@ -9,6 +9,7 @@
 bin64/
 !bin64/.keep
 
+dbg/*
 # Compiled static/dynamic libraries
 lib64/
 !lib64/.keep

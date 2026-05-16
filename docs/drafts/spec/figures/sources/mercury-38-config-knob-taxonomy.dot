@@ -1,0 +1,70 @@
+digraph G {
+  rankdir=LR
+  node [shape=plaintext fontname=Helvetica]
+  graph [label="Mercury configuration taxonomy — three buckets, asymmetrically sized" labelloc=t fontsize=14 fontname=Helvetica]
+
+  layout [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR>
+        <TD BGCOLOR="#d6ffd6" WIDTH="220"><B>INI-tunable</B><BR/><FONT POINT-SIZE="10">read at startup, server-honored</FONT></TD>
+        <TD BGCOLOR="#ffe8d6" WIDTH="220"><B>Hard-coded in SGW.exe</B><BR/><FONT POINT-SIZE="10">no server leverage; same on every install</FONT></TD>
+        <TD BGCOLOR="#cce5ff" WIDTH="220"><B>Runtime-negotiated</B><BR/><FONT POINT-SIZE="10">server chooses per-session</FONT></TD>
+      </TR>
+      <TR>
+        <TD VALIGN="TOP" BGCOLOR="#fafafa">
+          <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2" CELLPADDING="2">
+            <TR><TD ALIGN="LEFT"><B>NetInactivityTimeout=15</B></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">GameplayEngine.ini [Engine.Engine]</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">UE3 game-layer disconnect timer.</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">NOT a Mercury keepalive.</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"> </TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#cc9933"><B>That is the entire list.</B></FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#999999">Every other network INI key</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#999999">in BaseEngine.ini and</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#999999">DefaultEngine.ini registers</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#999999">against TcpNetDriver, which is</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#999999">bypassed at runtime by</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#999999">BWNetDriver.</FONT></TD></TR>
+          </TABLE>
+        </TD>
+        <TD VALIGN="TOP" BGCOLOR="#fafafa">
+          <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2" CELLPADDING="2">
+            <TR><TD ALIGN="LEFT"><B>Max packet</B> 1453 B</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Flags byte width</B> 1 B (uint8)</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Footer endianness</B> all LE</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Sequence space</B> 28-bit; sentinel 0x10000000</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Outstanding-ack bitmap</B> 32 bits</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Receive-dedup table</B> 512 entries (mask 0x1FF)</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Max retries</B> 20 (strict &gt;)</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Resend timeout</B> ~700 ms</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Cipher suite</B> AES-256-CBC + HMAC-MD5</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Cipher IV</B> literal zero per packet</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Key size</B> 32 B (AES-256)</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>MachineGuard port</B> 20022 (0x4E36)</TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Net driver class</B> IpDrv.BWNetDriver</TD></TR>
+          </TABLE>
+        </TD>
+        <TD VALIGN="TOP" BGCOLOR="#fafafa">
+          <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="2" CELLPADDING="2">
+            <TR><TD ALIGN="LEFT"><B>AES session key</B> (32 B)</TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">delivered via SOAP auth response,</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">one per session.</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">Out of scope for this chapter</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">(see spec.protocol.cipher-and-auth).</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"> </TD></TR>
+            <TR><TD ALIGN="LEFT"><B>Tick rate</B> (uint8, 1-255)</TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">advertised via</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">updateFrequencyNotification</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">(msg 0x02). Client scales</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9">internal timers to match.</FONT></TD></TR>
+            <TR><TD ALIGN="LEFT"> </TD></TR>
+            <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="#cc9933"><B>Two knobs, total.</B></FONT></TD></TR>
+          </TABLE>
+        </TD>
+      </TR>
+      <TR>
+        <TD COLSPAN="3" BGCOLOR="#fafafa"><FONT POINT-SIZE="10">The asymmetry is the point. The Mercury wire format is overwhelmingly hard-coded — the only INI key with any wire-adjacent relevance is NetInactivityTimeout (UE3 game layer, not Mercury), and the only runtime-negotiated quantities are the per-session cipher key and the server-advertised tick rate. A server developer searching the INI for "AckTimeout" or "MaxChannels" will find UE3 TcpNetDriver keys that are read at startup but never consulted by the Mercury layer — see §2.2.</FONT></TD>
+      </TR>
+    </TABLE>
+  >]
+}

@@ -1,0 +1,109 @@
+digraph G {
+  rankdir=LR
+  node [shape=plaintext fontname=Helvetica]
+  graph [label="Mercury client contract matrix — REQUIRED vs RECOMMENDED vs TOLERATED, by feature" labelloc=t fontsize=14 fontname=Helvetica]
+
+  layout [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+      <TR>
+        <TD BGCOLOR="#f4f4f4" WIDTH="170"><B>Feature</B></TD>
+        <TD BGCOLOR="#ffcccc"><B>REQUIRED</B><BR/><FONT POINT-SIZE="9">violation = drop / disconnect / misrender</FONT></TD>
+        <TD BGCOLOR="#fff4d6"><B>RECOMMENDED</B><BR/><FONT POINT-SIZE="9">deviation OK; subtle drift later</FONT></TD>
+        <TD BGCOLOR="#d6ffd6"><B>TOLERATED</B><BR/><FONT POINT-SIZE="9">client adapts to server choice</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Packet framing</B></TD>
+        <TD><FONT POINT-SIZE="9">Flags byte at offset 0 (1 B);<BR/>footer fields LE;<BR/>max 1453 B plaintext</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Sequence numbers</B></TD>
+        <TD><FONT POINT-SIZE="9">28-bit; never use sentinel 0x10000000;<BR/>required for on-channel reliable packets</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Reliability</B></TD>
+        <TD><FONT POINT-SIZE="9">&lt;= 32 in-flight per channel;<BR/>retransmit within ~700 ms x 20;<BR/>FLAG_HAS_ACKS with 0 acks forbidden</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Piggyback vs standalone ack bundles;<BR/>ack timing jitter absorbed by bitmap</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Fragmentation</B></TD>
+        <TD><FONT POINT-SIZE="9">firstFragmentId / lastFragmentId well-formed;<BR/>matching counts</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Cipher envelope</B></TD>
+        <TD><FONT POINT-SIZE="9">AES-256-CBC + HMAC-MD5;<BR/>zero IV per packet;<BR/>session key matches SOAP delivery</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Channels</B></TD>
+        <TD><FONT POINT-SIZE="9">Indexed-channel packet requires registered finder;<BR/>once-off-reliable rules honored</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Use Nub request/reply table when expecting replies</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Dispatch table</B></TD>
+        <TD><FONT POINT-SIZE="9">Message descriptors registered with messages.cpp wire IDs;<BR/>cell vs base shape (msg_id | 0x80 vs | 0xC0);<BR/>sub-slot encoding above msg_id 62</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>World-entry messages</B></TD>
+        <TD><FONT POINT-SIZE="9">resetEntities own flushed bundle;<BR/>enableEntities = 8 B CONSTANT_LENGTH;<BR/>createBasePlayer 6 B / createCellPlayer 32 B (Y/Z rot swap);<BR/>spaceViewportInfo 13 B</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Follow deprecated-server emit order (client_handler.cpp pattern)</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Out-of-order createBasePlayer / createCellPlayer<BR/>within a bundle — client buffers and replays</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Position updates</B></TD>
+        <TD><FONT POINT-SIZE="9">detailedPosition 28 B;<BR/>forcedPosition 49 B (offsets 24-35 are prev-position ref, not velocity)</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Resource delivery</B></TD>
+        <TD><FONT POINT-SIZE="9">RESOURCE_FRAGMENT (0x36) per §1.9 byte layout</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Tick rate / bandwidth</B></TD>
+        <TD><FONT POINT-SIZE="9">updateFrequencyNotification emitted at connect;<BR/>bandwidthNotification descriptor registered</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Tick rate any u8 1..255;<BR/>bandwidthNotification value ignored at runtime</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Optional flows</B></TD>
+        <TD><FONT POINT-SIZE="9">loggedOff 1 B reason</FONT></TD>
+        <TD><FONT POINT-SIZE="9">restoreClientAck emitted if restoreClient is used;<BR/>MachineGuard responses if MachineGuard is used</FONT></TD>
+        <TD><FONT POINT-SIZE="9">restoreClient not exercised in normal play;<BR/>spaceData (0x07) unused in current builds</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Session liveness</B></TD>
+        <TD><FONT POINT-SIZE="9">Traffic alive within 15 s (REASON_INACTIVITY)</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Auth / handshake</B></TD>
+        <TD><FONT POINT-SIZE="9">Packed-string encoding on AUTHENTICATE session key;<BR/>SOAP xsd:hexBinary delivery (64 hex chars);<BR/>MachineGuard port 20022;<BR/>MachineGuard varlen component-ID encoding</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+      </TR>
+      <TR>
+        <TD BGCOLOR="#fafafa"><B>Protocol version<BR/>(R16, upstream gate)</B></TD>
+        <TD><FONT POINT-SIZE="9">protocol_digest = MD5 (32 hex chars)<BR/>over entity-defs, computed by CME<BR/>Event_Net_GetProtocolDigest listener;<BR/>sent in SOAP body as<BR/>sgwLogin:ProtocolDigest;<BR/>mismatch = no Mercury channel opens</FONT></TD>
+        <TD><FONT POINT-SIZE="9">—</FONT></TD>
+        <TD><FONT POINT-SIZE="9">Internal SHA-1 hash (40 hex chars)<BR/>at ServerConnection+0x130 from<BR/>CryptoPP HexEncoder pipeline is<BR/>local-only; not on wire</FONT></TD>
+      </TR>
+      <TR>
+        <TD COLSPAN="4" BGCOLOR="#fafafa"><FONT POINT-SIZE="10">Source: §2.4 (REQUIRED), §2.5 (TOLERATED), §2.6 (RECOMMENDED). The right-hand columns are where a reimplementation has freedom; the left-hand column is the contract surface. Em-dash entries indicate no freedom on that axis for that feature.</FONT></TD>
+      </TR>
+    </TABLE>
+  >]
+}

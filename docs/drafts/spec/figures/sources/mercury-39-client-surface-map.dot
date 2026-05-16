@@ -1,0 +1,71 @@
+digraph mercury_client_surface {
+    rankdir=TB
+    node [shape=box style="rounded,filled" fontname="Helvetica" fontsize=10]
+    edge [color="#666666" arrowsize=0.8 fontname="Helvetica" fontsize=9]
+    graph [label="What in the client tree touches Mercury — Mercury lives inside SGW.exe only" labelloc=t fontsize=14 fontname="Helvetica"]
+
+    // Mercury itself — the only place where wire format lives.
+    subgraph cluster_sgwexe {
+        label="SGW.exe (C++ binary) — owns the entire Mercury wire format"
+        style=filled
+        fillcolor="#e8f4fb"
+        color="#5599cc"
+        fontname="Helvetica"
+        fontsize=11
+
+        mercury_nub      [label="Mercury::Nub\n(UDP socket, channel table)" fillcolor="#cce5ff"]
+        channel_internal [label="ChannelInternal\n(reliability, dedup, retransmit)" fillcolor="#cce5ff"]
+        packet_encrypter [label="PacketEncrypter\n(AES-256-CBC + HMAC-MD5)" fillcolor="#cce5ff"]
+        interface_elem   [label="InterfaceElement\n(per-message length framing)" fillcolor="#cce5ff"]
+        bw_net_driver    [label="UBWNetDriver / UBWConnection\n(UE3 wrapper — registered, owns Nub)" fillcolor="#ddeeff"]
+        server_conn      [label="ServerConnection\n(C++ entry to game RPCs)" fillcolor="#ddeeff"]
+    }
+
+    // The four sibling client-tree surfaces — none of them touch the wire format.
+    subgraph cluster_inactive {
+        label="game/sgw/Working/ — sibling client surfaces (no wire-format leverage)"
+        style=dashed
+        color="#cccccc"
+        fontname="Helvetica"
+        fontsize=11
+
+        ini_files [label="Engine/Config/*.ini\nSGWGame/Config/*.ini\n(UE3 net-driver config — bypassed)\nonly NetInactivityTimeout=15 reaches the game layer" fillcolor="#fff4d6"]
+        uscript   [label="SGWGame/Content/FRScript/*.u\n(Core, Engine, IpDrv, SGWGame, ...)\nN/A — no Mercury API surface" fillcolor="#f4f4f4"]
+        atrea_xml [label="binaries/AtreaLoader.config.xml\n(community binary patcher;\ndocuments MercuryLogger@0x0041C2E0)" fillcolor="#ddffdd"]
+        sgw_log   [label="binaries/SGWLogConfig.xml\n(log4j launcher logger — orthogonal)" fillcolor="#f4f4f4"]
+        launchers [label="Launcher-Production_*.bat\n(-s PRODLIVE / -s PRODTEST\nselects server address)" fillcolor="#f4f4f4"]
+    }
+
+    // Loggers — diagnostic surface only, not wire-format.
+    subgraph cluster_diag {
+        label="Diagnostic surface (read-only window onto Mercury)"
+        style=filled
+        fillcolor="#fafafa"
+        color="#cccccc"
+        fontname="Helvetica"
+        fontsize=11
+
+        mercury_logger [label="MercuryLogger @ 0x0041C2E0\n(toggled by EnableUnicodeLogger patch)" fillcolor="#ffeedd"]
+        ansi_logger    [label="AnsiLogger @ 0x00635210\n(BigWorld ANSI log channel)" fillcolor="#ffeedd"]
+    }
+
+    // Real wire-format edges live inside the C++ binary.
+    server_conn      -> mercury_nub      [label="serializes RPCs into bundles"]
+    bw_net_driver    -> mercury_nub      [label="hosts"]
+    mercury_nub      -> channel_internal [label="per-channel"]
+    mercury_nub      -> packet_encrypter [label="cipher filter"]
+    mercury_nub      -> interface_elem   [label="dispatch table"]
+
+    // Sibling-surface edges — each annotated with what they cannot reach.
+    ini_files -> bw_net_driver [label="NetworkDevice=IpDrv.BWNetDriver\n(class registration only)" style=dashed color="#999999"]
+    ini_files -> server_conn   [label="NetInactivityTimeout=15s\n(game layer, NOT Mercury)" style=dashed color="#999999"]
+    uscript   -> server_conn   [label="CME events\n(no Mercury visibility)" style=dashed color="#999999"]
+    atrea_xml -> mercury_logger [label="EnableUnicodeLogger patch" color="#cc9933"]
+    atrea_xml -> ansi_logger    [label="same toggle" color="#cc9933"]
+    launchers -> server_conn    [label="server address\nat connect time" style=dashed color="#999999"]
+    sgw_log   -> launchers      [label="logs launcher output\n(not Mercury)" style=dashed color="#cccccc"]
+
+    // Tap points so the diagnostic surface visibly sits beside the C++ binary.
+    mercury_logger -> mercury_nub [label="taps" style=dotted color="#cc9933"]
+    ansi_logger    -> mercury_nub [label="taps" style=dotted color="#cc9933"]
+}
