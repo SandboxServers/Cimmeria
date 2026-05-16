@@ -126,7 +126,7 @@ jobs:
       # build hits the buildx cache and effectively just attaches
       # attestations + pushes — no recompile.
       - name: build (load locally for scan)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
           file: docker/Dockerfile
@@ -159,7 +159,7 @@ jobs:
        # tag in place is fine — `latest-prerelease` is the only
        # consumer-facing pointer we have to protect.
       - name: push dated tag (with provenance + SBOM, after scan)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
           file: docker/Dockerfile
