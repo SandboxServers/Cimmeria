@@ -33,6 +33,7 @@ fn stub_pending_ready() -> PendingClientReadyInfo {
         world_name: "Stale".to_string(),
         appearance_args: vec![0xAB],
         tint_args: vec![0xCD],
+        first_login: 0,
     }
 }
 
@@ -61,6 +62,7 @@ fn make_state() -> ConnectedClientState {
         cached_appearance_args: None,
         cached_tint_args: None,
         cancelled: Arc::new(AtomicBool::new(false)),
+        cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
         player_name: Some("Tester".to_string()),
         player_level: Some(5),
         player_archetype: Some(1),

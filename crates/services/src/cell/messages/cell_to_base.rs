@@ -316,6 +316,11 @@ pub enum CellToBaseMsg {
         entity_id: u32,
         space_id: u32,
         position: [f32; 3],
+        /// The entity's last-known position before the snap. Becomes the
+        /// `forcedPosition` previous-position reference vector (offsets 24-35,
+        /// NOT velocity — see `build_forced_position`). Senders must capture
+        /// this *before* calling `space_mgr.update_entity_position(...)`.
+        prev_pos: [f32; 3],
     },
 
     /// Send a ghost entity method call to a specific witness player.
