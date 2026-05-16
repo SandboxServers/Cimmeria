@@ -15,6 +15,8 @@ use crate::consts;
 use crate::packet::{Packet, ParsedPacket};
 use crate::unpacker::FragmentAssembler;
 
+pub mod rto;
+
 #[cfg(test)]
 mod tests;
 
