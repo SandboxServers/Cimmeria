@@ -1355,6 +1355,7 @@ typed state update (property/move/create/delete/rename/console — dispatched by
 |---|---|---|
 | OQ-Y / F3 — MD5 mismatch comparison site | RESOLVED (no client-side comparison exists) | `ghidra://SGW.exe@0x00c66cf0` |
 | OQ-2 — DataDescription dual name fields at `+0x24` vs `+0x40` | RESOLVED (F.2.1) | `ghidra://SGW.exe@0x0158f260` |
+| OQ-2-bis — which runtime-form field is element name, which is alias | RESOLVED (F.2.2) | `ghidra://SGW.exe@0x015974a0` |
 
 ### F.1 — OQ-Y / F3: MD5 mismatch comparison site
 
@@ -1447,3 +1448,61 @@ The resolution of OQ-2 is therefore structural: **the parse-time DataDescription
 **§1.15 OQ-2 (dual name fields):** Update to PARTIALLY-RESOLVED per F.2 above. The `DataDescription_ParseFlags` write to `+0x24` is a SmartPointer (Default DataSection), not a string name — the Ghidra constructor annotation "type name" for `+0x24` is likely wrong. Recommend the doc-writer add a note distinguishing the parse-time layout (where `+0x24` = SmartPointer<DataSection> Default) from the stored/iterated layout (where `+0x24` = StdStringMSVC). The open sub-question (write site for the iterated `+0x24` StdStringMSVC) is logged as a follow-up for `FUN_0158f260`.
 
 **No changes required to §2 wire-format content.** Both questions are architectural/internal-layout questions with no wire-format implications.
+
+---
+
+### F.2.2 — Runtime-form name field identification (closes OQ-2-bis)
+
+**Address(es) of write site(s)**: `ghidra://SGW.exe@0x015974a0` (`DataDescription_ParseFlags`)
+
+**Write to runtime `+0x24`**: `DataDescription_ParseFlags` stores a `SmartPointer<DataSection>` (the
+`"Default"` XML child section) at `this+0x24` via a direct 4-byte pointer write
+(`*(undefined4 **)((int)this + 0x24) = puVar10`). The `StdStringMSVC` metadata fields that
+structurally accompany `+0x24` — length at `+0x34` and capacity at `+0x38` — are **never updated**
+by `ParseFlags`; they retain the values written by `DataDescription_Constructor` (`length=0,
+capacity=0xf`). As a consequence, when any caller reads the string at `+0x24` using standard
+`StdStringMSVC` decode logic (check `+0x38 < 0x10` → use inline buffer at `+0x24`; read length from
+`+0x34`), it sees a **zero-length string** whose inline bytes happen to contain the SmartPointer
+value.
+
+**Write to runtime `+0x40`**: **No write site found.** Neither `DataDescription_ParseFlags`,
+`DataDescription_Constructor`, `DataDescription_CopyCtor`, `DataDescription_PartialInit`, nor
+`FUN_0158f260` writes any string data to `+0x40`. `DataDescription_Constructor`
+(`ghidra://SGW.exe@0x01591fb0`) initializes the `StdStringMSVC` at `+0x40` with `length=0,
+capacity=0xf, inline_buf='\0'`. This zero-length empty state is never subsequently overwritten
+through the entire parse chain (`EntityDescription_Parse` → `EntityDescription_ParseDef` →
+`EntityDescription_ParseProperties` → `DataDescription_ParseFlags`).
+
+**Identification**:
+
+- Runtime `+0x24` = **neither internal name nor alias** — structurally a SmartPointer (overlaying
+  the StdStringMSVC inline buffer), reads as a zero-length string due to the never-updated length
+  field at `+0x34`. The XML element name is stored at `+0x04` (confirmed: `FUN_00437710(this,
+  (*pSection+0x2c)(), 0, 0xffffffff)` in `DataDescription_ParseFlags`), not at `+0x24`.
+- Runtime `+0x40` = **zero-length empty string** (never populated). Not an alias; not a second name
+  variant.
+
+**Implication for `EntityDescription_FindAndWritePropertyByName`'s consistency gate**: The gate is a
+**tautology**. Both `+0x24` (as StdStringMSVC: `length=0`) and `+0x40` (as StdStringMSVC:
+`length=0`) have `length=0` for every property. The comparison in `FindAndWritePropertyByName` (and
+in the validation loop in `EntityDescription_ReadFromStream @ 0x01590520`) executes
+`std::char_traits<char>::compare(any, any, min(0, 0)) = compare(..., ..., 0) = 0`, and then checks
+`len_+0x34 == len_+0x50` which is `0 == 0`. The gate **always passes** for every DataDescription
+produced by the SGW parse chain. It is not a filter between two name variants; the original F.2.1
+description of this as a "name-consistency gate between two name variants" was an inference that is
+now contradicted by the confirmed write-site evidence.
+
+**Root cause**: BigWorld's stock `DataDescription` carried an alias / display-name field at `+0x40`
+(populated by an `"Alias"` or `"DisplayName"` child DataSection parser not present in the SGW
+binary). SGW's `DataDescription_ParseFlags` never implemented or retained this second name slot. The
+`+0x24` SmartPointer (for `"Default"`) overwrites what would have been the first alias string, and
+`+0x40` is left empty. The comparison is therefore vestigial BW infrastructure that SGW never
+activated.
+
+**Correction to F.2.1 final paragraph**: F.2.1 concluded that "the comparison in
+`EntityDescription_FindAndWritePropertyByName` is a name-consistency gate between two name variants
+(server-symbolic vs. client-alias) that must agree for a property to be serialized." This is wrong.
+The comparison is a tautological dead check — both sides are always zero-length strings, so every
+property passes unconditionally. The write is not guarded by a meaningful name-consistency check.
+
+**Disposition**: OQ-2-bis RESOLVED.
