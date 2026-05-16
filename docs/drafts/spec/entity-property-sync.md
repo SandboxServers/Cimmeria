@@ -96,6 +96,10 @@ related_chapters:
   - spec.engine.entity-description-parse-chain
   - spec.engine.universal-rpc-dispatcher
   - spec.world.world-entry
+binary_scope:
+  file: SGW.exe
+  sha256: 109F307763A5C6C59FF484840739860BDC7163092F0644343D0B2C03E4925783
+  image_base: 0x00400000
 disputed_by: []
 supersedes: []
 ---
@@ -106,7 +110,7 @@ An entity in BigWorld is a distributed object: every server-authoritative proper
 
 The property/method ID space is constructed at parse time by walking each entity's `.def` file plus its parent and implements chain; the resulting `(entity_type, property_id)` and `(entity_type, method_category, method_id)` tables are the contract between server and client. Get the table wrong by one slot and property updates write the wrong fields on the client — silently, with no error. The mercury chapter (`spec.protocol.mercury-wire-format`) carries the envelope; this chapter carries the payload.
 
-Schema construction itself — parse order, ID assignment mechanics, DataType class hierarchy, MD5 signature digest — is owned by the future `spec.engine.entity-description-parse-chain` chapter. Section 1 summarizes those mechanics where the wire format depends on them and cross-references forward for full detail.
+Schema construction itself — parse order, ID assignment mechanics, DataType class hierarchy, MD5 signature digest — is owned by the future `spec.engine.entity-description-parse-chain` chapter (planned but not yet written; the chapter ID is reserved in [`docs/spec/README.md`](../../spec/README.md) under `spec.engine`). Section 1 summarizes those mechanics where the wire format depends on them and cross-references forward for full detail. Later cross-references to `spec.engine.entity-description-parse-chain` in this chapter implicitly inherit the same "planned but not yet written" caveat.
 
 ---
 
@@ -122,11 +126,13 @@ The client binary (`SGW.exe`) is the reference for all ID-table construction and
 
 Entities in BigWorld carry three disjoint ID spaces, all assigned sequentially at parse time:
 
-- **propID** — a client-property ordinal, zero-based, over the filtered subset of properties that have `DATA_OWN_CLIENT (0x04)` or `DATA_OTHER_CLIENT (0x02)` flags. This ordinal is what rides the wire in property-change messages and in the creation-time property streams.
+- **propID** — a client-property ordinal, zero-based. In stock BigWorld it indexes the filtered subset of properties that have `DATA_OWN_CLIENT (0x04)` or `DATA_OTHER_CLIENT (0x02)` flags (the `+0x70/+0x74` client-property pointer array). **In SGW the routing is different — lead with the SGW behavior**: the wire propID indexes the main DataDescription array at `EntityDescription+0x5c/+0x60` directly. See §1.2 for the source-doc-override callout (and §2.3 for the keyword-surface audit that confirms it). The stock-BigWorld description is preserved here for readers tracing the divergence; the SGW routing is what server implementers must encode against. Either way, this ordinal is what rides the wire in property-change messages and in the creation-time property streams.
 - **cellMethodID** — a zero-based ordinal within the entity's CellMethods list, restricted to methods marked `<Exposed/>`.
 - **baseMethodID** — a zero-based ordinal within the entity's BaseMethods list, restricted to methods marked `<Exposed/>`.
 
-These three tables are constructed by the entity-description parse chain, which walks `<Parent>` → `<Implements>` → own sections in that order. The full parse-chain mechanics — parse order, ID assignment algorithm, DataType class hierarchy, schema MD5 — are owned by the future `spec.engine.entity-description-parse-chain` chapter. §1.1 here is a working summary sufficient for the wire format; forward-reference that chapter for the complete picture.
+These three tables are constructed by the entity-description parse chain, which walks `<Parent>` → `<Implements>` → own sections in that order. The full parse-chain mechanics — parse order, ID assignment algorithm, DataType class hierarchy, schema MD5 — are owned by the future `spec.engine.entity-description-parse-chain` chapter (planned but not yet written). §1.1 here is a working summary sufficient for the wire format; forward-reference that chapter for the complete picture.
+
+> [!NOTE] **Version note.** All Ghidra addresses in this chapter are scoped to the SGW.exe build identified in the frontmatter (`binary_scope.sha256: 109F307763A5C6C59FF484840739860BDC7163092F0644343D0B2C03E4925783`, image base `0x00400000`). Different client builds may have different addresses. Verify your binary matches before using these anchors.
 
 **Entry point**: `EntityDescription_Parse @ ghidra://SGW.exe@0x01593cd0` opens `entities/defs/<name>.def`, resolves the `<Parent>` chain recursively (parent first), reads `<ClientName>` and `<ServerOnly>`, then calls `EntityDescription_ParseDef @ ghidra://SGW.exe@0x01593600` to parse `<Implements>` → `<Properties>` → `<ClientMethods>` → `<CellMethods>` → `<BaseMethods>` in that fixed order.
 
@@ -148,7 +154,7 @@ Each property in the `<Properties>` XML section is parsed into a `DataDescriptio
 | 1 | `0x02` | `DATA_OTHER_CLIENT` | `OTHER_CLIENTS` |
 | 2 | `0x04` | `DATA_OWN_CLIENT` | `OWN_CLIENT` |
 | 3 | `0x08` | `DATA_BASE` | `BASE` |
-| 4 | `0x10` | `DATA_CLIENT_ONLY` | `CLIENT_ONLY` |
+| 4 | `0x10` | `DATA_CLIENT_ONLY` | (no SGW `.def` keyword — bit exists only in the binary flag-bit space) |
 | 5 | `0x20` | `DATA_PERSISTENT` | `<Persistent>true</Persistent>` |
 | 6 | `0x40` | `DATA_EDITOR_ONLY` | `EDITOR_ONLY` |
 | 7 | `0x80` | `DATA_ID` | `<Identifier>true</Identifier>` |
@@ -218,7 +224,7 @@ idBase        = 0x3E - iVar2           // single-byte region = [0, idBase)
 
 For an entity with few exposed methods (`nExposedCount <= 62`), `iVar2 = 0` (integer division) and `idBase = 0x3E = 62`. Methods at index 0..61 get single-byte encoding; methods at index 62+ get two-byte encoding.
 
-**SGWPlayer has 157 exposed client methods** (confirmed by old RE doc §13, which sourced this from the SGWPlayer parse chain). Plugging in: `iVar2 = (157 + 0xC0) / 0xFF = 0x10D / 0xFF = 1`. `idBase = 0x3E - 1 = 61`.
+**SGWPlayer has 157 exposed client methods** (confirmed by old RE doc §13, which sourced this from the SGWPlayer parse chain). Plugging in: `iVar2 = (157 + 0xC0) / 0xFF = 0x15D / 0xFF = 1`. `idBase = 0x3E - 1 = 61`.
 
 For SGWPlayer specifically: methods 0–60 → single-byte wire encoding; methods 61–156 → two-byte encoding.
 
@@ -273,7 +279,7 @@ The companion upstream handler that processes *inbound* entity RPC events is `Pr
 ```text
 createBasePlayer wire layout:
   Offset 0: entityId  u32 LE  — player entity ID; stored at ServerConnection+0x16c
-  Offset 4: typeId    u16 LE  — entity class index in entities.xml (0x02 = SGWPlayer)
+  Offset 4: typeId    u16 LE  — entity class index in entities.xml (0x03 = SGWPlayer)
   Offset 6: [property stream — variable, handled by entity-creation delegate]
 ```
 
@@ -303,6 +309,19 @@ createCellPlayer wire layout (32 bytes):
   Offset 28: rotY      f32 LE  — rotation Y (roll)   *** Y/Z ORDER SWAP ***
 ```
 
+Byte-offset breakdown (the same payload viewed as a structured table):
+
+| Offset | Size | Type | Field |
+|--------|------|------|-------|
+| 0 | 4 | `u32` LE | `spaceId` |
+| 4 | 4 | `u32` LE | `vehicleId` (always 0 at world entry) |
+| 8 | 4 | `f32` LE | `posX` |
+| 12 | 4 | `f32` LE | `posY` |
+| 16 | 4 | `f32` LE | `posZ` |
+| 20 | 4 | `f32` LE | `rotX` (pitch) |
+| 24 | 4 | `f32` LE | `rotZ` (yaw) — **Y/Z ORDER SWAP** |
+| 28 | 4 | `f32` LE | `rotY` (roll) — **Y/Z ORDER SWAP** |
+
 Rotation is emitted in X, Z, Y order (not X, Y, Z). The swap is applied by `FUN_015846a0` internally. This is confirmed in the Ghidra plate comment: `"Rotation read via FUN_015846a0 which applies the swap internally"`.
 
 **No property stream in the 32-byte `createCellPlayer` payload.** Cell-entity properties are delivered via the `createBasePlayer` property stream using the BASE+CLIENT domain filters. The old RE doc's reference to a `PropertyStream` after position in `createCellPlayer` is incorrect.
@@ -321,7 +340,9 @@ For the position update wire format that follows (after world entry), see `spec.
 
 ### 1.8 Runtime property-change wire format
 
-**Status: MEDIUM confidence.** The client receiver (`FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0`) operates as a Unreal Engine `FArchive` deserializer — it reads 4 bytes from `this+0x2c` (the UE `FNetworkPropertyChange` header block) then calls `FUN_00485df0` three times to reconstruct the string/value fields. The RTTI descriptor at `ghidra://SGW.exe@0x01e91018` confirms this is `FNetworkPropertyChange` from Unreal's replication system.
+**Status: MEDIUM confidence.** The runtime property delta rides on top of the `updateEntity` system message (msg_id `0x0A`, `WORD_LENGTH`-framed) — its envelope is the Mercury bundle and its msg_id slot lives in the client descriptor table catalogued in [`spec.protocol.mercury-wire-format` §2.5](mercury-wire-format.md#25-client-descriptor-table--system-message-handlers) (msg_id 0x0A, `word-prefix`, "Per-entity property delta") and in [`spec.protocol.message-catalog`](../../protocol/message-catalog.md). Mercury does not pin a byte-by-byte payload subsection for `updateEntity` — the payload is the propID-prefixed property delta stream this section documents, fed to the client through the BigWorld→UE bridge below.
+
+The client receiver (`FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0`) operates as a Unreal Engine `FArchive` deserializer — it reads 4 bytes from `this+0x2c` (the UE `FNetworkPropertyChange` header block) then calls `FUN_00485df0` three times to reconstruct the string/value fields. The RTTI descriptor at `ghidra://SGW.exe@0x01e91018` confirms this is `FNetworkPropertyChange` from Unreal's replication system.
 
 The property-change *wire encoder* resides on the BigWorld server (BaseApp/CellApp), not in SGW.exe. Its output is decoded by the BigWorld client message handler before being handed to the Unreal replication layer. The BigWorld→UE bridge function is `FUN_01560ad0 @ ghidra://SGW.exe@0x01560ad0`, which:
 
@@ -338,7 +359,10 @@ The **propID encoding prefix** that precedes the value bytes is the server-side 
 
 Following the header, a 1-byte change-type: `0 = PROPERTY_CHANGE_TYPE_SINGLE` (full replacement); `1 = PROPERTY_CHANGE_TYPE_SLICE` (array element).
 
-**These threshold values (60, 316) cannot be confirmed from SGW.exe alone** — the encoder is server-side. The client's `FUN_01560ad0` reads the pre-encoded stream opaquely (length + type-tag first, then delegates). The only client-side confirmation is that `EntityDescription_GetClientPropertyByIndex @ ghidra://SGW.exe@0x01590d80` maps a `nClientPropIndex` (zero-based, into the `+0x70/+0x74` pointer array) to a DataDescription — the wire propID IS this index. The 0x3C/0x3D threshold values must be verified against the actual server binary or BigWorld 2.0.1 source before promotion to HIGH confidence.
+**These threshold values (60, 316) cannot be confirmed from SGW.exe alone** — the encoder is server-side. The client's `FUN_01560ad0` reads the pre-encoded stream opaquely (length + type-tag first, then delegates). The only client-side confirmation is that `EntityDescription_GetClientPropertyByIndex @ ghidra://SGW.exe@0x01590d80` maps a `nClientPropIndex` to a DataDescription. In stock BigWorld this is an index into the `+0x70/+0x74` pointer array; in SGW it indexes the main DataDescription array at `+0x5c/+0x60` (per §1.2's source-doc override, since the `+0x70/+0x74` array is empty in practice). Either way, the wire propID *is* this index. The 0x3C/0x3D threshold values must be verified against the actual server binary or BigWorld 2.0.1 source before promotion to HIGH confidence — see the implementer warning callout above.
+
+> [!WARNING] **Implementer warning — OQ-1 in §1.15.**
+> The 60/316 propID thresholds documented above are inherited from BigWorld 2.0.1 source (`property_change.hpp`). SGW.exe contains only the receiver; the encoder is server-side and not in the SGW binary. Server implementers MUST verify these thresholds empirically via wire capture (x64dbg on the 4 bytes at `this+0x2c` during a known property change, or a Mercury pcap with a witnessed property update) before shipping. A server that assumes incorrect thresholds will produce property updates the client misinterprets — silently writing the wrong propID slot, just like the §1.1 "get the table wrong by one slot" failure mode but at the header layer. This warning mirrors the source-doc-override discipline used elsewhere in the chapter for stock-BigWorld-only evidence.
 
 *Source-doc override (old `entity-property-sync.md` finding doc §6):* The old doc cited BigWorld 2.0.1 source directly for the threshold values, which is valid cross-check evidence, but the claim cannot be independently confirmed from the SGW.exe binary alone. Confidence is MEDIUM, not HIGH.
 
@@ -495,8 +519,10 @@ The 16-byte digest is the schema-version fingerprint. Server and client must pro
 **OQ-1 (HIGH priority): Property-change propID threshold — binary confirmation needed.**
 The 0x3C/0x3D prefix and the 60/316 thresholds are sourced from BW 2.0.1 `property_change.hpp` (server-side). SGW.exe contains only the receiver (`FNetworkPropertyChange__vfunc_0 @ 0x015652d0`), which reads an opaque pre-encoded stream. Confirming the actual thresholds requires either (a) a live x64dbg capture of the 4 bytes at `this+0x2c` during a known property change, or (b) access to the server binary / BW 2.0.1 encoder source. Until then, the 60/316 values remain BW-source-only citations at MEDIUM confidence.
 
-**OQ-2: DataDescription dual name fields — `element+0x24` vs `element+0x40`.**
-`EntityDescription_FindAndWritePropertyByName @ ghidra://SGW.exe@0x0158e780` compares two `StdStringMSVC` fields within the same 0x110-byte parse-time DataDescription: `element+0x24` and `element+0x40`. Both are compared against the search name. `DataDescription_Constructor @ ghidra://SGW.exe@0x01591fb0` initializes three `StdStringMSVC` at `+0x04`, `+0x24`, and `+0x40`. The identity of each field (internal name / client name / alias) is a hypothesis pending a cross-check against `DataDescription_ParseFlags` write sites — which field gets set from which XML child element.
+**OQ-2: PARTIALLY RESOLVED — DataDescription dual name fields at `element+0x24` and `element+0x40`.**
+Confirmed by [`entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Target 4: both `StdStringMSVC` fields at `+0x24` and `+0x40` exist in the 0x110-byte parse-time DataDescription (initialised by `DataDescription_Constructor @ ghidra://SGW.exe@0x01591fb0` alongside the `+0x04` field). `EntityDescription_FindAndWritePropertyByName @ ghidra://SGW.exe@0x0158e780` compares the two against each other and only calls `EntityDescription_WriteClientData` when they match — i.e., it skips aliased properties (where the two name fields differ) and writes non-aliased ones.
+
+What is still open: which field carries the internal XML tag name and which carries the client-visible alias. Resolving requires tracing the write sites that populate the 0x110-byte form from the 0x40-byte parse-time form (`FUN_0158f260` only writes `+0x00..+0x3c` in the small form; the 0x110-byte form's `+0x24` and `+0x40` writes have not been traced in this pass). The audit recorded this remainder as OQ-B in its "new open questions" section.
 
 **OQ-3: RESOLVED — `createCellPlayer` property stream is absent; 32 bytes confirmed.**
 A fresh decompile of `ServerConnection_CreateCellPlayer @ ghidra://SGW.exe@0x00dda2e0` confirms the exact read sequence: 4 bytes `spaceId` + 4 bytes `vehicleId` + 12 bytes position (read as `posXY` via an 8-byte read plus a 4-byte `posZ`) + 12 bytes rotation via `BundlePrimer__read3` (which applies the X/Z/Y swap internally) = **32 bytes total**, with no tail reads before the function transitions to `GetOrAddEntityTableSlot` bookkeeping. The buffered-message path (when `*(this+0x16c) == 0`) writes the message body into a buffer and returns early — no stream reads in that branch either. Audit-confirmed by [`entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Target 5.
@@ -509,6 +535,48 @@ The `GetTypeName_WriteStream` encodings for the 17 DataType subclasses are cited
 
 **OQ-6: AoI property-delta stream — cache-stamp and per-witness versioning.**
 The cache-stamp system (described in agent memory `bigworld-engine-advisor/cache-stamp-system.md`) provides per-witness property deltas for AoI introduction. This system involves `createCacheStamp(propertySetId, callback, invalidate)` on the server side, `MaxPropertySets = 2`, and a `CELL_BASE_UPDATE_CACHE_STAMP (0x11)` cell→base message. These are server-side behaviors not visible in SGW.exe. A future pass against the deprecated C++ BaseApp source (`deprecated/cpp/src/baseapp/entity/cached_entity.cpp`) is needed to document the server's side of this cache.
+
+---
+
+### 1.16 Gotchas and surprises
+
+The five failure modes below are the ones a server implementer is likeliest to trip on. Each maps to a numbered S-code so requirements (§1.17) and reviewers can refer back without re-explaining.
+
+**S1 — Sub-slot threshold is method-count-dependent, not a constant `0x3E`.** The threshold `idBase = 0x3E - (nExposedCount + 0xC0) / 0xFF` (§1.4) falls to **61** for SGWPlayer because `nExposedCount = 157` (`iVar2 = 1`). A server that hard-codes `62` will produce a wire byte for SGWPlayer's 62nd exposed client method (`index = 61`) that the client decodes through the single-byte path — but the client's own table has shifted into two-byte encoding at that index, so the decoded methodID points at a different slot. The mismatch is silent: no error, just a wrong method invoked. Verified by `EntityDescription_AssignClientMethodIds @ ghidra://SGW.exe@0x01590df0` and §2.7's cascade arithmetic. **Lesson**: compute the threshold from each entity's `nExposedCount`; do not pull `62` from any old doc.
+
+**S2 — `createCellPlayer` carries no property stream.** Older RE docs (`docs/reverse-engineering/findings/entity-property-sync.md` pre-2026-05) listed a `PropertyStream var` field after the rotation triplet. A fresh decompile of `ServerConnection_CreateCellPlayer @ ghidra://SGW.exe@0x00dda2e0` shows the payload is **exactly 32 bytes** — spaceId, vehicleId, position, rotation — and the handler transitions to bookkeeping immediately after. Cell-public property data rides in the `createBasePlayer` stream under the `CLIENT_DATA | CELL_DATA` domain filter (§1.6 + §1.11). Audit-confirmed OQ-3 (§1.15). A server that emits property bytes after the 32-byte `createCellPlayer` payload will desync the bundle parser and the next message in the bundle will be misread. **Lesson**: 32 bytes flat; no tail.
+
+**S3 — Base-method ID space is 6 bits, cell-method ID space is 7 bits.** The cell path masks with `0x7F` before OR-ing `0x80`; the base path masks with `0x3F` before OR-ing `0xC0`. A server that uses `& 0x7F` for base methods will silently corrupt the high two bits of `methodId` (e.g. a base method with index 64 — `0x40` — would survive the mask, OR to `0xC0 | 0x40 = 0x80`, and land in the cell range instead). Confirmed by `ServerConnection_StartEntityMessage @ ghidra://SGW.exe@0x00dd6a60` (cell) and `ServerConnection_StartProxyMessage @ ghidra://SGW.exe@0x00dd6980` (base). **Lesson**: cell = 7 bits = `0x7F`, base = 6 bits = `0x3F`.
+
+**S4 — Cell-vs-base routing is an in-memory flag, not a wire byte.** `RouteOutgoingEntityRpc @ ghidra://SGW.exe@0x00c6fc40` reads bits 0–1 of `pArgData+0x1c` to choose between cell (`0x80..0xBF`) and base (`0xC0..0xFE`); the routing decision is **in process memory**, not on the wire. The wire byte itself is `(methodId & mask) | top_bits` where `top_bits` is the dispatch result, not an independent header. A reimplementation that prefixes a separate "cell or base" byte ahead of the method byte is encoding a phantom field — the client expects the masked-and-ORed byte directly. **Lesson**: there is no separate route header; the route is encoded into the high bits of the method byte itself.
+
+**S5 — The client-property pointer array at `+0x70/+0x74` is binary-correct but empty in SGW.** `EntityDescription_ParseProperties @ ghidra://SGW.exe@0x015924a0` builds a filtered array using `flags & 0x06 != 0` (bits 1+2 = `OWN_CLIENT | OTHER_CLIENT`). No SGW `.def` keyword sets either bit (§2.3 audit; `CELL_PUBLIC` sets only bit 0, `BASE` sets only bit 3, `CELL_PRIVATE` sets none). The array exists, the filter executes, but the result is always empty. Property updates in SGW route via the **main DataDescription array at `EntityDescription+0x5c/+0x60`** instead — wire propID indexes that array, not the empty filtered one. A server that follows stock BigWorld semantics (filtered array as routing table) will produce property updates that match no client property. **Lesson**: route through `+0x5c/+0x60` in SGW; `+0x70/+0x74` is dead code in this build.
+
+---
+
+### 1.17 Server requirements
+
+Each requirement names the wire-format invariant a server must satisfy and cross-references the §1 evidence and the matching S-code in §1.16. Reviewers can use the R-code as shorthand; implementers can use the citation as the proof.
+
+**R1 — Use the typeID matching the entity name's position in `entities.xml`** (1-based; SGWPlayer = `0x03`). §1.6 reads a `u16 typeId` at offset 4 of `createBasePlayer`; §2.5 confirms the 1-based document-index assignment. A typeID off-by-one resolves to a different entity description on the client, with no validation gate at the message handler (audit Target 2, §1.14 crosswalk). **Citation**: `game/sgw/Common/res/entities/entities.xml:1-32`; `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0`.
+
+**R2 — Compute the sub-slot threshold `idBase` from each entity's exposed-method count.** Per §1.4: `idBase = 0x3E - (nExposedCount + 0xC0) / 0xFF`. The threshold is per-entity, not global. SGWPlayer (`nExposedCount = 157`) has `idBase = 61`; other entity types will differ. See **S1**. **Citation**: `EntityDescription_AssignClientMethodIds @ ghidra://SGW.exe@0x01590df0`.
+
+**R3 — Encode cell-method wire bytes as `(methodId & 0x7F) | 0x80`; encode base-method wire bytes as `(methodId & 0x3F) | 0xC0`.** Cell ID space is 7 bits (128 single-byte cell methods before sub-slot encoding kicks in); base ID space is 6 bits (64 single-byte base methods). See **S3**. **Citation**: `ServerConnection_StartEntityMessage @ ghidra://SGW.exe@0x00dd6a60` (cell); `ServerConnection_StartProxyMessage @ ghidra://SGW.exe@0x00dd6980` (base).
+
+**R4 — Send `createBasePlayer` before `createCellPlayer` for the player entity.** §1.6 buffering rule: if `createCellPlayer` arrives first, the client buffers it into `ServerConnection+0xfe0` and replays once `playerEntityId` is set by `createBasePlayer`. Reliance on the buffer is discouraged — buffered replay is a defensive path, not the intended sequence. **Citation**: `ServerConnection_CreateCellPlayer @ ghidra://SGW.exe@0x00dda2e0` (buffer branch); `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0` (replay trigger).
+
+**R5 — Respect the data-domain filters when serializing entity creation property streams.** `createBasePlayer` carries `CLIENT_DATA | BASE_DATA` (`flags & 0x04` for `DATA_OWN_CLIENT` or `flags & 0x08` for `DATA_BASE`); the cell-entity portion rides in the same `createBasePlayer` stream under `CLIENT_DATA | CELL_DATA`, **not** in a separate `createCellPlayer` payload. See **S2**. **Citation**: `EntityDescription_WriteClientData @ ghidra://SGW.exe@0x01590fc0` (filter `(flags & 6) != 0`); §1.11 domain-constants table.
+
+**R6 — Encode property updates with the propID-prefix scheme `propId < 60 → 1 byte; 60..315 → [0x3C, propId-60]; 316+ → [0x3D, propId-316]`.** The thresholds are inherited from BigWorld 2.0.1 `property_change.hpp` and remain UNCONFIRMED in SGW.exe (OQ-1, §1.15). Until empirically verified the implementer warning in §1.8 applies: **MUST verify via wire capture before shipping**. **Citation**: §1.8 + §1.15 OQ-1.
+
+**R7 — Route property updates via `EntityDescription+0x5c/+0x60` in SGW, not via the stock-BigWorld `+0x70/+0x74` filtered array.** The filtered array is empty in SGW (§1.2 source-doc override; §2.3 audit). See **S5**. **Citation**: audit Appendix A; `EntityDescription_ParseProperties @ ghidra://SGW.exe@0x015924a0` Conditional 2.
+
+**R8 — Encode the 32-byte `createCellPlayer` payload as `[spaceId u32][vehicleId u32][posX/Y/Z f32×3][rotX/Z/Y f32×3]` with the Y/Z rotation swap.** No property stream. The rotation triplet is X, Z, Y on the wire — `FUN_015846a0` applies the swap internally on the client side, so a server emitting in stock-BW X, Y, Z order will misalign yaw and roll. See **S2**. **Citation**: `ServerConnection_CreateCellPlayer @ ghidra://SGW.exe@0x00dda2e0`; §1.7 byte table.
+
+**R9 — Pre-register entities with a positive `enterCount` and decrement via `enterAoI` messages.** §1.9: the client expects `entity+0x10` to start `> 0` (asserted `getEnterCount() > 0`) and to reach 0 through successive `enterAoI` decrements before `EntityManager_EnterWorld` fires. A server that increments instead of decrements (the old RE doc's documented mistake) will never reach the trigger. **Citation**: `EntityManager_EnterAoI @ ghidra://SGW.exe@0x00dd2800`.
+
+**R10 — Match the client's schema MD5 fingerprint exactly.** The 16-byte MD5 over each entity type's method-and-property name/exposed-flag/arg-type stream (§1.13) is the schema-version contract. A mismatch indicates schema divergence; property updates against a divergent schema may be silently rejected. The MD5 input is the concatenation of each method's `name bytes → exposed flag byte → arg types via vtable+0x24` for BaseMethods + Exposed CellMethods + Exposed ClientMethods. **Citation**: `EntityDescription_WriteClientData @ ghidra://SGW.exe@0x01590fc0`; `MethodDescription_WriteSchemaToStream @ ghidra://SGW.exe@0x015942f0` (formerly mis-named "MethodDescription_Destructor").
 
 ---
 
@@ -578,7 +646,7 @@ The six load-bearing sections, in the order the §1.3 parser reads them:
 Three more elements appear at root level and matter to the parse but not directly to wire format:
 
 - `<UnrealProperties>` — UE3-layer integration; declares the UClass the entity binds to (e.g. `Account.def:6-8` binds Account to `GamePawn`). Not consumed by the BigWorld property parser.
-- `<Volatile>` — declares position/orientation properties as continuously-updating (e.g. `SGWEntity.def:10-15` marks `position`, `yaw`, `pitch`, `roll` volatile). These properties route through the volatile-update path (see `spec.protocol.position-updates`), not through the property-change wire format §1.8 covers.
+- `<Volatile>` — declares position/orientation properties as continuously-updating (e.g. `SGWEntity.def:10-15` marks `position`, `yaw`, `pitch`, `roll` volatile). These properties route through the volatile-update path (see `spec.protocol.position-updates` for the volatile-property wire format), not through the property-change wire format §1.8 covers.
 - `<ServerOnly/>` — marks the entity as never having a client-side instance (e.g. `SGWEntity.def:3`). The client still reads the `.def` (so the parse contributes to descendants) but never instantiates the type. `SGWPlayerGroupAuthority`, `SGWSpaceCreator`, `SGWChannelManager` are server-only entities.
 
 A real property example, from `SGWPlayer.def:26-32` (the `playerName` property):
@@ -604,7 +672,7 @@ The XML element name (`playerName`) is the property's symbolic name, used in the
 | `.def` keyword | Times used | Stock-BW mapping (per §1.2) | What it means in SGW |
 |----------------|-----------|------------------------------|----------------------|
 | `CELL_PUBLIC` | ~80 occurrences | `DATA_GHOSTED (0x01)` | Property lives on the cell entity and is synced to all clients in AoI |
-| `CELL_PRIVATE` | ~140 occurrences | Not in §1.2's table — not part of the documented 8-bit space | Property lives on the cell, server-internal only, never reaches a client |
+| `CELL_PRIVATE` | ~140 occurrences | Primary entry 0 in `DataDescription_ParseFlagStr`'s table; flag value `0x00` (sets no bit) | Property lives on the cell, server-internal only, never reaches a client |
 | `BASE` | ~30 occurrences | `DATA_BASE (0x08)` | Property lives on the base entity (per-player, persistent), syncs to its owning client only |
 
 The stock-BW keywords `OWN_CLIENT`, `OTHER_CLIENTS`, `CLIENT_ONLY`, `EDITOR_ONLY` **never appear in any SGW `.def` file**. They do, however, exist in the SGW binary's parser — `DataDescription_ParseFlagStr @ ghidra://SGW.exe@0x015959c0` iterates a 16-entry static table at `ghidra://SGW.exe@0x01e920e0` (9 primary keywords plus 7 deprecated aliases, each with a non-null warning-function pointer that emits `"DataDescription::parse: Using old Fl..."` at `ghidra://SGW.exe@0x01b1af14`). The parser is a pure table-walk with a single direct assignment (`*pOutFlags = table_entry[1]` — no post-OR), so each keyword maps to exactly the bit value stored in its table row. Audit-confirmed by [`entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Target 1 and Appendix A.
@@ -623,9 +691,9 @@ The verified keyword → bit-value mapping (primary keywords only — full 16-en
 | `ALL_CLIENTS` | `0x07` | `DATA_GHOSTED \| DATA_OTHER_CLIENT \| DATA_OWN_CLIENT` | no |
 | `EDITOR_ONLY` | `0x40` | `DATA_EDITOR_ONLY` | no |
 
-![Graph mapping the nine primary keywords from DataDescription_ParseFlagStr (CELL_PUBLIC, OTHER_CLIENTS, OWN_CLIENT, CELL_PUBLIC_AND_OWN, ALL_CLIENTS, BASE, BASE_AND_CLIENT, CLIENT_ONLY, EDITOR_ONLY) plus the CELL_PRIVATE special case to the eight-bit flag space, with CELL_PUBLIC, BASE, and CELL_PRIVATE highlighted as the only keywords used in SGW .def files and the other six shown greyed out.](figures/entity-property-sync-07-flag-keyword-surface.svg)
+![Graph mapping the nine primary keywords from DataDescription_ParseFlagStr (entry 0 CELL_PRIVATE, entry 1 CELL_PUBLIC, entry 2 OTHER_CLIENTS, entry 3 OWN_CLIENT, entry 4 BASE, entry 5 BASE_AND_CLIENT, entry 6 CELL_PUBLIC_AND_OWN, entry 7 ALL_CLIENTS, entry 8 EDITOR_ONLY) to the eight-bit flag space, with CELL_PUBLIC, BASE, and CELL_PRIVATE highlighted as the only three keywords used in SGW .def files and the other six shown greyed out.](figures/entity-property-sync-07-flag-keyword-surface.svg)
 
-*Figure 7: SGW flag-keyword surface. The 9-row primary keyword table in `DataDescription_ParseFlagStr` exposes nine keywords plus the `CELL_PRIVATE` special case, but only three (`CELL_PUBLIC`, `BASE`, `CELL_PRIVATE`) ever appear in the 37 SGW `.def` files. The greyed-out keywords exist in the parser but are dead surface in the client tree, which is why §1.2's `+0x70/+0x74` filter — looking for bits 1 or 2 — finds nothing to route.*
+*Figure 7: SGW flag-keyword surface. The 9-row primary keyword table in `DataDescription_ParseFlagStr` lists nine entries (entry 0 = `CELL_PRIVATE`, flag value `0x00`; entry 1 = `CELL_PUBLIC`, `0x01`; through entry 8 = `EDITOR_ONLY`, `0x40`). Only three (`CELL_PRIVATE`, `CELL_PUBLIC`, `BASE`) ever appear in the 37 SGW `.def` files. The greyed-out keywords exist in the parser but are dead surface in the client tree, which is why §1.2's `+0x70/+0x74` filter — looking for bits 1 or 2 — finds nothing to route. `CLIENT_ONLY` is NOT in the parsed-keyword surface.*
 
 Three observations land directly on the wire format:
 
@@ -704,9 +772,32 @@ Per §1.5, the base-method wire byte uses a 6-bit primary ID space (`(methodId &
 
 18 entries. The typeID assigned to each is its 1-based document index — `SGWSpawnableEntity = 1`, `SGWBeing = 2`, `SGWPlayer = 3`, and so on. §1.6's `createBasePlayer` wire layout reads a `u16 typeId` at offset 4; that value is an index into this table.
 
-The agent-memory note that "`0x02 = SGWPlayer`" used in §1.6's example is consistent with this table: in document order, SGWPlayer is the third entry, so typeID `0x03` (not `0x02`) is the correct value. **The §1.6 example value `0x02` is off-by-one and should be `0x03`** — recommended §1 fix during the next pass, recorded as a §1.14 crosswalk note.
+Complete catalog (every entry in `entities.xml` line order, with the typeID the engine assigns from its 1-based position):
 
-Six of the 18 entries are server-only (each `<ServerOnly/>` in its `.def`): `SGWPlayerGroupAuthority`, `SGWSpaceCreator`, `SGWSpawnRegion`, `SGWSpawnSet`, `SGWPlayerRespawner`, `SGWCoverSet`, `SGWEscrow`, `SGWChannelManager`, plus `SGWEntity` (the abstract base). The client still allocates a typeID for each (the index assignment is purely positional) but never instantiates an entity of those types.
+| typeID | Hex | Entity name | Server-only? | Notes |
+|--------|------|-------------|--------------|-------|
+| 1 | `0x01` | `SGWSpawnableEntity` | no | Parent of `SGWBeing`; abstract spawnable base (client-instantiable in principle but rarely seen on the wire). |
+| 2 | `0x02` | `SGWBeing` | no | Parent of `SGWPlayer`, `SGWGmPlayer`, `SGWMob`, `SGWPet`. |
+| 3 | `0x03` | `SGWPlayer` | no | Player entity — the §1.6 / §1.7 worked-example typeID. |
+| 4 | `0x04` | `SGWGmPlayer` | no | GM tooling player variant. |
+| 5 | `0x05` | `SGWMob` | no | NPC mob — the §1.9 AoI cascade worked example. |
+| 6 | `0x06` | `SGWPet` | no | Player pet entity. |
+| 7 | `0x07` | `SGWDuelMarker` | no | Duel zone marker. |
+| 8 | `0x08` | `SGWBlackMarket` | yes (`<ServerOnly/>` in `SGWBlackMarket.def`) | Black-market vendor entity — server-only despite the player-facing name; UI rides on cell-method RPCs. |
+| 9 | `0x09` | `Account` | no | Login / character-select entity (thin, no `SGWBeing` ancestry). |
+| 10 | `0x0A` | `SGWEntity` | yes (`<ServerOnly/>` in `SGWEntity.def:3`) | Abstract root entity base. |
+| 11 | `0x0B` | `SGWPlayerGroupAuthority` | yes | Server-only entity that manages distribution groups of player entities. |
+| 12 | `0x0C` | `SGWSpaceCreator` | yes | Server-only entity that creates and maintains a space. |
+| 13 | `0x0D` | `SGWSpawnRegion` | yes | Spawn region geometry (server-side). |
+| 14 | `0x0E` | `SGWSpawnSet` | yes | Contains spawn point objects and spawns mobs. |
+| 15 | `0x0F` | `SGWPlayerRespawner` | yes | "Basically, a graveyard" per the XML comment. |
+| 16 | `0x10` | `SGWCoverSet` | yes | An entity to contain cover node objects. |
+| 17 | `0x11` | `SGWEscrow` | yes | An entity to handle item transactions. |
+| 18 | `0x12` | `SGWChannelManager` | yes | Channel manager. |
+
+The agent-memory note that "`0x02 = SGWPlayer`" used in §1.6's earlier example was off-by-one. The corrected example value `0x03` is now in §1.6.
+
+Ten of the 18 entries are server-only (each carries `<ServerOnly/>` in its `.def`): `SGWBlackMarket`, `SGWEntity`, `SGWPlayerGroupAuthority`, `SGWSpaceCreator`, `SGWSpawnRegion`, `SGWSpawnSet`, `SGWPlayerRespawner`, `SGWCoverSet`, `SGWEscrow`, `SGWChannelManager` — see the table above for each row's disposition. The client still allocates a typeID for each (the index assignment is purely positional) but never instantiates an entity of those types.
 
 The wire effect is subtler than "the client rejects server-only typeIDs at the handler boundary". A fresh decompile of `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0` shows the handler passes the `u16` typeID directly to its entity-creation delegate at `*(this+0x168)` with **no in-handler validation gate** — no range check, no server-only flag test, no rejection path before or after the delegate call. Audit-confirmed by [`entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Target 2. Rejection (if any) happens one level deeper inside the delegate's entity-description lookup: a server-only entity has no client-loaded `.def`, so the delegate cannot resolve the typeID to a description and the instantiation silently fails. The client would accept the wire message and consume its bytes, but no entity would be created — there is no observable error from the protocol's perspective.
 
@@ -796,7 +887,7 @@ This produces the agent-memory table summarised in §2.6 of `.claude/agent-memor
 Plugging `nExposedCount = 157` into §1.4's sub-slot threshold formula:
 
 ```text
-iVar2  = (157 + 0xC0) / 0xFF = 0x10D / 0xFF = 1
+iVar2  = (157 + 0xC0) / 0xFF = 0x15D / 0xFF = 1
 idBase = 0x3E - 1            = 61
 ```
 
@@ -883,6 +974,8 @@ The crosswalk's load-bearing observation: **the client tree's schema is exhausti
 
 ## Section 3 — Deprecated server
 
+§3 (Deprecated Server), §4 (Expected Implementation in Rust), and §5 (Actual Implementation in Rust) are pending §1+§2 sign-off and will land in follow-up PRs after the equivalent entity-property-sync conformance audit (mirroring how [`mercury-rust-conformance-2026-05-15.md`](../../audits/mercury-rust-conformance-2026-05-15.md) came after `spec.protocol.mercury-wire-format`).
+
 N/A — pending §1+§2 sign-off. `deprecated/cpp/src/baseapp/entity/` and `deprecated/python/base/*.py` carry the legacy server's emit + property-cache logic; section 3 will reconstruct it after the protocol invariants in §1+§2 are stable.
 
 ---
@@ -895,4 +988,4 @@ N/A — pending §1+§2 sign-off. Will name the Rust symbols that must encode ea
 
 ## Section 5 — Actual implementation in Rust
 
-N/A — pending §1+§2 sign-off. The audit at [`docs/audits/mercury-rust-conformance-2026-05-15.md`](../../audits/mercury-rust-conformance-2026-05-15.md) is the gap-analysis seed; the §5 authoring pass will pull from it once §1+§2 are signed off and the equivalent entity-property-sync audit has run.
+N/A — pending §1+§2 sign-off. The audit at [`docs/audits/mercury-rust-conformance-2026-05-15.md`](../../audits/mercury-rust-conformance-2026-05-15.md) is the gap-analysis seed; the §5 authoring pass will pull from it once §1+§2 are signed off and the equivalent entity-property-sync audit has run. The conformance audit will be its own PR (mirroring how `mercury-rust-conformance-2026-05-15.md` landed separately from `spec.protocol.mercury-wire-format`).

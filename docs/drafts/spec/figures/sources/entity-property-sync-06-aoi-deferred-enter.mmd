@@ -1,10 +1,10 @@
-%%{init: {"theme": "base"}}%%
+%%{init: {"theme": "base", "flowchart": {"htmlLabels": false}}}%%
 stateDiagram-v2
-    [*] --> AwaitingDescription : CREATE_ENTITY (msg_id 0x09) received\nentity registered; enterCount at entity+0x10 initialized to N\n(N = number of expected createOnClient cascade steps)
+    [*] --> AwaitingDescription : CREATE_ENTITY (msg_id 0x09) received\nentity registered\nenterCount at entity+0x10 initialized to N\n(N = number of expected createOnClient cascade steps)
 
     AwaitingDescription --> EnteringAoI : EntityManager_EnterAoI fires\n@ ghidra://SGW.exe@0x00dd2800\nassert getEnterCount() > 0\ndecrement entity+0x10
 
-    EnteringAoI --> EnteringAoI : next enterAoI message\ndecrement entity+0x10\nif still > 0: stay here
+    EnteringAoI --> EnteringAoI : next enterAoI message\ndecrement entity+0x10\nif still > 0 stay here
 
     EnteringAoI --> EnteredWorld : enterCount reaches 0\nEntityManager_EnterWorld @ 0x00dd1d00 fires\nGameEntityManager_FlushDeferredNotifications drains queue
 
@@ -17,7 +17,7 @@ stateDiagram-v2
     note right of EnteringAoI
         Three lookup paths in EnterAoI decompile:
         * primary map (this+0x18) — assert > 0, decrement
-        * secondary map (this+0x24) — decrement piVar6[4]+0x10;
+        * secondary map (this+0x24) — decrement piVar6[4]+0x10
           if 0 and not CEF_Remote: FUN_00c6a1e0 + CancelDeferredNotifications
         * neither — LookupOrEmplaceDeferredEntitySlot(this+0x30, entityId)
 

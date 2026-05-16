@@ -6,7 +6,7 @@ flowchart TD
     COMPUTE["Compute per-entity threshold:\nnExposedCount = (ptr24 - ptr20) / 4\niVar2 = (nExposedCount + 0xC0) / 0xFF\nidBase = 0x3E - iVar2"]
 
     COMPUTE --> SGW_EXAMPLE
-    SGW_EXAMPLE["Worked example — SGWPlayer\nnExposedCount = 157\niVar2 = (157 + 0xC0) / 0xFF\n      = 0x10D / 0xFF = 1\nidBase = 0x3E - 1 = 61"]
+    SGW_EXAMPLE["Worked example — SGWPlayer\nnExposedCount = 157\niVar2 = (157 + 0xC0) / 0xFF\n      = 0x15D / 0xFF = 1\nidBase = 0x3E - 1 = 61"]
 
     SGW_EXAMPLE --> DECIDE
     DECIDE{"Is i &lt; idBase ?"}
