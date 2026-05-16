@@ -5,7 +5,7 @@ status: draft
 last_verified: 2026-05-16
 verified_by: automated-agent
 confidence:
-  re: high
+  re: medium
   client: high
   deprecated: n/a
   rust_expected: n/a
@@ -58,6 +58,18 @@ evidence_refs:
     - ghidra://SGW.exe@0x01b1ae38
     - ghidra://SGW.exe@0x01b1aeb4
     - ghidra://SGW.exe@0x01b1af14
+    - ghidra://SGW.exe@0x00dd29d0
+    - ghidra://SGW.exe@0x01590bb0
+    - ghidra://SGW.exe@0x01590f30
+    - ghidra://SGW.exe@0x015958b0
+    - ghidra://SGW.exe@0x01598b80
+    - ghidra://SGW.exe@0x0159b480
+    - ghidra://SGW.exe@0x0159b850
+    - ghidra://SGW.exe@0x00dd66e0
+    - ghidra://SGW.exe@0x00dd6a60
+    - ghidra://SGW.exe@0x00dd6980
+    - ghidra://SGW.exe@0x00dd6690
+    - ghidra://SGW.exe@0x01604e80
   client:
     - game/sgw/Common/res/entities/entities.xml:1-32
     - game/sgw/Common/res/entities/defs/alias.xml
@@ -260,6 +272,10 @@ Confirmed verbatim in the `StartEntityMessage` decompile: `_DAT_01ef2630 = CONCA
 
 **Base-method wire shape**: `[0xC0..0xFF: (methodId & 0x3F) | 0xC0]` `[u16 WORD_LENGTH]` `[serialized args]`  (no entity_id — proxy is bound per-channel)
 
+**Volatile cell-method variant.** `RouteEntityMessageToHandler @ ghidra://SGW.exe@0x00dd66e0` reads the byte at message offset 0 and routes on bit 6: when `flags & 0x40` is set the call goes through `vtable+0x20(flags & 0x3F)` (volatile / unreliable path, 6-bit method index space inside the cell range); otherwise it goes through `vtable+0x24(flags & 0x7F, …)` (reliable cell-method path). Volatile cell entity messages therefore mask with `0x3F` after the cell `0x80` marker — the high two bits encode reliability + cell-marker. `InstallEntityMessageHandlerVtable @ ghidra://SGW.exe@0x00dd6690` is the install site if you need to chase the vtable.
+
+**Wire-confirmed.** A fresh decryption of `game/sgw/Working/binaries/sessions/2026-05-16_08-21.pcap` showed 112 cell-method bytes in `0x80..0xBF` and 39 base-method bytes in `0xC0..0xFF` (no out-of-range values). The cell range included 35 `0xBD` sub-slot sentinels (the §1.4 two-byte trigger) and named methods `ON_ENTITY_FLAGS = 0x84`, `BEING_APPEARANCE = 0x9A`, `ON_ENTITY_TINT = 0x8A`, `ON_LEVEL_UPDATE = 0x8F`, `ON_STATE_FIELD_UPDATE = 0x93`, `ON_VISIBLE = 0x88`, `INTERACTION_TYPE = 0x83` — every observed byte matches `(methodId & 0x7F) | 0x80`. The base range hit the **`0xFF` boundary** at base-method index 63: `(63 & 0x3F) | 0xC0 = 0xC0 | 0x3F = 0xFF`, the highest valid base wire byte and a useful explicit witness to the 6-bit mask. See audit Appendix C.6/C.7.
+
 ![RouteOutgoingEntityRpc dispatch fork showing the bits-0..1 read at pArgData+0x1c, the cell branch through StartEntityMessage with the 0x80 OR mask and a 4-byte entityId write, and the base branch through StartProxyMessage with the 0xC0 OR mask and no entityId.](figures/entity-property-sync-04-cell-vs-base-dispatch.svg)
 
 *Figure 4: cell-method vs base-method dispatch fork inside `RouteOutgoingEntityRpc`. The two bits at `pArgData+0x1c` select the path; the cell path uses a 7-bit primary ID space (`0x80..0xBF`) and emits a 4-byte entity ID slot, while the base path uses a 6-bit primary ID space (`0xC0..0xFF`) and omits the entity ID (the proxy is implicit on the channel).*
@@ -286,6 +302,8 @@ createBasePlayer wire layout:
 The decompile shows `*(undefined4 *)((int)this + 0x16c) = uVar1` after the 4-byte read, confirming `+0x16c` is the `playerEntityId` slot.
 
 Property stream format for `createBasePlayer`: properties filtered by `CLIENT_DATA | BASE_DATA` (properties with `DATA_OWN_CLIENT (0x04)` or `DATA_BASE (0x08)` flags), serialized in sequential propID order with no propID prefix bytes — the client knows the ordering from the schema fingerprint.
+
+**Wire-confirmed.** Three `createBasePlayer` messages decrypted from `sessions/2026-05-16_08-21.pcap` show the `[u32 entityId][u16 typeId][property stream]` shape unambiguously — payloads `01 00 00 00 07 00`, `02 00 00 00 02 00`, `01 00 00 00 07 00` decode to entityIDs (1, 2, 1) and typeIDs (7, 2, 7) matching `SGWDuelMarker` and `SGWBeing` from §2.5's table. The captured property streams were zero bytes — consistent with both entity types being all-`CELL_PRIVATE`/no-OWN_CLIENT props (the SGW divergence in §1.2). The session ended before any SGWPlayer (typeID `0x03`) instance emitted, so a non-empty property stream is not yet wire-witnessed; the byte-offset layout, however, is locked. See audit Appendix C.3.
 
 **Buffering rule**: after reading entityId and typeId, if the `createCellPlayer` message buffer at `ServerConnection+0xfe0` has pending content (`remainingLength() > 0`), the handler immediately calls `ServerConnection_CreateCellPlayer` on the buffered data. Confirmed by the decompile: `if (0 < iVar4) { ... ServerConnection_CreateCellPlayer(..., pStream_00); ... }`.
 
@@ -324,7 +342,11 @@ Byte-offset breakdown (the same payload viewed as a structured table):
 
 Rotation is emitted in X, Z, Y order (not X, Y, Z). The swap is applied by `FUN_015846a0` internally. This is confirmed in the Ghidra plate comment: `"Rotation read via FUN_015846a0 which applies the swap internally"`.
 
+> [!NOTE] **Y/Z swap is Ghidra-only.** A wire capture (audit Appendix C.4 / C.8) observed exactly one `createCellPlayer` payload during world entry, and all three rotation floats were `0.0` (default spawn orientation). The swap claim therefore remains static-decompile-only — the bit-pattern at offsets 20/24/28 is whatever `FUN_015846a0` writes there, but distinguishing yaw from roll on the wire requires a capture with non-zero spawn orientation. Server implementers should encode in X, Z, Y order per the static evidence and revisit when a non-zero-rotation capture lands.
+
 **No property stream in the 32-byte `createCellPlayer` payload.** Cell-entity properties are delivered via the `createBasePlayer` property stream using the BASE+CLIENT domain filters. The old RE doc's reference to a `PropertyStream` after position in `createCellPlayer` is incorrect.
+
+**Wire-confirmed (worked example).** The one `createCellPlayer` decrypted from `sessions/2026-05-16_08-21.pcap` was exactly 32 bytes: `10 00 01 00 | 00 00 00 00 | 91 1D A7 C3 | AA F1 92 42 | A8 06 64 C3 | 00 00 00 00 | 00 00 00 00 | 00 00 00 00`. Decoded: `spaceId = 0x00010010` (compound: high word `0x0001` is space type/category, low word `0x0010` is instance), `vehicleId = 0`, `(posX, posY, posZ) = (-334.231, 73.472, -228.026)` — plausible Atrea spawn coordinates, not test defaults — `(rotX, rotZ, rotY) = (0.0, 0.0, 0.0)`. The WORD_LENGTH framing in the bundle gave exactly 32 as the payload length; the iterator consumed the full payload with no remainder. Audit Appendix C.4.
 
 *Source-doc override (old `entity-property-sync.md` finding doc §4, createCellPlayer table):* The old doc showed `[Skip 4B][SpaceID 4B][Position 12B][PropertyStream var]`. This was wrong in two ways: (1) the first 4 bytes are `spaceId`, not a skip — the old doc's "skip 4" was `spaceId` misread; (2) there is an explicit `vehicleId` field at offset 4 that the old doc didn't surface; (3) there is a 12-byte rotation field (X/Z/Y order); (4) no property stream in this message.
 
@@ -366,6 +388,14 @@ Following the header, a 1-byte change-type: `0 = PROPERTY_CHANGE_TYPE_SINGLE` (f
 
 *Source-doc override (old `entity-property-sync.md` finding doc §6):* The old doc cited BigWorld 2.0.1 source directly for the threshold values, which is valid cross-check evidence, but the claim cannot be independently confirmed from the SGW.exe binary alone. Confidence is MEDIUM, not HIGH.
 
+**Wire-capture attempt (V4, audit Appendix C.5).** A `sessions/2026-05-16_08-21.pcap` capture covering character-select and the first seconds of world-entry observed **zero** `updateEntity` (msg_id `0x0A`) messages — no in-world stat updates, no inventory churn, no ability use occurred during the window. No `0x3C` or `0x3D` first-bytes appeared in server-to-client payloads. The 60/316 thresholds remain neither confirmed nor falsified. Path to closure: a capture with 60+ seconds of sustained in-world activity (a `ON_STAT_UPDATE` from a health change is the cheapest probe — method 20 on the client-method index from §2.7), or an x64dbg breakpoint at `FUN_01560ad0` capturing the prefix during a known property change. Tracked as OQ-1 in §1.15.
+
+**Protocol invariants surfaced by Appendix B.** Three claims about *what is **not** in the property-change protocol* matter as much as the bit-layout:
+
+- **No batch-property-change message type.** Each property change is its own InterfaceElement; `FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0` writes one property per call (three helper writes: 4-byte index + two string/value writes, no loop). Multiple simultaneous property changes arrive as **consecutive InterfaceElements in the same Mercury bundle**; the bundle aggregation layer (`spec.protocol.mercury-wire-format` §1) is what makes a server-side burst look batched. A server reimplementation that emits a custom batch-property type is encoding a phantom message that the client has no handler for. (Audit B.11 / G36.)
+- **No slice or sub-field updates.** `FNetworkPropertyChange__vfunc_0` writes one complete property per call with no inner-field selector. `FixedDictDataType_ToXml @ ghidra://SGW.exe@0x01598b80` iterates all fields in a flat loop with no slice-index field. A change to any field inside a `FIXED_DICT` property causes the **full property value** to be re-serialized and sent. There is no `PROPERTY_CHANGE_TYPE_SLICE` in the SGW client decoder — only `PROPERTY_CHANGE_TYPE_SINGLE` (full replacement). Server implementers should not optimise toward partial-field deltas; the client cannot decode them. (Audit B.14 / G39.)
+- **No client-side default-value filtering.** `EntityDescription_WriteClientData @ ghidra://SGW.exe@0x01590fc0` emits matching DataDescriptions unconditionally — no default-value comparison exists in the loop. For actual property *values*, the client processes whatever the server sends and never compares against the `.def` `<Default>`. Default-omission is a server-side concern; if a server chooses to skip emitting properties at their default, the client just never sees them. If the server emits them, the client will accept them. (Audit B.15 / G40.)
+
 ---
 
 ### 1.9 Enter/Leave AoI — the deferred-enter cascade
@@ -388,6 +418,8 @@ After `EntityManager_EnterWorld` is called, `GameEntityManager_FlushDeferredNoti
 
 The full three-phase cascade (CREATE_ENTITY msg, property-delta stream, Python `onVisible(1)` callback) is a server-driven orchestration that the Cimmeria BaseApp must implement. The client side handles the wire pieces; phase sequencing is a server responsibility.
 
+> [!IMPORTANT] **The 7-method `createOnClient` cascade order is server-determined.** A fresh decompile of `EntityManager_HandleEntityCreate @ ghidra://SGW.exe@0x00dd2270` shows no ordered-dispatch table and no client-side enumeration of "the seven methods in order". The dispatcher calls `EntityManager_CreateEntity`, applies an initial world transform via `FUN_00e68a10`, then calls `GameEntityManager_FlushDeferredNotifications` — each incoming method call is routed independently through `GameEntityManager_DispatchEntityRpc @ ghidra://SGW.exe@0x00dd2b80` in arrival order. The 7-method sequence shown in Figure 6's sidebar reflects the order produced by the Python `createOnClient()` chain on the server (`SGWMob.py` → `SGWBeing.py` → `SGWSpawnableEntity.py`); the client decodes whatever the server sends in whatever order it sends it. A server reimplementation owns the ordering contract; the client will not flag a different order as an error. (Audit B.1 / G3.)
+
 ![State diagram for the AoI deferred-enter countdown — AwaitingDescription with enterCount initialized, EnteringAoI decrementing on each enterAoI message, EnteredWorld reached when enterCount hits zero, plus a RemoteManaged branch for entities with CEF_Remote set.](figures/entity-property-sync-06-aoi-deferred-enter.svg)
 
 *Figure 6: AoI deferred-enter state machine. The client pre-registers an entity with `enterCount > 0` at `entity+0x10`; each `enterAoI` message decrements the counter; reaching zero fires `EntityManager_EnterWorld` and drains queued notifications. The `CEF_Remote` branch (bit 0 of `entity+0x18`) bypasses the countdown entirely. The 7-method `createOnClient` cascade sidebar (from agent memory `bigworld-engine-advisor/aoi-entity-introduction.md`) is reproduced for SGWMob.*
@@ -404,26 +436,37 @@ AoI entity creation (non-player entities entering a player's AoI) differs from `
 
 **The `enterAoI` re-entry path** uses the deferred-enter countdown as described in §1.9. The server does not send a fresh `CREATE_ENTITY` for a previously-seen entity re-entering AoI; it sends only AoI introduction messages (`onVisible(1)` Python callback cascade from the CellApp side).
 
+**Leave-AoI — `EntityManager_LeaveAoI @ ghidra://SGW.exe@0x00dd29d0`.** Decompiled in full. The function does **not** decrement a reference count — the prior Ghidra plate comment "decrements reference count" was wrong and is a second annotation bug worth recording in the rename pass (alongside `MethodDescription_Destructor`, OQ-5). What `LeaveAoI` actually does is dispatch or defer a **method call** on leave:
+
+1. If `g_bEntityRpcDebug (DAT_01ef2224)` is set, log entity-ID and space-ID.
+2. Search the primary entity map at `GameEntityManager+0x18` for the leaving entity ID.
+3. *Path A — entity NOT in primary map*: execute the stream callback directly via `nSpaceId->vtable[2]()`.
+4. *Path B — entity IS in primary map*: read the stream byte-count, allocate a `0x20`-byte `MemoryOStream` via `scalable_malloc`, copy the stream data in, then queue it to the **deferred-leave slot at `GameEntityManager+0x3C`** via `LookupOrEmplaceSecondaryListenerSlot` + `FUN_0046eef0`. This is distinct from the deferred-enter slot at `+0x30` covered in §1.9.
+
+There is no entity-table removal or CME `Event_EntityLeftAoI` emission at this call site — deferred leave delivery happens when the slot is flushed, and the entity reference is **not** explicitly freed here. (Audit B.2 / G4.)
+
 ---
 
 ### 1.11 Data domains for property streaming
 
 **Confirmed** from `EntityDescription_ParseProperties` decompile (client-property filter `flags & 0x06`) and the `EntityDescription_WriteClientData @ ghidra://SGW.exe@0x01590fc0` decompile (which filters by `(*(byte *)((int)pvVar6 + 0x20) & 6) != 0` for the property stream loop).
 
-The BigWorld property streaming system uses a data-domain bitmask to filter which properties are included in each message type. These constants are from BigWorld's `entity_description.hpp`:
+The BigWorld property streaming system uses a data-domain mask over the same 8-bit `DataDescription+0x20` flag byte from §1.2 to filter which properties are emitted in each message type. The domain mask is **not** a separate concept layered above the property flags — it is a bit-mask applied directly to the parsed flag byte. The three domain values that matter for SGW are:
 
-| Domain constant | Value | Description | Used in |
-|----------------|-------|-------------|---------|
-| `BASE_DATA` | `0x01` | Properties for the base entity | `createBasePlayer` stream |
-| `CLIENT_DATA` | `0x02` | Properties for the client | Both create messages |
-| `CELL_DATA` | `0x04` | Properties for the cell entity | `createCellPlayer` (no stream) |
-| `EXACT_MATCH` | `0x08` | Flags must match exactly | Selective streaming |
-| `ONLY_OTHER_CLIENT_DATA` | `0x10` | Only `OTHER_CLIENT` props | AoI enter for other players |
-| `ONLY_PERSISTENT_DATA` | `0x20` | Only persistent props | Database save/load |
+| Domain constant | Value | Meaning | Bit(s) tested |
+|----------------|-------|---------|---------------|
+| `CELL_DATA` | `0x01` | Property lives on the cell entity | `DATA_GHOSTED` (the `CELL_PUBLIC` keyword's bit) |
+| `CLIENT_DATA` | `0x06` | Property is client-visible | `DATA_OTHER_CLIENT (0x02) \| DATA_OWN_CLIENT (0x04)` |
+| `BASE_DATA` | `0x08` | Property lives on the base entity | `DATA_BASE` (the `BASE` keyword's bit) |
 
-For `createBasePlayer`: domain filter = `CLIENT_DATA | BASE_DATA` → properties with `DATA_OWN_CLIENT (0x04)` or `DATA_BASE (0x08)` flags.
+Combined masks used by the create-message stream writers:
 
-The `EntityDescription_WriteClientData` decompile confirms the `flags & 0x06` filter (bits 1+2 = `OTHER_CLIENT | OWN_CLIENT`) for the schema-write path. The creation-message property stream uses the same client-visible subset.
+- `createBasePlayer` stream: `CLIENT_DATA \| BASE_DATA = 0x06 \| 0x08 = 0x0E` — admits OWN_CLIENT, OTHER_CLIENT, and BASE properties.
+- `createCellPlayer` stream (if there were one — §1.7 confirms there isn't): `CLIENT_DATA \| CELL_DATA = 0x06 \| 0x01 = 0x07`.
+
+`EntityDescription_WriteClientData @ ghidra://SGW.exe@0x01590fc0` applies the `0x06` (`CLIENT_DATA`) gate at decompile line `(*(byte *)((int)pvVar6 + 0x20) & 6) != 0`. Before each property's value reaches the wire, `DataDescription_WriteToStream @ ghidra://SGW.exe@0x015958b0` masks the flags byte with **`0x5f`** — clearing `DATA_PERSISTENT (0x20)` and `DATA_ID (0x80)`, since those are parse-time / persistence concerns that should never appear in the wire flag byte.
+
+**SGW divergence reprise.** No SGW `.def` property satisfies `flags & 0x06 != 0` (§1.2 + §2.3): every property in the 18 entity defs uses `CELL_PUBLIC (0x01)`, `BASE (0x08)`, or `CELL_PRIVATE (0x00)`. So in SGW the `createBasePlayer` stream's `CLIENT_DATA | BASE_DATA = 0x0E` mask matches only the `BASE` bit (`0x08`) — `CLIENT_DATA (0x06)` never matches. The mask is correct; the SGW keyword surface just doesn't hit the client-visibility bits. Server implementers should still encode against the 0x0E filter for correctness; once any `.def` adds an `OWN_CLIENT` or `OTHER_CLIENTS` keyword the matching bit will flow through naturally. (Audit B.3 / G5.)
 
 ---
 
@@ -483,6 +526,12 @@ Each `DataType::GetTypeName_WriteStream` feeds binary type-encoding into the MD5
 
 The 16-byte digest is the schema-version fingerprint. Server and client must produce the same hash for the same entity's type layout; a mismatch indicates a schema divergence and will cause the client to reject property updates silently.
 
+**Schema-stream virtual is `vtable+0x24`** (slot index 9). Confirmed by `DataDescription_WriteToStream @ ghidra://SGW.exe@0x015958b0` — the indirect call is `(**(code**)(**(int**)(this+0x1c) + 0x24))(stream)`. `FixedDictDataType_ToXml @ ghidra://SGW.exe@0x01598b80` then reveals the `FixedDictDataType` in-memory layout the schema writer iterates over: `+0x10` is the `allowNone` flag byte; `+0x18/+0x1c` are the field-array `begin`/`end` pointers (element stride `0x28` = 40 bytes); each field stores its name string in SSO at `+0x04..+0x18` (with length at `+0x14`) and the nested DataType pointer at `+0x1c` (dispatched recursively through `vtable+0x24`). Wire schema layout per FIXED_DICT field is therefore `[name_bytes][nested_type_descriptor_via_vtable+0x24]`. (Audit B.12 / G37.)
+
+**Runtime value serialization virtual unconfirmed.** `vtable+0x24` is the **schema-descriptor writer** (the MD5-feeding path). The DataType virtual that serializes actual property *values* on the wire is a different slot — likely `+0x28` or `+0x2c` — and was not decompiled in this pass. Promotion of the per-DataType-subclass wire layouts to HIGH confidence is blocked on tracing that slot.
+
+**MailBoxDataType partial coverage.** `FUN_0159b480 @ ghidra://SGW.exe@0x0159b480` is the MailBoxDataType DtorBody and confirms the vtable identity as `SimpleMetaDataType<class_MailBoxDataType>::vftable @ ghidra://SGW.exe@0x0159b850`. The `vtable+0x24` slot was not decompiled in this pass; BW 1.9.1 reference says a mailbox wire value is 8 bytes (`channelId u16 + indexInComponent u16 + spaceId u32`), but that is unverified for SGW. (Audit B.13 / G38.) Tracked as OQ-4 sub-bullet in §1.15.
+
 ---
 
 ### 1.14 Source-of-truth crosswalk
@@ -519,6 +568,12 @@ The 16-byte digest is the schema-version fingerprint. Server and client must pro
 **OQ-1 (HIGH priority): Property-change propID threshold — binary confirmation needed.**
 The 0x3C/0x3D prefix and the 60/316 thresholds are sourced from BW 2.0.1 `property_change.hpp` (server-side). SGW.exe contains only the receiver (`FNetworkPropertyChange__vfunc_0 @ 0x015652d0`), which reads an opaque pre-encoded stream. Confirming the actual thresholds requires either (a) a live x64dbg capture of the 4 bytes at `this+0x2c` during a known property change, or (b) access to the server binary / BW 2.0.1 encoder source. Until then, the 60/316 values remain BW-source-only citations at MEDIUM confidence.
 
+A wire-capture attempt against `game/sgw/Working/binaries/sessions/2026-05-16_08-21.pcap` produced **zero** `updateEntity` (msg_id `0x0A`) messages — the session ended before in-world property activity. No `0x3C` / `0x3D` first-bytes observed. Path to closure: a capture with 60+ seconds of sustained in-world activity (an `ON_STAT_UPDATE` from a health change is the cheapest probe, method 20 on §2.7's index), or an x64dbg breakpoint at `FUN_01560ad0`. Audit Appendix C.5 records the attempt. The implementer warning in §1.8 and R6 remain fully justified.
+
+**OQ-X (NEW, HIGH priority): Inbound propID decoder not located.** Linked to F1 in §1.16. The outgoing serializer is at `FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0`; the **inbound** propID decoder (where the bounds check would live) is in an upstream Mercury handler not yet identified by name. Without it, F1's failure mode (out-of-range propID → crash vs. silent drop) cannot be characterized statically. Likely search surface: `ServerConnection_*` inbound dispatchers, callers of `EntityDescription_GetClientPropertyByIndex @ ghidra://SGW.exe@0x01590d80`, and the message-catalog row for msg_id `0x0A`. Closing this OQ also closes F1.
+
+**OQ-Y (NEW, MEDIUM priority): Schema MD5 fingerprint comparison site.** Linked to F3 in §1.16. Hash production (`MethodDescription_WriteSchemaToStream` + `DataType::GetTypeName_WriteStream` chain) is documented; the **comparison** site against a server-provided value is not located. See F3 for starting points.
+
 **OQ-2: PARTIALLY RESOLVED — DataDescription dual name fields at `element+0x24` and `element+0x40`.**
 Confirmed by [`entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Target 4: both `StdStringMSVC` fields at `+0x24` and `+0x40` exist in the 0x110-byte parse-time DataDescription (initialised by `DataDescription_Constructor @ ghidra://SGW.exe@0x01591fb0` alongside the `+0x04` field). `EntityDescription_FindAndWritePropertyByName @ ghidra://SGW.exe@0x0158e780` compares the two against each other and only calls `EntityDescription_WriteClientData` when they match — i.e., it skips aliased properties (where the two name fields differ) and writes non-aliased ones.
 
@@ -530,6 +585,8 @@ A fresh decompile of `ServerConnection_CreateCellPlayer @ ghidra://SGW.exe@0x00d
 **OQ-4: MD5 type-encoding per-subclass byte sequences.**
 The `GetTypeName_WriteStream` encodings for the 17 DataType subclasses are cited from the old RE doc (W-entity-desc-B pass). They were not re-decompiled in this pass. A fresh decompile of each `GetTypeName_WriteStream` function in the `[0x01599150, 0x0159b510]` range should be done before promoting §1.13 to HIGH confidence. Particularly the Integer types' "5-byte prefix + 1 byte size" claim — the exact prefix bytes are not specified.
 
+Sub-bullet (G37 / G38 partials): the DataType **schema** virtual is confirmed at `vtable+0x24` (§1.13 update from audit B.12); the **runtime value** virtual is unconfirmed — likely `+0x28` or `+0x2c`. `MailBoxDataType` vtable identity is confirmed (`ghidra://SGW.exe@0x0159b850`); its `vtable+0x24` slot decompile was not done, so the BW 1.9.1 reference layout (`channelId u16 + indexInComponent u16 + spaceId u32` = 8 bytes) is unverified for SGW. Closing this OQ requires (a) decompiling the runtime-value virtual for at least the four most-used DataType subclasses (`IntegerDataType<*>`, `FloatDataType`, `MailBoxDataType`, `FixedDictDataType`) and (b) decompiling `SimpleMetaDataType<class_MailBoxDataType>::vftable +0x24`.
+
 **OQ-5: RESOLVED — `MethodDescription_Destructor` naming confirmed wrong.**
 `MethodDescription_Destructor @ ghidra://SGW.exe@0x015942f0` was suspected of being misnamed. Fresh decompilation in this pass confirms the function is NOT a destructor: it calls `MD5_Update` (via `FUN_015a3da0`) with the method name bytes, then with the exposed-flag byte, then iterates the args vector invoking `vtable+0x24` (`DataType::GetTypeName_WriteStream`) on each arg's DataType. The correct name is `MethodDescription_WriteSchemaToStream`. A Ghidra rename is warranted; see §1.13 inline note. The annotation script that assigned "Destructor" matched the MSVC scalar-destructor call pattern superficially (the args vector cleanup loop resembles destructor teardown) but misidentified the function. Record in `docs/reverse-engineering/annotation-script-shift-bugs.md`.
 
@@ -538,9 +595,29 @@ The cache-stamp system (described in agent memory `bigworld-engine-advisor/cache
 
 ---
 
-### 1.16 Gotchas and surprises
+### 1.16 Failure modes
 
-The five failure modes below are the ones a server implementer is likeliest to trip on. Each maps to a numbered S-code so requirements (§1.17) and reviewers can refer back without re-explaining.
+Six numbered **failure modes** — what happens when the wire-format contract is violated. These differ from §1.17 gotchas (which are surprises in the *protocol*, valid messages that mislead implementers) in that an F-code names a wire-level invariant *the client can detect a violation of*, and pins the decoder's response. Most are silent drops; one is a buffered hold-indefinitely (F6) which is the real protocol invariant servers must respect.
+
+**F1 — Property update with out-of-range propID — decoder behavior UNVERIFIED.** If a property-change message arrives with a propID exceeding the entity's DataDescription array bounds, the client decoder's behavior is not confirmed. `FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0` is the *outgoing* serializer (it calls Mercury bundle write helpers); the **inbound** propID decoder and bounds checker have not yet been located. A live x64dbg session with a crafted oversized propID would resolve crash vs. silent drop. Pending — see OQ-X below; tracked alongside OQ-1 in §1.15. (Audit B.4 / G13.)
+
+**F2 — Unknown methodID → silent drop with wide-string log.** An incoming method byte that decodes to a methodID with no registered listener results in a **silent drop** after logging `"No client->server entity description mapping found for entity type %d; message id: %d."` (wide string). Confirmed in `ProcessEntityMethodEmission @ ghidra://SGW.exe@0x00c6f8f0` — the function checks `EntityDescription_FindMethodIdByName` for sentinel `0xFFFF` and falls through without dispatch. The log is only active when `g_bEntityRpcDebug (DAT_01ef2224)` is set. **No crash, no disconnect.** A server that emits a methodID outside the entity's table will see no protocol-level error. (Audit B.5 / G14.)
+
+**F3 — Schema MD5 fingerprint mismatch — comparison site UNVERIFIED.** The site where the client compares a schema MD5 fingerprint against a server-provided value has not been located. Searches for `MD5_Finalize`, `MD5_DigestToHexString`, and the related CryptoPP wrappers returned only the Mercury `protocol_digest` machinery (see `spec.protocol.mercury-wire-format` §2), not entity-schema fingerprint logic. Per the `datatype-registry-system.md` agent-memory note, MD5 hashing occurs during `DataType_Register @ ghidra://SGW.exe@0x01597ce0` for each registered type; whether the assembled digest is then compared against a wire-provided value (and what happens on mismatch) is unknown. Starting points for a future pass: callers of the CryptoPP MD5 functions at `ghidra://SGW.exe@0x01604e80`, and the `EntityDescription_WriteClientData` MD5-feed loop documented in §1.13. (Audit B.6 / G15.)
+
+**F4 — Unknown typeID in `createBasePlayer` — outer handler does no validation.** `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0` passes the `u16` typeID directly to its entity-creation delegate at `*(this+0x168)` with **no in-handler validation gate** — no range check, no server-only flag test, no rejection path before or after the delegate call. The delegate is a runtime function pointer that statically resolves to nothing in this pass. Failure mode inside the delegate (e.g. typeID has no client-loaded `.def`) is not visible in the outer handler — likely a silent instantiation failure when entity-description lookup misses, but x64dbg confirmation is needed. (Audit B.7 / G16; §2.5 has the same finding from the client-tree side.)
+
+**F5 — Sub-slot decode lands outside exposed-method range → silent drop.** A wire method-byte sequence that decodes through the sub-slot formula `idBase = 0x3E - (nExposed + 0xC0) / 0xFF` (per §1.4, computed at `MethodDescription_ComputeIdBase @ ghidra://SGW.exe@0x01590bb0`) to a method index *exceeding* the entity's exposed-method count results in a red-black tree miss inside `ProcessEntityMethodEmission @ ghidra://SGW.exe@0x00c6f8f0`. The follow-up `EntityDescription_GetExposedClientMethodByIndex @ ghidra://SGW.exe@0x01590f30` returns `0` on out-of-bounds and the dispatch returns without invoking any handler. **Silent drop. No crash, no disconnect.** This is the same protocol-level invisibility as F2, reached via a different decode path. (Audit B.8 / G17.)
+
+**F6 — Property update for entity not in client's table → BUFFERED INDEFINITELY.** This is the load-bearing one. `GameEntityManager_DispatchEntityRpc @ ghidra://SGW.exe@0x00dd2b80` handles "entity not found" by **buffering, not dropping**. When entityID is absent from the primary map at `+0x18` and is not the controlled entity, execution reaches `LAB_00dd2c99` and the dispatcher reads the byte-count, allocates a `0x20`-byte `MemoryOStream` via `scalable_malloc`, copies the message body in, and queues it to the deferred slot at `GameEntityManager+0x3C` via `LookupOrEmplaceSecondaryListenerSlot + FUN_0046eef0`. The message is held **indefinitely** — there is no TTL, no discard path, no upper bound. If the entity never re-enters AoI the buffer is never flushed; if it does re-enter, the buffered payload is replayed against the freshly-instantiated entity (which may or may not be the same logical entity, depending on the server's identity-management choices). **Implication for servers**: a server must guarantee `leaveAoI` always precedes any late property updates for a given entityID, or else the client will deliver the late update against the next instance that ever takes that ID — a ghost-delivery class of bug. The deferred slot at `+0x3C` is the same one §1.10's `LeaveAoI` writes to, so a leave + an immediate property update can race; the leave must commit first. (Audit B.9 / G18.)
+
+> [!IMPORTANT] **Implementer takeaway for F6.** "The client buffered my late update" is not the safety net it looks like. A server that emits property updates after the matching `leaveAoI` is creating a buffered hazard the client cannot reject. The fix is server-side ordering, not retry-on-error logic.
+
+---
+
+### 1.17 Gotchas and surprises
+
+The five gotchas below are the ones a server implementer is likeliest to trip on. Each maps to a numbered S-code so requirements (§1.18) and reviewers can refer back without re-explaining.
 
 **S1 — Sub-slot threshold is method-count-dependent, not a constant `0x3E`.** The threshold `idBase = 0x3E - (nExposedCount + 0xC0) / 0xFF` (§1.4) falls to **61** for SGWPlayer because `nExposedCount = 157` (`iVar2 = 1`). A server that hard-codes `62` will produce a wire byte for SGWPlayer's 62nd exposed client method (`index = 61`) that the client decodes through the single-byte path — but the client's own table has shifted into two-byte encoding at that index, so the decoded methodID points at a different slot. The mismatch is silent: no error, just a wrong method invoked. Verified by `EntityDescription_AssignClientMethodIds @ ghidra://SGW.exe@0x01590df0` and §2.7's cascade arithmetic. **Lesson**: compute the threshold from each entity's `nExposedCount`; do not pull `62` from any old doc.
 
@@ -552,11 +629,13 @@ The five failure modes below are the ones a server implementer is likeliest to t
 
 **S5 — The client-property pointer array at `+0x70/+0x74` is binary-correct but empty in SGW.** `EntityDescription_ParseProperties @ ghidra://SGW.exe@0x015924a0` builds a filtered array using `flags & 0x06 != 0` (bits 1+2 = `OWN_CLIENT | OTHER_CLIENT`). No SGW `.def` keyword sets either bit (§2.3 audit; `CELL_PUBLIC` sets only bit 0, `BASE` sets only bit 3, `CELL_PRIVATE` sets none). The array exists, the filter executes, but the result is always empty. Property updates in SGW route via the **main DataDescription array at `EntityDescription+0x5c/+0x60`** instead — wire propID indexes that array, not the empty filtered one. A server that follows stock BigWorld semantics (filtered array as routing table) will produce property updates that match no client property. **Lesson**: route through `+0x5c/+0x60` in SGW; `+0x70/+0x74` is dead code in this build.
 
+**S6 — `enableEntities` body is 8 bytes of undefined stack-frame slop, not a structured field pair.** The client emits `enableEntities` (client→server, 8 bytes total) and the body is *whatever was on the emitter's stack at send time*. A wire capture (audit Appendix C.9) decrypted 9 `enableEntities` messages: representative payloads include `00 00 00 C0 40 44 00 80`, `73 00 63 00 72 00 69 00` (those last bytes spell `"scri"` in ASCII — a clear fragment of a prior wide-string stack frame contaminating the buffer), and various random-looking byte sequences. No pattern consistent with `[i32 entityId][i32 flag]` or any other structured u32 pair. This matches the mercury chapter §2 W-enable-entities finding: SGW expanded BigWorld's 1-byte `keepBase` field into 8 bytes and never assigned defined semantics to the extra 7. **Lesson**: server-side, ignore the body entirely — do not parse, do not validate against a schema; treat the 8 bytes as opaque. A defensive log if any byte is nonzero is fine; a parse is wasted code.
+
 ---
 
-### 1.17 Server requirements
+### 1.18 Server requirements
 
-Each requirement names the wire-format invariant a server must satisfy and cross-references the §1 evidence and the matching S-code in §1.16. Reviewers can use the R-code as shorthand; implementers can use the citation as the proof.
+Each requirement names the wire-format invariant a server must satisfy and cross-references the §1 evidence and the matching S-code in §1.17 (or F-code in §1.16). Reviewers can use the R-code as shorthand; implementers can use the citation as the proof.
 
 **R1 — Use the typeID matching the entity name's position in `entities.xml`** (1-based; SGWPlayer = `0x03`). §1.6 reads a `u16 typeId` at offset 4 of `createBasePlayer`; §2.5 confirms the 1-based document-index assignment. A typeID off-by-one resolves to a different entity description on the client, with no validation gate at the message handler (audit Target 2, §1.14 crosswalk). **Citation**: `game/sgw/Common/res/entities/entities.xml:1-32`; `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0`.
 
@@ -969,6 +1048,341 @@ Practical consequence: a server engineer changing entity-sync behavior cannot do
 | Five reserved-name exclusions not present in any client `.def` | grep `publicReservationData publicMissionData completedMissions aggressionOverrides effectMonikers` across `defs/` returns zero matches | §1.2 — these names are SGW-specific exclusions registered in the reserved-name set; their absence from the client tree is consistent with the exclusion |
 
 The crosswalk's load-bearing observation: **the client tree's schema is exhaustive.** Every wire field on the entity-property-sync wire derives from these XML files. A server reimplementation that parses the same files in the same order with the same flag interpretation produces the same propID and methodID tables — bit-identical. The wire format is not negotiated; it is computed from the schema, and the schema is checked in to the client tree.
+
+---
+
+### 2 Appendix A — SGWPlayer property catalog
+
+Full property catalog for `SGWPlayer` produced by walking the parse cascade (`<Parent>` recursively, then `<Implements>` in XML order, then own `<Properties>`) per §1.1 + §2.7. **Total: 244 properties, propIDs 0..243**, mapped to source `.def` files. Generated programmatically by parsing every file in the SGWPlayer cascade chain (`SGWEntity.def` → `SGWSpawnableEntity.def` → `SGWBeing.def` plus 17 distinct interface files). This is the canonical ordering — a server's DataDescription table for SGWPlayer must produce these 244 entries in this propID order to stay bit-compatible with the client.
+
+**Filter destination summary** (apply the §1.2 / §2.3 keyword → bit mapping, then §1.11 domain mask):
+
+- **All-properties array at `EntityDescription+0x5c/+0x60`**: all 244 entries land here (zero properties carry `EDITOR_ONLY (0x40)`, so the non-EDITOR_ONLY filter doesn't exclude anyone).
+- **Client-property pointer array at `+0x70/+0x74`** (`flags & 0x06`): **0 entries**. Confirms §1.2 SGW divergence — no SGW `.def` keyword sets bits 1 or 2.
+- **Keyword distribution**: 192× `CELL_PRIVATE`, 43× `CELL_PUBLIC`, 9× `BASE`. No `OWN_CLIENT`, `OTHER_CLIENTS`, `CLIENT_ONLY`, `EDITOR_ONLY` instances.
+- **Single property with both `<Identifier>true</Identifier>` and `<Persistent>true</Persistent>`**: `playerName` (propID 176).
+- **Reserved-name exclusions hit**: 4 of the 5 §1.2 names appear in this catalog (`publicMissionData` propID 165, `completedMissions` propID 166, `effectMonikers` propID 70, `aggressionOverrides` not in any SGWPlayer-cascade file). They are flagged at parse time as "should not propagate to client" warnings (per §1.2 reserved-name logic) but still land in the main array — the reserved-name set is checked at the property-stream encoder, not at parse.
+
+`Pers` and `Ident` columns flag `<Persistent>true</Persistent>` and `<Identifier>true</Identifier>` injections (bits 5 and 7 of the flag byte, per §1.2). Empty cells mean no injection.
+
+| propID | Name | Type | Flags | Source | Pers | Ident |
+|-------:|------|------|-------|--------|:----:|:-----:|
+| 0 | `groups` | `PYTHON` | `CELL_PRIVATE` | `interfaces/DistributionGroupMember.def` |  |  |
+| 1 | `groupInfoUpdateTimers` | `PYTHON` | `CELL_PRIVATE` | `interfaces/DistributionGroupMember.def` |  |  |
+| 2 | `pendingJoin` | `PYTHON` | `CELL_PRIVATE` | `interfaces/DistributionGroupMember.def` |  |  |
+| 3 | `baseEvents` | `PYTHON` | `BASE` | `interfaces/EventParticipant.def` |  |  |
+| 4 | `cellEvents` | `PYTHON` | `CELL_PRIVATE` | `interfaces/EventParticipant.def` |  |  |
+| 5 | `dbID` | `DBID` | `CELL_PRIVATE` | `SGWEntity.def` |  |  |
+| 6 | `nextRequestID` | `INT32` | `CELL_PRIVATE` | `SGWEntity.def` |  |  |
+| 7 | `pendingRequests` | `PYTHON` | `CELL_PRIVATE` | `SGWEntity.def` |  |  |
+| 8 | `timers` | `PYTHON` | `CELL_PRIVATE` | `SGWEntity.def` |  |  |
+| 9 | `createOnCell` | `MAILBOX` | `BASE` | `SGWEntity.def` |  |  |
+| 10 | `kismetEventSetId` | `INT32` | `CELL_PUBLIC` | `SGWSpawnableEntity.def` |  |  |
+| 11 | `SpawnSetID` | `INT32` | `BASE` | `SGWSpawnableEntity.def` |  |  |
+| 12 | `staticMeshName` | `WSTRING` | `CELL_PUBLIC` | `SGWSpawnableEntity.def` |  |  |
+| 13 | `bodySet` | `WSTRING` | `CELL_PUBLIC` | `SGWSpawnableEntity.def` |  |  |
+| 14 | `mobId` | `INT32` | `CELL_PUBLIC` | `SGWSpawnableEntity.def` |  |  |
+| 15 | `baseMobId` | `INT32` | `BASE` | `SGWSpawnableEntity.def` |  |  |
+| 16 | `minigamePlayers` | `ARRAY<INT32>` | `CELL_PRIVATE` | `SGWSpawnableEntity.def` |  |  |
+| 17 | `entityVariables` | `PYTHON` | `CELL_PRIVATE` | `SGWSpawnableEntity.def` |  |  |
+| 18 | `interactDebug` | `INT8` | `CELL_PRIVATE` | `SGWSpawnableEntity.def` |  |  |
+| 19 | `shouldSendKismet` | `INT8` | `CELL_PRIVATE` | `SGWSpawnableEntity.def` |  |  |
+| 20 | `craftingStationControllerID` | `CONTROLLER_ID` | `CELL_PRIVATE` | `SGWSpawnableEntity.def` |  |  |
+| 21 | `spaceCreatorMailbox` | `MAILBOX` | `CELL_PRIVATE` | `SGWSpawnableEntity.def` |  |  |
+| 22 | `beingName` | `WSTRING` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 23 | `level` | `INT8` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 24 | `visibilityID` | `CONTROLLER_ID` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 25 | `targetID` | `INT32` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 26 | `bStateField` | `INT32` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 27 | `primaryColorId` | `UINT32` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 28 | `secondaryColorId` | `UINT32` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 29 | `skinColorId` | `UINT32` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 30 | `currentComponentList` | `ARRAY<WSTRING>` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 31 | `disguiseEnabled` | `INT8` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 32 | `disguiseStaticMeshName` | `WSTRING` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 33 | `disguiseBodySet` | `WSTRING` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 34 | `disguiseComponentList` | `ARRAY<WSTRING>` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 35 | `disguiseFaction` | `INT8` | `CELL_PUBLIC` | `interfaces/SGWBeing.def` |  |  |
+| 36 | `disguiseTimerId` | `CONTROLLER_ID` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 37 | `disguiseReduction` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 38 | `disguiseVisionId` | `CONTROLLER_ID` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 39 | `petList` | `ARRAY<MAILBOX>` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 40 | `movementType` | `UINT8` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 41 | `detectors` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 42 | `visionChangeCallbacks` | `ARRAY<PYTHON>` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 43 | `visionExceptions` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 44 | `deathAbilityId` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWBeing.def` |  |  |
+| 45 | `warmupTimer` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 46 | `bIsWarmingUp` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 47 | `lastWarmUpInterruptTime` | `FLOAT` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 48 | `warmUpRuntimeParams` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 49 | `pulsedEffects` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 50 | `durationEffects` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 51 | `abilityAdjustments` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 52 | `abilityCooldowns` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 53 | `categoryCooldowns` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 54 | `bDmgOff` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 55 | `bGodMode` | `INT8` | `CELL_PUBLIC` | `interfaces/SGWAbilityManager.def` |  |  |
+| 56 | `bInfiniteAmmo` | `INT8` | `CELL_PUBLIC` | `interfaces/SGWAbilityManager.def` |  |  |
+| 57 | `bIgnoreHealth` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 58 | `bIgnoreFocus` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 59 | `bNoAggro` | `INT8` | `CELL_PUBLIC` | `interfaces/SGWAbilityManager.def` |  |  |
+| 60 | `bCombatDebug` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 61 | `bCombatVerboseDebug` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 62 | `debugAbilityList` | `ARRAY<INT32>` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 63 | `debugEffectList` | `ARRAY<INT32>` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 64 | `debugAbilityLevel` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 65 | `debugAbilityTargetID` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 66 | `channeledAbilityData` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 67 | `channeledData` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 68 | `lastChannelInterruptTime` | `FLOAT` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 69 | `effectComponents` | `ARRAY<PYTHON>` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 70 | `effectMonikers` | `ARRAY<PYTHON>` | `CELL_PUBLIC` | `interfaces/SGWAbilityManager.def` |  |  |
+| 71 | `effectSequenceId` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 72 | `diminishingReturns` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 73 | `immuneToEffects` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 74 | `pendingAbilities` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWAbilityManager.def` |  |  |
+| 75 | `entitiesDetectedStealth` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 76 | `stealthTimer` | `CONTROLLER_ID` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 77 | `stealthDefaultDetector` | `CONTROLLER_ID` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 78 | `revealDefaultDetector` | `CONTROLLER_ID` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 79 | `Alignment` | `UINT8` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 80 | `faction` | `UINT8` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 81 | `Archetype` | `UINT8` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 82 | `threatenedMobs` | `ARRAY<INT32>` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 83 | `lastCombatTime` | `FLOAT` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 84 | `lastRegenTime` | `FLOAT` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 85 | `regenTimerID` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 86 | `NearCoverSetIDs` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 87 | `successiveShots` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 88 | `successiveShotsTarget` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 89 | `lastSuccessiveShotTime` | `FLOAT` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 90 | `bHealDebug` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 91 | `statsBaseMin` | `StatList` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 92 | `statsBaseCurrent` | `StatList` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 93 | `statsBaseMax` | `StatList` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 94 | `statsMin` | `StatList` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 95 | `statsCurrent` | `StatList` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 96 | `statsMax` | `StatList` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 97 | `reloadTimerId` | `CONTROLLER_ID` | `CELL_PUBLIC` | `interfaces/SGWCombatant.def` |  |  |
+| 98 | `currentAmmoType` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWCombatant.def` |  |  |
+| 99 | `ignoredList` | `ARRAY<WSTRING>` | `BASE` | `interfaces/Communicator.def` |  |  |
+| 100 | `channels` | `ARRAY<PYTHON>` | `CELL_PRIVATE` | `interfaces/Communicator.def` |  |  |
+| 101 | `AFK` | `UINT8` | `BASE` | `interfaces/Communicator.def` |  |  |
+| 102 | `DND` | `UINT8` | `BASE` | `interfaces/Communicator.def` |  |  |
+| 103 | `records` | `PYTHON` | `CELL_PRIVATE` | `interfaces/OrganizationMember.def` |  |  |
+| 104 | `squad` | `INT32` | `CELL_PUBLIC` | `interfaces/OrganizationMember.def` |  |  |
+| 105 | `strikeTeamTimers` | `PYTHON` | `CELL_PRIVATE` | `interfaces/OrganizationMember.def` |  |  |
+| 106 | `pendingPvPTimers` | `PYTHON` | `CELL_PRIVATE` | `interfaces/OrganizationMember.def` |  |  |
+| 107 | `pendingGroups` | `PYTHON` | `CELL_PRIVATE` | `interfaces/OrganizationMember.def` |  |  |
+| 108 | `pendingJoins` | `PYTHON` | `CELL_PRIVATE` | `interfaces/OrganizationMember.def` |  |  |
+| 109 | `pendingInvitesByType` | `PYTHON` | `CELL_PRIVATE` | `interfaces/OrganizationMember.def` |  |  |
+| 110 | `minigame` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 111 | `pendingInstance` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 112 | `pendingMinigamePosition` | `VECTOR3` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 113 | `pendingItem` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 114 | `pendingMob` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 115 | `pendingSeed` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 116 | `pendingTC` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 117 | `minigameMobAttemptTracker` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 118 | `minigameItemAttemptTracker` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 119 | `minigameRegistrationCost` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 120 | `minigameRegistered` | `UINT8` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 121 | `minigameRegisteredWantsRequests` | `UINT8` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 122 | `minigameRegisteredNote` | `WSTRING` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 123 | `minigameRegisteredRange` | `UINT8` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 124 | `minigameRegistrationAvailable` | `UINT8` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 125 | `pendingHelper` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 126 | `pendingHelperBase` | `MAILBOX` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 127 | `pendingHelperExpires` | `FLOAT` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 128 | `pendingHelperTip` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 129 | `pendingHelperTicket` | `STRING` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 130 | `pendingMinigameRequests` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 131 | `currentMinigameRequest` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 132 | `minigameCallTracker` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 133 | `minigameWaitingOnCash` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 134 | `minigameSavedTimeInfo` | `FLOAT` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 135 | `minigameSavedRegistrationInfo` | `STRING` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 136 | `minigameSavedRegistrationNote` | `WSTRING` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 137 | `minigameContacts` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 138 | `minigameRequestTimer` | `INT32` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 139 | `minigameNextNPCRequest` | `FLOAT` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 140 | `pendingContactList` | `PYTHON` | `CELL_PRIVATE` | `interfaces/MinigamePlayer.def` |  |  |
+| 141 | `knownStargateAddresses` | `ARRAY<PYTHON>` | `CELL_PRIVATE` | `interfaces/GateTravel.def` |  |  |
+| 142 | `oldWorldID` | `INT32` | `CELL_PRIVATE` | `interfaces/GateTravel.def` |  |  |
+| 143 | `gateCounter` | `INT32` | `CELL_PRIVATE` | `interfaces/GateTravel.def` |  |  |
+| 144 | `destinationGate` | `INT32` | `CELL_PRIVATE` | `interfaces/GateTravel.def` |  |  |
+| 145 | `destinationGateArrivalTime` | `FLOAT` | `CELL_PRIVATE` | `interfaces/GateTravel.def` |  |  |
+| 146 | `playerBags` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 147 | `activeSlots` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 148 | `inventoryAdjustments` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 149 | `pendingItemTransactions` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 150 | `cash` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 151 | `weaponActivationTimerID` | `CONTROLLER_ID` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 152 | `weaponDeactivationTimerID` | `CONTROLLER_ID` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 153 | `weaponActivated` | `UINT8` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 154 | `inventoryComponents` | `ARRAY<WSTRING>` | `CELL_PUBLIC` | `interfaces/SGWInventoryManager.def` |  |  |
+| 155 | `knownAmmoTypes` | `ARRAY<INT32>` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 156 | `racialParadigmLevels` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 157 | `appliedSciencePoints` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 158 | `knownDisciplines` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 159 | `knownCrafts` | `ARRAY<INT32>` | `CELL_PRIVATE` | `interfaces/SGWInventoryManager.def` |  |  |
+| 160 | `mailMessages` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWMailManager.def` |  |  |
+| 161 | `pendingMailMessages` | `PYTHON` | `CELL_PRIVATE` | `interfaces/SGWMailManager.def` |  |  |
+| 162 | `lastMailGetTime` | `FLOAT` | `CELL_PRIVATE` | `interfaces/SGWMailManager.def` |  |  |
+| 163 | `haveMailMessages` | `UINT8` | `CELL_PRIVATE` | `interfaces/SGWMailManager.def` |  |  |
+| 164 | `missions` | `PYTHON` | `CELL_PRIVATE` | `interfaces/Missionary.def` |  |  |
+| 165 | `publicMissionData` | `ARRAY<PYTHON>` | `CELL_PUBLIC` | `interfaces/Missionary.def` |  |  |
+| 166 | `completedMissions` | `ARRAY<PYTHON>` | `CELL_PUBLIC` | `interfaces/Missionary.def` |  |  |
+| 167 | `currentMissionLoot` | `PYTHON` | `CELL_PRIVATE` | `interfaces/Missionary.def` |  |  |
+| 168 | `bShowMissionDebug` | `INT8` | `CELL_PRIVATE` | `interfaces/Missionary.def` |  |  |
+| 169 | `missionProcessQueue` | `PYTHON` | `CELL_PRIVATE` | `interfaces/Missionary.def` |  |  |
+| 170 | `pendingMissionAccepts` | `ARRAY<INT32>` | `CELL_PRIVATE` | `interfaces/Missionary.def` |  |  |
+| 171 | `pendingMissionShares` | `PYTHON` | `CELL_PRIVATE` | `interfaces/Missionary.def` |  |  |
+| 172 | `interactFlag` | `INT8` | `CELL_PRIVATE` | `interfaces/SGWPoller.def` |  |  |
+| 173 | `lastPollTime` | `INT32` | `CELL_PRIVATE` | `interfaces/SGWPoller.def` |  |  |
+| 174 | `contactLists` | `PYTHON` | `CELL_PRIVATE` | `interfaces/ContactListManager.def` |  |  |
+| 175 | `watchedItems` | `ARRAY<INT32>` | `CELL_PRIVATE` | `interfaces/SGWBlackMarketManager.def` |  |  |
+| 176 | `playerName` | `WSTRING` | `CELL_PUBLIC` | `SGWPlayer.def` | Y | Y |
+| 177 | `extraName` | `WSTRING` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 178 | `account` | `MAILBOX` | `BASE` | `SGWPlayer.def` |  |  |
+| 179 | `areaName` | `WSTRING` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 180 | `areaKey` | `WSTRING` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 181 | `experience` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 182 | `trainingPoints` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 183 | `knownAbilities` | `ARRAY<INT32>` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 184 | `knownPetAbilities` | `ARRAY<INT32>` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 185 | `pvpFlag` | `INT8` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 186 | `isBankingOverride` | `INT8` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 187 | `respawnTimerID` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 188 | `unstuckTimerID` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 189 | `rezDebuff` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 190 | `lastPrimaryUpdateTime` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 191 | `lastSecondaryUpdateTime` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 192 | `gainLevelLock` | `INT8` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 193 | `currentLoginTime` | `FLOAT` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 194 | `totalTimePlayed` | `FLOAT` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 195 | `timeLastLevelled` | `FLOAT` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 196 | `timeSpentThisLevel` | `FLOAT` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 197 | `interactionList` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 198 | `interactionTimer` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 199 | `logoutTimer` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 200 | `queuedAbility` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 201 | `autoCycleTimerID` | `CONTROLLER_ID` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 202 | `playerAvatarSetID` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 203 | `accessLevel` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 204 | `designerFlags` | `STRING` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 205 | `playerReadyFlags` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 206 | `loadTimerID` | `CONTROLLER_ID` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 207 | `currentGateAddress` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 208 | `ImmunityDict` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 209 | `worldinstance` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 210 | `worldID` | `INT32` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 211 | `currentWaypoints` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 212 | `hasWitness` | `UINT8` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 213 | `bXPOff` | `UINT8` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 214 | `bInteractDebug` | `UINT8` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 215 | `perfStatsByChannel` | `UINT8` | `BASE` | `SGWPlayer.def` |  |  |
+| 216 | `currentRingTransporterDestination` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 217 | `pendingRingTeleport` | `INT8` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 218 | `spaceCreatorID` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 219 | `worldinstanceMapResetDate` | `FLOAT` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 220 | `canBeSeenOld` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 221 | `systemOptions` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 222 | `playerRespawners` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 223 | `spawnRegionUpdates` | `ARRAY<MAILBOX>` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 224 | `craftingEntityFlags` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 225 | `craftingOptions` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 226 | `craftTimer` | `CONTROLLER_ID` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 227 | `craftQueue` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 228 | `duelState` | `INT8` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 229 | `duelEntities` | `ARRAY<MAILBOX>` | `CELL_PUBLIC` | `SGWPlayer.def` |  |  |
+| 230 | `duelEntitiesDefeated` | `ARRAY<MAILBOX>` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 231 | `duelMarker` | `MAILBOX` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 232 | `duelChallengeTimer` | `CONTROLLER_ID` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 233 | `lastNoiseTime` | `FLOAT` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 234 | `gender` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 235 | `regions` | `ARRAY<INT32>` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 236 | `pvpTimer` | `CONTROLLER_ID` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 237 | `pendingPlayerFlags` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 238 | `availableDialogs` | `PYTHON` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 239 | `clientVersion` | `WSTRING` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 240 | `languageId` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 241 | `numRespecAbility` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 242 | `numRespecCrafting` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+| 243 | `initialBandolierSlot` | `INT32` | `CELL_PRIVATE` | `SGWPlayer.def` |  |  |
+
+**Cross-link to client-method index** — §2.7 covers the parallel 157-entry SGWPlayer **client-method** cascade. The property cascade above and the method cascade in §2.7 walk the same parse chain but emit into distinct ID spaces (§1.1). Both must be reproduced bit-identically by a server reimplementation.
+
+---
+
+### 2 Appendix B — 18-entity method-count table
+
+Cascade-walked totals (parent recursive + implements + own) for every entity in `entities.xml`, in document order. Counts produced programmatically by the same walker that produced Appendix A; "Exposed" subscript counts the methods that get a wire methodID (cell/base methods with `<Exposed/>`). Server-only entities are flagged `[SO]` after the name.
+
+| TypeID | Entity | Parent chain | Props | ClientMethods | CellMethods (Exposed) | BaseMethods (Exposed) |
+|-------:|--------|--------------|------:|--------------:|----------------------:|----------------------:|
+| 0x01 | `SGWSpawnableEntity` | SGWEntity | 22 | 12 | 43 (0) | 2 (0) |
+| 0x02 | `SGWBeing` | SGWSpawnableEntity → SGWEntity | 99 | 27 | 89 (8) | 5 (0) |
+| 0x03 | `SGWPlayer` | SGWBeing → SGWSpawnableEntity → SGWEntity | 244 | 157 | 315 (109) | 82 (30) |
+| 0x04 | `SGWGmPlayer` | SGWPlayer → SGWBeing → SGWSpawnableEntity → SGWEntity | 246 | 163 | 433 (226) | 90 (30) |
+| 0x05 | `SGWMob` | SGWBeing → SGWSpawnableEntity → SGWEntity | 198 | 29 | 132 (8) | 5 (0) |
+| 0x06 | `SGWPet` | SGWMob → SGWBeing → SGWSpawnableEntity → SGWEntity | 210 | 32 | 140 (8) | 5 (0) |
+| 0x07 | `SGWDuelMarker` | SGWSpawnableEntity → SGWEntity | 24 | 12 | 44 (0) | 2 (0) |
+| 0x08 | `SGWBlackMarket` `[SO]` | (root) | 1 | 0 | 0 (0) | 6 (0) |
+| 0x09 | `Account` | GamePawn (UE3 — not a BW def) | 2 | 6 | 0 (0) | 10 (8) |
+| 0x0A | `SGWEntity` `[SO]` | (root) | 10 | 0 | 32 (0) | 2 (0) |
+| 0x0B | `SGWPlayerGroupAuthority` `[SO]` | SGWEntity | 13 | 0 | 32 (0) | 6 (0) |
+| 0x0C | `SGWSpaceCreator` `[SO]` | SGWEntity | 19 | 0 | 35 (0) | 22 (0) |
+| 0x0D | `SGWSpawnRegion` `[SO]` | SGWEntity | 37 | 0 | 32 (0) | 17 (0) |
+| 0x0E | `SGWSpawnSet` `[SO]` | SGWEntity | 36 | 0 | 32 (0) | 12 (0) |
+| 0x0F | `SGWPlayerRespawner` `[SO]` | SGWEntity | 14 | 0 | 33 (0) | 2 (0) |
+| 0x10 | `SGWCoverSet` `[SO]` | SGWEntity | 16 | 0 | 34 (0) | 2 (0) |
+| 0x11 | `SGWEscrow` `[SO]` | SGWEntity | 12 | 0 | 34 (0) | 2 (0) |
+| 0x12 | `SGWChannelManager` `[SO]` | (root) | 0 | 0 | 0 (0) | 15 (0) |
+
+**Reading the table.** `Props` is the count of properties contributed to the all-properties array at `EntityDescription+0x5c/+0x60` after the parse cascade. `ClientMethods` is the size of the client-method ordinal table — this is the number that plugs into §1.4's `idBase` formula for that entity. `CellMethods (Exposed)` and `BaseMethods (Exposed)` give total / exposed pairs; the exposed count is what determines the wire methodID space (cell `0x80..0xBF`, base `0xC0..0xFF`). Most server-only entities have zero exposed methods — they don't communicate with clients at all.
+
+`SGWGmPlayer` is notable for inheriting from `SGWPlayer` (not from `SGWBeing` directly) and adding 6 own ClientMethods → 163 total. Its `idBase = 0x3E - (163 + 0xC0) / 0xFF = 0x3E - 1 = 61` is the same as SGWPlayer's because `163` and `157` both fall in the same `iVar2 = 1` bucket. `SGWPet` (32 client methods) and `SGWMob` (29 client methods) both have `idBase = 62` — they sit just below the sub-slot threshold; no two-byte encoding required.
+
+`Account` is a thin login-flow entity with no `SGWBeing` ancestry — it has a UE3 `GamePawn` parent listed in its `<Parent>` tag, which is not a BW def file and is ignored by the entity-description parser. Its 6 ClientMethods + 8 exposed BaseMethods (login, character-select, character-creation flow) constitute the only wire-visible methods until a player entity exists.
+
+---
+
+### 2 Appendix C — Interface dependency inventory
+
+The 19 interface `.def` files in `defs/interfaces/`. Each row is one interface; `Implements` lists the other interfaces (if any) this interface declares via its own `<Implements>` section. **Graph shape: FLAT** — no SGW interface implements another interface. BigWorld supports interface-of-interface chaining at the parser level (per §1.3), but none of the 19 SGW interface files declares an `<Implements>` block with any interface inside, so the dependency graph is a single layer.
+
+Practical consequence: an entity that declares `<Implements><Interface>Foo</Interface></Implements>` gets exactly `Foo`'s properties and methods — no recursive chain to walk. The 11 interfaces SGWPlayer declares (§2.7) are independent contributors to its ID tables.
+
+| Interface | Implements | Props | ClientMethods | CellMethods (Exposed) | BaseMethods (Exposed) |
+|-----------|-----------:|------:|--------------:|----------------------:|----------------------:|
+| `ClientCache` | (none) | 0 | 2 | 0 (0) | 2 (2) |
+| `Communicator` | (none) | 4 | 7 | 1 (0) | 21 (15) |
+| `ContactListManager` | (none) | 1 | 5 | 6 (6) | 2 (0) |
+| `DistributionGroupMember` | (none) | 3 | 0 | 6 (0) | 0 (0) |
+| `EventParticipant` | (none) | 2 | 0 | 1 (0) | 0 (0) |
+| `GateTravel` | (none) | 5 | 4 | 5 (1) | 2 (0) |
+| `GroupAuthority` | (none) | 3 | 0 | 0 (0) | 4 (0) |
+| `Lootable` | (none) | 4 | 0 | 5 (0) | 0 (0) |
+| `MinigamePlayer` | (none) | 31 | 13 | 35 (15) | 19 (1) |
+| `Missionary` | (none) | 8 | 5 | 17 (3) | 0 (0) |
+| `OrganizationMember` | (none) | 7 | 18 | 37 (12) | 4 (4) |
+| `SGWAbilityManager` | (none) | 30 | 0 | 16 (3) | 0 (0) |
+| `SGWBeing` (interface) | (none) | 23 | 8 | 16 (2) | 3 (0) |
+| `SGWBlackMarketManager` | (none) | 1 | 6 | 6 (6) | 6 (0) |
+| `SGWCombatant` | (none) | 24 | 6 | 14 (3) | 0 (0) |
+| `SGWInventoryManager` | (none) | 14 | 7 | 13 (7) | 0 (0) |
+| `SGWMailManager` | (none) | 4 | 4 | 10 (9) | 1 (0) |
+| `SGWPoller` | (none) | 2 | 0 | 0 (0) | 0 (0) |
+
+Three observations land directly on the wire:
+
+- **`SGWPoller` is a pure aggregator** — 2 properties, no methods of any kind. It exists only to thread `interactFlag` (propID 172) and `lastPollTime` (propID 173) into entities that need polling. Its presence in an `<Implements>` list contributes propIDs but nothing methodID-bearing.
+- **`Lootable` and `GroupAuthority` have zero exposed methods** — they are server-side schema contributions only. An entity that `<Implements>` either gets cell-internal helpers but no wire surface.
+- **The "Communicator declares 15 Exposed cell methods" claim in earlier drafts is wrong** — the 15 Exposed annotations in `Communicator.def` are on **BaseMethods**, not CellMethods. Communicator's one CellMethod is unexposed; its 21 BaseMethods include 15 Exposed. Server implementers should consult `defs/interfaces/Communicator.def` directly rather than rely on the count breakdown in §2.4 (which is otherwise accurate for the patterns it describes).
+
+There is exactly one SGW interface that contributes to nothing in any SGWPlayer-cascade chain: `Lootable` (zero appearances in `<Implements>` blocks of any of the 18 entity defs). `GroupAuthority` likewise has zero entity-side consumers in the current tree — both are dead interfaces in this build but kept in the schema for forward compatibility.
 
 ---
 

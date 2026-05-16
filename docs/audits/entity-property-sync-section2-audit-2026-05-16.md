@@ -6,14 +6,20 @@ spec_version: docs/drafts/spec/entity-property-sync.md @ commit 735c9d7 (branch 
 status: complete
 binary_sha256: 109F307763A5C6C59FF484840739860BDC7163092F0644343D0B2C03E4925783
 scope_files:
+
   - docs/drafts/spec/entity-property-sync.md §2.3, §2.5, §2.7, §1.15 OQ-2, §1.15 OQ-3
+
 related:
+
   - docs/drafts/spec/entity-property-sync.md
   - docs/reverse-engineering/findings/entity-property-sync.md
   - docs/reverse-engineering/findings/entity-creation-wire-formats.md
+
 revision_history:
+
   - 2026-05-16 v1 — initial Ghidra + client-tree pass, all 5 targets resolved
   - 2026-05-16 v2 — Appendix A added: OQ-A resolved; corrected flag table to 16 entries; §1.2 filter mask reconciled
+
 ---
 
 # Entity Property Sync §2 — Ghidra Audit Report
@@ -80,14 +86,21 @@ pointers are non-null for any of the 9 entries.
 **What the table tells us:**
 
 1. `CELL_PUBLIC` = `0x01` which is `DATA_GHOSTED`. Not `DATA_OTHER_CLIENT (0x02)`. The
+
    chapter's hypothesis is wrong.
+
 2. `OTHER_CLIENTS` = `0x03` = `DATA_GHOSTED | DATA_OTHER_CLIENT`. It is present in the binary
+
    table — the chapter claim that stock-BW keywords `OWN_CLIENT`/`OTHER_CLIENTS` are absent
    from the *binary* is wrong. They are absent from the SGW *`.def` files*, but the binary
    still has them in its parse table (entries 2 and 3).
+
 3. `BASE` = `0x08` only — no combined OWN_CLIENT. The chapter's "plus `DATA_OWN_CLIENT (0x04)`"
+
    is wrong.
+
 4. Compound keywords exist in the binary: `BASE_AND_CLIENT` (0x0c = BASE|OWN_CLIENT),
+
    `CELL_PUBLIC_AND_OWN` (0x05 = GHOSTED|OWN_CLIENT), `ALL_CLIENTS` (0x07 = GHOSTED|OTHER_CLIENT|OWN_CLIENT).
    These are binary-only — none appear in the SGW `.def` tree.
 
@@ -173,6 +186,7 @@ confirmed via a server-only-rejection code path.
 **Ghidra anchors:**
 
 - `ghidra://SGW.exe@0x00dddca0` — `ServerConnection_CreateBasePlayer`, full decompile
+
   confirms no typeID gate.
 
 **Recommendation for doc-writer:** Change the [citation needed] to a qualified statement:
@@ -319,7 +333,9 @@ populates the 0x110-byte form from the 0x40-byte parsed form."
 Read 1: (*stream_vtable+4)(4)  → 4 bytes  spaceId u32
 Read 2: (*stream_vtable+4)(4)  → 4 bytes  vehicleId u32
 Read 3: (*stream_vtable+4)()   → 8 bytes  position XY (two f32 via 8-byte read)
+
          + 4 bytes posZ        → (the code reads via puVar4/uStack_24 pattern, 12 bytes total)
+
 Read 4: BundlePrimer__read3    → 12 bytes rotation (X, Z, Y order — Y/Z swapped)
 ```
 
@@ -512,14 +528,17 @@ chapter's implicit assumption that `CELL_PUBLIC` properties enter this array is 
 Corrected claim set:
 
 1. **`CELL_PUBLIC` sets only `DATA_GHOSTED` (bit 0 = `0x01`).** It does NOT set bits 1 or 2.
+
    `CELL_PUBLIC & 0x06 == 0`. A `CELL_PUBLIC` property is inserted into the **main** property
    array at `EntityDesc+0x5c/+0x60` but is NOT inserted into the client-property pointer array
    at `EntityDesc+0x70/+0x74`.
 
 2. **`BASE` sets only `DATA_BASE` (bit 3 = `0x08`).** `BASE & 0x06 == 0`. BASE properties also
+
    go to the main array only, not the client-property pointer array.
 
 3. **The client-property pointer array at `+0x70/+0x74` is only populated by keywords that
+
    set `OWN_CLIENT` (bit 2 = `0x04`) or `DATA_OTHER_CLIENT` (bit 1 = `0x02`):** specifically
    `OTHER_CLIENTS (0x03)`, `OWN_CLIENT (0x04)`, `BASE_AND_CLIENT (0x0c)`,
    `CELL_PUBLIC_AND_OWN (0x05)`, `ALL_CLIENTS (0x07)`, and their deprecated aliases. None of
@@ -527,10 +546,12 @@ Corrected claim set:
    is effectively always empty in SGW.
 
 4. **The `flags & 0x01` (`DATA_GHOSTED`) branch controls complex-type warnings only** — it is
+
    not a gate for the client-property pointer array, contrary to what the OQ-A resolution
    path suggested.
 
 5. **The observable wire format for property updates is driven by the main property array at
+
    `+0x5c/+0x60`, not the client-property pointer array at `+0x70/+0x74`.** The chapter's
    §1.2 claim that the client-property array is the routing table for client property updates
    is the actual error; the filter mask expression itself is binary-correct.
@@ -545,9 +566,12 @@ empty in SGW because no SGW `.def` property uses a keyword that sets bits 1 or 2
 conclusion to draw is:
 
 - The §1.2 sentence "properties where `flags & 0x06 != 0` are pushed to the client-property
+
   pointer array" is a correct description of the binary mechanism.
+
 - The §1.2 implication that `CELL_PUBLIC` properties are included in this set is wrong.
 - The doc-writer should add a "SGW-specific note": in SGW, every property in the `.def` tree
+
   uses `CELL_PUBLIC (0x01)`, `BASE (0x08)`, or `CELL_PRIVATE (0x00)`. None of these sets bits
   1 or 2, so the `+0x70/+0x74` client-property pointer array is empty for all SGW entities.
   Client property updates are routed via the main DataDescription array at `+0x5c/+0x60`
@@ -558,23 +582,33 @@ conclusion to draw is:
 Target 1 requires one correction beyond what was already noted:
 
 - "9 entries" → "16 entries (9 primary + 7 deprecated-alias entries with non-null warning
+
   functions; the deprecated aliases set the same flag values as their primary equivalents)."
+
 - The conclusion "No warning function pointers are non-null for any of the 9 entries" was
+
   incorrect — entries 9–15 all have non-null warning function pointers.
+
 - The rest of Target 1 (keyword→bit mapping for primary keywords, the follow-on OQ about the
+
   filter mask) is confirmed correct by this pass.
 
 ### Ghidra anchors for Appendix A
 
 - `ghidra://SGW.exe@0x015959c0` — `DataDescription_ParseFlagStr`, pure table-walk, single
+
   `*pOutFlags = table[1]` assignment (no post-OR)
+
 - `ghidra://SGW.exe@0x015924a0` — `EntityDescription_ParseProperties`, `(local_7c & 6)` gate
+
   for client-property pointer array at `+0x70/+0x74`; `(local_7c & 1)` gate for complex-type
   warnings only
+
 - `ghidra://SGW.exe@0x01e920e0` — complete 16-entry flag table
 - `ghidra://SGW.exe@0x01b1ae38` — string block for entries 0–8 (primary keywords)
 - `ghidra://SGW.exe@0x01b1aeb4` — string block for entries 9–15 (deprecated aliases)
 - `ghidra://SGW.exe@0x01b1af14` — deprecation warning string prefix
+
   `"DataDescription::parse: Using old Fl..."` confirming entries 9–15 are deprecated aliases
 
 ---
@@ -611,92 +645,69 @@ All decompiles produced via Ghidra MCP bridge against `SGW.exe` (SHA-256: `109F3
 
 ### B.1 — G3: AoI 3-phase cascade Ghidra anchors
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.9** as a callout: "The 7-method `createOnClient` cascade order is server-determined."
 
 **Ghidra anchor(s)**:
+
 - `ghidra://SGW.exe@0x00dd2270` — `EntityManager_HandleEntityCreate`
 - `ghidra://SGW.exe@0x00dd2800` — `EntityManager_EnterAoI`
 - `ghidra://SGW.exe@0x00dd24f0` — `GameEntityManager_FinishEntityLoad`
 
-**Finding**: The chapter's 7-method cascade is not explicitly enumerated in SGW.exe. The client receives a BW `onEntityCreate` message, which `EntityManager_HandleEntityCreate @ 0x00dd2270` dispatches. That function calls `EntityManager_CreateEntity`, applies an initial world transform via `FUN_00e68a10`, then calls `GameEntityManager_FlushDeferredNotifications`. There is no client-side loop that iterates a fixed seven-method list. The method order is entirely determined by the server: whatever property delta sequence the Python `createOnClient()` chain produces (`SGWSpawnableEntity.py` → `SGWBeing.py` → `SGWMob.py`) is what arrives on the wire; the client decodes them in arrival order. The decompile shows no ordered dispatch table — it uses `GameEntityManager_DispatchEntityRpc @ 0x00dd2b80` for each incoming method call independently.
-
-The "deprecated server source" `CachedEntity::onEntityVisible` at `cached_entity.cpp:173` is embedded in debug strings of SGW.exe. The actual dispatch is in `EntityManager_HandleEntityCreate`, confirmed. No ordered 7-method enumeration exists client-side.
-
-**Recommendation for chapter**: Replace the "agent memory" citation in §1.9 / Figure 6 with:
-
-> The 7-method cascade order is **server-determined**. `EntityManager_HandleEntityCreate @ ghidra://SGW.exe@0x00dd2270` receives and dispatches each method as it arrives on the wire with no client-side ordering constraint. The canonical sequence shown in Figure 6 reflects the order produced by the Python `createOnClient()` chain in `SGWMob.py` → `SGWBeing.py` → `SGWSpawnableEntity.py` on the SGW server. The client decodes whatever the server sends in whatever order it sends it.
+**Evidence retained**: `EntityManager_HandleEntityCreate @ 0x00dd2270` decompile shows the function calls `EntityManager_CreateEntity`, applies an initial world transform via `FUN_00e68a10`, then calls `GameEntityManager_FlushDeferredNotifications`. There is no client-side loop iterating a fixed seven-method list — each incoming method call is routed independently through `GameEntityManager_DispatchEntityRpc @ 0x00dd2b80`. Paths ruled out: a static ordered dispatch table (searched the `EntityManager_*` symbol space, none found); a hardcoded enumeration of method names (the decompile reads opaque indices, not symbols). The "deprecated server source" `CachedEntity::onEntityVisible` at `cached_entity.cpp:173` is embedded in SGW.exe debug strings — confirms the server-side origin of the cascade enumeration, not a client-side mechanism.
 
 ---
 
 ### B.2 — G4: `leaveAoI` handler Ghidra anchor
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.10** as a new subsection covering `EntityManager_LeaveAoI` behavior + the deferred-leave slot at `GameEntityManager+0x3C`.
 
-**Ghidra anchor(s)**:
-- `ghidra://SGW.exe@0x00dd29d0` — `EntityManager_LeaveAoI`
+**Ghidra anchor**: `ghidra://SGW.exe@0x00dd29d0` — `EntityManager_LeaveAoI`.
 
-**Finding**: Decompiled in full. The function does **not** decrement a reference count (the prior plate comment "decrements reference count" was wrong). It dispatches or defers a **method call** on leave. Sequence:
+**Evidence retained** (decompile path traced — both branches confirmed):
 
-1. If debug flag `g_bEntityRpcDebug (DAT_01ef2224)` set, logs entity-ID and space-ID.
-2. Searches primary entity map (`this+0x18`) for the leaving entity ID.
-3. **Path A — entity NOT in primary map**: executes stream callback directly via `nSpaceId->vtable[2]()`.
-4. **Path B — entity IS in primary map**: reads stream byte-count, allocates a 0x20-byte `MemoryOStream` via `scalable_malloc`, constructs it with `ConstructMemoryOStream`, copies stream data into it, then queues it to the deferred-leave slot at `this+0x3C` via `LookupOrEmplaceSecondaryListenerSlot` + `FUN_0046eef0`.
+1. Debug-flag check: `if (g_bEntityRpcDebug) { log entity-id + space-id }`.
+2. Primary map search at `GameEntityManager+0x18`.
+3. **Path A** (entity NOT in primary map): direct `nSpaceId->vtable[2]()` invocation.
+4. **Path B** (entity IS in primary map): byte-count read, `scalable_malloc(0x20)`, `ConstructMemoryOStream` copy, queue to `GameEntityManager+0x3C` via `LookupOrEmplaceSecondaryListenerSlot` + `FUN_0046eef0`.
 
-There is no entity-table removal or CME `Event_EntityLeftAoI` emission visible at this function level — deferred leave delivery happens when the slot is flushed. The entity reference is not explicitly freed here.
-
-**Recommendation for chapter**: Add to §1.10:
-
-> `EntityManager_LeaveAoI @ ghidra://SGW.exe@0x00dd29d0` — BW `onEntityLeaveAoI` virtual. Does not free the entity immediately. If the entity is in the primary map, the leave method call is buffered to a deferred slot at `GameEntityManager+0x3C` (distinct from the entry deferred slot at `+0x30`). Entity destruction occurs when the deferred slot is flushed, not at this call site.
+The "decrements reference count" plate comment is **wrong** — annotation-script bug similar to the `MethodDescription_Destructor` rename issue tracked in chapter §1.15 OQ-5. Worth recording in the annotation-script-shift-bugs log.
 
 ---
 
 ### B.3 — G5: `CLIENT_DATA | BASE_DATA` filter mask numeric values
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.11** with the verified numeric values + 0x5f strip mask + reconciliation with the §1.2 SGW divergence.
 
 **Ghidra anchor(s)**:
+
 - `ghidra://SGW.exe@0x01590fc0` — `EntityDescription_WriteClientData`
 - `ghidra://SGW.exe@0x015958b0` — `DataDescription_WriteToStream`
 - `ghidra://SGW.exe@0x015924a0` — `EntityDescription_ParseProperties` (from Appendix A)
 
-**Finding**: Numeric filter values from decompiles:
-
-- `EntityDescription_WriteClientData @ 0x01590fc0` loops DataDescription array at `EntityDesc+0x60/+0x64` (element stride 0x40). Gate: `*(byte*)(pvDataDesc + 0x20) & 6 != 0`. Flag `0x06 = DATA_OTHER_CLIENT (0x02) | DATA_OWN_CLIENT (0x04)`. This is "CLIENT_DATA".
-- `DataDescription_WriteToStream @ 0x015958b0` masks flags with `0x5f` before wire: strips `DATA_PERSISTENT (0x20)` and `DATA_ID (0x80)`.
-- Combined masks: `CLIENT_DATA | BASE_DATA = 0x06 | 0x08 = 0x0E`; `CLIENT_DATA | CELL_DATA = 0x06 | 0x01 = 0x07`.
-
-Per Appendix A, in SGW no property sets bits 1 or 2 (all use `CELL_PUBLIC=0x01`, `BASE=0x08`, or `CELL_PRIVATE=0x00`), so `WriteClientData` produces zero DataDescription entries for any SGW entity.
-
-**Recommendation for chapter**: Add to §1.11:
-
-> Numeric filter values: `CLIENT_DATA = flags & 0x06` (`DATA_OTHER_CLIENT=0x02 | DATA_OWN_CLIENT=0x04`); `BASE_DATA = DATA_BASE = 0x08`; `CELL_DATA = DATA_GHOSTED = 0x01`. Combined: `CLIENT_DATA|BASE_DATA = 0x0E`, `CLIENT_DATA|CELL_DATA = 0x07`. Flags stripped before wire: `DATA_PERSISTENT (0x20)` and `DATA_ID (0x80)` cleared via `& 0x5f` mask in `DataDescription_WriteToStream @ ghidra://SGW.exe@0x015958b0`. **SGW note**: no SGW `.def` property satisfies `flags & 0x06 != 0`, so this filter matches zero properties for all SGW entities (see Appendix A §1.2 reconciliation).
+**Evidence retained**: decompile of `WriteClientData` shows the gate `*(byte*)(pvDataDesc + 0x20) & 6 != 0` — `DATA_OTHER_CLIENT (0x02) | DATA_OWN_CLIENT (0x04)` = `CLIENT_DATA = 0x06`. `WriteToStream` masks with `0x5f` before wire — strips `DATA_PERSISTENT (0x20)` and `DATA_ID (0x80)`. Combined: `CLIENT_DATA | BASE_DATA = 0x06 | 0x08 = 0x0E`; `CLIENT_DATA | CELL_DATA = 0x06 | 0x01 = 0x07`. Paths ruled out: separate `BASE_DATA` constant table (none in `.data`); independent `CELL_DATA` mask (it's the same bit as `DATA_GHOSTED`).
 
 ---
 
 ### B.4 — G13: Failure mode — propID outside valid range
 
-**Disposition**: PARTIALLY-RESOLVED
+**Disposition**: PARTIALLY-RESOLVED. **→ Folded into chapter §1.16 as F1** ("decoder behavior UNVERIFIED") + tracked as **OQ-X** in §1.15.
 
-**Ghidra anchor(s)**:
-- `ghidra://SGW.exe@0x015652d0` — `FNetworkPropertyChange__vfunc_0`
+**Ghidra anchor**: `ghidra://SGW.exe@0x015652d0` — `FNetworkPropertyChange__vfunc_0`.
 
-**Finding**: `FNetworkPropertyChange__vfunc_0 @ 0x015652d0` is an **outgoing** property-change serializer (calls Mercury bundle write helpers), not the inbound handler. The inbound propID decoder and bounds checker are in an upstream Mercury handler not yet identified by name in this pass. Without a confirmed inbound handler address, out-of-bounds behavior cannot be characterized.
-
-**Recommendation for chapter**: Mark in §1.16 Failure Modes:
-
-> **S-G13 (UNRESOLVED)**: If a property-change message arrives with a propID exceeding the entity's DataDescription array bounds, the behavior is not confirmed. `FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0` is the outgoing serializer; the inbound decoder was not located. Likely in the Mercury incoming message handlers near `ServerConnection_*`. A live x64dbg session with a crafted oversized propID is needed to determine crash vs. silent drop.
+**Evidence retained**: `FNetworkPropertyChange__vfunc_0 @ 0x015652d0` is the **outgoing** property-change serializer — calls Mercury bundle write helpers, not an inbound handler. RTTI confirms this is `FNetworkPropertyChange` from Unreal's replication system, on the emit path. The **inbound** propID decoder + bounds checker were searched for and not located in this pass. Search surface ruled out: `ServerConnection_*` immediate handlers (none of the candidates dispatched on propID bounds); the message-catalog row for `updateEntity` msg_id `0x0A` points at `FUN_01560ad0` which delegates opaquely. Path to closure: a live x64dbg session with a crafted oversized propID, OR locate the inbound dispatcher via callers of `EntityDescription_GetClientPropertyByIndex @ 0x01590d80`.
 
 ---
 
 ### B.5 — G14: Failure mode — methodID not in table
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.16 as F2** (silent drop + wide-string log).
 
 **Ghidra anchor(s)**:
+
 - `ghidra://SGW.exe@0x00c6f8f0` — `ProcessEntityMethodEmission`
 - `ghidra://SGW.exe@0x01590f30` — `EntityDescription_GetExposedClientMethodByIndex`
 
-**Finding**: `ProcessEntityMethodEmission @ 0x00c6f8f0` handles unknown methodID via an explicit 0xFFFF guard:
+**Evidence retained** — decompile excerpt that pins the behavior:
 
 ```c
 uVar3 = EntityDescription_FindMethodIdByName(pvVar5, *(ushort*)(pEntityDesc + 0x14));
@@ -706,54 +717,44 @@ if (uVar3 == 0xffff) {
 }
 ```
 
-For a method index with no registered listener, the red-black tree traversal exits the miss branch and calls `EntityDescription_GetExposedClientMethodByIndex` which returns 0 on out-of-bounds. The function returns without dispatch. **Both paths: silent drop with an optional debug log. No crash, no disconnect.**
-
-**Recommendation for chapter**: Add to §1.16 Failure Modes:
-
-> **S-G14**: An incoming method byte that decodes to a methodID with no registered listener results in a silent drop after logging `"No client->server entity description mapping found for entity type %d; message id: %d."` (wide string). Confirmed in `ProcessEntityMethodEmission @ ghidra://SGW.exe@0x00c6f8f0`. The log is only active when `g_bEntityRpcDebug (DAT_01ef2224)` is set. No crash, no disconnect.
+The `0xFFFF` sentinel is the red-black tree's "not found" return; the wide-string log only fires when `g_bEntityRpcDebug (DAT_01ef2224)` is set. For a method index with no registered listener, `EntityDescription_GetExposedClientMethodByIndex` returns `0` on out-of-bounds and the dispatch returns without calling any handler. Both paths: silent drop. No crash, no disconnect.
 
 ---
 
 ### B.6 — G15: Failure mode — MD5 schema fingerprint mismatch
 
-**Disposition**: UNRESOLVED
+**Disposition**: UNRESOLVED. **→ Folded into chapter §1.16 as F3** (UNVERIFIED) + tracked as **OQ-Y** in §1.15.
 
-**Ghidra anchor(s)**: None confirmed.
+**Ghidra anchor(s)**: None confirmed for the comparison site.
 
-**Finding**: Searches for `MD5_Finalize`, `MD5_DigestToHexString`, and related names returned only CryptoPP cipher-layer wrappers — not entity schema fingerprint logic. The schema-digest comparison site was not located. Per `datatype-registry-system.md`, MD5 hashing occurs during `DataType_Register @ 0x01597ce0`; the comparison against a wire-provided value requires a separate investigation from that entry point.
-
-**Recommendation for chapter**: Mark in §1.16:
-
-> **S-G15 (UNRESOLVED)**: The site where the client compares a schema MD5 fingerprint against a server-provided value has not been located. Starting point for a future pass: `DataType_Register @ ghidra://SGW.exe@0x01597ce0` and callers of the CryptoPP MD5 functions (`0x01604e80`). The Mercury `protocol_digest` (32-char MD5 hex) is confirmed per the Mercury §2 findings; whether entity schema digest is checked separately is unknown.
+**Evidence retained / paths searched**: Searches for `MD5_Finalize`, `MD5_DigestToHexString`, and the CryptoPP cipher-layer wrappers (`0x01604e80`) returned only Mercury `protocol_digest` machinery, not entity-schema fingerprint logic. Per `datatype-registry-system.md`, MD5 hashing occurs during `DataType_Register @ 0x01597ce0`; the comparison against a wire-provided value remains untraced. Search surface ruled out: `ServerConnection_*` immediate inbound paths (none dispatched on a digest value); the message-catalog inbound rows (none mention "schema" or "digest" by name in plate comments). Path to closure: callers of CryptoPP MD5 functions at `0x01604e80`, and the `EntityDescription_WriteClientData` MD5-feed loop callers.
 
 ---
 
 ### B.7 — G16: Failure mode — unknown typeID in delegate
 
-**Disposition**: PARTIALLY-RESOLVED
+**Disposition**: PARTIALLY-RESOLVED. **→ Folded into chapter §1.16 as F4** + §2.5 already records the client-tree side.
 
 **Ghidra anchor(s)**:
+
 - `ghidra://SGW.exe@0x00dddca0` — `ServerConnection_CreateBasePlayer`
-- `ghidra://SGW.exe@0x00a35210` — callee of `CreateBasePlayer` (log/diagnostic, not the entity-creation delegate)
+- `ghidra://SGW.exe@0x00a35210` — callee (varargs logger wrapper, not the entity-creation delegate)
 
-**Finding**: `ServerConnection_CreateBasePlayer` calls two functions: `FUN_00a35210` (a varargs logger wrapper) and `ServerConnection_CreateCellPlayer`. The entity-creation delegate at `*(this+0x168)` is a runtime function pointer; its target was not resolved statically. The outer handler has no typeID bounds check and no error-recovery after the delegate call. Failure mode inside the delegate requires a live session.
-
-**Recommendation for chapter**: Update §1.16:
-
-> **S-G16 (PARTIALLY-RESOLVED)**: `ServerConnection_CreateBasePlayer @ ghidra://SGW.exe@0x00dddca0` passes typeID directly to the entity-creation delegate at `*(this+0x168)` without validation. The delegate is a runtime function pointer; its behavior on unknown typeID requires a live x64dbg session. No error-recovery is visible in the outer handler.
+**Evidence retained**: `ServerConnection_CreateBasePlayer` calls `FUN_00a35210` (logger) and `ServerConnection_CreateCellPlayer`. The entity-creation delegate at `*(this+0x168)` is a runtime function pointer — static target unresolvable in this pass. The outer handler has **no typeID bounds check** and **no error-recovery** path after the delegate call. Paths ruled out: a pre-call validation gate (none in the prologue); a post-call error branch (none after the delegate return). Failure-mode characterization inside the delegate requires a live session.
 
 ---
 
 ### B.8 — G17: Failure mode — sub-slot decode mismatch
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.16 as F5** (silent drop via red-black tree miss).
 
 **Ghidra anchor(s)**:
+
 - `ghidra://SGW.exe@0x01590bb0` — `MethodDescription_ComputeIdBase`
 - `ghidra://SGW.exe@0x00c6f8f0` — `ProcessEntityMethodEmission` (tree-miss path)
 - `ghidra://SGW.exe@0x01590f30` — `EntityDescription_GetExposedClientMethodByIndex`
 
-**Finding**: Sub-slot decode formula from `MethodDescription_ComputeIdBase @ 0x01590bb0`:
+**Evidence retained** — the decode formula pinned at `MethodDescription_ComputeIdBase @ 0x01590bb0`:
 
 ```c
 idBase = 0x3e - (nExposedCount + 0xc0) / 0xff;
@@ -763,22 +764,17 @@ if (nCurrentId >= idBase) {
 }
 ```
 
-If the decoded `nCurrentId` exceeds `exposedMethodCount`, `ProcessEntityMethodEmission` reaches the red-black tree miss branch and calls `EntityDescription_GetExposedClientMethodByIndex` which returns 0. The dispatch returns without calling any handler. **Silent drop, no crash, no disconnect.**
-
-**Recommendation for chapter**: Add to §1.16 Failure Modes:
-
-> **S-G17**: A wire method-byte sequence decoding (via `MethodDescription_ComputeIdBase @ ghidra://SGW.exe@0x01590bb0`, formula `idBase = 0x3E - (N+0xC0)/0xFF`) to a method index exceeding the entity's exposed-method count results in a red-black tree miss in `ProcessEntityMethodEmission @ ghidra://SGW.exe@0x00c6f8f0`. Silent drop. No crash, no disconnect. `EntityDescription_GetExposedClientMethodByIndex @ ghidra://SGW.exe@0x01590f30` returns 0 on out-of-bounds.
+Out-of-bounds path: `ProcessEntityMethodEmission` reaches the red-black tree miss branch → `EntityDescription_GetExposedClientMethodByIndex` returns `0` → dispatch returns without invoking any handler. Same silent-drop end state as F2, reached via the sub-slot decode rather than the direct table lookup.
 
 ---
 
-### B.9 — G18: Failure mode — property update for entity not in table
+### B.9 — G18: Failure mode — property update for entity not in table (the load-bearing one)
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.16 as F6** — the buffered-indefinitely invariant, the one server implementers must respect.
 
-**Ghidra anchor(s)**:
-- `ghidra://SGW.exe@0x00dd2b80` — `GameEntityManager_DispatchEntityRpc`
+**Ghidra anchor**: `ghidra://SGW.exe@0x00dd2b80` — `GameEntityManager_DispatchEntityRpc`.
 
-**Finding**: `GameEntityManager_DispatchEntityRpc @ 0x00dd2b80` handles the "entity not found" case by **buffering**, not dropping. When entityID is absent from the primary map and is not the controlled entity, execution reaches `LAB_00dd2c99`:
+**Evidence retained** — the buffering decompile excerpt at `LAB_00dd2c99`:
 
 ```c
 iVar2 = (*pnByteStream+8)();                   // read byte count
@@ -789,131 +785,86 @@ LookupOrEmplaceSecondaryListenerSlot(ESI+0x3c, ...);
 FUN_0046eef0(pvVar5, piVar6);                  // enqueue for deferred dispatch
 ```
 
-The message is held indefinitely in the deferred slot at `GameEntityManager+0x3C`. If the entity never re-enters, the buffer is never flushed. **A server-side guarantee that LeaveAoI always precedes late property updates is required to prevent ghost deliveries.**
-
-**Recommendation for chapter**: Add to §1.16 Failure Modes:
-
-> **S-G18**: A property-update or method-call arriving for an entity absent from the client's entity table (race: entity left AoI) is **buffered, not dropped** by `GameEntityManager_DispatchEntityRpc @ ghidra://SGW.exe@0x00dd2b80`. The payload is held in a `MemoryOStream` at `GameEntityManager+0x3C` and delivered if the entity re-enters. No TTL or discard path exists. The server must ensure leaveAoI always precedes any late property updates for a given entity to prevent ghost delivery.
+Buffer slot is `GameEntityManager+0x3C` (same slot the `LeaveAoI` deferred-leave path writes to). **No TTL, no discard path** — the buffer is held indefinitely. The chapter calls out the implication: server must guarantee `leaveAoI` precedes any late property update for a given entityID to avoid ghost-delivery races.
 
 ---
 
 ### B.10 — G35: `entityMessage` (msg_id 0x0D) wire format
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.5** as the volatile cell-method variant + the `RouteEntityMessageToHandler` bit-6 dispatch note.
 
 **Ghidra anchor(s)**:
+
 - `ghidra://SGW.exe@0x00dd66e0` — `RouteEntityMessageToHandler`
 - `ghidra://SGW.exe@0x00dd6a60` — `ServerConnection_StartEntityMessage`
 - `ghidra://SGW.exe@0x00dd6690` — `InstallEntityMessageHandlerVtable`
 
-**Finding**: Entity messages use a flags-byte protocol. `RouteEntityMessageToHandler @ 0x00dd66e0` reads `flags = *pMsg` and routes:
+**Evidence retained**: `RouteEntityMessageToHandler @ 0x00dd66e0` reads `flags = *pMsg` and routes on bit 6: `(flags & 0x40)` → `vtable+0x20(flags & 0x3f)` (volatile / unreliable); else → `vtable+0x24(flags & 0x7f, pHandler)` (reliable). `ServerConnection_StartEntityMessage @ 0x00dd6a60` writes outgoing cell-method byte as `(methodIndex & 0x7F) | 0x80` — matches BigWorld 1.9.1 `servconn.cpp::startEntityMessage`. Server→client `entityMessage` (msg_id `0x0D`) dispatches via `RouteEntityMessageToHandler`; if `*(this+0x168) == 0` (no handler installed), the message is silently dropped — same shape as F2 / F5.
 
-- `flags & 0x40` (bit 6 set): calls `vtable+0x20(flags & 0x3f)` — volatile/unreliable path.
-- else: calls `vtable+0x24(flags & 0x7f, pHandler)` — reliable entity message.
+Wire layout (client→server cell entity message, confirmed):
 
-`ServerConnection_StartEntityMessage @ 0x00dd6a60` writes the outgoing cell-method byte as `(methodIndex & 0x7F) | 0x80`. The `0x80` high bit is the cell-message marker; bits 0–6 carry the method index. This matches BigWorld 1.9.1 `servconn.cpp::startEntityMessage` convention.
-
-**Client→server cell entity message wire layout** (confirmed):
-1. Byte 0: `(methodIndex & 0x7F) | 0x80`
-2. Bytes 1–4: entity ID (4 bytes, little-endian)
-3. Remaining: method arguments (variable)
-
-**Server→client `entityMessage` (msg_id 0x0D)**: dispatched via `RouteEntityMessageToHandler`. If `*(this+0x168) == 0` (no handler), message is silently dropped.
-
-**Recommendation for chapter**: Add a §2.X `entityMessage` subsection:
-
-> `entityMessage` (msg_id `0x0D`) client→server cell layout: `flags[1] | entityId[4] | args[variable]`. Flags: high bit `0x80` = cell-message marker; bit 6 `0x40` = volatile (unreliable); bits 0–5 = method index (volatile) or bits 0–6 (reliable). Server→client direction: `RouteEntityMessageToHandler @ ghidra://SGW.exe@0x00dd66e0` dispatches based on flags byte. Silent drop if no handler registered at `GameEntityManager+0x168`. Confirmed at `ServerConnection_StartEntityMessage @ ghidra://SGW.exe@0x00dd6a60`.
+1. Byte 0: `(methodIndex & 0x7F) | 0x80` (reliable) or `(methodIndex & 0x3F) | 0xC0` (volatile, when bit 6 set on a cell byte; per the route table not yet observed on the wire).
+2. Bytes 1–4: entity ID, u32 LE.
+3. Bytes 5+: method arguments (variable).
 
 ---
 
 ### B.11 — G36: Property change batching
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.8** as the "no batch-property-change message type" protocol invariant.
 
-**Ghidra anchor(s)**:
-- `ghidra://SGW.exe@0x015652d0` — `FNetworkPropertyChange__vfunc_0`
+**Ghidra anchor**: `ghidra://SGW.exe@0x015652d0` — `FNetworkPropertyChange__vfunc_0`.
 
-**Finding**: `FNetworkPropertyChange__vfunc_0` writes one property change per invocation — three helper calls (4-byte index write, two string/value writes), no loop. There is no multi-property batch message type. Mercury's bundle mechanism auto-aggregates multiple sequential InterfaceElement messages into one UDP payload via cwndsize/MTU, giving the appearance of batching at the network layer. Each property change remains an independent InterfaceElement.
-
-**Recommendation for chapter**: Add to §1.X (property streaming):
-
-> Each property change is its own InterfaceElement; there is no batch-property-change message type (`FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0` writes one property per call). Multiple simultaneous property changes arrive as consecutive InterfaceElements in the same Mercury bundle via the bundle aggregation layer.
+**Evidence retained**: `FNetworkPropertyChange__vfunc_0` writes one property change per invocation — three helper calls (4-byte index write, two string/value writes), no loop. No multi-property batch message type exists. Mercury bundle aggregation (`spec.protocol.mercury-wire-format` §1) makes the appearance of batching at the network layer — each property change remains an independent InterfaceElement, the bundle layer is what packs them into one UDP payload.
 
 ---
 
 ### B.12 — G37: Method argument serialization (FIXED_DICT / ARRAY / TUPLE)
 
-**Disposition**: PARTIALLY-RESOLVED
+**Disposition**: PARTIALLY-RESOLVED. **→ Folded into chapter §1.13** (schema virtual at `vtable+0x24` confirmed) + §1.15 OQ-4 (runtime-value virtual still unconfirmed).
 
 **Ghidra anchor(s)**:
+
 - `ghidra://SGW.exe@0x015958b0` — `DataDescription_WriteToStream` (vtable+0x24 dispatch)
 - `ghidra://SGW.exe@0x01598b80` — `FixedDictDataType_ToXml` (field layout)
 
-**Finding**: `DataDescription_WriteToStream @ 0x015958b0` confirms the DataType schema-stream virtual is at **vtable offset +0x24** (index 9):
-
-```c
-(**(code**)(**(int**)(this+0x1c) + 0x24))(stream);
-```
-
-`FixedDictDataType_ToXml @ 0x01598b80` reveals `FixedDictDataType` in-memory layout:
-- `+0x10`: `allowNone` flag byte
-- `+0x18/+0x1c`: field array begin/end (element stride `0x28` = 40 bytes)
-- Per field: `+0x04..+0x18` name string (SSO); `+0x14` name length; `+0x1c` = nested DataType pointer (dispatched via `vtable+0x24` recursively)
-
-Wire schema layout per FIXED_DICT field: `[name_bytes][nested_type_descriptor_via_vtable+0x24]`.
-
-The `vtable+0x24` slot is the **schema-descriptor writer** (used when sending entity schema). Runtime value serialization (property update values) uses a different virtual not yet identified — likely `+0x28` or `+0x2c`. `ArrayDataType` and `TupleDataType` stream virtuals not decompiled in this pass.
-
-**Recommendation for chapter**: Add to §2.X:
-
-> DataType schema serialization dispatches via `vtable+0x24` (index 9), confirmed at `DataDescription_WriteToStream @ ghidra://SGW.exe@0x015958b0`. `FIXED_DICT` schema wire: tag `"FixedDict"[10]`, `allowNone[1]`, then per-field: `[name_bytes][recursive_type_via_vtable+0x24]` (`FixedDictDataType_ToXml @ ghidra://SGW.exe@0x01598b80`). Runtime value serialization uses a different virtual (vtable+0x28 or +0x2c — unconfirmed); a follow-up pass is recommended.
+**Evidence retained**: indirect-call pattern `(**(code**)(**(int**)(this+0x1c) + 0x24))(stream)` in `DataDescription_WriteToStream` pins the schema virtual at vtable offset `+0x24` (slot index 9). `FixedDictDataType` in-memory layout from `FixedDictDataType_ToXml`: `+0x10` = `allowNone` flag byte; `+0x18/+0x1c` = field-array begin/end (element stride `0x28`); per field: `+0x04..+0x18` SSO name string, `+0x14` name length, `+0x1c` nested DataType pointer (recursive via `vtable+0x24`). The schema wire layout per FIXED_DICT field is therefore `[name_bytes][nested_type_descriptor_via_vtable+0x24]`. The **runtime value** virtual is a different slot — `+0x28` or `+0x2c` — and was not decompiled in this pass. `ArrayDataType` and `TupleDataType` runtime-value virtuals likewise untraced.
 
 ---
 
 ### B.13 — G38: Entity reference / mailbox serialization
 
-**Disposition**: PARTIALLY-RESOLVED
+**Disposition**: PARTIALLY-RESOLVED. **→ Folded into chapter §1.13** (MailBoxDataType vtable identity confirmed) + §1.15 OQ-4 sub-bullet (wire layout untraced).
 
 **Ghidra anchor(s)**:
-- `ghidra://SGW.exe@0x0159b850` — `VMailBoxDataType___SimpleMetaDataType__vfunc_0` (destructor)
-- `ghidra://SGW.exe@0x0159b480` — MailBoxDataType DtorBody (confirms vtable identity)
 
-**Finding**: `FUN_0159b480 @ 0x0159b480` is the MailBoxDataType DtorBody. It confirms the vtable is `SimpleMetaDataType<class_MailBoxDataType>::vftable`. The stream-writer virtual at `vtable+0x24` was not decompiled in this pass. BW 1.9.1 reference format for a mailbox wire value: `channelId[2] + indexInComponent[2] + spaceId[4]` = 8 bytes total; this is the expected SGW format but is not binary-confirmed.
+- `ghidra://SGW.exe@0x0159b850` — `VMailBoxDataType___SimpleMetaDataType__vfunc_0` (destructor — confirms vtable identity)
+- `ghidra://SGW.exe@0x0159b480` — `MailBoxDataType DtorBody`
 
-**Recommendation for chapter**:
-
-> **G38 (PARTIALLY-RESOLVED)**: `MailBoxDataType` vtable confirmed at `ghidra://SGW.exe@0x0159b850`. Wire layout not yet confirmed from binary; BW 1.9.1 reference is `channelId[2] + indexInComponent[2] + spaceId[4]` (8 bytes). Verify by decompiling `SimpleMetaDataType<class_MailBoxDataType>::vftable` slot `+0x24`.
+**Evidence retained**: `FUN_0159b480 @ 0x0159b480` is the MailBoxDataType DtorBody — its instruction sequence (MSVC scalar-destructor + vtable-load to `0x0159b850`) confirms the vtable identity as `SimpleMetaDataType<class_MailBoxDataType>::vftable`. The stream-writer virtual at `vtable+0x24` (the slot pinned by B.12) was not decompiled in this pass. BW 1.9.1 reference for a mailbox wire value: `channelId u16 + indexInComponent u16 + spaceId u32` = 8 bytes; unverified for SGW.
 
 ---
 
 ### B.14 — G39: Nested property updates / slice mode
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.8** as the "no slice / no sub-field updates" protocol invariant.
 
 **Ghidra anchor(s)**:
+
 - `ghidra://SGW.exe@0x015652d0` — `FNetworkPropertyChange__vfunc_0`
 - `ghidra://SGW.exe@0x015958b0` — `DataDescription_WriteToStream`
 
-**Finding**: No evidence of `PROPERTY_CHANGE_TYPE_SLICE` or sub-field selection exists in the SGW client binary. `FNetworkPropertyChange__vfunc_0` writes one complete property change per call with no inner-field selector. `FixedDictDataType_ToXml` iterates all fields in a flat loop with no slice-index field. A change to any field within a `FIXED_DICT` property causes the full dict value to be re-serialized.
-
-**Recommendation for chapter**: Add to §1.X:
-
-> Nested `FIXED_DICT` properties do not support slice updates. A change to any inner field causes the entire property value to be re-sent (`FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0` writes one property at a time with no sub-field selector).
+**Evidence retained**: `FNetworkPropertyChange__vfunc_0` writes one complete property change per call with **no inner-field selector**. `FixedDictDataType_ToXml` iterates all fields in a flat loop with no slice-index field. Paths ruled out: a `PROPERTY_CHANGE_TYPE_SLICE` constant anywhere in `.data` (none found); a sub-field-index parameter on the property-change emitter (not present). Any change to a field inside a `FIXED_DICT` property re-serializes the **full** property value.
 
 ---
 
 ### B.15 — G40: Property default values omitted from wire?
 
-**Disposition**: RESOLVED
+**Disposition**: RESOLVED. **→ Folded into chapter §1.8** as the "no client-side default-value filtering" protocol invariant.
 
-**Ghidra anchor(s)**:
-- `ghidra://SGW.exe@0x01590fc0` — `EntityDescription_WriteClientData`
+**Ghidra anchor**: `ghidra://SGW.exe@0x01590fc0` — `EntityDescription_WriteClientData`.
 
-**Finding**: `EntityDescription_WriteClientData @ 0x01590fc0` emits all matching DataDescriptions unconditionally — no default-value comparison exists in the loop. However, as established in Appendix A, no SGW property satisfies `flags & 0x06 != 0`, so this loop produces zero entries for SGW entities regardless. For actual property *values* (sent in the `createBasePlayer` data stream), default-omission behavior is server-side; the client reads whatever the server sends with no default-filtering logic visible.
-
-**Recommendation for chapter**: Add to §1.X:
-
-> The client performs no default-value filtering: `EntityDescription_WriteClientData @ ghidra://SGW.exe@0x01590fc0` emits matching properties unconditionally. Default-value omission, if implemented, is a server-side concern. The client will always process any property value the server sends, regardless of whether it matches the `.def` `<Default>`.
+**Evidence retained**: `EntityDescription_WriteClientData @ 0x01590fc0` emits all matching DataDescriptions unconditionally — the loop body has no default-value comparison and no skip-on-default branch. Per Appendix A, the SGW client-property filter matches zero properties anyway, so the schema-write loop produces zero entries for SGW entities. For actual property *values* (sent in the `createBasePlayer` data stream), default-omission behavior is server-side; the client reads whatever the server sends with no default-filtering logic visible.
 
 ---
 
@@ -939,3 +890,201 @@ The following addresses were confirmed in this pass and are not yet in Appendix 
 | `ghidra://SGW.exe@0x00dd6a60` | `ServerConnection_StartEntityMessage` | G35 |
 | `ghidra://SGW.exe@0x00dd6690` | `InstallEntityMessageHandlerVtable` | G35 |
 | `ghidra://SGW.exe@0x015652d0` | `FNetworkPropertyChange__vfunc_0` | G13, G36, G39 |
+
+---
+
+## Appendix C -- Wire-capture validation (2026-05-16)
+
+Investigator: Game Archaeology Specialist (automated, Claude Sonnet 4.6).
+Tool: `tools/entity_property_sync_resolver.py` (new, ~350 LOC; forks
+`tools/mercury_dispute_resolver.py` infrastructure, extends with
+entity-property-sync-specific message parsing).
+
+### C.0 -- Summary
+
+| Validation | Disposition | Evidence |
+|------------|-------------|----------|
+| V1: sub-slot threshold (idBase=61 vs 62) | CONFIRMS | 29 sub-slot packets; 5 Rust-unique, 0 spec-unique |
+| V2: createBasePlayer layout | CONFIRMS (layout); PARTIAL (no SGWPlayer instance) | 3 msgs; u32+u16+stream at offsets 0/4/6 confirmed |
+| V3: createCellPlayer 32-byte fixed | CONFIRMS | 1 msg, exactly 32 bytes, vehicleId=0 |
+| V4: propID 0x3C/0x3D thresholds | NOT-CONFIRMED-IN-CAPTURE | No updateEntity (0x0A) msgs in session |
+| V5: cell-method 0x80..0xBF | CONFIRMS | 112 cell-method bytes; all in range |
+| V6: base-method 0xC0..0xFF | CONFIRMS | 39 base-method bytes; all in range |
+| V7: createCellPlayer Y/Z rotation swap | NOT-DETERMINABLE | Single msg; all rotation values 0.0 |
+| V8: enableEntities 8-byte body | CONFIRMS | 9 msgs, all 8 bytes, content undefined |
+
+### C.1 -- Setup
+
+- **Pcap**: `game/sgw/Working/binaries/sessions/2026-05-16_08-21.pcap`
+- **Keys**: `game/sgw/Working/binaries/sessions/2026-05-16_08-07-keys.txt`
+  - First key (64-char hex): `E94459B43FAE75ED...C345CFE2` (AES-256 session key)
+  - Note: file contains 5 keys; the first (longest) was used; pcap decryption succeeded
+
+    at 99.95% (10315/10320 packets)
+
+- **Packet stats**: 10320 UDP total; 10315 decrypted; 4366 server-to-client; 2377
+
+  client-to-server; 1577 undirected (direction detection by 2-sided port heuristic,
+  server port detected as 32832; confirmed by session log `2026-05-16_08-07.log` line 39:
+  `Nub::registerChannel: registering channel from address 127.0.0.1:32832`)
+
+- **Tool**: `tools/entity_property_sync_resolver.py` -- ~350 LOC, reuses
+
+  `pcap_dissect.py` decryption and footer-parse primitives; adds entity-method
+  iteration, createBasePlayer/createCellPlayer payload decode, updateEntity first-byte
+  scan, cell/base method byte histograms, enableEntities extraction
+
+### C.2 -- V1: Sub-slot threshold (idBase=61 vs 62)
+
+**Disposition**: CONFIRMS. **→ Already wire-confirmed in chapter §1.4** prior to this pass; this capture re-confirms from a second pcap. No chapter change required.
+
+**Wire evidence retained** (29 0xBD-prefixed sub-slot messages, sub_idx histogram):
+
+| sub_idx | count | spec interp (sub+62) | Rust interp (sub+61) |
+|---------|-------|----------------------|----------------------|
+| 4 | 1 | method 66 (unnamed) | method 65 = SETUP_STARGATE_INFO |
+| 19 | 1 | method 81 = ON_STORE_UPDATE | method 80 = ON_STORE_OPEN |
+| 20 | 1 | method 82 (unnamed) | method 81 = ON_STORE_UPDATE |
+| 21 | 2 | method 83 (unnamed) | method 82 (unnamed) |
+| 41 | 1 | method 103 (unnamed) | method 102 = ON_TIME_OF_DAY |
+| 44 | 1 | method 106 (unnamed) | method 105 = ON_DIALOG_DISPLAY |
+| 61 | 1 | method 123 (unnamed) | method 122 = SETUP_WORLD_PARAMETERS |
+| 63 | 1 | method 125 = ADD_CLIENT_HINTED_GENERIC_REGION | method 124 = CLEAR_HINTED_REGIONS |
+| 64 | 19 | method 126 = ON_RESET_MAP_INFO | method 125 = ADD_CLIENT_HINTED_GENERIC_REGION |
+| 91 | 1 | method 153 (unnamed) | method 152 (unnamed) |
+
+5 Rust-unique observations (only make sense under idBase=61): sub_idx=4 → SETUP_STARGATE_INFO, sub_idx=41 → ON_TIME_OF_DAY, sub_idx=44 → ON_DIALOG_DISPLAY, sub_idx=61 → SETUP_WORLD_PARAMETERS (the landmark method whose name matches its method-index exactly under idBase=61). Zero spec-unique observations. Consistent with the prior `sessions/2026-05-15_14-05.pcap` validation (18 Rust-unique, 0 spec-unique).
+
+### C.3 -- V2: createBasePlayer (msg_id 0x05) wire layout
+
+**Disposition**: CONFIRMS layout. **→ Folded into chapter §1.6** "Wire-confirmed" callout.
+
+**Wire evidence retained** — 3 createBasePlayer messages, raw payloads:
+
+```text
+Msg 1: 01 00 00 00 07 00   entityId=1  typeId=7  (0x0007)  prop_stream=0 bytes
+Msg 2: 02 00 00 00 02 00   entityId=2  typeId=2  (0x0002)  prop_stream=0 bytes
+Msg 3: 01 00 00 00 07 00   entityId=1  typeId=7  (0x0007)  prop_stream=0 bytes
+```
+
+typeId=2 = SGWBeing, typeId=7 = SGWDuelMarker — both pre-session entities. The session ended before a SGWPlayer (typeId=3) emission with non-empty property stream; **layout is confirmed, non-empty-stream case is not yet wire-witnessed**. The 0-byte property streams are consistent with both entity types having no OWN_CLIENT / OTHER_CLIENT props (per the §1.2 / §2.3 keyword-surface findings).
+
+### C.4 -- V3: createCellPlayer (msg_id 0x06) -- fixed 32-byte payload
+
+**Disposition**: CONFIRMS. **→ Folded into chapter §1.7** as a worked-example "Wire-confirmed" block with the concrete Atrea spawn coords.
+
+**Wire evidence retained** — 1 message, 32 bytes exact:
+
+```text
+Raw (32 bytes):
+10 00 01 00  00 00 00 00  91 1D A7 C3  AA F1 92 42
+A8 06 64 C3  00 00 00 00  00 00 00 00  00 00 00 00
+
+Decoded:
+  Offset  0-3:  spaceId   = 0x00010010 = 65552
+  Offset  4-7:  vehicleId = 0x00000000 = 0
+  Offset  8-11: posX      = -334.231  (0xC3A71D91)
+  Offset 12-15: posY      =   73.472  (0x4292F1AA)
+  Offset 16-19: posZ      = -228.026  (0xC36406A8)
+  Offset 20-23: rotX      = 0.0000
+  Offset 24-27: rotZ      = 0.0000  (chapter slot: yaw)
+  Offset 28-31: rotY      = 0.0000  (chapter slot: roll)
+```
+
+WORD_LENGTH framing gave 32 as the payload length; iterator consumed the full payload with no remainder.
+
+**V7 note retained**: all rotation values 0.0 → swap claim not wire-distinguishable from this capture (folded into chapter §1.7 as an inline NOTE callout). The Ghidra evidence (`FUN_015846a0` applying the swap internally) remains the primary citation.
+
+### C.5 -- V4: Property-change propID encoding (OQ-1 / G7)
+
+**Disposition**: NOT-CONFIRMED-IN-CAPTURE. **→ Folded into chapter §1.15 OQ-1** with capture-attempt status + path to closure.
+
+**Wire evidence retained**: zero `updateEntity` (msg_id `0x0A`) messages in this pcap. No `0x3C` or `0x3D` first-bytes in server→client payloads. Capture window ended at `EntityManager::disconnected` shortly after world entry — before any sustained in-world property changes (stat updates, inventory churn, ability use). Path to closure documented in chapter §1.15.
+
+### C.6 -- V5: Cell-method wire byte mask
+
+**Disposition**: CONFIRMS. **→ Folded into chapter §1.5** "Wire-confirmed" callout.
+
+**Wire evidence retained** — 112 cell-range bytes (0x80..0xBF), top 10 histogram:
+
+```text
+0xBD  n=35   methodId=61 (0x3D)  -- sub-slot sentinel (extended encoding)
+0x80  n=26   methodId=0           -- ON_SEQUENCE
+0x84  n=7    methodId=4           -- ON_ENTITY_FLAGS
+0x9A  n=6    methodId=26          -- BEING_APPEARANCE
+0x8A  n=6    methodId=10          -- ON_ENTITY_TINT
+0x83  n=4    methodId=3           -- INTERACTION_TYPE
+0x8F  n=3    methodId=15          -- ON_LEVEL_UPDATE
+0x93  n=3    methodId=19          -- ON_STATE_FIELD_UPDATE
+0x88  n=3    methodId=8           -- ON_VISIBLE
+0x82  n=3    methodId=2           -- (unnamed in METHOD_IDX)
+```
+
+All 112 in `0x80..0xBF`. The 35× `0xBD` is the sub-slot sentinel, consistent with V1.
+
+### C.7 -- V6: Base-method wire byte mask + 0xFF boundary
+
+**Disposition**: CONFIRMS. **→ Folded into chapter §1.5** "Wire-confirmed" callout; the **0xFF boundary case is the new contribution** (one observation, methodId=63 → `(63 & 0x3F) | 0xC0 = 0xFF`, explicit witness to the 6-bit mask at its boundary).
+
+**Wire evidence retained** — 39 base-range bytes (0xC0..0xFF), top 10 histogram:
+
+```text
+0xC0  n=24   methodId=0           -- (unnamed in METHOD_IDX; likely base method 0)
+0xC6  n=4    methodId=6
+0xC7  n=2    methodId=7           -- ON_ENTITY_PROPERTY
+0xD5  n=2    methodId=21          -- ON_STAT_BASE_UPDATE
+0xFF  n=1    methodId=63          -- (at mask boundary: (63 & 0x3F) | 0xC0 = 0xFF)
+0xC3  n=1    methodId=3           -- INTERACTION_TYPE
+0xC4  n=1    methodId=4           -- ON_ENTITY_FLAGS
+0xD8  n=1    methodId=24          -- ON_ALIGNMENT_UPDATE
+0xDD  n=1    methodId=29
+0xD6  n=1    methodId=22
+```
+
+All 39 in `0xC0..0xFF`.
+
+### C.8 -- V7: Y/Z rotation swap in createCellPlayer
+
+**Disposition**: NOT-DETERMINABLE. See C.4 — all rotation values 0.0. **→ Folded into chapter §1.7** as a NOTE callout pinning the swap claim as static-decompile-only.
+
+### C.9 -- V8: enableEntities (msg_id 0x08, client-to-server) 8-byte body
+
+**Disposition**: CONFIRMS. **→ Folded into chapter §1.17 as new gotcha S6** — the "scri" stack-frame artifact is the worked example.
+
+**Wire evidence retained** — 9 messages, all 8 bytes, client→server. Representative payloads:
+
+```text
+Msg 1: 00 00 00 C0 40 44 00 80   (float-looking bytes; not a u32 pair)
+Msg 2: 00 00 00 80 F8 43 00 C0
+Msg 3: 73 00 63 00 72 00 69 00   (ASCII 's','c','r','i' -- fragment of wide-string)
+Msg 4: 86 80 4C 4B 59 99 F8 B2   (random-looking bytes)
+Msg 5: 8F 5A C7 82 94 50 77 AA
+```
+
+Content varies per message; no pattern consistent with `[i32 entityId][i32 flag]`. The W-enable-entities mercury finding (`ghidra://SGW.exe@0x00dd928f`) showed 8 bytes written from an uninitialized / reused stack region — Msg 3's `"scri"` ASCII pattern is the smoking gun, consistent with a prior wide-string stack frame contaminating the buffer.
+
+### C.10 -- Net effect on chapter confidence
+
+All wire-capture promotions and the OQ-status updates have been folded into the chapter directly — see the chapter's §1.5, §1.6, §1.7, §1.8, §1.15 OQ-1, and §1.16 S6 entries for the new wire-confirmed language. This subsection is preserved as the audit ledger only.
+
+**Promotions reflected in the chapter** (was → now, all in `docs/drafts/spec/entity-property-sync.md`):
+
+| Section | Claim | Was | Now |
+|---------|-------|-----|-----|
+| §1.4 | SGWPlayer idBase=61 | HIGH (prior wire evidence) | RE-CONFIRMED (second pcap) |
+| §1.5 | Cell-method wire byte 0x80..0xBF | HIGH (Ghidra) | WIRE-CONFIRMED |
+| §1.5 | Base-method wire byte 0xC0..0xFF + 0xFF boundary | HIGH (Ghidra) | WIRE-CONFIRMED |
+| §1.6 | createBasePlayer layout: u32+u16+stream | MEDIUM (BW source) | WIRE-CONFIRMED (layout only — property stream non-zero case still pending) |
+| §1.7 | createCellPlayer 32-byte fixed | MEDIUM (Ghidra only) | WIRE-CONFIRMED (32-byte payload + concrete spawn coords worked-example) |
+| §1.7 | vehicleId=0 at world entry | Assertion | WIRE-CONFIRMED |
+| §1.17 S6 (new) | enableEntities 8-byte undefined body | new chapter gotcha | WIRE-CONFIRMED via "scri" stack-frame artifact |
+
+**Open questions that remain open after this pass** (now tracked in chapter §1.15):
+
+| OQ | Status | Path to closure |
+|----|--------|-----------------|
+| OQ-1: propID 0x3C/0x3D thresholds | STILL OPEN | 60+ s in-world capture with property changes (updateEntity msg_id 0x0A); cheapest probe is an `ON_STAT_UPDATE` from a health change |
+| V7 → §1.7 footnote: createCellPlayer Y/Z rotation swap | NOT-DETERMINABLE | Capture with non-zero spawn orientation |
+| OQ-X (new): inbound propID decoder location | OPEN | Callers of `EntityDescription_GetClientPropertyByIndex @ 0x01590d80` + `ServerConnection_*` inbound dispatchers (linked to chapter F1) |
+
+**spaceId format observation** (not folded — minor footnote candidate). The capture's `spaceId = 65552 = 0x00010010` is a compound field — high word `0x0001` is space type/category, low word `0x0010` is instance — matching the BigWorld convention. Captured here in case a future §1.7 footnote wants it; not currently surfaced in the chapter.
