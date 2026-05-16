@@ -15,6 +15,7 @@ revision_history:
   - 2026-05-16 v1 — initial Ghidra + client-tree pass, all 5 targets resolved
   - 2026-05-16 v2 — Appendix A added: OQ-A resolved; corrected flag table to 16 entries; §1.2 filter mask reconciled
   - 2026-05-16 v3 — Appendices B and C folded into chapter; this doc thinned to evidence-ledger role
+  - 2026-05-16 v4 — Appendix D added (OQ-1 inbound decoder follow-up); Appendix E added (msg_id 0x0A handler verification, refutes Appendix D's "visibility-only" framing); supersede markers on Appendix D header and §D.6
 
 ---
 
@@ -1084,3 +1085,262 @@ All wire-capture promotions and the OQ-status updates have been folded into the 
 | OQ-X (new): inbound propID decoder location | OPEN | Callers of `EntityDescription_GetClientPropertyByIndex @ 0x01590d80` + `ServerConnection_*` inbound dispatchers (linked to chapter F1) |
 
 **spaceId format observation** (not folded — minor footnote candidate). The capture's `spaceId = 65552 = 0x00010010` is a compound field — high word `0x0001` is space type/category, low word `0x0010` is instance — matching the BigWorld convention. Captured here in case a future §1.7 footnote wants it; not currently surfaced in the chapter.
+
+## Appendix D — OQ-1 inbound decoder findings (2026-05-16 follow-up)
+
+**Session:** post-compaction Ghidra investigation, 2026-05-16.
+
+> [!WARNING] **SUPERSEDED IN PART by Appendix E (2026-05-16).** The "msg_id `0x0A` is a visibility signal not a property-delta carrier" framing in this appendix was REFUTED — see Appendix E for the verified call chain. The `0x3C`/`0x3D` byte-pattern absence finding (§D.3) and the UE3 FArchive bridge identification (§D.2) still stand. OQ-1's closure reason is "thresholds absent from client code" not "architecture mismatch", and the chapter §1.8 framing (property delta rides on `updateEntity`) remains correct.
+
+**Verdict (corrected, see Appendix E for refutation): OQ-1 CLOSED — the `0x3C`/`0x3D` threshold-comparison instructions are absent from SGW.exe client code (exhaustive byte-pattern search §D.3). Thresholds are server-side encoding constants and cannot be verified or falsified from any SGW binary. The "architecture-mismatch" framing in the rest of this appendix — that msg_id `0x0A` is visibility-only and not the property-delta carrier — is wrong; see Appendix E.**
+
+### D.1 — `updateEntity` handler chain (full trace)
+
+The `updateEntity` Mercury message (msg_id `0x0A`) handler was traced from registration to final dispatch.
+
+**Registration** (thunk at `ghidra://SGW.exe@0x017bb570`):
+
+- Descriptor `0x019d13e0` written to `[0x01e51d18]`
+- Handler `0x00dd62c0` written to `[0x01e51d1c]`
+- Message name string at `ghidra://SGW.exe@0x019d0a60` = `"updateEntity"`
+
+**Handler `ghidra://SGW.exe@0x00dd62c0`** (disassembly-confirmed):
+
+```asm
+CMP [ECX+0x168], 0      ; EntityManager null-check
+JZ ret
+MOV EDX, [ESP+0x4]      ; EDX = Mercury MessageHandler struct ptr
+MOV ECX, [ECX+0x168]    ; ECX = EntityManager*
+MOV EAX, [ECX]          ; vtable
+MOV EDX, [EDX]          ; EDX = *(msg) = entity_id (first 4 bytes of payload)
+MOV EAX, [EAX+0x14]     ; vtable slot 5
+MOV [ESP+0x4], EDX      ; pass entity_id as arg
+JMP EAX                 ; tail-call EntityManager->vtable[5]
+RET 4
+```
+
+**EntityManager vtable slot 5** (`+0x14`) = `ghidra://SGW.exe@0x00dd0bb0` (decompiler-confirmed):
+
+- Looks up `entity_id` in the listener map at `EntityManager+0x18`
+- Calls `FUN_00e68df0(found_entity, 0)` which sets `entity+0x30 = entity+0x31 = 0`
+- Calls `FUN_00e688c0(entity)` → `FUN_00768970(entity+8, 1)` — toggles UE3 actor visibility bit in `actor+0x70`
+
+**Conclusion:** `updateEntity` in SGW.exe is the **entity-enters-AoI / becomes-visible signal**. It carries only a 4-byte entity_id on the wire. It does NOT carry a propID-prefixed property delta stream. The current name `GameEntityManager_RemoveEntityListener` for `0x00dd0bb0` is wrong; proposed rename: `GameEntityManager_SetEntityVisible`.
+
+### D.2 — Property change pipeline in SGW.exe (full trace)
+
+Entity property updates flow through a UE3 native property replication bridge, NOT through the BigWorld wire propID encoding.
+
+**Full path** (all addresses Ghidra-decompile-confirmed):
+
+1. `FRemotePropagator.cpp` (`FUN_015605b0 @ ghidra://SGW.exe@0x015605b0`) — collects UE3 actor property deltas and calls `FUN_01565390`
+2. `FUN_01565390 @ 0x01565390` — serializes to UE3 FArchive and calls `FListenHelper::vtable[4](FListenHelper_ptr, entity_id, flags, data_ptr, data_len)`
+3. `FListenHelper::vfunc_5 @ 0x01561140` — null-checks `this+0x28` and calls `FUN_01560ad0`
+4. `FUN_01560ad0 @ 0x01560ad0` — reads type tag (`uint32_t` at buf+0), switches on cases 1-6:
+   - Case 1 = `FNetworkPropertyChange` → `FNetworkPropertyChange__vfunc_0(local_c4, stream)`
+5. `FNetworkPropertyChange__vfunc_0 @ 0x015652d0`:
+
+   ```c
+   FUN_0047f0e0(stream, this+0x2c, 4);  // reads propID as uint32_t into this+0x2c
+   ```
+
+   — propID arrives as a full 32-bit integer in UE3 FArchive format, not as a 1-2 byte BigWorld wire field
+
+**`FListenHelper` singleton:** allocated by `FUN_0155f9b0 @ 0x0155f9b0`, stored at `DAT_01ef11fd8`. vtable at `ghidra://SGW.exe@0x01b14d4c`.
+
+**Conclusion:** SGW.exe's entity property update path reads propID as a 4-byte `uint32_t` from a UE3 FArchive — bypassing BigWorld's wire-level propID encoding entirely. The 0x3C/0x3D threshold scheme applies only in the server-side BigWorld layer when it serializes the property delta into the Mercury `updateEntity` payload.
+
+### D.3 — Byte-pattern exhaustive search for 0x3C/0x3D threshold constants
+
+Every reasonable encoding of the threshold comparison was searched in SGW.exe's code:
+
+| Pattern | Hits | Disposition |
+|---------|------|-------------|
+| `3C 3C 75` (CMP AL,0x3C; JNE) | 1 | XML parser at `0x013461f9` |
+| `3C 3C 0F 86` (CMP AL,0x3C; JBE) | 0 | — |
+| `3C 3D 0F 86` (CMP AL,0x3D; JBE) | 0 | — |
+| `83 F8 3C` (CMP EAX,0x3C) | 20+ | All unrelated: XML, CSS, string parsers |
+| `83 F8 3B` (CMP EAX,0x3B — value 59) | 6 | All unrelated parsers |
+| `0F B6 ?? 83 F8 3C` (MOVZX + CMP 0x3C) | 0 | — |
+| `0F B6 ?? 83 F8 3B` (MOVZX + CMP 0x3B) | 0 | — |
+| `3C 00 00 00 3D 00 00 00` (dword constants 60, 61) | 4 | All data segment: Huffman tables |
+| `2D 3C 00 00 00` (SUB EAX, 60) | 0 | — |
+
+**Conclusion:** The 0x3C/0x3D threshold comparison instructions are absent from SGW.exe's executable code. This is consistent with the threshold being applied server-side only.
+
+### D.4 — Bonus: F1 (out-of-bounds propID behavior)
+
+Cannot be determined from SGW.exe. The bounds check applies on the server at encode time (`EntityDescription::addChangeToMessage` equivalent). On the client, `FNetworkPropertyChange__vfunc_0` receives a 32-bit propID from the UE3 bridge; if the server sends an invalid propID, the UE3 bridge would index the DataDescription array out of bounds — a server bug, not a client invariant. No client-side propID bounds check found.
+
+**Status: NOT-DETERMINABLE from client binary.**
+
+### D.5 — Bonus: G39 (no-slice mechanism)
+
+No slice mechanism is visible in either the BigWorld or UE3 property-change path in SGW.exe. `FNetworkPropertyChange` carries a single (propID, value) pair per message; `FUN_01560ad0` processes one message type per call. No loop or "next slice" branching found.
+
+**Status: CONFIRMED ABSENT in client-side code. Server may implement slices at the `updateEntity` payload composition layer, but no evidence either way.**
+
+### D.6 — Annotation corrections
+
+> [!WARNING] **SUPERSEDED by Appendix E.4 (2026-05-16).** The rename proposal below is WRONG. The function at `0x00dd0bb0` IS a listener-removal operation (`lower_bound` lookup on the listener map at `EntityManager+0x18` + `FUN_00e68df0` refcount release). The current Ghidra name `GameEntityManager_RemoveEntityListener` is correct and should be kept. The real annotation bug uncovered in this region is a wrong-vtable-slot plate comment on `0x00dd0bb0` and `0x00dd0c10` (see Appendix E.4).
+
+The function at `ghidra://SGW.exe@0x00dd0bb0` is currently named `GameEntityManager_RemoveEntityListener` in the Ghidra database. The decompiled code does not remove a listener — it looks up an entity by ID and marks it visible. Proposed rename: `GameEntityManager_OnEntityEnterAoI` or `GameEntityManager_SetEntityVisible`. This is an annotation bug per the `annotation-script-shift-bugs.md` pattern.
+
+### D.7 — Net effect on chapter
+
+**OQ-1** in chapter §1.15: change status from `STILL OPEN` to `CLOSED (architecture-mismatch)`. Recommended chapter update:
+
+> OQ-1 (propID 0x3C/0x3D thresholds): **CLOSED — architecture mismatch.** The 0x3C/0x3D threshold encoding is server-side only. SGW.exe does not implement the BigWorld wire propID decoder; incoming property changes arrive at the client as `uint32_t` propIDs via UE3's native property replication bridge (`FNetworkPropertyChange__vfunc_0 @ ghidra://SGW.exe@0x015652d0`, Appendix D.2). The 60/316 threshold values remain BW-source-only evidence and cannot be confirmed or falsified from any SGW binary. Server implementers must cross-check against the actual BigWorld 2.0 server binary or live wire capture. See Appendix D (2026-05-16) for the full investigation.
+
+**OQ-X** in chapter §1.15: change status from `OPEN` to `RESOLVED`. The inbound propID decoder location is `FNetworkPropertyChange__vfunc_0 @ 0x015652d0` (reads propID as uint32_t from UE3 FArchive). The BigWorld-layer decoder for the 0x3C/0x3D encoded propID does not exist in SGW.exe; BigWorld decodes it before passing to the UE3 bridge.
+
+**F1** (out-of-bounds propID): change from `UNVERIFIED` to `NOT-DETERMINABLE (client binary)`. The guard is server-side.
+
+**G39** (no-slice): change from claim to `CONFIRMED ABSENT in client-side code`.
+
+**Annotation bug:** `GameEntityManager_RemoveEntityListener @ 0x00dd0bb0` is misnamed — should be `GameEntityManager_OnEntityEnterAoI`. Record in `annotation-script-shift-bugs.md`.
+
+---
+
+## Appendix E — msg_id 0x0A handler verification (2026-05-16 follow-up)
+
+**Session:** focused single-question Ghidra verification pass, 2026-05-16.
+
+### E.0 Verdict
+
+- **Claim from Appendix D (msg_id 0x0A is visibility-only): REFUTED.**
+- **Function naming at `0x00dd0bb0`:** `GameEntityManager_RemoveEntityListener` is the correct
+  current Ghidra name and matches observed behavior. Appendix D §D.6's proposed rename
+  (`GameEntityManager_OnEntityEnterAoI`) was wrong — that function does a listener-map
+  lower_bound lookup and calls `FUN_00e68df0` (refcount release), not a visibility operation.
+  The annotation-bug note in D.6/D.7 is retracted.
+- **Function naming at `0x00dd29d0`:** `EntityManager_LeaveAoI` is correct. It buffers
+  deferred leave-AoI dispatches to the secondary slot map at `GameEntityManager+0x3C`.
+- **Property-delta carrier msg_id:** confirmed `0x0A` (`updateEntity`). The handler dispatches
+  to the full property-change pipeline via `FListenHelper::vtable[5]`. The mercury §2.5 catalog
+  entry is correct.
+
+### E.1 — `0x00dd62c0` full decompile
+
+Full disassembly (10 instructions; Ghidra decompiler shows only 8 due to "Too many branches"
+collapse of the indirect jump):
+
+```asm
+00dd62c0: CMP  dword ptr [ECX + 0x168], 0x0
+00dd62c7: JZ   0x00dd62e0                        ; null-check guard — return if no delegate set
+00dd62c9: MOV  EDX, dword ptr [ESP + 0x4]        ; EDX = Mercury message context ptr
+00dd62cd: MOV  ECX, dword ptr [ECX + 0x168]      ; ECX = *ServerConnection+0x168 = FListenHelper*
+00dd62d3: MOV  EAX, dword ptr [ECX]              ; EAX = FListenHelper::vtable ptr
+00dd62d5: MOV  EDX, dword ptr [EDX]              ; EDX = *(msg_ctx) — first dword of stream
+00dd62d7: MOV  EAX, dword ptr [EAX + 0x14]       ; EAX = vtable[5] = FUN_01561140
+00dd62da: MOV  dword ptr [ESP + 0x4], EDX        ; pass stream ptr as argument
+00dd62de: JMP  EAX                               ; tail-call FListenHelper::vtable[5]
+00dd62e0: RET  0x4
+```
+
+Key correction vs. Appendix D: `[ECX+0x168]` is NOT the `GameEntityManager`. It is an
+`FListenHelper` instance (RTTI at `0x01C08E40`; type name `.?AUFListenHelper@@` confirmed at
+`0x01E90F98`). The Ghidra decompiler's `*(param_1+0x168)` notation obscured the type; the
+indirect-jump collapse ("Too many branches") hid the actual tail-call target.
+
+The handler does **not** read a bare entity_id and stop. It passes the stream pointer through to
+the pipeline. The `MOV EDX, [EDX]` at `00dd62d5` loads the first dword from the Mercury message
+context — this is the stream object pointer being forwarded, not an entity_id being extracted and
+discarded.
+
+### E.2 — vtable[5] target — `FListenHelper::vtable[5]` = `FUN_01561140 @ 0x01561140`
+
+Vtable at `0x01b14d48` (identified by RTTI `FListenHelper`, `0x01C08E40`):
+
+```text
+Offset  Address      Function
++0x00   0x01560d70   FListenHelper::vfunc_0
++0x04   0x01560d90   FListenHelper::vfunc_1
++0x08   0x01565070   FListenHelper::vfunc_2
++0x0c   0x01565150   FListenHelper::vfunc_3
++0x10   0x01564f10   FListenHelper::vfunc_4
++0x14   0x01561140   FListenHelper::vfunc_5  ← called by updateEntity_Handler
++0x18   0x01C08F4C   FListenHelper::vfunc_6
++0x1c   0x01565290   FListenHelper::vfunc_7
+```
+
+Decompile of `FUN_01561140`:
+
+```c
+void __thiscall FUN_01561140(void *this, undefined4 p1, undefined4 p2, void *pData, size_t nLen)
+{
+    if (*(void **)((int)this + 0x28) != NULL) {
+        FUN_01560ad0(*(void **)((int)this + 0x28), pData, nLen);
+    }
+}
+```
+
+This is a one-level guard: if the sub-object at `this+0x28` is non-null, forward `(pData, nLen)`
+to `FUN_01560ad0`. The sub-object at `+0x28` is the BigWorld→UE bridge object.
+
+### E.3 — Property-delta call chain
+
+Working up from `FNetworkPropertyChange__vfunc_0`:
+
+```text
+updateEntity_Handler @ 0x00dd62c0
+  → FListenHelper::vtable[5] = FUN_01561140 @ 0x01561140
+    → FUN_01560ad0 @ 0x01560ad0   (BigWorld→UE bridge)
+      switch(type_tag):
+        case 1 → FNetworkPropertyChange__vfunc_0 @ 0x015652d0   (property delta)
+        case 2 → FNetworkActorMove__vfunc_0                       (entity move)
+        case 3 → FNetworkActorCreate__vfunc_0                     (entity create)
+        case 4 → FNetworkActorDelete__vfunc_0                     (entity delete)
+        case 5 → FNetworkObjectRename__vfunc_0                    (entity rename)
+        case 6 → FNetworkRemoteConsoleCommand__vfunc_0            (remote console)
+```
+
+`FUN_01560ad0` reads 4 bytes (total payload length), then 4 bytes (type tag), validates
+`payload_len == read_len`, and dispatches. A single `updateEntity` message carries exactly one
+typed sub-message. Case 1 (`FNetworkPropertyChange`) is the property-delta path — it calls
+`FNetworkPropertyChange__vfunc_0 @ 0x015652d0` which reads propID as uint32_t via UE3 FArchive.
+
+The channel therefore carries **multiple payload types** under the same Mercury msg_id 0x0A.
+`updateEntity` is not solely "property delta" — it is a typed envelope for all entity state
+updates (property, move, create, delete, rename, remote-console). The §2.5 catalog label
+"Per-entity property delta" is an understatement; the correct label is "Per-entity typed state
+update (property/move/create/delete/rename/console)".
+
+### E.4 — Function naming reconciliation
+
+| Address | Old name / Appendix D claim | Verified name | Reason |
+|---|---|---|---|
+| `0x00dd29d0` | `EntityManager_LeaveAoI` (G4, confirmed) | **keep `EntityManager_LeaveAoI`** | Decompile confirms: buffers deferred leave-AoI into secondary slot map at `GameEntityManager+0x3C`. No conflict with any other function. |
+| `0x00dd0bb0` | `GameEntityManager_RemoveEntityListener` (Ghidra DB) / "SetEntityVisible" (Appendix D §D.6) | **keep `GameEntityManager_RemoveEntityListener`** | Decompile confirms: lower_bound lookup on listener map + `FUN_00e68df0` refcount release. This IS a listener removal, not a visibility set. Appendix D's description and proposed rename were both wrong. |
+
+**Correction to D.6 and D.7:** The annotation-bug note ("misnamed — should be
+`GameEntityManager_OnEntityEnterAoI`") is retracted. The current Ghidra name is accurate.
+No annotation-script-shift-bugs record should be filed for `0x00dd0bb0`.
+
+**New annotation-script-shift-bugs record (Appendix D plate comments):** The plate comment on
+`0x00dd0bb0` claims "VTable slot 5 of vtable_GameEntityManager at 0x019aaec4". This is
+doubly wrong: (a) slot 5 of the raw vtable at `0x019aaeb8` is `0x00dd0c10`
+(`GameEntityManager_SetPlayerControlTarget`), not `0x00dd0bb0`; (b) the function at `0x00dd0bb0`
+is at raw slot 8 (`0x019aaed8`). The plate comment on `0x00dd0c10` also claims "VTable slot 2"
+which contradicts the raw memory. Both plate comments contain wrong slot numbers and should be
+corrected. This is an annotation-script-shift class of bug (systematic vtable slot numbering
+error in the GameEntityManager vtable annotation pass).
+
+### E.5 — Net effect on chapter
+
+**§1.8 framing ("property delta rides on updateEntity msg_id 0x0A"):** keep, with expansion.
+The framing is correct — property deltas do arrive via msg_id 0x0A. The chapter should note that
+0x0A is a typed envelope carrying multiple sub-message types (case 1 through 6 in
+`FUN_01560ad0`), of which property delta is case 1. The call chain documented in §1.8
+(`updateEntity_Handler → FNetworkPropertyChange__vfunc_0`) is accurate; only the intermediary
+(`FListenHelper::vtable[5]` → `FUN_01561140` → `FUN_01560ad0`) was previously undocumented.
+
+**§1.10 leaveAoI claims:** unaffected. `EntityManager_LeaveAoI @ 0x00dd29d0` is confirmed.
+
+**Mercury §2.5 catalog entry for msg_id 0x0A:** keep the `updateEntity` name and "word-prefix"
+length encoding. The description "Per-entity property delta" should be broadened to "Per-entity
+typed state update (property/move/create/delete/rename/console — dispatched by type tag in
+`FUN_01560ad0 @ 0x01560ad0`)".
+
+**Appendix D §D.6 annotation-bug note:** retract. Do not file
+`GameEntityManager_OnEntityEnterAoI` rename for `0x00dd0bb0`.
