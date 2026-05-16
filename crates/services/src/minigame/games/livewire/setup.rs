@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use rand::Rng;
+use rand::RngExt;
 
 use crate::minigame::protocol::SfsValue;
 use crate::sfs_vars;

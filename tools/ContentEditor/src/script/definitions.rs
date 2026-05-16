@@ -347,7 +347,7 @@ fn parse_nodes_xml(path: &Path) -> Result<(Vec<NodeTemplate>, Vec<DatabaseRef>, 
                 }
             }
             Ok(Event::Text(ref e)) => {
-                let text = e.unescape()?.to_string();
+                let text = e.decode()?.to_string();
                 match &mut state {
                     State::InDatabaseRef(_) | State::InNode(_) => {
                         text_buf.push_str(&text);
@@ -619,7 +619,7 @@ fn parse_enumerations_xml(path: &Path) -> Result<Vec<EnumDefinition>> {
                 let _ = tag;
             }
             Ok(Event::Text(ref e)) => {
-                let text = e.unescape()?.to_string();
+                let text = e.decode()?.to_string();
                 text_buf.push_str(&text);
             }
             Ok(Event::End(ref e)) => {
