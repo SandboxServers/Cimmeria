@@ -121,6 +121,8 @@ pub(crate) async fn send_to_witness<F>(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     witness_id: u32,
+    entity_id: u32,
+    action: &str,
     build_packet: F,
 ) where
     F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
@@ -130,7 +132,14 @@ pub(crate) async fn send_to_witness<F>(
         let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
             Some(a) => a,
             None => {
-                tracing::trace!(witness_id, "AoI: no client addr for witness -- skipping");
+                let entity_count_in_map = entity_to_addr.lock().unwrap().len();
+                tracing::warn!(
+                    witness_id,
+                    entity_id,
+                    action,
+                    entity_count_in_map,
+                    "AoI: no client addr for witness -- skipping"
+                );
                 return;
             }
         };
@@ -144,7 +153,13 @@ pub(crate) async fn send_to_witness<F>(
                 Some((addr, key, seq, acks))
             }
             None => {
-                tracing::trace!(witness_id, %addr, "AoI: client disconnected -- skipping");
+                tracing::debug!(
+                    witness_id,
+                    %addr,
+                    entity_id,
+                    action,
+                    "AoI: client disconnected -- skipping"
+                );
                 None
             }
         }
@@ -153,7 +168,7 @@ pub(crate) async fn send_to_witness<F>(
     if let Some((addr, key, seq, acks)) = send_data {
         let packet = build_packet(&key, seq, &acks);
         if let Err(e) = socket.send_to(&packet, addr).await {
-            tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
+            tracing::warn!(witness_id, entity_id, action, %addr, "AoI: failed to send packet: {e}");
         }
     }
 }

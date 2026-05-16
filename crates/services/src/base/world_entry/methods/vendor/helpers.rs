@@ -23,6 +23,8 @@ pub async fn send_cash_changed_to_client(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -169,6 +171,8 @@ pub async fn sync_bandolier_after_inventory_change(
             connected,
             entity_to_addr,
             entity_id,
+            entity_id,
+            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,

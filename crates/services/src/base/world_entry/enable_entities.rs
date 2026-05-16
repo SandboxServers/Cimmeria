@@ -76,7 +76,15 @@ pub(crate) async fn handle_enable_entities(
         );
 
         let pkt = build_create_player(&key, seq, &acks, &entry_info);
-        socket.send_to(&pkt, addr).await?;
+        if let Err(e) = socket.send_to(&pkt, addr).await {
+            tracing::error!(
+                player_entity_id = entry_info.player_entity_id,
+                space_id = entry_info.space_id,
+                seq,
+                "enable_entities: send_to failed before staging pending_map_loaded: {e}"
+            );
+            return Err(e.into());
+        }
 
         // Send succeeded — now commit: take pending state and stage map_loaded data.
         {

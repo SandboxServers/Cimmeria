@@ -252,6 +252,8 @@ pub(crate) async fn handle_on_client_ready(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -269,6 +271,8 @@ pub(crate) async fn handle_on_client_ready(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -319,6 +323,8 @@ pub(crate) async fn handle_cancel_movie(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -336,6 +342,8 @@ pub(crate) async fn handle_cancel_movie(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,

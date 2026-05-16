@@ -128,6 +128,8 @@ pub async fn send_full_inventory_update(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_UPDATE_ITEM, &args)
         },
@@ -162,6 +164,8 @@ pub(super) async fn send_on_remove_item(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_REMOVE_ITEM, &args)
         },

@@ -78,6 +78,11 @@ pub(super) async fn accept_or_advance(
                 chain_id, error = %e,
                 "MissionUpdate (accept) send to base failed -- mission progress not persisted"
             );
+            tracing::warn!(
+                mission_id,
+                player_id,
+                "MissionUpdate (accept) failed but mission_accepted event firing anyway -- cell-side state authoritative"
+            );
         }
         // Fire the follow-up `mission_accepted` event so chains
         // tied to mission start can run their setup work
@@ -153,8 +158,10 @@ pub(super) async fn complete(
         .await
     {
         tracing::error!(
-            entity_id, player_id, mission_id, chain_id, error = %e,
-            "MissionUpdate (complete) send to base failed -- mission completion not persisted"
+            entity_id, player_id, mission_id, repeats, chain_id,
+            state = "complete",
+            error = %e,
+            "MissionUpdate (complete) send failed -- completion will not persist"
         );
     }
     // Fire the `mission_completed` chain-engine event only when the

@@ -135,14 +135,24 @@ pub(super) async fn remove_dialog_set(
                 .unwrap_or(0);
             let merged = base_flags | removed_flags.unwrap_or(0);
 
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::WitnessEntityMethod {
                     witness_id: entity_id,
                     entity_id: target_id,
                     method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                     args: (merged as u64).to_le_bytes().to_vec(),
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    target_id,
+                    dialog_set_id,
+                    chain_id,
+                    phase = "remove",
+                    "dialog InteractionType update send failed: {e}"
+                );
+            }
         }
     }
 }
@@ -244,14 +254,24 @@ async fn send_interaction_update_if_visible(
                 label
             );
 
-            let _ = tx
+            if let Err(e) = tx
                 .send(CellToBaseMsg::WitnessEntityMethod {
                     witness_id: entity_id,
                     entity_id: target_id,
                     method_index: crate::mercury::method_idx::INTERACTION_TYPE,
                     args: (merged as u64).to_le_bytes().to_vec(),
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    target_id,
+                    dialog_id = entry.dialog_id,
+                    chain_id,
+                    phase = label,
+                    "dialog InteractionType update send failed: {e}"
+                );
+            }
         } else {
             tracing::debug!(
                 entity_id,

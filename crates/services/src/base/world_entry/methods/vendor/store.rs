@@ -155,6 +155,8 @@ pub async fn send_store_open_to_client(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(key, seq, acks, entity_id, method_idx::ON_STORE_OPEN, &args)
         },
@@ -181,6 +183,8 @@ pub async fn send_store_update_to_client(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,

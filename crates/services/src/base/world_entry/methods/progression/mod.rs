@@ -180,6 +180,8 @@ pub async fn handle_grant_xp(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,
@@ -201,6 +203,8 @@ pub async fn handle_grant_xp(
             connected,
             entity_to_addr,
             entity_id,
+            entity_id,
+            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -224,6 +228,8 @@ pub async fn handle_grant_xp(
             connected,
             entity_to_addr,
             entity_id,
+            entity_id,
+            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -244,6 +250,8 @@ pub async fn handle_grant_xp(
             connected,
             entity_to_addr,
             entity_id,
+            entity_id,
+            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -265,6 +273,8 @@ pub async fn handle_grant_xp(
             connected,
             entity_to_addr,
             entity_id,
+            entity_id,
+            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,
@@ -341,6 +351,8 @@ pub async fn handle_grant_cash(
             connected,
             entity_to_addr,
             entity_id,
+            entity_id,
+            "METHOD",
             |key, seq, acks| {
                 build_entity_method_packet(
                     key,

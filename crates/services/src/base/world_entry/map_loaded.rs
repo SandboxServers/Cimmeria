@@ -114,7 +114,14 @@ pub(crate) async fn handle_map_loaded(
     for (i, pkt_data) in map_packets.iter().enumerate() {
         tracing::debug!(%addr, len = pkt_data.len(), seq = map_base_seq + i as u32,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
-        socket.send_to(pkt_data, addr).await?;
+        if let Err(e) = socket.send_to(pkt_data, addr).await {
+            tracing::warn!(
+                fragment_idx = i,
+                total_fragments = map_packets.len(),
+                map_body_len = map_body.len(),
+                "map_loaded: fragment send failed: {e}"
+            );
+        }
     }
 
     let total_bytes: usize =
@@ -128,10 +135,27 @@ pub(crate) async fn handle_map_loaded(
     // Clear first_login flag in DB after sending the intro movie
     if player_data.first_login != 0 {
         if let Some(ref pool) = db_pool {
-            let _ = sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
+            match sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
                 .bind(player_data.player_id)
                 .execute(pool.as_ref())
-                .await;
+                .await
+            {
+                Err(e) => {
+                    tracing::warn!(
+                        player_id = player_data.player_id,
+                        "clear first_login failed: {e}"
+                    );
+                }
+                Ok(r) if r.rows_affected() == 0 => {
+                    tracing::error!(
+                        player_id = player_data.player_id,
+                        rows_affected = 0,
+                        expected = 1,
+                        "first_login flag NOT cleared — cinematic will re-fire on next login"
+                    );
+                }
+                Ok(_) => {}
+            }
         }
 
         // The first-login cinematic (onPlayMovie) blocks the client from
@@ -149,16 +173,24 @@ pub(crate) async fn handle_map_loaded(
                 entity_id = delay_entity_id,
                 "Cinematic timer: resending BeingAppearance after 10s delay"
             );
+            let delay_addr = {
+                let map = delay_entity_to_addr.lock().unwrap();
+                match map.get(&delay_entity_id).copied() {
+                    Some(a) => a,
+                    None => {
+                        tracing::warn!(
+                            delay_entity_id,
+                            elapsed_secs = 10,
+                            reason = "entity_to_addr_miss",
+                            "delayed cinematic resend skipped — entity vanished from address map"
+                        );
+                        return;
+                    }
+                }
+            };
             handle_cancel_movie(
                 &delay_socket,
-                // Look up addr from entity_to_addr since it's stable
-                {
-                    let map = delay_entity_to_addr.lock().unwrap();
-                    match map.get(&delay_entity_id).copied() {
-                        Some(a) => a,
-                        None => return,
-                    }
-                },
+                delay_addr,
                 delay_entity_id,
                 &delay_connected,
                 &delay_entity_to_addr,

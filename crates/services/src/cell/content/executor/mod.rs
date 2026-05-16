@@ -109,13 +109,21 @@ pub(super) async fn execute_actions(
                 args.extend_from_slice(&0u32.to_le_bytes()); // NameValuePairs count = 0
                 args.push(0); // ViewType = 0
                 args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
-                let _ = tx
+                if let Err(e) = tx
                     .send(CellToBaseMsg::EntityMethodCall {
                         entity_id,
                         method_index: crate::mercury::method_idx::ON_SEQUENCE,
                         args,
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        entity_id,
+                        sequence_id,
+                        chain_id,
+                        "PlaySequence: cell→base send failed: {e}"
+                    );
+                }
             }
             Action::AdvanceStep {
                 mission_id,
@@ -182,7 +190,7 @@ pub(super) async fn execute_actions(
                 on_victory_chains,
             } => {
                 tracing::info!(entity_id, %minigame_type, ?on_victory_chains, chain_id, "Content: starting minigame");
-                let _ = tx
+                if let Err(e) = tx
                     .send(CellToBaseMsg::StartMinigame {
                         entity_id,
                         player_id,
@@ -190,7 +198,15 @@ pub(super) async fn execute_actions(
                         difficulty: 1, // TODO: parse from chain params when difficulty field is added
                         on_victory_chains: on_victory_chains.clone(),
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        entity_id,
+                        minigame_id = %minigame_type,
+                        chain_id,
+                        "StartMinigame: cell→base send failed: {e}"
+                    );
+                }
             }
             Action::SetAggression {
                 entity_tag,
@@ -322,13 +338,22 @@ pub(super) async fn execute_actions(
                 let mut args = Vec::with_capacity(8);
                 args.extend_from_slice(&bag_id.to_le_bytes());
                 args.extend_from_slice(&(slot + 1).to_le_bytes()); // 1-indexed
-                let _ = tx
+                if let Err(e) = tx
                     .send(CellToBaseMsg::EntityMethodCall {
                         entity_id,
                         method_index: crate::mercury::method_idx::ON_ACTIVE_SLOT_UPDATE,
                         args,
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        entity_id,
+                        bag_id,
+                        slot,
+                        chain_id,
+                        "SetActiveSlot: cell→base send failed: {e}"
+                    );
+                }
             }
             Action::TriggerChain {
                 chain_id: target_chain_id,

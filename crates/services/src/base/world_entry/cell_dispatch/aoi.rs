@@ -45,6 +45,8 @@ pub(super) async fn entered_aoi(
         connected,
         entity_to_addr,
         witness_id,
+        entity_id,
+        "CREATE",
         |key, seq, acks| {
             build_create_entity_base(key, seq, acks, entity_id, class_id, position, direction)
         },
@@ -56,6 +58,8 @@ pub(super) async fn entered_aoi(
         connected,
         entity_to_addr,
         witness_id,
+        entity_id,
+        "CREATE",
         |key, seq, acks| {
             build_create_entity_cascade(
                 key,
@@ -86,6 +90,8 @@ pub(super) async fn left_aoi(
         connected,
         entity_to_addr,
         witness_id,
+        entity_id,
+        "LEAVE",
         |key, seq, acks| build_entity_leave(key, seq, acks, entity_id),
     )
     .await;
@@ -109,6 +115,8 @@ pub(super) async fn entity_moved(
         connected,
         entity_to_addr,
         witness_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_avatar_update(key, seq, acks, entity_id, position, velocity, direction)
         },
@@ -137,6 +145,8 @@ pub(super) async fn entity_method_call(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method_index, &args),
     )
     .await;
@@ -164,6 +174,8 @@ pub(super) async fn witness_entity_method(
         connected,
         entity_to_addr,
         witness_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method_index, &args),
     )
     .await;
@@ -185,6 +197,8 @@ pub(super) async fn entity_invisible(
         connected,
         entity_to_addr,
         witness_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| build_entity_invisible(key, seq, acks, entity_id),
     )
     .await;

@@ -94,6 +94,8 @@ pub async fn refresh_player_appearance(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| {
             build_entity_method_packet(
                 key,

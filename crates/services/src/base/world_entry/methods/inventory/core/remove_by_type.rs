@@ -160,11 +160,13 @@ pub async fn handle_remove_inventory_item_by_type(
 
     match result {
         Ok(r) if r.rows_affected() == 1 => {}
-        Ok(_) => {
+        Ok(r) => {
             let _ = tx.rollback().await;
             tracing::warn!(
                 player_id,
                 type_id,
+                rows_affected = r.rows_affected(),
+                expected = 1,
                 "RemoveInventoryItemByType: no rows changed"
             );
             return;

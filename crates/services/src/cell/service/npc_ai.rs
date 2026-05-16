@@ -192,7 +192,7 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         distance = dist_to_target,
         "NPC AI: attacking top threat target"
     );
-    super::super::abilities::handle_use_ability(
+    let ability_fired = super::super::abilities::handle_use_ability(
         npc_id,
         combat::NPC_DEFAULT_ABILITY,
         target_id as i32,
@@ -200,6 +200,14 @@ async fn npc_ai_fight(npc_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
         space_mgr,
     )
     .await;
+    if !ability_fired {
+        tracing::warn!(
+            npc_id,
+            target = target_id,
+            ability = combat::NPC_DEFAULT_ABILITY,
+            "NPC AI: attack tick produced no ability fire"
+        );
+    }
 }
 
 /// NPC leashing behavior: reset to Idle and restore health.

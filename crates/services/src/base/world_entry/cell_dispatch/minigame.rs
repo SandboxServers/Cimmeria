@@ -71,6 +71,8 @@ pub(super) async fn start_minigame(
                 connected,
                 entity_to_addr,
                 entity_id,
+                entity_id,
+                "METHOD",
                 |key, seq, acks| {
                     build_entity_method_packet(key, seq, acks, entity_id, method, &args)
                 },
@@ -104,6 +106,8 @@ pub(super) async fn minigame_result(
         connected,
         entity_to_addr,
         entity_id,
+        entity_id,
+        "METHOD",
         |key, seq, acks| build_entity_method_packet(key, seq, acks, entity_id, method, &[]),
     )
     .await;
