@@ -11,7 +11,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use quick_xml::{events::Event, Reader};
-use rand::Rng;
+use rand::RngExt;
 use sqlx::PgPool;
 
 use crate::audit::emit_login_event;

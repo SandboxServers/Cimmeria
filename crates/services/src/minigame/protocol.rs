@@ -137,7 +137,7 @@ pub fn parse_message(xml: &str) -> Option<SfsMessage> {
                 }
             }
             Ok(Event::Text(e)) => {
-                let text = e.unescape().unwrap_or_default().to_string();
+                let text = e.decode().unwrap_or_default().to_string();
                 if in_nick {
                     nick = text;
                 } else if in_pword {
@@ -250,7 +250,7 @@ fn parse_extension_data(xml: &str) -> Option<(String, HashMap<String, SfsValue>)
                 }
             }
             Ok(Event::Text(e)) => {
-                let text = e.unescape().unwrap_or_default().to_string();
+                let text = e.decode().unwrap_or_default().to_string();
                 if in_var && !in_obj {
                     if var_name == "cmd" {
                         cmd = text;

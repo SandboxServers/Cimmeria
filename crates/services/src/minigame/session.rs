@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use rand::Rng;
+use rand::RngExt;
 use tokio::sync::Mutex;
 
 /// A registered minigame session awaiting client connection.

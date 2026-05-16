@@ -145,8 +145,8 @@ pub fn parse_def_file(path: &Path, type_name: &str) -> Result<EntityDef, String>
             }
             Ok(Event::Text(ref e)) => {
                 let text = e
-                    .unescape()
-                    .map_err(|err| format!("XML unescape error: {}", err))?
+                    .decode()
+                    .map_err(|err| format!("XML decode error: {}", err))?
                     .trim()
                     .to_string();
                 if text.is_empty() {

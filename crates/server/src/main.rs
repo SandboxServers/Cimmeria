@@ -494,7 +494,7 @@ fn init_logging(
 /// Combines the archive timestamp format with a short random suffix to
 /// avoid collisions on rapid restarts. Used as the Cosmos DB partition key.
 fn generate_session_id() -> String {
-    use rand::Rng;
+    use rand::RngExt;
     let ts = chrono_timestamp();
     let suffix: u16 = rand::rng().random();
     format!("{}_{:04x}", ts, suffix)
