@@ -196,6 +196,8 @@ config/BaseService.config
 .claude/settings.local.json
 Cimmeria.code-workspace
 
+/patches/
+
 game/sgw/*
 game/patches/*
 !game/sgw/.gitkeep
