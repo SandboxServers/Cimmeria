@@ -2,23 +2,19 @@
 audit_id: entity-property-sync-section2-audit-2026-05-16
 audit_date: 2026-05-16
 auditor: automated (Claude Sonnet 4.6) under direction of @cadacious
-spec_version: docs/drafts/spec/entity-property-sync.md @ commit 735c9d7 (branch worktree-bible+spec-entity-property-sync)
+spec_version: docs/drafts/spec/entity-property-sync.md @ commit a04f12d (branch worktree-bible+spec-entity-property-sync)
 status: complete
 binary_sha256: 109F307763A5C6C59FF484840739860BDC7163092F0644343D0B2C03E4925783
 scope_files:
-
   - docs/drafts/spec/entity-property-sync.md §2.3, §2.5, §2.7, §1.15 OQ-2, §1.15 OQ-3
-
 related:
-
   - docs/drafts/spec/entity-property-sync.md
   - docs/reverse-engineering/findings/entity-property-sync.md
   - docs/reverse-engineering/findings/entity-creation-wire-formats.md
-
 revision_history:
-
   - 2026-05-16 v1 — initial Ghidra + client-tree pass, all 5 targets resolved
   - 2026-05-16 v2 — Appendix A added: OQ-A resolved; corrected flag table to 16 entries; §1.2 filter mask reconciled
+  - 2026-05-16 v3 — Appendices B and C folded into chapter; this doc thinned to evidence-ledger role
 
 ---
 
