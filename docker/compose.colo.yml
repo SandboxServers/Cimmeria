@@ -23,6 +23,7 @@ services:
       - "50000:50000/udp"    # CellApp
       - "8081:8081"          # SOAP login (TCP)
       - "8443:8443"          # admin REST API (TCP)
+      - "30000:30000"        # minigame SmartFoxServer (TCP)
     environment:
       # MUST be overridden for any client that isn't on this host.
       # Defaults to 127.0.0.1 inside the image, which only works for

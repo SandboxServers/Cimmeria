@@ -260,7 +260,7 @@ ENV AUTH_HOST=0.0.0.0 \
 # Ports actually bound by the Rust server. The legacy Python console
 # (port 8989 in the original C++ BaseApp) is not implemented in Rust,
 # so we don't EXPOSE it.
-EXPOSE 13001 32832/udp 50000/udp 8081 8443
+EXPOSE 13001 32832/udp 50000/udp 8081 8443 30000
 
 VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
 
