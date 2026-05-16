@@ -35,6 +35,7 @@ docker run -d --name cimmeria \
   -p 50000:50000/udp \
   -p 8081:8081 \
   -p 8443:8443 \
+  -p 30000:30000 \
   -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
   -v cimmeria-data:/var/lib/postgresql/data \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
@@ -47,6 +48,7 @@ docker run -d --name cimmeria \
 | 50000 | UDP | CellApp |
 | 8081  | TCP | Auth HTTP (SOAP login) |
 | 8443  | TCP | Admin REST API |
+| 30000 | TCP | Minigame SmartFoxServer (Livewire, Hack, Bypass, GoauldCrystals, Alignment, Activate, Analyze, Converse) |
 
 > The legacy C++ BaseApp had a Python console on port 8989; the Rust server does not implement it, so the container does not expose it.
 
@@ -152,7 +154,7 @@ docker run -d --name cimmeria \
   --cap-add=CHOWN --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
   --security-opt=no-new-privileges \
   -p 13001:13001 -p 32832:32832/udp -p 50000:50000/udp \
-  -p 8081:8081 -p 8443:8443 \
+  -p 8081:8081 -p 8443:8443 -p 30000:30000 \
   -e BASE_EXTERNAL=<your-LAN-or-WAN-ip> \
   -v cimmeria-data:/var/lib/postgresql/data \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
