@@ -93,7 +93,7 @@ metadata:
 - `0x01df15dc`: `.?AUEvent_Net_GetProtocolDigest@@` — CME event type for querying digest (signals the digest was also surfaced via event system)
 - Full LoginMessage enum at `0x019aaf34`–`0x019ab460` (31 entries)
 
-**Behavior**: Protocol version / digest validation is entirely SOAP-layer. The client computes `protocol_digest` in `logOnBegin` via CryptoPP HexEncoder over the populated InterfaceElement table, embeds it in the SOAP `sgwLogin:ProtocolDigest` XML field, and sends via libcurl. A mismatch produces `LoginMessage_LoginBadProtocolVersion` or `LoginMessage_LoginRejectedBadDigest` in the SOAP reply — NO Mercury packets are exchanged before this check succeeds. There is no Mercury-layer handshake version field.
+**Behavior** (corrected 2026-05-15 — supersedes the single-hash narrative below in Investigation 5): Protocol version / digest validation is entirely SOAP-layer. The wire `protocol_digest` is supplied to `logOnBegin` as `param_4` from the CME `Event_Net_GetProtocolDigest` event listener (MD5, 32-char hex) and then embedded in the SOAP `sgwLogin:ProtocolDigest` XML field. A SEPARATE CryptoPP HexEncoder pipeline inside `logOnBegin` computes an internal SHA-1 dispatch-table commitment at `ServerConnection+0x130` (40-char hex) — that value is NOT sent on the wire. A mismatch produces `LoginMessage_LoginBadProtocolVersion` or `LoginMessage_LoginRejectedBadDigest` in the SOAP reply — NO Mercury packets are exchanged before this check succeeds. There is no Mercury-layer handshake version field. See Investigation 5 for the full two-hash decomposition.
 
 **Closes**: R15 ("channel establishment / protocol version check")
 **Suggested-footnote-slug**: `fn-r15-soap-only-version`
@@ -426,16 +426,19 @@ Other candidates ruled out:
 - SHA-256 → 64 hex chars (rejected)
 - CRC32 → 8 hex chars (rejected)
 
-**Pipeline confirmed**:
+**Pipeline confirmed** (CORRECTED 2026-05-15 — the original "into the sgwLogin SOAP body" claim was wrong; the SHA-1 hex value is INTERNAL and never sent on the wire):
 
 ```text
 getProtocolVersionHash()          → 20 raw bytes (SHA-1 of entity-def table)
   → CryptoPP::HexEncoder(Uppercase=true)
   → std::basic_string<char>       → "A94A8FE5...982FBBD3"
-  → operator= into ServerConnection+0x130
-  → ServerConnection::logOnBegin reads it into the sgwLogin SOAP body
-  → POST to authentication endpoint with "sgwLogin:ProtocolDigest" field
+  → operator= into ServerConnection+0x130    (INTERNAL dispatch-table commitment)
+  → (NOT used in SOAP — that field is populated separately from CME
+     Event_Net_GetProtocolDigest via param_4 to logOnBegin; that path
+     produces an MD5 32-char hex distinct from this SHA-1 40-char hex)
 ```
+
+See Finding 5.2 below for the wire MD5 provenance.
 
 **Closes**: Open Question #4 (hash algorithm).
 **Suggested-footnote-slug**: `fn-i6-sha1-uppercase-hex`

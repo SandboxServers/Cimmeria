@@ -1,11 +1,24 @@
 ---
 name: mercury-section-2-live-capture-findings
-description: Live-process memory dumps from active SGW.exe session via x64dbg MCP — closes Gap A (canonical msg_id table) and Gap B (SHA-1 protocol_digest) and resolves the static/dynamic InterfaceElementVec architecture. Counterpart to [[mercury-section-2-track-b-evidence]] (static-RE side).
+description: Live-process memory dumps from active SGW.exe session via x64dbg MCP — closes Gap A (canonical msg_id table) and Gap B (wire MD5 `protocol_digest` from CME event vs internal SHA-1 dispatch-table hash at ServerConnection+0x130) and resolves the static/dynamic InterfaceElementVec architecture. Counterpart to [[mercury-section-2-track-b-evidence]] (static-RE side).
 metadata:
   type: project
 ---
 
 # Mercury §2 — Live-Capture Findings (2026-05-15)
+
+## Build fingerprint (scope of these findings)
+
+All evidence in this file is scoped to one specific SGW.exe build. The same campaign re-run against a different build (different patch level, different translation, recompile) may produce different addresses, struct layouts, or dispatch contents. The fingerprint below pins what "this build" means so a reader can verify they are looking at the same binary.
+
+- **SHA256**: `109F307763A5C6C59FF484840739860BDC7163092F0644343D0B2C03E4925783`
+- **File size**: 31,228,448 bytes (29.78 MB)
+- **OriginalFilename (PE resource)**: `SGWGame.exe`
+- **Image base** (Ghidra): `0x00400000` (static); live runtime base after `AtreaFixASLR.bat`: `0x00480000` (offset `+0x80000`)
+- **Bitness**: x86 32-bit, `/LARGEADDRESSAWARE` enabled (PE flag clear after `AtreaFixASLR.bat`)
+- **Compiler**: MSVC (Visual Studio 2005-era runtime, per `basic_string` layout signatures)
+
+All Ghidra addresses in this file are relative to the static base `0x00400000`. All live-memory addresses (e.g. `0xFFE3A080`) are post-`AtreaFixASLR` runtime values. A reader inspecting a different binary should verify the SHA256 matches before treating any specific address as authoritative.
 
 **Method**: x64dbg MCP attached to live `SGW.exe` (PID 35788) at character-select after successful login. Silent-BP halt-and-resume captured `ServerConnection.this` at PopulateMessageTypeTable entry; subsequent `read_memory` calls extracted dispatch tables, statistics, and the protocol_digest string from live heap. **All reads succeeded while debuggee was Running** (the x64dbg-automate MCP does not require pause for memory read).
 

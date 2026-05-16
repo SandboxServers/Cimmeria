@@ -19,6 +19,8 @@ Mercury footer layout (stripped backward from end of plaintext):
 Body = plaintext[1..footer_start]
 """
 
+from __future__ import annotations
+
 import struct
 import sys
 
@@ -263,7 +265,7 @@ _AES_IV = b"\x00" * 16
 
 
 def decrypt_aes256_cbc(key_hex, ciphertext):
-    if len(ciphertext) % 16 != 0:
+    if len(ciphertext) == 0 or len(ciphertext) % 16 != 0:
         return None
     key_bytes = _AES_KEY_BYTES_CACHE.get(key_hex)
     if key_bytes is None:
@@ -422,6 +424,20 @@ def _read_var_prefix(body, offset, prefix_width):
     return length, offset + prefix_width
 
 
+def _take_payload(body, offset, length):
+    """Bounds-checked payload slice. Returns (payload, new_offset) or (None, offset)
+    if the body is truncated (offset + length exceeds len(body)).
+
+    Callers MUST handle the None case explicitly — silently slicing past the end
+    yields a short payload that downstream consumers may treat as fully valid,
+    which is exactly the corruption mode this helper exists to prevent.
+    """
+    end = offset + length
+    if end > len(body):
+        return None, offset
+    return body[offset:end], end
+
+
 def parse_messages(body, is_server):
     """Parse message payloads from a Mercury body."""
     offset = 0
@@ -444,8 +460,10 @@ def parse_messages(body, is_server):
             if length is None:
                 yield (msg_id, name, body[offset:])
                 break
-            payload = body[offset:offset + length]
-            offset += length
+            payload, offset = _take_payload(body, offset, length)
+            if payload is None:
+                yield (msg_id, name + " [TRUNCATED]", body[offset:])
+                break
             yield (msg_id, name, payload)
             continue
 
@@ -454,23 +472,29 @@ def parse_messages(body, is_server):
         if msg_id in msg_format:
             style, fixed_len, prefix_width = msg_format[msg_id]
             if style == 'constant':
-                payload = body[offset:offset + fixed_len]
-                offset += fixed_len
+                payload, offset = _take_payload(body, offset, fixed_len)
+                if payload is None:
+                    yield (msg_id, name + " [TRUNCATED]", body[offset:])
+                    break
             else:
                 length, offset = _read_var_prefix(body, offset, prefix_width)
                 if length is None:
                     yield (msg_id, name, body[offset:])
                     break
-                payload = body[offset:offset + length]
-                offset += length
+                payload, offset = _take_payload(body, offset, length)
+                if payload is None:
+                    yield (msg_id, name + " [TRUNCATED]", body[offset:])
+                    break
         else:
             # Unknown system message — fall back to u16 length prefix
             length, offset = _read_var_prefix(body, offset, 2)
             if length is None:
                 yield (msg_id, name, body[offset:])
                 break
-            payload = body[offset:offset + length]
-            offset += length
+            payload, offset = _take_payload(body, offset, length)
+            if payload is None:
+                yield (msg_id, name + " [TRUNCATED]", body[offset:])
+                break
 
         yield (msg_id, name, payload)
 
@@ -570,10 +594,22 @@ def parse_char_list(payload):
     return "\n".join(lines)
 
 
+def parse_client_enable_entities(payload):
+    """Per chapter §2.5.2: the emitter at SGW.exe@0x00dd928f reserves 8 bytes
+    but writes nothing to them. The body is undefined content (SGW expansion
+    of BigWorld's 1-byte keepBase). Mercury accepts the 8 bytes; the message's
+    presence is the signal, not the body's content."""
+    if len(payload) != 8:
+        return f"  (unexpected size: {len(payload)}B; spec says 8)"
+    return f"  8 bytes opaque (§2.5.2 — content undefined): {hex_dump(payload, 8)}"
+
+
 def describe_payload(msg_id, name, payload, is_server):
     if not is_server:
+        # Client→server msg 0x08 = enableEntities (NOT resetEntities — that's
+        # server→client msg 0x04). The body is opaque per §2.5.2.
         if msg_id == 0x08:
-            return parse_reset_entities(payload) if len(payload) >= 8 else ""
+            return parse_client_enable_entities(payload)
         return ""
     if msg_id == 0x05: return parse_create_base_player(payload)
     if msg_id == 0x06: return parse_cell_player_create(payload)

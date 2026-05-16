@@ -81,6 +81,12 @@ The server has no INI-side leverage to negotiate them.
   enumerated.
 - **Implication**: A channel disconnects if a reliable packet is retransmitted more than 20 times without ack.
 - **Confidence**: Medium (inherited from stock BW; no SGW-specific byte confirmed).
+- **FORWARD CORRECTION (2026-05-15)**: A targeted disassembly pass in [[mercury-section-2-track-b-evidence]]
+  Finding 1.4 located a `5.0f` constant at `ghidra://SGW.exe@0x01e91e00` (loaded by `FUN_0158c420` =
+  `UnAckedHandler::checkResendTimers`) that gates the **per-tick work budget**, NOT the lifetime cap.
+  The "20 retries" lifetime cap remains an inherited claim from upstream BigWorld 2.0.1 — no SGW-specific
+  byte was located that confirms it on this build. The two values are distinct invariants (per-tick
+  budget vs lifetime cap); see Track B Finding 1.4 and chapter §2.4.1 R14 for the disambiguated framing.
 
 ### C1-H: Resend timeout — ~700 ms
 
