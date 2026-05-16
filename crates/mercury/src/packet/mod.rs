@@ -27,8 +27,6 @@
 //! - [`legacy`] — `Packet` and `PacketFlags` legacy shim used by the
 //!   channel/nub stubs
 
-use bytes::Bytes;
-
 mod build;
 mod legacy;
 mod parse;
@@ -48,6 +46,7 @@ mod tests;
 pub use build::{
     build_fragmented_bundle, build_outgoing, build_outgoing_fragmented, FRAGMENT_BODY_SIZE,
 };
+pub use bytes::Bytes;
 pub use legacy::{Packet, PacketFlags};
 pub use parse::parse_incoming;
 

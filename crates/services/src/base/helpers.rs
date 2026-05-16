@@ -20,6 +20,46 @@ pub(crate) fn to_hex(data: &[u8]) -> String {
         .join(" ")
 }
 
+/// Register an outgoing reliable packet's sequence number with the
+/// per-session [`Channel`](cimmeria_mercury::channel::Channel) (issue #308).
+///
+/// **Shadow mode** — the body of the registered packet is empty (the
+/// real encrypted bytes are already on the wire via `socket.send_to`).
+/// The Channel uses the registered entry only for ACK tracking + RTO
+/// sampling. The retransmit driver (which would re-send TX-window
+/// entries past their RTO) is a separate follow-up and will need the
+/// actual encrypted bytes carried alongside the Packet to avoid
+/// re-encryption on resend.
+///
+/// Callers should invoke this AFTER `socket.send_to` succeeds, so a
+/// failed send never appears as in-flight in the TX window.
+pub(crate) fn shadow_register_reliable_send(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    seq: u32,
+) {
+    use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
+
+    let pkt = Packet::new(PacketFlags::default(), seq, Bytes::new());
+    let Ok(clients) = connected.lock() else {
+        return;
+    };
+    let Some(state) = clients.get(&addr) else {
+        return;
+    };
+    let Ok(mut channel) = state.channel.lock() else {
+        return;
+    };
+    if let Err(e) = channel.register_sent_packet(pkt) {
+        tracing::trace!(
+            %addr,
+            seq,
+            error = %e,
+            "channel.register_sent_packet failed (likely TX window full) — shadow mode tolerates this",
+        );
+    }
+}
+
 /// Drain pending ACKs and allocate the next sequence number.
 pub(crate) fn drain_acks_and_seq(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,

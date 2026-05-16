@@ -289,6 +289,60 @@ fn check_timeouts_does_not_bump_last_sent_when_no_retransmits() {
     );
 }
 
+// ── register_sent_packet (issue #308 migration helper) ────────────
+
+/// `register_sent_packet` adds an entry to the TX window with the
+/// packet's pre-assigned sequence, without consuming `next_tx_seq`.
+/// Used during the services-layer migration where the legacy send
+/// path owns sequence assignment via a session-local `AtomicU32`.
+#[test]
+fn register_sent_packet_records_entry_without_consuming_next_tx_seq() {
+    let mut ch = Channel::new(test_addr());
+
+    let mut pkt = test_packet();
+    pkt.sequence = 42; // caller pre-assigned
+
+    let next_tx_seq_before = ch.next_tx_seq;
+    ch.register_sent_packet(pkt).unwrap();
+
+    assert_eq!(ch.tx_window.len(), 1);
+    assert_eq!(
+        ch.tx_window[0].packet.sequence, 42,
+        "register_sent_packet must preserve caller-assigned sequence"
+    );
+    assert_eq!(
+        ch.next_tx_seq, next_tx_seq_before,
+        "register_sent_packet must NOT increment next_tx_seq — that counter is owned by the legacy send path during the migration"
+    );
+    assert_eq!(ch.tx_window[0].retransmit_count, 0);
+}
+
+/// A subsequent ack of the registered sequence drains the entry just
+/// like a `send_packet`-originated one, and feeds the RTT sample to
+/// the RTO smoother (clean round — `retransmit_count == 0`).
+#[test]
+fn registered_packet_is_acked_and_samples_rto_normally() {
+    let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
+
+    let mut pkt = test_packet();
+    pkt.sequence = 7;
+    ch.register_sent_packet(pkt).unwrap();
+    // Backdate so the ack measures ~80ms RTT.
+    ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(80);
+
+    ch.process_acks(7).unwrap();
+    assert!(
+        ch.tx_window.is_empty(),
+        "ack must drain the registered entry"
+    );
+    let srtt = ch.rto().srtt().expect("srtt set after ack");
+    assert!(
+        srtt >= std::time::Duration::from_millis(75)
+            && srtt <= std::time::Duration::from_millis(100),
+        "registered packets sample RTO same as send_packet ones, got {srtt:?}"
+    );
+}
+
 // ── Adaptive RTO integration (issue #308) ─────────────────────────
 
 use super::rto::RtoConfig;

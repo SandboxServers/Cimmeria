@@ -183,6 +183,44 @@ impl Channel {
         self.fragment_assembler.cleanup_stale(max_age);
     }
 
+    /// Register a packet that the caller has already assigned a sequence
+    /// number to and put on the wire.
+    ///
+    /// Used during the gradual services-layer migration to `Channel`-managed
+    /// sends (issue #308). The legacy send path stamps sequences via a
+    /// session-local `Arc<AtomicU32>` and encrypts + transmits directly;
+    /// this method lets us mirror those sends into the channel's TX window
+    /// so ACK tracking + RTO sampling are live BEFORE every send site has
+    /// migrated to [`send_packet`].
+    ///
+    /// Caller MUST ensure `packet.sequence` matches the sequence number
+    /// that went out on the wire (otherwise the cumulative-ACK drain in
+    /// [`process_acks`] won't find the right entry). Once every send site
+    /// has been migrated to [`send_packet`] (which owns sequence
+    /// assignment via `next_tx_seq`), this method can be removed.
+    ///
+    /// [`send_packet`]: Self::send_packet
+    /// [`process_acks`]: Self::process_acks
+    pub fn register_sent_packet(&mut self, packet: Packet) -> Result<()> {
+        if self.tx_window.len() >= consts::TX_WINDOW_SIZE {
+            return Err(cimmeria_common::CimmeriaError::Channel(format!(
+                "TX window full ({} packets), cannot register seq={}",
+                self.tx_window.len(),
+                packet.sequence,
+            )));
+        }
+
+        let now = Instant::now();
+        self.tx_window.push_back(TxEntry {
+            packet,
+            last_sent: now,
+            retransmit_count: 0,
+        });
+        self.last_sent = now;
+
+        Ok(())
+    }
+
     /// Queue a packet for reliable transmission.
     ///
     /// The packet is appended to the TX window and will be retransmitted

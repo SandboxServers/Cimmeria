@@ -78,6 +78,33 @@ pub(crate) async fn handle_encrypted_datagram(
         }
     }
 
+    // Route the client's ACKs of OUR reliable packets to the per-session
+    // Channel's TX window (issue #308). The Channel drains its window
+    // cumulatively up through each acked sequence and feeds RTT samples
+    // to the per-peer adaptive RTO (Karn's algorithm — only clean rounds
+    // contribute, retransmitted-packet samples are excluded internally).
+    if !pkt.acks.is_empty() {
+        if let Ok(clients) = connected.lock() {
+            if let Some(state) = clients.get(&addr) {
+                if let Ok(mut channel) = state.channel.lock() {
+                    for &ack_seq in &pkt.acks {
+                        if let Err(e) = channel.process_acks(ack_seq) {
+                            tracing::warn!(%addr, ack_seq, error = %e, "channel.process_acks failed");
+                        }
+                    }
+                    tracing::trace!(
+                        %addr,
+                        acks_consumed = pkt.acks.len(),
+                        tx_window_len = channel.tx_window.len(),
+                        srtt_ms = ?channel.rto().srtt().map(|d| d.as_millis()),
+                        rto_ms = channel.rto().current().as_millis(),
+                        "Channel TX window updated from client ACKs"
+                    );
+                }
+            }
+        }
+    }
+
     // Parse the client bundle.
     let body = &pkt.body;
     if body.is_empty() {

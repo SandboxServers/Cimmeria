@@ -98,6 +98,10 @@ pub(crate) async fn handle_map_loaded(
     tracing::debug!(%addr, len = enter_world_pkt.len(), seq = base_seq,
         "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
     socket.send_to(&enter_world_pkt, addr).await?;
+    // Issue #308 shadow mode: register this reliable send with the
+    // per-session Channel's TX window so ACK consumption + RTO sampling
+    // are live. No retransmit yet — that's a follow-up commit.
+    super::super::helpers::shadow_register_reliable_send(connected, addr, base_seq);
 
     // Packet 2+: Entity methods (mapLoaded body, possibly fragmented)
     let map_base_seq = base_seq + 1;
@@ -115,6 +119,11 @@ pub(crate) async fn handle_map_loaded(
         tracing::debug!(%addr, len = pkt_data.len(), seq = map_base_seq + i as u32,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
         socket.send_to(pkt_data, addr).await?;
+        super::super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            map_base_seq + i as u32,
+        );
     }
 
     let total_bytes: usize =
