@@ -93,6 +93,11 @@ pub(crate) struct PendingClientReadyInfo {
     pub world_name: String,
     pub appearance_args: Vec<u8>,
     pub tint_args: Vec<u8>,
+    /// Non-zero if this is the player's first-ever login. Drives the
+    /// deferred `onPlayMovie` (intro cinematic) send in
+    /// `handle_on_client_ready` — see issue #288. Type mirrors the DB
+    /// column (`sgw_player.first_login INT`) and `PlayerLoadData::first_login`.
+    pub first_login: i32,
 }
 
 /// State held for each client that has completed the Phase 3 handshake.
@@ -118,6 +123,12 @@ pub(crate) struct ConnectedClientState {
     pub cached_appearance_args: Option<Vec<u8>>,
     pub cached_tint_args: Option<Vec<u8>>,
     pub cancelled: Arc<AtomicBool>,
+    /// Cancellation flag for the post-cinematic appearance-spam guard
+    /// (issue #288). `world_entry_appearance::send_cinematic` resets this
+    /// to `false` and spawns a spam loop that polls it each iteration;
+    /// `handle_cancel_movie` flips it to `true` when the client emits a
+    /// real cancelMovie so the spam stops short of its full duration.
+    pub cinematic_spam_cancel: Arc<AtomicBool>,
     pub player_name: Option<String>,
     pub player_level: Option<i32>,
     pub player_archetype: Option<i32>,

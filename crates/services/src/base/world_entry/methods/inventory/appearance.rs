@@ -137,6 +137,7 @@ mod tests {
             cached_appearance_args: None,
             cached_tint_args: None,
             cancelled: Arc::new(AtomicBool::new(false)),
+            cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
             player_name: None,
             player_level: None,
             player_archetype: None,

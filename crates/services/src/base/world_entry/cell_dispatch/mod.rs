@@ -300,11 +300,13 @@ pub(crate) async fn handle_cell_message(
             entity_id,
             space_id,
             position,
+            prev_pos,
         } => {
             handle_teleport_player(
                 entity_id,
                 space_id,
                 position,
+                prev_pos,
                 socket,
                 connected,
                 entity_to_addr,

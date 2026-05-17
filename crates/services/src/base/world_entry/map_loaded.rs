@@ -19,9 +19,7 @@ use crate::mercury::{
     build_enter_world, build_map_loaded_body, fragment_count, fragment_map_loaded,
 };
 
-use super::super::world_entry_appearance::{
-    build_appearance_args, build_tint_args, handle_cancel_movie,
-};
+use super::super::world_entry_appearance::{build_appearance_args, build_tint_args};
 use super::super::{ConnectedClientState, PendingClientReadyInfo};
 use super::methods::default_player_load_data;
 
@@ -41,7 +39,7 @@ pub(crate) async fn handle_map_loaded(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     _cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-    db_pool: &Option<Arc<PgPool>>,
+    _db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Take the pending data (consumes it -- enter-world only runs once per mapLoaded)
     let (entry_info, player_data) = {
@@ -94,8 +92,11 @@ pub(crate) async fn handle_map_loaded(
         (acks, seq)
     };
 
-    // Packet 1: VIEWPORT + CELL_PLAYER + FORCED_POSITION (standalone, ~99 bytes)
-    let enter_world_pkt = build_enter_world(&key, base_seq, &acks, &entry_info);
+    // Packet 1: VIEWPORT + (BeingAppearance + onEntityTint) + CELL_PLAYER + FORCED_POSITION.
+    // The appearance methods sit before createCellPlayer so the client's
+    // cell-entity-creation handler picks up the bodyset during its internal
+    // appearance evaluation, eliminating the dev-cube placeholder flash.
+    let enter_world_pkt = build_enter_world(&key, base_seq, &acks, &entry_info, Some(&player_data));
     tracing::debug!(%addr, len = enter_world_pkt.len(), seq = base_seq,
         "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
     socket.send_to(&enter_world_pkt, addr).await?;
@@ -148,47 +149,19 @@ pub(crate) async fn handle_map_loaded(
         packets = pkt_count,
         "World entry complete ({} bytes across {} packets)", total_bytes, pkt_count);
 
-    // Clear first_login flag in DB after sending the intro movie
-    if player_data.first_login != 0 {
-        if let Some(ref pool) = db_pool {
-            let _ = sqlx::query("UPDATE sgw_player SET first_login = 0 WHERE player_id = $1")
-                .bind(player_data.player_id)
-                .execute(pool.as_ref())
-                .await;
-        }
-
-        // The first-login cinematic (onPlayMovie) blocks the client from
-        // processing BeingAppearance. cancelMovie fires if the player presses
-        // Escape, but NOT if the cinematic plays to completion.
-        // Spawn a delayed resend to cover the natural-end case.
-        // Duplicates with cancelMovie are harmless -- client just re-applies.
-        let delay_socket = Arc::clone(socket);
-        let delay_connected = Arc::clone(connected);
-        let delay_entity_to_addr = Arc::clone(entity_to_addr);
-        let delay_entity_id = entry_info.player_entity_id;
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-            tracing::info!(
-                entity_id = delay_entity_id,
-                "Cinematic timer: resending BeingAppearance after 10s delay"
-            );
-            handle_cancel_movie(
-                &delay_socket,
-                // Look up addr from entity_to_addr since it's stable
-                {
-                    let map = delay_entity_to_addr.lock().unwrap();
-                    match map.get(&delay_entity_id).copied() {
-                        Some(a) => a,
-                        None => return,
-                    }
-                },
-                delay_entity_id,
-                &delay_connected,
-                &delay_entity_to_addr,
-            )
-            .await;
-        });
-    }
+    // first_login DB clear is deferred to `handle_on_client_ready` so the
+    // flag only clears after we've actually fired `onPlayMovie` — if the
+    // client disconnects between mapLoaded and onClientReady, they correctly
+    // see the cinematic again on their next attempt.
+    //
+    // The previous implementation also spawned a 10-second timer that fired
+    // a synthetic `cancelMovie` to resend BeingAppearance, working around a
+    // dev-cube flash on first-login cinematic exit. That hack is gone: the
+    // root cause was firing onPlayMovie inside the mapLoaded bundle (before
+    // the model is bound to a possessed pawn), which let the cinematic-exit
+    // CollectGarbage reclaim the in-flight appearance asset. The cinematic
+    // is now fired from `handle_on_client_ready` after the appearance is
+    // rooted to a live actor. See issue #288.
 
     // Register entity_id -> addr before the final onClientReady gate so any
     // resource responses and future client-targeted traffic can resolve the
@@ -224,6 +197,7 @@ pub(crate) async fn handle_map_loaded(
             world_name: entry_info.world_name.clone(),
             appearance_args,
             tint_args,
+            first_login: player_data.first_login,
         });
     }
 

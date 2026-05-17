@@ -12,6 +12,11 @@ const TEST_KEY: [u8; 32] = [0x42u8; 32];
 /// staying put.
 #[test]
 fn forced_position_wire_layout() {
+    // Caller passes a non-zero prev_pos distinct from `position` so the
+    // byte slot (offsets 24-35 of the 49-byte payload, decrypted offsets
+    // 26-38) is observable — emitting zeros there causes the camera to
+    // slide from world origin (0,0,0) through the floor to the spawn
+    // point. See `spec.protocol.mercury` §1.10.6 + §1.16 Q3 closure.
     let pkt = build_forced_position(
         &TEST_KEY,
         1,
@@ -19,6 +24,7 @@ fn forced_position_wire_layout() {
         0x12345678,
         0x0001_0010,
         [10.0, 20.0, 30.0],
+        [9.0, 19.0, 29.0],
     );
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let pt = enc.decrypt(&pkt).unwrap();
@@ -35,8 +41,11 @@ fn forced_position_wire_layout() {
     assert_eq!(&pt[14..18], &10.0f32.to_le_bytes());
     assert_eq!(&pt[18..22], &20.0f32.to_le_bytes());
     assert_eq!(&pt[22..26], &30.0f32.to_le_bytes());
-    // velocity = 0,0,0 (12 zero bytes)
-    assert_eq!(&pt[26..38], &[0u8; 12]);
+    // prev_pos x/y/z (offsets 24-35 of the 49-byte payload — prev-position
+    // reference, NOT velocity).
+    assert_eq!(&pt[26..30], &9.0f32.to_le_bytes(), "prev_pos.x");
+    assert_eq!(&pt[30..34], &19.0f32.to_le_bytes(), "prev_pos.y");
+    assert_eq!(&pt[34..38], &29.0f32.to_le_bytes(), "prev_pos.z");
     // rotation = 0,0,0 (12 zero bytes)
     assert_eq!(&pt[38..50], &[0u8; 12]);
     // flags = 0x01

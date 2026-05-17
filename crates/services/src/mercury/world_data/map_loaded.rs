@@ -110,7 +110,45 @@ fn build_map_loaded_body_inner(
         &build_world_params_args(&world_entry.world_name)
     );
 
-    // 1. setupStargateInfo (3xARRAY<INT32>: world, known, hidden)
+    // 1. BeingAppearance + 2. onEntityTint — promoted to the front of the
+    //    mapLoaded body so they land in the first fragment alongside
+    //    `createCellPlayer`, instead of fragments 4-5. Without this the
+    //    player entity exists on the client with no body model for the
+    //    50-200 ms it takes the rest of the bundle to arrive. (The
+    //    `build_create_player` path also pre-warms these now; keeping them
+    //    here too lets a UDP-dropped pre-warm still self-heal once the
+    //    mapLoaded bundle lands.)
+    {
+        tracing::info!(
+            bodyset = %data.bodyset,
+            bodyset_len = data.bodyset.len(),
+            component_count = data.components.len(),
+            components = ?data.components,
+            skin_color_id = data.skin_color_id,
+            "mapLoaded: BeingAppearance + onEntityTint data"
+        );
+        let mut args = Vec::new();
+        write_wstring(&mut args, &data.bodyset);
+        args.extend_from_slice(&(data.components.len() as u32).to_le_bytes());
+        for comp in &data.components {
+            write_wstring(&mut args, comp);
+        }
+        append_method!(method_idx::BEING_APPEARANCE, &args);
+    }
+    {
+        let skin_tint = if (data.skin_color_id as usize) < SKIN_TINTS.len() {
+            SKIN_TINTS[data.skin_color_id as usize]
+        } else {
+            SKIN_TINTS[0]
+        };
+        let mut args = Vec::with_capacity(12);
+        args.extend_from_slice(&0u32.to_le_bytes()); // primaryColorId
+        args.extend_from_slice(&0u32.to_le_bytes()); // secondaryColorId
+        args.extend_from_slice(&skin_tint.to_le_bytes());
+        append_method!(method_idx::ON_ENTITY_TINT, &args);
+    }
+
+    // 3. setupStargateInfo (3xARRAY<INT32>: world, known, hidden)
     {
         let mut args = Vec::new();
         // worldStargateIds: stargates physically present in the destination
@@ -240,38 +278,8 @@ fn build_map_loaded_body_inner(
     // 14. onResetMapInfo (no args)
     append_method!(method_idx::ON_RESET_MAP_INFO, &[]);
 
-    // 15. BeingAppearance(UNICODE_STRING bodySet, ARRAY<UNICODE_STRING> components)
-    {
-        tracing::info!(
-            bodyset = %data.bodyset,
-            bodyset_len = data.bodyset.len(),
-            component_count = data.components.len(),
-            components = ?data.components,
-            skin_color_id = data.skin_color_id,
-            "mapLoaded: BeingAppearance + onEntityTint data"
-        );
-        let mut args = Vec::new();
-        write_wstring(&mut args, &data.bodyset);
-        args.extend_from_slice(&(data.components.len() as u32).to_le_bytes());
-        for comp in &data.components {
-            write_wstring(&mut args, comp);
-        }
-        append_method!(method_idx::BEING_APPEARANCE, &args);
-    }
-
-    // 16. onEntityTint(UINT32, UINT32, UINT32) — primary, secondary, skin
-    {
-        let skin_tint = if (data.skin_color_id as usize) < SKIN_TINTS.len() {
-            SKIN_TINTS[data.skin_color_id as usize]
-        } else {
-            SKIN_TINTS[0]
-        };
-        let mut args = Vec::with_capacity(12);
-        args.extend_from_slice(&0u32.to_le_bytes()); // primaryColorId (default 0, matches C++)
-        args.extend_from_slice(&0u32.to_le_bytes()); // secondaryColorId (default 0, matches C++)
-        args.extend_from_slice(&skin_tint.to_le_bytes());
-        append_method!(method_idx::ON_ENTITY_TINT, &args);
-    }
+    // BeingAppearance + onEntityTint moved to the top of the mapLoaded body
+    // (steps 1-2) so they land in the first fragment.
 
     // 17. onExtraNameUpdate(UNICODE_STRING) — extended encoding
     {
@@ -380,16 +388,17 @@ fn build_map_loaded_body_inner(
         append_method!(method_idx::ON_CHAT_JOINED, &args);
     }
 
-    // 25. onPlayMovie — fullscreen SGW logo cinematic on first-ever login
-    //     Reference: python/cell/SGWPlayer.py:535-537
-    if data.first_login != 0 {
-        let mut args = Vec::new();
-        write_wstring(&mut args, "Cine-SGWLogo.SGWLogo");
-        args.push(1u8); // FullScreen = true
-        append_method!(method_idx::ON_PLAY_MOVIE, &args);
-    }
+    // NOTE: onPlayMovie (first-login cinematic) is intentionally NOT in this
+    // bundle. It is deferred to `handle_on_client_ready` and fired AFTER the
+    // BeingAppearance / onEntityTint resends so the cinematic plays against a
+    // pawn that's already possessed AND has its model bound. Firing it here
+    // (in the mapLoaded bundle, before onClientReady) lets the cinematic-exit
+    // CollectGarbage reclaim the in-flight appearance asset, producing a
+    // one-frame "dev cube" flash on the first post-cinematic render. See
+    // issue #288 and python/cell/SGWPlayer.py:558-565 (the original flow
+    // gated mapLoaded() ITSELF on onClientReady, which had the same effect).
 
-    // 26. onPlayerDataLoaded (no args) — client transitions to gameplay
+    // 25. onPlayerDataLoaded (no args) — client transitions to gameplay
     append_method!(method_idx::ON_PLAYER_DATA_LOADED, &[]);
 
     // 26. onTargetUpdate(INT32) — default 0 (no target)

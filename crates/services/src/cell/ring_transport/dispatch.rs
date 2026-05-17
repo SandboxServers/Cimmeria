@@ -281,6 +281,14 @@ async fn same_world_teleport(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // Capture the entity's prior position before the spatial-grid update
+    // overwrites it — becomes the `forcedPosition` prev-position reference.
+    // Falling back to `position` (zero-distance interp) on a missing entity
+    // still avoids the camera-through-floor glitch.
+    let prev_pos = space_mgr
+        .get_entity(entity_id)
+        .map(|e| [e.position.x, e.position.y, e.position.z])
+        .unwrap_or(position);
     // Server-side: keep the spatial grid + entity position consistent so AoI
     // ticks broadcast the new position to other witnesses (build_avatar_update).
     // `update_entity_position` already writes `cell_entity.position`.
@@ -296,6 +304,7 @@ async fn same_world_teleport(
             entity_id,
             space_id,
             position,
+            prev_pos,
         })
         .await
     {

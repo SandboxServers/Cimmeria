@@ -142,6 +142,7 @@ pub(crate) async fn handle_login(
                 cached_appearance_args: None,
                 cached_tint_args: None,
                 cancelled,
+                cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
                 player_name: None,
                 player_level: None,
                 player_archetype: None,
