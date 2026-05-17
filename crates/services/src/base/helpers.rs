@@ -474,7 +474,10 @@ mod tests {
             & cimmeria_mercury::packet::SEQUENCE_MASK;
 
         assert_eq!(r_third, 2, "reliable stream stays contiguous (0,1,2,...)");
-        assert_eq!(r_fourth, 3, "reliable stream stays contiguous (0,1,2,3,...)");
+        assert_eq!(
+            r_fourth, 3,
+            "reliable stream stays contiguous (0,1,2,3,...)"
+        );
         assert_eq!(u_third, 2, "unreliable stream stays contiguous (0,1,2,...)");
     }
 
@@ -487,10 +490,9 @@ mod tests {
     fn next_unreliable_seq_masks_to_28_bit_space() {
         let state = crate::test_support::test_default_connected_client_state();
         // Pre-load the counter near the wrap point.
-        state.next_seq_unreliable.store(
-            cimmeria_mercury::packet::SEQUENCE_MASK,
-            Ordering::Relaxed,
-        );
+        state
+            .next_seq_unreliable
+            .store(cimmeria_mercury::packet::SEQUENCE_MASK, Ordering::Relaxed);
 
         let seq = state.next_unreliable_seq();
         assert_eq!(
