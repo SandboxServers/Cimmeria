@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use cimmeria_common::EntityId;
+use cimmeria_mercury::channel::Channel;
 use cimmeria_mercury::encryption::MercuryEncryption;
 
 use serde::Serialize;
@@ -149,6 +150,23 @@ pub(crate) struct ConnectedClientState {
     /// FSM can leave `RemoteLoadWait`. Stays `None` for stargate dial
     /// gate-travel.
     pub pending_destination_ring_id: Option<i32>,
+
+    /// Reliable-UDP channel state. Tracks the TX window of in-flight
+    /// reliable packets, processes incoming ACKs from the client,
+    /// maintains the per-peer adaptive RTO, and drives retransmits.
+    ///
+    /// The legacy send path still assigns sequences via [`next_seq`]
+    /// and calls `socket.send_to` directly; reliable sends mirror their
+    /// encrypted bytes into this `Channel` via `register_sent_packet`
+    /// after the socket send succeeds. ACK consumption + RTO sampling
+    /// happen on every received packet (`connect_loop/encrypted.rs`);
+    /// retransmits fire from the per-session `tick_sync` loop every
+    /// 100 ms, capped at `RETRANSMIT_BUDGET_PER_TICK` entries per scan.
+    ///
+    /// Wrapped in `Mutex` because `process_acks`, `register_sent_packet`,
+    /// and `check_timeouts` all need `&mut self` and run from different
+    /// code paths (receive loop, per-send-site call sites, retransmit tick).
+    pub channel: Mutex<Channel>,
 }
 
 #[cfg(test)]

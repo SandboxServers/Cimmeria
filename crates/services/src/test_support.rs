@@ -157,5 +157,8 @@ pub(crate) fn test_default_connected_client_state() -> ConnectedClientState {
         player_training_points: None,
         active_player_id: None,
         pending_destination_ring_id: None,
+        channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
+            "127.0.0.1:9999".parse().unwrap(),
+        )),
     }
 }

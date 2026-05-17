@@ -27,8 +27,6 @@
 //! - [`legacy`] — `Packet` and `PacketFlags` legacy shim used by the
 //!   channel/nub stubs
 
-use bytes::Bytes;
-
 mod build;
 mod legacy;
 mod parse;
@@ -48,6 +46,7 @@ mod tests;
 pub use build::{
     build_fragmented_bundle, build_outgoing, build_outgoing_fragmented, FRAGMENT_BODY_SIZE,
 };
+pub use bytes::Bytes;
 pub use legacy::{Packet, PacketFlags};
 pub use parse::parse_incoming;
 
@@ -77,7 +76,20 @@ pub const FLAG_HAS_SEQUENCE: u8 = 0x40;
 /// Packet addresses an indexed sub-channel (unused in SGW).
 pub const FLAG_INDEXED: u8 = 0x80;
 
-/// Sequence ID value that signals "unset" (> valid range 0..0x0FFFFFFF).
+/// Valid Mercury sequence-number range is 28 bits — `0x00000000` through
+/// `0x0FFFFFFF` inclusive. Mask any candidate sequence with this value
+/// to keep it inside the spec'd range; counters that overflow into the
+/// 29th bit (e.g. an unmasked `AtomicU32::fetch_add` past `0x0FFFFFFF`)
+/// would collide with [`NULL_SEQUENCE`] on the wire.
+///
+/// Spec: `docs/drafts/spec/mercury-wire-format.md` §1.7 + §2.4 R4.
+pub const SEQUENCE_MASK: u32 = 0x0FFF_FFFF;
+
+/// Sequence ID value that signals "unset" — exactly one past the valid
+/// 28-bit range. Any inbound packet whose `seq_id` field equals (or
+/// exceeds) this value is dropped at parse time as an R4-class
+/// violation; outbound sequence assignment must mask with
+/// [`SEQUENCE_MASK`] to never produce this value on the wire.
 pub const NULL_SEQUENCE: u32 = 0x1000_0000;
 
 // ── ParsedPacket ─────────────────────────────────────────────────────────────

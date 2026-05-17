@@ -313,7 +313,7 @@ pub async fn handle_grant_item(
             let mut args = Vec::with_capacity(8);
             args.extend_from_slice(&container_id.to_le_bytes());
             args.extend_from_slice(&(next_slot + 1).to_le_bytes());
-            helpers::send_to_witness(
+            helpers::send_to_witness_reliable(
                 socket,
                 connected,
                 entity_to_addr,

@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
 
-use super::helpers::send_to_witness;
+use super::helpers::send_to_witness_reliable;
 use super::world_entry::handle_map_loaded;
 use super::ConnectedClientState;
 
@@ -248,7 +248,7 @@ pub(crate) async fn handle_on_client_ready(
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -265,7 +265,7 @@ pub(crate) async fn handle_on_client_ready(
         },
     )
     .await;
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -358,11 +358,13 @@ pub(crate) async fn send_cinematic(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // 1. Send the cinematic packet.
+    // 1. Send the cinematic packet. Reliable — `onPlayMovie` is one-shot
+    // state-change; loss leaves the cinematic un-triggered with no
+    // self-correcting follow-up.
     let mut movie_args = Vec::with_capacity(32);
     write_wstring(&mut movie_args, cinematic_asset);
     movie_args.push(if fullscreen { 1u8 } else { 0u8 });
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -484,7 +486,7 @@ async fn resend_appearance_after_cinematic(
         return;
     };
 
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -501,7 +503,7 @@ async fn resend_appearance_after_cinematic(
         },
     )
     .await;
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,

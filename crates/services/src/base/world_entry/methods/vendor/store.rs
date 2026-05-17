@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
-use super::super::super::super::helpers::send_to_witness;
+use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
 use super::data::{
     load_store_buy_items, load_vendor_buyback_prices, load_vendor_recharge_prices,
@@ -150,7 +150,7 @@ pub async fn send_store_open_to_client(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -176,7 +176,7 @@ pub async fn send_store_update_to_client(
     }
 
     let args = serialize_store_update(updates);
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,

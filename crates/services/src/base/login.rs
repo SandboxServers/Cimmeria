@@ -77,7 +77,8 @@ pub(crate) async fn handle_login(
                     let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
                     let seq = c
                         .next_seq
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                        & cimmeria_mercury::packet::SEQUENCE_MASK;
                     (acks, seq)
                 } else {
                     (vec![], 0)
@@ -150,6 +151,7 @@ pub(crate) async fn handle_login(
                 player_training_points: None,
                 active_player_id: None,
                 pending_destination_ring_id: None,
+                channel: Mutex::new(cimmeria_mercury::channel::Channel::new(addr)),
             },
         );
         arcs
@@ -285,7 +287,8 @@ pub(crate) async fn handle_log_off(
         let acks: Vec<u32> = client.pending_acks.lock().unwrap().drain(..).collect();
         let seq = client
             .next_seq
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
         (acks, seq)
     };
 

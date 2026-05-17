@@ -44,11 +44,13 @@ fn arb_body() -> impl Strategy<Value = Vec<u8>> {
 }
 
 /// Ack list, sized 1..=20 because empty triggers the "no FLAG_HAS_ACKS"
-/// branch which is generated separately. The full u32 range is
-/// allowed — including values above NULL_SEQUENCE — so a parser
-/// regression that special-cases out-of-range acks would surface.
+/// branch which is generated separately. Values are constrained to the
+/// 28-bit Mercury sequence space (`0..NULL_SEQUENCE`) because the
+/// parser now rejects out-of-range acks at the R4 wire boundary; this
+/// proptest exercises the round-trip-safe space. Out-of-range
+/// rejection is covered by the explicit unit tests in `tests.rs`.
 fn arb_acks() -> impl Strategy<Value = Vec<u32>> {
-    proptest::collection::vec(any::<u32>(), 1..=20)
+    proptest::collection::vec(0u32..=NULL_SEQUENCE - 1, 1..=20)
 }
 
 proptest! {

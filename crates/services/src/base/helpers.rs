@@ -20,7 +20,112 @@ pub(crate) fn to_hex(data: &[u8]) -> String {
         .join(" ")
 }
 
-/// Drain pending ACKs and allocate the next sequence number.
+/// Register an outgoing reliable packet's sequence number AND its
+/// encrypted on-wire bytes with the per-session
+/// [`Channel`](cimmeria_mercury::channel::Channel).
+///
+/// The Channel records the entry in its TX window for two purposes:
+/// 1. **ACK tracking** — when the client acks this seq, the entry
+///    drains and an RTT sample feeds the per-peer adaptive RTO.
+/// 2. **Retransmit** — if the RTO fires before the ack arrives, the
+///    tick driver re-sends `raw_bytes` verbatim (no re-encryption).
+///
+/// Callers should invoke this AFTER `socket.send_to` succeeds, so a
+/// failed send never appears as in-flight in the TX window.
+///
+/// `raw_bytes` should be the exact encrypted datagram that just went
+/// on the wire. Pass `cimmeria_mercury::packet::Bytes::new()` if you
+/// only want shadow-mode observability (ACK consumption + RTO sampling)
+/// without retransmit support — the channel silently skips bytes-empty
+/// entries during the retransmit scan.
+///
+/// **Failure mode — TX window full.** When `Channel::register_sent_packet`
+/// returns `Err` (typically because the 32-slot TX window already holds
+/// the spec-mandated maximum of in-flight reliable packets), the packet
+/// is already on the wire but cannot be tracked here for ACK
+/// processing or retransmit. The reliable-delivery contract is
+/// effectively downgraded to best-effort for this single packet.
+///
+/// The current behavior logs at `warn` and continues — the alternative
+/// (returning `Result` to ~30 callers so they can disconnect or apply
+/// backpressure) is a meaningful API surface change worth its own PR.
+/// In a healthy session this is unreachable: the cap is hit only when
+/// the client has stopped acking for many ticks, in which case the
+/// channel's inactivity / max-retries detection will kill the session
+/// shortly anyway. Watch for repeated TX-window-full warns in
+/// production logs as a precursor to that signal.
+pub(crate) fn shadow_register_reliable_send(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    seq: u32,
+    raw_bytes: cimmeria_mercury::packet::Bytes,
+) {
+    use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
+
+    let pkt = Packet::new(PacketFlags::default(), seq, Bytes::new());
+    let Ok(clients) = connected.lock() else {
+        return;
+    };
+    let Some(state) = clients.get(&addr) else {
+        return;
+    };
+    let Ok(mut channel) = state.channel.lock() else {
+        return;
+    };
+    if let Err(e) = channel.register_sent_packet(pkt, raw_bytes) {
+        // TX window full (or invalid seq) — the packet is on the wire
+        // but won't be tracked for ACK / retransmit. Warn so this is
+        // observable in production logs as a precursor to the
+        // channel-dead detection (`is_timed_out` / max-retries).
+        tracing::warn!(
+            %addr,
+            seq,
+            error = %e,
+            "shadow_register_reliable_send: packet sent on wire but NOT tracked \
+             (TX window full or invalid seq); reliable-delivery downgraded to \
+             best-effort for this packet"
+        );
+    }
+}
+
+/// Drain the per-session [`Channel`]'s retransmit queue: scan the TX
+/// window for entries past the adaptive RTO and return the encrypted
+/// bytes to re-send.
+///
+/// Called from `tick_sync`'s per-session loop every 100 ms. The Channel
+/// applies the per-tick budget (`RETRANSMIT_BUDGET_PER_TICK = 5`, issue
+/// #292 finding #6) and Karn's exponential backoff internally; the
+/// caller just iterates the returned bytes and `socket.send_to`s each.
+///
+/// Returns an empty vec on any lock-acquisition failure or missing
+/// session — the next tick will try again.
+///
+/// [`Channel`]: cimmeria_mercury::channel::Channel
+pub(crate) fn collect_pending_retransmits(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> Vec<cimmeria_mercury::packet::Bytes> {
+    let Ok(clients) = connected.lock() else {
+        return Vec::new();
+    };
+    let Some(state) = clients.get(&addr) else {
+        return Vec::new();
+    };
+    let Ok(mut channel) = state.channel.lock() else {
+        return Vec::new();
+    };
+    channel.check_timeouts()
+}
+
+/// Drain pending ACKs and allocate the next sequence number, masked to
+/// the 28-bit Mercury valid range.
+///
+/// The session-local `AtomicU32` counter monotonically increments past
+/// `u32::MAX / SEQUENCE_MASK` cycles over a long-lived session; without
+/// masking, an allocated seq could land inside the `NULL_SEQUENCE`
+/// sentinel range or above the 28-bit space, get rejected by the
+/// peer's parser (R4 drop), and silently break ACK draining. Masking
+/// at allocation keeps every emitted seq inside the spec'd space.
 pub(crate) fn drain_acks_and_seq(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
@@ -28,7 +133,7 @@ pub(crate) fn drain_acks_and_seq(
     let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
     let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
     let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-    let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+    let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     Ok((acks, seq))
 }
 
@@ -111,11 +216,16 @@ pub(crate) fn destroy_client_entities(
     tracing::info!(%addr, "Client entities cleaned up");
 }
 
-/// Send an AoI packet to a specific witness's client.
+/// Send an AoI packet to a specific witness's client — **unreliable**
+/// variant. Use for self-correcting / ephemeral traffic where loss
+/// recovers naturally on the next emit (currently only avatar position
+/// updates fit this profile). Most callers want
+/// [`send_to_witness_reliable`] instead.
 ///
 /// Looks up the witness entity_id -> SocketAddr, then finds the client state
 /// to get encryption key and sequence number. Calls the packet builder closure
-/// and sends the result via UDP.
+/// and sends the result via UDP. No Channel registration — packets sent via
+/// this path are NOT tracked for retransmit.
 pub(crate) async fn send_to_witness<F>(
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -139,7 +249,8 @@ pub(crate) async fn send_to_witness<F>(
         match clients.get(&addr) {
             Some(c) => {
                 let key = c.key;
-                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
+                    & cimmeria_mercury::packet::SEQUENCE_MASK;
                 let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
                 Some((addr, key, seq, acks))
             }
@@ -155,6 +266,78 @@ pub(crate) async fn send_to_witness<F>(
         if let Err(e) = socket.send_to(&packet, addr).await {
             tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
         }
+    }
+}
+
+/// Send an AoI packet to a specific witness's client — **reliable**
+/// variant. After the UDP send succeeds, registers the encrypted bytes
+/// with the per-session [`Channel`]'s TX window so the retransmit
+/// driver in `tick_sync.rs` re-sends on RTO expiry.
+///
+/// Use for **every** state-change AoI emit: entity create/destroy,
+/// entity method calls (90%+ of server→client traffic — quest updates,
+/// NPC spawns, interaction triggers, content engine events, inventory
+/// changes, mission state, dialog opens), entity-invisible, entity-leave.
+/// The wire format already sets `FLAG_RELIABLE` for these via
+/// `REPLY_FLAGS_RELIABLE`; this helper closes the loop on the server's
+/// send-window tracking so the FLAG_RELIABLE promise is kept.
+///
+/// **Do NOT** use for `build_avatar_update` (position relay) — those
+/// are unreliable on the wire and should NOT be in the TX window.
+/// Use plain [`send_to_witness`] for that case.
+///
+/// [`Channel`]: cimmeria_mercury::channel::Channel
+pub(crate) async fn send_to_witness_reliable<F>(
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    witness_id: u32,
+    build_packet: F,
+) where
+    F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
+{
+    let send_data = {
+        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+            Some(a) => a,
+            None => {
+                tracing::trace!(
+                    witness_id,
+                    "AoI reliable: no client addr for witness -- skipping"
+                );
+                return;
+            }
+        };
+
+        let clients = connected.lock().unwrap();
+        match clients.get(&addr) {
+            Some(c) => {
+                let key = c.key;
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
+                    & cimmeria_mercury::packet::SEQUENCE_MASK;
+                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                Some((addr, key, seq, acks))
+            }
+            None => {
+                tracing::trace!(witness_id, %addr, "AoI reliable: client disconnected -- skipping");
+                None
+            }
+        }
+    };
+
+    if let Some((addr, key, seq, acks)) = send_data {
+        let packet = build_packet(&key, seq, &acks);
+        if let Err(e) = socket.send_to(&packet, addr).await {
+            tracing::warn!(witness_id, %addr, "AoI reliable: failed to send packet: {e}");
+            return;
+        }
+        // Register the encrypted bytes with the per-session Channel so
+        // the retransmit driver in tick_sync re-sends on RTO expiry.
+        shadow_register_reliable_send(
+            connected,
+            addr,
+            seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
+        );
     }
 }
 

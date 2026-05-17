@@ -63,11 +63,34 @@ pub(crate) async fn run_tick_loop(
             tracing::trace!(%addr, ?acks, "Piggybacking ACKs on tick_sync");
         }
 
-        let seq_id = next_seq.fetch_add(1, Ordering::Relaxed);
+        let seq_id =
+            next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
         let pkt = build_ongoing_tick_sync(&key, seq_id, tick, &acks);
         if let Err(e) = socket.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
             break;
+        }
+
+        // Drive the per-session Channel's retransmit scan. Any reliable
+        // packet whose adaptive RTO has elapsed without receiving an ack
+        // gets re-sent here, cached encrypted bytes straight to the wire.
+        // The Channel applies the per-tick retransmit budget (at most
+        // `RETRANSMIT_BUDGET_PER_TICK` entries per scan, per
+        // `mercury-wire-format` spec §1.7) and Karn's exponential backoff
+        // internally.
+        let retransmits = super::helpers::collect_pending_retransmits(&connected, addr);
+        for (batch_index, raw) in retransmits.iter().enumerate() {
+            tracing::debug!(
+                %addr,
+                len = raw.len(),
+                batch_index,
+                batch_total = retransmits.len(),
+                "Channel retransmit: RTO fired before ACK"
+            );
+            if let Err(e) = socket.send_to(raw, addr).await {
+                tracing::debug!(%addr, "Retransmit send_to failed: {e}");
+                break;
+            }
         }
 
         if tick.is_multiple_of(100) {

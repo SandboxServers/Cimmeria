@@ -81,6 +81,14 @@ pub(crate) async fn handle_enable_entities(
 
         let pkt = build_create_player(&key, seq, &acks, &entry_info, load_data.as_ref());
         socket.send_to(&pkt, addr).await?;
+        // Register this reliable send with the per-session Channel's TX
+        // window so it retransmits if the ACK doesn't land.
+        super::super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        );
 
         // Send succeeded — now commit: take pending state and stage map_loaded data.
         {
@@ -133,6 +141,13 @@ pub(crate) async fn handle_enable_entities(
     let pkt = build_char_list(&key, seq, &acks, &characters, account_eid);
     tracing::trace!(%addr, len = pkt.len(), seq, hex = %super::super::helpers::to_hex(&pkt), "UDP_OUT char_list");
     socket.send_to(&pkt, addr).await?;
+    // Char list is a one-shot state delivery; retransmit on loss.
+    super::super::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
 
     // Send succeeded -- mark char list as sent so we don't re-send on subsequent ENABLE_ENTITIES.
     {

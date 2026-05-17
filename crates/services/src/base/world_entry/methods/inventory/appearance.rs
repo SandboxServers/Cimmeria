@@ -89,7 +89,7 @@ pub async fn refresh_player_appearance(
         }
     }
 
-    helpers::send_to_witness(
+    helpers::send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -146,6 +146,9 @@ mod tests {
             player_training_points: None,
             active_player_id: None,
             pending_destination_ring_id: None,
+            channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
+                "127.0.0.1:9999".parse().unwrap(),
+            )),
         }
     }
 
