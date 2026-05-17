@@ -70,6 +70,27 @@ pub(crate) async fn run_tick_loop(
             break;
         }
 
+        // Issue #308: drive the per-session Channel's retransmit scan.
+        // Any reliable packet whose adaptive RTO has elapsed without
+        // receiving an ack gets re-sent here, cached encrypted bytes
+        // straight to the wire. The Channel applies the per-tick budget
+        // (#292 finding #6 — at most 5 entries per scan) and Karn's
+        // exponential backoff internally.
+        let retransmits = super::helpers::collect_pending_retransmits(&connected, addr);
+        for (i, raw) in retransmits.iter().enumerate() {
+            tracing::debug!(
+                %addr,
+                len = raw.len(),
+                attempt = i + 1,
+                total = retransmits.len(),
+                "Channel retransmit (issue #308 — RTO fired before ACK)"
+            );
+            if let Err(e) = socket.send_to(raw, addr).await {
+                tracing::debug!(%addr, "Retransmit send_to failed: {e}");
+                break;
+            }
+        }
+
         if tick.is_multiple_of(100) {
             tracing::debug!(%addr, tick, seq_id, "Tick-sync heartbeat (every 100th)");
         }

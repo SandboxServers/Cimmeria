@@ -20,23 +20,29 @@ pub(crate) fn to_hex(data: &[u8]) -> String {
         .join(" ")
 }
 
-/// Register an outgoing reliable packet's sequence number with the
-/// per-session [`Channel`](cimmeria_mercury::channel::Channel) (issue #308).
+/// Register an outgoing reliable packet's sequence number AND its
+/// encrypted on-wire bytes with the per-session
+/// [`Channel`](cimmeria_mercury::channel::Channel) (issue #308).
 ///
-/// **Shadow mode** — the body of the registered packet is empty (the
-/// real encrypted bytes are already on the wire via `socket.send_to`).
-/// The Channel uses the registered entry only for ACK tracking + RTO
-/// sampling. The retransmit driver (which would re-send TX-window
-/// entries past their RTO) is a separate follow-up and will need the
-/// actual encrypted bytes carried alongside the Packet to avoid
-/// re-encryption on resend.
+/// The Channel records the entry in its TX window for two purposes:
+/// 1. **ACK tracking** — when the client acks this seq, the entry
+///    drains and an RTT sample feeds the per-peer adaptive RTO.
+/// 2. **Retransmit** — if the RTO fires before the ack arrives, the
+///    tick driver re-sends `raw_bytes` verbatim (no re-encryption).
 ///
 /// Callers should invoke this AFTER `socket.send_to` succeeds, so a
 /// failed send never appears as in-flight in the TX window.
+///
+/// `raw_bytes` should be the exact encrypted datagram that just went
+/// on the wire. Pass `cimmeria_mercury::packet::Bytes::new()` if you
+/// only want shadow-mode observability (ACK consumption + RTO sampling)
+/// without retransmit support — the channel silently skips bytes-empty
+/// entries during the retransmit scan.
 pub(crate) fn shadow_register_reliable_send(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     seq: u32,
+    raw_bytes: cimmeria_mercury::packet::Bytes,
 ) {
     use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
 
@@ -50,7 +56,7 @@ pub(crate) fn shadow_register_reliable_send(
     let Ok(mut channel) = state.channel.lock() else {
         return;
     };
-    if let Err(e) = channel.register_sent_packet(pkt) {
+    if let Err(e) = channel.register_sent_packet(pkt, raw_bytes) {
         tracing::trace!(
             %addr,
             seq,
@@ -58,6 +64,35 @@ pub(crate) fn shadow_register_reliable_send(
             "channel.register_sent_packet failed (likely TX window full) — shadow mode tolerates this",
         );
     }
+}
+
+/// Drain the per-session [`Channel`]'s retransmit queue: scan the TX
+/// window for entries past the adaptive RTO and return the encrypted
+/// bytes to re-send. Issue #308.
+///
+/// Called from `tick_sync`'s per-session loop every 100 ms. The Channel
+/// applies the per-tick budget (`RETRANSMIT_BUDGET_PER_TICK = 5`, issue
+/// #292 finding #6) and Karn's exponential backoff internally; the
+/// caller just iterates the returned bytes and `socket.send_to`s each.
+///
+/// Returns an empty vec on any lock-acquisition failure or missing
+/// session — the next tick will try again.
+///
+/// [`Channel`]: cimmeria_mercury::channel::Channel
+pub(crate) fn collect_pending_retransmits(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> Vec<cimmeria_mercury::packet::Bytes> {
+    let Ok(clients) = connected.lock() else {
+        return Vec::new();
+    };
+    let Some(state) = clients.get(&addr) else {
+        return Vec::new();
+    };
+    let Ok(mut channel) = state.channel.lock() else {
+        return Vec::new();
+    };
+    channel.check_timeouts()
 }
 
 /// Drain pending ACKs and allocate the next sequence number.

@@ -53,6 +53,20 @@ pub mod consts {
     /// Maximum retransmission attempts before the channel is considered dead.
     pub const MAX_RETRIES: u32 = 20;
 
+    /// Per-tick retransmission work budget — issue #292 finding #6 and
+    /// `mercury-wire-format` spec §1.7 + §2.4.1 R14 + §2.10 S7.
+    ///
+    /// `Channel::check_timeouts` processes at most this many expired
+    /// TX-window entries per scan before yielding. Mirrors the SGW
+    /// client's `UnAckedHandler::checkResendTimers` at
+    /// `ghidra://SGW.exe@0x0158c420`, which carries an IEEE 754 `5.0`
+    /// budget counter that decrements per processed entry and exits
+    /// when negative. Caps the cost of one tick in the pathological
+    /// "every TX-window entry is past RTO" case (a sustained link
+    /// stall would otherwise have us blast 32 retransmits in a single
+    /// tick, possibly making the congestion worse).
+    pub const RETRANSMIT_BUDGET_PER_TICK: usize = 5;
+
     /// Keepalive interval in milliseconds for idle channels.
     pub const KEEPALIVE_INTERVAL_MS: u64 = 1000;
 

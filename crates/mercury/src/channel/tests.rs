@@ -73,9 +73,14 @@ fn check_retransmits_returns_expired() {
     ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(1600);
 
     let retransmits = ch.check_timeouts();
-    assert_eq!(retransmits.len(), 1);
-    assert_eq!(retransmits[0].sequence, 0);
-    // check_timeouts bumps the retransmit counter.
+    assert_eq!(
+        retransmits.len(),
+        0,
+        "send_packet entries have no raw bytes — retransmit scan bumps the \
+         counter but emits nothing for the bytes-empty entries. \
+         register_sent_packet entries (with bytes) are tested separately."
+    );
+    // check_timeouts bumps the retransmit counter even when bytes are empty.
     assert_eq!(ch.tx_window[0].retransmit_count, 1);
 }
 
@@ -250,8 +255,14 @@ fn check_timeouts_bumps_last_sent_when_retransmitting() {
     // A channel that's actively retransmitting a lost reliable packet
     // is putting bytes on the wire — the keepalive helper must observe
     // that activity and not emit redundant pings on top of the retries.
+    //
+    // Registers via the bytes-bearing path (#308 retransmit driver
+    // commit) so the emitted retransmits vec is non-empty.
     let mut ch = Channel::new(test_addr());
-    ch.send_packet(test_packet()).unwrap();
+    let mut pkt = test_packet();
+    pkt.sequence = 0;
+    ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"on-wire"))
+        .unwrap();
     // Backdate both: the entry's last_sent so check_timeouts sees it as
     // expired (past the 1500ms default initial RTO), AND Channel.last_sent
     // so we can detect whether it moves.
@@ -263,7 +274,7 @@ fn check_timeouts_bumps_last_sent_when_retransmitting() {
     assert_eq!(
         retransmits.len(),
         1,
-        "expired packet should be retransmitted"
+        "expired packet should be retransmitted (raw bytes emitted)"
     );
     assert!(
         ch.last_sent > backdate,
@@ -303,12 +314,17 @@ fn register_sent_packet_records_entry_without_consuming_next_tx_seq() {
     pkt.sequence = 42; // caller pre-assigned
 
     let next_tx_seq_before = ch.next_tx_seq;
-    ch.register_sent_packet(pkt).unwrap();
+    let raw = bytes::Bytes::from_static(&[0xCA, 0xFE]);
+    ch.register_sent_packet(pkt, raw.clone()).unwrap();
 
     assert_eq!(ch.tx_window.len(), 1);
     assert_eq!(
         ch.tx_window[0].packet.sequence, 42,
         "register_sent_packet must preserve caller-assigned sequence"
+    );
+    assert_eq!(
+        ch.tx_window[0].raw_bytes, raw,
+        "register_sent_packet must retain raw_bytes for retransmit"
     );
     assert_eq!(
         ch.next_tx_seq, next_tx_seq_before,
@@ -326,7 +342,8 @@ fn registered_packet_is_acked_and_samples_rto_normally() {
 
     let mut pkt = test_packet();
     pkt.sequence = 7;
-    ch.register_sent_packet(pkt).unwrap();
+    ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+        .unwrap();
     // Backdate so the ack measures ~80ms RTT.
     ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(80);
 
@@ -409,7 +426,10 @@ fn process_acks_skips_rto_sample_on_retransmitted_packet_karn() {
 #[test]
 fn check_timeouts_fires_at_adaptive_rto_not_fixed_constant() {
     let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
-    ch.send_packet(test_packet()).unwrap();
+    let mut pkt = test_packet();
+    pkt.sequence = 0;
+    ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+        .unwrap();
     // 50ms ago — under the 150ms initial RTO.
     ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(50);
     assert!(
@@ -420,7 +440,11 @@ fn check_timeouts_fires_at_adaptive_rto_not_fixed_constant() {
     // 200ms ago — past the 150ms initial RTO.
     ch.tx_window[0].last_sent = std::time::Instant::now() - std::time::Duration::from_millis(200);
     let retx = ch.check_timeouts();
-    assert_eq!(retx.len(), 1, "200ms > 150ms RTO — retransmit fires");
+    assert_eq!(
+        retx.len(),
+        1,
+        "200ms > 150ms RTO — retransmit fires (with raw bytes)"
+    );
 }
 
 /// `check_timeouts` calls `rto.on_retransmit` ONCE per scan, not per
@@ -431,9 +455,12 @@ fn check_timeouts_fires_at_adaptive_rto_not_fixed_constant() {
 #[test]
 fn check_timeouts_doubles_rto_once_per_scan_not_per_entry() {
     let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
-    ch.send_packet(test_packet()).unwrap();
-    ch.send_packet(test_packet()).unwrap();
-    ch.send_packet(test_packet()).unwrap();
+    for seq in 0..3 {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+            .unwrap();
+    }
 
     // Backdate ALL three entries past the 150ms initial RTO.
     let backdate = std::time::Instant::now() - std::time::Duration::from_millis(200);
@@ -452,6 +479,46 @@ fn check_timeouts_doubles_rto_once_per_scan_not_per_entry() {
         rto_before * 2,
         "RTO must double once per scan, not per retransmitted entry"
     );
+}
+
+/// Issue #292 finding #6 — per-tick retransmit work budget of 5.
+/// With 7 expired entries in the TX window, a single `check_timeouts`
+/// scan processes exactly 5 (the spec-mandated budget). The remaining
+/// 2 wait for the next tick. Pinning this protects against a refactor
+/// that drops the budget and lets a saturated link blast the whole
+/// TX window in one tick (worsening congestion). The cap mirrors
+/// `UnAckedHandler::checkResendTimers` at `ghidra://SGW.exe@0x0158c420`.
+#[test]
+fn check_timeouts_caps_retransmits_per_scan_at_five_per_spec() {
+    let mut ch = Channel::with_rto_config(test_addr(), fast_rto_config());
+    // Register 7 packets with bytes so they're all eligible for retransmit.
+    for seq in 0..7 {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"raw"))
+            .unwrap();
+    }
+    // All 7 backdated past the 150ms RTO.
+    let backdate = std::time::Instant::now() - std::time::Duration::from_millis(200);
+    for entry in ch.tx_window.iter_mut() {
+        entry.last_sent = backdate;
+    }
+
+    let retx = ch.check_timeouts();
+    assert_eq!(
+        retx.len(),
+        consts::RETRANSMIT_BUDGET_PER_TICK,
+        "first scan must cap at the per-tick budget (5), even with 7 expired"
+    );
+    // The first 5 entries had retransmit_count bumped + last_sent refreshed.
+    // The remaining 2 are untouched, ready for next scan.
+    for (i, entry) in ch.tx_window.iter().enumerate() {
+        if i < consts::RETRANSMIT_BUDGET_PER_TICK {
+            assert_eq!(entry.retransmit_count, 1, "first 5 retransmitted once");
+        } else {
+            assert_eq!(entry.retransmit_count, 0, "remaining 2 untouched");
+        }
+    }
 }
 
 /// A no-op `check_timeouts` (no entries expired) MUST NOT call
@@ -642,14 +709,14 @@ fn register_sent_packet_back_pressure_at_tx_window_size() {
     for seq in 0..(consts::TX_WINDOW_SIZE as u32) {
         let mut pkt = test_packet();
         pkt.sequence = seq;
-        ch.register_sent_packet(pkt).unwrap();
+        ch.register_sent_packet(pkt, bytes::Bytes::new()).unwrap();
     }
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
 
     // 33rd registration (seq=32) must back-pressure.
     let mut pkt = test_packet();
     pkt.sequence = consts::TX_WINDOW_SIZE as u32;
-    let result = ch.register_sent_packet(pkt);
+    let result = ch.register_sent_packet(pkt, bytes::Bytes::new());
     assert!(result.is_err(), "33rd in-flight reliable must be rejected");
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
 }

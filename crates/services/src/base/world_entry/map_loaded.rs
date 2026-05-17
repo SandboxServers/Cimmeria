@@ -98,10 +98,16 @@ pub(crate) async fn handle_map_loaded(
     tracing::debug!(%addr, len = enter_world_pkt.len(), seq = base_seq,
         "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
     socket.send_to(&enter_world_pkt, addr).await?;
-    // Issue #308 shadow mode: register this reliable send with the
-    // per-session Channel's TX window so ACK consumption + RTO sampling
-    // are live. No retransmit yet — that's a follow-up commit.
-    super::super::helpers::shadow_register_reliable_send(connected, addr, base_seq);
+    // Issue #308: register this reliable send with the per-session
+    // Channel's TX window. ACK consumption + RTO sampling are live,
+    // and the retransmit driver in tick_sync.rs will resend the cached
+    // bytes if the RTO fires before the client acks.
+    super::super::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        base_seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&enter_world_pkt),
+    );
 
     // Packet 2+: Entity methods (mapLoaded body, possibly fragmented)
     let map_base_seq = base_seq + 1;
@@ -123,6 +129,7 @@ pub(crate) async fn handle_map_loaded(
             connected,
             addr,
             map_base_seq + i as u32,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt_data),
         );
     }
 

@@ -13,7 +13,7 @@ use tokio::net::UdpSocket;
 
 use crate::channel::Channel;
 use crate::consts;
-use crate::packet::Packet;
+use crate::packet::{Bytes, Packet};
 
 /// Outputs from one [`Nub::tick`] pass — work the I/O layer should now do.
 ///
@@ -24,10 +24,12 @@ use crate::packet::Packet;
 /// onto the wire and tears down `dead_channels`.
 #[derive(Default)]
 pub struct TickActions {
-    /// Reliable packets that hit `ACK_TIMEOUT_MS` without being acked
-    /// and need to be re-sent. Pre-bound to the destination address so
-    /// the caller doesn't have to re-look-up.
-    pub retransmits: Vec<(SocketAddr, Packet)>,
+    /// Reliable packet datagrams (already encrypted) that hit their
+    /// channel's adaptive RTO without being acked and need to go back
+    /// on the wire. Pre-bound to the destination address so the caller
+    /// `socket.send_to`s each pair directly — no re-encryption needed.
+    /// Issue #308.
+    pub retransmits: Vec<(SocketAddr, Bytes)>,
     /// Channels that haven't sent anything in `KEEPALIVE_INTERVAL_MS`.
     /// The caller emits a keepalive to each of these addresses; the
     /// channel's `last_sent` was already touched by `tick` so a no-op
@@ -285,7 +287,13 @@ mod tests {
         let mut nub = nub().await;
         let addr: SocketAddr = "127.0.0.1:9002".parse().unwrap();
         let ch = nub.get_or_create_channel(addr);
-        ch.send_packet(test_packet()).unwrap();
+        // Use the bytes-bearing path so retransmits actually go to the wire
+        // (issue #308 — send_packet entries have empty bytes and skip the
+        // retransmit emit even though their counter is bumped).
+        let mut pkt = test_packet();
+        pkt.sequence = 0;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"on-wire"))
+            .unwrap();
         // Backdate the entry's last_sent past the current adaptive RTO
         // so check_timeouts considers it expired (#308 adaptive timeout).
         let backdate_by = ch.rto().current() + Duration::from_millis(100);
@@ -315,7 +323,12 @@ mod tests {
         let mut nub = nub().await;
         let addr: SocketAddr = "127.0.0.1:9004".parse().unwrap();
         let ch = nub.get_or_create_channel(addr);
-        ch.send_packet(test_packet()).unwrap();
+        // Use the bytes-bearing path so the MAX_RETRIES'th retry actually
+        // emits bytes on the wire (issue #308 retransmit driver).
+        let mut pkt = test_packet();
+        pkt.sequence = 0;
+        ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"on-wire"))
+            .unwrap();
         // Pre-set retransmit_count to MAX_RETRIES - 1 and backdate so
         // check_timeouts will bump it to exactly MAX_RETRIES on this tick.
         ch.tx_window[0].retransmit_count = consts::MAX_RETRIES - 1;

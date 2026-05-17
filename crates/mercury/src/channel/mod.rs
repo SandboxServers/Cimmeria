@@ -42,12 +42,22 @@ pub enum ChannelState {
 /// Bookkeeping for a packet sitting in the transmit window awaiting ACK.
 #[derive(Debug, Clone)]
 pub struct TxEntry {
-    /// The packet that was sent (retained for retransmission).
+    /// The packet that was sent (retained for metadata — flags, seq).
     pub packet: Packet,
     /// When this packet was last (re)transmitted.
     pub last_sent: Instant,
     /// How many times this packet has been retransmitted.
     pub retransmit_count: u32,
+    /// Already-encrypted bytes that went on the wire for this packet's
+    /// initial send. Retained so retransmits can re-send the exact same
+    /// datagram without re-encrypting (which would require the session
+    /// key be carried through `Channel`).
+    ///
+    /// Empty for entries inserted via the deprecated `send_packet` path
+    /// (which stamps a sequence but never sees the encrypted bytes);
+    /// `check_timeouts` silently skips bytes-empty entries during the
+    /// retransmit scan. Issue #308.
+    pub raw_bytes: Bytes,
 }
 
 /// Bookkeeping for a received packet in the receive window.
@@ -184,24 +194,27 @@ impl Channel {
     }
 
     /// Register a packet that the caller has already assigned a sequence
-    /// number to and put on the wire.
+    /// number to, encrypted, and put on the wire.
     ///
     /// Used during the gradual services-layer migration to `Channel`-managed
     /// sends (issue #308). The legacy send path stamps sequences via a
     /// session-local `Arc<AtomicU32>` and encrypts + transmits directly;
     /// this method lets us mirror those sends into the channel's TX window
-    /// so ACK tracking + RTO sampling are live BEFORE every send site has
-    /// migrated to [`send_packet`].
+    /// so ACK tracking, RTO sampling, AND retransmit are all live BEFORE
+    /// every send site has migrated to [`send_packet`].
     ///
     /// Caller MUST ensure `packet.sequence` matches the sequence number
     /// that went out on the wire (otherwise the cumulative-ACK drain in
-    /// [`process_acks`] won't find the right entry). Once every send site
-    /// has been migrated to [`send_packet`] (which owns sequence
-    /// assignment via `next_tx_seq`), this method can be removed.
+    /// [`process_acks`] won't find the right entry).
+    ///
+    /// `raw_bytes` is the exact encrypted datagram that was sent. The
+    /// retransmit driver re-sends these bytes verbatim — no re-encryption.
+    /// Pass `Bytes::new()` to register-without-retransmit-capability (rare;
+    /// only useful for shadow-mode observation that never needs to resend).
     ///
     /// [`send_packet`]: Self::send_packet
     /// [`process_acks`]: Self::process_acks
-    pub fn register_sent_packet(&mut self, packet: Packet) -> Result<()> {
+    pub fn register_sent_packet(&mut self, packet: Packet, raw_bytes: Bytes) -> Result<()> {
         if self.tx_window.len() >= consts::TX_WINDOW_SIZE {
             return Err(cimmeria_common::CimmeriaError::Channel(format!(
                 "TX window full ({} packets), cannot register seq={}",
@@ -215,6 +228,7 @@ impl Channel {
             packet,
             last_sent: now,
             retransmit_count: 0,
+            raw_bytes,
         });
         self.last_sent = now;
 
@@ -247,6 +261,10 @@ impl Channel {
             packet,
             last_sent: now,
             retransmit_count: 0,
+            // send_packet entries have no raw bytes — caller hasn't
+            // encrypted yet (the seq was just stamped). Such entries
+            // are silently skipped during the retransmit scan.
+            raw_bytes: Bytes::new(),
         });
         self.last_sent = now;
 
@@ -348,39 +366,66 @@ impl Channel {
     /// Check all packets in the TX window for retransmission timeouts.
     ///
     /// Uses the per-channel adaptive RTO (issue #308) — `self.rto.current()`
-    /// — rather than a fixed `consts::ACK_TIMEOUT_MS`. Each entry whose
-    /// `last_sent` is older than the current RTO is selected for
-    /// retransmission; we increment `retransmit_count`, refresh
-    /// `last_sent`, and call `self.rto.on_retransmit()` to apply Karn's
-    /// exponential backoff to the RTO before the next scan.
+    /// — rather than a fixed `consts::ACK_TIMEOUT_MS`. Each expired entry
+    /// (whose `last_sent` is older than the current RTO) is selected for
+    /// retransmission: we increment `retransmit_count`, refresh
+    /// `last_sent`, and emit the entry's cached encrypted bytes for the
+    /// caller to put on the wire. After the scan, if anything was
+    /// retransmitted, `self.rto.on_retransmit()` doubles the RTO once
+    /// (Karn's backoff).
     ///
-    /// `on_retransmit` is called **once per scan**, not per-entry —
-    /// the RTO doubles in response to *the channel timing out*, not in
-    /// response to each individual packet that happens to be past
-    /// deadline at this tick. Doubling per-entry would compound the
-    /// backoff catastrophically if the TX window has multiple packets
-    /// in flight when the link briefly stalls.
+    /// **Per-tick budget (#292 #6):** the scan stops after
+    /// `consts::RETRANSMIT_BUDGET_PER_TICK` expired entries have been
+    /// processed. The remaining expired entries (if any) wait for the
+    /// next tick. Without this cap, a saturated link with 32 in-flight
+    /// reliable packets and a brief stall would have us blast all 32
+    /// retransmits in a single tick — likely worsening the congestion
+    /// rather than recovering from it.
     ///
-    /// Returns a list of packets that need to be retransmitted. The caller
-    /// is expected to put the returned packets on the wire — so when this
-    /// returns a non-empty list we bump `last_sent` too, otherwise a
-    /// channel actively retransmitting would still look idle from the
-    /// keepalive helper's perspective and emit redundant pings on top of
-    /// the retransmits.
-    pub fn check_timeouts(&mut self) -> Vec<Packet> {
+    /// **on_retransmit fires ONCE per scan**, not per-entry. The RTO
+    /// doubles in response to *the channel timing out*, not in response
+    /// to each individual packet past deadline. Doubling per-entry
+    /// would compound the backoff catastrophically.
+    ///
+    /// **Bytes-empty entries are silently skipped** (their
+    /// `retransmit_count` IS still bumped). Those are entries inserted
+    /// via the deprecated `send_packet` path, which doesn't carry the
+    /// encrypted bytes needed to resend. They drain normally on ACK,
+    /// just can't be resent on loss.
+    ///
+    /// Returns a `Vec<Bytes>` of encrypted-and-ready-to-wire datagrams.
+    /// The caller `socket.send_to`s each one to `self.remote_addr`.
+    pub fn check_timeouts(&mut self) -> Vec<Bytes> {
         let now = Instant::now();
         let timeout = self.rto.current();
         let mut retransmits = Vec::new();
+        let mut budget = consts::RETRANSMIT_BUDGET_PER_TICK;
+        // Track whether *any* expired entry was processed (regardless of
+        // whether it had bytes available to resend), so the channel-level
+        // side effects (RTO backoff + last_sent bump) fire on the
+        // semantic event "the channel timed out", not the narrower event
+        // "we had bytes to put on the wire". A channel full of bytes-empty
+        // entries (`send_packet` legacy path) would otherwise never back off.
+        let mut any_expired = false;
 
         for entry in self.tx_window.iter_mut() {
-            if now.duration_since(entry.last_sent) >= timeout {
-                entry.retransmit_count += 1;
-                entry.last_sent = now;
-                retransmits.push(entry.packet.clone());
+            if budget == 0 {
+                break;
+            }
+            if now.duration_since(entry.last_sent) < timeout {
+                continue;
+            }
+            // Expired — count against budget and refresh.
+            any_expired = true;
+            budget -= 1;
+            entry.retransmit_count += 1;
+            entry.last_sent = now;
+            if !entry.raw_bytes.is_empty() {
+                retransmits.push(entry.raw_bytes.clone());
             }
         }
 
-        if !retransmits.is_empty() {
+        if any_expired {
             self.last_sent = now;
             self.rto.on_retransmit();
         }
