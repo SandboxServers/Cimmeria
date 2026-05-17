@@ -126,6 +126,7 @@ mod tests {
             pending_player_entity_id: None,
             player_entity_id: None,
             next_seq: Arc::new(AtomicU32::new(1)),
+            next_seq_unreliable: Arc::new(AtomicU32::new(0)),
             pending_acks: Arc::new(Mutex::new(Vec::new())),
             last_recv: Arc::new(Mutex::new(Instant::now())),
             account_entity_id: 1,

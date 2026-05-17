@@ -131,6 +131,7 @@ pub(crate) async fn handle_login(
                 pending_player_entity_id: None,
                 player_entity_id: None,
                 next_seq,
+                next_seq_unreliable: Arc::new(AtomicU32::new(0)),
                 pending_acks,
                 last_recv,
                 account_entity_id: entity_manager.lock().unwrap().create_entity("Account").0 as u32,

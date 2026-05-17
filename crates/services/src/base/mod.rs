@@ -112,6 +112,18 @@ pub(crate) struct ConnectedClientState {
     pub pending_player_entity_id: Option<u32>,
     pub player_entity_id: Option<u32>,
     pub next_seq: Arc<AtomicU32>,
+    /// Sequence counter for **unreliable** outbound packets — kept separate
+    /// from `next_seq` to preserve the contiguous reliable seq stream the
+    /// SGW BigWorld client's `UnAckedHandler::queueAckForPacket`
+    /// (`ghidra://SGW.exe@0x0158cba0`) requires. The receiver's `inSeqAt`
+    /// advances by exactly 1 per reliable arrival; sharing the counter
+    /// with unreliable emissions creates gaps the receiver cannot fill,
+    /// stalling delivery of every subsequent reliable packet. The receiver
+    /// has separate dedup state at `+0x128` for unreliable packets, so two
+    /// independent monotonic streams (one reliable, one unreliable) are
+    /// the wire-format-correct shape. See `spec.protocol.mercury-wire-format`
+    /// §1.7 + the `FUN_0158bb50` decompile.
+    pub next_seq_unreliable: Arc<AtomicU32>,
     pub pending_acks: Arc<Mutex<Vec<u32>>>,
     pub last_recv: Arc<Mutex<Instant>>,
     pub account_entity_id: u32,

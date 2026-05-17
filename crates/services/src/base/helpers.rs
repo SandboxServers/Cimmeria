@@ -249,7 +249,12 @@ pub(crate) async fn send_to_witness<F>(
         match clients.get(&addr) {
             Some(c) => {
                 let key = c.key;
-                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
+                // Unreliable counter — kept separate from `next_seq` so the
+                // reliable seq stream remains contiguous. The receiver's
+                // `inSeqAt` only advances for reliable arrivals; sharing the
+                // counter creates gaps the client cannot fill. See
+                // `ConnectedClientState::next_seq_unreliable` docs.
+                let seq = c.next_seq_unreliable.fetch_add(1, Ordering::Relaxed)
                     & cimmeria_mercury::packet::SEQUENCE_MASK;
                 let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
                 Some((addr, key, seq, acks))

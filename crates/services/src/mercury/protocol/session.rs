@@ -10,7 +10,7 @@ use cimmeria_mercury::packet::FLAG_HAS_ACKS;
 use super::{
     encrypt_packet, BASEMSG_LOGGED_OFF, BASEMSG_REPLY_MESSAGE, BASEMSG_RESET_ENTITIES,
     BASEMSG_SET_GAME_TIME, BASEMSG_TICK_SYNC, BASEMSG_UPDATE_FREQUENCY_NOTIFICATION, REPLY_FLAGS,
-    REPLY_FLAGS_UNRELIABLE,
+    REPLY_FLAGS_RELIABLE,
 };
 
 /// Build and encrypt the `BASEMSG_REPLY_MESSAGE` packet.
@@ -63,12 +63,18 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
 
 /// Build and encrypt a single `BASEMSG_TICK_SYNC` heartbeat packet.
 ///
-/// **Unreliable** — tick sync is a continuous 100ms
-/// heartbeat; a lost tick is superseded by the next one ~100ms later,
-/// so retransmit overhead would buy nothing. The packet still carries
-/// `FLAG_HAS_SEQUENCE` (for ordering) and `FLAG_HAS_ACKS` when there
-/// are piggybacked client-ack receipts, but `FLAG_RELIABLE` is cleared
-/// so the client doesn't ACK us for every tick.
+/// **Reliable** — tick sync shares the per-channel monotonic seq counter
+/// with every other server-emitted packet. The SGW BigWorld client's
+/// recv-side `UnAckedHandler::queueAckForPacket` (`ghidra://SGW.exe@0x0158cba0`)
+/// advances `inSeqAt` by exactly 1 each time the next-expected reliable seq
+/// arrives, and there is no path that skips `inSeqAt` forward past a
+/// non-reliable slot. Emitting tickSync as unreliable on the shared
+/// counter leaves a permanent gap in the reliable seq stream — the next
+/// reliable packet is "above #inSeqAt" forever, the receiver's reorder
+/// buffer fills, and the connection stalls at character-select (the first
+/// place where reliable→unreliable→reliable interleaving occurs after
+/// `createBasePlayer`). See `spec.protocol.mercury-wire-format` §1.7 +
+/// the disassembly of `queueAckForPacket` for the receiver model.
 pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u32]) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
@@ -79,7 +85,7 @@ pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u
     body.extend_from_slice(&tick.to_le_bytes());
     body.extend_from_slice(&TICK_RATE.to_le_bytes());
 
-    let flags = REPLY_FLAGS_UNRELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let flags = REPLY_FLAGS_RELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)
 }
