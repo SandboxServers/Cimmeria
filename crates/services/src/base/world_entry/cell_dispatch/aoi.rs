@@ -14,7 +14,7 @@ use crate::mercury::{
     build_entity_invisible, build_entity_leave, build_entity_method_packet,
 };
 
-use super::super::super::helpers::send_to_witness;
+use super::super::super::helpers::{send_to_witness, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
 
 /// `CellToBaseMsg::EnteredAoI` — entity entered a witness's range.
@@ -39,8 +39,9 @@ pub(super) async fn entered_aoi(
         level,
         "AoI: entity entered witness range"
     );
-    // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate)
-    send_to_witness(
+    // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate) — RELIABLE
+    // (NPC spawn into player AoI; loss = NPC permanently invisible — issue #308)
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -50,8 +51,8 @@ pub(super) async fn entered_aoi(
         },
     )
     .await;
-    // Packet 2: createOnClient() property cascade (CellApp round-trip)
-    send_to_witness(
+    // Packet 2: createOnClient() property cascade (CellApp round-trip) — RELIABLE
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -81,7 +82,7 @@ pub(super) async fn left_aoi(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "AoI: entity left witness range");
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -104,6 +105,9 @@ pub(super) async fn entity_moved(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::trace!(witness_id, entity_id, "AoI: entity position update");
+    // UNRELIABLE — avatar position updates are continuous and self-correcting;
+    // the next position frame supersedes any lost one within a tick or two.
+    // Stays on the no-Channel-tracking path (issue #308).
     send_to_witness(
         socket,
         connected,
@@ -132,7 +136,10 @@ pub(super) async fn entity_method_call(
         args_len = args.len(),
         "CellService->client entity method call"
     );
-    send_to_witness(
+    // RELIABLE — entity method calls are state-change traffic (interaction
+    // triggers, quest updates, mission state, dialog opens, content engine
+    // events). Loss = permanent damage. Issue #308.
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -159,7 +166,9 @@ pub(super) async fn witness_entity_method(
         method_index,
         "Broadcast entity method to witness"
     );
-    send_to_witness(
+    // RELIABLE — witness-broadcast entity methods are state-change traffic
+    // (same shape as the owning-client entity_method_call above). Issue #308.
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -180,7 +189,9 @@ pub(super) async fn entity_invisible(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
-    send_to_witness(
+    // RELIABLE — visibility-state change. Loss leaves the entity rendered
+    // when it should be hidden. Issue #308.
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,

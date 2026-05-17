@@ -89,7 +89,7 @@ pub async fn refresh_player_appearance(
         }
     }
 
-    helpers::send_to_witness(
+    helpers::send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,

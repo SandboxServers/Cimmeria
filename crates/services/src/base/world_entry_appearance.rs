@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_entity_method_packet, method_idx, write_wstring, SKIN_TINTS};
 
-use super::helpers::send_to_witness;
+use super::helpers::send_to_witness_reliable;
 use super::world_entry::handle_map_loaded;
 use super::ConnectedClientState;
 
@@ -247,7 +247,7 @@ pub(crate) async fn handle_on_client_ready(
     // Resend BeingAppearance + onEntityTint now that the entity is fully ready.
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -264,7 +264,7 @@ pub(crate) async fn handle_on_client_ready(
         },
     )
     .await;
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -314,7 +314,7 @@ pub(crate) async fn handle_cancel_movie(
         return;
     };
 
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -331,7 +331,7 @@ pub(crate) async fn handle_cancel_movie(
         },
     )
     .await;
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,

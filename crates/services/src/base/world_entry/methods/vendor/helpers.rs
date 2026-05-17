@@ -18,7 +18,7 @@ pub async fn send_cash_changed_to_client(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    helpers::send_to_witness(
+    helpers::send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -164,7 +164,7 @@ pub async fn sync_bandolier_after_inventory_change(
         let mut args = Vec::with_capacity(8);
         args.extend_from_slice(&CONTAINER_BANDOLIER.to_le_bytes());
         args.extend_from_slice(&(active_slot + 1).to_le_bytes());
-        helpers::send_to_witness(
+        helpers::send_to_witness_reliable(
             socket,
             connected,
             entity_to_addr,

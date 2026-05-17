@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::build_entity_method_packet;
 
-use super::super::super::helpers::send_to_witness;
+use super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::ConnectedClientState;
 
 /// `CellToBaseMsg::StartMinigame` — register a session ticket and push
@@ -66,7 +66,7 @@ pub(super) async fn start_minigame(
                 args.extend_from_slice(&ch.to_le_bytes());
             }
             let method = crate::cell::dispatch::CLIENT_MG_ON_START_MINIGAME;
-            send_to_witness(
+            send_to_witness_reliable(
                 socket,
                 connected,
                 entity_to_addr,
@@ -99,7 +99,7 @@ pub(super) async fn minigame_result(
     tracing::info!(entity_id, result_code, "Minigame result received");
     // Send onEndMinigame to client
     let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,

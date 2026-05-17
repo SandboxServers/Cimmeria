@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use sqlx::PgPool;
 use tokio::net::UdpSocket;
 
-use super::super::super::super::helpers::send_to_witness;
+use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
 use crate::mercury::{build_entity_method_packet, method_idx};
 
@@ -123,7 +123,7 @@ pub async fn send_full_inventory_update(
         item.serialize(&mut args);
     }
 
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -157,7 +157,7 @@ pub(super) async fn send_on_remove_item(
     let mut args = Vec::with_capacity(8);
     args.extend_from_slice(&1u32.to_le_bytes()); // ARRAY<INT32> count
     args.extend_from_slice(&item_id.to_le_bytes());
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,

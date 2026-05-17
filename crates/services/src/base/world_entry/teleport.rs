@@ -16,7 +16,7 @@ use tokio::net::UdpSocket;
 
 use crate::mercury::{build_entity_method_packet, build_forced_position};
 
-use super::super::helpers::send_to_witness;
+use super::super::helpers::send_to_witness_reliable;
 use super::super::ConnectedClientState;
 
 /// Authoritative same-world teleport: snap the player's avatar to `position`.
@@ -68,7 +68,7 @@ pub(super) async fn handle_teleport_player(
     );
 
     // 1. Engine-level snap.
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,
@@ -84,7 +84,7 @@ pub(super) async fn handle_teleport_player(
         args.extend_from_slice(&c.to_le_bytes());
     }
     args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
-    send_to_witness(
+    send_to_witness_reliable(
         socket,
         connected,
         entity_to_addr,

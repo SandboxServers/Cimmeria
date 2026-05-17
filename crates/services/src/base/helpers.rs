@@ -186,11 +186,16 @@ pub(crate) fn destroy_client_entities(
     tracing::info!(%addr, "Client entities cleaned up");
 }
 
-/// Send an AoI packet to a specific witness's client.
+/// Send an AoI packet to a specific witness's client — **unreliable**
+/// variant. Use for self-correcting / ephemeral traffic where loss
+/// recovers naturally on the next emit (currently only avatar position
+/// updates fit this profile). Most callers want
+/// [`send_to_witness_reliable`] instead.
 ///
 /// Looks up the witness entity_id -> SocketAddr, then finds the client state
 /// to get encryption key and sequence number. Calls the packet builder closure
-/// and sends the result via UDP.
+/// and sends the result via UDP. No Channel registration — packets sent via
+/// this path are NOT tracked for retransmit.
 pub(crate) async fn send_to_witness<F>(
     socket: &Arc<UdpSocket>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -230,6 +235,77 @@ pub(crate) async fn send_to_witness<F>(
         if let Err(e) = socket.send_to(&packet, addr).await {
             tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
         }
+    }
+}
+
+/// Send an AoI packet to a specific witness's client — **reliable**
+/// variant. After the UDP send succeeds, registers the encrypted bytes
+/// with the per-session [`Channel`]'s TX window so the retransmit
+/// driver in `tick_sync.rs` re-sends on RTO expiry. Issue #308.
+///
+/// Use for **every** state-change AoI emit: entity create/destroy,
+/// entity method calls (90%+ of server→client traffic — quest updates,
+/// NPC spawns, interaction triggers, content engine events, inventory
+/// changes, mission state, dialog opens), entity-invisible, entity-leave.
+/// The wire format already sets `FLAG_RELIABLE` for these via
+/// `REPLY_FLAGS_RELIABLE`; this helper closes the loop on the server's
+/// send-window tracking so the FLAG_RELIABLE promise is kept.
+///
+/// **Do NOT** use for `build_avatar_update` (position relay) — those
+/// are unreliable on the wire and should NOT be in the TX window.
+/// Use plain [`send_to_witness`] for that case.
+///
+/// [`Channel`]: cimmeria_mercury::channel::Channel
+pub(crate) async fn send_to_witness_reliable<F>(
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    witness_id: u32,
+    build_packet: F,
+) where
+    F: FnOnce(&[u8; 32], u32, &[u32]) -> Vec<u8>,
+{
+    let send_data = {
+        let addr = match entity_to_addr.lock().unwrap().get(&witness_id).copied() {
+            Some(a) => a,
+            None => {
+                tracing::trace!(
+                    witness_id,
+                    "AoI reliable: no client addr for witness -- skipping"
+                );
+                return;
+            }
+        };
+
+        let clients = connected.lock().unwrap();
+        match clients.get(&addr) {
+            Some(c) => {
+                let key = c.key;
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                Some((addr, key, seq, acks))
+            }
+            None => {
+                tracing::trace!(witness_id, %addr, "AoI reliable: client disconnected -- skipping");
+                None
+            }
+        }
+    };
+
+    if let Some((addr, key, seq, acks)) = send_data {
+        let packet = build_packet(&key, seq, &acks);
+        if let Err(e) = socket.send_to(&packet, addr).await {
+            tracing::warn!(witness_id, %addr, "AoI reliable: failed to send packet: {e}");
+            return;
+        }
+        // Register the encrypted bytes with the per-session Channel so
+        // the retransmit driver in tick_sync re-sends on RTO expiry.
+        shadow_register_reliable_send(
+            connected,
+            addr,
+            seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
+        );
     }
 }
 
