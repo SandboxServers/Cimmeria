@@ -12,7 +12,6 @@ use cimmeria_common::Result;
 use tokio::net::UdpSocket;
 
 use crate::channel::Channel;
-use crate::consts;
 use crate::packet::{Bytes, Packet};
 
 /// Outputs from one [`Nub::tick`] pass — work the I/O layer should now do.
@@ -144,21 +143,24 @@ impl Nub {
             ..TickActions::default()
         };
 
-        // 2. Sweep stale fragment-reassembly state on every channel.
-        let frag_timeout = std::time::Duration::from_millis(consts::FRAGMENT_REASSEMBLY_TIMEOUT_MS);
-        for channel in self.channels.values_mut() {
-            channel.cleanup_stale_fragments(frag_timeout);
-        }
-
-        // 3. Collect retransmits. check_timeouts bumps last_sent on the
-        // channel so step 4's keepalive_due check sees that activity.
+        // 2. Collect retransmits. check_timeouts bumps last_sent on the
+        // channel so step 3's keepalive_due check sees that activity.
+        //
+        // (Fragment-reassembly stale-cleanup is deliberately NOT done here.
+        // The SGW client has no 30-second periodic sweep — stale partial
+        // bundles are evicted only when a NEW overlapping bundle arrives,
+        // or when the channel itself is torn down. Per
+        // `mercury-wire-format` spec §2.4.1 R13 + §2.10 S6. An older
+        // implementation here ran a 30s sweep and silently evicted
+        // in-progress reassemblies the client would have kept; that's
+        // gone now.)
         for (addr, channel) in self.channels.iter_mut() {
             for pkt in channel.check_timeouts() {
                 actions.retransmits.push((*addr, pkt));
             }
         }
 
-        // 4. Schedule keepalives. Caller is expected to emit the bytes
+        // 3. Schedule keepalives. Caller is expected to emit the bytes
         // and then call Channel::touch_sent — without that, the next
         // tick re-flags the address (which is the right behavior: a
         // dropped action gets retried, not silently suppressed).
@@ -366,12 +368,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tick_sweeps_stale_fragment_reassembly() {
-        // Pin the cleanup wire-up: a channel with a stale partial
-        // fragment bundle has its assembler cleared by tick. Without
-        // this, abandoned reassembly state would accumulate per channel
-        // until the channel itself dies — and a chatty peer streaming
-        // fragments would keep the channel alive indefinitely.
+    async fn tick_does_not_touch_fragment_reassembly_state() {
+        // Inverse contract of the deleted `tick_sweeps_stale_fragment_reassembly`
+        // test. The SGW client has no 30-second periodic reassembly sweep
+        // (`mercury-wire-format` spec §2.4.1 R13 + §2.10 S6); the Rust `Nub::tick`
+        // must NOT touch in-progress reassembly state either. Orphan partial
+        // bundles persist until they're either (a) overlapped by a new bundle
+        // (handled at the `FragmentAssembler` layer), or (b) reaped via channel
+        // teardown.
+        //
+        // Pin the contract: feed a partial bundle, run tick, observe the
+        // partial state is intact and the bundle still completes when the
+        // remaining fragments arrive.
         use crate::packet::{build_outgoing_fragmented, parse_incoming};
         use bytes::Bytes;
 
@@ -379,38 +387,30 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:9006".parse().unwrap();
         let ch = nub.get_or_create_channel(addr);
 
-        // Feed one fragment of a 3-fragment bundle.
-        let raw = build_outgoing_fragmented(0, b"part-1", 60, 60, 62, &[]);
-        let parsed = parse_incoming(&raw).unwrap();
-        ch.reassemble_parsed(&parsed).unwrap();
-        // Backdate the channel's reassembly state past the cleanup window
-        // by recreating a stale buffer is fiddly; use the public API by
-        // running tick once with FRAGMENT_REASSEMBLY_TIMEOUT_MS = 0.
-        // We can't override the const, so instead drive the cleanup via
-        // the Channel directly to force the stale state out, then verify
-        // the next reassembly starts fresh.
-        ch.cleanup_stale_fragments(std::time::Duration::ZERO);
-
-        // After cleanup, re-feeding the same first fragment should put
-        // the channel back into "waiting for more" with no leftover
-        // pending state from before. The simplest observable proof is
-        // that completing the bundle now requires all three fragments —
-        // a stale-buffered f0 would have caused a duplicate-fragment
-        // dedup that never completes.
+        // Feed f0 of a 3-fragment bundle.
         let f0 = parse_incoming(&build_outgoing_fragmented(0, b"part-1", 60, 60, 62, &[])).unwrap();
+        ch.reassemble_parsed(&f0).unwrap();
+
+        // tick must not evict the partial bundle.
+        let actions = nub.tick();
+        assert!(actions.retransmits.is_empty());
+
+        // f1 + f2 complete the bundle using the still-held f0.
         let f1 = parse_incoming(&build_outgoing_fragmented(0, b"part-2", 61, 60, 62, &[])).unwrap();
         let f2 = parse_incoming(&build_outgoing_fragmented(0, b"part-3", 62, 60, 62, &[])).unwrap();
-        assert!(ch.reassemble_parsed(&f0).unwrap().is_none());
+        // After tick — re-acquire the channel handle (the previous &mut
+        // borrow was released when `actions` returned).
+        let ch = nub.get_or_create_channel(addr);
         assert!(ch.reassemble_parsed(&f1).unwrap().is_none());
         let body = ch
             .reassemble_parsed(&f2)
             .unwrap()
-            .expect("post-cleanup, the bundle completes from scratch");
-        assert_eq!(body.as_ref(), Bytes::from_static(b"part-1part-2part-3"));
-
-        // And a tick pass is non-destructive when there's nothing stale.
-        let actions = nub.tick();
-        assert!(actions.retransmits.is_empty());
+            .expect("orphan f0 survives tick; f2 completes the bundle");
+        assert_eq!(
+            body.as_ref(),
+            Bytes::from_static(b"part-1part-2part-3"),
+            "tick must not have wiped the original f0 payload",
+        );
     }
 
     #[tokio::test]

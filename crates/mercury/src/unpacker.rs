@@ -14,7 +14,6 @@
 //! ```
 
 use std::collections::HashMap;
-use std::time::Instant;
 
 use bytes::{BufMut, Bytes, BytesMut};
 use cimmeria_common::{CimmeriaError, Result};
@@ -31,8 +30,6 @@ struct PendingMessage {
     fragments: Vec<Option<Bytes>>,
     /// How many fragments have been received so far.
     received_count: u8,
-    /// When the first fragment of this message was received.
-    started_at: Instant,
 }
 
 impl PendingMessage {
@@ -41,7 +38,6 @@ impl PendingMessage {
             total_fragments,
             fragments: (0..total_fragments).map(|_| None).collect(),
             received_count: 0,
-            started_at: Instant::now(),
         }
     }
 
@@ -132,6 +128,53 @@ impl FragmentAssembler {
             )));
         }
 
+        // Arrival-triggered eviction (`mercury-wire-format` spec §2.4.1 R13
+        // + §2.10 S6): when a new fragmented bundle's sequence range
+        // overlaps any in-progress reassembly's range — and the two
+        // bundles are distinct (different `first_seq`) — the older one
+        // is treated as abandoned and evicted. Matches the SGW client's
+        // log string at binary address `0x01b18868`: `"Discarding
+        // abandoned stale overlapping fragmented bundle from seq %d to %d"`.
+        //
+        // The same-`first_seq` case (a peer that re-declares conflicting
+        // `total_frags` for a key it's already mid-reassembly on) is a
+        // distinct protocol violation handled below as a hard reject,
+        // not an eviction.
+        let new_begin = first_seq;
+        let new_end = first_seq.wrapping_add(total_frags as u32 - 1);
+        let evict_keys: Vec<u32> = self
+            .pending
+            .iter()
+            .filter_map(|(&existing_seq, msg)| {
+                if existing_seq == first_seq {
+                    return None;
+                }
+                let existing_end = existing_seq.wrapping_add(msg.total_fragments as u32 - 1);
+                // Standard overlap test: ranges overlap iff
+                //   max(a_begin, b_begin) <= min(a_end, b_end)
+                let overlap_begin = new_begin.max(existing_seq);
+                let overlap_end = new_end.min(existing_end);
+                if overlap_begin <= overlap_end {
+                    Some(existing_seq)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for evicted in evict_keys {
+            let msg = self.pending.remove(&evicted).expect("key from iter");
+            let evicted_end = evicted.wrapping_add(msg.total_fragments as u32 - 1);
+            tracing::debug!(
+                first_seq = evicted,
+                last_seq = evicted_end,
+                received = msg.received_count,
+                total = msg.total_fragments,
+                "Discarding abandoned stale overlapping fragmented bundle from seq {} to {}",
+                evicted,
+                evicted_end,
+            );
+        }
+
         let pending = self
             .pending
             .entry(first_seq)
@@ -152,28 +195,6 @@ impl FragmentAssembler {
         } else {
             Ok(None)
         }
-    }
-
-    /// Remove reassembly entries that have been pending longer than `max_age`.
-    ///
-    /// Call this periodically to prevent memory leaks from fragments that
-    /// will never complete (e.g., lost UDP packets for unreliable messages).
-    pub fn cleanup_stale(&mut self, max_age: std::time::Duration) {
-        let now = Instant::now();
-        self.pending.retain(|seq, msg| {
-            let age = now.duration_since(msg.started_at);
-            if age > max_age {
-                tracing::debug!(
-                    first_seq = seq,
-                    received = msg.received_count,
-                    total = msg.total_fragments,
-                    "discarding stale fragment reassembly"
-                );
-                false
-            } else {
-                true
-            }
-        });
     }
 
     /// Returns the number of messages currently being reassembled.
@@ -411,19 +432,6 @@ mod tests {
     }
 
     #[test]
-    fn process_parsed_times_out_incomplete_set() {
-        // Acceptance criterion: cleanup with a missing fragment after the
-        // bounded window discards the partial set without panicking.
-        let mut asm = FragmentAssembler::new();
-        let f0 = build_then_parse_fragment(40, 40, 42, b"only-one");
-        assert!(asm.process_parsed(&f0).unwrap().is_none());
-        assert_eq!(asm.pending_count(), 1);
-
-        asm.cleanup_stale(std::time::Duration::ZERO);
-        assert_eq!(asm.pending_count(), 0, "stale partial set must be reaped");
-    }
-
-    #[test]
     fn process_parsed_rejects_fragment_count_above_max() {
         // The cap exists to bound per-peer reassembly memory. Synthesize
         // a packet whose declared range would exceed MAX_FRAGMENTS and
@@ -493,19 +501,6 @@ mod tests {
         assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
     }
 
-    #[test]
-    fn cleanup_stale_entries() {
-        let mut asm = FragmentAssembler::new();
-        // Add one fragment of a 3-fragment message.
-        asm.add_fragment(10, 0, 3, Bytes::from_static(b"partial"))
-            .unwrap();
-        assert_eq!(asm.pending_count(), 1);
-
-        // Cleanup with zero duration should remove it.
-        asm.cleanup_stale(std::time::Duration::ZERO);
-        assert_eq!(asm.pending_count(), 0);
-    }
-
     /// Two fragments arriving for the same `first_seq` must agree on
     /// `total_frags`. A peer (or attacker) sending a second fragment
     /// with a different declared count is a protocol violation; the
@@ -528,49 +523,86 @@ mod tests {
         assert_eq!(asm.pending_count(), 1);
     }
 
-    /// `cleanup_stale` removes ONLY entries older than `max_age`,
-    /// not the whole map. Pin the per-entry age check by mixing a
-    /// stale entry (added pre-sleep) with a fresh entry (added
-    /// post-sleep), then choosing a `max_age` that's between the
-    /// two. A regression that drops the per-entry `started_at`
-    /// comparison and clears the whole map would also delete the
-    /// fresh entry.
+    /// Arrival-triggered eviction (`mercury-wire-format` spec §2.4.1 R13
+    /// and §2.10 S6): a new fragmented bundle whose sequence range overlaps
+    /// an in-progress reassembly's range — and is keyed on a different
+    /// `first_seq` — evicts the in-progress one. The SGW client emits the
+    /// matching log line at binary address `0x01b18868`. There is no
+    /// periodic stale-sweep; abandoned reassemblies persist in the
+    /// assembler until either an overlapping bundle arrives, or the channel
+    /// itself is torn down.
     #[test]
-    fn cleanup_stale_reaps_only_old_entries_keeps_fresh_ones() {
+    fn arrival_of_overlapping_bundle_evicts_in_progress_reassembly() {
         let mut asm = FragmentAssembler::new();
-        // Stale entry: added now, will be older than max_age below
-        // after the sleep.
-        asm.add_fragment(10, 0, 3, Bytes::from_static(b"a"))
+        // First bundle: range [10..=12].
+        asm.add_fragment(10, 0, 3, Bytes::from_static(b"abandoned"))
             .unwrap();
-        // Sleep so the next add_fragment has a noticeably-younger
-        // `started_at`. 50ms is well above any reasonable scheduler
-        // jitter while still keeping the test fast.
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        // Fresh entry.
-        asm.add_fragment(20, 0, 3, Bytes::from_static(b"b"))
+        assert_eq!(asm.pending_count(), 1);
+
+        // Second bundle: range [12..=14]. Overlaps the first at seq 12.
+        // Adding any fragment of the second bundle must evict the first.
+        let r = asm
+            .add_fragment(12, 0, 3, Bytes::from_static(b"fresh-0"))
             .unwrap();
-        assert_eq!(asm.pending_count(), 2);
-
-        // 25ms cap: stale entry (>=50ms old) gets reaped, fresh
-        // entry (~0ms old) survives.
-        asm.cleanup_stale(std::time::Duration::from_millis(25));
-
+        assert!(
+            r.is_none(),
+            "first fragment of new bundle waits for siblings"
+        );
         assert_eq!(
             asm.pending_count(),
             1,
-            "stale entry should be reaped, fresh entry should remain"
+            "old bundle [10..=12] must be evicted; only the new bundle [12..=14] remains"
         );
-        // The fresh entry's first_seq is 20; sanity-check it's the
-        // survivor by completing it and observing the assembled
-        // payload.
-        let _ = asm.add_fragment(20, 1, 3, Bytes::from_static(b"b"));
-        let result = asm
-            .add_fragment(20, 2, 3, Bytes::from_static(b"b"))
+
+        // Complete the new bundle to verify it isn't itself corrupted by
+        // the eviction logic.
+        asm.add_fragment(12, 1, 3, Bytes::from_static(b"fresh-1"))
             .unwrap();
+        let body = asm
+            .add_fragment(12, 2, 3, Bytes::from_static(b"fresh-2"))
+            .unwrap()
+            .expect("new bundle completes");
+        assert_eq!(body.as_ref(), b"fresh-0fresh-1fresh-2");
+    }
+
+    /// Non-overlapping bundles coexist. A new bundle on a different,
+    /// non-overlapping sequence range MUST NOT touch the in-progress
+    /// one — eviction is strictly an "old abandoned bundle whose space
+    /// the new one is reclaiming" signal, not a "any new fragment
+    /// invalidates everything else" reset.
+    #[test]
+    fn arrival_of_non_overlapping_bundle_leaves_in_progress_alone() {
+        let mut asm = FragmentAssembler::new();
+        // Bundle A: range [10..=12].
+        asm.add_fragment(10, 0, 3, Bytes::from_static(b"a"))
+            .unwrap();
+        // Bundle B: range [20..=22]. No overlap with A.
+        asm.add_fragment(20, 0, 3, Bytes::from_static(b"b"))
+            .unwrap();
+        assert_eq!(asm.pending_count(), 2, "non-overlapping bundles coexist");
+    }
+
+    /// The inverse of the deleted "stale-sweep reaps partial set" test:
+    /// an in-progress reassembly that never sees its remaining fragments
+    /// MUST persist in the assembler indefinitely (until the channel
+    /// itself is destroyed, which drops the assembler). The SGW client
+    /// has no 30s sweep; the Rust assembler matches.
+    #[test]
+    fn orphan_partial_reassembly_persists_indefinitely() {
+        let mut asm = FragmentAssembler::new();
+        let f0 = build_then_parse_fragment(40, 40, 42, b"only-one");
+        assert!(asm.process_parsed(&f0).unwrap().is_none());
+        assert_eq!(asm.pending_count(), 1);
+
+        // No periodic sweep API exists. Time passing alone must NOT
+        // reap the entry — pin the lifecycle by sleeping a short
+        // interval (would have been reaped at the old 30s threshold;
+        // the new contract reaps nothing on time).
+        std::thread::sleep(std::time::Duration::from_millis(10));
         assert_eq!(
-            result.expect("fresh entry must complete").as_ref(),
-            b"bbb",
-            "the surviving entry must be the fresh one (first_seq=20)"
+            asm.pending_count(),
+            1,
+            "orphan partial reassembly must persist until channel teardown"
         );
     }
 }

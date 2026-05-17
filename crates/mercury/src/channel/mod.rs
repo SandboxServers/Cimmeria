@@ -185,14 +185,6 @@ impl Channel {
         self.fragment_assembler.process_parsed(pkt)
     }
 
-    /// Drop reassembly buffers older than `max_age`. The drainer
-    /// `Nub::tick` should call this periodically per channel, or callers
-    /// can drive it themselves. Without it, fragments from a never-
-    /// completing bundle would pin memory until the channel itself dies.
-    pub fn cleanup_stale_fragments(&mut self, max_age: std::time::Duration) {
-        self.fragment_assembler.cleanup_stale(max_age);
-    }
-
     /// Register a packet that the caller has already assigned a sequence
     /// number to, encrypted, and put on the wire.
     ///
