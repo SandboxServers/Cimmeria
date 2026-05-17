@@ -3,10 +3,12 @@
 //! Per-channel adaptive RTO computation following RFC 6298 (TCP RTO),
 //! the same algorithm BigWorld's reliable-UDP layer was conceptually
 //! modeled on. Tracks smoothed round-trip time and round-trip variance
-//! from clean ACK samples; on retransmit, exponential backoff. See
-//! issue #308 for the trade-off rationale and the live-deployment RTT
-//! distribution (5 ms LAN → 400 ms transatlantic) that ruled out a
-//! single fixed timeout.
+//! from clean ACK samples; on retransmit, exponential backoff.
+//!
+//! Adaptive (not fixed) because observed real-world RTT spans 5 ms LAN
+//! through 400 ms transatlantic — an 80× range that no single fixed
+//! timeout can serve without either spurious retransmits on slow links
+//! or painfully slow recovery on fast ones.
 //!
 //! ## Karn's algorithm
 //!

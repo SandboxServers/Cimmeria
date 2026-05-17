@@ -99,7 +99,7 @@ pub(crate) async fn handle_version_info_request(
         active_eid,
     );
     socket.send_to(&pkt, addr).await?;
-    // Issue #308: versionInfo response is one-shot state — register for retransmit.
+    // versionInfo response is one-shot state — register for retransmit.
     super::helpers::shadow_register_reliable_send(
         connected,
         addr,

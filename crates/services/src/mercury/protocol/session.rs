@@ -63,7 +63,7 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
 
 /// Build and encrypt a single `BASEMSG_TICK_SYNC` heartbeat packet.
 ///
-/// **Unreliable** (issue #308 audit) — tick sync is a continuous 100ms
+/// **Unreliable** — tick sync is a continuous 100ms
 /// heartbeat; a lost tick is superseded by the next one ~100ms later,
 /// so retransmit overhead would buy nothing. The packet still carries
 /// `FLAG_HAS_SEQUENCE` (for ordering) and `FLAG_HAS_ACKS` when there

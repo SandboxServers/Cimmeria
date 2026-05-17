@@ -44,7 +44,7 @@ pub mod consts {
     /// than 32 packets in flight, two sequences differing by 32 would
     /// collide on the same bitmap bit, letting the client phantom-ack
     /// both when only one actually arrived. Holding the window at 32
-    /// eliminates the collision class. Issue #292 (audit finding #5).
+    /// eliminates the collision class.
     pub const TX_WINDOW_SIZE: usize = 32;
 
     /// Milliseconds before a reliable packet is considered lost and retransmitted.
@@ -53,8 +53,8 @@ pub mod consts {
     /// Maximum retransmission attempts before the channel is considered dead.
     pub const MAX_RETRIES: u32 = 20;
 
-    /// Per-tick retransmission work budget — issue #292 finding #6 and
-    /// `mercury-wire-format` spec §1.7 + §2.4.1 R14 + §2.10 S7.
+    /// Per-tick retransmission work budget — `mercury-wire-format` spec
+    /// §1.7 + §2.4.1 R14 + §2.10 S7.
     ///
     /// `Channel::check_timeouts` processes at most this many expired
     /// TX-window entries per scan before yielding. Mirrors the SGW

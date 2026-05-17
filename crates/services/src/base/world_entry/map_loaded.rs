@@ -89,7 +89,8 @@ pub(crate) async fn handle_map_loaded(
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
         let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-        let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed);
+        let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
         (acks, seq)
     };
 
@@ -98,10 +99,10 @@ pub(crate) async fn handle_map_loaded(
     tracing::debug!(%addr, len = enter_world_pkt.len(), seq = base_seq,
         "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
     socket.send_to(&enter_world_pkt, addr).await?;
-    // Issue #308: register this reliable send with the per-session
-    // Channel's TX window. ACK consumption + RTO sampling are live,
-    // and the retransmit driver in tick_sync.rs will resend the cached
-    // bytes if the RTO fires before the client acks.
+    // Register this reliable send with the per-session Channel's TX
+    // window. ACK consumption + RTO sampling are live, and the
+    // retransmit driver in `tick_sync.rs` will resend the cached bytes
+    // if the RTO fires before the client acks.
     super::super::helpers::shadow_register_reliable_send(
         connected,
         addr,
@@ -109,8 +110,12 @@ pub(crate) async fn handle_map_loaded(
         cimmeria_mercury::packet::Bytes::copy_from_slice(&enter_world_pkt),
     );
 
-    // Packet 2+: Entity methods (mapLoaded body, possibly fragmented)
-    let map_base_seq = base_seq + 1;
+    // Packet 2+: Entity methods (mapLoaded body, possibly fragmented).
+    // Mask `map_base_seq` and each derived seq to the 28-bit space —
+    // `base_seq + 1` (or `base_seq + i`) can land on `NULL_SEQUENCE`
+    // when `base_seq` is near `SEQUENCE_MASK`, which would be rejected
+    // by the peer's parser and break ACK draining.
+    let map_base_seq = base_seq.wrapping_add(1) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let (map_packets, map_seqs) = fragment_map_loaded(&key, map_base_seq, &[], &map_body);
     debug_assert_eq!(map_seqs, map_frags);
     tracing::info!(
@@ -122,13 +127,15 @@ pub(crate) async fn handle_map_loaded(
         "mapLoaded: split send (standalone VIEWPORT+CELL + separate entity methods)"
     );
     for (i, pkt_data) in map_packets.iter().enumerate() {
-        tracing::debug!(%addr, len = pkt_data.len(), seq = map_base_seq + i as u32,
+        let frag_seq =
+            map_base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
+        tracing::debug!(%addr, len = pkt_data.len(), seq = frag_seq,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
         socket.send_to(pkt_data, addr).await?;
         super::super::helpers::shadow_register_reliable_send(
             connected,
             addr,
-            map_base_seq + i as u32,
+            frag_seq,
             cimmeria_mercury::packet::Bytes::copy_from_slice(pkt_data),
         );
     }

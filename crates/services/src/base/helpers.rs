@@ -22,7 +22,7 @@ pub(crate) fn to_hex(data: &[u8]) -> String {
 
 /// Register an outgoing reliable packet's sequence number AND its
 /// encrypted on-wire bytes with the per-session
-/// [`Channel`](cimmeria_mercury::channel::Channel) (issue #308).
+/// [`Channel`](cimmeria_mercury::channel::Channel).
 ///
 /// The Channel records the entry in its TX window for two purposes:
 /// 1. **ACK tracking** — when the client acks this seq, the entry
@@ -68,7 +68,7 @@ pub(crate) fn shadow_register_reliable_send(
 
 /// Drain the per-session [`Channel`]'s retransmit queue: scan the TX
 /// window for entries past the adaptive RTO and return the encrypted
-/// bytes to re-send. Issue #308.
+/// bytes to re-send.
 ///
 /// Called from `tick_sync`'s per-session loop every 100 ms. The Channel
 /// applies the per-tick budget (`RETRANSMIT_BUDGET_PER_TICK = 5`, issue
@@ -95,7 +95,15 @@ pub(crate) fn collect_pending_retransmits(
     channel.check_timeouts()
 }
 
-/// Drain pending ACKs and allocate the next sequence number.
+/// Drain pending ACKs and allocate the next sequence number, masked to
+/// the 28-bit Mercury valid range.
+///
+/// The session-local `AtomicU32` counter monotonically increments past
+/// `u32::MAX / SEQUENCE_MASK` cycles over a long-lived session; without
+/// masking, an allocated seq could land inside the `NULL_SEQUENCE`
+/// sentinel range or above the 28-bit space, get rejected by the
+/// peer's parser (R4 drop), and silently break ACK draining. Masking
+/// at allocation keeps every emitted seq inside the spec'd space.
 pub(crate) fn drain_acks_and_seq(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
@@ -103,7 +111,7 @@ pub(crate) fn drain_acks_and_seq(
     let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
     let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
     let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
-    let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+    let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     Ok((acks, seq))
 }
 
@@ -219,7 +227,8 @@ pub(crate) async fn send_to_witness<F>(
         match clients.get(&addr) {
             Some(c) => {
                 let key = c.key;
-                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
+                    & cimmeria_mercury::packet::SEQUENCE_MASK;
                 let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
                 Some((addr, key, seq, acks))
             }
@@ -241,7 +250,7 @@ pub(crate) async fn send_to_witness<F>(
 /// Send an AoI packet to a specific witness's client — **reliable**
 /// variant. After the UDP send succeeds, registers the encrypted bytes
 /// with the per-session [`Channel`]'s TX window so the retransmit
-/// driver in `tick_sync.rs` re-sends on RTO expiry. Issue #308.
+/// driver in `tick_sync.rs` re-sends on RTO expiry.
 ///
 /// Use for **every** state-change AoI emit: entity create/destroy,
 /// entity method calls (90%+ of server→client traffic — quest updates,
@@ -281,7 +290,8 @@ pub(crate) async fn send_to_witness_reliable<F>(
         match clients.get(&addr) {
             Some(c) => {
                 let key = c.key;
-                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
+                    & cimmeria_mercury::packet::SEQUENCE_MASK;
                 let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
                 Some((addr, key, seq, acks))
             }

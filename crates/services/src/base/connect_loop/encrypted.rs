@@ -79,8 +79,8 @@ pub(crate) async fn handle_encrypted_datagram(
     }
 
     // Route the client's ACKs of OUR reliable packets to the per-session
-    // Channel's TX window (issue #308). The Channel drains its window
-    // cumulatively up through each acked sequence and feeds RTT samples
+    // Channel's TX window. The Channel drains its window cumulatively
+    // up through each acked sequence and feeds RTT samples
     // to the per-peer adaptive RTO (Karn's algorithm — only clean rounds
     // contribute, retransmitted-packet samples are excluded internally).
     if !pkt.acks.is_empty() {

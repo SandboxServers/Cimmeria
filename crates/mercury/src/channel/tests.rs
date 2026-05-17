@@ -300,7 +300,7 @@ fn check_timeouts_does_not_bump_last_sent_when_no_retransmits() {
     );
 }
 
-// ── register_sent_packet (issue #308 migration helper) ────────────
+// ── register_sent_packet (services-layer migration helper) ────────
 
 /// `register_sent_packet` adds an entry to the TX window with the
 /// packet's pre-assigned sequence, without consuming `next_tx_seq`.
@@ -360,7 +360,7 @@ fn registered_packet_is_acked_and_samples_rto_normally() {
     );
 }
 
-// ── Adaptive RTO integration (issue #308) ─────────────────────────
+// ── Adaptive RTO integration ──────────────────────────────────────
 
 use super::rto::RtoConfig;
 
@@ -481,12 +481,12 @@ fn check_timeouts_doubles_rto_once_per_scan_not_per_entry() {
     );
 }
 
-/// Issue #292 finding #6 — per-tick retransmit work budget of 5.
-/// With 7 expired entries in the TX window, a single `check_timeouts`
-/// scan processes exactly 5 (the spec-mandated budget). The remaining
-/// 2 wait for the next tick. Pinning this protects against a refactor
-/// that drops the budget and lets a saturated link blast the whole
-/// TX window in one tick (worsening congestion). The cap mirrors
+/// Per-tick retransmit work budget of 5. With 7 expired entries in the
+/// TX window, a single `check_timeouts` scan processes exactly 5 (the
+/// spec-mandated budget). The remaining 2 wait for the next tick.
+/// Pinning this protects against a refactor that drops the budget and
+/// lets a saturated link blast the whole TX window in one tick
+/// (worsening congestion). The cap mirrors
 /// `UnAckedHandler::checkResendTimers` at `ghidra://SGW.exe@0x0158c420`.
 #[test]
 fn check_timeouts_caps_retransmits_per_scan_at_five_per_spec() {
@@ -679,21 +679,20 @@ fn sliding_window_rejects_overflow() {
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
 }
 
-/// Issue #292 finding #5 — TX window must be 32 (not 45) to match the
-/// SGW client's 32-bit outstanding-ack bitmap. Pin the constant value
-/// so a future regression that bumps it back to 45 (or any other
-/// value > 32) re-introduces the phantom-ack collision class:
-/// `seq=0` and `seq=32` would land on the same bitmap bit
-/// (`seq & 0x1F == 0` for both), letting the client phantom-ack both
-/// when only one arrived.
+/// TX window must be 32 (not 45) to match the SGW client's 32-bit
+/// outstanding-ack bitmap. Pin the constant value so a future regression
+/// that bumps it back to 45 (or any other value > 32) re-introduces
+/// the phantom-ack collision class: `seq=0` and `seq=32` would land on
+/// the same bitmap bit (`seq & 0x1F == 0` for both), letting the client
+/// phantom-ack both when only one arrived.
 #[test]
 fn tx_window_size_matches_client_bitmap_width_for_phantom_ack_safety() {
     assert_eq!(
         consts::TX_WINDOW_SIZE,
         32,
         "TX_WINDOW_SIZE must equal the SGW client's 32-bit outstanding-ack \
-         bitmap width (issue #292 finding #5). Bumping above 32 would let \
-         two in-flight seqs differing by 32 collide on the same bitmap bit."
+         bitmap width. Bumping above 32 would let two in-flight seqs \
+         differing by 32 collide on the same bitmap bit."
     );
 }
 
@@ -701,7 +700,7 @@ fn tx_window_size_matches_client_bitmap_width_for_phantom_ack_safety() {
 /// fail, matching the constant pinned above. Same shape as
 /// `sliding_window_rejects_overflow` but exercises the
 /// `register_sent_packet` path used by the services-layer shadow
-/// migration (issue #308). The migration helper hits the same cap.
+/// migration. The migration helper hits the same cap.
 #[test]
 fn register_sent_packet_back_pressure_at_tx_window_size() {
     let mut ch = Channel::new(test_addr());

@@ -246,7 +246,7 @@ fn round_trip_with_piggyback_in_full_matrix() {
     assert_eq!(pkt.body.as_ref(), b"piggy-payload");
 }
 
-// ── Issue #292 finding #7: 28-bit sequence space + sentinel rejection ──
+// ── 28-bit sequence space + sentinel rejection ────────────────────────
 
 /// `NULL_SEQUENCE` (`0x10000000`) is the spec'd "unset" sentinel and
 /// must NEVER appear on the wire as a real packet sequence. A packet

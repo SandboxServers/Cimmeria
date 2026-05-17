@@ -55,7 +55,7 @@ pub use world_data::{
 /// loss is permanent damage: entity create/destroy, property updates,
 /// mission state, inventory, interaction triggers, almost all
 /// server-initiated entity method calls. Loss is recovered by the
-/// per-session `Channel`'s retransmit driver (issue #308).
+/// per-session `Channel`'s retransmit driver.
 pub(crate) const REPLY_FLAGS_RELIABLE: u8 = FLAG_HAS_SEQUENCE | FLAG_ON_CHANNEL | FLAG_RELIABLE;
 
 /// Server→client reply flags for **unreliable** packets (HAS_SEQUENCE |
@@ -64,7 +64,7 @@ pub(crate) const REPLY_FLAGS_RELIABLE: u8 = FLAG_HAS_SEQUENCE | FLAG_ON_CHANNEL 
 /// avatar position updates (`UPDATE_AVATAR` family — the next position
 /// frame supersedes any lost one), tick sync (continuous 100ms
 /// heartbeat). Per-packet flag, not per-channel; this lets a single
-/// channel carry both reliability classes. Issue #308 / #292 #5.
+/// channel carry both reliability classes.
 pub(crate) const REPLY_FLAGS_UNRELIABLE: u8 = FLAG_HAS_SEQUENCE | FLAG_ON_CHANNEL;
 
 /// **Deprecated alias** for `REPLY_FLAGS_RELIABLE` — keeps existing call

@@ -12,7 +12,7 @@ use super::{pack_angle, pack_velocity_xyz, BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_P
 /// Build and encrypt `UPDATE_AVATAR_NO_ALIAS_FULL_POS_YAW_PITCH_ROLL (0x10)` for
 /// relaying position updates to AoI witnesses.
 ///
-/// **Unreliable** (issue #308 audit) — position updates are continuous
+/// **Unreliable** — position updates are continuous
 /// and self-correcting; the next update supersedes any lost one within
 /// a tick or two, so retransmit overhead would buy nothing.
 /// `FLAG_RELIABLE` is cleared in the outbound flags.
@@ -82,9 +82,10 @@ pub fn build_forced_position(
     body.push(0x01); // flags
 
     // Reliable — the spawn snap is one-shot state; losing it leaves the
-    // pawn at the wrong position until something else corrects (and
-    // bug 1 in issue #288 documented the camera-clip artifact when this
-    // is mistimed). Channel retransmit covers loss-in-flight.
+    // pawn at the wrong position until something else corrects (a
+    // mistimed `forced_position` is what causes the camera-clip artifact
+    // documented in the world-entry spawn-glitch findings). Channel
+    // retransmit covers loss-in-flight.
     let flags = REPLY_FLAGS_RELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)

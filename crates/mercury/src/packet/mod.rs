@@ -83,7 +83,6 @@ pub const FLAG_INDEXED: u8 = 0x80;
 /// would collide with [`NULL_SEQUENCE`] on the wire.
 ///
 /// Spec: `docs/drafts/spec/mercury-wire-format.md` §1.7 + §2.4 R4.
-/// Issue #292 finding #7.
 pub const SEQUENCE_MASK: u32 = 0x0FFF_FFFF;
 
 /// Sequence ID value that signals "unset" — exactly one past the valid

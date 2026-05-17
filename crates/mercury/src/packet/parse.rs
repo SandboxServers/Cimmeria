@@ -70,6 +70,13 @@ pub fn parse_incoming(raw: &[u8]) -> Result<ParsedPacket> {
     // ── Strip footers (outermost first) ────────────────────────────────────
 
     // 1. ack_count + acks (outermost)
+    //
+    // Each ack is a sequence number the peer is acknowledging. They share
+    // the 28-bit valid range with locally-stamped seqs — any ack value
+    // `>= NULL_SEQUENCE` is out of band (either a buggy peer or a
+    // hostile one) and would corrupt server-side reliability state if
+    // forwarded into `Channel::process_acks`. Drop the entire packet at
+    // parse time, matching the seq_id rejection below.
     let mut acks = Vec::new();
     if flags & FLAG_HAS_ACKS != 0 {
         let ack_count = pop_u8!();
@@ -81,18 +88,27 @@ pub fn parse_incoming(raw: &[u8]) -> Result<ParsedPacket> {
         acks.reserve(ack_count as usize);
         // acks are stored before ack_count; pop them in reverse to reconstruct order
         for _ in 0..ack_count {
-            acks.push(pop_u32_le!());
+            let raw_ack = pop_u32_le!();
+            if raw_ack >= NULL_SEQUENCE {
+                return Err(CimmeriaError::Channel(format!(
+                    "packet with ack sequence outside valid range: ack=0x{:08X} (max 0x{:08X})",
+                    raw_ack,
+                    NULL_SEQUENCE - 1,
+                )));
+            }
+            acks.push(raw_ack);
         }
         acks.reverse();
     }
 
     // 2. seq_id
     //
-    // R4 (issue #292 finding #7): the valid sequence range is 28 bits
-    // (`0x00000000`..`0x0FFFFFFF`). `NULL_SEQUENCE` (`0x10000000`) is the
-    // reserved "unset" sentinel; any value at or above it is out of band.
-    // Drop the packet at parse time rather than letting an invalid seq
-    // propagate into the channel's RX window logic.
+    // R4 per `mercury-wire-format` spec §2.4: the valid sequence range
+    // is 28 bits (`0x00000000`..`0x0FFFFFFF`). `NULL_SEQUENCE`
+    // (`0x10000000`) is the reserved "unset" sentinel; any value at or
+    // above it is out of band. Drop the packet at parse time rather
+    // than letting an invalid seq propagate into the channel's RX
+    // window logic.
     let seq_id = if flags & FLAG_HAS_SEQUENCE != 0 {
         let raw_seq = pop_u32_le!();
         if raw_seq >= NULL_SEQUENCE {

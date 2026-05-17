@@ -39,8 +39,8 @@ pub(super) async fn entered_aoi(
         level,
         "AoI: entity entered witness range"
     );
-    // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate) — RELIABLE
-    // (NPC spawn into player AoI; loss = NPC permanently invisible — issue #308)
+    // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate) — RELIABLE.
+    // NPC spawn into player AoI; loss = NPC permanently invisible.
     send_to_witness_reliable(
         socket,
         connected,
@@ -107,7 +107,7 @@ pub(super) async fn entity_moved(
     tracing::trace!(witness_id, entity_id, "AoI: entity position update");
     // UNRELIABLE — avatar position updates are continuous and self-correcting;
     // the next position frame supersedes any lost one within a tick or two.
-    // Stays on the no-Channel-tracking path (issue #308).
+    // Stays on the no-Channel-tracking path.
     send_to_witness(
         socket,
         connected,
@@ -138,7 +138,7 @@ pub(super) async fn entity_method_call(
     );
     // RELIABLE — entity method calls are state-change traffic (interaction
     // triggers, quest updates, mission state, dialog opens, content engine
-    // events). Loss = permanent damage. Issue #308.
+    // events). Loss = permanent damage.
     send_to_witness_reliable(
         socket,
         connected,
@@ -166,8 +166,8 @@ pub(super) async fn witness_entity_method(
         method_index,
         "Broadcast entity method to witness"
     );
-    // RELIABLE — witness-broadcast entity methods are state-change traffic
-    // (same shape as the owning-client entity_method_call above). Issue #308.
+    // RELIABLE — witness-broadcast entity methods are state-change traffic,
+    // same shape as the owning-client `entity_method_call` above.
     send_to_witness_reliable(
         socket,
         connected,
@@ -190,7 +190,7 @@ pub(super) async fn entity_invisible(
 ) {
     tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
     // RELIABLE — visibility-state change. Loss leaves the entity rendered
-    // when it should be hidden. Issue #308.
+    // when it should be hidden.
     send_to_witness_reliable(
         socket,
         connected,

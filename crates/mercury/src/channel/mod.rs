@@ -56,7 +56,7 @@ pub struct TxEntry {
     /// Empty for entries inserted via the deprecated `send_packet` path
     /// (which stamps a sequence but never sees the encrypted bytes);
     /// `check_timeouts` silently skips bytes-empty entries during the
-    /// retransmit scan. Issue #308.
+    /// retransmit scan.
     pub raw_bytes: Bytes,
 }
 
@@ -127,7 +127,7 @@ pub struct Channel {
     /// without colliding in a shared map.
     fragment_assembler: FragmentAssembler,
 
-    /// Adaptive retransmission timeout state (issue #308). Tracks
+    /// Adaptive retransmission timeout state. Tracks
     /// smoothed RTT + RTT variance for this peer; consulted by
     /// `check_timeouts` to decide when an unacked packet should be
     /// retransmitted, and updated by `process_acks` (clean samples,
@@ -197,8 +197,8 @@ impl Channel {
     /// number to, encrypted, and put on the wire.
     ///
     /// Used during the gradual services-layer migration to `Channel`-managed
-    /// sends (issue #308). The legacy send path stamps sequences via a
-    /// session-local `Arc<AtomicU32>` and encrypts + transmits directly;
+    /// sends. The legacy send path stamps sequences via a session-local
+    /// `Arc<AtomicU32>` and encrypts + transmits directly;
     /// this method lets us mirror those sends into the channel's TX window
     /// so ACK tracking, RTO sampling, AND retransmit are all live BEFORE
     /// every send site has migrated to [`send_packet`].
@@ -215,6 +215,18 @@ impl Channel {
     /// [`send_packet`]: Self::send_packet
     /// [`process_acks`]: Self::process_acks
     pub fn register_sent_packet(&mut self, packet: Packet, raw_bytes: Bytes) -> Result<()> {
+        // Caller-provided sequence must respect the 28-bit Mercury sequence
+        // space (`mercury-wire-format` spec §2.4 R4). An out-of-range seq
+        // here would corrupt the cumulative-ACK drain (which assumes
+        // sequences stay within the same modular space the wire uses).
+        if packet.sequence >= crate::packet::NULL_SEQUENCE {
+            return Err(cimmeria_common::CimmeriaError::Channel(format!(
+                "register_sent_packet: caller-assigned seq=0x{:08X} is outside the 28-bit valid range (max 0x{:08X})",
+                packet.sequence,
+                crate::packet::NULL_SEQUENCE - 1,
+            )));
+        }
+
         if self.tx_window.len() >= consts::TX_WINDOW_SIZE {
             return Err(cimmeria_common::CimmeriaError::Channel(format!(
                 "TX window full ({} packets), cannot register seq={}",
@@ -250,9 +262,9 @@ impl Channel {
 
         // Stamp the outgoing sequence number onto the packet. Mask with
         // `SEQUENCE_MASK` (28 bits) so the counter can't overflow into
-        // the `NULL_SEQUENCE` sentinel range — issue #292 finding #7.
-        // The wrap-and-mask combo keeps the counter within the spec's
-        // 28-bit space across `u32::MAX / SEQUENCE_MASK` cycles.
+        // the `NULL_SEQUENCE` sentinel range. The wrap-and-mask combo
+        // keeps the counter within the spec's 28-bit space across
+        // `u32::MAX / SEQUENCE_MASK` cycles.
         packet.sequence = self.next_tx_seq & crate::packet::SEQUENCE_MASK;
         self.next_tx_seq = self.next_tx_seq.wrapping_add(1) & crate::packet::SEQUENCE_MASK;
 
@@ -336,13 +348,23 @@ impl Channel {
         // Cumulative ACK: remove all TX entries with sequence <= ack_seq.
         // The tx_window is ordered by sequence (oldest at front), so we can
         // drain from the front until we hit a sequence beyond the ACK.
+        //
+        // Mercury sequence space is 28 bits (`SEQUENCE_MASK = 0x0FFF_FFFF`),
+        // not 32. The modular `<=` comparison must use the 28-bit
+        // half-range (`1 << 27` = `0x0800_0000`), not the 32-bit one.
+        // Mask both operands and the difference to the 28-bit space so
+        // wraparound past `0x0FFF_FFFF` is interpreted correctly:
+        //   front.seq=0x0FFF_FFFE, ack=0x0000_0001 (post-wrap):
+        //     32-bit cmp:  diff = 0x0FFF_FFFD; diff > 0x8000_0000 = false
+        //                  → STOP (wrong — front IS <= ack post-wrap)
+        //     28-bit cmp:  diff = 0x0FFF_FFFD & MASK = 0x0FFF_FFFD;
+        //                  0x0FFF_FFFD > 0x0800_0000 = true → DRAIN (correct)
         while let Some(front) = self.tx_window.front() {
-            // Wrapping comparison: treat (front.seq - ack_seq) as signed.
-            // If front.seq <= ack_seq (modular), the difference wraps to
-            // a large positive value when front.seq > ack_seq.
-            let diff = front.packet.sequence.wrapping_sub(ack_seq);
-            if diff == 0 || diff > 0x8000_0000 {
-                // front.packet.sequence <= ack_seq (in modular arithmetic).
+            let front_seq = front.packet.sequence & crate::packet::SEQUENCE_MASK;
+            let ack_seq_masked = ack_seq & crate::packet::SEQUENCE_MASK;
+            let diff = front_seq.wrapping_sub(ack_seq_masked) & crate::packet::SEQUENCE_MASK;
+            if diff == 0 || diff > 0x0800_0000 {
+                // front.packet.sequence <= ack_seq (in 28-bit modular arithmetic).
                 // Drain the entry and — if it was never retransmitted —
                 // feed the round-trip time into the RTO smoother. This
                 // is Karn's algorithm: only un-retransmitted samples are
@@ -365,8 +387,8 @@ impl Channel {
 
     /// Check all packets in the TX window for retransmission timeouts.
     ///
-    /// Uses the per-channel adaptive RTO (issue #308) — `self.rto.current()`
-    /// — rather than a fixed `consts::ACK_TIMEOUT_MS`. Each expired entry
+    /// Uses the per-channel adaptive RTO — `self.rto.current()` — rather
+    /// than a fixed `consts::ACK_TIMEOUT_MS`. Each expired entry
     /// (whose `last_sent` is older than the current RTO) is selected for
     /// retransmission: we increment `retransmit_count`, refresh
     /// `last_sent`, and emit the entry's cached encrypted bytes for the

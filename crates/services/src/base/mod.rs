@@ -140,24 +140,21 @@ pub(crate) struct ConnectedClientState {
     /// gate-travel.
     pub pending_destination_ring_id: Option<i32>,
 
-    /// Reliable-UDP channel state (issue #308). Tracks the TX window
-    /// of in-flight reliable packets, processes incoming ACKs from
-    /// the client, and maintains the per-peer adaptive RTO.
+    /// Reliable-UDP channel state. Tracks the TX window of in-flight
+    /// reliable packets, processes incoming ACKs from the client,
+    /// maintains the per-peer adaptive RTO, and drives retransmits.
     ///
-    /// Migration status: shadow-mode. The legacy send path still
-    /// assigns sequences via [`next_seq`] and calls `socket.send_to`
-    /// directly; this `Channel` is fed via `register_sent_packet` so
-    /// ACK consumption and RTO sampling are live ahead of the full
-    /// services-layer migration. The retransmit driver (which would
-    /// re-send any TX-window entry past its RTO) is a separate
-    /// follow-up — adding it requires carrying the already-encrypted
-    /// bytes alongside the `Packet` object so we can resend without
-    /// re-encrypting from scratch.
+    /// The legacy send path still assigns sequences via [`next_seq`]
+    /// and calls `socket.send_to` directly; reliable sends mirror their
+    /// encrypted bytes into this `Channel` via `register_sent_packet`
+    /// after the socket send succeeds. ACK consumption + RTO sampling
+    /// happen on every received packet (`connect_loop/encrypted.rs`);
+    /// retransmits fire from the per-session `tick_sync` loop every
+    /// 100 ms, capped at `RETRANSMIT_BUDGET_PER_TICK` entries per scan.
     ///
-    /// Wrapped in `Mutex` because `process_acks` and
-    /// `register_sent_packet` both need `&mut self` and run from
-    /// different code paths (receive loop, per-send-site call sites,
-    /// and the future retransmit tick).
+    /// Wrapped in `Mutex` because `process_acks`, `register_sent_packet`,
+    /// and `check_timeouts` all need `&mut self` and run from different
+    /// code paths (receive loop, per-send-site call sites, retransmit tick).
     pub channel: Mutex<Channel>,
 }
 

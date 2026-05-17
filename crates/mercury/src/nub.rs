@@ -28,7 +28,6 @@ pub struct TickActions {
     /// channel's adaptive RTO without being acked and need to go back
     /// on the wire. Pre-bound to the destination address so the caller
     /// `socket.send_to`s each pair directly — no re-encryption needed.
-    /// Issue #308.
     pub retransmits: Vec<(SocketAddr, Bytes)>,
     /// Channels that haven't sent anything in `KEEPALIVE_INTERVAL_MS`.
     /// The caller emits a keepalive to each of these addresses; the
@@ -287,9 +286,9 @@ mod tests {
         let mut nub = nub().await;
         let addr: SocketAddr = "127.0.0.1:9002".parse().unwrap();
         let ch = nub.get_or_create_channel(addr);
-        // Use the bytes-bearing path so retransmits actually go to the wire
-        // (issue #308 — send_packet entries have empty bytes and skip the
-        // retransmit emit even though their counter is bumped).
+        // Use the bytes-bearing path so retransmits actually go to the
+        // wire — `send_packet` entries have empty bytes and skip the
+        // retransmit emit even though their counter is bumped.
         let mut pkt = test_packet();
         pkt.sequence = 0;
         ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"on-wire"))
@@ -324,7 +323,7 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:9004".parse().unwrap();
         let ch = nub.get_or_create_channel(addr);
         // Use the bytes-bearing path so the MAX_RETRIES'th retry actually
-        // emits bytes on the wire (issue #308 retransmit driver).
+        // emits bytes on the wire.
         let mut pkt = test_packet();
         pkt.sequence = 0;
         ch.register_sent_packet(pkt, bytes::Bytes::from_static(b"on-wire"))

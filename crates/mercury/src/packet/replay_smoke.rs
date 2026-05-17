@@ -122,10 +122,10 @@ fn frames() -> Vec<Frame> {
             label: "all-footers-no-fragments",
             flags: FLAG_HAS_REQUESTS | FLAG_HAS_SEQUENCE | FLAG_HAS_ACKS,
             body: b"the quick brown fox jumps over".to_vec(),
-            // High-but-valid 28-bit seq — exercises upper sequence bits without
-            // crossing `NULL_SEQUENCE` (issue #292 finding #7). The original
-            // `0xFFFF_0000` value pre-dated the R4 parse-time rejection and
-            // would now be dropped as out-of-range.
+            // High-but-valid 28-bit seq — exercises upper sequence bits
+            // without crossing `NULL_SEQUENCE`. A value above the 28-bit
+            // range (e.g. `0xFFFF_0000`) would be dropped at parse as an
+            // R4 violation.
             seq_id: Some(0x0FFF_0000),
             acks: vec![0x0F00_0001, 0x0F00_0002],
             first_req_offset: Some(13),
