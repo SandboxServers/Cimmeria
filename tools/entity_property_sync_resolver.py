@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-entity_property_sync_resolver.py — Wire-capture validation for the
-entity-property-sync bible chapter (PR #305).
+entity_property_sync_resolver.py — Validate the entity-property-sync bible
+chapter's wire-format claims against a captured Mercury session.
+
+Decrypts a UDP pcap with the AES-256 session key, walks each Mercury body,
+and reports per-validation whether the chapter's stated layouts/encodings
+are CONFIRMED, DIVERGE, NOT-OBSERVED, or NOT-DETERMINABLE from the data.
 
 Validation targets:
   V1 — sub-slot threshold (re-run mercury_dispute_resolver logic)
@@ -14,7 +18,23 @@ Validation targets:
   V8 — enableEntities (0x08, client→server) 8-byte body
 
 Usage:
-    python3 tools/entity_property_sync_resolver.py <pcap_file> <keys_file>
+    python3 tools/entity_property_sync_resolver.py <pcap_file> <keys_file> [--server-port N]
+
+Server-port resolution:
+    In a 2-endpoint UDP capture, the server port appears as src in S2C
+    packets and as dst in C2S packets — and the client port mirrors that.
+    Both ports therefore have identical src+dst counts, so a pure frequency
+    tie-break is unreliable. This script picks the server port via the
+    following waterfall:
+      1. If `--server-port N` is passed on the command line, use it.
+      2. Otherwise, prefer the lower-numbered of the two two-sided ports
+         (servers conventionally bind below the ephemeral-port range).
+      3. Fall back to the single most-active port if only one is two-sided.
+    If the heuristic resolves wrongly, all is_s2c / is_c2s decisions for
+    the run invert and every validation result inverts with them — pass
+    `--server-port N` explicitly when in doubt (the value can be read
+    from the session log under `game/sgw/Working/binaries/sessions/*.log`
+    or inferred from the `<date>_<HH-MM>-keys.txt` filename).
 """
 
 from __future__ import annotations
@@ -127,8 +147,11 @@ def iter_messages(body, is_server):
         msg_id = body[offset]
         offset += 1
 
-        # Entity methods (0x80..0xFE) use u16 word-length prefix
-        if 0x80 <= msg_id <= 0xFE:
+        # Entity methods use a u16 word-length prefix. Cell methods occupy
+        # 0x80..0xBF (7-bit ID); base methods occupy 0xC0..0xFF (6-bit ID).
+        # V6 confirms 0xFF (base methodId=63 at the &0x3F mask boundary) is a
+        # valid wire byte — the older 0xFE upper bound was wrong.
+        if 0x80 <= msg_id <= 0xFF:
             if offset + 2 > len(body):
                 break
             word_len = struct.unpack('<H', body[offset:offset+2])[0]
@@ -181,12 +204,17 @@ class Results:
         # V3/V7 — createCellPlayer
         self.create_cell_player_msgs = []         # list of payload bytes
 
-        # V4 — property-change prefix scan
+        # V4 — updateEntity envelope inspection (UE FArchive: 4-byte length +
+        # 4-byte type tag; case-1 = FNetworkPropertyChange, then propID as
+        # uint32_t). The BigWorld 0x3C/0x3D wire-prefix scheme lives upstream
+        # of the UE bridge and is never visible to a client-side capture.
         self.update_entity_msgs = []              # list of payload bytes
-        self.prop_prefix_0x3c = []               # payloads where byte 0 == 0x3C
-        self.prop_prefix_0x3d = []               # payloads where byte 0 == 0x3D
-        self.prop_prefix_direct = Counter()       # direct propID (0x00..0x3B) → count
-        self.prop_first_byte_hist = Counter()     # first-byte histogram for all updateEntity
+        self.envelope_type_tag_hist = Counter()   # type tag → count (case 1..6 per §1.8)
+        self.envelope_length_mismatches = 0       # count of payload_len != declared length
+        self.envelope_too_short = 0               # count of payloads < 8 bytes
+        self.prop_id_hist = Counter()             # decoded propID (case-1 only) → count
+        self.prop_id_over_59 = 0                  # would have used 0x3C prefix server-side
+        self.prop_id_over_315 = 0                 # would have used 0x3D prefix server-side
 
         # V5/V6 — cell/base method wire bytes
         self.cell_method_first_bytes = Counter()  # (0x80..0xBF) → count
@@ -236,15 +264,35 @@ def scan_body_for_sub_slots(body, results: Results):
             offset += word_len
             continue
 
-        # Other entity methods — skip
-        if 0x80 <= msg_id <= 0xFE:
+        # Other entity methods — skip (full 0x80..0xFF range; see iter_messages)
+        if 0x80 <= msg_id <= 0xFF:
             if offset + 2 > len(body): break
             word_len = struct.unpack('<H', body[offset:offset+2])[0]; offset += 2
             offset += word_len
             continue
 
-        # Hit a system message — stop (sub-slot scan is best-effort)
-        return
+        # Hit a system message — skip its body and keep scanning. (Earlier
+        # versions early-returned here, missing any 0xBD/0xFD that followed a
+        # system message in the same body — CR-9.)
+        fmt = pd.SERVER_MSG_FORMAT.get(msg_id) or pd.CLIENT_MSG_FORMAT.get(msg_id)
+        if fmt is None:
+            # Truly unknown — stop, bytes downstream would be misframed anyway.
+            return
+        style, fixed_len, prefix_width = fmt
+        if style == 'constant':
+            if offset + fixed_len > len(body): return
+            offset += fixed_len
+        else:
+            if offset + prefix_width > len(body): return
+            if prefix_width == 1:
+                pl = body[offset]; offset += 1
+            elif prefix_width == 2:
+                pl = struct.unpack('<H', body[offset:offset+2])[0]; offset += 2
+            else:
+                pl = struct.unpack('<I', body[offset:offset+4])[0]; offset += 4
+            if offset + pl > len(body): return
+            offset += pl
+        continue
 
 
 def process_packet(plaintext, src_port, dst_port, results: Results, server_port: int):
@@ -281,23 +329,41 @@ def process_packet(plaintext, src_port, dst_port, results: Results, server_port:
                 results.create_base_player_msgs.append(payload)
             elif msg_id == 0x06:  # createCellPlayer
                 results.create_cell_player_msgs.append(payload)
-            elif msg_id == 0x0A:  # updateEntity — property-change stream
+            elif msg_id == 0x0A:  # updateEntity — UE FArchive envelope
                 results.update_entity_msgs.append(payload)
-                # V4 — examine first byte for 0x3C/0x3D thresholds
-                if len(payload) >= 1:
-                    fb = payload[0]
-                    results.prop_first_byte_hist[fb] += 1
-                    if fb == 0x3C:
-                        results.prop_prefix_0x3c.append(payload)
-                    elif fb == 0x3D:
-                        results.prop_prefix_0x3d.append(payload)
-                    elif fb <= 0x3B:
-                        results.prop_prefix_direct[fb] += 1
+                # V4 — parse the UE FArchive envelope: [u32 length][u32 type].
+                # FUN_01560ad0 (the BigWorld→UE bridge) reads exactly these
+                # 8 bytes, validates payload_len == read_len, then dispatches
+                # on the type tag. Case 1 = FNetworkPropertyChange::vfunc_0,
+                # which then reads the propID as a uint32_t from the FArchive
+                # at this+0x2c. The BigWorld wire 0x3C/0x3D prefix is decoded
+                # upstream of this layer and is never visible from a client
+                # pcap (OQ-1 closure: audit Appendix D).
+                if len(payload) < 8:
+                    results.envelope_too_short += 1
+                else:
+                    declared_len, type_tag = struct.unpack('<II', payload[0:8])
+                    results.envelope_type_tag_hist[type_tag] += 1
+                    # Bridge invariant: declared_len matches the remaining
+                    # body. The bridge reads bytes after the type tag, so the
+                    # comparison is `declared_len == len(payload) - 8`.
+                    if declared_len != len(payload) - 8:
+                        results.envelope_length_mismatches += 1
+                    if type_tag == 1 and len(payload) >= 12:
+                        # FNetworkPropertyChange — propID is the next u32.
+                        prop_id = struct.unpack('<I', payload[8:12])[0]
+                        results.prop_id_hist[prop_id] += 1
+                        if prop_id >= 60:
+                            results.prop_id_over_59 += 1
+                        if prop_id >= 316:
+                            results.prop_id_over_315 += 1
 
-        if not is_s2c:  # client→server
+        # enableEntities is client→server only. Gate on is_c2s rather than
+        # `not is_s2c` so packets with unknown direction (e.g. third-party
+        # endpoints in a noisy capture) are excluded instead of misattributed.
+        if is_c2s:
             if msg_id == 0x08:  # enableEntities
-                direction = "c2s" if is_c2s else "?"
-                results.enable_entities_msgs.append((payload, direction))
+                results.enable_entities_msgs.append((payload, "c2s"))
 
 
 # ── Reporting helpers ─────────────────────────────────────────────────────────
@@ -453,7 +519,15 @@ def report_v3_v7(r: Results):
 
 
 def report_v4(r: Results):
-    print("## V4 — Property-change propID encoding (OQ-1 / G7: 0x3C/0x3D thresholds)")
+    print("## V4 — updateEntity FArchive envelope + decoded propID distribution")
+    print()
+    print("  Scope: the BigWorld 0x3C/0x3D wire-prefix scheme decodes upstream")
+    print("  of FUN_01560ad0 and is never visible to a client-side pcap (OQ-1).")
+    print("  This validation parses the UE FArchive envelope the bridge expects")
+    print("  ([u32 length][u32 type]; case 1 → propID as u32) and reports the")
+    print("  decoded propID distribution so reviewers can see whether observed")
+    print("  propIDs land in the ranges where the server WOULD have used the")
+    print("  0x3C (60..315) or 0x3D (316+) prefix.")
     print()
     print(f"  updateEntity (0x0A) messages found: {len(r.update_entity_msgs)}")
     print()
@@ -462,45 +536,59 @@ def report_v4(r: Results):
         print("  NOT-OBSERVED: No updateEntity messages.")
         return
 
-    print("  First-byte histogram (propID encoding byte):")
-    # Show notable ranges
-    direct_total = sum(r.prop_prefix_direct.values())
-    print(f"    0x00..0x3B (direct propID, 1-byte encoding): {direct_total} messages")
-    for fb, n in sorted(r.prop_prefix_direct.most_common(10)):
-        print(f"      first_byte=0x{fb:02X} (propID={fb}): {n} msgs")
-
-    print(f"    0x3C (2-byte, propID = next_byte + 60): {len(r.prop_prefix_0x3c)} messages")
-    if r.prop_prefix_0x3c:
-        for payload in r.prop_prefix_0x3c[:3]:
-            if len(payload) >= 2:
-                prop_id = payload[1] + 60
-                print(f"      first_byte=0x3C, second_byte=0x{payload[1]:02X} → propID={prop_id}")
-
-    print(f"    0x3D (2-byte, propID = next_byte + 316): {len(r.prop_prefix_0x3d)} messages")
-    if r.prop_prefix_0x3d:
-        for payload in r.prop_prefix_0x3d[:3]:
-            if len(payload) >= 2:
-                prop_id = payload[1] + 316
-                print(f"      first_byte=0x3D, second_byte=0x{payload[1]:02X} → propID={prop_id}")
-
-    # Other first bytes (0x3E..0x7F are not in any known scheme)
-    other = {fb: n for fb, n in r.prop_first_byte_hist.items()
-             if fb > 0x3D and fb < 0x80}
-    if other:
-        print(f"    0x3E..0x7F (unexpected range): {sum(other.values())} messages")
-        for fb, n in sorted(other.items()):
-            print(f"      first_byte=0x{fb:02X}: {n}")
-
+    print(f"  Envelope parse stats:")
+    print(f"    payloads < 8 bytes (no envelope)        : {r.envelope_too_short}")
+    print(f"    payloads where declared_len != body_len : {r.envelope_length_mismatches}")
+    print(f"    type-tag histogram (per FUN_01560ad0 switch — case 1..6):")
+    type_names = {
+        1: "FNetworkPropertyChange (property delta)",
+        2: "FNetworkActorMove",
+        3: "FNetworkActorCreate",
+        4: "FNetworkActorDelete",
+        5: "FNetworkObjectRename",
+        6: "FNetworkRemoteConsoleCommand",
+    }
+    for tag, n in sorted(r.envelope_type_tag_hist.items()):
+        name = type_names.get(tag, "(unknown / not in §1.8 switch)")
+        print(f"      type={tag}: {n} msgs   {name}")
     print()
-    if r.prop_prefix_0x3c or r.prop_prefix_0x3d:
-        print("  CONFIRMS V4 (PARTIAL): Extended propID encoding (0x3C / 0x3D prefix) observed on wire.")
-        print("  The chapter's BW-sourced thresholds (60 / 316) are present in real traffic.")
-        print("  OQ-1 / G7 STATUS: CLOSED — threshold encoding CONFIRMED by wire capture.")
+
+    if r.envelope_length_mismatches:
+        print(f"  DIVERGES: {r.envelope_length_mismatches} envelopes have"
+              f" declared_len != actual body length. The bridge would reject these.")
+        print()
+
+    if not r.prop_id_hist:
+        print("  NOT-OBSERVED V4: no type-tag=1 (property-change) messages decoded.")
+        print("  OQ-1 STATUS: UNCHANGED — wire-prefix scheme is server-side only.")
+        print()
+        return
+
+    case1_total = sum(r.prop_id_hist.values())
+    print(f"  Decoded propID distribution (type-tag=1, {case1_total} messages):")
+    print(f"    propIDs < 60   (server uses 1-byte direct)         : "
+          f"{case1_total - r.prop_id_over_59}")
+    print(f"    propIDs 60..315 (server uses [0x3C, propId-60])    : "
+          f"{r.prop_id_over_59 - r.prop_id_over_315}")
+    print(f"    propIDs >= 316  (server uses [0x3D, propId-316])   : "
+          f"{r.prop_id_over_315}")
+    print()
+    print(f"  Top decoded propIDs:")
+    for pid, n in r.prop_id_hist.most_common(10):
+        print(f"    propID={pid:5d}: {n} msgs")
+    print()
+    if r.prop_id_over_315 > 0:
+        print("  CONFIRMS (range): observed propIDs span into the 0x3D-prefix")
+        print("  range server-side. Threshold-encoding correctness is still a")
+        print("  server-only invariant (cannot be falsified from this pcap).")
+    elif r.prop_id_over_59 > 0:
+        print("  CONFIRMS (range): observed propIDs span into the 0x3C-prefix")
+        print("  range server-side. Threshold-encoding correctness is still a")
+        print("  server-only invariant (cannot be falsified from this pcap).")
     else:
-        print("  NOT-CONFIRMED: No 0x3C or 0x3D prefix bytes observed in updateEntity payloads.")
-        print("  This is expected if the session only used low propIDs (< 60).")
-        print("  OQ-1 / G7 STATUS: STILL OPEN — thresholds not falsified, but also not positively confirmed.")
-        print("  Recommendation: capture a longer session or force a high-propID property update.")
+        print("  All observed propIDs are < 60. This session would have used")
+        print("  only the 1-byte server-side encoding; the 60/316 thresholds")
+        print("  remain neither confirmed nor falsified by this capture.")
     print()
 
 
@@ -571,12 +659,26 @@ def report_v8(r: Results):
 # ── Driver ────────────────────────────────────────────────────────────────────
 
 def main():
-    if len(sys.argv) != 3:
+    # Parse args: <pcap_file> <keys_file> [--server-port N]
+    args = list(sys.argv[1:])
+    forced_server_port = None
+    if "--server-port" in args:
+        i = args.index("--server-port")
+        if i + 1 >= len(args):
+            print(__doc__, file=sys.stderr)
+            sys.exit(2)
+        try:
+            forced_server_port = int(args[i + 1])
+        except ValueError:
+            print(f"--server-port expects an integer, got {args[i + 1]!r}", file=sys.stderr)
+            sys.exit(2)
+        del args[i:i + 2]
+    if len(args) != 2:
         print(__doc__, file=sys.stderr)
         sys.exit(2)
 
-    pcap_path = sys.argv[1]
-    keys_path = sys.argv[2]
+    pcap_path = args[0]
+    keys_path = args[1]
 
     # Load the first valid 64-char hex key (AES-256 = 32 bytes = 64 hex chars)
     raw = Path(keys_path).read_text().strip()
@@ -602,28 +704,39 @@ def main():
 
     results = Results()
 
-    # Pass 1: determine server port by port-frequency heuristic
-    # (the server port appears in fewer unique source ports — it's a listener)
+    # Pass 1: determine server port. See module docstring for the resolution
+    # waterfall — --server-port wins, else prefer the lower two-sided port,
+    # else fall back to the most-active port. In a two-endpoint UDP capture
+    # the src+dst counts of server and client ports tie exactly, so a pure
+    # frequency max() picks arbitrarily and silently inverts is_s2c/is_c2s
+    # if it lands on the client.
     from collections import Counter as _Counter
     src_port_freq = _Counter()
     dst_port_freq = _Counter()
     for ts, sp, dp, payload in pd.read_pcap(pcap_path):
         src_port_freq[sp] += 1
         dst_port_freq[dp] += 1
-    # The server port is the one that appears roughly equally as src and dst
-    # (a listener is always on the same port). Pick the port that has the
-    # highest combined src+dst count but appears as BOTH src and dst — in
-    # practice the server port appears as src in server-sent packets and dst
-    # in client-sent packets; an ephemeral port only appears on one side.
     all_ports = set(src_port_freq.keys()) | set(dst_port_freq.keys())
-    two_sided = [(p, src_port_freq[p] + dst_port_freq[p])
-                 for p in all_ports
+    two_sided = [p for p in all_ports
                  if src_port_freq[p] > 0 and dst_port_freq[p] > 0]
-    if two_sided:
-        server_port = max(two_sided, key=lambda x: x[1])[0]
+
+    if forced_server_port is not None:
+        server_port = forced_server_port
+        port_source = f"forced via --server-port (override)"
+    elif len(two_sided) >= 2:
+        # Prefer the lower-numbered two-sided port (servers conventionally
+        # bind below the ephemeral range). Deterministic regardless of how
+        # the underlying counter iterates.
+        server_port = min(two_sided)
+        port_source = (f"lower of two-sided ports {sorted(two_sided)} "
+                       f"(pass --server-port to override)")
+    elif len(two_sided) == 1:
+        server_port = two_sided[0]
+        port_source = "single two-sided port"
     else:
         server_port = max(src_port_freq, key=src_port_freq.get)
-    print(f"  Detected server port : {server_port}")
+        port_source = "fallback: most-active source port"
+    print(f"  Detected server port : {server_port}  [{port_source}]")
     print()
 
     # Pass 2: process packets

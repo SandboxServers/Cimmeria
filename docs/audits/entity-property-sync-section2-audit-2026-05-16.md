@@ -61,24 +61,37 @@ name fields). The 157-method table spot-check passes clean across all 19 sampled
 
 `DataDescription_ParseFlagStr @ ghidra://SGW.exe@0x015959c0` iterates a static table at
 `PTR_s_CELL_PRIVATE_01e920e0 (0x01e920e0)`. Each 12-byte entry is `[ptr_to_name, flag_value,
-ptr_to_warning_fn]`. Reading the 9 entries by resolving the name pointers (strings at
-`0x01b1ae38..0x01b1aeb3`):
+ptr_to_warning_fn]`. The table has **16 entries** total: 9 primary keywords (entries 0–8) plus
+7 deprecated aliases (entries 9–15) that map to the same flag values as primaries but each
+carries a non-null warning function pointer used to emit a "Using old Flag" deprecation
+notice. Entry 16 would start at `0x01e921a0`, which fails the loop bound `0x1e9219f <
+(int)local_4` (15 × 12 + 0x01e920e0 = 0x01e92194 still passes; entry 16 at 0x01e921a0 fails).
+See Appendix A for the corrected full 16-row table and re-derivation of the bound.
 
-| Entry# | Keyword           | Flag value (hex) | Flag value (dec) |
-|--------|-------------------|-----------------|-----------------|
-| 0      | `CELL_PRIVATE`    | `0x00`          | 0               |
-| 1      | `CELL_PUBLIC`     | `0x01`          | 1               |
-| 2      | `OTHER_CLIENTS`   | `0x03`          | 3               |
-| 3      | `OWN_CLIENT`      | `0x04`          | 4               |
-| 4      | `BASE`            | `0x08`          | 8               |
-| 5      | `BASE_AND_CLIENT` | `0x0c`          | 12              |
-| 6      | `CELL_PUBLIC_AND_OWN` | `0x05`      | 5               |
-| 7      | `ALL_CLIENTS`     | `0x07`          | 7               |
-| 8      | `EDITOR_ONLY`     | `0x40`          | 64              |
+The 9 **primary** keywords (entries 0–8) drive every keyword→bit-value mapping in §1.2 / §2.3
+of the chapter; the 7 deprecated aliases (entries 9–15) match the primaries by flag value
+and exist only to surface the deprecation warning:
 
-The loop bound at `0x1e9219f` limits the walk to exactly 9 entries (9 × 12 = 108 bytes past
-start; the 10th entry would be at `0x01e9214c`, which exceeds the bound). No warning function
-pointers are non-null for any of the 9 entries.
+| Entry# | Keyword           | Flag value (hex) | Flag value (dec) | Warning fn |
+|--------|-------------------|-----------------|-----------------|------------|
+| 0      | `CELL_PRIVATE`    | `0x00`          | 0               | null       |
+| 1      | `CELL_PUBLIC`     | `0x01`          | 1               | null       |
+| 2      | `OTHER_CLIENTS`   | `0x03`          | 3               | null       |
+| 3      | `OWN_CLIENT`      | `0x04`          | 4               | null       |
+| 4      | `BASE`            | `0x08`          | 8               | null       |
+| 5      | `BASE_AND_CLIENT` | `0x0c`          | 12              | null       |
+| 6      | `CELL_PUBLIC_AND_OWN` | `0x05`      | 5               | null       |
+| 7      | `ALL_CLIENTS`     | `0x07`          | 7               | null       |
+| 8      | `EDITOR_ONLY`     | `0x40`          | 64              | null       |
+
+Entries 9–15 (deprecated aliases — `PRIVATE`, `CELL`, `GHOSTED`, `OTHER_CLIENT`,
+`GHOSTED_AND_OWN`, `CELL_AND_OWN`, `ALL_CLIENT`) repeat the same flag values as their primary
+equivalents (0x00, 0x01, 0x01, 0x03, 0x05, 0x05, 0x07 respectively) and each carries a
+**non-null** warning function pointer that emits the prefix `"DataDescription::parse: Using
+old Fl..."` (string at `ghidra://SGW.exe@0x01b1af14`). The deprecated keywords are absent
+from the SGW `.def` tree, so their warnings never fire in practice. Full row-by-row table
+including the deprecated entries is in Appendix A (this same document, §"Decompile evidence —
+`DataDescription_ParseFlagStr @ 0x015959c0`").
 
 **What the table tells us:**
 
@@ -109,24 +122,25 @@ DATA_BASE)`. The `OWN_CLIENT` and `OTHER_CLIENT` bits are never set for any SGW 
 a `.def` keyword. The §1.2 filter `flags & 0x06 != 0` would therefore match zero SGW
 properties if applied to the `flags` byte as written.
 
-**This raises a follow-on question (new OQ — see section 8):** If no SGW property has bits
-1 or 2 set, what does the client-property pointer array at EntityDescription+0x70/+0x74
-actually contain? The chapter claims this array holds references to properties where `flags &
-0x06 != 0`. If the flag mapping is `CELL_PUBLIC=0x01` only, then no SGW property clears the
-`0x06` filter, and the pointer array would always be empty. That contradicts the observable
-wire format. Resolution: either the §1.2 filter description is wrong (the correct filter is
-`flags & 0x01 != 0`, i.e., DATA_GHOSTED), or there is a post-parse step that translates
-`0x01` into `0x03` (GHOSTED+OTHER_CLIENT). The ParseProperties decompile at `0x015924a0`
-shows the filter `(local_7c & 6) != 0` but also a separate `(local_7c & 1) != 0` branch —
-suggesting the filter is applied against the raw flag byte as read from the keyword table,
-not after any translation. This needs a second-pass audit on `EntityDescription_ParseProperties`
-to check if `CELL_PUBLIC (0x01)` triggers the `(flags & 6)` or the `(flags & 1)` branch.
+**Follow-on question — resolved in Appendix A.** If no SGW property has bits 1 or 2 set,
+what does the client-property pointer array at `EntityDescription+0x70/+0x74` actually
+contain? Appendix A (Reconciled findings, hypothesis (a)) closes this: the §1.2 filter
+description `flags & 0x06 != 0` is binary-correct; what is wrong in the chapter is the
+implicit claim that `CELL_PUBLIC` properties enter this array. They do not — `CELL_PUBLIC
+& 0x06 == 0`. The `+0x70/+0x74` array is **empty** for every SGW entity because no SGW
+`.def` keyword sets bits 1 or 2; property updates route via the main DataDescription array
+at `+0x5c/+0x60` instead. The `(flags & 1) != 0` branch in `EntityDescription_ParseProperties`
+is the complex-type warning gate, not a parallel pointer-array insertion path. See
+Appendix A "Decompile evidence — `EntityDescription_ParseProperties @ 0x015924a0`" for the
+two-conditional walkthrough.
 
 **Ghidra anchors for this finding:**
 
 - `ghidra://SGW.exe@0x015959c0` — `DataDescription_ParseFlagStr`, contains the loop
-- `ghidra://SGW.exe@0x01e920e0` — static flag table (9 entries)
-- `ghidra://SGW.exe@0x01b1ae38` — string data (`CELL_PRIVATE` through `PRIVATE` block)
+- `ghidra://SGW.exe@0x01e920e0` — static flag table (16 entries: 9 primary + 7 deprecated aliases)
+- `ghidra://SGW.exe@0x01b1ae38` — primary-keyword string block (entries 0–8)
+- `ghidra://SGW.exe@0x01b1aeb4` — deprecated-alias string block (entries 9–15)
+- `ghidra://SGW.exe@0x01b1af14` — `"DataDescription::parse: Using old Fl..."` deprecation-warning string prefix
 
 **Recommendation for doc-writer:** Replace the entire §2.3 bit-OR hypothesis with the table
 above. Strike the claim that `OWN_CLIENT`/`OTHER_CLIENTS` are absent from the binary. Revise
@@ -994,9 +1008,11 @@ WORD_LENGTH framing gave 32 as the payload length; iterator consumed the full pa
 
 ### C.5 -- V4: Property-change propID encoding (OQ-1 / G7)
 
-**Disposition**: NOT-CONFIRMED-IN-CAPTURE. **→ Folded into chapter §1.15 OQ-1** with capture-attempt status + path to closure.
+**Disposition**: NOT-CONFIRMED-IN-CAPTURE — and **methodology corrected**. **→ Folded into chapter §1.15 OQ-1** with capture-attempt status + path to closure.
 
-**Wire evidence retained**: zero `updateEntity` (msg_id `0x0A`) messages in this pcap. No `0x3C` or `0x3D` first-bytes in server→client payloads. Capture window ended at `EntityManager::disconnected` shortly after world entry — before any sustained in-world property changes (stat updates, inventory churn, ability use). Path to closure documented in chapter §1.15.
+**Wire evidence retained**: zero `updateEntity` (msg_id `0x0A`) messages in this pcap. Capture window ended at `EntityManager::disconnected` shortly after world entry — before any sustained in-world property changes (stat updates, inventory churn, ability use). Path to closure documented in chapter §1.15.
+
+**Methodology correction (post-OQ-1 closure).** The V4 validator originally scanned the first byte of the `updateEntity` payload for the BigWorld 0x3C/0x3D propID prefix. That was wrong: from the client side, the first 8 bytes of the body are the UE FArchive envelope (`[u32 length][u32 type tag]`), not a BigWorld propID prefix — `FUN_01560ad0` reads those 8 bytes, validates the length, and dispatches on the type tag (case 1 = `FNetworkPropertyChange::vfunc_0`, which then reads the propID as a `uint32_t` from the FArchive). The BigWorld 0x3C/0x3D wire-prefix scheme decodes **upstream** of this bridge and is never visible to a client-side pcap (Appendix D.3 byte-pattern absence confirms it). The `tools/entity_property_sync_resolver.py` V4 implementation now parses the FArchive envelope correctly and reports the decoded propID distribution per type tag (so reviewers can see which threshold-encoding range the server *would* have used) rather than searching for the absent prefix bytes. The original "no 0x3C or 0x3D first-bytes in server→client payloads" claim from the earlier C.5 revision conflated envelope-length bytes with prefix bytes and should not be cited as evidence either way.
 
 ### C.6 -- V5: Cell-method wire byte mask
 

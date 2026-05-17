@@ -18,7 +18,7 @@ metadata:
 **`updateEntity` handler chain:**
 - Thunk at `0x017bb570` registers handler `0x00dd62c0`, msg_id `0x0A`, name `"updateEntity"`.
 - Handler `0x00dd62c0`: null-checks `[ECX+0x168]` (EntityManager ptr), reads entity_id from first 4 payload bytes, dispatches to vtable slot 5 (`+0x14`).
-- Vtable slot 5 = `0x00dd0bb0` = entity-visibility toggle (NOT listener removal — see annotation bug below).
+- Vtable slot 5 = `0x00dd0bb0` = `GameEntityManager_RemoveEntityListener` — removes a listener from the entity-event listener map (does what its current Ghidra name says).
 
 **Byte-pattern search:** Zero hits for 0x3C/0x3D threshold comparisons (`CMP EAX,0x3C`, `MOVZX+CMP 0x3C`, `SUB EAX,60`, `CMP AL,0x3D`, etc.) in executable code. All hits were XML/CSS/string parsers.
 
@@ -28,7 +28,7 @@ metadata:
 - F1 (out-of-bounds propID): → NOT-DETERMINABLE from client binary (server-side guard).
 - G39 (no-slice): → CONFIRMED ABSENT in client-side code.
 
-**Annotation bug:** `GameEntityManager_RemoveEntityListener @ 0x00dd0bb0` is misnamed. Correct name: `GameEntityManager_OnEntityEnterAoI`. Recorded in `annotation-script-shift-bugs.md` session-5 section (2026-05-16).
+**Retracted annotation claim:** An earlier pass speculated that `0x00dd0bb0` was misnamed and should be `GameEntityManager_OnEntityEnterAoI` (or `SetEntityVisible`). That claim was REFUTED by Appendix E of the audit: the current Ghidra name `GameEntityManager_RemoveEntityListener` is correct — the function removes a listener from the entity-event listener map. The retraction is recorded in `annotation-script-shift-bugs.md` session-5 section (2026-05-16). Do not propagate the misnaming claim into chapter prose.
 
 **Key addresses:**
 - `FNetworkPropertyChange__vfunc_0`: `0x015652d0`
@@ -37,7 +37,7 @@ metadata:
 - `FUN_01560ad0` (type-tag switch): `0x01560ad0`
 - `FRemotePropagator` bridge: `0x015605b0`
 - `updateEntity` handler: `0x00dd62c0`
-- `GameEntityManager_OnEntityEnterAoI` (misnamed): `0x00dd0bb0`
+- `GameEntityManager_RemoveEntityListener` (Ghidra name is correct; earlier retitling speculation refuted): `0x00dd0bb0`
 - `updateEntity` thunk: `0x017bb570`
 
 **Full findings:** `docs/audits/entity-property-sync-section2-audit-2026-05-16.md` Appendix D (lines 1088–1192).
