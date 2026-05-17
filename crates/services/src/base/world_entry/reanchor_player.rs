@@ -179,8 +179,17 @@ pub(crate) async fn handle_reanchor_player(
         &acks,
     );
 
-    for pkt in &packets {
+    for (i, pkt) in packets.iter().enumerate() {
         socket.send_to(pkt, addr).await?;
+        // Issue #308: reanchor burst is state-change traffic — register
+        // each packet with the Channel for retransmit on loss. Sequence
+        // numbers are contiguous from base_seq for `packets.len()`.
+        super::super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            base_seq + i as u32,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
+        );
     }
 
     if has_replay {

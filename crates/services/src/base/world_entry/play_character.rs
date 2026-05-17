@@ -110,6 +110,13 @@ pub(crate) async fn handle_play_character(
     let pkt = build_reset_entities(&key, seq, &acks);
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT RESET_ENTITIES (entity teardown)");
     socket.send_to(&pkt, addr).await?;
+    // Issue #308: kick-off RESET_ENTITIES is reliable state-change.
+    super::super::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
 
     // Store the world entry info and player load data for the create-player step.
     {

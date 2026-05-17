@@ -99,6 +99,13 @@ pub(crate) async fn handle_version_info_request(
         active_eid,
     );
     socket.send_to(&pkt, addr).await?;
+    // Issue #308: versionInfo response is one-shot state — register for retransmit.
+    super::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
 
     // Push the patched XML proactively for each overridden element. The
     // version-info reply already named these in InvalidKeys; the client
@@ -191,6 +198,12 @@ async fn push_overridden_elements(
                 &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
             );
             socket.send_to(&pkt, addr).await?;
+            super::helpers::shadow_register_reliable_send(
+                connected,
+                addr,
+                seq,
+                cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+            );
         }
     }
 
@@ -258,6 +271,12 @@ pub(crate) async fn send_category_resources(
                 &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat_id, elem, chunk,
             );
             socket.send_to(&pkt, addr).await?;
+            super::helpers::shadow_register_reliable_send(
+                connected,
+                addr,
+                seq,
+                cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+            );
         }
     }
 
@@ -366,6 +385,12 @@ pub(crate) async fn handle_element_data_request(
             &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
         );
         socket.send_to(&pkt, addr).await?;
+        super::helpers::shadow_register_reliable_send(
+            connected,
+            addr,
+            seq,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        );
     }
 
     tracing::debug!(%addr, element_id, total_chunks, "Resource fragments sent");

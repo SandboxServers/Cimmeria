@@ -197,6 +197,14 @@ pub(crate) async fn handle_gate_travel(
     let seq = next_seq.fetch_add(1, Ordering::Relaxed);
     let pkt = build_reset_entities(&key, seq, &acks);
     socket.send_to(&pkt, addr).await?;
+    // Issue #308: RESET_ENTITIES is one-shot state — kicks off the
+    // cross-world handoff. Channel retransmit covers loss.
+    crate::base::helpers::shadow_register_reliable_send(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+    );
 
     // Store pending world entry for the create-player step (ENABLE_ENTITIES handler)
     {

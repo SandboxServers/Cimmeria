@@ -3,12 +3,19 @@
 
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
 
-use crate::mercury::{encrypt_packet, BASEMSG_FORCED_POSITION, REPLY_FLAGS};
+use crate::mercury::{
+    encrypt_packet, BASEMSG_FORCED_POSITION, REPLY_FLAGS_RELIABLE, REPLY_FLAGS_UNRELIABLE,
+};
 
 use super::{pack_angle, pack_velocity_xyz, BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR};
 
 /// Build and encrypt `UPDATE_AVATAR_NO_ALIAS_FULL_POS_YAW_PITCH_ROLL (0x10)` for
 /// relaying position updates to AoI witnesses.
+///
+/// **Unreliable** (issue #308 audit) — position updates are continuous
+/// and self-correcting; the next update supersedes any lost one within
+/// a tick or two, so retransmit overhead would buy nothing.
+/// `FLAG_RELIABLE` is cleared in the outbound flags.
 ///
 /// Matches C++ `ClientHandler::moveEntity()` from `client_handler.cpp:542-556`.
 pub fn build_avatar_update(
@@ -37,7 +44,7 @@ pub fn build_avatar_update(
     body.push(pack_angle(direction[0])); // pitch
     body.push(pack_angle(direction[2])); // roll
 
-    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    let flags = REPLY_FLAGS_UNRELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)
 }
@@ -74,7 +81,11 @@ pub fn build_forced_position(
     body.extend_from_slice(&[0u8; 12]); // rotation = 0,0,0 (yaw/pitch/roll)
     body.push(0x01); // flags
 
-    let flags = REPLY_FLAGS | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
+    // Reliable — the spawn snap is one-shot state; losing it leaves the
+    // pawn at the wrong position until something else corrects (and
+    // bug 1 in issue #288 documented the camera-clip artifact when this
+    // is mistimed). Channel retransmit covers loss-in-flight.
+    let flags = REPLY_FLAGS_RELIABLE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
     let plaintext = build_outgoing(flags, &body, Some(seq_id), acks, None);
     encrypt_packet(&plaintext, key)
 }
