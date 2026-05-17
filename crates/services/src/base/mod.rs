@@ -112,6 +112,18 @@ pub(crate) struct ConnectedClientState {
     pub pending_player_entity_id: Option<u32>,
     pub player_entity_id: Option<u32>,
     pub next_seq: Arc<AtomicU32>,
+    /// Sequence counter for **unreliable** outbound packets — kept separate
+    /// from `next_seq` to preserve the contiguous reliable seq stream the
+    /// SGW BigWorld client's `UnAckedHandler::queueAckForPacket`
+    /// (`ghidra://SGW.exe@0x0158cba0`) requires. The receiver's `inSeqAt`
+    /// advances by exactly 1 per reliable arrival; sharing the counter
+    /// with unreliable emissions creates gaps the receiver cannot fill,
+    /// stalling delivery of every subsequent reliable packet. The receiver
+    /// has separate dedup state at `+0x128` for unreliable packets, so two
+    /// independent monotonic streams (one reliable, one unreliable) are
+    /// the wire-format-correct shape. See `spec.protocol.mercury-wire-format`
+    /// §1.7 + the `FUN_0158bb50` decompile.
+    pub next_seq_unreliable: Arc<AtomicU32>,
     pub pending_acks: Arc<Mutex<Vec<u32>>>,
     pub last_recv: Arc<Mutex<Instant>>,
     pub account_entity_id: u32,
@@ -167,6 +179,23 @@ pub(crate) struct ConnectedClientState {
     /// and `check_timeouts` all need `&mut self` and run from different
     /// code paths (receive loop, per-send-site call sites, retransmit tick).
     pub channel: Mutex<Channel>,
+}
+
+impl ConnectedClientState {
+    /// Next sequence number for an **unreliable** outbound packet —
+    /// fetch-add on the unreliable counter, masked to the 28-bit Mercury
+    /// sequence space. Use this from any code path that sends a packet
+    /// without `FLAG_RELIABLE`; the reliable path uses `next_seq` directly
+    /// because reliable seqs are also tracked by the per-session Channel's
+    /// TX window. Encapsulated so a future caller can't accidentally drop
+    /// the `SEQUENCE_MASK` clamp and overflow into the 4-bit reserved
+    /// flag space (see issue #292 for the previous instance of that
+    /// class of bug).
+    pub fn next_unreliable_seq(&self) -> u32 {
+        self.next_seq_unreliable
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK
+    }
 }
 
 #[cfg(test)]
