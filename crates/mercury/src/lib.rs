@@ -35,8 +35,17 @@ pub mod consts {
     /// Receive window size for reliable sequencing.
     pub const RX_WINDOW_SIZE: usize = 64;
 
-    /// Transmit window size — limits unacknowledged in-flight packets.
-    pub const TX_WINDOW_SIZE: usize = 45;
+    /// Transmit window size — limits unacknowledged in-flight reliable
+    /// packets per channel.
+    ///
+    /// Pinned at **32** to match the SGW client's 32-bit outstanding-ack
+    /// bitmap (`UnAckedHandler`, indexed by `seq_id & 0x1F`). Per the
+    /// `mercury-wire-format` spec §1.7 + §1.16 Q5 closure: with more
+    /// than 32 packets in flight, two sequences differing by 32 would
+    /// collide on the same bitmap bit, letting the client phantom-ack
+    /// both when only one actually arrived. Holding the window at 32
+    /// eliminates the collision class. Issue #292 (audit finding #5).
+    pub const TX_WINDOW_SIZE: usize = 32;
 
     /// Milliseconds before a reliable packet is considered lost and retransmitted.
     pub const ACK_TIMEOUT_MS: u64 = 700;

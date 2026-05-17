@@ -5,7 +5,10 @@ use bytes::Bytes;
 
 use cimmeria_common::{CimmeriaError, Result};
 
-use super::{ParsedPacket, FLAG_FRAGMENTED, FLAG_HAS_ACKS, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE};
+use super::{
+    ParsedPacket, FLAG_FRAGMENTED, FLAG_HAS_ACKS, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUENCE,
+    NULL_SEQUENCE,
+};
 
 /// Parse a raw UDP datagram into a [`ParsedPacket`] by stripping footers.
 ///
@@ -84,8 +87,22 @@ pub fn parse_incoming(raw: &[u8]) -> Result<ParsedPacket> {
     }
 
     // 2. seq_id
+    //
+    // R4 (issue #292 finding #7): the valid sequence range is 28 bits
+    // (`0x00000000`..`0x0FFFFFFF`). `NULL_SEQUENCE` (`0x10000000`) is the
+    // reserved "unset" sentinel; any value at or above it is out of band.
+    // Drop the packet at parse time rather than letting an invalid seq
+    // propagate into the channel's RX window logic.
     let seq_id = if flags & FLAG_HAS_SEQUENCE != 0 {
-        Some(pop_u32_le!())
+        let raw_seq = pop_u32_le!();
+        if raw_seq >= NULL_SEQUENCE {
+            return Err(CimmeriaError::Channel(format!(
+                "packet with sequence number outside valid range: seq=0x{:08X} (max 0x{:08X})",
+                raw_seq,
+                NULL_SEQUENCE - 1,
+            )));
+        }
+        Some(raw_seq)
     } else {
         None
     };

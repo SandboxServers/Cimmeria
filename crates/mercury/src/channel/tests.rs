@@ -598,16 +598,58 @@ fn cleanup_stale_fragments_drops_partial_bundles() {
 fn sliding_window_rejects_overflow() {
     let mut ch = Channel::new(test_addr());
 
-    // Fill the TX window to capacity (TX_WINDOW_SIZE = 45).
+    // Fill the TX window to capacity.
     for _ in 0..consts::TX_WINDOW_SIZE {
         ch.send_packet(test_packet()).unwrap();
     }
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
 
-    // The 46th packet must be rejected.
+    // The (TX_WINDOW_SIZE + 1)-th packet must be rejected.
     let result = ch.send_packet(test_packet());
     assert!(result.is_err());
 
     // Window size unchanged — the rejected packet was not inserted.
+    assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
+}
+
+/// Issue #292 finding #5 — TX window must be 32 (not 45) to match the
+/// SGW client's 32-bit outstanding-ack bitmap. Pin the constant value
+/// so a future regression that bumps it back to 45 (or any other
+/// value > 32) re-introduces the phantom-ack collision class:
+/// `seq=0` and `seq=32` would land on the same bitmap bit
+/// (`seq & 0x1F == 0` for both), letting the client phantom-ack both
+/// when only one arrived.
+#[test]
+fn tx_window_size_matches_client_bitmap_width_for_phantom_ack_safety() {
+    assert_eq!(
+        consts::TX_WINDOW_SIZE,
+        32,
+        "TX_WINDOW_SIZE must equal the SGW client's 32-bit outstanding-ack \
+         bitmap width (issue #292 finding #5). Bumping above 32 would let \
+         two in-flight seqs differing by 32 collide on the same bitmap bit."
+    );
+}
+
+/// Back-pressure: registering the 33rd in-flight reliable packet must
+/// fail, matching the constant pinned above. Same shape as
+/// `sliding_window_rejects_overflow` but exercises the
+/// `register_sent_packet` path used by the services-layer shadow
+/// migration (issue #308). The migration helper hits the same cap.
+#[test]
+fn register_sent_packet_back_pressure_at_tx_window_size() {
+    let mut ch = Channel::new(test_addr());
+
+    for seq in 0..(consts::TX_WINDOW_SIZE as u32) {
+        let mut pkt = test_packet();
+        pkt.sequence = seq;
+        ch.register_sent_packet(pkt).unwrap();
+    }
+    assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
+
+    // 33rd registration (seq=32) must back-pressure.
+    let mut pkt = test_packet();
+    pkt.sequence = consts::TX_WINDOW_SIZE as u32;
+    let result = ch.register_sent_packet(pkt);
+    assert!(result.is_err(), "33rd in-flight reliable must be rejected");
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
 }

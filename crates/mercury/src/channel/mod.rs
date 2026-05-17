@@ -234,9 +234,13 @@ impl Channel {
             )));
         }
 
-        // Stamp the outgoing sequence number onto the packet.
-        packet.sequence = self.next_tx_seq;
-        self.next_tx_seq = self.next_tx_seq.wrapping_add(1);
+        // Stamp the outgoing sequence number onto the packet. Mask with
+        // `SEQUENCE_MASK` (28 bits) so the counter can't overflow into
+        // the `NULL_SEQUENCE` sentinel range — issue #292 finding #7.
+        // The wrap-and-mask combo keeps the counter within the spec's
+        // 28-bit space across `u32::MAX / SEQUENCE_MASK` cycles.
+        packet.sequence = self.next_tx_seq & crate::packet::SEQUENCE_MASK;
+        self.next_tx_seq = self.next_tx_seq.wrapping_add(1) & crate::packet::SEQUENCE_MASK;
 
         let now = Instant::now();
         self.tx_window.push_back(TxEntry {
