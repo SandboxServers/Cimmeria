@@ -230,8 +230,16 @@ class Results:
         self.c2s = 0
 
 
-def scan_body_for_sub_slots(body, results: Results):
-    """Walk body looking for 0xBD (extended cell) or 0xFD (extended base) prefixes."""
+def scan_body_for_sub_slots(body, results: Results, is_server: bool):
+    """Walk body looking for 0xBD (extended cell) or 0xFD (extended base) prefixes.
+
+    `is_server` selects the same length-schema table as `iter_messages` uses.
+    Shared msg_ids appear in both directions with different framing (constant
+    vs. length-prefixed, or different prefix widths); falling back to
+    ``SERVER_MSG_FORMAT or CLIENT_MSG_FORMAT`` would pick the wrong schema on
+    those IDs and desync sub-slot offsets, skewing V1 counts.
+    """
+    msg_format = pd.SERVER_MSG_FORMAT if is_server else pd.CLIENT_MSG_FORMAT
     offset = 0
     while offset < len(body):
         msg_id = body[offset]
@@ -273,8 +281,9 @@ def scan_body_for_sub_slots(body, results: Results):
 
         # Hit a system message — skip its body and keep scanning. (Earlier
         # versions early-returned here, missing any 0xBD/0xFD that followed a
-        # system message in the same body — CR-9.)
-        fmt = pd.SERVER_MSG_FORMAT.get(msg_id) or pd.CLIENT_MSG_FORMAT.get(msg_id)
+        # system message in the same body — CR-9.) Use the direction-aware
+        # table only — shared msg_ids encode differently per direction.
+        fmt = msg_format.get(msg_id)
         if fmt is None:
             # Truly unknown — stop, bytes downstream would be misframed anyway.
             return
@@ -310,8 +319,9 @@ def process_packet(plaintext, src_port, dst_port, results: Results, server_port:
     elif is_c2s:
         results.c2s += 1
 
-    # V1 — sub-slot scan (works on any body, both directions)
-    scan_body_for_sub_slots(body, results)
+    # V1 — sub-slot scan. Direction-aware: shared system msg_ids encode with
+    # different length schemas in s2c vs c2s.
+    scan_body_for_sub_slots(body, results, is_server=is_s2c)
 
     # V5/V6 — entity method wire bytes
     # Entity methods 0x80..0xBF = cell (7-bit); 0xC0..0xFF = base (6-bit)
@@ -433,15 +443,15 @@ def report_v2(r: Results):
         type_id   = struct.unpack('<H', payload[4:6])[0]
         prop_stream = payload[6:]
         print(f"    Offset 0-3 : entityId  = {entity_id} (0x{entity_id:08X})  [expect u32 LE]")
-        print(f"    Offset 4-5 : typeId    = {type_id} (0x{type_id:04X})  [expect 0x0003 = SGWPlayer]")
+        print(f"    Offset 4-5 : typeId    = {type_id} (0x{type_id:04X})  [expect 0x0002 = SGWPlayer; 0-based entities.xml index per EntityDescription_ReadFromStream @ SGW.exe@0x01590520]")
         print(f"    Offset 6+  : property stream = {len(prop_stream)} bytes")
         print(f"    Prop stream head: {_hex(prop_stream[:32])}")
-        if type_id != 0x0003:
-            print(f"    NOTE: typeId != 0x0003 (SGWPlayer). Could be a non-player entity.")
+        if type_id != 0x0002:
+            print(f"    NOTE: typeId != 0x0002 (SGWPlayer). Could be a non-player entity. Common 0-based typeIDs: 0x00=SGWSpawnableEntity, 0x01=SGWBeing, 0x02=SGWPlayer, 0x07=SGWBlackMarket (ServerOnly — silent-fail on client), 0x08=Account.")
     print()
     if all_match:
         print("  CONFIRMS: entityId u32 at offset 0, typeId u16 at offset 4, prop stream at 6+.")
-        print("  typeId=0x0003 (SGWPlayer) where entity is the player.")
+        print("  typeId=0x0002 (SGWPlayer) where entity is the player.")
     print()
 
 
