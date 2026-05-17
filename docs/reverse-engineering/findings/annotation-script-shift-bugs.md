@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: reference
 > **Audience**: V5 campaign workers; consolidator; anyone correcting annotation-script-era naming errors
-> **Last updated**: 2026-05-13
+> **Last updated**: 2026-05-16
 > **Confidence**: HIGH (RTTI-verified for all confirmed entries; candidates marked as such)
 
 ## Discovery context
@@ -151,6 +151,49 @@ The SGWNetworkManager `_MemberCallback__vfunc_3` cluster spans `0x00d44d60` thro
 | `0x00d47660` | `OnEvent_NetOut_PayCODForMailMessage__SGWNetworkManager` | `Event_NetOut_PayCODForMailMessage` MemberCallback RTTI | `CME_EventSignal_ZV6_PAX_BEXPAVEvent_NetOut_PayCODForMailMessage_P845_SGWNetworkManager_VEvent_NetOut_PayCODForMailMessage_V__EventHandler_CME_EventSignal_UNoSubject___MemberCallback__vfunc_3` | renamed |
 
 **Note on CAMPAIGN_STATUS.md boundary**: The CAMPAIGN_STATUS.md note cited the cluster as `0x00d44d60–0x00d46860` (55 functions). The actual cluster extends to at least `0x00d48660` (100+ functions total for the mangled-template portion, plus 100+ additional `OnEvent_*__SGWNetworkManager` functions at higher addresses that represent the actual handler implementations — the real `OnEvent_*` handlers begin at `0x00d46ce0` in the original naming, but from the decompilation these turned out to be the same vfunc_3 accessor stubs, not handlers). The remaining `OnEvent_*__SGWNetworkManager` functions above `0x00d47660` (at `0x00d476e0` onward) resume the mangled template convention and are correct; similarly, the further cluster beginning around `0x01579000+` uses a different naming family.
+
+## Session-5 (2026-05-16) — entity-property-sync OQ-1 investigation
+
+### GameEntityManager function name mismatch — 0x00dd0bb0 — RETRACTED
+
+**Status: RETRACTED 2026-05-16 by follow-up Ghidra verification.**
+
+The original claim below — that `GameEntityManager_RemoveEntityListener @ 0x00dd0bb0` was misnamed and should become `GameEntityManager_SetEntityVisible` / `OnEntityEnterAoI` — was based on Appendix D.6 of the entity-property-sync audit, which misread the call chain after `updateEntity_Handler @ 0x00dd62c0`. A focused single-question verification pass (audit Appendix E.1–E.4) decompiled `0x00dd0bb0` directly and confirmed:
+
+- The function performs a `lower_bound` lookup on the listener map and calls `FUN_00e68df0` (refcount release). It IS a listener removal.
+- The chain from `updateEntity_Handler` does **not** reach `0x00dd0bb0` — it reaches `FListenHelper::vtable[5] = FUN_01561140 @ 0x01561140`. Appendix D collapsed an indirect-jump branch and identified `[ECX+0x168]` as `GameEntityManager` when it is actually an `FListenHelper` instance (RTTI confirmed).
+- The current Ghidra name `GameEntityManager_RemoveEntityListener` is **correct**; no rename is warranted.
+
+**No annotation-script-shift bug exists at `0x00dd0bb0`.** The original entry below is retained for the audit trail but should not be acted on. The real annotation issue surfaced in this investigation is a wrong-slot-number plate-comment bug on the `GameEntityManager` vtable — captured separately under "GameEntityManager vtable plate-comment slot numbering" below.
+
+Original (retracted) claim follows:
+
+| Address | Current Ghidra name | Decompiler-confirmed behavior | Proposed name |
+|---------|--------------------|-----------------------------|---------------|
+| `0x00dd0bb0` | `GameEntityManager_RemoveEntityListener` | (Appendix D's misreading — superseded by E.4: function performs `lower_bound` listener-map lookup + `FUN_00e68df0` refcount release; the current name is accurate) | ~~`GameEntityManager_SetEntityVisible`~~ — RETRACTED, keep current name |
+
+---
+
+### GameEntityManager vtable plate-comment slot numbering — 0x00dd0bb0 and 0x00dd0c10
+
+**Status: CANDIDATE — confirmed via raw memory read of vtable at `0x019aaeb8` during entity-property-sync §1.8 follow-up. Plate comments record wrong vtable slot numbers; symbol names are correct.**
+
+Both plate comments claim slot numbers that contradict the raw vtable layout:
+
+| Address | Plate-comment claim | Actual slot in vtable at `0x019aaeb8` |
+|---------|--------------------|--------------------------------------|
+| `0x00dd0bb0` | "VTable slot 5 of vtable_GameEntityManager at 0x019aaec4" | Slot 8 (memory at `0x019aaed8`) |
+| `0x00dd0c10` | "VTable slot 2" | Slot 5 (memory at `0x019aaec4`) |
+
+The actual function at vtable slot 5 (raw `0x019aaec4`) is `0x00dd0c10` (`GameEntityManager_SetPlayerControlTarget`), not `0x00dd0bb0` as the plate claimed. Slot 8 (`0x019aaed8`) is where `0x00dd0bb0` actually lives.
+
+**Root cause**: Systematic vtable-slot numbering error in the `GameEntityManager` vtable annotation pass — the script appears to have used an off-by-three (or otherwise inconsistent) cursor when filling plate comments. Symbol names themselves come from RTTI and are unaffected.
+
+**Evidence**: Raw memory read of vtable at `ghidra://SGW.exe@0x019aaeb8` (32 bytes of function pointers). See [`docs/audits/entity-property-sync-section2-audit-2026-05-16.md`](../../audits/entity-property-sync-section2-audit-2026-05-16.md) Appendix E.4. The §1.8 chapter section in `docs/drafts/spec/entity-property-sync.md` traces the actual dispatch chain.
+
+**Action needed**: Correct plate comments on `0x00dd0bb0` and `0x00dd0c10` to record the actual vtable slot numbers (8 and 5 respectively). Spot-check the rest of the `GameEntityManager` vtable plate comments for the same off-by-N pattern. No symbol renames required — this is a comment-only fix.
+
+---
 
 ## Cross-references
 

@@ -1,0 +1,44 @@
+%%{init: {"theme": "base", "flowchart": {"htmlLabels": false}}}%%
+flowchart TD
+    ROOT(["SGWPlayer.def\nparse entry — EntityDescription_Parse"])
+
+    ROOT --> P1
+    P1["① &lt;Parent&gt; recursion\nresolve SGWBeing.def first"]
+    P1 --> SGWBEING_TREE
+    SGWBEING_TREE["SGWBeing.def\n(recurses to SGWSpawnableEntity → SGWEntity)\nyields: propID 0..M, methodID 0..26"]
+
+    SGWBEING_TREE --> P2
+    P2["② &lt;Implements&gt; — 11 interfaces in XML order\nrecursively loaded via EntityDescription_ParseImplements"]
+    P2 --> IFLIST
+    IFLIST["Communicator → OrganizationMember →\nMinigamePlayer → GateTravel →\nSGWInventoryManager → SGWMailManager →\nMissionary → ContactListManager →\nSGWBlackMarketManager → ClientCache →\nSGWPoller\nappends propID + methodID counters"]
+
+    IFLIST --> P3
+    P3["③ Own sections — EntityDescription_ParseDef\nin fixed order"]
+
+    P3 --> PROPS
+    P3 --> CMETH
+    P3 --> CELLMETH
+    P3 --> BASEMETH
+
+    PROPS["&lt;Properties&gt;\nEntityDescription_ParseProperties\npropID +=, filtered to client bits 0x06"]
+    CMETH["&lt;ClientMethods&gt;\nEntityDescription_ParseClientMethods\nclient methodID 98..156"]
+    CELLMETH["&lt;CellMethods&gt;\nEntityDescription_ParseCellMethods\ncell methodID += (Exposed only)"]
+    BASEMETH["&lt;BaseMethods&gt;\nEntityDescription_ParseBaseMethods\nbase methodID += (Exposed only)"]
+
+    PROPS --> ACCUM
+    CMETH --> ACCUM
+    CELLMETH --> ACCUM
+    BASEMETH --> ACCUM
+    ACCUM["IDs accumulate left-to-right across the tree:\nparent's last propID + 1 = next contributor's first propID;\nsame for cell-methodID, base-methodID, client-methodID.\nSGWPlayer totals: 157 client methods, indices 0..156."]
+
+    style ROOT fill:#e8f4fb,stroke:#5599cc
+    style P1 fill:#ddeeff,stroke:#5599cc
+    style P2 fill:#fff4d6,stroke:#cc9933
+    style P3 fill:#ddffdd,stroke:#5fb15f
+    style PROPS fill:#fff7e6
+    style CMETH fill:#ffeedd
+    style CELLMETH fill:#ffeedd
+    style BASEMETH fill:#ffeedd
+    style ACCUM fill:#f4f4f4,stroke:#666
+    style SGWBEING_TREE fill:#e8f4fb
+    style IFLIST fill:#fff4d6

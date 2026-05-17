@@ -36,6 +36,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 - [Mercury wire-format open questions](mercury-wire-format-openqs.md) — **[PROMOTE → spec.protocol.mercury-wire-format §Q1/Q2/Q3/Q4/Q5]** — Q4 (port=20022 not 19510), Q3a (offsets 24-35 are a previous-position reference, not velocity and not rotation — corrected by a second Ghidra pass that traced the pointer-pass into `PackageAndSendEntityMove`'s `pOrientation` → `pPrevPos`), Q1 (width-per-interface not sentinel), Q5 (512-entry hash table + 32-bit ACK bitmap, no fixed slot count), Q2 (+0x170/+0x174 = last-recv rdtsc baseline, medium confidence on write site).
 - [Mercury Section 2 discovery manifest](mercury-section-2-discovery.md) — **[PROMOTE → spec.protocol.mercury-wire-format §Section 2]** — Phase A client-tree sweep: 7 hit files, 31 findings; no INI tunes Mercury; BWNetDriver confirmed; NetInactivityTimeout=15 is the only INI-adjacent wire parameter; MercuryLogger at 0x0041C2E0 is new symbol; 86 footnotes re-classified (38 REQUIRED / 7 RECOMMENDED / 3 TOLERATED / 38 CLIENT-ONLY).
 
+## Entity property sync (2026-05-16)
+
+- [Entity-property-sync OQ-1 CLOSED](entity-property-sync-oq1.md) — **[PROMOTE → spec.protocol.entity-property-sync §1.15 OQ-1 + OQ-X + F1 + G39]** — 0x3C/0x3D thresholds are server-side only; client uses UE3 FArchive uint32_t via FNetworkPropertyChange__vfunc_0 @ 0x015652d0. (Earlier sub-claim that 0x00dd0bb0 was misnamed as RemoveEntityListener has been retracted — Ghidra name is correct per audit Appendix E.)
+
 ## Phase −0.5 maintenance notes (2026-05-13)
 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.

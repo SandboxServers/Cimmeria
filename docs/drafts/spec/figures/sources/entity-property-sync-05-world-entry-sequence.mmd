@@ -1,0 +1,29 @@
+%%{init: {"theme": "base", "flowchart": {"htmlLabels": false}, "sequence": {"htmlLabels": false}}}%%
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    Note over C,S: Mercury cipher envelope active after logOnBegin/logOnComplete handshake
+
+    alt createBasePlayer arrives first (common case)
+        S->>C: createBasePlayer 0x05 u32 entityId + u16 typeId + property stream (CLIENT_DATA OR BASE_DATA equals 0x0E)
+        S->>C: createCellPlayer 0x06 32B spaceId vehicleId posXYZ rotX/Z/Y (Y/Z swap, applied immediately since playerEntityId is non-zero)
+    else createCellPlayer arrives first (defensive ordering)
+        S->>C: createCellPlayer 0x06 32B fixed payload (playerEntityId is zero — buffered into ServerConnection+0xfe0)
+        S->>C: createBasePlayer 0x05 u32 entityId + u16 typeId + property stream (handler replays buffered createCellPlayer once entityId is set)
+    end
+
+    Note over C: property stream rides INSIDE createBasePlayer envelope per S2
+
+    C->>S: enableEntities 0x08 8B undefined stack content per S6
+
+    Note over S: client signals ready and server begins streaming AoI introductions
+
+    loop For each entity entering AoI
+        S->>C: createEntity 0x09 entityId + classId + alias
+        S->>C: enterAoI decrements entity+0x10 enterCount per §1.9
+        S->>C: cached property-delta stream per-witness per §1.10 / OQ-6
+    end
+
+    Note over C: enterCount reaches zero — EntityManager_EnterWorld then FlushDeferredNotifications
+    Note over C,S: World entry complete — steady-state updateEntity 0x0A traffic follows per §1.8

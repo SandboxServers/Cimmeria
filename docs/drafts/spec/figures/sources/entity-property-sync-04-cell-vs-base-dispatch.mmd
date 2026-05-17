@@ -1,0 +1,29 @@
+%%{init: {"theme": "base", "flowchart": {"htmlLabels": false}}}%%
+flowchart TD
+    START(["RouteOutgoingEntityRpc\n@ ghidra://SGW.exe@0x00c6fc40\noutgoing entity method call"])
+
+    START --> READ
+    READ["Read dispatch-type from pArgData+0x1c\nbits 0..1"]
+
+    READ --> FORK{"bits 0..1 ?"}
+
+    FORK -- "= 0  (CellApp / entity method)" --> CELL
+    FORK -- "= 2  (BaseApp / proxy method)" --> BASE
+
+    CELL["ServerConnection_StartEntityMessage\n@ ghidra://SGW.exe@0x00dd6a60\nwire byte = (methodId &amp; 0x7F) | 0x80\n_DAT_01ef2630 |= 0x80\nthen vtable+0x10 writes 4-byte entityId"]
+
+    BASE["ServerConnection_StartProxyMessage\n@ ghidra://SGW.exe@0x00dd6980\nwire byte = (methodId &amp; 0x3F) | 0xC0\n_DAT_01ef2610 |= 0xC0\nno entityId write (channel-bound)"]
+
+    CELL --> CELL_WIRE
+    CELL_WIRE["Cell-method wire shape:\n[1B: 0x80..0xBF]  [u16 WORD_LENGTH]\n[u32 entityId]  [serialized args]\n7-bit primary methodID space (128 IDs)"]
+
+    BASE --> BASE_WIRE
+    BASE_WIRE["Base-method wire shape:\n[1B: 0xC0..0xFF]  [u16 WORD_LENGTH]\n[serialized args]\n6-bit primary methodID space (64 IDs)\nentityId omitted — proxy is implicit"]
+
+    style START fill:#e8f4fb,stroke:#5599cc
+    style READ fill:#ddeeff,stroke:#5599cc
+    style FORK fill:#fff,stroke:#666
+    style CELL fill:#ddffdd,stroke:#5fb15f
+    style BASE fill:#fff4d6,stroke:#cc9933
+    style CELL_WIRE fill:#f0fff0
+    style BASE_WIRE fill:#fff5e0
