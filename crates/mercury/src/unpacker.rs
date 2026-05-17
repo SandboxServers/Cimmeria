@@ -12,6 +12,40 @@
 //! [u32 LE first_seq]     — sequence number of the first fragment (reassembly key)
 //! [remaining bytes]      — fragment payload
 //! ```
+//!
+//! ## Reassembly lifecycle
+//!
+//! A partial reassembly persists until one of:
+//! 1. **Completion** — every fragment of the bundle has arrived and the
+//!    assembled body is returned to the caller.
+//! 2. **Arrival-triggered eviction** — a new fragmented bundle arrives
+//!    whose sequence range overlaps this one *and whose `first_seq` is
+//!    strictly newer* in 28-bit modular sequence space. The older
+//!    bundle is treated as abandoned and dropped. A late straggler from
+//!    an already-evicted bundle is itself dropped (does not displace
+//!    the newer bundle that took over). Matches the SGW client behavior
+//!    documented at `ghidra://SGW.exe@0x01b18868`.
+//! 3. **Channel teardown** — the owning `Channel` is dropped, taking
+//!    the `FragmentAssembler` with it.
+//!
+//! There is **no time-based stale sweep**. Per `mercury-wire-format`
+//! spec §2.4.1 R13 + §2.10 S6, the SGW client never implemented one;
+//! a slow sender (transatlantic link with loss) could legitimately
+//! take longer than any reasonable sweep interval to finish a bundle,
+//! and a sweep would silently drop it mid-reassembly.
+//!
+//! ## Memory implications
+//!
+//! Because there is no sweep, orphan partial reassemblies sit in the
+//! per-channel assembler until either an overlapping bundle arrives or
+//! the channel is torn down. Worst-case footprint per channel is bounded
+//! by `MAX_FRAGMENTS` (the per-bundle cap) × the number of distinct
+//! `first_seq` keys currently in flight. A malicious peer that opens
+//! many partial bundles without completing them pins memory until the
+//! channel's existing dead-peer detection (`is_timed_out`) reaps the
+//! channel — which is the only safe upper bound under the spec's
+//! contract. Channels in practice live minutes-to-hours; this footprint
+//! is acceptable and there are easier DoS vectors against a busy server.
 
 use std::collections::HashMap;
 
@@ -19,7 +53,33 @@ use bytes::{BufMut, Bytes, BytesMut};
 use cimmeria_common::{CimmeriaError, Result};
 
 use crate::consts::MAX_FRAGMENTS;
-use crate::packet::ParsedPacket;
+use crate::packet::{ParsedPacket, SEQUENCE_MASK};
+
+/// 28-bit modular "is `later` strictly after `earlier`" comparison.
+///
+/// Sequence numbers live in a 28-bit ring (`mercury-wire-format` spec
+/// §1.7 + §2.4 R4). The half-range cutoff (`1 << 27`) decides
+/// forward-vs-backward direction across the wraparound at `SEQUENCE_MASK`.
+/// Returns `false` when `later == earlier`.
+fn is_strictly_newer_mod28(later: u32, earlier: u32) -> bool {
+    let diff = later.wrapping_sub(earlier) & SEQUENCE_MASK;
+    diff != 0 && diff < 0x0800_0000
+}
+
+/// 28-bit modular "do ranges `[a_begin, a_end]` and `[b_begin, b_end]`
+/// overlap?" Each range is treated as a contiguous arc on the 28-bit
+/// sequence-number ring, with the begin→end direction defined by the
+/// modular distance. Because every Mercury bundle is capped at
+/// `MAX_FRAGMENTS` fragments and `MAX_FRAGMENTS << (1 << 27)`, no
+/// legitimate range exceeds the half-range cutoff, so this test is
+/// unambiguous in practice.
+fn ranges_overlap_mod28(a_begin: u32, a_end: u32, b_begin: u32, b_end: u32) -> bool {
+    let a_len = a_end.wrapping_sub(a_begin) & SEQUENCE_MASK;
+    let b_len = b_end.wrapping_sub(b_begin) & SEQUENCE_MASK;
+    let b_in_a = (b_begin.wrapping_sub(a_begin) & SEQUENCE_MASK) <= a_len;
+    let a_in_b = (a_begin.wrapping_sub(b_begin) & SEQUENCE_MASK) <= b_len;
+    b_in_a || a_in_b
+}
 
 /// Tracks the in-progress reassembly of a single fragmented message.
 #[derive(Debug)]
@@ -128,52 +188,86 @@ impl FragmentAssembler {
             )));
         }
 
-        // Arrival-triggered eviction (`mercury-wire-format` spec §2.4.1 R13
-        // + §2.10 S6): when a new fragmented bundle's sequence range
-        // overlaps any in-progress reassembly's range — and the two
-        // bundles are distinct (different `first_seq`) — the older one
-        // is treated as abandoned and evicted. Matches the SGW client's
-        // log string at binary address `0x01b18868`: `"Discarding
-        // abandoned stale overlapping fragmented bundle from seq %d to %d"`.
+        // Arrival-triggered eviction. See the module doc's "Reassembly
+        // lifecycle" section for the full contract; the short version:
         //
-        // The same-`first_seq` case (a peer that re-declares conflicting
-        // `total_frags` for a key it's already mid-reassembly on) is a
-        // distinct protocol violation handled below as a hard reject,
-        // not an eviction.
+        // - The incoming bundle is *stale* (drop silently) if its range
+        //   overlaps any in-progress reassembly whose `first_seq` is
+        //   strictly *newer* in 28-bit modular sequence space. This
+        //   catches the "late straggler from an already-evicted older
+        //   bundle" case — without it, the eviction would be symmetric
+        //   and the assembler would oscillate between the two ranges
+        //   every time a delayed fragment arrived.
+        //
+        // - Otherwise, every in-progress reassembly whose range
+        //   overlaps this one *and whose `first_seq` is strictly older*
+        //   is evicted. The new bundle takes over the overlapping
+        //   sequence space.
+        //
+        // The same-`first_seq` case (a peer that re-declares
+        // conflicting `total_frags` for a key it's already mid-
+        // reassembly on) is a distinct protocol violation handled
+        // below as a hard reject, not an eviction.
         let new_begin = first_seq;
         let new_end = first_seq.wrapping_add(total_frags as u32 - 1);
-        let evict_keys: Vec<u32> = self
-            .pending
-            .iter()
-            .filter_map(|(&existing_seq, msg)| {
-                if existing_seq == first_seq {
-                    return None;
-                }
-                let existing_end = existing_seq.wrapping_add(msg.total_fragments as u32 - 1);
-                // Standard overlap test: ranges overlap iff
-                //   max(a_begin, b_begin) <= min(a_end, b_end)
-                let overlap_begin = new_begin.max(existing_seq);
-                let overlap_end = new_end.min(existing_end);
-                if overlap_begin <= overlap_end {
-                    Some(existing_seq)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        for evicted in evict_keys {
-            let msg = self.pending.remove(&evicted).expect("key from iter");
-            let evicted_end = evicted.wrapping_add(msg.total_fragments as u32 - 1);
+
+        // Pre-scan: if any overlapping entry is strictly newer than
+        // the incoming bundle, this fragment is itself stale.
+        let incoming_is_stale = self.pending.iter().any(|(&existing_seq, msg)| {
+            if existing_seq == first_seq {
+                return false;
+            }
+            let existing_end = existing_seq.wrapping_add(msg.total_fragments as u32 - 1);
+            if !ranges_overlap_mod28(new_begin, new_end, existing_seq, existing_end) {
+                return false;
+            }
+            is_strictly_newer_mod28(existing_seq, first_seq)
+        });
+        if incoming_is_stale {
             tracing::debug!(
-                first_seq = evicted,
-                last_seq = evicted_end,
-                received = msg.received_count,
-                total = msg.total_fragments,
-                "Discarding abandoned stale overlapping fragmented bundle from seq {} to {}",
-                evicted,
-                evicted_end,
+                first_seq,
+                last_seq = new_end,
+                "Ignoring stale fragment from older overlapping bundle (newer bundle already in flight)"
             );
+            return Ok(None);
         }
+
+        // Evict every overlapping entry whose `first_seq` is strictly
+        // older than the incoming bundle's. `retain()` is single-pass
+        // and avoids the collect+remove dance that would otherwise
+        // touch each pending entry twice under burst conditions.
+        let evicting_first_seq = first_seq;
+        let evicting_last_seq = new_end;
+        self.pending.retain(|&existing_seq, msg| {
+            if existing_seq == evicting_first_seq {
+                return true;
+            }
+            let existing_end = existing_seq.wrapping_add(msg.total_fragments as u32 - 1);
+            if !ranges_overlap_mod28(new_begin, new_end, existing_seq, existing_end) {
+                return true;
+            }
+            if !is_strictly_newer_mod28(evicting_first_seq, existing_seq) {
+                return true;
+            }
+            // Strictly-older overlapping bundle: evict. The completion
+            // percentage tells operators whether this was a normal
+            // abandonment (low pct) or a suspicious near-complete drop
+            // (high pct → possible sender-side bug / loss-driven restart).
+            let completion_pct = (msg.received_count as u32 * 100) / msg.total_fragments as u32;
+            tracing::debug!(
+                evicted_first_seq = existing_seq,
+                evicted_last_seq = existing_end,
+                evicted_received = msg.received_count,
+                evicted_total = msg.total_fragments,
+                evicted_completion_pct = completion_pct,
+                evicted_by_first_seq = evicting_first_seq,
+                evicted_by_last_seq = evicting_last_seq,
+                "Discarding abandoned stale overlapping fragmented bundle from seq {} to {}",
+                existing_seq,
+                existing_end,
+            );
+            false
+        });
 
         let pending = self
             .pending
@@ -603,6 +697,129 @@ mod tests {
             asm.pending_count(),
             1,
             "orphan partial reassembly must persist until channel teardown"
+        );
+    }
+
+    /// Eviction is asymmetric: a late straggler from an already-evicted
+    /// older bundle must NOT displace the newer bundle that took over.
+    /// Without this guarantee the eviction logic would oscillate every
+    /// time a stale fragment arrived. Pin the asymmetry directly.
+    #[test]
+    fn late_fragment_from_evicted_older_bundle_does_not_displace_newer() {
+        let mut asm = FragmentAssembler::new();
+        // Bundle A `[10..=12]` half-arrives.
+        asm.add_fragment(10, 0, 3, Bytes::from_static(b"abandoned-0"))
+            .unwrap();
+        // Bundle B `[12..=14]` arrives → evicts A.
+        asm.add_fragment(12, 0, 3, Bytes::from_static(b"fresh-0"))
+            .unwrap();
+        assert_eq!(asm.pending_count(), 1);
+
+        // Late straggler from A arrives. A's range `[10..=12]` overlaps
+        // B's range `[12..=14]` at seq 12 — but A is older, so the
+        // straggler is dropped rather than evicting B.
+        let r = asm
+            .add_fragment(10, 1, 3, Bytes::from_static(b"late-straggler"))
+            .unwrap();
+        assert!(
+            r.is_none(),
+            "stale fragment returns Ok(None) and is dropped"
+        );
+        assert_eq!(
+            asm.pending_count(),
+            1,
+            "newer bundle must still be the only pending entry; the stale fragment did NOT re-buffer A"
+        );
+
+        // B completes cleanly using only B's fragments.
+        asm.add_fragment(12, 1, 3, Bytes::from_static(b"fresh-1"))
+            .unwrap();
+        let body = asm
+            .add_fragment(12, 2, 3, Bytes::from_static(b"fresh-2"))
+            .unwrap()
+            .expect("bundle B completes");
+        assert_eq!(body.as_ref(), b"fresh-0fresh-1fresh-2");
+    }
+
+    /// Incoming bundle whose range straddles MULTIPLE existing bundles
+    /// must be dropped as stale if ANY of them is strictly newer than
+    /// the incoming. (Equivalently: the asymmetric eviction rule
+    /// short-circuits on the first newer-existing it finds — the
+    /// incoming never gets a chance to evict the older ones it
+    /// overlaps.)
+    ///
+    /// Multi-bundle eviction in the *opposite* direction (one new
+    /// bundle evicts many older overlapping ones) is excluded by the
+    /// asymmetric rule itself: a new bundle that's strictly newer than
+    /// every existing bundle can only reach backward to overlap any of
+    /// them if its range spans the gap; but spanning multiple existing
+    /// non-overlapping ranges requires the new range's start to be
+    /// older than at least one of them, contradicting the strictly-
+    /// newer premise. So the "evict many in one pass" shape is
+    /// theoretically possible only on the channel-teardown path; the
+    /// arrival path always touches at most a localized cluster.
+    #[test]
+    fn incoming_overlapping_multiple_with_any_newer_existing_drops_stale() {
+        let mut asm = FragmentAssembler::new();
+        // Three older bundles: A=[100..=107], B=[110..=117], C=[120..=127].
+        asm.add_fragment(100, 0, 8, Bytes::from_static(b"a"))
+            .unwrap();
+        asm.add_fragment(110, 0, 8, Bytes::from_static(b"b"))
+            .unwrap();
+        asm.add_fragment(120, 0, 8, Bytes::from_static(b"c"))
+            .unwrap();
+        assert_eq!(asm.pending_count(), 3);
+
+        // Incoming spans `[105..=128]` (24 fragments at first_seq=105):
+        // - Overlaps A at 105..=107
+        // - Overlaps B entirely
+        // - Overlaps C at 120..=127
+        // Incoming.first_seq=105 is newer than A's 100 but OLDER than
+        // both B's 110 and C's 120. The asymmetric rule treats it as
+        // stale (newer overlapping bundles already in flight) and
+        // drops it, leaving A, B, C intact.
+        let r = asm
+            .add_fragment(105, 0, 24, Bytes::from_static(b"d"))
+            .unwrap();
+        assert!(r.is_none(), "stale incoming returns Ok(None)");
+        assert_eq!(
+            asm.pending_count(),
+            3,
+            "all three older bundles must remain; the stale incoming is dropped"
+        );
+    }
+
+    /// Wraparound case for the modular overlap test. With 28-bit
+    /// sequence space and `SEQUENCE_MASK = 0x0FFF_FFFF`, two bundles
+    /// whose ranges straddle the wrap boundary must still detect
+    /// overlap. Earlier naive `max`/`min` overlap would miss these.
+    #[test]
+    fn overlap_detection_handles_28_bit_sequence_wraparound() {
+        let mut asm = FragmentAssembler::new();
+
+        // Bundle that crosses the 28-bit wrap: starts at 0x0FFFFFFE,
+        // 4 fragments → range [0x0FFFFFFE..=0x00000001].
+        let wrap_begin = 0x0FFF_FFFEu32;
+        asm.add_fragment(wrap_begin, 0, 4, Bytes::from_static(b"wrap"))
+            .unwrap();
+        assert_eq!(asm.pending_count(), 1);
+
+        // New bundle at the low end overlaps the wrap-bundle at seq 0.
+        // Naive `max`/`min` overlap would compute
+        // `max(0x00000000, 0x0FFFFFFE) > min(0x00000003, 0x00000001)`
+        // and miss the overlap; modular overlap detects it correctly.
+        let new_begin = 0x0000_0000u32;
+        asm.add_fragment(new_begin, 0, 4, Bytes::from_static(b"new"))
+            .unwrap();
+
+        // The wrap-bundle is older (its `first_seq` is "before" the
+        // new bundle's `first_seq` in modular space: 0x0FFFFFFE is
+        // 3 steps before 0x00000001 across the wrap). So it gets
+        // evicted, leaving only the new bundle.
+        assert_eq!(
+            asm.pending_count(),
+            1,
+            "wrap-crossing overlap must be detected and evict the older bundle"
         );
     }
 }

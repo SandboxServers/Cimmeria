@@ -117,19 +117,26 @@ impl Nub {
     ///      against `MAX_RETRIES`, so a packet hitting the retry budget
     ///      on the previous tick gets a full `ACK_TIMEOUT_MS` window
     ///      before this tick reaps it.
-    ///   2. Stale-fragment sweep on every surviving channel — frees
-    ///      memory pinned by abandoned reassembly state.
-    ///   3. Collect retransmits via `check_timeouts` (which bumps each
+    ///   2. Collect retransmits via `check_timeouts` (which bumps each
     ///      entry's `retransmit_count` + the channel's `last_sent`).
     ///      Channels actively retransmitting won't be flagged for a
-    ///      keepalive in step 4.
-    ///   4. Schedule keepalives for channels whose `last_sent` aged
+    ///      keepalive in step 3.
+    ///   3. Schedule keepalives for channels whose `last_sent` aged
     ///      past `KEEPALIVE_INTERVAL_MS`. Tick does NOT eagerly touch
     ///      the clock here — the caller is responsible for calling
     ///      [`Channel::touch_sent`] after the keepalive actually goes
     ///      on the wire. If the I/O layer drops the action, the next
     ///      tick re-flags the same address rather than silently
     ///      suppressing the keepalive for a full interval.
+    ///
+    /// **Not done:** there is intentionally no fragment-reassembly
+    /// sweep here. Per `mercury-wire-format` spec §2.4.1 R13 + §2.10
+    /// S6, abandoned reassemblies are evicted only when a new
+    /// overlapping bundle arrives (handled inside
+    /// [`FragmentAssembler::add_fragment`]) or when the channel itself
+    /// is torn down. An earlier implementation ran a 30s periodic
+    /// sweep that silently dropped in-progress reassemblies the client
+    /// would have kept; that is gone.
     ///
     /// **Caller contract:** service the actions promptly. Tick won't
     /// double-emit retransmits within the same `ACK_TIMEOUT_MS` window
