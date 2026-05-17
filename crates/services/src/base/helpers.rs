@@ -38,6 +38,22 @@ pub(crate) fn to_hex(data: &[u8]) -> String {
 /// only want shadow-mode observability (ACK consumption + RTO sampling)
 /// without retransmit support — the channel silently skips bytes-empty
 /// entries during the retransmit scan.
+///
+/// **Failure mode — TX window full.** When `Channel::register_sent_packet`
+/// returns `Err` (typically because the 32-slot TX window already holds
+/// the spec-mandated maximum of in-flight reliable packets), the packet
+/// is already on the wire but cannot be tracked here for ACK
+/// processing or retransmit. The reliable-delivery contract is
+/// effectively downgraded to best-effort for this single packet.
+///
+/// The current behavior logs at `warn` and continues — the alternative
+/// (returning `Result` to ~30 callers so they can disconnect or apply
+/// backpressure) is a meaningful API surface change worth its own PR.
+/// In a healthy session this is unreachable: the cap is hit only when
+/// the client has stopped acking for many ticks, in which case the
+/// channel's inactivity / max-retries detection will kill the session
+/// shortly anyway. Watch for repeated TX-window-full warns in
+/// production logs as a precursor to that signal.
 pub(crate) fn shadow_register_reliable_send(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
@@ -57,11 +73,17 @@ pub(crate) fn shadow_register_reliable_send(
         return;
     };
     if let Err(e) = channel.register_sent_packet(pkt, raw_bytes) {
-        tracing::trace!(
+        // TX window full (or invalid seq) — the packet is on the wire
+        // but won't be tracked for ACK / retransmit. Warn so this is
+        // observable in production logs as a precursor to the
+        // channel-dead detection (`is_timed_out` / max-retries).
+        tracing::warn!(
             %addr,
             seq,
             error = %e,
-            "channel.register_sent_packet failed (likely TX window full) — shadow mode tolerates this",
+            "shadow_register_reliable_send: packet sent on wire but NOT tracked \
+             (TX window full or invalid seq); reliable-delivery downgraded to \
+             best-effort for this packet"
         );
     }
 }
