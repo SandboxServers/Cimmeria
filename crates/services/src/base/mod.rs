@@ -181,6 +181,23 @@ pub(crate) struct ConnectedClientState {
     pub channel: Mutex<Channel>,
 }
 
+impl ConnectedClientState {
+    /// Next sequence number for an **unreliable** outbound packet —
+    /// fetch-add on the unreliable counter, masked to the 28-bit Mercury
+    /// sequence space. Use this from any code path that sends a packet
+    /// without `FLAG_RELIABLE`; the reliable path uses `next_seq` directly
+    /// because reliable seqs are also tracked by the per-session Channel's
+    /// TX window. Encapsulated so a future caller can't accidentally drop
+    /// the `SEQUENCE_MASK` clamp and overflow into the 4-bit reserved
+    /// flag space (see issue #292 for the previous instance of that
+    /// class of bug).
+    pub fn next_unreliable_seq(&self) -> u32 {
+        self.next_seq_unreliable
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

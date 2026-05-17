@@ -71,6 +71,19 @@ pub(crate) async fn run_tick_loop(
             break;
         }
 
+        // Register the tickSync in the per-session Channel's TX window so
+        // the retransmit driver below re-sends on RTO expiry. tickSync now
+        // rides on the reliable seq stream (see `build_ongoing_tick_sync`
+        // docs); a tickSync lost on the wire would otherwise leave a
+        // permanent gap that stalls every subsequent reliable packet — the
+        // same shape this whole split-counter design exists to prevent.
+        super::helpers::shadow_register_reliable_send(
+            &connected,
+            addr,
+            seq_id,
+            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        );
+
         // Drive the per-session Channel's retransmit scan. Any reliable
         // packet whose adaptive RTO has elapsed without receiving an ack
         // gets re-sent here, cached encrypted bytes straight to the wire.

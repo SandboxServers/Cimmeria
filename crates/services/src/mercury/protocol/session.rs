@@ -63,18 +63,23 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
 
 /// Build and encrypt a single `BASEMSG_TICK_SYNC` heartbeat packet.
 ///
-/// **Reliable** — tick sync shares the per-channel monotonic seq counter
-/// with every other server-emitted packet. The SGW BigWorld client's
-/// recv-side `UnAckedHandler::queueAckForPacket` (`ghidra://SGW.exe@0x0158cba0`)
-/// advances `inSeqAt` by exactly 1 each time the next-expected reliable seq
-/// arrives, and there is no path that skips `inSeqAt` forward past a
-/// non-reliable slot. Emitting tickSync as unreliable on the shared
-/// counter leaves a permanent gap in the reliable seq stream — the next
-/// reliable packet is "above #inSeqAt" forever, the receiver's reorder
-/// buffer fills, and the connection stalls at character-select (the first
-/// place where reliable→unreliable→reliable interleaving occurs after
-/// `createBasePlayer`). See `spec.protocol.mercury-wire-format` §1.7 +
-/// the disassembly of `queueAckForPacket` for the receiver model.
+/// **Reliable** — tick sync rides the per-session **reliable** seq stream
+/// (the `next_seq` counter on `ConnectedClientState`), which the SGW
+/// BigWorld client's recv-side `UnAckedHandler::queueAckForPacket`
+/// (`ghidra://SGW.exe@0x0158cba0`) treats as a contiguous monotonic
+/// stream — `inSeqAt` advances by exactly 1 each time the next-expected
+/// reliable seq arrives, with no code path that skips forward past a
+/// non-reliable slot. Emitting tickSync as unreliable on this counter
+/// would leave a permanent gap the client cannot fill, stalling every
+/// subsequent reliable packet. (Unreliable senders use the independent
+/// `next_seq_unreliable` counter so they don't consume slots in this
+/// stream — see `ConnectedClientState::next_seq_unreliable` and the
+/// `send_to_witness` helper.) Tick sync emissions are also registered
+/// with the per-session Channel TX window in `run_tick_loop` so that the
+/// adaptive-RTO retransmit driver recovers a lost tick — otherwise a
+/// single dropped tickSync would re-introduce the same stall under
+/// packet loss. See `spec.protocol.mercury-wire-format` §1.7 + the
+/// disassembly of `queueAckForPacket` for the receiver model.
 pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u32]) -> Vec<u8> {
     use cimmeria_mercury::packet::build_outgoing;
 
