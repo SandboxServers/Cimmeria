@@ -16,6 +16,15 @@ pub const NPC_ATTACK_RANGE: f32 = 30.0;
 /// Was incorrectly 597 ("Heal Focus") — a self-heal, not an attack.
 pub const NPC_DEFAULT_ABILITY: i32 = 592;
 
+/// How long after leaving combat the weapon stays drawn before
+/// auto-holstering. Tuned to absorb the gap between killing one mob and
+/// aggroing the next so chaining fights doesn't flicker the model.
+///
+/// Read by [`crate::cell::service::ticks::holster_timer_tick`]; not a
+/// wire-format constraint, just a UX choice. Bump it if players still
+/// see flicker when running between encounters.
+pub const OOC_HOLSTER_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Generate threat on an NPC target from an attacker.
 ///
 /// Transitions the NPC from Idle to Fighting on first hit, accumulates
@@ -83,6 +92,10 @@ pub fn enter_player_combat(
         // Already in the set — no transition.
         return None;
     }
+    // Re-entering combat within the OOC grace window cancels the
+    // pending holster regardless of whether this is the *first* mob.
+    // Stays a no-op when the timer wasn't running.
+    player.combat_exit_at = None;
     if was_empty {
         let old = player.state_field;
         player.state_field |= super::state::BSF_IN_COMBAT;
@@ -128,16 +141,18 @@ pub fn exit_player_combat(
         let old = player.state_field;
         player.state_field &= !super::state::BSF_IN_COMBAT;
         if player.state_field != old {
-            // Holster the weapon: holster follows BSF_InCombat. Inverse
-            // of the enter path — see comment there for the rebroadcast
-            // dispatch convention.
-            let _ = player.sync_holster_to_combat(false);
+            // Don't holster yet — stamp the OOC timer instead. The
+            // `holster_timer_tick` re-holsters + rebroadcasts once
+            // `OOC_HOLSTER_DELAY` elapses; re-aggro before then cancels
+            // (cleared in `enter_player_combat`). BSF_InCombat clears
+            // immediately on the wire so HUD/cursor flips don't lag.
+            player.combat_exit_at = Some(std::time::Instant::now());
             tracing::debug!(
                 player_id,
                 mob_id,
                 new_state = player.state_field,
                 weapon_holstered = player.weapon_holstered,
-                "exit_player_combat: BSF_InCombat cleared (last threatened mob removed); weapon holstered"
+                "exit_player_combat: BSF_InCombat cleared (last threatened mob removed); holster deferred"
             );
             return Some(player.state_field);
         }
@@ -397,13 +412,17 @@ mod tests {
     }
 
     #[test]
-    fn exit_player_combat_holsters_weapon_when_bsf_clears() {
-        // Phase 2 invariant (PR #338) inverse: when BSF_InCombat clears,
-        // `weapon_holstered` goes back to true so the next appearance
-        // rebroadcast filters the weapon visual out of `ComponentList`.
+    fn exit_player_combat_defers_holster_via_combat_exit_at() {
+        // Phase 3 (PR #338): re-holstering is deferred to the OOC
+        // grace tick. `exit_player_combat` stamps `combat_exit_at` and
+        // leaves the weapon drawn — chaining mobs (kill A, aggro B
+        // within the grace window) needs to skip the visible flicker.
+        // The actual re-holster happens in `holster_timer_tick`.
+        //
+        // Bug shape this catches: a refactor that goes back to flipping
+        // `weapon_holstered` here would reintroduce the flicker.
         let mut mgr = make_test_space_mgr_with_npc();
         let _ = enter_player_combat(&mut mgr, 1, 100);
-        // Pre-condition: combat enter just drew the weapon.
         assert!(
             !mgr.get_entity(1).unwrap().weapon_holstered,
             "fixture invariant: entering combat must have drawn the weapon"
@@ -413,8 +432,44 @@ mod tests {
 
         let player = mgr.get_entity(1).unwrap();
         assert!(
-            player.weapon_holstered,
-            "BSF_InCombat clear ⇒ weapon must be re-holstered (holstered=true)",
+            !player.weapon_holstered,
+            "weapon must stay drawn — re-holster is deferred to holster_timer_tick",
+        );
+        assert!(
+            player.combat_exit_at.is_some(),
+            "combat_exit_at must be stamped so the tick scan can pick this player up",
+        );
+    }
+
+    #[test]
+    fn enter_player_combat_cancels_pending_holster() {
+        // Phase 3 (PR #338): re-aggro inside the OOC grace window
+        // must wipe the pending holster, otherwise the tick scan
+        // would still fire and holster a player who's now back in
+        // combat. Bug shape: a refactor moves the
+        // `combat_exit_at = None` line into the `was_empty` branch,
+        // leaving the cancel logic dead for the 2nd-mob case.
+        let mut mgr = make_test_space_mgr_with_npc();
+        add_npc(&mut mgr, 101, 25.0);
+
+        let _ = enter_player_combat(&mut mgr, 1, 100);
+        let _ = exit_player_combat(&mut mgr, 1, 100);
+        assert!(
+            mgr.get_entity(1).unwrap().combat_exit_at.is_some(),
+            "fixture invariant: exit must have stamped the timer"
+        );
+
+        // Re-aggro on a different mob inside the grace window.
+        let _ = enter_player_combat(&mut mgr, 1, 101);
+
+        let player = mgr.get_entity(1).unwrap();
+        assert!(
+            player.combat_exit_at.is_none(),
+            "re-aggro within the grace window must cancel the pending holster",
+        );
+        assert!(
+            !player.weapon_holstered,
+            "and the weapon must still be drawn",
         );
     }
 

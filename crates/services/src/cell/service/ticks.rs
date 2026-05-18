@@ -181,6 +181,68 @@ pub(super) async fn reload_completion_tick(
     }
 }
 
+/// Deferred holster after combat ends.
+///
+/// `exit_player_combat` stamps `combat_exit_at = Some(now)` instead of
+/// flipping `weapon_holstered` immediately so chaining mobs (kill A,
+/// aggro B 50ms later) doesn't visibly flicker the model. This tick
+/// fires the actual holster once
+/// [`crate::cell::combat::OOC_HOLSTER_DELAY`] has elapsed.
+///
+/// Cancellation: `enter_player_combat` clears `combat_exit_at` whenever
+/// it runs (re-aggro inside the grace window). Players the timer wakes
+/// up to find back in combat are skipped — their `combat_exit_at` will
+/// already be cleared.
+///
+/// Cadence: every 100ms AoI tick. The cost is a single `Instant::now()`
+/// plus a filtered pass over `all_player_entity_ids()`; rebroadcasts
+/// only fire on transitioning players, so this is essentially free in
+/// steady state.
+pub(super) async fn holster_timer_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let now = std::time::Instant::now();
+
+    // Snapshot ready entity IDs first — `request_appearance_refresh`
+    // takes `&SpaceManager` and we don't want to hold a `&mut` across
+    // the `.await`.
+    let ready: Vec<u32> = space_mgr
+        .all_player_entity_ids()
+        .into_iter()
+        .filter(|&eid| {
+            space_mgr.get_entity(eid).is_some_and(|e| {
+                e.combat_exit_at.is_some_and(|t| {
+                    now.duration_since(t) >= crate::cell::combat::OOC_HOLSTER_DELAY
+                })
+            })
+        })
+        .collect();
+
+    for entity_id in ready {
+        // Holster + clear the timer. If `set_weapon_holstered` reports
+        // no change (no weapon visual present, or someone else already
+        // toggled), skip the rebroadcast — same idempotency rule as
+        // the explicit holster button.
+        let should_rebroadcast = match space_mgr.get_entity_mut(entity_id) {
+            Some(e) => {
+                e.combat_exit_at = None;
+                e.sync_holster_to_combat(false)
+            }
+            None => false,
+        };
+        if !should_rebroadcast {
+            continue;
+        }
+
+        tracing::debug!(
+            entity_id,
+            "holster_timer_tick: grace window elapsed, holstering + rebroadcasting"
+        );
+        super::super::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
+    }
+}
+
 /// Out-of-combat health and focus regeneration.
 ///
 /// For each connected, alive player whose `threatened_mobs` set is empty,
@@ -415,6 +477,103 @@ pub(super) fn npc_movement_tick(space_mgr: &mut SpaceManager) {
 mod tests {
     use super::*;
     use crate::cell::space_manager::SpaceManager;
+
+    fn make_holster_test_mgr() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        let p = mgr.get_entity_mut(1).unwrap();
+        p.is_player = true;
+        p.player_id = Some(100);
+        p.weapon_visual = Some("BS_Gun.Pistol".into());
+        p.weapon_holstered = false;
+        mgr.connect_entity(1);
+        let _ = mgr.compute_aoi_changes();
+        mgr
+    }
+
+    /// The holster timer is a NO-OP when the grace window hasn't
+    /// elapsed yet — drawing weapons must not flicker holstered just
+    /// because the next tick runs. Pin it with a stamp that's
+    /// effectively "now."
+    #[tokio::test]
+    async fn holster_timer_tick_skips_players_inside_grace_window() {
+        let mut mgr = make_holster_test_mgr();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.combat_exit_at = Some(std::time::Instant::now());
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+        holster_timer_tick(&tx, &mut mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "no RefreshAppearance should fire inside the grace window",
+        );
+        let player = mgr.get_entity(1).unwrap();
+        assert!(
+            !player.weapon_holstered,
+            "weapon must stay drawn until the grace window elapses",
+        );
+        assert!(
+            player.combat_exit_at.is_some(),
+            "timer must remain stamped — only elapsed entries get consumed",
+        );
+    }
+
+    /// Conversely, once the grace window has elapsed the tick fires
+    /// the deferred holster + dispatches `RefreshAppearance`. Stamp a
+    /// timestamp from before `OOC_HOLSTER_DELAY` so the elapsed check
+    /// trips on first call.
+    #[tokio::test]
+    async fn holster_timer_tick_holsters_when_grace_elapsed() {
+        let mut mgr = make_holster_test_mgr();
+        let elapsed = crate::cell::combat::OOC_HOLSTER_DELAY + std::time::Duration::from_millis(1);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.combat_exit_at = std::time::Instant::now().checked_sub(elapsed);
+            assert!(
+                p.combat_exit_at.is_some(),
+                "test invariant: monotonic clock must support sub by OOC_HOLSTER_DELAY+1ms",
+            );
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+        holster_timer_tick(&tx, &mut mgr).await;
+
+        let msg = rx
+            .try_recv()
+            .expect("holster_timer_tick must dispatch RefreshAppearance once grace elapsed");
+        match msg {
+            CellToBaseMsg::RefreshAppearance {
+                entity_id,
+                player_id,
+                holstered,
+            } => {
+                assert_eq!(entity_id, 1);
+                assert_eq!(player_id, 100);
+                assert!(
+                    holstered,
+                    "deferred holster must send holstered=true so the wire filters the weapon",
+                );
+            }
+            other => panic!("expected RefreshAppearance, got {other:?}"),
+        }
+
+        let player = mgr.get_entity(1).unwrap();
+        assert!(
+            player.weapon_holstered,
+            "weapon must flip to holstered after the tick fires",
+        );
+        assert!(
+            player.combat_exit_at.is_none(),
+            "timer must clear so subsequent ticks don't re-fire (idempotency)",
+        );
+    }
 
     #[tokio::test]
     async fn aoi_tick_on_empty_space_manager_produces_no_messages() {

@@ -293,6 +293,19 @@ pub struct CellEntity {
     /// `threatenedMobs` list on `python/cell/SGWPlayer.py:944-965`.
     pub threatened_mobs: HashSet<u32>,
 
+    /// When `Some(t)`, the player left combat at `t` and the deferred
+    /// re-holster scan should fire `sync_holster_to_combat(false)` (and
+    /// trigger a `BeingAppearance` rebroadcast) once
+    /// `Instant::now() - t >= OOC_HOLSTER_DELAY`. Cleared by
+    /// `enter_player_combat` (re-aggro within the grace window cancels
+    /// the pending holster).
+    ///
+    /// Why deferred: chaining mobs (kill A, immediately aggro B 50ms
+    /// later) would otherwise produce a visible weapon-down → weapon-up
+    /// flicker on every gap. The 10-second window is a UX choice, not
+    /// a wire-format constraint — see `cell::combat::threat::OOC_HOLSTER_DELAY`.
+    pub combat_exit_at: Option<std::time::Instant>,
+
     // ── Ammo state ────────────────────────────────────────────────────────────
     //
     // Per-slot ammo lives on `BandolierItem` (`current_ammo`, `cur_ammo_type`)
@@ -474,6 +487,7 @@ impl CellEntity {
             state_field: 0,
             state_flag_counts: HashMap::new(),
             threatened_mobs: HashSet::new(),
+            combat_exit_at: None,
             reload_complete_at: None,
             reload_slot_id: None,
             ai_state: AiState::Idle,

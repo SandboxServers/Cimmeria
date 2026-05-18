@@ -76,11 +76,11 @@ pub(super) async fn apply_death_transition(
                 space_mgr,
             )
             .await;
-            // Re-emit BeingAppearance so the holstered visual lands in
-            // the wire ComponentList — `exit_player_combat` flipped the
-            // entity's `weapon_holstered` to `true` in lockstep with
-            // the BSF_InCombat clear (Phase 2 of PR #338).
-            super::messaging::request_appearance_refresh(player_entity_id, tx, space_mgr).await;
+            // No immediate appearance refresh: `exit_player_combat`
+            // stamped the OOC timer instead of flipping the holster.
+            // The deferred `holster_timer_tick` re-broadcasts
+            // `BeingAppearance` after the grace window so chaining
+            // mobs doesn't flicker the model (Phase 3 of PR #338).
         }
     }
 
