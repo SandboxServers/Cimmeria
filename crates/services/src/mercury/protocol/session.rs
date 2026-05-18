@@ -86,6 +86,16 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
 /// receiver's unreliable dedup window absorbs occasional gaps and the
 /// `gameTime` field self-corrects on the next successful arrival.
 ///
+/// **ACK piggybacking on an unreliable packet is intentional and safe.**
+/// ACKs are idempotent on the receiver (its cumulative-ack bitmap absorbs
+/// duplicates), and if a tickSync carrying ACKs is lost, the next
+/// tickSync 100 ms later carries any still-pending ACKs (they re-queue
+/// on the server until the round-trip clears them). Meanwhile the
+/// retransmit driver keeps re-sending the original reliable packet if
+/// its RTO fires before any ACK arrives, so the un-acked sender doesn't
+/// stall on a lost tickSync. The unreliable channel is fine for ACK
+/// transport precisely because ACKs are self-correcting on both sides.
+///
 /// See `spec.protocol.mercury-wire-format` §1.7 + the disassembly of
 /// `queueAckForPacket` for the receiver model.
 pub fn build_ongoing_tick_sync(key: &[u8; 32], seq_id: u32, tick: u32, acks: &[u32]) -> Vec<u8> {

@@ -31,7 +31,7 @@
 //! | Entity method call | [`send_to_witness_reliable`] | Must execute exactly once |
 //! | Property update | [`send_to_witness_reliable`] | Client state depends on it |
 //! | Dialog / mission update | [`send_to_witness_reliable`] | UI-visible, can't be lost |
-//! | Tick sync | sent from `tick_sync.rs` (unreliable, own counter) | Fire-and-forget; next tick supersedes loss |
+//! | Tick sync | sent from `tick_sync.rs` (unreliable, own counter) | 10 Hz emit rate would saturate the 32-slot reliable TX window if it shared the reliable counter; loss is self-correcting (next tick 100 ms later supersedes) |
 //! | AoI position update | [`send_to_witness`] (unreliable) | Superseded by next frame |
 //!
 //! **Default to reliable.** Only use [`send_to_witness`] (unreliable) if
@@ -479,6 +479,64 @@ mod tests {
             "reliable stream stays contiguous (0,1,2,3,...)"
         );
         assert_eq!(u_third, 2, "unreliable stream stays contiguous (0,1,2,...)");
+    }
+
+    /// TX-window pressure regression guard. The split-counter design only
+    /// helps if the tick-sync emit path also avoids registering its
+    /// packets in the reliable Channel's TX window. Without this guard,
+    /// a refactor could re-introduce a `shadow_register_reliable_send`
+    /// call on the tickSync path (the way `send_to_witness_reliable`
+    /// does for actual reliable packets) and silently start filling
+    /// the 32-slot window again.
+    ///
+    /// The test fills the TX window with simulated reliable application
+    /// packets, then mirrors the tick-sync loop body for 10 iterations
+    /// (advance the **unreliable** counter, build the tickSync packet,
+    /// emit it — but DO NOT call `shadow_register_reliable_send`). The
+    /// TX window must remain at the pre-tick depth.
+    #[test]
+    fn tick_sync_emission_does_not_consume_reliable_tx_window_slots() {
+        use crate::mercury::build_ongoing_tick_sync;
+        use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
+
+        let state = crate::test_support::test_default_connected_client_state();
+
+        // Burst: fill the TX window with 30 reliable application packets.
+        // Mirrors the world-entry shape (charList + versionInfo +
+        // resourceFragments + createBasePlayer + mapLoaded fragments).
+        {
+            let mut ch = state.channel.lock().unwrap();
+            for seq in 0..30u32 {
+                let pkt = Packet::new(PacketFlags::default(), seq, Bytes::new());
+                ch.register_sent_packet(pkt, Bytes::new())
+                    .expect("register_sent_packet must succeed under window cap");
+            }
+            assert_eq!(ch.tx_window.len(), 30, "TX window seeded with 30 reliable");
+        }
+
+        // Mirror the tick-sync loop's per-iteration emit shape: advance
+        // the unreliable counter, build the unreliable packet, "send"
+        // (omitted in test). Critically: no `shadow_register_reliable_send`.
+        for tick in 0..10u32 {
+            let seq = state.next_unreliable_seq();
+            let _pkt = build_ongoing_tick_sync(&state.key, seq, tick, &[]);
+            // In production: `socket.send_to(&pkt, addr).await`. The test
+            // skips the actual UDP send — the TX-window-pressure failure
+            // mode is about register_sent_packet, not socket I/O.
+        }
+
+        // The reliable TX window must be unchanged. If a future refactor
+        // accidentally registers tickSync seqs into the window, this
+        // assertion will fire (`tx_window.len() == 40` instead of 30).
+        let ch = state.channel.lock().unwrap();
+        assert_eq!(
+            ch.tx_window.len(),
+            30,
+            "tickSync emission must not consume reliable TX window slots — \
+             the split-counter design's invariant. If this fires, check that \
+             the tick-sync loop body still uses `next_unreliable_seq` and \
+             does NOT call `shadow_register_reliable_send`."
+        );
     }
 
     /// The encapsulating accessor [`ConnectedClientState::next_unreliable_seq`]

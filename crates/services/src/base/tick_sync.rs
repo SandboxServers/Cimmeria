@@ -17,11 +17,26 @@ use super::ConnectedClientState;
 
 /// Per-connection tick-sync heartbeat task.
 ///
-/// Drives the per-session unreliable stream (tickSync packets) on a 100 ms
-/// cadence and triggers retransmit scans on the reliable stream. Reliable seq
-/// state lives on `ConnectedClientState` and is consumed by other paths
-/// (application packets, retransmit-driver scan via `connected`) — not by
-/// this task directly, which is why no reliable counter is plumbed in here.
+/// Drives two independent concerns from one 100 ms loop:
+///
+/// 1. **Unreliable tickSync emission** — builds a `tickSync` packet on the
+///    per-session unreliable seq counter (`next_seq_unreliable`) and fires
+///    it onto the wire. The counter is the only outgoing seq state this
+///    task touches.
+/// 2. **Reliable retransmit scan** — calls into the per-session [`Channel`]
+///    (reached through `connected`) to drain RTO-expired entries from the
+///    reliable TX window and re-send them. The reliable seq state lives on
+///    `ConnectedClientState::next_seq` and is owned by other paths
+///    (application packets, AoI broadcasts); this task only reads the TX
+///    window through the channel and never advances the reliable counter.
+///
+/// Splitting the two concerns into separate tasks would mean two timers
+/// per session firing on the same cadence — co-locating them on one loop
+/// is the simpler shape. The unreliable counter is plumbed in directly
+/// (parameter); the reliable side comes in through `connected` because the
+/// retransmit driver needs the full channel state, not just the counter.
+///
+/// [`Channel`]: cimmeria_mercury::channel::Channel
 pub(crate) async fn run_tick_loop(
     socket: Arc<UdpSocket>,
     addr: SocketAddr,

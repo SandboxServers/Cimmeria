@@ -483,6 +483,27 @@ When the send-alive timer expires, `UnAckedHandler::sendAckBundle2`[^send-ack-bu
 
 **Retry cap disambiguation.** Two distinct caps govern resends and they must not be conflated. **20 is the lifetime retry cap**: it gates the channel's transition to Disconnected when a single in-flight reliable packet has been resent more than 20 times without acknowledgement (the strict `> 20` check). **5.0 (IEEE 754 float at `ghidra://SGW.exe@0x01e91e00`) is the per-tick work budget**: `UnAckedHandler::checkResendTimers`[^unacked-check-resend-timers] iterates the unacked-packet list and stops processing further entries on the current tick once it has handled more than 5 — `if (_DAT_01e91e00 < (float)local_20)` falls out of the loop with `local_20` counting processed entries. This is throughput throttling, not lifetime gating; a packet that needs a sixth resend simply waits for the next tick. A reimplementation that treats either cap as the other will under-retry or over-retry depending on which conflation it picks. See §2.10 S7 for the gotcha framing.
 
+**Reliability classification — server emit policy.** The 32-bit outstanding-ack bitmap is the per-channel reliable-stream capacity. Every packet a server emit site chooses to send reliably consumes one of those 32 slots until it acks. Two consequences:
+
+1. Any emit shape whose sustained rate would exceed `32 / RTT` packets per second cannot fit in the reliable stream; the bitmap stays full and downstream emits stall. At Lomadia-grade RTT (~150 ms) that ceiling is ~21 packets/sec.
+2. A reliable burst (world-entry, batch broadcasts) must fit within the 32-slot cap end-to-end or the tail of the burst back-pressures itself.
+
+R12 codifies the receiver-side stall path; the emit-side decision is which packet types go reliable in the first place. The canonical classification:
+
+| Packet class | Reliability | Seq counter | TX window | Rationale |
+|---|---|---|---|---|
+| Entity create / destroy | Reliable | reliable | yes | Receiver state depends on contiguous delivery |
+| Entity method call (server → client) | Reliable | reliable | yes | Must execute exactly once; ~90 % of server emits |
+| Entity property update | Reliable | reliable | yes | Receiver state depends on it |
+| Dialog / mission state | Reliable | reliable | yes | UI-visible; loss is observable to the player |
+| World-entry bundle (`mapLoaded`, `createBasePlayer`, `versionInfo`, `resourceFragments`) | Reliable | reliable | yes | One-shot burst; the dominant reliable-stream draw and the cap-engineering case |
+| **`tickSync` heartbeat** | **Unreliable** | **unreliable** | **no** | 10 Hz cadence; sustained reliable use would saturate the 32-slot window. Loss is self-correcting (next tick 100 ms later supersedes). Piggybacks ACKs — the ACK bitmap is idempotent on the receiver so re-sending the same ACK on a later tickSync is harmless |
+| AoI position update (`avatarUpdate`) | Unreliable | unreliable | no | Frame-fresh; next emission supersedes loss. Reliable use would burst-saturate during dense AoI clusters |
+
+The cap is wire-architectural — the 32-bit ACK bitmap cannot be widened without a client-side change, and the client is the immovable side. Any new packet type emitted at >`32 / RTT` rate **must** ride the unreliable counter. Two-counter separation is canon: see the receiver-side `inSeqAt`-vs-unreliable-dedup split below.
+
+[Cimmeria server-side note: the reliable counter is `ConnectedClientState::next_seq`; the unreliable counter is `next_seq_unreliable`. The two counters start at the same value (0) — they do not share state on the receiver (`inSeqAt` at `+0x50` tracks reliable; the unreliable dedup structure at `+0x128` is independent), so a reliable seq 0 and an unreliable seq 0 do not collide. Mixing the two — emitting unreliable packets on the reliable counter — leaves permanent gaps in the reliable stream that stall every subsequent reliable emit (the failure mode that produced the bitmap-stall log spam during 2026-05 deploys).]
+
 ### 1.8 Message dispatch
 
 ![Message dispatch routing — msg_id ranges to system / cell-direct / cell-extended / base-direct / base-extended / reply](figures/mercury-15-message-dispatch-routing.svg)

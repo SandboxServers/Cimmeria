@@ -107,6 +107,83 @@ fn build_map_loaded_produces_multiple_packets() {
     }
 }
 
+/// Mercury's 32-bit per-session ACK bitmap limits the reliable TX window
+/// to 32 in-flight packets. The world-entry burst is the densest
+/// reliable emission the server does — `build_map_loaded` alone returns
+/// multiple fragments, and the surrounding flow adds more (charList,
+/// versionInfo, resourceFragments, createBasePlayer). If the burst ever
+/// exceeds 32 packets the receiver back-pressures and tickSync ACKs
+/// stall until the window drains.
+///
+/// This guard pins `build_map_loaded` itself — by far the dominant
+/// fragment source in the burst — at well under the 32-packet ceiling.
+/// Adding new entity-method records to the bundle is fine; pushing the
+/// fragment count above the ceiling is a wire-format regression that
+/// would re-introduce the bug the split-counter design was meant to
+/// fix from the other side (this one tightens the reliable side; the
+/// tickSync split tightens the unreliable side).
+#[test]
+fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
+    use cimmeria_mercury::consts::TX_WINDOW_SIZE;
+
+    // Worst-case mapLoaded: a level-20 player with all archetype slots
+    // populated, a non-trivial component list, a full ability tree, and
+    // every stargate already discovered. If a fresh-character fixture
+    // fits, a more decorated one must too, but explicitly biasing toward
+    // worst-case makes the guard meaningful.
+    let data = PlayerLoadData {
+        player_id: 1,
+        level: 20,
+        player_name: "FragmentStressTester".into(),
+        extra_name: "Twenty-Char-Extra-Nm".into(),
+        alignment: 2,
+        archetype: 2,
+        gender: 1,
+        bodyset: "BS_HumanMale.BS_HumanMale".into(),
+        components: vec![
+            "BS_HumanMale.Head".into(),
+            "BS_HumanMale.Torso".into(),
+            "BS_HumanMale.Arms".into(),
+            "BS_HumanMale.Legs".into(),
+            "BS_HumanMale.Boots".into(),
+        ],
+        exp: 999_999,
+        naquadah: 99_999,
+        known_stargates: (1..=64).collect(),
+        abilities: (1..=64).collect(),
+        training_points: 40,
+        applied_science_points: 20,
+        blueprint_ids: vec![],
+        first_login: 0,
+        access_level: 0,
+        skin_color_id: 0,
+        ability_tree: archetype_ability_tree(2),
+        items: vec![],
+        active_bandolier_slot: 0,
+        bandolier_items: vec![],
+    };
+    let entry = WorldEntryInfo {
+        player_entity_id: 100,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
+        world_stargates: vec![],
+    };
+
+    let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
+    assert_eq!(seqs as usize, packets.len(), "seq count must match fragment count");
+    assert!(
+        packets.len() < TX_WINDOW_SIZE,
+        "mapLoaded emitted {} fragments — exceeds the 32-slot reliable TX \
+         window cap. Adding a new entity-method record bumped the bundle past \
+         the wire-format ceiling; either split the new record off into a \
+         separate phase or shrink an existing one.",
+        packets.len()
+    );
+}
+
 #[test]
 fn build_map_loaded_each_packet_decrypts_within_limit() {
     let data = PlayerLoadData {
