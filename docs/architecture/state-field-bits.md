@@ -56,5 +56,6 @@ mcp__ghidra__decompile_function 0x00ec0840      // CompositedAppearanceProxy::Ap
 
 - Source-of-truth for what each flag does: `crates/services/src/cell/combat/state.rs`.
 - Holster mechanism (visible state on `CellEntity::weapon_holstered`): see the docstring on that field in `crates/entity/src/cell_entity/mod.rs`.
-- Wire format details: `docs/drafts/spec/mercury-wire-format.md` (the `BeingAppearance` `ComponentList` shape is canon for both holster and equip).
+- Bible — Mercury wire format ([`docs/drafts/spec/mercury-wire-format.md`](../drafts/spec/mercury-wire-format.md)): packet framing, encryption, sequencing — the layer that carries `onStateFieldUpdate`.
+- Bible — Entity property sync ([`docs/drafts/spec/entity-property-sync.md`](../drafts/spec/entity-property-sync.md)): `BeingAppearance.ComponentList` is replicated through this layer; this doc is what defines the `holster = omit weapon entry` contract on the wire.
 - Issue history: #249 (visible "weapon never holsters"), #333 (cleanup, the issue that produced this doc).

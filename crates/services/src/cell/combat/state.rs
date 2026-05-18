@@ -51,10 +51,11 @@ mod tests {
 
     /// Stand-in test flag used to exercise the generic ref-counted helpers
     /// against a flag that's neither `BSF_DEAD` nor `BSF_MOVEMENT_LOCK`.
-    /// Bit 12 is unused on the wire (the client only dispatches on bits
-    /// 0-7), and these tests don't care about wire semantics — they're
-    /// pinning the counter map's bounded-growth invariants.
-    const TEST_FLAG: u32 = 1 << 12;
+    /// Bit 12 sits in the wire-dead range (bits 8-31; client only
+    /// dispatches on bits 0-7 per `docs/architecture/state-field-bits.md`),
+    /// so these tests pin the counter map's bounded-growth invariants
+    /// without affecting any client-visible behavior.
+    const BSF_TEST_UNUSED_BIT_12: u32 = 1 << 12;
 
     #[test]
     fn dead_state_via_entity_helpers() {
@@ -123,7 +124,7 @@ mod tests {
         for _ in 0..100 {
             e.unset_state_flag(BSF_DEAD);
             e.unset_state_flag(BSF_MOVEMENT_LOCK);
-            e.unset_state_flag(TEST_FLAG);
+            e.unset_state_flag(BSF_TEST_UNUSED_BIT_12);
         }
         assert!(
             e.state_flag_counts.is_empty(),
@@ -166,9 +167,9 @@ mod tests {
         // counter. Clearing one must not affect the other.
         let mut e = entity();
         e.set_state_flag(BSF_DEAD);
-        e.set_state_flag(TEST_FLAG);
+        e.set_state_flag(BSF_TEST_UNUSED_BIT_12);
         e.unset_state_flag(BSF_DEAD);
         assert!(!e.has_state_flag(BSF_DEAD));
-        assert!(e.has_state_flag(TEST_FLAG));
+        assert!(e.has_state_flag(BSF_TEST_UNUSED_BIT_12));
     }
 }

@@ -111,17 +111,18 @@ impl PlayerLoadData {
     /// so a fire/reload/draw toggle is reflected on the wire.
     ///
     /// Returns `components` unchanged when not holstered, or `components`
-    /// with `weapon_visual` filtered out when holstered.
+    /// with `weapon_visual` filtered out when holstered. Implementation
+    /// shared with [`cimmeria_entity::cell_entity::CellEntity::appearance_components`]
+    /// via the [`cimmeria_entity::cell_entity::filter_holstered_weapon`]
+    /// free function — see its docstring for the invariant and the
+    /// `debug_assert!`/`warn` semantics around drift between
+    /// `weapon_visual` and `components`.
     pub fn appearance_components(&self, holstered: bool) -> Vec<String> {
-        match (&self.weapon_visual, holstered) {
-            (Some(weapon), true) => self
-                .components
-                .iter()
-                .filter(|c| c.as_str() != weapon.as_str())
-                .cloned()
-                .collect(),
-            _ => self.components.clone(),
-        }
+        cimmeria_entity::cell_entity::filter_holstered_weapon(
+            &self.components,
+            self.weapon_visual.as_deref(),
+            holstered,
+        )
     }
 }
 
@@ -190,5 +191,28 @@ mod player_load_data_tests {
         let data = make(vec!["torso", "head"], None);
         assert_eq!(data.appearance_components(true), data.components);
         assert_eq!(data.appearance_components(false), data.components);
+    }
+
+    /// Pin the documented invariant: `weapon_visual = Some(v)` implies
+    /// `v ∈ components`. This is the contract the holster filter relies
+    /// on; any DB loader / appearance assembler that produces a
+    /// `PlayerLoadData` must satisfy it. The test is a regression guard
+    /// for the `make` fixture itself — if a future refactor changes
+    /// how `make` builds the struct (e.g., a loader bug that strips the
+    /// weapon visual from `components` while leaving `weapon_visual`
+    /// set), the assertion fails fast.
+    #[test]
+    fn weapon_visual_is_always_present_in_components_when_set() {
+        let data = make(vec!["torso", "pistol", "head"], Some("pistol"));
+        let weapon = data
+            .weapon_visual
+            .as_ref()
+            .expect("test fixture must set weapon_visual");
+        assert!(
+            data.components.iter().any(|c| c == weapon),
+            "invariant violated: weapon_visual {:?} not present in components {:?}",
+            weapon,
+            data.components,
+        );
     }
 }

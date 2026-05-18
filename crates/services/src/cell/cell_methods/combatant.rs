@@ -80,9 +80,10 @@ pub async fn dispatch(
             // list. See `CellEntity::set_weapon_holstered` and
             // `docs/architecture/state-field-bits.md`.
             //
-            // The `BeingAppearance` rebroadcast that makes this visible
-            // to AoI witnesses is not implemented here yet; the `tx`
-            // sender is unused until that path is wired up.
+            // TODO(#339): emit a `BeingAppearance` rebroadcast to the
+            // owner + AoI witnesses here so the holster toggle becomes
+            // visible. The `tx` sender is plumbed through ready for
+            // that path.
             let _ = tx;
             if let Some(e) = space_mgr.get_entity_mut(entity_id) {
                 e.set_weapon_holstered(holstered);
@@ -90,5 +91,100 @@ pub async fn dispatch(
             true
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One-player Castle space — small enough fixture for cell-method
+    /// dispatch tests that only need a single entity to mutate.
+    fn make_mgr_with_player() -> SpaceManager {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+        }
+        mgr.connect_entity(1);
+        let _ = mgr.compute_aoi_changes();
+        mgr
+    }
+
+    /// `requestHolsterWeapon(1)` flips the entity's `weapon_holstered`
+    /// from the spawn-default `true` (already holstered) by first
+    /// drawing the weapon, then re-holstering. Pins that the cell
+    /// method actually reaches `set_weapon_holstered` — without this,
+    /// a future refactor could replace the dispatch body with a stub
+    /// and the test suite wouldn't notice.
+    #[tokio::test]
+    async fn request_holster_weapon_toggles_entity_state() {
+        let mut mgr = make_mgr_with_player();
+        // Give the entity a weapon visual so the holster filter actually
+        // has something to toggle (set_weapon_holstered's "signal a
+        // rebroadcast" path requires weapon_visual.is_some()).
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.weapon_visual = Some("BS_Gun.Pistol".into());
+            e.weapon_holstered = true;
+        }
+
+        let (tx, _rx) = mpsc::channel(8);
+
+        // Draw the weapon: args[0] = 0 (not holstered).
+        let handled = dispatch(1, REQUEST_HOLSTER_WEAPON, &[0u8], &tx, &mut mgr).await;
+        assert!(handled, "dispatch must recognise REQUEST_HOLSTER_WEAPON");
+        assert!(
+            !mgr.get_entity(1).unwrap().weapon_holstered,
+            "args[0] = 0 must clear weapon_holstered",
+        );
+
+        // Holster the weapon: args[0] = 1.
+        let handled = dispatch(1, REQUEST_HOLSTER_WEAPON, &[1u8], &tx, &mut mgr).await;
+        assert!(handled);
+        assert!(
+            mgr.get_entity(1).unwrap().weapon_holstered,
+            "args[0] = 1 must set weapon_holstered",
+        );
+    }
+
+    /// Empty payload is a benign no-op: the handler returns `true`
+    /// (it recognised the method) but doesn't touch entity state.
+    /// The previous in-combat client sometimes emitted these as part
+    /// of state-sync; we don't crash on them.
+    #[tokio::test]
+    async fn request_holster_weapon_with_empty_args_is_noop() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.weapon_visual = Some("BS_Gun.Pistol".into());
+            e.weapon_holstered = true;
+        }
+
+        let (tx, _rx) = mpsc::channel(8);
+        let handled = dispatch(1, REQUEST_HOLSTER_WEAPON, &[], &tx, &mut mgr).await;
+        assert!(handled);
+        assert!(
+            mgr.get_entity(1).unwrap().weapon_holstered,
+            "empty args must NOT touch weapon_holstered",
+        );
+    }
+
+    /// Unknown method indices fall through — the dispatch returns
+    /// `false` so the outer router can try the next handler.
+    #[tokio::test]
+    async fn dispatch_returns_false_for_unhandled_method() {
+        let mut mgr = make_mgr_with_player();
+        let (tx, _rx) = mpsc::channel(8);
+        let handled = dispatch(1, 999, &[0u8], &tx, &mut mgr).await;
+        assert!(
+            !handled,
+            "unknown method indices must return false so the router can chain",
+        );
     }
 }

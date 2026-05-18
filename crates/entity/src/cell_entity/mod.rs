@@ -23,6 +23,57 @@ use crate::stats::StatList;
 #[cfg(test)]
 mod tests;
 
+/// Filter the active bandolier weapon visual out of a component list
+/// when the player is holstered. Returns `components.to_vec()` unchanged
+/// when `holstered = false` or when no weapon visual is set.
+///
+/// **Invariant:** when `weapon_visual` is `Some(v)`, `v` should also
+/// appear in `components`. The two are populated by the same DB loader
+/// to stay in sync — divergence indicates a data bug upstream (case
+/// drift, whitespace, a stale row). We can't fix the upstream data
+/// from here, but the filter surfaces the violation: when the
+/// post-filter length equals the input length even though we asked
+/// for a filter, a `warn`-level log fires so the operator knows the
+/// holster filter did not take effect, and a `debug_assert!` panics
+/// in debug builds so test runs catch it loudly. Production builds
+/// degrade gracefully: the wire `ComponentList` carries the weapon
+/// entry through, the client renders armed-pose instead of holstered,
+/// and the visual is wrong but nothing crashes.
+///
+/// Used by both [`CellEntity::appearance_components`] and (via the
+/// `cimmeria_services` crate) `PlayerLoadData::appearance_components`
+/// so the wire-format holster filter has one implementation, not two.
+pub fn filter_holstered_weapon(
+    components: &[String],
+    weapon_visual: Option<&str>,
+    holstered: bool,
+) -> Vec<String> {
+    let Some(weapon) = weapon_visual.filter(|_| holstered) else {
+        return components.to_vec();
+    };
+    let filtered: Vec<String> = components
+        .iter()
+        .filter(|c| c.as_str() != weapon)
+        .cloned()
+        .collect();
+    if filtered.len() == components.len() {
+        tracing::warn!(
+            weapon = %weapon,
+            ?components,
+            "filter_holstered_weapon: weapon_visual not found in components \
+             — invariant violated, holster filter is a no-op for this emit \
+             (check DB-side string normalization between weapon_visual and \
+             the components query)",
+        );
+        debug_assert!(
+            false,
+            "weapon_visual {weapon:?} not found in components {components:?} \
+             — invariant violated"
+        );
+    }
+    filtered
+}
+
 /// Types of NPC interaction available when a player clicks on this entity.
 ///
 /// Maps to the static interaction set IDs from `python/common/Constants.py`.
@@ -598,15 +649,11 @@ impl CellEntity {
     /// for non-wire purposes (debug logs, AoI propagation copies, NPC
     /// templates that don't have a holster concept).
     pub fn appearance_components(&self) -> Vec<String> {
-        match (&self.weapon_visual, self.weapon_holstered) {
-            (Some(weapon), true) => self
-                .components
-                .iter()
-                .filter(|c| c.as_str() != weapon.as_str())
-                .cloned()
-                .collect(),
-            _ => self.components.clone(),
-        }
+        filter_holstered_weapon(
+            &self.components,
+            self.weapon_visual.as_deref(),
+            self.weapon_holstered,
+        )
     }
 
     /// Toggle the holster state. Returns `true` if the state actually

@@ -367,6 +367,72 @@ fn set_weapon_holstered_without_weapon_does_not_signal_rebroadcast() {
 }
 
 #[test]
+fn appearance_components_filters_all_duplicate_weapon_entries() {
+    // Defensive: if `components` somehow contains the weapon visual
+    // multiple times (a stale row, a content-author mistake, an
+    // appearance-merge bug), the holster filter must remove every
+    // occurrence — leaving even one would leak the weapon visual to
+    // the client and re-arm the pose. The filter is `iter().filter()`,
+    // which is total over the input, so this is pinning behavior the
+    // current implementation already has.
+    let mut entity = make_entity();
+    entity.components = vec![
+        "torso".into(),
+        "pistol".into(),
+        "pistol".into(), // duplicate
+        "head".into(),
+        "pistol".into(), // another duplicate, out of order
+    ];
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = true;
+
+    let wire = entity.appearance_components();
+    assert!(
+        !wire.iter().any(|c| c == "pistol"),
+        "every occurrence of the weapon visual must be filtered out — \
+         leaving any would re-arm the pose on the client"
+    );
+    assert_eq!(wire, vec!["torso".to_string(), "head".to_string()]);
+}
+
+#[test]
+fn appearance_components_follows_weapon_swap_while_holstered() {
+    // Swap the active bandolier slot while holstered: the new weapon
+    // visual must also be filtered, and the old one must NOT be
+    // (it's no longer the active weapon — if it ever ends up in
+    // `components` it should ride to the wire as a normal entry).
+    let mut entity = make_entity();
+    entity.components = vec![
+        "torso".into(),
+        "pistol".into(),
+        "rifle".into(), // a second weapon-shaped entry
+        "head".into(),
+    ];
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = true;
+
+    let pre_swap = entity.appearance_components();
+    assert!(!pre_swap.contains(&"pistol".to_string()));
+    assert!(pre_swap.contains(&"rifle".to_string()));
+
+    // Simulate a bandolier-slot swap: a different weapon is active now.
+    entity.weapon_visual = Some("rifle".into());
+
+    let post_swap = entity.appearance_components();
+    assert!(
+        !post_swap.contains(&"rifle".to_string()),
+        "after swap, the new active weapon must be filtered — \
+         the holster filter follows weapon_visual, not the first \
+         weapon-shaped entry in the list"
+    );
+    assert!(
+        post_swap.contains(&"pistol".to_string()),
+        "the previously-active weapon is no longer the active weapon, \
+         so it must NOT be filtered — it rides the wire like any other component"
+    );
+}
+
+#[test]
 fn new_entity_defaults_to_holstered_with_no_weapon() {
     // Spawn invariant: a fresh entity has no weapon and is "holstered"
     // by default. When a player loads in with a populated active
