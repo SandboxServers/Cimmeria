@@ -8,7 +8,9 @@ use tokio::sync::mpsc;
 
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 use super::super::super::super::ConnectedClientState;
+use super::super::player_load::core::EQUIPMENT_CONTAINERS;
 use super::super::vendor::helpers::sync_bandolier_after_inventory_change;
+use super::appearance::refresh_player_appearance;
 use super::core::send_full_inventory_update;
 use super::grant::item_allows_container;
 use crate::cell::messages::BaseToCellMsg;
@@ -544,6 +546,29 @@ pub async fn handle_move_inventory_item(
             player_id,
             db_pool,
             cell_tx,
+            socket,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+    }
+
+    // Equipment containers (4..=14) — armor and other slotted visuals.
+    // The grant path already refreshes appearance on equipment grants;
+    // the bandolier branch above handles weapons. Without this, manually
+    // dragging armor into (or out of) a slot persists to DB but the
+    // player-visible model on every client keeps the pre-move components.
+    // `item_allows_container` already rejects moves into a slot the item
+    // can't occupy, so a non-visual item can't sneak into an equipment
+    // container by this path; refresh is idempotent on the wire even
+    // when the visual set hasn't actually changed.
+    if EQUIPMENT_CONTAINERS.contains(&source.container_id)
+        || EQUIPMENT_CONTAINERS.contains(&target_container_id)
+    {
+        refresh_player_appearance(
+            entity_id,
+            player_id,
+            db_pool,
             socket,
             connected,
             entity_to_addr,
