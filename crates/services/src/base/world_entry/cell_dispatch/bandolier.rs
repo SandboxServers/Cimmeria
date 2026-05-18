@@ -72,6 +72,92 @@ pub(super) async fn active_slot_update(
     }
 }
 
+/// `CellToBaseMsg::RefreshAppearance` — update the cached holster state
+/// on the connected client and rebroadcast `BeingAppearance` to AoI.
+///
+/// Used by the combat enter/exit path (Phase 2 of the holster work,
+/// PR #338) to draw or holster the weapon without an inventory change.
+/// The cached `weapon_holstered` flag is what every appearance-emit
+/// site (here, the equipment-move path, world entry, post-cinematic
+/// resend) reads to filter `weapon_visual` out of `ComponentList`.
+pub(super) async fn refresh_appearance(
+    entity_id: u32,
+    player_id: i32,
+    holstered: bool,
+    db_pool: &Option<Arc<PgPool>>,
+    socket: &Arc<UdpSocket>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    // Update the cached flag first so the rebroadcast below — and any
+    // future refresh fired by an unrelated path — picks up the new
+    // state. Without this, refresh_player_appearance would re-emit
+    // with the stale cached flag.
+    let updated = {
+        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+            Some(a) => a,
+            None => {
+                tracing::debug!(
+                    entity_id,
+                    player_id,
+                    holstered,
+                    "RefreshAppearance: entity has no socket addr (disconnected?), skipping"
+                );
+                return;
+            }
+        };
+        let mut clients = connected.lock().unwrap();
+        match clients.get_mut(&addr) {
+            Some(c) => {
+                let changed = c.weapon_holstered != holstered;
+                c.weapon_holstered = holstered;
+                changed
+            }
+            None => {
+                tracing::debug!(
+                    entity_id,
+                    player_id,
+                    holstered,
+                    "RefreshAppearance: client state missing for addr, skipping"
+                );
+                return;
+            }
+        }
+    };
+
+    // Skip the rebroadcast if the flag didn't change — same-state-as-cached
+    // is a no-op, and a no-op refresh would just spam witnesses with a
+    // packet they already have. (Cell-side calls are guarded by
+    // `set_weapon_holstered`'s change-detection so this is mostly a
+    // defensive idempotency check.)
+    if !updated {
+        tracing::trace!(
+            entity_id,
+            player_id,
+            holstered,
+            "RefreshAppearance: holster state unchanged, no rebroadcast needed"
+        );
+        return;
+    }
+
+    tracing::debug!(
+        entity_id,
+        player_id,
+        holstered,
+        "RefreshAppearance: cached holster flag updated; broadcasting BeingAppearance"
+    );
+
+    super::super::methods::inventory::refresh_player_appearance(
+        entity_id,
+        player_id,
+        db_pool,
+        socket,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+}
+
 /// `CellToBaseMsg::BandolierAmmoUpdate` — persist a per-shot ammo writeback
 /// from the cell. Validates bounds (slot in 0..5, ammo / type non-negative,
 /// expected_item_id positive) at the service boundary so out-of-range

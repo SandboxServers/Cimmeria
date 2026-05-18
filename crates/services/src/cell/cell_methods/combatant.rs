@@ -79,14 +79,16 @@ pub async fn dispatch(
             // vs. holstered-pose animation key from the resulting
             // list. See `CellEntity::set_weapon_holstered` and
             // `docs/architecture/state-field-bits.md`.
-            //
-            // TODO(#339): emit a `BeingAppearance` rebroadcast to the
-            // owner + AoI witnesses here so the holster toggle becomes
-            // visible. The `tx` sender is plumbed through ready for
-            // that path.
-            let _ = tx;
-            if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-                e.set_weapon_holstered(holstered);
+            let should_rebroadcast = space_mgr
+                .get_entity_mut(entity_id)
+                .map(|e| e.set_weapon_holstered(holstered))
+                .unwrap_or(false);
+            if should_rebroadcast {
+                // Phase 2 of the holster work (PR #338): re-emit
+                // `BeingAppearance` to the owner + AoI witnesses with
+                // the freshly-toggled `ComponentList` so the holster
+                // toggle becomes visible.
+                crate::cell::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
             }
             true
         }
@@ -151,6 +153,71 @@ mod tests {
         assert!(
             mgr.get_entity(1).unwrap().weapon_holstered,
             "args[0] = 1 must set weapon_holstered",
+        );
+    }
+
+    /// Phase 2 (PR #338): a real holster toggle (state actually changed,
+    /// weapon visual present) must dispatch a `RefreshAppearance` so the
+    /// AoI rebroadcast lands. The bug shape this catches: someone keeps
+    /// the `set_weapon_holstered` call but drops the rebroadcast — the
+    /// server state is correct but no wire packet ever ships, and the
+    /// client keeps rendering the prior pose forever (the exact symptom
+    /// that drove Phase 2).
+    #[tokio::test]
+    async fn request_holster_weapon_dispatches_refresh_appearance() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.weapon_visual = Some("BS_Gun.Pistol".into());
+            e.weapon_holstered = true;
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+
+        // Draw the weapon — this is the state-change branch.
+        let _ = dispatch(1, REQUEST_HOLSTER_WEAPON, &[0u8], &tx, &mut mgr).await;
+
+        let msg = rx
+            .try_recv()
+            .expect("dispatch must send a RefreshAppearance on state change");
+        match msg {
+            CellToBaseMsg::RefreshAppearance {
+                entity_id,
+                player_id,
+                holstered,
+            } => {
+                assert_eq!(entity_id, 1);
+                assert_eq!(
+                    player_id, 100,
+                    "must carry the DB player_id from the entity"
+                );
+                assert!(
+                    !holstered,
+                    "drawing the weapon must send holstered=false on the wire",
+                );
+            }
+            other => panic!("expected RefreshAppearance, got {other:?}"),
+        }
+    }
+
+    /// Inverse: a no-op call (already in requested state) must NOT
+    /// dispatch a refresh — that would waste bandwidth and risk
+    /// flickering the model on receipt. The `set_weapon_holstered`
+    /// helper's change-detection is what gates the dispatch.
+    #[tokio::test]
+    async fn request_holster_weapon_no_op_skips_refresh_appearance() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.weapon_visual = Some("BS_Gun.Pistol".into());
+            e.weapon_holstered = true;
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+
+        // Request holster=true when already holstered — same state, no change.
+        let _ = dispatch(1, REQUEST_HOLSTER_WEAPON, &[1u8], &tx, &mut mgr).await;
+        assert!(
+            rx.try_recv().is_err(),
+            "no-op holster toggle must NOT dispatch RefreshAppearance",
         );
     }
 

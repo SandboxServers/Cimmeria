@@ -87,11 +87,17 @@ pub fn enter_player_combat(
         let old = player.state_field;
         player.state_field |= super::state::BSF_IN_COMBAT;
         if player.state_field != old {
+            // Draw the weapon: holster follows BSF_InCombat. The bool
+            // return is observable to the caller via the entity itself
+            // (the rebroadcast decision lives at the cell→base message
+            // dispatch site, which already has `space_mgr` in hand).
+            let _ = player.sync_holster_to_combat(true);
             tracing::debug!(
                 player_id,
                 mob_id,
                 new_state = player.state_field,
-                "enter_player_combat: BSF_InCombat set (first threatened mob)"
+                weapon_holstered = player.weapon_holstered,
+                "enter_player_combat: BSF_InCombat set (first threatened mob); weapon drawn"
             );
             return Some(player.state_field);
         }
@@ -122,11 +128,16 @@ pub fn exit_player_combat(
         let old = player.state_field;
         player.state_field &= !super::state::BSF_IN_COMBAT;
         if player.state_field != old {
+            // Holster the weapon: holster follows BSF_InCombat. Inverse
+            // of the enter path — see comment there for the rebroadcast
+            // dispatch convention.
+            let _ = player.sync_holster_to_combat(false);
             tracing::debug!(
                 player_id,
                 mob_id,
                 new_state = player.state_field,
-                "exit_player_combat: BSF_InCombat cleared (last threatened mob removed)"
+                weapon_holstered = player.weapon_holstered,
+                "exit_player_combat: BSF_InCombat cleared (last threatened mob removed); weapon holstered"
             );
             return Some(player.state_field);
         }
@@ -305,6 +316,32 @@ mod tests {
     }
 
     #[test]
+    fn enter_player_combat_draws_weapon_when_bsf_flips() {
+        // Phase 2 invariant (PR #338): when BSF_InCombat goes off → on,
+        // `weapon_holstered` flips true → false in the same call so the
+        // dispatch site can request a `BeingAppearance` rebroadcast
+        // immediately after the `onStateFieldUpdate`. The bug shape this
+        // catches: someone refactors `enter_player_combat` to no longer
+        // touch `weapon_holstered`, players spawn-holstered forever, no
+        // weapon visible in combat (matches the symptom that drove
+        // Phase 2 in the first place).
+        let mut mgr = make_test_space_mgr_with_npc();
+        // Pre-condition: spawn-holstered default.
+        assert!(
+            mgr.get_entity(1).unwrap().weapon_holstered,
+            "fixture invariant: players start weapon-holstered"
+        );
+
+        let _ = enter_player_combat(&mut mgr, 1, 100);
+
+        let player = mgr.get_entity(1).unwrap();
+        assert!(
+            !player.weapon_holstered,
+            "BSF_InCombat set ⇒ weapon must be drawn (holstered=false)",
+        );
+    }
+
+    #[test]
     fn enter_player_combat_subsequent_mob_no_broadcast() {
         let mut mgr = make_test_space_mgr_with_npc();
         add_npc(&mut mgr, 101, 25.0);
@@ -357,6 +394,28 @@ mod tests {
             "BSF_InCombat must be cleared"
         );
         assert_eq!(result, Some(player.state_field));
+    }
+
+    #[test]
+    fn exit_player_combat_holsters_weapon_when_bsf_clears() {
+        // Phase 2 invariant (PR #338) inverse: when BSF_InCombat clears,
+        // `weapon_holstered` goes back to true so the next appearance
+        // rebroadcast filters the weapon visual out of `ComponentList`.
+        let mut mgr = make_test_space_mgr_with_npc();
+        let _ = enter_player_combat(&mut mgr, 1, 100);
+        // Pre-condition: combat enter just drew the weapon.
+        assert!(
+            !mgr.get_entity(1).unwrap().weapon_holstered,
+            "fixture invariant: entering combat must have drawn the weapon"
+        );
+
+        let _ = exit_player_combat(&mut mgr, 1, 100);
+
+        let player = mgr.get_entity(1).unwrap();
+        assert!(
+            player.weapon_holstered,
+            "BSF_InCombat clear ⇒ weapon must be re-holstered (holstered=true)",
+        );
     }
 
     #[test]

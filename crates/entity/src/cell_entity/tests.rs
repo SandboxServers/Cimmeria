@@ -350,6 +350,37 @@ fn set_weapon_holstered_signals_rebroadcast_only_when_relevant() {
 }
 
 #[test]
+fn sync_holster_to_combat_inverts_combat_flag() {
+    // The whole point of Phase 2 (PR #338): the entity's `weapon_holstered`
+    // is the inverse of "in combat." Pin it so a future change to the
+    // policy is a visible test-level edit, not a silent regression
+    // (`enter_player_combat` and `exit_player_combat` both rely on this).
+    let mut entity = make_entity();
+    entity.weapon_visual = Some("pistol".into());
+    entity.weapon_holstered = true;
+
+    // Entering combat draws the weapon.
+    assert!(
+        entity.sync_holster_to_combat(true),
+        "in_combat=true must transition holster=false and signal rebroadcast"
+    );
+    assert!(!entity.weapon_holstered, "in combat ⇒ weapon drawn");
+
+    // Leaving combat holsters the weapon.
+    assert!(
+        entity.sync_holster_to_combat(false),
+        "in_combat=false must transition holster=true and signal rebroadcast"
+    );
+    assert!(entity.weapon_holstered, "out of combat ⇒ weapon holstered");
+
+    // Calling twice in a row is a no-op (no rebroadcast needed).
+    assert!(
+        !entity.sync_holster_to_combat(false),
+        "repeated same-state sync must NOT request rebroadcast"
+    );
+}
+
+#[test]
 fn set_weapon_holstered_without_weapon_does_not_signal_rebroadcast() {
     // A player with an empty bandolier slot has `weapon_visual = None`.
     // The bool can still flip server-side (in case a future weapon-pickup

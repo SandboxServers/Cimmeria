@@ -409,7 +409,10 @@ pub(super) async fn apply_damage_to_target(
     // Generate threat on surviving NPCs so they aggro back. If this hit
     // is what put the player into combat (their threatened_mobs went
     // from empty → {target}), broadcast the new state_field so the
-    // client flips its in-combat HUD/cursor routing.
+    // client flips its in-combat HUD/cursor routing, and re-emit
+    // BeingAppearance so the weapon visual is in the wire ComponentList
+    // (Phase 2 of the holster work — see PR #338 and
+    // `docs/architecture/state-field-bits.md`).
     if !target_died {
         if let Some(new_state) = combat::generate_threat(
             space_mgr,
@@ -425,6 +428,7 @@ pub(super) async fn apply_damage_to_target(
                 space_mgr,
             )
             .await;
+            super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
         }
     }
 }

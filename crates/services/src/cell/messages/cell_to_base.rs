@@ -239,6 +239,28 @@ pub enum CellToBaseMsg {
         slot_id: i32,
     },
 
+    /// Re-broadcast `BeingAppearance` to the player's AoI with a fresh
+    /// holster state. Used by the combat enter/exit path (and any other
+    /// runtime holster toggle, e.g. the `requestHolsterWeapon` button)
+    /// to draw or holster the weapon without requiring an inventory
+    /// change.
+    ///
+    /// The base handler updates `ConnectedClientState::weapon_holstered`
+    /// so any subsequent appearance refresh (item equip, slot swap,
+    /// world re-entry) inherits the live holster state instead of the
+    /// hardcoded spawn-holstered default. It then re-queries the
+    /// player's appearance and broadcasts the resulting packet — same
+    /// path as `ActiveSlotUpdate`.
+    ///
+    /// **Phase 2 of the holster work** (PR #338): Phase 1 made spawn
+    /// always holstered; this message is what flips it back on enter
+    /// combat.
+    RefreshAppearance {
+        entity_id: u32,
+        player_id: i32,
+        holstered: bool,
+    },
+
     /// Persist a single bandolier slot's per-slot ammo state.
     ///
     /// Sent by the cell on the batched cadence (reload completion, slot swap,

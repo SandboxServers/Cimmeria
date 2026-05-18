@@ -675,6 +675,20 @@ impl CellEntity {
         self.weapon_visual.is_some()
     }
 
+    /// Lockstep the holster state with `BSF_InCombat`: in-combat = drawn,
+    /// out-of-combat = holstered. Returns `true` when the caller should
+    /// rebroadcast `BeingAppearance` (state actually flipped AND there's
+    /// a `weapon_visual` whose presence in the wire list will change).
+    ///
+    /// This is the canonical entry point from `enter_player_combat` /
+    /// `exit_player_combat`. Keeping the policy here (rather than
+    /// duplicating `!in_combat` at every caller) means future tweaks —
+    /// e.g. "stay drawn for 5s after leaving combat" — happen in one
+    /// place.
+    pub fn sync_holster_to_combat(&mut self, in_combat: bool) -> bool {
+        self.set_weapon_holstered(!in_combat)
+    }
+
     // ── Bandolier ammo helpers ───────────────────────────────────────────────
     //
     // Per-slot ammo lives on `BandolierItem.current_ammo` and is mirrored to

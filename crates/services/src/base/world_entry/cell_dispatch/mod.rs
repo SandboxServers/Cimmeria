@@ -595,6 +595,22 @@ pub(crate) async fn handle_cell_message(
             )
             .await;
         }
+        CellToBaseMsg::RefreshAppearance {
+            entity_id,
+            player_id,
+            holstered,
+        } => {
+            bandolier::refresh_appearance(
+                entity_id,
+                player_id,
+                holstered,
+                db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
         CellToBaseMsg::BandolierAmmoUpdate {
             player_id,
             slot_id,

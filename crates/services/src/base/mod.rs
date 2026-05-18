@@ -134,6 +134,18 @@ pub(crate) struct ConnectedClientState {
     pub pending_client_ready: Option<PendingClientReadyInfo>,
     pub cached_appearance_args: Option<Vec<u8>>,
     pub cached_tint_args: Option<Vec<u8>>,
+    /// Tracks whether the player is currently rendering holstered (no
+    /// weapon visual in the wire `ComponentList`) or drawn (weapon visible).
+    /// Mirrored from the cell's `CellEntity::weapon_holstered` via
+    /// [`crate::cell::messages::CellToBaseMsg::RefreshAppearance`]. All
+    /// `BeingAppearance`-emit sites read this so they keep the holster
+    /// state consistent across spawn, inventory refresh, AoI rebroadcast,
+    /// and combat enter/exit.
+    ///
+    /// Defaults to `true` so a freshly-connected client spawns weapon-down
+    /// (matches the Phase 1 design — see PR #338 and
+    /// `docs/architecture/state-field-bits.md`).
+    pub weapon_holstered: bool,
     pub cancelled: Arc<AtomicBool>,
     /// Cancellation flag for the post-cinematic appearance-spam guard
     /// (issue #288). `world_entry_appearance::send_cinematic` resets this

@@ -41,7 +41,7 @@ pub async fn refresh_player_appearance(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    let account_id = {
+    let (account_id, holstered) = {
         let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
             Some(a) => a,
             None => {
@@ -55,7 +55,7 @@ pub async fn refresh_player_appearance(
         };
         let clients = connected.lock().unwrap();
         match clients.get(&addr) {
-            Some(c) => c.account_id,
+            Some(c) => (c.account_id, c.weapon_holstered),
             None => {
                 tracing::debug!(
                     entity_id,
@@ -68,13 +68,14 @@ pub async fn refresh_player_appearance(
     };
 
     let player_data = query_player_load_data(db_pool, account_id, player_id).await;
-    // Equipment-slot refresh is fired from inventory moves that don't
-    // change holster state, so this path honors the spawn-holstered
-    // default. Runtime holster toggles flow through a different
-    // refresh path that reads the live `CellEntity::weapon_holstered`.
+    // Honors the live `weapon_holstered` mirror from `ConnectedClientState`,
+    // which is set in lockstep with `CellEntity::weapon_holstered` on the
+    // cell side. Inventory moves don't change holster state — they re-emit
+    // appearance with whatever holster the player currently has, so a
+    // mid-combat equip doesn't accidentally re-holster the weapon.
     let appearance_args = world_entry_appearance::build_appearance_args(
         &player_data.bodyset,
-        &player_data.appearance_components(true),
+        &player_data.appearance_components(holstered),
     );
 
     // Cache the freshly-built args so any subsequent witness-join (entering
@@ -141,6 +142,7 @@ mod tests {
             pending_client_ready: None,
             cached_appearance_args: None,
             cached_tint_args: None,
+            weapon_holstered: true,
             cancelled: Arc::new(AtomicBool::new(false)),
             cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
             player_name: None,
