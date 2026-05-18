@@ -67,22 +67,23 @@ pub async fn dispatch(
             let holstered = args[0] != 0;
             tracing::debug!(entity_id, holstered, "requestHolsterWeapon");
 
-            // Phase 1 (this PR): update server-side state only.
-            //
-            // The state lives on `CellEntity::weapon_holstered` rather
+            // Update server-side holster state on `CellEntity` rather
             // than the long-defunct `BSF_HOLSTER` bit of `state_field`
-            // (issue #333 — the bit was a no-op on the wire because the
-            // client only dispatches on bits 0-7 of `bStateField`).
+            // — the SGW client only dispatches on bits 0-7 of
+            // `bStateField` (`GameBeing_OnStateFieldUpdate` at
+            // `ghidra://SGW.exe@0x00e01c90`), so any write to bit 8
+            // was historically a no-op. The wire effect comes from
+            // `BeingAppearance.ComponentList` dropping (or keeping)
+            // the weapon visual — the client's appearance compositor
+            // (`ghidra://SGW.exe@0x00ec0840`) picks the weapon-pose
+            // vs. holstered-pose animation key from the resulting
+            // list. See `CellEntity::set_weapon_holstered` and
+            // `docs/architecture/state-field-bits.md`.
             //
-            // Phase 2 (follow-up): emit a `BeingAppearance` rebroadcast
-            // to all AoI witnesses (including self) when this toggles.
-            // The wire effect comes from `BeingAppearance.ComponentList`
-            // dropping the weapon visual — the client's appearance
-            // compositor (`ghidra://SGW.exe@0x00ec0840`) picks the
-            // weapon-pose vs. holstered-pose animation key from the
-            // resulting list. See `CellEntity::set_weapon_holstered` and
-            // the docs/architecture/state-field-bits.md note.
-            let _ = tx; // Phase 2 will use this to broadcast.
+            // The `BeingAppearance` rebroadcast that makes this visible
+            // to AoI witnesses is not implemented here yet; the `tx`
+            // sender is unused until that path is wired up.
+            let _ = tx;
             if let Some(e) = space_mgr.get_entity_mut(entity_id) {
                 e.set_weapon_holstered(holstered);
             }

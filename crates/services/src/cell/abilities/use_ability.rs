@@ -226,14 +226,6 @@ pub async fn handle_use_ability(
     // `damage_apply::apply_damage_to_target`). Setting it raw here used to
     // strand it for one-shot kills (target dies before generate_threat
     // runs) and target-less casts (early-return before damage_apply).
-    //
-    // Note on the holster bit: BSF_Holster (bit 8) was previously cleared
-    // here as a "clear-on-fire" write. Removed per issue #333 — the SGW
-    // client does not test bit 8 of `bStateField` anywhere
-    // (`GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`
-    // dispatches only on bits 0-7). The visible "draw weapon on fire"
-    // behavior is now driven by `CellEntity::weapon_holstered` plus a
-    // `BeingAppearance` rebroadcast (Phase 2 of the holster fix).
 
     // ── Send attack animation (onSequence) to attacker + witnesses ──
     // Look up the correct sequence_id from the event set. The client expects
@@ -543,13 +535,6 @@ mod tests {
     /// unchanged — pinned here so a regression that re-introduces a raw
     /// `state_field |= BSF_IN_COMBAT` setter on this path doesn't slip
     /// through (stuck-bit hazard for target-less casts).
-    ///
-    /// (This test previously also pinned a `state_field &= !BSF_HOLSTER`
-    /// clear-on-fire write. That write was removed per issue #333 — the
-    /// SGW client doesn't read bit 8 of `bStateField`, so the write was a
-    /// no-op. Visible "draw weapon on fire" behavior is now driven by
-    /// `CellEntity::weapon_holstered` + `BeingAppearance` rebroadcast,
-    /// Phase 2 of the holster fix.)
     #[tokio::test]
     async fn commit_leaves_bsf_in_combat_alone_on_self_cast() {
         let mut mgr = make_mgr();

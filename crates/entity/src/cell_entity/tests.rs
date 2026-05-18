@@ -265,7 +265,7 @@ fn refill_active_slot_unequipped_returns_none() {
 
 // ── Holster / appearance-components tests ──────────────────────────────
 //
-// These pin the wire-format contract from issue #333: `BeingAppearance`'s
+// These pin the wire-format contract: `BeingAppearance`'s
 // `ComponentList` is what the SGW client picks the holster pose from
 // (`CompositedAppearanceProxy::ApplyToPawn` at
 // `ghidra://SGW.exe@0x00ec0840` — keys on whichever weapon-shaped entry

@@ -55,7 +55,10 @@ pub fn build_create_player(
     //     and the renderer shows the dev-cube placeholder until
     //     `BeingAppearance` lands later in the mapLoaded body.
     if let Some(load) = load {
-        // Spawn weapon-holstered — see issue #333 + `appearance_components`.
+        // Spawn weapon-holstered — `appearance_components(true)` drops the
+        // active bandolier weapon from the ComponentList so the client's
+        // appearance compositor (`ghidra://SGW.exe@0x00ec0840`) selects
+        // the unarmed-stance animation pose.
         let wire_components = load.appearance_components(true);
         let mut appearance_args = Vec::new();
         write_wstring(&mut appearance_args, &load.bodyset);
@@ -153,7 +156,10 @@ pub fn build_enter_world_body(info: &WorldEntryInfo, load: Option<&PlayerLoadDat
     //     placeholder and the asset bind only completes on a later render
     //     frame.
     if let Some(load) = load {
-        // Spawn weapon-holstered — see issue #333 + `appearance_components`.
+        // Spawn weapon-holstered — `appearance_components(true)` drops the
+        // active bandolier weapon from the ComponentList so the client's
+        // appearance compositor (`ghidra://SGW.exe@0x00ec0840`) selects
+        // the unarmed-stance animation pose.
         let wire_components = load.appearance_components(true);
         let mut appearance_args = Vec::new();
         write_wstring(&mut appearance_args, &load.bodyset);

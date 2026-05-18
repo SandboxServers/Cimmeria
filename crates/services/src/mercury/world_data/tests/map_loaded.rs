@@ -639,3 +639,82 @@ fn map_loaded_being_appearance_lands_in_first_fragment() {
         FRAGMENT_BODY_SIZE
     );
 }
+
+/// Encode `s` the same way `write_wstring` does (length-prefixed UTF-16LE)
+/// and return the **payload bytes only** — the UTF-16LE code units, no
+/// length prefix. That's the substring a reader needs to grep for inside
+/// a serialised `BeingAppearance` arg block to prove a given component
+/// string is present (or absent) without re-parsing the WSTRING ARRAY
+/// framing.
+fn utf16le_bytes(s: &str) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(s.len() * 2);
+    for ch in s.encode_utf16() {
+        buf.extend_from_slice(&ch.to_le_bytes());
+    }
+    buf
+}
+
+/// Return `true` if `needle` appears as a contiguous subsequence of
+/// `haystack`. Tiny linear scan is fine — these test bodies are short.
+fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return false;
+    }
+    haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+/// Wire-format regression guard for the spawn-holstered invariant:
+/// `build_map_loaded_body` must filter the active bandolier weapon out of
+/// the on-wire `BeingAppearance.ComponentList`. Two failure modes the
+/// guard catches:
+///
+///   1. A caller accidentally passes `holstered = false` to
+///      `appearance_components` (or reads `data.components` directly).
+///      The weapon string then leaks onto the wire and the client
+///      renders the armed pose at spawn instead of the holstered pose.
+///   2. A future refactor of `appearance_components` drops the filter
+///      step (e.g., a `cloned()` that bypasses the `.filter()` predicate).
+///
+/// The test:
+///   - non-weapon components ("torso", "head") MUST appear in the
+///     serialised body — proves the test setup actually emitted a
+///     BeingAppearance with a non-empty ComponentList.
+///   - the weapon visual ("BS_Gun.Pistol") MUST NOT appear anywhere in
+///     the serialised body — its presence would indicate the filter
+///     was bypassed.
+#[test]
+fn build_map_loaded_filters_weapon_visual_from_being_appearance() {
+    let mut data = sample_player_load_data();
+    data.components = vec![
+        "BS_HumanMale.Torso".into(),
+        "BS_Gun.Pistol".into(),
+        "BS_HumanMale.Head".into(),
+    ];
+    data.weapon_visual = Some("BS_Gun.Pistol".into());
+
+    let entry = sample_world_entry();
+    let body = build_map_loaded_body(entry.player_entity_id, &data, &entry);
+
+    let torso = utf16le_bytes("BS_HumanMale.Torso");
+    let head = utf16le_bytes("BS_HumanMale.Head");
+    let pistol = utf16le_bytes("BS_Gun.Pistol");
+
+    assert!(
+        contains_subslice(&body, &torso),
+        "non-weapon component 'BS_HumanMale.Torso' must appear in the wire body — \
+         test setup must actually emit a BeingAppearance with a populated ComponentList \
+         or the holster-filter assertion below is vacuous"
+    );
+    assert!(
+        contains_subslice(&body, &head),
+        "non-weapon component 'BS_HumanMale.Head' must appear in the wire body"
+    );
+    assert!(
+        !contains_subslice(&body, &pistol),
+        "weapon visual 'BS_Gun.Pistol' must NOT appear in the wire body — \
+         BeingAppearance.ComponentList must filter the active bandolier weapon \
+         at spawn so the client's appearance compositor selects the holstered pose. \
+         If this triggers, an emit site is reading data.components directly or \
+         passing holstered=false to appearance_components."
+    );
+}

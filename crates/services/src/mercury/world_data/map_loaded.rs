@@ -120,8 +120,10 @@ fn build_map_loaded_body_inner(
     //    mapLoaded bundle lands.)
     {
         // Player spawns weapon-holstered. The wire `ComponentList` omits
-        // the active bandolier weapon visual; see issue #333 + the
-        // `appearance_components` helper for the wire-format rationale.
+        // the active bandolier weapon visual; the client's appearance
+        // compositor (`ghidra://SGW.exe@0x00ec0840`) selects the
+        // unarmed-stance pose when no weapon-shaped entry is present.
+        // See `PlayerLoadData::appearance_components` for the helper.
         let wire_components = data.appearance_components(true);
         tracing::info!(
             bodyset = %data.bodyset,

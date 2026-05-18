@@ -32,18 +32,6 @@ pub const BSF_IN_COMBAT: u32 = 1 << 3;
 /// From python `Atrea.enums.BSF_MovementLock = 6`.
 pub const BSF_MOVEMENT_LOCK: u32 = 1 << 6;
 
-// `BSF_Holster` (bit 8, mask 0x100) WAS defined here. Removed per issue
-// #333: the SGW BigWorld client does not test bit 8 of `bStateField` in
-// any code path — verified statically against
-// `GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`, which
-// dispatches only on masks 0x01/0x02/0x08/0x10/0x20/0xC4 (bits 0-7).
-// Writing the bit on the wire was a no-op.
-//
-// Server-side holster state now lives on `CellEntity::weapon_holstered`
-// and drives `BeingAppearance.ComponentList` instead. See the docstring
-// on that field for the wire-format rationale. See also
-// `docs/architecture/state-field-bits.md`.
-
 /// Check if a state field indicates the entity is dead. Reads are fine
 /// against the raw `state_field` bitmask — it's the writes that need to
 /// route through the ref-counted helpers.

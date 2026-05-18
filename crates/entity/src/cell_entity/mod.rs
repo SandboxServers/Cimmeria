@@ -205,12 +205,14 @@ pub struct CellEntity {
     /// Bit 3: BSF_InCombat, Bit 4: BSF_PlayingMinigame, Bit 5: BSF_InStealth,
     /// Bit 6: BSF_MovementLock, Bit 7: BSF_Walking.
     ///
-    /// **Bit 8 was BSF_Holster and is now unused.** Per issue #333, the
-    /// SGW client doesn't test bit 8 anywhere — verified statically
-    /// against `GameBeing_OnStateFieldUpdate` at
-    /// `ghidra://SGW.exe@0x00e01c90`, which dispatches only on bits 0-7.
-    /// Server-side holster state lives on `weapon_holstered` (below)
-    /// and drives `BeingAppearance.ComponentList` instead.
+    /// **Bit 8 was BSF_Holster and is now unused.** The SGW client
+    /// doesn't test bit 8 anywhere — verified statically against
+    /// `GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`,
+    /// which dispatches only on bits 0-7. Server-side holster state
+    /// lives on `weapon_holstered` (below) and drives
+    /// `BeingAppearance.ComponentList` instead. See
+    /// `docs/architecture/state-field-bits.md` for the verified bit
+    /// layout.
     ///
     /// **Read** this field directly for serialization, AoI updates, and
     /// `is_dead` checks. **Writes** depend on the flag's source model — see

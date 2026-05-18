@@ -180,9 +180,7 @@ pub(crate) async fn handle_map_loaded(
     // Player spawns weapon-holstered. The wire `ComponentList` therefore
     // omits the active bandolier weapon visual; the client's appearance
     // compositor falls back to `WEAP_Melee = 4` for the animation pose
-    // key at `entity+0x3D2` (`ghidra://SGW.exe@0x00ec0840`). Runtime
-    // holster toggles via `requestHolsterWeapon` / fire / reload are a
-    // Phase 2 follow-up on issue #333.
+    // key at `entity+0x3D2` (`ghidra://SGW.exe@0x00ec0840`).
     let appearance_args = build_appearance_args(
         &player_data.bodyset,
         &player_data.appearance_components(true),

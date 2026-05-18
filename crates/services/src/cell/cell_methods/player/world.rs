@@ -222,16 +222,7 @@ async fn handle_reload(
         })
         .await;
 
-    // Note: `state_field &= !BSF_HOLSTER` was previously written here to
-    // "clear holster on reload". Removed per issue #333 — the SGW client
-    // doesn't test bit 8 of `bStateField` anywhere
-    // (`GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`).
-    // The reload animation reads the active weapon's bodyset from
-    // `BeingAppearance.ComponentList`, not from any state-flag bit. Once
-    // the runtime holster path (Phase 2) lands, this will become a
-    // `CellEntity::weapon_holstered = false` + rebroadcast.
-    //
-    // BSF_InCombat is also intentionally not touched here: a reload in
+    // BSF_InCombat is intentionally not touched here: a reload in
     // isolation (no aggro) must not flip the in-combat HUD/cursor. The
     // bit is derived from `threatened_mobs` and only flips on via
     // `combat::generate_threat` → `enter_player_combat` when the player
@@ -646,12 +637,6 @@ mod tests {
     /// blocking the out-of-combat regen tick, which gates on
     /// `threatened_mobs.is_empty()`).
     ///
-    /// (This test previously also pinned a `state_field &= !BSF_HOLSTER`
-    /// clear-on-reload write. Removed per issue #333 — the SGW client
-    /// doesn't read bit 8 of `bStateField`, so the write was a no-op.
-    /// "Draw weapon on reload" is now the responsibility of the
-    /// `CellEntity::weapon_holstered` path + `BeingAppearance`
-    /// rebroadcast, Phase 2 of the holster fix.)
     #[tokio::test]
     async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
         use crate::cell::combat::BSF_IN_COMBAT;

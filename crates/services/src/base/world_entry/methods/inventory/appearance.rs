@@ -69,8 +69,9 @@ pub async fn refresh_player_appearance(
 
     let player_data = query_player_load_data(db_pool, account_id, player_id).await;
     // Equipment-slot refresh is fired from inventory moves that don't
-    // change holster state, so honor the spawn-holstered default. Phase 2
-    // of issue #333 will plumb runtime holster state into this path.
+    // change holster state, so this path honors the spawn-holstered
+    // default. Runtime holster toggles flow through a different
+    // refresh path that reads the live `CellEntity::weapon_holstered`.
     let appearance_args = world_entry_appearance::build_appearance_args(
         &player_data.bodyset,
         &player_data.appearance_components(true),

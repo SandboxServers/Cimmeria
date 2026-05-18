@@ -115,7 +115,16 @@ pub async fn query_player_load_data(
             {
                 Ok(v) => v,
                 Err(e) => {
-                    tracing::error!(player_id, "Failed to query equipment visuals — keeping naked appearance for this load: {e}");
+                    // The base body components from `row.components` are
+                    // still applied — only the equipment-slot visuals
+                    // (head/torso/armor/etc.) are skipped on this fallback.
+                    // The active bandolier weapon visual is queried
+                    // separately below and is not affected here.
+                    tracing::error!(
+                        player_id,
+                        "Failed to query equipment visuals \u{2014} skipping equipment-slot visuals \
+                         (helmet/armor/etc.); base body components from sgw_player still apply: {e}"
+                    );
                     Vec::new()
                 }
             };

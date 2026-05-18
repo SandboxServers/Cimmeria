@@ -64,21 +64,21 @@ pub struct PlayerLoadData {
     pub archetype: i32,
     pub gender: i32,
     pub bodyset: String,
-    /// Non-weapon appearance components (head/torso/armor/accessories).
-    /// The active bandolier slot's weapon visual, if any, lives separately
-    /// in `weapon_visual` so the holster-state filter is uniform across
-    /// `PlayerLoadData`-driven broadcasts (used at world entry, where the
-    /// player spawns holstered) and `CellEntity`-driven rebroadcasts
-    /// (used at runtime, where holster state flips on fire / reload /
-    /// explicit user toggle). See `CellEntity::appearance_components`.
+    /// Full appearance component list: every equipment visual the player
+    /// is currently wearing, including the active bandolier slot's weapon
+    /// when one is equipped. This is the unfiltered shape — callers that
+    /// emit `BeingAppearance` on the wire should go through
+    /// [`Self::appearance_components`] to apply the holster filter, not
+    /// read this field directly.
     pub components: Vec<String>,
     /// The visual component string for the active bandolier slot's weapon,
-    /// or `None` if the slot is empty. Stored separately from `components`
-    /// so the holster filter is consistent end-to-end.
+    /// or `None` if the slot is empty.
     ///
     /// **Invariant:** when `weapon_visual` is `Some(v)`, the same string
-    /// is also present in `components`. Filtering at wire-emit time uses
-    /// the entry-by-value comparison in [`Self::appearance_components`].
+    /// also appears in `components`. Carrying it separately is how the
+    /// holster filter knows which entry to drop without re-deriving the
+    /// "is this a weapon" check at wire-emit time;
+    /// [`Self::appearance_components`] does the entry-by-value comparison.
     pub weapon_visual: Option<String>,
     pub exp: i32,
     pub naquadah: i32,
@@ -106,9 +106,9 @@ pub struct PlayerLoadData {
 impl PlayerLoadData {
     /// Build the `ComponentList` for `BeingAppearance` honoring the
     /// requested holster state. At world entry callers pass `true` so the
-    /// player spawns weapon-down; future runtime rebroadcasts (Phase 2 of
-    /// the holster work — see issue #333) pass the live `CellEntity`'s
-    /// `weapon_holstered` so the toggle is reflected on the wire.
+    /// player spawns weapon-down; runtime rebroadcasts driven from a
+    /// live `CellEntity` pass that entity's current `weapon_holstered`
+    /// so a fire/reload/draw toggle is reflected on the wire.
     ///
     /// Returns `components` unchanged when not holstered, or `components`
     /// with `weapon_visual` filtered out when holstered.
@@ -176,8 +176,9 @@ mod player_load_data_tests {
 
     #[test]
     fn appearance_components_not_holstered_keeps_weapon_visual() {
-        // Phase 2 will use this branch for runtime rebroadcasts after a
-        // fire / reload / draw event.
+        // Runtime rebroadcasts after a fire / reload / draw event take this
+        // branch — the weapon visual stays in the wire ComponentList so the
+        // client renders the armed pose.
         let data = make(vec!["torso", "pistol", "head"], Some("pistol"));
         let wire = data.appearance_components(false);
         assert_eq!(wire, data.components);
