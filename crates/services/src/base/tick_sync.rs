@@ -17,14 +17,15 @@ use super::ConnectedClientState;
 
 /// Per-connection tick-sync heartbeat task.
 ///
-/// `next_seq` (reliable) is passed in but only consumed by the retransmit-driver
-/// step inside this loop — tickSync itself rides the **unreliable** stream via
-/// `next_seq_unreliable`. See `build_ongoing_tick_sync` for why.
+/// Drives the per-session unreliable stream (tickSync packets) on a 100 ms
+/// cadence and triggers retransmit scans on the reliable stream. Reliable seq
+/// state lives on `ConnectedClientState` and is consumed by other paths
+/// (application packets, retransmit-driver scan via `connected`) — not by
+/// this task directly, which is why no reliable counter is plumbed in here.
 pub(crate) async fn run_tick_loop(
     socket: Arc<UdpSocket>,
     addr: SocketAddr,
     key: [u8; 32],
-    _next_seq: Arc<AtomicU32>,
     next_seq_unreliable: Arc<AtomicU32>,
     pending_acks: Arc<Mutex<Vec<u32>>>,
     last_recv: Arc<Mutex<Instant>>,
@@ -70,15 +71,22 @@ pub(crate) async fn run_tick_loop(
 
         // tickSync rides the **unreliable** seq stream — its own monotonic
         // counter on `ConnectedClientState`, distinct from the reliable
-        // counter that carries application packets. Putting it on the
-        // reliable stream is what fills the 32-slot TX window within a
-        // couple seconds of world entry (the post-#317 deploy surfaced
-        // this); putting it back on the shared reliable counter at all is
-        // what causes the receiver's `inSeqAt` to stall (the original #317
-        // bug). The split-counter design gives us both behaviors: tickSync
-        // is fire-and-forget on its own counter, and the reliable stream
-        // stays contiguous because the client's `inSeqAt` only tracks
-        // reliable arrivals. No TX window pressure, no inSeqAt stall.
+        // counter that carries application packets. Both failure modes the
+        // split-counter design defends against:
+        //
+        //   - Shared reliable counter: the receiver's `inSeqAt` stalls
+        //     because tickSync's high-rate ticks consume reliable seq
+        //     slots the client expects to be contiguous, so any drop
+        //     leaves a permanent gap reliable delivery can't fill.
+        //   - Reliable + own counter: tickSync's 10 Hz cadence saturates
+        //     the 32-slot reliable TX window during the world-entry burst
+        //     (char list + versionInfo + resourceFragments), starving
+        //     application packets of slots even though the receiver model
+        //     would tolerate it.
+        //
+        // Unreliable on its own counter sidesteps both: fire-and-forget,
+        // reliable stream stays contiguous (client's `inSeqAt` only tracks
+        // reliable arrivals), no TX window pressure.
         let seq_id = next_seq_unreliable.fetch_add(1, Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
         let pkt = build_ongoing_tick_sync(&key, seq_id, tick, &acks);
