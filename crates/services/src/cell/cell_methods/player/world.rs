@@ -222,29 +222,20 @@ async fn handle_reload(
         })
         .await;
 
-    // Clear holster on reload — the reload animation needs the weapon-up
-    // posture. BSF_InCombat is intentionally NOT touched here: a reload
-    // in isolation (no aggro) must not flip the in-combat HUD/cursor.
-    // The bit is derived from `threatened_mobs` and only flips on via
+    // Note: `state_field &= !BSF_HOLSTER` was previously written here to
+    // "clear holster on reload". Removed per issue #333 — the SGW client
+    // doesn't test bit 8 of `bStateField` anywhere
+    // (`GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`).
+    // The reload animation reads the active weapon's bodyset from
+    // `BeingAppearance.ComponentList`, not from any state-flag bit. Once
+    // the runtime holster path (Phase 2) lands, this will become a
+    // `CellEntity::weapon_holstered = false` + rebroadcast.
+    //
+    // BSF_InCombat is also intentionally not touched here: a reload in
+    // isolation (no aggro) must not flip the in-combat HUD/cursor. The
+    // bit is derived from `threatened_mobs` and only flips on via
     // `combat::generate_threat` → `enter_player_combat` when the player
     // actually generates threat on a surviving NPC.
-    {
-        use crate::cell::combat::BSF_HOLSTER;
-        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-            let old = e.state_field;
-            e.state_field &= !BSF_HOLSTER;
-            if e.state_field != old {
-                let new_state = e.state_field;
-                let _ = tx
-                    .send(CellToBaseMsg::EntityMethodCall {
-                        entity_id,
-                        method_index: being::ON_STATE_FIELD_UPDATE,
-                        args: new_state.to_le_bytes().to_vec(),
-                    })
-                    .await;
-            }
-        }
-    }
 
     // The reload's *warmup* IS the visible animation (drop mag, insert mag,
     // chamber). Earlier this site sent `Ability_End` synchronously, which
@@ -655,13 +646,15 @@ mod tests {
     /// blocking the out-of-combat regen tick, which gates on
     /// `threatened_mobs.is_empty()`).
     ///
-    /// BSF_Holster (bit 8) IS still cleared on reload — the reload
-    /// animation needs the weapon-up posture. Pin both ends here so a
-    /// refactor that re-introduces the BSF_InCombat setter (or
-    /// accidentally drops the BSF_Holster clear) gets caught.
+    /// (This test previously also pinned a `state_field &= !BSF_HOLSTER`
+    /// clear-on-reload write. Removed per issue #333 — the SGW client
+    /// doesn't read bit 8 of `bStateField`, so the write was a no-op.
+    /// "Draw weapon on reload" is now the responsibility of the
+    /// `CellEntity::weapon_holstered` path + `BeingAppearance`
+    /// rebroadcast, Phase 2 of the holster fix.)
     #[tokio::test]
-    async fn reload_in_isolation_clears_holster_without_setting_bsf_in_combat() {
-        use crate::cell::combat::{BSF_HOLSTER, BSF_IN_COMBAT};
+    async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
+        use crate::cell::combat::BSF_IN_COMBAT;
 
         let mut mgr = make_mgr_with_player();
         if let Some(e) = mgr.get_entity_mut(1) {
@@ -676,7 +669,6 @@ mod tests {
                 },
             );
             e.active_bandolier_slot = 0;
-            e.state_field |= BSF_HOLSTER; // start holstered so the clear is observable
         }
         // Seed the reload AbilityDef so the warmup path runs.
         mgr.ability_defs.insert(
@@ -703,12 +695,6 @@ mod tests {
         handle_reload(1, &tx, &mut mgr).await;
 
         let s = mgr.get_entity(1).unwrap().state_field;
-        assert_eq!(
-            s & BSF_HOLSTER,
-            0,
-            "reload must still clear BSF_Holster — the reload animation needs \
-             the weapon-up posture"
-        );
         assert_eq!(
             s & BSF_IN_COMBAT,
             0,

@@ -119,18 +119,23 @@ fn build_map_loaded_body_inner(
     //    here too lets a UDP-dropped pre-warm still self-heal once the
     //    mapLoaded bundle lands.)
     {
+        // Player spawns weapon-holstered. The wire `ComponentList` omits
+        // the active bandolier weapon visual; see issue #333 + the
+        // `appearance_components` helper for the wire-format rationale.
+        let wire_components = data.appearance_components(true);
         tracing::info!(
             bodyset = %data.bodyset,
             bodyset_len = data.bodyset.len(),
-            component_count = data.components.len(),
-            components = ?data.components,
+            component_count = wire_components.len(),
+            components = ?wire_components,
+            holstered_weapon = ?data.weapon_visual,
             skin_color_id = data.skin_color_id,
-            "mapLoaded: BeingAppearance + onEntityTint data"
+            "mapLoaded: BeingAppearance + onEntityTint data (spawn-holstered)"
         );
         let mut args = Vec::new();
         write_wstring(&mut args, &data.bodyset);
-        args.extend_from_slice(&(data.components.len() as u32).to_le_bytes());
-        for comp in &data.components {
+        args.extend_from_slice(&(wire_components.len() as u32).to_le_bytes());
+        for comp in &wire_components {
             write_wstring(&mut args, comp);
         }
         append_method!(method_idx::BEING_APPEARANCE, &args);

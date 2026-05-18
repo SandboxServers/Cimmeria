@@ -19,7 +19,6 @@ pub const REQUEST_HOLSTER_WEAPON: u16 = 7;
 
 /// Being State Field bit positions (from Atrea.enums BSF_*).
 const BSF_CROUCHING: u32 = 1 << 2;
-const BSF_HOLSTER: u32 = 1 << 8;
 
 pub async fn dispatch(
     entity_id: u32,
@@ -65,27 +64,27 @@ pub async fn dispatch(
             if args.is_empty() {
                 return true;
             }
-            let holstered = args[0] as i8;
+            let holstered = args[0] != 0;
             tracing::debug!(entity_id, holstered, "requestHolsterWeapon");
 
+            // Phase 1 (this PR): update server-side state only.
+            //
+            // The state lives on `CellEntity::weapon_holstered` rather
+            // than the long-defunct `BSF_HOLSTER` bit of `state_field`
+            // (issue #333 — the bit was a no-op on the wire because the
+            // client only dispatches on bits 0-7 of `bStateField`).
+            //
+            // Phase 2 (follow-up): emit a `BeingAppearance` rebroadcast
+            // to all AoI witnesses (including self) when this toggles.
+            // The wire effect comes from `BeingAppearance.ComponentList`
+            // dropping the weapon visual — the client's appearance
+            // compositor (`ghidra://SGW.exe@0x00ec0840`) picks the
+            // weapon-pose vs. holstered-pose animation key from the
+            // resulting list. See `CellEntity::set_weapon_holstered` and
+            // the docs/architecture/state-field-bits.md note.
+            let _ = tx; // Phase 2 will use this to broadcast.
             if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-                let old = e.state_field;
-                if holstered != 0 {
-                    e.state_field |= BSF_HOLSTER;
-                } else {
-                    e.state_field &= !BSF_HOLSTER;
-                }
-                if e.state_field != old {
-                    let new_state = e.state_field;
-                    let _ = tx
-                        .send(CellToBaseMsg::EntityMethodCall {
-                            entity_id,
-                            method_index: 19, // onStateFieldUpdate
-                            args: new_state.to_le_bytes().to_vec(),
-                        })
-                        .await;
-                    // TODO: also send to witnesses via AoI broadcast
-                }
+                e.set_weapon_holstered(holstered);
             }
             true
         }

@@ -55,10 +55,12 @@ pub fn build_create_player(
     //     and the renderer shows the dev-cube placeholder until
     //     `BeingAppearance` lands later in the mapLoaded body.
     if let Some(load) = load {
+        // Spawn weapon-holstered — see issue #333 + `appearance_components`.
+        let wire_components = load.appearance_components(true);
         let mut appearance_args = Vec::new();
         write_wstring(&mut appearance_args, &load.bodyset);
-        appearance_args.extend_from_slice(&(load.components.len() as u32).to_le_bytes());
-        for comp in &load.components {
+        appearance_args.extend_from_slice(&(wire_components.len() as u32).to_le_bytes());
+        for comp in &wire_components {
             write_wstring(&mut appearance_args, comp);
         }
         append_entity_method(
@@ -151,10 +153,12 @@ pub fn build_enter_world_body(info: &WorldEntryInfo, load: Option<&PlayerLoadDat
     //     placeholder and the asset bind only completes on a later render
     //     frame.
     if let Some(load) = load {
+        // Spawn weapon-holstered — see issue #333 + `appearance_components`.
+        let wire_components = load.appearance_components(true);
         let mut appearance_args = Vec::new();
         write_wstring(&mut appearance_args, &load.bodyset);
-        appearance_args.extend_from_slice(&(load.components.len() as u32).to_le_bytes());
-        for comp in &load.components {
+        appearance_args.extend_from_slice(&(wire_components.len() as u32).to_le_bytes());
+        for comp in &wire_components {
             write_wstring(&mut appearance_args, comp);
         }
         append_entity_method(

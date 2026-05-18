@@ -64,7 +64,22 @@ pub struct PlayerLoadData {
     pub archetype: i32,
     pub gender: i32,
     pub bodyset: String,
+    /// Non-weapon appearance components (head/torso/armor/accessories).
+    /// The active bandolier slot's weapon visual, if any, lives separately
+    /// in `weapon_visual` so the holster-state filter is uniform across
+    /// `PlayerLoadData`-driven broadcasts (used at world entry, where the
+    /// player spawns holstered) and `CellEntity`-driven rebroadcasts
+    /// (used at runtime, where holster state flips on fire / reload /
+    /// explicit user toggle). See `CellEntity::appearance_components`.
     pub components: Vec<String>,
+    /// The visual component string for the active bandolier slot's weapon,
+    /// or `None` if the slot is empty. Stored separately from `components`
+    /// so the holster filter is consistent end-to-end.
+    ///
+    /// **Invariant:** when `weapon_visual` is `Some(v)`, the same string
+    /// is also present in `components`. Filtering at wire-emit time uses
+    /// the entry-by-value comparison in [`Self::appearance_components`].
+    pub weapon_visual: Option<String>,
     pub exp: i32,
     pub naquadah: i32,
     pub known_stargates: Vec<i32>,
@@ -86,4 +101,93 @@ pub struct PlayerLoadData {
     pub ability_tree: cimmeria_entity::abilities::AbilityTreeData,
     /// Inventory items loaded from `sgw_inventory`.
     pub items: Vec<cimmeria_entity::inventory::InvItem>,
+}
+
+impl PlayerLoadData {
+    /// Build the `ComponentList` for `BeingAppearance` honoring the
+    /// requested holster state. At world entry callers pass `true` so the
+    /// player spawns weapon-down; future runtime rebroadcasts (Phase 2 of
+    /// the holster work — see issue #333) pass the live `CellEntity`'s
+    /// `weapon_holstered` so the toggle is reflected on the wire.
+    ///
+    /// Returns `components` unchanged when not holstered, or `components`
+    /// with `weapon_visual` filtered out when holstered.
+    pub fn appearance_components(&self, holstered: bool) -> Vec<String> {
+        match (&self.weapon_visual, holstered) {
+            (Some(weapon), true) => self
+                .components
+                .iter()
+                .filter(|c| c.as_str() != weapon.as_str())
+                .cloned()
+                .collect(),
+            _ => self.components.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod player_load_data_tests {
+    use super::*;
+
+    fn make(components: Vec<&str>, weapon_visual: Option<&str>) -> PlayerLoadData {
+        PlayerLoadData {
+            player_id: 0,
+            level: 1,
+            player_name: String::new(),
+            extra_name: String::new(),
+            alignment: 0,
+            archetype: 0,
+            gender: 0,
+            bodyset: "BS_HumanMale.BS_HumanMale".into(),
+            components: components.into_iter().map(String::from).collect(),
+            weapon_visual: weapon_visual.map(String::from),
+            exp: 0,
+            naquadah: 0,
+            known_stargates: vec![],
+            abilities: vec![],
+            training_points: 0,
+            applied_science_points: 0,
+            blueprint_ids: vec![],
+            first_login: 0,
+            access_level: 0,
+            skin_color_id: 0,
+            active_bandolier_slot: 0,
+            bandolier_items: vec![],
+            ability_tree: Default::default(),
+            items: vec![],
+        }
+    }
+
+    #[test]
+    fn appearance_components_holstered_filters_weapon_visual() {
+        // The world-entry path passes `holstered = true` so the player
+        // spawns weapon-down. The wire `ComponentList` must omit the
+        // weapon visual; the SGW client's appearance compositor then
+        // falls back to `WEAP_Melee = 4` for the animation key at
+        // `entity+0x3D2` (`ghidra://SGW.exe@0x00ec0840`).
+        let data = make(vec!["torso", "pistol", "head"], Some("pistol"));
+        let wire = data.appearance_components(true);
+        assert_eq!(
+            wire,
+            vec!["torso".to_string(), "head".to_string()],
+            "holstered ComponentList must drop the weapon visual"
+        );
+    }
+
+    #[test]
+    fn appearance_components_not_holstered_keeps_weapon_visual() {
+        // Phase 2 will use this branch for runtime rebroadcasts after a
+        // fire / reload / draw event.
+        let data = make(vec!["torso", "pistol", "head"], Some("pistol"));
+        let wire = data.appearance_components(false);
+        assert_eq!(wire, data.components);
+    }
+
+    #[test]
+    fn appearance_components_no_weapon_is_components_unchanged() {
+        // Empty bandolier slot: nothing to filter regardless of state.
+        let data = make(vec!["torso", "head"], None);
+        assert_eq!(data.appearance_components(true), data.components);
+        assert_eq!(data.appearance_components(false), data.components);
+    }
 }

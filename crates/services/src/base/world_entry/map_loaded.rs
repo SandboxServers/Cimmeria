@@ -177,7 +177,16 @@ pub(crate) async fn handle_map_loaded(
     // still in a "transaction" during bundle processing (all messages in a reassembled
     // bundle are processed in one frame). The C++ server sends BeingAppearance 3-5
     // times via createCacheStamp replays; this second send mimics that.
-    let appearance_args = build_appearance_args(&player_data.bodyset, &player_data.components);
+    // Player spawns weapon-holstered. The wire `ComponentList` therefore
+    // omits the active bandolier weapon visual; the client's appearance
+    // compositor falls back to `WEAP_Melee = 4` for the animation pose
+    // key at `entity+0x3D2` (`ghidra://SGW.exe@0x00ec0840`). Runtime
+    // holster toggles via `requestHolsterWeapon` / fire / reload are a
+    // Phase 2 follow-up on issue #333.
+    let appearance_args = build_appearance_args(
+        &player_data.bodyset,
+        &player_data.appearance_components(true),
+    );
     let tint_args = build_tint_args(player_data.skin_color_id);
 
     // The C++ server waits for the exposed SGWPlayer base method

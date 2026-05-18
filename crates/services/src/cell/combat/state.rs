@@ -32,10 +32,17 @@ pub const BSF_IN_COMBAT: u32 = 1 << 3;
 /// From python `Atrea.enums.BSF_MovementLock = 6`.
 pub const BSF_MOVEMENT_LOCK: u32 = 1 << 6;
 
-/// `BSF_Holster` mask. Set while the weapon is holstered. Cleared when the
-/// player enters combat-ready (e.g., on reload or first attack).
-/// From python `Atrea.enums.BSF_Holster = 8`.
-pub const BSF_HOLSTER: u32 = 1 << 8;
+// `BSF_Holster` (bit 8, mask 0x100) WAS defined here. Removed per issue
+// #333: the SGW BigWorld client does not test bit 8 of `bStateField` in
+// any code path — verified statically against
+// `GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`, which
+// dispatches only on masks 0x01/0x02/0x08/0x10/0x20/0xC4 (bits 0-7).
+// Writing the bit on the wire was a no-op.
+//
+// Server-side holster state now lives on `CellEntity::weapon_holstered`
+// and drives `BeingAppearance.ComponentList` instead. See the docstring
+// on that field for the wire-format rationale. See also
+// `docs/architecture/state-field-bits.md`.
 
 /// Check if a state field indicates the entity is dead. Reads are fine
 /// against the raw `state_field` bitmask — it's the writes that need to
@@ -53,6 +60,13 @@ mod tests {
     fn entity() -> CellEntity {
         CellEntity::new(EntityId(1), SpaceId(0), Vector3::new(0.0, 0.0, 0.0))
     }
+
+    /// Stand-in test flag used to exercise the generic ref-counted helpers
+    /// against a flag that's neither `BSF_DEAD` nor `BSF_MOVEMENT_LOCK`.
+    /// Bit 12 is unused on the wire (the client only dispatches on bits
+    /// 0-7), and these tests don't care about wire semantics — they're
+    /// pinning the counter map's bounded-growth invariants.
+    const TEST_FLAG: u32 = 1 << 12;
 
     #[test]
     fn dead_state_via_entity_helpers() {
@@ -121,7 +135,7 @@ mod tests {
         for _ in 0..100 {
             e.unset_state_flag(BSF_DEAD);
             e.unset_state_flag(BSF_MOVEMENT_LOCK);
-            e.unset_state_flag(BSF_HOLSTER);
+            e.unset_state_flag(TEST_FLAG);
         }
         assert!(
             e.state_flag_counts.is_empty(),
@@ -160,14 +174,13 @@ mod tests {
 
     #[test]
     fn independent_flags_dont_share_counters() {
-        // Pin: counter map is keyed by mask, so BSF_DEAD and BSF_HOLSTER
-        // each have their own counter. Clearing one must not affect the
-        // other.
+        // Pin: counter map is keyed by mask, so each flag has its own
+        // counter. Clearing one must not affect the other.
         let mut e = entity();
         e.set_state_flag(BSF_DEAD);
-        e.set_state_flag(BSF_HOLSTER);
+        e.set_state_flag(TEST_FLAG);
         e.unset_state_flag(BSF_DEAD);
         assert!(!e.has_state_flag(BSF_DEAD));
-        assert!(e.has_state_flag(BSF_HOLSTER));
+        assert!(e.has_state_flag(TEST_FLAG));
     }
 }

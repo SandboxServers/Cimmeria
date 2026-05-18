@@ -157,13 +157,60 @@ pub struct CellEntity {
     pub body_set: Option<String>,
 
     /// Visual component paths from `entity_templates.components`.
+    /// For players this is the FULL merged list — base equipment + active
+    /// bandolier slot weapon. `weapon_visual` (below) names the entry that
+    /// represents the active weapon so [`Self::appearance_components`] can
+    /// filter it out when the player is holstered. NPC entities never have
+    /// `weapon_visual` set; their `components` go out as-is.
     pub components: Vec<String>,
+
+    /// The visual component string for the player's active bandolier-slot
+    /// weapon, if any. Used as a filter target by
+    /// [`Self::appearance_components`] when [`Self::weapon_holstered`] is true.
+    ///
+    /// Set at player-load time from the bandolier-slot row of the
+    /// equipment-visual query. `None` for: NPCs, players with an empty
+    /// active bandolier slot, players who haven't completed world entry yet.
+    ///
+    /// **Why a separate field rather than e.g. a tagged index into
+    /// `components`:** weapon swaps (active bandolier slot change) and
+    /// inventory edits both can reshuffle `components`. A by-value filter
+    /// target is stable across those mutations as long as the underlying
+    /// visual path string doesn't collide with another component (and
+    /// visual paths under `AR_*` are weapon-specific by convention).
+    pub weapon_visual: Option<String>,
+
+    /// Whether the active weapon is currently holstered (hidden from
+    /// the wire `ComponentList`).
+    ///
+    /// Drives the visual stance the client renders: the SGW BigWorld
+    /// client's `CompositedAppearanceProxy::ApplyToPawn`
+    /// (`ghidra://SGW.exe@0x00ec0840`) writes `entity+0x3D2` with a
+    /// weapon-category code derived from whichever weapon-shaped entry it
+    /// finds in `BeingAppearance.ComponentList`, defaulting to
+    /// `WEAP_Melee = 4` when none is present. So toggling this bool +
+    /// rebroadcasting `BeingAppearance` is what flips the animation
+    /// system between armed-stance and holstered-stance pose.
+    ///
+    /// `BSF_Holster` (bit 8 of `state_field`) is **not** read by the
+    /// client — verified statically against `GameBeing_OnStateFieldUpdate`
+    /// at `ghidra://SGW.exe@0x00e01c90`, which dispatches only on bits
+    /// 0/1/2/3/4/5/6/7. The dead bit was removed; this bool replaces it
+    /// as the canonical server-side holster state.
+    pub weapon_holstered: bool,
 
     // ── Being state ─────────────────────────────────────────────────────────
     /// State field bitfield (EStateField flags from Atrea.enums).
     /// Bit 0: BSF_Dead, Bit 1: BSF_AutoCycling, Bit 2: BSF_Crouching,
     /// Bit 3: BSF_InCombat, Bit 4: BSF_PlayingMinigame, Bit 5: BSF_InStealth,
-    /// Bit 6: BSF_MovementLock, Bit 7: BSF_Walking, Bit 8: BSF_Holster.
+    /// Bit 6: BSF_MovementLock, Bit 7: BSF_Walking.
+    ///
+    /// **Bit 8 was BSF_Holster and is now unused.** Per issue #333, the
+    /// SGW client doesn't test bit 8 anywhere — verified statically
+    /// against `GameBeing_OnStateFieldUpdate` at
+    /// `ghidra://SGW.exe@0x00e01c90`, which dispatches only on bits 0-7.
+    /// Server-side holster state lives on `weapon_holstered` (below)
+    /// and drives `BeingAppearance.ComponentList` instead.
     ///
     /// **Read** this field directly for serialization, AoI updates, and
     /// `is_dead` checks. **Writes** depend on the flag's source model — see
@@ -369,6 +416,8 @@ impl CellEntity {
             static_mesh: None,
             body_set: None,
             components: Vec::new(),
+            weapon_visual: None,
+            weapon_holstered: true,
             state_field: 0,
             state_flag_counts: HashMap::new(),
             threatened_mobs: HashSet::new(),
@@ -444,10 +493,10 @@ impl CellEntity {
     //     respawn pair), `BSF_MOVEMENT_LOCK` (death + future stun/cast/fear).
     //
     //   - **Raw `|=` / `&=` is fine** for flags that are either (a) driven
-    //     by an idempotent player input (BSF_CROUCHING, BSF_HOLSTER from
-    //     `requestHolsterWeapon` — clicking twice should set, not bump), or
-    //     (b) externally managed via a separate dedup mechanism (BSF_IN_COMBAT
-    //     gated on `threatened_mobs` non-empty in `combat::threat`).
+    //     by an idempotent player input (BSF_CROUCHING from `setCrouched` —
+    //     clicking twice should set, not bump), or (b) externally managed
+    //     via a separate dedup mechanism (BSF_IN_COMBAT gated on
+    //     `threatened_mobs` non-empty in `combat::threat`).
     //
     // Mixing the two patterns on the same flag will desync the counter from
     // the bit: a raw `|=` doesn't bump the counter, so the next `unset_*`
@@ -528,6 +577,53 @@ impl CellEntity {
     /// Convenience read: is the given flag bit set?
     pub fn has_state_flag(&self, mask: u32) -> bool {
         self.state_field & mask != 0
+    }
+
+    /// Build the `ComponentList` that should go out in `BeingAppearance`,
+    /// applying the current holster state.
+    ///
+    /// Returns `components` unchanged when not holstered, or `components`
+    /// with the `weapon_visual` entry filtered out when holstered. The
+    /// SGW BigWorld client's appearance compositor picks weapon-stance
+    /// vs. holstered-stance from whichever weapon-shaped entry it finds
+    /// in this list (`ghidra://SGW.exe@0x00ec0840`), so omitting the
+    /// weapon visual is the wire-format-correct way to render the
+    /// holstered pose — it falls back to `WEAP_Melee = 4` and plays the
+    /// unarmed-stance animation blend.
+    ///
+    /// Callers should use this in place of `&entity.components` at every
+    /// `BeingAppearance`-emit site. Reading `components` directly is fine
+    /// for non-wire purposes (debug logs, AoI propagation copies, NPC
+    /// templates that don't have a holster concept).
+    pub fn appearance_components(&self) -> Vec<String> {
+        match (&self.weapon_visual, self.weapon_holstered) {
+            (Some(weapon), true) => self
+                .components
+                .iter()
+                .filter(|c| c.as_str() != weapon.as_str())
+                .cloned()
+                .collect(),
+            _ => self.components.clone(),
+        }
+    }
+
+    /// Toggle the holster state. Returns `true` if the state actually
+    /// changed (the caller should rebroadcast `BeingAppearance`), `false`
+    /// if it was already in the requested state.
+    ///
+    /// A no-op for entities without a `weapon_visual` (NPCs, naked
+    /// players) — there's nothing to filter, so toggling holster has no
+    /// visual effect. The bool still flips so that future weapon
+    /// acquisition picks up the right initial visibility, but the return
+    /// value reflects "nothing to broadcast right now."
+    pub fn set_weapon_holstered(&mut self, holstered: bool) -> bool {
+        if self.weapon_holstered == holstered {
+            return false;
+        }
+        self.weapon_holstered = holstered;
+        // Only bother rebroadcasting if there's actually a weapon entry
+        // whose presence in the ComponentList will flip.
+        self.weapon_visual.is_some()
     }
 
     // ── Bandolier ammo helpers ───────────────────────────────────────────────

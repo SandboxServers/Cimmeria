@@ -219,37 +219,21 @@ pub async fn handle_use_ability(
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
 
-    // ── Clear holster on weapon-fire ──
-    // BSF_Holster (bit 8): When set, weapon is holstered. Must be CLEARED on
-    // fire — USGWAnim_BlendByWeapon uses active weapon to select animations.
-    // Reference: SGWBeing.py:751-754, SGWMob.py:162.
-    //
-    // BSF_InCombat (bit 3) is intentionally NOT set here. The bit is now
+    // Note on BSF_InCombat (bit 3): intentionally NOT set here. The bit is
     // derived from `threatened_mobs` and flips on via
     // `combat::generate_threat` → `enter_player_combat` when this attack
     // actually generates threat on a surviving NPC target (handled in
     // `damage_apply::apply_damage_to_target`). Setting it raw here used to
     // strand it for one-shot kills (target dies before generate_threat
     // runs) and target-less casts (early-return before damage_apply).
-    {
-        const BSF_HOLSTER: u32 = 1 << 8;
-        let entity = space_mgr.get_entity_mut(entity_id);
-        if let Some(e) = entity {
-            let old_state = e.state_field;
-            e.state_field &= !BSF_HOLSTER;
-            if e.state_field != old_state {
-                let new_state = e.state_field;
-                send_entity_method(
-                    entity_id,
-                    crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-                    new_state.to_le_bytes().to_vec(),
-                    tx,
-                    space_mgr,
-                )
-                .await;
-            }
-        }
-    }
+    //
+    // Note on the holster bit: BSF_Holster (bit 8) was previously cleared
+    // here as a "clear-on-fire" write. Removed per issue #333 — the SGW
+    // client does not test bit 8 of `bStateField` anywhere
+    // (`GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`
+    // dispatches only on bits 0-7). The visible "draw weapon on fire"
+    // behavior is now driven by `CellEntity::weapon_holstered` plus a
+    // `BeingAppearance` rebroadcast (Phase 2 of the holster fix).
 
     // ── Send attack animation (onSequence) to attacker + witnesses ──
     // Look up the correct sequence_id from the event set. The client expects
@@ -550,12 +534,8 @@ mod tests {
         );
     }
 
-    /// On commit, BSF_Holster (bit 8) is cleared on the attacker — the
-    /// client's USGWAnim_BlendByWeapon path needs the holster bit clear
-    /// for the combat animation to render.
-    ///
-    /// BSF_InCombat (bit 3) is intentionally NOT set by this path. The
-    /// bit is derived from `threatened_mobs` and flips on via
+    /// `use_ability` does not touch BSF_InCombat (bit 3). The bit is
+    /// derived from `threatened_mobs` and flips on via
     /// `combat::generate_threat` → `enter_player_combat` from
     /// `damage_apply::apply_damage_to_target` when this attack actually
     /// hits a surviving NPC. A self-cast (target_id == 0) commits
@@ -563,13 +543,19 @@ mod tests {
     /// unchanged — pinned here so a regression that re-introduces a raw
     /// `state_field |= BSF_IN_COMBAT` setter on this path doesn't slip
     /// through (stuck-bit hazard for target-less casts).
+    ///
+    /// (This test previously also pinned a `state_field &= !BSF_HOLSTER`
+    /// clear-on-fire write. That write was removed per issue #333 — the
+    /// SGW client doesn't read bit 8 of `bStateField`, so the write was a
+    /// no-op. Visible "draw weapon on fire" behavior is now driven by
+    /// `CellEntity::weapon_holstered` + `BeingAppearance` rebroadcast,
+    /// Phase 2 of the holster fix.)
     #[tokio::test]
-    async fn commit_clears_bsf_holster_and_leaves_bsf_in_combat_alone() {
+    async fn commit_leaves_bsf_in_combat_alone_on_self_cast() {
         let mut mgr = make_mgr();
         make_player(&mut mgr, 1, [0.0; 3]);
         if let Some(p) = mgr.get_entity_mut(1) {
             p.abilities.add_ability(7);
-            p.state_field |= 1 << 8; // start holstered
         }
         mgr.ability_defs.insert(7, make_ability(7, 0, 30));
         let (tx, _rx) = mpsc::channel(64);
@@ -578,7 +564,6 @@ mod tests {
         assert!(committed);
 
         let s = mgr.get_entity(1).unwrap().state_field;
-        assert_eq!(s & (1 << 8), 0, "BSF_Holster must be cleared");
         assert_eq!(
             s & (1 << 3),
             0,
