@@ -219,25 +219,29 @@ pub async fn handle_use_ability(
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
 
-    // ── Set combat state on the attacker ──
-    // BSF_InCombat (bit 3): The client's SeqEvent_CombatStateChanged fires when
-    // this changes, transitioning the animation state machine.
-    // BSF_Holster (bit 8): When set, weapon is holstered. Must be CLEARED for
-    // combat — USGWAnim_BlendByWeapon uses active weapon to select animations.
-    // Reference: SGWBeing.py:751-754, SGWMob.py:162
+    // ── Clear holster on weapon-fire ──
+    // BSF_Holster (bit 8): When set, weapon is holstered. Must be CLEARED on
+    // fire — USGWAnim_BlendByWeapon uses active weapon to select animations.
+    // Reference: SGWBeing.py:751-754, SGWMob.py:162.
+    //
+    // BSF_InCombat (bit 3) is intentionally NOT set here. The bit is now
+    // derived from `threatened_mobs` and flips on via
+    // `combat::generate_threat` → `enter_player_combat` when this attack
+    // actually generates threat on a surviving NPC target (handled in
+    // `damage_apply::apply_damage_to_target`). Setting it raw here used to
+    // strand it for one-shot kills (target dies before generate_threat
+    // runs) and target-less casts (early-return before damage_apply).
     {
-        const BSF_IN_COMBAT: u32 = 1 << 3;
         const BSF_HOLSTER: u32 = 1 << 8;
         let entity = space_mgr.get_entity_mut(entity_id);
         if let Some(e) = entity {
             let old_state = e.state_field;
-            e.state_field |= BSF_IN_COMBAT; // Enter combat
-            e.state_field &= !BSF_HOLSTER; // Unholster weapon
+            e.state_field &= !BSF_HOLSTER;
             if e.state_field != old_state {
                 let new_state = e.state_field;
                 send_entity_method(
                     entity_id,
-                    19,
+                    crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                     new_state.to_le_bytes().to_vec(),
                     tx,
                     space_mgr,
@@ -546,12 +550,21 @@ mod tests {
         );
     }
 
-    /// On commit, BSF_InCombat (bit 3) is set and BSF_Holster (bit 8) is
-    /// cleared on the attacker. Pin both transitions because the client's
-    /// USGWAnim_BlendByWeapon path depends on the holster bit being clear
+    /// On commit, BSF_Holster (bit 8) is cleared on the attacker — the
+    /// client's USGWAnim_BlendByWeapon path needs the holster bit clear
     /// for the combat animation to render.
+    ///
+    /// BSF_InCombat (bit 3) is intentionally NOT set by this path. The
+    /// bit is derived from `threatened_mobs` and flips on via
+    /// `combat::generate_threat` → `enter_player_combat` from
+    /// `damage_apply::apply_damage_to_target` when this attack actually
+    /// hits a surviving NPC. A self-cast (target_id == 0) commits
+    /// cooldown + ammo but produces no threat, so the bit stays
+    /// unchanged — pinned here so a regression that re-introduces a raw
+    /// `state_field |= BSF_IN_COMBAT` setter on this path doesn't slip
+    /// through (stuck-bit hazard for target-less casts).
     #[tokio::test]
-    async fn commit_sets_bsf_in_combat_and_clears_bsf_holster() {
+    async fn commit_clears_bsf_holster_and_leaves_bsf_in_combat_alone() {
         let mut mgr = make_mgr();
         make_player(&mut mgr, 1, [0.0; 3]);
         if let Some(p) = mgr.get_entity_mut(1) {
@@ -565,8 +578,47 @@ mod tests {
         assert!(committed);
 
         let s = mgr.get_entity(1).unwrap().state_field;
-        assert_eq!(s & (1 << 3), 1 << 3, "BSF_InCombat must be set");
         assert_eq!(s & (1 << 8), 0, "BSF_Holster must be cleared");
+        assert_eq!(
+            s & (1 << 3),
+            0,
+            "BSF_InCombat must NOT be set by use_ability — \
+             it's now derived from threatened_mobs via enter_player_combat"
+        );
+    }
+
+    /// Target-less / no-target cast (target_id == 0) must not set
+    /// BSF_InCombat on the attacker. Stuck-bit regression guard: the
+    /// previous raw `state_field |= BSF_IN_COMBAT` here ran before the
+    /// `if target_id <= 0` early-return downstream, so a self-cast
+    /// would flip the in-combat HUD forever (no NPC death ever runs
+    /// the clear path).
+    #[tokio::test]
+    async fn no_target_cast_does_not_set_bsf_in_combat() {
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(7);
+        }
+        mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+        let (tx, _rx) = mpsc::channel(64);
+
+        let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+        assert!(committed, "self-cast still commits (cooldown + ammo)");
+
+        let s = mgr.get_entity(1).unwrap().state_field;
+        assert_eq!(
+            s & (1 << 3),
+            0,
+            "no-target cast must not strand BSF_InCombat — no NPC death \
+             would ever run the clear path"
+        );
+        // threatened_mobs must also stay empty so the regen tick (which
+        // gates on the set) is free to fire.
+        assert!(
+            mgr.get_entity(1).unwrap().threatened_mobs.is_empty(),
+            "no-target cast must leave threatened_mobs empty"
+        );
     }
 
     /// Self-target (target_id == 0) commits cooldown and ammo consume but
