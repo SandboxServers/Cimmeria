@@ -8,7 +8,9 @@ use tokio::sync::mpsc;
 
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 use super::super::super::super::ConnectedClientState;
+use super::super::player_load::core::EQUIPMENT_CONTAINERS;
 use super::super::vendor::helpers::sync_bandolier_after_inventory_change;
+use super::appearance::refresh_player_appearance;
 use super::core::send_full_inventory_update;
 use super::grant::item_allows_container;
 use crate::cell::messages::BaseToCellMsg;
@@ -549,6 +551,49 @@ pub async fn handle_move_inventory_item(
             entity_to_addr,
         )
         .await;
+    }
+
+    // Equipment containers (4..=14) — armor and other slotted visuals.
+    // The grant path already refreshes appearance on equipment grants;
+    // the bandolier branch above handles weapons. Without this branch,
+    // manually dragging armor into (or out of) a slot persists to DB but
+    // the player-visible model on every client keeps the pre-move
+    // components.
+    //
+    // Gated on `visual_component IS NOT NULL` to match the grant path's
+    // shape (grant\mod.rs:425) — non-visual items (charms, ID-only
+    // artifacts) can legally occupy equipment slots without contributing
+    // to the appearance composite, so refreshing for them is wasted
+    // wire traffic. Lookup is keyed by `source.type_id`, which is the
+    // type both the equip leg (bag→slot) and the unequip leg (slot→bag)
+    // are moving; for a swap, only the source item's visual matters
+    // (the displaced occupant's container also changes, but that case
+    // is already covered when the swap's source/target straddles
+    // equipment).
+    if EQUIPMENT_CONTAINERS.contains(&source.container_id)
+        || EQUIPMENT_CONTAINERS.contains(&target_container_id)
+    {
+        let has_visual: bool = sqlx::query_scalar(
+            "SELECT visual_component IS NOT NULL FROM resources.items WHERE item_id = $1",
+        )
+        .bind(source.type_id)
+        .fetch_optional(pool.as_ref())
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(false);
+
+        if has_visual {
+            refresh_player_appearance(
+                entity_id,
+                player_id,
+                db_pool,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
     }
 }
 
