@@ -147,12 +147,12 @@ pub fn exit_player_combat(
             // (cleared in `enter_player_combat`). BSF_InCombat clears
             // immediately on the wire so HUD/cursor flips don't lag.
             player.combat_exit_at = Some(std::time::Instant::now());
-            tracing::debug!(
+            tracing::info!(
                 player_id,
                 mob_id,
                 new_state = player.state_field,
                 weapon_holstered = player.weapon_holstered,
-                "exit_player_combat: BSF_InCombat cleared (last threatened mob removed); holster deferred"
+                "exit_player_combat: BSF_InCombat cleared; OOC holster timer armed"
             );
             return Some(player.state_field);
         }

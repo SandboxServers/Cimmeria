@@ -235,7 +235,7 @@ pub(super) async fn holster_timer_tick(
             continue;
         }
 
-        tracing::debug!(
+        tracing::info!(
             entity_id,
             "holster_timer_tick: grace window elapsed, holstering + rebroadcasting"
         );
