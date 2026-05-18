@@ -11,7 +11,7 @@ byteorder = "1"
 serde = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
-bincode = "1"
+bincode = "3"
 
 [[bin]]
 name = "build-package-index"
