@@ -261,14 +261,21 @@ async fn lethal_hit_drains_threatened_mobs_and_clears_bsf_in_combat() {
 /// outcome.
 #[tokio::test]
 async fn one_shot_kill_does_not_strand_attacker_bsf_in_combat() {
+    use crate::cell::abilities::handle_use_ability;
     use crate::cell::combat::state::BSF_IN_COMBAT;
 
     let mut mgr = make_mgr_player_vs_npc();
     let ability = make_ability(7, vec![100]);
-    mgr.ability_defs.insert(7, ability.clone());
+    mgr.ability_defs.insert(7, ability);
     // Overkill damage on a 1-HP NPC — guarantees target_died = true
     // and `generate_threat` is skipped entirely on this hit.
     mgr.effect_defs.insert(100, make_effect(100, 9999));
+    if let Some(player) = mgr.get_entity_mut(1) {
+        // `handle_use_ability` validates the attacker owns the ability
+        // before the damage path runs; the previous `apply_damage_to_target`
+        // shortcut bypassed this check.
+        player.abilities.add_ability(7);
+    }
     if let Some(npc) = mgr.get_entity_mut(2) {
         npc.level = 5;
         if let Some(stat) = npc.stats.get_mut(cimmeria_entity::stats::HEALTH) {
@@ -280,7 +287,14 @@ async fn one_shot_kill_does_not_strand_attacker_bsf_in_combat() {
     assert_eq!(mgr.get_entity(1).unwrap().state_field & BSF_IN_COMBAT, 0);
 
     let (tx, _rx) = mpsc::channel(64);
-    apply_damage_to_target(1, 2, 7, &Some(ability), 1, false, &tx, &mut mgr).await;
+    // Drive the full public entry point — the previous regression
+    // path was a raw `state_field |= BSF_IN_COMBAT` inside
+    // `handle_use_ability` *before* `apply_damage_to_target`
+    // decided to skip `generate_threat` on `target_died=true`.
+    // Bypassing into `apply_damage_to_target` directly would have
+    // hidden the regression. Use the public entrypoint instead.
+    let committed = handle_use_ability(1, 7, 2, &tx, &mut mgr).await;
+    assert!(committed, "use_ability should commit on a valid one-shot");
 
     let attacker = mgr.get_entity(1).unwrap();
     assert_eq!(

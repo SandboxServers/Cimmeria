@@ -241,7 +241,7 @@ pub async fn handle_use_ability(
                 let new_state = e.state_field;
                 send_entity_method(
                     entity_id,
-                    19,
+                    crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                     new_state.to_le_bytes().to_vec(),
                     tx,
                     space_mgr,
