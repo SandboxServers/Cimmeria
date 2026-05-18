@@ -222,11 +222,16 @@ async fn handle_reload(
         })
         .await;
 
+    // Clear holster on reload — the reload animation needs the weapon-up
+    // posture. BSF_InCombat is intentionally NOT touched here: a reload
+    // in isolation (no aggro) must not flip the in-combat HUD/cursor.
+    // The bit is derived from `threatened_mobs` and only flips on via
+    // `combat::generate_threat` → `enter_player_combat` when the player
+    // actually generates threat on a surviving NPC.
     {
-        use crate::cell::combat::{BSF_HOLSTER, BSF_IN_COMBAT};
+        use crate::cell::combat::BSF_HOLSTER;
         if let Some(e) = space_mgr.get_entity_mut(entity_id) {
             let old = e.state_field;
-            e.state_field |= BSF_IN_COMBAT;
             e.state_field &= !BSF_HOLSTER;
             if e.state_field != old {
                 let new_state = e.state_field;
@@ -639,6 +644,81 @@ mod tests {
             "reload-start must send exactly one onSequence with the Ability_Begin \
              sequence id; without it the client plays no visible reload animation. \
              Got {begin_count}.",
+        );
+    }
+
+    /// Reload-in-isolation regression: reloading without any aggro must
+    /// NOT flip BSF_InCombat on the player. The previous bug: the
+    /// reload handler set the bit raw, but reload doesn't generate
+    /// threat on anything — so no NPC death would ever clear the bit,
+    /// stranding the player in the in-combat HUD/cursor forever (and
+    /// blocking the out-of-combat regen tick, which gates on
+    /// `threatened_mobs.is_empty()`).
+    ///
+    /// BSF_Holster (bit 8) IS still cleared on reload — the reload
+    /// animation needs the weapon-up posture. Pin both ends here so a
+    /// refactor that re-introduces the BSF_InCombat setter (or
+    /// accidentally drops the BSF_Holster clear) gets caught.
+    #[tokio::test]
+    async fn reload_in_isolation_clears_holster_without_setting_bsf_in_combat() {
+        use crate::cell::combat::{BSF_HOLSTER, BSF_IN_COMBAT};
+
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+            e.state_field |= BSF_HOLSTER; // start holstered so the clear is observable
+        }
+        // Seed the reload AbilityDef so the warmup path runs.
+        mgr.ability_defs.insert(
+            596,
+            AbilityDef {
+                ability_id: 596,
+                name: "reload".to_string(),
+                cooldown: 1.0,
+                warmup: 0.5,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 0,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+
+        let (tx, _rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let s = mgr.get_entity(1).unwrap().state_field;
+        assert_eq!(
+            s & BSF_HOLSTER,
+            0,
+            "reload must still clear BSF_Holster — the reload animation needs \
+             the weapon-up posture"
+        );
+        assert_eq!(
+            s & BSF_IN_COMBAT,
+            0,
+            "reload MUST NOT flip BSF_InCombat — reload-without-aggro had no \
+             NPC-death clear path and the bit would strand forever"
+        );
+        assert!(
+            mgr.get_entity(1).unwrap().threatened_mobs.is_empty(),
+            "reload must leave threatened_mobs empty — the source of truth \
+             for the in-combat state"
         );
     }
 }
