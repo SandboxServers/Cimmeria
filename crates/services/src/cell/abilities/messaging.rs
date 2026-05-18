@@ -314,14 +314,8 @@ mod tests {
         let (mgr, _rx) = make_mgr_two_players_and_npc();
         let (tx, mut rx) = mpsc::channel(64);
 
-        let witness_count = send_entity_method_to_self_and_witnesses(
-            1,
-            19,
-            vec![0xBE, 0xEF],
-            &tx,
-            &mgr,
-        )
-        .await;
+        let witness_count =
+            send_entity_method_to_self_and_witnesses(1, 19, vec![0xBE, 0xEF], &tx, &mgr).await;
         assert_eq!(witness_count, 1);
 
         let msgs = drain(&mut rx);
@@ -346,14 +340,8 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(64);
 
         // Entity 3 is the NPC; both players witness it.
-        let witness_count = send_entity_method_to_self_and_witnesses(
-            3,
-            19,
-            vec![],
-            &tx,
-            &mgr,
-        )
-        .await;
+        let witness_count =
+            send_entity_method_to_self_and_witnesses(3, 19, vec![], &tx, &mgr).await;
         // Both players are co-located and see the NPC.
         assert_eq!(witness_count, 2);
 
