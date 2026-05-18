@@ -31,7 +31,7 @@
 //! | Entity method call | [`send_to_witness_reliable`] | Must execute exactly once |
 //! | Property update | [`send_to_witness_reliable`] | Client state depends on it |
 //! | Dialog / mission update | [`send_to_witness_reliable`] | UI-visible, can't be lost |
-//! | Tick sync | sent from `tick_sync.rs` (reliable) | See #317 — reliable for ordering |
+//! | Tick sync | sent from `tick_sync.rs` (unreliable, own counter) | Fire-and-forget; next tick supersedes loss |
 //! | AoI position update | [`send_to_witness`] (unreliable) | Superseded by next frame |
 //!
 //! **Default to reliable.** Only use [`send_to_witness`] (unreliable) if

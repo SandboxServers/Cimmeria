@@ -16,11 +16,16 @@ use super::helpers::destroy_client_entities;
 use super::ConnectedClientState;
 
 /// Per-connection tick-sync heartbeat task.
+///
+/// `next_seq` (reliable) is passed in but only consumed by the retransmit-driver
+/// step inside this loop — tickSync itself rides the **unreliable** stream via
+/// `next_seq_unreliable`. See `build_ongoing_tick_sync` for why.
 pub(crate) async fn run_tick_loop(
     socket: Arc<UdpSocket>,
     addr: SocketAddr,
     key: [u8; 32],
-    next_seq: Arc<AtomicU32>,
+    _next_seq: Arc<AtomicU32>,
+    next_seq_unreliable: Arc<AtomicU32>,
     pending_acks: Arc<Mutex<Vec<u32>>>,
     last_recv: Arc<Mutex<Instant>>,
     cancelled: Arc<AtomicBool>,
@@ -63,26 +68,24 @@ pub(crate) async fn run_tick_loop(
             tracing::trace!(%addr, ?acks, "Piggybacking ACKs on tick_sync");
         }
 
-        let seq_id =
-            next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
+        // tickSync rides the **unreliable** seq stream — its own monotonic
+        // counter on `ConnectedClientState`, distinct from the reliable
+        // counter that carries application packets. Putting it on the
+        // reliable stream is what fills the 32-slot TX window within a
+        // couple seconds of world entry (the post-#317 deploy surfaced
+        // this); putting it back on the shared reliable counter at all is
+        // what causes the receiver's `inSeqAt` to stall (the original #317
+        // bug). The split-counter design gives us both behaviors: tickSync
+        // is fire-and-forget on its own counter, and the reliable stream
+        // stays contiguous because the client's `inSeqAt` only tracks
+        // reliable arrivals. No TX window pressure, no inSeqAt stall.
+        let seq_id = next_seq_unreliable.fetch_add(1, Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
         let pkt = build_ongoing_tick_sync(&key, seq_id, tick, &acks);
         if let Err(e) = socket.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
             break;
         }
-
-        // Register the tickSync in the per-session Channel's TX window so
-        // the retransmit driver below re-sends on RTO expiry. tickSync now
-        // rides on the reliable seq stream (see `build_ongoing_tick_sync`
-        // docs); a tickSync lost on the wire would otherwise leave a
-        // permanent gap that stalls every subsequent reliable packet — the
-        // same shape this whole split-counter design exists to prevent.
-        super::helpers::shadow_register_reliable_send(
-            &connected,
-            addr,
-            seq_id,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
-        );
 
         // Drive the per-session Channel's retransmit scan. Any reliable
         // packet whose adaptive RTO has elapsed without receiving an ack
