@@ -381,20 +381,27 @@ fn sync_holster_to_combat_inverts_combat_flag() {
 }
 
 #[test]
-fn set_weapon_holstered_without_weapon_does_not_signal_rebroadcast() {
-    // A player with an empty bandolier slot has `weapon_visual = None`.
-    // The bool can still flip server-side (in case a future weapon-pickup
-    // path needs to seed it), but the ComponentList won't change either
-    // way, so the caller has nothing to broadcast.
+fn set_weapon_holstered_signals_rebroadcast_even_without_cell_side_weapon_visual() {
+    // Regression guard for a bug introduced in Phase 3 of PR #338: the
+    // cell entity's `weapon_visual` is `None` in production (only the
+    // base side populates it from `PlayerLoadData`), so the previous
+    // implementation used to gate the rebroadcast signal on
+    // `weapon_visual.is_some()` and silently dropped every holster
+    // transition. The base side has its own change-detection on the
+    // `RefreshAppearance` path, so the caller-side gate was a footgun.
+    //
+    // Bug shape: a refactor re-adds the `weapon_visual.is_some()` gate
+    // and the holster_timer_tick silently does nothing in production.
     let mut entity = make_entity();
     entity.weapon_visual = None;
     entity.weapon_holstered = false;
 
     assert!(
-        !entity.set_weapon_holstered(true),
-        "without a weapon visual, holster toggle is wire-invisible"
+        entity.set_weapon_holstered(true),
+        "state change must signal rebroadcast regardless of cell-side weapon_visual — \
+         the base side knows the real weapon visual via PlayerLoadData",
     );
-    assert!(entity.weapon_holstered, "the bool still flips internally");
+    assert!(entity.weapon_holstered, "and the bool flips");
 }
 
 #[test]

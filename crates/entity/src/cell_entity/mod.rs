@@ -674,19 +674,20 @@ impl CellEntity {
     /// changed (the caller should rebroadcast `BeingAppearance`), `false`
     /// if it was already in the requested state.
     ///
-    /// A no-op for entities without a `weapon_visual` (NPCs, naked
-    /// players) — there's nothing to filter, so toggling holster has no
-    /// visual effect. The bool still flips so that future weapon
-    /// acquisition picks up the right initial visibility, but the return
-    /// value reflects "nothing to broadcast right now."
+    /// The return value gates on state-change ONLY. The `weapon_visual`
+    /// check that used to live here was wrong: in production the cell
+    /// entity's `weapon_visual` is always `None` (only the base side
+    /// populates it from `PlayerLoadData`), so the gate silently
+    /// suppressed every holster broadcast. The base-side
+    /// `RefreshAppearance` handler has its own change-detection
+    /// (`weapon_holstered != cached` short-circuit), so redundant calls
+    /// are already a free no-op there — gating here just hid bugs.
     pub fn set_weapon_holstered(&mut self, holstered: bool) -> bool {
         if self.weapon_holstered == holstered {
             return false;
         }
         self.weapon_holstered = holstered;
-        // Only bother rebroadcasting if there's actually a weapon entry
-        // whose presence in the ComponentList will flip.
-        self.weapon_visual.is_some()
+        true
     }
 
     /// Lockstep the holster state with `BSF_InCombat`: in-combat = drawn,

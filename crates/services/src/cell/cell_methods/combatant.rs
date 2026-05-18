@@ -129,9 +129,11 @@ mod tests {
     #[tokio::test]
     async fn request_holster_weapon_toggles_entity_state() {
         let mut mgr = make_mgr_with_player();
-        // Give the entity a weapon visual so the holster filter actually
-        // has something to toggle (set_weapon_holstered's "signal a
-        // rebroadcast" path requires weapon_visual.is_some()).
+        // Seed a `weapon_visual` so the in-memory CellEntity matches what
+        // we'd expect post-load. In production the cell entity's
+        // `weapon_visual` is always None (only the base side has it via
+        // PlayerLoadData), but populating it here keeps the test fixture
+        // visually obvious for readers.
         if let Some(e) = mgr.get_entity_mut(1) {
             e.weapon_visual = Some("BS_Gun.Pistol".into());
             e.weapon_holstered = true;
