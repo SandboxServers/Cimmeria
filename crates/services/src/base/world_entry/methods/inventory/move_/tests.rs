@@ -360,12 +360,19 @@ async fn source_item_not_found_makes_no_changes() {
 }
 
 /// Pick `count` distinct item_ids from resources.items whose
-/// container_sets includes `container_id`. Symmetric to
-/// [`pick_main_bag_type_ids`] but for a specific equipment slot.
+/// container_sets includes `container_id` AND have a non-null
+/// `visual_component`. Symmetric to [`pick_main_bag_type_ids`] but for
+/// a specific equipment slot. The visual filter matters because the
+/// production refresh gate requires it — picking a non-visual
+/// equipment item (e.g. helmet 2998, `visual_component IS NULL`) would
+/// make the equip/unequip tests silently no-op the assertion they're
+/// trying to guard.
 async fn pick_type_ids_for_container(pool: &PgPool, container_id: i32, count: usize) -> Vec<i32> {
     let ids: Vec<i32> = sqlx::query_scalar::<_, i32>(
         "SELECT item_id FROM resources.items \
-         WHERE container_sets IS NOT NULL AND $1 = ANY(container_sets) \
+         WHERE container_sets IS NOT NULL \
+           AND $1 = ANY(container_sets) \
+           AND visual_component IS NOT NULL \
          ORDER BY item_id LIMIT $2",
     )
     .bind(container_id)
@@ -376,7 +383,7 @@ async fn pick_type_ids_for_container(pool: &PgPool, container_id: i32, count: us
     assert_eq!(
         ids.len(),
         count,
-        "resources.items has fewer than {count} items allowed in container {container_id} — \
+        "resources.items has fewer than {count} visual items allowed in container {container_id} — \
          the bundled seed must be loaded before running live-DB tests",
     );
     ids
@@ -414,23 +421,24 @@ fn make_state_with_connected(
     (socket, entity_to_addr, connected, fake_addr)
 }
 
-/// Regression for #240 Gap 1: dragging armor from a bag slot into an
-/// equipment slot must trigger `refresh_player_appearance`, which the
-/// helper records by populating `cached_appearance_args` on the
-/// connected-client state. Without this branch in `move_/mod.rs`, the
-/// DB row updates but the player-visible model on every client keeps
-/// the pre-move components — the symptom that surfaced testing PR #239
-/// where weapons (which go through the bandolier branch) showed up but
-/// armor did not.
+/// Regression for the equip-visual gap: dragging armor from a bag slot
+/// into an equipment slot must trigger `refresh_player_appearance`,
+/// which the helper records by populating `cached_appearance_args` on
+/// the connected-client state. Without the equipment-container branch
+/// in the move handler, the DB row updates but the player-visible
+/// model on every client keeps the pre-move components — weapons
+/// (which go through the bandolier branch) showed up but armor did
+/// not.
 #[tokio::test]
 async fn move_into_equipment_slot_refreshes_appearance() {
     let pool = require_db_or_skip!();
-    let account_id = TEST_BASE + 500;
-    let player_id = TEST_BASE + 501;
+    let account_id = TEST_BASE + 900;
+    let player_id = TEST_BASE + 901;
     cleanup(&pool, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id).await;
 
-    // Container 4 = head slot. Pick a helmet (e.g. item_id 2998).
+    // Container 4 = head slot. Helper restricts to items with a
+    // non-null visual_component (matches the production refresh gate).
     let head_type = pick_type_ids_for_container(&pool, 4, 1).await[0];
     let helmet = insert_item(&pool, player_id, head_type, 1, 0, 1).await;
 
@@ -479,8 +487,8 @@ async fn move_into_equipment_slot_refreshes_appearance() {
 #[tokio::test]
 async fn move_out_of_equipment_slot_refreshes_appearance() {
     let pool = require_db_or_skip!();
-    let account_id = TEST_BASE + 600;
-    let player_id = TEST_BASE + 601;
+    let account_id = TEST_BASE + 1000;
+    let player_id = TEST_BASE + 1001;
     cleanup(&pool, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id).await;
 
@@ -517,8 +525,8 @@ async fn move_out_of_equipment_slot_refreshes_appearance() {
 #[tokio::test]
 async fn bag_to_bag_move_does_not_refresh_appearance() {
     let pool = require_db_or_skip!();
-    let account_id = TEST_BASE + 700;
-    let player_id = TEST_BASE + 701;
+    let account_id = TEST_BASE + 1100;
+    let player_id = TEST_BASE + 1101;
     cleanup(&pool, account_id, player_id).await;
     insert_account_and_player(&pool, account_id, player_id).await;
 
