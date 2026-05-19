@@ -240,6 +240,25 @@ pub(super) async fn holster_timer_tick(
             "holster_timer_tick: grace window elapsed, holstering + rebroadcasting"
         );
         super::super::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
+        // Fire `Item_Unequip` (event 4001) — the bandolier-take-off
+        // animation. Same `KIS-abilities_human.KIS-handling` kismet
+        // script as `Item_Equip` / `Item_Reload`, but its Unequip
+        // branch has the hand-authored "put weapon away" motion.
+        // Used in python's `onItemUnequipped` for bandolier removal;
+        // we reuse it here as the OOC re-holster animation so the
+        // weapon goes away with a real animation instead of just
+        // snapping out of the hand. (UE3 Matinee supports
+        // `bReversePlayback` for true reverse playback at
+        // `ghidra://SGW.exe@0x01893ef0`, but that flag is set at
+        // design time in the kismet editor and isn't reachable
+        // through the `playSequence` runtime API.)
+        super::super::cell_methods::player::world::fire_item_sequence(
+            entity_id,
+            super::super::spawner::EVENT_ITEM_UNEQUIP,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 }
 
@@ -574,12 +593,24 @@ mod tests {
     }
 
     /// Conversely, once the grace window has elapsed the tick fires
-    /// the deferred holster + dispatches `RefreshAppearance`. Stamp a
-    /// timestamp from before `OOC_HOLSTER_DELAY` so the elapsed check
-    /// trips on first call.
+    /// the deferred holster + dispatches `RefreshAppearance` AND the
+    /// `Item_Unequip` (event 4001) animation. The unequip kismet
+    /// branch is the hand-authored "put weapon away" motion — without
+    /// firing it, the weapon just disappears from the model with no
+    /// transition animation. Stamp a timestamp from before
+    /// `OOC_HOLSTER_DELAY` so the elapsed check trips on first call.
     #[tokio::test]
-    async fn holster_timer_tick_holsters_when_grace_elapsed() {
+    async fn holster_timer_tick_holsters_and_plays_unequip_when_grace_elapsed() {
         let mut mgr = make_holster_test_mgr();
+        // Soldier archetype so `fire_item_sequence` resolves event set 804.
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.archetype_id = Some(1);
+        }
+        // Seed the Item_Unequip (4001 → 1873) sequence so the lookup
+        // succeeds; without this the helper silently no-ops.
+        mgr.sequence_map
+            .insert((804, crate::cell::spawner::EVENT_ITEM_UNEQUIP), 1873);
+
         let elapsed = crate::cell::combat::OOC_HOLSTER_DELAY + std::time::Duration::from_millis(1);
         if let Some(p) = mgr.get_entity_mut(1) {
             p.combat_exit_at = std::time::Instant::now().checked_sub(elapsed);
@@ -592,24 +623,46 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(8);
         holster_timer_tick(&tx, &mut mgr).await;
 
-        let msg = rx
-            .try_recv()
-            .expect("holster_timer_tick must dispatch RefreshAppearance once grace elapsed");
-        match msg {
-            CellToBaseMsg::RefreshAppearance {
-                entity_id,
-                player_id,
-                holstered,
-            } => {
-                assert_eq!(entity_id, 1);
-                assert_eq!(player_id, 100);
-                assert!(
+        let mut saw_refresh = false;
+        let mut saw_unequip_sequence = false;
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::RefreshAppearance {
+                    entity_id,
+                    player_id,
                     holstered,
-                    "deferred holster must send holstered=true so the wire filters the weapon",
-                );
+                } => {
+                    assert_eq!(entity_id, 1);
+                    assert_eq!(player_id, 100);
+                    assert!(
+                        holstered,
+                        "deferred holster must send holstered=true so the wire filters the weapon",
+                    );
+                    saw_refresh = true;
+                }
+                CellToBaseMsg::EntityMethodCall {
+                    method_index, args, ..
+                } if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE => {
+                    let seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
+                    if seq_id == 1873 {
+                        saw_unequip_sequence = true;
+                    }
+                }
+                _ => {}
             }
-            other => panic!("expected RefreshAppearance, got {other:?}"),
         }
+        assert!(
+            saw_refresh,
+            "holster_timer_tick must dispatch RefreshAppearance(holstered=true)",
+        );
+        assert!(
+            saw_unequip_sequence,
+            "holster_timer_tick must fire Item_Unequip (sequence 1873) so the \
+             client plays the bandolier-take-off animation instead of the \
+             weapon just snapping out of the hand. Bug shape: refactor that \
+             drops the fire_item_sequence call leaves the holster animation \
+             as a passive blend-tree transition (no hand-authored motion).",
+        );
 
         let player = mgr.get_entity(1).unwrap();
         assert!(
