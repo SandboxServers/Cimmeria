@@ -413,6 +413,18 @@ pub(super) async fn apply_damage_to_target(
     // BeingAppearance so the weapon visual is in the wire ComponentList
     // (Phase 2 of the holster work — see PR #338 and
     // `docs/architecture/state-field-bits.md`).
+    //
+    // **Order matters here**: send `BeingAppearance` BEFORE
+    // `onStateFieldUpdate`. Both flow through `FUN_00e7b4c0`
+    // (`ghidra://SGW.exe@0x00e7b4c0`) to re-key the animation blend, but
+    // only the appearance path triggers `FUN_00e7b7c0` (socket
+    // re-attach, `ghidra://SGW.exe@0x00e7b7c0`) and writes the
+    // weapon-category byte at `+0x3d2`. If `BSF_InCombat` flips first,
+    // the unholster animation starts before the weapon mesh is attached
+    // — the hand reaches for the holster, grabs air, and the mesh
+    // snaps in mid-animation (the "splinch" seen in playtest). Sending
+    // appearance first puts the mesh at the holster socket so the draw
+    // animation has something real to act on.
     if !target_died {
         if let Some(new_state) = combat::generate_threat(
             space_mgr,
@@ -420,6 +432,7 @@ pub(super) async fn apply_damage_to_target(
             target_eid,
             _total_health_damage as f32,
         ) {
+            super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
             send_entity_method(
                 entity_id,
                 crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
@@ -428,7 +441,6 @@ pub(super) async fn apply_damage_to_target(
                 space_mgr,
             )
             .await;
-            super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
         }
     }
 }
