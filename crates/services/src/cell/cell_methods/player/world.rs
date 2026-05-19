@@ -227,6 +227,34 @@ async fn handle_reload(
     // `combat::generate_threat` → `enter_player_combat` when the player
     // actually generates threat on a surviving NPC.
 
+    // Reload-while-holstered: if the player is OOC, the weapon must be
+    // drawn before the reload sequence fires so the client has a mesh
+    // at the hand socket for the animation to act on. Also (re-)stamp
+    // `combat_exit_at` so the OOC holster timer fires `OOC_HOLSTER_DELAY`
+    // seconds AFTER reload start — never mid-animation. Two cases:
+    //
+    //   1. OOC + holstered (post-grace): set holstered=false, redraw,
+    //      stamp timer. 10s later the timer re-holsters.
+    //   2. OOC + drawn (still inside grace): no state change, but reset
+    //      the timer so the existing stamp doesn't fire mid-reload.
+    //
+    // In-combat reload is untouched — weapon is already drawn,
+    // `combat_exit_at` stays None until the fight ends.
+    let needs_redraw = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) if e.threatened_mobs.is_empty() => {
+            e.combat_exit_at = Some(std::time::Instant::now());
+            e.set_weapon_holstered(false)
+        }
+        _ => false,
+    };
+    if needs_redraw {
+        tracing::info!(
+            entity_id,
+            "reload: redrawing weapon for animation (was holstered, OOC)"
+        );
+        crate::cell::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
+    }
+
     // Fire the reload animation. The reload's *warmup* IS the visible
     // sequence (drop mag, insert mag, chamber). The wire packet is an
     // `onSequence` carrying the kismet sequence id from the player's
@@ -649,6 +677,118 @@ mod tests {
             "reload-start must send exactly one onSequence with the Item_Reload \
              sequence id; without it the client plays no visible reload animation. \
              Got {item_reload_count}.",
+        );
+    }
+
+    /// Reload-while-holstered (Phase 4 of PR #338): a player who's OOC
+    /// and holstered presses reload. The animation can't play without
+    /// the weapon mesh attached, so the reload-start path must:
+    ///   1. Flip `weapon_holstered` to false (draw the weapon).
+    ///   2. Stamp `combat_exit_at` so the OOC holster timer fires
+    ///      `OOC_HOLSTER_DELAY` seconds after reload start — never
+    ///      mid-animation.
+    ///   3. Dispatch `RefreshAppearance` so the wire packet attaches
+    ///      the mesh before the `Item_Reload` sequence triggers the
+    ///      animation.
+    ///
+    /// Bug shape this catches: a refactor removes the redraw block,
+    /// reload starts on a holstered player, server fires Item_Reload
+    /// onSequence to a client that has no weapon mesh attached, the
+    /// animation plays on empty hands.
+    #[tokio::test]
+    async fn reload_while_holstered_redraws_and_arms_ooc_timer() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = true; // OOC + holstered
+            e.combat_exit_at = None;
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+        }
+
+        let (tx, mut rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            !e.weapon_holstered,
+            "reload-while-holstered must draw the weapon for the animation",
+        );
+        assert!(
+            e.combat_exit_at.is_some(),
+            "OOC timer must be (re-)stamped so re-holster fires AFTER reload \
+             completes, not during",
+        );
+
+        // RefreshAppearance must dispatch so the client gets the
+        // weapon mesh attached before the Item_Reload sequence plays.
+        let mut saw_refresh = false;
+        while let Ok(msg) = rx.try_recv() {
+            if matches!(
+                msg,
+                CellToBaseMsg::RefreshAppearance {
+                    holstered: false,
+                    ..
+                }
+            ) {
+                saw_refresh = true;
+                break;
+            }
+        }
+        assert!(
+            saw_refresh,
+            "reload-while-holstered must dispatch RefreshAppearance(holstered=false) \
+             so the client attaches the weapon mesh before the reload animation \
+             starts. Without this, the animation plays on empty hands.",
+        );
+    }
+
+    /// Reload-while-in-OOC-grace (weapon already drawn): the timer
+    /// must be RE-STAMPED so it doesn't fire `OOC_HOLSTER_DELAY`
+    /// seconds after combat ended — which could land mid-reload and
+    /// holster the weapon while the animation is still playing.
+    #[tokio::test]
+    async fn reload_during_ooc_grace_resets_holster_timer() {
+        let mut mgr = make_mgr_with_player();
+        let stale_stamp = std::time::Instant::now() - std::time::Duration::from_secs(8);
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = false; // OOC but still drawn
+            e.combat_exit_at = Some(stale_stamp);
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+        }
+
+        let (tx, _rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(!e.weapon_holstered, "already-drawn weapon stays drawn");
+        let new_stamp = e.combat_exit_at.expect("timer must remain armed");
+        assert!(
+            new_stamp > stale_stamp,
+            "timer must be re-stamped to current time so the existing \
+             OOC_HOLSTER_DELAY countdown doesn't expire mid-reload",
         );
     }
 
