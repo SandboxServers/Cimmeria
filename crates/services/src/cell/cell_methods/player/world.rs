@@ -260,6 +260,10 @@ pub(crate) async fn handle_reload(
                 e.combat_exit_at = Some(std::time::Instant::now());
                 e.set_weapon_holstered(false);
                 e.pending_reload_at = Some(std::time::Instant::now() + UNHOLSTER_DRAW_DURATION);
+                // Cancel any in-flight holster Phase 2 — reload draws
+                // the weapon BACK out, so a stale Phase 2 would yank
+                // the mesh away mid-reload.
+                e.holster_animation_complete_at = None;
             }
             tracing::info!(
                 entity_id,

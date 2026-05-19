@@ -198,16 +198,28 @@ pub(super) async fn reload_completion_tick(
 /// plus a filtered pass over `all_player_entity_ids()`; rebroadcasts
 /// only fire on transitioning players, so this is essentially free in
 /// steady state.
+/// Duration of the Item_Unequip ("put weapon away") kismet animation.
+/// After Phase 1 fires the animation, the holster scan waits this long
+/// before flipping `weapon_holstered = true` and broadcasting the mesh
+/// removal — otherwise the mesh snaps away while the animation is
+/// still playing. Empirically tuned to match the
+/// `KIS-abilities_human.KIS-handling` Unequip branch.
+pub(crate) const HOLSTER_ANIMATION_DURATION: std::time::Duration =
+    std::time::Duration::from_millis(1000);
+
 pub(super) async fn holster_timer_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
     let now = std::time::Instant::now();
 
-    // Snapshot ready entity IDs first — `request_appearance_refresh`
-    // takes `&SpaceManager` and we don't want to hold a `&mut` across
-    // the `.await`.
-    let ready: Vec<u32> = space_mgr
+    // ── Phase 1: OOC grace elapsed → fire holster animation ──────────
+    //
+    // Players whose `combat_exit_at` has aged past `OOC_HOLSTER_DELAY`
+    // get the `Item_Unequip` animation fired and a Phase 2 stamp set
+    // for `HOLSTER_ANIMATION_DURATION` later. The weapon mesh stays
+    // attached during the animation; Phase 2 removes it.
+    let phase1: Vec<u32> = space_mgr
         .all_player_entity_ids()
         .into_iter()
         .filter(|&eid| {
@@ -218,37 +230,25 @@ pub(super) async fn holster_timer_tick(
             })
         })
         .collect();
-
-    for entity_id in ready {
-        // Holster + clear the timer. If `set_weapon_holstered` reports
-        // no change (no weapon visual present, or someone else already
-        // toggled), skip the rebroadcast — same idempotency rule as
-        // the explicit holster button.
-        let should_rebroadcast = match space_mgr.get_entity_mut(entity_id) {
-            Some(e) => {
-                e.combat_exit_at = None;
-                e.sync_holster_to_combat(false)
-            }
-            None => false,
-        };
-        if !should_rebroadcast {
-            continue;
+    for entity_id in phase1 {
+        // Transition stamps: clear combat_exit_at (Phase 1 fired) and
+        // schedule Phase 2. Do this BEFORE the animation dispatch so
+        // any racing tick doesn't re-fire Phase 1.
+        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+            e.combat_exit_at = None;
+            e.holster_animation_complete_at = Some(now + HOLSTER_ANIMATION_DURATION);
         }
-
         tracing::info!(
             entity_id,
-            "holster_timer_tick: grace window elapsed, holstering + rebroadcasting"
+            "holster_timer_tick: phase 1 — playing Item_Unequip; appearance deferred"
         );
-        super::super::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
         // Fire `Item_Unequip` (event 4001) — the bandolier-take-off
         // animation. Same `KIS-abilities_human.KIS-handling` kismet
         // script as `Item_Equip` / `Item_Reload`, but its Unequip
         // branch has the hand-authored "put weapon away" motion.
         // Used in python's `onItemUnequipped` for bandolier removal;
-        // we reuse it here as the OOC re-holster animation so the
-        // weapon goes away with a real animation instead of just
-        // snapping out of the hand. (UE3 Matinee supports
-        // `bReversePlayback` for true reverse playback at
+        // we reuse it as the OOC re-holster animation. (UE3 Matinee
+        // supports `bReversePlayback` for true reverse playback at
         // `ghidra://SGW.exe@0x01893ef0`, but that flag is set at
         // design time in the kismet editor and isn't reachable
         // through the `playSequence` runtime API.)
@@ -259,6 +259,42 @@ pub(super) async fn holster_timer_tick(
             space_mgr,
         )
         .await;
+    }
+
+    // ── Phase 2: animation done → remove the mesh ────────────────────
+    //
+    // Players whose `holster_animation_complete_at` has elapsed get
+    // `weapon_holstered = true` flipped + a `RefreshAppearance`
+    // dispatched so the wire `ComponentList` finally drops the weapon
+    // visual. The split exists so the animation has time to play with
+    // the weapon mesh attached — without it, the mesh snaps away
+    // while/before the animation runs and the visible result is
+    // "weapon vanishes mid-motion."
+    let phase2: Vec<u32> = space_mgr
+        .all_player_entity_ids()
+        .into_iter()
+        .filter(|&eid| {
+            space_mgr
+                .get_entity(eid)
+                .is_some_and(|e| e.holster_animation_complete_at.is_some_and(|t| now >= t))
+        })
+        .collect();
+    for entity_id in phase2 {
+        let should_rebroadcast = match space_mgr.get_entity_mut(entity_id) {
+            Some(e) => {
+                e.holster_animation_complete_at = None;
+                e.sync_holster_to_combat(false)
+            }
+            None => false,
+        };
+        if !should_rebroadcast {
+            continue;
+        }
+        tracing::info!(
+            entity_id,
+            "holster_timer_tick: phase 2 — animation done, removing weapon mesh"
+        );
+        super::super::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
     }
 }
 
@@ -592,54 +628,37 @@ mod tests {
         );
     }
 
-    /// Conversely, once the grace window has elapsed the tick fires
-    /// the deferred holster + dispatches `RefreshAppearance` AND the
-    /// `Item_Unequip` (event 4001) animation. The unequip kismet
-    /// branch is the hand-authored "put weapon away" motion — without
-    /// firing it, the weapon just disappears from the model with no
-    /// transition animation. Stamp a timestamp from before
-    /// `OOC_HOLSTER_DELAY` so the elapsed check trips on first call.
+    /// Phase 1 (OOC grace elapsed): fires `Item_Unequip` animation
+    /// and schedules Phase 2. The weapon mesh STAYS attached —
+    /// `weapon_holstered` does NOT flip yet and no `RefreshAppearance`
+    /// is dispatched. The hand-authored animation plays with the mesh
+    /// visible; Phase 2 removes the mesh after the animation finishes.
+    ///
+    /// Bug shape this catches: a refactor collapses Phase 1 and Phase
+    /// 2 back into a single tick, the mesh snaps away while the
+    /// animation is still playing, and the visible result regresses
+    /// to "weapon vanishes mid-motion."
     #[tokio::test]
-    async fn holster_timer_tick_holsters_and_plays_unequip_when_grace_elapsed() {
+    async fn holster_timer_tick_phase1_plays_animation_without_removing_mesh() {
         let mut mgr = make_holster_test_mgr();
-        // Soldier archetype so `fire_item_sequence` resolves event set 804.
         if let Some(p) = mgr.get_entity_mut(1) {
             p.archetype_id = Some(1);
         }
-        // Seed the Item_Unequip (4001 → 1873) sequence so the lookup
-        // succeeds; without this the helper silently no-ops.
         mgr.sequence_map
             .insert((804, crate::cell::spawner::EVENT_ITEM_UNEQUIP), 1873);
-
         let elapsed = crate::cell::combat::OOC_HOLSTER_DELAY + std::time::Duration::from_millis(1);
         if let Some(p) = mgr.get_entity_mut(1) {
             p.combat_exit_at = std::time::Instant::now().checked_sub(elapsed);
-            assert!(
-                p.combat_exit_at.is_some(),
-                "test invariant: monotonic clock must support sub by OOC_HOLSTER_DELAY+1ms",
-            );
         }
 
         let (tx, mut rx) = mpsc::channel(8);
         holster_timer_tick(&tx, &mut mgr).await;
 
-        let mut saw_refresh = false;
         let mut saw_unequip_sequence = false;
+        let mut saw_refresh = false;
         while let Ok(msg) = rx.try_recv() {
             match msg {
-                CellToBaseMsg::RefreshAppearance {
-                    entity_id,
-                    player_id,
-                    holstered,
-                } => {
-                    assert_eq!(entity_id, 1);
-                    assert_eq!(player_id, 100);
-                    assert!(
-                        holstered,
-                        "deferred holster must send holstered=true so the wire filters the weapon",
-                    );
-                    saw_refresh = true;
-                }
+                CellToBaseMsg::RefreshAppearance { .. } => saw_refresh = true,
                 CellToBaseMsg::EntityMethodCall {
                     method_index, args, ..
                 } if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE => {
@@ -652,26 +671,99 @@ mod tests {
             }
         }
         assert!(
-            saw_refresh,
-            "holster_timer_tick must dispatch RefreshAppearance(holstered=true)",
+            saw_unequip_sequence,
+            "Phase 1 must fire Item_Unequip sequence so the client plays the \
+             hand-authored holster animation",
         );
         assert!(
-            saw_unequip_sequence,
-            "holster_timer_tick must fire Item_Unequip (sequence 1873) so the \
-             client plays the bandolier-take-off animation instead of the \
-             weapon just snapping out of the hand. Bug shape: refactor that \
-             drops the fire_item_sequence call leaves the holster animation \
-             as a passive blend-tree transition (no hand-authored motion).",
+            !saw_refresh,
+            "Phase 1 must NOT dispatch RefreshAppearance — the weapon mesh \
+             must stay attached during the animation. Removing it here is \
+             the bug shape that drove the two-phase split.",
+        );
+
+        let player = mgr.get_entity(1).unwrap();
+        assert!(
+            !player.weapon_holstered,
+            "Phase 1 must NOT flip weapon_holstered yet — the mesh stays \
+             attached until Phase 2 fires after HOLSTER_ANIMATION_DURATION",
+        );
+        assert!(
+            player.combat_exit_at.is_none(),
+            "Phase 1 stamp (combat_exit_at) must clear so it doesn't re-fire",
+        );
+        assert!(
+            player.holster_animation_complete_at.is_some(),
+            "Phase 2 must be scheduled via holster_animation_complete_at",
+        );
+    }
+
+    /// Phase 2 (animation duration elapsed): flips `weapon_holstered`
+    /// and dispatches `RefreshAppearance(holstered=true)` so the wire
+    /// `ComponentList` drops the weapon visual and the client removes
+    /// the mesh.
+    #[tokio::test]
+    async fn holster_timer_tick_phase2_removes_mesh_when_animation_done() {
+        let mut mgr = make_holster_test_mgr();
+        let elapsed = HOLSTER_ANIMATION_DURATION + std::time::Duration::from_millis(1);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.archetype_id = Some(1);
+            p.combat_exit_at = None;
+            p.holster_animation_complete_at = std::time::Instant::now().checked_sub(elapsed);
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+        holster_timer_tick(&tx, &mut mgr).await;
+
+        let mut saw_refresh = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::RefreshAppearance {
+                holstered: true, ..
+            } = msg
+            {
+                saw_refresh = true;
+            }
+        }
+        assert!(
+            saw_refresh,
+            "Phase 2 must dispatch RefreshAppearance(holstered=true) so the \
+             weapon mesh is removed from the wire ComponentList",
         );
 
         let player = mgr.get_entity(1).unwrap();
         assert!(
             player.weapon_holstered,
-            "weapon must flip to holstered after the tick fires",
+            "Phase 2 must flip weapon_holstered=true"
         );
         assert!(
-            player.combat_exit_at.is_none(),
-            "timer must clear so subsequent ticks don't re-fire (idempotency)",
+            player.holster_animation_complete_at.is_none(),
+            "Phase 2 stamp must clear so subsequent ticks don't re-fire",
+        );
+    }
+
+    /// Phase 2 stamp scheduled in the future is a no-op (animation
+    /// still playing). Pins the boundary.
+    #[tokio::test]
+    async fn holster_timer_tick_phase2_skips_while_animation_in_flight() {
+        let mut mgr = make_holster_test_mgr();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.archetype_id = Some(1);
+            p.combat_exit_at = None;
+            p.holster_animation_complete_at =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
+        }
+
+        let (tx, mut rx) = mpsc::channel(8);
+        holster_timer_tick(&tx, &mut mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "no messages should fire while Phase 2 stamp is in the future",
+        );
+        let player = mgr.get_entity(1).unwrap();
+        assert!(
+            !player.weapon_holstered,
+            "weapon must stay drawn until the animation finishes",
         );
     }
 

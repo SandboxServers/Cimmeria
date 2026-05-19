@@ -92,10 +92,14 @@ pub fn enter_player_combat(
         // Already in the set — no transition.
         return None;
     }
-    // Re-entering combat within the OOC grace window cancels the
-    // pending holster regardless of whether this is the *first* mob.
-    // Stays a no-op when the timer wasn't running.
+    // Re-entering combat within the OOC grace window cancels both
+    // phases of the deferred holster — `combat_exit_at` (Phase 1
+    // pending) and `holster_animation_complete_at` (Phase 2 pending,
+    // mid-animation). Re-aggro mid-animation must stop the Phase 2
+    // appearance change from yanking the mesh away after the player's
+    // already drawn for combat again.
     player.combat_exit_at = None;
+    player.holster_animation_complete_at = None;
     if was_empty {
         let old = player.state_field;
         player.state_field |= super::state::BSF_IN_COMBAT;

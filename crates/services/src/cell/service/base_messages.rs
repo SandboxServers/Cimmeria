@@ -366,6 +366,11 @@ pub(super) async fn handle_base_message(
                     if entity.threatened_mobs.is_empty() {
                         entity.set_weapon_holstered(false);
                         entity.combat_exit_at = Some(std::time::Instant::now());
+                        // Cancel any in-flight holster Phase 2 — the
+                        // player just (re-)equipped, the mesh should
+                        // STAY attached; a stale Phase 2 would yank it
+                        // away mid-equip.
+                        entity.holster_animation_complete_at = None;
                     }
                     true
                 } else {

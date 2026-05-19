@@ -294,8 +294,8 @@ pub struct CellEntity {
     pub threatened_mobs: HashSet<u32>,
 
     /// When `Some(t)`, the player left combat at `t` and the deferred
-    /// re-holster scan should fire `sync_holster_to_combat(false)` (and
-    /// trigger a `BeingAppearance` rebroadcast) once
+    /// re-holster scan should fire Phase 1 of the holster transition
+    /// (`Item_Unequip` animation) once
     /// `Instant::now() - t >= OOC_HOLSTER_DELAY`. Cleared by
     /// `enter_player_combat` (re-aggro within the grace window cancels
     /// the pending holster).
@@ -305,6 +305,22 @@ pub struct CellEntity {
     /// flicker on every gap. The 10-second window is a UX choice, not
     /// a wire-format constraint — see `cell::combat::threat::OOC_HOLSTER_DELAY`.
     pub combat_exit_at: Option<std::time::Instant>,
+
+    /// When `Some(t)`, Phase 1 of the OOC holster transition has fired
+    /// (the `Item_Unequip` animation started playing); Phase 2 (flip
+    /// `weapon_holstered = true` + rebroadcast `BeingAppearance` to
+    /// remove the weapon mesh) is scheduled for `t`. The two-phase
+    /// split exists so the hand-authored holster animation has time to
+    /// play with the weapon mesh attached — without it, the mesh
+    /// snaps away while/before the animation runs, and the visible
+    /// result is "weapon vanishes mid-motion."
+    ///
+    /// Cleared by `enter_player_combat` (re-aggro mid-animation
+    /// cancels both Phase 1 and Phase 2 in lockstep with
+    /// `combat_exit_at`) and by any "redraw the weapon" path
+    /// (`UpdateBandolierItem`, reload-while-holstered) to prevent a
+    /// stale Phase 2 from yanking the mesh away after a re-equip.
+    pub holster_animation_complete_at: Option<std::time::Instant>,
 
     // ── Ammo state ────────────────────────────────────────────────────────────
     //
@@ -500,6 +516,7 @@ impl CellEntity {
             reload_complete_at: None,
             reload_slot_id: None,
             pending_reload_at: None,
+            holster_animation_complete_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),
             spawn_position: None,
