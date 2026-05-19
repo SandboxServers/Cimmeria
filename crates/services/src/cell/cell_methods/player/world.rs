@@ -163,7 +163,6 @@ async fn handle_reload(
     let reload_def = space_mgr.ability_defs.get(&ABILITY_RELOAD_WEAPON).cloned();
     let warmup = reload_def.as_ref().map_or(2.0f32, |d| d.warmup);
     let cooldown = reload_def.as_ref().map_or(1.0f32, |d| d.cooldown);
-    let event_set_id = reload_def.as_ref().and_then(|d| d.event_set_id);
 
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
@@ -228,51 +227,60 @@ async fn handle_reload(
     // `combat::generate_threat` → `enter_player_combat` when the player
     // actually generates threat on a surviving NPC.
 
-    // The reload's *warmup* IS the visible animation (drop mag, insert mag,
-    // chamber). Earlier this site sent `Ability_End` synchronously, which
-    // made the client either play the wrong animation or no animation at
-    // all (depending on the weapon's event set). Mirroring the fire-path
-    // begin/end split is the right shape for *most* warmup-gated abilities.
+    // Fire the reload animation. The reload's *warmup* IS the visible
+    // sequence (drop mag, insert mag, chamber). The wire packet is an
+    // `onSequence` carrying the kismet sequence id from the player's
+    // archetype-keyed "Item handling" event set, looked up by
+    // `Item_Reload = 4002`. Mirrors `SGWBeing.py:863-874`:
     //
-    // TODO(#210): inert against the current seed.
-    //   Reload (ability 596) has `event_set_id = NULL` in
-    //   `db/resources/Abilities/Seed/abilities.sql`, so this branch
-    //   short-circuits in production and no Ability_Begin packet ever
-    //   leaves the server. The legacy reload path (`SGWBeing.py:863-874`)
-    //   doesn't drive reload animations off the ability's event set at
-    //   all — it sources them from the player's archetype-keyed item
-    //   event set via `getItemSequence(Item_Reload)` (event id 4002).
-    //   The wiring here is kept (rather than ripped out) because the test
-    //   coverage already pins the byte layout, and #210 will replace the
-    //   `event_set_id` lookup with the archetype-keyed lookup once that
-    //   work lands. See the issue body for the full migration shape.
-    if let Some(esid) = event_set_id {
-        use crate::cell::spawner::EVENT_ABILITY_BEGIN;
-
-        if let Some(&seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ABILITY_BEGIN)) {
-            let mut seq_args = Vec::with_capacity(28);
-            seq_args.extend_from_slice(&seq_id.to_le_bytes());
-            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
-            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
-            seq_args.push(1);
-            seq_args.extend_from_slice(&0.0f32.to_le_bytes());
-            seq_args.extend_from_slice(&0u32.to_le_bytes());
-            seq_args.push(0);
-            seq_args.extend_from_slice(&0i32.to_le_bytes());
-            let _ = tx
-                .send(CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index: spawnable_entity::ON_SEQUENCE,
-                    args: seq_args,
-                })
-                .await;
-        } else {
-            tracing::debug!(
+    //   reloadSeq = self.getItemSequence(Atrea.enums.Item_Reload)
+    //   if reloadSeq is not None:
+    //       self.playSequence(reloadSeq.seqId, self.entityId)
+    //
+    // Previously this site fired `Ability_Begin` off the *reload
+    // ability's* `event_set_id`, which is NULL in
+    // `db/resources/Abilities/Seed/abilities.sql` (seed gap), so the
+    // branch short-circuited and no animation ever played in
+    // production. The fix uses the archetype-keyed lookup — every human
+    // archetype shares event set 804 (`KIS-abilities_human.KIS-handling`),
+    // Asgard has 1455 — and pulls the `Item_Reload` sequence from there
+    // (1874 for set 804). See `archetype_item_event_set` for the table.
+    //
+    // Falls back to a debug log without crashing when the lookup misses
+    // (archetype not in the table, or seed doesn't have an Item_Reload
+    // entry in the resolved event set).
+    let reload_seq_id = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.archetype_id)
+        .and_then(crate::cell::spawner::archetype_item_event_set)
+        .and_then(|esid| {
+            space_mgr
+                .sequence_map
+                .get(&(esid, crate::cell::spawner::EVENT_ITEM_RELOAD))
+                .copied()
+        });
+    if let Some(seq_id) = reload_seq_id {
+        let mut seq_args = Vec::with_capacity(28);
+        seq_args.extend_from_slice(&seq_id.to_le_bytes());
+        seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
+        seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
+        seq_args.push(1);
+        seq_args.extend_from_slice(&0.0f32.to_le_bytes());
+        seq_args.extend_from_slice(&0u32.to_le_bytes());
+        seq_args.push(0);
+        seq_args.extend_from_slice(&0i32.to_le_bytes());
+        let _ = tx
+            .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
-                event_set_id = esid,
-                "reload: no Ability_Begin sequence found"
-            );
-        }
+                method_index: spawnable_entity::ON_SEQUENCE,
+                args: seq_args,
+            })
+            .await;
+    } else {
+        tracing::debug!(
+            entity_id,
+            "reload: no Item_Reload sequence found for archetype's event set"
+        );
     }
 
     let mut args = Vec::with_capacity(8);
@@ -504,19 +512,26 @@ mod tests {
         );
     }
 
-    /// Reload-start must fire the `Ability_Begin` (event 1000) sequence so
-    /// the client plays the visible reload animation. Earlier this site
-    /// sent `Ability_End` (event 1001), which is what `reload_completion_tick`
-    /// fires once the warmup expires — sending it at start either played
-    /// the wrong animation or none at all (depending on weapon event set).
-    /// Legacy parity: `python/cell/AbilityManager.py:619-636`.
+    /// Reload-start must fire the `Item_Reload` (event 4002) sequence from
+    /// the player's archetype-keyed "Item handling" event set so the
+    /// client plays the visible reload animation. Mirrors
+    /// `python/cell/SGWBeing.py:863-874` (`getItemSequence(Item_Reload)` +
+    /// `playSequence`). Previously this site looked up the *reload
+    /// ability's* `event_set_id`, which is NULL in the seed — the lookup
+    /// short-circuited and no animation ever played in production.
+    ///
+    /// Bug shape this catches: a refactor that goes back to keying off
+    /// `ability_defs[596].event_set_id` reintroduces the dead path.
     #[tokio::test]
-    async fn handle_reload_sends_ability_begin_sequence() {
+    async fn handle_reload_sends_item_reload_sequence() {
         use crate::cell::client_methods::spawnable_entity::ON_SEQUENCE;
-        use crate::cell::spawner::{EVENT_ABILITY_BEGIN, EVENT_ABILITY_END};
+        use crate::cell::spawner::{EVENT_ABILITY_BEGIN, EVENT_ITEM_RELOAD};
 
         let mut mgr = make_mgr_with_player();
         if let Some(e) = mgr.get_entity_mut(1) {
+            // Soldier archetype → event set 804 (the human "Item handling"
+            // set per `archetype_item_event_set`).
+            e.archetype_id = Some(1);
             e.bandolier_items.insert(
                 0,
                 BandolierItem {
@@ -529,11 +544,18 @@ mod tests {
             );
             e.active_bandolier_slot = 0;
         }
-        // Reload AbilityDef with an event_set_id so the begin-sequence
-        // path runs, plus a sequence_map entry mapping (event_set, BEGIN)
-        // to a sentinel sequence id we can recognise on the wire.
-        const EVENT_SET_ID: i32 = 7777;
-        const BEGIN_SEQ_ID: i32 = 9001;
+        // Seed the sequence_map so the (804, Item_Reload) lookup finds a
+        // sentinel sequence id we can recognise on the wire.
+        const HUMAN_ITEM_EVENT_SET: i32 = 804;
+        const ITEM_RELOAD_SEQ_ID: i32 = 1874;
+        mgr.sequence_map.insert(
+            (HUMAN_ITEM_EVENT_SET, EVENT_ITEM_RELOAD),
+            ITEM_RELOAD_SEQ_ID,
+        );
+        // Seed a decoy (ability's event set → Ability_Begin) — the
+        // regression we're guarding against would have sent THIS one.
+        const DECOY_EVENT_SET: i32 = 7777;
+        const DECOY_BEGIN_SEQ_ID: i32 = 9001;
         mgr.ability_defs.insert(
             596,
             AbilityDef {
@@ -549,17 +571,12 @@ mod tests {
                 effect_ids: vec![],
                 moniker_ids: vec![],
                 required_ammo: 0,
-                event_set_id: Some(EVENT_SET_ID),
+                event_set_id: Some(DECOY_EVENT_SET),
                 velocity: 0.0,
             },
         );
         mgr.sequence_map
-            .insert((EVENT_SET_ID, EVENT_ABILITY_BEGIN), BEGIN_SEQ_ID);
-        // Seed an `Ability_End` mapping too — the regression we're guarding
-        // against would have sent THIS one synchronously at reload-start.
-        const END_SEQ_ID: i32 = 9002;
-        mgr.sequence_map
-            .insert((EVENT_SET_ID, EVENT_ABILITY_END), END_SEQ_ID);
+            .insert((DECOY_EVENT_SET, EVENT_ABILITY_BEGIN), DECOY_BEGIN_SEQ_ID);
 
         let (tx, mut rx) = mpsc::channel(64);
         handle_reload(1, &tx, &mut mgr).await;
@@ -573,7 +590,7 @@ mod tests {
         //   nvp_count     u32 LE  @ 17..21
         //   view_type     u8      @ 21
         //   instance_id   i32 LE  @ 22..26
-        let mut begin_count = 0;
+        let mut item_reload_count = 0;
         while let Ok(msg) = rx.try_recv() {
             if let CellToBaseMsg::EntityMethodCall {
                 method_index, args, ..
@@ -589,10 +606,11 @@ mod tests {
                     );
                     let seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                     assert_ne!(
-                        seq_id, END_SEQ_ID,
-                        "reload-start must NOT send Ability_End (that's reload_completion_tick's job)"
+                        seq_id, DECOY_BEGIN_SEQ_ID,
+                        "reload-start must NOT fire the reload ability's Ability_Begin \
+                         (that's the dead pre-fix path)",
                     );
-                    if seq_id != BEGIN_SEQ_ID {
+                    if seq_id != ITEM_RELOAD_SEQ_ID {
                         continue;
                     }
                     let source_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
@@ -617,15 +635,15 @@ mod tests {
                          fire animations"
                     );
                     assert_eq!(instance_id, 0, "no effect instance for the reload sequence");
-                    begin_count += 1;
+                    item_reload_count += 1;
                 }
             }
         }
         assert_eq!(
-            begin_count, 1,
-            "reload-start must send exactly one onSequence with the Ability_Begin \
+            item_reload_count, 1,
+            "reload-start must send exactly one onSequence with the Item_Reload \
              sequence id; without it the client plays no visible reload animation. \
-             Got {begin_count}.",
+             Got {item_reload_count}.",
         );
     }
 

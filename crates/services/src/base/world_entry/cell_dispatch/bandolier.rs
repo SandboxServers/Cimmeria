@@ -80,6 +80,16 @@ pub(super) async fn active_slot_update(
 /// The cached `weapon_holstered` flag is what every appearance-emit
 /// site (here, the equipment-move path, world entry, post-cinematic
 /// resend) reads to filter `weapon_visual` out of `ComponentList`.
+///
+/// **Always rebroadcasts**, even when the cached flag matches the
+/// incoming `holstered`. The earlier short-circuit was wrong:
+/// re-aggro inside the 10-second OOC grace window leaves the weapon
+/// drawn (we deliberately defer the holster), so the cached flag is
+/// still `false` when the next combat-enter fires its draw kick. A
+/// same-state short-circuit would suppress the `BeingAppearance` that
+/// triggers the client's unholster animation, leaving the second
+/// combat enter's draw silent. The wire cost is one packet per
+/// combat transition — well within budget.
 pub(super) async fn refresh_appearance(
     entity_id: u32,
     player_id: i32,
@@ -89,11 +99,12 @@ pub(super) async fn refresh_appearance(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    // Update the cached flag first so the rebroadcast below — and any
-    // future refresh fired by an unrelated path — picks up the new
-    // state. Without this, refresh_player_appearance would re-emit
-    // with the stale cached flag.
-    let updated = {
+    // Update the cached flag so any subsequent refresh fired by an
+    // unrelated path (item equip, slot swap, world re-entry) picks up
+    // the live holster state. The flag write itself is unconditional;
+    // the rebroadcast below is too — see fn doc for why we don't
+    // short-circuit on no-change.
+    {
         let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
             Some(a) => a,
             None => {
@@ -109,9 +120,7 @@ pub(super) async fn refresh_appearance(
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
-                let changed = c.weapon_holstered != holstered;
                 c.weapon_holstered = holstered;
-                changed
             }
             None => {
                 tracing::debug!(
@@ -123,21 +132,6 @@ pub(super) async fn refresh_appearance(
                 return;
             }
         }
-    };
-
-    // Skip the rebroadcast if the flag didn't change — same-state-as-cached
-    // is a no-op, and a no-op refresh would just spam witnesses with a
-    // packet they already have. (Cell-side calls are guarded by
-    // `set_weapon_holstered`'s change-detection so this is mostly a
-    // defensive idempotency check.)
-    if !updated {
-        tracing::trace!(
-            entity_id,
-            player_id,
-            holstered,
-            "RefreshAppearance: holster state unchanged, no rebroadcast needed"
-        );
-        return;
     }
 
     tracing::debug!(
