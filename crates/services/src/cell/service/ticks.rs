@@ -243,6 +243,53 @@ pub(super) async fn holster_timer_tick(
     }
 }
 
+/// Promote pending reload-while-holstered phase A → phase B.
+///
+/// `handle_reload` detects "player is holstered + OOC + no reload in
+/// flight," dispatches an `Item_Equip` draw animation + appearance
+/// refresh, and stamps `pending_reload_at = now + UNHOLSTER_DRAW_DURATION`.
+/// This tick scans for elapsed stamps and re-invokes `handle_reload`,
+/// which then finds the weapon already drawn and runs the normal reload
+/// start (cooldown timer + `Item_Reload` sequence + deferred ammo refill
+/// via [`reload_completion_tick`]).
+///
+/// Why two phases: firing the reload animation on a model that's still
+/// in the middle of the draw motion produces "weapon teleports into
+/// hand and the reload anim plays on empty space" — the symptom that
+/// drove this fix. Giving the draw `UNHOLSTER_DRAW_DURATION` to play
+/// out lets the hand reach the hold position before the reload
+/// sequence triggers.
+///
+/// Cadence: every 100ms AoI tick. Cost is one filter pass; the inner
+/// `handle_reload` re-invocation only fires on transition.
+pub(super) async fn pending_reload_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let now = std::time::Instant::now();
+
+    let ready: Vec<u32> = space_mgr
+        .all_player_entity_ids()
+        .into_iter()
+        .filter(|&eid| {
+            space_mgr
+                .get_entity(eid)
+                .and_then(|e| e.pending_reload_at)
+                .is_some_and(|t| now >= t)
+        })
+        .collect();
+
+    for entity_id in ready {
+        tracing::info!(
+            entity_id,
+            "pending_reload_tick: draw window elapsed, starting deferred reload"
+        );
+        // `handle_reload` clears `pending_reload_at` at the top of its
+        // Phase B branch, so this won't re-fire next tick.
+        super::super::cell_methods::player::world::handle_reload(entity_id, tx, space_mgr).await;
+    }
+}
+
 /// Out-of-combat health and focus regeneration.
 ///
 /// For each connected, alive player whose `threatened_mobs` set is empty,

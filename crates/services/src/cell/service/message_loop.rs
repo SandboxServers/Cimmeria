@@ -67,6 +67,12 @@ pub(super) async fn run_cell_loop(
                 // the empty set unless someone just exited combat.
                 super::ticks::holster_timer_tick(tx, &mut space_mgr).await;
 
+                // Promote pending reload-while-holstered (Phase A → B):
+                // any player whose draw animation has had time to play
+                // gets the actual reload kicked off now. Cheap, same
+                // filter shape as the holster tick.
+                super::ticks::pending_reload_tick(tx, &mut space_mgr).await;
+
                 // Drive ring transporter timers (hide / warmup / cooldown).
                 // Each transporter holds its own deadlines; this tick fires
                 // the transitions and dispatches their effects.

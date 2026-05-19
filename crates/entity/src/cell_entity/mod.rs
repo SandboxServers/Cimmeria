@@ -322,6 +322,15 @@ pub struct CellEntity {
     /// prevents a mid-reload weapon swap from refilling the wrong magazine.
     /// `None` whenever `reload_complete_at` is `None`.
     pub reload_slot_id: Option<i32>,
+    /// When `Some(t)`, the player pressed reload while holstered. Phase A
+    /// of the reload (redraw + Item_Equip draw animation) has already
+    /// been dispatched; the actual reload start (cooldown timer +
+    /// `Item_Reload` animation + ammo refill schedule) is deferred until
+    /// `Instant::now() >= t` so the draw animation has time to play out.
+    /// The `pending_reload_tick` consumes this stamp by re-invoking the
+    /// reload handler, which then runs the normal reload-start path
+    /// against an already-drawn weapon.
+    pub pending_reload_at: Option<std::time::Instant>,
 
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
@@ -490,6 +499,7 @@ impl CellEntity {
             combat_exit_at: None,
             reload_complete_at: None,
             reload_slot_id: None,
+            pending_reload_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),
             spawn_position: None,
