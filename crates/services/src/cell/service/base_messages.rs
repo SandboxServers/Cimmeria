@@ -346,11 +346,46 @@ pub(super) async fn handle_base_message(
             item,
             make_active,
         } => {
-            if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+            // Display the newly-equipped weapon and arm the OOC holster
+            // timer so it re-holsters after `OOC_HOLSTER_DELAY`. Mirrors
+            // `python/cell/SGWPlayer.py:onItemEquipped` which fires
+            // `playSequence(Item_Equip)` whenever an item lands in the
+            // bandolier. Gated on `make_active` so only the *active*
+            // weapon's equip plays the animation (non-active slots are
+            // wire-invisible anyway).
+            //
+            // In-combat equip: weapon is already drawn,
+            // `combat_exit_at` stays None (set by `exit_player_combat`
+            // when the fight ends). We skip the timer arming here to
+            // avoid stamping a timer while threatened_mobs is non-empty,
+            // which the holster scan doesn't (yet) gate on combat state.
+            let play_equip_anim = if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.bandolier_items.insert(slot_id, item);
                 if make_active {
                     entity.active_bandolier_slot = slot_id;
+                    if entity.threatened_mobs.is_empty() {
+                        entity.set_weapon_holstered(false);
+                        entity.combat_exit_at = Some(std::time::Instant::now());
+                    }
+                    true
+                } else {
+                    false
                 }
+            } else {
+                false
+            };
+            if play_equip_anim {
+                // Appearance refresh first so the weapon mesh is socket-
+                // attached when the `Item_Equip` animation plays. Same
+                // ordering principle as combat-enter (PR #338).
+                super::super::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
+                super::super::cell_methods::player::world::fire_item_sequence(
+                    entity_id,
+                    super::super::spawner::EVENT_ITEM_EQUIP,
+                    tx,
+                    space_mgr,
+                )
+                .await;
             }
         }
 
@@ -830,6 +865,165 @@ mod tests {
         assert!(
             entity.bandolier_items.contains_key(&2),
             "bandolier_items must contain the new slot"
+        );
+    }
+
+    /// `UpdateBandolierItem` with `make_active=true` on an OOC player
+    /// must draw the weapon, stamp the OOC re-holster timer, and
+    /// dispatch a `RefreshAppearance` (mesh attach for the equip
+    /// animation) + an `ON_SEQUENCE` (Item_Equip animation).
+    ///
+    /// Bug shape this catches: a refactor that drops the draw-on-equip
+    /// hook leaves the player picking up a weapon that stays invisible
+    /// until the next combat enter — the symptom that drove this fix
+    /// (the player's mental model is "I just equipped this, I should
+    /// see it").
+    #[tokio::test]
+    async fn update_bandolier_item_draws_weapon_and_arms_holster_timer_when_active() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = true; // OOC + holstered (post-grace)
+            e.combat_exit_at = None;
+        }
+        mgr.connect_entity(1);
+        // Seed the Item_Equip sequence so `fire_item_sequence` can resolve.
+        // Soldier (archetype 1) → event set 804 → seq 1872 (Item_Equip).
+        mgr.sequence_map
+            .insert((804, crate::cell::spawner::EVENT_ITEM_EQUIP), 1872);
+
+        let item = BandolierItem {
+            item_id: 42,
+            clip_size: 25,
+            default_ammo_type: 2,
+            current_ammo: 25,
+            cur_ammo_type: 2,
+        };
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = ChainEngine::new();
+
+        handle_base_message(
+            BaseToCellMsg::UpdateBandolierItem {
+                entity_id: 1,
+                slot_id: 0,
+                item,
+                make_active: true,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            !e.weapon_holstered,
+            "equip on OOC player must draw the weapon so it's visible",
+        );
+        assert!(
+            e.combat_exit_at.is_some(),
+            "OOC holster timer must be armed so the weapon re-holsters \
+             after OOC_HOLSTER_DELAY (matches the post-combat behavior — \
+             player sees the weapon for a few seconds then it goes away)",
+        );
+
+        let mut saw_refresh = false;
+        let mut saw_sequence = false;
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::RefreshAppearance {
+                    holstered: false, ..
+                } => saw_refresh = true,
+                CellToBaseMsg::EntityMethodCall { method_index, .. }
+                    if method_index
+                        == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                {
+                    saw_sequence = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            saw_refresh,
+            "equip must dispatch RefreshAppearance(holstered=false) so the \
+             client attaches the weapon mesh before the equip animation",
+        );
+        assert!(
+            saw_sequence,
+            "equip must fire Item_Equip onSequence so the client plays the \
+             equip animation. Without it, the weapon just teleports into the \
+             hand with no animation.",
+        );
+    }
+
+    /// `UpdateBandolierItem` while in combat must NOT arm the OOC
+    /// holster timer — `combat_exit_at` is supposed to be stamped by
+    /// `exit_player_combat`, and stamping it here would let the holster
+    /// fire mid-combat (the holster scan doesn't gate on
+    /// `threatened_mobs.is_empty()` today).
+    #[tokio::test]
+    async fn update_bandolier_item_in_combat_does_not_arm_holster_timer() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = false; // in combat, already drawn
+            e.combat_exit_at = None;
+            e.threatened_mobs.insert(999); // pretend there's an aggro
+        }
+        mgr.connect_entity(1);
+
+        let item = BandolierItem {
+            item_id: 42,
+            clip_size: 25,
+            default_ammo_type: 2,
+            current_ammo: 25,
+            cur_ammo_type: 2,
+        };
+
+        let (tx, _rx) = mpsc::channel(16);
+        let engine = ChainEngine::new();
+
+        handle_base_message(
+            BaseToCellMsg::UpdateBandolierItem {
+                entity_id: 1,
+                slot_id: 0,
+                item,
+                make_active: true,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            e.combat_exit_at.is_none(),
+            "in-combat equip must NOT stamp combat_exit_at — the timer \
+             would otherwise fire mid-combat and holster the weapon while \
+             the player is still fighting. `exit_player_combat` stamps \
+             this on combat exit naturally.",
         );
     }
 
