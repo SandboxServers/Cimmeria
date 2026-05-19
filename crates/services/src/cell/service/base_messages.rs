@@ -152,14 +152,16 @@ pub(super) async fn handle_base_message(
             entity_id,
             player_id,
             world_name,
+            archetype_id,
             saved_missions,
             abilities,
             active_bandolier_slot,
             bandolier_items,
         } => {
-            tracing::debug!(entity_id, player_id, %world_name, saved_count = saved_missions.len(), ability_count = abilities.len(), "InitPlayerState");
+            tracing::debug!(entity_id, player_id, archetype_id, %world_name, saved_count = saved_missions.len(), ability_count = abilities.len(), "InitPlayerState");
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.player_id = Some(player_id);
+                entity.archetype_id = Some(archetype_id);
 
                 // Register player's known abilities on the server-side entity
                 for &ability_id in &abilities {

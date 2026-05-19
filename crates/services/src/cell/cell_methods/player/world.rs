@@ -249,16 +249,21 @@ async fn handle_reload(
     // Falls back to a debug log without crashing when the lookup misses
     // (archetype not in the table, or seed doesn't have an Item_Reload
     // entry in the resolved event set).
-    let reload_seq_id = space_mgr
-        .get_entity(entity_id)
-        .and_then(|e| e.archetype_id)
-        .and_then(crate::cell::spawner::archetype_item_event_set)
-        .and_then(|esid| {
-            space_mgr
-                .sequence_map
-                .get(&(esid, crate::cell::spawner::EVENT_ITEM_RELOAD))
-                .copied()
-        });
+    let archetype_id = space_mgr.get_entity(entity_id).and_then(|e| e.archetype_id);
+    let event_set = archetype_id.and_then(crate::cell::spawner::archetype_item_event_set);
+    let reload_seq_id = event_set.and_then(|esid| {
+        space_mgr
+            .sequence_map
+            .get(&(esid, crate::cell::spawner::EVENT_ITEM_RELOAD))
+            .copied()
+    });
+    tracing::info!(
+        entity_id,
+        archetype_id = ?archetype_id,
+        event_set_id = ?event_set,
+        reload_seq_id = ?reload_seq_id,
+        "reload: Item_Reload sequence lookup"
+    );
     if let Some(seq_id) = reload_seq_id {
         let mut seq_args = Vec::with_capacity(28);
         seq_args.extend_from_slice(&seq_id.to_le_bytes());

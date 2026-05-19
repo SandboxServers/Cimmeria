@@ -170,6 +170,33 @@ pub(crate) async fn handle_on_client_ready(
         vec![]
     };
 
+    // Query archetype id from DB. Carried through to the cell so the
+    // `Item_*` event-set lookup (PR #338 reload-sequence path) can
+    // resolve. Defaults to 0 on error / missing row — the cell
+    // `archetype_item_event_set` falls through to "no animation" rather
+    // than crashing, which matches the python behavior.
+    let archetype_id: i32 = if let Some(pool) = db_pool {
+        match sqlx::query_scalar::<_, Option<i32>>(
+            "SELECT archetype FROM sgw_player WHERE player_id = $1",
+        )
+        .bind(pending.player_id)
+        .fetch_optional(pool.as_ref())
+        .await
+        {
+            Ok(Some(Some(a))) => a,
+            Ok(Some(None)) | Ok(None) => 0,
+            Err(e) => {
+                tracing::error!(
+                    player_id = pending.player_id,
+                    "Archetype read failed; defaulting to 0 but logging error: {e}"
+                );
+                0
+            }
+        }
+    } else {
+        0
+    };
+
     // Query active bandolier slot and items from DB (Bug #1: don't hardcode empty state).
     // Distinguish DB error from "no row" so a connection blip doesn't silently default
     // a real player to empty bandolier state.
@@ -223,6 +250,7 @@ pub(crate) async fn handle_on_client_ready(
                 entity_id,
                 player_id: pending.player_id,
                 world_name: pending.world_name.clone(),
+                archetype_id,
                 saved_missions,
                 abilities,
                 active_bandolier_slot,

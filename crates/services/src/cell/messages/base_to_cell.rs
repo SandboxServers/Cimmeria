@@ -64,6 +64,15 @@ pub enum BaseToCellMsg {
         entity_id: u32,
         player_id: i32,
         world_name: String,
+        /// Player archetype id from `sgw_player.archetype`. Drives any
+        /// archetype-keyed lookups on the cell side — currently the
+        /// `Item_Equip`/`Item_Unequip`/`Item_Reload`/`Item_Use` event
+        /// set resolution (`ARCHETYPE_ITEM_EVENT_SETS` in the python
+        /// source) via [`crate::cell::spawner::archetype_item_event_set`].
+        /// Without this, the cell entity's `archetype_id` stays `None`
+        /// and the reload animation lookup falls through silently —
+        /// see PR #338 follow-up notes.
+        archetype_id: i32,
         /// Saved missions loaded from DB, to be restored before content engine fires.
         saved_missions: Vec<SavedMission>,
         /// Player's known ability IDs (from sgw_player.abilities column).
