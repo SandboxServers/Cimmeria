@@ -71,7 +71,7 @@ pub enum BaseToCellMsg {
         /// source) via [`crate::cell::spawner::archetype_item_event_set`].
         /// Without this, the cell entity's `archetype_id` stays `None`
         /// and the reload animation lookup falls through silently —
-        /// see PR #338 follow-up notes.
+        /// see follow-up notes.
         archetype_id: i32,
         /// Saved missions loaded from DB, to be restored before content engine fires.
         saved_missions: Vec<SavedMission>,

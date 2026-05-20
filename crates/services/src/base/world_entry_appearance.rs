@@ -171,7 +171,7 @@ pub(crate) async fn handle_on_client_ready(
     };
 
     // Query archetype id from DB. Carried through to the cell so the
-    // `Item_*` event-set lookup (PR #338 reload-sequence path) can
+    // `Item_*` event-set lookup (reload-sequence path) can
     // resolve. Defaults to 0 on error / missing row — the cell
     // `archetype_item_event_set` falls through to "no animation" rather
     // than crashing, which matches the python behavior.

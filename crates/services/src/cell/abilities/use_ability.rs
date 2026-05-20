@@ -129,39 +129,37 @@ pub async fn handle_use_ability(
         return false;
     }
 
-    // Attack-while-holstered queue (PR #338): if the player presses
-    // attack while the weapon is holstered, defer the ability dispatch
-    // until the draw animation has had time to play. Mirrors the
+    // Attack-while-holstered queue: when the player presses fire while
+    // the weapon is holstered, defer the ability dispatch until the
+    // draw animation has had time to play. Mirrors the
     // reload-while-holstered Phase A — draw the weapon, fire
     // `Item_Equip`, stash the ability + target, and let
     // `pending_attack_tick` re-invoke `handle_use_ability` after
-    // `UNHOLSTER_DRAW_DURATION`. The user playtest spec: "trying to
-    // attack an enemy should trigger the unholster animation and
-    // queue the first shot, then it should proceed normally."
+    // `UNHOLSTER_DRAW_DURATION`.
     //
-    // Subsequent presses while the queue is in flight are rejected so
-    // the first press locks in the queue.
+    // Only weapon attacks (`required_ammo > 0`) gate on this queue.
+    // Non-weapon abilities (heals, buffs, self-casts) bypass entirely
+    // — they don't need the weapon drawn to function, and they
+    // shouldn't be locked out while a queued weapon shot is mid-draw.
     //
-    // Ammo is NOT checked here — the deferred `handle_use_ability`
-    // re-invocation runs the normal ammo check at fire time
-    // (user spec: "queue the pistol shot ability then and let it
-    // handle the ammo part").
+    // Subsequent weapon-attack presses during the draw window are
+    // rejected so the first press locks in the queue. Ammo is NOT
+    // checked here — the deferred re-invocation runs the normal ammo
+    // check at fire time.
+    let is_weapon_attack = ability_def.as_ref().is_some_and(|d| d.required_ammo > 0);
     let queued_attack_already_pending = space_mgr
         .get_entity(entity_id)
         .is_some_and(|e| e.pending_attack_at.is_some());
-    if queued_attack_already_pending {
+    if queued_attack_already_pending && is_weapon_attack {
         tracing::debug!(
             entity_id,
             ability_id,
-            "useAbility: attack already queued (mid-draw), ignoring input"
+            "useAbility: weapon attack already queued (mid-draw), ignoring input"
         );
         return false;
     }
-    // Only weapon attacks (required_ammo > 0) trigger the queue.
-    // Non-weapon abilities (heals, buffs, self-casts) don't need the
-    // weapon drawn to function and shouldn't waste a draw animation.
-    let is_weapon_attack = ability_def.as_ref().is_some_and(|d| d.required_ammo > 0);
     let needs_unholster_queue = is_weapon_attack
+        && !queued_attack_already_pending
         && space_mgr
             .get_entity(entity_id)
             .is_some_and(|e| e.is_player && e.weapon_holstered && e.threatened_mobs.is_empty());
@@ -662,7 +660,7 @@ mod tests {
         );
     }
 
-    /// Attack-while-holstered (PR #338): pressing fire on a weapon
+    /// Attack-while-holstered: pressing fire on a weapon
     /// attack while OOC + holstered must defer the ability — draw
     /// weapon, fire `Item_Equip`, stash the call on
     /// `pending_attack_*`, and return false WITHOUT committing
@@ -810,6 +808,55 @@ mod tests {
         assert!(
             mgr.get_entity(1).unwrap().pending_attack_at.is_none(),
             "non-weapon ability must NOT set pending_attack_at",
+        );
+    }
+
+    /// Non-weapon abilities (heals, buffs, self-casts) must STILL fire
+    /// even when a weapon attack is queued behind the unholster
+    /// animation. The queue is about the unholster choreography, not
+    /// a global ability lockout — a player mid-draw should still be
+    /// able to heal themselves.
+    ///
+    /// Bug shape: a refactor that gates the `queued_attack_already_pending`
+    /// early reject without also checking `is_weapon_attack` regresses
+    /// to "queue blocks ALL abilities" — heals get silently dropped
+    /// the moment a weapon attack is queued.
+    #[tokio::test]
+    async fn non_weapon_ability_fires_even_when_weapon_attack_queued() {
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        let queued_stamp = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.weapon_holstered = false; // weapon drawn (just queued an attack)
+            p.abilities.add_ability(7);
+            // Simulate a queued weapon attack from a prior press.
+            p.pending_attack_at = Some(queued_stamp);
+            p.pending_attack_ability_id = Some(99);
+            p.pending_attack_target_id = Some(42);
+        }
+        // Ability 7 is non-weapon (required_ammo=0 — heal/buff).
+        mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+        let (tx, _rx) = mpsc::channel(64);
+
+        let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+        assert!(
+            committed,
+            "non-weapon ability must commit even while a weapon attack \
+             is queued — the queue is animation-state, not a global \
+             ability lockout",
+        );
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.pending_attack_at,
+            Some(queued_stamp),
+            "queued weapon attack must NOT be cleared by a non-weapon \
+             ability firing through the queue",
+        );
+        assert_eq!(
+            e.pending_attack_ability_id,
+            Some(99),
+            "queued ability id must be untouched",
         );
     }
 

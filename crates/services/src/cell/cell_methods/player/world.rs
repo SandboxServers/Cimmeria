@@ -282,6 +282,27 @@ pub(crate) async fn handle_reload(
         }
     }
 
+    // Reject second-press during the Phase A draw window. If
+    // `pending_reload_at` is set and the timestamp hasn't elapsed yet,
+    // the only legitimate entry path is the tick — but the tick fires
+    // strictly after the timestamp, so a `now < pending_reload_at`
+    // observation here means the player pressed R again mid-draw.
+    // Without this gate, the second press falls through to Phase B,
+    // clears `pending_reload_at` ahead of schedule, and starts the
+    // reload cooldown immediately — defeating the draw window.
+    if let Some(t) = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.pending_reload_at)
+    {
+        if std::time::Instant::now() < t {
+            tracing::debug!(
+                entity_id,
+                "requestReload: ignoring while draw window in progress"
+            );
+            return;
+        }
+    }
+
     // Phase B (or a normal already-drawn reload). When entered from the
     // `pending_reload_tick`, clear the deferred-reload stamp so a
     // racing tick won't re-fire phase B.
@@ -750,7 +771,7 @@ mod tests {
         );
     }
 
-    /// Reload-while-holstered Phase A (PR #338): a player who's OOC and
+    /// Reload-while-holstered Phase A: a player who's OOC and
     /// holstered presses reload. The handler defers the actual reload
     /// to give the draw animation time to play. Phase A must:
     ///   1. Flip `weapon_holstered` to false.
@@ -832,7 +853,7 @@ mod tests {
         );
     }
 
-    /// Phase A → Phase B promotion (PR #338): once the draw window has
+    /// Phase A → Phase B promotion: once the draw window has
     /// elapsed, calling `handle_reload` again (as the
     /// `pending_reload_tick` does) finds `pending_reload_at` set,
     /// clears it, and runs the normal Phase B reload start
@@ -936,6 +957,61 @@ mod tests {
             new_stamp > stale_stamp,
             "timer must be re-stamped to current time so the existing \
              OOC_HOLSTER_DELAY countdown doesn't expire mid-reload",
+        );
+    }
+
+    /// Second reload press during the Phase A draw window must be
+    /// silently ignored. Without this gate, the second press falls
+    /// through to Phase B, clears `pending_reload_at` early, and
+    /// starts the reload cooldown immediately — defeating the draw
+    /// animation timing.
+    ///
+    /// Bug shape: refactor drops the `now < pending_reload_at` check
+    /// at the top of Phase B; a player mashing R during the draw
+    /// window triggers Phase B prematurely and the reload anim
+    /// chains in mid-draw (the symptom that drove the original
+    /// two-phase split).
+    #[tokio::test]
+    async fn reload_second_press_during_draw_window_is_ignored() {
+        let mut mgr = make_mgr_with_player();
+        let future = std::time::Instant::now() + std::time::Duration::from_millis(800);
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = false; // weapon drawn (Phase A finished its draw)
+            e.combat_exit_at = Some(std::time::Instant::now());
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+            // Phase A already fired — Phase B is queued for the future.
+            e.pending_reload_at = Some(future);
+        }
+        // No reload ability def needed — the gate fires before any
+        // ability lookup.
+
+        let (tx, _rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.pending_reload_at,
+            Some(future),
+            "second press must NOT clear pending_reload_at — the \
+             tick still owns the Phase B promotion at the right time",
+        );
+        assert!(
+            e.reload_complete_at.is_none(),
+            "second press must NOT start the reload cooldown — Phase B \
+             would otherwise fire mid-draw and chain the reload \
+             animation before the unholster motion finishes",
         );
     }
 

@@ -73,7 +73,7 @@ pub async fn handle_grant_item(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    tracing::info!(
+    tracing::debug!(
         entity_id,
         player_id,
         item_id,

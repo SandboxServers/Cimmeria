@@ -65,7 +65,7 @@ pub(crate) async fn send_entity_method(
 /// Send a `CellToBaseMsg::RefreshAppearance` for a player entity, reading
 /// the player's current `weapon_holstered` state off the cell entity.
 ///
-/// Phase 2 of the holster work (PR #338) — called from the combat
+/// Phase 2 of the holster work — called from the combat
 /// enter/exit broadcast sites after `onStateFieldUpdate` so a draw or
 /// holster reaches the wire in the same dispatch burst as the BSF_InCombat
 /// change. No-op (with a debug log) for non-player entities or for

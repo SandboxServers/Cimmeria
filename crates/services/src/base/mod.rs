@@ -143,7 +143,7 @@ pub(crate) struct ConnectedClientState {
     /// and combat enter/exit.
     ///
     /// Defaults to `true` so a freshly-connected client spawns weapon-down
-    /// (matches the Phase 1 design — see PR #338 and
+    /// (matches the Phase 1 design and
     /// `docs/architecture/state-field-bits.md`).
     pub weapon_holstered: bool,
     pub cancelled: Arc<AtomicBool>,

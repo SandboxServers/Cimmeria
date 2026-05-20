@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn enter_player_combat_draws_weapon_when_bsf_flips() {
-        // Phase 2 invariant (PR #338): when BSF_InCombat goes off → on,
+        // Phase 2 invariant: when BSF_InCombat goes off → on,
         // `weapon_holstered` flips true → false in the same call so the
         // dispatch site can request a `BeingAppearance` rebroadcast
         // immediately after the `onStateFieldUpdate`. The bug shape this
@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn exit_player_combat_defers_holster_via_combat_exit_at() {
-        // Phase 3 (PR #338): re-holstering is deferred to the OOC
+        // Phase 3: re-holstering is deferred to the OOC
         // grace tick. `exit_player_combat` stamps `combat_exit_at` and
         // leaves the weapon drawn — chaining mobs (kill A, aggro B
         // within the grace window) needs to skip the visible flicker.
@@ -447,7 +447,7 @@ mod tests {
 
     #[test]
     fn enter_player_combat_cancels_pending_holster() {
-        // Phase 3 (PR #338): re-aggro inside the OOC grace window
+        // Phase 3: re-aggro inside the OOC grace window
         // must wipe the pending holster, otherwise the tick scan
         // would still fire and holster a player who's now back in
         // combat. Bug shape: a refactor moves the

@@ -59,8 +59,14 @@ Today this applies to:
 | Flag | Reason |
 |------|--------|
 | `BSF_CROUCHING` | Idempotent player input via the `setCrouched` cell method (`cell_methods/combatant.rs::SET_CROUCHED`) |
-| `BSF_HOLSTER` | Mostly idempotent player input via `requestHolsterWeapon`; weapon-fire also unholsters |
 | `BSF_IN_COMBAT` | Externally managed via `threatened_mobs` set in `combat::threat` — that set IS the dedup mechanism |
+
+`BSF_HOLSTER` (bit 8) was retired — the 2009 client never dispatched
+on it, so writes were always no-ops. Server-side holster state lives
+on `CellEntity::weapon_holstered` and the wire surface is
+`BeingAppearance.ComponentList` filtering. See
+[`state-field-bits.md`](state-field-bits.md) for the retirement
+notice and Ghidra anchors.
 
 `BSF_Walking` exists in the python reference (`Atrea/enums.py`) but
 has no Rust writer today. When that gets ported, it'll join this

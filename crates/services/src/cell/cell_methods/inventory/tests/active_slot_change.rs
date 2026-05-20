@@ -85,7 +85,7 @@ async fn request_active_slot_change_translates_wire_to_server_slot() {
             e.is_player = true;
             e.player_id = Some(100);
             // Mark in-combat so the holster→swap→unholster choreography
-            // (PR #338 task #20) skips and the swap completes
+            // (task #20) skips and the swap completes
             // immediately — this test verifies wire-to-server slot
             // translation, not the OOC choreography path.
             e.threatened_mobs.insert(9999);
@@ -175,7 +175,7 @@ async fn request_active_slot_change_translates_wire_to_server_slot() {
     }
 }
 
-/// PR #338 task #20 — weapon→weapon slot swap (both source and target
+/// task #20 — weapon→weapon slot swap (both source and target
 /// hold weapons, player is OOC) must defer the slot change behind an
 /// `Item_Unequip` animation. The handler fires the holster sequence
 /// immediately and stashes `(pending_slot_swap_at, pending_slot_swap_target)`

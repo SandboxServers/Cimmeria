@@ -166,7 +166,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. 11 documents.
+How the Cimmeria emulator itself is structured. 12 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|

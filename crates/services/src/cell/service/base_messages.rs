@@ -373,7 +373,7 @@ pub(super) async fn handle_base_message(
                     //    `active_bandolier_slot` from here.
                     // 2. `make_active=false` BUT `slot_id` already
                     //    equals `active_bandolier_slot` — this is the
-                    //    initial-grant case (PR #338 follow-up): the
+                    //    initial-grant case: the
                     //    base's SQL doesn't flip bandolier_slot when
                     //    the INSERT already lands at the player's
                     //    default selection (the NOT EXISTS guard finds
@@ -432,7 +432,7 @@ pub(super) async fn handle_base_message(
             if play_equip_anim {
                 // Appearance refresh first so the weapon mesh is socket-
                 // attached when the `Item_Equip` animation plays. Same
-                // ordering principle as combat-enter (PR #338).
+                // ordering principle as combat-enter.
                 super::super::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
                 super::super::cell_methods::player::world::fire_item_sequence(
                     entity_id,
@@ -458,7 +458,7 @@ pub(super) async fn handle_base_message(
             // the active slot just gained a weapon it didn't have
             // before. Compare prev vs new item_id in the active slot.
             //
-            // (PR #338 follow-up — initial player equip goes through
+            // (initial player equip goes through
             // `moveInventoryItem`, not `grantItem`. The earlier
             // `UpdateBandolierItem` fix only covered chain-engine
             // grants; the player-driven drag-to-equip case lands here.)
@@ -471,7 +471,7 @@ pub(super) async fn handle_base_message(
             // the active slot just gained a weapon it didn't have
             // before. Compare prev vs new item_id in the active slot.
             //
-            // (PR #338 follow-up — initial player equip goes through
+            // (initial player equip goes through
             // `moveInventoryItem`, not `grantItem`. The earlier
             // `UpdateBandolierItem` fix only covered chain-engine
             // grants; the player-driven drag-to-equip case lands here.)
@@ -552,7 +552,7 @@ pub(super) async fn handle_base_message(
                 let path = if active_slot_lost_weapon {
                     // Player-driven unequip — schedule the same
                     // two-phase choreography the OOC holster timer
-                    // uses (PR #338): fire `Item_Unequip` now,
+                    // uses: fire `Item_Unequip` now,
                     // leave the mesh attached (weapon_holstered
                     // stays at its current value), and arm a
                     // Phase 2 via `holster_animation_complete_at`
@@ -1285,7 +1285,7 @@ mod tests {
     /// Bug shape this catches: a refactor that drops the
     /// `Item_Unequip` dispatch or the Phase 2 scheduling regresses
     /// to "weapon vanishes instantly with no holster animation" —
-    /// the playtest symptom from PR #338.
+    /// the playtest symptom from .
     #[tokio::test]
     async fn sync_bandolier_items_active_slot_lost_weapon_fires_unequip_and_schedules_phase2() {
         let mut mgr = SpaceManager::new(1);
@@ -1551,7 +1551,7 @@ mod tests {
             !e.weapon_holstered,
             "initial grant into the already-active slot must draw the weapon — \
              without this the first weapon a player ever receives stays \
-             invisible (the bug from PR #338 playtest)",
+             invisible (the bug from playtest)",
         );
         assert!(
             e.combat_exit_at.is_some(),

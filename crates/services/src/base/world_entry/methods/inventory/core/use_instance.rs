@@ -2,7 +2,7 @@
 //! an inventory instance the player owns. Does not consume the stack;
 //! per-item consumption is the chain's responsibility via `Action::RemoveItem`.
 //!
-//! As of PR #338's right-click-to-equip work: weapon instances (rows with
+//! As of the right-click-to-equip work: weapon instances (rows with
 //! `clip_size IS NOT NULL` in `resources.items`) bypass the `OnItemUse`
 //! event and route to the move path instead — `useItem` on a weapon means
 //! "equip" (main bag → bandolier) or "unequip" (bandolier → main bag)
@@ -18,15 +18,13 @@ use tokio::sync::mpsc;
 
 use super::super::move_::handle_move_inventory_item;
 use crate::base::outbox::{self, CellOutboxPayload};
+use crate::base::resources::bag_max_slots;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 
 /// Container ids that this auto-equip router understands.
 const CONTAINER_MAIN: i32 = 1;
 const CONTAINER_BANDOLIER: i32 = 3;
-/// Bandolier capacity. Mirrors `bag_max_slots(3)` (resources.rs:32) so a
-/// future bandolier resize stays consistent if it's bumped here too.
-const BANDOLIER_SLOTS: i32 = 4;
 
 /// Resolve an inventory instance's design id and fire the cell-side
 /// content-engine `OnItemUse` event. **Does not consume the item.**
@@ -115,7 +113,7 @@ pub async fn handle_use_inventory_item(
     };
     let type_id = row.type_id;
 
-    // Right-click auto-equip / auto-unequip (PR #338): weapons bypass
+    // Right-click auto-equip / auto-unequip: weapons bypass
     // the `OnItemUse` event entirely and route to the move path
     // instead. Direction is keyed off `container_id`:
     //
@@ -247,49 +245,43 @@ async fn resolve_auto_equip_target(
     player_id: i32,
     source_container: i32,
 ) -> Result<Option<(i32, i32)>, sqlx::Error> {
+    // Find the lowest empty slot in `dest_container` by joining
+    // generate_series(0, capacity-1) against sgw_inventory. The
+    // capacity comes from `bag_max_slots` so a future bandolier or
+    // main-bag resize lands here automatically — no hard-coded
+    // ranges to drift.
+    async fn first_empty_slot(
+        pool: &PgPool,
+        player_id: i32,
+        dest_container: i32,
+    ) -> Result<Option<i32>, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT s.slot \
+             FROM generate_series(0, $1::int - 1) AS s(slot) \
+             LEFT JOIN sgw_inventory inv \
+               ON inv.character_id = $2 \
+              AND inv.container_id = $3 \
+              AND inv.slot_id = s.slot \
+             WHERE inv.item_id IS NULL \
+             ORDER BY s.slot ASC \
+             LIMIT 1",
+        )
+        .bind(bag_max_slots(dest_container))
+        .bind(player_id)
+        .bind(dest_container)
+        .fetch_optional(pool)
+        .await
+    }
+
     match source_container {
-        CONTAINER_BANDOLIER => {
-            // Unequip → first empty Main slot.
-            // We scan up to `bag_max_slots(1)` (=40). The query
-            // returns the lowest unoccupied slot in container 1.
-            let slot: Option<i32> = sqlx::query_scalar(
-                "SELECT s.slot \
-                 FROM generate_series(0, 39) AS s(slot) \
-                 LEFT JOIN sgw_inventory inv \
-                   ON inv.character_id = $1 \
-                  AND inv.container_id = 1 \
-                  AND inv.slot_id = s.slot \
-                 WHERE inv.item_id IS NULL \
-                 ORDER BY s.slot ASC \
-                 LIMIT 1",
-            )
-            .bind(player_id)
-            .fetch_optional(pool)
-            .await?;
-            Ok(slot.map(|s| (CONTAINER_MAIN, s)))
-        }
+        CONTAINER_BANDOLIER => Ok(first_empty_slot(pool, player_id, CONTAINER_MAIN)
+            .await?
+            .map(|s| (CONTAINER_MAIN, s))),
         CONTAINER_MAIN => {
-            // Equip → first empty Bandolier slot. If full, fall back
-            // to the player's active bandolier slot for a replace.
-            let empty: Option<i32> = sqlx::query_scalar(
-                "SELECT s.slot \
-                 FROM generate_series(0, $1::int - 1) AS s(slot) \
-                 LEFT JOIN sgw_inventory inv \
-                   ON inv.character_id = $2 \
-                  AND inv.container_id = 3 \
-                  AND inv.slot_id = s.slot \
-                 WHERE inv.item_id IS NULL \
-                 ORDER BY s.slot ASC \
-                 LIMIT 1",
-            )
-            .bind(BANDOLIER_SLOTS)
-            .bind(player_id)
-            .fetch_optional(pool)
-            .await?;
-            if let Some(s) = empty {
+            if let Some(s) = first_empty_slot(pool, player_id, CONTAINER_BANDOLIER).await? {
                 return Ok(Some((CONTAINER_BANDOLIER, s)));
             }
-            // All 4 slots full — replace the active one (swap).
+            // All bandolier slots full — replace the active one.
             let active: Option<i32> =
                 sqlx::query_scalar("SELECT bandolier_slot FROM sgw_player WHERE player_id = $1")
                     .bind(player_id)

@@ -252,7 +252,7 @@ pub enum CellToBaseMsg {
     /// player's appearance and broadcasts the resulting packet — same
     /// path as `ActiveSlotUpdate`.
     ///
-    /// **Phase 2 of the holster work** (PR #338): Phase 1 made spawn
+    /// **Phase 2 of the holster work**: Phase 1 made spawn
     /// always holstered; this message is what flips it back on enter
     /// combat.
     RefreshAppearance {

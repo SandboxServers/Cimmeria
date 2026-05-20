@@ -76,7 +76,7 @@ pub(super) async fn active_slot_update(
 /// on the connected client and rebroadcast `BeingAppearance` to AoI.
 ///
 /// Used by the combat enter/exit path (Phase 2 of the holster work,
-/// PR #338) to draw or holster the weapon without an inventory change.
+/// ) to draw or holster the weapon without an inventory change.
 /// The cached `weapon_holstered` flag is what every appearance-emit
 /// site (here, the equipment-move path, world entry, post-cinematic
 /// resend) reads to filter `weapon_visual` out of `ComponentList`.

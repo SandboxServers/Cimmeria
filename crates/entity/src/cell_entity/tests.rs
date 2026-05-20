@@ -351,7 +351,7 @@ fn set_weapon_holstered_signals_rebroadcast_only_when_relevant() {
 
 #[test]
 fn sync_holster_to_combat_inverts_combat_flag() {
-    // The whole point of Phase 2 (PR #338): the entity's `weapon_holstered`
+    // The whole point of Phase 2: the entity's `weapon_holstered`
     // is the inverse of "in combat." Pin it so a future change to the
     // policy is a visible test-level edit, not a silent regression
     // (`enter_player_combat` and `exit_player_combat` both rely on this).
@@ -382,7 +382,7 @@ fn sync_holster_to_combat_inverts_combat_flag() {
 
 #[test]
 fn set_weapon_holstered_signals_rebroadcast_even_without_cell_side_weapon_visual() {
-    // Regression guard for a bug introduced in Phase 3 of PR #338: the
+    // Regression guard for a bug introduced in Phase 3: the
     // cell entity's `weapon_visual` is `None` in production (only the
     // base side populates it from `PlayerLoadData`), so the previous
     // implementation used to gate the rebroadcast signal on

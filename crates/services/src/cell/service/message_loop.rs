@@ -63,7 +63,7 @@ pub(super) async fn run_cell_loop(
 
                 // Fire deferred holster for any player whose
                 // out-of-combat grace window has elapsed (Phase 3 of
-                // PR #338). Cheap — the inner filter short-circuits to
+                // ). Cheap — the inner filter short-circuits to
                 // the empty set unless someone just exited combat.
                 super::ticks::holster_timer_tick(tx, &mut space_mgr).await;
 

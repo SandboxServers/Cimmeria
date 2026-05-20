@@ -411,7 +411,7 @@ pub(super) async fn apply_damage_to_target(
     // from empty → {target}), broadcast the new state_field so the
     // client flips its in-combat HUD/cursor routing, and re-emit
     // BeingAppearance so the weapon visual is in the wire ComponentList
-    // (Phase 2 of the holster work — see PR #338 and
+    // (Phase 2 of the holster work, and
     // `docs/architecture/state-field-bits.md`).
     //
     // **Order matters here**: send `BeingAppearance` BEFORE

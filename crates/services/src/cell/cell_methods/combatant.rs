@@ -84,7 +84,7 @@ pub async fn dispatch(
                 .map(|e| e.set_weapon_holstered(holstered))
                 .unwrap_or(false);
             if should_rebroadcast {
-                // Phase 2 of the holster work (PR #338): re-emit
+                // Phase 2 of the holster work: re-emit
                 // `BeingAppearance` to the owner + AoI witnesses with
                 // the freshly-toggled `ComponentList` so the holster
                 // toggle becomes visible.
@@ -158,7 +158,7 @@ mod tests {
         );
     }
 
-    /// Phase 2 (PR #338): a real holster toggle (state actually changed,
+    /// Phase 2: a real holster toggle (state actually changed,
     /// weapon visual present) must dispatch a `RefreshAppearance` so the
     /// AoI rebroadcast lands. The bug shape this catches: someone keeps
     /// the `set_weapon_holstered` call but drops the rebroadcast — the

@@ -80,7 +80,7 @@ pub(super) async fn apply_death_transition(
             // stamped the OOC timer instead of flipping the holster.
             // The deferred `holster_timer_tick` re-broadcasts
             // `BeingAppearance` after the grace window so chaining
-            // mobs doesn't flicker the model (Phase 3 of PR #338).
+            // mobs doesn't flicker the model (Phase 3).
         }
     }
 
