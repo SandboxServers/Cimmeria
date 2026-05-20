@@ -298,6 +298,63 @@ pub(super) async fn holster_timer_tick(
     }
 }
 
+/// Promote queued attack-while-holstered: dispatch the deferred
+/// ability after the draw animation has had time to play.
+///
+/// `handle_use_ability` detects "player is holstered + OOC + attempting
+/// to fire," draws the weapon + fires `Item_Equip`, stashes the
+/// ability/target on the entity, and returns false WITHOUT committing
+/// cooldown or ammo. This tick re-invokes `handle_use_ability` once
+/// `UNHOLSTER_DRAW_DURATION` has elapsed — Phase B runs the normal
+/// fire path against an already-drawn weapon.
+///
+/// Cadence: every 100ms AoI tick. Cost is one filter pass; the inner
+/// re-invocation only fires on transition.
+pub(super) async fn pending_attack_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let now = std::time::Instant::now();
+    // Snapshot the queue entries first — `handle_use_ability` takes
+    // `&mut space_mgr` and we don't want to hold a `&` across the
+    // re-invocation.
+    let ready: Vec<(u32, i32, i32)> = space_mgr
+        .all_player_entity_ids()
+        .into_iter()
+        .filter_map(|eid| {
+            let e = space_mgr.get_entity(eid)?;
+            let at = e.pending_attack_at?;
+            if now < at {
+                return None;
+            }
+            let ability = e.pending_attack_ability_id?;
+            let target = e.pending_attack_target_id?;
+            Some((eid, ability, target))
+        })
+        .collect();
+
+    for (entity_id, ability_id, target_id) in ready {
+        // Clear the queue BEFORE re-invoking so the early-return
+        // guard in handle_use_ability (which rejects on
+        // `pending_attack_at.is_some()`) lets Phase B through.
+        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+            e.pending_attack_at = None;
+            e.pending_attack_ability_id = None;
+            e.pending_attack_target_id = None;
+        }
+        tracing::info!(
+            entity_id,
+            ability_id,
+            target_id,
+            "pending_attack_tick: draw window elapsed, firing queued attack"
+        );
+        let _ = super::super::abilities::handle_use_ability(
+            entity_id, ability_id, target_id, tx, space_mgr,
+        )
+        .await;
+    }
+}
+
 /// Promote pending reload-while-holstered phase A → phase B.
 ///
 /// `handle_reload` detects "player is holstered + OOC + no reload in

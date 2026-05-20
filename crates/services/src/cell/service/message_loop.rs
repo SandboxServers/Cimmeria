@@ -73,6 +73,12 @@ pub(super) async fn run_cell_loop(
                 // filter shape as the holster tick.
                 super::ticks::pending_reload_tick(tx, &mut space_mgr).await;
 
+                // Promote queued attack-while-holstered: any player
+                // whose draw window has elapsed gets the deferred
+                // ability dispatched. Same filter shape — short-circuits
+                // when the queue is empty.
+                super::ticks::pending_attack_tick(tx, &mut space_mgr).await;
+
                 // Drive ring transporter timers (hide / warmup / cooldown).
                 // Each transporter holds its own deadlines; this tick fires
                 // the transitions and dispatches their effects.

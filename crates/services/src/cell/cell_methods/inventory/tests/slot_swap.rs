@@ -30,6 +30,10 @@ async fn slot_swap_preserves_per_slot_ammo() {
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
+        // Weapon already drawn so the attack-while-holstered queue
+        // doesn't intercept the fire calls — this test is about
+        // per-slot ammo preservation across the swap.
+        e.weapon_holstered = false;
         e.abilities.add_ability(ability_id);
         e.bandolier_items.insert(
             0,

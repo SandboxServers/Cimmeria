@@ -348,6 +348,25 @@ pub struct CellEntity {
     /// against an already-drawn weapon.
     pub pending_reload_at: Option<std::time::Instant>,
 
+    /// When `Some(t)`, the player tried to fire an ability while
+    /// holstered. The unholster animation (Item_Equip) is playing;
+    /// the actual ability dispatch is queued for `t` and is
+    /// re-invoked by `pending_attack_tick` with the stashed
+    /// `pending_attack_ability_id` / `pending_attack_target_id`.
+    ///
+    /// Subsequent attack inputs during the draw window are rejected
+    /// (the first press locks in the queue) — this matches the user
+    /// playtest spec: "should queue the first shot, then it should
+    /// proceed normally."
+    pub pending_attack_at: Option<std::time::Instant>,
+    /// Ability id queued by the attack-while-holstered path. Cleared
+    /// by `pending_attack_tick` when it dispatches the deferred call.
+    pub pending_attack_ability_id: Option<i32>,
+    /// Target id queued by the attack-while-holstered path. `0` is a
+    /// valid "self-cast or no-target" sentinel — match the wire-arg
+    /// semantics of `useAbility(abilityId, targetId)`.
+    pub pending_attack_target_id: Option<i32>,
+
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
     pub ai_state: AiState,
@@ -516,6 +535,9 @@ impl CellEntity {
             reload_complete_at: None,
             reload_slot_id: None,
             pending_reload_at: None,
+            pending_attack_at: None,
+            pending_attack_ability_id: None,
+            pending_attack_target_id: None,
             holster_animation_complete_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),

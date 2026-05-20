@@ -129,6 +129,71 @@ pub async fn handle_use_ability(
         return false;
     }
 
+    // Attack-while-holstered queue (PR #338): if the player presses
+    // attack while the weapon is holstered, defer the ability dispatch
+    // until the draw animation has had time to play. Mirrors the
+    // reload-while-holstered Phase A — draw the weapon, fire
+    // `Item_Equip`, stash the ability + target, and let
+    // `pending_attack_tick` re-invoke `handle_use_ability` after
+    // `UNHOLSTER_DRAW_DURATION`. The user playtest spec: "trying to
+    // attack an enemy should trigger the unholster animation and
+    // queue the first shot, then it should proceed normally."
+    //
+    // Subsequent presses while the queue is in flight are rejected so
+    // the first press locks in the queue.
+    //
+    // Ammo is NOT checked here — the deferred `handle_use_ability`
+    // re-invocation runs the normal ammo check at fire time
+    // (user spec: "queue the pistol shot ability then and let it
+    // handle the ammo part").
+    let queued_attack_already_pending = space_mgr
+        .get_entity(entity_id)
+        .is_some_and(|e| e.pending_attack_at.is_some());
+    if queued_attack_already_pending {
+        tracing::debug!(
+            entity_id,
+            ability_id,
+            "useAbility: attack already queued (mid-draw), ignoring input"
+        );
+        return false;
+    }
+    // Only weapon attacks (required_ammo > 0) trigger the queue.
+    // Non-weapon abilities (heals, buffs, self-casts) don't need the
+    // weapon drawn to function and shouldn't waste a draw animation.
+    let is_weapon_attack = ability_def.as_ref().is_some_and(|d| d.required_ammo > 0);
+    let needs_unholster_queue = is_weapon_attack
+        && space_mgr
+            .get_entity(entity_id)
+            .is_some_and(|e| e.is_player && e.weapon_holstered && e.threatened_mobs.is_empty());
+    if needs_unholster_queue {
+        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+            e.set_weapon_holstered(false);
+            e.combat_exit_at = Some(std::time::Instant::now());
+            e.holster_animation_complete_at = None;
+            e.pending_attack_at = Some(
+                std::time::Instant::now()
+                    + super::super::cell_methods::player::world::UNHOLSTER_DRAW_DURATION,
+            );
+            e.pending_attack_ability_id = Some(ability_id);
+            e.pending_attack_target_id = Some(target_id);
+        }
+        tracing::info!(
+            entity_id,
+            ability_id,
+            target_id,
+            "useAbility: holstered → queueing attack, drawing weapon first"
+        );
+        super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
+        super::super::cell_methods::player::world::fire_item_sequence(
+            entity_id,
+            super::super::spawner::EVENT_ITEM_EQUIP,
+            tx,
+            space_mgr,
+        )
+        .await;
+        return false;
+    }
+
     // Mutable borrow for state changes
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
@@ -457,6 +522,9 @@ mod tests {
         let mut mgr = make_mgr();
         make_player(&mut mgr, 1, [0.0; 3]);
         if let Some(p) = mgr.get_entity_mut(1) {
+            // Weapon drawn so the attack-while-holstered queue doesn't
+            // intercept — this test is about the reload-in-flight gate.
+            p.weapon_holstered = false;
             p.abilities.add_ability(7);
             p.reload_complete_at =
                 Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
@@ -478,6 +546,9 @@ mod tests {
         let mut mgr = make_mgr();
         make_player(&mut mgr, 1, [0.0; 3]);
         if let Some(p) = mgr.get_entity_mut(1) {
+            // Weapon drawn so the attack-while-holstered queue doesn't
+            // intercept — this test is about the no-ammo gate.
+            p.weapon_holstered = false;
             p.abilities.add_ability(7);
             // Active slot 0, ammo 0 of 30.
             p.bandolier_items.insert(
@@ -588,6 +659,157 @@ mod tests {
         assert!(
             mgr.get_entity(1).unwrap().threatened_mobs.is_empty(),
             "no-target cast must leave threatened_mobs empty"
+        );
+    }
+
+    /// Attack-while-holstered (PR #338): pressing fire on a weapon
+    /// attack while OOC + holstered must defer the ability — draw
+    /// weapon, fire `Item_Equip`, stash the call on
+    /// `pending_attack_*`, and return false WITHOUT committing
+    /// cooldown or consuming ammo. The `pending_attack_tick`
+    /// re-invokes after `UNHOLSTER_DRAW_DURATION` to fire for real.
+    ///
+    /// Bug shape this catches: a refactor removes the queue and the
+    /// first attack on a holstered weapon fires with no animation
+    /// (the playtest symptom that drove this fix).
+    #[tokio::test]
+    async fn attack_while_holstered_queues_and_draws_without_committing() {
+        use cimmeria_entity::cell_entity::BandolierItem;
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.archetype_id = Some(1);
+            p.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            p.weapon_holstered = true; // OOC + holstered
+            p.abilities.add_ability(7);
+            p.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 30,
+                    cur_ammo_type: 2,
+                },
+            );
+        }
+        // required_ammo=1 → triggers the weapon-attack queue.
+        mgr.ability_defs.insert(7, make_ability(7, 1, 30));
+        let (tx, _rx) = mpsc::channel(64);
+
+        let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+        assert!(
+            !committed,
+            "attack-while-holstered must NOT commit on the first press — \
+             the queue defers the ability until the draw animation finishes",
+        );
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(!e.weapon_holstered, "Phase A draws the weapon");
+        assert!(
+            e.combat_exit_at.is_some(),
+            "OOC re-holster timer must arm so the weapon goes away post-fight",
+        );
+        assert!(
+            e.pending_attack_at.is_some(),
+            "pending_attack_at must stamp so pending_attack_tick can fire the queued ability",
+        );
+        assert_eq!(
+            e.pending_attack_ability_id,
+            Some(7),
+            "ability_id must be stashed for Phase B dispatch",
+        );
+        assert!(
+            !e.abilities.is_on_cooldown(7),
+            "Phase A must NOT start the cooldown — cooldown commits in Phase B",
+        );
+        assert_eq!(
+            e.bandolier_items[&0].current_ammo, 30,
+            "Phase A must NOT consume ammo — ammo check happens in Phase B",
+        );
+    }
+
+    /// Attack inputs DURING the draw window are rejected so the first
+    /// press locks in the queue. Spamming clicks must not change the
+    /// queued ability/target or restart the draw timer.
+    #[tokio::test]
+    async fn attack_while_queued_is_rejected_input() {
+        use cimmeria_entity::cell_entity::BandolierItem;
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        let queued_stamp = std::time::Instant::now();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.archetype_id = Some(1);
+            p.weapon_holstered = true;
+            p.abilities.add_ability(7);
+            p.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 30,
+                    cur_ammo_type: 2,
+                },
+            );
+            // Already queued from a previous press.
+            p.pending_attack_at = Some(queued_stamp);
+            p.pending_attack_ability_id = Some(99);
+            p.pending_attack_target_id = Some(42);
+        }
+        mgr.ability_defs.insert(7, make_ability(7, 1, 30));
+        let (tx, _rx) = mpsc::channel(64);
+
+        let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+        assert!(
+            !committed,
+            "second press during draw window must be rejected"
+        );
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.pending_attack_ability_id,
+            Some(99),
+            "the existing queued ability must NOT be overwritten by the second press",
+        );
+        assert_eq!(
+            e.pending_attack_target_id,
+            Some(42),
+            "the existing queued target must NOT be overwritten",
+        );
+        assert_eq!(
+            e.pending_attack_at,
+            Some(queued_stamp),
+            "the draw timer must NOT be restarted by spamming clicks",
+        );
+    }
+
+    /// Non-weapon abilities (required_ammo == 0 — heals, buffs,
+    /// self-casts) must NOT trigger the unholster queue. Pin the gate
+    /// so a refactor that drops the `required_ammo > 0` check doesn't
+    /// turn every self-cast on a holstered player into a 1s-delayed
+    /// queued cast.
+    #[tokio::test]
+    async fn non_weapon_ability_skips_unholster_queue_when_holstered() {
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.weapon_holstered = true;
+            p.abilities.add_ability(7);
+        }
+        // required_ammo=0 → non-weapon ability (heal, buff, self-cast).
+        mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+        let (tx, _rx) = mpsc::channel(64);
+
+        let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+        assert!(
+            committed,
+            "non-weapon ability on a holstered player must fire immediately, \
+             not queue — the weapon isn't being used",
+        );
+        assert!(
+            mgr.get_entity(1).unwrap().pending_attack_at.is_none(),
+            "non-weapon ability must NOT set pending_attack_at",
         );
     }
 
