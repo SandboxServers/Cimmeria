@@ -134,7 +134,7 @@ pub(super) async fn refresh_appearance(
         }
     }
 
-    tracing::debug!(
+    tracing::info!(
         entity_id,
         player_id,
         holstered,

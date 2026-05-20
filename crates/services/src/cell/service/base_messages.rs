@@ -359,26 +359,44 @@ pub(super) async fn handle_base_message(
             // when the fight ends). We skip the timer arming here to
             // avoid stamping a timer while threatened_mobs is non-empty,
             // which the holster scan doesn't (yet) gate on combat state.
-            let play_equip_anim = if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                entity.bandolier_items.insert(slot_id, item);
-                if make_active {
-                    entity.active_bandolier_slot = slot_id;
-                    if entity.threatened_mobs.is_empty() {
-                        entity.set_weapon_holstered(false);
-                        entity.combat_exit_at = Some(std::time::Instant::now());
-                        // Cancel any in-flight holster Phase 2 — the
-                        // player just (re-)equipped, the mesh should
-                        // STAY attached; a stale Phase 2 would yank it
-                        // away mid-equip.
-                        entity.holster_animation_complete_at = None;
+            let (play_equip_anim, drew_weapon, was_in_combat, entity_state) =
+                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    entity.bandolier_items.insert(slot_id, item);
+                    let is_player = entity.is_player;
+                    let player_id = entity.player_id;
+                    if make_active {
+                        entity.active_bandolier_slot = slot_id;
+                        let in_combat = !entity.threatened_mobs.is_empty();
+                        let drew = if !in_combat {
+                            entity.set_weapon_holstered(false);
+                            entity.combat_exit_at = Some(std::time::Instant::now());
+                            // Cancel any in-flight holster Phase 2 — the
+                            // player just (re-)equipped, the mesh should
+                            // STAY attached; a stale Phase 2 would yank it
+                            // away mid-equip.
+                            entity.holster_animation_complete_at = None;
+                            true
+                        } else {
+                            false
+                        };
+                        (true, drew, in_combat, (is_player, player_id))
+                    } else {
+                        (false, false, false, (is_player, player_id))
                     }
-                    true
                 } else {
-                    false
-                }
-            } else {
-                false
-            };
+                    (false, false, false, (false, None))
+                };
+            tracing::info!(
+                entity_id,
+                slot_id,
+                make_active,
+                play_equip_anim,
+                drew_weapon,
+                was_in_combat,
+                is_player = entity_state.0,
+                player_id = ?entity_state.1,
+                "UpdateBandolierItem: equip-display decision"
+            );
             if play_equip_anim {
                 // Appearance refresh first so the weapon mesh is socket-
                 // attached when the `Item_Equip` animation plays. Same
