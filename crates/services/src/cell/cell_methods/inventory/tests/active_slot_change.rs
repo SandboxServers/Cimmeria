@@ -281,6 +281,106 @@ async fn weapon_to_weapon_swap_ooc_defers_via_item_unequip() {
     );
 }
 
+/// Per-weapon holster duration: the slot-swap choreography's
+/// `pending_slot_swap_at` stamp must use the OUTGOING weapon's
+/// class-specific duration. Without this, longarms (P90, AR, LMG —
+/// ~1s holster) get cut off mid-animation when the new weapon's
+/// draw starts on top — the user's playtest glitch on P90→pistol.
+///
+/// Bug shape: refactor stamps `pending_slot_swap_at` with the
+/// generic `HOLSTER_ANIMATION_DURATION` (600ms) regardless of the
+/// outgoing weapon class → longarm holster anims clip mid-flight,
+/// pistol draw layers on top, mesh ends up in the wrong place.
+#[tokio::test]
+async fn slot_swap_uses_outgoing_weapon_holster_duration() {
+    use crate::cell::content::build_engine;
+    use crate::cell::spawner::WeaponDef;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    // Seed item_defs so the per-weapon lookup finds a longarm.
+    let longarm_duration = std::time::Duration::from_millis(1000);
+    mgr.item_defs.insert(
+        50,
+        WeaponDef {
+            clip_size: 50,
+            default_ammo_type: 1,
+            allowed_ammo_types: vec![],
+            holster_animation_duration: longarm_duration,
+        },
+    );
+    mgr.item_defs.insert(
+        51,
+        WeaponDef {
+            clip_size: 8,
+            default_ammo_type: 2,
+            allowed_ammo_types: vec![],
+            holster_animation_duration: std::time::Duration::from_millis(600),
+        },
+    );
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.archetype_id = Some(1);
+        // Slot 0 holds a longarm (item 50), slot 1 a sidearm (item 51).
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 50,
+                clip_size: 50,
+                default_ammo_type: 1,
+                current_ammo: 50,
+                cur_ammo_type: 1,
+            },
+        );
+        e.bandolier_items.insert(
+            1,
+            BandolierItem {
+                item_id: 51,
+                clip_size: 8,
+                default_ammo_type: 2,
+                current_ammo: 8,
+                cur_ammo_type: 2,
+            },
+        );
+        e.active_bandolier_slot = 0;
+    }
+    mgr.connect_entity(1);
+    mgr.sequence_map
+        .insert((804, crate::cell::spawner::EVENT_ITEM_UNEQUIP), 1873);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = build_engine(None).await;
+
+    // Swap longarm (slot 0) → sidearm (slot 1, wire 2).
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&3i32.to_le_bytes());
+    args.extend_from_slice(&2i32.to_le_bytes());
+    let before = std::time::Instant::now();
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+    let after = std::time::Instant::now();
+
+    let e = mgr.get_entity(1).unwrap();
+    let stamp = e
+        .pending_slot_swap_at
+        .expect("choreography must stash pending_slot_swap_at");
+    let stamp_offset = stamp - before;
+    // Window: between [longarm_duration - 50ms] and [longarm_duration + elapsed-dispatch + 50ms].
+    // We need a band because `Instant::now()` ticks between `before` and the
+    // handler's stamp call.
+    let dispatch_elapsed = after - before;
+    assert!(
+        stamp_offset >= longarm_duration - std::time::Duration::from_millis(50)
+            && stamp_offset
+                <= longarm_duration + dispatch_elapsed + std::time::Duration::from_millis(50),
+        "swap from a longarm (1000ms holster) must stamp pending_slot_swap_at \
+         at ~1000ms in the future, NOT the generic 600ms — got {}ms offset",
+        stamp_offset.as_millis()
+    );
+}
+
 /// Weapon→empty slot must NOT trigger the weapon→weapon choreography —
 /// that path is only for swap-between-occupied-slots. Swapping to an
 /// empty slot is a "no active weapon" scenario; the existing draw_intent

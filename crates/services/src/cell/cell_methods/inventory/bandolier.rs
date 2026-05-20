@@ -169,15 +169,28 @@ pub(crate) async fn handle_request_active_slot_change(
         None => false,
     };
     if needs_holster_first {
+        // Per-weapon holster duration: longarms (P90, AR, LMG) take
+        // longer to stow than sidearms (pistol). Using a single
+        // constant cuts the longarm animation off mid-flight and
+        // the new weapon's draw starts on top of the still-playing
+        // holster — the user's playtest glitch on P90→pistol.
+        let outgoing_item_id = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.bandolier_items.get(&e.active_bandolier_slot))
+            .map(|item| item.item_id);
+        let duration = outgoing_item_id
+            .and_then(|id| space_mgr.item_defs.get(&id))
+            .map(|d| d.holster_animation_duration)
+            .unwrap_or(crate::cell::service::ticks::HOLSTER_ANIMATION_DURATION);
         if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-            e.pending_slot_swap_at = Some(
-                std::time::Instant::now() + crate::cell::service::ticks::HOLSTER_ANIMATION_DURATION,
-            );
+            e.pending_slot_swap_at = Some(std::time::Instant::now() + duration);
             e.pending_slot_swap_target = Some(slot_id);
         }
         tracing::info!(
             entity_id,
             target_slot = slot_id,
+            outgoing_item_id,
+            duration_ms = duration.as_millis() as u64,
             "requestActiveSlotChange: weapon→weapon swap, firing Item_Unequip + deferring slot change"
         );
         crate::cell::cell_methods::player::world::fire_item_sequence(

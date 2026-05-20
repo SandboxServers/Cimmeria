@@ -254,15 +254,28 @@ pub(super) async fn holster_timer_tick(
         })
         .collect();
     for entity_id in phase1 {
+        // Per-weapon duration: longarms (P90, AR, LMG) take longer
+        // to stow than sidearms (pistol). Look up the active
+        // weapon's class to pick the right Phase 2 stamp.
+        let active_item_id = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.bandolier_items.get(&e.active_bandolier_slot))
+            .map(|item| item.item_id);
+        let duration = active_item_id
+            .and_then(|id| space_mgr.item_defs.get(&id))
+            .map(|d| d.holster_animation_duration)
+            .unwrap_or(HOLSTER_ANIMATION_DURATION);
         // Transition stamps: clear combat_exit_at (Phase 1 fired) and
         // schedule Phase 2. Do this BEFORE the animation dispatch so
         // any racing tick doesn't re-fire Phase 1.
         if let Some(e) = space_mgr.get_entity_mut(entity_id) {
             e.combat_exit_at = None;
-            e.holster_animation_complete_at = Some(now + HOLSTER_ANIMATION_DURATION);
+            e.holster_animation_complete_at = Some(now + duration);
         }
         tracing::info!(
             entity_id,
+            active_item_id,
+            duration_ms = duration.as_millis() as u64,
             "holster_timer_tick: phase 1 — playing Item_Unequip; appearance deferred"
         );
         // Fire `Item_Unequip` (event 4001) — the bandolier-take-off

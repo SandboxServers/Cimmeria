@@ -176,6 +176,7 @@ async fn request_ammo_change_rejects_unlisted_subtype() {
             clip_size: 30,
             default_ammo_type: 1,
             allowed_ammo_types: vec![1, 3, 5], // 7 not allowed
+            holster_animation_duration: std::time::Duration::from_millis(600),
         },
     );
 

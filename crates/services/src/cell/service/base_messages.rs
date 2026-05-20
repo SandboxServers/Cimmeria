@@ -538,6 +538,13 @@ pub(super) async fn handle_base_message(
             // (next equip's prev-vs-new check sees a clean baseline).
             let active_slot_lost_weapon =
                 prev_active_item_id.is_some() && new_active_item_id.is_none();
+            // Look up the holstered weapon's class-specific animation
+            // duration BEFORE the mutable borrow below (can't borrow
+            // space_mgr.item_defs and an entity_mut at the same time).
+            let holster_duration = prev_active_item_id
+                .and_then(|id| space_mgr.item_defs.get(&id))
+                .map(|d| d.holster_animation_duration)
+                .unwrap_or(super::ticks::HOLSTER_ANIMATION_DURATION);
             let (
                 play_equip_anim,
                 play_holster_anim,
@@ -568,7 +575,7 @@ pub(super) async fn handle_base_message(
                     // no animation.
                     entity.combat_exit_at = None;
                     entity.holster_animation_complete_at =
-                        Some(std::time::Instant::now() + super::ticks::HOLSTER_ANIMATION_DURATION);
+                        Some(std::time::Instant::now() + holster_duration);
                     "active slot lost weapon (unequip) — fire Item_Unequip + Phase 2"
                 } else if !active_slot_gained_weapon {
                     if new_active_item_id.is_none() {
