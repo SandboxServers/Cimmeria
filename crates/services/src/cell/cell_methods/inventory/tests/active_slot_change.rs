@@ -84,6 +84,11 @@ async fn request_active_slot_change_translates_wire_to_server_slot() {
         if let Some(e) = mgr.get_entity_mut(1) {
             e.is_player = true;
             e.player_id = Some(100);
+            // Mark in-combat so the holster→swap→unholster choreography
+            // (PR #338 task #20) skips and the swap completes
+            // immediately — this test verifies wire-to-server slot
+            // translation, not the OOC choreography path.
+            e.threatened_mobs.insert(9999);
             // Seed all 4 slots so the swap doesn't bail on "empty target".
             for slot_id in 0..4 {
                 e.bandolier_items.insert(
@@ -168,4 +173,224 @@ async fn request_active_slot_change_translates_wire_to_server_slot() {
             "expected an onActiveSlotUpdate (client UI indicator) for wire_slot={wire_slot}"
         );
     }
+}
+
+/// PR #338 task #20 — weapon→weapon slot swap (both source and target
+/// hold weapons, player is OOC) must defer the slot change behind an
+/// `Item_Unequip` animation. The handler fires the holster sequence
+/// immediately and stashes `(pending_slot_swap_at, pending_slot_swap_target)`
+/// for `pending_slot_swap_tick` to finalize once
+/// `HOLSTER_ANIMATION_DURATION` has elapsed.
+///
+/// Bug shape this catches: a refactor that drops the choreography
+/// branch regresses to "F1→F2 instantly swaps with no animation" —
+/// the symptom this task fixes.
+#[tokio::test]
+async fn weapon_to_weapon_swap_ooc_defers_via_item_unequip() {
+    use crate::cell::content::build_engine;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.archetype_id = Some(1);
+        // Both slots populated → weapon→weapon swap.
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        );
+        e.bandolier_items.insert(
+            1,
+            BandolierItem {
+                item_id: 11,
+                clip_size: 12,
+                default_ammo_type: 7,
+                current_ammo: 12,
+                cur_ammo_type: 7,
+            },
+        );
+        e.active_bandolier_slot = 0;
+        // OOC (no threatened mobs) so the choreography fires.
+    }
+    mgr.connect_entity(1);
+    // Seed the Item_Unequip sequence (archetype 1 → event_set 804 → seq 1873).
+    mgr.sequence_map
+        .insert((804, crate::cell::spawner::EVENT_ITEM_UNEQUIP), 1873);
+
+    let (tx, mut rx) = mpsc::channel(16);
+    let engine = build_engine(None).await;
+
+    // Swap slot 0 → slot 1 (wire slot 2).
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&3i32.to_le_bytes());
+    args.extend_from_slice(&2i32.to_le_bytes());
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+    let e = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        e.active_bandolier_slot, 0,
+        "choreography must NOT change the active slot yet — \
+         pending_slot_swap_tick finalizes after HOLSTER_ANIMATION_DURATION",
+    );
+    assert!(
+        e.pending_slot_swap_at.is_some(),
+        "choreography must stash pending_slot_swap_at so the tick \
+         knows to fire Phase 2",
+    );
+    assert_eq!(
+        e.pending_slot_swap_target,
+        Some(1),
+        "target slot must be stashed for the deferred swap",
+    );
+
+    let mut saw_unequip_sequence = false;
+    let mut saw_active_slot_update = false;
+    while let Ok(msg) = rx.try_recv() {
+        match msg {
+            CellToBaseMsg::EntityMethodCall { method_index, .. }
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+            {
+                saw_unequip_sequence = true;
+            }
+            CellToBaseMsg::ActiveSlotUpdate { .. } => {
+                saw_active_slot_update = true;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        saw_unequip_sequence,
+        "choreography must fire Item_Unequip immediately so the client \
+         plays the holster animation for the old weapon",
+    );
+    assert!(
+        !saw_active_slot_update,
+        "ActiveSlotUpdate must NOT be sent yet — base would persist \
+         the new active slot, which triggers refresh_player_appearance \
+         broadcasting the new weapon mesh mid-holster-animation",
+    );
+}
+
+/// Weapon→empty slot must NOT trigger the weapon→weapon choreography —
+/// that path is only for swap-between-occupied-slots. Swapping to an
+/// empty slot is a "no active weapon" scenario; the existing draw_intent
+/// logic (which only fires Item_Equip when the new slot has a weapon)
+/// handles it correctly. A regression that triggers choreography here
+/// would fire Item_Unequip and then defer indefinitely (no new weapon
+/// to equip in Phase 2 means the "active slot has weapon" condition
+/// for the OOC re-holster timer never re-fires either).
+#[tokio::test]
+async fn weapon_to_empty_slot_skips_choreography() {
+    use crate::cell::content::build_engine;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        );
+        // Slot 1 intentionally empty.
+        e.active_bandolier_slot = 0;
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = build_engine(None).await;
+
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&3i32.to_le_bytes());
+    args.extend_from_slice(&2i32.to_le_bytes());
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+    let e = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        e.active_bandolier_slot, 1,
+        "swap to empty slot must complete immediately (no choreography \
+         queue) — empty target means there's nothing to Item_Equip",
+    );
+    assert!(
+        e.pending_slot_swap_at.is_none(),
+        "empty target must NOT queue a choreography — the weapon→empty \
+         case is handled by the normal active-slot flow",
+    );
+}
+
+/// In-combat swap must NOT trigger the choreography either — the player
+/// is fighting and we don't want to add an extra 600ms holster
+/// animation between weapons mid-fight. The normal path's
+/// `threatened_mobs.is_empty()` gate handles the immediate swap.
+#[tokio::test]
+async fn weapon_to_weapon_swap_in_combat_skips_choreography() {
+    use crate::cell::content::build_engine;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.threatened_mobs.insert(9999); // in-combat
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        );
+        e.bandolier_items.insert(
+            1,
+            BandolierItem {
+                item_id: 11,
+                clip_size: 12,
+                default_ammo_type: 7,
+                current_ammo: 12,
+                cur_ammo_type: 7,
+            },
+        );
+        e.active_bandolier_slot = 0;
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = build_engine(None).await;
+
+    let mut args = Vec::with_capacity(8);
+    args.extend_from_slice(&3i32.to_le_bytes());
+    args.extend_from_slice(&2i32.to_le_bytes());
+    dispatch(1, REQUEST_ACTIVE_SLOT_CHANGE, &args, &tx, &mut mgr, &engine).await;
+
+    let e = mgr.get_entity(1).unwrap();
+    assert_eq!(
+        e.active_bandolier_slot, 1,
+        "in-combat swap must complete immediately — no holster \
+         choreography mid-fight",
+    );
+    assert!(
+        e.pending_slot_swap_at.is_none(),
+        "in-combat must NOT queue a choreography",
+    );
 }

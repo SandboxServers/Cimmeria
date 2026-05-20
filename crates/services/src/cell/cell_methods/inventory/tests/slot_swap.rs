@@ -34,6 +34,11 @@ async fn slot_swap_preserves_per_slot_ammo() {
         // doesn't intercept the fire calls — this test is about
         // per-slot ammo preservation across the swap.
         e.weapon_holstered = false;
+        // Mark in-combat so the holster→swap→unholster choreography
+        // (PR #338 task #20) skips and the swap completes
+        // immediately — this test verifies ammo bookkeeping, not the
+        // OOC choreography path.
+        e.threatened_mobs.insert(9999);
         e.abilities.add_ability(ability_id);
         e.bandolier_items.insert(
             0,
@@ -246,6 +251,11 @@ async fn slot_swap_cancels_in_flight_reload() {
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
+        // Mark in-combat so the holster→swap→unholster choreography
+        // (PR #338 task #20) skips and the swap completes immediately —
+        // this test verifies in-flight-reload cancellation, not the
+        // OOC choreography path.
+        e.threatened_mobs.insert(9999);
         e.bandolier_items.insert(
             0,
             BandolierItem {

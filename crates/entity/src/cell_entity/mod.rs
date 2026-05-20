@@ -367,6 +367,24 @@ pub struct CellEntity {
     /// semantics of `useAbility(abilityId, targetId)`.
     pub pending_attack_target_id: Option<i32>,
 
+    /// When `Some(t)`, the player pressed F1/F2/F3/F4 to swap to a
+    /// different bandolier slot while their current slot also had a
+    /// weapon. The holster animation (Item_Unequip) for the old
+    /// weapon is playing; the actual slot change (active slot
+    /// update + Item_Equip for the new weapon) is deferred until
+    /// `Instant::now() >= t` so the holster motion plays out before
+    /// the unholster.
+    ///
+    /// `pending_slot_swap_tick` consumes this stamp by re-invoking
+    /// `handle_request_active_slot_change` with the target slot,
+    /// which then runs the normal slot-change path (the choreography
+    /// branch is gated by `pending_slot_swap_at.is_some()` so the
+    /// re-entry skips it).
+    pub pending_slot_swap_at: Option<std::time::Instant>,
+    /// Target bandolier slot queued by the swap choreography. Cleared
+    /// by `pending_slot_swap_tick` when it finalizes the swap.
+    pub pending_slot_swap_target: Option<i32>,
+
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
     pub ai_state: AiState,
@@ -538,6 +556,8 @@ impl CellEntity {
             pending_attack_at: None,
             pending_attack_ability_id: None,
             pending_attack_target_id: None,
+            pending_slot_swap_at: None,
+            pending_slot_swap_target: None,
             holster_animation_complete_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),

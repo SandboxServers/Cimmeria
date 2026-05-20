@@ -63,7 +63,7 @@ pub async fn flush_dirty_bandolier_ammo(
     }
 }
 
-pub(super) async fn handle_request_active_slot_change(
+pub(crate) async fn handle_request_active_slot_change(
     entity_id: u32,
     args: &[u8],
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -135,6 +135,64 @@ pub(super) async fn handle_request_active_slot_change(
             None
         }
     };
+
+    // Swap-with-choreography case: when both the current and target
+    // slots hold weapons and the player is OOC, play `Item_Unequip`
+    // first, then defer the actual slot change until the holster
+    // animation has played out. `pending_slot_swap_tick` re-invokes
+    // this handler with the target slot once the animation window
+    // elapses; the re-entry is gated by `pending_slot_swap_at.is_some()`
+    // so it skips this branch and runs the normal swap path.
+    //
+    // Skipped when:
+    // - Already mid-choreography (re-entry from the tick)
+    // - In combat (no animations during a fight)
+    // - Same slot (no-op or replayed packet)
+    // - Source slot empty (no weapon to holster)
+    // - Target slot empty (handled by the normal path's empty-slot
+    //   branch — Item_Unequip there is the right next step, not the
+    //   weapon-to-weapon choreography)
+    let needs_holster_first = match space_mgr.get_entity(entity_id) {
+        Some(e) => {
+            e.pending_slot_swap_at.is_none()
+                && e.threatened_mobs.is_empty()
+                && e.active_bandolier_slot != slot_id
+                && e.bandolier_items.contains_key(&e.active_bandolier_slot)
+                && e.bandolier_items.contains_key(&slot_id)
+        }
+        None => false,
+    };
+    if needs_holster_first {
+        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+            e.pending_slot_swap_at = Some(
+                std::time::Instant::now() + crate::cell::service::ticks::HOLSTER_ANIMATION_DURATION,
+            );
+            e.pending_slot_swap_target = Some(slot_id);
+        }
+        tracing::info!(
+            entity_id,
+            target_slot = slot_id,
+            "requestActiveSlotChange: weapon→weapon swap, firing Item_Unequip + deferring slot change"
+        );
+        crate::cell::cell_methods::player::world::fire_item_sequence(
+            entity_id,
+            crate::cell::spawner::EVENT_ITEM_UNEQUIP,
+            tx,
+            space_mgr,
+        )
+        .await;
+        return;
+    }
+    // Re-entry from the tick: pending state was kept set so the
+    // choreography check above could short-circuit. Now that we're
+    // past the gate, clear it — the normal slot-change path below
+    // takes over.
+    if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+        if e.pending_slot_swap_at.is_some() {
+            e.pending_slot_swap_at = None;
+            e.pending_slot_swap_target = None;
+        }
+    }
 
     // Phase 1: capture the previous slot's pending-flush state
     // and the new slot's `cur_ammo_type` while we have a

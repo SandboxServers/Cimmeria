@@ -79,6 +79,12 @@ pub(super) async fn run_cell_loop(
                 // when the queue is empty.
                 super::ticks::pending_attack_tick(tx, &mut space_mgr).await;
 
+                // Promote queued bandolier slot swap: any player whose
+                // Item_Unequip animation window has elapsed gets the
+                // deferred slot change finalized (active slot update +
+                // Item_Equip for the new weapon).
+                super::ticks::pending_slot_swap_tick(tx, &mut space_mgr).await;
+
                 // Drive ring transporter timers (hide / warmup / cooldown).
                 // Each transporter holds its own deadlines; this tick fires
                 // the transitions and dispatches their effects.

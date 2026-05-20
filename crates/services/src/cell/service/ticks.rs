@@ -321,6 +321,59 @@ pub(super) async fn holster_timer_tick(
     }
 }
 
+/// Promote queued bandolier slot swap: finalize the slot change
+/// (active slot update, `Item_Equip` for the new weapon) after the
+/// `Item_Unequip` animation for the old weapon has played out.
+///
+/// `handle_request_active_slot_change` detects "OOC + both slots
+/// hold weapons + different slots," fires `Item_Unequip` immediately,
+/// stashes `(pending_slot_swap_at, pending_slot_swap_target)`, and
+/// returns. This tick fires once `HOLSTER_ANIMATION_DURATION` has
+/// elapsed — it re-invokes the handler with the target slot. The
+/// pending state is kept set during the re-invocation so the
+/// choreography branch short-circuits; the handler clears it on
+/// the way through.
+///
+/// Cadence: every 100ms AoI tick. Cost is one filter pass; the
+/// inner re-invocation only fires on transition.
+pub(super) async fn pending_slot_swap_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let now = std::time::Instant::now();
+    let ready: Vec<(u32, i32)> = space_mgr
+        .all_player_entity_ids()
+        .into_iter()
+        .filter_map(|eid| {
+            let e = space_mgr.get_entity(eid)?;
+            let at = e.pending_slot_swap_at?;
+            if now < at {
+                return None;
+            }
+            let target = e.pending_slot_swap_target?;
+            Some((eid, target))
+        })
+        .collect();
+
+    for (entity_id, target_slot) in ready {
+        tracing::info!(
+            entity_id,
+            target_slot,
+            "pending_slot_swap_tick: holster animation done, finalizing swap"
+        );
+        // Build wire args matching `requestActiveSlotChange`:
+        // bag_id (i32) + wire_slot_id (i32, 1-indexed). The wire
+        // decoder in `handle_request_active_slot_change` subtracts 1.
+        let mut args = Vec::with_capacity(8);
+        args.extend_from_slice(&3i32.to_le_bytes());
+        args.extend_from_slice(&(target_slot + 1).to_le_bytes());
+        super::super::cell_methods::inventory::handle_request_active_slot_change(
+            entity_id, &args, tx, space_mgr,
+        )
+        .await;
+    }
+}
+
 /// Promote queued attack-while-holstered: dispatch the deferred
 /// ability after the draw animation has had time to play.
 ///
