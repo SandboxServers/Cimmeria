@@ -84,11 +84,12 @@ async fn request_active_slot_change_translates_wire_to_server_slot() {
         if let Some(e) = mgr.get_entity_mut(1) {
             e.is_player = true;
             e.player_id = Some(100);
-            // Mark in-combat so the holster→swap→unholster choreography
-            // (task #20) skips and the swap completes
-            // immediately — this test verifies wire-to-server slot
-            // translation, not the OOC choreography path.
-            e.threatened_mobs.insert(9999);
+            // Pre-stamp `pending_slot_swap_at` so the handler treats
+            // this as the re-entry-from-tick path, skipping the
+            // choreography branch and running the immediate swap.
+            // This test verifies wire-to-server slot translation,
+            // not the choreography timing.
+            e.pending_slot_swap_at = Some(std::time::Instant::now());
             // Seed all 4 slots so the swap doesn't bail on "empty target".
             for slot_id in 0..4 {
                 e.bandolier_items.insert(
@@ -335,12 +336,20 @@ async fn weapon_to_empty_slot_skips_choreography() {
     );
 }
 
-/// In-combat swap must NOT trigger the choreography either — the player
-/// is fighting and we don't want to add an extra 600ms holster
-/// animation between weapons mid-fight. The normal path's
-/// `threatened_mobs.is_empty()` gate handles the immediate swap.
+/// In-combat weapon→weapon swap MUST still trigger the choreography
+/// (and the ability lockout that comes with it). Without the
+/// in-combat penalty, players could free-swap weapons mid-fight to
+/// teleport between e.g. a long-range rifle and a melee weapon with
+/// no animation cost — defeating the bandolier as a real loadout
+/// choice. The penalty is the animation duration plus the weapon-
+/// attack rejection while `pending_slot_swap_at` is set.
+///
+/// Bug shape: a refactor that re-adds the
+/// `threatened_mobs.is_empty()` gate to `needs_holster_first`
+/// regresses to "in-combat swaps are instant" — the user's
+/// playtest call-out from the original review.
 #[tokio::test]
-async fn weapon_to_weapon_swap_in_combat_skips_choreography() {
+async fn weapon_to_weapon_swap_in_combat_still_triggers_choreography() {
     use crate::cell::content::build_engine;
     use cimmeria_entity::cell_entity::BandolierItem;
 
@@ -350,7 +359,9 @@ async fn weapon_to_weapon_swap_in_combat_skips_choreography() {
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
-        e.threatened_mobs.insert(9999); // in-combat
+        e.archetype_id = Some(1);
+        // In-combat: aggro on a mob.
+        e.threatened_mobs.insert(9999);
         e.bandolier_items.insert(
             0,
             BandolierItem {
@@ -374,6 +385,8 @@ async fn weapon_to_weapon_swap_in_combat_skips_choreography() {
         e.active_bandolier_slot = 0;
     }
     mgr.connect_entity(1);
+    mgr.sequence_map
+        .insert((804, crate::cell::spawner::EVENT_ITEM_UNEQUIP), 1873);
 
     let (tx, _rx) = mpsc::channel(16);
     let engine = build_engine(None).await;
@@ -385,12 +398,95 @@ async fn weapon_to_weapon_swap_in_combat_skips_choreography() {
 
     let e = mgr.get_entity(1).unwrap();
     assert_eq!(
-        e.active_bandolier_slot, 1,
-        "in-combat swap must complete immediately — no holster \
-         choreography mid-fight",
+        e.active_bandolier_slot, 0,
+        "in-combat swap must defer the active-slot change behind the \
+         choreography — Phase 2 (via pending_slot_swap_tick) flips \
+         the slot once the holster animation has played out",
     );
     assert!(
-        e.pending_slot_swap_at.is_none(),
-        "in-combat must NOT queue a choreography",
+        e.pending_slot_swap_at.is_some(),
+        "in-combat swap must queue the choreography — the penalty is \
+         what makes weapon swaps a real loadout choice rather than \
+         a free teleport",
+    );
+    assert_eq!(
+        e.pending_slot_swap_target,
+        Some(1),
+        "target slot must be stashed for the deferred swap",
+    );
+}
+
+/// While a bandolier slot swap is in progress (pending_slot_swap_at
+/// armed and not yet elapsed), weapon attacks must be silently
+/// rejected. The player's hands are physically holstering and
+/// drawing; firing through the window would defeat the animation
+/// penalty.
+///
+/// Non-weapon abilities (heals, buffs) still pass — the lockout is
+/// about the FIRE pose, not all abilities.
+#[tokio::test]
+async fn weapon_attack_blocked_while_slot_swap_in_progress() {
+    use crate::cell::abilities::handle_use_ability;
+    use cimmeria_entity::abilities::AbilityDef;
+    use cimmeria_entity::cell_entity::BandolierItem;
+
+    let mut mgr = make_test_space_mgr();
+    mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(100);
+        e.weapon_holstered = false;
+        // Slot swap in progress — armed 100ms in the future.
+        e.pending_slot_swap_at =
+            Some(std::time::Instant::now() + std::time::Duration::from_millis(500));
+        e.pending_slot_swap_target = Some(1);
+        e.abilities.add_ability(7);
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                item_id: 10,
+                clip_size: 30,
+                default_ammo_type: 1,
+                current_ammo: 30,
+                cur_ammo_type: 1,
+            },
+        );
+        e.active_bandolier_slot = 0;
+    }
+    mgr.connect_entity(1);
+    // Weapon attack: required_ammo=1.
+    mgr.ability_defs.insert(
+        7,
+        AbilityDef {
+            ability_id: 7,
+            name: "test_fire".to_string(),
+            cooldown: 0.5,
+            warmup: 0.0,
+            flags: 0,
+            is_ranged: true,
+            min_range: 0,
+            max_range: 30,
+            target_type_id: 0,
+            effect_ids: vec![],
+            moniker_ids: vec![],
+            required_ammo: 1,
+            event_set_id: None,
+            velocity: 0.0,
+        },
+    );
+
+    let (tx, _rx) = mpsc::channel(16);
+    let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+    assert!(
+        !committed,
+        "weapon attack must be rejected while a slot swap is in \
+         progress — the animation penalty is what makes swaps a real \
+         loadout choice",
+    );
+    assert_eq!(
+        mgr.get_entity(1).unwrap().bandolier_items[&0].current_ammo,
+        30,
+        "rejection must NOT consume ammo",
     );
 }

@@ -158,6 +158,26 @@ pub async fn handle_use_ability(
         );
         return false;
     }
+
+    // Block weapon attacks while a bandolier slot swap is in progress.
+    // The player's hands are physically holstering the old weapon and
+    // drawing the new one; firing through that window would defeat the
+    // animation penalty that makes weapon swaps a real loadout choice.
+    // Non-weapon abilities (heals, buffs) are still permitted — the
+    // queue is about the FIRE pose, not a global ability lockout.
+    let slot_swap_in_progress = space_mgr.get_entity(entity_id).is_some_and(|e| {
+        e.pending_slot_swap_at
+            .is_some_and(|t| std::time::Instant::now() < t)
+    });
+    if slot_swap_in_progress && is_weapon_attack {
+        tracing::debug!(
+            entity_id,
+            ability_id,
+            "useAbility: bandolier slot swap in progress, weapon attack blocked"
+        );
+        return false;
+    }
+
     let needs_unholster_queue = is_weapon_attack
         && !queued_attack_already_pending
         && space_mgr

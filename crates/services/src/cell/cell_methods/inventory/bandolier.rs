@@ -137,16 +137,23 @@ pub(crate) async fn handle_request_active_slot_change(
     };
 
     // Swap-with-choreography case: when both the current and target
-    // slots hold weapons and the player is OOC, play `Item_Unequip`
-    // first, then defer the actual slot change until the holster
-    // animation has played out. `pending_slot_swap_tick` re-invokes
-    // this handler with the target slot once the animation window
-    // elapses; the re-entry is gated by `pending_slot_swap_at.is_some()`
-    // so it skips this branch and runs the normal swap path.
+    // slots hold weapons, play `Item_Unequip` first, then defer the
+    // actual slot change until the holster animation has played out.
+    // `pending_slot_swap_tick` re-invokes this handler with the
+    // target slot once the animation window elapses; the re-entry
+    // is gated by `pending_slot_swap_at.is_some()` so it skips this
+    // branch and runs the normal swap path.
+    //
+    // The choreography fires regardless of combat state. Swapping
+    // weapons mid-fight is supposed to cost real time — the
+    // animation duration plus the ability lockout (weapon attacks
+    // are rejected while `pending_slot_swap_at` is set; see
+    // `handle_use_ability`). Without that penalty, weapons would
+    // teleport in and out of the player's hands and the swap would
+    // be free, defeating the bandolier as a real loadout choice.
     //
     // Skipped when:
     // - Already mid-choreography (re-entry from the tick)
-    // - In combat (no animations during a fight)
     // - Same slot (no-op or replayed packet)
     // - Source slot empty (no weapon to holster)
     // - Target slot empty (handled by the normal path's empty-slot
@@ -155,7 +162,6 @@ pub(crate) async fn handle_request_active_slot_change(
     let needs_holster_first = match space_mgr.get_entity(entity_id) {
         Some(e) => {
             e.pending_slot_swap_at.is_none()
-                && e.threatened_mobs.is_empty()
                 && e.active_bandolier_slot != slot_id
                 && e.bandolier_items.contains_key(&e.active_bandolier_slot)
                 && e.bandolier_items.contains_key(&slot_id)
