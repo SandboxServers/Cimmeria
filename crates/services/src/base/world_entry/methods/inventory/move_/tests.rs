@@ -522,6 +522,51 @@ async fn move_out_of_equipment_slot_refreshes_appearance() {
 /// Negative control: a plain bag-to-bag move with no equipment slot
 /// involved must NOT trigger the appearance refresh. Otherwise every
 /// inventory reshuffle would generate witness traffic.
+/// The SGW client sends `quantity = -1` on drag-to-equip /
+/// drag-to-bag interactions, meaning "move the whole stack" (legacy
+/// convention from `SGWPlayer.py:moveItem`). A naive `<= 0` reject
+/// in `handle_move_inventory_item` breaks every drag interaction.
+///
+/// Pin the whole-stack sentinel: passing `quantity = -1` (or any
+/// non-positive value) must relocate the full source row to the
+/// target slot, not reject. Bug shape this catches: a refactor that
+/// re-adds the `quantity <= 0` early reject regresses every drag,
+/// including the right-click auto-equip path that goes through
+/// this same handler.
+#[tokio::test]
+async fn negative_quantity_is_whole_stack_sentinel() {
+    let pool = require_db_or_skip!();
+    let account_id = TEST_BASE + 1200;
+    let player_id = TEST_BASE + 1201;
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+
+    let types = pick_main_bag_type_ids(&pool, 1).await;
+    // Use a stack of 5 so we can detect the difference between
+    // "moved the whole stack" and "moved a single item" (a split
+    // would leave 4 at the source).
+    let item = insert_item(&pool, player_id, types[0], 1, 0, 5).await;
+
+    let entity_id = 9_999_020;
+    let (socket, e2a, conn) = make_state(entity_id);
+    let db_pool = Some(Arc::new(pool.clone()));
+
+    handle_move_inventory_item(
+        entity_id, player_id, item, 1, 7, -1, &db_pool, &None, &socket, &conn, &e2a,
+    )
+    .await;
+
+    assert_eq!(
+        slot_of(&pool, player_id, item).await,
+        Some((1, 7, 5)),
+        "quantity=-1 must move the WHOLE stack (size 5) to slot 7, \
+         not split it or reject — the SGW client sends -1 for every \
+         drag-to-equip interaction",
+    );
+
+    cleanup(&pool, account_id, player_id).await;
+}
+
 #[tokio::test]
 async fn bag_to_bag_move_does_not_refresh_appearance() {
     let pool = require_db_or_skip!();
