@@ -436,13 +436,26 @@ pub async fn handle_grant_item(
         }
     };
 
-    if visual.is_some() {
+    // Bandolier items (container_id 3) get their appearance refresh
+    // from the cell side: `BaseToCellMsg::UpdateBandolierItem`'s
+    // handler dispatches `RefreshAppearance` back to base after
+    // flipping `weapon_holstered` correctly. Calling
+    // `refresh_player_appearance` here too races the cell side and
+    // can broadcast a stale "no weapon" appearance (cached state is
+    // still `holstered=true` because the cell hasn't processed the
+    // update yet) — that's why initial weapon equips appeared to
+    // not show the weapon in playtest.
+    //
+    // Non-bandolier equipment (helmet, armor, accessories — slot 4
+    // and up) doesn't go through the cell side, so we still need
+    // this call for those.
+    if visual.is_some() && container_id != 3 {
         tracing::info!(
             entity_id,
             player_id,
             item_id,
             container_id,
-            "Equipped item has visual — resending BeingAppearance"
+            "Equipped non-bandolier item has visual — resending BeingAppearance"
         );
         refresh_player_appearance(
             entity_id,

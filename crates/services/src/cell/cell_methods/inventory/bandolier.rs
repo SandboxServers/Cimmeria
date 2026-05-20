@@ -277,6 +277,53 @@ pub(super) async fn handle_request_active_slot_change(
         space_mgr,
     )
     .await;
+
+    // Display the newly-active weapon + arm the OOC re-holster timer.
+    // Same mechanism as `UpdateBandolierItem` (initial equip): if the
+    // player is OOC, draw the weapon (so the wire `ComponentList`
+    // includes it) and stamp `combat_exit_at` so the holster timer
+    // re-holsters it after `OOC_HOLSTER_DELAY`. The base side's
+    // `active_slot_update` calls `refresh_player_appearance` after
+    // persisting the slot — by sending `RefreshAppearance` from here
+    // FIRST we update the base's cached `weapon_holstered`, so the
+    // base's subsequent refresh reads the correct (drawn) state.
+    //
+    // Three outcomes:
+    //
+    //  1. New slot has a weapon + OOC: draw it, fire `Item_Equip`,
+    //     arm OOC timer.
+    //  2. New slot has NO weapon (empty slot): refresh appearance so
+    //     the wire `ComponentList` reflects the empty slot (the old
+    //     weapon visual goes away), but do NOT fire `Item_Equip` —
+    //     there's nothing to equip. Don't arm the OOC timer either;
+    //     there's no weapon to re-holster. The base's subsequent
+    //     `refresh_player_appearance` from `active_slot_update` will
+    //     still re-emit the empty `ComponentList` from the persisted
+    //     bandolier_slot, so the visual change lands either way; we
+    //     skip the cell-side `request_appearance_refresh` to avoid
+    //     a redundant packet.
+    //  3. In-combat slot swap: weapon's already drawn, no state
+    //     changes needed.
+    let new_slot_has_weapon = new_ammo_type.is_some();
+    let draw_intent = match space_mgr.get_entity_mut(entity_id) {
+        Some(e) if e.threatened_mobs.is_empty() && new_slot_has_weapon => {
+            e.set_weapon_holstered(false);
+            e.combat_exit_at = Some(std::time::Instant::now());
+            e.holster_animation_complete_at = None;
+            true
+        }
+        _ => false,
+    };
+    if draw_intent {
+        crate::cell::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
+        crate::cell::cell_methods::player::world::fire_item_sequence(
+            entity_id,
+            crate::cell::spawner::EVENT_ITEM_EQUIP,
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
 }
 
 pub(super) async fn handle_request_ammo_change(
