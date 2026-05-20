@@ -530,12 +530,34 @@ pub(super) async fn handle_base_message(
             // Re-borrow to make the equip-display decision.
             let active_slot_gained_weapon =
                 new_active_item_id.is_some() && new_active_item_id != prev_active_item_id;
+            // Player-driven unequip (active slot LOST its weapon):
+            // disarm any in-flight OOC re-holster timer so the
+            // `Item_Unequip` animation doesn't fire 10s later against
+            // a now-empty hand. Also reset `weapon_holstered=true`
+            // so the cached state matches the now-empty bandolier
+            // (next equip's prev-vs-new check sees a clean baseline).
+            let active_slot_lost_weapon =
+                prev_active_item_id.is_some() && new_active_item_id.is_none();
             let (play_equip_anim, drew_weapon, was_in_combat, entity_state, anim_path) =
                 if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                     let is_player = entity.is_player;
                     let player_id = entity.player_id;
                     let in_combat = !entity.threatened_mobs.is_empty();
-                    let path = if !active_slot_gained_weapon {
+                    let path = if active_slot_lost_weapon {
+                        // Cancel any pending unholster animation —
+                        // there's no weapon to unholster anymore.
+                        entity.combat_exit_at = None;
+                        entity.holster_animation_complete_at = None;
+                        // Server-side draw state goes back to
+                        // "holstered" — there's nothing in hand. The
+                        // base's `sync_bandolier_after_inventory_change`
+                        // call right after this dispatches its own
+                        // `refresh_player_appearance` which broadcasts
+                        // the now-empty `ComponentList`, so the mesh
+                        // disappears on the client side.
+                        entity.set_weapon_holstered(true);
+                        "active slot lost weapon (unequip) — disarm timer"
+                    } else if !active_slot_gained_weapon {
                         if new_active_item_id.is_none() {
                             "active slot is empty — skip"
                         } else {
@@ -1213,6 +1235,95 @@ mod tests {
             "equip into bandolier must fire Item_Equip — without it the \
              weapon teleports into the hand with no unholster animation",
         );
+    }
+
+    /// `SyncBandolierItems` when the active slot LOST its weapon —
+    /// player-driven unequip via right-click. Must disarm any
+    /// in-flight OOC re-holster timer (otherwise `Item_Unequip`
+    /// would fire 10s later against an empty hand) and reset
+    /// `weapon_holstered=true` so the next equip's prev-vs-new
+    /// comparison sees a clean baseline.
+    ///
+    /// Bug shape this catches: a refactor that handles
+    /// "active_slot_gained_weapon" but forgets the LOST case leaves
+    /// `combat_exit_at` armed, and 10 seconds after the unequip the
+    /// holster_timer_tick fires Item_Unequip into the void (visible
+    /// in the log as "playing Item_Unequip" while the player has no
+    /// weapon).
+    #[tokio::test]
+    async fn sync_bandolier_items_active_slot_lost_weapon_disarms_holster_timer() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.weapon_holstered = false; // weapon was drawn (post-equip grace)
+            e.active_bandolier_slot = 0;
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 55,
+                    clip_size: 15,
+                    default_ammo_type: 2,
+                    current_ammo: 7,
+                    cur_ammo_type: 2,
+                },
+            );
+            // OOC timer armed — would fire Item_Unequip in 10s.
+            e.combat_exit_at = Some(std::time::Instant::now());
+            e.holster_animation_complete_at = None;
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = ChainEngine::new();
+
+        // Unequip: SyncBandolierItems with empty active slot.
+        handle_base_message(
+            BaseToCellMsg::SyncBandolierItems {
+                entity_id: 1,
+                active_bandolier_slot: 0,
+                bandolier_items: vec![],
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            e.weapon_holstered,
+            "unequip must reset weapon_holstered=true — there's no \
+             weapon to be drawn anymore",
+        );
+        assert!(
+            e.combat_exit_at.is_none(),
+            "unequip must disarm the OOC re-holster timer — without \
+             this, `holster_timer_tick` fires Item_Unequip 10s later \
+             against an empty hand",
+        );
+
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::EntityMethodCall { method_index, .. }
+                    if method_index
+                        == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                {
+                    panic!(
+                        "unequip must NOT fire any onSequence — there's no \
+                         weapon mesh to animate against",
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     /// `SyncBandolierItems` when the active slot is UNCHANGED (same

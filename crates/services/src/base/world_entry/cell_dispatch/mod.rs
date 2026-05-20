@@ -497,8 +497,18 @@ pub(crate) async fn handle_cell_message(
             item_id,
             target_id,
         } => {
-            handle_use_inventory_item(entity_id, player_id, item_id, target_id, db_pool, cell_tx)
-                .await;
+            handle_use_inventory_item(
+                entity_id,
+                player_id,
+                item_id,
+                target_id,
+                db_pool,
+                cell_tx,
+                socket,
+                connected,
+                entity_to_addr,
+            )
+            .await;
         }
         CellToBaseMsg::RemoveInventoryItemByType {
             entity_id,
