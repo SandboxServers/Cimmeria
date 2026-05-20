@@ -40,6 +40,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [Entity-property-sync OQ-1 CLOSED](entity-property-sync-oq1.md) — **[PROMOTE → spec.protocol.entity-property-sync §1.15 OQ-1 + OQ-X + F1 + G39]** — 0x3C/0x3D thresholds are server-side only; client uses UE3 FArchive uint32_t via FNetworkPropertyChange__vfunc_0 @ 0x015652d0. (Earlier sub-claim that 0x00dd0bb0 was misnamed as RemoveEntityListener has been retracted — Ghidra name is correct per audit Appendix E.)
 
+## Auto-cycle / auto-fire system (2026-05-20)
+
+- [Auto-cycle system findings](auto-cycle-findings.md) — **[PROMOTE → spec.combat.auto-cycle or doc-reference from gameplay/combat-system.md]** — Full wire path confirmed: cell method 83, 2-byte payload, server-driven loop, `BSF_AutoCycling` bit 1, cooldown-expiry re-fire pattern. Implementation gap identified.
+
 ## Phase −0.5 maintenance notes (2026-05-13)
 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.
