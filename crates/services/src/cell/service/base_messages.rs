@@ -359,12 +359,43 @@ pub(super) async fn handle_base_message(
             // when the fight ends). We skip the timer arming here to
             // avoid stamping a timer while threatened_mobs is non-empty,
             // which the holster scan doesn't (yet) gate on combat state.
-            let (play_equip_anim, drew_weapon, was_in_combat, entity_state) =
+            let (play_equip_anim, drew_weapon, was_in_combat, entity_state, anim_path) =
                 if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                     entity.bandolier_items.insert(slot_id, item);
                     let is_player = entity.is_player;
                     let player_id = entity.player_id;
-                    if make_active {
+                    // Fire the equip-display animation when the inserted
+                    // slot is (or just became) the player's *active*
+                    // slot. Three cases land here:
+                    //
+                    // 1. `make_active=true` — base's bandolier_slot
+                    //    UPDATE flipped to the new slot; we own
+                    //    `active_bandolier_slot` from here.
+                    // 2. `make_active=false` BUT `slot_id` already
+                    //    equals `active_bandolier_slot` — this is the
+                    //    initial-grant case (PR #338 follow-up): the
+                    //    base's SQL doesn't flip bandolier_slot when
+                    //    the INSERT already lands at the player's
+                    //    default selection (the NOT EXISTS guard finds
+                    //    the row we just inserted), so
+                    //    `bandolier_became_active` is false even
+                    //    though the new weapon IS the active one.
+                    //    Without this branch the first weapon a
+                    //    player ever gets never plays its equip
+                    //    animation or attaches its mesh.
+                    // 3. `make_active=false` AND `slot_id` !=
+                    //    `active_bandolier_slot` — the player got a
+                    //    second/third weapon into a non-active slot.
+                    //    Mesh stays wherever the active slot is. Skip.
+                    let slot_is_active = make_active || entity.active_bandolier_slot == slot_id;
+                    let path = if make_active {
+                        "make_active=true"
+                    } else if slot_is_active {
+                        "initial-grant (slot matches active)"
+                    } else {
+                        "non-active slot — skipping"
+                    };
+                    if slot_is_active {
                         entity.active_bandolier_slot = slot_id;
                         let in_combat = !entity.threatened_mobs.is_empty();
                         let drew = if !in_combat {
@@ -379,12 +410,12 @@ pub(super) async fn handle_base_message(
                         } else {
                             false
                         };
-                        (true, drew, in_combat, (is_player, player_id))
+                        (true, drew, in_combat, (is_player, player_id), path)
                     } else {
-                        (false, false, false, (is_player, player_id))
+                        (false, false, false, (is_player, player_id), path)
                     }
                 } else {
-                    (false, false, false, (false, None))
+                    (false, false, false, (false, None), "entity missing")
                 };
             tracing::info!(
                 entity_id,
@@ -395,6 +426,7 @@ pub(super) async fn handle_base_message(
                 was_in_combat,
                 is_player = entity_state.0,
                 player_id = ?entity_state.1,
+                anim_path,
                 "UpdateBandolierItem: equip-display decision"
             );
             if play_equip_anim {
@@ -988,6 +1020,202 @@ mod tests {
              equip animation. Without it, the weapon just teleports into the \
              hand with no animation.",
         );
+    }
+
+    /// `UpdateBandolierItem` with `make_active=false` but a slot that
+    /// MATCHES the entity's already-active slot must STILL draw the
+    /// weapon. This is the initial-grant case: base's
+    /// `handle_grant_item` SQL only flips `bandolier_slot` when the
+    /// previous selection points at a vacant slot — but the INSERT
+    /// happens BEFORE the UPDATE, so for an initial grant where
+    /// `next_slot == p.bandolier_slot == 0`, the NOT EXISTS check
+    /// finds the just-inserted row and the UPDATE is skipped,
+    /// leaving `bandolier_became_active=false`. The new weapon IS
+    /// the active one even though base couldn't say so, and the
+    /// equip animation MUST fire — otherwise the player's first
+    /// weapon never appears.
+    ///
+    /// Bug shape this catches: a refactor that ties the equip-display
+    /// gate strictly to `make_active=true` regresses initial weapon
+    /// grants back to invisible-on-equip.
+    #[tokio::test]
+    async fn update_bandolier_item_make_active_false_but_slot_matches_active_still_draws() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = true;
+            // Player's default active slot is 0 (fresh character).
+            e.active_bandolier_slot = 0;
+        }
+        mgr.connect_entity(1);
+        mgr.sequence_map
+            .insert((804, crate::cell::spawner::EVENT_ITEM_EQUIP), 1872);
+
+        let item = BandolierItem {
+            item_id: 42,
+            clip_size: 25,
+            default_ammo_type: 2,
+            current_ammo: 25,
+            cur_ammo_type: 2,
+        };
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = ChainEngine::new();
+
+        // Initial weapon grant where base's bandolier_slot UPDATE
+        // skipped (next_slot == p.bandolier_slot == 0, NOT EXISTS
+        // finds the new INSERT). So `make_active=false`, even though
+        // this IS the active slot from the entity's perspective.
+        handle_base_message(
+            BaseToCellMsg::UpdateBandolierItem {
+                entity_id: 1,
+                slot_id: 0,
+                item,
+                make_active: false,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            !e.weapon_holstered,
+            "initial grant into the already-active slot must draw the weapon — \
+             without this the first weapon a player ever receives stays \
+             invisible (the bug from PR #338 playtest)",
+        );
+        assert!(
+            e.combat_exit_at.is_some(),
+            "OOC holster timer must arm so the weapon re-holsters after \
+             OOC_HOLSTER_DELAY, just like the `make_active=true` path",
+        );
+
+        let mut saw_refresh = false;
+        let mut saw_sequence = false;
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::RefreshAppearance {
+                    holstered: false, ..
+                } => saw_refresh = true,
+                CellToBaseMsg::EntityMethodCall { method_index, .. }
+                    if method_index
+                        == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                {
+                    saw_sequence = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            saw_refresh,
+            "initial grant must dispatch RefreshAppearance — the base's \
+             refresh_player_appearance is skipped on container_id=3 to \
+             avoid racing this cell-side broadcast, so this IS the broadcast \
+             that attaches the weapon mesh",
+        );
+        assert!(
+            saw_sequence,
+            "initial grant must fire Item_Equip — same animation as a \
+             slot-swap into the active slot",
+        );
+    }
+
+    /// `UpdateBandolierItem` with `make_active=false` AND a slot
+    /// different from the entity's active slot must NOT draw the
+    /// weapon. The player still has their existing active weapon —
+    /// this is a non-active stash slot grant.
+    ///
+    /// Bug shape this catches: a refactor that drops the `slot_is_active`
+    /// gate and always fires equip-display would yank the visible
+    /// weapon mid-fight when a quest reward lands in a stash slot.
+    #[tokio::test]
+    async fn update_bandolier_item_make_active_false_into_non_active_slot_does_not_draw() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(r#"<?xml version="1.0"?><Spaces></Spaces>"#)
+            .unwrap();
+        mgr.create_entity(1, "Castle_CellBlock", [0.0; 3], [0.0; 3])
+            .unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.weapon_holstered = true;
+            // Player's active slot is 0 (their existing pistol).
+            e.active_bandolier_slot = 0;
+        }
+        mgr.connect_entity(1);
+
+        let item = BandolierItem {
+            item_id: 99,
+            clip_size: 30,
+            default_ammo_type: 1,
+            current_ammo: 30,
+            cur_ammo_type: 1,
+        };
+
+        let (tx, mut rx) = mpsc::channel(16);
+        let engine = ChainEngine::new();
+
+        // Quest reward lands in slot 2, not the active slot 0.
+        handle_base_message(
+            BaseToCellMsg::UpdateBandolierItem {
+                entity_id: 1,
+                slot_id: 2,
+                item,
+                make_active: false,
+            },
+            &tx,
+            &mut mgr,
+            &engine,
+            &[],
+        )
+        .await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.active_bandolier_slot, 0,
+            "stash-slot grant must NOT touch active_bandolier_slot",
+        );
+        assert!(
+            e.weapon_holstered,
+            "stash-slot grant must NOT draw the weapon — player still has \
+             their existing active weapon (which is holstered here)",
+        );
+        assert!(
+            e.combat_exit_at.is_none(),
+            "stash-slot grant must NOT arm the OOC holster timer",
+        );
+
+        while let Ok(msg) = rx.try_recv() {
+            match msg {
+                CellToBaseMsg::RefreshAppearance { .. } => {
+                    panic!(
+                        "stash-slot grant must NOT dispatch RefreshAppearance — \
+                         the active slot's appearance is unchanged",
+                    );
+                }
+                CellToBaseMsg::EntityMethodCall { method_index, .. }
+                    if method_index
+                        == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                {
+                    panic!("stash-slot grant must NOT fire Item_Equip");
+                }
+                _ => {}
+            }
+        }
     }
 
     /// `UpdateBandolierItem` while in combat must NOT arm the OOC
