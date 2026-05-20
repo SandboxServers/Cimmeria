@@ -210,21 +210,25 @@ pub(super) async fn reload_completion_tick(
 /// animation's final frame (pistol at thigh), then the blend tree
 /// returns to the idle-armed pose (weapon snaps back to the hand
 /// socket) for a few frames before the mesh-removal packet lands —
-/// a visible flicker the user reported in PR #338 playtest.
+/// a visible flicker.
 ///
-/// Sending Phase 2 at ~850ms gives the packet ~150ms to traverse
-/// the wire + base broadcast + client decode, so the client
-/// `ComponentList` swap aligns with the end of the local
-/// animation playback. The cost is that the mesh disappears
-/// during the last ~50ms of the animation (pistol already at
-/// thigh socket — barely perceptible) instead of after it (clearly
-/// visible flicker).
+/// 850ms was the first attempt; user playtest confirmed the flicker
+/// remained, which means the underlying `Item_Unequip` animation is
+/// shorter than ~850ms. 600ms is the next data point — the visible
+/// pistol-to-thigh motion seems to be in the ~500-700ms range based
+/// on the "few frames" of flicker description.
+///
+/// Trade-off at lower values: the mesh removes earlier in the
+/// animation. At 600ms with a ~700ms animation, the pistol vanishes
+/// during the last ~100ms of the holster motion — barely
+/// perceptible because the pistol is already settled at the thigh
+/// socket at that point. Strictly less visible than the flicker.
 ///
 /// Empirically tuned against the `KIS-abilities_human.KIS-handling`
 /// Unequip branch — adjust upward if the flicker returns, downward
 /// if the pistol vanishes too early.
 pub(crate) const HOLSTER_ANIMATION_DURATION: std::time::Duration =
-    std::time::Duration::from_millis(850);
+    std::time::Duration::from_millis(600);
 
 pub(super) async fn holster_timer_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,

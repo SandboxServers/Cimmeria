@@ -538,51 +538,67 @@ pub(super) async fn handle_base_message(
             // (next equip's prev-vs-new check sees a clean baseline).
             let active_slot_lost_weapon =
                 prev_active_item_id.is_some() && new_active_item_id.is_none();
-            let (play_equip_anim, drew_weapon, was_in_combat, entity_state, anim_path) =
-                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                    let is_player = entity.is_player;
-                    let player_id = entity.player_id;
-                    let in_combat = !entity.threatened_mobs.is_empty();
-                    let path = if active_slot_lost_weapon {
-                        // Cancel any pending unholster animation —
-                        // there's no weapon to unholster anymore.
-                        entity.combat_exit_at = None;
-                        entity.holster_animation_complete_at = None;
-                        // Server-side draw state goes back to
-                        // "holstered" — there's nothing in hand. The
-                        // base's `sync_bandolier_after_inventory_change`
-                        // call right after this dispatches its own
-                        // `refresh_player_appearance` which broadcasts
-                        // the now-empty `ComponentList`, so the mesh
-                        // disappears on the client side.
-                        entity.set_weapon_holstered(true);
-                        "active slot lost weapon (unequip) — disarm timer"
-                    } else if !active_slot_gained_weapon {
-                        if new_active_item_id.is_none() {
-                            "active slot is empty — skip"
-                        } else {
-                            "active slot unchanged — skip"
-                        }
-                    } else if in_combat {
-                        "in combat — skip OOC timer arming"
+            let (
+                play_equip_anim,
+                play_holster_anim,
+                drew_weapon,
+                was_in_combat,
+                entity_state,
+                anim_path,
+            ) = if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                let is_player = entity.is_player;
+                let player_id = entity.player_id;
+                let in_combat = !entity.threatened_mobs.is_empty();
+                let path = if active_slot_lost_weapon {
+                    // Player-driven unequip — schedule the same
+                    // two-phase choreography the OOC holster timer
+                    // uses (PR #338): fire `Item_Unequip` now,
+                    // leave the mesh attached (weapon_holstered
+                    // stays at its current value), and arm a
+                    // Phase 2 via `holster_animation_complete_at`
+                    // so `holster_timer_tick` dispatches the
+                    // eventual `RefreshAppearance(holstered=true)`
+                    // after the animation plays out.
+                    //
+                    // The base-side `sync_bandolier_after_inventory_change`
+                    // call defers its `refresh_player_appearance`
+                    // for unequip so the mesh stays during the
+                    // animation — without that defer, the base
+                    // yanks the mesh immediately and the user sees
+                    // no animation.
+                    entity.combat_exit_at = None;
+                    entity.holster_animation_complete_at =
+                        Some(std::time::Instant::now() + super::ticks::HOLSTER_ANIMATION_DURATION);
+                    "active slot lost weapon (unequip) — fire Item_Unequip + Phase 2"
+                } else if !active_slot_gained_weapon {
+                    if new_active_item_id.is_none() {
+                        "active slot is empty — skip"
                     } else {
-                        "active slot gained weapon (OOC) — draw + animate"
-                    };
-                    if active_slot_gained_weapon && !in_combat {
-                        entity.set_weapon_holstered(false);
-                        entity.combat_exit_at = Some(std::time::Instant::now());
-                        entity.holster_animation_complete_at = None;
-                        (true, true, false, (is_player, player_id), path)
-                    } else {
-                        (false, false, in_combat, (is_player, player_id), path)
+                        "active slot unchanged — skip"
                     }
+                } else if in_combat {
+                    "in combat — skip OOC timer arming"
                 } else {
-                    (false, false, false, (false, None), "entity missing")
+                    "active slot gained weapon (OOC) — draw + animate"
                 };
+                if active_slot_gained_weapon && !in_combat {
+                    entity.set_weapon_holstered(false);
+                    entity.combat_exit_at = Some(std::time::Instant::now());
+                    entity.holster_animation_complete_at = None;
+                    (true, false, true, false, (is_player, player_id), path)
+                } else if active_slot_lost_weapon {
+                    (false, true, false, in_combat, (is_player, player_id), path)
+                } else {
+                    (false, false, false, in_combat, (is_player, player_id), path)
+                }
+            } else {
+                (false, false, false, false, (false, None), "entity missing")
+            };
             tracing::info!(
                 entity_id,
                 active_bandolier_slot,
                 play_equip_anim,
+                play_holster_anim,
                 drew_weapon,
                 was_in_combat,
                 is_player = entity_state.0,
@@ -595,6 +611,18 @@ pub(super) async fn handle_base_message(
                 super::super::cell_methods::player::world::fire_item_sequence(
                     entity_id,
                     super::super::spawner::EVENT_ITEM_EQUIP,
+                    tx,
+                    space_mgr,
+                )
+                .await;
+            } else if play_holster_anim {
+                // Fire `Item_Unequip` (event 4001) — the bandolier
+                // take-off animation. Phase 2 of `holster_timer_tick`
+                // will broadcast the mesh removal once
+                // `HOLSTER_ANIMATION_DURATION` has elapsed.
+                super::super::cell_methods::player::world::fire_item_sequence(
+                    entity_id,
+                    super::super::spawner::EVENT_ITEM_UNEQUIP,
                     tx,
                     space_mgr,
                 )
@@ -1238,20 +1266,28 @@ mod tests {
     }
 
     /// `SyncBandolierItems` when the active slot LOST its weapon —
-    /// player-driven unequip via right-click. Must disarm any
-    /// in-flight OOC re-holster timer (otherwise `Item_Unequip`
-    /// would fire 10s later against an empty hand) and reset
-    /// `weapon_holstered=true` so the next equip's prev-vs-new
-    /// comparison sees a clean baseline.
+    /// player-driven unequip via right-click or drag.
     ///
-    /// Bug shape this catches: a refactor that handles
-    /// "active_slot_gained_weapon" but forgets the LOST case leaves
-    /// `combat_exit_at` armed, and 10 seconds after the unequip the
-    /// holster_timer_tick fires Item_Unequip into the void (visible
-    /// in the log as "playing Item_Unequip" while the player has no
-    /// weapon).
+    /// Must:
+    /// - Fire `Item_Unequip` (event 4001) so the client plays the
+    ///   holster animation while the mesh is still attached.
+    /// - Arm `holster_animation_complete_at` so `holster_timer_tick`
+    ///   Phase 2 fires `RefreshAppearance(holstered=true)` after the
+    ///   animation has had time to play, dropping the mesh from the
+    ///   `ComponentList`.
+    /// - Clear `combat_exit_at` so a stale OOC timer doesn't re-fire
+    ///   the same animation.
+    /// - LEAVE `weapon_holstered` at its current value — Phase 2
+    ///   flips it to true when it broadcasts. Setting it here
+    ///   immediately would defeat the purpose (the base-side
+    ///   `refresh_player_appearance` reads cached holstered state).
+    ///
+    /// Bug shape this catches: a refactor that drops the
+    /// `Item_Unequip` dispatch or the Phase 2 scheduling regresses
+    /// to "weapon vanishes instantly with no holster animation" —
+    /// the playtest symptom from PR #338.
     #[tokio::test]
-    async fn sync_bandolier_items_active_slot_lost_weapon_disarms_holster_timer() {
+    async fn sync_bandolier_items_active_slot_lost_weapon_fires_unequip_and_schedules_phase2() {
         let mut mgr = SpaceManager::new(1);
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -1262,6 +1298,8 @@ mod tests {
         if let Some(e) = mgr.get_entity_mut(1) {
             e.is_player = true;
             e.player_id = Some(100);
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
             e.weapon_holstered = false; // weapon was drawn (post-equip grace)
             e.active_bandolier_slot = 0;
             e.bandolier_items.insert(
@@ -1279,6 +1317,10 @@ mod tests {
             e.holster_animation_complete_at = None;
         }
         mgr.connect_entity(1);
+        // Seed sequence map for the Item_Unequip lookup (archetype 1
+        // → event set 804 → seq 1873).
+        mgr.sequence_map
+            .insert((804, crate::cell::spawner::EVENT_ITEM_UNEQUIP), 1873);
 
         let (tx, mut rx) = mpsc::channel(16);
         let engine = ChainEngine::new();
@@ -1299,31 +1341,37 @@ mod tests {
 
         let e = mgr.get_entity(1).unwrap();
         assert!(
-            e.weapon_holstered,
-            "unequip must reset weapon_holstered=true — there's no \
-             weapon to be drawn anymore",
+            !e.weapon_holstered,
+            "unequip must NOT immediately flip weapon_holstered=true \
+             — Phase 2 does that when it broadcasts. Flipping here \
+             defeats the purpose (mesh removal races animation)",
         );
         assert!(
             e.combat_exit_at.is_none(),
-            "unequip must disarm the OOC re-holster timer — without \
-             this, `holster_timer_tick` fires Item_Unequip 10s later \
-             against an empty hand",
+            "unequip must disarm any pending OOC re-holster timer — \
+             without this, holster_timer_tick fires Item_Unequip a \
+             second time after the OOC grace expires",
+        );
+        assert!(
+            e.holster_animation_complete_at.is_some(),
+            "unequip must schedule Phase 2 via holster_animation_complete_at \
+             — that's the hook holster_timer_tick uses to send \
+             RefreshAppearance(holstered=true) after the animation",
         );
 
+        let mut saw_unequip_sequence = false;
         while let Ok(msg) = rx.try_recv() {
-            match msg {
-                CellToBaseMsg::EntityMethodCall { method_index, .. }
-                    if method_index
-                        == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
-                {
-                    panic!(
-                        "unequip must NOT fire any onSequence — there's no \
-                         weapon mesh to animate against",
-                    );
+            if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE {
+                    saw_unequip_sequence = true;
                 }
-                _ => {}
             }
         }
+        assert!(
+            saw_unequip_sequence,
+            "unequip must fire ON_SEQUENCE (Item_Unequip) so the client \
+             plays the holster animation while the mesh is still attached",
+        );
     }
 
     /// `SyncBandolierItems` when the active slot is UNCHANGED (same

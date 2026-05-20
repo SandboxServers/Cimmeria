@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use super::super::super::super::resources::{bag_max_slots, bag_min_slot};
 use super::super::super::super::ConnectedClientState;
 use super::super::player_load::core::EQUIPMENT_CONTAINERS;
-use super::super::vendor::helpers::sync_bandolier_after_inventory_change;
+use super::super::vendor::helpers::sync_bandolier_after_inventory_change_with_options;
 use super::appearance::refresh_player_appearance;
 use super::core::send_full_inventory_update;
 use super::grant::item_allows_container;
@@ -555,7 +555,17 @@ pub async fn handle_move_inventory_item(
     }
 
     if source.container_id == 3 || target_container_id == 3 {
-        sync_bandolier_after_inventory_change(
+        // Unequip (source=bandolier, target=elsewhere): defer the
+        // base-side `refresh_player_appearance` so the cell-side
+        // holster animation has time to play. The cell's
+        // `SyncBandolierItems` handler fires `Item_Unequip` and
+        // schedules a Phase 2 (`holster_animation_complete_at`) that
+        // dispatches the eventual `RefreshAppearance` back to base
+        // after `HOLSTER_ANIMATION_DURATION`. Without this defer,
+        // the base yanks the weapon mesh immediately and the user
+        // sees no animation — the weapon just vanishes.
+        let is_unequip = source.container_id == 3 && target_container_id != 3;
+        sync_bandolier_after_inventory_change_with_options(
             entity_id,
             player_id,
             db_pool,
@@ -563,6 +573,7 @@ pub async fn handle_move_inventory_item(
             socket,
             connected,
             entity_to_addr,
+            is_unequip,
         )
         .await;
     }
