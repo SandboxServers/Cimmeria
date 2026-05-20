@@ -198,14 +198,33 @@ pub(super) async fn reload_completion_tick(
 /// plus a filtered pass over `all_player_entity_ids()`; rebroadcasts
 /// only fire on transitioning players, so this is essentially free in
 /// steady state.
-/// Duration of the Item_Unequip ("put weapon away") kismet animation.
-/// After Phase 1 fires the animation, the holster scan waits this long
-/// before flipping `weapon_holstered = true` and broadcasting the mesh
-/// removal — otherwise the mesh snaps away while the animation is
-/// still playing. Empirically tuned to match the
-/// `KIS-abilities_human.KIS-handling` Unequip branch.
+/// Phase 2 delay between firing the `Item_Unequip` animation and
+/// broadcasting the mesh-removal `BeingAppearance`. The constant
+/// is *intentionally shorter than the visible animation length* —
+/// it sets when the cell sends `RefreshAppearance(holstered=true)`,
+/// not when the client renders the mesh removal.
+///
+/// Timing target: the mesh-removal `BeingAppearance` should *arrive
+/// on the client* at the instant the holster animation visually
+/// completes. Without an early send the client renders the
+/// animation's final frame (pistol at thigh), then the blend tree
+/// returns to the idle-armed pose (weapon snaps back to the hand
+/// socket) for a few frames before the mesh-removal packet lands —
+/// a visible flicker the user reported in PR #338 playtest.
+///
+/// Sending Phase 2 at ~850ms gives the packet ~150ms to traverse
+/// the wire + base broadcast + client decode, so the client
+/// `ComponentList` swap aligns with the end of the local
+/// animation playback. The cost is that the mesh disappears
+/// during the last ~50ms of the animation (pistol already at
+/// thigh socket — barely perceptible) instead of after it (clearly
+/// visible flicker).
+///
+/// Empirically tuned against the `KIS-abilities_human.KIS-handling`
+/// Unequip branch — adjust upward if the flicker returns, downward
+/// if the pistol vanishes too early.
 pub(crate) const HOLSTER_ANIMATION_DURATION: std::time::Duration =
-    std::time::Duration::from_millis(1000);
+    std::time::Duration::from_millis(850);
 
 pub(super) async fn holster_timer_tick(
     tx: &mpsc::Sender<CellToBaseMsg>,
