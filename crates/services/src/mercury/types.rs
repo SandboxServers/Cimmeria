@@ -64,7 +64,22 @@ pub struct PlayerLoadData {
     pub archetype: i32,
     pub gender: i32,
     pub bodyset: String,
+    /// Full appearance component list: every equipment visual the player
+    /// is currently wearing, including the active bandolier slot's weapon
+    /// when one is equipped. This is the unfiltered shape — callers that
+    /// emit `BeingAppearance` on the wire should go through
+    /// [`Self::appearance_components`] to apply the holster filter, not
+    /// read this field directly.
     pub components: Vec<String>,
+    /// The visual component string for the active bandolier slot's weapon,
+    /// or `None` if the slot is empty.
+    ///
+    /// **Invariant:** when `weapon_visual` is `Some(v)`, the same string
+    /// also appears in `components`. Carrying it separately is how the
+    /// holster filter knows which entry to drop without re-deriving the
+    /// "is this a weapon" check at wire-emit time;
+    /// [`Self::appearance_components`] does the entry-by-value comparison.
+    pub weapon_visual: Option<String>,
     pub exp: i32,
     pub naquadah: i32,
     pub known_stargates: Vec<i32>,
@@ -86,4 +101,118 @@ pub struct PlayerLoadData {
     pub ability_tree: cimmeria_entity::abilities::AbilityTreeData,
     /// Inventory items loaded from `sgw_inventory`.
     pub items: Vec<cimmeria_entity::inventory::InvItem>,
+}
+
+impl PlayerLoadData {
+    /// Build the `ComponentList` for `BeingAppearance` honoring the
+    /// requested holster state. At world entry callers pass `true` so the
+    /// player spawns weapon-down; runtime rebroadcasts driven from a
+    /// live `CellEntity` pass that entity's current `weapon_holstered`
+    /// so a fire/reload/draw toggle is reflected on the wire.
+    ///
+    /// Returns `components` unchanged when not holstered, or `components`
+    /// with `weapon_visual` filtered out when holstered. Implementation
+    /// shared with [`cimmeria_entity::cell_entity::CellEntity::appearance_components`]
+    /// via the [`cimmeria_entity::cell_entity::filter_holstered_weapon`]
+    /// free function — see its docstring for the invariant and the
+    /// `debug_assert!`/`warn` semantics around drift between
+    /// `weapon_visual` and `components`.
+    pub fn appearance_components(&self, holstered: bool) -> Vec<String> {
+        cimmeria_entity::cell_entity::filter_holstered_weapon(
+            &self.components,
+            self.weapon_visual.as_deref(),
+            holstered,
+        )
+    }
+}
+
+#[cfg(test)]
+mod player_load_data_tests {
+    use super::*;
+
+    fn make(components: Vec<&str>, weapon_visual: Option<&str>) -> PlayerLoadData {
+        PlayerLoadData {
+            player_id: 0,
+            level: 1,
+            player_name: String::new(),
+            extra_name: String::new(),
+            alignment: 0,
+            archetype: 0,
+            gender: 0,
+            bodyset: "BS_HumanMale.BS_HumanMale".into(),
+            components: components.into_iter().map(String::from).collect(),
+            weapon_visual: weapon_visual.map(String::from),
+            exp: 0,
+            naquadah: 0,
+            known_stargates: vec![],
+            abilities: vec![],
+            training_points: 0,
+            applied_science_points: 0,
+            blueprint_ids: vec![],
+            first_login: 0,
+            access_level: 0,
+            skin_color_id: 0,
+            active_bandolier_slot: 0,
+            bandolier_items: vec![],
+            ability_tree: Default::default(),
+            items: vec![],
+        }
+    }
+
+    #[test]
+    fn appearance_components_holstered_filters_weapon_visual() {
+        // The world-entry path passes `holstered = true` so the player
+        // spawns weapon-down. The wire `ComponentList` must omit the
+        // weapon visual; the SGW client's appearance compositor then
+        // falls back to `WEAP_Melee = 4` for the animation key at
+        // `entity+0x3D2` (`ghidra://SGW.exe@0x00ec0840`).
+        let data = make(vec!["torso", "pistol", "head"], Some("pistol"));
+        let wire = data.appearance_components(true);
+        assert_eq!(
+            wire,
+            vec!["torso".to_string(), "head".to_string()],
+            "holstered ComponentList must drop the weapon visual"
+        );
+    }
+
+    #[test]
+    fn appearance_components_not_holstered_keeps_weapon_visual() {
+        // Runtime rebroadcasts after a fire / reload / draw event take this
+        // branch — the weapon visual stays in the wire ComponentList so the
+        // client renders the armed pose.
+        let data = make(vec!["torso", "pistol", "head"], Some("pistol"));
+        let wire = data.appearance_components(false);
+        assert_eq!(wire, data.components);
+    }
+
+    #[test]
+    fn appearance_components_no_weapon_is_components_unchanged() {
+        // Empty bandolier slot: nothing to filter regardless of state.
+        let data = make(vec!["torso", "head"], None);
+        assert_eq!(data.appearance_components(true), data.components);
+        assert_eq!(data.appearance_components(false), data.components);
+    }
+
+    /// Pin the documented invariant: `weapon_visual = Some(v)` implies
+    /// `v ∈ components`. This is the contract the holster filter relies
+    /// on; any DB loader / appearance assembler that produces a
+    /// `PlayerLoadData` must satisfy it. The test is a regression guard
+    /// for the `make` fixture itself — if a future refactor changes
+    /// how `make` builds the struct (e.g., a loader bug that strips the
+    /// weapon visual from `components` while leaving `weapon_visual`
+    /// set), the assertion fails fast.
+    #[test]
+    fn weapon_visual_is_always_present_in_components_when_set() {
+        let data = make(vec!["torso", "pistol", "head"], Some("pistol"));
+        let weapon = data
+            .weapon_visual
+            .as_ref()
+            .expect("test fixture must set weapon_visual");
+        assert!(
+            data.components.iter().any(|c| c == weapon),
+            "invariant violated: weapon_visual {:?} not present in components {:?}",
+            weapon,
+            data.components,
+        );
+    }
 }

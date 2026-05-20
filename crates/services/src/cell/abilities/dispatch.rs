@@ -421,6 +421,10 @@ mod tests {
         if let Some(e) = mgr.get_entity_mut(ATTACKER_EID) {
             e.is_player = true;
             e.player_id = Some(100);
+            // Weapon already drawn so the attack-while-holstered queue
+            // doesn't intercept — these tests are about AoE damage
+            // resolution, not the unholster choreography.
+            e.weapon_holstered = false;
             e.abilities.add_ability(GROUND_ABILITY_ID);
             e.bandolier_items.insert(
                 0,

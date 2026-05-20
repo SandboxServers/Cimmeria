@@ -61,21 +61,26 @@ pub(super) async fn apply_death_transition(
     if !target_is_player {
         let to_broadcast =
             crate::cell::combat::clear_dead_npc_from_all_player_threat(space_mgr, target_eid);
-        for (player_id, new_state) in to_broadcast {
+        for (player_entity_id, new_state) in to_broadcast {
             tracing::debug!(
-                player_id,
+                player_entity_id,
                 dying_npc = target_eid,
                 new_state,
                 "death: clearing player BSF_InCombat (last threatened mob died)"
             );
             send_entity_method(
-                player_id,
+                player_entity_id,
                 crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),
                 tx,
                 space_mgr,
             )
             .await;
+            // No immediate appearance refresh: `exit_player_combat`
+            // stamped the OOC timer instead of flipping the holster.
+            // The deferred `holster_timer_tick` re-broadcasts
+            // `BeingAppearance` after the grace window so chaining
+            // mobs doesn't flicker the model (Phase 3).
         }
     }
 

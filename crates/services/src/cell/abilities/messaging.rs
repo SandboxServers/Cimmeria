@@ -177,6 +177,55 @@ pub(crate) async fn send_entity_method_to_self_and_witnesses(
     send_entity_method_to_witnesses(entity_id, method_index, args, tx, space_mgr).await
 }
 
+/// Send a `CellToBaseMsg::RefreshAppearance` for a player entity, reading
+/// the player's current `weapon_holstered` state off the cell entity.
+///
+/// Called from the combat enter/exit broadcast sites after
+/// `onStateFieldUpdate` so a draw or holster reaches the wire in the same
+/// dispatch burst as the BSF_InCombat change. No-op (with a debug log)
+/// for non-player entities or for players whose `player_id` (DB id) hasn't
+/// been populated yet — both happen during transient world-entry races
+/// and we'd rather drop the rebroadcast than send junk.
+pub(crate) async fn request_appearance_refresh(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let (player_id, holstered) = match space_mgr.get_entity(entity_id) {
+        Some(e) if e.is_player => match e.player_id {
+            Some(pid) => (pid, e.weapon_holstered),
+            None => {
+                tracing::debug!(
+                    entity_id,
+                    "request_appearance_refresh: player entity has no DB player_id (pre-load?), skipping"
+                );
+                return;
+            }
+        },
+        Some(_) => {
+            tracing::debug!(
+                entity_id,
+                "request_appearance_refresh: entity is not a player, skipping"
+            );
+            return;
+        }
+        None => {
+            tracing::debug!(
+                entity_id,
+                "request_appearance_refresh: entity not found in space_mgr, skipping"
+            );
+            return;
+        }
+    };
+    let _ = tx
+        .send(CellToBaseMsg::RefreshAppearance {
+            entity_id,
+            player_id,
+            holstered,
+        })
+        .await;
+}
+
 /// Drain the attacker's dirty stats and push `onStatUpdate` (method 20) to its
 /// client. Used by `handle_use_ability` after a successful ammo consume — and
 /// crucially before any early-return that follows the consume — so the client

@@ -10,6 +10,34 @@ use sqlx::PgPool;
 pub const EVENT_ABILITY_BEGIN: i32 = 1000;
 pub const EVENT_ABILITY_END: i32 = 1001;
 
+/// Event IDs for archetype-keyed item handling sequences (from Atrea.enums).
+/// Mirrors `Atrea.enums.Item_Equip` (4000), `Item_Unequip` (4001),
+/// `Item_Reload` (4002), and `Item_Use` (4003).
+pub const EVENT_ITEM_EQUIP: i32 = 4000;
+pub const EVENT_ITEM_UNEQUIP: i32 = 4001;
+pub const EVENT_ITEM_RELOAD: i32 = 4002;
+pub const EVENT_ITEM_USE: i32 = 4003;
+
+/// Archetype → "Item handling" event set id, mirrored from
+/// `python/common/Constants.py:ARCHETYPE_ITEM_EVENT_SETS`. Every human
+/// archetype shares event set 804 (`"Item handling generic event set"`,
+/// kismet `KIS-abilities_human.KIS-handling`); Asgard has its own at
+/// 1455. Used by `getItemSequence(eventId)` to resolve the per-event
+/// sequence (Item_Equip, Item_Unequip, Item_Reload, Item_Use).
+///
+/// Returns `None` for any archetype id not in the table — caller should
+/// skip the sequence emit (matches python's `if eventSet else None`).
+pub fn archetype_item_event_set(archetype_id: i32) -> Option<i32> {
+    // ARCHETYPE_Asgard = 5 → 1455.
+    // ARCHETYPE_Any (0), Soldier (1), Commando (2), Scientist (3),
+    // Archeologist (4), Goauld (6), Sholva (7), Jaffa (8) → 804.
+    match archetype_id {
+        5 => Some(1455),
+        0..=8 => Some(804),
+        _ => None,
+    }
+}
+
 /// Load the event set → sequence mapping from the database.
 ///
 /// Joins `resources.event_sets_sequences` with `resources.sequences` to build
