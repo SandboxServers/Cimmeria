@@ -73,6 +73,15 @@ pub async fn handle_grant_item(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    tracing::info!(
+        entity_id,
+        player_id,
+        item_id,
+        container_id,
+        count,
+        cell_tx_present = cell_tx.is_some(),
+        "handle_grant_item: entered"
+    );
     let pool = match db_pool {
         Some(p) => p,
         None => {
