@@ -5,7 +5,7 @@
 //! Every `ConnectedClientState` owns **two independent sequence counters**:
 //!
 //! - **`next_seq`** — reliable stream. Used by [`send_to_witness_reliable`]
-//!   and the `tick_sync` loop. Each packet is also mirrored into the
+//!   and other reliable application-packet paths. Each packet is also mirrored into the
 //!   per-session [`Channel`]'s TX window so the adaptive-RTO retransmit
 //!   driver can recover loss. The client tracks this stream via `inSeqAt`
 //!   at struct offset `+0x50` and **requires it to be contiguous** —
@@ -489,14 +489,16 @@ mod tests {
     /// does for actual reliable packets) and silently start filling
     /// the 32-slot window again.
     ///
-    /// The test fills the TX window with simulated reliable application
-    /// packets, then mirrors the tick-sync loop body for 10 iterations
-    /// (advance the **unreliable** counter, build the tickSync packet,
-    /// emit it — but DO NOT call `shadow_register_reliable_send`). The
-    /// TX window must remain at the pre-tick depth.
+    /// The test calls [`tick_sync_packet`] — the same extracted function
+    /// `run_tick_loop` calls — so the guard exercises the actual production
+    /// code path rather than an independent reimplementation. If a future
+    /// change modifies `tick_sync_packet` to register packets in the TX
+    /// window, this assertion fires.
+    ///
+    /// [`tick_sync_packet`]: crate::base::tick_sync::tick_sync_packet
     #[test]
     fn tick_sync_emission_does_not_consume_reliable_tx_window_slots() {
-        use crate::mercury::build_ongoing_tick_sync;
+        use crate::base::tick_sync::tick_sync_packet;
         use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
 
         let state = crate::test_support::test_default_connected_client_state();
@@ -514,15 +516,11 @@ mod tests {
             assert_eq!(ch.tx_window.len(), 30, "TX window seeded with 30 reliable");
         }
 
-        // Mirror the tick-sync loop's per-iteration emit shape: advance
-        // the unreliable counter, build the unreliable packet, "send"
-        // (omitted in test). Critically: no `shadow_register_reliable_send`.
+        // Run 10 tick iterations via the same function `run_tick_loop` calls.
+        // The UDP send is omitted — the TX-window-pressure failure mode is
+        // about register_sent_packet calls, not socket I/O.
         for tick in 0..10u32 {
-            let seq = state.next_unreliable_seq();
-            let _pkt = build_ongoing_tick_sync(&state.key, seq, tick, &[]);
-            // In production: `socket.send_to(&pkt, addr).await`. The test
-            // skips the actual UDP send — the TX-window-pressure failure
-            // mode is about register_sent_packet, not socket I/O.
+            let _pkt = tick_sync_packet(&state.next_seq_unreliable, &state.key, tick, &[]);
         }
 
         // The reliable TX window must be unchanged. If a future refactor
@@ -534,8 +532,7 @@ mod tests {
             30,
             "tickSync emission must not consume reliable TX window slots — \
              the split-counter design's invariant. If this fires, check that \
-             the tick-sync loop body still uses `next_unreliable_seq` and \
-             does NOT call `shadow_register_reliable_send`."
+             `tick_sync_packet` still avoids calling `shadow_register_reliable_send`."
         );
     }
 

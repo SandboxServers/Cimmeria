@@ -8,12 +8,31 @@ use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
+use cimmeria_mercury::packet::SEQUENCE_MASK;
 
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::build_ongoing_tick_sync;
 
 use super::helpers::destroy_client_entities;
 use super::ConnectedClientState;
+
+/// Builds one tickSync packet for a single loop iteration.
+///
+/// Advances `counter` on the **unreliable** stream, applies the 28-bit
+/// `SEQUENCE_MASK`, and returns the encrypted datagram. Never touches the
+/// reliable [`Channel`] TX window — that invariant is the reason this helper
+/// exists and is tested separately.
+///
+/// [`Channel`]: cimmeria_mercury::channel::Channel
+pub(crate) fn tick_sync_packet(
+    counter: &AtomicU32,
+    key: &[u8; 32],
+    tick: u32,
+    acks: &[u32],
+) -> Vec<u8> {
+    let seq_id = counter.fetch_add(1, Ordering::Relaxed) & SEQUENCE_MASK;
+    build_ongoing_tick_sync(key, seq_id, tick, acks)
+}
 
 /// Per-connection tick-sync heartbeat task.
 ///
@@ -102,9 +121,7 @@ pub(crate) async fn run_tick_loop(
         // Unreliable on its own counter sidesteps both: fire-and-forget,
         // reliable stream stays contiguous (client's `inSeqAt` only tracks
         // reliable arrivals), no TX window pressure.
-        let seq_id = next_seq_unreliable.fetch_add(1, Ordering::Relaxed)
-            & cimmeria_mercury::packet::SEQUENCE_MASK;
-        let pkt = build_ongoing_tick_sync(&key, seq_id, tick, &acks);
+        let pkt = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks);
         if let Err(e) = socket.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
             break;
@@ -133,7 +150,7 @@ pub(crate) async fn run_tick_loop(
         }
 
         if tick.is_multiple_of(100) {
-            tracing::debug!(%addr, tick, seq_id, "Tick-sync heartbeat (every 100th)");
+            tracing::debug!(%addr, tick, "Tick-sync heartbeat (every 100th)");
         }
 
         tick = tick.wrapping_add(1);
