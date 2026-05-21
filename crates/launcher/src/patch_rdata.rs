@@ -141,6 +141,13 @@ pub fn host_differs(data: &[u8], expected_host: &str, previous_host: Option<&str
 /// Write `new_host` into SGW.exe's `.rdata`. Pass `previous_host` when
 /// re-patching after a `server_host` change so we can locate the slot
 /// even though the original CME literal is long gone.
+///
+/// Writes are **atomic** (Cady #4c): the modified bytes go to a
+/// sibling `.patching` file, then rename onto SGW.exe. NTFS rename is
+/// atomic on the same volume, so a power loss between the truncate and
+/// the finish leaves either the old SGW.exe or the new one — never a
+/// half-written .exe that the game can't load (would otherwise force a
+/// full multi-GB re-seed for recovery).
 pub fn patch_exe_any(
     exe_path: &Path,
     new_host: &str,
@@ -148,7 +155,9 @@ pub fn patch_exe_any(
 ) -> Result<usize, PatchError> {
     let mut data = std::fs::read(exe_path)?;
     let offset = patch_hostname_any(&mut data, new_host, previous_host)?;
-    std::fs::write(exe_path, &data)?;
+    let tmp = exe_path.with_extension("exe.patching");
+    std::fs::write(&tmp, &data)?;
+    std::fs::rename(&tmp, exe_path)?;
     Ok(offset)
 }
 

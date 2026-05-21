@@ -118,9 +118,14 @@ fn rel_in_archive(path: &Path, binaries: &Path) -> String {
 /// not chunk via PutBlock/PutBlockList — debug-log zips are well under
 /// the 256MB single-PutBlob limit and one request is one billable
 /// transaction.
-pub async fn upload_blob(sas_base: &str, blob_name: &str, body: Vec<u8>) -> Result<(), LogError> {
+pub async fn upload_blob(
+    http: &reqwest::Client,
+    sas_base: &str,
+    blob_name: &str,
+    body: Vec<u8>,
+) -> Result<(), LogError> {
     let url = insert_blob_path(sas_base, blob_name);
-    let resp = reqwest::Client::new()
+    let resp = http
         .put(&url)
         .header("x-ms-blob-type", "BlockBlob")
         .header("content-type", "application/zip")

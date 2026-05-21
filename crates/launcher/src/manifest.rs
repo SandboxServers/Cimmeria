@@ -83,8 +83,14 @@ impl Manifest {
     }
 }
 
-pub async fn fetch_manifest(url: &str) -> Result<Manifest, ManifestError> {
-    let body = reqwest::get(url).await?.error_for_status()?.bytes().await?;
+pub async fn fetch_manifest(http: &reqwest::Client, url: &str) -> Result<Manifest, ManifestError> {
+    let body = http
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
     let manifest: Manifest = serde_json::from_slice(&body)?;
     manifest.validate()?;
     Ok(manifest)

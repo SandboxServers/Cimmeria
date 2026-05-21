@@ -70,6 +70,11 @@ pub struct InstallContext<'a> {
     pub server_host: &'a str,
     pub cancel: CancellationToken,
     pub progress: tokio::sync::mpsc::UnboundedSender<Progress>,
+    /// Shared HTTP client owned by the worker — reused across the
+    /// seed download, every patch download, and the post-install
+    /// manifest revalidation. Avoids rebuilding the connection pool
+    /// per blob. Configured with `https_only(true)`.
+    pub http: &'a reqwest::Client,
 }
 
 pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
@@ -125,6 +130,7 @@ async fn apply_seed(ctx: &InstallContext<'_>, seed: &SeedEntry) -> Result<(), In
     let short_hash = &seed.sha256[..12.min(seed.sha256.len())];
     let tmp = ctx.install_dir.join(format!(".tmp-seed-{short_hash}.zip"));
     download_to_file(
+        ctx.http,
         &url,
         &tmp,
         ctx.cancel.clone(),
@@ -153,9 +159,17 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
             }
         })
         .collect();
-    let tmp = ctx.install_dir.join(format!(".tmp-patch-{safe_id}.zip"));
+    // Include a sha prefix in the tmp filename (Cady #6i) so a republished
+    // patch with the same `id` but a new sha256 doesn't accidentally
+    // resume against the stale bytes — different sha → different tmp
+    // path → fresh download.
+    let safe_sha = &patch.sha256[..12.min(patch.sha256.len())];
+    let tmp = ctx
+        .install_dir
+        .join(format!(".tmp-patch-{safe_id}-{safe_sha}.zip"));
     let label = format!("patch {}", patch.id);
     download_to_file(
+        ctx.http,
         &url,
         &tmp,
         ctx.cancel.clone(),
@@ -172,6 +186,7 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
 }
 
 async fn download_to_file(
+    http: &reqwest::Client,
     url: &str,
     dest: &Path,
     cancel: CancellationToken,
@@ -186,7 +201,7 @@ async fn download_to_file(
     } else {
         0
     };
-    let mut req = reqwest::Client::new().get(url);
+    let mut req = http.get(url);
     if existing_len > 0 {
         req = req.header("Range", format!("bytes={existing_len}-"));
     }
@@ -418,7 +433,10 @@ mod tests {
         let dest = dir.path().join(".tmp-test.zip");
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Progress>();
         let url = format!("{}/seed.zip", server.uri());
-        let err = download_to_file(&url, &dest, CancellationToken::new(), 0, "seed", &tx)
+        // Test client allows http:// — production worker client is
+        // configured with https_only(true).
+        let http = reqwest::Client::new();
+        let err = download_to_file(&http, &url, &dest, CancellationToken::new(), 0, "seed", &tx)
             .await
             .expect_err("418 must surface as an error, not panic");
 

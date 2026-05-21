@@ -55,25 +55,38 @@ pub struct Worker {
     runtime: Arc<Runtime>,
     pub events_rx: mpsc::UnboundedReceiver<Event>,
     events_tx: mpsc::UnboundedSender<Event>,
-    cancel: CancellationToken,
+    /// Cancel token for the currently-running install, if any. Each new
+    /// install allocates a fresh token (Cady #6f) so back-to-back
+    /// installs from a rapid double-click don't share a kill switch.
+    current_install_cancel: Option<CancellationToken>,
+    /// Shared HTTP client reused across seed / patch / manifest fetches
+    /// and log uploads (Cady #6g). Connection pool persists across
+    /// requests; `https_only(true)` defends against http:// downgrade.
+    http: reqwest::Client,
 }
 
 impl Worker {
     pub fn new(runtime: Arc<Runtime>) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
+        let http = reqwest::Client::builder()
+            .https_only(true)
+            .build()
+            .expect("build a rustls HTTP client");
         Self {
             runtime,
             events_rx: rx,
             events_tx: tx,
-            cancel: CancellationToken::new(),
+            current_install_cancel: None,
+            http,
         }
     }
 
     pub fn dispatch(&mut self, cmd: Command) {
         match cmd {
             Command::Cancel => {
-                self.cancel.cancel();
-                self.cancel = CancellationToken::new();
+                if let Some(token) = self.current_install_cancel.take() {
+                    token.cancel();
+                }
             }
             Command::Install { config, manifest } => self.spawn_install(config, manifest),
             Command::LaunchSgw(dir) => self.spawn_launch("SGW.exe", move || launch_sgw(&dir)),
@@ -93,8 +106,9 @@ impl Worker {
 
     pub fn fetch_manifest_now(&self, url: String) {
         let events_tx = self.events_tx.clone();
+        let http = self.http.clone();
         self.runtime.spawn(async move {
-            match fetch_manifest(&url).await {
+            match fetch_manifest(&http, &url).await {
                 Ok(m) => {
                     let _ = events_tx.send(Event::ManifestFetched(m));
                 }
@@ -105,10 +119,16 @@ impl Worker {
         });
     }
 
-    fn spawn_install(&self, config: LauncherConfig, manifest: Manifest) {
-        let cancel = self.cancel.clone();
+    fn spawn_install(&mut self, config: LauncherConfig, manifest: Manifest) {
+        // Fresh cancel token per install — if a previous install is still
+        // running, leave its token alone (the user explicitly didn't
+        // press Cancel) and just track the new one.
+        let cancel = CancellationToken::new();
+        self.current_install_cancel = Some(cancel.clone());
+
         let events_tx = self.events_tx.clone();
         let events_tx_for_fwd = self.events_tx.clone();
+        let http = self.http.clone();
         let (prog_tx, mut prog_rx) = mpsc::unbounded_channel::<Progress>();
 
         // Forwarder: re-emit install Progress as Event::Progress. Loop ends
@@ -128,6 +148,7 @@ impl Worker {
                 server_host: &config.server_host,
                 cancel,
                 progress: prog_tx,
+                http: &http,
             };
             match install_all(ctx).await {
                 Ok(_) => {
@@ -163,8 +184,10 @@ impl Worker {
 
     fn spawn_upload(&self, install_dir: PathBuf, sas_url: String, ledger_path: PathBuf) {
         let events_tx = self.events_tx.clone();
+        let http = self.http.clone();
         self.runtime.spawn(async move {
-            if let Err(e) = upload_logs_task(&install_dir, &sas_url, &ledger_path, &events_tx).await
+            if let Err(e) =
+                upload_logs_task(&http, &install_dir, &sas_url, &ledger_path, &events_tx).await
             {
                 let _ = events_tx.send(Event::UploadError(e.to_string()));
             }
@@ -173,6 +196,7 @@ impl Worker {
 }
 
 async fn upload_logs_task(
+    http: &reqwest::Client,
     install_dir: &std::path::Path,
     sas_url: &str,
     ledger_path: &std::path::Path,
@@ -205,7 +229,7 @@ async fn upload_logs_task(
     };
     let bytes = zip_bytes.len();
     let blob = blob_name_for(&digest);
-    upload_blob(sas_url, &blob, zip_bytes).await?;
+    upload_blob(http, sas_url, &blob, zip_bytes).await?;
     ledger.record(digest, blob.clone());
     if let Err(e) = ledger.save(ledger_path) {
         error!("failed to persist uploaded ledger: {e}");
