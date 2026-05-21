@@ -25,7 +25,7 @@ common ──┬──► mercury ──► entity ──► game ────�
 | `admin-api` | `cimmeria-admin-api` | REST API for server administration |
 | `supervisor` | `cimmeria-supervisor` | Process supervision and service lifecycle |
 | `server` | `cimmeria-server` | **Binary entry point.** `cargo run -p cimmeria-server` |
-| `launcher` | `sgw-launcher` | SGW game launcher (separate binary) |
+| `launcher` | `sgw-launcher` | Player-facing game launcher. egui native window, installs from a seed + patch manifest on Azure Blob, launches `SGW.exe` or the Atera debug bat, uploads debug logs back to storage. See [docs/client/sgw-launcher.md](../docs/client/sgw-launcher.md). |
 | `upk` | `cimmeria-upk` | UPK (Unreal Package) file parser |
 | `upk-objects` | `cimmeria-upk-objects` | UPK object type definitions |
 

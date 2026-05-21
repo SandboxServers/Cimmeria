@@ -1,6 +1,19 @@
-# SGW Custom Launcher — Design Document
+# SGW Launcher
 
-A replacement for CME's original `Launcher.exe`. The original launcher is dead (CME's SOAP patch server is offline), its installer (`SetupQA.exe`) cannot be automated, and we can do better. This document covers architecture, the install pipeline, the login redirect strategy, and all viable implementation tech stacks.
+A standalone Windows .exe that installs the SGW client from an Azure Blob
+container, applies declared patches in order, optionally launches the
+debug-Atera path, and uploads debug logs back to the same storage account.
+
+Located in [`crates/launcher/`](../../crates/launcher/) as the
+`sgw-launcher` crate. Built with **eframe (egui)** for a small, native
+window with no webview dependency.
+
+> **Status:** rewritten 2026-05-20. Supersedes the Tauri prototype and the
+> archive.org-RAR install flow described in
+> [docs/plans/2026-03-06-sgw-launcher-design.md](../plans/2026-03-06-sgw-launcher-design.md)
+> and the task-by-task plan in
+> [docs/plans/2026-03-06-sgw-launcher-plan.md](../plans/2026-03-06-sgw-launcher-plan.md).
+> Both are kept for historical context; do not implement from them.
 
 ---
 
@@ -8,297 +21,217 @@ A replacement for CME's original `Launcher.exe`. The original launcher is dead (
 
 | Function | Notes |
 |----------|-------|
-| **First-run install** | Downloads client from archive.org, extracts RAR → CABs |
-| **Login redirect** | Patches SGW.exe in place to point to our auth server |
-| **Launch** | Spawns SGW.exe directly |
-| **Future: delta updates** | Manifest-based patch system (separate infrastructure, not in scope here) |
-
-**AteraLoader.exe is not used.** Its only player-relevant function was redirecting the hardcoded SOAP login endpoint (`www.stargateworlds.com`) in SGW.exe at runtime via DLL injection. We replace that with a one-time static byte-patch of the string in SGW.exe's `.rdata` section during install — simpler, no DLL injection required, no ASLR dependency.
-
----
-
-## Client Source
-
-The beta client is preserved on the Internet Archive:
-
-```
-https://archive.org/download/StargateWorlds_0.8348.1.4046/
-  Stargate%20Worlds%20%280.8348.1.4046%29%20%282009-06-30%29%20%28beta%29.rar
-```
-
-| Property | Value |
-|----------|-------|
-| Version | 0.8348.1.4046 |
-| Build date | 2009-06-30 (beta) |
-| Container | RAR archive containing CAB installer files |
-| Installer | `SetupQA.exe` — **cannot be silently automated** |
-
-`SetupQA.exe` is bypassed entirely. The launcher extracts game files directly from the CAB files inside the RAR. 7-Zip handles both formats.
+| **Fetch manifest** | Pulls `manifest.json` from Azure Blob (anonymous GET). |
+| **Seed install** | Downloads the seed zip (the whole client) once, verifies sha256, extracts to the install dir. |
+| **Patch install** | Walks declared patches in order; downloads + extracts each missing patch (overlay over existing files). |
+| **Hostname patch** | Rewrites `www.stargateworlds.com` in `SGW.exe` `.rdata` to the configured emulator host. Idempotent. |
+| **Launch SGW** | `CreateProcess(SGW.exe)`. |
+| **Launch Atera Debug** | `cmd /C AtreaGameDebug.bat` (only shown if Atera files dropped into the install dir). |
+| **Fix ASLR** | `cmd /C AtreaFixASLR.bat` (only shown if the Atera fix-ASLR bat is present). |
+| **Upload debug logs** | Zips `Binaries/sgwdebuglog*` + `Binaries/sessions/**` and PUTs once to the Azure log SAS URL. |
 
 ---
 
 ## Install Pipeline
 
-```
-1.  HEAD archive.org URL → read Content-Length for progress display
-2.  Stream-download → %TEMP%\sgw-install\StargateWorlds.rar
-    (emit progress events: bytes downloaded, speed, ETA)
-3.  7za.exe e StargateWorlds.rar -o%TEMP%\sgw-install\extracted\ -y
-    (emit progress events: filename being extracted)
-4.  Glob extracted directory for *.cab files, sort by name
-5.  For each .cab:
-        7za.exe e <cab> -o<install_path>\ -y
-        (emit progress: cab N of M, filename)
-6.  Verify SGW.exe present at install_path
-7.  Patch SGW.exe login URL (see below)
-8.  Delete %TEMP%\sgw-install\
-9.  Emit install-complete
+```text
+1. Fetch manifest.json from manifest_url (anonymous Azure Blob GET).
+2. Compare manifest.seed.sha256 vs installed.seed_sha256:
+     - Mismatch → download seed blob, verify sha256, extract zip into
+       install_path, reset applied_patches to [].
+     - Match    → skip seed.
+3. For each manifest.patches[*] not in installed.applied_patches, in order:
+     - Download patch blob → verify sha256 → extract zip (overlay).
+     - Append id to installed.applied_patches and persist.
+4. If SGW.exe still contains the literal bytes "www.stargateworlds.com",
+   overwrite with configured server_host (zero-padded to 22 bytes).
 ```
 
-7-Zip standalone (`7za.exe`, ~1MB) is bundled with the launcher. It handles both RAR extraction and CAB expansion, avoiding the need for system-level cabinet.dll invocation or the UnRAR SDK.
+Resumable downloads use HTTP `Range`: the launcher tracks `existing_len`
+on disk under the tmp path (`<install>/.tmp-seed-<sha-prefix>.zip` or
+`.tmp-patch-<id>.zip`) and asks the server for `bytes=<existing>-` so a
+killed seed download picks up where it left off on next run.
+
+State files:
+
+- `<install_path>/launcher-installed.json` — applied-patch ledger (in the
+  game directory, so it survives launcher reinstalls and travels with the
+  game).
+- `<launcher.exe dir>/launcher-config.json` — install path, server host,
+  manifest URL.
+- `<launcher.exe dir>/uploaded.json` — log-upload dedupe ledger.
 
 ---
 
-## SGW.exe Login URL Patch
+## Manifest Schema
 
-CME's SOAP login hostname is hardcoded in SGW.exe's `.rdata` section. Ghidra analysis confirmed `/SGWLogin/UserAuth` at RVA `0x019cec40`; the full hostname `www.stargateworlds.com` (22 bytes) is in the same region.
-
-**Patch approach:**
-
-1. Open SGW.exe as a byte buffer
-2. Search for the null-terminated UTF-8 sequence `www.stargateworlds.com`
-3. Overwrite with the configured server hostname, zero-padded to the same 22-byte length
-4. Write back — no PE checksum recalculation needed for `.rdata` edits
-
-The replacement hostname must be ≤ 22 bytes, or the URL including scheme/path must be located and patched as a unit. Any reasonable emulator server address fits (e.g. `auth.example.com` = 16 bytes).
-
-This patch is idempotent — the launcher checks whether the original CME string is still present before deciding whether to apply it. The target server address is user-configurable (defaults to the canonical Cimmeria emulator address when one is published).
-
-**Why not hosts file?** Hosts file modification requires admin elevation and affects the whole system. Direct PE patching is scoped to the game directory and requires no elevated privileges.
-
-**Why not DLL injection (AtreaRL)?** Runtime injection requires ASLR to be disabled on SGW.exe (because AtreaRL uses hardcoded patch addresses). The static `.rdata` patch has no such constraint — data section strings are not subject to ASLR address randomization.
-
----
-
-## Launch Chain
-
-```
-SGWLauncher.exe
-  └─ CreateProcess("SGW.exe")        ← direct, no intermediary
-```
-
-AteraLoader, AtreaRL, postinstall — none are required for the player-facing flow. They remain available as developer/RE tools in `docs/technical/`.
-
----
-
-## UI States
-
-| State | Condition | Controls |
-|-------|-----------|----------|
-| **Not installed** | SGW.exe absent | Install path picker, Download & Install button |
-| **Downloading** | Download in progress | Progress bar (bytes + speed), cancel |
-| **Extracting** | RAR/CAB in progress | Progress bar (file count + name) |
-| **Ready** | SGW.exe present, URL patched | Play button, server address field |
-| **Error** | Any failure | Error message, retry |
-
-Server address is editable in the Ready state (re-patches SGW.exe on change).
-
----
-
-## Tech Stack Options
-
-All options below produce a self-contained Windows EXE distributable. Tradeoffs are around output size, dev speed, UI flexibility, and cross-platform potential.
-
----
-
-### Option A — Tauri (Rust + WebView2)
-
-**Recommended.**
-
-| Property | Value |
-|----------|-------|
-| Output size | ~4–6 MB (uses system WebView2, present on Win10/11) |
-| Language | Rust (backend) + HTML/CSS/JS (frontend) |
-| Cross-platform | Windows, macOS, Linux |
-| UI flexibility | Full web stack — CSS animations, any JS framework |
-| Dev speed | Medium (Rust learning curve offset by excellent tooling) |
-
-```
-tools/SGWLauncher/
-├── src-tauri/
-│   ├── src/
-│   │   ├── main.rs         — app entry, command registration
-│   │   ├── download.rs     — streaming HTTP with progress events
-│   │   ├── extract.rs      — 7za subprocess wrapper
-│   │   ├── patch.rs        — SGW.exe byte-patch
-│   │   └── launch.rs       — CreateProcess(SGW.exe)
-│   ├── binaries/
-│   │   └── 7za.exe         — Tauri sidecar (extracted at runtime)
-│   └── tauri.conf.json
-└── ui/
-    ├── index.html
-    ├── main.js             — tauri.invoke() + event listeners
-    └── styles.css
-```
-
-**Key crates:** `tauri 2`, `reqwest` (async HTTP), `sha2`, `tokio`, `serde`
-
-**Tauri commands** (Rust → JS bridge):
-```rust
-#[tauri::command] check_installation(path: String) -> InstallState
-#[tauri::command] download_and_install(path: String, server: String, window: Window)
-#[tauri::command] launch_game(path: String) -> Result<()>
-#[tauri::command] get_default_install_path() -> String
-#[tauri::command] browse_for_folder() -> Option<String>
-```
-
-**Progress events** (emitted from Rust to frontend via `window.emit`):
-```
-download-progress  { downloaded: u64, total: u64, percent: f32, speed_bps: u64 }
-extract-progress   { phase: "rar"|"cab", current: u32, total: u32, name: String }
-install-complete   {}
-install-error      { message: String }
-```
-
-```powershell
-# Dev
-cargo install tauri-cli
-cargo tauri dev
-
-# Release
-cargo tauri build --target x86_64-pc-windows-msvc
-```
-
-The name "Tauri" has an appreciated thematic resonance with the Tau'ri (the humans of Earth in Stargate lore).
-
----
-
-### Option B — C# .NET 8 WinForms or WPF
-
-| Property | Value |
-|----------|-------|
-| Output size | ~60–80 MB self-contained (bundles .NET runtime) or ~1 MB if runtime pre-installed |
-| Language | C# |
-| Cross-platform | Windows only (WinForms/WPF) |
-| UI flexibility | Good (WPF) / adequate (WinForms) |
-| Dev speed | Fast — rich BCL, HttpClient, async/await, ZipFile, Process |
-
-Self-contained publish bundles the .NET 8 runtime:
-```
-dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=true
-```
-
-Async HTTP download with progress is idiomatic in C#:
-```csharp
-using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-await using var stream = await response.Content.ReadAsStreamAsync();
-// read in chunks, report progress
-```
-
-WPF with MVVM gives a polished native feel. Good choice if the team is more comfortable with C# than Rust.
-
----
-
-### Option C — Qt C++ (Widgets)
-
-| Property | Value |
-|----------|-------|
-| Output size | ~15–25 MB (Qt DLLs) or statically linked ~8 MB |
-| Language | C++ (same as rest of Cimmeria server codebase) |
-| Cross-platform | Windows, macOS, Linux |
-| UI flexibility | Good with Qt Designer / QML |
-| Dev speed | Medium — verbose but consistent with project |
-
-**Advantage:** Qt is already a project dependency (ServerEd uses Qt 5.x). The build system already knows how to link it. The team already has it installed.
-
-**Key Qt classes:**
-- `QNetworkAccessManager` — HTTP download
-- `QProcess` — invoke 7za.exe and SGW.exe
-- `QProgressBar` / `QProgressDialog` — progress UI
-- `QFile::open` + byte search — SGW.exe patch
-
-Fits naturally in `tools/SGWLauncher/` alongside `tools/ServerEd/`.
-
----
-
-### Option D — Go + Fyne
-
-| Property | Value |
-|----------|-------|
-| Output size | ~10–15 MB single binary |
-| Language | Go |
-| Cross-platform | Windows, macOS, Linux |
-| UI flexibility | Limited (Fyne widgets are functional but not polished) |
-| Dev speed | Fast — simple concurrency model, good stdlib |
-
-Go's concurrency model (goroutines + channels) makes streaming download + progress reporting very clean. `net/http` handles downloads natively; `os/exec` runs 7za. No external runtime required.
-
-Fyne's widget set is modest. If UI polish matters, this option trails Tauri and WPF.
-
-```go
-// Download with progress
-resp, _ := http.Get(url)
-defer resp.Body.Close()
-buf := make([]byte, 65536)
-for {
-    n, err := resp.Body.Read(buf)
-    written += int64(n)
-    progress <- float64(written) / float64(total)
-    // ...
+```json
+{
+  "schema": 1,
+  "seed": {
+    "blob": "seed/sgw-0.8348.1.4046.zip",
+    "size": 5234567890,
+    "sha256": "abc..."
+  },
+  "patches": [
+    { "id": "001-base",    "blob": "patches/001.zip", "size": 123,  "sha256": "...", "after": null },
+    { "id": "002-mercury", "blob": "patches/002.zip", "size": 2345, "sha256": "...", "after": "001-base" }
+  ]
 }
 ```
 
----
-
-### Option E — Python + PyQt6 / PyInstaller
-
-| Property | Value |
-|----------|-------|
-| Output size | ~30–50 MB (PyInstaller bundle) |
-| Language | Python 3.12+ |
-| Cross-platform | Windows, macOS, Linux |
-| UI flexibility | Good (Qt6 via PyQt6 or PySide6) |
-| Dev speed | Fast for prototyping |
-
-Viable if rapid iteration is the priority and final size doesn't matter. PyInstaller produces a single-directory or single-file bundle. `requests` handles HTTP; `subprocess` invokes 7za.
-
-Not recommended for the final artifact — PyInstaller bundles are slow to start (~1–3 seconds on first launch) and antivirus false positives are common.
+- `schema` must be `1`. Bumping invalidates older launchers; serve a
+  legacy manifest at the old URL during transitions.
+- `blob` is relative to the manifest URL's container path. The launcher
+  derives `<base>/<blob>` from `manifest_url` by stripping the final
+  `manifest.json` segment.
+- `after` is a forward-declaration check: every referenced patch id must
+  have appeared earlier in the array. Order in `patches[]` **is** the
+  application order.
+- `size` is informational (drives the progress bar's `total` when the
+  server doesn't return `Content-Length` for some reason).
+- `sha256` is hex, lowercase, of the patch zip contents.
 
 ---
 
-### Not Recommended
+## SGW.exe Hostname Patch
 
-| Option | Reason |
-|--------|--------|
-| **Electron** | 150–200 MB for a launcher is unreasonable overhead |
-| **Java / JavaFX** | No existing Java tooling in project; JRE dependency |
-| **raw Win32 C++** | No gain over Qt given Qt is already present |
-| **Flutter** | Dart + Skia for a Windows launcher adds unjustified complexity |
+CME's SOAP login hostname is hardcoded in SGW.exe's `.rdata` section
+(Ghidra analysis confirms `www.stargateworlds.com`, 22 bytes). The
+launcher byte-searches for that literal and overwrites it with the
+configured `server_host`, zero-padded to 22 bytes. No PE checksum
+recalculation needed for `.rdata` edits.
 
----
+The replacement hostname must be ≤ 22 bytes. Idempotent: if the literal
+is absent the patch is a no-op (assumes the binary is already patched).
 
-## Comparison Summary
+See [`crates/launcher/src/patch_rdata.rs`](../../crates/launcher/src/patch_rdata.rs).
 
-| Option | Size | Speed | UI | Platform | Consistency |
-|--------|------|-------|----|----------|-------------|
-| **A — Tauri** | ~5 MB | Medium | Excellent | Win/Mac/Linux | Low (new lang) |
-| **B — C# .NET 8** | ~70 MB | Fast | Good | Windows | Low |
-| **C — Qt C++** | ~20 MB | Medium | Good | Win/Mac/Linux | **High** (already in project) |
-| **D — Go + Fyne** | ~12 MB | Fast | Modest | Win/Mac/Linux | Low |
-| **E — Python** | ~40 MB | Fast | Good | Win/Mac/Linux | Low |
+**Why not hosts file?** Requires admin elevation and affects the whole
+system. Direct PE patching is scoped to the game directory.
 
-**Recommendation:** Tauri for smallest output and best UI flexibility. Qt C++ if staying within existing project tooling is a priority.
+**Why not DLL injection (AtreaRL)?** Runtime injection requires ASLR
+disabled and uses hardcoded patch addresses. The static `.rdata` patch
+has no such constraints.
 
 ---
 
-## Future: Delta Patch System
+## Launch Surface
 
-Not in scope for the initial launcher but the architecture supports it. When ready:
+| Button | Shown when | Action |
+|---|---|---|
+| **Launch SGW.exe** | `SGW.exe` exists | `CreateProcess(<install>/SGW.exe)` with `cwd = <install>` |
+| **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = install dir) |
+| **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
 
-- Launcher fetches a JSON manifest from our patch server listing files, sizes, and SHA-256 hashes
-- Compares against local state
-- Downloads only changed files (libcurl-style range-request resume built into all HTTP clients above)
-- Extracts ZIPs to final paths
-- Updates a local version file
+The Atera batch files are **not** shipped by the launcher. Players who
+want the debug build drop the Atera tarball into the install directory
+themselves; the launcher detects the files and surfaces the buttons.
+The catalogue of what each bat does lives in
+[docs/technical/ateraloader-exe.md](../technical/ateraloader-exe.md)
+and [docs/technical/atrealoader-config.md](../technical/atrealoader-config.md).
 
-The patch server can be a simple static file host (nginx/S3) serving the manifest JSON and ZIP archives. No SOAP, no proprietary format.
+Atera debug requires ASLR disabled on SGW.exe. The launcher does not
+auto-run Fix ASLR — the user clicks the button once after a fresh
+install, then the debug bat works on subsequent launches.
+
+---
+
+## Debug Log Upload
+
+Single-PUT upload to Azure Blob via a SAS URL baked into the .exe at
+build time (`LAUNCHER_LOG_SAS_URL` env, consumed by `option_env!`).
+
+```text
+Inputs   <install>/Binaries/sgwdebuglog*   (BigWorld unicode log)
+         <install>/Binaries/sessions/**   (per-session logs)
+Output   logs/<hostname>-<utc>-<digest12>.zip
+Method   single PUT, x-ms-blob-type: BlockBlob, content-type: application/zip
+Dedupe   sha256 of inputs (filename + bytes, sorted) → uploaded.json next to .exe
+```
+
+Wallet protection rules:
+
+1. **One PUT per upload click**, never one-per-file. The zip is built
+   in memory, hashed, and uploaded in a single call.
+2. **Content digest, not zip-bytes hash.** The zip writer's per-entry
+   timestamps differ between rebuilds; dedup uses a stable digest over
+   `(rel_path, bytes)` pairs in sort order. So re-clicking with
+   unchanged logs is free.
+3. **Local ledger** at `<launcher.exe dir>/uploaded.json`. Already-seen
+   digest → zero HTTP requests, button reports `"Already uploaded …"`.
+4. **No background uploads.** Only fires on explicit button click.
+
+The local dev / PR-build pipeline produces a launcher with
+`LAUNCHER_LOG_SAS_URL = None`. The button is greyed out with a friendly
+"Log upload disabled — built without LAUNCHER_LOG_SAS_URL" note. The
+release workflow injects the secret.
+
+See [docs/client/launcher-storage-setup.md](launcher-storage-setup.md)
+for the Azure side (container, SAS scope, secret rotation).
+
+---
+
+## Build
+
+```bash
+# Iteration (Windows host, native):
+cargo build -p sgw-launcher
+
+# Release with log upload enabled:
+$env:LAUNCHER_LOG_SAS_URL = "<container-SAS-url>"
+cargo build -p sgw-launcher --release
+
+# Output: target/release/sgw-launcher.exe
+```
+
+The icon at [`crates/launcher/icons/icon.ico`](../../crates/launcher/icons/)
+is embedded as a Win32 resource via [`build.rs`](../../crates/launcher/build.rs).
+
+---
+
+## CI
+
+Three GitHub Actions workflows mirror the server's pattern:
+
+| Workflow | File | Trigger |
+|---|---|---|
+| **launcher** | [`.github/workflows/launcher-build.yml`](../../.github/workflows/launcher-build.yml) | Path-filtered fmt/clippy/build/test on PRs touching `crates/launcher/**` or `.github/workflows/launcher-*.yml`. |
+| **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds release exe with `LAUNCHER_LOG_SAS_URL` injected from secrets, creates a GitHub Release tagged `launcher-<date>-<sha7>`. |
+| **launcher-release-on-comment** | [`.github/workflows/launcher-release-on-comment.yml`](../../.github/workflows/launcher-release-on-comment.yml) | Mirror of `release-on-comment.yml` but matches `/release-launcher` on a merged PR. Validates commenter has write access, dispatches `launcher-release.yml`. |
+
+Required repo secret: `LAUNCHER_LOG_SAS_URL`. PR / build jobs deliberately
+omit it; only `launcher-release` reads it. Without the secret the
+release exe still builds — log upload is just permanently disabled.
+
+The launcher is **excluded** from the main `ci` workflow ([`test.yml`](../../.github/workflows/test.yml))
+via the `WORKSPACE_EXCLUDES` env (`--exclude sgw-launcher`) so eframe's
+Linux system deps don't slow the rest of the workspace pipeline.
+
+---
+
+## File Layout
+
+```text
+crates/launcher/
+├── Cargo.toml
+├── build.rs                    # winres icon embed
+├── icons/
+│   └── icon.ico
+└── src/
+    ├── main.rs                 # eframe entry, tokio runtime
+    ├── app.rs                  # eframe::App — panels + state machine
+    ├── config.rs               # LauncherConfig (next to .exe)
+    ├── manifest.rs             # Manifest schema + fetch + validate
+    ├── install.rs              # seed + patches + .rdata patch orchestration
+    ├── patch_rdata.rs          # SGW.exe hostname byte-patch
+    ├── launch.rs               # SGW.exe + Atera bat detection & spawn
+    ├── logs.rs                 # log collection + zip + Azure PUT
+    ├── state.rs                # InstalledState + UploadedLedger
+    └── worker.rs               # tokio worker, Command/Event channels
+```
+
+10 files in a flat `src/`. Each has its own theme; per
+[CLAUDE.md's file organization rules](../../CLAUDE.md), no sibling
+cluster crosses the 4-files-on-same-theme threshold that would promote
+to a directory.

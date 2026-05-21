@@ -1,55 +1,48 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-mod commands;
+
+mod app;
 mod config;
-mod download;
-mod extract;
+mod install;
 mod launch;
-mod patch;
-mod updater;
+mod logs;
+mod manifest;
+mod patch_rdata;
+mod state;
+mod worker;
 
-use std::sync::Mutex;
+use std::sync::Arc;
 
-use tauri::Manager;
+use eframe::egui;
+use tokio::runtime::Runtime;
+use tracing_subscriber::EnvFilter;
 
-use commands::AppState;
-use config::LauncherConfig;
+use app::LauncherApp;
 
-fn main() {
-    tracing_subscriber::fmt().with_env_filter("info").init();
+fn main() -> eframe::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
-            #[cfg(desktop)]
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
+    let runtime = Arc::new(Runtime::new().expect("failed to create tokio runtime"));
+    let runtime_for_app = runtime.clone();
 
-            let config_dir = app.path().app_config_dir()?;
-            let config_path = config_dir.join("config.json");
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([760.0, 540.0])
+            .with_min_inner_size([640.0, 400.0])
+            .with_resizable(true)
+            .with_title("Stargate Worlds Launcher"),
+        ..Default::default()
+    };
 
-            let config = LauncherConfig::load(&config_path).unwrap_or_default();
+    let result = eframe::run_native(
+        "Stargate Worlds Launcher",
+        options,
+        Box::new(move |_cc| Ok(Box::new(LauncherApp::new(runtime_for_app)))),
+    );
 
-            app.manage(AppState {
-                config_path,
-                config: Mutex::new(config),
-                cancel_token: Mutex::new(None),
-            });
-
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            commands::cmd_check_installation,
-            commands::cmd_get_default_install_path,
-            commands::cmd_load_config,
-            commands::cmd_save_config,
-            commands::cmd_patch_server_address,
-            commands::cmd_launch_game,
-            commands::cmd_cancel_install,
-            commands::cmd_download_and_install,
-            commands::cmd_check_for_updates,
-            commands::cmd_apply_updates,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    drop(runtime);
+    result
 }

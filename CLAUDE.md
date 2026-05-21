@@ -45,11 +45,14 @@ cargo check -p cimmeria-services
 # Single-crate test
 cargo test -p cimmeria-services
 
-# Full workspace check — skip the Tauri apps so the linker doesn't OOM
+# Full workspace check — skip the GUI apps (Tauri editors and the egui
+# launcher) so the linker doesn't OOM and Linux dev hosts don't need
+# xkbcommon/xcb dev packages.
 cargo check --workspace \
   --exclude cimmeria-app \
   --exclude cimmeria-content-editor \
-  --exclude cimmeria-scene-editor
+  --exclude cimmeria-scene-editor \
+  --exclude sgw-launcher
 
 # Kill stale builds
 pkill -f "cargo|rustc"

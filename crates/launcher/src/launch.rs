@@ -1,43 +1,80 @@
-use std::path::Path;
+//! Launch + Atera detection.
+//!
+//! The launcher detects three on-disk artifacts in the install directory
+//! and shows a launch button for each:
+//!
+//! - `SGW.exe` → main game (always available)
+//! - `AteraLoader.exe` + `AtreaGameDebug.bat` → debug build via the Atera
+//!   DLL injector (lets developers see Mercury / appearance / localization
+//!   logging). Requires ASLR disabled on SGW.exe.
+//! - `AtreaFixASLR.bat` → patches `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE`
+//!   off in SGW.exe so the Atera injector's hardcoded addresses resolve.
+
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum LaunchError {
-    #[error("SGW.exe not found at {0}")]
-    NotFound(String),
-    #[error("Failed to launch game: {0}")]
-    SpawnFailed(#[from] std::io::Error),
+    #[error("File not found: {0}")]
+    NotFound(PathBuf),
+    #[error("Failed to spawn process: {0}")]
+    Spawn(#[from] std::io::Error),
 }
 
-pub fn verify_installation(install_path: &str) -> Result<std::path::PathBuf, LaunchError> {
-    let exe_path = Path::new(install_path).join("SGW.exe");
-    if !exe_path.exists() {
-        return Err(LaunchError::NotFound(exe_path.display().to_string()));
+#[derive(Debug, Clone, Default)]
+pub struct LaunchOptions {
+    pub sgw_present: bool,
+    pub atera_loader_present: bool,
+    pub atera_debug_bat_present: bool,
+    pub atera_fix_aslr_bat_present: bool,
+}
+
+impl LaunchOptions {
+    pub fn detect(install_dir: &Path) -> Self {
+        Self {
+            sgw_present: install_dir.join("SGW.exe").exists(),
+            atera_loader_present: install_dir.join("AteraLoader.exe").exists(),
+            atera_debug_bat_present: install_dir.join("AtreaGameDebug.bat").exists(),
+            atera_fix_aslr_bat_present: install_dir.join("AtreaFixASLR.bat").exists(),
+        }
     }
-    Ok(exe_path)
+
+    /// True when both the loader and the debug bat are present. ASLR must
+    /// have been disabled first (separate Fix ASLR button) but that's a
+    /// one-time setup, not a per-launch requirement.
+    pub fn atera_available(&self) -> bool {
+        self.atera_loader_present && self.atera_debug_bat_present
+    }
 }
 
-pub fn launch_game(install_path: &str) -> Result<u32, LaunchError> {
-    let exe_path = verify_installation(install_path)?;
-    let child = Command::new(&exe_path).current_dir(install_path).spawn()?;
+pub fn launch_sgw(install_dir: &Path) -> Result<u32, LaunchError> {
+    spawn(install_dir, "SGW.exe", false)
+}
+
+pub fn launch_atera_debug(install_dir: &Path) -> Result<u32, LaunchError> {
+    spawn(install_dir, "AtreaGameDebug.bat", true)
+}
+
+pub fn launch_atera_fix_aslr(install_dir: &Path) -> Result<u32, LaunchError> {
+    spawn(install_dir, "AtreaFixASLR.bat", true)
+}
+
+fn spawn(install_dir: &Path, file: &str, via_cmd: bool) -> Result<u32, LaunchError> {
+    let path = install_dir.join(file);
+    if !path.exists() {
+        return Err(LaunchError::NotFound(path));
+    }
+    let child = if via_cmd {
+        // `.bat` files need `cmd.exe /C` to spawn properly on Windows.
+        let mut c = Command::new("cmd");
+        c.arg("/C").arg(&path).current_dir(install_dir);
+        c.spawn()?
+    } else {
+        Command::new(&path).current_dir(install_dir).spawn()?
+    };
     Ok(child.id())
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub enum InstallState {
-    NotInstalled,
-    Installed,
-}
-
-pub fn check_installation(install_path: &str) -> InstallState {
-    if install_path.is_empty() {
-        return InstallState::NotInstalled;
-    }
-    match verify_installation(install_path) {
-        Ok(_) => InstallState::Installed,
-        Err(_) => InstallState::NotInstalled,
-    }
 }
 
 #[cfg(test)]
@@ -45,30 +82,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_verify_installation_missing() {
-        let result = verify_installation("/nonexistent/path");
-        assert!(matches!(result, Err(LaunchError::NotFound(_))));
-    }
-
-    #[test]
-    fn test_verify_installation_exists() {
+    fn detect_finds_only_present_files() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SGW.exe"), "fake exe").unwrap();
-        let result = verify_installation(dir.path().to_str().unwrap());
-        assert!(result.is_ok());
+        std::fs::write(dir.path().join("SGW.exe"), "").unwrap();
+        std::fs::write(dir.path().join("AteraLoader.exe"), "").unwrap();
+        let opts = LaunchOptions::detect(dir.path());
+        assert!(opts.sgw_present);
+        assert!(opts.atera_loader_present);
+        assert!(!opts.atera_debug_bat_present);
+        assert!(!opts.atera_fix_aslr_bat_present);
+        assert!(!opts.atera_available());
     }
 
     #[test]
-    fn test_check_installation_empty_path() {
-        let state = check_installation("");
-        assert!(matches!(state, InstallState::NotInstalled));
-    }
-
-    #[test]
-    fn test_check_installation_with_exe() {
+    fn detect_marks_atera_available_when_pair_present() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SGW.exe"), "fake exe").unwrap();
-        let state = check_installation(dir.path().to_str().unwrap());
-        assert!(matches!(state, InstallState::Installed));
+        std::fs::write(dir.path().join("AteraLoader.exe"), "").unwrap();
+        std::fs::write(dir.path().join("AtreaGameDebug.bat"), "").unwrap();
+        let opts = LaunchOptions::detect(dir.path());
+        assert!(opts.atera_available());
+    }
+
+    #[test]
+    fn launch_errors_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = launch_sgw(dir.path()).unwrap_err();
+        assert!(matches!(err, LaunchError::NotFound(_)));
+    }
+
+    #[test]
+    fn detect_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = LaunchOptions::detect(dir.path());
+        assert!(!opts.sgw_present);
+        assert!(!opts.atera_available());
     }
 }

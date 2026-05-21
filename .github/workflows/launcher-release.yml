@@ -1,0 +1,89 @@
+name: launcher-release
+
+# Builds and publishes a GitHub Release containing the launcher .exe.
+# Triggered either manually via the Actions UI (`workflow_dispatch`) or
+# via the `/release-launcher` ChatOps command on a merged PR, which
+# dispatches this workflow through `launcher-release-on-comment.yml`.
+#
+# Always builds whatever is at `main` HEAD — the triggering PR is just
+# the cut-point marker, mirroring the policy of `release-container.yml`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      triggering_pr:
+        description: 'PR # that triggered this release (informational, optional)'
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: launcher-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build + publish (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      # Baked into the binary at compile time via option_env!. The release
+      # job is the only place this secret is referenced; PR / build jobs
+      # produce non-uploading binaries.
+      LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: launcher-release
+      - name: cargo build --release
+        run: cargo build -p sgw-launcher --release
+      - name: stamp version
+        id: stamp
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          DATE=$(date -u +%Y%m%d)
+          TAG="launcher-${DATE}-${SHORT_SHA}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+      - name: stage artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp target/release/sgw-launcher.exe \
+            "artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe"
+      - name: upload build artifact (workflow run)
+        uses: actions/upload-artifact@v7
+        with:
+          name: sgw-launcher-${{ steps.stamp.outputs.tag }}
+          path: artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe
+          retention-days: 30
+      - name: create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TRIGGERING_PR: ${{ github.event.inputs.triggering_pr }}
+          TAG: ${{ steps.stamp.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="Stargate Worlds launcher build from commit \`${GITHUB_SHA}\`."
+          if [ -n "${TRIGGERING_PR}" ]; then
+            BODY="${BODY}
+
+          Dispatched from PR #${TRIGGERING_PR}."
+          fi
+          gh release create "${TAG}" \
+            --title "Launcher ${TAG}" \
+            --notes "${BODY}" \
+            "artifacts/sgw-launcher-${TAG}.exe"

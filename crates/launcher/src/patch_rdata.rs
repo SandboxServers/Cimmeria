@@ -1,6 +1,19 @@
+//! One-time `.rdata` byte patch that redirects SGW.exe's hardcoded SOAP login
+//! hostname (`www.stargateworlds.com`) to the configured emulator server.
+//!
+//! See `docs/plans/2026-03-06-sgw-launcher-design.md` (superseded by
+//! `docs/client/sgw-launcher.md`) for the rationale: data-section string
+//! edits aren't subject to ASLR or PE-checksum recalculation, so this is
+//! simpler than runtime DLL injection via AtreaRL.
+
+use std::path::Path;
+
 use thiserror::Error;
 
 const ORIGINAL_HOST: &[u8] = b"www.stargateworlds.com";
+/// The original CME hostname is exactly 22 bytes. Any replacement must fit
+/// within that fixed slot (zero-padded out to 22) so we don't shift any
+/// surrounding `.rdata` strings or pointers.
 const MAX_HOST_LEN: usize = 22;
 
 #[derive(Debug, Error)]
@@ -40,7 +53,7 @@ pub fn needs_patching(data: &[u8]) -> bool {
     find_pattern(data, ORIGINAL_HOST).is_some()
 }
 
-pub fn patch_exe(exe_path: &std::path::Path, new_host: &str) -> Result<usize, PatchError> {
+pub fn patch_exe(exe_path: &Path, new_host: &str) -> Result<usize, PatchError> {
     let mut data = std::fs::read(exe_path)?;
     let offset = patch_hostname(&mut data, new_host)?;
     std::fs::write(exe_path, &data)?;
@@ -58,7 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_hostname_success() {
+    fn patch_hostname_success() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
         let offset = patch_hostname(&mut data, "localhost").unwrap();
         assert_eq!(offset, 40);
@@ -67,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_hostname_max_length() {
+    fn patch_hostname_at_max_length() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
         let host = "abcdefghijklmnopqrstuv";
         assert_eq!(host.len(), 22);
@@ -77,7 +90,7 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_hostname_too_long() {
+    fn patch_hostname_rejects_too_long() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
         let host = "this-hostname-is-way-too-long.example.com";
         let result = patch_hostname(&mut data, host);
@@ -85,34 +98,22 @@ mod tests {
     }
 
     #[test]
-    fn test_patch_hostname_not_found() {
+    fn patch_hostname_pattern_not_found() {
         let mut data = vec![0u8; 100];
         let result = patch_hostname(&mut data, "localhost");
         assert!(matches!(result, Err(PatchError::PatternNotFound)));
     }
 
     #[test]
-    fn test_needs_patching() {
-        let data = make_fake_exe(b"www.stargateworlds.com");
-        assert!(needs_patching(&data));
-
-        let patched = make_fake_exe(b"localhost\0\0\0\0\0\0\0\0\0\0\0\0\0");
-        assert!(!needs_patching(&patched));
-    }
-
-    #[test]
-    fn test_patch_idempotent_check() {
+    fn needs_patching_flips_after_patch() {
         let mut data = make_fake_exe(b"www.stargateworlds.com");
+        assert!(needs_patching(&data));
         patch_hostname(&mut data, "play.cimmeria.gg").unwrap();
         assert!(!needs_patching(&data));
-        assert!(matches!(
-            patch_hostname(&mut data, "other.host"),
-            Err(PatchError::PatternNotFound)
-        ));
     }
 
     #[test]
-    fn test_patch_exe_on_disk() {
+    fn patch_exe_on_disk_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let exe_path = dir.path().join("SGW.exe");
         let data = make_fake_exe(b"www.stargateworlds.com");

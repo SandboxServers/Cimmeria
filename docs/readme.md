@@ -189,11 +189,13 @@ See also: [building.md](building.md), [connection-flow.md](connection-flow.md), 
 
 ### `client/` -- Game Client Analysis
 
-Analysis of game client binaries, launcher tools, and client asset inventories. 4 documents.
+Analysis of game client binaries, launcher tools, and client asset inventories. 6 documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
-| [sgw-launcher.md](client/sgw-launcher.md) | Custom launcher design: install pipeline, login redirect, implementation tech stacks | Complete |
+| [sgw-launcher.md](client/sgw-launcher.md) | Launcher design: seed + patch manifest install, Atera-detection launch, single-PUT log upload, hostname patch | Complete |
+| [launcher-guide.md](client/launcher-guide.md) | User-facing guide: how the launcher works for players, how operators prepare and publish patches | Complete |
+| [launcher-storage-setup.md](client/launcher-storage-setup.md) | Operational runbook for the Azure Blob backend the launcher reads/writes against | Complete |
 | [audio-voice-inventory.md](client/audio-voice-inventory.md) | Complete FMOD audio inventory: 280 .fev + 566 .fsb files, zone ambience, music, weapons, abilities, UI, dialog VO gap analysis | Complete |
 | [facefx-lip-sync.md](client/facefx-lip-sync.md) | FaceFX lip sync system: .fxa animation files, phoneme mapping, engine integration | Complete |
 | [ui-layout-inventory.md](client/ui-layout-inventory.md) | UI layout inventory: all Scaleform .swf files, Lua bindings, screen types, HUD elements | Complete |

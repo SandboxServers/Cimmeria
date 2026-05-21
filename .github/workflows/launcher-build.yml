@@ -1,0 +1,86 @@
+name: launcher
+
+# Path-filtered: only runs when the launcher crate or its workflows change.
+# The launcher is excluded from the main `ci` workflow (test.yml) because
+# eframe brings in heavier system deps than the rest of the workspace and
+# only matters on Windows. This workflow owns its full pipeline.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/launcher/**'
+      - '.github/workflows/launcher-*.yml'
+  pull_request:
+    paths:
+      - 'crates/launcher/**'
+      - '.github/workflows/launcher-*.yml'
+
+concurrency:
+  group: launcher-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: cargo fmt --check (launcher)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt
+        run: |
+          if ! cargo fmt -p sgw-launcher -- --check; then
+            echo "::error::Formatting differs from rustfmt. Run 'cargo fmt -p sgw-launcher' locally and commit the result."
+            exit 1
+          fi
+
+  clippy:
+    name: cargo clippy -D warnings (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: launcher-windows
+      - name: cargo clippy
+        run: cargo clippy -p sgw-launcher --all-targets -- -D warnings
+
+  build:
+    name: cargo build (Windows)
+    runs-on: windows-latest
+    needs: clippy
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: launcher-windows
+      - name: cargo build
+        run: cargo build -p sgw-launcher --all-targets
+
+  test:
+    name: cargo nextest (Windows)
+    runs-on: windows-latest
+    needs: clippy
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: launcher-windows
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      - name: cargo nextest run
+        run: cargo nextest run --profile=ci -p sgw-launcher
