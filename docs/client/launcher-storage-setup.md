@@ -58,8 +58,8 @@ A user-delegation or account SAS with create-only permission on the
 # 1 year from now, UTC ISO 8601.
 EXPIRY=$(date -u -d "+365 days" +%Y-%m-%dT%H:%MZ)
 
-# Account SAS (simplest — no Entra ID required). For higher security
-# preferential is a user-delegation SAS bound to a service principal.
+# Account SAS (simplest — no Entra ID required). For higher security,
+# prefer a user-delegation SAS bound to a service principal.
 az storage account generate-sas \
   --account-name cimmeriastorage \
   --services b \
@@ -120,6 +120,53 @@ log zips after 90 days:
 
 Apply via the Azure portal (Storage Account → Data management →
 Lifecycle management) or `az storage account management-policy create`.
+
+---
+
+## Threat model — SAS in the client binary
+
+The log-upload SAS is **baked into the released launcher .exe at compile
+time** (via `option_env!("LAUNCHER_LOG_SAS_URL")` in
+[`crates/launcher/src/config.rs`](../../crates/launcher/src/config.rs)).
+That means: anyone who can `strings` the binary, or attach a debugger,
+can extract the SAS URL and reuse it.
+
+This is deliberate. The alternative — a server-issued short-lived
+upload token — requires a server-side issuer endpoint that doesn't
+exist yet. For a game launcher, the practical risk profile is:
+
+| Concern | Mitigation already in place |
+|---|---|
+| Read other players' logs | SAS has `c` (create) permission only — no read/list/delete |
+| Delete or overwrite seed / patches / manifest | SAS is scoped to `logs/` blob writes by convention. Attacker with the SAS can write under any path but the seed/patches/manifest blobs would be overwritten with junk — easily restored from publisher-side source. Future versions should tighten to a stored access policy that pins the prefix. |
+| Storage cost amplification (junk uploads) | Lifecycle policy auto-deletes after 90 days (section 4 above). Account-level quota / spending cap on the storage account caps the worst case. |
+| Identity exposure | None — the SAS doesn't carry account keys or AAD tokens; it's a signed query string only. |
+
+### Operator action items
+
+Before publishing the first launcher release, complete these in the
+Azure portal:
+
+1. **Storage cost cap.** Subscription → Cost Management → Budgets → set
+   an alert at the monthly budget you're comfortable with for the
+   storage account (e.g. $10/month). Alerts at 50%, 75%, 90%, 100%
+   ensure you catch abuse before the bill grows.
+
+2. **Upload-rate anomaly alert.** Storage Account → Monitoring → Alerts
+   → New alert rule → Signal `Transactions` filtered to
+   `ApiName = PutBlob` and `BlobType = BlockBlob`, with a dynamic
+   threshold over a 1h window. The launcher's expected steady state is
+   roughly *(active players) × (upload clicks per session)* — anything
+   an order of magnitude above that warrants investigation.
+
+3. **Rotation cadence.** Generate a new SAS every 6 months and cut a
+   new launcher release (the previous binary keeps working until its
+   baked-in SAS expires; rotation overlap is the natural deprecation
+   path for old launcher versions).
+
+If at any point the SAS is observed being abused (junk uploads, traffic
+spike), the rotation procedure below gives you a same-day path to cut
+off the extracted credential.
 
 ---
 

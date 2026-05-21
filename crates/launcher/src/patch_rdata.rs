@@ -22,8 +22,28 @@ pub enum PatchError {
     Io(#[from] std::io::Error),
     #[error("Server address too long: {len} bytes (max {MAX_HOST_LEN})")]
     AddressTooLong { len: usize },
+    #[error("Server address {addr:?} is not a valid hostname (allowed: ASCII alphanumeric, '.', '-'; no leading/trailing '-')")]
+    InvalidHostname { addr: String },
     #[error("Original hostname not found in binary — may already be patched")]
     PatternNotFound,
+}
+
+/// Validates that `host` looks like a DNS hostname before we write it into
+/// SGW.exe's `.rdata`. The .exe won't execute the string (it's just a
+/// string in a data section) but garbage input here produces a binary
+/// that silently can't reach any server, which is hard to diagnose. We
+/// also defensively reject characters that could be misinterpreted by
+/// any future parsing logic on the client side.
+fn is_valid_hostname(host: &str) -> bool {
+    !host.is_empty()
+        && host.len() <= MAX_HOST_LEN
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+        && !host.starts_with('-')
+        && !host.ends_with('-')
+        && !host.starts_with('.')
+        && !host.ends_with('.')
 }
 
 fn find_pattern(data: &[u8], pattern: &[u8]) -> Option<usize> {
@@ -36,6 +56,11 @@ pub fn patch_hostname(data: &mut [u8], new_host: &str) -> Result<usize, PatchErr
     if host_bytes.len() > MAX_HOST_LEN {
         return Err(PatchError::AddressTooLong {
             len: host_bytes.len(),
+        });
+    }
+    if !is_valid_hostname(new_host) {
+        return Err(PatchError::InvalidHostname {
+            addr: new_host.to_string(),
         });
     }
 
@@ -102,6 +127,61 @@ mod tests {
         let mut data = vec![0u8; 100];
         let result = patch_hostname(&mut data, "localhost");
         assert!(matches!(result, Err(PatchError::PatternNotFound)));
+    }
+
+    #[test]
+    fn patch_hostname_rejects_empty() {
+        let mut data = make_fake_exe(b"www.stargateworlds.com");
+        assert!(matches!(
+            patch_hostname(&mut data, ""),
+            Err(PatchError::InvalidHostname { .. })
+        ));
+    }
+
+    #[test]
+    fn patch_hostname_rejects_disallowed_chars() {
+        let data = make_fake_exe(b"www.stargateworlds.com");
+        for bad in &["bad host", "spaces here", "x@y.com", "x/y", "1.2.3/4"] {
+            let mut d = data.clone();
+            assert!(
+                matches!(
+                    patch_hostname(&mut d, bad),
+                    Err(PatchError::InvalidHostname { .. })
+                ),
+                "expected InvalidHostname for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn patch_hostname_rejects_leading_or_trailing_dash_or_dot() {
+        let data = make_fake_exe(b"www.stargateworlds.com");
+        for bad in &["-host.com", "host.com-", ".host.com", "host.com."] {
+            let mut d = data.clone();
+            assert!(
+                matches!(
+                    patch_hostname(&mut d, bad),
+                    Err(PatchError::InvalidHostname { .. })
+                ),
+                "expected InvalidHostname for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn patch_hostname_accepts_typical_dns_names() {
+        for good in &[
+            "localhost",
+            "play.cimmeria.gg",
+            "auth.example.com",
+            "host-1.x",
+        ] {
+            let mut data = make_fake_exe(b"www.stargateworlds.com");
+            assert!(
+                patch_hostname(&mut data, good).is_ok(),
+                "expected success for {good:?}"
+            );
+        }
     }
 
     #[test]

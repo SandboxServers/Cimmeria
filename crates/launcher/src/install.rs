@@ -40,6 +40,8 @@ pub enum InstallError {
         expected: String,
         actual: String,
     },
+    #[error("Unexpected HTTP {status} for {url}")]
+    UnexpectedStatus { status: u16, url: String },
     #[error("Cancelled")]
     Cancelled,
 }
@@ -184,9 +186,17 @@ async fn download_to_file(
     let resumed = status.as_u16() == 206;
     // 206 (Partial Content) is technically 2xx, so `error_for_status_ref`
     // wouldn't flag it — but we keep the explicit check to make the resume
-    // path obvious. For everything else, surface the HTTP status as an error.
+    // path obvious. For everything else, surface the HTTP status as an
+    // error. We can't call `error_for_status_ref().unwrap_err()` here
+    // because that only returns Err for 4xx/5xx — a stray 1xx/3xx would
+    // panic. reqwest follows 3xx redirects by default, so this is mostly
+    // theoretical, but the non-panicking path is one line longer and
+    // robust to any future redirect-policy change.
     if !status.is_success() && !resumed {
-        return Err(reqwest_error_from(&resp).into());
+        return Err(InstallError::UnexpectedStatus {
+            status: status.as_u16(),
+            url: url.to_string(),
+        });
     }
 
     let total = if resumed {
@@ -236,13 +246,6 @@ async fn download_to_file(
     Ok(())
 }
 
-fn reqwest_error_from(resp: &reqwest::Response) -> reqwest::Error {
-    // `error_for_status_ref` returns Err only for 4xx/5xx; on the call site
-    // we've already verified the status falls outside 2xx, so unwrap_err is
-    // safe.
-    resp.error_for_status_ref().unwrap_err()
-}
-
 fn verify_sha256(path: &Path, expected: &str, what: &str) -> Result<(), InstallError> {
     let actual = hash_file(path)?;
     if !actual.eq_ignore_ascii_case(expected) {
@@ -284,8 +287,15 @@ fn extract_zip(
             return Err(InstallError::Cancelled);
         }
         let mut entry = archive.by_index(i)?;
-        // `enclosed_name()` returns Option<&Path>; clone to PathBuf so the
-        // borrow on `entry` ends before we use `entry.is_dir()` / &mut entry.
+        // SECURITY: `enclosed_name()` is the zip-slip gate. It rejects
+        // entries whose normalised path would escape the archive root —
+        // absolute paths, `..` traversal, and OS-specific weirdness like
+        // drive letters or NTFS reserved names all get filtered here.
+        // Do NOT replace with `entry.name()` or `entry.mangled_name()`:
+        // both will happily hand back paths like `../../etc/passwd`.
+        //
+        // Also clone to PathBuf so the borrow on `entry` ends before we
+        // use `entry.is_dir()` / `&mut entry` below.
         let rel = match entry.enclosed_name() {
             Some(p) => p.to_path_buf(),
             None => continue,

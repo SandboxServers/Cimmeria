@@ -14,6 +14,11 @@ use crate::manifest::Manifest;
 use crate::state::InstalledState;
 use crate::worker::{Command, Event, Worker};
 
+/// Upper bound on the status-log history kept in memory. Display already
+/// caps at the last 100 entries; this prevents the underlying Vec from
+/// growing without bound during long sessions full of events.
+const MAX_STATUS_LINES: usize = 1000;
+
 pub struct LauncherApp {
     config: LauncherConfig,
     config_path: PathBuf,
@@ -59,6 +64,18 @@ impl LauncherApp {
         }
     }
 
+    /// Append a status line, dropping the oldest entries when the buffer
+    /// would exceed [`MAX_STATUS_LINES`]. The display only ever reads the
+    /// most-recent 100 entries (see [`Self::show_status_log`]) so older
+    /// drops are invisible to the user.
+    fn push_status(&mut self, line: String) {
+        self.status.push(line);
+        if self.status.len() > MAX_STATUS_LINES {
+            let overflow = self.status.len() - MAX_STATUS_LINES;
+            self.status.drain(0..overflow);
+        }
+    }
+
     fn drain_events(&mut self, ctx: &egui::Context) {
         while let Ok(ev) = self.worker.events_rx.try_recv() {
             match ev {
@@ -74,31 +91,30 @@ impl LauncherApp {
                 }
                 Event::InstallComplete => {
                     self.installing = false;
-                    self.status.push("Install complete.".into());
+                    self.push_status("Install complete.".into());
                     self.refresh_install_state();
                 }
                 Event::InstallError(e) => {
                     self.installing = false;
-                    self.status.push(format!("Install failed: {e}"));
+                    self.push_status(format!("Install failed: {e}"));
                 }
                 Event::Launched(name, pid) => {
-                    self.status.push(format!("Launched {name} (pid {pid})"));
+                    self.push_status(format!("Launched {name} (pid {pid})"));
                 }
                 Event::LaunchError(e) => {
-                    self.status.push(format!("Launch failed: {e}"));
+                    self.push_status(format!("Launch failed: {e}"));
                 }
                 Event::UploadStarted => {
-                    self.status.push("Uploading logs…".into());
+                    self.push_status("Uploading logs…".into());
                 }
                 Event::UploadSkipped(why) => {
-                    self.status.push(format!("Log upload skipped: {why}"));
+                    self.push_status(format!("Log upload skipped: {why}"));
                 }
                 Event::UploadComplete { blob, bytes } => {
-                    self.status
-                        .push(format!("Uploaded {bytes} bytes to {blob}"));
+                    self.push_status(format!("Uploaded {bytes} bytes to {blob}"));
                 }
                 Event::UploadError(e) => {
-                    self.status.push(format!("Log upload failed: {e}"));
+                    self.push_status(format!("Log upload failed: {e}"));
                 }
             }
             ctx.request_repaint();
@@ -156,10 +172,10 @@ impl LauncherApp {
             if ui.button("Save").clicked() {
                 match self.config.save(&self.config_path) {
                     Ok(_) => {
-                        self.status.push("Saved config.".into());
+                        self.push_status("Saved config.".into());
                         self.refresh_install_state();
                     }
-                    Err(e) => self.status.push(format!("Save failed: {e}")),
+                    Err(e) => self.push_status(format!("Save failed: {e}")),
                 }
             }
         });
@@ -244,11 +260,11 @@ impl LauncherApp {
                 .clicked()
             {
                 if let Err(e) = self.config.save(&self.config_path) {
-                    self.status.push(format!("Save failed: {e}"));
+                    self.push_status(format!("Save failed: {e}"));
                 }
                 self.installing = true;
                 self.last_progress = None;
-                self.status.push("Starting install / update…".into());
+                self.push_status("Starting install / update…".into());
                 self.worker.dispatch(Command::Install {
                     config: self.config.clone(),
                     manifest: manifest.clone(),
@@ -259,7 +275,7 @@ impl LauncherApp {
                 .clicked()
             {
                 self.worker.dispatch(Command::Cancel);
-                self.status.push("Cancel requested.".into());
+                self.push_status("Cancel requested.".into());
             }
         });
         self.show_progress(ui);
@@ -420,7 +436,7 @@ fn human_bytes(n: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::human_bytes;
+    use super::{human_bytes, MAX_STATUS_LINES};
 
     #[test]
     fn human_bytes_formats_units() {
@@ -428,5 +444,41 @@ mod tests {
         assert_eq!(human_bytes(512), "512 B");
         assert_eq!(human_bytes(2048), "2.00 KB");
         assert_eq!(human_bytes(5 * 1024 * 1024), "5.00 MB");
+    }
+
+    // Drives the same drain-on-overflow shape that `push_status` uses, with
+    // a Vec we can inspect directly. Keeps the test free of the full
+    // LauncherApp construction (which requires a tokio runtime).
+    fn push_capped(buf: &mut Vec<String>, line: String) {
+        buf.push(line);
+        if buf.len() > MAX_STATUS_LINES {
+            let overflow = buf.len() - MAX_STATUS_LINES;
+            buf.drain(0..overflow);
+        }
+    }
+
+    #[test]
+    fn push_status_caps_at_max_lines() {
+        let mut buf = Vec::new();
+        for i in 0..(MAX_STATUS_LINES + 25) {
+            push_capped(&mut buf, format!("line {i}"));
+        }
+        assert_eq!(buf.len(), MAX_STATUS_LINES);
+        // Oldest 25 should have been dropped.
+        assert_eq!(buf.first().unwrap(), "line 25");
+        assert_eq!(
+            buf.last().unwrap(),
+            &format!("line {}", MAX_STATUS_LINES + 24)
+        );
+    }
+
+    #[test]
+    fn push_status_under_cap_does_not_drain() {
+        let mut buf = Vec::new();
+        for i in 0..10 {
+            push_capped(&mut buf, format!("{i}"));
+        }
+        assert_eq!(buf.len(), 10);
+        assert_eq!(buf.first().unwrap(), "0");
     }
 }

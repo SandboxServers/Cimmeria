@@ -92,10 +92,24 @@ pub async fn fetch_manifest(url: &str) -> Result<Manifest, ManifestError> {
 
 /// Resolves a blob path (e.g. `seed/sgw.zip`) against the manifest URL's
 /// container by stripping the final path segment off the manifest URL.
+///
+/// Handles SAS-tokened manifest URLs correctly: a trailing `?sv=…` or
+/// `#fragment` is split off before we look for the last `/`, so the
+/// query/fragment never ends up in the "base" portion. The query string
+/// is intentionally **dropped** rather than reattached — patch/seed blobs
+/// are anonymous reads even when the manifest itself sits behind a SAS.
 pub fn blob_url(manifest_url: &str, blob_path: &str) -> String {
-    let base = match manifest_url.rsplit_once('/') {
+    let path_only = manifest_url
+        .split_once('#')
+        .map(|(left, _)| left)
+        .unwrap_or(manifest_url);
+    let path_only = path_only
+        .split_once('?')
+        .map(|(left, _)| left)
+        .unwrap_or(path_only);
+    let base = match path_only.rsplit_once('/') {
         Some((b, _)) => b,
-        None => manifest_url,
+        None => path_only,
     };
     format!("{base}/{blob_path}")
 }
@@ -178,6 +192,33 @@ mod tests {
     fn blob_url_strips_manifest_filename() {
         let u = blob_url(
             "https://x.blob.core.windows.net/sgw/manifest.json",
+            "seed/s.zip",
+        );
+        assert_eq!(u, "https://x.blob.core.windows.net/sgw/seed/s.zip");
+    }
+
+    #[test]
+    fn blob_url_strips_sas_query_before_resolving() {
+        let u = blob_url(
+            "https://x.blob.core.windows.net/sgw/manifest.json?sv=2024-11-01&sig=abc",
+            "seed/s.zip",
+        );
+        assert_eq!(u, "https://x.blob.core.windows.net/sgw/seed/s.zip");
+    }
+
+    #[test]
+    fn blob_url_strips_fragment_before_resolving() {
+        let u = blob_url(
+            "https://x.blob.core.windows.net/sgw/manifest.json#anchor",
+            "seed/s.zip",
+        );
+        assert_eq!(u, "https://x.blob.core.windows.net/sgw/seed/s.zip");
+    }
+
+    #[test]
+    fn blob_url_strips_both_query_and_fragment() {
+        let u = blob_url(
+            "https://x.blob.core.windows.net/sgw/manifest.json?sv=2024-11-01#x",
             "seed/s.zip",
         );
         assert_eq!(u, "https://x.blob.core.windows.net/sgw/seed/s.zip");

@@ -28,9 +28,11 @@ setup see [launcher-storage-setup.md](launcher-storage-setup.md).
   - [Step 1 — Build the seed](#step-1--build-the-seed)
   - [Step 2 — Build a patch zip](#step-2--build-a-patch-zip)
   - [Step 3 — Write the manifest](#step-3--write-the-manifest)
+    - [Schema versioning policy](#schema-versioning-policy)
   - [Step 4 — Upload to Azure Blob](#step-4--upload-to-azure-blob)
   - [Append-only invariants](#append-only-invariants)
   - [Future automation](#future-automation)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -260,12 +262,51 @@ Rules the launcher enforces (see
 
 - `schema` must be `1`. Bumping it invalidates every launcher binary
   built before the bump — serve a legacy manifest at the old URL during
-  any transition.
+  any transition. See [Schema versioning policy](#schema-versioning-policy)
+  below before considering a bump.
 - Every `after` reference must point to a patch declared **earlier** in
   the array. Forward references and unknown ids fail validation.
 - Patch ids must be unique.
 - Array order **is** the application order. `after` is documentation /
   sanity — the launcher applies patches in their order in `patches[]`.
+
+#### Schema versioning policy
+
+The `schema` field is an integer version number. Today only `1` is
+supported.
+
+**When to bump:**
+
+- Adding a **required** field to `seed`, `patches[*]`, or top-level →
+  bump.
+- Removing any existing field → bump.
+- Changing field semantics (e.g. reinterpreting `size` as bytes vs
+  blocks) → bump.
+- Adding an **optional** field with a backwards-compatible default →
+  **no bump** needed; older launchers will ignore the new field via
+  `#[serde(default)]`.
+
+**Compatibility model:**
+
+The launcher checks `schema == SUPPORTED_SCHEMA` and bails on mismatch.
+There is no multi-schema support today. Bumping the schema is therefore
+a hard cutover that requires every player to be on a launcher build
+that understands the new schema.
+
+The recommended bump procedure:
+
+1. Cut a new launcher release whose `SUPPORTED_SCHEMA` is the new
+   number. The new launcher must accept *both* schemas during the
+   transition (temporarily relax the validate check).
+2. Wait at least one full release-cadence window for players to update.
+3. Publish a manifest at the new schema version.
+4. After two cadence windows, the next launcher release can drop the
+   compatibility branch.
+
+For changes that don't fit the additive-optional shape, prefer the
+new-launcher path over a schema bump — e.g. adding a new manifest URL
+prefix and pointing new launcher releases at it, while keeping the old
+URL serving the old schema for existing installs.
 
 ### Step 4 — Upload to Azure Blob
 
@@ -355,6 +396,103 @@ when you actually need to ship patches regularly:
 
 Neither exists yet. Both are straightforward to add once you've shipped
 the first patch by hand and know what feels right.
+
+---
+
+## Troubleshooting
+
+Common issues players hit, with first-line diagnostic steps. Every
+error message also lands in the launcher's status panel — copy-paste
+that into a bug report if first-line fixes don't help.
+
+### "Manifest error: …"
+
+The launcher couldn't fetch or parse `manifest.json`.
+
+- **`error sending request` / DNS failures**: check your internet
+  connection. Verify the **Manifest URL** field in the launcher matches
+  what your server operator published.
+- **HTTP 404**: the manifest URL is wrong, or the storage container
+  isn't publicly readable. Operators: check that the `sgw` container
+  was created with `--public-access blob` per the storage runbook.
+- **HTTP 403**: the container exists but isn't public. Operators: same
+  fix as 404.
+- **JSON parse error**: the manifest is malformed. Operators: validate
+  the file with `jq . manifest.json` before uploading.
+- **"Unsupported manifest schema N"**: this launcher binary is older
+  than the manifest. Download a newer launcher release.
+
+### "Install failed: Hash mismatch for seed/patch …"
+
+The download completed but the file's SHA-256 didn't match the manifest.
+
+- Click **Install / Update** again — the launcher resumes from the
+  partial `.tmp-*.zip` file and may correct a transient corruption.
+- If it persists: the CDN or the manifest is out of sync. Operators
+  should re-publish the affected blob and verify the manifest hash
+  matches.
+
+### "Install failed: Unexpected HTTP 4xx/5xx for …"
+
+The seed or patch blob URL returned an unexpected status.
+
+- **404**: a manifest entry references a blob that wasn't uploaded.
+  Operators should verify the upload order (patch blob first, then
+  manifest — see the storage runbook).
+- **403**: blob exists but isn't public.
+- **5xx**: Azure transient error. Retry; if it sticks, check the Azure
+  status page.
+
+### "Launch failed: File not found"
+
+The launcher tried to launch SGW.exe / a batch file that isn't actually
+on disk.
+
+- Verify the **Install dir** field matches where the game is installed.
+- Click **Install / Update** to ensure the install is complete.
+- For Atera-debug launches: confirm `AteraLoader.exe` and
+  `AtreaGameDebug.bat` are both in the install dir alongside SGW.exe.
+  These files are not shipped by the launcher.
+
+### SGW.exe launches but can't reach the server
+
+- Verify the **Server host** field is set to your operator's emulator
+  hostname.
+- Click **Save** then **Install / Update** — the hostname patch only
+  fires during install / update, not on every launch.
+- Check the `.rdata` patch took effect: open `SGW.exe` in a hex editor
+  and search for `www.stargateworlds.com`. If still present, the
+  install didn't complete the post-install patch step.
+
+### "Log upload failed: 4xx/5xx"
+
+- **403 AuthorizationFailure**: the SAS in the launcher binary has
+  expired. Players need to download a newer launcher release.
+- **403 AuthenticationFailed**: the SAS was malformed. Operators should
+  rotate (see storage runbook).
+- **413 RequestBodyTooLarge**: the log zip exceeded Azure's 256 MB
+  single-PUT block-blob limit. Should not happen in practice (sessions
+  rarely produce >100 MB of logs); if it does, report it.
+
+### "Log upload skipped: Already uploaded this exact log set"
+
+This is **not an error** — it means the launcher detected via local
+ledger that the same log contents were already uploaded. To force a
+re-upload, edit `<launcher.exe dir>/uploaded.json` and remove the
+relevant entry, or play a new session to generate fresh logs.
+
+### Where to find logs to share
+
+When asking for support:
+
+- Launcher's own status panel — copy the relevant lines.
+- `<launcher.exe dir>/launcher-config.json` — your install path, server
+  host, and manifest URL (the relevant config the launcher is using).
+- `<install_dir>/launcher-installed.json` — what the launcher thinks is
+  installed (seed sha + applied patches).
+- For game crashes (not launcher issues): use the **Upload Debug Logs**
+  button. Logs land at `logs/<host>-<utc>-<digest>.zip` in the
+  operator's storage container.
 
 ---
 

@@ -185,7 +185,7 @@ cargo build -p sgw-launcher --release
 # Output: target/release/sgw-launcher.exe
 ```
 
-The icon at [`crates/launcher/icons/icon.ico`](../../crates/launcher/icons/)
+The icon at [`crates/launcher/icons/icon.ico`](../../crates/launcher/icons/icon.ico)
 is embedded as a Win32 resource via [`build.rs`](../../crates/launcher/build.rs).
 
 ---
