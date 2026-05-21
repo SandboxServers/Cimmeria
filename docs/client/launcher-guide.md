@@ -4,8 +4,10 @@ How the Stargate Worlds launcher works from the user's seat, and how
 operators prepare and publish patches for it to consume.
 
 This is the practical, day-to-day doc. For architecture and rationale
-see [sgw-launcher.md](sgw-launcher.md). For the one-time Azure backend
-setup see [launcher-storage-setup.md](launcher-storage-setup.md).
+see [sgw-launcher.md](sgw-launcher.md). For the one-time operator
+backend setup (GitHub Releases for content, manifest signing keypair,
+Azure Blob SAS for log uploads) see
+[launcher-distribution-setup.md](launcher-distribution-setup.md).
 
 > **Audience split:**
 > [Part 1 — Players](#part-1--for-players) is for anyone running the
@@ -308,24 +310,31 @@ new-launcher path over a schema bump — e.g. adding a new manifest URL
 prefix and pointing new launcher releases at it, while keeping the old
 URL serving the old schema for existing installs.
 
-### Step 4 — Upload to Azure Blob
+### Step 4 — Sign + publish to GitHub Releases
 
-Layout in the storage container (`sgw`):
+The hosting layout uses two release-tag families on the repo:
 
 ```text
-https://<account>.blob.core.windows.net/sgw/
-├── manifest.json
-├── seed/
-│   └── sgw-0.8348.1.4046.zip
-├── patches/
-│   ├── 001-base.zip
-│   ├── 002-mercury-config.zip
-│   └── ...
-└── logs/                              ← launcher writes here only
-    └── <host>-<utc>-<digest12>.zip
+content-current                ← rolling tag, overwritten each publish
+├── manifest.json              ← the manifest
+└── manifest.json.sig          ← Ed25519 detached signature (hex)
+
+content-2026-05-20-001         ← immutable, one per content drop
+├── seed.zip                   (if this drop ships a new seed)
+└── 002-mercury-config.zip     (per-patch zips)
+content-2026-05-20-002
+├── 003-quest-fixes.zip
+└── ...
 ```
 
-A rough operator workflow using PowerShell + `az` CLI:
+The manifest references the immutable tag's assets by **absolute URL**,
+e.g. `https://github.com/<org>/<repo>/releases/download/content-2026-05-20-001/seed.zip`.
+The launcher's [`blob_url`](../../crates/launcher/src/manifest.rs)
+passes absolute URLs through unchanged; relative `blob` fields still
+work (resolved against the manifest URL's container) for legacy / mixed
+hosting setups.
+
+A rough operator workflow using PowerShell + `gh`:
 
 ```powershell
 # 1. Build a patch zip from the changed files.
@@ -334,33 +343,42 @@ Compress-Archive `
   -DestinationPath '002-mercury-config.zip' `
   -CompressionLevel Optimal
 
-# 2. Compute sha + size to paste into manifest.json.
+# 2. Compute sha + size for the manifest entry.
 $sha  = (Get-FileHash 002-mercury-config.zip -Algorithm SHA256).Hash.ToLower()
 $size = (Get-Item 002-mercury-config.zip).Length
 "sha:  $sha"
 "size: $size"
 
-# 3. Edit manifest.json (append the new patch entry with sha + size).
+# 3. Append a patch entry to manifest.json with the absolute URL for
+#    where the asset will live in the immutable release. Pick the tag
+#    you're about to create.
+$tag = "content-$(Get-Date -Format yyyy-MM-dd)-001"
+$blob = "https://github.com/SandboxServers/Cimmeria/releases/download/$tag/002-mercury-config.zip"
+# (edit manifest.json by hand or via jq)
 
-# 4. Upload patch + updated manifest — patch FIRST, manifest SECOND.
-az storage blob upload `
-  --account-name <acct> --container-name sgw `
-  --file 002-mercury-config.zip `
-  --name patches/002-mercury-config.zip
+# 4. Sign the manifest with the offline private key.
+.\tools\sign-manifest.ps1 -KeyHex (Get-Content -Raw .\secrets\manifest-signing.key) `
+                         -Manifest manifest.json
+# Produces manifest.json.sig
 
-az storage blob upload `
-  --account-name <acct> --container-name sgw `
-  --file manifest.json --name manifest.json --overwrite
+# 5. Create the immutable release first (asset must exist before the
+#    manifest references it).
+gh release create "$tag" --notes "Content drop $tag" --prerelease `
+  002-mercury-config.zip
+
+# 6. Update the rolling manifest pointer. --clobber overwrites in place.
+gh release upload content-current --clobber `
+  manifest.json manifest.json.sig
 ```
 
-**Ordering matters.** Upload the patch blob first, then overwrite the
-manifest. If a launcher fetches `manifest.json` between the two
-uploads, it would see a patch entry referencing a blob that doesn't
-exist yet and fail with a 404 on the patch GET. Manifest-last is the
-safe ordering.
+**Ordering matters.** Create the immutable per-publication release
+(step 5) **before** updating `content-current` (step 6). A launcher
+that fetches `manifest.json` between the two would see an entry
+referencing a blob that doesn't exist yet and fail with a 404.
 
-The container, SAS minting, and lifecycle policy live in
-[launcher-storage-setup.md](launcher-storage-setup.md).
+Full operator setup (signing keypair generation, GitHub secrets,
+log-upload SAS) lives in
+[launcher-distribution-setup.md](launcher-distribution-setup.md).
 
 ### Append-only invariants
 
@@ -500,6 +518,6 @@ When asking for support:
 ## Cross-references
 
 - [sgw-launcher.md](sgw-launcher.md) — full design and architecture rationale
-- [launcher-storage-setup.md](launcher-storage-setup.md) — Azure container + SAS setup runbook
+- [launcher-distribution-setup.md](launcher-distribution-setup.md) — operator setup: GH Releases publishing, manifest signing key, Azure Blob SAS
 - [`crates/launcher/`](../../crates/launcher/) — source code
 - [.github/workflows/launcher-release.yml](../../.github/workflows/launcher-release.yml) — release pipeline

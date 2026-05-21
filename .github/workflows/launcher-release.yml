@@ -31,10 +31,17 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0
-      # Baked into the binary at compile time via option_env!. The release
-      # job is the only place this secret is referenced; PR / build jobs
-      # produce non-uploading binaries.
+      # Both secrets are baked into the binary at compile time via
+      # `option_env!` in src/config.rs and src/manifest.rs respectively.
+      # The release job is the only workflow that reads them — PR / build
+      # jobs produce binaries with the dev defaults (manifest signing
+      # falls back to a publicly-known key, log upload is disabled).
       LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
+      # 64 hex chars = 32 raw bytes. Ed25519 public key whose private
+      # counterpart signs every manifest the launcher will accept.
+      # Generation + rotation procedure: see
+      # docs/client/launcher-distribution-setup.md.
+      LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
     steps:
       # Actions pinned to immutable commit SHAs (with version comments) per
       # GitHub's secure-use guide. This job is privileged — it builds with a

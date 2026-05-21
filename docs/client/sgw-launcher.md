@@ -35,22 +35,35 @@ window with no webview dependency.
 ## Install Pipeline
 
 ```text
-1. Fetch manifest.json from manifest_url (anonymous Azure Blob GET).
-2. Compare manifest.seed.sha256 vs installed.seed_sha256:
+1. Fetch manifest.json AND manifest.json.sig from manifest_url
+   (anonymous GitHub Releases GET — both URLs are HTTPS-enforced).
+2. Verify the Ed25519 signature against the embedded public key. On
+   mismatch, refuse the manifest entirely — no unsigned fallback.
+3. Compare manifest.seed.sha256 vs installed.seed_sha256:
      - Mismatch → download seed blob, verify sha256, extract zip into
-       install_path, reset applied_patches to [].
+       install_path, reset applied_patches to [] and patched_host to
+       None.
      - Match    → skip seed.
-3. For each manifest.patches[*] not in installed.applied_patches, in order:
+4. For each manifest.patches[*] not in installed.applied_patches, in
+   order:
      - Download patch blob → verify sha256 → extract zip (overlay).
      - Append id to installed.applied_patches and persist.
-4. If SGW.exe still contains the literal bytes "www.stargateworlds.com",
-   overwrite with configured server_host (zero-padded to 22 bytes).
+5. Compare expected vs persisted patched_host (or detect the original
+   CME literal still in the binary):
+     - Differs → re-patch SGW.exe `.rdata`, atomically (.exe.patching
+       + rename), record the new host in installed.patched_host.
 ```
 
 Resumable downloads use HTTP `Range`: the launcher tracks `existing_len`
 on disk under the tmp path (`<install>/.tmp-seed-<sha-prefix>.zip` or
-`.tmp-patch-<id>.zip`) and asks the server for `bytes=<existing>-` so a
-killed seed download picks up where it left off on next run.
+`.tmp-patch-<id>-<sha-prefix>.zip` — sha included so a republished
+patch with the same id but a new sha doesn't accidentally resume against
+stale bytes) and asks the server for `bytes=<existing>-` so a killed
+seed download picks up where it left off on next run.
+
+Concurrency: a process-wide file lock at `<exe dir>/launcher.lock`
+ensures only one launcher instance runs at a time, so two installs
+can't race on the same `launcher-installed.json` or tmp file.
 
 State files:
 
@@ -167,8 +180,9 @@ The local dev / PR-build pipeline produces a launcher with
 "Log upload disabled — built without LAUNCHER_LOG_SAS_URL" note. The
 release workflow injects the secret.
 
-See [docs/client/launcher-storage-setup.md](launcher-storage-setup.md)
-for the Azure side (container, SAS scope, secret rotation).
+See [docs/client/launcher-distribution-setup.md](launcher-distribution-setup.md)
+for the operator side: GitHub Releases publish flow for content,
+Ed25519 manifest signing setup, and the Azure Blob SAS for log uploads.
 
 ---
 

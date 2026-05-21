@@ -212,14 +212,27 @@ pub fn verify_manifest_signature(body: &[u8], sig_hex: &str) -> Result<(), Manif
 }
 
 /// Resolves a blob path (e.g. `seed/sgw.zip`) against the manifest URL's
-/// container by stripping the final path segment off the manifest URL.
+/// container.
 ///
-/// Handles SAS-tokened manifest URLs correctly: a trailing `?sv=…` or
-/// `#fragment` is split off before we look for the last `/`, so the
-/// query/fragment never ends up in the "base" portion. The query string
-/// is intentionally **dropped** rather than reattached — patch/seed blobs
-/// are anonymous reads even when the manifest itself sits behind a SAS.
+/// Two modes:
+///
+/// 1. **Absolute** — if `blob_path` is itself a full URL (`http(s)://`)
+///    it's returned unchanged. Lets the operator point individual
+///    blobs at different hosts/releases — the GH Releases hosting
+///    model puts the rolling `manifest.json` in a stable release tag
+///    (`content-current`) while the immutable seed/patch blobs live
+///    in per-publication release tags (`content-NNNN-…`), referenced
+///    by absolute URL from the manifest.
+///
+/// 2. **Relative** — strip everything after the last `/` in the
+///    manifest URL (and drop any `?query`/`#fragment` first, so a
+///    SAS-tokened manifest URL still produces a clean base) and join
+///    `blob_path` against the result. Backwards-compatible with the
+///    previous Azure-Blob "everything in one container" layout.
 pub fn blob_url(manifest_url: &str, blob_path: &str) -> String {
+    if blob_path.starts_with("http://") || blob_path.starts_with("https://") {
+        return blob_path.to_string();
+    }
     let path_only = manifest_url
         .split_once('#')
         .map(|(left, _)| left)
@@ -343,6 +356,32 @@ mod tests {
             "seed/s.zip",
         );
         assert_eq!(u, "https://x.blob.core.windows.net/sgw/seed/s.zip");
+    }
+
+    #[test]
+    fn blob_url_passes_absolute_https_through() {
+        // GH Releases mode: manifest in `content-current`, blob in an
+        // immutable per-publication release tag.
+        let u = blob_url(
+            "https://github.com/Org/Repo/releases/download/content-current/manifest.json",
+            "https://github.com/Org/Repo/releases/download/content-2026-05-20/seed.zip",
+        );
+        assert_eq!(
+            u,
+            "https://github.com/Org/Repo/releases/download/content-2026-05-20/seed.zip"
+        );
+    }
+
+    #[test]
+    fn blob_url_passes_absolute_http_through() {
+        // Should not happen in production (https_only client refuses
+        // http://) but the helper is responsible for URL resolution
+        // only — the HTTPS check happens at fetch time.
+        let u = blob_url(
+            "https://x.com/manifest.json",
+            "http://localhost:9000/seed.zip",
+        );
+        assert_eq!(u, "http://localhost:9000/seed.zip");
     }
 
     #[tokio::test]
