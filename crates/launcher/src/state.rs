@@ -25,6 +25,12 @@ pub struct InstalledState {
     pub applied_patches: Vec<String>,
     #[serde(default)]
     pub seed_sha256: Option<String>,
+    /// Host that was last written into SGW.exe's `.rdata`. Lets the
+    /// installer detect a `server_host` config change and re-patch even
+    /// after the original CME literal has already been replaced. `None`
+    /// for installs predating this field (treated as "patched host unknown").
+    #[serde(default)]
+    pub patched_host: Option<String>,
 }
 
 impl InstalledState {
@@ -106,13 +112,32 @@ mod tests {
         let s = InstalledState {
             applied_patches: vec!["a".into(), "b".into()],
             seed_sha256: Some("h".into()),
+            patched_host: Some("play.cimmeria.gg".into()),
         };
         s.save(dir.path()).unwrap();
         let loaded = InstalledState::load(dir.path());
         assert_eq!(loaded.applied_patches, vec!["a", "b"]);
         assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
+        assert_eq!(loaded.patched_host.as_deref(), Some("play.cimmeria.gg"));
         assert!(loaded.has_applied("a"));
         assert!(!loaded.has_applied("c"));
+    }
+
+    // Forwards-compat: state files written before the patched_host field
+    // existed should deserialize with patched_host = None and otherwise
+    // load normally.
+    #[test]
+    fn installed_state_loads_legacy_without_patched_host() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            InstalledState::path(dir.path()),
+            r#"{"applied_patches":["a"],"seed_sha256":"h"}"#,
+        )
+        .unwrap();
+        let loaded = InstalledState::load(dir.path());
+        assert_eq!(loaded.applied_patches, vec!["a"]);
+        assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
+        assert!(loaded.patched_host.is_none());
     }
 
     #[test]

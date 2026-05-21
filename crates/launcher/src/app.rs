@@ -237,7 +237,14 @@ impl LauncherApp {
             .map(|p| p.id.clone())
             .collect();
 
-        if seed_ok && missing_patches.is_empty() {
+        // The hostname patch lives outside the seed/patch model: it's a
+        // post-install step that runs on `Install / Update`. If the user
+        // edits `server_host` after a complete install, neither seed nor
+        // patches change but we still want to surface the re-patch action.
+        let host_needs_repatch = !self.config.server_host.is_empty()
+            && self.installed.patched_host.as_deref() != Some(self.config.server_host.as_str());
+
+        if seed_ok && missing_patches.is_empty() && !host_needs_repatch {
             ui.colored_label(egui::Color32::LIGHT_GREEN, "✔ Install is up to date.");
             return;
         }
@@ -250,6 +257,12 @@ impl LauncherApp {
                 "Missing patches ({}): {}",
                 missing_patches.len(),
                 missing_patches.join(", ")
+            ));
+        }
+        if seed_ok && missing_patches.is_empty() && host_needs_repatch {
+            ui.label(format!(
+                "Server host changed to '{}' — SGW.exe needs re-patching.",
+                self.config.server_host
             ));
         }
 

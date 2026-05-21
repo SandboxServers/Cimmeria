@@ -43,3 +43,7 @@ winres = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
+# Mock HTTP server for the install / download pipeline tests. Lets us assert
+# Range-header resume, status-code branches, and call-count expectations
+# (e.g. "second pass over an idempotent install hits the server zero times").
+wiremock = "0.6"

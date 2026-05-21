@@ -79,10 +79,13 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
     let seed_matches = state.seed_sha256.as_deref() == Some(ctx.manifest.seed.sha256.as_str());
     if !seed_matches {
         apply_seed(&ctx, &ctx.manifest.seed).await?;
-        // Re-seeding invalidates the applied-patches list.
+        // Re-seeding invalidates the applied-patches list, but we keep
+        // patched_host across re-seeds — the seed always contains an
+        // unpatched SGW.exe, so we'll patch fresh below.
         state = InstalledState {
             seed_sha256: Some(ctx.manifest.seed.sha256.clone()),
             applied_patches: Vec::new(),
+            patched_host: None,
         };
         state.save(ctx.install_dir)?;
     }
@@ -99,8 +102,15 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
     let exe = ctx.install_dir.join("SGW.exe");
     if exe.exists() {
         let data = std::fs::read(&exe)?;
-        if patch_rdata::needs_patching(&data) {
-            patch_rdata::patch_exe(&exe, ctx.server_host)?;
+        // Re-patch when:
+        //   - the binary still has the original CME literal (fresh install
+        //     or re-seed), OR
+        //   - the previously-patched host no longer matches `server_host`
+        //     (user edited the config between installs).
+        if patch_rdata::host_differs(&data, ctx.server_host, state.patched_host.as_deref()) {
+            patch_rdata::patch_exe_any(&exe, ctx.server_host, state.patched_host.as_deref())?;
+            state.patched_host = Some(ctx.server_host.to_string());
+            state.save(ctx.install_dir)?;
             info!("Patched SGW.exe hostname to '{}'", ctx.server_host);
         }
     } else {
@@ -385,5 +395,39 @@ mod tests {
             std::fs::read_to_string(out.join("nested/deep.txt")).unwrap(),
             "deep"
         );
+    }
+
+    // Regression guard for the non-panicking HTTP-status branch added in
+    // PR #343's first fixup. Prior to the fix this path called
+    // `error_for_status_ref().unwrap_err()` which would panic on stray
+    // 1xx/3xx; the new code returns `InstallError::UnexpectedStatus`
+    // carrying the status + url.
+    #[tokio::test]
+    async fn download_to_file_returns_unexpected_status_on_non_2xx() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/seed.zip"))
+            .respond_with(ResponseTemplate::new(418))
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join(".tmp-test.zip");
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<Progress>();
+        let url = format!("{}/seed.zip", server.uri());
+        let err = download_to_file(&url, &dest, CancellationToken::new(), 0, "seed", &tx)
+            .await
+            .expect_err("418 must surface as an error, not panic");
+
+        match err {
+            InstallError::UnexpectedStatus { status, url: u } => {
+                assert_eq!(status, 418);
+                assert!(u.ends_with("/seed.zip"));
+            }
+            other => panic!("expected UnexpectedStatus, got {other:?}"),
+        }
     }
 }

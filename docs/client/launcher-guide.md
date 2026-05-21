@@ -432,9 +432,10 @@ The download completed but the file's SHA-256 didn't match the manifest.
   should re-publish the affected blob and verify the manifest hash
   matches.
 
-### "Install failed: Unexpected HTTP 4xx/5xx for …"
+### "Install failed: Unexpected HTTP &lt;status&gt; for …"
 
-The seed or patch blob URL returned an unexpected status.
+The seed or patch blob URL returned a non-success status (anything outside
+`2xx` plus the explicit resume case of `206 Partial Content`).
 
 - **404**: a manifest entry references a blob that wasn't uploaded.
   Operators should verify the upload order (patch blob first, then
