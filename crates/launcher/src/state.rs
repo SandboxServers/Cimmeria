@@ -19,6 +19,27 @@ pub enum StateError {
     Json(#[from] serde_json::Error),
 }
 
+/// Maximum log-upload ledger entries kept in memory + on disk. Each entry
+/// is ~100 bytes; capping at 100 keeps the file under 10 KB even after a
+/// thousand upload clicks. Display use is "have we seen this digest?" so
+/// keeping a sliding window of the most-recent N is sufficient.
+pub const LEDGER_KEEP: usize = 100;
+
+/// Atomic write: stage to `<path>.tmp` then rename onto `path`. NTFS
+/// rename is atomic on the same volume, so a power loss between the
+/// truncate and the finish either leaves the old content or the new
+/// content — never a half-written file that the load path would treat
+/// as "corrupted, fall back to default" (which would silently mean
+/// "nothing installed → re-download the seed").
+pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct InstalledState {
     #[serde(default)]
@@ -48,10 +69,8 @@ impl InstalledState {
 
     pub fn save(&self, install_dir: &Path) -> Result<(), StateError> {
         let path = Self::path(install_dir);
-        if let Some(p) = path.parent() {
-            std::fs::create_dir_all(p)?;
-        }
-        std::fs::write(&path, serde_json::to_string_pretty(self)?)?;
+        let bytes = serde_json::to_vec_pretty(self)?;
+        atomic_write(&path, &bytes)?;
         Ok(())
     }
 
@@ -82,10 +101,8 @@ impl UploadedLedger {
     }
 
     pub fn save(&self, path: &Path) -> Result<(), StateError> {
-        if let Some(p) = path.parent() {
-            std::fs::create_dir_all(p)?;
-        }
-        std::fs::write(path, serde_json::to_string_pretty(self)?)?;
+        let bytes = serde_json::to_vec_pretty(self)?;
+        atomic_write(path, &bytes)?;
         Ok(())
     }
 
@@ -93,12 +110,18 @@ impl UploadedLedger {
         self.entries.iter().any(|e| e.sha256 == sha256)
     }
 
+    /// Records a new upload and prunes oldest entries beyond
+    /// [`LEDGER_KEEP`]. Callers persist with `save()`.
     pub fn record(&mut self, sha256: String, blob_name: String) {
         self.entries.push(UploadedEntry {
             sha256,
             blob_name,
             uploaded_at: chrono::Utc::now(),
         });
+        if self.entries.len() > LEDGER_KEEP {
+            let overflow = self.entries.len() - LEDGER_KEEP;
+            self.entries.drain(0..overflow);
+        }
     }
 }
 

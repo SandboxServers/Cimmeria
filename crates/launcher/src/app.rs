@@ -1,6 +1,6 @@
 //! egui app — top-level UI state machine and panels.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,6 +21,10 @@ const MAX_STATUS_LINES: usize = 1000;
 
 pub struct LauncherApp {
     config: LauncherConfig,
+    /// Editable text buffer for the install-dir TextEdit widget. egui's
+    /// `TextEdit::singleline` takes `&mut String`, but the persisted
+    /// config field is `PathBuf` — this is the sync target.
+    install_path_text: String,
     config_path: PathBuf,
     worker: Worker,
     last_progress: Option<Progress>,
@@ -38,19 +42,21 @@ impl LauncherApp {
         let cp = config_path();
         let config = LauncherConfig::load(&cp).unwrap_or_default();
         let worker = Worker::new(runtime);
-        let installed = if config.install_path.is_empty() {
+        let installed = if path_is_empty(&config.install_path) {
             InstalledState::default()
         } else {
-            InstalledState::load(std::path::Path::new(&config.install_path))
+            InstalledState::load(&config.install_path)
         };
-        let launch_opts = if config.install_path.is_empty() {
+        let launch_opts = if path_is_empty(&config.install_path) {
             LaunchOptions::default()
         } else {
-            LaunchOptions::detect(std::path::Path::new(&config.install_path))
+            LaunchOptions::detect(&config.install_path)
         };
         worker.fetch_manifest_now(config.manifest_url.clone());
+        let install_path_text = config.install_path.to_string_lossy().into_owned();
         Self {
             config,
+            install_path_text,
             config_path: cp,
             worker,
             last_progress: None,
@@ -62,6 +68,12 @@ impl LauncherApp {
             last_refresh: std::time::Instant::now(),
             installing: false,
         }
+    }
+
+    /// Pull the latest text-buffer value into the persisted PathBuf so
+    /// the save path / install_dir comparisons all see the user's edit.
+    fn sync_install_path_from_text(&mut self) {
+        self.config.install_path = PathBuf::from(&self.install_path_text);
     }
 
     /// Append a status line, dropping the oldest entries when the buffer
@@ -122,8 +134,8 @@ impl LauncherApp {
     }
 
     fn refresh_install_state(&mut self) {
-        if !self.config.install_path.is_empty() {
-            let path = std::path::Path::new(&self.config.install_path);
+        if !path_is_empty(&self.config.install_path) {
+            let path = self.config.install_path.as_path();
             self.installed = InstalledState::load(path);
             self.launch_opts = LaunchOptions::detect(path);
         } else {
@@ -131,6 +143,12 @@ impl LauncherApp {
             self.launch_opts = LaunchOptions::default();
         }
     }
+}
+
+/// True iff `p` is an empty path (no components). Replaces the
+/// `String::is_empty()` checks from before the PathBuf migration.
+fn path_is_empty(p: &Path) -> bool {
+    p.as_os_str().is_empty()
 }
 
 impl eframe::App for LauncherApp {
@@ -168,8 +186,9 @@ impl LauncherApp {
     fn show_config_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Install dir:");
-            ui.add(egui::TextEdit::singleline(&mut self.config.install_path).desired_width(380.0));
+            ui.add(egui::TextEdit::singleline(&mut self.install_path_text).desired_width(380.0));
             if ui.button("Save").clicked() {
+                self.sync_install_path_from_text();
                 match self.config.save(&self.config_path) {
                     Ok(_) => {
                         self.push_status("Saved config.".into());
@@ -224,7 +243,7 @@ impl LauncherApp {
         let Some(manifest) = self.manifest.clone() else {
             return;
         };
-        if self.config.install_path.is_empty() {
+        if path_is_empty(&self.config.install_path) {
             ui.label("Set an install directory to enable install / update.");
             return;
         }
@@ -333,7 +352,7 @@ impl LauncherApp {
     }
 
     fn show_launch_panel(&mut self, ui: &mut egui::Ui) {
-        let dir = PathBuf::from(&self.config.install_path);
+        let dir = self.config.install_path.clone();
         let opts = self.launch_opts.clone();
         ui.horizontal(|ui| {
             if ui
@@ -376,10 +395,10 @@ impl LauncherApp {
 
     fn show_log_upload_panel(&mut self, ui: &mut egui::Ui) {
         let sas = LOG_UPLOAD_SAS_URL;
-        let dir = PathBuf::from(&self.config.install_path);
+        let dir = self.config.install_path.clone();
 
         ui.horizontal(|ui| {
-            let enabled = sas.is_some() && !self.config.install_path.is_empty();
+            let enabled = sas.is_some() && !path_is_empty(&self.config.install_path);
             if ui
                 .add_enabled(enabled, egui::Button::new("Upload Debug Logs"))
                 .clicked()

@@ -120,7 +120,7 @@ impl Worker {
         });
 
         self.runtime.spawn(async move {
-            let install_dir = PathBuf::from(&config.install_path);
+            let install_dir = config.install_path.clone();
             let ctx = InstallContext {
                 manifest_url: &config.manifest_url,
                 install_dir: &install_dir,
