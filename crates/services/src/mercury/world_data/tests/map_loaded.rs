@@ -144,11 +144,14 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
     assert_eq!(seqs as usize, packets.len(), "seq count must match fragment count");
     assert!(
         packets.len() < TX_WINDOW_SIZE,
-        "mapLoaded emitted {} fragments — exceeds the 32-slot reliable TX \
-         window cap. Adding a new entity-method record bumped the bundle past \
-         the wire-format ceiling; either split the new record off into a \
-         separate phase or shrink an existing one.",
-        packets.len()
+        "mapLoaded emitted {} fragments — meets or exceeds the {}-slot reliable TX \
+         window cap (must be strictly less than {} to leave headroom for other \
+         in-flight packets). Adding a new entity-method record pushed the bundle \
+         to or past the wire-format ceiling; either split the new record off into \
+         a separate phase or shrink an existing one.",
+        packets.len(),
+        TX_WINDOW_SIZE,
+        TX_WINDOW_SIZE
     );
 }
 

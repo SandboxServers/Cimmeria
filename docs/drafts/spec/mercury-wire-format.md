@@ -485,7 +485,7 @@ When the send-alive timer expires, `UnAckedHandler::sendAckBundle2`[^send-ack-bu
 
 **Reliability classification — server emit policy.** The 32-bit outstanding-ack bitmap is the per-channel reliable-stream capacity. Every packet a server emit site chooses to send reliably consumes one of those 32 slots until it acks. Two consequences:
 
-1. Any emit shape whose sustained rate would exceed `32 / RTT` packets per second cannot fit in the reliable stream; the bitmap stays full and downstream emits stall. At Lomadia-grade RTT (~150 ms) that ceiling is ~21 packets/sec.
+1. A reliable burst that sends more than 32 packets before the first ACK returns will saturate the bitmap and back-pressure every subsequent emit. The world-entry sequence (~27–30 reliable packets) is the canonical example; any concurrent reliable emission during that window tips the count past the 32-slot cap.
 2. A reliable burst (world-entry, batch broadcasts) must fit within the 32-slot cap end-to-end or the tail of the burst back-pressures itself.
 
 R12 codifies the receiver-side stall path; the emit-side decision is which packet types go reliable in the first place. The canonical classification:
@@ -500,7 +500,7 @@ R12 codifies the receiver-side stall path; the emit-side decision is which packe
 | **`tickSync` heartbeat** | **Unreliable** | **unreliable** | **no** | 10 Hz cadence; sustained reliable use would saturate the 32-slot window. Loss is self-correcting (next tick 100 ms later supersedes). Piggybacks ACKs — the ACK bitmap is idempotent on the receiver so re-sending the same ACK on a later tickSync is harmless |
 | AoI position update (`avatarUpdate`) | Unreliable | unreliable | no | Frame-fresh; next emission supersedes loss. Reliable use would burst-saturate during dense AoI clusters |
 
-The cap is wire-architectural — the 32-bit ACK bitmap cannot be widened without a client-side change, and the client is the immovable side. Any new packet type emitted at >`32 / RTT` rate **must** ride the unreliable counter. Two-counter separation is canon: see the receiver-side `inSeqAt`-vs-unreliable-dedup split below.
+The cap is wire-architectural — the 32-bit ACK bitmap cannot be widened without a client-side change, and the client is the immovable side. Any new packet type whose burst volume can exceed 32 in-flight packets before ACKs return **must** ride the unreliable counter. Two-counter separation is canon: see the receiver-side `inSeqAt`-vs-unreliable-dedup split below.
 
 [Cimmeria server-side note: the reliable counter is `ConnectedClientState::next_seq`; the unreliable counter is `next_seq_unreliable`. The two counters start at the same value (0) — they do not share state on the receiver (`inSeqAt` at `+0x50` tracks reliable; the unreliable dedup structure at `+0x128` is independent), so a reliable seq 0 and an unreliable seq 0 do not collide. Mixing the two — emitting unreliable packets on the reliable counter — leaves permanent gaps in the reliable stream that stall every subsequent reliable emit (the failure mode that produced the bitmap-stall log spam during 2026-05 deploys).]
 

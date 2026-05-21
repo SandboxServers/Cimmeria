@@ -75,13 +75,10 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
 /// expectation of contiguity (a lost reliable seq stalls all subsequent
 /// reliable delivery) is satisfied regardless of how many ticks fire.
 ///
-/// Why not reliable: tickSync fires at 10 Hz. At Lomadia-grade RTT (~150 ms
-/// to Europe) any sustained reliable rate above `32 / RTT` ≈ 21/sec will
-/// briefly saturate the 32-slot TX window during the world-entry burst
-/// (char list + versionInfo responses + resourceFragments), and the
-/// architectural 32-slot cap can't go bigger because the client's ack
-/// bitmap is 32 bits wide. Keeping tickSync unreliable removes that
-/// pressure entirely. Loss tolerance: a dropped tick is superseded by
+/// Why not reliable: tickSync fires at 10 Hz. The world-entry burst sends
+/// ~27–30 reliable packets before the first ACK returns; any concurrent
+/// reliable tickSync emission during that window would push the in-flight
+/// count past the 32-slot TX-window cap and back-pressure downstream emits.
 /// the next tick 100 ms later, on the next unreliable seq — the
 /// receiver's unreliable dedup window absorbs occasional gaps and the
 /// `gameTime` field self-corrects on the next successful arrival.
