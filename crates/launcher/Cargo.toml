@@ -34,6 +34,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 # second launcher process opening the same lock fails `try_lock_exclusive`
 # instead of stomping shared state.
 fs4 = "0.13"
+# Ed25519 detached signature verification on the manifest. Defaults off
+# bring the dep down to just what we need (no rand for signing — the
+# launcher only verifies — and no PEM/PKCS#8 parsing).
+ed25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
 
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
