@@ -21,6 +21,11 @@ pub enum LaunchError {
     NotFound(PathBuf),
     #[error("Failed to spawn process: {0}")]
     Spawn(#[from] std::io::Error),
+    #[error("Launch target {target} escapes the install directory {install_dir}")]
+    PathEscape {
+        install_dir: PathBuf,
+        target: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -66,15 +71,48 @@ fn spawn(install_dir: &Path, file: &str, via_cmd: bool) -> Result<u32, LaunchErr
     if !path.exists() {
         return Err(LaunchError::NotFound(path));
     }
+    // Defence-in-depth (Cady #4h): canonicalize both the install dir and
+    // the target path, then check that the target is still under the
+    // install dir. `install_dir` comes from the user-editable config —
+    // this isn't a privilege boundary (the user chose the path) but
+    // catches accidents like a config entry pointing into a junction
+    // that resolves outside its declared root, which would otherwise
+    // let an Atrea bat in an unexpected location run with the install
+    // dir's cwd.
+    let canon_install = install_dir.canonicalize()?;
+    let canon_target = path.canonicalize()?;
+    if !canon_target.starts_with(&canon_install) {
+        return Err(LaunchError::PathEscape {
+            install_dir: canon_install,
+            target: canon_target,
+        });
+    }
     let child = if via_cmd {
         // `.bat` files need `cmd.exe /C` to spawn properly on Windows.
         let mut c = Command::new("cmd");
-        c.arg("/C").arg(&path).current_dir(install_dir);
+        c.arg("/C").arg(&canon_target).current_dir(&canon_install);
         c.spawn()?
     } else {
-        Command::new(&path).current_dir(install_dir).spawn()?
+        Command::new(&canon_target)
+            .current_dir(&canon_install)
+            .spawn()?
     };
     Ok(child.id())
+}
+
+/// Best-effort writability probe: tries to create + remove a tiny file
+/// in `dir`. Used by the install panel to disable the Install / Update
+/// button when the chosen install directory isn't writable (e.g. user
+/// picked `C:\Program Files\…` without UAC elevation), instead of
+/// letting the download succeed and the extract fail opaquely.
+pub fn install_dir_writable(dir: &Path) -> bool {
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".launcher-write-probe");
+    let ok = std::fs::write(&probe, b"x").is_ok();
+    let _ = std::fs::remove_file(&probe);
+    ok
 }
 
 #[cfg(test)]
@@ -116,5 +154,21 @@ mod tests {
         let opts = LaunchOptions::detect(dir.path());
         assert!(!opts.sgw_present);
         assert!(!opts.atera_available());
+    }
+
+    #[test]
+    fn install_dir_writable_succeeds_on_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(install_dir_writable(dir.path()));
+        // Probe file should not be left behind.
+        assert!(!dir.path().join(".launcher-write-probe").exists());
+    }
+
+    #[test]
+    fn install_dir_writable_creates_missing_parents() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("nested").join("install");
+        assert!(install_dir_writable(&nested));
+        assert!(nested.exists());
     }
 }

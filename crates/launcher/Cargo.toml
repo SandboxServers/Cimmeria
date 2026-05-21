@@ -30,6 +30,10 @@ zip = { workspace = true }
 walkdir = "2"
 gethostname = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+# Maintained fork of `fs2`. Used for the single-instance file lock — a
+# second launcher process opening the same lock fails `try_lock_exclusive`
+# instead of stomping shared state.
+fs4 = "0.13"
 
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

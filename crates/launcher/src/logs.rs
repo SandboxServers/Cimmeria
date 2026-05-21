@@ -33,6 +33,8 @@ pub enum LogError {
     Http(#[from] reqwest::Error),
     #[error("Storage server returned {status}: {body}")]
     BadResponse { status: u16, body: String },
+    #[error("Refusing to upload over non-HTTPS URL")]
+    InsecureUrl,
 }
 
 fn collect_log_inputs(install_dir: &Path) -> Vec<PathBuf> {
@@ -124,6 +126,9 @@ pub async fn upload_blob(
     blob_name: &str,
     body: Vec<u8>,
 ) -> Result<(), LogError> {
+    if !sas_base.starts_with("https://") {
+        return Err(LogError::InsecureUrl);
+    }
     let url = insert_blob_path(sas_base, blob_name);
     let resp = http
         .put(&url)
@@ -277,6 +282,15 @@ mod tests {
     fn insert_blob_path_without_query() {
         let u = insert_blob_path("https://x.blob.core.windows.net/sgw", "logs/a.zip");
         assert_eq!(u, "https://x.blob.core.windows.net/sgw/logs/a.zip");
+    }
+
+    #[tokio::test]
+    async fn upload_blob_rejects_non_https() {
+        let http = reqwest::Client::new();
+        let err = upload_blob(&http, "http://example.com/sgw", "logs/a.zip", vec![])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, LogError::InsecureUrl));
     }
 
     #[test]

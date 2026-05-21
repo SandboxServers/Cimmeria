@@ -9,7 +9,7 @@ use tokio::runtime::Runtime;
 
 use crate::config::{config_path, ledger_path, LauncherConfig, LOG_UPLOAD_SAS_URL};
 use crate::install::Progress;
-use crate::launch::LaunchOptions;
+use crate::launch::{install_dir_writable, LaunchOptions};
 use crate::manifest::Manifest;
 use crate::state::InstalledState;
 use crate::worker::{Command, Event, Worker};
@@ -286,9 +286,26 @@ impl LauncherApp {
         }
 
         let installing = self.installing;
+        // Probe writability of the install dir before we let the user
+        // click Install / Update. Without this, picking `C:\Program Files\…`
+        // without UAC produces an opaque mid-extract "Access denied" after
+        // gigabytes of download. (Cady #2 admin-rights gap.)
+        let writable = install_dir_writable(&self.config.install_path);
+        if !writable {
+            ui.colored_label(
+                egui::Color32::RED,
+                format!(
+                    "Install dir '{}' is not writable. Choose another path or run as admin.",
+                    self.config.install_path.display()
+                ),
+            );
+        }
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(!installing, egui::Button::new("Install / Update"))
+                .add_enabled(
+                    !installing && writable,
+                    egui::Button::new("Install / Update"),
+                )
                 .clicked()
             {
                 if let Err(e) = self.config.save(&self.config_path) {

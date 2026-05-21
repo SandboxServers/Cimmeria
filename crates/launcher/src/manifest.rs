@@ -30,6 +30,8 @@ pub enum ManifestError {
     UnsupportedSchema(u32),
     #[error("Manifest patch graph is broken: {0}")]
     BrokenChain(String),
+    #[error("Refusing to fetch manifest over non-HTTPS URL: {0}")]
+    InsecureUrl(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +86,12 @@ impl Manifest {
 }
 
 pub async fn fetch_manifest(http: &reqwest::Client, url: &str) -> Result<Manifest, ManifestError> {
+    // Belt-and-braces with `Client::https_only(true)`: explicit prefix
+    // check here gives a friendlier error than "https_only enforced by
+    // policy" if a user types `http://...` in the manifest URL field.
+    if !url.starts_with("https://") {
+        return Err(ManifestError::InsecureUrl(url.to_string()));
+    }
     let body = http
         .get(url)
         .send()
@@ -228,6 +236,15 @@ mod tests {
             "seed/s.zip",
         );
         assert_eq!(u, "https://x.blob.core.windows.net/sgw/seed/s.zip");
+    }
+
+    #[tokio::test]
+    async fn fetch_manifest_rejects_non_https() {
+        let http = reqwest::Client::new();
+        let err = fetch_manifest(&http, "http://example.com/manifest.json")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ManifestError::InsecureUrl(_)));
     }
 
     #[test]
