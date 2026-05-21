@@ -489,11 +489,11 @@ mod tests {
     /// does for actual reliable packets) and silently start filling
     /// the 32-slot window again.
     ///
-    /// The test calls [`tick_sync_packet`] — the same extracted function
-    /// `run_tick_loop` calls — so the guard exercises the actual production
-    /// code path rather than an independent reimplementation. If a future
-    /// change modifies `tick_sync_packet` to register packets in the TX
-    /// window, this assertion fires.
+    /// The test calls [`tick_sync_packet`] — the same function `run_tick_loop`
+    /// delegates to — so any registration logic added *inside that function*
+    /// will cause the assertion to fire. Note the guard's scope: a
+    /// `shadow_register_reliable_send` call added *at the call site in
+    /// `run_tick_loop`* (outside the helper) would still slip past this test.
     ///
     /// [`tick_sync_packet`]: crate::base::tick_sync::tick_sync_packet
     #[test]
@@ -520,7 +520,8 @@ mod tests {
         // The UDP send is omitted — the TX-window-pressure failure mode is
         // about register_sent_packet calls, not socket I/O.
         for tick in 0..10u32 {
-            let _pkt = tick_sync_packet(&state.next_seq_unreliable, &state.key, tick, &[]);
+            let (_seq_id, _pkt) =
+                tick_sync_packet(&state.next_seq_unreliable, &state.key, tick, &[]);
         }
 
         // The reliable TX window must be unchanged. If a future refactor
