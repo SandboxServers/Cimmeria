@@ -8,6 +8,7 @@ use super::*;
 mod bandolier;
 mod entity_encoding;
 mod map_loaded;
+mod player_creation;
 mod stargates;
 mod stats;
 
@@ -51,6 +52,41 @@ fn sample_world_entry() -> WorldEntryInfo {
         class_id: 0x02,
         world_stargates: vec![],
     }
+}
+
+/// Walk an entity-method body and return the (method_index, byte_offset)
+/// of each record in encounter order. Stops at the first non-record byte.
+///
+/// Used by both the fragmentation tests in `map_loaded` and the player
+/// creation/appearance ordering tests in `player_creation`.
+pub(super) fn walk_entity_method_records(body: &[u8]) -> Vec<(u16, usize)> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < body.len() {
+        let b = body[i];
+        if !(0x80..=0xBD).contains(&b) {
+            break;
+        }
+        if i + 3 > body.len() {
+            break;
+        }
+        let word_len = u16::from_le_bytes([body[i + 1], body[i + 2]]) as usize;
+        let record_end = i + 3 + word_len;
+        if record_end > body.len() {
+            break;
+        }
+        let method_index = if b == 0xBD {
+            if i + 7 >= body.len() {
+                break;
+            }
+            61 + body[i + 7] as u16
+        } else {
+            (b & 0x7F) as u16
+        };
+        out.push((method_index, i));
+        i = record_end;
+    }
+    out
 }
 
 /// Locate a `setupStargateInfo` (method index 65, extended encoding) call for
