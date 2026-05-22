@@ -79,9 +79,10 @@ pub fn build_time_sync(key: &[u8; 32], seq_id: u32) -> Vec<u8> {
 /// ~27–30 reliable packets before the first ACK returns; any concurrent
 /// reliable tickSync emission during that window would push the in-flight
 /// count past the 32-slot TX-window cap and back-pressure downstream emits.
-/// the next tick 100 ms later, on the next unreliable seq — the
-/// receiver's unreliable dedup window absorbs occasional gaps and the
-/// `gameTime` field self-corrects on the next successful arrival.
+/// Loss tolerance: a dropped tick is superseded by the next tick 100 ms
+/// later, on the next unreliable seq — the receiver's unreliable dedup
+/// window absorbs occasional gaps and the `gameTime` field self-corrects
+/// on the next successful arrival.
 ///
 /// **ACK piggybacking on an unreliable packet is intentional and safe.**
 /// ACKs are idempotent on the receiver (its cumulative-ack bitmap absorbs
