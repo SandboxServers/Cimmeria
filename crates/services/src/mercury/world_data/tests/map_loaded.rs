@@ -3,40 +3,8 @@
 //! Mercury fragmentation framing they ride on.
 
 use super::super::*;
-use super::{sample_player_load_data, sample_world_entry, TEST_KEY};
+use super::{sample_player_load_data, sample_world_entry, walk_entity_method_records, TEST_KEY};
 use cimmeria_mercury::encryption::MercuryEncryption;
-
-/// Walk an entity-method body and return the (method_index, byte_offset)
-/// of each record in encounter order. Stops at the first non-record byte.
-fn walk_entity_method_records(body: &[u8]) -> Vec<(u16, usize)> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < body.len() {
-        let b = body[i];
-        if !(0x80..=0xBD).contains(&b) {
-            break;
-        }
-        if i + 3 > body.len() {
-            break;
-        }
-        let word_len = u16::from_le_bytes([body[i + 1], body[i + 2]]) as usize;
-        let record_end = i + 3 + word_len;
-        if record_end > body.len() {
-            break;
-        }
-        let method_index = if b == 0xBD {
-            if i + 7 >= body.len() {
-                break;
-            }
-            61 + body[i + 7] as u16
-        } else {
-            (b & 0x7F) as u16
-        };
-        out.push((method_index, i));
-        i = record_end;
-    }
-    out
-}
 
 #[test]
 fn build_on_player_data_loaded_uses_correct_msg_id() {
@@ -106,6 +74,91 @@ fn build_map_loaded_produces_multiple_packets() {
     for (i, pkt) in packets.iter().enumerate() {
         assert!(!pkt.is_empty(), "packet {} should not be empty", i);
     }
+}
+
+/// Mercury's 32-bit per-session ACK bitmap limits the reliable TX window
+/// to 32 in-flight packets. The world-entry burst is the densest
+/// reliable emission the server does — `build_map_loaded` alone returns
+/// multiple fragments, and the surrounding flow adds more (charList,
+/// versionInfo, resourceFragments, createBasePlayer). If the burst ever
+/// exceeds 32 packets the receiver back-pressures and tickSync ACKs
+/// stall until the window drains.
+///
+/// This guard pins `build_map_loaded` itself — by far the dominant
+/// fragment source in the burst — at well under the 32-packet ceiling.
+/// Adding new entity-method records to the bundle is fine; pushing the
+/// fragment count above the ceiling is a wire-format regression that
+/// would re-introduce the bug the split-counter design was meant to
+/// fix from the other side (this one tightens the reliable side; the
+/// tickSync split tightens the unreliable side).
+#[test]
+fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
+    use cimmeria_mercury::consts::TX_WINDOW_SIZE;
+
+    // Worst-case mapLoaded: a level-20 player with all archetype slots
+    // populated, a non-trivial component list, a full ability tree, and
+    // every stargate already discovered. If a fresh-character fixture
+    // fits, a more decorated one must too, but explicitly biasing toward
+    // worst-case makes the guard meaningful.
+    let data = PlayerLoadData {
+        player_id: 1,
+        level: 20,
+        player_name: "FragmentStressTester".into(),
+        extra_name: "Twenty-Char-Extra-Nm".into(),
+        alignment: 2,
+        archetype: 2,
+        gender: 1,
+        bodyset: "BS_HumanMale.BS_HumanMale".into(),
+        components: vec![
+            "BS_HumanMale.Head".into(),
+            "BS_HumanMale.Torso".into(),
+            "BS_HumanMale.Arms".into(),
+            "BS_HumanMale.Legs".into(),
+            "BS_HumanMale.Boots".into(),
+        ],
+        weapon_visual: None,
+        exp: 999_999,
+        naquadah: 99_999,
+        known_stargates: (1..=64).collect(),
+        abilities: (1..=64).collect(),
+        training_points: 40,
+        applied_science_points: 20,
+        blueprint_ids: vec![],
+        first_login: 0,
+        access_level: 0,
+        skin_color_id: 0,
+        ability_tree: archetype_ability_tree(2),
+        items: vec![],
+        active_bandolier_slot: 0,
+        bandolier_items: vec![],
+    };
+    let entry = WorldEntryInfo {
+        player_entity_id: 100,
+        space_id: 65552,
+        pos: [0.0; 3],
+        rot: [0.0; 3],
+        world_name: "CombatSim".into(),
+        class_id: 0x02,
+        world_stargates: vec![],
+    };
+
+    let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
+    assert_eq!(
+        seqs as usize,
+        packets.len(),
+        "seq count must match fragment count"
+    );
+    assert!(
+        packets.len() < TX_WINDOW_SIZE,
+        "mapLoaded emitted {} fragments — meets or exceeds the {}-slot reliable TX \
+         window cap (must be strictly less than {} to leave headroom for other \
+         in-flight packets). Adding a new entity-method record pushed the bundle \
+         to or past the wire-format ceiling; either split the new record off into \
+         a separate phase or shrink an existing one.",
+        packets.len(),
+        TX_WINDOW_SIZE,
+        TX_WINDOW_SIZE
+    );
 }
 
 #[test]
@@ -394,252 +447,6 @@ fn build_map_loaded_omits_first_login_cinematic_from_bundle() {
          in mapLoaded bundle bytes"
     );
 }
-
-/// `build_enter_world_body`'s `forcedPosition` emit must place the spawn
-/// position into the previous-position reference slot (offsets 24-35 of the
-/// 49-byte `forcedPosition` payload, body offsets 74-85). Emitting zeros
-/// there causes the client's camera-attach code to interpolate from world
-/// origin (0,0,0) to the spawn position on the first frame, visibly
-/// clipping through the world floor.
-///
-/// Reverting the fix (re-introducing a `[0.0f32, 0.0, 0.0]` literal in the
-/// prev-position slot) must break this test. See `spec.protocol.mercury`
-/// §1.10.6 + §1.16 Q3 closure (Ghidra `ProcessForcedEntityPosition` at
-/// `0x00dd9ee0`).
-#[test]
-fn enter_world_body_forced_position_prev_pos_equals_spawn() {
-    let info = WorldEntryInfo {
-        player_entity_id: 100,
-        space_id: 0x0001_0010,
-        pos: [123.5, 456.25, 789.0],
-        rot: [0.0, 0.0, 0.0],
-        world_name: "CombatSim".into(),
-        class_id: 0x02,
-        world_stargates: vec![],
-    };
-    // None for `load`: keep the original 99-byte VIEWPORT+CELL+FORCED layout
-    // so this test pins the prev-pos slot independently of the appearance
-    // insertion. The appearance-injection variant is covered separately.
-    let body = build_enter_world_body(&info, None);
-    // Sanity: total body length matches the documented 99-byte assembly
-    // (spaceViewport 14 + createCellPlayer 35 + forcedPosition 50).
-    assert_eq!(body.len(), 99, "enter-world body must be exactly 99 bytes");
-    // forcedPosition starts at offset 49 (msg_id 0x31).
-    assert_eq!(
-        body[49],
-        crate::mercury::BASEMSG_FORCED_POSITION,
-        "forcedPosition record must start at body offset 49"
-    );
-    // pos at body offsets 62-73, prev_pos at body offsets 74-85.
-    assert_eq!(&body[62..66], &123.5f32.to_le_bytes(), "pos.x");
-    assert_eq!(&body[66..70], &456.25f32.to_le_bytes(), "pos.y");
-    assert_eq!(&body[70..74], &789.0f32.to_le_bytes(), "pos.z");
-    assert_eq!(
-        &body[74..78],
-        &123.5f32.to_le_bytes(),
-        "prev_pos.x must equal spawn pos (zero would slide camera through floor)"
-    );
-    assert_eq!(
-        &body[78..82],
-        &456.25f32.to_le_bytes(),
-        "prev_pos.y must equal spawn pos (zero would slide camera through floor)"
-    );
-    assert_eq!(
-        &body[82..86],
-        &789.0f32.to_le_bytes(),
-        "prev_pos.z must equal spawn pos (zero would slide camera through floor)"
-    );
-}
-
-/// `build_enter_world_body(info, Some(load))` must emit
-/// `BeingAppearance` + `onEntityTint` BETWEEN `spaceViewportInfo` and
-/// `createCellPlayer`. Live-debug evidence
-/// (`logs/x64dbg-issue288-run3-analysis.txt`) showed the client's
-/// `createCellPlayer` handler internally calls the appearance gate at
-/// `retaddr=DD1DEF` — by setting the bodyset before that handler runs, the
-/// internal gate evaluates against the bodyset and the renderable entity
-/// comes up with the model on its first render frame.
-#[test]
-fn enter_world_body_with_load_inserts_appearance_before_cell_player() {
-    use crate::mercury::method_idx;
-
-    let info = sample_world_entry();
-    let load = sample_player_load_data();
-    let body = build_enter_world_body(&info, Some(&load));
-
-    // spaceViewportInfo is the first 14 bytes (msg_id 0x08 + 4+4+4 ids + 1 viewport).
-    assert_eq!(
-        body[0],
-        crate::mercury::BASEMSG_SPACE_VIEWPORT_INFO,
-        "first record must be spaceViewportInfo"
-    );
-    let after_viewport = &body[14..];
-    let records = walk_entity_method_records(after_viewport);
-    assert!(
-        records.len() >= 2,
-        "expected at least 2 entity-method records between viewport and createCellPlayer, got {}",
-        records.len()
-    );
-    assert_eq!(
-        records[0].0,
-        method_idx::BEING_APPEARANCE,
-        "BeingAppearance must immediately follow spaceViewportInfo — \
-         must be set on the entity BEFORE createCellPlayer so the cell-creation \
-         handler's internal appearance gate (Ghidra retaddr 0xDD1DEF) picks up \
-         the bodyset on the renderable entity's first frame"
-    );
-    assert_eq!(
-        records[1].0,
-        method_idx::ON_ENTITY_TINT,
-        "onEntityTint must follow BeingAppearance and still precede createCellPlayer"
-    );
-
-    // After the two appearance records, the next byte must be the
-    // createCellPlayer msg_id (0x06), confirming appearance sits BEFORE cell.
-    let (_, tint_offset) = records[1];
-    let tint_record = &after_viewport[tint_offset..];
-    // Record header is 3 bytes (msg_id + u16 word_len) + word_len bytes of payload.
-    let tint_payload_len = u16::from_le_bytes([tint_record[1], tint_record[2]]) as usize;
-    let tint_record_end = 3 + tint_payload_len;
-    let after_appearance = &tint_record[tint_record_end..];
-    assert_eq!(
-        after_appearance[0],
-        crate::mercury::BASEMSG_CREATE_CELL_PLAYER,
-        "createCellPlayer (msg 0x06) must immediately follow the appearance + tint pair"
-    );
-}
-
-/// `build_create_player` must pre-warm the body-model assets by emitting
-/// `BeingAppearance` + `onEntityTint` **between** `CREATE_BASE_PLAYER` and
-/// `onClientMapLoad` when load data is supplied. Without the pre-warm the
-/// client allocates the entity, starts terrain load, and only later (after
-/// `mapLoaded` round-trip + entity-data bundle) receives the bodyset —
-/// leaving a window where the dev-cube placeholder is rendered. Asserts
-/// the records appear in exactly that order in the decrypted body.
-#[test]
-fn create_player_with_load_data_prewarms_bodyset_before_map_load() {
-    use crate::mercury::method_idx;
-
-    let info = sample_world_entry();
-    let load = sample_player_load_data();
-    let pkt = build_create_player(&TEST_KEY, 1, &[], &info, Some(&load));
-    let enc = MercuryEncryption::from_session_key(TEST_KEY);
-    let pt = enc.decrypt(&pkt).unwrap();
-    // Body starts at offset 1 (offset 0 is flags). The first record must be
-    // CREATE_BASE_PLAYER (0x05).
-    assert_eq!(
-        pt[1],
-        crate::mercury::BASEMSG_CREATE_BASE_PLAYER,
-        "first record must be CREATE_BASE_PLAYER"
-    );
-    // CREATE_BASE_PLAYER is 9 bytes total: [0x05][len:u16=6][entity:u32][class:u8][pad:u8].
-    // So the next record begins at body offset 9.
-    let after_create = &pt[1 + 9..];
-    let records = walk_entity_method_records(after_create);
-    assert!(
-        records.len() >= 3,
-        "expected ≥3 entity-method records after CREATE_BASE_PLAYER, got {}",
-        records.len()
-    );
-    assert_eq!(
-        records[0].0,
-        method_idx::BEING_APPEARANCE,
-        "BeingAppearance must be the FIRST entity-method after CREATE_BASE_PLAYER — \
-         the client kicks off async model load on receipt; emitting it after \
-         onClientMapLoad delays the load until the terrain round-trip finishes \
-         and leaves a dev-cube placeholder window"
-    );
-    assert_eq!(
-        records[1].0,
-        method_idx::ON_ENTITY_TINT,
-        "onEntityTint must follow BeingAppearance so the model loads with the \
-         correct skin tint instead of defaulting and then re-tinting"
-    );
-    assert_eq!(
-        records[2].0,
-        method_idx::ON_CLIENT_MAP_LOAD,
-        "onClientMapLoad must come LAST so the terrain load runs in parallel \
-         with the already-started model load"
-    );
-}
-
-/// Backwards-compat: passing `None` for `load` must keep the original
-/// two-record body (CREATE_BASE_PLAYER + onClientMapLoad). Guards the
-/// reanchor / GM-spawn / test paths where appearance data isn't available.
-#[test]
-fn create_player_without_load_data_emits_only_create_and_map_load() {
-    use crate::mercury::method_idx;
-
-    let info = sample_world_entry();
-    let pkt = build_create_player(&TEST_KEY, 1, &[], &info, None);
-    let enc = MercuryEncryption::from_session_key(TEST_KEY);
-    let pt = enc.decrypt(&pkt).unwrap();
-    assert_eq!(pt[1], crate::mercury::BASEMSG_CREATE_BASE_PLAYER);
-    let after_create = &pt[1 + 9..];
-    let records = walk_entity_method_records(after_create);
-    assert_eq!(
-        records.len(),
-        1,
-        "no-load path must emit exactly one entity-method (onClientMapLoad), got {}",
-        records.len()
-    );
-    assert_eq!(records[0].0, method_idx::ON_CLIENT_MAP_LOAD);
-}
-
-/// `BeingAppearance` (method 26) and `onEntityTint` (method 10) must land
-/// in the first mapLoaded fragment so the player entity has a body model
-/// from the moment `createCellPlayer` arrives. Moving them back to the
-/// middle of the body (positions 15-16) puts them in fragment 4-5, leaving
-/// a ~50-200 ms model-load gap.
-///
-/// Pin: the first three entity-method records emitted are
-/// `setupWorldParameters`, `BeingAppearance`, `onEntityTint` (in that order),
-/// and their byte offsets all sit comfortably inside `FRAGMENT_BODY_SIZE`.
-#[test]
-fn map_loaded_being_appearance_lands_in_first_fragment() {
-    use crate::mercury::method_idx;
-    use cimmeria_mercury::packet::FRAGMENT_BODY_SIZE;
-
-    let data = sample_player_load_data();
-    let entry = sample_world_entry();
-    let body = build_map_loaded_body(100, &data, &entry);
-    let records = walk_entity_method_records(&body);
-    assert!(
-        records.len() >= 3,
-        "mapLoaded body must contain at least 3 entity-method records, got {}",
-        records.len()
-    );
-    assert_eq!(
-        records[0].0,
-        method_idx::SETUP_WORLD_PARAMETERS,
-        "record 0 must be setupWorldParameters"
-    );
-    assert_eq!(
-        records[1].0,
-        method_idx::BEING_APPEARANCE,
-        "record 1 must be BeingAppearance — must land in the first fragment alongside createCellPlayer or the player entity renders without a body model for the time it takes the rest of the bundle to arrive"
-    );
-    assert_eq!(
-        records[2].0,
-        method_idx::ON_ENTITY_TINT,
-        "record 2 must be onEntityTint — pairs with BeingAppearance so the model loads with the correct tint instead of defaulting then re-tinting"
-    );
-    let (_, being_offset) = records[1];
-    let (_, tint_offset) = records[2];
-    assert!(
-        being_offset < FRAGMENT_BODY_SIZE,
-        "BeingAppearance offset {} must fall inside FRAGMENT_BODY_SIZE ({})",
-        being_offset,
-        FRAGMENT_BODY_SIZE
-    );
-    assert!(
-        tint_offset < FRAGMENT_BODY_SIZE,
-        "onEntityTint offset {} must fall inside FRAGMENT_BODY_SIZE ({})",
-        tint_offset,
-        FRAGMENT_BODY_SIZE
-    );
-}
-
 /// Encode `s` the same way `write_wstring` does (length-prefixed UTF-16LE)
 /// and return the **payload bytes only** — the UTF-16LE code units, no
 /// length prefix. That's the substring a reader needs to grep for inside

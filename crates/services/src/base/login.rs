@@ -106,15 +106,20 @@ pub(crate) async fn handle_login(
     socket.send_to(&sync, addr).await?;
 
     // Register for Phase 4 encrypted traffic.
-    let (pending_acks_arc, last_recv_arc, next_seq_arc, cancelled_arc) = {
+    let (pending_acks_arc, last_recv_arc, next_seq_unreliable_arc, cancelled_arc) = {
         let next_seq = Arc::new(AtomicU32::new(3));
+        let next_seq_unreliable = Arc::new(AtomicU32::new(0));
         let pending_acks = Arc::new(Mutex::new(Vec::new()));
         let last_recv = Arc::new(Mutex::new(Instant::now()));
         let cancelled = Arc::new(AtomicBool::new(false));
+        // `next_seq` (reliable) is consumed by `ConnectedClientState` below and by
+        // application-packet paths that pull from `clients[addr].next_seq`; the
+        // tick-loop only needs `next_seq_unreliable`, so the reliable counter
+        // does not appear in the spawn-argument tuple.
         let arcs = (
             Arc::clone(&pending_acks),
             Arc::clone(&last_recv),
-            Arc::clone(&next_seq),
+            Arc::clone(&next_seq_unreliable),
             Arc::clone(&cancelled),
         );
 
@@ -131,7 +136,7 @@ pub(crate) async fn handle_login(
                 pending_player_entity_id: None,
                 player_entity_id: None,
                 next_seq,
-                next_seq_unreliable: Arc::new(AtomicU32::new(0)),
+                next_seq_unreliable,
                 pending_acks,
                 last_recv,
                 account_entity_id: entity_manager.lock().unwrap().create_entity("Account").0 as u32,
@@ -170,7 +175,7 @@ pub(crate) async fn handle_login(
         Arc::clone(socket),
         addr,
         key,
-        next_seq_arc,
+        next_seq_unreliable_arc,
         pending_acks_arc,
         last_recv_arc,
         cancelled_arc,
