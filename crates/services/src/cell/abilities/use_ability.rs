@@ -312,6 +312,17 @@ pub async fn handle_use_ability(
         .abilities
         .start_ability_cooldown(ability_id, cooldown_duration);
 
+    // Stash the just-fired ability so `setAutoCycle(1)` can fire
+    // immediately on the next button press without waiting for the
+    // player to right-click an enemy first. Distinct from
+    // `auto_cycle_ability_id` (the LOOP's committed ability, cleared
+    // on stop): this field persists across auto-cycle on/off cycles
+    // and only zeroes on death/respawn. NPCs don't get this stash —
+    // they use `chooseAbility` which selects fresh per-fire.
+    if entity.is_player {
+        entity.abilities.last_fired_ability_id = Some(ability_id);
+    }
+
     // ── Auto-cycle commit-time arm / deactivate ──────────────────────
     //
     // Now that the cast has committed (cooldown started), reconcile the
@@ -1039,11 +1050,6 @@ mod tests {
             Some(7),
             "ability id must be stashed for the driver tick to re-fire",
         );
-        assert_eq!(
-            e.abilities.auto_cycle_target_id,
-            Some(0),
-            "target id must be stashed even for self-cast (target_id=0)",
-        );
         assert_ne!(
             e.state_field & BSF_AUTO_CYCLING,
             0,
@@ -1093,7 +1099,6 @@ mod tests {
             // manual-override exit path).
             p.abilities.auto_cycle = true;
             p.abilities.auto_cycle_ability_id = Some(7);
-            p.abilities.auto_cycle_target_id = Some(0);
             p.set_state_flag(BSF_AUTO_CYCLING);
             p.weapon_holstered = false;
         }
@@ -1112,7 +1117,6 @@ mod tests {
             "AF_DEACTIVATE_AUTO_CYCLE must clear the auto_cycle flag",
         );
         assert!(e.abilities.auto_cycle_ability_id.is_none());
-        assert!(e.abilities.auto_cycle_target_id.is_none());
         assert_eq!(
             e.state_field & BSF_AUTO_CYCLING,
             0,
@@ -1145,7 +1149,6 @@ mod tests {
             p.abilities.add_ability(8); // different ability
             p.abilities.auto_cycle = true;
             p.abilities.auto_cycle_ability_id = Some(7); // armed on ability 7
-            p.abilities.auto_cycle_target_id = Some(99);
             p.set_state_flag(BSF_AUTO_CYCLING);
             p.weapon_holstered = false;
         }
@@ -1163,7 +1166,6 @@ mod tests {
             "different-ability manual fire must clear the auto_cycle flag",
         );
         assert!(e.abilities.auto_cycle_ability_id.is_none());
-        assert!(e.abilities.auto_cycle_target_id.is_none());
         assert_eq!(
             e.state_field & BSF_AUTO_CYCLING,
             0,
@@ -1172,9 +1174,11 @@ mod tests {
     }
 
     /// Same-ability manual fire while auto-cycle is armed does NOT
-    /// cancel the loop — it just refreshes the target stash. Right-
-    /// clicking the same weapon on a new enemy should redirect the
-    /// loop, not break it.
+    /// cancel the loop. Right-clicking the same weapon on a new enemy
+    /// continues the loop; Phase 2's `current_target_id` (live cursor
+    /// target, written by `setTargetID`) handles target redirect for
+    /// subsequent tick-driven re-fires — the fire itself is just a
+    /// no-op against the loop state.
     ///
     /// Bug shape: a refactor that conflates "any manual fire" with
     /// "different-ability fire" turns every right-click into a loop
@@ -1182,7 +1186,7 @@ mod tests {
     /// would have to re-press the button every time they switch
     /// targets).
     #[tokio::test]
-    async fn same_ability_manual_fire_redirects_target_without_breaking_loop() {
+    async fn same_ability_manual_fire_does_not_break_loop() {
         use crate::cell::combat::BSF_AUTO_CYCLING;
         let mut mgr = make_mgr();
         make_player(&mut mgr, 1, [0.0; 3]);
@@ -1190,14 +1194,13 @@ mod tests {
             p.abilities.add_ability(7);
             p.abilities.auto_cycle = true;
             p.abilities.auto_cycle_ability_id = Some(7);
-            p.abilities.auto_cycle_target_id = Some(99); // old target
             p.set_state_flag(BSF_AUTO_CYCLING);
             p.weapon_holstered = false;
         }
         mgr.ability_defs.insert(7, make_ability(7, 0, 30));
         let (tx, _rx) = mpsc::channel(64);
 
-        // Same-ability fire but at a different target (0 = self-cast).
+        // Same-ability fire — must NOT break the loop.
         let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
         assert!(committed);
 
@@ -1210,11 +1213,6 @@ mod tests {
             e.abilities.auto_cycle_ability_id,
             Some(7),
             "ability id must be stable",
-        );
-        assert_eq!(
-            e.abilities.auto_cycle_target_id,
-            Some(0),
-            "target stash must update to the new target",
         );
         assert_ne!(
             e.state_field & BSF_AUTO_CYCLING,

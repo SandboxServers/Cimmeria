@@ -187,12 +187,21 @@ pub struct AbilityManager {
     /// id every time the cooldown clears.
     pub auto_cycle_ability_id: Option<i32>,
 
-    /// The target entity id being auto-cycled at (if any).
+    /// The last ability the player successfully fired. Stashed at every
+    /// `handle_use_ability` commit regardless of `auto_cycle` state, so
+    /// `setAutoCycle(1)` can fire immediately against the player's
+    /// previously-fired ability + current target without requiring the
+    /// player to right-click an enemy first.
     ///
-    /// Stashed alongside `auto_cycle_ability_id` at first-commit time. The
-    /// driver tick re-fires at this target, not at whatever the player's
-    /// current cursor target is (which may be a different mob entirely).
-    pub auto_cycle_target_id: Option<i32>,
+    /// `None` only at session start before any fire. Once set, never
+    /// cleared on auto-cycle stop — only zeroed on death/respawn so a
+    /// fresh respawn doesn't auto-resume a stale loop.
+    ///
+    /// Distinct from `auto_cycle_ability_id`: that field is the ability
+    /// the LOOP is currently committed to and clears on stop; this
+    /// field is the player's most-recent fire, used as the seed for
+    /// the immediate-fire-on-enable path.
+    pub last_fired_ability_id: Option<i32>,
 
     /// Next unique effect sequence ID.
     pub effect_sequence_id: i32,
@@ -207,7 +216,7 @@ impl AbilityManager {
             moniker_cooldowns: HashMap::new(),
             auto_cycle: false,
             auto_cycle_ability_id: None,
-            auto_cycle_target_id: None,
+            last_fired_ability_id: None,
             effect_sequence_id: 1,
         }
     }
