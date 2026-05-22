@@ -194,6 +194,7 @@ mod tests {
             pending_client_ready: None,
             cached_appearance_args: None,
             cached_tint_args: None,
+            weapon_holstered: true,
             cancelled: Arc::new(AtomicBool::new(false)),
             cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
             player_name: None,

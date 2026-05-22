@@ -23,6 +23,57 @@ use crate::stats::StatList;
 #[cfg(test)]
 mod tests;
 
+/// Filter the active bandolier weapon visual out of a component list
+/// when the player is holstered. Returns `components.to_vec()` unchanged
+/// when `holstered = false` or when no weapon visual is set.
+///
+/// **Invariant:** when `weapon_visual` is `Some(v)`, `v` should also
+/// appear in `components`. The two are populated by the same DB loader
+/// to stay in sync — divergence indicates a data bug upstream (case
+/// drift, whitespace, a stale row). We can't fix the upstream data
+/// from here, but the filter surfaces the violation: when the
+/// post-filter length equals the input length even though we asked
+/// for a filter, a `warn`-level log fires so the operator knows the
+/// holster filter did not take effect, and a `debug_assert!` panics
+/// in debug builds so test runs catch it loudly. Production builds
+/// degrade gracefully: the wire `ComponentList` carries the weapon
+/// entry through, the client renders armed-pose instead of holstered,
+/// and the visual is wrong but nothing crashes.
+///
+/// Used by both [`CellEntity::appearance_components`] and (via the
+/// `cimmeria_services` crate) `PlayerLoadData::appearance_components`
+/// so the wire-format holster filter has one implementation, not two.
+pub fn filter_holstered_weapon(
+    components: &[String],
+    weapon_visual: Option<&str>,
+    holstered: bool,
+) -> Vec<String> {
+    let Some(weapon) = weapon_visual.filter(|_| holstered) else {
+        return components.to_vec();
+    };
+    let filtered: Vec<String> = components
+        .iter()
+        .filter(|c| c.as_str() != weapon)
+        .cloned()
+        .collect();
+    if filtered.len() == components.len() {
+        tracing::warn!(
+            weapon = %weapon,
+            ?components,
+            "filter_holstered_weapon: weapon_visual not found in components \
+             — invariant violated, holster filter is a no-op for this emit \
+             (check DB-side string normalization between weapon_visual and \
+             the components query)",
+        );
+        debug_assert!(
+            false,
+            "weapon_visual {weapon:?} not found in components {components:?} \
+             — invariant violated"
+        );
+    }
+    filtered
+}
+
 /// Types of NPC interaction available when a player clicks on this entity.
 ///
 /// Maps to the static interaction set IDs from `python/common/Constants.py`.
@@ -157,13 +208,62 @@ pub struct CellEntity {
     pub body_set: Option<String>,
 
     /// Visual component paths from `entity_templates.components`.
+    /// For players this is the FULL merged list — base equipment + active
+    /// bandolier slot weapon. `weapon_visual` (below) names the entry that
+    /// represents the active weapon so [`Self::appearance_components`] can
+    /// filter it out when the player is holstered. NPC entities never have
+    /// `weapon_visual` set; their `components` go out as-is.
     pub components: Vec<String>,
+
+    /// The visual component string for the player's active bandolier-slot
+    /// weapon, if any. Used as a filter target by
+    /// [`Self::appearance_components`] when [`Self::weapon_holstered`] is true.
+    ///
+    /// Set at player-load time from the bandolier-slot row of the
+    /// equipment-visual query. `None` for: NPCs, players with an empty
+    /// active bandolier slot, players who haven't completed world entry yet.
+    ///
+    /// **Why a separate field rather than e.g. a tagged index into
+    /// `components`:** weapon swaps (active bandolier slot change) and
+    /// inventory edits both can reshuffle `components`. A by-value filter
+    /// target is stable across those mutations as long as the underlying
+    /// visual path string doesn't collide with another component (and
+    /// visual paths under `AR_*` are weapon-specific by convention).
+    pub weapon_visual: Option<String>,
+
+    /// Whether the active weapon is currently holstered (hidden from
+    /// the wire `ComponentList`).
+    ///
+    /// Drives the visual stance the client renders: the SGW BigWorld
+    /// client's `CompositedAppearanceProxy::ApplyToPawn`
+    /// (`ghidra://SGW.exe@0x00ec0840`) writes `entity+0x3D2` with a
+    /// weapon-category code derived from whichever weapon-shaped entry it
+    /// finds in `BeingAppearance.ComponentList`, defaulting to
+    /// `WEAP_Melee = 4` when none is present. So toggling this bool +
+    /// rebroadcasting `BeingAppearance` is what flips the animation
+    /// system between armed-stance and holstered-stance pose.
+    ///
+    /// `BSF_Holster` (bit 8 of `state_field`) is **not** read by the
+    /// client — verified statically against `GameBeing_OnStateFieldUpdate`
+    /// at `ghidra://SGW.exe@0x00e01c90`, which dispatches only on bits
+    /// 0/1/2/3/4/5/6/7. The dead bit was removed; this bool replaces it
+    /// as the canonical server-side holster state.
+    pub weapon_holstered: bool,
 
     // ── Being state ─────────────────────────────────────────────────────────
     /// State field bitfield (EStateField flags from Atrea.enums).
     /// Bit 0: BSF_Dead, Bit 1: BSF_AutoCycling, Bit 2: BSF_Crouching,
     /// Bit 3: BSF_InCombat, Bit 4: BSF_PlayingMinigame, Bit 5: BSF_InStealth,
-    /// Bit 6: BSF_MovementLock, Bit 7: BSF_Walking, Bit 8: BSF_Holster.
+    /// Bit 6: BSF_MovementLock, Bit 7: BSF_Walking.
+    ///
+    /// **Bit 8 was BSF_Holster and is now unused.** The SGW client
+    /// doesn't test bit 8 anywhere — verified statically against
+    /// `GameBeing_OnStateFieldUpdate` at `ghidra://SGW.exe@0x00e01c90`,
+    /// which dispatches only on bits 0-7. Server-side holster state
+    /// lives on `weapon_holstered` (below) and drives
+    /// `BeingAppearance.ComponentList` instead. See
+    /// `docs/architecture/state-field-bits.md` for the verified bit
+    /// layout.
     ///
     /// **Read** this field directly for serialization, AoI updates, and
     /// `is_dead` checks. **Writes** depend on the flag's source model — see
@@ -193,6 +293,35 @@ pub struct CellEntity {
     /// `threatenedMobs` list on `python/cell/SGWPlayer.py:944-965`.
     pub threatened_mobs: HashSet<u32>,
 
+    /// When `Some(t)`, the player left combat at `t` and the deferred
+    /// re-holster scan should fire Phase 1 of the holster transition
+    /// (`Item_Unequip` animation) once
+    /// `Instant::now() - t >= OOC_HOLSTER_DELAY`. Cleared by
+    /// `enter_player_combat` (re-aggro within the grace window cancels
+    /// the pending holster).
+    ///
+    /// Why deferred: chaining mobs (kill A, immediately aggro B 50ms
+    /// later) would otherwise produce a visible weapon-down → weapon-up
+    /// flicker on every gap. The 10-second window is a UX choice, not
+    /// a wire-format constraint — see `cell::combat::threat::OOC_HOLSTER_DELAY`.
+    pub combat_exit_at: Option<std::time::Instant>,
+
+    /// When `Some(t)`, Phase 1 of the OOC holster transition has fired
+    /// (the `Item_Unequip` animation started playing); Phase 2 (flip
+    /// `weapon_holstered = true` + rebroadcast `BeingAppearance` to
+    /// remove the weapon mesh) is scheduled for `t`. The two-phase
+    /// split exists so the hand-authored holster animation has time to
+    /// play with the weapon mesh attached — without it, the mesh
+    /// snaps away while/before the animation runs, and the visible
+    /// result is "weapon vanishes mid-motion."
+    ///
+    /// Cleared by `enter_player_combat` (re-aggro mid-animation
+    /// cancels both Phase 1 and Phase 2 in lockstep with
+    /// `combat_exit_at`) and by any "redraw the weapon" path
+    /// (`UpdateBandolierItem`, reload-while-holstered) to prevent a
+    /// stale Phase 2 from yanking the mesh away after a re-equip.
+    pub holster_animation_complete_at: Option<std::time::Instant>,
+
     // ── Ammo state ────────────────────────────────────────────────────────────
     //
     // Per-slot ammo lives on `BandolierItem` (`current_ammo`, `cur_ammo_type`)
@@ -209,6 +338,52 @@ pub struct CellEntity {
     /// prevents a mid-reload weapon swap from refilling the wrong magazine.
     /// `None` whenever `reload_complete_at` is `None`.
     pub reload_slot_id: Option<i32>,
+    /// When `Some(t)`, the player pressed reload while holstered. Phase A
+    /// of the reload (redraw + Item_Equip draw animation) has already
+    /// been dispatched; the actual reload start (cooldown timer +
+    /// `Item_Reload` animation + ammo refill schedule) is deferred until
+    /// `Instant::now() >= t` so the draw animation has time to play out.
+    /// The `pending_reload_tick` consumes this stamp by re-invoking the
+    /// reload handler, which then runs the normal reload-start path
+    /// against an already-drawn weapon.
+    pub pending_reload_at: Option<std::time::Instant>,
+
+    /// When `Some(t)`, the player tried to fire an ability while
+    /// holstered. The unholster animation (Item_Equip) is playing;
+    /// the actual ability dispatch is queued for `t` and is
+    /// re-invoked by `pending_attack_tick` with the stashed
+    /// `pending_attack_ability_id` / `pending_attack_target_id`.
+    ///
+    /// Subsequent attack inputs during the draw window are rejected
+    /// (the first press locks in the queue) — this matches the user
+    /// playtest spec: "should queue the first shot, then it should
+    /// proceed normally."
+    pub pending_attack_at: Option<std::time::Instant>,
+    /// Ability id queued by the attack-while-holstered path. Cleared
+    /// by `pending_attack_tick` when it dispatches the deferred call.
+    pub pending_attack_ability_id: Option<i32>,
+    /// Target id queued by the attack-while-holstered path. `0` is a
+    /// valid "self-cast or no-target" sentinel — match the wire-arg
+    /// semantics of `useAbility(abilityId, targetId)`.
+    pub pending_attack_target_id: Option<i32>,
+
+    /// When `Some(t)`, the player pressed F1/F2/F3/F4 to swap to a
+    /// different bandolier slot while their current slot also had a
+    /// weapon. The holster animation (Item_Unequip) for the old
+    /// weapon is playing; the actual slot change (active slot
+    /// update + Item_Equip for the new weapon) is deferred until
+    /// `Instant::now() >= t` so the holster motion plays out before
+    /// the unholster.
+    ///
+    /// `pending_slot_swap_tick` consumes this stamp by re-invoking
+    /// `handle_request_active_slot_change` with the target slot,
+    /// which then runs the normal slot-change path (the choreography
+    /// branch is gated by `pending_slot_swap_at.is_some()` so the
+    /// re-entry skips it).
+    pub pending_slot_swap_at: Option<std::time::Instant>,
+    /// Target bandolier slot queued by the swap choreography. Cleared
+    /// by `pending_slot_swap_tick` when it finalizes the swap.
+    pub pending_slot_swap_target: Option<i32>,
 
     // ── NPC AI state ──────────────────────────────────────────────────────────
     /// AI state for NPC entities (Idle, Fighting, Dead, Leashing).
@@ -369,11 +544,21 @@ impl CellEntity {
             static_mesh: None,
             body_set: None,
             components: Vec::new(),
+            weapon_visual: None,
+            weapon_holstered: true,
             state_field: 0,
             state_flag_counts: HashMap::new(),
             threatened_mobs: HashSet::new(),
+            combat_exit_at: None,
             reload_complete_at: None,
             reload_slot_id: None,
+            pending_reload_at: None,
+            pending_attack_at: None,
+            pending_attack_ability_id: None,
+            pending_attack_target_id: None,
+            pending_slot_swap_at: None,
+            pending_slot_swap_target: None,
+            holster_animation_complete_at: None,
             ai_state: AiState::Idle,
             threat_list: HashMap::new(),
             spawn_position: None,
@@ -444,10 +629,10 @@ impl CellEntity {
     //     respawn pair), `BSF_MOVEMENT_LOCK` (death + future stun/cast/fear).
     //
     //   - **Raw `|=` / `&=` is fine** for flags that are either (a) driven
-    //     by an idempotent player input (BSF_CROUCHING, BSF_HOLSTER from
-    //     `requestHolsterWeapon` — clicking twice should set, not bump), or
-    //     (b) externally managed via a separate dedup mechanism (BSF_IN_COMBAT
-    //     gated on `threatened_mobs` non-empty in `combat::threat`).
+    //     by an idempotent player input (BSF_CROUCHING from `setCrouched` —
+    //     clicking twice should set, not bump), or (b) externally managed
+    //     via a separate dedup mechanism (BSF_IN_COMBAT gated on
+    //     `threatened_mobs` non-empty in `combat::threat`).
     //
     // Mixing the two patterns on the same flag will desync the counter from
     // the bit: a raw `|=` doesn't bump the counter, so the next `unset_*`
@@ -528,6 +713,64 @@ impl CellEntity {
     /// Convenience read: is the given flag bit set?
     pub fn has_state_flag(&self, mask: u32) -> bool {
         self.state_field & mask != 0
+    }
+
+    /// Build the `ComponentList` that should go out in `BeingAppearance`,
+    /// applying the current holster state.
+    ///
+    /// Returns `components` unchanged when not holstered, or `components`
+    /// with the `weapon_visual` entry filtered out when holstered. The
+    /// SGW BigWorld client's appearance compositor picks weapon-stance
+    /// vs. holstered-stance from whichever weapon-shaped entry it finds
+    /// in this list (`ghidra://SGW.exe@0x00ec0840`), so omitting the
+    /// weapon visual is the wire-format-correct way to render the
+    /// holstered pose — it falls back to `WEAP_Melee = 4` and plays the
+    /// unarmed-stance animation blend.
+    ///
+    /// Callers should use this in place of `&entity.components` at every
+    /// `BeingAppearance`-emit site. Reading `components` directly is fine
+    /// for non-wire purposes (debug logs, AoI propagation copies, NPC
+    /// templates that don't have a holster concept).
+    pub fn appearance_components(&self) -> Vec<String> {
+        filter_holstered_weapon(
+            &self.components,
+            self.weapon_visual.as_deref(),
+            self.weapon_holstered,
+        )
+    }
+
+    /// Toggle the holster state. Returns `true` if the state actually
+    /// changed (the caller should rebroadcast `BeingAppearance`), `false`
+    /// if it was already in the requested state.
+    ///
+    /// The return value gates on state-change ONLY. The `weapon_visual`
+    /// check that used to live here was wrong: in production the cell
+    /// entity's `weapon_visual` is always `None` (only the base side
+    /// populates it from `PlayerLoadData`), so the gate silently
+    /// suppressed every holster broadcast. The base-side
+    /// `RefreshAppearance` handler has its own change-detection
+    /// (`weapon_holstered != cached` short-circuit), so redundant calls
+    /// are already a free no-op there — gating here just hid bugs.
+    pub fn set_weapon_holstered(&mut self, holstered: bool) -> bool {
+        if self.weapon_holstered == holstered {
+            return false;
+        }
+        self.weapon_holstered = holstered;
+        true
+    }
+
+    /// Lockstep the holster state with `BSF_InCombat`: in-combat = drawn,
+    /// out-of-combat = holstered. Returns `true` when the caller should
+    /// rebroadcast `BeingAppearance` (state actually flipped AND there's
+    /// a `weapon_visual` whose presence in the wire list will change).
+    ///
+    /// This is the canonical entry point from `enter_player_combat` /
+    /// `exit_player_combat`. Keeping the policy here (rather than
+    /// duplicating `!in_combat` at every caller) means future tweaks —
+    /// e.g. "stay drawn for 5s after leaving combat" — happen in one
+    /// place.
+    pub fn sync_holster_to_combat(&mut self, in_combat: bool) -> bool {
+        self.set_weapon_holstered(!in_combat)
     }
 
     // ── Bandolier ammo helpers ───────────────────────────────────────────────

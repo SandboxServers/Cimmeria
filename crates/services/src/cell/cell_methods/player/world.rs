@@ -155,7 +155,71 @@ pub async fn dispatch(
 
 const ABILITY_RELOAD_WEAPON: i32 = 596;
 
-async fn handle_reload(
+/// How long the draw animation needs to play before the reload sequence
+/// can fire. Hand needs to reach the hold position and grip the weapon
+/// mesh; firing `Item_Reload` while the hand is mid-air mid-draw plays
+/// the reload animation on a model that isn't in the reload-ready pose
+/// — the client either ignores the request or visually skips the
+/// reload anim (the symptom the user reported in playtest: "weapon
+/// teleports into my hand and I still need to hit reload again").
+///
+/// Empirically tuned to 1 second; matches the rough length of the
+/// `KIS-handling` kismet script's draw branch. Bump if the reload still
+/// chains into the draw mid-animation; lower if the gap between draw
+/// and reload becomes visually obvious.
+pub(crate) const UNHOLSTER_DRAW_DURATION: std::time::Duration =
+    std::time::Duration::from_millis(1000);
+
+/// Fire a `Item_*` kismet sequence (`Item_Equip` 4000 / `Item_Unequip`
+/// 4001 / `Item_Reload` 4002 / `Item_Use` 4003) keyed off the player's
+/// archetype-keyed "Item handling" event set. Mirrors
+/// `python/cell/SGWBeing.py:getItemSequence(eventId)` + `playSequence`.
+///
+/// No-op (with a debug log) when the archetype, the event set, or the
+/// per-event sequence is missing — matches the python's `if eventSet
+/// else None` fallthrough so callers don't crash on edge entities.
+pub(crate) async fn fire_item_sequence(
+    entity_id: u32,
+    event_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let archetype_id = space_mgr.get_entity(entity_id).and_then(|e| e.archetype_id);
+    let event_set = archetype_id.and_then(crate::cell::spawner::archetype_item_event_set);
+    let seq_id = event_set.and_then(|esid| space_mgr.sequence_map.get(&(esid, event_id)).copied());
+    tracing::info!(
+        entity_id,
+        event_id,
+        archetype_id = ?archetype_id,
+        event_set_id = ?event_set,
+        seq_id = ?seq_id,
+        "fire_item_sequence: archetype-keyed sequence lookup"
+    );
+    let Some(seq_id) = seq_id else {
+        return;
+    };
+    // ON_SEQUENCE wire layout (26 bytes — matches use_ability.rs's fire
+    // path so animations are emitted consistently with weapon-fire and
+    // reload animations).
+    let mut seq_args = Vec::with_capacity(28);
+    seq_args.extend_from_slice(&seq_id.to_le_bytes());
+    seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
+    seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
+    seq_args.push(1);
+    seq_args.extend_from_slice(&0.0f32.to_le_bytes());
+    seq_args.extend_from_slice(&0u32.to_le_bytes());
+    seq_args.push(0);
+    seq_args.extend_from_slice(&0i32.to_le_bytes());
+    let _ = tx
+        .send(CellToBaseMsg::EntityMethodCall {
+            entity_id,
+            method_index: spawnable_entity::ON_SEQUENCE,
+            args: seq_args,
+        })
+        .await;
+}
+
+pub(crate) async fn handle_reload(
     entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -163,7 +227,88 @@ async fn handle_reload(
     let reload_def = space_mgr.ability_defs.get(&ABILITY_RELOAD_WEAPON).cloned();
     let warmup = reload_def.as_ref().map_or(2.0f32, |d| d.warmup);
     let cooldown = reload_def.as_ref().map_or(1.0f32, |d| d.cooldown);
-    let event_set_id = reload_def.as_ref().and_then(|d| d.event_set_id);
+
+    // Phase A — reload-while-holstered: defer the actual reload until
+    // the draw animation has had time to play. Fires `Item_Equip`
+    // (event 4000), the bandolier-equip animation, as a stand-in for an
+    // explicit draw sequence (the 2009 client never shipped one — the
+    // archaeology agent confirmed `Event_NetOut_ChangeWeaponState` is
+    // dead scaffolding). Re-running `handle_reload` after
+    // `UNHOLSTER_DRAW_DURATION` (via `pending_reload_tick`) lands us in
+    // Phase B with the weapon already drawn.
+    //
+    // Gate: weapon currently holstered + threatened_mobs empty (OOC) +
+    // no pending phase already in flight. In-combat reload skips this
+    // entirely (weapon's already drawn).
+    let needs_phase_a = match space_mgr.get_entity(entity_id) {
+        Some(e) => {
+            e.weapon_holstered && e.threatened_mobs.is_empty() && e.pending_reload_at.is_none()
+        }
+        None => false,
+    };
+    if needs_phase_a {
+        // Don't accidentally start a phase A for a player whose mag is
+        // already full — the early-return below would catch it after
+        // Phase B too, but skipping the wasted draw animation is the
+        // right move.
+        let ammo_already_full = match space_mgr.get_entity(entity_id) {
+            Some(e) => e.active_ammo() >= e.active_clip_size() && e.reload_complete_at.is_none(),
+            None => true,
+        };
+        if !ammo_already_full {
+            if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+                e.combat_exit_at = Some(std::time::Instant::now());
+                e.set_weapon_holstered(false);
+                e.pending_reload_at = Some(std::time::Instant::now() + UNHOLSTER_DRAW_DURATION);
+                // Cancel any in-flight holster Phase 2 — reload draws
+                // the weapon BACK out, so a stale Phase 2 would yank
+                // the mesh away mid-reload.
+                e.holster_animation_complete_at = None;
+            }
+            tracing::info!(
+                entity_id,
+                draw_duration_ms = UNHOLSTER_DRAW_DURATION.as_millis() as u64,
+                "reload-while-holstered: phase A — drawing weapon, reload deferred"
+            );
+            crate::cell::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
+            fire_item_sequence(
+                entity_id,
+                crate::cell::spawner::EVENT_ITEM_EQUIP,
+                tx,
+                space_mgr,
+            )
+            .await;
+            return;
+        }
+    }
+
+    // Reject second-press during the Phase A draw window. If
+    // `pending_reload_at` is set and the timestamp hasn't elapsed yet,
+    // the only legitimate entry path is the tick — but the tick fires
+    // strictly after the timestamp, so a `now < pending_reload_at`
+    // observation here means the player pressed R again mid-draw.
+    // Without this gate, the second press falls through to Phase B,
+    // clears `pending_reload_at` ahead of schedule, and starts the
+    // reload cooldown immediately — defeating the draw window.
+    if let Some(t) = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.pending_reload_at)
+    {
+        if std::time::Instant::now() < t {
+            tracing::debug!(
+                entity_id,
+                "requestReload: ignoring while draw window in progress"
+            );
+            return;
+        }
+    }
+
+    // Phase B (or a normal already-drawn reload). When entered from the
+    // `pending_reload_tick`, clear the deferred-reload stamp so a
+    // racing tick won't re-fire phase B.
+    if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+        e.pending_reload_at = None;
+    }
 
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
@@ -222,76 +367,37 @@ async fn handle_reload(
         })
         .await;
 
-    // Clear holster on reload — the reload animation needs the weapon-up
-    // posture. BSF_InCombat is intentionally NOT touched here: a reload
-    // in isolation (no aggro) must not flip the in-combat HUD/cursor.
-    // The bit is derived from `threatened_mobs` and only flips on via
+    // BSF_InCombat is intentionally not touched here: a reload in
+    // isolation (no aggro) must not flip the in-combat HUD/cursor. The
+    // bit is derived from `threatened_mobs` and only flips on via
     // `combat::generate_threat` → `enter_player_combat` when the player
     // actually generates threat on a surviving NPC.
-    {
-        use crate::cell::combat::BSF_HOLSTER;
-        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-            let old = e.state_field;
-            e.state_field &= !BSF_HOLSTER;
-            if e.state_field != old {
-                let new_state = e.state_field;
-                let _ = tx
-                    .send(CellToBaseMsg::EntityMethodCall {
-                        entity_id,
-                        method_index: being::ON_STATE_FIELD_UPDATE,
-                        args: new_state.to_le_bytes().to_vec(),
-                    })
-                    .await;
-            }
+
+    // Re-stamp `combat_exit_at` so the OOC holster timer fires
+    // `OOC_HOLSTER_DELAY` seconds from reload start, never mid-animation.
+    // (Phase A already stamped this; Phase B re-stamps so a normal
+    // already-drawn reload also resets the OOC countdown.) In-combat
+    // reload is untouched — `threatened_mobs.is_empty()` is false, so
+    // we skip entirely and `combat_exit_at` stays None until the fight
+    // ends naturally.
+    if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+        if e.threatened_mobs.is_empty() {
+            e.combat_exit_at = Some(std::time::Instant::now());
         }
     }
 
-    // The reload's *warmup* IS the visible animation (drop mag, insert mag,
-    // chamber). Earlier this site sent `Ability_End` synchronously, which
-    // made the client either play the wrong animation or no animation at
-    // all (depending on the weapon's event set). Mirroring the fire-path
-    // begin/end split is the right shape for *most* warmup-gated abilities.
-    //
-    // TODO(#210): inert against the current seed.
-    //   Reload (ability 596) has `event_set_id = NULL` in
-    //   `db/resources/Abilities/Seed/abilities.sql`, so this branch
-    //   short-circuits in production and no Ability_Begin packet ever
-    //   leaves the server. The legacy reload path (`SGWBeing.py:863-874`)
-    //   doesn't drive reload animations off the ability's event set at
-    //   all — it sources them from the player's archetype-keyed item
-    //   event set via `getItemSequence(Item_Reload)` (event id 4002).
-    //   The wiring here is kept (rather than ripped out) because the test
-    //   coverage already pins the byte layout, and #210 will replace the
-    //   `event_set_id` lookup with the archetype-keyed lookup once that
-    //   work lands. See the issue body for the full migration shape.
-    if let Some(esid) = event_set_id {
-        use crate::cell::spawner::EVENT_ABILITY_BEGIN;
-
-        if let Some(&seq_id) = space_mgr.sequence_map.get(&(esid, EVENT_ABILITY_BEGIN)) {
-            let mut seq_args = Vec::with_capacity(28);
-            seq_args.extend_from_slice(&seq_id.to_le_bytes());
-            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
-            seq_args.extend_from_slice(&(entity_id as i32).to_le_bytes());
-            seq_args.push(1);
-            seq_args.extend_from_slice(&0.0f32.to_le_bytes());
-            seq_args.extend_from_slice(&0u32.to_le_bytes());
-            seq_args.push(0);
-            seq_args.extend_from_slice(&0i32.to_le_bytes());
-            let _ = tx
-                .send(CellToBaseMsg::EntityMethodCall {
-                    entity_id,
-                    method_index: spawnable_entity::ON_SEQUENCE,
-                    args: seq_args,
-                })
-                .await;
-        } else {
-            tracing::debug!(
-                entity_id,
-                event_set_id = esid,
-                "reload: no Ability_Begin sequence found"
-            );
-        }
-    }
+    // Fire the `Item_Reload` (event 4002) animation — the visible
+    // drop-mag / insert-mag / chamber sequence. Mirrors
+    // `python/cell/SGWBeing.py:863-874`'s `getItemSequence` +
+    // `playSequence`. Archetype lookup + sequence dispatch lives in
+    // `fire_item_sequence`.
+    fire_item_sequence(
+        entity_id,
+        crate::cell::spawner::EVENT_ITEM_RELOAD,
+        tx,
+        space_mgr,
+    )
+    .await;
 
     let mut args = Vec::with_capacity(8);
     args.extend_from_slice(&7i32.to_le_bytes());
@@ -475,6 +581,10 @@ mod tests {
     async fn handle_reload_pins_reload_slot_id_to_current_active_slot() {
         let mut mgr = make_mgr_with_player();
         if let Some(e) = mgr.get_entity_mut(1) {
+            // Weapon already drawn so Phase A (defer-reload-for-draw)
+            // doesn't kick in — this test asserts the Phase B slot
+            // pin, not the Phase A defer path.
+            e.weapon_holstered = false;
             e.bandolier_items.insert(
                 2,
                 BandolierItem {
@@ -522,19 +632,30 @@ mod tests {
         );
     }
 
-    /// Reload-start must fire the `Ability_Begin` (event 1000) sequence so
-    /// the client plays the visible reload animation. Earlier this site
-    /// sent `Ability_End` (event 1001), which is what `reload_completion_tick`
-    /// fires once the warmup expires — sending it at start either played
-    /// the wrong animation or none at all (depending on weapon event set).
-    /// Legacy parity: `python/cell/AbilityManager.py:619-636`.
+    /// Reload-start must fire the `Item_Reload` (event 4002) sequence from
+    /// the player's archetype-keyed "Item handling" event set so the
+    /// client plays the visible reload animation. Mirrors
+    /// `python/cell/SGWBeing.py:863-874` (`getItemSequence(Item_Reload)` +
+    /// `playSequence`). Previously this site looked up the *reload
+    /// ability's* `event_set_id`, which is NULL in the seed — the lookup
+    /// short-circuited and no animation ever played in production.
+    ///
+    /// Bug shape this catches: a refactor that goes back to keying off
+    /// `ability_defs[596].event_set_id` reintroduces the dead path.
     #[tokio::test]
-    async fn handle_reload_sends_ability_begin_sequence() {
+    async fn handle_reload_sends_item_reload_sequence() {
         use crate::cell::client_methods::spawnable_entity::ON_SEQUENCE;
-        use crate::cell::spawner::{EVENT_ABILITY_BEGIN, EVENT_ABILITY_END};
+        use crate::cell::spawner::{EVENT_ABILITY_BEGIN, EVENT_ITEM_RELOAD};
 
         let mut mgr = make_mgr_with_player();
         if let Some(e) = mgr.get_entity_mut(1) {
+            // Soldier archetype → event set 804 (the human "Item handling"
+            // set per `archetype_item_event_set`).
+            e.archetype_id = Some(1);
+            // Weapon already drawn so Phase A (defer-reload-for-draw)
+            // doesn't kick in — this test asserts the Phase B byte
+            // layout of Item_Reload's ON_SEQUENCE.
+            e.weapon_holstered = false;
             e.bandolier_items.insert(
                 0,
                 BandolierItem {
@@ -547,11 +668,18 @@ mod tests {
             );
             e.active_bandolier_slot = 0;
         }
-        // Reload AbilityDef with an event_set_id so the begin-sequence
-        // path runs, plus a sequence_map entry mapping (event_set, BEGIN)
-        // to a sentinel sequence id we can recognise on the wire.
-        const EVENT_SET_ID: i32 = 7777;
-        const BEGIN_SEQ_ID: i32 = 9001;
+        // Seed the sequence_map so the (804, Item_Reload) lookup finds a
+        // sentinel sequence id we can recognise on the wire.
+        const HUMAN_ITEM_EVENT_SET: i32 = 804;
+        const ITEM_RELOAD_SEQ_ID: i32 = 1874;
+        mgr.sequence_map.insert(
+            (HUMAN_ITEM_EVENT_SET, EVENT_ITEM_RELOAD),
+            ITEM_RELOAD_SEQ_ID,
+        );
+        // Seed a decoy (ability's event set → Ability_Begin) — the
+        // regression we're guarding against would have sent THIS one.
+        const DECOY_EVENT_SET: i32 = 7777;
+        const DECOY_BEGIN_SEQ_ID: i32 = 9001;
         mgr.ability_defs.insert(
             596,
             AbilityDef {
@@ -567,17 +695,12 @@ mod tests {
                 effect_ids: vec![],
                 moniker_ids: vec![],
                 required_ammo: 0,
-                event_set_id: Some(EVENT_SET_ID),
+                event_set_id: Some(DECOY_EVENT_SET),
                 velocity: 0.0,
             },
         );
         mgr.sequence_map
-            .insert((EVENT_SET_ID, EVENT_ABILITY_BEGIN), BEGIN_SEQ_ID);
-        // Seed an `Ability_End` mapping too — the regression we're guarding
-        // against would have sent THIS one synchronously at reload-start.
-        const END_SEQ_ID: i32 = 9002;
-        mgr.sequence_map
-            .insert((EVENT_SET_ID, EVENT_ABILITY_END), END_SEQ_ID);
+            .insert((DECOY_EVENT_SET, EVENT_ABILITY_BEGIN), DECOY_BEGIN_SEQ_ID);
 
         let (tx, mut rx) = mpsc::channel(64);
         handle_reload(1, &tx, &mut mgr).await;
@@ -591,7 +714,7 @@ mod tests {
         //   nvp_count     u32 LE  @ 17..21
         //   view_type     u8      @ 21
         //   instance_id   i32 LE  @ 22..26
-        let mut begin_count = 0;
+        let mut item_reload_count = 0;
         while let Ok(msg) = rx.try_recv() {
             if let CellToBaseMsg::EntityMethodCall {
                 method_index, args, ..
@@ -607,10 +730,11 @@ mod tests {
                     );
                     let seq_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                     assert_ne!(
-                        seq_id, END_SEQ_ID,
-                        "reload-start must NOT send Ability_End (that's reload_completion_tick's job)"
+                        seq_id, DECOY_BEGIN_SEQ_ID,
+                        "reload-start must NOT fire the reload ability's Ability_Begin \
+                         (that's the dead pre-fix path)",
                     );
-                    if seq_id != BEGIN_SEQ_ID {
+                    if seq_id != ITEM_RELOAD_SEQ_ID {
                         continue;
                     }
                     let source_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
@@ -635,15 +759,259 @@ mod tests {
                          fire animations"
                     );
                     assert_eq!(instance_id, 0, "no effect instance for the reload sequence");
-                    begin_count += 1;
+                    item_reload_count += 1;
                 }
             }
         }
         assert_eq!(
-            begin_count, 1,
-            "reload-start must send exactly one onSequence with the Ability_Begin \
+            item_reload_count, 1,
+            "reload-start must send exactly one onSequence with the Item_Reload \
              sequence id; without it the client plays no visible reload animation. \
-             Got {begin_count}.",
+             Got {item_reload_count}.",
+        );
+    }
+
+    /// Reload-while-holstered Phase A: a player who's OOC and
+    /// holstered presses reload. The handler defers the actual reload
+    /// to give the draw animation time to play. Phase A must:
+    ///   1. Flip `weapon_holstered` to false.
+    ///   2. Stamp `combat_exit_at` so the OOC re-holster timer fires
+    ///      AFTER the eventual Phase B reload completes.
+    ///   3. Set `pending_reload_at = now + UNHOLSTER_DRAW_DURATION` so
+    ///      `pending_reload_tick` can promote Phase A → Phase B.
+    ///   4. Dispatch `RefreshAppearance` (mesh attaches at hand socket).
+    ///   5. NOT start the reload-completion timer or fire `Item_Reload`
+    ///      yet — those land in Phase B.
+    ///
+    /// Bug shape this catches (the playtest report that drove the fix):
+    /// firing `Item_Reload` and the appearance change in the same tick
+    /// makes the weapon "teleport into the hand + reload anim plays on
+    /// empty space", and the player has to press reload twice.
+    #[tokio::test]
+    async fn reload_while_holstered_phase_a_defers_reload() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = true; // OOC + holstered
+            e.combat_exit_at = None;
+            e.pending_reload_at = None;
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+        }
+
+        let (tx, mut rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(!e.weapon_holstered, "Phase A must draw the weapon");
+        assert!(
+            e.combat_exit_at.is_some(),
+            "Phase A must stamp combat_exit_at so OOC re-holster fires AFTER \
+             the eventual reload completes",
+        );
+        assert!(
+            e.pending_reload_at.is_some(),
+            "Phase A must set pending_reload_at so the deferred-reload tick \
+             can promote to Phase B once the draw window elapses",
+        );
+        assert!(
+            e.reload_complete_at.is_none(),
+            "Phase A must NOT start the reload-completion timer — the actual \
+             reload hasn't started yet, only the draw. Firing the reload here \
+             is the bug shape we're explicitly avoiding (user playtest: \
+             'weapon teleports into my hand and I still need to hit reload again')",
+        );
+
+        let mut saw_refresh = false;
+        while let Ok(msg) = rx.try_recv() {
+            if matches!(
+                msg,
+                CellToBaseMsg::RefreshAppearance {
+                    holstered: false,
+                    ..
+                }
+            ) {
+                saw_refresh = true;
+                break;
+            }
+        }
+        assert!(
+            saw_refresh,
+            "Phase A must dispatch RefreshAppearance(holstered=false) so the \
+             client attaches the weapon mesh at the hand socket before the \
+             draw animation triggers",
+        );
+    }
+
+    /// Phase A → Phase B promotion: once the draw window has
+    /// elapsed, calling `handle_reload` again (as the
+    /// `pending_reload_tick` does) finds `pending_reload_at` set,
+    /// clears it, and runs the normal Phase B reload start
+    /// (`reload_complete_at` armed, `Item_Reload` sequence fired).
+    ///
+    /// Bug shape this catches: a refactor that forgets to clear
+    /// `pending_reload_at` in Phase B leaves the tick re-firing
+    /// `handle_reload` every 100ms forever.
+    #[tokio::test]
+    async fn reload_phase_a_to_phase_b_clears_pending_and_starts_reload() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            // Already drawn by Phase A; `pending_reload_at` is what the
+            // promotion key reads.
+            e.weapon_holstered = false;
+            e.combat_exit_at = Some(std::time::Instant::now());
+            e.pending_reload_at = Some(std::time::Instant::now());
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+        }
+        mgr.ability_defs.insert(
+            596,
+            AbilityDef {
+                ability_id: 596,
+                name: "reload".to_string(),
+                cooldown: 1.0,
+                warmup: 0.5,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 0,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+
+        let (tx, _rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            e.pending_reload_at.is_none(),
+            "Phase B must clear pending_reload_at so the tick doesn't re-fire \
+             handle_reload every 100ms forever",
+        );
+        assert!(
+            e.reload_complete_at.is_some(),
+            "Phase B must start the reload (set reload_complete_at) so the \
+             completion tick can promote the ammo refill",
+        );
+    }
+
+    /// Reload-while-in-OOC-grace (weapon already drawn): the timer
+    /// must be RE-STAMPED so it doesn't fire `OOC_HOLSTER_DELAY`
+    /// seconds after combat ended — which could land mid-reload and
+    /// holster the weapon while the animation is still playing.
+    #[tokio::test]
+    async fn reload_during_ooc_grace_resets_holster_timer() {
+        let mut mgr = make_mgr_with_player();
+        let stale_stamp = std::time::Instant::now() - std::time::Duration::from_secs(8);
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = false; // OOC but still drawn
+            e.combat_exit_at = Some(stale_stamp);
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+        }
+
+        let (tx, _rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(!e.weapon_holstered, "already-drawn weapon stays drawn");
+        let new_stamp = e.combat_exit_at.expect("timer must remain armed");
+        assert!(
+            new_stamp > stale_stamp,
+            "timer must be re-stamped to current time so the existing \
+             OOC_HOLSTER_DELAY countdown doesn't expire mid-reload",
+        );
+    }
+
+    /// Second reload press during the Phase A draw window must be
+    /// silently ignored. Without this gate, the second press falls
+    /// through to Phase B, clears `pending_reload_at` early, and
+    /// starts the reload cooldown immediately — defeating the draw
+    /// animation timing.
+    ///
+    /// Bug shape: refactor drops the `now < pending_reload_at` check
+    /// at the top of Phase B; a player mashing R during the draw
+    /// window triggers Phase B prematurely and the reload anim
+    /// chains in mid-draw (the symptom that drove the original
+    /// two-phase split).
+    #[tokio::test]
+    async fn reload_second_press_during_draw_window_is_ignored() {
+        let mut mgr = make_mgr_with_player();
+        let future = std::time::Instant::now() + std::time::Duration::from_millis(800);
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.archetype_id = Some(1);
+            e.weapon_visual = Some("WP-Human.WP_Pistol_1A".into());
+            e.weapon_holstered = false; // weapon drawn (Phase A finished its draw)
+            e.combat_exit_at = Some(std::time::Instant::now());
+            e.bandolier_items.insert(
+                0,
+                BandolierItem {
+                    item_id: 1,
+                    clip_size: 30,
+                    default_ammo_type: 2,
+                    current_ammo: 0,
+                    cur_ammo_type: 2,
+                },
+            );
+            e.active_bandolier_slot = 0;
+            // Phase A already fired — Phase B is queued for the future.
+            e.pending_reload_at = Some(future);
+        }
+        // No reload ability def needed — the gate fires before any
+        // ability lookup.
+
+        let (tx, _rx) = mpsc::channel(64);
+        handle_reload(1, &tx, &mut mgr).await;
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.pending_reload_at,
+            Some(future),
+            "second press must NOT clear pending_reload_at — the \
+             tick still owns the Phase B promotion at the right time",
+        );
+        assert!(
+            e.reload_complete_at.is_none(),
+            "second press must NOT start the reload cooldown — Phase B \
+             would otherwise fire mid-draw and chain the reload \
+             animation before the unholster motion finishes",
         );
     }
 
@@ -655,13 +1023,9 @@ mod tests {
     /// blocking the out-of-combat regen tick, which gates on
     /// `threatened_mobs.is_empty()`).
     ///
-    /// BSF_Holster (bit 8) IS still cleared on reload — the reload
-    /// animation needs the weapon-up posture. Pin both ends here so a
-    /// refactor that re-introduces the BSF_InCombat setter (or
-    /// accidentally drops the BSF_Holster clear) gets caught.
     #[tokio::test]
-    async fn reload_in_isolation_clears_holster_without_setting_bsf_in_combat() {
-        use crate::cell::combat::{BSF_HOLSTER, BSF_IN_COMBAT};
+    async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
+        use crate::cell::combat::BSF_IN_COMBAT;
 
         let mut mgr = make_mgr_with_player();
         if let Some(e) = mgr.get_entity_mut(1) {
@@ -676,7 +1040,6 @@ mod tests {
                 },
             );
             e.active_bandolier_slot = 0;
-            e.state_field |= BSF_HOLSTER; // start holstered so the clear is observable
         }
         // Seed the reload AbilityDef so the warmup path runs.
         mgr.ability_defs.insert(
@@ -703,12 +1066,6 @@ mod tests {
         handle_reload(1, &tx, &mut mgr).await;
 
         let s = mgr.get_entity(1).unwrap().state_field;
-        assert_eq!(
-            s & BSF_HOLSTER,
-            0,
-            "reload must still clear BSF_Holster — the reload animation needs \
-             the weapon-up posture"
-        );
         assert_eq!(
             s & BSF_IN_COMBAT,
             0,

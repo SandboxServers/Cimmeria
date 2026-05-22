@@ -246,6 +246,10 @@ async fn dispatch_reload_sends_entity_property() {
     // Stage C: shadow scalars are gone. Seed the bandolier item + AmmoSlot
     // stat the same way `InitPlayerState` does for a real world entry.
     if let Some(e) = mgr.get_entity_mut(1) {
+        // Weapon already drawn so Phase A (defer-reload-for-draw)
+        // doesn't kick in — this test asserts the Phase B deadline
+        // and timer-update wire shape, not the Phase A defer path.
+        e.weapon_holstered = false;
         e.bandolier_items.insert(
             0,
             BandolierItem {

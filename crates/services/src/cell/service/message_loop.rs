@@ -61,6 +61,30 @@ pub(super) async fn run_cell_loop(
                 // is delivered in the same tick as other AoI-driven updates.
                 super::ticks::reload_completion_tick(tx, &mut space_mgr).await;
 
+                // Fire deferred holster for any player whose
+                // out-of-combat grace window has elapsed (Phase 3 of
+                // ). Cheap — the inner filter short-circuits to
+                // the empty set unless someone just exited combat.
+                super::ticks::holster_timer_tick(tx, &mut space_mgr).await;
+
+                // Promote pending reload-while-holstered (Phase A → B):
+                // any player whose draw animation has had time to play
+                // gets the actual reload kicked off now. Cheap, same
+                // filter shape as the holster tick.
+                super::ticks::pending_reload_tick(tx, &mut space_mgr).await;
+
+                // Promote queued attack-while-holstered: any player
+                // whose draw window has elapsed gets the deferred
+                // ability dispatched. Same filter shape — short-circuits
+                // when the queue is empty.
+                super::ticks::pending_attack_tick(tx, &mut space_mgr).await;
+
+                // Promote queued bandolier slot swap: any player whose
+                // Item_Unequip animation window has elapsed gets the
+                // deferred slot change finalized (active slot update +
+                // Item_Equip for the new weapon).
+                super::ticks::pending_slot_swap_tick(tx, &mut space_mgr).await;
+
                 // Drive ring transporter timers (hide / warmup / cooldown).
                 // Each transporter holds its own deadlines; this tick fires
                 // the transitions and dispatches their effects.

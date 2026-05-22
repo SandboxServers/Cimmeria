@@ -95,45 +95,89 @@ pub async fn query_player_load_data(
             );
 
             let mut components = row.components;
-            let item_visuals: Vec<String> = match sqlx::query_scalar(
+
+            // Query equipment visuals (head/torso/armor/etc — container ≠
+            // bandolier). These always go on the wire regardless of
+            // holster state.
+            let equipment_visuals: Vec<String> = match sqlx::query_scalar(
                 "SELECT ri.visual_component \
                  FROM sgw_inventory inv \
                  JOIN resources.items ri ON ri.item_id = inv.type_id \
                  WHERE inv.container_id = ANY($1) \
                    AND inv.character_id = $2 \
                    AND ri.visual_component IS NOT NULL \
-                   AND ( \
-                     (inv.container_id <> $3 AND inv.slot_id = 0) \
-                     OR (inv.container_id = $3 AND inv.slot_id = $4) \
-                   )",
+                   AND inv.slot_id = 0",
             )
-            .bind({
-                let mut all: Vec<i32> = EQUIPMENT_CONTAINERS.to_vec();
-                all.push(CONTAINER_BANDOLIER);
-                all
-            })
+            .bind(EQUIPMENT_CONTAINERS)
             .bind(player_id)
-            .bind(CONTAINER_BANDOLIER)
-            .bind(row.bandolier_slot)
             .fetch_all(pool.as_ref())
             .await
             {
                 Ok(v) => v,
                 Err(e) => {
-                    tracing::error!(player_id, "Failed to query equipped item visuals — keeping naked appearance for this load: {e}");
+                    // The base body components from `row.components` are
+                    // still applied — only the equipment-slot visuals
+                    // (head/torso/armor/etc.) are skipped on this fallback.
+                    // The active bandolier weapon visual is queried
+                    // separately below and is not affected here.
+                    tracing::error!(
+                        player_id,
+                        "Failed to query equipment visuals \u{2014} skipping equipment-slot visuals \
+                         (helmet/armor/etc.); base body components from sgw_player still apply: {e}"
+                    );
                     Vec::new()
                 }
             };
-            if !item_visuals.is_empty() {
-                tracing::debug!(player_id, visuals = ?item_visuals, "Equipped item visual components");
+
+            // Query the active bandolier slot's weapon visual separately
+            // — it's filtered out of `BeingAppearance.ComponentList` when
+            // the player is holstered. The client's appearance compositor
+            // keys the holster-vs-armed animation pose off whether a
+            // weapon-shaped entry is present in the list, so omitting
+            // this string is what renders the weapon-down stance. See
+            // `CellEntity::appearance_components` and the Ghidra evidence
+            // at `ghidra://SGW.exe@0x00ec0840`.
+            let weapon_visual: Option<String> = match sqlx::query_scalar(
+                "SELECT ri.visual_component \
+                 FROM sgw_inventory inv \
+                 JOIN resources.items ri ON ri.item_id = inv.type_id \
+                 WHERE inv.container_id = $1 \
+                   AND inv.character_id = $2 \
+                   AND inv.slot_id = $3 \
+                   AND ri.visual_component IS NOT NULL \
+                 LIMIT 1",
+            )
+            .bind(CONTAINER_BANDOLIER)
+            .bind(player_id)
+            .bind(row.bandolier_slot)
+            .fetch_optional(pool.as_ref())
+            .await
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(player_id, "Failed to query active bandolier weapon visual — treating as no weapon: {e}");
+                    None
+                }
+            };
+
+            if !equipment_visuals.is_empty() {
+                tracing::debug!(player_id, visuals = ?equipment_visuals, "Equipment visual components");
             }
-            components.extend(item_visuals);
+            if let Some(ref w) = weapon_visual {
+                tracing::debug!(player_id, weapon_visual = %w, active_slot = row.bandolier_slot, "Active bandolier weapon visual");
+            }
+
+            components.extend(equipment_visuals);
+            if let Some(ref w) = weapon_visual {
+                components.push(w.clone());
+            }
 
             tracing::info!(
                 player_id,
                 bodyset = %row.bodyset,
                 final_component_count = components.len(),
                 final_components = ?components,
+                weapon_visual = ?weapon_visual,
                 "Player load data: final appearance after visual merge"
             );
 
@@ -163,6 +207,7 @@ pub async fn query_player_load_data(
                 gender: row.gender,
                 bodyset: row.bodyset,
                 components,
+                weapon_visual,
                 exp: row.exp,
                 naquadah: row.naquadah,
                 known_stargates: row.known_stargates,

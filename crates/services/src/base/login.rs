@@ -147,6 +147,7 @@ pub(crate) async fn handle_login(
                 pending_client_ready: None,
                 cached_appearance_args: None,
                 cached_tint_args: None,
+                weapon_holstered: true,
                 cancelled,
                 cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
                 player_name: None,

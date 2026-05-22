@@ -30,6 +30,10 @@ async fn slot_swap_preserves_per_slot_ammo() {
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
+        // Weapon already drawn so the attack-while-holstered queue
+        // doesn't intercept the fire calls — this test is about
+        // per-slot ammo preservation across the swap.
+        e.weapon_holstered = false;
         e.abilities.add_ability(ability_id);
         e.bandolier_items.insert(
             0,
@@ -79,6 +83,16 @@ async fn slot_swap_preserves_per_slot_ammo() {
 
     // Drain rx so the swap-message assertions below can scan a clean buffer.
     while rx.try_recv().is_ok() {}
+
+    // Pre-stamp pending_slot_swap_at so the handler treats this
+    // dispatch as the re-entry-from-tick path and runs the
+    // immediate swap. Without this the choreography branch fires
+    // Item_Unequip and defers the actual slot change — this test
+    // verifies per-slot ammo preservation across the SWAP, not the
+    // choreography timing.
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
+    }
 
     // ── Swap to slot 1 (server-internal indexing) ──────────────────
     // Wire slots are 1-indexed (legacy convention from `Bag.py:369` /
@@ -194,6 +208,11 @@ async fn slot_swap_preserves_per_slot_ammo() {
         11
     );
 
+    // Pre-stamp again so the swap-back also takes the re-entry path.
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
+    }
+
     // ── Swap back to slot 0 (wire 1 → server 0) ─────────────────────
     let mut swap_back = Vec::with_capacity(8);
     swap_back.extend_from_slice(&3i32.to_le_bytes());
@@ -242,6 +261,11 @@ async fn slot_swap_cancels_in_flight_reload() {
     if let Some(e) = mgr.get_entity_mut(1) {
         e.is_player = true;
         e.player_id = Some(100);
+        // Pre-stamp pending_slot_swap_at so the handler treats this
+        // as the re-entry-from-tick path and runs the immediate swap.
+        // This test verifies in-flight-reload cancellation, not the
+        // choreography timing.
+        e.pending_slot_swap_at = Some(std::time::Instant::now());
         e.bandolier_items.insert(
             0,
             BandolierItem {

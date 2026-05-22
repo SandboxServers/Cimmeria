@@ -62,6 +62,7 @@ fn make_state() -> ConnectedClientState {
         pending_client_ready: Some(stub_pending_ready()),
         cached_appearance_args: None,
         cached_tint_args: None,
+        weapon_holstered: true,
         cancelled: Arc::new(AtomicBool::new(false)),
         cinematic_spam_cancel: Arc::new(AtomicBool::new(false)),
         player_name: Some("Tester".to_string()),
