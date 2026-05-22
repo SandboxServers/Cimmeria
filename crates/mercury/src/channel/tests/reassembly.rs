@@ -9,11 +9,7 @@ fn test_packet() -> Packet {
     use crate::packet::PacketFlags;
     use bytes::Bytes;
 
-    Packet::new(
-        PacketFlags::default(),
-        0,
-        Bytes::from_static(&[0xDE, 0xAD]),
-    )
+    Packet::new(PacketFlags::default(), 0, Bytes::from_static(&[0xDE, 0xAD]))
 }
 
 // ── Per-channel fragment reassembly ──────────────────────────────

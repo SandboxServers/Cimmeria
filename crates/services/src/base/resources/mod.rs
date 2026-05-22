@@ -345,6 +345,5 @@ impl ResourceCache {
     }
 }
 
-
 #[cfg(test)]
 mod tests;

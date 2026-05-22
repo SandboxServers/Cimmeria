@@ -147,8 +147,7 @@ async fn reload_in_flight_blocks_fire_even_with_past_deadline() {
         // intercept — this test is about the reload-in-flight gate.
         p.weapon_holstered = false;
         p.abilities.add_ability(7);
-        p.reload_complete_at =
-            Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+        p.reload_complete_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
     }
     mgr.ability_defs.insert(7, make_ability(7, 1, 30));
     let (tx, mut rx) = mpsc::channel(8);

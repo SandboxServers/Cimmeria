@@ -81,8 +81,7 @@ async fn sync_bandolier_items_active_slot_gained_weapon_draws_and_animates() {
                 holstered: false, ..
             } => saw_refresh = true,
             CellToBaseMsg::EntityMethodCall { method_index, .. }
-                if method_index
-                    == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
             {
                 saw_sequence = true;
             }
@@ -305,8 +304,7 @@ async fn sync_bandolier_items_active_slot_unchanged_does_not_re_animate() {
                 );
             }
             CellToBaseMsg::EntityMethodCall { method_index, .. }
-                if method_index
-                    == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
             {
                 panic!("unchanged-active-slot resync must NOT re-fire Item_Equip");
             }
@@ -314,4 +312,3 @@ async fn sync_bandolier_items_active_slot_unchanged_does_not_re_animate() {
         }
     }
 }
-

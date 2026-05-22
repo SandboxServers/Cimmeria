@@ -160,7 +160,5 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         }
     }
 
-    content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr)
-        .await;
+    content::fire_player_loaded(entity_id, player_id, &world_name, engine, tx, space_mgr).await;
 }
-

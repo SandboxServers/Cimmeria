@@ -616,7 +616,6 @@ impl CellEntity {
         self.position.distance_squared_to(other_pos) <= self.aoi_radius * self.aoi_radius
     }
 
-
     /// Build the `ComponentList` that should go out in `BeingAppearance`,
     /// applying the current holster state.
     ///
@@ -674,7 +673,6 @@ impl CellEntity {
     pub fn sync_holster_to_combat(&mut self, in_combat: bool) -> bool {
         self.set_weapon_holstered(!in_combat)
     }
-
 }
 
 impl std::fmt::Debug for CellEntity {

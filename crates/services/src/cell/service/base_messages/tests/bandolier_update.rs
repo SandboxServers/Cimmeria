@@ -124,8 +124,7 @@ async fn update_bandolier_item_draws_weapon_and_arms_holster_timer_when_active()
                 holstered: false, ..
             } => saw_refresh = true,
             CellToBaseMsg::EntityMethodCall { method_index, .. }
-                if method_index
-                    == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
             {
                 saw_sequence = true;
             }
@@ -144,7 +143,6 @@ async fn update_bandolier_item_draws_weapon_and_arms_holster_timer_when_active()
          hand with no animation.",
     );
 }
-
 
 /// `UpdateBandolierItem` with `make_active=false` but a slot that
 /// MATCHES the entity's already-active slot must STILL draw the
@@ -234,8 +232,7 @@ async fn update_bandolier_item_make_active_false_but_slot_matches_active_still_d
                 holstered: false, ..
             } => saw_refresh = true,
             CellToBaseMsg::EntityMethodCall { method_index, .. }
-                if method_index
-                    == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
             {
                 saw_sequence = true;
             }
@@ -332,8 +329,7 @@ async fn update_bandolier_item_make_active_false_into_non_active_slot_does_not_d
                 );
             }
             CellToBaseMsg::EntityMethodCall { method_index, .. }
-                if method_index
-                    == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
+                if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
             {
                 panic!("stash-slot grant must NOT fire Item_Equip");
             }
@@ -401,4 +397,3 @@ async fn update_bandolier_item_in_combat_does_not_arm_holster_timer() {
          this on combat exit naturally.",
     );
 }
-

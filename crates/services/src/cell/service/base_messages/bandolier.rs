@@ -198,10 +198,7 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
         let payload = entity.stats.serialize_dirty();
         entity.stats.clear_dirty();
         if !payload.is_empty() {
-            crate::cell::abilities::send_entity_method(
-                entity_id, 20, payload, tx, space_mgr,
-            )
-            .await;
+            crate::cell::abilities::send_entity_method(entity_id, 20, payload, tx, space_mgr).await;
         }
     }
 
@@ -214,8 +211,7 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
     // a now-empty hand. Also reset `weapon_holstered=true`
     // so the cached state matches the now-empty bandolier
     // (next equip's prev-vs-new check sees a clean baseline).
-    let active_slot_lost_weapon =
-        prev_active_item_id.is_some() && new_active_item_id.is_none();
+    let active_slot_lost_weapon = prev_active_item_id.is_some() && new_active_item_id.is_none();
     // Look up the holstered weapon's class-specific animation
     // duration BEFORE the mutable borrow below (can't borrow
     // space_mgr.item_defs and an entity_mut at the same time).
@@ -223,62 +219,56 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
         .and_then(|id| space_mgr.item_defs.get(&id))
         .map(|d| d.holster_animation_duration)
         .unwrap_or(crate::cell::service::ticks::HOLSTER_ANIMATION_DURATION);
-    let (
-        play_equip_anim,
-        play_holster_anim,
-        drew_weapon,
-        was_in_combat,
-        entity_state,
-        anim_path,
-    ) = if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-        let is_player = entity.is_player;
-        let player_id = entity.player_id;
-        let in_combat = !entity.threatened_mobs.is_empty();
-        let path = if active_slot_lost_weapon {
-            // Player-driven unequip — schedule the same
-            // two-phase choreography the OOC holster timer
-            // uses: fire `Item_Unequip` now,
-            // leave the mesh attached (weapon_holstered
-            // stays at its current value), and arm a
-            // Phase 2 via `holster_animation_complete_at`
-            // so `holster_timer_tick` dispatches the
-            // eventual `RefreshAppearance(holstered=true)`
-            // after the animation plays out.
-            //
-            // The base-side `sync_bandolier_after_inventory_change`
-            // call defers its `refresh_player_appearance`
-            // for unequip so the mesh stays during the
-            // animation — without that defer, the base
-            // yanks the mesh immediately and the user sees
-            // no animation.
-            entity.combat_exit_at = None;
-            entity.holster_animation_complete_at =
-                Some(std::time::Instant::now() + holster_duration);
-            "active slot lost weapon (unequip) — fire Item_Unequip + Phase 2"
-        } else if !active_slot_gained_weapon {
-            if new_active_item_id.is_none() {
-                "active slot is empty — skip"
+    let (play_equip_anim, play_holster_anim, drew_weapon, was_in_combat, entity_state, anim_path) =
+        if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+            let is_player = entity.is_player;
+            let player_id = entity.player_id;
+            let in_combat = !entity.threatened_mobs.is_empty();
+            let path = if active_slot_lost_weapon {
+                // Player-driven unequip — schedule the same
+                // two-phase choreography the OOC holster timer
+                // uses: fire `Item_Unequip` now,
+                // leave the mesh attached (weapon_holstered
+                // stays at its current value), and arm a
+                // Phase 2 via `holster_animation_complete_at`
+                // so `holster_timer_tick` dispatches the
+                // eventual `RefreshAppearance(holstered=true)`
+                // after the animation plays out.
+                //
+                // The base-side `sync_bandolier_after_inventory_change`
+                // call defers its `refresh_player_appearance`
+                // for unequip so the mesh stays during the
+                // animation — without that defer, the base
+                // yanks the mesh immediately and the user sees
+                // no animation.
+                entity.combat_exit_at = None;
+                entity.holster_animation_complete_at =
+                    Some(std::time::Instant::now() + holster_duration);
+                "active slot lost weapon (unequip) — fire Item_Unequip + Phase 2"
+            } else if !active_slot_gained_weapon {
+                if new_active_item_id.is_none() {
+                    "active slot is empty — skip"
+                } else {
+                    "active slot unchanged — skip"
+                }
+            } else if in_combat {
+                "in combat — skip OOC timer arming"
             } else {
-                "active slot unchanged — skip"
+                "active slot gained weapon (OOC) — draw + animate"
+            };
+            if active_slot_gained_weapon && !in_combat {
+                entity.set_weapon_holstered(false);
+                entity.combat_exit_at = Some(std::time::Instant::now());
+                entity.holster_animation_complete_at = None;
+                (true, false, true, false, (is_player, player_id), path)
+            } else if active_slot_lost_weapon {
+                (false, true, false, in_combat, (is_player, player_id), path)
+            } else {
+                (false, false, false, in_combat, (is_player, player_id), path)
             }
-        } else if in_combat {
-            "in combat — skip OOC timer arming"
         } else {
-            "active slot gained weapon (OOC) — draw + animate"
+            (false, false, false, false, (false, None), "entity missing")
         };
-        if active_slot_gained_weapon && !in_combat {
-            entity.set_weapon_holstered(false);
-            entity.combat_exit_at = Some(std::time::Instant::now());
-            entity.holster_animation_complete_at = None;
-            (true, false, true, false, (is_player, player_id), path)
-        } else if active_slot_lost_weapon {
-            (false, true, false, in_combat, (is_player, player_id), path)
-        } else {
-            (false, false, false, in_combat, (is_player, player_id), path)
-        }
-    } else {
-        (false, false, false, false, (false, None), "entity missing")
-    };
     tracing::info!(
         entity_id,
         active_bandolier_slot,
@@ -314,4 +304,3 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
         .await;
     }
 }
-

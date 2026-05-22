@@ -539,4 +539,3 @@ fn check_timeouts_does_not_touch_rto_when_no_retransmits() {
         "no retransmits means no backoff"
     );
 }
-

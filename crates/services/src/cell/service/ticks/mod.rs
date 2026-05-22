@@ -7,7 +7,6 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
 /// Run one tick of AoI processing across all spaces.
-
 pub(crate) mod holster;
 mod npc_movement;
 
@@ -188,8 +187,6 @@ pub(super) async fn reload_completion_tick(
         }
     }
 }
-
-
 
 /// Promote queued attack-while-holstered: dispatch the deferred
 /// ability after the draw animation has had time to play.
@@ -395,7 +392,6 @@ pub(super) async fn regen_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -412,7 +408,6 @@ mod tests {
             "empty space manager must produce zero AoI events"
         );
     }
-
 
     #[tokio::test]
     async fn reload_completion_tick_skips_entity_with_empty_slot() {

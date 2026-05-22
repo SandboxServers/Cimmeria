@@ -275,7 +275,6 @@ async fn item_move_out_of_bandolier_does_not_fire_equip_event() {
     );
 }
 
-
 /// `BaseToCellMsg::AdvanceRingDestination` is the cross-world ring
 /// transport's deferred-load callback. After the source ring's
 /// `Effect::TeleportCrossWorld` fires, the destination ring's FSM

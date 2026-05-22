@@ -400,5 +400,4 @@ mod tests {
             "weapon must stay drawn until the animation finishes",
         );
     }
-
 }
