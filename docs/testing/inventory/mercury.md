@@ -3,13 +3,13 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-05-21  
-> **Total tests**: 100  
+> **Total tests**: 101  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
 Mercury reliable UDP protocol plus AES-256-CBC / HMAC-MD5 encryption. Includes packet framing, sequencing, and the byte-level codec that the BigWorld client must accept verbatim.
 
-## All tests (100)
+## All tests (101)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -104,12 +104,13 @@ Mercury reliable UDP protocol plus AES-256-CBC / HMAC-MD5 encryption. Includes p
 | [process_parsed_handles_duplicate_fragments](../../../crates/mercury/src/unpacker.rs#L510) | unit | Unpacker | 2026-05-02 | Asserts on `asm.process_parsed(&f0).unwrap().is_none()` |  |
 | [process_parsed_rejects_fragment_count_above_max](../../../crates/mercury/src/unpacker.rs#L529) | unit | Unpacker | 2026-05-02 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
 | [process_parsed_rejects_seq_outside_range](../../../crates/mercury/src/unpacker.rs#L547) | unit | Unpacker | 2026-05-02 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
-| [process_parsed_handles_u32_max_range_without_overflow](../../../crates/mercury/src/unpacker.rs#L560) | unit | Unpacker | 2026-05-02 | Process parsed handles u32 max range without overflow |  |
-| [process_parsed_rejects_inverted_range](../../../crates/mercury/src/unpacker.rs#L588) | unit | Unpacker | 2026-05-02 | Asserts on `matches!(err, CimmeriaError::FragmentReassembly(_))` |  |
-| [add_fragment_rejects_conflicting_total_fragments](../../../crates/mercury/src/unpacker.rs#L604) | unit | Unpacker | 2026-05-04 | Two fragments arriving for the same `first_seq` must agree on `total_frags` |  |
-| [arrival_of_overlapping_bundle_evicts_in_progress_reassembly](../../../crates/mercury/src/unpacker.rs#L629) | unit | Unpacker | 2026-05-17 | Arrival-triggered eviction (spec §2.4.1 R13 / §2.10 S6): a new fragmented bundle whose sequence range overlaps an in-progress reassembly with an older `first_seq` evicts the in-progress one |  |
-| [arrival_of_non_overlapping_bundle_leaves_in_progress_alone](../../../crates/mercury/src/unpacker.rs#L668) | unit | Unpacker | 2026-05-17 | Non-overlapping bundles coexist — eviction is "older overlapping abandoned" signal only, not "any new fragment resets everything" |  |
-| [orphan_partial_reassembly_persists_indefinitely](../../../crates/mercury/src/unpacker.rs#L685) | unit | Unpacker | 2026-05-17 | Inverse of the deleted `process_parsed_times_out_incomplete_set` — an in-progress reassembly that never sees its remaining fragments must persist (no periodic sweep) |  |
-| [late_fragment_from_evicted_older_bundle_does_not_displace_newer](../../../crates/mercury/src/unpacker.rs#L708) | unit | Unpacker | 2026-05-17 | Eviction is asymmetric: a late straggler from an already-evicted older bundle must NOT displace the newer bundle that took over |  |
-| [incoming_overlapping_multiple_with_any_newer_existing_drops_stale](../../../crates/mercury/src/unpacker.rs#L762) | unit | Unpacker | 2026-05-17 | Incoming bundle whose range straddles multiple existing bundles must be dropped as stale if ANY existing is strictly newer |  |
-| [overlap_detection_handles_28_bit_sequence_wraparound](../../../crates/mercury/src/unpacker.rs#L797) | unit | Unpacker | 2026-05-17 | Wraparound case for the modular overlap test — ranges that straddle the 28-bit sequence-space boundary must still detect overlap correctly |  |
+| [process_parsed_handles_u32_max_range_without_overflow](../../../crates/mercury/src/unpacker.rs#L562) | unit | Unpacker | 2026-05-02 | Pathological begin=0, end=u32::MAX would overflow `(end - begin + 1)` in u32 — modular cap rejects it |  |
+| [process_parsed_rejects_bogus_range_via_max_fragments_cap](../../../crates/mercury/src/unpacker.rs#L590) | unit | Unpacker | 2026-05-21 | Non-wrap garbage range (e.g. begin=10, end=4) implies a ~268M-fragment wrap under modular arithmetic — rejected via the MAX_FRAGMENTS cap that `add_fragment` already enforces |  |
+| [process_parsed_accepts_28_bit_wrapped_range](../../../crates/mercury/src/unpacker.rs#L613) | unit | Unpacker | 2026-05-21 | Regression guard: a wire-arriving bundle whose range straddles the 28-bit sequence-space wrap MUST be accepted (pre-fix the `frag_end < frag_begin` gate dropped every wrapped bundle before reaching the modular helpers) |  |
+| [add_fragment_rejects_conflicting_total_fragments](../../../crates/mercury/src/unpacker.rs#L643) | unit | Unpacker | 2026-05-04 | Two fragments arriving for the same `first_seq` must agree on `total_frags` |  |
+| [arrival_of_overlapping_bundle_evicts_in_progress_reassembly](../../../crates/mercury/src/unpacker.rs#L668) | unit | Unpacker | 2026-05-17 | Arrival-triggered eviction (spec §2.4.1 R13 / §2.10 S6): a new fragmented bundle whose sequence range overlaps an in-progress reassembly with an older `first_seq` evicts the in-progress one |  |
+| [arrival_of_non_overlapping_bundle_leaves_in_progress_alone](../../../crates/mercury/src/unpacker.rs#L707) | unit | Unpacker | 2026-05-17 | Non-overlapping bundles coexist — eviction is "older overlapping abandoned" signal only, not "any new fragment resets everything" |  |
+| [orphan_partial_reassembly_persists_indefinitely](../../../crates/mercury/src/unpacker.rs#L724) | unit | Unpacker | 2026-05-17 | Inverse of the deleted `process_parsed_times_out_incomplete_set` — an in-progress reassembly that never sees its remaining fragments must persist (no periodic sweep) |  |
+| [late_fragment_from_evicted_older_bundle_does_not_displace_newer](../../../crates/mercury/src/unpacker.rs#L747) | unit | Unpacker | 2026-05-17 | Eviction is asymmetric: a late straggler from an already-evicted older bundle must NOT displace the newer bundle that took over |  |
+| [incoming_overlapping_multiple_with_any_newer_existing_drops_stale](../../../crates/mercury/src/unpacker.rs#L801) | unit | Unpacker | 2026-05-17 | Incoming bundle whose range straddles multiple existing bundles must be dropped as stale if ANY existing is strictly newer |  |
+| [overlap_detection_handles_28_bit_sequence_wraparound](../../../crates/mercury/src/unpacker.rs#L836) | unit | Unpacker | 2026-05-17 | Wraparound case for the modular overlap test — ranges that straddle the 28-bit sequence-space boundary must still detect overlap correctly |  |

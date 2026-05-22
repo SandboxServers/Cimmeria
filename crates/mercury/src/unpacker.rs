@@ -309,9 +309,11 @@ impl FragmentAssembler {
     /// - `Ok(None)` when the packet is one of N fragments and we're still
     ///   waiting for the rest.
     /// - `Err(_)` for malformed fragment metadata: missing
-    ///   `seq_id`/`frag_begin`/`frag_end`, inverted range, fragment count
+    ///   `seq_id`/`frag_begin`/`frag_end`, a modular fragment count
     ///   exceeding `MAX_FRAGMENTS`, or this packet's seq outside the
-    ///   declared range.
+    ///   declared range. Wire-arriving `frag_end < frag_begin` is
+    ///   treated as a legitimate 28-bit-space wrap, not an error
+    ///   (matches `add_fragment`'s modular semantics).
     ///
     /// Mapping from parser footers to assembler keys:
     /// - reassembly key = `frag_begin` (the bundle's anchor seq)
@@ -336,19 +338,18 @@ impl FragmentAssembler {
             )
         })?;
 
-        if end < begin {
-            return Err(CimmeriaError::FragmentReassembly(format!(
-                "inverted fragment range: frag_begin={begin}, frag_end={end}"
-            )));
-        }
-        // Promote to u64 before the +1 — `end - begin == u32::MAX`
-        // (e.g., begin=0, end=u32::MAX) would overflow and panic in
-        // debug / wrap to 0 in release if we computed in u32. The
-        // MAX_FRAGMENTS cap below would silently accept that 0.
-        let total_u64 = (end as u64) - (begin as u64) + 1;
-        // The assembler stores total_fragments as u8 (capped by MAX_FRAGMENTS).
-        // Reject anything beyond the cap; the cap exists to bound per-peer
-        // reassembly memory.
+        // Modular fragment-count derivation. Sequence numbers live in
+        // a 28-bit ring (spec §1.7 + §2.4 R4), so a wire-arriving bundle
+        // with `frag_end < frag_begin` in u32 is a legitimate wrap
+        // (e.g. begin=0x0FFFFFFE, end=0x00000001, total=4 across the
+        // wrap boundary). Reject only when the implied total exceeds
+        // `MAX_FRAGMENTS` — under modular arithmetic every (begin, end)
+        // pair represents *some* range; a garbage range like begin=10,
+        // end=5 implies a ~268M-fragment wrap, naturally caught by the
+        // cap. Uses the same `SEQUENCE_MASK` arithmetic as
+        // `add_fragment`'s `ranges_overlap_mod28` / `is_strictly_newer_mod28`
+        // so the two entry points handle wraparound identically.
+        let total_u64 = (end.wrapping_sub(begin) & SEQUENCE_MASK) as u64 + 1;
         if total_u64 > MAX_FRAGMENTS as u64 {
             return Err(CimmeriaError::FragmentReassembly(format!(
                 "fragment range {begin}..={end} ({total_u64} fragments) exceeds MAX_FRAGMENTS {MAX_FRAGMENTS}"
@@ -356,10 +357,11 @@ impl FragmentAssembler {
         }
         let total_frags = total_u64 as u8;
 
-        // seq must lie within the range — otherwise we'd map to a
-        // nonsensical fragment index. wrapping_sub catches `seq < begin`
-        // since the diff would be huge.
-        let idx_u32 = seq.wrapping_sub(begin);
+        // seq must lie within the modular range — otherwise we'd map
+        // to a nonsensical fragment index. Modular subtraction handles
+        // the wrap case (e.g. for a [0x0FFFFFFE..=0x00000001] bundle,
+        // seq=0x00000000 → idx=2).
+        let idx_u32 = seq.wrapping_sub(begin) & SEQUENCE_MASK;
         if (idx_u32 as u64) >= total_u64 {
             return Err(CimmeriaError::FragmentReassembly(format!(
                 "seq {seq} outside fragment range {begin}..={end}"
@@ -585,14 +587,51 @@ mod tests {
     }
 
     #[test]
-    fn process_parsed_rejects_inverted_range() {
-        // frag_end < frag_begin can't represent a real range and would
-        // underflow the fragment-count math. Caught at the helper.
+    fn process_parsed_rejects_bogus_range_via_max_fragments_cap() {
+        // A non-wrap garbage range like `frag_begin=10, frag_end=4`
+        // implies a ~268M-fragment wrap under modular arithmetic
+        // (`(4 - 10) & 0x0FFFFFFF + 1 ≈ 268_435_452`). The
+        // `MAX_FRAGMENTS` cap rejects it. (Pre-fix this hit a separate
+        // "inverted range" gate; now both gates collapse to the
+        // modular cap, matching `add_fragment`.)
         let pkt = build_then_parse_fragment(5, 10, 4, b"bad");
 
         let mut asm = FragmentAssembler::new();
         let err = asm.process_parsed(&pkt).unwrap_err();
         assert!(matches!(err, CimmeriaError::FragmentReassembly(_)));
+    }
+
+    /// Regression guard: a wire-arriving fragmented bundle whose range
+    /// straddles the 28-bit sequence-space wrap MUST be accepted and
+    /// reassembled, not rejected with "inverted range". Pre-fix,
+    /// `process_parsed` had a `frag_end < frag_begin` gate that dropped
+    /// every wrapped bundle before the modular-overlap logic in
+    /// `add_fragment` could see it. Symmetric with the
+    /// `overlap_detection_handles_28_bit_sequence_wraparound` test
+    /// that pins the same behavior at the `add_fragment` layer.
+    #[test]
+    fn process_parsed_accepts_28_bit_wrapped_range() {
+        // Bundle straddling the 28-bit wrap: begin=0x0FFFFFFE,
+        // end=0x00000001, four fragments at seqs
+        //   0x0FFFFFFE, 0x0FFFFFFF, 0x00000000, 0x00000001.
+        let begin = 0x0FFF_FFFEu32;
+        let end = 0x0000_0001u32;
+        let seqs = [0x0FFF_FFFEu32, 0x0FFF_FFFF, 0x0000_0000, 0x0000_0001];
+        let mut asm = FragmentAssembler::new();
+        let mut completed: Option<Bytes> = None;
+        for (i, &seq) in seqs.iter().enumerate() {
+            let body = format!("f{i}");
+            let pkt = build_then_parse_fragment(seq, begin, end, body.as_bytes());
+            let r = asm.process_parsed(&pkt).unwrap();
+            if i < seqs.len() - 1 {
+                assert!(r.is_none(), "fragment {i} must not complete the bundle");
+            } else {
+                completed = Some(r.expect("last fragment must complete the wrapped bundle"));
+            }
+        }
+        let body = completed.expect("wrapped bundle must complete");
+        assert_eq!(body.as_ref(), b"f0f1f2f3");
+        assert_eq!(asm.pending_count(), 0, "completed bundle must be removed");
     }
 
     /// Two fragments arriving for the same `first_seq` must agree on
