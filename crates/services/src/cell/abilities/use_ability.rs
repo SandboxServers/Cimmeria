@@ -10,13 +10,35 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{serialize_timer_update, TIMER_ABILITY_COOLDOWN};
+use cimmeria_entity::abilities::{
+    serialize_timer_update, AF_DEACTIVATE_AUTO_CYCLE, TIMER_ABILITY_COOLDOWN,
+};
 
 use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 
 use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
+
+/// Broadcast `onStateFieldUpdate` to the player's own client after a
+/// `BSF_AUTO_CYCLING` transition. Used at every arm/clear site in this file —
+/// kept as a single helper so the routing rule (self-only, like BSF_InCombat
+/// changes) lives in one place.
+async fn send_state_field(
+    entity_id: u32,
+    new_state: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    send_entity_method(
+        entity_id,
+        crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+        new_state.to_le_bytes().to_vec(),
+        tx,
+        space_mgr,
+    )
+    .await;
+}
 
 /// Handle a `useAbility(abilityId, targetId)` cell method call.
 ///
@@ -47,6 +69,36 @@ pub async fn handle_use_ability(
 ) -> bool {
     // ── Look up ability definition from DB (before mutable borrow) ──
     let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
+
+    // ── Auto-cycle manual-override gate ──
+    //
+    // If the player has auto-cycle armed for one ability and manually
+    // fires a different ability, cancel the loop before validation. This
+    // matches python `AbilityManager.useAbility` (line 1019: `self.autoCycle
+    // = False`) — the manual click was the player's intent to break the
+    // cycle. The loop's own re-fire path always invokes with the stashed
+    // ability_id, so this gate never trips for tick-driven re-fires.
+    //
+    // Same-ability manual fire is NOT a cancel: clicking the same weapon
+    // on a different target should update the loop's target stash (handled
+    // in the arm step after commit), not break the loop entirely.
+    let override_clears_loop = space_mgr.get_entity(entity_id).is_some_and(|e| {
+        e.is_player
+            && e.abilities.auto_cycle
+            && e.abilities
+                .auto_cycle_ability_id
+                .is_some_and(|id| id != ability_id)
+    });
+    if override_clears_loop {
+        if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
+            tracing::info!(
+                entity_id,
+                ability_id,
+                "auto-cycle: cleared by manual override (different ability fired)"
+            );
+            send_state_field(entity_id, new_state, tx, space_mgr).await;
+        }
+    }
 
     // ── Validation (immutable checks first to avoid borrow conflicts) ──
 
@@ -260,6 +312,29 @@ pub async fn handle_use_ability(
         .abilities
         .start_ability_cooldown(ability_id, cooldown_duration);
 
+    // ── Auto-cycle commit-time arm / deactivate ──────────────────────
+    //
+    // Now that the cast has committed (cooldown started), reconcile the
+    // auto-cycle loop state. Three cases:
+    //
+    //   1. `AF_DEACTIVATE_AUTO_CYCLE` flag (mask `0x400`) on the firing
+    //      ability — break the loop. Used for one-shot abilities the
+    //      original design wanted to interrupt sustained auto-fire.
+    //   2. `auto_cycle == true` (button armed) — stash the ability id and
+    //      target id on the entity AND set `BSF_AUTO_CYCLING` so the
+    //      client highlights the gun-icon button. The driver tick uses
+    //      the stash to re-invoke this function every cooldown expiry.
+    //   3. `auto_cycle == false` — no-op, ordinary one-off shot.
+    //
+    // The stash captures the SERVER-side target id, not the player's
+    // current cursor. Subsequent same-ability manual fires update the
+    // stash to follow the new target; the loop never reads the cursor.
+    let is_player = entity.is_player;
+    let auto_cycle_armed = entity.abilities.auto_cycle;
+    let has_deactivate_flag = ability_def
+        .as_ref()
+        .is_some_and(|d| d.flags & AF_DEACTIVATE_AUTO_CYCLE != 0);
+
     // Consume ammo (players only). Routes through `set_slot_ammo` so the
     // AmmoSlot{N} stat updates and the slot is marked dirty for batched
     // persistence (drained on reload completion / slot swap / ammo change /
@@ -301,6 +376,38 @@ pub async fn handle_use_ability(
     );
 
     send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
+
+    // ── Auto-cycle commit: arm or DEACTIVATE-flag clear ──
+    //
+    // The classification was captured before the mutable borrow ended.
+    // Run the actual state mutation + broadcast now that we've dropped
+    // back to passing `&mut space_mgr` (the cooldown timer send above
+    // re-acquires the immutable borrow inside `send_entity_method`).
+    if is_player && auto_cycle_armed {
+        if has_deactivate_flag {
+            if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
+                tracing::info!(
+                    entity_id,
+                    ability_id,
+                    "auto-cycle: cleared by AF_DEACTIVATE_AUTO_CYCLE flag"
+                );
+                send_state_field(entity_id, new_state, tx, space_mgr).await;
+            }
+        } else if let Some(new_state) =
+            combat::arm_auto_cycle(space_mgr, entity_id, ability_id, target_id)
+        {
+            tracing::info!(
+                entity_id,
+                ability_id,
+                target_id,
+                "auto-cycle: armed (first commit) — BSF_AUTO_CYCLING set"
+            );
+            send_state_field(entity_id, new_state, tx, space_mgr).await;
+        }
+        // Bit-already-set path: `arm_auto_cycle` updates the stash
+        // unconditionally; only the `Some(new_state)` branch needs to
+        // broadcast. Subsequent same-ability fires fall here.
+    }
 
     // Note on BSF_InCombat (bit 3): intentionally NOT set here. The bit is
     // derived from `threatened_mobs` and flips on via
@@ -897,5 +1004,222 @@ mod tests {
         let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
         assert!(committed);
         assert!(mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
+    }
+
+    // ── Auto-cycle commit-time arm and clear paths ─────────────────────
+
+    /// First commit while `auto_cycle == true` arms the loop:
+    /// stashes `(ability_id, target_id)`, sets `BSF_AUTO_CYCLING`,
+    /// and broadcasts `onStateFieldUpdate` so the client highlights
+    /// the gun-icon button.
+    ///
+    /// Bug shape this catches: a refactor that calls `arm_auto_cycle`
+    /// but skips the broadcast leaves the server thinking the loop
+    /// is running while the client never lights the button — the
+    /// exact missing-feedback hazard #341 closes.
+    #[tokio::test]
+    async fn auto_cycle_first_commit_arms_loop_and_broadcasts_state_field() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(7);
+            p.abilities.auto_cycle = true; // button pressed earlier
+            p.weapon_holstered = false; // skip the unholster queue
+        }
+        mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+        let (tx, mut rx) = mpsc::channel(64);
+
+        let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+        assert!(committed);
+
+        let e = mgr.get_entity(1).unwrap();
+        assert_eq!(
+            e.abilities.auto_cycle_ability_id,
+            Some(7),
+            "ability id must be stashed for the driver tick to re-fire",
+        );
+        assert_eq!(
+            e.abilities.auto_cycle_target_id,
+            Some(0),
+            "target id must be stashed even for self-cast (target_id=0)",
+        );
+        assert_ne!(
+            e.state_field & BSF_AUTO_CYCLING,
+            0,
+            "BSF_AUTO_CYCLING must be set so the client highlights the gun-icon button",
+        );
+
+        // The state-field broadcast is what fires
+        // `EmitAutoCycleStateChanged` on the client — without it the
+        // button stays dark even though the server is now looping.
+        let msgs = drain(&mut rx);
+        let saw_state_field_update = msgs.iter().any(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::EntityMethodCall {
+                    entity_id: 1,
+                    method_index,
+                    ..
+                } if *method_index == method_idx::ON_STATE_FIELD_UPDATE
+            )
+        });
+        assert!(
+            saw_state_field_update,
+            "first commit must emit onStateFieldUpdate so the client lights the button"
+        );
+    }
+
+    /// AF_DEACTIVATE_AUTO_CYCLE-flagged abilities firing while
+    /// auto-cycle is armed CANCEL the loop after commit. The cast
+    /// still goes through (cooldown started, ammo consumed) — the
+    /// flag just stops the re-fire chain so one-shot abilities don't
+    /// get repeated by the driver. Mirrors python `AbilityManager`
+    /// behavior for flag mask `0x400`.
+    ///
+    /// Bug shape: a refactor that arms unconditionally after commit
+    /// makes one-shot specials (signature moves) auto-repeat forever.
+    #[tokio::test]
+    async fn af_deactivate_auto_cycle_clears_loop_on_commit() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
+        use cimmeria_entity::abilities::AF_DEACTIVATE_AUTO_CYCLE;
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(7);
+            // Pre-armed loop with a different ability stashed (so the
+            // manual-override gate doesn't trip on entry — this test
+            // is about the AF_DEACTIVATE-flag exit path, not the
+            // manual-override exit path).
+            p.abilities.auto_cycle = true;
+            p.abilities.auto_cycle_ability_id = Some(7);
+            p.abilities.auto_cycle_target_id = Some(0);
+            p.set_state_flag(BSF_AUTO_CYCLING);
+            p.weapon_holstered = false;
+        }
+        // Ability 7 has the deactivate-auto-cycle flag set.
+        let mut deactivating_ability = make_ability(7, 0, 30);
+        deactivating_ability.flags = AF_DEACTIVATE_AUTO_CYCLE;
+        mgr.ability_defs.insert(7, deactivating_ability);
+        let (tx, _rx) = mpsc::channel(64);
+
+        let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+        assert!(committed, "the cast itself must still commit");
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            !e.abilities.auto_cycle,
+            "AF_DEACTIVATE_AUTO_CYCLE must clear the auto_cycle flag",
+        );
+        assert!(e.abilities.auto_cycle_ability_id.is_none());
+        assert!(e.abilities.auto_cycle_target_id.is_none());
+        assert_eq!(
+            e.state_field & BSF_AUTO_CYCLING,
+            0,
+            "BSF_AUTO_CYCLING must be cleared so the client un-highlights the button",
+        );
+    }
+
+    /// Manual fire of a different ability while auto-cycle is armed
+    /// cancels the loop on entry — the player's intent was to break
+    /// the cycle and switch abilities. The new manual cast still
+    /// commits normally.
+    ///
+    /// Mirrors python `AbilityManager.useAbility` (line 1019:
+    /// `self.autoCycle = False` on every direct call). The loop's
+    /// own tick-driven re-fires invoke with the stashed ability id,
+    /// so this gate never trips for loop-driven shots — only manual
+    /// override clicks.
+    ///
+    /// Bug shape: a refactor that drops the manual-override gate
+    /// turns ability swaps into "fire the new ability AND keep
+    /// looping the old one," with no way to actually break the loop
+    /// without pressing the gun-icon button.
+    #[tokio::test]
+    async fn manual_fire_of_different_ability_cancels_auto_cycle() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(7);
+            p.abilities.add_ability(8); // different ability
+            p.abilities.auto_cycle = true;
+            p.abilities.auto_cycle_ability_id = Some(7); // armed on ability 7
+            p.abilities.auto_cycle_target_id = Some(99);
+            p.set_state_flag(BSF_AUTO_CYCLING);
+            p.weapon_holstered = false;
+        }
+        mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+        mgr.ability_defs.insert(8, make_ability(8, 0, 30));
+        let (tx, _rx) = mpsc::channel(64);
+
+        // Manual fire of ability 8 (different from stashed 7).
+        let committed = handle_use_ability(1, 8, 0, &tx, &mut mgr).await;
+        assert!(committed, "the new ability still fires");
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            !e.abilities.auto_cycle,
+            "different-ability manual fire must clear the auto_cycle flag",
+        );
+        assert!(e.abilities.auto_cycle_ability_id.is_none());
+        assert!(e.abilities.auto_cycle_target_id.is_none());
+        assert_eq!(
+            e.state_field & BSF_AUTO_CYCLING,
+            0,
+            "BSF must clear so the client un-highlights the button",
+        );
+    }
+
+    /// Same-ability manual fire while auto-cycle is armed does NOT
+    /// cancel the loop — it just refreshes the target stash. Right-
+    /// clicking the same weapon on a new enemy should redirect the
+    /// loop, not break it.
+    ///
+    /// Bug shape: a refactor that conflates "any manual fire" with
+    /// "different-ability fire" turns every right-click into a loop
+    /// reset, which defeats the purpose of auto-cycle (the player
+    /// would have to re-press the button every time they switch
+    /// targets).
+    #[tokio::test]
+    async fn same_ability_manual_fire_redirects_target_without_breaking_loop() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1, [0.0; 3]);
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(7);
+            p.abilities.auto_cycle = true;
+            p.abilities.auto_cycle_ability_id = Some(7);
+            p.abilities.auto_cycle_target_id = Some(99); // old target
+            p.set_state_flag(BSF_AUTO_CYCLING);
+            p.weapon_holstered = false;
+        }
+        mgr.ability_defs.insert(7, make_ability(7, 0, 30));
+        let (tx, _rx) = mpsc::channel(64);
+
+        // Same-ability fire but at a different target (0 = self-cast).
+        let committed = handle_use_ability(1, 7, 0, &tx, &mut mgr).await;
+        assert!(committed);
+
+        let e = mgr.get_entity(1).unwrap();
+        assert!(
+            e.abilities.auto_cycle,
+            "same-ability fire must NOT break the loop",
+        );
+        assert_eq!(
+            e.abilities.auto_cycle_ability_id,
+            Some(7),
+            "ability id must be stable",
+        );
+        assert_eq!(
+            e.abilities.auto_cycle_target_id,
+            Some(0),
+            "target stash must update to the new target",
+        );
+        assert_ne!(
+            e.state_field & BSF_AUTO_CYCLING,
+            0,
+            "BSF must remain set — the loop continues",
+        );
     }
 }

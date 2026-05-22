@@ -18,11 +18,32 @@ pub async fn dispatch(
         SET_AUTO_CYCLE => {
             if !args.is_empty() {
                 let enabled = args[0] != 0;
-                tracing::debug!(entity_id, enabled, "setAutoCycle");
-                if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-                    entity.abilities.auto_cycle = enabled;
-                    if !enabled {
-                        entity.abilities.auto_cycle_ability_id = None;
+                tracing::info!(entity_id, enabled, "setAutoCycle");
+                if enabled {
+                    // Just arm the flag. The actual loop arms (stash +
+                    // BSF_AUTO_CYCLING) at first useAbility commit — that's
+                    // where the ability id and server-side target id are
+                    // known. Matches python `SGWPlayer.setAutoCycle` which
+                    // only flips the flag and waits for the next launch.
+                    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                        entity.abilities.auto_cycle = true;
+                    }
+                } else {
+                    // Explicit disable: drop the stash AND clear the bit so
+                    // the client un-highlights the button. clear_auto_cycle
+                    // returns Some only on bit transition — re-broadcasting
+                    // for an already-off player would be wire noise.
+                    if let Some(new_state) =
+                        crate::cell::combat::clear_auto_cycle(space_mgr, entity_id)
+                    {
+                        super::super::super::abilities::send_entity_method(
+                            entity_id,
+                            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                            new_state.to_le_bytes().to_vec(),
+                            tx,
+                            space_mgr,
+                        )
+                        .await;
                     }
                 }
             }
@@ -445,18 +466,26 @@ mod tests {
         assert!(!handled);
     }
 
-    /// SET_AUTO_CYCLE flips entity.abilities.auto_cycle. When
-    /// disabled, must clear auto_cycle_ability_id too — otherwise a
-    /// stale ability id would re-trigger on the next enable cycle.
+    /// SET_AUTO_CYCLE disable clears the full loop stash (flag,
+    /// ability id, target id) AND the `BSF_AUTO_CYCLING` state-field
+    /// bit when it was previously set. Regression guard: a refactor
+    /// that drops the target-id clear or the BSF un-set would leave
+    /// the button stuck on-screen highlighted with stale ids ready to
+    /// re-fire on the next enable.
     #[tokio::test]
-    async fn set_auto_cycle_disable_clears_ability_id() {
+    async fn set_auto_cycle_disable_clears_stash_and_bsf() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
         let mut mgr = make_mgr_with_player();
+        // Simulate a previously-armed loop: ability + target stashed,
+        // BSF bit set (the state arrived at by `arm_auto_cycle`).
         if let Some(e) = mgr.get_entity_mut(1) {
             e.abilities.auto_cycle = true;
             e.abilities.auto_cycle_ability_id = Some(597);
+            e.abilities.auto_cycle_target_id = Some(42);
+            e.set_state_flag(BSF_AUTO_CYCLING);
         }
         let engine = ChainEngine::new();
-        let (tx, _rx) = mpsc::channel(8);
+        let (tx, mut rx) = mpsc::channel(8);
 
         // args = [0] → enabled = false
         let handled = dispatch(1, SET_AUTO_CYCLE, &[0], &tx, &mut mgr, &engine).await;
@@ -466,15 +495,71 @@ mod tests {
         assert!(!e.abilities.auto_cycle);
         assert!(
             e.abilities.auto_cycle_ability_id.is_none(),
-            "disable must also clear auto_cycle_ability_id"
+            "disable must clear auto_cycle_ability_id"
+        );
+        assert!(
+            e.abilities.auto_cycle_target_id.is_none(),
+            "disable must clear auto_cycle_target_id"
+        );
+        assert_eq!(
+            e.state_field & BSF_AUTO_CYCLING,
+            0,
+            "disable must clear BSF_AUTO_CYCLING so the client un-highlights the button"
+        );
+
+        // Verify the broadcast went out — the client requires this
+        // `onStateFieldUpdate` to fire `EmitAutoCycleStateChanged`.
+        let mut saw_state_field_update = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index,
+                ..
+            } = msg
+            {
+                if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
+                    saw_state_field_update = true;
+                }
+            }
+        }
+        assert!(
+            saw_state_field_update,
+            "disable with BSF set must broadcast onStateFieldUpdate so the client un-highlights the button"
         );
     }
 
-    /// SET_AUTO_CYCLE enable doesn't touch auto_cycle_ability_id —
-    /// that's set elsewhere. Pin so a refactor that conflates the
-    /// two doesn't leak.
+    /// SET_AUTO_CYCLE disable when BSF was already clear must NOT
+    /// emit a redundant `onStateFieldUpdate`. The transition gate
+    /// inside `clear_auto_cycle` returns `None` and the handler
+    /// short-circuits the send. Pin so a refactor that always
+    /// broadcasts doesn't add wire noise on every disable.
+    #[tokio::test]
+    async fn set_auto_cycle_disable_when_bsf_clear_emits_no_broadcast() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.abilities.auto_cycle = true; // armed flag only
+                                           // No BSF bit set — the loop never reached commit.
+        }
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(8);
+
+        let handled = dispatch(1, SET_AUTO_CYCLE, &[0], &tx, &mut mgr, &engine).await;
+        assert!(handled);
+
+        assert!(
+            rx.try_recv().is_err(),
+            "disable without prior BSF set must not broadcast"
+        );
+    }
+
+    /// SET_AUTO_CYCLE enable just flips the flag — it does NOT touch
+    /// the ability id, target id, or BSF bit. Those are armed at
+    /// first `useAbility` commit. Pin so a refactor that pre-arms on
+    /// the button press doesn't trip the "highlight without a target"
+    /// scenario (button lit, but nothing to cycle).
     #[tokio::test]
     async fn set_auto_cycle_enable_only_sets_flag() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
         let mut mgr = make_mgr_with_player();
         let engine = ChainEngine::new();
         let (tx, _rx) = mpsc::channel(8);
@@ -483,8 +568,13 @@ mod tests {
         assert!(handled);
         let e = mgr.get_entity(1).unwrap();
         assert!(e.abilities.auto_cycle);
-        // auto_cycle_ability_id stays None (was never set)
         assert!(e.abilities.auto_cycle_ability_id.is_none());
+        assert!(e.abilities.auto_cycle_target_id.is_none());
+        assert_eq!(
+            e.state_field & BSF_AUTO_CYCLING,
+            0,
+            "enable alone must NOT set the BSF bit — the bit arms at first commit"
+        );
     }
 
     /// TRIGGER_REGION with a negative region_id must be rejected by

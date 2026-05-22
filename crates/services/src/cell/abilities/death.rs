@@ -84,6 +84,32 @@ pub(super) async fn apply_death_transition(
         }
     }
 
+    // 2b. Auto-cycle stop on target-death — sweep every player auto-firing
+    //     at the dying entity and clear their loop. Mirrors the threat
+    //     fanout above: multiple players can be auto-cycling at the same
+    //     mob; one death must clear `BSF_AUTO_CYCLING` for all of them so
+    //     the gun-icon button un-highlights. Applies to player targets too
+    //     — a PvP scenario where one player is auto-firing at another
+    //     should also stop on the target's death.
+    let auto_cycle_broadcasts =
+        crate::cell::combat::clear_auto_cycle_for_target(space_mgr, target_eid);
+    for (player_entity_id, new_state) in auto_cycle_broadcasts {
+        tracing::info!(
+            player_entity_id,
+            dying_target = target_eid,
+            new_state,
+            "death: clearing player auto-cycle loop (target died)"
+        );
+        send_entity_method(
+            player_entity_id,
+            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+            new_state.to_le_bytes().to_vec(),
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
+
     // 3. Target side: roll loot then push interaction flags. Player targets
     //    don't loot or change interaction type.
     if !target_is_player {
