@@ -146,7 +146,7 @@ The current Cimmeria implementation handles `setAutoCycle(enabled)` correctly at
 
 ### What is missing
 
-1. **The cooldown-expiry auto-cycle check.** When `handle_use_ability` starts a cooldown in `use_ability.rs`, it does not check `auto_cycle` at cooldown expiry. The ability's cooldown timer expires inside `start_ability_cooldown` / `AbilityManager::cleanup_expired` but there is no callback that re-invokes `handle_use_ability` when the timer lapses and `auto_cycle == true`.
+1. **The cooldown-expiry auto-cycle check.** When `handle_use_ability` starts a cooldown in `use_ability/mod.rs`, it does not check `auto_cycle` at cooldown expiry. The ability's cooldown timer expires inside `start_ability_cooldown` / `AbilityManager::cleanup_expired` but there is no callback that re-invokes `handle_use_ability` when the timer lapses and `auto_cycle == true`.
 
 2. **`auto_cycle_ability_id` is never set on enable.** `SET_AUTO_CYCLE` with `enabled=1` does not set `auto_cycle_ability_id` — it only sets the flag. The ability ID needs to be stored at the time the *first* `useAbility` fires with auto-cycle intent, not at `setAutoCycle(1)`. For the `interact` path this would be the bandolier weapon ability; for the button-press path it is the ability that was last fired.
 
@@ -158,7 +158,7 @@ The current Cimmeria implementation handles `setAutoCycle(enabled)` correctly at
 
 The cleanest approach, matching the original Python model:
 
-**A. At `use_ability.rs` fire-time:** when the call succeeds and `entity.abilities.auto_cycle == true`, store the fired `ability_id` in `entity.abilities.auto_cycle_ability_id`. This is the "lock in the cycled ability" step.
+**A. At `use_ability/mod.rs` fire-time:** when the call succeeds and `entity.abilities.auto_cycle == true`, store the fired `ability_id` in `entity.abilities.auto_cycle_ability_id`. This is the "lock in the cycled ability" step.
 
 **B. In the per-entity tick** (wherever cooldown completion is checked — the same tick that handles `reload_complete_at`, `pending_reload_at`, etc.): after a cooldown entry for an ability expires, check:
 
@@ -182,7 +182,7 @@ if entity.abilities.auto_cycle {
 - Clear bit 1 and broadcast `onStateFieldUpdate` when the loop stops.
 - The existing `set_state_flag` / `broadcast_state_field` infrastructure already handles this for `BSF_InCombat`; the same pattern applies.
 
-**D. `AF_DEACTIVATE_AUTO_CYCLE` gate in `use_ability.rs`:** check the ability's `flags & AF_DEACTIVATE_AUTO_CYCLE` (constant `1024`, already defined as `cimmeria_entity::abilities::AF_DEACTIVATE_AUTO_CYCLE`) when launching. If set, cancel auto-cycle before firing.
+**D. `AF_DEACTIVATE_AUTO_CYCLE` gate in `use_ability/mod.rs`:** check the ability's `flags & AF_DEACTIVATE_AUTO_CYCLE` (constant `1024`, already defined as `cimmeria_entity::abilities::AF_DEACTIVATE_AUTO_CYCLE`) when launching. If set, cancel auto-cycle before firing.
 
 **E. `interact` path:** the Rust `interact` handler should set `auto_cycle = true` and `auto_cycle_ability_id` to the weapon ability (matching `SGWPlayer.py:1176–1178`). This is the normal entry path — the standalone button is the override.
 
