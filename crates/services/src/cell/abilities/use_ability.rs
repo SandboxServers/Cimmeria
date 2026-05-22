@@ -312,34 +312,28 @@ pub async fn handle_use_ability(
         .abilities
         .start_ability_cooldown(ability_id, cooldown_duration);
 
-    // Stash the just-fired ability so `setAutoCycle(1)` can fire
-    // immediately on the next button press without waiting for the
-    // player to right-click an enemy first. Distinct from
-    // `auto_cycle_ability_id` (the LOOP's committed ability, cleared
-    // on stop): this field persists across auto-cycle on/off cycles
-    // and only zeroes on death/respawn. NPCs don't get this stash —
-    // they use `chooseAbility` which selects fresh per-fire.
+    // Stash the just-fired ability so `setAutoCycle(1)` can fire it
+    // immediately on the next button press. Distinct from
+    // `auto_cycle_ability_id` (the LOOP's committed ability, cleared on
+    // stop): this field persists across auto-cycle on/off cycles for
+    // the whole session. NPCs use `chooseAbility` per-fire and don't
+    // need the stash.
     if entity.is_player {
         entity.abilities.last_fired_ability_id = Some(ability_id);
     }
 
     // ── Auto-cycle commit-time arm / deactivate ──────────────────────
     //
-    // Now that the cast has committed (cooldown started), reconcile the
-    // auto-cycle loop state. Three cases:
+    // Three cases after the cooldown has started:
     //
     //   1. `AF_DEACTIVATE_AUTO_CYCLE` flag (mask `0x400`) on the firing
     //      ability — break the loop. Used for one-shot abilities the
     //      original design wanted to interrupt sustained auto-fire.
-    //   2. `auto_cycle == true` (button armed) — stash the ability id and
-    //      target id on the entity AND set `BSF_AUTO_CYCLING` so the
-    //      client highlights the gun-icon button. The driver tick uses
-    //      the stash to re-invoke this function every cooldown expiry.
+    //   2. `auto_cycle == true` (button armed) — stash the ability id
+    //      AND set `BSF_AUTO_CYCLING` so the client highlights the
+    //      gun-icon button. The driver tick reads `current_target_id`
+    //      LIVE at re-fire time, so target stash isn't needed here.
     //   3. `auto_cycle == false` — no-op, ordinary one-off shot.
-    //
-    // The stash captures the SERVER-side target id, not the player's
-    // current cursor. Subsequent same-ability manual fires update the
-    // stash to follow the new target; the loop never reads the cursor.
     let is_player = entity.is_player;
     let auto_cycle_armed = entity.abilities.auto_cycle;
     let has_deactivate_flag = ability_def
@@ -1026,8 +1020,7 @@ mod tests {
     ///
     /// Bug shape this catches: a refactor that calls `arm_auto_cycle`
     /// but skips the broadcast leaves the server thinking the loop
-    /// is running while the client never lights the button — the
-    /// exact missing-feedback hazard #341 closes.
+    /// is running while the client never lights the button.
     #[tokio::test]
     async fn auto_cycle_first_commit_arms_loop_and_broadcasts_state_field() {
         use crate::cell::combat::BSF_AUTO_CYCLING;

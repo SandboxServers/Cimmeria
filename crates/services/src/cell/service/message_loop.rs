@@ -80,10 +80,10 @@ pub(super) async fn run_cell_loop(
                 super::ticks::pending_attack_tick(tx, &mut space_mgr).await;
 
                 // Drive the server-side auto-cycle loop: re-fire any
-                // armed player's stashed ability against the stashed
-                // target whenever its cooldown has cleared. Cooldown
-                // gate is the rate limiter; the eligibility filter
-                // short-circuits when nobody is auto-cycling.
+                // armed player's stashed ability against the LIVE
+                // current_target_id whenever its cooldown has cleared.
+                // Cooldown gate is the rate limiter; the eligibility
+                // filter short-circuits when nobody is auto-cycling.
                 super::ticks::auto_cycle_tick(tx, &mut space_mgr).await;
 
                 // Promote queued bandolier slot swap: any player whose

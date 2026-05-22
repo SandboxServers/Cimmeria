@@ -193,9 +193,13 @@ pub struct AbilityManager {
     /// previously-fired ability + current target without requiring the
     /// player to right-click an enemy first.
     ///
-    /// `None` only at session start before any fire. Once set, never
-    /// cleared on auto-cycle stop — only zeroed on death/respawn so a
-    /// fresh respawn doesn't auto-resume a stale loop.
+    /// `None` only at session start before any fire. Once set, kept
+    /// for the rest of the session — never cleared on auto-cycle
+    /// stop, death, or respawn. Stale values are harmless: the
+    /// immediate-fire path runs the value through the normal
+    /// `handle_use_ability` validation, which rejects abilities the
+    /// player no longer has (e.g. after a weapon unequip) and leaves
+    /// the loop BSF-armed for the next manual fire to refresh.
     ///
     /// Distinct from `auto_cycle_ability_id`: that field is the ability
     /// the LOOP is currently committed to and clears on stop; this

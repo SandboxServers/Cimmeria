@@ -3,8 +3,10 @@
 //! The cell method 83 `setAutoCycle(enabled)` arms a flag, but the actual
 //! re-fire loop is server-driven: every cooldown expiry the
 //! [`crate::cell::service::ticks::auto_cycle_tick`] driver scans for armed
-//! players with stashed `(ability_id, target_id)` pairs and re-invokes
-//! [`crate::cell::abilities::handle_use_ability`].
+//! players, reads the LIVE target from
+//! [`cimmeria_entity::cell_entity::CellEntity::current_target_id`], and
+//! re-invokes [`crate::cell::abilities::handle_use_ability`] with the
+//! loop's committed ability id.
 //!
 //! This module owns the three transition primitives the loop hinges on:
 //!
@@ -16,10 +18,13 @@
 //!   live target is read from `CellEntity::current_target_id` at re-fire
 //!   time — NOT stashed here — so target switches mid-loop redirect
 //!   automatically.
-//! - [`clear_auto_cycle`] — drop the stash, clear the bit, return the new
-//!   `state_field` if it transitioned. Called on every stop path: explicit
-//!   `setAutoCycle(0)`, manual fire of a different ability,
-//!   `AF_DEACTIVATE_AUTO_CYCLE` flag, target death, or out-of-range/leashed.
+//! - [`clear_auto_cycle`] — drop the ability stash, clear the bit, return
+//!   the new `state_field` if it transitioned. Called on every stop path:
+//!   explicit `setAutoCycle(0)`, manual fire of a different ability,
+//!   `AF_DEACTIVATE_AUTO_CYCLE` flag, target death (via the sweep below),
+//!   and the tick's invalid-target branch (target deselect / despawn /
+//!   dead). NOT called on out-of-range — those keep the loop armed so the
+//!   player can walk back into range and resume.
 //! - [`clear_auto_cycle_for_target`] — sweep all players currently auto-cycling
 //!   at a given (now-dead/despawned) target id. Called from the death-transition
 //!   broadcast site.
@@ -43,8 +48,8 @@
 //! re-enters [`arm_auto_cycle`], `set_state_flag` would bump the counter
 //! from 1 to 2, 3, 4… and then the single decrement in [`clear_auto_cycle`]
 //! would only bring it back to N-1 — leaving the bit stuck set forever and
-//! suppressing every clear broadcast (the symptom logged in #341 playtest:
-//! "toggling doesn't work consistently", "target death doesn't clear loop").
+//! suppressing every clear broadcast. Observable symptoms: "toggling
+//! doesn't work consistently"; "target death doesn't clear loop".
 //!
 //! Mirrors how [`super::threat::enter_player_combat`] /
 //! [`super::threat::exit_player_combat`] handle `BSF_IN_COMBAT` — single-
@@ -355,9 +360,9 @@ mod tests {
         assert!(!mgr.get_entity(1).unwrap().abilities.auto_cycle);
     }
 
-    /// Regression for the playtest bug surfaced in #341: arming N times
-    /// then clearing once must STILL transition the bit and return
-    /// `Some(new_state)` so the broadcast fires.
+    /// Regression: arming N times then clearing once must STILL
+    /// transition the bit and return `Some(new_state)` so the
+    /// broadcast fires.
     ///
     /// Background: the tick-driven loop re-enters `arm_auto_cycle` on
     /// every re-fire. If the bit management used the ref-counted
@@ -399,7 +404,7 @@ mod tests {
         let result = clear_auto_cycle(&mut mgr, 1);
         assert!(
             result.is_some(),
-            "clear after N arms MUST broadcast (this is the #341 bug)"
+            "clear after N arms MUST broadcast — the ref-counter trap"
         );
         let p = mgr.get_entity(1).unwrap();
         assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);

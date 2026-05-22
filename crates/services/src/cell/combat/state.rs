@@ -23,10 +23,13 @@ pub const BSF_DEAD: u32 = 1 << BSF_DEAD_BIT;
 /// at `0x00e05fb0`). `USGWTargetIndicator` listens to the resulting CME event
 /// to highlight the gun-icon button.
 ///
-/// Server-side, the flag is set when a player's auto-cycle loop arms (first
-/// `useAbility` commit while `auto_cycle == true`) and cleared on stop:
-/// `setAutoCycle(0)`, target death, manual fire of a different ability, or
-/// an `AF_DEACTIVATE_AUTO_CYCLE`-flagged ability firing. See
+/// Server-side, the flag is set the moment the player presses the
+/// auto-cycle button (`setAutoCycle(1)`) so the client gets immediate
+/// visual feedback, independent of whether the loop has had its first
+/// ability commit yet. Cleared on stop: `setAutoCycle(0)`, target death,
+/// manual fire of a different ability, an
+/// `AF_DEACTIVATE_AUTO_CYCLE`-flagged ability firing, target deselect,
+/// or dead/despawned target during the loop. See
 /// [`crate::cell::service::ticks::auto_cycle_tick`] for the driver loop.
 ///
 /// From python `Atrea.enums.BSF_AutoCycling = 1`.
