@@ -141,7 +141,11 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
     };
 
     let (packets, seqs) = build_map_loaded(&TEST_KEY, 5, &[], 100, &data, &entry);
-    assert_eq!(seqs as usize, packets.len(), "seq count must match fragment count");
+    assert_eq!(
+        seqs as usize,
+        packets.len(),
+        "seq count must match fragment count"
+    );
     assert!(
         packets.len() < TX_WINDOW_SIZE,
         "mapLoaded emitted {} fragments — meets or exceeds the {}-slot reliable TX \
