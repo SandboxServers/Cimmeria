@@ -9,7 +9,10 @@
 //! This module owns the three transition primitives the loop hinges on:
 //!
 //! - [`arm_auto_cycle`] — stash the ability/target pair + set `BSF_AUTO_CYCLING`.
-//!   Called at first-commit time when `auto_cycle == true`.
+//!   Called at first-commit time when `auto_cycle == true`, AND from every
+//!   tick-driven re-fire (the tick re-invokes `handle_use_ability` which
+//!   re-enters this path). Idempotent: same-state re-arms just refresh the
+//!   target stash and never re-broadcast.
 //! - [`clear_auto_cycle`] — drop the stash, clear the bit, return the new
 //!   `state_field` if it transitioned. Called on every stop path: explicit
 //!   `setAutoCycle(0)`, manual fire of a different ability,
@@ -23,6 +26,26 @@
 //! `Some(new_state_field)` only when the BSF bit actually flipped, and let
 //! the caller decide whether to broadcast (because the broadcast site holds
 //! the `mpsc::Sender` and has the routing rules).
+//!
+//! ## Bit management — raw ops, NOT `set_state_flag` / `unset_state_flag`
+//!
+//! These helpers manipulate `state_field` with raw `|=` and `&= !mask`,
+//! deliberately *bypassing* the ref-counted [`CellEntity::set_state_flag`] /
+//! [`CellEntity::unset_state_flag`] API.
+//!
+//! `BSF_AUTO_CYCLING` is a single-source flag — only this module ever
+//! arms or clears it. The ref-counted helpers are designed for multi-source
+//! flags like `BSF_MovementLock` where multiple stuns / effects can stack.
+//! Using them here would be a correctness bug: every tick-driven re-fire
+//! re-enters [`arm_auto_cycle`], `set_state_flag` would bump the counter
+//! from 1 to 2, 3, 4… and then the single decrement in [`clear_auto_cycle`]
+//! would only bring it back to N-1 — leaving the bit stuck set forever and
+//! suppressing every clear broadcast (the symptom logged in #341 playtest:
+//! "toggling doesn't work consistently", "target death doesn't clear loop").
+//!
+//! Mirrors how [`super::threat::enter_player_combat`] /
+//! [`super::threat::exit_player_combat`] handle `BSF_IN_COMBAT` — single-
+//! source flag, raw bit ops, no counter.
 
 use crate::cell::space_manager::SpaceManager;
 
@@ -49,9 +72,21 @@ pub fn arm_auto_cycle(
     if !player.is_player {
         return None;
     }
+    // Defensive: arm is meaningless if the player isn't actually armed
+    // (button hasn't been pressed). The caller in `use_ability.rs`
+    // already gates on this, but checking here makes the contract
+    // single-source-of-truth — a future caller can't accidentally arm
+    // a disarmed player by forgetting the gate. Mirrors the
+    // `if !player.is_player` guard right above.
+    if !player.abilities.auto_cycle {
+        return None;
+    }
     player.abilities.auto_cycle_ability_id = Some(ability_id);
     player.abilities.auto_cycle_target_id = Some(target_id);
-    if player.set_state_flag(BSF_AUTO_CYCLING) {
+    // Raw bit op — see module-level doc on why we avoid `set_state_flag`.
+    let old = player.state_field;
+    player.state_field |= BSF_AUTO_CYCLING;
+    if player.state_field != old {
         Some(player.state_field)
     } else {
         None
@@ -76,7 +111,10 @@ pub fn clear_auto_cycle(space_mgr: &mut SpaceManager, player_id: u32) -> Option<
     player.abilities.auto_cycle = false;
     player.abilities.auto_cycle_ability_id = None;
     player.abilities.auto_cycle_target_id = None;
-    if player.unset_state_flag(BSF_AUTO_CYCLING) {
+    // Raw bit op — see module-level doc on why we avoid `unset_state_flag`.
+    let old = player.state_field;
+    player.state_field &= !BSF_AUTO_CYCLING;
+    if player.state_field != old {
         Some(player.state_field)
     } else {
         None
@@ -263,6 +301,56 @@ mod tests {
         assert!(p2.abilities.auto_cycle);
         assert_eq!(p2.abilities.auto_cycle_target_id, Some(888));
         assert_ne!(p2.state_field & BSF_AUTO_CYCLING, 0);
+    }
+
+    /// Regression for the playtest bug surfaced in #341: arming N times
+    /// then clearing once must STILL transition the bit and return
+    /// `Some(new_state)` so the broadcast fires.
+    ///
+    /// Background: the tick-driven loop re-enters `arm_auto_cycle` on
+    /// every re-fire. If the bit management used the ref-counted
+    /// `set_state_flag` API, the per-flag counter would bump on every
+    /// arm (1, 2, 3, 4 …) and the single `unset_state_flag` in
+    /// `clear_auto_cycle` would only decrement to N-1 — leaving the bit
+    /// stuck set and silently suppressing the disable/death/manual-
+    /// override broadcasts. Symptom in the logs: zero
+    /// `"death: clearing player auto-cycle loop"` lines despite the
+    /// arm having fired and the target having died.
+    ///
+    /// Fix: raw `|=` / `&= !mask` instead of the counter API. This test
+    /// fails the moment that pattern regresses back to the helper API.
+    #[test]
+    fn clear_after_n_arms_still_transitions_bit_and_broadcasts() {
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1);
+
+        // Simulate the playtest pattern: first commit + 9 tick re-fires.
+        // Each re-fire re-enters arm with the same ability + target.
+        for _ in 0..10 {
+            let _ = arm_auto_cycle(&mut mgr, 1, 592, 100);
+        }
+
+        // After 10 arms, the bit must be set exactly once (not "ref-
+        // counted to 10"). The state_flag_counts map should be empty
+        // for BSF_AUTO_CYCLING — we manipulate state_field directly,
+        // not through the ref-counted API.
+        let p = mgr.get_entity(1).unwrap();
+        assert_ne!(p.state_field & BSF_AUTO_CYCLING, 0);
+        assert!(
+            !p.state_flag_counts.contains_key(&BSF_AUTO_CYCLING),
+            "BSF_AUTO_CYCLING must NOT use the ref-counted counter — \
+             that would suppress the single-unset broadcast on clear",
+        );
+
+        // The decisive assertion: clear must transition the bit and
+        // return Some, regardless of how many times arm was called.
+        let result = clear_auto_cycle(&mut mgr, 1);
+        assert!(
+            result.is_some(),
+            "clear after N arms MUST broadcast (this is the #341 bug)"
+        );
+        let p = mgr.get_entity(1).unwrap();
+        assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
     }
 
     /// Non-player entities can't auto-cycle. Defensive guard so a stray

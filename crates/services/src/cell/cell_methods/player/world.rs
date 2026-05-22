@@ -20,13 +20,36 @@ pub async fn dispatch(
                 let enabled = args[0] != 0;
                 tracing::info!(entity_id, enabled, "setAutoCycle");
                 if enabled {
-                    // Just arm the flag. The actual loop arms (stash +
-                    // BSF_AUTO_CYCLING) at first useAbility commit — that's
-                    // where the ability id and server-side target id are
-                    // known. Matches python `SGWPlayer.setAutoCycle` which
-                    // only flips the flag and waits for the next launch.
-                    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
+                    // Arm the flag AND light `BSF_AUTO_CYCLING` immediately
+                    // so the client's gun-icon button highlights on the
+                    // very first press. Players expect visual ack on every
+                    // click — "armed silently, wait for fire" leaves the
+                    // button looking broken until the player happens to
+                    // right-click an enemy. The actual loop-arming
+                    // (`auto_cycle_ability_id` / `auto_cycle_target_id`
+                    // stash) still happens at first `useAbility` commit;
+                    // the BSF here is purely the "armed" indicator.
+                    let new_state = {
+                        let entity = match space_mgr.get_entity_mut(entity_id) {
+                            Some(e) => e,
+                            None => return true,
+                        };
                         entity.abilities.auto_cycle = true;
+                        // Raw bit op — see auto_cycle module doc for why
+                        // BSF_AUTO_CYCLING bypasses the ref-counted helpers.
+                        let old = entity.state_field;
+                        entity.state_field |= crate::cell::combat::BSF_AUTO_CYCLING;
+                        (entity.state_field != old).then_some(entity.state_field)
+                    };
+                    if let Some(new_state) = new_state {
+                        super::super::super::abilities::send_entity_method(
+                            entity_id,
+                            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                            new_state.to_le_bytes().to_vec(),
+                            tx,
+                            space_mgr,
+                        )
+                        .await;
                     }
                 } else {
                     // Explicit disable: drop the stash AND clear the bit so
@@ -552,28 +575,134 @@ mod tests {
         );
     }
 
-    /// SET_AUTO_CYCLE enable just flips the flag — it does NOT touch
-    /// the ability id, target id, or BSF bit. Those are armed at
-    /// first `useAbility` commit. Pin so a refactor that pre-arms on
-    /// the button press doesn't trip the "highlight without a target"
-    /// scenario (button lit, but nothing to cycle).
+    /// SET_AUTO_CYCLE enable sets the flag AND lights
+    /// `BSF_AUTO_CYCLING` immediately so the client's gun-icon
+    /// button highlights on the very first press. The
+    /// ability/target stash stays empty — that's still set at
+    /// first `useAbility` commit when the ids are actually known.
+    ///
+    /// Bug shape this prevents (the symptom that drove the change):
+    /// players pressed the button, got no visual feedback, assumed
+    /// the button was broken, and pressed it 5-10 more times.
+    /// "Light on enable" closes that UX gap.
     #[tokio::test]
-    async fn set_auto_cycle_enable_only_sets_flag() {
+    async fn set_auto_cycle_enable_lights_bsf_and_broadcasts() {
         use crate::cell::combat::BSF_AUTO_CYCLING;
         let mut mgr = make_mgr_with_player();
         let engine = ChainEngine::new();
-        let (tx, _rx) = mpsc::channel(8);
+        let (tx, mut rx) = mpsc::channel(8);
 
         let handled = dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
         assert!(handled);
+
         let e = mgr.get_entity(1).unwrap();
-        assert!(e.abilities.auto_cycle);
-        assert!(e.abilities.auto_cycle_ability_id.is_none());
-        assert!(e.abilities.auto_cycle_target_id.is_none());
-        assert_eq!(
+        assert!(e.abilities.auto_cycle, "flag must be armed");
+        assert!(
+            e.abilities.auto_cycle_ability_id.is_none(),
+            "ability id stash still empty — that arms at first commit",
+        );
+        assert!(
+            e.abilities.auto_cycle_target_id.is_none(),
+            "target id stash still empty",
+        );
+        assert_ne!(
             e.state_field & BSF_AUTO_CYCLING,
             0,
-            "enable alone must NOT set the BSF bit — the bit arms at first commit"
+            "enable MUST light BSF_AUTO_CYCLING so the button highlights",
+        );
+
+        // The broadcast must hit the wire so the client's
+        // `EmitAutoCycleStateChanged` fires and the button lights.
+        let mut saw_state_field_update = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index,
+                ..
+            } = msg
+            {
+                if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
+                    saw_state_field_update = true;
+                }
+            }
+        }
+        assert!(
+            saw_state_field_update,
+            "enable must broadcast onStateFieldUpdate so the client lights the button"
+        );
+    }
+
+    /// Disabling repeatedly when the bit is already clear is a no-op
+    /// (no re-broadcast). Mirror of the enable-spam test. The CEGUI
+    /// duplicate-click pattern affects disable presses too — without
+    /// the transition gate inside `clear_auto_cycle`, each redundant
+    /// disable would emit an `onStateFieldUpdate` carrying the same
+    /// (already-cleared) `bStateField` and spam the wire.
+    #[tokio::test]
+    async fn set_auto_cycle_disable_spam_does_not_re_broadcast() {
+        let mut mgr = make_mgr_with_player();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        // Pre-state: armed (flag + BSF set, as if enable ran earlier).
+        dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+        // Drain the enable broadcast.
+        while rx.try_recv().is_ok() {}
+
+        // First disable: transitions the bit, broadcasts.
+        dispatch(1, SET_AUTO_CYCLE, &[0], &tx, &mut mgr, &engine).await;
+        let mut first_broadcasts = 0;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+                if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
+                    first_broadcasts += 1;
+                }
+            }
+        }
+        assert_eq!(first_broadcasts, 1, "first disable broadcasts exactly once");
+
+        // Subsequent duplicate disables: must not broadcast.
+        for _ in 0..5 {
+            dispatch(1, SET_AUTO_CYCLE, &[0], &tx, &mut mgr, &engine).await;
+        }
+        assert!(
+            rx.try_recv().is_err(),
+            "duplicate disable calls must NOT re-broadcast — bit is already clear",
+        );
+    }
+
+    /// Spamming `setAutoCycle(1)` repeatedly (the CEGUI button fires
+    /// the Lua function multiple times per click — observed in #341
+    /// playtest as 3-4 identical calls within ~150µs) must NOT
+    /// re-broadcast. The bit is already set after the first call;
+    /// subsequent calls are idempotent. Pin: a regression where the
+    /// raw bit-set check disappears would re-broadcast on every
+    /// duplicate call and spam the wire.
+    #[tokio::test]
+    async fn set_auto_cycle_enable_spam_does_not_re_broadcast() {
+        let mut mgr = make_mgr_with_player();
+        let engine = ChainEngine::new();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        // First call: should broadcast.
+        dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+        let mut first_broadcasts = 0;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+                if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
+                    first_broadcasts += 1;
+                }
+            }
+        }
+        assert_eq!(first_broadcasts, 1, "first enable broadcasts exactly once");
+
+        // Subsequent duplicate calls: must not broadcast.
+        for _ in 0..5 {
+            dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+        }
+        assert!(
+            rx.try_recv().is_err(),
+            "duplicate enable calls must NOT re-broadcast — bit is already set",
         );
     }
 
