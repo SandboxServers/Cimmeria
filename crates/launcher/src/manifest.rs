@@ -22,16 +22,19 @@
 //! `fetch_manifest` fetches both `<url>` and `<url>.sig`. The signature
 //! file is hex-encoded (128 chars = 64 raw bytes) and is verified against
 //! the embedded [`MANIFEST_SIGNING_PUBKEY`]. This closes the manifest-
-//! tampering hole Cady flagged on PR #343: anyone who could MITM or
-//! compromise the manifest host can no longer ship arbitrary seed/patch
-//! payloads — SHA verification of the artifacts is meaningful again
-//! because the manifest itself is now authenticated.
+//! tampering hole: anyone who could MITM or compromise the manifest host
+//! can no longer ship arbitrary seed/patch payloads — SHA verification
+//! of the artifacts is meaningful again because the manifest itself is
+//! now authenticated.
 //!
 //! The dev-default public key has a publicly-known private counterpart
 //! (`DEV_MANIFEST_PRIVKEY` in tests) so anyone can sign manifests for
-//! development. Production builds **must** override via the
-//! `LAUNCHER_MANIFEST_PUBKEY_HEX` env var at compile time — the release
-//! workflow injects it from a repo secret.
+//! development. **Release builds resolve `MANIFEST_SIGNING_PUBKEY` to
+//! `None` unless `LAUNCHER_MANIFEST_PUBKEY_HEX` is set at compile time
+//! to a valid 64-char hex value** — every signature verification then
+//! fails fast with [`ManifestError::SigningKeyUnavailable`]. Silently
+//! falling back to the dev key in a release binary would re-introduce
+//! the exact attack manifest signing was added to close.
 
 use std::sync::LazyLock;
 
@@ -48,21 +51,44 @@ pub(crate) const DEV_MANIFEST_PRIVKEY: [u8; 32] = [0x2a; 32];
 /// Embedded Ed25519 public key used to verify the detached
 /// `manifest.json.sig` against the fetched `manifest.json` bytes.
 ///
-/// Defaults to the public counterpart of `[0x2a; 32]` so dev / PR / CI
-/// builds work out of the box with a publicly-known private key. Set
-/// `LAUNCHER_MANIFEST_PUBKEY_HEX` at compile time to override with the
-/// production key (64 hex chars = 32 bytes).
-pub static MANIFEST_SIGNING_PUBKEY: LazyLock<VerifyingKey> = LazyLock::new(|| {
+/// Dev / test / debug builds fall back to the public counterpart of
+/// `[0x2a; 32]` so the local toolchain and CI work out of the box with a
+/// publicly-known private key. **Release builds resolve to `None` if
+/// `LAUNCHER_MANIFEST_PUBKEY_HEX` is unset, empty, or malformed at
+/// compile time** — every signature verification then fails fast with
+/// [`ManifestError::SigningKeyUnavailable`]. Silently falling back to
+/// the dev key in a release binary would defeat the purpose of manifest
+/// signing.
+///
+/// `Option` rather than `panic!` because the LazyLock body runs lazily
+/// inside a tokio worker; an unwinding panic there is caught by tokio
+/// and silently lost, which would leave the UI hanging on "Fetching
+/// manifest…" forever. The clean error surfaces in the UI instead.
+pub static MANIFEST_SIGNING_PUBKEY: LazyLock<Option<VerifyingKey>> = LazyLock::new(|| {
     if let Some(hex_str) = option_env!("LAUNCHER_MANIFEST_PUBKEY_HEX") {
-        let bytes = hex_decode_32(hex_str)
-            .expect("LAUNCHER_MANIFEST_PUBKEY_HEX must be 64 hex chars (32 bytes)");
-        return VerifyingKey::from_bytes(&bytes)
-            .expect("LAUNCHER_MANIFEST_PUBKEY_HEX is not a valid Ed25519 public key");
+        // GitHub Actions evaluates `${{ secrets.X }}` to an empty string
+        // when the secret isn't configured — distinguish that here.
+        if hex_str.trim().is_empty() {
+            #[cfg(any(test, debug_assertions))]
+            {
+                return Some(SigningKey::from_bytes(&[0x2a; 32]).verifying_key());
+            }
+            #[cfg(not(any(test, debug_assertions)))]
+            {
+                return None;
+            }
+        }
+        let bytes = hex_decode_32(hex_str).ok()?;
+        return VerifyingKey::from_bytes(&bytes).ok();
     }
-    // Dev / PR / CI builds — derive the pubkey from the well-known dev
-    // private key. A future improvement could `tracing::warn!` here, but
-    // it would fire on every test run too which is noisy.
-    SigningKey::from_bytes(&[0x2a; 32]).verifying_key()
+    #[cfg(any(test, debug_assertions))]
+    {
+        Some(SigningKey::from_bytes(&[0x2a; 32]).verifying_key())
+    }
+    #[cfg(not(any(test, debug_assertions)))]
+    {
+        None
+    }
 });
 
 /// Decode exactly 64 hex chars into a `[u8; 32]`. Accepts both upper-
@@ -112,6 +138,12 @@ pub enum ManifestError {
         "Manifest signature verification failed — manifest does not match the embedded public key"
     )]
     BadSignature,
+    #[error(
+        "Manifest signing key is unavailable — this release was built without \
+         LAUNCHER_MANIFEST_PUBKEY_HEX. Rebuild the launcher with the secret \
+         configured, or use a debug build for testing."
+    )]
+    SigningKeyUnavailable,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,7 +217,14 @@ pub async fn fetch_manifest(http: &reqwest::Client, url: &str) -> Result<Manifes
     // chars (64 raw bytes) — hex-encoded so the file is grep-able in
     // logs and CI output. If either fetch or verify fails we refuse the
     // manifest entirely; there is no unsigned fallback.
-    let sig_url = format!("{url}.sig");
+    //
+    // The `.sig` suffix is inserted before any query string (and after
+    // any fragment is stripped). Naively appending `.sig` to the full URL
+    // would turn `manifest.json?sv=...` into `manifest.json?sv=....sig`,
+    // which is the wrong path entirely — that's a real concern under the
+    // current GH Releases hosting model (`/releases/download/<tag>/file?
+    // <signed-query>`) and under any SAS-tokened fallback.
+    let sig_url = sig_url_for(url);
     let sig_text = http
         .get(&sig_url)
         .send()
@@ -201,12 +240,29 @@ pub async fn fetch_manifest(http: &reqwest::Client, url: &str) -> Result<Manifes
     Ok(manifest)
 }
 
+/// Build the URL of the detached signature object for a given manifest
+/// URL. The `.sig` suffix is inserted onto the path portion, after any
+/// fragment is stripped and before any query string is reattached.
+pub(crate) fn sig_url_for(url: &str) -> String {
+    let no_fragment = url.split_once('#').map(|(l, _)| l).unwrap_or(url);
+    match no_fragment.split_once('?') {
+        Some((path, query)) => format!("{path}.sig?{query}"),
+        None => format!("{no_fragment}.sig"),
+    }
+}
+
 /// Verify a detached hex-encoded Ed25519 signature against the manifest
-/// body, using the embedded [`MANIFEST_SIGNING_PUBKEY`].
+/// body, using the embedded [`MANIFEST_SIGNING_PUBKEY`]. Returns
+/// [`ManifestError::SigningKeyUnavailable`] in release builds that were
+/// compiled without `LAUNCHER_MANIFEST_PUBKEY_HEX` — see the constant's
+/// doc comment for the rationale.
 pub fn verify_manifest_signature(body: &[u8], sig_hex: &str) -> Result<(), ManifestError> {
+    let pubkey = MANIFEST_SIGNING_PUBKEY
+        .as_ref()
+        .ok_or(ManifestError::SigningKeyUnavailable)?;
     let sig_bytes = hex_decode_64(sig_hex).map_err(ManifestError::BadSignatureFormat)?;
     let signature = Signature::from_bytes(&sig_bytes);
-    MANIFEST_SIGNING_PUBKEY
+    pubkey
         .verify(body, &signature)
         .map_err(|_| ManifestError::BadSignature)
 }
@@ -448,6 +504,41 @@ mod tests {
                 "expected BadSignatureFormat for {bad:?}, got {err:?}"
             );
         }
+    }
+
+    #[test]
+    fn sig_url_for_appends_when_no_query() {
+        assert_eq!(
+            sig_url_for("https://example.com/m.json"),
+            "https://example.com/m.json.sig"
+        );
+    }
+
+    #[test]
+    fn sig_url_for_inserts_before_query() {
+        // GH Releases redirect / SAS URLs both rely on this: the .sig
+        // must be a separate object path, not a suffix on the query.
+        let u = sig_url_for("https://example.com/m.json?token=abc&actor_id=42&key_id=42&expires=1");
+        assert_eq!(
+            u,
+            "https://example.com/m.json.sig?token=abc&actor_id=42&key_id=42&expires=1"
+        );
+    }
+
+    #[test]
+    fn sig_url_for_strips_fragment_before_appending() {
+        assert_eq!(
+            sig_url_for("https://example.com/m.json#anchor"),
+            "https://example.com/m.json.sig"
+        );
+    }
+
+    #[test]
+    fn sig_url_for_handles_fragment_and_query() {
+        assert_eq!(
+            sig_url_for("https://example.com/m.json?a=1#x"),
+            "https://example.com/m.json.sig?a=1"
+        );
     }
 
     #[test]

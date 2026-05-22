@@ -38,21 +38,25 @@ fn main() -> eframe::Result<()> {
         Ok(f) => f,
         Err(e) => {
             // Without a usable lock file we have no concurrency protection.
-            // Most likely cause: read-only install dir. Surface and bail.
-            eprintln!(
-                "sgw-launcher: failed to open lock file at {}: {}",
+            // Most likely cause: read-only install dir. Surface via a
+            // message box on Windows (release builds detach stderr) and
+            // also via stderr for dev builds and Linux/macOS.
+            let msg = format!(
+                "Failed to open lock file at {}:\n{}",
                 lock_path.display(),
                 e
             );
+            fatal_startup_error("Stargate Worlds Launcher", &msg);
             std::process::exit(2);
         }
     };
     if FileExt::try_lock_exclusive(&lock_file).is_err() {
-        eprintln!(
-            "sgw-launcher: another launcher instance appears to be running \
+        let msg = format!(
+            "Another Stargate Worlds Launcher instance appears to be running \
              (lock held at {}). Close the other instance and retry.",
             lock_path.display()
         );
+        fatal_startup_error("Stargate Worlds Launcher", &msg);
         std::process::exit(3);
     }
 
@@ -80,4 +84,32 @@ fn main() -> eframe::Result<()> {
     // would release the lock when the binding goes out of scope anyway.
     drop(lock_file);
     result
+}
+
+/// Surface a fatal startup error to the user before exiting. On Windows
+/// release builds (`windows_subsystem = "windows"`) `stderr` is not
+/// attached to anything when the user double-clicks the binary, so an
+/// `eprintln!` becomes a silent crash. A `MessageBoxW` always shows.
+/// Always emits to stderr too so dev / CI runs still get a log line.
+fn fatal_startup_error(title: &str, message: &str) {
+    eprintln!("sgw-launcher: {message}");
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+        // Wide-encode with a trailing NUL for the W APIs.
+        let to_wide =
+            |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+        let title_w = to_wide(title);
+        let body_w = to_wide(message);
+        // SAFETY: pointers are valid for the duration of the call, both
+        // strings are NUL-terminated, hWnd=null is allowed.
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                body_w.as_ptr(),
+                title_w.as_ptr(),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
 }

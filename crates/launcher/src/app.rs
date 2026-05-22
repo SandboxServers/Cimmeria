@@ -186,7 +186,20 @@ impl LauncherApp {
     fn show_config_panel(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label("Install dir:");
-            ui.add(egui::TextEdit::singleline(&mut self.install_path_text).desired_width(380.0));
+            // Sync on focus loss rather than every keystroke. The
+            // writability probe in `show_install_panel` calls
+            // `create_dir_all`, so syncing per-character would create
+            // partial directories ("C:\G", "C:\Ga", …) as the user
+            // types. `lost_focus()` fires when the user tabs out,
+            // clicks elsewhere, OR clicks any other widget in this
+            // panel (including Save, Install/Update, Launch) — egui
+            // resolves the focus change before the click handlers run,
+            // so path-dependent buttons see the synced value.
+            let response = ui
+                .add(egui::TextEdit::singleline(&mut self.install_path_text).desired_width(380.0));
+            if response.lost_focus() {
+                self.sync_install_path_from_text();
+            }
             if ui.button("Save").clicked() {
                 self.sync_install_path_from_text();
                 match self.config.save(&self.config_path) {
@@ -289,7 +302,7 @@ impl LauncherApp {
         // Probe writability of the install dir before we let the user
         // click Install / Update. Without this, picking `C:\Program Files\…`
         // without UAC produces an opaque mid-extract "Access denied" after
-        // gigabytes of download. (Cady #2 admin-rights gap.)
+        // gigabytes of download.
         let writable = install_dir_writable(&self.config.install_path);
         if !writable {
             ui.colored_label(

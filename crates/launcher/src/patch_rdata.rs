@@ -142,12 +142,12 @@ pub fn host_differs(data: &[u8], expected_host: &str, previous_host: Option<&str
 /// re-patching after a `server_host` change so we can locate the slot
 /// even though the original CME literal is long gone.
 ///
-/// Writes are **atomic** (Cady #4c): the modified bytes go to a
-/// sibling `.patching` file, then rename onto SGW.exe. NTFS rename is
-/// atomic on the same volume, so a power loss between the truncate and
-/// the finish leaves either the old SGW.exe or the new one — never a
-/// half-written .exe that the game can't load (would otherwise force a
-/// full multi-GB re-seed for recovery).
+/// Writes are **atomic**: the modified bytes go to a sibling
+/// `.patching` file, then rename onto SGW.exe. NTFS rename is atomic on
+/// the same volume, so a power loss between the truncate and the finish
+/// leaves either the old SGW.exe or the new one — never a half-written
+/// .exe that the game can't load (would otherwise force a full multi-GB
+/// re-seed for recovery).
 pub fn patch_exe_any(
     exe_path: &Path,
     new_host: &str,

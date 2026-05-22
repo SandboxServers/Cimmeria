@@ -42,8 +42,23 @@ pub enum InstallError {
     },
     #[error("Unexpected HTTP {status} for {url}")]
     UnexpectedStatus { status: u16, url: String },
+    #[error("Manifest sha256 is not valid hex: {0:?}")]
+    InvalidSha256(String),
     #[error("Cancelled")]
     Cancelled,
+}
+
+/// Returns the first 12 chars of `sha` after confirming the whole string
+/// is ASCII hex. Manifest fields are external input (the signature
+/// verifies the *bytes* of the manifest, not the well-formedness of
+/// individual fields), and `sha256` ends up spliced into temp-file
+/// paths — splicing `../foo` into a path fragment escapes the install
+/// directory. Validate at the boundary.
+fn safe_sha_prefix(sha: &str) -> Result<&str, InstallError> {
+    if sha.is_empty() || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(InstallError::InvalidSha256(sha.to_string()));
+    }
+    Ok(&sha[..12.min(sha.len())])
 }
 
 /// Progress events emitted during install. Forwarded to the UI thread by
@@ -127,7 +142,7 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
 
 async fn apply_seed(ctx: &InstallContext<'_>, seed: &SeedEntry) -> Result<(), InstallError> {
     let url = blob_url(ctx.manifest_url, &seed.blob);
-    let short_hash = &seed.sha256[..12.min(seed.sha256.len())];
+    let short_hash = safe_sha_prefix(&seed.sha256)?;
     let tmp = ctx.install_dir.join(format!(".tmp-seed-{short_hash}.zip"));
     download_to_file(
         ctx.http,
@@ -159,11 +174,13 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
             }
         })
         .collect();
-    // Include a sha prefix in the tmp filename (Cady #6i) so a republished
-    // patch with the same `id` but a new sha256 doesn't accidentally
-    // resume against the stale bytes — different sha → different tmp
-    // path → fresh download.
-    let safe_sha = &patch.sha256[..12.min(patch.sha256.len())];
+    // Include a sha prefix in the tmp filename so a republished patch
+    // with the same `id` but a new sha256 doesn't accidentally resume
+    // against the stale bytes — different sha → different tmp path →
+    // fresh download. `safe_sha_prefix` rejects non-hex characters at
+    // this boundary so a malformed manifest can't escape `install_dir`
+    // via crafted sha256 strings.
+    let safe_sha = safe_sha_prefix(&patch.sha256)?;
     let tmp = ctx
         .install_dir
         .join(format!(".tmp-patch-{safe_id}-{safe_sha}.zip"));
@@ -412,11 +429,11 @@ mod tests {
         );
     }
 
-    // Regression guard for the non-panicking HTTP-status branch added in
-    // PR #343's first fixup. Prior to the fix this path called
-    // `error_for_status_ref().unwrap_err()` which would panic on stray
-    // 1xx/3xx; the new code returns `InstallError::UnexpectedStatus`
-    // carrying the status + url.
+    // Regression guard for the non-panicking HTTP-status branch. An
+    // earlier version called `error_for_status_ref().unwrap_err()` here,
+    // which panicked on stray 1xx/3xx because that helper only returns
+    // `Err` for 4xx/5xx; the current code returns
+    // `InstallError::UnexpectedStatus` carrying the status + url.
     #[tokio::test]
     async fn download_to_file_returns_unexpected_status_on_non_2xx() {
         use wiremock::matchers::{method, path};
@@ -447,5 +464,39 @@ mod tests {
             }
             other => panic!("expected UnexpectedStatus, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn safe_sha_prefix_accepts_lower_and_upper_hex() {
+        assert_eq!(safe_sha_prefix("abcdef0123456789").unwrap(), "abcdef012345");
+        assert_eq!(safe_sha_prefix("ABCDEF0123456789").unwrap(), "ABCDEF012345");
+    }
+
+    #[test]
+    fn safe_sha_prefix_rejects_path_traversal() {
+        // The bug shape: a malformed-but-still-signed manifest with a
+        // sha256 of "../foo" would, prior to validation, produce a tmp
+        // file path that escapes the install directory.
+        for bad in &[
+            "../foo",
+            "/etc/passwd",
+            "..\\evil",
+            "0123/4567",
+            "abc def",
+            "",
+            "abcg",
+        ] {
+            let err = safe_sha_prefix(bad).expect_err(&format!("expected reject for {bad:?}"));
+            assert!(matches!(err, InstallError::InvalidSha256(_)));
+        }
+    }
+
+    #[test]
+    fn safe_sha_prefix_short_input_passes() {
+        // Anything fewer than 12 chars still passes if every char is hex
+        // — the prefix is min(len, 12). A real sha256 is always 64 chars
+        // so this only matters for malformed manifests; reject those
+        // separately via the all-hex check rather than a length check.
+        assert_eq!(safe_sha_prefix("abc").unwrap(), "abc");
     }
 }

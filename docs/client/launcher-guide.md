@@ -31,7 +31,7 @@ Azure Blob SAS for log uploads) see
   - [Step 2 — Build a patch zip](#step-2--build-a-patch-zip)
   - [Step 3 — Write the manifest](#step-3--write-the-manifest)
     - [Schema versioning policy](#schema-versioning-policy)
-  - [Step 4 — Upload to Azure Blob](#step-4--upload-to-azure-blob)
+  - [Step 4 — Sign + publish to GitHub Releases](#step-4--sign--publish-to-github-releases)
   - [Append-only invariants](#append-only-invariants)
   - [Future automation](#future-automation)
 - [Troubleshooting](#troubleshooting)

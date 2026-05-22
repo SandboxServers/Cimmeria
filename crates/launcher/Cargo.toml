@@ -44,6 +44,15 @@ tracing-subscriber = { workspace = true }
 
 thiserror = { workspace = true }
 
+# Direct Win32 calls. Currently used for a `MessageBoxW` on fatal startup
+# errors — with `windows_subsystem = "windows"` (release builds), `stderr`
+# isn't attached to anything on a double-click, so an `eprintln!` + exit
+# becomes a silent crash for end users. Version aligned with the highest
+# windows-sys already in the workspace lockfile to avoid pulling a 5th
+# copy of the sys bindings.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
 [build-dependencies]
 # Embeds icons/icon.ico into the .exe as a Win32 resource when targeting
 # Windows. No-op on non-Windows targets — see build.rs.

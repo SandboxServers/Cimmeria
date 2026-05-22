@@ -35,9 +35,11 @@ pub enum LogError {
     BadResponse { status: u16, body: String },
     #[error("Refusing to upload over non-HTTPS URL")]
     InsecureUrl,
+    #[error("Failed to walk sessions directory: {0}")]
+    Walk(#[from] walkdir::Error),
 }
 
-fn collect_log_inputs(install_dir: &Path) -> Vec<PathBuf> {
+fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
     let binaries = install_dir.join("Binaries");
     let mut files = Vec::new();
 
@@ -54,21 +56,26 @@ fn collect_log_inputs(install_dir: &Path) -> Vec<PathBuf> {
 
     let sessions = binaries.join("sessions");
     if sessions.is_dir() {
-        for e in WalkDir::new(&sessions).into_iter().filter_map(|r| r.ok()) {
-            if e.file_type().is_file() {
-                files.push(e.path().to_path_buf());
+        // Surface walk errors as a hard failure rather than dropping them
+        // silently. The launcher is uploading *diagnostic* logs — losing
+        // half the session tree to a permission glitch and reporting
+        // success would actively mislead anyone triaging.
+        for entry in WalkDir::new(&sessions) {
+            let entry = entry?;
+            if entry.file_type().is_file() {
+                files.push(entry.path().to_path_buf());
             }
         }
     }
 
     files.sort();
-    files
+    Ok(files)
 }
 
 /// Stable hash over (rel_path, contents) pairs in canonical sort order.
 /// Independent of zip-time so dedup ledger checks survive re-zipping.
 pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogError> {
-    let files = collect_log_inputs(install_dir);
+    let files = collect_log_inputs(install_dir)?;
     if files.is_empty() {
         return Ok(None);
     }
@@ -86,7 +93,7 @@ pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogE
 }
 
 pub fn build_log_zip(install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
-    let files = collect_log_inputs(install_dir);
+    let files = collect_log_inputs(install_dir)?;
     if files.is_empty() {
         return Ok(None);
     }
@@ -194,7 +201,7 @@ mod tests {
     fn collect_picks_up_logs_and_sessions() {
         let dir = tempfile::tempdir().unwrap();
         setup_logs(dir.path());
-        let files = collect_log_inputs(dir.path());
+        let files = collect_log_inputs(dir.path()).unwrap();
         assert_eq!(files.len(), 3);
     }
 
@@ -202,15 +209,15 @@ mod tests {
     fn collect_is_sorted_for_stable_digest() {
         let dir = tempfile::tempdir().unwrap();
         setup_logs(dir.path());
-        let a = collect_log_inputs(dir.path());
-        let b = collect_log_inputs(dir.path());
+        let a = collect_log_inputs(dir.path()).unwrap();
+        let b = collect_log_inputs(dir.path()).unwrap();
         assert_eq!(a, b);
     }
 
     #[test]
     fn collect_empty_when_dirs_missing() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(collect_log_inputs(dir.path()).is_empty());
+        assert!(collect_log_inputs(dir.path()).unwrap().is_empty());
     }
 
     #[test]

@@ -71,9 +71,9 @@ fn spawn(install_dir: &Path, file: &str, via_cmd: bool) -> Result<u32, LaunchErr
     if !path.exists() {
         return Err(LaunchError::NotFound(path));
     }
-    // Defence-in-depth (Cady #4h): canonicalize both the install dir and
-    // the target path, then check that the target is still under the
-    // install dir. `install_dir` comes from the user-editable config —
+    // Defence-in-depth: canonicalize both the install dir and the target
+    // path, then check that the target is still under the install dir.
+    // `install_dir` comes from the user-editable config —
     // this isn't a privilege boundary (the user chose the path) but
     // catches accidents like a config entry pointing into a junction
     // that resolves outside its declared root, which would otherwise

@@ -55,13 +55,15 @@ pub struct Worker {
     runtime: Arc<Runtime>,
     pub events_rx: mpsc::UnboundedReceiver<Event>,
     events_tx: mpsc::UnboundedSender<Event>,
-    /// Cancel token for the currently-running install, if any. Each new
-    /// install allocates a fresh token (Cady #6f) so back-to-back
-    /// installs from a rapid double-click don't share a kill switch.
+    /// Cancel token for the currently-running install, if any. Replaced
+    /// at the start of every new install (after cancelling the previous
+    /// one) so two installs cannot run concurrently and race on temp
+    /// zips, extraction, `launcher-installed.json`, and the SGW.exe
+    /// hostname patch.
     current_install_cancel: Option<CancellationToken>,
     /// Shared HTTP client reused across seed / patch / manifest fetches
-    /// and log uploads (Cady #6g). Connection pool persists across
-    /// requests; `https_only(true)` defends against http:// downgrade.
+    /// and log uploads. Connection pool persists across requests;
+    /// `https_only(true)` defends against http:// downgrade.
     http: reqwest::Client,
 }
 
@@ -120,9 +122,15 @@ impl Worker {
     }
 
     fn spawn_install(&mut self, config: LauncherConfig, manifest: Manifest) {
-        // Fresh cancel token per install — if a previous install is still
-        // running, leave its token alone (the user explicitly didn't
-        // press Cancel) and just track the new one.
+        // Cancel any previous install before starting a new one. Without
+        // this, a rapid double-click on Install / Update spawns two
+        // concurrent install tasks that race on the .tmp-* zips, the
+        // extract, launcher-installed.json, and the SGW.exe patch. The
+        // previous task observes its token flip to cancelled at the
+        // next progress checkpoint and bails with InstallError::Cancelled.
+        if let Some(prev) = self.current_install_cancel.take() {
+            prev.cancel();
+        }
         let cancel = CancellationToken::new();
         self.current_install_cancel = Some(cancel.clone());
 
