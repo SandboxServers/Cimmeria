@@ -444,6 +444,108 @@ pub(super) async fn pending_attack_tick(
     }
 }
 
+/// Drive the server-side auto-cycle (auto-fire) loop.
+///
+/// For every connected player with `auto_cycle == true` and a stashed
+/// `(ability_id, target_id)` pair:
+///
+/// - If the stashed target is dead or missing, clear the loop (mirrors
+///   the death-transition sweep — that path catches actual NPC deaths,
+///   this path catches "the target despawned" and other edge cases).
+/// - If the stashed ability is still on cooldown, skip — the cooldown
+///   gate IS the rate limiter for re-fires.
+/// - Otherwise, re-invoke
+///   [`crate::cell::abilities::handle_use_ability`] with the stashed ids.
+///   The re-invocation produces the same `onTimerUpdate` +
+///   `onSequence` + `onEffectResults` burst as a manual fire — the
+///   client cannot distinguish loop-driven from manual shots.
+///
+/// **No range pre-gate.** Range validation lives inside
+/// `handle_use_ability`; pre-checking here would duplicate the rule and
+/// drift over time. An out-of-range fire fails inside the handler, emits
+/// `onErrorCode(OutsideWeaponRange)` to the player, and leaves the loop
+/// armed — the next tick re-evaluates. This is intentional: a player
+/// strafing in and out of range should resume firing the moment they're
+/// back in range, not stop the loop.
+///
+/// Cadence: every 100 ms AoI tick. The cooldown gate prevents tight
+/// loops; the eligibility filter short-circuits to empty when no player
+/// is auto-cycling.
+pub(super) async fn auto_cycle_tick(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    // Snapshot armed players. Skip ones still cooling down — the next
+    // tick will pick them up. Drop the borrow before re-invoking
+    // `handle_use_ability` (which takes `&mut space_mgr`).
+    let ready: Vec<(u32, i32, i32, bool)> = space_mgr
+        .all_player_entity_ids()
+        .into_iter()
+        .filter_map(|eid| {
+            let e = space_mgr.get_entity(eid)?;
+            if !e.abilities.auto_cycle {
+                return None;
+            }
+            let ability_id = e.abilities.auto_cycle_ability_id?;
+            let target_id = e.abilities.auto_cycle_target_id?;
+            // Target sanity: target_id <= 0 is "no target" — clear, don't
+            // re-fire into the void.
+            let target_alive_or_existed = if target_id > 0 {
+                match space_mgr.get_entity(target_id as u32) {
+                    Some(t) => !super::super::combat::is_dead_state(t.state_field),
+                    None => false,
+                }
+            } else {
+                false
+            };
+            // Cooldown gate. Skip without clearing — cooldown clears
+            // naturally and the next tick handles re-fire.
+            if e.abilities.is_on_cooldown(ability_id) {
+                return None;
+            }
+            Some((eid, ability_id, target_id, target_alive_or_existed))
+        })
+        .collect();
+
+    for (entity_id, ability_id, target_id, target_alive) in ready {
+        if !target_alive {
+            // Target despawned or somehow died without the death sweep
+            // catching it. Clear the loop and broadcast so the client
+            // un-highlights the button.
+            if let Some(new_state) = super::super::combat::clear_auto_cycle(space_mgr, entity_id) {
+                tracing::info!(
+                    entity_id,
+                    target_id,
+                    "auto_cycle_tick: target gone — clearing loop"
+                );
+                super::super::abilities::send_entity_method(
+                    entity_id,
+                    crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+                    new_state.to_le_bytes().to_vec(),
+                    tx,
+                    space_mgr,
+                )
+                .await;
+            }
+            continue;
+        }
+        tracing::debug!(
+            entity_id,
+            ability_id,
+            target_id,
+            "auto_cycle_tick: re-firing"
+        );
+        let _ = super::super::abilities::handle_use_ability(
+            entity_id, ability_id, target_id, tx, space_mgr,
+        )
+        .await;
+        // Commit/reject is the handler's call. A rejected re-fire (out of
+        // range, out of ammo) leaves the loop armed — next tick will
+        // re-evaluate. A committed re-fire restarts the cooldown so this
+        // same player won't fire again until that elapses.
+    }
+}
+
 /// Promote pending reload-while-holstered phase A → phase B.
 ///
 /// `handle_reload` detects "player is holstered + OOC + no reload in
@@ -972,6 +1074,195 @@ mod tests {
         npc_movement_tick(&mut mgr);
         let npc = mgr.get_entity(200).unwrap();
         assert_eq!(npc.position.x, 0.0, "stationary NPC must not move");
+    }
+
+    // ── auto_cycle_tick ────────────────────────────────────────────────
+
+    /// Shared fixture for `auto_cycle_tick` tests: one connected
+    /// armed player and one target NPC, both in the same Castle
+    /// space. Ability 7 is a 30-unit ranged ability with no ammo
+    /// requirement — keeps the tests focused on the loop semantics
+    /// rather than the ammo path.
+    fn make_auto_cycle_mgr() -> SpaceManager {
+        use cimmeria_entity::abilities::AbilityDef;
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        // Player at origin, NPC target close enough to be in range.
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.spawn_npc(50, "Castle", [5.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.is_player = true;
+            p.player_id = Some(100);
+            p.abilities.add_ability(7);
+            p.abilities.auto_cycle = true;
+            p.abilities.auto_cycle_ability_id = Some(7);
+            p.abilities.auto_cycle_target_id = Some(50);
+            p.weapon_holstered = false;
+        }
+        mgr.connect_entity(1);
+        let _ = mgr.compute_aoi_changes();
+        mgr.ability_defs.insert(
+            7,
+            AbilityDef {
+                ability_id: 7,
+                name: "test".to_string(),
+                cooldown: 0.5,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 30,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+        mgr
+    }
+
+    /// With the cooldown clear and a live target, the tick re-fires
+    /// the stashed ability via `handle_use_ability` — which starts
+    /// a fresh cooldown. Pin: a refactor that drops the re-fire
+    /// branch silently breaks the loop (the bug shape #341 exists
+    /// to fix).
+    #[tokio::test]
+    async fn auto_cycle_tick_refires_when_cooldown_clear() {
+        let mut mgr = make_auto_cycle_mgr();
+        // Cooldown not started yet — the tick is the first thing to run.
+        assert!(!mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
+
+        let (tx, _rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr).await;
+
+        // Cooldown started → re-fire happened.
+        assert!(
+            mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+            "tick must re-invoke handle_use_ability when cooldown is clear"
+        );
+    }
+
+    /// With the cooldown still in flight, the tick must NOT re-fire.
+    /// The cooldown gate is the actual rate limiter — without it the
+    /// tick would fire every 100 ms regardless of ability cooldown,
+    /// turning a 2-second-cooldown weapon into a 10-Hz autocannon.
+    #[tokio::test]
+    async fn auto_cycle_tick_skips_when_on_cooldown() {
+        let mut mgr = make_auto_cycle_mgr();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            // Long cooldown still in flight.
+            p.abilities
+                .start_ability_cooldown(7, std::time::Duration::from_secs(60));
+        }
+
+        let (tx, mut rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "tick must not emit anything when stashed ability is on cooldown"
+        );
+    }
+
+    /// When the stashed target has died (BSF_Dead set on its
+    /// state_field), the tick clears the loop and broadcasts
+    /// onStateFieldUpdate so the client un-highlights the button.
+    /// This is the secondary safety net — the primary stop is the
+    /// death-transition sweep — for cases where the target died
+    /// without going through `apply_death_transition` (despawned by
+    /// space cleanup, etc.).
+    #[tokio::test]
+    async fn auto_cycle_tick_clears_loop_when_target_dead() {
+        use crate::cell::combat::{BSF_AUTO_CYCLING, BSF_DEAD};
+        let mut mgr = make_auto_cycle_mgr();
+        // Pre-arm BSF so we can verify the clear broadcast.
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.set_state_flag(BSF_AUTO_CYCLING);
+        }
+        // Kill the target (set BSF_Dead).
+        if let Some(t) = mgr.get_entity_mut(50) {
+            t.set_state_flag(BSF_DEAD);
+        }
+
+        let (tx, mut rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr).await;
+
+        let p = mgr.get_entity(1).unwrap();
+        assert!(!p.abilities.auto_cycle, "loop must be cleared");
+        assert_eq!(
+            p.state_field & BSF_AUTO_CYCLING,
+            0,
+            "BSF_AUTO_CYCLING must be cleared so the client un-highlights the button",
+        );
+
+        let mut saw_broadcast = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index,
+                ..
+            } = msg
+            {
+                if method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE {
+                    saw_broadcast = true;
+                }
+            }
+        }
+        assert!(
+            saw_broadcast,
+            "tick must broadcast onStateFieldUpdate when it clears the loop"
+        );
+    }
+
+    /// When the stashed target despawned entirely (no longer in the
+    /// space manager), the tick treats it as gone and clears the
+    /// loop. Same defensive sweep as the dead-target branch — the
+    /// loop must not be left armed pointing at nothing.
+    #[tokio::test]
+    async fn auto_cycle_tick_clears_loop_when_target_missing() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
+        let mut mgr = make_auto_cycle_mgr();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.set_state_flag(BSF_AUTO_CYCLING);
+            // Point at an entity that doesn't exist in the space.
+            p.abilities.auto_cycle_target_id = Some(99999);
+        }
+
+        let (tx, _rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr).await;
+
+        let p = mgr.get_entity(1).unwrap();
+        assert!(!p.abilities.auto_cycle);
+        assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
+    }
+
+    /// Tick is a no-op for players whose `auto_cycle == false`,
+    /// even when stale stash data lingers on the ability manager.
+    /// Pin: the eligibility filter must gate on `auto_cycle`, not
+    /// on the presence of a stashed ability id.
+    #[tokio::test]
+    async fn auto_cycle_tick_skips_when_flag_not_armed() {
+        let mut mgr = make_auto_cycle_mgr();
+        // Un-arm the flag but leave the stash in place (simulates
+        // a clear path that forgot to wipe the stash).
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.auto_cycle = false;
+        }
+
+        let (tx, mut rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr).await;
+
+        // No re-fire (no cooldown started), no broadcast.
+        assert!(!mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7));
+        assert!(rx.try_recv().is_err());
     }
 
     #[tokio::test]
