@@ -63,7 +63,7 @@ The `Event_NetOut_SetAutoCycle` network dispatch resolves to **cell method index
 - `entities/defs/SGWPlayer.def` lines 701–704: `<setAutoCycle><Exposed/><Arg>INT8 enabled</Arg></setAutoCycle>`
 - `crates/services/src/cell/cell_methods/player/constants.rs:21`: `pub const SET_AUTO_CYCLE: u16 = 83;`
 - RTTI string `"setAutoCycle"` at `ghidra://SGW.exe@0x019c2e6c`
-- `docs/protocol/cell-method-dispatch-table.md:289`: entry 83 confirmed
+- `docs/protocol/client-method-dispatch-table.md:289`: entry 83 confirmed
 
 ### 3. Wire format
 
@@ -181,7 +181,7 @@ No explicit `onTimerUpdate` handshake is required to start or stop the loop. The
 
 ## Implementation in Cimmeria
 
-The loop is fully wired as of #341. The code lives in five locations:
+The loop is fully wired. The code lives in nine locations:
 
 | File | What it owns |
 |---|---|
@@ -237,7 +237,7 @@ Phase 2 added two server-side player state fields that didn't exist before. They
 
 | # | Question | Evidence needed |
 |---|----------|-----------------|
-| OQ-1 | Does the CEGUI button widget gate clicks on having a hostile targeted, or does it accept clicks unconditionally? | Live-debugger evidence: clicking the button reaches the outbound emit (`0x00e02700`) even with no target — Cimmeria handles the empty-target case server-side (the loop arms but the driver tick skips re-firing into an invalid target). Behavior is correct either way; the Lua-side gate is a UX nicety, not a correctness requirement. |
+| OQ-1 | Does the CEGUI button widget gate clicks on having a hostile targeted, or does it accept clicks unconditionally? | Live-debugger evidence: clicking the button reaches the outbound emit (`0x00e02700`) even with no target. Cimmeria handles the empty-target case at TWO independent checks: (a) the `setAutoCycle(1)` immediate-fire path skips when `current_target_id.is_none()` (zip of two Options returns None); (b) the `auto_cycle_tick` driver clears the loop + un-lights BSF when `current_target_id.is_none()` (treats deselect same as dead/despawned target). The loop CAN be armed without a target (BSF lights, button highlights), but no fire occurs until a target is selected — and the moment one is, the next tick re-fire commits the loop. Behavior is correct either way; the Lua-side gate is a UX nicety, not a correctness requirement. |
 | OQ-2 | What was `startAutoCycleAbility` (a base method in `SGWPlayer.def:694`) called by, and how does it differ from `setAutoCycle`? It has no args — is it a server-to-client signal or a server-internal trigger? | No Python implementation found in the deprecation tree. The def entry has no `<Exposed/>` tag, so it was a server-to-server or internal call, not a client RPC. Currently unused in Cimmeria; revisit if a future feature needs it. |
 | OQ-3 | Does the client send `setAutoCycle(0)` when the user toggles off, or does it rely solely on `BSF_AutoCycling` clearing? | Confirmed via live debugger: every button click hits the outbound emit regardless of state, and the byte argument toggles between `0` and `1`. The wire is symmetric — the client always sends the new value rather than relying on a server-side toggle. |
 
