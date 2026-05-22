@@ -22,7 +22,7 @@ Stats are implemented via the `Stat` class in `python/cell/SGWBeing.py`.
 | Client stat sync (own entity) | DONE | All stats sent to owning client |
 | Witness stat sync (public only) | DONE | `publicStats` subset sent to witnesses |
 | Stat change callbacks | DONE | `callback` slot on Stat for health monitoring |
-| Health/focus regen | PARTIAL | Health + focus regen tick (1 Hz, out-of-combat) implemented in `cell/service/ticks.rs::regen_tick`. Both pools bundle into one `onStatUpdate`. Energy stays unimplemented — no archetype seeds an `energy.max > 0` so the gate would skip it anyway |
+| Health/focus regen | PARTIAL | Health + focus regen tick (1 Hz, out-of-combat) implemented in `cell/service/ticks/mod.rs::regen_tick`. Both pools bundle into one `onStatUpdate`. Energy stays unimplemented — no archetype seeds an `energy.max > 0` so the gate would skip it anyway |
 | Level-based stat scaling | NOT IMPL | Stats are template-initialized only |
 | Derived stat calculation | NOT IMPL | No formula for stat interdependencies |
 | Stat caps per level | NOT IMPL | Only template min/max bounds |

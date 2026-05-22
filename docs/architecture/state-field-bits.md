@@ -35,7 +35,7 @@ The actual visual holster mechanism is in the appearance compositor:
 
 So **holster is a `BeingAppearance` `ComponentList` concern, not a state-flag concern.** To render a player as holstered, omit the weapon visual from `ComponentList`; to render armed, include it. The Cimmeria server tracks this on `CellEntity::weapon_holstered` and filters in `CellEntity::appearance_components()` / `PlayerLoadData::appearance_components()`.
 
-The `BSF_HOLSTER` constant was removed in PR for issues #249 + #333 (consolidated). The dead writes in `use_ability.rs` (clear-on-fire) and `cell_methods/player/world.rs` (clear-on-reload) were removed at the same time — they wrote bit 8 onto the wire, but the client discarded it.
+The `BSF_HOLSTER` constant was removed in PR for issues #249 + #333 (consolidated). The dead writes in `use_ability/mod.rs` (clear-on-fire) and `cell_methods/player/world.rs` (clear-on-reload) were removed at the same time — they wrote bit 8 onto the wire, but the client discarded it.
 
 ## How to verify a future change
 

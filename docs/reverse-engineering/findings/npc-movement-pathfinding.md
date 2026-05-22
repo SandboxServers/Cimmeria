@@ -149,7 +149,7 @@ The client expects `movementType = 2` (Leash state) on the `onRemoteEntityMove` 
 
 ## 7. Combat Advance — Server-Side Movement Emission Gap
 
-`npc_movement_tick()` in `crates/services/src/cell/service/ticks.rs`:
+`npc_movement_tick()` in `crates/services/src/cell/service/ticks/npc_movement.rs`:
 - Moves NPCs along `nav_path` at `move_speed` per tick (100ms tick; velocity = `move_speed × 10.0` for per-second scaling).
 - Calls `space_mgr.update_entity_position()` which propagates position to witnesses via AoI `EntityMoved`.
 - Sets NPC yaw via `atan2(dx, dz)`.
