@@ -61,6 +61,19 @@ pub async fn dispatch(
                             .abilities
                             .last_fired_ability_id
                             .zip(entity.current_target_id);
+                        // Persist the loop's committed ability BEFORE
+                        // we call handle_use_ability. If that call
+                        // rejects (out of range, on cooldown, no ammo),
+                        // its commit-time arm path never runs and the
+                        // tick driver would have no ability id to
+                        // re-fire with — the loop would be BSF-armed
+                        // but functionally dead. Stashing here means
+                        // the next cooldown-clear tick can pick up the
+                        // loop regardless of whether the immediate
+                        // fire succeeded.
+                        if let Some((ability_id, _)) = immediate_fire {
+                            entity.abilities.auto_cycle_ability_id = Some(ability_id);
+                        }
                         (new_state, immediate_fire)
                     };
                     if let Some(new_state) = new_state {
@@ -783,6 +796,70 @@ mod tests {
         );
     }
 
+    /// Regression: if `handle_use_ability` REJECTS the immediate fire
+    /// (out of range, on cooldown, no ammo), the loop must still be
+    /// armed at the ability-id level so the next tick can pick it up.
+    /// Without this guard the BSF lights but `auto_cycle_ability_id`
+    /// stays None → the driver tick has nothing to re-fire → loop
+    /// silently dead until the player toggles off and back on.
+    ///
+    /// Fixture: target is on the OPPOSITE side of the map (out of
+    /// range) so the fire fails validation but doesn't commit the
+    /// cooldown.
+    #[tokio::test]
+    async fn set_auto_cycle_enable_persists_ability_even_when_immediate_fire_rejects() {
+        use cimmeria_entity::abilities::AbilityDef;
+        let mut mgr = make_mgr_with_player();
+        // Target 200 units away — far beyond the 30-unit max_range.
+        mgr.spawn_npc(50, "Castle_CellBlock", [200.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.add_ability(7);
+            p.abilities.last_fired_ability_id = Some(7);
+            p.current_target_id = Some(50);
+            p.weapon_holstered = false;
+        }
+        mgr.ability_defs.insert(
+            7,
+            AbilityDef {
+                ability_id: 7,
+                name: "test".to_string(),
+                cooldown: 0.5,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 30, // target is at 200 → out of range
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(64);
+
+        dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+
+        let p = mgr.get_entity(1).unwrap();
+        assert!(p.abilities.auto_cycle, "flag must arm even if fire rejects");
+        // The decisive assertion: ability id MUST be stashed BEFORE the
+        // (rejected) fire so the tick has something to re-fire later
+        // when the player moves into range.
+        assert_eq!(
+            p.abilities.auto_cycle_ability_id,
+            Some(7),
+            "auto_cycle_ability_id MUST persist even when immediate fire is rejected — \
+             otherwise the loop is silently dead until toggle off+on",
+        );
+        assert!(
+            !p.abilities.is_on_cooldown(7),
+            "out-of-range fire was rejected, so cooldown is NOT running",
+        );
+    }
+
     /// Phase 2: if the player has never fired an ability this session
     /// (`last_fired_ability_id == None`), pressing the button just
     /// lights BSF — no immediate fire. The tick will pick up the loop
@@ -835,12 +912,11 @@ mod tests {
     }
 
     /// Spamming `setAutoCycle(1)` repeatedly (the CEGUI button fires
-    /// the Lua function multiple times per click — observed in #341
-    /// playtest as 3-4 identical calls within ~150µs) must NOT
-    /// re-broadcast. The bit is already set after the first call;
-    /// subsequent calls are idempotent. Pin: a regression where the
-    /// raw bit-set check disappears would re-broadcast on every
-    /// duplicate call and spam the wire.
+    /// the Lua function 3-4 times per physical click, all within
+    /// ~150µs) must NOT re-broadcast. The bit is already set after
+    /// the first call; subsequent calls are idempotent. Pin: a
+    /// regression where the raw bit-set check disappears would
+    /// re-broadcast on every duplicate call and spam the wire.
     #[tokio::test]
     async fn set_auto_cycle_enable_spam_does_not_re_broadcast() {
         let mut mgr = make_mgr_with_player();

@@ -507,12 +507,24 @@ pub(super) async fn auto_cycle_tick(
             } else {
                 false
             };
+            // Invalid target → push for clearing regardless of cooldown.
+            // The clear path is correctness (BSF must un-light on
+            // deselect/death/despawn even mid-cooldown); the cooldown
+            // gate below is only the re-fire rate limiter. If we let
+            // cooldown gate the clear path, target death/deselect
+            // during the cooldown window would leave the loop armed
+            // for up to a full cooldown, AND a player could re-select
+            // a different target before cooldown expires and get an
+            // unintended re-fire at the new target.
+            if !target_alive_or_existed {
+                return Some((eid, ability_id, target_id, false));
+            }
             // Cooldown gate. Skip without clearing — cooldown clears
             // naturally and the next tick handles re-fire.
             if e.abilities.is_on_cooldown(ability_id) {
                 return None;
             }
-            Some((eid, ability_id, target_id, target_alive_or_existed))
+            Some((eid, ability_id, target_id, true))
         })
         .collect();
 
@@ -1143,8 +1155,7 @@ mod tests {
     /// With the cooldown clear and a live target, the tick re-fires
     /// the stashed ability via `handle_use_ability` — which starts
     /// a fresh cooldown. Pin: a refactor that drops the re-fire
-    /// branch silently breaks the loop (the bug shape #341 exists
-    /// to fix).
+    /// branch silently breaks the loop.
     #[tokio::test]
     async fn auto_cycle_tick_refires_when_cooldown_clear() {
         let mut mgr = make_auto_cycle_mgr();
@@ -1301,6 +1312,41 @@ mod tests {
             !npc_a.threat_list.contains_key(&1),
             "tick must NOT re-fire at the original target (50) once the player has switched cursor"
         );
+    }
+
+    /// Regression: target dies/deselects DURING the cooldown window
+    /// must still clear the loop. The cooldown gate is a re-fire rate
+    /// limiter, NOT a hold against the clear path. Without this
+    /// invariant, a player who fires once and immediately has the
+    /// target die has up to a full cooldown of armed BSF — and could
+    /// re-select a different target before cooldown expires and get
+    /// an unintended re-fire at the new target.
+    #[tokio::test]
+    async fn auto_cycle_tick_clears_dead_target_even_while_on_cooldown() {
+        use crate::cell::combat::{BSF_AUTO_CYCLING, BSF_DEAD};
+        let mut mgr = make_auto_cycle_mgr();
+        // Player has an active cooldown (simulates "just fired, target
+        // died before cooldown expired").
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.set_state_flag(BSF_AUTO_CYCLING);
+            p.abilities
+                .start_ability_cooldown(7, std::time::Duration::from_secs(60));
+        }
+        // Target dies mid-cooldown.
+        if let Some(t) = mgr.get_entity_mut(50) {
+            t.set_state_flag(BSF_DEAD);
+        }
+
+        let (tx, _rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr).await;
+
+        let p = mgr.get_entity(1).unwrap();
+        assert!(
+            !p.abilities.auto_cycle,
+            "dead target must clear the loop even while ability is on cooldown — \
+             the cooldown gate is for re-fire, not for the clear path",
+        );
+        assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
     }
 
     /// Target deselect (current_target_id == None) clears the loop.
