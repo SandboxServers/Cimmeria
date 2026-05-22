@@ -187,23 +187,32 @@ The loop is fully wired as of #341. The code lives in five locations:
 |---|---|
 | `crates/entity/src/abilities.rs` | `AbilityManager` fields: `auto_cycle`, `auto_cycle_ability_id`, `auto_cycle_target_id`. |
 | `crates/services/src/cell/combat/state.rs` | `BSF_AUTO_CYCLING` constant (mask `0x002`, bit 1). |
-| `crates/services/src/cell/combat/auto_cycle.rs` | Lifecycle primitives: `arm_auto_cycle`, `clear_auto_cycle`, `clear_auto_cycle_for_target`. All three return `Some(new_state_field)` only when the BSF bit actually transitioned — the caller broadcasts on `Some`, skips on `None`. |
-| `crates/services/src/cell/cell_methods/player/world.rs` | `SET_AUTO_CYCLE` handler: enable just sets the flag (BSF arms at first commit); disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate` when the bit actually transitioned. Bumped from `debug!` to `info!`. |
-| `crates/services/src/cell/abilities/use_ability.rs` | Manual-override gate at function entry (different ability ⇒ clear loop) and arm/AF_DEACTIVATE branch at commit time (same ability ⇒ stash + set BSF; AF_DEACTIVATE flag ⇒ clear). |
+| `crates/services/src/cell/combat/auto_cycle.rs` | Lifecycle primitives: `arm_auto_cycle`, `clear_auto_cycle`, `clear_auto_cycle_for_target`. Manipulate `BSF_AUTO_CYCLING` with **raw `\|=` / `&= !mask` ops** (NOT the ref-counted `set_state_flag` / `unset_state_flag` helpers — see "Bit management" below). All three return `Some(new_state_field)` only when the bit actually transitioned. |
+| `crates/services/src/cell/cell_methods/player/world.rs` | `SET_AUTO_CYCLE` handler: enable sets the flag AND lights `BSF_AUTO_CYCLING` immediately so the client's button highlights on the very first press; disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate` when the bit actually transitioned. Bumped from `debug!` to `info!`. |
+| `crates/services/src/cell/abilities/use_ability.rs` | Manual-override gate at function entry (different ability ⇒ clear loop) and arm/AF_DEACTIVATE branch at commit time (stash refresh + BSF idempotent set; AF_DEACTIVATE flag ⇒ clear). |
 | `crates/services/src/cell/service/ticks.rs` | `auto_cycle_tick` — every 100 ms AoI tick, scans armed players with cleared cooldowns and re-invokes `handle_use_ability` against the stashed target. Dead/missing target ⇒ clear loop. Cooldown is the rate-limiter. |
-| `crates/services/src/cell/abilities/death.rs` | `apply_death_transition` calls `clear_auto_cycle_for_target` so every player auto-firing at a dying entity gets their loop cleared in the same death burst. |
+| `crates/services/src/cell/abilities/death.rs` | `apply_death_transition` calls `clear_auto_cycle_for_target` so every player auto-firing at a dying entity gets their loop cleared in the same death burst. **Plus** clears the dying player's OWN auto-cycle if they're a player — prevents the loop from auto-resuming on respawn against the stashed target. |
+
+### Bit management — raw ops, NOT the ref-counted helpers
+
+`BSF_AUTO_CYCLING` uses raw `|=` and `&= !mask` ops, deliberately bypassing the ref-counted `set_state_flag` / `unset_state_flag` API on `CellEntity`. Mirrors how `BSF_IN_COMBAT` is handled in `combat::threat` — both are single-source flags where exactly one module (this one) arms and clears the bit.
+
+Using the ref-counted helpers would be a correctness bug: every tick-driven re-fire re-enters `arm_auto_cycle`, `set_state_flag` would bump the per-flag counter from 1 to 2, 3, 4 …, and the single decrement in `clear_auto_cycle` would only bring it back to N-1 — leaving the bit stuck set forever and suppressing every disable/death/manual-override broadcast. This failure mode was observed in #341 playtest (server logs showed `auto-cycle: armed` firing on first commit, then **zero** `death: clearing player auto-cycle loop` lines despite the target dying and the player getting un-aggroed cleanly). Pinned by `clear_after_n_arms_still_transitions_bit_and_broadcasts`.
 
 ### Loop semantics (what the tests pin)
 
-- **Enable (button press):** sets `auto_cycle = true`. Nothing else happens until the next `useAbility` commits. No BSF, no broadcast. Pin: `set_auto_cycle_enable_only_sets_flag`.
-- **First commit while armed:** `arm_auto_cycle` stashes ability + target, sets `BSF_AUTO_CYCLING`, broadcasts. Pin: `auto_cycle_first_commit_arms_loop_and_broadcasts_state_field`.
+- **Enable (button press):** sets `auto_cycle = true` AND lights `BSF_AUTO_CYCLING` immediately so the client's gun-icon button highlights on the very first press. The ability/target stash stays empty — it fills at first `useAbility` commit when the ids are actually known. Pin: `set_auto_cycle_enable_lights_bsf_and_broadcasts`.
+- **Duplicate enable presses (CEGUI fires the Lua function 3-4× per click, observed within ~150µs):** idempotent — the bit-transition gate suppresses re-broadcast. Pin: `set_auto_cycle_enable_spam_does_not_re_broadcast`.
+- **First commit while armed:** `arm_auto_cycle` stashes ability + target. BSF was already set by enable so no second broadcast fires. Pin: `auto_cycle_first_commit_arms_loop_and_broadcasts_state_field`.
 - **Tick-driven re-fire:** every 100 ms, eligible players (armed, target alive, cooldown clear) get a re-invocation of `handle_use_ability`. Pin: `auto_cycle_tick_refires_when_cooldown_clear` / `auto_cycle_tick_skips_when_on_cooldown`.
 - **Same-ability manual fire:** updates the target stash but does NOT break the loop — right-clicking a new enemy with the same weapon redirects the loop. Pin: `same_ability_manual_fire_redirects_target_without_breaking_loop`.
 - **Different-ability manual fire:** breaks the loop on entry. Pin: `manual_fire_of_different_ability_cancels_auto_cycle`.
 - **`AF_DEACTIVATE_AUTO_CYCLE` flag (mask `0x400`):** breaks the loop after commit so one-shot specials don't auto-repeat. Pin: `af_deactivate_auto_cycle_clears_loop_on_commit`.
 - **Target death:** the death-transition burst sweeps every player auto-firing at the dying entity. Pin: `target_sweep_clears_every_player_cycling_at_dying_target`.
+- **Dying player's own loop:** if the dying entity is itself an auto-cycling player, their own flag + stash + BSF clear in the same death burst — otherwise the loop would auto-resume on respawn against the stashed target without consent. Pin: `dying_player_own_auto_cycle_clears_and_broadcasts`.
 - **Target despawn (no death message):** the tick's secondary sweep catches missing target ids. Pin: `auto_cycle_tick_clears_loop_when_target_missing`.
 - **Explicit disable (`setAutoCycle(0)`):** clears flag + stash + BSF, broadcasts. Pin: `set_auto_cycle_disable_clears_stash_and_bsf`.
+- **Duplicate disable presses:** idempotent — same transition-gate pattern as enable. Pin: `set_auto_cycle_disable_spam_does_not_re_broadcast`.
 
 ### What was NOT implemented (out of scope for #341)
 
