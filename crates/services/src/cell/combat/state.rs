@@ -17,6 +17,21 @@ pub const BSF_DEAD_BIT: u32 = 0;
 /// the ref-counted entity helpers consistently with the other BSF_* flags.
 pub const BSF_DEAD: u32 = 1 << BSF_DEAD_BIT;
 
+/// `BSF_AutoCycling` mask. The client emits `Event_UI_AutoCycle` on every
+/// transition of this bit (verified via the XOR-delta dispatcher at
+/// `ghidra://SGW.exe@0x00e01c90` — `TEST BL, 0x2` → `EmitAutoCycleStateChanged`
+/// at `0x00e05fb0`). `USGWTargetIndicator` listens to the resulting CME event
+/// to highlight the gun-icon button.
+///
+/// Server-side, the flag is set when a player's auto-cycle loop arms (first
+/// `useAbility` commit while `auto_cycle == true`) and cleared on stop:
+/// `setAutoCycle(0)`, target death, manual fire of a different ability, or
+/// an `AF_DEACTIVATE_AUTO_CYCLE`-flagged ability firing. See
+/// [`crate::cell::service::ticks::auto_cycle_tick`] for the driver loop.
+///
+/// From python `Atrea.enums.BSF_AutoCycling = 1`.
+pub const BSF_AUTO_CYCLING: u32 = 1 << 1;
+
 /// `BSF_InCombat` mask. The client uses this bit to route right-click on
 /// selected entities to `useAbility` (auto-attack) instead of `interact`.
 /// From python `Atrea.enums.BSF_InCombat = 3`.

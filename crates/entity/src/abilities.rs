@@ -171,10 +171,28 @@ pub struct AbilityManager {
     moniker_cooldowns: HashMap<i64, CooldownEntry>,
 
     /// Whether auto-cycle is enabled.
+    ///
+    /// Set by the `setAutoCycle(enabled=1)` cell method (gun-icon button) and
+    /// cleared by `setAutoCycle(0)`, by `stoppedAutoCycling`-equivalent events
+    /// (target death, `AF_DEACTIVATE_AUTO_CYCLE` ability fire), or by a manual
+    /// `useAbility` against a different ability ID. The actual re-fire loop
+    /// lives in [`crate::cell::service::ticks::auto_cycle_tick`] — this flag
+    /// just arms it.
     pub auto_cycle: bool,
 
     /// The ability ID being auto-cycled (if any).
+    ///
+    /// Stashed at the first commit of `useAbility` after `auto_cycle` flipped
+    /// to `true`. The driver tick re-invokes `handle_use_ability` with this
+    /// id every time the cooldown clears.
     pub auto_cycle_ability_id: Option<i32>,
+
+    /// The target entity id being auto-cycled at (if any).
+    ///
+    /// Stashed alongside `auto_cycle_ability_id` at first-commit time. The
+    /// driver tick re-fires at this target, not at whatever the player's
+    /// current cursor target is (which may be a different mob entirely).
+    pub auto_cycle_target_id: Option<i32>,
 
     /// Next unique effect sequence ID.
     pub effect_sequence_id: i32,
@@ -189,6 +207,7 @@ impl AbilityManager {
             moniker_cooldowns: HashMap::new(),
             auto_cycle: false,
             auto_cycle_ability_id: None,
+            auto_cycle_target_id: None,
             effect_sequence_id: 1,
         }
     }
