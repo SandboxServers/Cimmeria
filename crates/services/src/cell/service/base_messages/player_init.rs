@@ -1,6 +1,6 @@
 //! Handler for `BaseToCellMsg::InitPlayerState` — restores persisted player
 //! state (missions, abilities, bandolier) onto the cell entity and fires the
-//! content engine`s `player_loaded` trigger.
+//! content engine's `player_loaded` trigger.
 
 use tokio::sync::mpsc;
 
@@ -40,7 +40,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             "Registered player abilities on cell entity"
         );
 
-        // Apply bandolier state to entity (Bug #2: restore persisted bandolier slot and items)
+        // Apply bandolier state to entity — restore persisted bandolier slot and items
         entity.active_bandolier_slot = active_bandolier_slot;
         entity.bandolier_items = bandolier_items.into_iter().collect();
         tracing::debug!(
@@ -147,7 +147,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             let _ = tx
                 .send(CellToBaseMsg::EntityMethodCall {
                     entity_id,
-                    method_index: 125, // addClientHintedGenericRegion
+                    method_index: crate::mercury::method_idx::ADD_CLIENT_HINTED_GENERIC_REGION,
                     args,
                 })
                 .await;

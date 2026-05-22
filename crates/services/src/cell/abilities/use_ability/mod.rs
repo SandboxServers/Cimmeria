@@ -37,7 +37,7 @@ use super::messaging::{flush_attacker_ammo_stat, send_entity_method};
 /// pre-consume guard rejected the call (entity missing/dead, no
 /// ability, on cooldown, reload in flight, no ammo, or out-of-range
 /// for an explicit target). Ground-target AoE callers gate
-/// secondary-target damage on this — see PR #122 / Copilot review.
+/// secondary-target damage on this return value.
 pub async fn handle_use_ability(
     entity_id: u32,
     ability_id: i32,

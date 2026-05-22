@@ -116,29 +116,29 @@ async fn update_bandolier_item_draws_weapon_and_arms_holster_timer_when_active()
          player sees the weapon for a few seconds then it goes away)",
     );
 
-    let mut saw_refresh = false;
-    let mut saw_sequence = false;
+    let mut refresh_count = 0u32;
+    let mut sequence_count = 0u32;
     while let Ok(msg) = rx.try_recv() {
         match msg {
             CellToBaseMsg::RefreshAppearance {
                 holstered: false, ..
-            } => saw_refresh = true,
+            } => refresh_count += 1,
             CellToBaseMsg::EntityMethodCall { method_index, .. }
                 if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
             {
-                saw_sequence = true;
+                sequence_count += 1;
             }
             _ => {}
         }
     }
-    assert!(
-        saw_refresh,
-        "equip must dispatch RefreshAppearance(holstered=false) so the \
+    assert_eq!(
+        refresh_count, 1,
+        "equip must dispatch exactly one RefreshAppearance(holstered=false) so the \
          client attaches the weapon mesh before the equip animation",
     );
-    assert!(
-        saw_sequence,
-        "equip must fire Item_Equip onSequence so the client plays the \
+    assert_eq!(
+        sequence_count, 1,
+        "equip must fire exactly one Item_Equip onSequence so the client plays the \
          equip animation. Without it, the weapon just teleports into the \
          hand with no animation.",
     );
@@ -224,31 +224,31 @@ async fn update_bandolier_item_make_active_false_but_slot_matches_active_still_d
          OOC_HOLSTER_DELAY, just like the `make_active=true` path",
     );
 
-    let mut saw_refresh = false;
-    let mut saw_sequence = false;
+    let mut refresh_count = 0u32;
+    let mut sequence_count = 0u32;
     while let Ok(msg) = rx.try_recv() {
         match msg {
             CellToBaseMsg::RefreshAppearance {
                 holstered: false, ..
-            } => saw_refresh = true,
+            } => refresh_count += 1,
             CellToBaseMsg::EntityMethodCall { method_index, .. }
                 if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
             {
-                saw_sequence = true;
+                sequence_count += 1;
             }
             _ => {}
         }
     }
-    assert!(
-        saw_refresh,
-        "initial grant must dispatch RefreshAppearance — the base's \
+    assert_eq!(
+        refresh_count, 1,
+        "initial grant must dispatch exactly one RefreshAppearance — the base's \
          refresh_player_appearance is skipped on container_id=3 to \
          avoid racing this cell-side broadcast, so this IS the broadcast \
          that attaches the weapon mesh",
     );
-    assert!(
-        saw_sequence,
-        "initial grant must fire Item_Equip — same animation as a \
+    assert_eq!(
+        sequence_count, 1,
+        "initial grant must fire exactly one Item_Equip — same animation as a \
          slot-swap into the active slot",
     );
 }

@@ -210,6 +210,7 @@ mod tests {
 
         let npc = mgr.get_entity(200).unwrap();
         assert_eq!(npc.position.x, 3.0, "must snap to first waypoint X");
+        assert_eq!(npc.position.y, 0.0, "must snap to first waypoint Y");
         assert_eq!(npc.position.z, 4.0, "must snap to first waypoint Z");
         assert_eq!(
             npc.nav_path.len(),
@@ -240,7 +241,9 @@ mod tests {
         npc_movement_tick(&mut mgr);
 
         let npc = mgr.get_entity(200).unwrap();
-        assert_eq!(npc.position.x, 5.0, "must snap to final waypoint");
+        assert_eq!(npc.position.x, 5.0, "must snap to final waypoint X");
+        assert_eq!(npc.position.y, 0.0, "must snap to final waypoint Y");
+        assert_eq!(npc.position.z, 0.0, "must snap to final waypoint Z");
         assert!(
             npc.nav_path.is_empty(),
             "path must be empty after reaching final waypoint"

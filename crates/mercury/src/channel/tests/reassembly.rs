@@ -109,6 +109,18 @@ fn reassemble_parsed_isolates_per_channel_state() {
         b"a-part-1a-part-2",
         "channel a must reassemble its own fragments without b's interference"
     );
+
+    // Complete channel B as well — verifies b didn't absorb a's fragments.
+    let b1 = build_then_parse_fragment(51, 50, 51, b"BBB-2");
+    let b_body = b
+        .reassemble_parsed(&b1)
+        .unwrap()
+        .expect("b's bundle completes independently");
+    assert_eq!(
+        b_body.as_ref(),
+        b"BBB-1BBB-2",
+        "channel b must reassemble only its own fragments"
+    );
 }
 
 /// Arrival-triggered eviction at the channel layer: a new fragmented

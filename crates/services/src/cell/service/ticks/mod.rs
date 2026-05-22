@@ -149,15 +149,14 @@ pub(super) async fn reload_completion_tick(
         // again" to the client. Pairs with the `Ability_Begin` sent at
         // reload-start in `handle_reload`.
         //
-        // TODO(#210): inert against the current seed.
-        //   Same gap as `handle_reload`: ability 596 has `event_set_id = NULL`
-        //   in the seed, so this branch short-circuits in production. The
-        //   legacy `AbilityManager.py:671-673` reference is correct *for
-        //   abilities that follow the begin/end pattern*, but reload
-        //   specifically sources its animation from the player's archetype-
-        //   keyed item event set (`Item_Reload`, event id 4002) and is a
-        //   single-sequence shape — there is no separate end. #210 will
-        //   replace this branch outright once the archetype lookup lands.
+        // Currently inert against the production seed: ability 596 has
+        // `event_set_id = NULL`, so this branch short-circuits. The legacy
+        // `AbilityManager.py:671-673` reference is correct for abilities
+        // that follow the begin/end pattern, but reload specifically sources
+        // its animation from the player's archetype-keyed item event set
+        // (`Item_Reload`, event id 4002) and is a single-sequence shape —
+        // there is no separate end. The archetype lookup will replace this
+        // branch outright once it lands.
         const ABILITY_RELOAD_WEAPON: i32 = 596;
         let event_set_id = space_mgr
             .ability_defs
@@ -625,5 +624,74 @@ mod tests {
         );
         assert_eq!(entity.pending_attack_ability_id, Some(42));
         assert_eq!(entity.pending_attack_target_id, Some(200));
+    }
+
+    /// Defensive path: `reload_complete_at` set but `reload_slot_id` is None
+    /// (should be impossible, but guard against state drift). The tick must
+    /// clear `reload_complete_at` and produce zero wire messages.
+    #[tokio::test]
+    async fn reload_completion_tick_clears_deadline_when_slot_id_missing() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            // Deadline set but slot_id is None — the defensive guard fires.
+            e.reload_complete_at =
+                Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+            e.reload_slot_id = None;
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(8);
+        reload_completion_tick(&tx, &mut mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "missing slot_id must produce zero wire messages"
+        );
+        let entity = mgr.get_entity(1).unwrap();
+        assert!(
+            entity.reload_complete_at.is_none(),
+            "deadline must be cleared by the defensive guard"
+        );
+    }
+
+    /// AoI tick propagates entity changes to base as individual messages.
+    /// When the channel is full (receiver dropped), the tick exits early
+    /// rather than spinning on closed sends.
+    #[tokio::test]
+    async fn aoi_tick_stops_sending_when_channel_closed() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+        }
+        mgr.connect_entity(1);
+        // Force AoI changes by computing once then adding a new entity
+        let _ = mgr.compute_aoi_changes();
+        mgr.create_entity(2, "Castle", [1.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(2);
+
+        // Create a channel and immediately drop the receiver
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+
+        // Should not panic — just returns early on closed channel
+        run_aoi_tick(&tx, &mut mgr).await;
     }
 }

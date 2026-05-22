@@ -73,29 +73,29 @@ async fn sync_bandolier_items_active_slot_gained_weapon_draws_and_animates() {
          OOC_HOLSTER_DELAY, matching the grant path's behavior",
     );
 
-    let mut saw_refresh = false;
-    let mut saw_sequence = false;
+    let mut refresh_count = 0u32;
+    let mut sequence_count = 0u32;
     while let Ok(msg) = rx.try_recv() {
         match msg {
             CellToBaseMsg::RefreshAppearance {
                 holstered: false, ..
-            } => saw_refresh = true,
+            } => refresh_count += 1,
             CellToBaseMsg::EntityMethodCall { method_index, .. }
                 if method_index == crate::cell::client_methods::spawnable_entity::ON_SEQUENCE =>
             {
-                saw_sequence = true;
+                sequence_count += 1;
             }
             _ => {}
         }
     }
-    assert!(
-        saw_refresh,
-        "equip into bandolier must dispatch RefreshAppearance — \
+    assert_eq!(
+        refresh_count, 1,
+        "equip into bandolier must dispatch exactly one RefreshAppearance — \
          without it the weapon mesh never attaches on the client model",
     );
-    assert!(
-        saw_sequence,
-        "equip into bandolier must fire Item_Equip — without it the \
+    assert_eq!(
+        sequence_count, 1,
+        "equip into bandolier must fire exactly one Item_Equip — without it the \
          weapon teleports into the hand with no unholster animation",
     );
 }
@@ -119,8 +119,7 @@ async fn sync_bandolier_items_active_slot_gained_weapon_draws_and_animates() {
 ///
 /// Bug shape this catches: a refactor that drops the
 /// `Item_Unequip` dispatch or the Phase 2 scheduling regresses
-/// to "weapon vanishes instantly with no holster animation" —
-/// the playtest symptom from .
+/// to "weapon vanishes instantly with no holster animation".
 #[tokio::test]
 async fn sync_bandolier_items_active_slot_lost_weapon_fires_unequip_and_schedules_phase2() {
     let mut mgr = SpaceManager::new(1);

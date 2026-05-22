@@ -37,17 +37,17 @@ async fn destroy_entity_flushes_dirty_bandolier_and_destroys_entity() {
     )
     .await;
 
-    // A BandolierAmmoUpdate must be sent while handling destroy.
-    let mut got_flush = false;
+    // A BandolierAmmoUpdate must be sent exactly once while handling destroy.
+    let mut flush_count = 0u32;
     while let Ok(msg) = rx.try_recv() {
         if let CellToBaseMsg::BandolierAmmoUpdate { player_id, .. } = msg {
             assert_eq!(player_id, 100);
-            got_flush = true;
+            flush_count += 1;
         }
     }
-    assert!(
-        got_flush,
-        "DestroyEntity must flush dirty bandolier ammo before tearing down"
+    assert_eq!(
+        flush_count, 1,
+        "DestroyEntity must flush exactly one BandolierAmmoUpdate before tearing down"
     );
     assert!(
         mgr.get_entity(1).is_none(),

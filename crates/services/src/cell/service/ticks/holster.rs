@@ -434,14 +434,32 @@ mod tests {
             p.pending_slot_swap_target = Some(0);
         }
 
-        let (tx, _rx) = mpsc::channel(8);
+        let (tx, mut rx) = mpsc::channel(8);
         pending_slot_swap_tick(&tx, &mut mgr).await;
 
-        // After firing, the entity's pending swap fields should be cleared
-        // by the downstream handler (handle_request_active_slot_change).
-        // The key assertion is that we reached the handler at all — which
-        // we verify indirectly: if it panicked or errored, the test would
-        // fail. The `pending_slot_swap_at` is NOT cleared by this function
-        // itself — it fires and delegates. So just verify it ran (no panic).
+        // After the tick fires, `handle_request_active_slot_change`
+        // clears the pending state (lines 209-214 in bandolier.rs).
+        let player = mgr.get_entity(1).unwrap();
+        assert!(
+            player.pending_slot_swap_at.is_none(),
+            "pending_slot_swap_at must be cleared after the swap fires"
+        );
+        assert!(
+            player.pending_slot_swap_target.is_none(),
+            "pending_slot_swap_target must be cleared after the swap fires"
+        );
+
+        // The downstream handler sends ActiveSlotUpdate to base.
+        let mut got_active_slot_update = false;
+        while let Ok(msg) = rx.try_recv() {
+            if matches!(msg, CellToBaseMsg::ActiveSlotUpdate { .. }) {
+                got_active_slot_update = true;
+            }
+        }
+        assert!(
+            got_active_slot_update,
+            "pending_slot_swap_tick must dispatch ActiveSlotUpdate via \
+             handle_request_active_slot_change"
+        );
     }
 }

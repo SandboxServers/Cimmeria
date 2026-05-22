@@ -9,8 +9,8 @@ use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::cell_entity::BandolierItem;
 
 /// Processes a `UpdateBandolierItem` message — inserts the weapon into the
-/// bandolier, optionally draws it, arms the OOC holster timer, and pushes the
-/// dirty stat packet to the client.
+/// bandolier, optionally draws it, arms the OOC holster timer, and fires
+/// the `Item_Equip` sequence for the equip animation.
 pub(in crate::cell::service) async fn handle_update_bandolier_item(
     entity_id: u32,
     slot_id: i32,
@@ -140,19 +140,6 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
     // `moveInventoryItem`, not `grantItem`. The earlier
     // `UpdateBandolierItem` fix only covered chain-engine
     // grants; the player-driven drag-to-equip case lands here.)
-    // Detect "weapon manually equipped into active slot" — when
-    // a player drags a weapon from main inventory into their
-    // bandolier slot, base persists the move and dispatches
-    // `SyncBandolierItems` with the full new bandolier set. We
-    // need to fire the equip-display chain (draw weapon, mesh
-    // attach, Item_Equip animation, OOC re-holster timer) when
-    // the active slot just gained a weapon it didn't have
-    // before. Compare prev vs new item_id in the active slot.
-    //
-    // (initial player equip goes through
-    // `moveInventoryItem`, not `grantItem`. The earlier
-    // `UpdateBandolierItem` fix only covered chain-engine
-    // grants; the player-driven drag-to-equip case lands here.)
     let (prev_active_item_id, new_active_item_id) =
         if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
             let prev = entity
@@ -197,8 +184,17 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         let payload = entity.stats.serialize_dirty();
         entity.stats.clear_dirty();
-        if !payload.is_empty() {
-            crate::cell::abilities::send_entity_method(entity_id, 20, payload, tx, space_mgr).await;
+        // serialize_dirty always emits a 4-byte u32 count prefix, so gate on
+        // actual stat entries rather than is_empty (which is never true).
+        if payload.len() > 4 {
+            crate::cell::abilities::send_entity_method(
+                entity_id,
+                crate::mercury::method_idx::ON_STAT_UPDATE,
+                payload,
+                tx,
+                space_mgr,
+            )
+            .await;
         }
     }
 
