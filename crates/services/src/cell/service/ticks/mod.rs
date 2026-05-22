@@ -442,4 +442,188 @@ mod tests {
             "deadline must be cleared even when slot is empty"
         );
     }
+
+    #[tokio::test]
+    async fn regen_tick_advances_health_when_ooc_and_damaged() {
+        use cimmeria_entity::stats::HEALTH;
+
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            // Damage: set health to 50/100
+            if let Some(hp) = e.stats.get_mut(HEALTH) {
+                hp.update(0, 50, 100);
+                hp.dirty = false; // clear the dirty bit from setup
+            }
+            // HEALTH_REGEN defaults to 0/0/0 — the floor-of-1 logic applies
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(8);
+        regen_tick(&tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).unwrap();
+        let hp = entity.stats.get(HEALTH).unwrap();
+        assert_eq!(
+            hp.cur, 51,
+            "OOC regen must advance HP by floor-of-1 (regen stat is 0)"
+        );
+
+        // Must have sent an onStatUpdate
+        let mut got_stat_update = false;
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall { method_index, .. } = msg {
+                if method_index == crate::mercury::method_idx::ON_STAT_UPDATE {
+                    got_stat_update = true;
+                }
+            }
+        }
+        assert!(
+            got_stat_update,
+            "regen_tick must send onStatUpdate when HP changed"
+        );
+    }
+
+    #[tokio::test]
+    async fn regen_tick_skips_player_in_combat() {
+        use cimmeria_entity::stats::HEALTH;
+
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            if let Some(hp) = e.stats.get_mut(HEALTH) {
+                hp.update(0, 50, 100);
+                hp.dirty = false;
+            }
+            // In combat: threatened_mobs is non-empty
+            e.threatened_mobs.insert(200);
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(8);
+        regen_tick(&tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).unwrap();
+        let hp = entity.stats.get(HEALTH).unwrap();
+        assert_eq!(
+            hp.cur, 50,
+            "in-combat player must NOT regen (threatened_mobs non-empty)"
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "no onStatUpdate when nothing changed"
+        );
+    }
+
+    #[tokio::test]
+    async fn regen_tick_skips_player_at_full_health() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            // Health at max — default is 100/100
+        }
+        mgr.connect_entity(1);
+
+        let (tx, mut rx) = mpsc::channel(8);
+        regen_tick(&tx, &mut mgr).await;
+
+        assert!(
+            rx.try_recv().is_err(),
+            "full health player must not trigger onStatUpdate"
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_attack_tick_clears_queue_when_elapsed() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.pending_attack_at =
+                Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+            e.pending_attack_ability_id = Some(42);
+            e.pending_attack_target_id = Some(200);
+        }
+        mgr.connect_entity(1);
+
+        let (tx, _rx) = mpsc::channel(8);
+        pending_attack_tick(&tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).unwrap();
+        assert!(
+            entity.pending_attack_at.is_none(),
+            "pending_attack_at must be cleared after tick fires"
+        );
+        assert!(
+            entity.pending_attack_ability_id.is_none(),
+            "pending_attack_ability_id must be cleared"
+        );
+        assert!(
+            entity.pending_attack_target_id.is_none(),
+            "pending_attack_target_id must be cleared"
+        );
+    }
+
+    #[tokio::test]
+    async fn pending_attack_tick_no_op_when_stamp_in_future() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        if let Some(e) = mgr.get_entity_mut(1) {
+            e.is_player = true;
+            e.player_id = Some(100);
+            e.pending_attack_at =
+                Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
+            e.pending_attack_ability_id = Some(42);
+            e.pending_attack_target_id = Some(200);
+        }
+        mgr.connect_entity(1);
+
+        let (tx, _rx) = mpsc::channel(8);
+        pending_attack_tick(&tx, &mut mgr).await;
+
+        let entity = mgr.get_entity(1).unwrap();
+        assert!(
+            entity.pending_attack_at.is_some(),
+            "future stamp must not be consumed"
+        );
+        assert_eq!(entity.pending_attack_ability_id, Some(42));
+        assert_eq!(entity.pending_attack_target_id, Some(200));
+    }
 }

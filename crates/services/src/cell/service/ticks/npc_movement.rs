@@ -184,4 +184,66 @@ mod tests {
         let npc = mgr.get_entity(200).unwrap();
         assert_eq!(npc.position.x, 0.0, "stationary NPC must not move");
     }
+
+    #[test]
+    fn npc_snaps_to_waypoint_when_within_move_speed_and_advances() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(200, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(200) {
+            npc.is_player = false;
+            npc.class_id = 0x04;
+            npc.move_speed = 10.0; // larger than distance to first waypoint
+            npc.nav_path
+                .push_back(cimmeria_common::Vector3::new(3.0, 0.0, 4.0)); // dist = 5
+            npc.nav_path
+                .push_back(cimmeria_common::Vector3::new(20.0, 0.0, 0.0));
+        }
+
+        npc_movement_tick(&mut mgr);
+
+        let npc = mgr.get_entity(200).unwrap();
+        assert_eq!(npc.position.x, 3.0, "must snap to first waypoint X");
+        assert_eq!(npc.position.z, 4.0, "must snap to first waypoint Z");
+        assert_eq!(
+            npc.nav_path.len(),
+            1,
+            "first waypoint consumed, second remains"
+        );
+    }
+
+    #[test]
+    fn npc_stops_at_final_waypoint() {
+        let mut mgr = SpaceManager::new(1);
+        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+        mgr.parse_spaces_xml(xml).unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(200, "Castle", [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(npc) = mgr.get_entity_mut(200) {
+            npc.is_player = false;
+            npc.class_id = 0x04;
+            npc.move_speed = 20.0; // overshoots the only waypoint
+            npc.nav_path
+                .push_back(cimmeria_common::Vector3::new(5.0, 0.0, 0.0));
+        }
+
+        npc_movement_tick(&mut mgr);
+
+        let npc = mgr.get_entity(200).unwrap();
+        assert_eq!(npc.position.x, 5.0, "must snap to final waypoint");
+        assert!(
+            npc.nav_path.is_empty(),
+            "path must be empty after reaching final waypoint"
+        );
+    }
 }
