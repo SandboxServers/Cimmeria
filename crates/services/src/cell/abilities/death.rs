@@ -449,7 +449,6 @@ mod tests {
             t.player_id = Some(200);
             t.abilities.auto_cycle = true;
             t.abilities.auto_cycle_ability_id = Some(592);
-            t.abilities.auto_cycle_target_id = Some(99); // some other target
             t.state_field |= BSF_AUTO_CYCLING;
         }
         let (tx, mut rx) = mpsc::channel(32);
@@ -462,7 +461,6 @@ mod tests {
             "dying player's auto_cycle must clear so respawn doesn't resume the loop",
         );
         assert!(dying.abilities.auto_cycle_ability_id.is_none());
-        assert!(dying.abilities.auto_cycle_target_id.is_none());
         assert_eq!(
             dying.state_field & BSF_AUTO_CYCLING,
             0,

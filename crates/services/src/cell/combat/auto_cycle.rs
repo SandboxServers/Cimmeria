@@ -8,11 +8,14 @@
 //!
 //! This module owns the three transition primitives the loop hinges on:
 //!
-//! - [`arm_auto_cycle`] — stash the ability/target pair + set `BSF_AUTO_CYCLING`.
-//!   Called at first-commit time when `auto_cycle == true`, AND from every
-//!   tick-driven re-fire (the tick re-invokes `handle_use_ability` which
-//!   re-enters this path). Idempotent: same-state re-arms just refresh the
-//!   target stash and never re-broadcast.
+//! - [`arm_auto_cycle`] — stash the loop's committed ability + set
+//!   `BSF_AUTO_CYCLING`. Called at first-commit time when `auto_cycle == true`,
+//!   AND from every tick-driven re-fire (the tick re-invokes
+//!   `handle_use_ability` which re-enters this path). Idempotent: same-state
+//!   re-arms refresh the ability stash and never re-broadcast. The loop's
+//!   live target is read from `CellEntity::current_target_id` at re-fire
+//!   time — NOT stashed here — so target switches mid-loop redirect
+//!   automatically.
 //! - [`clear_auto_cycle`] — drop the stash, clear the bit, return the new
 //!   `state_field` if it transitioned. Called on every stop path: explicit
 //!   `setAutoCycle(0)`, manual fire of a different ability,
@@ -51,14 +54,21 @@ use crate::cell::space_manager::SpaceManager;
 
 use super::state::BSF_AUTO_CYCLING;
 
-/// Arm the auto-cycle loop on `player_id` with the given ability + target.
+/// Arm the auto-cycle loop on `player_id` with the given ability.
 ///
-/// Stashes both ids on the `AbilityManager` and sets `BSF_AUTO_CYCLING` on
-/// the entity's `state_field`. Returns `Some(new_state_field)` only when the
-/// bit just transitioned from `0 → 1` so the caller knows to broadcast
-/// `onStateFieldUpdate`. Re-arming on an already-cycling player updates the
-/// stash but returns `None` (the bit was already set; no client refresh
+/// Stashes the committed ability id on the `AbilityManager` and sets
+/// `BSF_AUTO_CYCLING` on the entity's `state_field`. Returns
+/// `Some(new_state_field)` only when the bit just transitioned from
+/// `0 → 1` so the caller knows to broadcast `onStateFieldUpdate`.
+/// Re-arming on an already-cycling player refreshes the ability stash
+/// but returns `None` (the bit was already set; no client refresh
 /// needed).
+///
+/// The loop's target is intentionally NOT stashed here — the driver
+/// tick reads `CellEntity::current_target_id` at re-fire time so cursor
+/// switches mid-loop redirect the loop automatically. The `target_id`
+/// parameter is kept on the signature for documentation symmetry with
+/// the (ability, target) call-site pair but isn't persisted.
 ///
 /// No-op (returns `None`) for non-player entities or missing entity ids.
 #[must_use]
@@ -66,7 +76,7 @@ pub fn arm_auto_cycle(
     space_mgr: &mut SpaceManager,
     player_id: u32,
     ability_id: i32,
-    target_id: i32,
+    _target_id: i32,
 ) -> Option<u32> {
     let player = space_mgr.get_entity_mut(player_id)?;
     if !player.is_player {
@@ -82,7 +92,6 @@ pub fn arm_auto_cycle(
         return None;
     }
     player.abilities.auto_cycle_ability_id = Some(ability_id);
-    player.abilities.auto_cycle_target_id = Some(target_id);
     // Raw bit op — see module-level doc on why we avoid `set_state_flag`.
     let old = player.state_field;
     player.state_field |= BSF_AUTO_CYCLING;
@@ -110,7 +119,6 @@ pub fn clear_auto_cycle(space_mgr: &mut SpaceManager, player_id: u32) -> Option<
     }
     player.abilities.auto_cycle = false;
     player.abilities.auto_cycle_ability_id = None;
-    player.abilities.auto_cycle_target_id = None;
     // Raw bit op — see module-level doc on why we avoid `unset_state_flag`.
     let old = player.state_field;
     player.state_field &= !BSF_AUTO_CYCLING;
@@ -121,14 +129,23 @@ pub fn clear_auto_cycle(space_mgr: &mut SpaceManager, player_id: u32) -> Option<
     }
 }
 
-/// Sweep all players whose `auto_cycle_target_id` matches the given (just-dead
-/// or despawned) entity and clear their loops.
+/// Sweep all players currently auto-cycling at the given (just-dead or
+/// despawned) entity and clear their loops.
 ///
-/// Returns `(player_id, new_state_field)` pairs for which `BSF_AUTO_CYCLING`
-/// just cleared so the caller can broadcast `onStateFieldUpdate` to each one.
-/// Mirrors [`super::threat::clear_dead_npc_from_all_player_threat`] in shape
-/// and purpose: the death-transition burst should clear the loop for *every*
-/// player currently auto-cycling at the dying target, not just the killer.
+/// Matches against the player's LIVE `current_target_id` — the cursor
+/// selection that the auto-cycle tick re-fires at. A player who armed
+/// the loop against enemy X then switched cursor to enemy Y mid-loop
+/// has `current_target_id = Y`, so X's death does NOT clear their loop
+/// (they're firing at Y now) but Y's death does. Mirrors python's
+/// `self.entity().targetId` live read in the loop driver.
+///
+/// Returns `(player_id, new_state_field)` pairs for which
+/// `BSF_AUTO_CYCLING` just cleared so the caller can broadcast
+/// `onStateFieldUpdate` to each one. Mirrors
+/// [`super::threat::clear_dead_npc_from_all_player_threat`] in shape
+/// and purpose: the death-transition burst should clear the loop for
+/// *every* player currently auto-cycling at the dying target, not just
+/// the killer.
 pub fn clear_auto_cycle_for_target(
     space_mgr: &mut SpaceManager,
     target_id: u32,
@@ -138,9 +155,9 @@ pub fn clear_auto_cycle_for_target(
         .all_player_entity_ids()
         .into_iter()
         .filter(|&eid| {
-            space_mgr.get_entity(eid).is_some_and(|e| {
-                e.abilities.auto_cycle && e.abilities.auto_cycle_target_id == Some(target_i32)
-            })
+            space_mgr
+                .get_entity(eid)
+                .is_some_and(|e| e.abilities.auto_cycle && e.current_target_id == Some(target_i32))
         })
         .collect();
 
@@ -194,21 +211,21 @@ mod tests {
 
         let p = mgr.get_entity(1).unwrap();
         assert_eq!(p.abilities.auto_cycle_ability_id, Some(592));
-        assert_eq!(p.abilities.auto_cycle_target_id, Some(100));
         assert_ne!(p.state_field & BSF_AUTO_CYCLING, 0);
         assert_eq!(result, Some(p.state_field));
     }
 
-    /// Re-arming on an already-cycling player updates the stash but does
-    /// NOT re-broadcast — the bit didn't transition, so the client doesn't
-    /// need another `onStateFieldUpdate`. Idempotency guard.
+    /// Re-arming on an already-cycling player refreshes the ability
+    /// stash but does NOT re-broadcast — the bit didn't transition, so
+    /// the client doesn't need another `onStateFieldUpdate`. Idempotency
+    /// guard.
     #[test]
     fn arm_idempotent_when_already_set() {
         let mut mgr = make_mgr();
         make_player(&mut mgr, 1);
         let _ = arm_auto_cycle(&mut mgr, 1, 592, 100);
 
-        // Re-arm with a different target/ability — stash updates, no broadcast.
+        // Re-arm with a different ability — stash refreshes, no broadcast.
         let result = arm_auto_cycle(&mut mgr, 1, 593, 101);
         assert_eq!(result, None, "second arm must NOT signal broadcast");
 
@@ -216,9 +233,8 @@ mod tests {
         assert_eq!(
             p.abilities.auto_cycle_ability_id,
             Some(593),
-            "stash must update even when bit doesn't flip",
+            "ability stash must refresh even when bit doesn't flip",
         );
-        assert_eq!(p.abilities.auto_cycle_target_id, Some(101));
     }
 
     /// Clear after arm flips the bit back off and returns the new state.
@@ -235,7 +251,6 @@ mod tests {
         let p = mgr.get_entity(1).unwrap();
         assert!(!p.abilities.auto_cycle);
         assert_eq!(p.abilities.auto_cycle_ability_id, None);
-        assert_eq!(p.abilities.auto_cycle_target_id, None);
         assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
         assert_eq!(result, Some(p.state_field));
     }
@@ -254,11 +269,12 @@ mod tests {
         assert_eq!(result, None, "clear on un-armed player must NOT broadcast");
     }
 
-    /// `clear_auto_cycle_for_target` sweeps every player auto-cycling at
-    /// the given target and returns them all for broadcast. Pins the
-    /// multi-attacker invariant: if 3 players are all auto-firing at the
-    /// same NPC and it dies, all 3 must get their `BSF_AUTO_CYCLING`
-    /// cleared in the same death burst.
+    /// `clear_auto_cycle_for_target` sweeps every player currently
+    /// auto-cycling at the given target (via `current_target_id`) and
+    /// returns them all for broadcast. Pins the multi-attacker invariant:
+    /// if 3 players are all auto-firing at the same NPC and it dies, all
+    /// 3 must get their `BSF_AUTO_CYCLING` cleared in the same death
+    /// burst.
     #[test]
     fn target_sweep_clears_every_player_cycling_at_dying_target() {
         let mut mgr = make_mgr();
@@ -269,6 +285,12 @@ mod tests {
         let _ = arm_auto_cycle(&mut mgr, 1, 592, 999);
         let _ = arm_auto_cycle(&mut mgr, 2, 592, 999);
         let _ = arm_auto_cycle(&mut mgr, 3, 592, 999);
+        // Sweep matches against current_target_id (the LIVE target the
+        // tick re-fires at), not the arm-time stash. Set it so the test
+        // exercises the actual sweep filter.
+        for pid in [1, 2, 3] {
+            mgr.get_entity_mut(pid).unwrap().current_target_id = Some(999);
+        }
 
         let broadcasts = clear_auto_cycle_for_target(&mut mgr, 999);
         assert_eq!(broadcasts.len(), 3, "all 3 players must be cleared");
@@ -281,8 +303,8 @@ mod tests {
     }
 
     /// Target sweep ignores players auto-cycling at a different target.
-    /// Pin: the sweep must filter by `auto_cycle_target_id`, not nuke
-    /// every armed player.
+    /// Pin: the sweep must filter by `current_target_id` (LIVE selection),
+    /// not nuke every armed player.
     #[test]
     fn target_sweep_ignores_players_cycling_at_other_targets() {
         let mut mgr = make_mgr();
@@ -291,6 +313,9 @@ mod tests {
 
         let _ = arm_auto_cycle(&mut mgr, 1, 592, 999);
         let _ = arm_auto_cycle(&mut mgr, 2, 592, 888);
+        // Live target stays the same as the arm-time target in this test.
+        mgr.get_entity_mut(1).unwrap().current_target_id = Some(999);
+        mgr.get_entity_mut(2).unwrap().current_target_id = Some(888);
 
         let broadcasts = clear_auto_cycle_for_target(&mut mgr, 999);
         assert_eq!(broadcasts.len(), 1, "only player 1 must be cleared");
@@ -299,8 +324,35 @@ mod tests {
         // Player 2 must remain armed at its own target.
         let p2 = mgr.get_entity(2).unwrap();
         assert!(p2.abilities.auto_cycle);
-        assert_eq!(p2.abilities.auto_cycle_target_id, Some(888));
+        assert_eq!(p2.current_target_id, Some(888));
         assert_ne!(p2.state_field & BSF_AUTO_CYCLING, 0);
+    }
+
+    /// Player armed loop against X then switched cursor to Y mid-loop:
+    /// LIVE current_target_id = Y. X's death must NOT clear this
+    /// player's loop (they're firing at Y now, not X). Y's death MUST
+    /// clear it. Pin the Phase 2 live-target-switch behavior.
+    #[test]
+    fn target_sweep_follows_live_target_after_switch() {
+        let mut mgr = make_mgr();
+        make_player(&mut mgr, 1);
+        // Arm against X.
+        let _ = arm_auto_cycle(&mut mgr, 1, 592, 100);
+        // Player switched cursor to Y (setTargetID writes current_target_id).
+        mgr.get_entity_mut(1).unwrap().current_target_id = Some(200);
+
+        // X dies — must NOT clear this player (they're firing at Y now).
+        let broadcasts_x = clear_auto_cycle_for_target(&mut mgr, 100);
+        assert!(
+            broadcasts_x.is_empty(),
+            "X's death must not clear a player who has switched cursor to Y"
+        );
+        assert!(mgr.get_entity(1).unwrap().abilities.auto_cycle);
+
+        // Y dies — MUST clear this player.
+        let broadcasts_y = clear_auto_cycle_for_target(&mut mgr, 200);
+        assert_eq!(broadcasts_y.len(), 1, "Y's death must clear the loop");
+        assert!(!mgr.get_entity(1).unwrap().abilities.auto_cycle);
     }
 
     /// Regression for the playtest bug surfaced in #341: arming N times

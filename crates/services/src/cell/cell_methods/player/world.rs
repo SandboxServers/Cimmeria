@@ -26,10 +26,23 @@ pub async fn dispatch(
                     // click — "armed silently, wait for fire" leaves the
                     // button looking broken until the player happens to
                     // right-click an enemy. The actual loop-arming
-                    // (`auto_cycle_ability_id` / `auto_cycle_target_id`
-                    // stash) still happens at first `useAbility` commit;
+                    // (`auto_cycle_ability_id` stash) still happens at
+                    // first `useAbility` commit;
                     // the BSF here is purely the "armed" indicator.
-                    let new_state = {
+                    //
+                    // Phase 2 enhancement: if the player has a target
+                    // selected AND has previously fired an ability, we
+                    // ALSO fire that ability immediately so the button
+                    // press feels like an action ("start firing now"),
+                    // not just a mode flip. The previous-fire requirement
+                    // is the simplest server-side proxy for "what ability
+                    // would the player fire?" — looking up via
+                    // `items_event_sets` doesn't cover the common Pistol
+                    // Shot case (it's an archetype ability, not an
+                    // item-event-driven one), so we trade comprehensive
+                    // coverage for a heuristic that works as soon as the
+                    // player has fired anything in this session.
+                    let (new_state, immediate_fire) = {
                         let entity = match space_mgr.get_entity_mut(entity_id) {
                             Some(e) => e,
                             None => return true,
@@ -39,7 +52,16 @@ pub async fn dispatch(
                         // BSF_AUTO_CYCLING bypasses the ref-counted helpers.
                         let old = entity.state_field;
                         entity.state_field |= crate::cell::combat::BSF_AUTO_CYCLING;
-                        (entity.state_field != old).then_some(entity.state_field)
+                        let new_state = (entity.state_field != old).then_some(entity.state_field);
+                        // Capture (ability, target) for immediate fire
+                        // outside the mutable borrow. Both must be Some
+                        // to fire; otherwise the loop just arms and
+                        // waits for the first manual click.
+                        let immediate_fire = entity
+                            .abilities
+                            .last_fired_ability_id
+                            .zip(entity.current_target_id);
+                        (new_state, immediate_fire)
                     };
                     if let Some(new_state) = new_state {
                         super::super::super::abilities::send_entity_method(
@@ -48,6 +70,35 @@ pub async fn dispatch(
                             new_state.to_le_bytes().to_vec(),
                             tx,
                             space_mgr,
+                        )
+                        .await;
+                    }
+                    // Phase 2: immediate fire. Re-enter the standard
+                    // ability-fire path; this stashes the loop's
+                    // committed ability/target (via the normal commit-
+                    // time arm) and emits the usual
+                    // onTimerUpdate/onSequence/onEffectResults burst.
+                    // Failure modes (out of range, ammo, etc.) leave the
+                    // loop armed at BSF level — the next tick re-evaluates,
+                    // exactly like a normal cooldown-driven re-fire.
+                    //
+                    // Gated on `new_state.is_some()` — the BSF must have
+                    // ACTUALLY transitioned for this to be a fresh button
+                    // press. CEGUI fires the Lua binding 3-4 times per
+                    // physical click (observed in playtest as identical
+                    // calls within ~150µs); without the transition gate
+                    // each duplicate would re-attempt the fire and rely
+                    // on the cooldown gate inside `handle_use_ability` to
+                    // reject — wasting work and producing noisy logs.
+                    if let (Some(_), Some((ability_id, target_id))) = (new_state, immediate_fire) {
+                        tracing::info!(
+                            entity_id,
+                            ability_id,
+                            target_id,
+                            "setAutoCycle: immediate fire on enable (last_fired + current_target ready)"
+                        );
+                        let _ = super::super::super::abilities::handle_use_ability(
+                            entity_id, ability_id, target_id, tx, space_mgr,
                         )
                         .await;
                     }
@@ -499,12 +550,11 @@ mod tests {
     async fn set_auto_cycle_disable_clears_stash_and_bsf() {
         use crate::cell::combat::BSF_AUTO_CYCLING;
         let mut mgr = make_mgr_with_player();
-        // Simulate a previously-armed loop: ability + target stashed,
-        // BSF bit set (the state arrived at by `arm_auto_cycle`).
+        // Simulate a previously-armed loop: ability stashed, BSF bit
+        // set (the state arrived at by `arm_auto_cycle`).
         if let Some(e) = mgr.get_entity_mut(1) {
             e.abilities.auto_cycle = true;
             e.abilities.auto_cycle_ability_id = Some(597);
-            e.abilities.auto_cycle_target_id = Some(42);
             e.set_state_flag(BSF_AUTO_CYCLING);
         }
         let engine = ChainEngine::new();
@@ -519,10 +569,6 @@ mod tests {
         assert!(
             e.abilities.auto_cycle_ability_id.is_none(),
             "disable must clear auto_cycle_ability_id"
-        );
-        assert!(
-            e.abilities.auto_cycle_target_id.is_none(),
-            "disable must clear auto_cycle_target_id"
         );
         assert_eq!(
             e.state_field & BSF_AUTO_CYCLING,
@@ -601,10 +647,6 @@ mod tests {
             e.abilities.auto_cycle_ability_id.is_none(),
             "ability id stash still empty — that arms at first commit",
         );
-        assert!(
-            e.abilities.auto_cycle_target_id.is_none(),
-            "target id stash still empty",
-        );
         assert_ne!(
             e.state_field & BSF_AUTO_CYCLING,
             0,
@@ -669,6 +711,127 @@ mod tests {
             rx.try_recv().is_err(),
             "duplicate disable calls must NOT re-broadcast — bit is already clear",
         );
+    }
+
+    /// Phase 2 immediate-fire: when the player presses the auto-cycle
+    /// button AND they already have a target selected AND they've
+    /// previously fired an ability in this session, the button press
+    /// fires that ability at the target immediately. Closes the
+    /// "press button → nothing visible" gap that drove the Phase 2
+    /// work.
+    ///
+    /// Pre-conditions encoded: `current_target_id` (from setTargetID)
+    /// + `last_fired_ability_id` (from a prior commit) — both must
+    /// be Some. Either being None falls through to "just light BSF,
+    /// wait for first manual fire" (existing Phase 1 behavior, which
+    /// the other tests in this module cover).
+    #[tokio::test]
+    async fn set_auto_cycle_enable_fires_immediately_when_target_and_last_ability_set() {
+        use cimmeria_entity::abilities::AbilityDef;
+        let mut mgr = make_mgr_with_player();
+        // Seed an NPC target close enough to be in range.
+        mgr.spawn_npc(50, "Castle_CellBlock", [3.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            // Player has fired ability 7 earlier this session (stashed
+            // by handle_use_ability commit).
+            p.abilities.add_ability(7);
+            p.abilities.last_fired_ability_id = Some(7);
+            // Player has a target selected (setTargetID wrote this).
+            p.current_target_id = Some(50);
+            // Weapon drawn so the unholster queue doesn't intercept.
+            p.weapon_holstered = false;
+        }
+        mgr.ability_defs.insert(
+            7,
+            AbilityDef {
+                ability_id: 7,
+                name: "test".to_string(),
+                cooldown: 0.5,
+                warmup: 0.0,
+                flags: 0,
+                is_ranged: false,
+                min_range: 0,
+                max_range: 30,
+                target_type_id: 0,
+                effect_ids: vec![],
+                moniker_ids: vec![],
+                required_ammo: 0,
+                event_set_id: None,
+                velocity: 0.0,
+            },
+        );
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(64);
+
+        let handled = dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+        assert!(handled);
+
+        // Immediate-fire signature: the ability's cooldown is now
+        // running (handle_use_ability called start_ability_cooldown)
+        // and the auto-cycle loop is committed (auto_cycle_ability_id
+        // stashed from the arm step inside the fire).
+        let p = mgr.get_entity(1).unwrap();
+        assert!(
+            p.abilities.is_on_cooldown(7),
+            "immediate fire must have started the cooldown — proves handle_use_ability ran",
+        );
+        assert_eq!(
+            p.abilities.auto_cycle_ability_id,
+            Some(7),
+            "the loop must be armed (committed ability) after the immediate fire",
+        );
+    }
+
+    /// Phase 2: if the player has never fired an ability this session
+    /// (`last_fired_ability_id == None`), pressing the button just
+    /// lights BSF — no immediate fire. The tick will pick up the loop
+    /// after the player's first manual right-click fire. Mirrors
+    /// Phase 1 behavior; pin so the immediate-fire path doesn't
+    /// accidentally start firing at session-start before the player
+    /// has had a chance to choose an ability.
+    #[tokio::test]
+    async fn set_auto_cycle_enable_does_not_fire_without_last_ability() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            // Target selected but never fired anything yet.
+            p.current_target_id = Some(50);
+            // last_fired_ability_id stays None.
+            p.weapon_holstered = false;
+        }
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(64);
+
+        dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+
+        let p = mgr.get_entity(1).unwrap();
+        assert!(p.abilities.auto_cycle, "flag must still arm");
+        assert!(
+            p.abilities.auto_cycle_ability_id.is_none(),
+            "no immediate fire happened → loop ability stash stays empty",
+        );
+    }
+
+    /// Phase 2: if the player has fired earlier but currently has no
+    /// target selected (`current_target_id == None`), pressing the
+    /// button just lights BSF — no immediate fire. The tick will
+    /// pick up the loop once the player selects a target via cursor.
+    #[tokio::test]
+    async fn set_auto_cycle_enable_does_not_fire_without_target() {
+        let mut mgr = make_mgr_with_player();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.abilities.last_fired_ability_id = Some(7);
+            // current_target_id stays None — no target selected.
+            p.weapon_holstered = false;
+        }
+        let engine = ChainEngine::new();
+        let (tx, _rx) = mpsc::channel(64);
+
+        dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+
+        let p = mgr.get_entity(1).unwrap();
+        assert!(p.abilities.auto_cycle, "flag must still arm");
+        assert!(!p.abilities.is_on_cooldown(7), "no immediate fire happened");
     }
 
     /// Spamming `setAutoCycle(1)` repeatedly (the CEGUI button fires

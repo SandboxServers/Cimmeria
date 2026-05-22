@@ -446,17 +446,23 @@ pub(super) async fn pending_attack_tick(
 
 /// Drive the server-side auto-cycle (auto-fire) loop.
 ///
-/// For every connected player with `auto_cycle == true` and a stashed
-/// `(ability_id, target_id)` pair:
+/// For every connected player with `auto_cycle == true` and the loop
+/// armed (`auto_cycle_ability_id` set):
 ///
-/// - If the stashed target is dead or missing, clear the loop (mirrors
-///   the death-transition sweep — that path catches actual NPC deaths,
-///   this path catches "the target despawned" and other edge cases).
-/// - If the stashed ability is still on cooldown, skip — the cooldown
-///   gate IS the rate limiter for re-fires.
-/// - Otherwise, re-invoke
-///   [`crate::cell::abilities::handle_use_ability`] with the stashed ids.
-///   The re-invocation produces the same `onTimerUpdate` +
+/// - **Target is LIVE** — re-fires use [`CellEntity::current_target_id`]
+///   (the player's currently-selected target, written by `setTargetID`).
+///   Mirrors python's `self.entity().targetId` live read. Switching
+///   targets via the cursor mid-loop redirects the re-fires automatically
+///   without breaking the loop; deselecting (target=0) clears it.
+/// - **No target or dead target** → clear the loop (the death-transition
+///   sweep usually catches this first; the tick is the safety net for
+///   despawn/leash/instance-cleanup cases that bypass the death path).
+/// - **Ability still on cooldown** → skip without clearing — cooldown
+///   clears naturally and the next tick handles re-fire. The cooldown
+///   gate IS the rate limiter.
+/// - **Otherwise** → re-invoke
+///   [`crate::cell::abilities::handle_use_ability`] with the loop-armed
+///   ability and the live target. Produces the same `onTimerUpdate` +
 ///   `onSequence` + `onEffectResults` burst as a manual fire — the
 ///   client cannot distinguish loop-driven from manual shots.
 ///
@@ -487,9 +493,12 @@ pub(super) async fn auto_cycle_tick(
                 return None;
             }
             let ability_id = e.abilities.auto_cycle_ability_id?;
-            let target_id = e.abilities.auto_cycle_target_id?;
-            // Target sanity: target_id <= 0 is "no target" — clear, don't
-            // re-fire into the void.
+            // LIVE target read — mirrors python `self.entity().targetId`
+            // in `abilityCooledDown`. Falls through to `target_id = 0`
+            // when the player has no target selected, which the
+            // `!target_alive_or_existed` branch below treats as "clear
+            // the loop".
+            let target_id = e.current_target_id.unwrap_or(0);
             let target_alive_or_existed = if target_id > 0 {
                 match space_mgr.get_entity(target_id as u32) {
                     Some(t) => !super::super::combat::is_dead_state(t.state_field),
@@ -1102,7 +1111,9 @@ mod tests {
             p.abilities.add_ability(7);
             p.abilities.auto_cycle = true;
             p.abilities.auto_cycle_ability_id = Some(7);
-            p.abilities.auto_cycle_target_id = Some(50);
+            // Phase 2: the tick reads `current_target_id` (live) as the
+            // re-fire target — the cursor selection from `setTargetID`.
+            p.current_target_id = Some(50);
             p.weapon_holstered = false;
         }
         mgr.connect_entity(1);
@@ -1222,7 +1233,7 @@ mod tests {
         );
     }
 
-    /// When the stashed target despawned entirely (no longer in the
+    /// When the live target despawned entirely (no longer in the
     /// space manager), the tick treats it as gone and clears the
     /// loop. Same defensive sweep as the dead-target branch — the
     /// loop must not be left armed pointing at nothing.
@@ -1233,7 +1244,7 @@ mod tests {
         if let Some(p) = mgr.get_entity_mut(1) {
             p.set_state_flag(BSF_AUTO_CYCLING);
             // Point at an entity that doesn't exist in the space.
-            p.abilities.auto_cycle_target_id = Some(99999);
+            p.current_target_id = Some(99999);
         }
 
         let (tx, _rx) = mpsc::channel(64);
@@ -1241,6 +1252,79 @@ mod tests {
 
         let p = mgr.get_entity(1).unwrap();
         assert!(!p.abilities.auto_cycle);
+        assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
+    }
+
+    /// Phase 2 live-target switch: player armed loop at NPC 50 then
+    /// switched cursor to NPC 75 mid-loop. The tick must re-fire at
+    /// 75 (current_target_id), not at 50. Pin the live-target
+    /// behavior that distinguishes Phase 2 from a snapshot-stash
+    /// model.
+    ///
+    /// Verification path: after the tick fires, NPC 75 (the LIVE
+    /// target) should have player 1 on its `threat_list` from the
+    /// `generate_threat` call inside `damage_apply`. NPC 50 (the
+    /// original target) should NOT — the tick must not have touched
+    /// it. We use threat list rather than wire traffic because the
+    /// wire witness routing only addresses entities currently in the
+    /// player's AoI, which adds fixture coupling that doesn't change
+    /// the assertion we actually care about.
+    #[tokio::test]
+    async fn auto_cycle_tick_refires_at_live_current_target() {
+        use cimmeria_common::Vector3;
+        let mut mgr = make_auto_cycle_mgr();
+        // Spawn a second NPC (target B) close enough to be in range.
+        mgr.spawn_npc(75, "Castle", [3.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            // Player switched cursor to target 75. The tick must
+            // follow this live selection.
+            p.current_target_id = Some(75);
+            // Position the player at origin so both NPCs are in range.
+            p.position = Vector3::new(0.0, 0.0, 0.0);
+        }
+        let (tx, _rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr).await;
+
+        // NPC 75 (live target) must have been threatened by the attacker.
+        let npc_b = mgr.get_entity(75).expect("NPC 75 should still exist");
+        assert!(
+            npc_b.threat_list.contains_key(&1),
+            "tick must re-fire at LIVE current_target (75) — threat_list should contain player 1"
+        );
+
+        // NPC 50 (original target before the cursor switch) must NOT
+        // have been threatened by this tick — the tick read live
+        // current_target_id, not anything stashed at arm-time.
+        let npc_a = mgr.get_entity(50).expect("NPC 50 should still exist");
+        assert!(
+            !npc_a.threat_list.contains_key(&1),
+            "tick must NOT re-fire at the original target (50) once the player has switched cursor"
+        );
+    }
+
+    /// Target deselect (current_target_id == None) clears the loop.
+    /// Player pressed escape or right-clicked empty space → no target
+    /// → loop pauses/stops. Mirrors python `findEntity(None)` returning
+    /// None → `self.autoCycle = False`.
+    #[tokio::test]
+    async fn auto_cycle_tick_clears_loop_when_target_deselected() {
+        use crate::cell::combat::BSF_AUTO_CYCLING;
+        let mut mgr = make_auto_cycle_mgr();
+        if let Some(p) = mgr.get_entity_mut(1) {
+            p.set_state_flag(BSF_AUTO_CYCLING);
+            // Player deselected target.
+            p.current_target_id = None;
+        }
+
+        let (tx, _rx) = mpsc::channel(64);
+        auto_cycle_tick(&tx, &mut mgr).await;
+
+        let p = mgr.get_entity(1).unwrap();
+        assert!(
+            !p.abilities.auto_cycle,
+            "target deselect must clear the auto-cycle loop"
+        );
         assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0);
     }
 
