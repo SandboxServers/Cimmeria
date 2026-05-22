@@ -639,26 +639,74 @@ fn reassemble_parsed_isolates_per_channel_state() {
     );
 }
 
+/// Arrival-triggered eviction at the channel layer: a new fragmented
+/// bundle whose sequence range overlaps an in-progress reassembly
+/// (and keys on a different `first_seq`) evicts the older bundle.
+/// The SGW client emits the matching log line at binary address
+/// `0x01b18868`; per `mercury-wire-format` spec §2.4.1 R13 + §2.10 S6
+/// the eviction path is the ONLY abandonment signal besides
+/// channel teardown.
 #[test]
-fn cleanup_stale_fragments_drops_partial_bundles() {
+fn channel_evicts_overlapping_in_progress_reassembly_on_new_bundle() {
+    let mut ch = Channel::new(test_addr());
+
+    // Bundle A: range [40..=42]. Half-arrives.
+    let a0 = build_then_parse_fragment(40, 40, 42, b"abandoned");
+    ch.reassemble_parsed(&a0).unwrap();
+
+    // Bundle B: range [42..=44]. Overlaps A at seq 42. Receiving B's
+    // first fragment must evict A. Completing B verifies the channel
+    // doesn't reuse stale A bytes in B's reassembled output.
+    let b0 = build_then_parse_fragment(42, 42, 44, b"fresh-0");
+    let b1 = build_then_parse_fragment(43, 42, 44, b"fresh-1");
+    let b2 = build_then_parse_fragment(44, 42, 44, b"fresh-2");
+    assert!(ch.reassemble_parsed(&b0).unwrap().is_none());
+    assert!(ch.reassemble_parsed(&b1).unwrap().is_none());
+    let body = ch
+        .reassemble_parsed(&b2)
+        .unwrap()
+        .expect("bundle B completes after evicting overlapping A");
+    assert_eq!(body.as_ref(), b"fresh-0fresh-1fresh-2");
+}
+
+/// Inverse invariant for the removed periodic-sweep contract: an
+/// orphan partial reassembly that never receives its remaining
+/// fragments — and never sees an overlapping new bundle — MUST
+/// persist on the channel indefinitely (until the channel itself
+/// is destroyed). Pin so a future regression that re-introduces
+/// any time-based eviction surfaces here.
+///
+/// The deleted `cleanup_stale_fragments_drops_partial_bundles` test
+/// asserted the *opposite* behavior; this test pins the new contract.
+#[test]
+fn channel_keeps_orphan_partial_reassembly_indefinitely() {
     let mut ch = Channel::new(test_addr());
     let f0 = build_then_parse_fragment(40, 40, 42, b"only-one");
-    ch.reassemble_parsed(&f0).unwrap();
+    assert!(ch.reassemble_parsed(&f0).unwrap().is_none());
 
-    ch.cleanup_stale_fragments(std::time::Duration::ZERO);
+    // Time passing alone must NOT reap the entry — the orphan persists.
+    std::thread::sleep(std::time::Duration::from_millis(10));
 
-    // Subsequent re-receipt of f0 must start fresh — if the partial
-    // bundle wasn't reaped, the assembler would silently treat the
-    // re-arrival as a duplicate-fragment dedup and never complete.
+    // Subsequent re-receipt of f0 is a duplicate; the assembler
+    // dedups and keeps the same partial state. Completing the bundle
+    // requires the remaining fragments to arrive (which they do
+    // here): f1 + f2 complete the message using the still-held f0.
     let f1 = build_then_parse_fragment(41, 40, 42, b"two");
     let f2 = build_then_parse_fragment(42, 40, 42, b"three");
-    assert!(ch.reassemble_parsed(&f0).unwrap().is_none());
+    assert!(
+        ch.reassemble_parsed(&f0).unwrap().is_none(),
+        "f0 duplicate is deduped, partial state survives"
+    );
     assert!(ch.reassemble_parsed(&f1).unwrap().is_none());
     let body = ch
         .reassemble_parsed(&f2)
         .unwrap()
-        .expect("post-cleanup bundle completes");
-    assert_eq!(body.as_ref(), b"only-onetwothree");
+        .expect("orphan partial reassembly completes when remaining fragments arrive");
+    assert_eq!(
+        body.as_ref(),
+        b"only-onetwothree",
+        "the original f0 payload must be retained — not silently swapped",
+    );
 }
 
 #[test]

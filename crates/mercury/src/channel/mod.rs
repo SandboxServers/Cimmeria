@@ -125,6 +125,14 @@ pub struct Channel {
     /// key (first-fragment sequence number) is per-peer — different
     /// channels can legitimately reuse the same low sequence numbers
     /// without colliding in a shared map.
+    ///
+    /// **Cleanup contract:** there is no periodic time-based cleanup.
+    /// Partial reassemblies are evicted only when a new bundle arrives
+    /// whose sequence range overlaps an in-progress one (handled
+    /// inside [`FragmentAssembler::add_fragment`]). When this channel
+    /// is dropped, the assembler goes with it, taking any remaining
+    /// partials. See `crates/mercury/src/unpacker.rs` module doc for
+    /// the full lifecycle + memory-footprint analysis.
     fragment_assembler: FragmentAssembler,
 
     /// Adaptive retransmission timeout state. Tracks
@@ -183,14 +191,6 @@ impl Channel {
     pub fn reassemble_parsed(&mut self, pkt: &ParsedPacket) -> Result<Option<Bytes>> {
         self.last_received = Instant::now();
         self.fragment_assembler.process_parsed(pkt)
-    }
-
-    /// Drop reassembly buffers older than `max_age`. The drainer
-    /// `Nub::tick` should call this periodically per channel, or callers
-    /// can drive it themselves. Without it, fragments from a never-
-    /// completing bundle would pin memory until the channel itself dies.
-    pub fn cleanup_stale_fragments(&mut self, max_age: std::time::Duration) {
-        self.fragment_assembler.cleanup_stale(max_age);
     }
 
     /// Register a packet that the caller has already assigned a sequence
