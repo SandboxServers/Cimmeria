@@ -38,7 +38,7 @@ pub(crate) use encrypted::handle_encrypted_datagram;
 /// Owns the concrete [`UdpSocket`] because it is the only place that reads
 /// from the wire (`recv_from`). The send side is handed to handlers as a
 /// `&Arc<dyn Transport>` — a [`UdpTransport`] wrapping the same socket,
-/// constructed once here rather than per datagram. See issue #351 /
+/// constructed once here rather than per datagram. See
 /// `docs/architecture/transport-trait.md`.
 pub(crate) async fn run_connect_loop(
     socket: Arc<UdpSocket>,

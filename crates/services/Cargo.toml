@@ -30,8 +30,8 @@ anyhow = { workspace = true }
 # Re-pull mercury with the `test-support` feature so handler unit tests can
 # use `cimmeria_mercury::test_transport::TestTransport` (the recording UDP
 # fake) in place of a real socket. Additive over the `[dependencies]` entry
-# above — it only activates the extra feature for the test build. See issue
-# #351 / docs/architecture/transport-trait.md.
+# above — it only activates the extra feature for the test build. See
+# docs/architecture/transport-trait.md.
 cimmeria-mercury = { path = "../mercury", features = ["test-support"] }
 
 # HTTP client for the login smoke (drives the auth Phase 1 / Phase 2

@@ -74,8 +74,9 @@ impl Nub {
     // `recv_from`/decode path and keeps the concrete `UdpSocket`. The Nub
     // itself owns only pure Mercury logic — channel registry, `tick`,
     // fragment reassembly. The former `Nub::send_to`/`Nub::recv_from`
-    // unimplemented stubs (#57) were removed in favor of that split; the
-    // recv-side end-to-end harness is tracked by #352.
+    // unimplemented stubs were removed in favor of that split; recv-side
+    // end-to-end coverage lives in the Tier-2 loopback harness (see
+    // `docs/architecture/transport-trait.md`).
 
     /// Look up or create a channel for the given remote address.
     ///

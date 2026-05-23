@@ -12,7 +12,7 @@
 //! loop in `services/src/base/connect_loop/mod.rs` keeps its concrete
 //! [`tokio::net::UdpSocket`] because handlers don't read from the socket —
 //! they only emit. End-to-end recv-side testing is the responsibility of the
-//! Tier 2 Mercury loopback harness (issue #352), not this trait. See
+//! Tier 2 Mercury loopback harness, not this trait. See
 //! `docs/architecture/transport-trait.md` for the full rationale.
 
 use std::io;

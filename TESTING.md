@@ -133,7 +133,7 @@ The `src/` (C++) and `python/` (game scripts) trees are reference-only for activ
 - If the handler reads `local_addr()`, construct with `TestTransport::with_local(addr)` — the default is a synthetic `127.0.0.1:0` placeholder.
 - `drain()` consumes the records (a second `drain()` is empty); `clear()` resets without returning; `filter_to(addr)` / `send_count_to(addr)` scope to one recipient.
 
-**Examples**: `crates/services/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `login.rs` (phase 1→4 ordered sequence), `crates/services/src/cell/abilities/messaging.rs` (witness fan-out cardinality + per-addr bytes).
+**Examples**: `crates/services/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `login.rs` (phase 1→4 ordered sequence), `crates/services/src/base/world_entry/cell_dispatch/aoi.rs` (`left_aoi_fans_out_one_packet_per_witness_to_each_addr` — witness fan-out cardinality + per-addr bytes).
 
 ---
 

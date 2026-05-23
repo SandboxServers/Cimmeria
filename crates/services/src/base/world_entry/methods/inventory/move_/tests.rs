@@ -140,8 +140,8 @@ fn make_state(
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    // bind synchronously via std then wrap — avoids needing tokio at the
-    // helper boundary (caller is already in #[tokio::test]).
+    // Recording transport fake — no socket binding; tests assert on the
+    // recorded fan-out rather than reading from a real wire.
     let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
