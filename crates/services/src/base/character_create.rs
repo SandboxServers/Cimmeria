@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use crate::mercury::read_wstring;
 
@@ -17,7 +17,7 @@ use super::ConnectedClientState;
 
 /// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
 pub(crate) async fn handle_create_character(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     account_id: u32,
@@ -29,7 +29,7 @@ pub(crate) async fn handle_create_character(
         Some(p) => p,
         None => {
             tracing::warn!(%addr, "createCharacter: no DB pool");
-            send_char_create_failed(socket, addr, key, connected, 3).await?;
+            send_char_create_failed(transport, addr, key, connected, 3).await?;
             return Ok(());
         }
     };
@@ -42,7 +42,7 @@ pub(crate) async fn handle_create_character(
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(%addr, "createCharacter: failed to parse name: {e}");
-            send_char_create_failed(socket, addr, key, connected, 2).await?;
+            send_char_create_failed(transport, addr, key, connected, 2).await?;
             return Ok(());
         }
     };
@@ -51,7 +51,7 @@ pub(crate) async fn handle_create_character(
     // Name validation (matches Python Account.py:isCharacterNameAllowed).
     if let Err(reason) = validate_character_name(&name) {
         tracing::info!(%addr, %name, %reason, "createCharacter: name rejected");
-        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, 2).await?;
         return Ok(());
     }
 
@@ -59,7 +59,7 @@ pub(crate) async fn handle_create_character(
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(%addr, "createCharacter: failed to parse extraName: {e}");
-            send_char_create_failed(socket, addr, key, connected, 2).await?;
+            send_char_create_failed(transport, addr, key, connected, 2).await?;
             return Ok(());
         }
     };
@@ -69,14 +69,14 @@ pub(crate) async fn handle_create_character(
     if !extra_name.is_empty() {
         if let Err(reason) = validate_character_name(&extra_name) {
             tracing::info!(%addr, %extra_name, %reason, "createCharacter: extra_name rejected");
-            send_char_create_failed(socket, addr, key, connected, 2).await?;
+            send_char_create_failed(transport, addr, key, connected, 2).await?;
             return Ok(());
         }
     }
 
     if off + 4 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for CharDefId");
-        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, 2).await?;
         return Ok(());
     }
     let char_def_id = i32::from_le_bytes([
@@ -90,7 +90,7 @@ pub(crate) async fn handle_create_character(
     // Parse ARRAY<VisualChoices> -- count + entries
     if off + 4 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for visuals count");
-        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, 2).await?;
         return Ok(());
     }
     let visual_count = u32::from_le_bytes([
@@ -103,7 +103,7 @@ pub(crate) async fn handle_create_character(
     // Each VisualChoices = { VisGroupId: INT32, ChoiceId: INT32 } = 8 bytes
     if off + visual_count * 8 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for visual choices");
-        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, 2).await?;
         return Ok(());
     }
     let mut visual_choices: Vec<(i32, i32)> = Vec::with_capacity(visual_count);
@@ -127,7 +127,7 @@ pub(crate) async fn handle_create_character(
 
     if off + 4 > payload.len() {
         tracing::warn!(%addr, "createCharacter: payload too short for SkinTintColorID");
-        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, 2).await?;
         return Ok(());
     }
     let skin_tint_color_id = i32::from_le_bytes([
@@ -140,7 +140,7 @@ pub(crate) async fn handle_create_character(
     // Skin tint validation (matches Python Account.py: ERROR_CharacterCreationInvalidSkinColor).
     if !(0..=15).contains(&skin_tint_color_id) {
         tracing::info!(%addr, skin_tint_color_id, "createCharacter: invalid skin tint");
-        send_char_create_failed(socket, addr, key, connected, 2).await?;
+        send_char_create_failed(transport, addr, key, connected, 2).await?;
         return Ok(());
     }
 
@@ -150,7 +150,7 @@ pub(crate) async fn handle_create_character(
             Some(info) => info,
             None => {
                 tracing::warn!(%addr, char_def_id, "createCharacter: unknown CharDefId");
-                send_char_create_failed(socket, addr, key, connected, 2).await?;
+                send_char_create_failed(transport, addr, key, connected, 2).await?;
                 return Ok(());
             }
         };
@@ -199,7 +199,7 @@ pub(crate) async fn handle_create_character(
         Ok(r) => r,
         Err(e) => {
             tracing::error!(%addr, error = %e, "createCharacter: failed to query visgroups");
-            send_char_create_failed(socket, addr, key, connected, 3).await?;
+            send_char_create_failed(transport, addr, key, connected, 3).await?;
             return Ok(());
         }
     };
@@ -250,20 +250,20 @@ pub(crate) async fn handle_create_character(
             Some(g) => g,
             None => {
                 tracing::warn!(%addr, vg_id, char_def_id, "Invalid visual group");
-                send_char_create_failed(socket, addr, key, connected, 10003).await?;
+                send_char_create_failed(transport, addr, key, connected, 10003).await?;
                 return Ok(());
             }
         };
         if group.vis_type != "VIS_Optional" {
             tracing::warn!(%addr, vg_id, "Choice not allowed for forced visual group");
-            send_char_create_failed(socket, addr, key, connected, 10003).await?;
+            send_char_create_failed(transport, addr, key, connected, 10003).await?;
             return Ok(());
         }
         let choice = match group.choices.get(&choice_id) {
             Some(c) => c,
             None => {
                 tracing::warn!(%addr, vg_id, choice_id, "Invalid choice for visual group");
-                send_char_create_failed(socket, addr, key, connected, 10003).await?;
+                send_char_create_failed(transport, addr, key, connected, 10003).await?;
                 return Ok(());
             }
         };
@@ -292,7 +292,7 @@ pub(crate) async fn handle_create_character(
                 }
             } else {
                 tracing::warn!(%addr, vg_id, char_def_id, "Missing choice for optional visual group");
-                send_char_create_failed(socket, addr, key, connected, 10000).await?;
+                send_char_create_failed(transport, addr, key, connected, 10000).await?;
                 return Ok(());
             }
         }
@@ -461,7 +461,7 @@ pub(crate) async fn handle_create_character(
             let pkt =
                 crate::mercury::build_on_character_list(&key, seq, &acks, &characters, account_eid);
             tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list");
-            socket.send_to(&pkt, addr).await?;
+            transport.send_to(&pkt, addr).await?;
         }
         Err(e) => {
             let error_str = e.to_string();
@@ -472,7 +472,7 @@ pub(crate) async fn handle_create_character(
                 tracing::error!(%addr, error = %e, "Character creation DB error");
                 3 // DB error
             };
-            send_char_create_failed(socket, addr, key, connected, error_code).await?;
+            send_char_create_failed(transport, addr, key, connected, error_code).await?;
         }
     }
 

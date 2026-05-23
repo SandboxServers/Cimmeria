@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use super::super::super::super::super::ConnectedClientState;
@@ -33,7 +33,7 @@ pub async fn handle_remove_inventory_item_by_type(
     count: i32,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -214,7 +214,7 @@ pub async fn handle_remove_inventory_item_by_type(
         send_on_remove_item(
             entity_id,
             removed_item_id,
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )
@@ -225,7 +225,7 @@ pub async fn handle_remove_inventory_item_by_type(
         entity_id,
         player_id,
         pool,
-        socket,
+        transport,
         connected,
         entity_to_addr,
     )
@@ -251,7 +251,7 @@ pub async fn handle_remove_inventory_item_by_type(
             player_id,
             db_pool,
             cell_tx,
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )

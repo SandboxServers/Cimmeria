@@ -10,8 +10,8 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -24,7 +24,7 @@ use super::methods::{query_player_load_data, query_world_entry};
 
 /// Send RESET_ENTITIES when the client calls `playCharacter` to begin world entry.
 pub(crate) async fn handle_play_character(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     account_id: u32,
@@ -109,7 +109,7 @@ pub(crate) async fn handle_play_character(
     let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let pkt = build_reset_entities(&key, seq, &acks);
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT RESET_ENTITIES (entity teardown)");
-    socket.send_to(&pkt, addr).await?;
+    transport.send_to(&pkt, addr).await?;
     // Kick-off RESET_ENTITIES is reliable state-change.
     super::super::helpers::shadow_register_reliable_send(
         connected,
@@ -168,6 +168,7 @@ mod tests {
     //! claiming coverage that isn't there.
 
     use super::*;
+    use crate::test_support::TestTransport;
     use cimmeria_mercury::encryption::MercuryEncryption;
     use std::sync::atomic::{AtomicBool, AtomicU32};
     use std::time::Instant;
@@ -212,8 +213,8 @@ mod tests {
         }
     }
 
-    async fn make_socket() -> Arc<UdpSocket> {
-        Arc::new(UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP"))
+    fn make_transport() -> Arc<dyn Transport> {
+        Arc::new(TestTransport::new())
     }
 
     /// Second `playCharacter` on an already-latched session must be a
@@ -221,7 +222,7 @@ mod tests {
     /// could trigger redundant entity teardowns mid-world-entry.
     #[tokio::test]
     async fn play_character_is_idempotent_when_world_entry_already_sent() {
-        let socket = make_socket().await;
+        let transport = make_transport();
         let addr: SocketAddr = "127.0.0.1:55600".parse().unwrap();
         let connected = Arc::new(Mutex::new(HashMap::new()));
         let mut state = make_connected_state(0xAABB);
@@ -236,7 +237,7 @@ mod tests {
         let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = None;
 
         handle_play_character(
-            &socket,
+            &transport,
             addr,
             [0xCDu8; 32],
             0xAABB,
@@ -271,7 +272,7 @@ mod tests {
     /// orchestrator's bring-up smoke tests when no Postgres is reachable.
     #[tokio::test]
     async fn play_character_no_db_routes_to_combatsim_and_populates_state() {
-        let socket = make_socket().await;
+        let transport = make_transport();
         let addr: SocketAddr = "127.0.0.1:55601".parse().unwrap();
         let connected = Arc::new(Mutex::new(HashMap::new()));
         connected
@@ -284,7 +285,7 @@ mod tests {
         const PLAYER_ID: i32 = 7;
 
         handle_play_character(
-            &socket,
+            &transport,
             addr,
             [0xCDu8; 32],
             0xCCDD,
@@ -328,7 +329,7 @@ mod tests {
     /// gate that produces those rows.
     #[tokio::test]
     async fn play_character_for_unknown_addr_is_silent_no_op() {
-        let socket = make_socket().await;
+        let transport = make_transport();
         let addr: SocketAddr = "127.0.0.1:55602".parse().unwrap();
         // connected is empty — addr is genuinely unknown.
         let connected = Arc::new(Mutex::new(HashMap::new()));
@@ -336,7 +337,7 @@ mod tests {
         let cell_tx: Option<mpsc::Sender<BaseToCellMsg>> = None;
 
         let result = handle_play_character(
-            &socket,
+            &transport,
             addr,
             [0xCDu8; 32],
             0xEEFF,

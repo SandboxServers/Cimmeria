@@ -9,6 +9,7 @@
 
 use super::*;
 use crate::test_support::require_db_or_skip;
+use crate::test_support::TestTransport;
 
 /// Sentinel base for mail tests. Distinct from prior live-DB sentinels:
 /// grant_cash (+0x100), move_inventory (+0x200), grant_item (+0x300),
@@ -88,13 +89,11 @@ fn unix_now() -> i32 {
 fn make_state(
     entity_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -102,7 +101,7 @@ fn make_state(
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected)
+    (transport, entity_to_addr, connected)
 }
 
 /// Regression guard: Delete must scope by character_id. Character A
@@ -122,7 +121,7 @@ async fn delete_only_affects_target_character_not_account_siblings() {
     let mail_a = insert_mail(&pool, char_a, "for A").await;
     let mail_b = insert_mail(&pool, char_b, "for B").await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0501);
+    let (transport, e2a, conn) = make_state(0x7000_0501);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // Character A tries to delete character B's mail. Must NOT delete it.
@@ -130,7 +129,7 @@ async fn delete_only_affects_target_character_not_account_siblings() {
         0x7000_0501,
         char_a,
         MailOp::Delete { mail_id: mail_b },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,
@@ -162,7 +161,7 @@ async fn delete_only_affects_target_character_not_account_siblings() {
         0x7000_0501,
         char_a,
         MailOp::Delete { mail_id: mail_a },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,
@@ -194,7 +193,7 @@ async fn archive_only_affects_target_character_not_account_siblings() {
     let mail_a = insert_mail(&pool, char_a, "for A").await;
     let mail_b = insert_mail(&pool, char_b, "for B").await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0511);
+    let (transport, e2a, conn) = make_state(0x7000_0511);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // A tries to archive B's mail. Must NOT flip the flags bit.
@@ -202,7 +201,7 @@ async fn archive_only_affects_target_character_not_account_siblings() {
         0x7000_0511,
         char_a,
         MailOp::Archive { mail_id: mail_b },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,
@@ -224,7 +223,7 @@ async fn archive_only_affects_target_character_not_account_siblings() {
         0x7000_0511,
         char_a,
         MailOp::Archive { mail_id: mail_a },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,
@@ -268,7 +267,7 @@ async fn archive_is_idempotent_via_bitwise_or() {
     .await
     .unwrap();
 
-    let (socket, e2a, conn) = make_state(0x7000_0521);
+    let (transport, e2a, conn) = make_state(0x7000_0521);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // Archive twice. Both calls must leave flags == 4 | 1 == 5
@@ -278,7 +277,7 @@ async fn archive_is_idempotent_via_bitwise_or() {
             0x7000_0521,
             char_a,
             MailOp::Archive { mail_id },
-            &socket,
+            &transport,
             &conn,
             &e2a,
             &db_pool,
@@ -400,7 +399,7 @@ async fn request_body_marks_unread_mail_as_read_via_read_time_update() {
         "fixture sanity: insert_mail leaves read_time = 0"
     );
 
-    let (socket, e2a, conn) = make_state(0x7000_0531);
+    let (transport, e2a, conn) = make_state(0x7000_0531);
     let db_pool = Some(Arc::new(pool.clone()));
 
     let before = unix_now();
@@ -408,7 +407,7 @@ async fn request_body_marks_unread_mail_as_read_via_read_time_update() {
         0x7000_0531,
         char_a,
         MailOp::RequestBody { mail_id },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,
@@ -457,13 +456,13 @@ async fn request_body_does_not_overwrite_existing_read_time() {
     .await
     .unwrap();
 
-    let (socket, e2a, conn) = make_state(0x7000_0541);
+    let (transport, e2a, conn) = make_state(0x7000_0541);
     let db_pool = Some(Arc::new(pool.clone()));
     handle_mail_request(
         0x7000_0541,
         char_a,
         MailOp::RequestBody { mail_id },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,
@@ -501,14 +500,14 @@ async fn request_body_by_other_character_does_not_mark_target_mail_read() {
 
     let mail_b = insert_mail(&pool, char_b, "for B").await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0551);
+    let (transport, e2a, conn) = make_state(0x7000_0551);
     let db_pool = Some(Arc::new(pool.clone()));
     // A requests body of B's mail.
     handle_mail_request(
         0x7000_0551,
         char_a,
         MailOp::RequestBody { mail_id: mail_b },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,
@@ -573,14 +572,14 @@ async fn receive_lifecycle_request_headers_then_body_then_delete() {
     );
 
     // ── body: B reads, read_time bumps to within the test's UNIX-second window ─
-    let (socket, e2a, conn) = make_state(0x7000_0561);
+    let (transport, e2a, conn) = make_state(0x7000_0561);
     let db_pool = Some(Arc::new(pool.clone()));
     let before = unix_now();
     handle_mail_request(
         0x7000_0561,
         char_b,
         MailOp::RequestBody { mail_id },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,
@@ -603,7 +602,7 @@ async fn receive_lifecycle_request_headers_then_body_then_delete() {
         0x7000_0561,
         char_b,
         MailOp::Delete { mail_id },
-        &socket,
+        &transport,
         &conn,
         &e2a,
         &db_pool,

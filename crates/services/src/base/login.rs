@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -21,7 +21,7 @@ use super::ConnectedClientState;
 
 /// Validate ticket, send Phase 3 reply + time-sync, register the encrypted channel.
 pub(crate) async fn handle_login(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     request_id: u32,
     ticket: &str,
@@ -85,7 +85,7 @@ pub(crate) async fn handle_login(
                 }
             };
             let pkt = build_logged_off(&old_key, seq, &acks);
-            let _ = socket.send_to(&pkt, old_addr).await;
+            let _ = transport.send_to(&pkt, old_addr).await;
             destroy_client_entities(connected, entity_manager, old_addr, cell_tx, entity_to_addr);
         }
     }
@@ -98,12 +98,12 @@ pub(crate) async fn handle_login(
     // connect_reply at seq=1.
     let reply = build_connect_reply(request_id, ticket.as_bytes(), &key, 1);
     tracing::trace!(%addr, len = reply.len(), hex = %to_hex(&reply), "UDP_OUT connect_reply");
-    socket.send_to(&reply, addr).await?;
+    transport.send_to(&reply, addr).await?;
 
     // time-sync bundle at seq=2.
     let sync = build_time_sync(&key, 2);
     tracing::trace!(%addr, len = sync.len(), hex = %to_hex(&sync), "UDP_OUT time_sync");
-    socket.send_to(&sync, addr).await?;
+    transport.send_to(&sync, addr).await?;
 
     // Register for Phase 4 encrypted traffic.
     let (pending_acks_arc, last_recv_arc, next_seq_unreliable_arc, cancelled_arc) = {
@@ -173,7 +173,7 @@ pub(crate) async fn handle_login(
     // 1. ACK delivery for client reliable messages (AUTHENTICATE, ENABLE_ENTITIES)
     // 2. A running game clock so the client can play the stargate transition animation
     tokio::spawn(run_tick_loop(
-        Arc::clone(socket),
+        Arc::clone(transport),
         addr,
         key,
         next_seq_unreliable_arc,
@@ -275,7 +275,7 @@ fn hex_nibble(b: u8) -> Result<u8, Box<dyn std::error::Error + Send + Sync>> {
 /// client side (via `ServerConnection::loggedOff -> Mercury::disconnect`).
 /// Without it, the client waits 30s for the Mercury channel timeout.
 pub(crate) async fn handle_log_off(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -304,7 +304,7 @@ pub(crate) async fn handle_log_off(
     // channel teardown.  This fires ServerConnection::loggedOff -> Event_Net_Disconnected
     // which triggers the relogin flow (Change Server) or disconnect UI (Back).
     let pkt = build_logged_off(&key, seq, &acks);
-    socket.send_to(&pkt, addr).await?;
+    transport.send_to(&pkt, addr).await?;
     tracing::debug!(%addr, seq, "Sent LOGGED_OFF (0x37)");
 
     // Destroy entities and remove from connected map.
@@ -446,13 +446,14 @@ mod tests {
     // ConnectedClientState, missing duplicate-login evict) silently
     // corrupts every subsequent encrypted packet.
     //
-    // These tests bind a real local UdpSocket so the `socket.send_to`
-    // calls inside handle_login complete successfully — but we don't
-    // inspect the wire output. The assertions are about state after the
-    // handoff, not about packet bytes (those are pinned in
-    // mercury/protocol/tests).
+    // These tests use a recording `TestTransport` so the `transport.send_to`
+    // calls inside handle_login complete successfully — most assertions are
+    // about state after the handoff, not packet bytes. The
+    // `login_phases_emit_ordered_byte_sequence` test below is the exception:
+    // it inspects the recorded fan-out to pin the phase 1→4 wire sequence.
 
     use crate::auth::PendingLogin;
+    use crate::test_support::TestTransport;
     use cimmeria_entity::manager::EntityManager;
 
     fn make_pending_login(account_id: u32, key_byte: u8) -> PendingLogin {
@@ -466,13 +467,12 @@ mod tests {
         }
     }
 
-    /// Helper: bind a local UdpSocket so the send_to calls inside
-    /// handle_login don't fail. Address is "127.0.0.1:0" — kernel-assigned
-    /// port; we don't care which one since nobody's listening on the
-    /// peer addr.
-    async fn make_udp_socket() -> Arc<UdpSocket> {
-        let s = UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP");
-        Arc::new(s)
+    /// Helper: a recording transport so the `transport.send_to` calls inside
+    /// handle_login are captured rather than hitting a real socket. Tests that
+    /// only assert post-handoff state ignore the recorded bytes; the phase
+    /// sequence test drains them.
+    fn make_transport() -> Arc<dyn Transport> {
+        Arc::new(TestTransport::new())
     }
 
     /// Stop the tick-sync loop spawned by handle_login. Without this,
@@ -497,7 +497,7 @@ mod tests {
     /// seam end-to-end at the state level.
     #[tokio::test]
     async fn login_consumes_ticket_and_registers_connected_client_state() {
-        let socket = make_udp_socket().await;
+        let transport = make_transport();
         let addr: SocketAddr = "127.0.0.1:55555".parse().unwrap();
 
         let pending_logins = Arc::new(Mutex::new(HashMap::new()));
@@ -519,7 +519,7 @@ mod tests {
         assert!(connected.lock().unwrap().is_empty());
 
         handle_login(
-            &socket,
+            &transport,
             addr,
             0xCAFE_BABE,
             &ticket,
@@ -567,13 +567,79 @@ mod tests {
         cancel_session(&connected, addr);
     }
 
+    /// Domain F (fan-out byte test): with no duplicate session, `handle_login`
+    /// emits exactly two packets, in order — the Phase 3 connect-reply (seq 1)
+    /// then the initial time-sync bundle (seq 2) — both to the connecting
+    /// addr, byte-exact. This pins the auth→base handshake *wire* sequence the
+    /// state-level tests above can't see (no old-addr cleanup fires because
+    /// `connected` starts empty). The spawned tick-sync loop sleeps 100 ms
+    /// before its first send, and we cancel it immediately, so a synchronous
+    /// drain captures only the handshake.
+    #[tokio::test]
+    async fn login_emits_ordered_connect_reply_then_time_sync_bytes() {
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let addr: SocketAddr = "127.0.0.1:55556".parse().unwrap();
+
+        let pending_logins = Arc::new(Mutex::new(HashMap::new()));
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let entity_manager = Arc::new(Mutex::new(EntityManager::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+        let cell_tx = None;
+
+        let key = [0xABu8; 32];
+        let request_id = 0xCAFE_BABEu32;
+        let pending = make_pending_login(0xDEAD_BEEF, 0xAB);
+        let ticket = pending.ticket.clone();
+        pending_logins
+            .lock()
+            .unwrap()
+            .insert(ticket.clone(), pending);
+
+        handle_login(
+            &dyn_transport,
+            addr,
+            request_id,
+            &ticket,
+            &pending_logins,
+            &connected,
+            &entity_manager,
+            &cell_tx,
+            &entity_to_addr,
+        )
+        .await
+        .expect("Phase 3 handoff");
+
+        // Stop the tick loop before it can append a third packet.
+        cancel_session(&connected, addr);
+
+        let sent = transport.drain();
+        assert_eq!(
+            sent.len(),
+            2,
+            "no duplicate session ⇒ exactly connect_reply + time_sync (no old-addr cleanup)"
+        );
+        assert_eq!(sent[0].0, addr, "connect_reply goes to the connecting addr");
+        assert_eq!(sent[1].0, addr, "time_sync goes to the connecting addr");
+        assert_eq!(
+            sent[0].1,
+            build_connect_reply(request_id, ticket.as_bytes(), &key, 1),
+            "phase-3 connect_reply bytes (seq 1)"
+        );
+        assert_eq!(
+            sent[1].1,
+            build_time_sync(&key, 2),
+            "initial time_sync bytes (seq 2)"
+        );
+    }
+
     /// Phase 3 with an unknown ticket must NOT register a connected
     /// state — the function logs and returns Ok. Without this, a
     /// replayed-ticket packet from a stale client could create a
     /// half-initialized ConnectedClientState (no key, no account).
     #[tokio::test]
     async fn login_with_unknown_ticket_does_not_register_state() {
-        let socket = make_udp_socket().await;
+        let transport = make_transport();
         let addr: SocketAddr = "127.0.0.1:55556".parse().unwrap();
 
         let pending_logins = Arc::new(Mutex::new(HashMap::new()));
@@ -584,7 +650,7 @@ mod tests {
 
         // pending_logins is empty — any ticket lookup must miss.
         handle_login(
-            &socket,
+            &transport,
             addr,
             1,
             "DOES_NOT_EXIST_00000",
@@ -610,7 +676,7 @@ mod tests {
     /// active sessions per account corrupt entity state on both sides.
     #[tokio::test]
     async fn second_login_for_same_account_evicts_first_session() {
-        let socket = make_udp_socket().await;
+        let transport = make_transport();
         let addr_a: SocketAddr = "127.0.0.1:55557".parse().unwrap();
         let addr_b: SocketAddr = "127.0.0.1:55558".parse().unwrap();
 
@@ -628,7 +694,7 @@ mod tests {
         let ticket_a = p_a.ticket.clone();
         pending_logins.lock().unwrap().insert(ticket_a.clone(), p_a);
         handle_login(
-            &socket,
+            &transport,
             addr_a,
             1,
             &ticket_a,
@@ -651,7 +717,7 @@ mod tests {
         let ticket_b = p_b.ticket.clone();
         pending_logins.lock().unwrap().insert(ticket_b.clone(), p_b);
         handle_login(
-            &socket,
+            &transport,
             addr_b,
             2,
             &ticket_b,

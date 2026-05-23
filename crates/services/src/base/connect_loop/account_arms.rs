@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -33,7 +33,7 @@ pub(super) async fn dispatch_base_method(
     id: u8,
     payload: &[u8],
     addr: SocketAddr,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     key: [u8; 32],
     account_id: u32,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -58,7 +58,7 @@ pub(super) async fn dispatch_base_method(
                     key,
                     connected,
                     cell_tx,
-                    socket,
+                    transport,
                     entity_to_addr,
                     db_pool,
                 )
@@ -71,7 +71,7 @@ pub(super) async fn dispatch_base_method(
                     payload,
                     &player_name,
                     addr,
-                    socket,
+                    transport,
                     key,
                     connected,
                     entity_manager,
@@ -88,7 +88,7 @@ pub(super) async fn dispatch_base_method(
     match id {
         0xC2 => {
             handle_log_off(
-                socket,
+                transport,
                 addr,
                 key,
                 connected,
@@ -100,8 +100,10 @@ pub(super) async fn dispatch_base_method(
         }
         0xC3 => {
             tracing::info!(%addr, "Client requests createCharacter");
-            handle_create_character(socket, addr, key, account_id, payload, connected, db_pool)
-                .await?;
+            handle_create_character(
+                transport, addr, key, account_id, payload, connected, db_pool,
+            )
+            .await?;
         }
         0xC4 => {
             let player_id = if payload.len() >= 4 {
@@ -111,7 +113,7 @@ pub(super) async fn dispatch_base_method(
             };
             tracing::info!(%addr, player_id, "Client requests playCharacter");
             handle_play_character(
-                socket,
+                transport,
                 addr,
                 key,
                 account_id,
@@ -130,8 +132,10 @@ pub(super) async fn dispatch_base_method(
                 0
             };
             tracing::info!(%addr, player_id, "Client requests deleteCharacter");
-            handle_delete_character(socket, addr, key, account_id, player_id, connected, db_pool)
-                .await?;
+            handle_delete_character(
+                transport, addr, key, account_id, player_id, connected, db_pool,
+            )
+            .await?;
         }
         0xC6 => {
             let player_id = if payload.len() >= 4 {
@@ -140,7 +144,7 @@ pub(super) async fn dispatch_base_method(
                 0
             };
             tracing::debug!(%addr, player_id, "Client sent requestCharacterVisuals");
-            handle_request_character_visuals(socket, addr, key, player_id, connected, db_pool)
+            handle_request_character_visuals(transport, addr, key, player_id, connected, db_pool)
                 .await?;
         }
         0xC7 => {

@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -67,7 +67,7 @@ pub(crate) async fn handle_on_client_ready(
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<sqlx::PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -95,7 +95,7 @@ pub(crate) async fn handle_on_client_ready(
              synthesising mapLoaded for cross-world transition"
         );
         if let Err(e) = handle_map_loaded(
-            socket,
+            transport,
             addr,
             key,
             connected,
@@ -286,7 +286,7 @@ pub(crate) async fn handle_on_client_ready(
     let appearance_args = pending.appearance_args;
     let tint_args = pending.tint_args;
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -303,7 +303,7 @@ pub(crate) async fn handle_on_client_ready(
     )
     .await;
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -401,7 +401,7 @@ pub(crate) async fn handle_on_client_ready(
     // appearance asset and produces a "dev cube" flash. Issue #288.
     if pending.first_login != 0 {
         send_cinematic(
-            socket,
+            transport,
             addr,
             entity_id,
             "Cine-SGWLogo.SGWLogo",
@@ -475,7 +475,7 @@ pub(crate) async fn handle_on_client_ready(
 /// `onPlayMovie` directly — the GC race is a property of every cinematic,
 /// not just the first-login intro. Issue #288.
 pub(crate) async fn send_cinematic(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     entity_id: u32,
     cinematic_asset: &str,
@@ -490,7 +490,7 @@ pub(crate) async fn send_cinematic(
     write_wstring(&mut movie_args, cinematic_asset);
     movie_args.push(if fullscreen { 1u8 } else { 0u8 });
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -540,7 +540,7 @@ pub(crate) async fn send_cinematic(
         Arc::clone(&c.cinematic_spam_cancel)
     };
 
-    let resend_socket = Arc::clone(socket);
+    let resend_socket = Arc::clone(transport);
     let resend_connected = Arc::clone(connected);
     let resend_entity_to_addr = Arc::clone(entity_to_addr);
     let cinematic_label = cinematic_asset.to_string();
@@ -590,7 +590,7 @@ pub(crate) async fn send_cinematic(
 ///
 /// Pure side-effect (sends two packets); does NOT touch `cinematic_spam_cancel`.
 async fn resend_appearance_after_cinematic(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     entity_id: u32,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -612,7 +612,7 @@ async fn resend_appearance_after_cinematic(
     };
 
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -629,7 +629,7 @@ async fn resend_appearance_after_cinematic(
     )
     .await;
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -652,7 +652,7 @@ async fn resend_appearance_after_cinematic(
 /// onEntityTint to recover from the cinematic-exit GC, and flips
 /// `cinematic_spam_cancel` so `send_cinematic`'s spam loop stops early.
 pub(crate) async fn handle_cancel_movie(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     entity_id: u32,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -668,7 +668,7 @@ pub(crate) async fn handle_cancel_movie(
         }
     }
 
-    resend_appearance_after_cinematic(socket, addr, entity_id, connected, entity_to_addr).await;
+    resend_appearance_after_cinematic(transport, addr, entity_id, connected, entity_to_addr).await;
 
     tracing::info!(%addr, entity_id, "cancelMovie: BeingAppearance + onEntityTint resent; spam guard signalled to stop");
 }

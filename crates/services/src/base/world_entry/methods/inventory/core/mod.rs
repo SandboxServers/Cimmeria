@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
@@ -83,7 +83,7 @@ pub async fn send_full_inventory_update(
     entity_id: u32,
     player_id: i32,
     pool: &Arc<PgPool>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> usize {
@@ -124,7 +124,7 @@ pub async fn send_full_inventory_update(
     }
 
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -150,7 +150,7 @@ pub async fn send_full_inventory_update(
 pub(super) async fn send_on_remove_item(
     entity_id: u32,
     item_id: i32,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -158,7 +158,7 @@ pub(super) async fn send_on_remove_item(
     args.extend_from_slice(&1u32.to_le_bytes()); // ARRAY<INT32> count
     args.extend_from_slice(&item_id.to_le_bytes());
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,

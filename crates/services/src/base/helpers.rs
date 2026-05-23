@@ -47,7 +47,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 
 use cimmeria_common::EntityId;
 use cimmeria_entity::manager::EntityManager;
@@ -74,7 +74,7 @@ pub(crate) fn to_hex(data: &[u8]) -> String {
 /// 2. **Retransmit** — if the RTO fires before the ack arrives, the
 ///    tick driver re-sends `raw_bytes` verbatim (no re-encryption).
 ///
-/// Callers should invoke this AFTER `socket.send_to` succeeds, so a
+/// Callers should invoke this AFTER `transport.send_to` succeeds, so a
 /// failed send never appears as in-flight in the TX window.
 ///
 /// `raw_bytes` should be the exact encrypted datagram that just went
@@ -143,7 +143,7 @@ pub(crate) fn shadow_register_reliable_send(
 /// Called from `tick_sync`'s per-session loop every 100 ms. The Channel
 /// applies the per-tick budget (`RETRANSMIT_BUDGET_PER_TICK = 5`, issue
 /// #292 finding #6) and Karn's exponential backoff internally; the
-/// caller just iterates the returned bytes and `socket.send_to`s each.
+/// caller just iterates the returned bytes and `transport.send_to`s each.
 ///
 /// Returns an empty vec on any lock-acquisition failure or missing
 /// session — the next tick will try again.
@@ -275,7 +275,7 @@ pub(crate) fn destroy_client_entities(
 /// and sends the result via UDP. No Channel registration — packets sent via
 /// this path are NOT tracked for retransmit.
 pub(crate) async fn send_to_witness<F>(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     witness_id: u32,
@@ -316,7 +316,7 @@ pub(crate) async fn send_to_witness<F>(
 
     if let Some((addr, key, seq, acks)) = send_data {
         let packet = build_packet(&key, seq, &acks);
-        if let Err(e) = socket.send_to(&packet, addr).await {
+        if let Err(e) = transport.send_to(&packet, addr).await {
             tracing::warn!(witness_id, %addr, "AoI: failed to send packet: {e}");
         }
     }
@@ -341,7 +341,7 @@ pub(crate) async fn send_to_witness<F>(
 ///
 /// [`Channel`]: cimmeria_mercury::channel::Channel
 pub(crate) async fn send_to_witness_reliable<F>(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     witness_id: u32,
@@ -379,7 +379,7 @@ pub(crate) async fn send_to_witness_reliable<F>(
 
     if let Some((addr, key, seq, acks)) = send_data {
         let packet = build_packet(&key, seq, &acks);
-        if let Err(e) = socket.send_to(&packet, addr).await {
+        if let Err(e) = transport.send_to(&packet, addr).await {
             tracing::warn!(witness_id, %addr, "AoI reliable: failed to send packet: {e}");
             return;
         }

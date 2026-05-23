@@ -1,6 +1,7 @@
 //! Tests for the `handle_cell_message` dispatch.
 
 use super::*;
+use crate::test_support::TestTransport;
 
 fn empty_maps() -> (
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -14,7 +15,7 @@ fn empty_maps() -> (
 
 #[tokio::test]
 async fn minigame_result_forwards_to_cell_service() {
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let (connected, entity_to_addr) = empty_maps();
     let (cell_tx, mut cell_rx) = mpsc::channel(1);
 
@@ -24,7 +25,7 @@ async fn minigame_result_forwards_to_cell_service() {
             result_code: 2,
             on_victory_chains: vec![100, 200],
         },
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &Some(cell_tx),
@@ -169,7 +170,7 @@ async fn flush_deferred_aoi_is_noop_on_empty_buffer() {
 
 #[tokio::test]
 async fn invalid_bandolier_ammo_update_drops_before_side_effects() {
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let (connected, entity_to_addr) = empty_maps();
     let (cell_tx, mut cell_rx) = mpsc::channel(1);
 
@@ -181,7 +182,7 @@ async fn invalid_bandolier_ammo_update_drops_before_side_effects() {
             current_ammo: 17,
             cur_ammo_type: 1,
         },
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &Some(cell_tx),

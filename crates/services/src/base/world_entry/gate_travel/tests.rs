@@ -17,6 +17,7 @@
 //! which is the production behavior.
 use super::*;
 use crate::base::PendingClientReadyInfo;
+use crate::test_support::TestTransport;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::time::Instant;
@@ -80,8 +81,8 @@ fn make_state() -> ConnectedClientState {
     }
 }
 
-async fn make_socket() -> Arc<UdpSocket> {
-    Arc::new(UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP"))
+async fn make_socket() -> Arc<dyn Transport> {
+    Arc::new(TestTransport::new())
 }
 
 /// Cross-service round-trip: cell-side `handle_dial_gate` emits a
@@ -171,7 +172,7 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
     );
 
     // ── Base side: feed the captured fields into handle_gate_travel ─
-    let socket = make_socket().await;
+    let transport = make_socket().await;
     let addr: SocketAddr = "127.0.0.1:55700".parse().unwrap();
     let connected = Arc::new(Mutex::new(HashMap::new()));
     connected.lock().unwrap().insert(addr, make_state());
@@ -188,7 +189,7 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
         captured.2,
         captured.3,
         None, // stargate dial-travel has no cross-world ring carry-through
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &None,
@@ -243,7 +244,7 @@ async fn gate_travel_without_active_player_id_aborts_before_persist() {
         .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/none")
         .expect("connect_lazy must succeed for any well-formed URL");
 
-    let socket = make_socket().await;
+    let transport = make_socket().await;
     let addr: SocketAddr = "127.0.0.1:55701".parse().unwrap();
     let connected = Arc::new(Mutex::new(HashMap::new()));
     let mut state = make_state();
@@ -263,7 +264,7 @@ async fn gate_travel_without_active_player_id_aborts_before_persist() {
         [10.0, 20.0, 30.0],
         [0.0; 3],
         None,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &None,
@@ -349,7 +350,7 @@ async fn gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing() {
 
     // Wire the gate-travel call: no active_player_id, real DB pool
     // pointing at the seeded rows.
-    let socket = make_socket().await;
+    let transport = make_socket().await;
     let addr: SocketAddr = "127.0.0.1:55720".parse().unwrap();
     let connected = Arc::new(Mutex::new(HashMap::new()));
     let mut state = make_state();
@@ -370,7 +371,7 @@ async fn gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing() {
         [999.0, 999.0, 999.0],
         [0.0; 3],
         None,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &None,
@@ -413,7 +414,7 @@ async fn gate_travel_persist_branch_is_a_no_op_when_active_player_id_missing() {
 /// stranding the player on the OLD world's avatar.
 #[tokio::test]
 async fn gate_travel_with_unknown_entity_id_returns_err() {
-    let socket = make_socket().await;
+    let transport = make_socket().await;
     let connected = Arc::new(Mutex::new(HashMap::new()));
     // entity_to_addr is empty — the entity is genuinely unknown.
     let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
@@ -424,7 +425,7 @@ async fn gate_travel_with_unknown_entity_id_returns_err() {
         [0.0; 3],
         [0.0; 3],
         None,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &None,
@@ -443,7 +444,7 @@ async fn gate_travel_with_unknown_entity_id_returns_err() {
 /// unknown-entity case.
 #[tokio::test]
 async fn gate_travel_with_torn_down_connected_state_returns_err() {
-    let socket = make_socket().await;
+    let transport = make_socket().await;
     let addr: SocketAddr = "127.0.0.1:55702".parse().unwrap();
     // entity_to_addr has the entity, but `connected` does not.
     let connected = Arc::new(Mutex::new(HashMap::new()));
@@ -459,7 +460,7 @@ async fn gate_travel_with_torn_down_connected_state_returns_err() {
         [0.0; 3],
         [0.0; 3],
         None,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &None,

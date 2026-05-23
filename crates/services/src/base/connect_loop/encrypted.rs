@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -29,7 +29,7 @@ use super::{account_arms, cell_arms, read_constant_payload, read_word_length_pay
 
 /// Handle an encrypted datagram from a known connected client.
 pub(crate) async fn handle_encrypted_datagram(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     raw: &[u8],
     enc: MercuryEncryption,
@@ -197,7 +197,7 @@ pub(crate) async fn handle_encrypted_datagram(
             0x08 => {
                 tracing::info!(%addr, "Client sent ENABLE_ENTITIES");
                 handle_enable_entities(
-                    socket,
+                    transport,
                     addr,
                     key,
                     account_id,
@@ -297,12 +297,26 @@ pub(crate) async fn handle_encrypted_datagram(
             // These are not part of the active entity's base-method namespace.
             // The client sends them both before and after entering the world.
             0xC0 => {
-                handle_version_info_request(socket, addr, key, payload, connected, resource_cache)
-                    .await?;
+                handle_version_info_request(
+                    transport,
+                    addr,
+                    key,
+                    payload,
+                    connected,
+                    resource_cache,
+                )
+                .await?;
             }
             0xC1 => {
-                handle_element_data_request(socket, addr, key, payload, connected, resource_cache)
-                    .await?;
+                handle_element_data_request(
+                    transport,
+                    addr,
+                    key,
+                    payload,
+                    connected,
+                    resource_cache,
+                )
+                .await?;
             }
 
             // ── Entity base method calls (0xC0+) ──
@@ -320,7 +334,7 @@ pub(crate) async fn handle_encrypted_datagram(
                     id,
                     payload,
                     addr,
-                    socket,
+                    transport,
                     key,
                     account_id,
                     connected,
@@ -341,7 +355,7 @@ pub(crate) async fn handle_encrypted_datagram(
                     id,
                     payload,
                     addr,
-                    socket,
+                    transport,
                     key,
                     connected,
                     cell_tx,

@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use crate::mercury::{build_entity_method_packet, build_forced_position};
 
@@ -36,7 +36,7 @@ pub(super) async fn handle_teleport_player(
     space_id: u32,
     position: [f32; 3],
     prev_pos: [f32; 3],
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<PgPool>>,
@@ -72,7 +72,7 @@ pub(super) async fn handle_teleport_player(
     //    before the teleport — see `build_forced_position` and
     //    `spec.protocol.mercury` §1.10.6 for why this is not zero.
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -90,7 +90,7 @@ pub(super) async fn handle_teleport_player(
     }
     args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -152,24 +152,16 @@ pub(super) async fn handle_teleport_player(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestTransport;
     use std::collections::HashMap;
-    use std::io::ErrorKind;
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
-    use tokio::net::UdpSocket;
-
-    fn assert_no_udp_packet(receiver: &UdpSocket) {
-        let mut buf = [0u8; 2048];
-        let err = receiver
-            .try_recv_from(&mut buf)
-            .expect_err("early return must not send UDP");
-        assert_eq!(err.kind(), ErrorKind::WouldBlock);
-    }
 
     #[tokio::test]
     async fn teleport_early_returns_when_entity_not_in_addr_map() {
-        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
-        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        // Typed handle for the no-send assertion; dyn handle for the call.
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
@@ -180,7 +172,7 @@ mod tests {
             65536,
             [10.0, 20.0, 30.0],
             [5.0, 20.0, 30.0],
-            &socket,
+            &dyn_transport,
             &connected,
             &entity_to_addr,
             &None,
@@ -188,14 +180,14 @@ mod tests {
         .await;
         assert!(entity_to_addr.lock().unwrap().is_empty());
         assert!(connected.lock().unwrap().is_empty());
-        assert_no_udp_packet(&receiver);
+        assert!(transport.is_empty(), "early return must not send UDP");
     }
 
     #[tokio::test]
     async fn teleport_early_returns_when_client_state_missing() {
-        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
-        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let fake_addr = receiver.local_addr().unwrap();
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> = Arc::new(Mutex::new({
             let mut m = HashMap::new();
             m.insert(1, fake_addr);
@@ -209,7 +201,7 @@ mod tests {
             65536,
             [10.0, 20.0, 30.0],
             [5.0, 20.0, 30.0],
-            &socket,
+            &dyn_transport,
             &connected,
             &entity_to_addr,
             &None,
@@ -217,6 +209,82 @@ mod tests {
         .await;
         assert_eq!(entity_to_addr.lock().unwrap().get(&1), Some(&fake_addr));
         assert!(connected.lock().unwrap().is_empty());
-        assert_no_udp_packet(&receiver);
+        assert!(transport.is_empty(), "early return must not send UDP");
+    }
+
+    /// Domain B (fan-out byte test): a valid same-world teleport snaps the
+    /// player by emitting exactly two packets to the player's own addr, in
+    /// order — `FORCED_POSITION` (seq 0) then `onPlayerTeleport` (seq 1) —
+    /// byte-exact, with **zero** witness fan-out (teleport is owner-only).
+    /// Catches a regression that drops the engine-level snap, reorders the
+    /// burst, or leaks the snap to other clients.
+    #[tokio::test]
+    async fn teleport_emits_forced_position_then_player_teleport_to_owner_only() {
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+        let entity_id = 0x1234u32;
+        let space_id = 5u32;
+        let position = [10.0f32, 20.0, 30.0];
+        let prev_pos = [1.0f32, 2.0, 3.0];
+        let player_addr: SocketAddr = "127.0.0.1:40100".parse().unwrap();
+
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::from([(entity_id, player_addr)])));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::from([(
+                player_addr,
+                crate::test_support::test_default_connected_client_state(),
+            )])));
+
+        // db_pool = None → no persistence, no extra emit.
+        handle_teleport_player(
+            entity_id,
+            space_id,
+            position,
+            prev_pos,
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+        )
+        .await;
+
+        let sent = transport.drain();
+        assert_eq!(
+            sent.len(),
+            2,
+            "exactly FORCED_POSITION + onPlayerTeleport, no witness fan-out"
+        );
+        assert_eq!(sent[0].0, player_addr, "snap goes to the player's own addr");
+        assert_eq!(
+            sent[1].0, player_addr,
+            "teleport hint goes to the same addr"
+        );
+
+        // test_default_connected_client_state starts next_seq at 0, key all-zero.
+        let key = [0u8; 32];
+        assert_eq!(
+            sent[0].1,
+            build_forced_position(&key, 0, &[], entity_id, space_id, position, prev_pos),
+            "FORCED_POSITION wire bytes (seq 0)"
+        );
+        let mut args = Vec::with_capacity(24);
+        for &c in &position {
+            args.extend_from_slice(&c.to_le_bytes());
+        }
+        args.extend_from_slice(&[0u8; 12]); // direction = 0,0,0
+        assert_eq!(
+            sent[1].1,
+            build_entity_method_packet(
+                &key,
+                1,
+                &[],
+                entity_id,
+                crate::cell::client_methods::player::ON_PLAYER_TELEPORT,
+                &args,
+            ),
+            "onPlayerTeleport wire bytes (seq 1)"
+        );
     }
 }

@@ -18,8 +18,9 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use crate::test_support::TestTransport;
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use super::super::grant::handle_grant_item;
 use super::handle_move_inventory_item;
@@ -47,7 +48,7 @@ async fn cleanup_with_outbox(pool: &PgPool, account_id: i32, player_id: i32, ent
     cleanup_inventory(pool, account_id, player_id).await;
 }
 
-/// Build a fresh per-test `(socket, entity_to_addr, connected)` context
+/// Build a fresh per-test `(transport, entity_to_addr, connected)` context
 /// tuple. The contained `Arc<...>` handles get cloned into each spawned
 /// task by the concurrency tests below, which is the intended sharing
 /// (the regression guards exercise contention on shared state, not
@@ -55,13 +56,11 @@ async fn cleanup_with_outbox(pool: &PgPool, account_id: i32, player_id: i32, ent
 fn make_state_for_entity(
     entity_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -69,7 +68,7 @@ fn make_state_for_entity(
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected)
+    (transport, entity_to_addr, connected)
 }
 
 /// Regression guard: a move and a grant against the same container must
@@ -103,20 +102,20 @@ async fn move_and_concurrent_grant_serialize_on_container_lock() {
     let types = pick_main_bag_type_ids(&pool, 2).await;
     let item_a = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
 
-    let (socket, e2a, conn) = make_state_for_entity(entity_id);
+    let (transport, e2a, conn) = make_state_for_entity(entity_id);
     let db_pool = Some(Arc::new(pool.clone()));
     let barrier = Arc::new(Barrier::new(2));
 
     let move_handle = {
         let db_pool = db_pool.clone();
-        let socket = socket.clone();
+        let transport = transport.clone();
         let conn = conn.clone();
         let e2a = e2a.clone();
         let barrier = barrier.clone();
         tokio::spawn(async move {
             barrier.wait().await;
             handle_move_inventory_item(
-                entity_id, player_id, item_a, 1, 7, 1, &db_pool, &None, &socket, &conn, &e2a,
+                entity_id, player_id, item_a, 1, 7, 1, &db_pool, &None, &transport, &conn, &e2a,
             )
             .await;
         })
@@ -124,14 +123,14 @@ async fn move_and_concurrent_grant_serialize_on_container_lock() {
     let grant_handle = {
         let grant_type = types[1];
         let db_pool = db_pool.clone();
-        let socket = socket.clone();
+        let transport = transport.clone();
         let conn = conn.clone();
         let e2a = e2a.clone();
         let barrier = barrier.clone();
         tokio::spawn(async move {
             barrier.wait().await;
             handle_grant_item(
-                entity_id, player_id, grant_type, 1, 1, &db_pool, &None, &socket, &conn, &e2a,
+                entity_id, player_id, grant_type, 1, 1, &db_pool, &None, &transport, &conn, &e2a,
             )
             .await;
         })
@@ -225,34 +224,34 @@ async fn opposite_direction_concurrent_swaps_do_not_deadlock() {
     let item_a = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
     let item_b = insert_item(&pool, player_id, types[1], 1, 5, 1).await;
 
-    let (socket, e2a, conn) = make_state_for_entity(entity_id);
+    let (transport, e2a, conn) = make_state_for_entity(entity_id);
     let db_pool = Some(Arc::new(pool.clone()));
     let barrier = Arc::new(Barrier::new(2));
 
     let move1 = {
         let db_pool = db_pool.clone();
-        let socket = socket.clone();
+        let transport = transport.clone();
         let conn = conn.clone();
         let e2a = e2a.clone();
         let barrier = barrier.clone();
         tokio::spawn(async move {
             barrier.wait().await;
             handle_move_inventory_item(
-                entity_id, player_id, item_a, 1, 5, 1, &db_pool, &None, &socket, &conn, &e2a,
+                entity_id, player_id, item_a, 1, 5, 1, &db_pool, &None, &transport, &conn, &e2a,
             )
             .await;
         })
     };
     let move2 = {
         let db_pool = db_pool.clone();
-        let socket = socket.clone();
+        let transport = transport.clone();
         let conn = conn.clone();
         let e2a = e2a.clone();
         let barrier = barrier.clone();
         tokio::spawn(async move {
             barrier.wait().await;
             handle_move_inventory_item(
-                entity_id, player_id, item_b, 1, 0, 1, &db_pool, &None, &socket, &conn, &e2a,
+                entity_id, player_id, item_b, 1, 0, 1, &db_pool, &None, &transport, &conn, &e2a,
             )
             .await;
         })
@@ -547,20 +546,20 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
     let types = pick_main_bag_type_ids(&pool, 1).await;
     let item_a = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
 
-    let (socket, e2a, conn) = make_state_for_entity(entity_id);
+    let (transport, e2a, conn) = make_state_for_entity(entity_id);
     let db_pool = Some(Arc::new(pool.clone()));
     let barrier = Arc::new(Barrier::new(2));
 
     let move_handle = {
         let db_pool = db_pool.clone();
-        let socket = socket.clone();
+        let transport = transport.clone();
         let conn = conn.clone();
         let e2a = e2a.clone();
         let barrier = barrier.clone();
         tokio::spawn(async move {
             barrier.wait().await;
             handle_move_inventory_item(
-                entity_id, player_id, item_a, 1, 7, 1, &db_pool, &None, &socket, &conn, &e2a,
+                entity_id, player_id, item_a, 1, 7, 1, &db_pool, &None, &transport, &conn, &e2a,
             )
             .await;
         })
@@ -568,7 +567,7 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
 
     let purchase_handle = {
         let db_pool = db_pool.clone();
-        let socket = socket.clone();
+        let transport = transport.clone();
         let conn = conn.clone();
         let e2a = e2a.clone();
         let barrier = barrier.clone();
@@ -582,7 +581,7 @@ async fn vendor_purchase_and_concurrent_move_serialize_on_container_lock() {
                 vec![(store_index, 1)],
                 &db_pool,
                 &None,
-                &socket,
+                &transport,
                 &conn,
                 &e2a,
             )
