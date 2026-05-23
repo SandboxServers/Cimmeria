@@ -29,10 +29,10 @@ use super::super::super::ConnectedClientState;
 ///
 /// Burst sizing: this can dispatch dozens of reliable packets in one
 /// call (one CREATE_ENTITY + cascade per NPC). The deferred-send queue
-/// added in #354 fix #3 absorbs any overflow past the 32-slot TX
-/// window — the entries queue and drain as the client ACKs. Without
-/// that queue this flush would have re-introduced the silent-best-effort
-/// path the gate was meant to avoid.
+/// on `Channel` absorbs any overflow past the 32-slot TX window — the
+/// entries queue and drain as the client ACKs. Without that queue this
+/// flush would have re-introduced the silent-best-effort path the gate
+/// was meant to avoid.
 pub(crate) async fn flush_deferred_aoi(
     witness_id: u32,
     addr: SocketAddr,

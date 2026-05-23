@@ -87,9 +87,11 @@ pub(crate) fn to_hex(data: &[u8]) -> String {
 /// the entry in its per-session [`unsent_packets`] deque rather than
 /// rejecting it (or — as a prior, broken implementation did — silently
 /// downgrading the packet's reliable-delivery contract to best-effort).
-/// Queued entries are promoted into the TX window as ACKs free slots and
-/// remain retransmittable in the meantime. See issue #354 for the bug
-/// shape this replaces.
+/// Queued entries are dispatched on the wire at register time but the
+/// retransmit scan only walks the TX window, so a queued entry becomes
+/// eligible for retransmit only once an ACK frees a window slot and
+/// promotion moves it across. ACKs that cover a still-queued seq drain
+/// it from the queue directly without going through promotion.
 ///
 /// The only remaining error condition routed through this helper is the
 /// unsent-packets queue hitting its [`MAX_UNSENT_PACKETS`] cap, which

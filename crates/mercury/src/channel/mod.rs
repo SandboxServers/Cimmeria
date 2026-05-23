@@ -93,9 +93,9 @@ pub struct Channel {
     /// inactivity timeout reaps the channel.
     ///
     /// Replaces the prior "downgrade reliable send to best-effort" path
-    /// at the services layer (see #354): the bytes that went on the wire
-    /// stay tracked here for retransmit, so a lost packet beyond the TX
-    /// window cap is no longer silently un-recoverable.
+    /// at the services layer: the bytes that went on the wire stay tracked
+    /// here for retransmit, so a lost packet beyond the TX window cap is
+    /// no longer silently un-recoverable.
     pub unsent_packets: VecDeque<TxEntry>,
 
     /// Inbound packets buffered for ordered delivery.
@@ -236,10 +236,13 @@ impl Channel {
     ///
     /// **Overflow handling:** when the TX window is at [`consts::TX_WINDOW_SIZE`]
     /// the entry is appended to [`Self::unsent_packets`] instead, where it
-    /// stays bookkept for retransmit. [`process_acks`] drains and promotes
-    /// queued entries as window slots free. The previous "return Err on
-    /// overflow" behavior (which the services layer silently downgraded to
-    /// best-effort) is gone — see #354 for the bug shape that motivated this.
+    /// stays bookkept until a TX-window slot frees. [`process_acks`] drains
+    /// any queued entry whose seq is covered by the cumulative ACK and
+    /// promotes the remaining oldest-first into freed slots; only after
+    /// promotion is an entry eligible for retransmit by [`check_timeouts`]
+    /// (the retransmit scan only walks `tx_window`, not the queue). This
+    /// replaces the prior "return Err on overflow" behavior that the
+    /// services layer silently downgraded to best-effort.
     ///
     /// Only two error paths remain: an out-of-range sequence number (a
     /// programming bug — the 28-bit Mercury space is the contract), and
@@ -281,8 +284,13 @@ impl Channel {
         // bookkeeping for the case where the original send is lost. See
         // the field doc on `unsent_packets` for the drain/promotion path.
         if self.unsent_packets.len() >= consts::MAX_UNSENT_PACKETS {
+            // The packet bytes already went on the wire; only the
+            // retransmit/ACK bookkeeping is being rejected here. The
+            // peer-side outcome is "we sent it once; if it was lost we
+            // cannot recover it" — which is fine because the inactivity
+            // timer is about to reap this channel.
             return Err(cimmeria_common::CimmeriaError::Channel(format!(
-                "unsent-packets queue full ({} packets); channel likely dead, awaiting inactivity reap. dropped seq={}",
+                "unsent-packets queue full ({} packets); channel likely dead, awaiting inactivity reap. bookkeeping rejected for seq={} (datagram already on wire, no retransmit possible)",
                 self.unsent_packets.len(),
                 entry.packet.sequence,
             )));

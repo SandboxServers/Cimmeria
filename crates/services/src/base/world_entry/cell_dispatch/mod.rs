@@ -87,7 +87,7 @@ pub(crate) async fn handle_cell_message(
             // Gate: while the witness is pre-`onClientReady`, the client
             // hasn't loaded terrain yet — buffer the CREATE_ENTITY +
             // cascade so it fires AFTER the client is ready to ACK.
-            // See `crate::base::deferred_aoi` and issue #354 fix #2.
+            // See `crate::base::deferred_aoi`.
             let witness_addr = entity_to_addr
                 .lock()
                 .ok()
@@ -131,7 +131,7 @@ pub(crate) async fn handle_cell_message(
             // the LEFT event so it pairs correctly with the buffered
             // ENTERED event on flush. If the entity enters AND leaves
             // before the client is ready, the client never sees either
-            // (both buffered, both dispatched at flush). See #354 fix #2.
+            // (both buffered, both dispatched at flush).
             let witness_addr = entity_to_addr
                 .lock()
                 .ok()
@@ -199,8 +199,7 @@ pub(crate) async fn handle_cell_message(
             // Gate on the TARGET entity's session — entity-method calls
             // are dispatched to the entity_id's owning client (see
             // `aoi::entity_method_call`'s lookup). If that client is
-            // still pre-`onClientReady`, buffer the method. See #354
-            // fix #2.
+            // still pre-`onClientReady`, buffer the method.
             let target_addr = entity_to_addr
                 .lock()
                 .ok()

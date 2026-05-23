@@ -144,8 +144,7 @@ pub(crate) struct ConnectedClientState {
     /// is added as a witness — that's ~33+ reliable packets sent during
     /// the 3.5s window while the client is loading terrain and cannot
     /// ACK. The TX window then fills before `mapLoaded`'s own burst can
-    /// run. See [`deferred_aoi`] for the buffer semantics and #354 for
-    /// the bug shape.
+    /// run. See [`deferred_aoi`] for the buffer semantics.
     pub deferred_aoi_msgs: Vec<deferred_aoi::DeferredAoiMsg>,
     pub cached_appearance_args: Option<Vec<u8>>,
     pub cached_tint_args: Option<Vec<u8>>,
@@ -202,11 +201,14 @@ pub(crate) struct ConnectedClientState {
     /// retransmits fire from the per-session `tick_sync` loop every
     /// 100 ms, capped at `RETRANSMIT_BUDGET_PER_TICK` entries per scan.
     ///
-    /// When a send arrives while the TX window is at its `TX_WINDOW_SIZE`
-    /// cap, the Channel queues the entry in its `unsent_packets` deque
-    /// rather than rejecting it. Queued entries are promoted into the
-    /// window FIFO as ACKs free slots. This replaces the prior
-    /// downgrade-reliable-send-to-best-effort path (see #354).
+    /// When a send arrives via `register_sent_packet` while the TX window
+    /// is at its `TX_WINDOW_SIZE` cap, the Channel queues the entry in its
+    /// `unsent_packets` deque rather than rejecting it; queued entries are
+    /// promoted into the window FIFO as ACKs free slots. This replaces
+    /// the prior downgrade-reliable-send-to-best-effort path. (The other
+    /// reliable entry point, `Channel::send_packet`, still errors on
+    /// overflow — it's used only by tests and unmigrated paths and so
+    /// never hits the saturating bursts that motivated the queue.)
     ///
     /// Wrapped in `Mutex` because `process_acks`, `register_sent_packet`,
     /// and `check_timeouts` all need `&mut self` and run from different

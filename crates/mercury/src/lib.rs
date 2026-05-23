@@ -49,9 +49,9 @@ pub mod consts {
     /// was actually acked.
     ///
     /// This constant can be raised once the SGW.exe binary is patched to
-    /// widen the slot store (see issue #353 — 3-byte patch at VA `0x0158C801`
-    /// rewriting the capacity push). Until that ships, server-side overflow
-    /// is handled by the deferred-send queue (see [`MAX_UNSENT_PACKETS`])
+    /// widen the slot store (a 3-byte patch at VA `0x0158C801` rewriting
+    /// the capacity push). Until that ships, server-side overflow is
+    /// handled by the deferred-send queue (see [`MAX_UNSENT_PACKETS`])
     /// rather than by raising this value.
     pub const TX_WINDOW_SIZE: usize = 32;
 
@@ -61,7 +61,7 @@ pub mod consts {
     /// When `Channel::register_sent_packet` would overflow `TX_WINDOW_SIZE`,
     /// the packet is held in a per-channel queue and promoted into the TX
     /// window as ACKs free slots. The queue prevents the silent-best-effort
-    /// downgrade that the previous overflow path performed — see #354.
+    /// downgrade that the previous overflow path performed.
     ///
     /// The cap exists so a genuinely dead channel (peer has stopped acking
     /// entirely) cannot grow unbounded. 1024 = 32× the TX window, which

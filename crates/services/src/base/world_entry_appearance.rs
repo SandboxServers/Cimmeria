@@ -431,8 +431,8 @@ pub(crate) async fn handle_on_client_ready(
 
     // Flush any AoI messages the cell tried to dispatch while the client
     // was still loading terrain. The client is now ready to receive
-    // entity-state traffic; the deferred-send queue (#354 fix #3) absorbs
-    // any overflow past the 32-slot TX window. See #354 fix #2.
+    // entity-state traffic; the Channel's deferred-send queue absorbs
+    // any overflow past the 32-slot TX window.
     super::world_entry::cell_dispatch::flush_deferred_aoi(
         entity_id,
         addr,

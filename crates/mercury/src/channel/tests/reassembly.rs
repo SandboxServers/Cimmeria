@@ -211,8 +211,8 @@ fn sliding_window_rejects_overflow() {
     assert_eq!(ch.tx_window.len(), consts::TX_WINDOW_SIZE);
 }
 
-/// TX window must stay at 32 until the SGW.exe binary patch (issue #353)
-/// widens the unpatched client's slot store. The client's `ChannelInternal`
+/// TX window must stay at 32 until the SGW.exe binary is patched to
+/// widen the unpatched client's slot store. The client's `ChannelInternal`
 /// at `ghidra://SGW.exe@0x0158c7b0` allocates a heap-resident slot hash
 /// table sized from the runtime config field at `[ChannelInternal+0x2C]`,
 /// defaulting to 32 in the unmodified binary; sending more than 32
@@ -220,13 +220,13 @@ fn sliding_window_rejects_overflow() {
 /// on the same hash slot (mask at `[+0x44]` = `capacity - 1`) and let
 /// `queueAckForPacket` at `ghidra://SGW.exe@0x0158cba0` phantom-ack the
 /// older un-acked entry. (The original framing of this test as "32-bit
-/// outstanding-ack bitmap" was wrong — there is no bitmap; see #355 for
-/// the corrected understanding.)
+/// outstanding-ack bitmap" was wrong — there is no bitmap; the slot-store
+/// hash-collision shape above is the corrected understanding.)
 ///
 /// When that patch ships, this assertion can move to the next power of
-/// two (likely 64 — a length-preserving 3-byte patch fits, see #353) and
-/// the [`Channel::unsent_packets`] queue handles the residual transient
-/// bursts past the new cap.
+/// two (likely 64 — a length-preserving 3-byte patch fits the rewrite at
+/// VA `0x0158C801`) and the [`Channel::unsent_packets`] queue handles the
+/// residual transient bursts past the new cap.
 #[test]
 fn tx_window_size_pinned_until_client_patch_widens_slot_store() {
     assert_eq!(
@@ -234,9 +234,9 @@ fn tx_window_size_pinned_until_client_patch_widens_slot_store() {
         32,
         "TX_WINDOW_SIZE must equal the unpatched SGW client's default \
          slot-store capacity (32). Raising it before SGW.exe is patched \
-         (issue #353) would cause the client's hash-table-indexed ack \
-         tracker to phantom-ack older entries when two in-flight seqs \
-         collide on the same slot."
+         would cause the client's hash-table-indexed ack tracker to \
+         phantom-ack older entries when two in-flight seqs collide on \
+         the same slot."
     );
 }
 
@@ -244,8 +244,7 @@ fn tx_window_size_pinned_until_client_patch_widens_slot_store() {
 /// `register_sent_packet` no longer errors — it routes to the
 /// [`Channel::unsent_packets`] deferred-send queue. This replaces the
 /// prior "downgrade reliable send to best-effort" path at the services
-/// layer that silently lost retransmit bookkeeping for overflow
-/// packets. See #354 for the bug shape this guards against.
+/// layer that silently lost retransmit bookkeeping for overflow packets.
 #[test]
 fn register_sent_packet_overflow_routes_to_unsent_queue() {
     let mut ch = Channel::new(test_addr());
