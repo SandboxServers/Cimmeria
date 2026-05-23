@@ -74,8 +74,8 @@ bytes = "1"
 quick-xml = "0.38"
 
 # Cryptography (client requires AES-256-CBC + HMAC-MD5)
-aes = "0.8"
-cbc = "0.1"
+aes = "0.9"
+cbc = "0.2"
 hmac = "0.12"
 md-5 = "0.10"
 rand = "0.10"
