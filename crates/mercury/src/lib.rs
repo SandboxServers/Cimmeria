@@ -38,14 +38,37 @@ pub mod consts {
     /// Transmit window size — limits unacknowledged in-flight reliable
     /// packets per channel.
     ///
-    /// Pinned at **32** to match the SGW client's 32-bit outstanding-ack
-    /// bitmap (`UnAckedHandler`, indexed by `seq_id & 0x1F`). Per the
-    /// `mercury-wire-format` spec §1.7 + §1.16 Q5 closure: with more
-    /// than 32 packets in flight, two sequences differing by 32 would
-    /// collide on the same bitmap bit, letting the client phantom-ack
-    /// both when only one actually arrived. Holding the window at 32
-    /// eliminates the collision class.
+    /// Pinned at **32** because the SGW client's `ChannelInternal` slot
+    /// store is sized from a runtime config value at `[ChannelInternal+0x2C]`
+    /// that defaults to 32 in the unmodified binary. Sending more than 32
+    /// in-flight reliable packets would let two seqs differing by 32 collide
+    /// on the same slot in the client's `[+0x40]` hash table (mask at
+    /// `[+0x44]` = `capacity - 1`), causing `queueAckForPacket` at
+    /// `ghidra://SGW.exe@0x0158cba0` to overwrite the older unacked entry —
+    /// the server would then phantom-ack the older seq when the newer one
+    /// was actually acked.
+    ///
+    /// This constant can be raised once the SGW.exe binary is patched to
+    /// widen the slot store (see issue #353 — 3-byte patch at VA `0x0158C801`
+    /// rewriting the capacity push). Until that ships, server-side overflow
+    /// is handled by the deferred-send queue (see [`MAX_UNSENT_PACKETS`])
+    /// rather than by raising this value.
     pub const TX_WINDOW_SIZE: usize = 32;
+
+    /// Per-channel cap on the deferred-send queue used when the TX window
+    /// is full.
+    ///
+    /// When `Channel::register_sent_packet` would overflow `TX_WINDOW_SIZE`,
+    /// the packet is held in a per-channel queue and promoted into the TX
+    /// window as ACKs free slots. The queue prevents the silent-best-effort
+    /// downgrade that the previous overflow path performed — see #354.
+    ///
+    /// The cap exists so a genuinely dead channel (peer has stopped acking
+    /// entirely) cannot grow unbounded. 1024 = 32× the TX window, which
+    /// gives a comfortable transient-stall margin while keeping per-channel
+    /// memory bounded. When the cap is hit the new send returns an error;
+    /// the inactivity timeout will reap the channel shortly thereafter.
+    pub const MAX_UNSENT_PACKETS: usize = 1024;
 
     /// Milliseconds before a reliable packet is considered lost and retransmitted.
     pub const ACK_TIMEOUT_MS: u64 = 700;
