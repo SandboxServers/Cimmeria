@@ -1,55 +1,115 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-mod commands;
+
+mod app;
 mod config;
-mod download;
-mod extract;
+mod install;
 mod launch;
-mod patch;
-mod updater;
+mod logs;
+mod manifest;
+mod patch_rdata;
+mod state;
+mod worker;
 
-use std::sync::Mutex;
+use std::sync::Arc;
 
-use tauri::Manager;
+use eframe::egui;
+use fs4::fs_std::FileExt;
+use tokio::runtime::Runtime;
+use tracing_subscriber::EnvFilter;
 
-use commands::AppState;
-use config::LauncherConfig;
+use app::LauncherApp;
+use config::exe_dir;
 
-fn main() {
-    tracing_subscriber::fmt().with_env_filter("info").init();
+fn main() -> eframe::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
-            #[cfg(desktop)]
-            app.handle()
-                .plugin(tauri_plugin_updater::Builder::new().build())?;
+    // Single-instance file lock. A second launcher process opening the same
+    // path fails the exclusive try-lock and we exit before constructing
+    // any state — the two instances would otherwise race on
+    // launcher-installed.json + the .tmp-*.zip files and produce
+    // unpredictable results. We keep the `File` alive for the whole
+    // process lifetime; OS-level lock release happens at drop.
+    let lock_path = exe_dir().join("launcher.lock");
+    let lock_file = match std::fs::File::create(&lock_path) {
+        Ok(f) => f,
+        Err(e) => {
+            // Without a usable lock file we have no concurrency protection.
+            // Most likely cause: read-only install dir. Surface via a
+            // message box on Windows (release builds detach stderr) and
+            // also via stderr for dev builds and Linux/macOS.
+            let msg = format!(
+                "Failed to open lock file at {}:\n{}",
+                lock_path.display(),
+                e
+            );
+            fatal_startup_error("Stargate Worlds Launcher", &msg);
+            std::process::exit(2);
+        }
+    };
+    if FileExt::try_lock_exclusive(&lock_file).is_err() {
+        let msg = format!(
+            "Another Stargate Worlds Launcher instance appears to be running \
+             (lock held at {}). Close the other instance and retry.",
+            lock_path.display()
+        );
+        fatal_startup_error("Stargate Worlds Launcher", &msg);
+        std::process::exit(3);
+    }
 
-            let config_dir = app.path().app_config_dir()?;
-            let config_path = config_dir.join("config.json");
+    let runtime = Arc::new(Runtime::new().expect("failed to create tokio runtime"));
+    let runtime_for_app = runtime.clone();
 
-            let config = LauncherConfig::load(&config_path).unwrap_or_default();
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([760.0, 540.0])
+            .with_min_inner_size([640.0, 400.0])
+            .with_resizable(true)
+            .with_title("Stargate Worlds Launcher"),
+        ..Default::default()
+    };
 
-            app.manage(AppState {
-                config_path,
-                config: Mutex::new(config),
-                cancel_token: Mutex::new(None),
-            });
+    let result = eframe::run_native(
+        "Stargate Worlds Launcher",
+        options,
+        Box::new(move |_cc| Ok(Box::new(LauncherApp::new(runtime_for_app)))),
+    );
 
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            commands::cmd_check_installation,
-            commands::cmd_get_default_install_path,
-            commands::cmd_load_config,
-            commands::cmd_save_config,
-            commands::cmd_patch_server_address,
-            commands::cmd_launch_game,
-            commands::cmd_cancel_install,
-            commands::cmd_download_and_install,
-            commands::cmd_check_for_updates,
-            commands::cmd_apply_updates,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    drop(runtime);
+    // Keep `lock_file` alive until here so the OS-level lock survives the
+    // entire run. Dropping it explicitly is documentation; the Drop impl
+    // would release the lock when the binding goes out of scope anyway.
+    drop(lock_file);
+    result
+}
+
+/// Surface a fatal startup error to the user before exiting. On Windows
+/// release builds (`windows_subsystem = "windows"`) `stderr` is not
+/// attached to anything when the user double-clicks the binary, so an
+/// `eprintln!` becomes a silent crash. A `MessageBoxW` always shows.
+/// Always emits to stderr too so dev / CI runs still get a log line.
+fn fatal_startup_error(title: &str, message: &str) {
+    eprintln!("sgw-launcher: {message}");
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+        // Wide-encode with a trailing NUL for the W APIs.
+        let to_wide =
+            |s: &str| -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() };
+        let title_w = to_wide(title);
+        let body_w = to_wide(message);
+        // SAFETY: pointers are valid for the duration of the call, both
+        // strings are NUL-terminated, hWnd=null is allowed.
+        unsafe {
+            MessageBoxW(
+                std::ptr::null_mut(),
+                body_w.as_ptr(),
+                title_w.as_ptr(),
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
 }

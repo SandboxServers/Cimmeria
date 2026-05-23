@@ -1,0 +1,103 @@
+name: launcher-release
+
+# Builds and publishes a GitHub Release containing the launcher .exe.
+# Triggered either manually via the Actions UI (`workflow_dispatch`) or
+# via the `/release-launcher` ChatOps command on a merged PR, which
+# dispatches this workflow through `launcher-release-on-comment.yml`.
+#
+# Always builds whatever is at `main` HEAD — the triggering PR is just
+# the cut-point marker, mirroring the policy of `release-container.yml`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      triggering_pr:
+        description: 'PR # that triggered this release (informational, optional)'
+        required: false
+
+permissions: {}
+
+concurrency:
+  group: launcher-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build + publish (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      # Both secrets are baked into the binary at compile time via
+      # `option_env!` in src/config.rs and src/manifest.rs respectively.
+      # The release job is the only workflow that reads them — PR / build
+      # jobs produce binaries with the dev defaults (manifest signing
+      # falls back to a publicly-known key, log upload is disabled).
+      LAUNCHER_LOG_SAS_URL: ${{ secrets.LAUNCHER_LOG_SAS_URL }}
+      # 64 hex chars = 32 raw bytes. Ed25519 public key whose private
+      # counterpart signs every manifest the launcher will accept.
+      # Generation + rotation procedure: see
+      # docs/client/launcher-distribution-setup.md.
+      LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+    steps:
+      # Actions pinned to immutable commit SHAs (with version comments) per
+      # GitHub's secure-use guide. This job is privileged — it builds with a
+      # secret SAS baked in and creates GitHub Releases — so the supply-chain
+      # surface from any third-party action is unusually large here.
+      # `persist-credentials: false` so the GITHUB_TOKEN isn't left in the
+      # local git config for later steps.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: launcher-release
+      - name: cargo build --release
+        run: cargo build -p sgw-launcher --release
+      - name: stamp version
+        id: stamp
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          DATE=$(date -u +%Y%m%d)
+          TAG="launcher-${DATE}-${SHORT_SHA}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+      - name: stage artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp target/release/sgw-launcher.exe \
+            "artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe"
+      - name: upload build artifact (workflow run)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: sgw-launcher-${{ steps.stamp.outputs.tag }}
+          path: artifacts/sgw-launcher-${{ steps.stamp.outputs.tag }}.exe
+          retention-days: 30
+      - name: create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TRIGGERING_PR: ${{ github.event.inputs.triggering_pr }}
+          TAG: ${{ steps.stamp.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY="Stargate Worlds launcher build from commit \`${GITHUB_SHA}\`."
+          if [ -n "${TRIGGERING_PR}" ]; then
+            BODY="${BODY}
+
+          Dispatched from PR #${TRIGGERING_PR}."
+          fi
+          gh release create "${TAG}" \
+            --title "Launcher ${TAG}" \
+            --notes "${BODY}" \
+            "artifacts/sgw-launcher-${TAG}.exe"

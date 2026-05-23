@@ -34,15 +34,17 @@ comment:
   require_head: true
 
 # Code that doesn't get instrumented or doesn't represent runtime behaviour.
-# Keep this list aligned with the cargo workspace's CI excludes
-# (cimmeria-app / cimmeria-content-editor / cimmeria-scene-editor /
-# sgw-launcher are Tauri/GUI surfaces excluded from CI, so their files
-# would show as 0% covered and skew the report).
+# Keep this list aligned with the cargo workspace's CI excludes. The Tauri
+# editors (cimmeria-content-editor / cimmeria-scene-editor) are GUI shells
+# excluded from CI, so their files would show as 0% covered and skew the
+# report. The sgw-launcher crate is excluded from the main `ci` workflow
+# (eframe needs heavier system deps and only matters on Windows) but has
+# its own coverage job in `launcher-build.yml` that uploads under the
+# `launcher` flag — so it lives in `component_management` below, not here.
 ignore:
   - "src-tauri/**"
   - "crates/cimmeria-content-editor/**"
   - "crates/cimmeria-scene-editor/**"
-  - "crates/launcher/**"
   - "deprecated/**"    # legacy C++/Python reference + retired artifacts
   - "tools/**"         # editor tools + smoke SQL scripts
   - "bootstrap/**"
@@ -179,6 +181,20 @@ component_management:
       name: admin-api
       paths:
         - "crates/admin-api/**"
+      statuses:
+        - type: project
+          target: auto
+          threshold: 1%
+          informational: true
+    # sgw-launcher coverage is uploaded by `launcher-build.yml` under the
+    # `launcher` flag (the main `coverage` job in test.yml excludes it via
+    # WORKSPACE_EXCLUDES). Start on `target: auto` so the PR comment
+    # doesn't fail on the first launcher PR after the ignore was lifted;
+    # ratchet up once a stable baseline lands.
+    - component_id: launcher
+      name: launcher
+      paths:
+        - "crates/launcher/**"
       statuses:
         - type: project
           target: auto
