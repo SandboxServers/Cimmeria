@@ -26,6 +26,17 @@ use crate::transport::Transport;
 /// The recorder is `Mutex`-protected so tests can hold a `&dyn Transport`
 /// reference and still call [`drain`](Self::drain) from the test thread
 /// between awaits.
+///
+/// # Thread safety
+///
+/// `TestTransport` is `Send + Sync`. The internal `Mutex<Vec<...>>` serializes
+/// concurrent `send_to` calls; records land in lock-acquisition order (FIFO
+/// per acquirer). For sequential single-task tests — the dominant pattern —
+/// `drain`/`filter_to` returns records in send-order. For multi-task tests
+/// that race sends from several `tokio::spawn`-ed tasks, the lock guarantees
+/// every send is recorded but **inter-task ordering is non-deterministic** —
+/// assert on the *set* of sends (and per-recipient cardinality), not the
+/// sequence index.
 pub struct TestTransport {
     sent: Mutex<Vec<(SocketAddr, Vec<u8>)>>,
     local: SocketAddr,

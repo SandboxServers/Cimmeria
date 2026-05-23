@@ -151,7 +151,17 @@ the whole point is a trait object injected at 67 call sites, `async_trait`
   the `dyn Transport` trait. A test that needs both to call a handler
   (`&Arc<dyn Transport>`) and to inspect afterward keeps a typed
   `Arc<TestTransport>` handle and clones it to a `Arc<dyn Transport>` for the
-  call (the "two-handle" pattern used in `teleport.rs`/`character.rs`).
+  call (the **two-handle** pattern used in `teleport.rs`/`character.rs`):
+
+  ```rust
+  let transport = Arc::new(TestTransport::new());
+  let dyn_transport: Arc<dyn Transport> = transport.clone();
+  handler(&dyn_transport).await;
+  assert_eq!(transport.len(), 1);
+  ```
+
+  Without the typed handle the test can hand a handler `&Arc<dyn Transport>` but
+  has no way back to `drain`/`filter_to`/etc. on the same recorder.
 
 ## Performance measurement
 
