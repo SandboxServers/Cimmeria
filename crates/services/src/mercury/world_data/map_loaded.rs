@@ -381,10 +381,9 @@ fn build_map_loaded_body_inner(
     // message) used to live here but were moved to `handle_on_client_ready`
     // — that's where the original `python/base/SGWPlayer.py onClientReady
     // -> ChannelManager.playerLoggedIn` flow runs them. Keeping them in the
-    // mapLoaded bundle padded ~311 B onto the worst-case fragment burst
-    // (issue #345), and the one-RTT window where the player is in the world
-    // without registered chat channels is identical to the original game's
-    // behavior.
+    // mapLoaded bundle padded ~311 B onto the worst-case fragment burst, and
+    // the one-RTT window where the player is in the world without registered
+    // chat channels is identical to the original game's behavior.
 
     // NOTE: onPlayMovie (first-login cinematic) is intentionally NOT in this
     // bundle. It is deferred to `handle_on_client_ready` and fired AFTER the

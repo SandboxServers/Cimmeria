@@ -87,11 +87,12 @@ fn build_map_loaded_produces_multiple_packets() {
 /// This guard pins `build_map_loaded` itself — by far the dominant
 /// fragment source in the burst — at well under the 32-packet ceiling.
 /// The fixture loads the **full inventory caps** from
-/// `python/common/Constants.py`: 40 main-bag slots + 100 mission-bag
-/// slots + 100 crafting + 4 bandolier + 12 armor slots. The original
-/// fixture used `items: vec![]`, which let an inventory regression
-/// (a future +5kB body from filling these bags) silently slip past
-/// this guard until a real player logged in. Issue #345.
+/// `python/common/Constants.py`: 40 main-bag + 100 mission-bag + 100
+/// crafting + 4 bandolier + 11 equipment slots
+/// (head/face/neck/chest/hands/waist/back/legs/feet/artifact1/artifact2).
+/// The original fixture used `items: vec![]`, which let an inventory
+/// regression — a future +5kB body from filling these bags — silently
+/// slip past this guard until a real player logged in.
 ///
 /// Adding new entity-method records to the bundle is fine; pushing the
 /// fragment count above the ceiling is a wire-format regression that
@@ -101,16 +102,18 @@ fn build_map_loaded_produces_multiple_packets() {
 #[test]
 fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
     use cimmeria_entity::inventory::{
-        InvItem, INV_BANDOLIER, INV_CHEST, INV_CRAFTING, INV_FACE, INV_FEET, INV_HANDS, INV_HEAD,
-        INV_LEGS, INV_MAIN, INV_MISSION, INV_NECK, INV_WAIST,
+        InvItem, INV_ARTIFACT1, INV_ARTIFACT2, INV_BACK, INV_BANDOLIER, INV_CHEST, INV_CRAFTING,
+        INV_FACE, INV_FEET, INV_HANDS, INV_HEAD, INV_LEGS, INV_MAIN, INV_MISSION, INV_NECK,
+        INV_WAIST,
     };
     use cimmeria_mercury::consts::TX_WINDOW_SIZE;
 
     // Build a full-capacity inventory fixture. Item shape mirrors the
     // serialiser in `crates/entity/src/inventory.rs::InvItem::serialize`
-    // (~37 B per item with an empty ammo_types). The five wearables
-    // (head/face/neck/chest/hands/waist/legs/feet) and the four
-    // bandolier slots are pre-equipped to mimic a max-decorated player.
+    // (~37 B per item with an empty ammo_types). The 11 equipment slots
+    // (head/face/neck/chest/hands/waist/back/legs/feet/artifact1/artifact2)
+    // and the four bandolier slots are pre-equipped to mimic a
+    // max-decorated player.
     fn fill_bag(items: &mut Vec<InvItem>, container_id: i32, slots: i32) {
         for slot in 0..slots {
             items.push(InvItem {
@@ -132,10 +135,20 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
     fill_bag(&mut items, INV_MISSION, 100);
     fill_bag(&mut items, INV_CRAFTING, 100);
     fill_bag(&mut items, INV_BANDOLIER, 4);
-    for armor_slot in [
-        INV_HEAD, INV_FACE, INV_NECK, INV_CHEST, INV_HANDS, INV_WAIST, INV_LEGS, INV_FEET,
+    for equip_slot in [
+        INV_HEAD,
+        INV_FACE,
+        INV_NECK,
+        INV_CHEST,
+        INV_HANDS,
+        INV_WAIST,
+        INV_BACK,
+        INV_LEGS,
+        INV_FEET,
+        INV_ARTIFACT1,
+        INV_ARTIFACT2,
     ] {
-        fill_bag(&mut items, armor_slot, 1);
+        fill_bag(&mut items, equip_slot, 1);
     }
 
     // Worst-case mapLoaded: a level-20 player with all archetype slots
@@ -489,22 +502,25 @@ fn build_map_loaded_omits_first_login_cinematic_from_bundle() {
          in mapLoaded bundle bytes"
     );
 }
-/// Issue #345 regression guard: `onChatJoined` (method index 31) and
-/// `onPlayerCommunication` (method index 28) MUST NOT appear in the
-/// mapLoaded entity-method bundle. Both used to live there and padded
-/// ~311 B onto the worst-case fragment burst — roughly 156 B for the 8 ×
-/// `onChatJoined` plus 155 B for the welcome `onPlayerCommunication`.
-/// They're now fired from `handle_on_client_ready`, matching the original
+/// Regression guard: `onChatJoined` and `onPlayerCommunication` MUST NOT
+/// appear in the mapLoaded entity-method bundle. Both used to live there
+/// and padded ~311 B onto the worst-case fragment burst — roughly 156 B
+/// for the 8 × `onChatJoined` plus 155 B for the welcome
+/// `onPlayerCommunication`. They're now fired from
+/// `handle_on_client_ready`, matching the original
 /// `python/base/SGWPlayer.py` flow where `onClientReady` calls into
 /// `ChannelManager.playerLoggedIn`.
 ///
-/// Structural check: walking entity-method records over the body must
-/// not yield method indices 28 or 31. Reverting the fix (re-adding
+/// Structural check: walking entity-method records over the body must not
+/// yield indices `method_idx::ON_PLAYER_COMMUNICATION` or
+/// `method_idx::ON_CHAT_JOINED`. Reverting the fix (re-adding
 /// `append_method!(method_idx::ON_CHAT_JOINED, ...)` or
 /// `append_method!(method_idx::ON_PLAYER_COMMUNICATION, ...)` to
 /// `build_map_loaded_body_inner`) must break this test.
 #[test]
 fn build_map_loaded_omits_chat_joined_and_player_communication_from_bundle() {
+    use crate::mercury::method_idx;
+
     let data = sample_player_load_data();
     let entry = sample_world_entry();
 
@@ -513,16 +529,23 @@ fn build_map_loaded_omits_chat_joined_and_player_communication_from_bundle() {
     let method_indices: Vec<u16> = records.iter().map(|(idx, _)| *idx).collect();
 
     assert!(
-        !records.iter().any(|(idx, _)| *idx == 31),
-        "onChatJoined (method 31) must not appear in mapLoaded bundle; \
-         it is deferred to handle_on_client_ready per issue #345. \
-         Indices found: {method_indices:?}"
+        !records
+            .iter()
+            .any(|(idx, _)| *idx == method_idx::ON_CHAT_JOINED),
+        "onChatJoined (method {}) must not appear in mapLoaded bundle; \
+         it is deferred to handle_on_client_ready to match the original \
+         SGWPlayer.py onClientReady → ChannelManager.playerLoggedIn flow. \
+         Indices found: {method_indices:?}",
+        method_idx::ON_CHAT_JOINED,
     );
     assert!(
-        !records.iter().any(|(idx, _)| *idx == 28),
-        "onPlayerCommunication (method 28) must not appear in mapLoaded bundle; \
-         it is deferred to handle_on_client_ready per issue #345. \
-         Indices found: {method_indices:?}"
+        !records
+            .iter()
+            .any(|(idx, _)| *idx == method_idx::ON_PLAYER_COMMUNICATION),
+        "onPlayerCommunication (method {}) must not appear in mapLoaded \
+         bundle; the welcome message is deferred to handle_on_client_ready. \
+         Indices found: {method_indices:?}",
+        method_idx::ON_PLAYER_COMMUNICATION,
     );
 }
 

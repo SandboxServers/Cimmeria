@@ -362,7 +362,7 @@ pub(crate) async fn handle_element_data_request(
     // INFO matches `push_overridden_elements`: every patched-XML push is
     // load-bearing for cache consistency, and the per-element byte count
     // is what surfaces a future PAK element crossing a chunk boundary
-    // and adding fragments to the cold-cache login burst (issue #345).
+    // and adding fragments to the cold-cache login burst.
     if is_override {
         tracing::info!(
             %addr, category_id, element_id,
@@ -414,3 +414,21 @@ pub(crate) async fn handle_element_data_request(
 
     Ok(())
 }
+
+/// Compile-time lower-bound guard for `MAX_CHUNK`. The wire-level tests in
+/// `mercury::protocol::tests` decrypt a resource fragment at the current
+/// `MAX_CHUNK` and assert it fits Mercury's body cap — but they'd happily
+/// pass at `MAX_CHUNK = 1000` too, since 1000-byte chunks also fit. This
+/// const assertion pins the lower bound at compile time: a future revert
+/// that drops `MAX_CHUNK` below 1390 fails to build instead of silently
+/// restoring the wasted ~28% per-packet headroom and re-widening the
+/// cold-cache login burst against the 32-slot reliable TX window.
+///
+/// Bump in tandem if a deliberate retreat from 1390 is ever needed (and
+/// document the reason in `MAX_CHUNK`'s docstring above).
+const _: () = assert!(
+    MAX_CHUNK >= 1390,
+    "MAX_CHUNK dropped below the 1390 floor — see the doc comment above \
+     for the cold-cache burst rationale; update the docstring + this \
+     guard together if the retreat is intentional."
+);

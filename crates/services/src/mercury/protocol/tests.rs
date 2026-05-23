@@ -415,17 +415,40 @@ fn resource_fragment_uses_u16_length_prefix() {
 /// 1390 (5-byte safety margin); this guard makes sure the resulting
 /// first-fragment body decrypts cleanly and lands within that cap.
 ///
-/// Without this, a bump of `MAX_CHUNK` (e.g. issue #345 raising it
-/// from 1000 → 1390 to cut the cold-cache login burst) has no
-/// regression net — a future overhead change in `build_resource_fragment`
-/// would silently push us over the wire limit on every patched-mission
-/// push. See `crates/services/src/base/cooked_data.rs::MAX_CHUNK`.
+/// Without this, a bump of `MAX_CHUNK` (e.g. the 1000 → 1390 raise that
+/// cut the cold-cache login burst) has no regression net — a future
+/// overhead change in `build_resource_fragment` would silently push us
+/// over the wire limit on every patched-mission push. See
+/// `crates/services/src/base/cooked_data.rs::MAX_CHUNK`.
+/// Mercury `MAX_BODY_LENGTH` (plaintext body length, post-decrypt).
+const MERCURY_MAX_BODY_LENGTH: usize = 1411;
+
+/// Read the actual `BASEMSG_RESOURCE_FRAGMENT` body length from a decrypted
+/// Mercury plaintext. Returns `(word_len_payload, total_body_len)` where
+/// `total_body_len = 1 (BASEMSG) + 2 (WORD_LEN) + word_len_payload` — i.e.
+/// the full slice the wire-format cap applies to. Pulling these from the
+/// actual decoded bytes (instead of a hand-computed sum) makes the
+/// downstream guards survive a future change to the in-body header layout
+/// in `build_resource_fragment`: the math sanity-check would shift, but
+/// the cap-fits assertion still works against ground truth.
+fn measure_resource_fragment_body(plaintext: &[u8]) -> (usize, usize) {
+    assert_eq!(
+        plaintext[1], BASEMSG_RESOURCE_FRAGMENT,
+        "decrypted plaintext does not start with BASEMSG_RESOURCE_FRAGMENT"
+    );
+    let word_len = u16::from_le_bytes([plaintext[2], plaintext[3]]) as usize;
+    let total_body_len = 1 + 2 + word_len; // BASEMSG + WORD_LEN(u16) + payload
+    (word_len, total_body_len)
+}
+
 #[test]
 fn resource_fragment_first_frag_at_max_chunk_fits_within_mercury_body_limit() {
-    // Mercury MAX_BODY_LENGTH (plaintext body, after decrypt).
-    const MAX_BODY_LENGTH: usize = 1411;
-    // First-fragment max chunk = MAX_BODY_LENGTH - 16-byte in-body header.
-    const FIRST_FRAG_MAX_CHUNK: usize = MAX_BODY_LENGTH - 16;
+    // First-fragment in-body payload (after BASEMSG + WORD_LEN(u16)) is
+    // data_id(2) + chunk_id(1) + frag_flags(1) + msg_type(1) +
+    // category_id(4) + element_id(4) + xml = 13 + xml bytes. So the
+    // largest XML that still fits MAX_BODY_LENGTH = 1411 is
+    // 1411 - 3 (BASEMSG + WORD_LEN) - 13 = 1395 bytes.
+    const FIRST_FRAG_MAX_CHUNK: usize = MERCURY_MAX_BODY_LENGTH - 16;
 
     let xml = vec![b'X'; FIRST_FRAG_MAX_CHUNK];
     let out = build_resource_fragment(
@@ -444,22 +467,22 @@ fn resource_fragment_first_frag_at_max_chunk_fits_within_mercury_body_limit() {
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let plaintext = enc.decrypt(&out).expect("first-frag decrypt failed");
 
-    // Plaintext = [flags:u8][body...][footers]. Body starts at offset 1.
-    // Body itself = BASEMSG(1) + WORD_LEN(2) + payload.
-    // Asserting the full plaintext stays within MAX_BODY_LENGTH covers
-    // the body — the footers (seq_id + acks) live outside this cap by
-    // construction.
-    let body_len = 1 + 2 + 2 + 1 + 1 + 1 + 4 + 4 + xml.len();
-    assert_eq!(body_len, MAX_BODY_LENGTH, "math sanity check");
-    // Body slice = plaintext[1..1 + body_len]; assert the body fits.
-    assert!(
-        plaintext.len() > body_len,
-        "plaintext truncated below expected body size: got {} bytes",
-        plaintext.len()
+    let (word_len, total_body_len) = measure_resource_fragment_body(&plaintext);
+    // The first-fragment payload (BASEMSG + WORD_LEN consumed) is:
+    // data_id(2) + chunk_id(1) + frag_flags(1) + msg_type(1) +
+    // category_id(4) + element_id(4) + xml.len() = 13 + xml.len()
+    assert_eq!(
+        word_len,
+        13 + xml.len(),
+        "WORD_LEN prefix should match expected first-fragment payload size",
     );
     assert!(
-        body_len <= MAX_BODY_LENGTH,
-        "first-fragment body ({body_len}) exceeded MAX_BODY_LENGTH ({MAX_BODY_LENGTH})",
+        total_body_len <= MERCURY_MAX_BODY_LENGTH,
+        "first-fragment body ({total_body_len}) exceeded MAX_BODY_LENGTH ({MERCURY_MAX_BODY_LENGTH})"
+    );
+    assert_eq!(
+        total_body_len, MERCURY_MAX_BODY_LENGTH,
+        "first-fragment at FIRST_FRAG_MAX_CHUNK should pack to exactly MAX_BODY_LENGTH",
     );
 }
 
@@ -471,10 +494,9 @@ fn resource_fragment_first_frag_at_max_chunk_fits_within_mercury_body_limit() {
 /// not be caught by the first-fragment guard above.
 #[test]
 fn resource_fragment_non_first_frag_at_max_chunk_fits_within_mercury_body_limit() {
-    const MAX_BODY_LENGTH: usize = 1411;
-    // Non-first fragment in-body header = BASEMSG(1) + WORD_LEN(2) +
-    // data_id(2) + chunk_id(1) + frag_flags(1) = 7 bytes.
-    const NON_FIRST_FRAG_MAX_CHUNK: usize = MAX_BODY_LENGTH - 7;
+    // Non-first in-body payload: data_id(2) + chunk_id(1) + frag_flags(1)
+    // + xml = 4 + xml. Max xml = 1411 - 3 (BASEMSG + WORD_LEN) - 4 = 1404.
+    const NON_FIRST_FRAG_MAX_CHUNK: usize = MERCURY_MAX_BODY_LENGTH - 7;
 
     let xml = vec![b'Y'; NON_FIRST_FRAG_MAX_CHUNK];
     let out = build_resource_fragment(
@@ -493,23 +515,30 @@ fn resource_fragment_non_first_frag_at_max_chunk_fits_within_mercury_body_limit(
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let plaintext = enc.decrypt(&out).expect("non-first-frag decrypt failed");
 
-    let body_len = 1 + 2 + 2 + 1 + 1 + xml.len();
-    assert_eq!(body_len, MAX_BODY_LENGTH, "math sanity check");
+    let (word_len, total_body_len) = measure_resource_fragment_body(&plaintext);
+    assert_eq!(
+        word_len,
+        4 + xml.len(),
+        "WORD_LEN prefix should match expected non-first payload size",
+    );
     assert!(
-        plaintext.len() > body_len,
-        "plaintext truncated below expected body size: got {} bytes",
-        plaintext.len()
+        total_body_len <= MERCURY_MAX_BODY_LENGTH,
+        "non-first body ({total_body_len}) exceeded MAX_BODY_LENGTH ({MERCURY_MAX_BODY_LENGTH})"
+    );
+    assert_eq!(
+        total_body_len, MERCURY_MAX_BODY_LENGTH,
+        "non-first at NON_FIRST_FRAG_MAX_CHUNK should pack to exactly MAX_BODY_LENGTH",
     );
 }
 
-/// The cooked-data layer chunks at `MAX_CHUNK = 1390` (issue #345).
-/// Pin that the resulting first-fragment body decrypts cleanly and
-/// stays under MAX_BODY_LENGTH with the actual 5-byte safety margin —
-/// the two tests above prove the theoretical absolute cap; this one
-/// proves the production chunker value still has headroom.
+/// The cooked-data layer chunks at `MAX_CHUNK = 1390`. Pin that the
+/// resulting first-fragment body decrypts cleanly and stays under
+/// MAX_BODY_LENGTH with the actual 5-byte safety margin — the two
+/// tests above prove the theoretical absolute cap; this one proves
+/// the production chunker value still has headroom against the
+/// decoded WORD_LEN, not just a hand-computed body sum.
 #[test]
 fn resource_fragment_first_frag_at_cooked_data_max_chunk_has_safety_margin() {
-    const MAX_BODY_LENGTH: usize = 1411;
     const COOKED_DATA_MAX_CHUNK: usize = 1390; // crates/services/src/base/cooked_data.rs
 
     let xml = vec![b'Z'; COOKED_DATA_MAX_CHUNK];
@@ -529,21 +558,18 @@ fn resource_fragment_first_frag_at_cooked_data_max_chunk_has_safety_margin() {
     let enc = MercuryEncryption::from_session_key(TEST_KEY);
     let plaintext = enc.decrypt(&out).expect("decrypt failed");
 
-    let body_len = 1 + 2 + 2 + 1 + 1 + 1 + 4 + 4 + xml.len();
+    let (_word_len, total_body_len) = measure_resource_fragment_body(&plaintext);
     assert!(
-        body_len <= MAX_BODY_LENGTH,
-        "cooked-data first-fragment body ({body_len}) must fit MAX_BODY_LENGTH ({MAX_BODY_LENGTH})",
+        total_body_len <= MERCURY_MAX_BODY_LENGTH,
+        "cooked-data first-fragment body ({total_body_len}) must fit \
+         MAX_BODY_LENGTH ({MERCURY_MAX_BODY_LENGTH})",
     );
     // 5-byte safety margin: 1395 (first-frag cap) - 1390 (chunk size).
-    let safety_margin = MAX_BODY_LENGTH - body_len;
+    let safety_margin = MERCURY_MAX_BODY_LENGTH - total_body_len;
     assert!(
         safety_margin >= 5,
         "safety margin under first-fragment cap dropped to {safety_margin} bytes \
-         — if this fires, either bump MAX_CHUNK back down or audit the in-body header"
-    );
-    assert!(
-        plaintext.len() > body_len,
-        "plaintext truncated below expected body size"
+         — if this fires, either lower MAX_CHUNK or audit the in-body header"
     );
 }
 
