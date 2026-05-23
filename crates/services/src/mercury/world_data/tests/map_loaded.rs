@@ -86,6 +86,14 @@ fn build_map_loaded_produces_multiple_packets() {
 ///
 /// This guard pins `build_map_loaded` itself — by far the dominant
 /// fragment source in the burst — at well under the 32-packet ceiling.
+/// The fixture loads the **full inventory caps** from
+/// `python/common/Constants.py`: 40 main-bag + 100 mission-bag + 100
+/// crafting + 4 bandolier + 11 equipment slots
+/// (head/face/neck/chest/hands/waist/back/legs/feet/artifact1/artifact2).
+/// The original fixture used `items: vec![]`, which let an inventory
+/// regression — a future +5kB body from filling these bags — silently
+/// slip past this guard until a real player logged in.
+///
 /// Adding new entity-method records to the bundle is fine; pushing the
 /// fragment count above the ceiling is a wire-format regression that
 /// would re-introduce the bug the split-counter design was meant to
@@ -93,13 +101,59 @@ fn build_map_loaded_produces_multiple_packets() {
 /// tickSync split tightens the unreliable side).
 #[test]
 fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
+    use cimmeria_entity::inventory::{
+        InvItem, INV_ARTIFACT1, INV_ARTIFACT2, INV_BACK, INV_BANDOLIER, INV_CHEST, INV_CRAFTING,
+        INV_FACE, INV_FEET, INV_HANDS, INV_HEAD, INV_LEGS, INV_MAIN, INV_MISSION, INV_NECK,
+        INV_WAIST,
+    };
     use cimmeria_mercury::consts::TX_WINDOW_SIZE;
 
+    // Build a full-capacity inventory fixture. Item shape mirrors the
+    // serialiser in `crates/entity/src/inventory.rs::InvItem::serialize`
+    // (~37 B per item with an empty ammo_types). The 11 equipment slots
+    // (head/face/neck/chest/hands/waist/back/legs/feet/artifact1/artifact2)
+    // and the four bandolier slots are pre-equipped to mimic a
+    // max-decorated player.
+    fn fill_bag(items: &mut Vec<InvItem>, container_id: i32, slots: i32) {
+        for slot in 0..slots {
+            items.push(InvItem {
+                id: items.len() as i32 + 1,
+                dbid: 5000 + slot,
+                stack_size: 1,
+                slot_id: slot,
+                container_id,
+                is_bound: false,
+                durability: 100,
+                ammo_types: vec![],
+                cur_ammo_type: 0,
+                charges: 0,
+            });
+        }
+    }
+    let mut items = Vec::new();
+    fill_bag(&mut items, INV_MAIN, 40);
+    fill_bag(&mut items, INV_MISSION, 100);
+    fill_bag(&mut items, INV_CRAFTING, 100);
+    fill_bag(&mut items, INV_BANDOLIER, 4);
+    for equip_slot in [
+        INV_HEAD,
+        INV_FACE,
+        INV_NECK,
+        INV_CHEST,
+        INV_HANDS,
+        INV_WAIST,
+        INV_BACK,
+        INV_LEGS,
+        INV_FEET,
+        INV_ARTIFACT1,
+        INV_ARTIFACT2,
+    ] {
+        fill_bag(&mut items, equip_slot, 1);
+    }
+
     // Worst-case mapLoaded: a level-20 player with all archetype slots
-    // populated, a non-trivial component list, a full ability tree, and
-    // every stargate already discovered. If a fresh-character fixture
-    // fits, a more decorated one must too, but explicitly biasing toward
-    // worst-case makes the guard meaningful.
+    // populated, a non-trivial component list, a full ability tree, every
+    // stargate already discovered, and the full bag-of-bags above.
     let data = PlayerLoadData {
         player_id: 1,
         level: 20,
@@ -128,7 +182,7 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
         access_level: 0,
         skin_color_id: 0,
         ability_tree: archetype_ability_tree(2),
-        items: vec![],
+        items,
         active_bandolier_slot: 0,
         bandolier_items: vec![],
     };
@@ -150,11 +204,12 @@ fn build_map_loaded_fragment_count_fits_within_reliable_tx_window() {
     );
     assert!(
         packets.len() < TX_WINDOW_SIZE,
-        "mapLoaded emitted {} fragments — meets or exceeds the {}-slot reliable TX \
-         window cap (must be strictly less than {} to leave headroom for other \
-         in-flight packets). Adding a new entity-method record pushed the bundle \
-         to or past the wire-format ceiling; either split the new record off into \
-         a separate phase or shrink an existing one.",
+        "mapLoaded emitted {} fragments with a full-inventory fixture — meets or \
+         exceeds the {}-slot reliable TX window cap (must be strictly less than {} \
+         to leave headroom for other in-flight packets). Adding a new entity-method \
+         record or growing an existing record (e.g. wire format bloat in onUpdateItem) \
+         pushed the bundle to or past the wire-format ceiling; either split the new \
+         record off into a separate phase or shrink an existing one.",
         packets.len(),
         TX_WINDOW_SIZE,
         TX_WINDOW_SIZE
@@ -447,6 +502,53 @@ fn build_map_loaded_omits_first_login_cinematic_from_bundle() {
          in mapLoaded bundle bytes"
     );
 }
+/// Regression guard: `onChatJoined` and `onPlayerCommunication` MUST NOT
+/// appear in the mapLoaded entity-method bundle. Both used to live there
+/// and padded ~311 B onto the worst-case fragment burst — roughly 156 B
+/// for the 8 × `onChatJoined` plus 155 B for the welcome
+/// `onPlayerCommunication`. They're now fired from
+/// `handle_on_client_ready`, matching the original
+/// `python/base/SGWPlayer.py` flow where `onClientReady` calls into
+/// `ChannelManager.playerLoggedIn`.
+///
+/// Structural check: walking entity-method records over the body must not
+/// yield indices `method_idx::ON_PLAYER_COMMUNICATION` or
+/// `method_idx::ON_CHAT_JOINED`. Reverting the fix (re-adding
+/// `append_method!(method_idx::ON_CHAT_JOINED, ...)` or
+/// `append_method!(method_idx::ON_PLAYER_COMMUNICATION, ...)` to
+/// `build_map_loaded_body_inner`) must break this test.
+#[test]
+fn build_map_loaded_omits_chat_joined_and_player_communication_from_bundle() {
+    use crate::mercury::method_idx;
+
+    let data = sample_player_load_data();
+    let entry = sample_world_entry();
+
+    let body = build_map_loaded_body(42, &data, &entry);
+    let records = walk_entity_method_records(&body);
+    let method_indices: Vec<u16> = records.iter().map(|(idx, _)| *idx).collect();
+
+    assert!(
+        !records
+            .iter()
+            .any(|(idx, _)| *idx == method_idx::ON_CHAT_JOINED),
+        "onChatJoined (method {}) must not appear in mapLoaded bundle; \
+         it is deferred to handle_on_client_ready to match the original \
+         SGWPlayer.py onClientReady → ChannelManager.playerLoggedIn flow. \
+         Indices found: {method_indices:?}",
+        method_idx::ON_CHAT_JOINED,
+    );
+    assert!(
+        !records
+            .iter()
+            .any(|(idx, _)| *idx == method_idx::ON_PLAYER_COMMUNICATION),
+        "onPlayerCommunication (method {}) must not appear in mapLoaded \
+         bundle; the welcome message is deferred to handle_on_client_ready. \
+         Indices found: {method_indices:?}",
+        method_idx::ON_PLAYER_COMMUNICATION,
+    );
+}
+
 /// Encode `s` the same way `write_wstring` does (length-prefixed UTF-16LE)
 /// and return the **payload bytes only** — the UTF-16LE code units, no
 /// length prefix. That's the substring a reader needs to grep for inside
