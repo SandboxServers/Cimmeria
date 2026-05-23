@@ -44,10 +44,14 @@ routes (owner-only packet leaks to witnesses), stale-addr sends, and
 encryption-state divergence — failure modes that today only surface in
 production or in fragile real-loopback timing tests.
 
-Separately, `crates/mercury/src/nub.rs` carried `send_to`/`recv_from` as
-`todo!()` stubs (#57) because the actual I/O path lives in
+Separately, `crates/mercury/src/nub.rs` had carried `send_to`/`recv_from`
+as `todo!()` stubs because the actual I/O path lives in
 `services/src/base/connect_loop/mod.rs`, leaving no clean home for the
-byte-emitting layer.
+byte-emitting layer. The `Nub` struct itself was a parallel registry
+never wired into the tokio per-session model and was deleted alongside
+this change; `TickActions` and the tick-driver contract moved into
+[`crates/mercury/src/channel/mod.rs`](../../crates/mercury/src/channel/mod.rs)
+next to `check_timeouts` / `keepalive_due` / `is_timed_out`.
 
 ## Decision
 

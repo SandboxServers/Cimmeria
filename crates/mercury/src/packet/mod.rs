@@ -24,8 +24,8 @@
 //! - [`parse`]  — `parse_incoming` (footer-strip path)
 //! - [`build`]  — `build_outgoing`, `build_outgoing_fragmented`,
 //!   `build_fragmented_bundle` (footer-write path)
-//! - [`legacy`] — `Packet` and `PacketFlags` legacy shim used by the
-//!   channel/nub stubs
+//! - [`legacy`] — `Packet` and `PacketFlags` ergonomic wrappers used by
+//!   [`crate::channel::Channel`] and [`crate::codec`]
 
 mod build;
 mod legacy;

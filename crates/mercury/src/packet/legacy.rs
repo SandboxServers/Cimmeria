@@ -1,8 +1,12 @@
-//! Legacy compatibility shim used by the `channel.rs` and `nub.rs` stubs.
+//! `Packet` / `PacketFlags` ergonomic wrappers used by [`Channel`] and
+//! [`super::super::codec`].
 //!
-//! Provides minimal `Packet` / `PacketFlags` types so those stubs continue
-//! to compile until they are rewritten against the modern
-//! `build_outgoing` / `parse_incoming` path.
+//! Originally introduced as a compatibility shim for the now-deleted
+//! `nub.rs` stubs; today they're the canonical handle types the channel
+//! TX/RX windows store. The body-encoding path still flows through
+//! [`super::build_outgoing`] / [`super::parse_incoming`].
+//!
+//! [`Channel`]: crate::channel::Channel
 
 use bytes::{Bytes, BytesMut};
 
@@ -60,7 +64,8 @@ impl PacketFlags {
     }
 }
 
-/// A simple packet handle used by the channel/nub stubs.
+/// A simple packet handle stored by [`crate::channel::Channel`] in its
+/// TX/RX windows and round-tripped through [`super::super::codec`].
 #[derive(Debug, Clone)]
 pub struct Packet {
     /// Flags byte.

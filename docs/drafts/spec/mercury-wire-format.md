@@ -84,9 +84,9 @@ This section distills the seven V5 finding docs that together canonize the Mercu
 
 ### 1.1 Packet anatomy
 
-![Mercury crate module architecture — lib.rs, packet/, bundle, codec, channel, nub, encryption, unpacker, unified](figures/mercury-01-module-architecture.svg)
+![Mercury crate module architecture — lib.rs, packet/, bundle, codec, channel, transport, encryption, unpacker, unified](figures/mercury-01-module-architecture.svg)
 
-*Figure 1: the Rust crate that mirrors the Mercury wire format — `nub.rs` owns the UDP socket and channel table, `codec.rs` runs encode/decode, `encryption.rs` applies the AES-256-CBC + HMAC-MD5 filter, and `packet/`, `bundle.rs`, and `channel/` carry the wire-format invariants from this chapter.*
+*Figure 1: the Rust crate that mirrors the Mercury wire format — `transport.rs` owns the send-side `UdpSocket` wrapper, `codec.rs` runs encode/decode, `encryption.rs` applies the AES-256-CBC + HMAC-MD5 filter, and `packet/`, `bundle.rs`, and `channel/` carry the wire-format invariants from this chapter. (The diagram art is awaiting a re-render to match the deletion of the orphan `nub.rs` registry; the per-session tick loop lives in `crates/services/src/base/tick_sync.rs` and the bridge contract — `TickActions` and the tick-driver ordering — now sits in `channel/mod.rs`.)*
 
 A Mercury packet is the contents of a single UDP datagram. The on-wire layout is three concatenated regions:
 

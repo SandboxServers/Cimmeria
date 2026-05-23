@@ -13,7 +13,6 @@ pub mod channel;
 pub mod codec;
 pub mod encryption;
 pub mod messages;
-pub mod nub;
 pub mod packet;
 pub mod transport;
 pub mod unified;
