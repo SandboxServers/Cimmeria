@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use super::super::inventory::core::send_full_inventory_update;
 use super::super::inventory::grant::normalize_item_ids;
@@ -31,7 +31,7 @@ pub async fn handle_paid_recharge_inventory_items(
     item_ids: Vec<i32>,
     vendor_template_id: i32,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -265,12 +265,19 @@ pub async fn handle_paid_recharge_inventory_items(
         return;
     }
 
-    send_cash_changed_to_client(entity_id, new_cash_total, socket, connected, entity_to_addr).await;
+    send_cash_changed_to_client(
+        entity_id,
+        new_cash_total,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
     let total_items = send_full_inventory_update(
         entity_id,
         player_id,
         pool,
-        socket,
+        transport,
         connected,
         entity_to_addr,
     )
@@ -284,7 +291,14 @@ pub async fn handle_paid_recharge_inventory_items(
             recharge_price: 0,
         })
         .collect();
-    send_store_update_to_client(entity_id, &store_updates, socket, connected, entity_to_addr).await;
+    send_store_update_to_client(
+        entity_id,
+        &store_updates,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 
     tracing::debug!(
         entity_id,

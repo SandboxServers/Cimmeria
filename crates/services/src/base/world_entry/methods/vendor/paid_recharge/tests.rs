@@ -16,6 +16,7 @@
 
 use super::*;
 use crate::test_support::require_db_or_skip;
+use crate::test_support::TestTransport;
 
 /// Sentinel base. Steps past the highest live-DB sentinel reserved
 /// elsewhere in the crate.
@@ -170,13 +171,11 @@ async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
 fn make_state(
     entity_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -184,7 +183,7 @@ fn make_state(
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected)
+    (transport, entity_to_addr, connected)
 }
 
 /// Happy path: a fully-depleted item (charges=0) of the synthetic
@@ -205,7 +204,7 @@ async fn paid_recharge_restores_charges_and_debits_balance() {
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
     let item = insert_inventory_row(&pool, player_id, SYNTH_RECHARGEABLE_TYPE_ID, 0, 0).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_1401);
+    let (transport, e2a, conn) = make_state(0x7000_1401);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_paid_recharge_inventory_items(
@@ -214,7 +213,7 @@ async fn paid_recharge_restores_charges_and_debits_balance() {
         vec![item],
         SEEDED_RECHARGE_VENDOR_TEMPLATE_ID,
         &db_pool,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -249,7 +248,7 @@ async fn paid_recharge_rolls_back_when_player_cannot_afford() {
     insert_account_and_player(&pool, account_id, player_id, starting_balance).await;
     let item = insert_inventory_row(&pool, player_id, SYNTH_RECHARGEABLE_TYPE_ID, 0, 0).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_1411);
+    let (transport, e2a, conn) = make_state(0x7000_1411);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_paid_recharge_inventory_items(
@@ -258,7 +257,7 @@ async fn paid_recharge_rolls_back_when_player_cannot_afford() {
         vec![item],
         SEEDED_RECHARGE_VENDOR_TEMPLATE_ID,
         &db_pool,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -295,7 +294,7 @@ async fn paid_recharge_no_op_when_vendor_has_no_recharge_list() {
     insert_account_and_player(&pool, account_id, player_id, starting_balance).await;
     let item = insert_inventory_row(&pool, player_id, SYNTH_RECHARGEABLE_TYPE_ID, 0, 0).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_1421);
+    let (transport, e2a, conn) = make_state(0x7000_1421);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // Sentinel vendor template id that doesn't exist in
@@ -308,7 +307,7 @@ async fn paid_recharge_no_op_when_vendor_has_no_recharge_list() {
         vec![item],
         MISSING_VENDOR_TEMPLATE_ID,
         &db_pool,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )

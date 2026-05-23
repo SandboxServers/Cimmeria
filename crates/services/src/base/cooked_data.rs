@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 
 use crate::mercury::{
     build_resource_fragment, build_version_info, FRAG_FIRST, FRAG_FIRST_AND_LAST, FRAG_LAST,
@@ -37,7 +37,7 @@ const MAX_CHUNK: usize = 1390;
 /// Response: onVersionInfo -- if we have data for this category, tell the client
 /// to invalidate and re-fetch; otherwise echo the client's version (cache OK).
 pub(crate) async fn handle_version_info_request(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     payload: &[u8],
@@ -116,7 +116,7 @@ pub(crate) async fn handle_version_info_request(
         &invalid_keys,
         active_eid,
     );
-    socket.send_to(&pkt, addr).await?;
+    transport.send_to(&pkt, addr).await?;
     // versionInfo response is one-shot state — register for retransmit.
     super::helpers::shadow_register_reliable_send(
         connected,
@@ -131,7 +131,7 @@ pub(crate) async fn handle_version_info_request(
     if !invalid_keys.is_empty() {
         if let Some(cache) = resource_cache {
             push_overridden_elements(
-                socket,
+                transport,
                 addr,
                 key,
                 category_id,
@@ -155,7 +155,7 @@ pub(crate) async fn handle_version_info_request(
 /// keep the client's writable runtime cache (`Cache.en-US/`) consistent
 /// with the server's in-memory overrides.
 async fn push_overridden_elements(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     category_id: u32,
@@ -213,7 +213,7 @@ async fn push_overridden_elements(
             let pkt = build_resource_fragment(
                 &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
             );
-            socket.send_to(&pkt, addr).await?;
+            transport.send_to(&pkt, addr).await?;
             super::helpers::shadow_register_reliable_send(
                 connected,
                 addr,
@@ -234,7 +234,7 @@ async fn push_overridden_elements(
 /// map — the client loads it from its local PAK.  Kept for future use.
 #[allow(dead_code)]
 pub(crate) async fn send_category_resources(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     category_id: u32,
@@ -284,7 +284,7 @@ pub(crate) async fn send_category_resources(
             let pkt = build_resource_fragment(
                 &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat_id, elem, chunk,
             );
-            socket.send_to(&pkt, addr).await?;
+            transport.send_to(&pkt, addr).await?;
             super::helpers::shadow_register_reliable_send(
                 connected,
                 addr,
@@ -307,7 +307,7 @@ pub(crate) async fn send_category_resources(
 /// Client payload: [categoryId: u32][key: u32]
 /// Response: fragment the XML data for the requested element.
 pub(crate) async fn handle_element_data_request(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     payload: &[u8],
@@ -401,7 +401,7 @@ pub(crate) async fn handle_element_data_request(
         let pkt = build_resource_fragment(
             &key, seq, &acks, data_id, i as u8, frag_flags, mt, cat, elem, chunk,
         );
-        socket.send_to(&pkt, addr).await?;
+        transport.send_to(&pkt, addr).await?;
         super::helpers::shadow_register_reliable_send(
             connected,
             addr,

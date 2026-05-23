@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -40,7 +40,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
     payload: &[u8],
     player_name: &Option<String>,
     addr: SocketAddr,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
@@ -150,7 +150,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 tracing::info!(%addr, "logOff: full exit — sending loggedOff");
                 let (acks, seq) = super::helpers::drain_acks_and_seq(connected, addr)?;
                 let pkt = crate::mercury::build_logged_off(&key, seq, &acks);
-                socket.send_to(&pkt, addr).await?;
+                transport.send_to(&pkt, addr).await?;
             } else {
                 // Return to character select: reset state and send RESET_ENTITIES + char list
                 tracing::info!(%addr, "logOff: returning to character select");
@@ -181,7 +181,7 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 // Send RESET_ENTITIES to tear down the world
                 let (acks, seq) = super::helpers::drain_acks_and_seq(connected, addr)?;
                 let pkt = crate::mercury::build_reset_entities(&key, seq, &acks);
-                socket.send_to(&pkt, addr).await?;
+                transport.send_to(&pkt, addr).await?;
 
                 // The client responds with ENABLE_ENTITIES, which triggers the
                 // char list flow (same as initial login). The char_list_sent flag

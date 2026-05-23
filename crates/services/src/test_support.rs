@@ -1,15 +1,29 @@
-//! Shared helpers for live-DB tests.
+//! Shared helpers for tests.
 //!
-//! Tests that need a real PostgreSQL connection call [`test_pool`] and
-//! self-skip when `DATABASE_URL` is unset. The unit-test suite stays
-//! green on a fresh checkout; only `DATABASE_URL=postgres://… cargo
-//! test` exercises the integration path.
+//! Two unrelated test seams live here:
 //!
-//! See `docs/architecture/integration-test-infra.md` for the rationale,
-//! local-setup steps, and per-test data-isolation patterns.
+//! - **Live-DB**: tests that need a real PostgreSQL connection call
+//!   [`test_pool`] and self-skip when `DATABASE_URL` is unset. The unit-test
+//!   suite stays green on a fresh checkout; only `DATABASE_URL=postgres://…
+//!   cargo test` exercises the integration path. See
+//!   `docs/architecture/integration-test-infra.md` for the rationale,
+//!   local-setup steps, and per-test data-isolation patterns.
+//!
+//! - **Transport fake**: [`TestTransport`] is the canonical UDP fake — a
+//!   recording [`cimmeria_mercury::transport::Transport`] impl that handler
+//!   unit tests pass as `&Arc<dyn Transport>` in place of a real socket, then
+//!   assert byte-exact, addr-correct fan-out on. This is the seam behind the
+//!   **fan-out byte test** type in `TESTING.md`. See
+//!   `docs/architecture/transport-trait.md`.
 
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+
+/// The canonical recording UDP fake — see the module doc-comment and
+/// `docs/architecture/transport-trait.md`. Re-exported here so handler unit
+/// tests can `use crate::test_support::TestTransport;` without reaching into
+/// the mercury crate path.
+pub(crate) use cimmeria_mercury::test_transport::TestTransport;
 
 /// Why a live-DB test couldn't run.
 ///

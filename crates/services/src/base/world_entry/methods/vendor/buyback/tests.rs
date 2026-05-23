@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::test_support::require_db_or_skip;
+use crate::test_support::TestTransport;
 
 /// Sentinel base for buyback tests. Distinct from prior live-DB
 /// sentinels (sell at +0x800, paid_repair at +0x700, ...).
@@ -117,13 +118,11 @@ async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
 fn make_state(
     entity_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -131,7 +130,7 @@ fn make_state(
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected)
+    (transport, entity_to_addr, connected)
 }
 
 /// Full-stack buyback clears the `flags` price on the moved row
@@ -156,7 +155,7 @@ async fn full_buyback_clears_flags_and_moves_to_main() {
     )
     .await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0901);
+    let (transport, e2a, conn) = make_state(0x7000_0901);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_buyback_vendor_items(
@@ -167,7 +166,7 @@ async fn full_buyback_clears_flags_and_moves_to_main() {
         vec![(item, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -215,7 +214,7 @@ async fn partial_buyback_preserves_price_on_remainder() {
     )
     .await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0902);
+    let (transport, e2a, conn) = make_state(0x7000_0902);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // Buy back 2 of 5.
@@ -227,7 +226,7 @@ async fn partial_buyback_preserves_price_on_remainder() {
         vec![(item, 2)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -318,7 +317,7 @@ async fn buyback_rejected_when_player_cannot_afford() {
     )
     .await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0903);
+    let (transport, e2a, conn) = make_state(0x7000_0903);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_buyback_vendor_items(
@@ -329,7 +328,7 @@ async fn buyback_rejected_when_player_cannot_afford() {
         vec![(item, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -380,7 +379,7 @@ async fn buyback_rejected_for_item_not_in_buyback_container() {
     )
     .await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0904);
+    let (transport, e2a, conn) = make_state(0x7000_0904);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_buyback_vendor_items(
@@ -391,7 +390,7 @@ async fn buyback_rejected_for_item_not_in_buyback_container() {
         vec![(item, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )

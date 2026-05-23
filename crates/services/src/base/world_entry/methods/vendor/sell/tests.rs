@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::test_support::require_db_or_skip;
+use crate::test_support::TestTransport;
 
 /// Sentinel base for sell-vendor tests. Distinct from prior live-DB
 /// sentinels (outbox 0x000 / grant_cash +0x100 / move +0x200 /
@@ -119,13 +120,11 @@ async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
 fn make_state(
     entity_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -133,7 +132,7 @@ fn make_state(
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected)
+    (transport, entity_to_addr, connected)
 }
 
 /// Happy path: a full-stack sell credits the player by `unit_price`
@@ -151,7 +150,7 @@ async fn full_stack_sell_credits_balance_and_moves_item_to_buyback() {
     insert_account_and_player(&pool, account_id, player_id, 100).await;
     let item = insert_item(&pool, player_id, SELLABLE_TYPE_ID, 1, 0, 1).await;
 
-    let (socket, e2a, conn) = make_state(entity_id as u32);
+    let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // vendor_entity_id=99 here is just a wire-side identifier; the
@@ -164,7 +163,7 @@ async fn full_stack_sell_credits_balance_and_moves_item_to_buyback() {
         vec![(item, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -221,7 +220,7 @@ async fn sell_rejected_for_item_not_in_vendor_sell_list() {
     .expect("pick unsellable_type");
     let item = insert_item(&pool, player_id, unsellable_type, 1, 0, 1).await;
 
-    let (socket, e2a, conn) = make_state(entity_id as u32);
+    let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_sell_vendor_items(
@@ -232,7 +231,7 @@ async fn sell_rejected_for_item_not_in_vendor_sell_list() {
         vec![(item, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -269,7 +268,7 @@ async fn sell_rejected_when_balance_would_overflow_i32() {
     insert_account_and_player(&pool, account_id, player_id, i32::MAX).await;
     let item = insert_item(&pool, player_id, SELLABLE_TYPE_ID, 1, 0, 1).await;
 
-    let (socket, e2a, conn) = make_state(entity_id as u32);
+    let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_sell_vendor_items(
@@ -280,7 +279,7 @@ async fn sell_rejected_when_balance_would_overflow_i32() {
         vec![(item, 1)],
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )

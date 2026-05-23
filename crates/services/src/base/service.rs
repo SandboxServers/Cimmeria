@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_common::{EntityId, ServerConfig};
 use cimmeria_entity::manager::EntityManager;
+use cimmeria_mercury::transport::{Transport, UdpTransport};
 
 use crate::auth::PendingLogin;
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
@@ -153,7 +154,11 @@ impl BaseService {
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
-        let socket_for_cell = Arc::clone(&socket);
+        // The cell→base message handler emits to clients via the send-side
+        // trait, so it gets a `UdpTransport` wrapping the recv socket. The
+        // recv loop below keeps the concrete socket for `recv_from`.
+        let transport_for_cell: Arc<dyn Transport> =
+            Arc::new(UdpTransport::new(Arc::clone(&socket)));
         let connected_for_cell = Arc::clone(&connected);
         let entity_to_addr_for_cell = Arc::clone(&entity_to_addr);
         let cell_tx_for_cell = cell_tx.clone();
@@ -189,7 +194,7 @@ impl BaseService {
                 while let Some(msg) = cell_rx.recv().await {
                     handle_cell_message(
                         msg,
-                        &socket_for_cell,
+                        &transport_for_cell,
                         &connected_for_cell,
                         &entity_to_addr_for_cell,
                         &cell_tx_for_cell,

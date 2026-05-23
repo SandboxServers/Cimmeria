@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
@@ -19,7 +19,7 @@ pub async fn handle_repair_inventory_item(
     item_id: i32,
     repair_ratio: f32,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -65,7 +65,7 @@ pub async fn handle_repair_inventory_item(
                 entity_id,
                 player_id,
                 pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -103,7 +103,7 @@ pub async fn handle_repair_inventory_items(
     item_ids: Vec<i32>,
     vendor_template_id: Option<i32>,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -114,7 +114,7 @@ pub async fn handle_repair_inventory_items(
             item_ids,
             vendor_template_id,
             db_pool,
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )
@@ -162,7 +162,7 @@ pub async fn handle_repair_inventory_items(
                 entity_id,
                 player_id,
                 pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -195,6 +195,7 @@ pub async fn handle_repair_inventory_items(
 mod tests {
     use super::*;
     use crate::test_support::require_db_or_skip;
+    use crate::test_support::TestTransport;
 
     /// Sentinel base for vendor repair tests. Distinct from grant_cash (+0x100),
     /// move_inventory (+0x200), grant_item (+0x300), missions (+0x400),
@@ -289,13 +290,11 @@ mod tests {
     fn make_state(
         entity_id: u32,
     ) -> (
-        Arc<UdpSocket>,
+        Arc<dyn Transport>,
         Arc<Mutex<HashMap<u32, SocketAddr>>>,
         Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     ) {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
         let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
         let entity_to_addr = Arc::new(Mutex::new({
             let mut m = HashMap::new();
@@ -303,7 +302,7 @@ mod tests {
             m
         }));
         let connected = Arc::new(Mutex::new(HashMap::new()));
-        (socket, entity_to_addr, connected)
+        (transport, entity_to_addr, connected)
     }
 
     /// Single-item repair adds repair_points = round(ratio * 100) to durability.
@@ -318,7 +317,7 @@ mod tests {
         let type_id = pick_main_bag_type_id(&pool).await;
         let item = insert_item_with_durability(&pool, player_id, type_id, 0, 50).await;
 
-        let (socket, e2a, conn) = make_state(0x7000_0601);
+        let (transport, e2a, conn) = make_state(0x7000_0601);
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_repair_inventory_item(
@@ -327,7 +326,7 @@ mod tests {
             item,
             0.30,
             &db_pool,
-            &socket,
+            &transport,
             &conn,
             &e2a,
         )
@@ -355,7 +354,7 @@ mod tests {
         let type_id = pick_main_bag_type_id(&pool).await;
         let item = insert_item_with_durability(&pool, player_id, type_id, 0, 95).await;
 
-        let (socket, e2a, conn) = make_state(0x7000_0602);
+        let (transport, e2a, conn) = make_state(0x7000_0602);
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_repair_inventory_item(
@@ -364,7 +363,7 @@ mod tests {
             item,
             1.0,
             &db_pool,
-            &socket,
+            &transport,
             &conn,
             &e2a,
         )
@@ -394,7 +393,7 @@ mod tests {
         let damaged = insert_item_with_durability(&pool, player_id, type_id, 0, 30).await;
         let full = insert_item_with_durability(&pool, player_id, type_id, 1, 100).await;
 
-        let (socket, e2a, conn) = make_state(0x7000_0603);
+        let (transport, e2a, conn) = make_state(0x7000_0603);
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_repair_inventory_items(
@@ -403,7 +402,7 @@ mod tests {
             vec![damaged, full],
             None, // free repair
             &db_pool,
-            &socket,
+            &transport,
             &conn,
             &e2a,
         )

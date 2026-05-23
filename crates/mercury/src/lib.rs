@@ -14,10 +14,16 @@ pub mod channel_bundle;
 pub mod codec;
 pub mod encryption;
 pub mod messages;
-pub mod nub;
 pub mod packet;
+pub mod transport;
 pub mod unified;
 pub mod unpacker;
+
+/// Recording `Transport` fake for byte-exact fan-out assertions. Available to
+/// mercury's own tests and to consumer crates that enable the `test-support`
+/// feature; excluded from production builds. See [`test_transport`].
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_transport;
 
 /// Mercury protocol constants — these MUST match the C++ implementation exactly.
 ///

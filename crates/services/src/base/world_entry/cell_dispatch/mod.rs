@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
@@ -46,7 +46,7 @@ mod tests;
 /// Handle a message from CellService -- dispatches AoI packets to witness clients.
 pub(crate) async fn handle_cell_message(
     msg: CellToBaseMsg,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
@@ -117,7 +117,7 @@ pub(crate) async fn handle_cell_message(
                 direction,
                 level,
                 npc_data,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -146,7 +146,7 @@ pub(crate) async fn handle_cell_message(
                     return;
                 }
             }
-            aoi::left_aoi(witness_id, entity_id, socket, connected, entity_to_addr).await;
+            aoi::left_aoi(witness_id, entity_id, transport, connected, entity_to_addr).await;
         }
         CellToBaseMsg::EntityMoved {
             witness_id,
@@ -185,7 +185,7 @@ pub(crate) async fn handle_cell_message(
                 position,
                 direction,
                 velocity,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -222,7 +222,7 @@ pub(crate) async fn handle_cell_message(
                 entity_id,
                 method_index,
                 args,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -241,7 +241,7 @@ pub(crate) async fn handle_cell_message(
                 position,
                 rotation,
                 destination_ring_id,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
                 cell_tx,
@@ -263,7 +263,7 @@ pub(crate) async fn handle_cell_message(
                 space_id,
                 position,
                 rotation,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -281,7 +281,7 @@ pub(crate) async fn handle_cell_message(
                 entity_id,
                 player_id,
                 op,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
                 db_pool,
@@ -321,7 +321,7 @@ pub(crate) async fn handle_cell_message(
                 entity_id,
                 xp_amount,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -342,7 +342,7 @@ pub(crate) async fn handle_cell_message(
                 count,
                 db_pool,
                 cell_tx,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -358,7 +358,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 amount,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -375,7 +375,7 @@ pub(crate) async fn handle_cell_message(
                 entity_id,
                 method_index,
                 args,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -385,7 +385,8 @@ pub(crate) async fn handle_cell_message(
             witness_id,
             entity_id,
         } => {
-            aoi::entity_invisible(witness_id, entity_id, socket, connected, entity_to_addr).await;
+            aoi::entity_invisible(witness_id, entity_id, transport, connected, entity_to_addr)
+                .await;
         }
         CellToBaseMsg::TeleportPlayer {
             entity_id,
@@ -398,7 +399,7 @@ pub(crate) async fn handle_cell_message(
                 space_id,
                 position,
                 prev_pos,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
                 db_pool,
@@ -418,7 +419,7 @@ pub(crate) async fn handle_cell_message(
                 game_name,
                 difficulty,
                 on_victory_chains,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
                 minigame_registry,
@@ -436,7 +437,7 @@ pub(crate) async fn handle_cell_message(
                 entity_id,
                 result_code,
                 on_victory_chains,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
                 cell_tx,
@@ -455,7 +456,7 @@ pub(crate) async fn handle_cell_message(
                 vendor_entity_id,
                 vendor_template_id,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -476,7 +477,7 @@ pub(crate) async fn handle_cell_message(
                 items,
                 db_pool,
                 cell_tx,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -497,7 +498,7 @@ pub(crate) async fn handle_cell_message(
                 items,
                 db_pool,
                 cell_tx,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -518,7 +519,7 @@ pub(crate) async fn handle_cell_message(
                 items,
                 db_pool,
                 cell_tx,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -533,7 +534,7 @@ pub(crate) async fn handle_cell_message(
                     entity_id,
                     player_id,
                     pool,
-                    socket,
+                    transport,
                     connected,
                     entity_to_addr,
                 )
@@ -557,7 +558,7 @@ pub(crate) async fn handle_cell_message(
                 quantity,
                 db_pool,
                 cell_tx,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -576,7 +577,7 @@ pub(crate) async fn handle_cell_message(
                 quantity,
                 db_pool,
                 cell_tx,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -595,7 +596,7 @@ pub(crate) async fn handle_cell_message(
                 target_id,
                 db_pool,
                 cell_tx,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -614,7 +615,7 @@ pub(crate) async fn handle_cell_message(
                 count,
                 db_pool,
                 cell_tx,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -632,7 +633,7 @@ pub(crate) async fn handle_cell_message(
                 item_id,
                 repair_ratio,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -653,7 +654,7 @@ pub(crate) async fn handle_cell_message(
                 item_ids,
                 vendor_template_id,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -674,7 +675,7 @@ pub(crate) async fn handle_cell_message(
                 item_ids,
                 vendor_template_id,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -690,7 +691,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 slot_id,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )
@@ -706,7 +707,7 @@ pub(crate) async fn handle_cell_message(
                 player_id,
                 holstered,
                 db_pool,
-                socket,
+                transport,
                 connected,
                 entity_to_addr,
             )

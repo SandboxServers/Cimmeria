@@ -113,6 +113,28 @@ This guide is the playbook for writing tests that survive review and catch real 
 
 The `src/` (C++) and `python/` (game scripts) trees are reference-only for active development. They have their own (smaller) test surface that is not part of the CI gate. **Don't write new tests there** unless you are specifically validating the reference behavior we're trying to match in Rust; in that case, document why in the test header and link the corresponding Rust test.
 
+### 8. Fan-out byte tests
+
+**Where**: The handler's own module/`tests.rs`, using `crate::test_support::TestTransport` (the recording `cimmeria_mercury::transport::Transport` fake).
+
+**For**: Asserting the exact ordered set of `(addr, bytes)` pairs a BaseApp handler emits — "when handler H runs with state S, exactly these N packets, in this order, with these bytes, hit the transport." This sits between a wire-format test (one serializer's bytes in isolation) and a live-DB guard (SQL state): it pins the **dispatch + routing** layer that decides *which* serializer output goes to *which* addr. Enabled by the `Transport` trait — see [docs/architecture/transport-trait.md](docs/architecture/transport-trait.md).
+
+**The failure modes it catches** (uninspectable before the trait landed):
+
+- **Witness-list amplification** — handler sends to N±1 witnesses (`assert_eq!(transport.len(), N)` / `send_count_to(addr)`).
+- **Wrong-recipient routes** — owner-only packet leaks to a witness, or vice versa (`assert_eq!(sent[i].0, expected_addr)`).
+- **Stale-addr sends / no-send invariants** — early-return paths must not emit (`assert!(transport.is_empty())`), replacing the old `receiver`-socket `try_recv_from() == WouldBlock` ceremony.
+
+**Patterns to follow:**
+
+- Build a typed `Arc<TestTransport>` for inspection; clone it to an `Arc<dyn Transport>` for the handler call (the inspection methods aren't on the trait). This "two-handle" pattern is in `teleport.rs` / `character.rs`.
+- Assert **count first, then per-recipient addr, then per-recipient bytes** — each catches a distinct bug class; don't stop at count.
+- Build the expected bytes from the same serializer the handler uses, then assert byte-for-byte. A length-only assertion is a tautology (same lesson as wire-format tests).
+- If the handler reads `local_addr()`, construct with `TestTransport::with_local(addr)` — the default is a synthetic `127.0.0.1:0` placeholder.
+- `drain()` consumes the records (a second `drain()` is empty); `clear()` resets without returning; `filter_to(addr)` / `send_count_to(addr)` scope to one recipient.
+
+**Examples**: `crates/services/src/base/world_entry/teleport.rs` (forced-position snap to the player addr, zero witness fan-out), `reanchor_player.rs` (owner-only burst), `login.rs` (phase 1→4 ordered sequence), `crates/services/src/base/world_entry/cell_dispatch/aoi.rs` (`left_aoi_fans_out_one_packet_per_witness_to_each_addr` — witness fan-out cardinality + per-addr bytes).
+
 ---
 
 ## Choosing a test type

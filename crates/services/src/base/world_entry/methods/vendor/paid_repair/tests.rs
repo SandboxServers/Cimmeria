@@ -7,6 +7,7 @@
 
 use super::*;
 use crate::test_support::require_db_or_skip;
+use crate::test_support::TestTransport;
 
 /// Sentinel base for paid_repair-vendor tests. Distinct from prior
 /// live-DB sentinels (outbox 0x000 / grant_cash +0x100 /
@@ -122,13 +123,11 @@ async fn naquadah_of(pool: &PgPool, player_id: i32) -> i32 {
 fn make_state(
     entity_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -136,7 +135,7 @@ fn make_state(
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected)
+    (transport, entity_to_addr, connected)
 }
 
 /// Happy path: a damaged repairable item gets restored to durability=100
@@ -155,7 +154,7 @@ async fn paid_repair_restores_durability_and_debits_balance() {
     // durability=50 -> cost = (1000 * 50) / 100 = 500.
     let item = insert_item_with_durability(&pool, player_id, REPAIRABLE_TYPE_ID, 0, 50).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0701);
+    let (transport, e2a, conn) = make_state(0x7000_0701);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_paid_repair_inventory_items(
@@ -164,7 +163,7 @@ async fn paid_repair_restores_durability_and_debits_balance() {
         vec![item],
         SEEDED_REPAIR_VENDOR_TEMPLATE_ID,
         &db_pool,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -199,7 +198,7 @@ async fn paid_repair_charges_at_least_one_for_near_full_items() {
     insert_account_and_player(&pool, account_id, player_id, 5_000).await;
     let item = insert_item_with_durability(&pool, player_id, REPAIRABLE_TYPE_ID, 0, 99).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0711);
+    let (transport, e2a, conn) = make_state(0x7000_0711);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_paid_repair_inventory_items(
@@ -208,7 +207,7 @@ async fn paid_repair_charges_at_least_one_for_near_full_items() {
         vec![item],
         SEEDED_REPAIR_VENDOR_TEMPLATE_ID,
         &db_pool,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -247,7 +246,7 @@ async fn paid_repair_rolls_back_when_player_cannot_afford() {
     insert_account_and_player(&pool, account_id, player_id, starting_balance).await;
     let item = insert_item_with_durability(&pool, player_id, REPAIRABLE_TYPE_ID, 0, 50).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0721);
+    let (transport, e2a, conn) = make_state(0x7000_0721);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_paid_repair_inventory_items(
@@ -256,7 +255,7 @@ async fn paid_repair_rolls_back_when_player_cannot_afford() {
         vec![item],
         SEEDED_REPAIR_VENDOR_TEMPLATE_ID,
         &db_pool,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -291,7 +290,7 @@ async fn paid_repair_rejected_for_item_not_in_repair_list() {
     // design 5228 is in the seeded BUY list but NOT in the repair list.
     let item = insert_item_with_durability(&pool, player_id, NOT_REPAIRABLE_TYPE_ID, 0, 50).await;
 
-    let (socket, e2a, conn) = make_state(0x7000_0731);
+    let (transport, e2a, conn) = make_state(0x7000_0731);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_paid_repair_inventory_items(
@@ -300,7 +299,7 @@ async fn paid_repair_rejected_for_item_not_in_repair_list() {
         vec![item],
         SEEDED_REPAIR_VENDOR_TEMPLATE_ID,
         &db_pool,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )

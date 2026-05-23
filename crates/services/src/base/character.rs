@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use crate::mercury::{
     build_char_create_failed, build_character_visuals, build_on_character_list, CharacterInfo,
@@ -83,7 +83,7 @@ pub(crate) async fn query_character_list(
 
 /// Send `onCharacterCreateFailed`.
 pub(crate) async fn send_char_create_failed(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -92,13 +92,13 @@ pub(crate) async fn send_char_create_failed(
     let account_eid = get_account_entity_id(connected, addr)?;
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
     let pkt = build_char_create_failed(&key, seq, &acks, error_code, account_eid);
-    socket.send_to(&pkt, addr).await?;
+    transport.send_to(&pkt, addr).await?;
     Ok(())
 }
 
 /// Handle `deleteCharacter` (0xC5) -- delete a character and send updated list.
 pub(crate) async fn handle_delete_character(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     account_id: u32,
@@ -139,14 +139,14 @@ pub(crate) async fn handle_delete_character(
     let (acks, seq) = drain_acks_and_seq(connected, addr)?;
     let pkt = build_on_character_list(&key, seq, &acks, &characters, account_eid);
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list after delete");
-    socket.send_to(&pkt, addr).await?;
+    transport.send_to(&pkt, addr).await?;
 
     Ok(())
 }
 
 /// Handle `requestCharacterVisuals` (0xC6).
 pub(crate) async fn handle_request_character_visuals(
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     player_id: i32,
@@ -248,7 +248,7 @@ pub(crate) async fn handle_request_character_visuals(
                 account_eid,
             );
             tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT onCharacterVisuals");
-            socket.send_to(&pkt, addr).await?;
+            transport.send_to(&pkt, addr).await?;
         }
         Ok(None) => {
             tracing::warn!(%addr, player_id, "requestCharacterVisuals: player not found");
@@ -410,22 +410,23 @@ mod query_character_list_tests {
 #[cfg(test)]
 mod delete_character_tests {
     use super::*;
+    use crate::test_support::TestTransport;
     use std::collections::HashMap;
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
-    use tokio::net::UdpSocket;
 
     #[tokio::test]
     async fn delete_character_no_db_short_circuits() {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        // Typed handle for inspection; dyn handle for the handler call.
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
         let addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let key = [0u8; 32];
 
-        let result = handle_delete_character(&socket, addr, key, 1, 1, &connected, &None).await;
+        let result =
+            handle_delete_character(&dyn_transport, addr, key, 1, 1, &connected, &None).await;
         assert!(
             result.is_ok(),
             "no-DB mode must short-circuit without error"
@@ -434,14 +435,9 @@ mod delete_character_tests {
         // Short-circuit must be silent. A regression that returned Ok
         // after sending an error packet on the wire would still pass
         // the is_ok() assertion above; pin the no-output invariant too.
-        let mut buf = [0u8; 64];
-        let recv = socket.try_recv_from(&mut buf);
         assert!(
-            matches!(
-                recv,
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock,
-            ),
-            "no-DB short-circuit must not send any UDP packet, got {recv:?}",
+            transport.is_empty(),
+            "no-DB short-circuit must not send any UDP packet",
         );
     }
 }

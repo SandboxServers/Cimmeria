@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::test_support::require_db_or_skip;
+use crate::test_support::TestTransport;
 
 /// Sentinel base for live-DB move-inventory tests. Stays well below
 /// i32::MAX (sgw_player.player_id is `integer`). Per-test offsets
@@ -135,15 +136,13 @@ async fn slot_of(pool: &PgPool, player_id: i32, item_id: i32) -> Option<(i32, i3
 fn make_state(
     entity_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
-    // bind synchronously via std then wrap — avoids needing tokio at the
-    // helper boundary (caller is already in #[tokio::test]).
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    // Recording transport fake — no socket binding; tests assert on the
+    // recorded fan-out rather than reading from a real wire.
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -151,7 +150,7 @@ fn make_state(
         m
     }));
     let connected = Arc::new(Mutex::new(HashMap::new()));
-    (socket, entity_to_addr, connected)
+    (transport, entity_to_addr, connected)
 }
 
 #[tokio::test]
@@ -166,11 +165,11 @@ async fn simple_move_relocates_full_stack_to_empty_slot() {
     let item_a = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
     let item_b = insert_item(&pool, player_id, types[1], 1, 1, 1).await;
 
-    let (socket, e2a, conn) = make_state(9_999_010);
+    let (transport, e2a, conn) = make_state(9_999_010);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
-        9_999_010, player_id, item_a, 1, 5, 1, &db_pool, &None, &socket, &conn, &e2a,
+        9_999_010, player_id, item_a, 1, 5, 1, &db_pool, &None, &transport, &conn, &e2a,
     )
     .await;
 
@@ -203,12 +202,12 @@ async fn swap_exchanges_two_items_full_stacks() {
     let item_a = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
     let item_b = insert_item(&pool, player_id, types[1], 1, 7, 1).await;
 
-    let (socket, e2a, conn) = make_state(9_999_011);
+    let (transport, e2a, conn) = make_state(9_999_011);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // Move A from slot 0 → slot 7 (occupied by B). Both should exchange.
     handle_move_inventory_item(
-        9_999_011, player_id, item_a, 1, 7, 1, &db_pool, &None, &socket, &conn, &e2a,
+        9_999_011, player_id, item_a, 1, 7, 1, &db_pool, &None, &transport, &conn, &e2a,
     )
     .await;
 
@@ -235,12 +234,12 @@ async fn split_rejected_when_target_occupied() {
     let item_a = insert_item(&pool, player_id, types[0], 1, 0, 5).await; // stack of 5
     let item_b = insert_item(&pool, player_id, types[1], 1, 3, 1).await;
 
-    let (socket, e2a, conn) = make_state(9_999_012);
+    let (transport, e2a, conn) = make_state(9_999_012);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // Try to split 2 of A into slot 3 (occupied by B). Should reject.
     handle_move_inventory_item(
-        9_999_012, player_id, item_a, 1, 3, 2, &db_pool, &None, &socket, &conn, &e2a,
+        9_999_012, player_id, item_a, 1, 3, 2, &db_pool, &None, &transport, &conn, &e2a,
     )
     .await;
 
@@ -282,11 +281,11 @@ async fn split_into_empty_slot_creates_new_row_and_decrements_source() {
     let types = pick_main_bag_type_ids(&pool, 1).await;
     let item_a = insert_item(&pool, player_id, types[0], 1, 0, 5).await;
 
-    let (socket, e2a, conn) = make_state(9_999_013);
+    let (transport, e2a, conn) = make_state(9_999_013);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
-        9_999_013, player_id, item_a, 1, 8, 2, &db_pool, &None, &socket, &conn, &e2a,
+        9_999_013, player_id, item_a, 1, 8, 2, &db_pool, &None, &transport, &conn, &e2a,
     )
     .await;
 
@@ -326,7 +325,7 @@ async fn source_item_not_found_makes_no_changes() {
     let bystander = insert_item(&pool, player_id, types[0], 1, 4, 1).await;
     let nonexistent_item_id = unused_item_id(&pool).await;
 
-    let (socket, e2a, conn) = make_state(9_999_014);
+    let (transport, e2a, conn) = make_state(9_999_014);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
@@ -338,7 +337,7 @@ async fn source_item_not_found_makes_no_changes() {
         1,
         &db_pool,
         &None,
-        &socket,
+        &transport,
         &conn,
         &e2a,
     )
@@ -397,14 +396,12 @@ fn make_state_with_connected(
     entity_id: u32,
     account_id: u32,
 ) -> (
-    Arc<UdpSocket>,
+    Arc<dyn Transport>,
     Arc<Mutex<HashMap<u32, SocketAddr>>>,
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     SocketAddr,
 ) {
-    let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-    std_sock.set_nonblocking(true).unwrap();
-    let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let fake_addr: SocketAddr = "127.0.0.1:65534".parse().unwrap();
     let entity_to_addr = Arc::new(Mutex::new({
         let mut m = HashMap::new();
@@ -418,7 +415,7 @@ fn make_state_with_connected(
         m.insert(fake_addr, s);
         m
     }));
-    (socket, entity_to_addr, connected, fake_addr)
+    (transport, entity_to_addr, connected, fake_addr)
 }
 
 /// Regression for the equip-visual gap: dragging armor from a bag slot
@@ -443,7 +440,7 @@ async fn move_into_equipment_slot_refreshes_appearance() {
     let helmet = insert_item(&pool, player_id, head_type, 1, 0, 1).await;
 
     let entity_id = 9_999_015;
-    let (socket, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
+    let (transport, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     // Sanity: cache starts empty so the post-move assertion is meaningful.
@@ -458,7 +455,7 @@ async fn move_into_equipment_slot_refreshes_appearance() {
     );
 
     handle_move_inventory_item(
-        entity_id, player_id, helmet, 4, 0, 1, &db_pool, &None, &socket, &conn, &e2a,
+        entity_id, player_id, helmet, 4, 0, 1, &db_pool, &None, &transport, &conn, &e2a,
     )
     .await;
 
@@ -497,11 +494,11 @@ async fn move_out_of_equipment_slot_refreshes_appearance() {
     let helmet = insert_item(&pool, player_id, head_type, 4, 0, 1).await;
 
     let entity_id = 9_999_016;
-    let (socket, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
+    let (transport, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
-        entity_id, player_id, helmet, 1, 5, 1, &db_pool, &None, &socket, &conn, &e2a,
+        entity_id, player_id, helmet, 1, 5, 1, &db_pool, &None, &transport, &conn, &e2a,
     )
     .await;
 
@@ -548,11 +545,11 @@ async fn negative_quantity_is_whole_stack_sentinel() {
     let item = insert_item(&pool, player_id, types[0], 1, 0, 5).await;
 
     let entity_id = 9_999_020;
-    let (socket, e2a, conn) = make_state(entity_id);
+    let (transport, e2a, conn) = make_state(entity_id);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
-        entity_id, player_id, item, 1, 7, -1, &db_pool, &None, &socket, &conn, &e2a,
+        entity_id, player_id, item, 1, 7, -1, &db_pool, &None, &transport, &conn, &e2a,
     )
     .await;
 
@@ -579,11 +576,11 @@ async fn bag_to_bag_move_does_not_refresh_appearance() {
     let item = insert_item(&pool, player_id, types[0], 1, 0, 1).await;
 
     let entity_id = 9_999_017;
-    let (socket, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
+    let (transport, e2a, conn, addr) = make_state_with_connected(entity_id, account_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
 
     handle_move_inventory_item(
-        entity_id, player_id, item, 1, 10, 1, &db_pool, &None, &socket, &conn, &e2a,
+        entity_id, player_id, item, 1, 10, 1, &db_pool, &None, &transport, &conn, &e2a,
     )
     .await;
 

@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use super::super::player_load::core::query_player_load_data;
 use crate::base::{helpers, world_entry_appearance, ConnectedClientState};
@@ -37,7 +37,7 @@ pub async fn refresh_player_appearance(
     entity_id: u32,
     player_id: i32,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -48,7 +48,7 @@ pub async fn refresh_player_appearance(
                 tracing::debug!(
                     entity_id,
                     player_id,
-                    "refresh_player_appearance: entity has no socket addr (disconnected?), skipping"
+                    "refresh_player_appearance: entity has no transport addr (disconnected?), skipping"
                 );
                 return;
             }
@@ -95,7 +95,7 @@ pub async fn refresh_player_appearance(
     }
 
     helpers::send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -116,6 +116,7 @@ pub async fn refresh_player_appearance(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::TestTransport;
     use cimmeria_mercury::encryption::MercuryEncryption;
     use std::sync::atomic::{AtomicBool, AtomicU32};
     use std::time::Instant;
@@ -160,8 +161,8 @@ mod tests {
         }
     }
 
-    async fn make_socket() -> Arc<UdpSocket> {
-        Arc::new(UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP"))
+    fn make_transport() -> Arc<dyn Transport> {
+        Arc::new(TestTransport::new())
     }
 
     /// Regression for the "F1-F4 changes the active slot but the player
@@ -175,7 +176,7 @@ mod tests {
     /// that mode, which is enough to exercise the cache-set path.
     #[tokio::test]
     async fn refresh_player_appearance_populates_cached_args() {
-        let socket = make_socket().await;
+        let transport = make_transport();
         let addr: SocketAddr = "127.0.0.1:55700".parse().unwrap();
 
         let entity_to_addr = Arc::new(Mutex::new({
@@ -199,7 +200,7 @@ mod tests {
             );
         }
 
-        refresh_player_appearance(42, 100, &None, &socket, &connected, &entity_to_addr).await;
+        refresh_player_appearance(42, 100, &None, &transport, &connected, &entity_to_addr).await;
 
         let clients = connected.lock().unwrap();
         let state = clients.get(&addr).expect("connected state must exist");
@@ -218,14 +219,14 @@ mod tests {
     /// is already torn down by the time the base processes it.
     #[tokio::test]
     async fn refresh_player_appearance_no_addr_is_noop() {
-        let socket = make_socket().await;
+        let transport = make_transport();
         let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
         // Should not panic; should not insert anything into `connected`.
-        refresh_player_appearance(42, 100, &None, &socket, &connected, &entity_to_addr).await;
+        refresh_player_appearance(42, 100, &None, &transport, &connected, &entity_to_addr).await;
 
         assert!(
             connected.lock().unwrap().is_empty(),

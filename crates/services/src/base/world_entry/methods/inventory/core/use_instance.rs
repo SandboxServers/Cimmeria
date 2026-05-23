@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use super::super::move_::handle_move_inventory_item;
@@ -62,7 +62,7 @@ pub async fn handle_use_inventory_item(
     target_id: i32,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -177,7 +177,7 @@ pub async fn handle_use_inventory_item(
             1, // quantity — weapons are stack=1
             db_pool,
             cell_tx,
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )

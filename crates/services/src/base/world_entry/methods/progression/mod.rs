@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use cimmeria_game::player::{MAX_LEVEL, TRAINING_POINTS_PER_LEVEL};
 
@@ -35,7 +35,7 @@ pub async fn handle_grant_xp(
     entity_id: u32,
     xp_amount: u64,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -176,7 +176,7 @@ pub async fn handle_grant_xp(
     );
 
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -197,7 +197,7 @@ pub async fn handle_grant_xp(
 
     for &lvl in &levels_gained {
         send_to_witness_reliable(
-            socket,
+            transport,
             connected,
             entity_to_addr,
             entity_id,
@@ -220,7 +220,7 @@ pub async fn handle_grant_xp(
             LEVEL_XP[lvl as usize] as i32
         };
         send_to_witness_reliable(
-            socket,
+            transport,
             connected,
             entity_to_addr,
             entity_id,
@@ -240,7 +240,7 @@ pub async fn handle_grant_xp(
 
     if !levels_gained.is_empty() {
         send_to_witness_reliable(
-            socket,
+            transport,
             connected,
             entity_to_addr,
             entity_id,
@@ -261,7 +261,7 @@ pub async fn handle_grant_xp(
         tp_args.extend_from_slice(&GENERICPROPERTY_TRAINING_POINTS.to_le_bytes());
         tp_args.extend_from_slice(&(training_points as i32).to_le_bytes());
         send_to_witness_reliable(
-            socket,
+            transport,
             connected,
             entity_to_addr,
             entity_id,
@@ -286,7 +286,7 @@ pub async fn handle_grant_cash(
     player_id: i32,
     amount: i32,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -337,7 +337,7 @@ pub async fn handle_grant_cash(
         tracing::info!(entity_id, amount, total, "GrantCash: updated naquadah");
 
         send_to_witness_reliable(
-            socket,
+            transport,
             connected,
             entity_to_addr,
             entity_id,

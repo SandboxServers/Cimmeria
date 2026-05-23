@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -58,7 +58,7 @@ pub(crate) fn tick_sync_packet(
 ///
 /// [`Channel`]: cimmeria_mercury::channel::Channel
 pub(crate) async fn run_tick_loop(
-    socket: Arc<UdpSocket>,
+    transport: Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
     next_seq_unreliable: Arc<AtomicU32>,
@@ -123,7 +123,7 @@ pub(crate) async fn run_tick_loop(
         // reliable stream stays contiguous (client's `inSeqAt` only tracks
         // reliable arrivals), no TX window pressure.
         let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks);
-        if let Err(e) = socket.send_to(&pkt, addr).await {
+        if let Err(e) = transport.send_to(&pkt, addr).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
             break;
         }
@@ -144,7 +144,7 @@ pub(crate) async fn run_tick_loop(
                 batch_total = retransmits.len(),
                 "Channel retransmit: RTO fired before ACK"
             );
-            if let Err(e) = socket.send_to(raw, addr).await {
+            if let Err(e) = transport.send_to(raw, addr).await {
                 tracing::debug!(%addr, "Retransmit send_to failed: {e}");
                 break;
             }

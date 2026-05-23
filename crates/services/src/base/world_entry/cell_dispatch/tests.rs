@@ -1,6 +1,7 @@
 //! Tests for the `handle_cell_message` dispatch.
 
 use super::*;
+use crate::test_support::TestTransport;
 
 fn empty_maps() -> (
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -14,7 +15,7 @@ fn empty_maps() -> (
 
 #[tokio::test]
 async fn minigame_result_forwards_to_cell_service() {
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let (connected, entity_to_addr) = empty_maps();
     let (cell_tx, mut cell_rx) = mpsc::channel(1);
 
@@ -24,7 +25,7 @@ async fn minigame_result_forwards_to_cell_service() {
             result_code: 2,
             on_victory_chains: vec![100, 200],
         },
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &Some(cell_tx),
@@ -73,7 +74,7 @@ async fn flush_deferred_aoi_drains_buffer_and_dispatches_to_aoi_handlers() {
     use crate::test_support::test_default_connected_client_state;
     use std::sync::atomic::Ordering;
 
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let witness_addr: SocketAddr = "127.0.0.1:54321".parse().unwrap();
     let witness_id: u32 = 100;
 
@@ -111,7 +112,7 @@ async fn flush_deferred_aoi_drains_buffer_and_dispatches_to_aoi_handlers() {
     super::aoi::flush_deferred_aoi(
         witness_id,
         witness_addr,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
     )
@@ -145,7 +146,7 @@ async fn flush_deferred_aoi_is_noop_on_empty_buffer() {
     use crate::test_support::test_default_connected_client_state;
     use std::sync::atomic::Ordering;
 
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let witness_addr: SocketAddr = "127.0.0.1:54322".parse().unwrap();
     let witness_id: u32 = 101;
 
@@ -156,7 +157,7 @@ async fn flush_deferred_aoi_is_noop_on_empty_buffer() {
     super::aoi::flush_deferred_aoi(
         witness_id,
         witness_addr,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
     )
@@ -174,7 +175,7 @@ async fn flush_deferred_aoi_is_noop_on_empty_buffer() {
 
 #[tokio::test]
 async fn invalid_bandolier_ammo_update_drops_before_side_effects() {
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let (connected, entity_to_addr) = empty_maps();
     let (cell_tx, mut cell_rx) = mpsc::channel(1);
 
@@ -186,7 +187,7 @@ async fn invalid_bandolier_ammo_update_drops_before_side_effects() {
             current_ammo: 17,
             cur_ammo_type: 1,
         },
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
         &Some(cell_tx),
@@ -230,7 +231,7 @@ async fn flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget() {
     use crate::test_support::test_default_connected_client_state;
     use std::sync::atomic::Ordering;
 
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let witness_addr: SocketAddr = "127.0.0.1:54323".parse().unwrap();
     let witness_id: u32 = 200;
 
@@ -255,7 +256,7 @@ async fn flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget() {
     super::aoi::flush_deferred_aoi(
         witness_id,
         witness_addr,
-        &socket,
+        &transport,
         &connected,
         &entity_to_addr,
     )

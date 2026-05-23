@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 
 use cimmeria_mercury::channel_bundle::ChannelBundle;
 
@@ -67,7 +67,7 @@ use super::super::super::ConnectedClientState;
 pub(crate) async fn flush_deferred_aoi(
     witness_id: u32,
     addr: SocketAddr,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -134,7 +134,7 @@ pub(crate) async fn flush_deferred_aoi(
             phase1_packets = phase1.estimated_packet_count(),
             "AoI flush: phase-1 bundle (CREATE_ENTITY + UPDATE_AVATAR per NPC)"
         );
-        send_bundle_to_witness_reliable(socket, connected, entity_to_addr, witness_id, phase1)
+        send_bundle_to_witness_reliable(transport, connected, entity_to_addr, witness_id, phase1)
             .await;
     }
     if !phase2.is_empty() {
@@ -145,19 +145,19 @@ pub(crate) async fn flush_deferred_aoi(
             phase2_packets = phase2.estimated_packet_count(),
             "AoI flush: phase-2 bundle (createOnClient() cascade per NPC)"
         );
-        send_bundle_to_witness_reliable(socket, connected, entity_to_addr, witness_id, phase2)
+        send_bundle_to_witness_reliable(transport, connected, entity_to_addr, witness_id, phase2)
             .await;
     }
 
     for entity_id in left_aoi_targets {
-        left_aoi(witness_id, entity_id, socket, connected, entity_to_addr).await;
+        left_aoi(witness_id, entity_id, transport, connected, entity_to_addr).await;
     }
     for (entity_id, method_index, args) in method_calls {
         entity_method_call(
             entity_id,
             method_index,
             args,
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )
@@ -176,7 +176,7 @@ pub(super) async fn entered_aoi(
     direction: [f32; 3],
     level: u32,
     npc_data: Option<NpcAoIData>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -190,7 +190,7 @@ pub(super) async fn entered_aoi(
     // Packet 1: CREATE_ENTITY + UPDATE_AVATAR (BaseApp immediate) — RELIABLE.
     // NPC spawn into player AoI; loss = NPC permanently invisible.
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         witness_id,
@@ -201,7 +201,7 @@ pub(super) async fn entered_aoi(
     .await;
     // Packet 2: createOnClient() property cascade (CellApp round-trip) — RELIABLE
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         witness_id,
@@ -225,13 +225,13 @@ pub(super) async fn entered_aoi(
 pub(super) async fn left_aoi(
     witness_id: u32,
     entity_id: u32,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     tracing::debug!(witness_id, entity_id, "AoI: entity left witness range");
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         witness_id,
@@ -248,7 +248,7 @@ pub(super) async fn entity_moved(
     position: [f32; 3],
     direction: [f32; 3],
     velocity: [f32; 3],
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -257,7 +257,7 @@ pub(super) async fn entity_moved(
     // the next position frame supersedes any lost one within a tick or two.
     // Stays on the no-Channel-tracking path.
     send_to_witness(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         witness_id,
@@ -274,7 +274,7 @@ pub(super) async fn entity_method_call(
     entity_id: u32,
     method_index: u16,
     args: Vec<u8>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -288,7 +288,7 @@ pub(super) async fn entity_method_call(
     // triggers, quest updates, mission state, dialog opens, content engine
     // events). Loss = permanent damage.
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         entity_id,
@@ -304,7 +304,7 @@ pub(super) async fn witness_entity_method(
     entity_id: u32,
     method_index: u16,
     args: Vec<u8>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -317,7 +317,7 @@ pub(super) async fn witness_entity_method(
     // RELIABLE — witness-broadcast entity methods are state-change traffic,
     // same shape as the owning-client `entity_method_call` above.
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         witness_id,
@@ -332,7 +332,7 @@ pub(super) async fn witness_entity_method(
 pub(super) async fn entity_invisible(
     witness_id: u32,
     entity_id: u32,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -340,11 +340,88 @@ pub(super) async fn entity_invisible(
     // RELIABLE — visibility-state change. Loss leaves the entity rendered
     // when it should be hidden.
     send_to_witness_reliable(
-        socket,
+        transport,
         connected,
         entity_to_addr,
         witness_id,
         |key, seq, acks| build_entity_invisible(key, seq, acks, entity_id),
     )
     .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{test_default_connected_client_state, TestTransport};
+
+    /// Domain A (fan-out byte test): one AoI event (entity 200 leaves) routed
+    /// to two witnesses lands as exactly two packets — one per witness — each
+    /// addressed to that witness's `entity_to_addr` mapping, with byte-exact
+    /// (and, since the witnesses share default key+seq state, identical)
+    /// payloads.
+    ///
+    /// This is the witness_id → addr → bytes mapping that was uninspectable
+    /// before the `Transport` trait: it catches witness-list amplification
+    /// (N±1 sends) via the `len`/`send_count_to` assertions, and wrong-
+    /// recipient routes via the per-index addr assertions.
+    #[tokio::test]
+    async fn left_aoi_fans_out_one_packet_per_witness_to_each_addr() {
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+        let entity_id = 200u32; // the entity leaving AoI
+        let witness_a = 100u32;
+        let witness_b = 101u32;
+        let addr_a: SocketAddr = "127.0.0.1:50100".parse().unwrap();
+        let addr_b: SocketAddr = "127.0.0.1:50101".parse().unwrap();
+
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::from([
+                (witness_a, addr_a),
+                (witness_b, addr_b),
+            ])));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::from([
+                (addr_a, test_default_connected_client_state()),
+                (addr_b, test_default_connected_client_state()),
+            ])));
+
+        // Cell fans out one LeftAoI per witness; the base routes each.
+        left_aoi(
+            witness_a,
+            entity_id,
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+        left_aoi(
+            witness_b,
+            entity_id,
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await;
+
+        let sent = transport.drain();
+        assert_eq!(
+            sent.len(),
+            2,
+            "exactly one send per witness, no amplification"
+        );
+        assert_eq!(
+            transport.send_count_to(addr_a),
+            0,
+            "drain consumed the records"
+        );
+        assert_eq!(sent[0].0, addr_a, "witness A's packet routed to A's addr");
+        assert_eq!(sent[1].0, addr_b, "witness B's packet routed to B's addr");
+
+        // Both witnesses start at next_seq=0 with the all-zero key, so the
+        // leave packet is byte-identical for each.
+        let expected = build_entity_leave(&[0u8; 32], 0, &[], entity_id);
+        assert_eq!(sent[0].1, expected, "witness A leave bytes (seq 0)");
+        assert_eq!(sent[1].1, expected, "witness B leave bytes (seq 0)");
+    }
 }

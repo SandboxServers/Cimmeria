@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 
 use super::super::super::super::ConnectedClientState;
 use super::super::inventory::core::send_full_inventory_update;
@@ -19,7 +19,7 @@ pub async fn handle_recharge_inventory_items(
     item_ids: Vec<i32>,
     vendor_template_id: Option<i32>,
     db_pool: &Option<Arc<PgPool>>,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -30,7 +30,7 @@ pub async fn handle_recharge_inventory_items(
             item_ids,
             vendor_template_id,
             db_pool,
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )
@@ -145,7 +145,7 @@ pub async fn handle_recharge_inventory_items(
             entity_id,
             player_id,
             pool,
-            socket,
+            transport,
             connected,
             entity_to_addr,
         )
@@ -187,6 +187,7 @@ mod free_recharge_tests {
 
     use super::*;
     use crate::test_support::require_db_or_skip;
+    use crate::test_support::TestTransport;
 
     /// Sentinel base. Steps past the highest live-DB sentinel reserved
     /// elsewhere in the crate.
@@ -303,13 +304,11 @@ mod free_recharge_tests {
     fn make_state(
         entity_id: u32,
     ) -> (
-        Arc<UdpSocket>,
+        Arc<dyn Transport>,
         Arc<Mutex<HashMap<u32, SocketAddr>>>,
         Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     ) {
-        let std_sock = std::net::UdpSocket::bind("127.0.0.1:0").expect("bind UDP");
-        std_sock.set_nonblocking(true).unwrap();
-        let socket = Arc::new(UdpSocket::from_std(std_sock).expect("from_std"));
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
         let fake_addr: SocketAddr = "127.0.0.1:65535".parse().unwrap();
         let entity_to_addr = Arc::new(Mutex::new({
             let mut m = HashMap::new();
@@ -317,7 +316,7 @@ mod free_recharge_tests {
             m
         }));
         let connected = Arc::new(Mutex::new(HashMap::new()));
-        (socket, entity_to_addr, connected)
+        (transport, entity_to_addr, connected)
     }
 
     /// Free-recharge happy path: a depleted item (charges=0) of a
@@ -334,7 +333,7 @@ mod free_recharge_tests {
         insert_account_and_player(&pool, account_id, player_id).await;
         let item = insert_inventory_row(&pool, player_id, SYNTH_RECHARGEABLE_TYPE_ID, 0, 0).await;
 
-        let (socket, e2a, conn) = make_state(0x7000_1301);
+        let (transport, e2a, conn) = make_state(0x7000_1301);
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_recharge_inventory_items(
@@ -343,7 +342,7 @@ mod free_recharge_tests {
             vec![item],
             None, // free-recharge branch
             &db_pool,
-            &socket,
+            &transport,
             &conn,
             &e2a,
         )
@@ -382,7 +381,7 @@ mod free_recharge_tests {
         )
         .await;
 
-        let (socket, e2a, conn) = make_state(0x7000_1311);
+        let (transport, e2a, conn) = make_state(0x7000_1311);
         let db_pool = Some(Arc::new(pool.clone()));
 
         handle_recharge_inventory_items(
@@ -391,7 +390,7 @@ mod free_recharge_tests {
             vec![item],
             None,
             &db_pool,
-            &socket,
+            &transport,
             &conn,
             &e2a,
         )

@@ -3,13 +3,13 @@
 > **Type**: reference  
 > **Audience**: engineers  
 > **Last updated**: 2026-05-21  
-> **Total tests**: 101  
+> **Total tests**: 93  
 > **CI-gated**: yes  
 > **Index**: [README](README.md) | **Playbook**: [TESTING.md](../../../TESTING.md)
 
 Mercury reliable UDP protocol plus AES-256-CBC / HMAC-MD5 encryption. Includes packet framing, sequencing, and the byte-level codec that the BigWorld client must accept verbatim.
 
-## All tests (101)
+## All tests (93)
 
 | Test | Kind | System / Feature | Added | What it tests | Notes |
 |---|---|---|---|---|---|
@@ -62,14 +62,6 @@ Mercury reliable UDP protocol plus AES-256-CBC / HMAC-MD5 encryption. Includes p
 | [unknown_id_returns_none](../../../crates/mercury/src/messages.rs#L116) | unit | Messages | 2026-03-03 | Asserts on `MsgId::from_u8(0).is_none()` |  |
 | [try_from_u8](../../../crates/mercury/src/messages.rs#L122) | unit | Messages | 2026-03-03 | Asserts equality on `id` |  |
 | [display_formatting](../../../crates/mercury/src/messages.rs#L131) | unit | Messages | 2026-03-03 | Asserts equality on `MsgId::LoginRequest.to_string()` |  |
-| [tick_on_empty_nub_returns_empty_actions](../../../crates/mercury/src/nub.rs#L224) | unit | Nub | 2026-05-03 | Asserts on `actions.retransmits.is_empty()` |  |
-| [tick_schedules_keepalive_for_idle_channel](../../../crates/mercury/src/nub.rs#L233) | unit | Nub | 2026-05-03 | Asserts equality on `actions.keepalives` |  |
-| [tick_re_flags_keepalive_until_caller_acks_send](../../../crates/mercury/src/nub.rs#L248) | unit | Nub | 2026-05-03 | Tick re flags keepalive until caller acks send |  |
-| [tick_collects_retransmits_per_addr](../../../crates/mercury/src/nub.rs#L284) | unit | Nub | 2026-05-03 | Tick collects retransmits per addr |  |
-| [tick_does_not_reap_channel_on_same_tick_max_retries_hit](../../../crates/mercury/src/nub.rs#L308) | unit | Nub | 2026-05-03 | Tick does not reap channel on same tick max retries hit |  |
-| [tick_reaps_channel_after_max_retries_plus_one_timeout](../../../crates/mercury/src/nub.rs#L340) | unit | Nub | 2026-05-03 | Asserts equality on `actions.dead_channels.len()` |  |
-| [tick_does_not_touch_fragment_reassembly_state](../../../crates/mercury/src/nub.rs#L378) | unit | Nub | 2026-05-17 | Tick must NOT touch in-progress reassembly state — pins the inverse of the deleted `tick_sweeps_stale_fragment_reassembly`; orphan partials persist across ticks |  |
-| [tick_prunes_silent_peer_and_does_not_emit_for_it](../../../crates/mercury/src/nub.rs#L405) | unit | Nub | 2026-05-03 | Tick prunes silent peer and does not emit for it |  |
 | [parse_baseapp_login_packet](../../../crates/mercury/src/packet.rs#L501) | unit | Packet | 2026-03-03 | Parse baseapp login packet |  |
 | [build_and_parse_reply_packet](../../../crates/mercury/src/packet.rs#L532) | unit | Packet | 2026-03-03 | Asserts equality on `pkt.flags` |  |
 | [parse_empty_body_with_seq](../../../crates/mercury/src/packet.rs#L546) | unit | Packet | 2026-03-03 | Asserts equality on `pkt.seq_id` |  |

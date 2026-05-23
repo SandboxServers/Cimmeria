@@ -10,8 +10,8 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
-use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -27,7 +27,7 @@ pub(super) async fn dispatch_cell_method(
     id: u8,
     payload: &[u8],
     addr: SocketAddr,
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
@@ -47,7 +47,7 @@ pub(super) async fn dispatch_cell_method(
     };
     if map_loaded_pending && id == 0x99 {
         if let Err(e) = handle_map_loaded(
-            socket,
+            transport,
             addr,
             key,
             connected,
@@ -113,7 +113,7 @@ pub(super) async fn dispatch_cell_method(
             const CM_CANCEL_MOVIE: u16 = 108;
             if method_index == CM_CANCEL_MOVIE {
                 tracing::info!(%addr, entity_id = player_eid, "cancelMovie received — resending BeingAppearance + onEntityTint");
-                handle_cancel_movie(socket, addr, player_eid, connected, entity_to_addr).await;
+                handle_cancel_movie(transport, addr, player_eid, connected, entity_to_addr).await;
             }
 
             if let Some(ref tx) = cell_tx {

@@ -360,10 +360,11 @@ mod tests {
         use crate::cell::messages::CellToBaseMsg;
         use crate::cell::missions::{accept_mission, complete_mission_direct};
         use crate::cell::space_manager::SpaceManager;
+        use crate::test_support::TestTransport;
         use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
+        use cimmeria_mercury::transport::Transport;
         use std::collections::HashMap;
         use std::sync::Mutex;
-        use tokio::net::UdpSocket;
         use tokio::sync::mpsc;
 
         let pool = require_db_or_skip!();
@@ -429,16 +430,16 @@ mod tests {
         // regression in its MissionUpdate destructure (dropped repeats,
         // mis-bound Vec args) breaks the test here rather than silently
         // shipping. The MissionUpdate arm only touches db_pool; the
-        // socket / connected / cell_tx / minigame fields aren't used,
+        // transport / connected / cell_tx / minigame fields aren't used,
         // so we wire the minimum stubs.
-        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").await.expect("bind UDP"));
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
         let connected = Arc::new(Mutex::new(HashMap::new()));
         let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
         let cell_tx_opt: Option<mpsc::Sender<crate::cell::messages::BaseToCellMsg>> = None;
         let minigame_registry = None;
         handle_cell_message(
             msg,
-            &socket,
+            &transport,
             &connected,
             &entity_to_addr,
             &cell_tx_opt,

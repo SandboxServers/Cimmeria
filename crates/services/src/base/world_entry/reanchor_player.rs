@@ -36,7 +36,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_ACKS};
-use tokio::net::UdpSocket;
+use cimmeria_mercury::transport::Transport;
 
 use crate::mercury::{
     build_enter_world_body, build_entity_method_packet, encrypt_packet, method_idx, WorldEntryInfo,
@@ -48,7 +48,7 @@ use super::super::ConnectedClientState;
 /// Build the burst-body bytes: `CREATE_BASE_PLAYER` header + `enter_world_body`.
 ///
 /// Pure function so the wire layout is unit-testable without spinning a
-/// socket. The byte ordering here is load-bearing — the client's
+/// transport. The byte ordering here is load-bearing — the client's
 /// `createBasePlayer` handler reads `entity_id u32` then `class_id u16`
 /// (yes, u16 — the trailing `propertyCount` byte gets folded into the
 /// class read; see the in-tree `phases::build_create_player` for the
@@ -123,7 +123,7 @@ pub(crate) async fn handle_reanchor_player(
     space_id: u32,
     position: [f32; 3],
     rotation: [f32; 3],
-    socket: &Arc<UdpSocket>,
+    transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -184,7 +184,7 @@ pub(crate) async fn handle_reanchor_player(
     );
 
     for (i, pkt) in packets.iter().enumerate() {
-        socket.send_to(pkt, addr).await?;
+        transport.send_to(pkt, addr).await?;
         // Reanchor burst is state-change traffic — register each packet
         // with the Channel for retransmit on loss. Derived seqs are masked
         // to the 28-bit space so the contiguous range stays in-band even
@@ -449,5 +449,71 @@ mod tests {
             pkts[2], expected_tint,
             "packet[2] must be onEntityTint with seq=base_seq+2"
         );
+    }
+
+    /// Domain C (fan-out byte test): `handle_reanchor_player` for a client with
+    /// no cached appearance/tint emits exactly **one** packet — the reanchor
+    /// burst — to the owner's own addr, byte-exact, with **zero** witness
+    /// fan-out (reanchor is owner-only). Catches a regression that fans the
+    /// owner-only burst out to witnesses, or that emits a half-replay when no
+    /// cache is present.
+    #[tokio::test]
+    async fn reanchor_emits_single_burst_to_owner_only() {
+        use crate::test_support::{test_default_connected_client_state, TestTransport};
+
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+        let entity_id = 0x4321u32;
+        let space_id = 0x0001_0042u32;
+        let position = [10.0f32, 20.0, 30.0];
+        let rotation = [0.5f32, 1.5, 2.5];
+        let addr: SocketAddr = "127.0.0.1:40200".parse().unwrap();
+
+        // Default state has no cached appearance/tint → burst-only (1 packet).
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::from([(
+                addr,
+                test_default_connected_client_state(),
+            )])));
+
+        handle_reanchor_player(
+            entity_id,
+            space_id,
+            position,
+            rotation,
+            &dyn_transport,
+            &connected,
+            &entity_to_addr,
+        )
+        .await
+        .expect("reanchor must succeed");
+
+        let sent = transport.drain();
+        assert_eq!(
+            sent.len(),
+            1,
+            "burst-only (no cache) ⇒ exactly one packet, no witness fan-out"
+        );
+        assert_eq!(
+            sent[0].0, addr,
+            "reanchor burst goes to the owner's own addr"
+        );
+
+        // base_seq = 0 (default next_seq), no acks, all-zero key, no replay.
+        let info = WorldEntryInfo {
+            player_entity_id: entity_id,
+            space_id,
+            pos: position,
+            rot: rotation,
+            world_name: String::new(),
+            class_id: SGWPLAYER_CLASS_ID,
+            world_stargates: Vec::new(),
+        };
+        let expected = build_reanchor_packets(&[0u8; 32], 0, entity_id, &info, None, None, &[]);
+        assert_eq!(expected.len(), 1, "test premise: burst-only");
+        assert_eq!(sent[0].1, expected[0], "reanchor burst wire bytes (seq 0)");
     }
 }
