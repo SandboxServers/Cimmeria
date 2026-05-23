@@ -32,6 +32,7 @@ mod service;
 pub(crate) mod tick_sync;
 pub(crate) mod world_entry;
 pub(crate) mod world_entry_appearance;
+pub(crate) mod world_entry_chat;
 
 #[cfg(test)]
 mod smoke_tests;
